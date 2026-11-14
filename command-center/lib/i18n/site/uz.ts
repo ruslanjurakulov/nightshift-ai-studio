@@ -368,7 +368,7 @@ export const siteUz: SiteDictionary = {
       steps: [
         { id: "topic", title: "Mavzu bering", body: "Bir qator yozing yoki kanal oʻz yoʻnalishidan keyingi mavzuni tanlasin. Nightshift ssenariy, ovoz, tasvir va subtitrlarni tayyorlaydi." },
         { id: "price", title: "Narxini koʻrib boshlang", body: "Narx boshlashdan oldin tugmada turadi. Ish xato bilan tugasa, kreditlar oʻzi qaytadi." },
-        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Ommaviy qilinmaguncha u shaxsiy qoladi: uni YouTube’da oʻzingiz ommaviy qilasiz yoki, agar ish maydonini boshqaradigan kishi kanal uchun “Tasdiqdan keyin nashr qilish”ni yoqqan boʻlsa, aynan shu versiyani tasdiqlash YouTube’dan buni soʻraydi." },
+        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Siz koʻrayotganingizda video YouTube’da shaxsiy holda kutadi. Uni YouTube’da oʻzingiz ommaviy qilasiz yoki, kanalda “Tasdiqdan keyin nashr qilish” yoqilgan boʻlsa (odatda u oʻchiq), tasdiqlashingiz YouTube’dan buni soʻraydi." },
       ],
     },
     shotTag: "Skrinshot",
@@ -401,7 +401,10 @@ export const siteUz: SiteDictionary = {
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
     label: "Jamoamiz Studiyada yaratgan haqiqiy natijalar",
-    note: "Vositada rasm yoki klip boʻlsa, u jamoamiz Studiyada bajargan haqiqiy topshiriq boʻlib, uni yaratgan model koʻrsatilgan. “Hozircha mavjud emas” belgisi bor vosita uchun bugun hech narsa sotilmaydi. Vosita ochilgach, narxi tugmasida boʻladi; kredit sarflamaydiganlari shunday deb yozilgan.",
+    note: "Vositadagi rasm yoki klip — jamoamiz Studiyada bajargan haqiqiy topshiriq. “Hozircha mavjud emas” — bu vosita bugun sotuvda yoʻq degani. Vosita ochilgach, narxi tugmasida boʻladi. Bepullari shunday deb yozilgan.",
+    byTeam: "jamoamiz tayyorlagan",
+    from: "Chapda — bu klip yaratilgan rasm",
+    altFrom: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir",
     more: "Yana toʻrtta vositani koʻrsatish",
     less: "Kamroq koʻrsatish",
   },

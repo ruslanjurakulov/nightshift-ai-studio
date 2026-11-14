@@ -414,7 +414,7 @@ export const siteEn = {
       steps: [
         { id: "topic", title: "Give it a topic", body: "Type a line, or let your channel pick its next topic from its niche. Nightshift writes the script, the voice, the visuals and the captions." },
         { id: "price", title: "Start it at a price you have seen", body: "The price is on the button before anything starts. If a run fails, the credits come back on their own." },
-        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private. You watch it and record your decision in the app. Until it is made public it stays private: you make it public on YouTube or, where someone who manages the workspace has switched on “Publish when approved” for the channel, approving that exact version asks YouTube to do it." },
+        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private while you watch it. You make it public yourself on YouTube, or, on a channel whose “Publish when approved” switch is on (it is off by default), your approval asks YouTube to do it." },
       ],
     },
     shotTag: "Screenshot",
@@ -448,7 +448,13 @@ export const siteEn = {
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
     label: "Real outputs, made by our team in the Studio",
-    note: "Where a tool shows a picture or a clip, it is a real job made by our team in the Studio, labelled with the model that made it. A tool marked “Not available yet” has nothing on sale today. Once a tool is open, its price is on its button; the ones that cost no credits say so.",
+    note: "A tool’s picture or clip is a real job our team ran in the Studio. “Not available yet” means the tool is not on sale today. Once a tool opens, its price is on its button. The free ones say so.",
+    /** Under a tile's sample, after the "AI-generated" badge word: who made it. No model name on the wall (the owner has not decided whether the public site names models). */
+    byTeam: "made by our team",
+    /** Under Animate's before and after: which half is the picture the clip started from. */
+    from: "Left: the picture this clip was made from",
+    /** The alt text of that picture, without its model. */
+    altFrom: "The AI-generated picture this clip was made from",
     more: "Show four more tools",
     less: "Show fewer tools",
   },

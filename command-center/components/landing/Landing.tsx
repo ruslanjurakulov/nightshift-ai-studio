@@ -8,7 +8,7 @@ import { packExpiry, type PackExpiry } from "@/lib/plans";
 import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
-import { Showcases } from "@/components/landing/Showcases";
+import { APPROVALS_HREF, Showcases } from "@/components/landing/Showcases";
 import { ShowcaseGallery, showcaseItems, type LandingFormat } from "@/components/site/ShowcaseGallery";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { TryDemo } from "@/components/landing/TryDemo";
@@ -308,6 +308,8 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
  * 3. a phone with one of our vertical samples playing as a channel's video, under "Private on YouTube": an example,
  *    labelled AI-generated (the badge only: the phone illustrates the step, the clip is not its subject), in the sample's own box.
  * The first two are pictures of a control, not controls: hidden from assistive tech (the step's words say it).
+ * All three sit on stages of one height (site-next.css .nx-step-live), so the numerals under them start on one line: the phone
+ * fills its stage's height instead of standing taller than the other two and pushing its step's top up (owner, 2026-11-14).
  */
 function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   if (id === "topic") {
@@ -342,15 +344,17 @@ function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={f.posterSm} width={e.width} height={e.height} alt={clip ? t.site.gallery.bgClip : t.site.gallery.bgImage} className="nx-step-shot nx-drift-pic" loading="lazy" decoding="async" />
         {clip && <ShowcaseClip jobId={e.jobId} />}
+        {/* On the picture, as the gallery's cards carry it: beside the phone it was squeezed into a two-line capsule. */}
+        <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
         {approve && <span className="nx-step-private">{approve.lamp}</span>}
       </span>
-      <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
     </div>
   );
 }
 
 function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   const h = t.site.how.simple;
+  const approvals = t.site.caps.items.find((i) => i.id === "approvals");
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
@@ -368,6 +372,13 @@ function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mon
                 </span>
                 <h3 className="nx-h3">{s.title}</h3>
                 <p className="nx-body">{s.body}</p>
+                {/* The step says the two ways a video goes public in two sentences; who may turn the switch on, which version, and
+                    for how long is behind the Approvals band's own link, not in the step (owner, 2026-11-14). */}
+                {s.id === "approve" && approvals && (
+                  <Link href={APPROVALS_HREF} className="nx-link nx-strip-more">
+                    {approvals.cta}
+                  </Link>
+                )}
               </li>
             );
           })}

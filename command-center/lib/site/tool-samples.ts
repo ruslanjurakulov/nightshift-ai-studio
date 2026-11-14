@@ -12,12 +12,13 @@ import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
  * - `inStudio`: whether a customer can use the tool today. HAND-SET. The live answer is lib/tool-availability.ts (#735), but it needs
  *   an organization to read sellable_models() for, and the landing is signed out, so the public site cannot compute it.
  *   LIVE FACT, 2026-11-13 (read-only check of the production database): all 82 model_registry rows are availability='hidden', so a
- *   customer can make nothing in the Studio today, not a picture, a clip or an animation. Every line is therefore false, and every
- *   tile says "Not available yet" (#735's words). A line flips to true only when the owner opens a model of that capability (PR #736 /
+ *   customer can make nothing in the Studio today, not a picture, a clip or an animation. Every model-backed line (a capability) is
+ *   therefore false, and its tile says "Not available yet" (#735's words). The style library is not a model and is open (its line
+ *   says why). A model-backed line flips to true only when the owner opens a model of that capability (PR #736 /
  *   migration 0160 would open Ideogram, MiniMax H3 and Runway for image, video and image-to-video); flip it in the same change.
- *   tests/site-engage-5.test.tsx pins it: every line false today, and a line set true needs a registry model of its capability with
- *   no terms gate and not past a shutdown day (schemas/model_registry.json). While every line is false the landing's copy says so
- *   too (studioToolsOpen below).
+ *   tests/site-engage-5.test.tsx pins it: every model-backed line false today (only Styles open), and a model-backed line set true
+ *   needs a registry model of its capability with no terms gate and not past a shutdown day (schemas/model_registry.json). While
+ *   every model-backed line is false the landing's copy says so too (studioToolsOpen below).
  *
  * The page leaves these samples out of its gallery, so no clip is on it twice.
  */
@@ -40,9 +41,13 @@ export const TOOL_SAMPLES: Record<string, ToolSample> = {
   upscale: { capability: "upscale", job: null, inStudio: false },
   // Cut-out: no registry model has the remove_bg capability.
   cutout: { capability: "remove_bg", job: null, inStudio: false },
-  // The style library is applied to the image and clip tools; it is not a model and costs nothing, but with no image or clip tool
-  // open there is nothing to apply it to.
-  styles: { capability: null, job: null, inStudio: false },
+  // Styles is not a model, so the hidden registry does not close it. Every signed-up user can use it today, for no credits: the
+  // Styles page browses the 28 written directions of lib/styles/library.ts with no workspace and no database
+  // (app/(app)/[channel]/styles/page.tsx), adds one to the workspace through add_library_style_kit (migration 0065, granted to
+  // authenticated), and saves a kit of the user's own 3–12 pictures through save_style_kit (0047, granted to authenticated).
+  // None of those calls a model, takes a price or checks tool availability. Applying a kit to a picture or a clip needs an image or
+  // clip tool, and those are closed above; the tile says what the library is, not that a picture can be made with it.
+  styles: { capability: null, job: null, inStudio: true },
 };
 
 /**

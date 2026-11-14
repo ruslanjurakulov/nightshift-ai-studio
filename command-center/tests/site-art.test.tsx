@@ -179,7 +179,14 @@ describe("the steps and the tool wall", () => {
     const steps = [...container.querySelectorAll(".nx-strip-step")];
     expect(steps).toHaveLength(3);
     expect(steps.map((li) => li.firstElementChild?.getAttribute("data-step"))).toEqual(["topic", "price", "approve"]);
-    for (const li of steps) expect([...li.children].slice(1).map((c) => c.tagName)).toEqual(["SPAN", "H3", "P"]);
+    // The third step's words stop at two sentences; the whole approval story is behind the Approvals band's own link.
+    expect(steps.map((li) => [...li.children].slice(1).map((c) => c.tagName))).toEqual([["SPAN", "H3", "P"], ["SPAN", "H3", "P"], ["SPAN", "H3", "P", "A"]]);
+    const more = steps[2].lastElementChild as HTMLAnchorElement;
+    expect(more.getAttribute("href")).toBe("/solutions/youtube-channels");
+    expect(more.textContent).toBe(t.site.caps.items.find((i) => i.id === "approvals")!.cta);
+    expect(container.querySelector("#approvals .nx-show-cta")?.getAttribute("href")).toBe(more.getAttribute("href"));
+    const approveBody = steps[2].querySelector("p")!.textContent!;
+    expect(approveBody.split(/(?<=[.!?])\s+/).filter(Boolean)).toHaveLength(2);
     // 1: the chat card's own example ask, typed; a picture of a box, hidden from assistive tech.
     const topic = steps[0].firstElementChild!;
     expect(topic.getAttribute("aria-hidden")).toBe("true");
@@ -196,6 +203,23 @@ describe("the steps and the tool wall", () => {
     expect(phone.querySelector(".nx-step-credit")?.textContent).toContain(t.site.gallery.badge);
     expect(phone.querySelector("img")?.getAttribute("loading")).toBe("lazy");
     expect(container.querySelector("img.nx-strip-pic, img.nx-wall-pic, [data-art-id^='step-'], [data-art-id^='tool-']")).toBeNull();
+  });
+
+  // The owner saw the phone small and standing above steps 1 and 2, its still opening on a cut-off shoe (2026-11-14).
+  it("puts the three live pieces on stages of one fixed height from 860 px, the phone filling its stage, its still covered, centred and cropped in", () => {
+    expect(css).toMatch(/@media \(min-width: 860px\) \{ \.nx-step-live \{ height: 264px;/);
+    expect(css).toMatch(/\.nx-step-live \{[^}]*border-radius: 20px; border: 1px solid var\(--ns-rule\); background: var\(--ns-ground\); \}/);
+    expect(css).toMatch(/@media \(min-width: 860px\) \{ \.nx-step-phone \{ height: 100%; \} \}/);
+    expect(css).toMatch(/\.nx-step-shot \{[^}]*object-fit: cover; object-position: 50% 50%; scale: 1\.25; \}/);
+    expect(css).toMatch(/\.nx-step-phone \.nx-clip \{[^}]*object-position: 50% 50%; scale: 1\.25; \}/);
+    // Only a min-height was shared before, which let the pieces end at different heights.
+    expect(css).not.toMatch(/\.nx-step-live \{ min-height: 196px; \}/);
+  });
+
+  // Scrolled to "How it works", the Approvals card's empty lower strip was all that showed under the header (owner, 2026-11-14).
+  it("sizes the drawn Approvals card to its words and its screen, not to a photograph band's 560 px floor", () => {
+    expect(css).toMatch(/\.nx-show-card\[data-art="drawn"\] \{ display: grid; grid-template-columns: 46% minmax\(0, 1fr\); align-items: center; min-height: 0;/);
+    expect(css).toMatch(/\.nx-show-card\[data-art="drawn"\] \.nx-show-pic \{ position: relative; inset: auto;/);
   });
 
   it("prints the price on the Generate key's step only when the live price list holds it", () => {
