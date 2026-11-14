@@ -693,6 +693,10 @@ class CreativeWorker:
             owns = True
         outcome = "left"
         try:
+            if serial and self.stop.is_set():
+                # Told to stop before anything of it ran: the render would be killed at once; the queue keeps it instead.
+                outcome = self._hand_back(job_id)
+                return outcome
             outcome = self._run(job, job_id)
             return outcome
         finally:

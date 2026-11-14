@@ -825,6 +825,14 @@ class TheSlot(Tmp):
         self.assertEqual((w._parked, q.finished), ([], {}))
         self.assertEqual([j["id"] for j in q.waiting], [JOB], "back in the queue for the next start")
 
+    def test_a_voice_job_claimed_as_the_worker_stops_goes_back_to_the_queue_not_to_failed(self):
+        q = SlotQueue([vv_job()], audio_source())
+        w = self.worker(q)
+        w.stop.set()
+        w.run_once()
+        self.assertEqual((q.steps(JOB), q.finished, self.e.rendered), (["requeue"], {}, []))
+        self.assertFalse(cw._SERIAL_SLOT.locked())
+
     def test_past_the_parking_room_a_claim_is_handed_back_and_the_thread_pauses(self):
         jobs = [vv_job(id=f"0f0e0d0c-0b0a-4000-8000-{i:012d}") for i in range(cw.MAX_PARKED + 1)]
         q = SlotQueue(jobs, audio_source())
