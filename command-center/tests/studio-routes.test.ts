@@ -81,6 +81,8 @@ const OLD_SHAPES = [
   "/create?desk=effects&effect=life",
   "/create?desk=youtube&topic=space&length=300&lang=uz",
   "/create?model=m1&style=s1&prompt=hello&improve=1&attach=n1",
+  "/create/projects",
+  `/create/projects/${UUID}`,
   "/videos",
   `/videos/${UUID}`,
   "/videos/dQw4w9WgXcQ",
@@ -120,7 +122,9 @@ describe("studioRoute: every old creative URL maps somewhere real", () => {
 
   it("redirects only what has a new home today, and names the canvas step for everything else", () => {
     const redirects = OLD_SHAPES.filter((u) => studioRoute(u)?.kind === "redirect");
-    expect(redirects).toEqual(["/videos", "/editor"]);
+    expect(redirects).toEqual(["/create/projects", "/videos", "/editor"]);
+    expect(studioRoute("/create/projects")?.href).toBe("/studio?shelf=projects");
+    expect(studioRoute(`/create/projects/${UUID}`)?.canvas).toEqual({ step: "film", target: `/studio/film/${UUID}` });
     expect(studioRoute("/videos")?.href).toBe("/studio?shelf=videos");
     expect(studioRoute("/editor")?.href).toBe("/studio?shelf=projects&kind=edit");
     // Not built yet, so nothing may point at a canvas URL: every "stays" target is its own old URL.

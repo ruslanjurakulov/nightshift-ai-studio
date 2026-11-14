@@ -18,7 +18,11 @@ vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NEXT_NOT_FOUND");
   },
+  redirect: (url: string) => {
+    throw new Error(`NEXT_REDIRECT ${url}`);
+  },
 }));
+vi.mock("@/lib/channels-path-server", () => ({ getChannelPath: async () => (p: string) => `/chronos${p}` }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
@@ -101,26 +105,32 @@ describe("the pages", () => {
     const { default: Canvas } = await import("../app/(app)/[channel]/create/projects/[id]/page");
     for (const v of ["", "off", "enabled"]) {
       vi.stubEnv("NIGHTSHIFT_FILM_STUDIO", v);
-      await expect(List()).rejects.toThrow("NEXT_NOT_FOUND");
+      await expect(List({})).rejects.toThrow("NEXT_NOT_FOUND");
       await expect(Canvas({ params: Promise.resolve({ id: "x" }) })).rejects.toThrow("NEXT_NOT_FOUND");
     }
     expect(h.org).not.toHaveBeenCalled();
     expect(h.client).not.toHaveBeenCalled();
   });
 
-  it("`admins`: a 404 for anyone but a platform admin", async () => {
+  it("`admins`: a 404 for anyone but a platform admin; for an admin the list is the Studio home's Projects shelf", async () => {
     vi.stubEnv("NIGHTSHIFT_FILM_STUDIO", "admins");
     const { default: List } = await import("../app/(app)/[channel]/create/projects/page");
-    await expect(List()).rejects.toThrow("NEXT_NOT_FOUND");
+    const { FilmProjectsShelf } = await import("../components/studio-hub/FilmProjectsShelf");
+    await expect(List({})).rejects.toThrow("NEXT_NOT_FOUND");
+    // Off for this viewer, the shelf draws nothing and reads nothing either.
+    expect(await FilmProjectsShelf()).toBeNull();
     expect(h.org).not.toHaveBeenCalled();
     h.admin.mockResolvedValue(true);
+    // The old list URL now redirects (once, on the same channel) to the shelf that lists the projects.
+    await expect(List({})).rejects.toThrow("NEXT_REDIRECT /chronos/studio?shelf=projects&moved=projects");
+    expect(h.org).not.toHaveBeenCalled();
     h.client.mockResolvedValue({
       from: () => {
         const q = { eq: () => q, neq: () => q, order: () => q, limit: async () => ({ data: [], error: null }) };
         return { select: () => q };
       },
     });
-    const tree = flatten(await List());
+    const tree = flatten(await FilmProjectsShelf());
     const list = tree.find((n) => (n.props as { initial?: unknown }).initial);
     // A viewer gets the list without the button: presentation only, the database checks the role again.
     expect(list?.props).toMatchObject({ initial: { state: "ok", films: [] }, canEdit: false, channel: null });

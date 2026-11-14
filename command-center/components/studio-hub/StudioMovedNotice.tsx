@@ -29,6 +29,8 @@ const MOVED: Record<string, (t: Dictionary) => string> = {
   workflows: (t) => t.nav.workflows,
   pipeline: (t) => t.nav.pipeline,
   look: (t) => t.nav.brandLook,
+  // Studio → Projects (/create/projects): the shelf is named Projects in every language.
+  projects: (t) => t.studioHub.shelfProjects,
 };
 
 const STORE = "ns.studio-moved.v1.";

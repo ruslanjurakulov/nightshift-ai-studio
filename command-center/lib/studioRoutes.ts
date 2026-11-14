@@ -12,8 +12,9 @@
  * person to a canvas URL that does not exist yet would break the link, and sending them to Studio
  * home would drop the tool they asked for. So until each canvas step lands, the target is the page
  * that does the job today — which is the old URL itself — and `canvas` records where it will move
- * and which build step moves it. Only the two screens whose new home exists now redirect:
- * Videos (Studio home's Videos shelf) and the Editor's project list (Studio home's Projects shelf).
+ * and which build step moves it. Only the screens whose new home exists now redirect: Videos (Studio
+ * home's Videos shelf), and the two project lists, the Editor's and Studio → Projects (Studio home's
+ * Projects shelf).
  *
  * `/studio` itself changed meaning (§9.1, adopted): it was Brand look and is now Studio home, with
  * Brand look one click away at `/studio/look` (the Channel look chip). An old bookmark therefore
@@ -27,6 +28,8 @@ export type CanvasStep =
   | "drawer"
   /** Step 2: the `run` kind from system_events plus the storyboard checkpoint. */
   | "run"
+  /** Step 3: the `film` kind on /api/films (the scene-to-video project's canvas). */
+  | "film"
   /** Step 4: the `recipe` kind over saved workflows (0073). */
   | "recipe"
   /** Step 5: the `edit` kind; the editor's timeline becomes the shared one. */
@@ -99,6 +102,14 @@ function createCanvasTarget(query: URLSearchParams): string {
 const RULES: Rule[] = [
   // The composer and its desks. TODO(canvas step "sketch"): /studio/sketch/me?add={tool}, prefill keys appended.
   { pattern: /^\/create$/, route: (_m, q) => stays("/create", q, { step: "sketch", target: createCanvasTarget(q) }) },
+  // Studio → Projects (#774, behind NIGHTSHIFT_FILM_STUDIO): the list is the Studio home's Projects shelf now. The shim
+  // checks the switch before redirecting, so while it is off the old URL is still a 404, as it was.
+  { pattern: /^\/create\/projects$/, route: (_m, q) => ({ href: withQuery("/studio", q, { shelf: "projects" }), kind: "redirect" }) },
+  // TODO(canvas step "film"): /studio/film/{id}. Same switch, same 404 while it is off.
+  {
+    pattern: new RegExp(`^/create/projects/(${ID})$`),
+    route: (m, q) => stays(`/create/projects/${m[1]}`, q, { step: "film", target: `/studio/film/${m[1]}` }),
+  },
   // Videos: the Studio home's Videos shelf lists what /videos listed. A real move, so a real redirect.
   { pattern: /^\/videos$/, route: (_m, q) => ({ href: withQuery("/studio", q, { shelf: "videos" }), kind: "redirect" }) },
   // TODO(canvas step "run"): the `run` project's checkpoint node.
