@@ -173,6 +173,20 @@ export function creditsForShare(listCredits: number, share: number): number {
   return Math.floor(Math.round(listCredits * share * 1e6) / 1e4) / 100;
 }
 
+/**
+ * Written at the end of a credited payment's event detail when the payment used ANY discount or allowed promo, however
+ * small: " · discounted (promo dsc_…)" / " · discounted (discount dsc_…)". Migration 0165 reads it (referral_settle_locked):
+ * a discounted payment never qualifies a referral, because an allowed promo books full credits at any paid share
+ * (99% off at $0.01 included). Must equal the marker 0165 looks for (command-center/tests/paddle-webhook.test.ts).
+ */
+export const DISCOUNT_MARK = " · discounted";
+
+export function discountMark(p: { share: number; discountId: string | null; promo: boolean }): string {
+  if (p.promo) return `${DISCOUNT_MARK} (promo ${p.discountId})`;
+  if (p.share < 1 || p.discountId) return `${DISCOUNT_MARK} (discount ${p.discountId ?? "(no id)"})`;
+  return "";
+}
+
 function shareNote(p: { share: number; discountId: string | null; promo: boolean }): string | null {
   if (p.promo) return `promo ${p.discountId} (full credits)`;
   if (p.share >= 1) return null;
@@ -284,6 +298,7 @@ export function decideSubscriptionPayment(
     currency,
     amountMinor,
     note,
+    discount: discountMark(paid),
   };
 }
 
@@ -425,6 +440,8 @@ export type Decision =
       currency: string | null;
       amountMinor: number | null;
       note: string;
+      /** discountMark(): "" for a full-price payment, else the marker appended to the credited event's detail. */
+      discount: string;
     }
   | {
       kind: "api_topup";
@@ -451,6 +468,8 @@ export type Decision =
       currency: string | null;
       amountMinor: number | null;
       note: string;
+      /** discountMark(): "" for a full-price payment, else the marker appended to the credited event's detail. */
+      discount: string;
     }
   | {
       kind: "subscription_state";
@@ -734,7 +753,7 @@ export function decideTransaction(
   ]
     .filter(Boolean)
     .join(" · ");
-  return { kind: "purchase", orgId, userId, transactionId, credits, currency, amountMinor, note };
+  return { kind: "purchase", orgId, userId, transactionId, credits, currency, amountMinor, note, discount: discountMark(paid) };
 }
 
 /**
@@ -1104,7 +1123,7 @@ async function execute(
           httpStatus: 200,
           row: {
             status: res.duplicate ? "duplicate" : "processed",
-            detail: res.duplicate ? "transaction already credited" : `credited ${decision.credits} credits`,
+            detail: (res.duplicate ? "transaction already credited" : `credited ${decision.credits} credits`) + decision.discount,
             credits: decision.credits,
             ...money,
           },
@@ -1230,9 +1249,10 @@ async function execute(
           httpStatus: 200,
           row: {
             status: res.duplicate ? "duplicate" : "processed",
-            detail: res.duplicate
-              ? "plan transaction already credited"
-              : `${decision.planId} plan: credited ${res.granted} credits for the period ending ${decision.periodEnd}`,
+            detail:
+              (res.duplicate
+                ? "plan transaction already credited"
+                : `${decision.planId} plan: credited ${res.granted} credits for the period ending ${decision.periodEnd}`) + decision.discount,
             credits: res.duplicate ? null : res.granted,
             ...money,
           },

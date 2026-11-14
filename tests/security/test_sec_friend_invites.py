@@ -90,8 +90,18 @@ def settings(s, *, enabled=True, required=REQUIRED, reward=REWARD, room=1000, ho
     as_owner(s)
     today = s.value("select count(*) from public.friend_invite_rewards "
                     "where created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'")
-    return call(s, SC.operator, "select public.set_friend_invite_settings(%s, %s, %s, %s, %s)",
-                [enabled, required, reward, today + room, hourly])
+    out = call(s, SC.operator, "select public.set_friend_invite_settings(%s, %s, %s, %s, %s)",
+               [enabled, required, reward, today + room, hourly])
+    # 0165 gave the sign-up milestone a switch of its own, off by default; these tests are about the milestone.
+    _milestone(s, True)
+    return out
+
+
+def _milestone(s, on):
+    as_owner(s)
+    if s.value("select count(*) from information_schema.columns where table_schema = 'public' "
+               "and table_name = 'friend_invite_settings' and column_name = 'milestone_enabled'"):
+        s.rows("update public.friend_invite_settings set milestone_enabled = %s where id returning 1", [on])
 
 
 def new_owner(s, *, link=True):
@@ -584,6 +594,8 @@ def _committed_settings(conn, **kw):
     with acting(conn, SC.operator, commit=True) as s:
         s.value("select public.set_friend_invite_settings(%s, %s, %s, %s, %s)",
                 [kw.get("enabled", True), REQUIRED, REWARD, today + kw.get("room", 1000), kw.get("hourly", 1000)])
+    with as_superuser(conn) as s:
+        _milestone(s, True)
 
 
 def _committed_owner_with_four(conn):
@@ -600,6 +612,8 @@ def _committed_owner_with_four(conn):
 def _restore_defaults(conn):
     with acting(conn, SC.operator, commit=True) as s:
         s.value("select public.set_friend_invite_settings(false, 5, 100, 20, 10)")
+    with as_superuser(conn) as s:
+        _milestone(s, False)
 
 
 def test_three_people_completing_the_fifth_join_together_pay_exactly_once(conn):
@@ -691,6 +705,8 @@ def test_applying_the_migration_twice_keeps_links_settings_and_rewards(conn):
                             "(select enabled from public.friend_invite_settings)")[0]
         for _ in range(2):
             sec_db.apply_files(_dsn(conn), [sec_db.MIGRATIONS / "0092_friend_invites.sql"])
+        # 0165 replaces two of 0092's bodies and its guard accepts 0092's: it goes back on, as a database that has both would be.
+        sec_db.apply_files(_dsn(conn), [sec_db.MIGRATION_0165])
         with as_superuser(conn, commit=False) as s:
             after = s.rows("select (select count(*) from public.friend_invite_links), "
                            "(select count(*) from public.friend_invite_joins), "

@@ -706,3 +706,8 @@ sec_mcp_chatgpt_client_0161.extend(TABLES, FUNCTIONS)
 import sec_public_stats_0164  # noqa: E402
 
 sec_public_stats_0164.extend(TABLES, FUNCTIONS)
+
+# Migration 0165 (the referral programme: credits for a friend's first payment after a hold, capped, voided or taken back on a refund): tests/security/sec_referral_0165.py
+import sec_referral_0165  # noqa: E402
+
+sec_referral_0165.extend(TABLES, FUNCTIONS)
