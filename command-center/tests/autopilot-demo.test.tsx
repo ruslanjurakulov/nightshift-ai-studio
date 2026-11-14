@@ -123,7 +123,8 @@ describe("the walk-through on the page", () => {
     // The drawn "Approve" is text, not a key: the only buttons are the stages and previous/next.
     expect(container.querySelectorAll("button")).toHaveLength(11);
     const links = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(links).toEqual(["/signup", "/studio#publish"]);
+    // "How publishing works" opens the pillar's "You stay in control" section, the whole sequence written out.
+    expect(links).toEqual(["/signup", "/solutions/youtube-channels#control"]);
   });
 
   it("says what docs/APPROVE_PUBLISH_1B.md says: off by default, an administrator, one request, a re-check, the read-back, private on failure", () => {

@@ -1,4 +1,5 @@
 import type { SiteAutopilotDictionary } from "./en";
+import { pillarRu } from "../autopilot-pillar/ru";
 
 /** Автопилот на главной и лента Shorts на телефоне. Источник — ./en.ts. */
 export const siteAutopilotRu: SiteAutopilotDictionary = {
@@ -126,6 +127,8 @@ export const siteAutopilotRu: SiteAutopilotDictionary = {
       secondary: "Как устроена публикация",
     },
   },
+  /** The YouTube Autopilot pillar, /solutions/youtube-channels (lib/i18n/autopilot-pillar). */
+  pillar: pillarRu,
   shorts: {
     open: "Смотреть как Shorts",
     openNote: "Вертикальных примеров: {n}, на весь экран",
