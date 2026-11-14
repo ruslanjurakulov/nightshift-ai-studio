@@ -258,6 +258,8 @@ export const CREATIVE_ERRORS = [
   "unpriced",
   "capability_not_supported",
   "source_unavailable",
+  // 0174: the model requires a rights acknowledgement for an input, and this person has not given it at the current text version.
+  "acknowledgement_required",
   "style_unavailable",
   "mode_not_supported",
   // 0075: the automatic choice changed since the quote; nothing fits these settings.
@@ -322,6 +324,8 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   // 0046: the picture is not this organization's, was deleted, or is not a
   // usable image. Another organization's id reads exactly like a missing one.
   source_unavailable: { status: 422, code: "source_unavailable" },
+  // 0174: nothing was priced or held; the detail names kind=… version=… subject=…, which the Studio's dialog asks about.
+  acknowledgement_required: { status: 428, code: "acknowledgement_required" },
   // 0048: the style kit is not this organization's or no longer exists —
   // another organization's kit reads exactly like a missing one.
   style_unavailable: { status: 422, code: "style_unavailable" },

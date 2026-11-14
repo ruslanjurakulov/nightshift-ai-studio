@@ -143,6 +143,13 @@
           "uniqueItems": true,
           "items": {"type": "string", "pattern": "^[A-Z]{2}$"}
         },
+        "requires_acknowledgement": {
+          "description": "The rights acknowledgement kinds a job of this model needs for each input it is given (migration 0174, docs/RIGHTS_ACKNOWLEDGEMENT.md): likeness_photo (a real person's face in an uploaded image or video), voice_clone (a real person's voice), third_party_content (copyrighted material the person owns or licensed). The database refuses the job (acknowledgement_required) until the person acknowledged each input at the current text version. Absent or empty: nothing is asked.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 3,
+          "items": {"enum": ["likeness_photo", "voice_clone", "third_party_content"]}
+        },
         "operator_preview": {
           "description": "true lets the platform operator use this model in the operator's own credits-exempt organization while it is still hidden (migration 0139): a platform admin only, never a customer, never through the API. The model must still be verified by a real probe, and a terms gate or a missing credit price does not block the preview (an unpriced preview is recorded at the vendor cost in pricing.provider_usd_per_unit and charged to nobody). Absent or false: nothing changes.",
           "type": "boolean"

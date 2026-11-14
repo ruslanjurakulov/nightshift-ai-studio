@@ -1737,3 +1737,33 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
+
+## Rights acknowledgement: a recorded "I take responsibility" before restricted models (0174)
+
+0174 (`0174_rights_acknowledgement.sql`) puts an explicit, recorded acknowledgement in front of a model whose provider (or the law)
+makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.md`). It opens no model and changes no availability.
+
+- **Evidence.** Runway's Terms §4.2 (registry `terms_notes`): no photograph of another person without their permission; the i2v
+  upload needs a photo-consent confirmation. Our Terms §6.2. Nothing in the job start path knew a model needs a confirmation, so the
+  only way to keep such a model honest was to keep it hidden.
+- **The change.** `rights_acknowledgement_kinds` (three kinds, each with its current text version), `rights_acknowledgements`
+  (append-only: no API role writes it, a trigger refuses UPDATE / DELETE / TRUNCATE even for the owner; members read their
+  organization's rows), `model_registry.requires_acknowledgement text[]` (default empty; `{likeness_photo}` on
+  `runway-gen4.5` and `runway-gen4-turbo`), `acknowledge_rights(kind, text_version, subject)` and
+  `rights_acknowledgement_status(org, model, subjects)` (authenticated), two internal helpers, and two marked hunks in
+  `create_creative_job`: after a replay is answered and before the price or any hold, `acknowledgement_required` (NS400) when an
+  input (`source_asset_id`, `end_asset_id`) has no acknowledgement by this person, in this organization, at the current version.
+- **md5.** `create_creative_job` before `4c74918fd9d938c8fe4f5a3d26a09d84` (0075), after `128fa773beb2f3ef30ac8a332088a5e2` (drift guard, end state, Verify,
+  rollback). The new functions are pinned in the drift guard too (absent, or 0174's own).
+- **Number.** 0174; 0171 to 0173 are held by open pull requests. It names nothing of them, but it auto-applies on merge, so it merges
+  after them. Needs 0018, 0035, 0036, 0038 and 0075. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Replay.** Tables `if not exists`, the seed `on conflict do nothing`, `create or replace`, then revoke and grant: a replay changes
+  nothing. Re-running 0075 after 0174 is refused by 0075's drift guard: undo 0174 first.
+- **Undo.** `docs/sql/rollback_0174_rights_acknowledgement.sql` (owner-applied): refuses unless the body is 0174's, puts 0075's back
+  byte for byte, drops the four functions, and keeps the record (tables, triggers, column). Apply it only while no model that requires
+  a kind is on sale. The lab's `take_off_0174` / `put_back_0174` (`tests/security/sec_db.py`) use it.
+- **Tests.** `tests/security/test_sec_rights_acknowledgement.py` (a real PostgreSQL: refusal without, success with, another
+  person's and another organization's do not count, an old version does not count, refusal before any hold and before the balance
+  check, replay, append-only, either list requires it, a typo fails closed, Runway synced from the real file), the lab's isolation
+  suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py` (0075's body plus two hunks, pins),
+  `command-center/tests/rights-acknowledgement*.test.ts(x)` (versions agree with the migration, en / ru / uz, the dialog's states).

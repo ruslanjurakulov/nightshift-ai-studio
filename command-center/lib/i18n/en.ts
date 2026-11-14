@@ -6,6 +6,7 @@ import { aiLabelEn } from "./ai-label/en";
 import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
+import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ownerSafetyEn } from "./owner-safety/en";
@@ -3168,6 +3169,7 @@ export const en = {
   madeForKids: madeForKidsEn,
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
+  rightsAck: rightsAckEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",
@@ -3730,6 +3732,7 @@ export const en = {
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",
       source_unavailable: "This picture cannot be used: it is not in your organization's library, was deleted, or is not a PNG, JPEG or WebP image.",
+      acknowledgement_required: "This model needs you to confirm your rights to the picture first. Nothing was started or charged.",
       style_unavailable: "This style kit cannot be used: it is not in your organization or was deleted. Pick another style, or None.",
       mode_not_supported: "Only the model you pick is used; automatic model choice is not available yet.",
       route_changed: "The automatic choice changed since the price was shown. Check the new pick and its price, then confirm again.",

@@ -543,6 +543,33 @@ def put_back_0167(conn_or_session) -> None:
         conn.execute(MIGRATION_0167.read_text(encoding="utf-8"))
 
 
+MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"
+ROLLBACK_0174 = REPO / "docs" / "sql" / "rollback_0174_rights_acknowledgement.sql"
+
+
+def has_0174(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.acknowledge_rights(text, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0174(conn_or_session) -> None:
+    """0174 replaces create_creative_job() on 0075's body, and 0075 (and any later file that pins that body) refuses any other
+    body. A test that replays 0075, or needs the job start path without the acknowledgement step, takes 0174 off first with its
+    own rollback: 0075's body comes back and the four acknowledgement functions go, while rights_acknowledgements (the record, with
+    its append-only triggers), rights_acknowledgement_kinds and model_registry.requires_acknowledgement stay, as the rollback keeps
+    them. put_back_0174 applies 0174 again where the chain goes on; it picks the kept tables up as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0174(conn):
+        text = ROLLBACK_0174.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0174(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0174(conn):
+        conn.execute(MIGRATION_0174.read_text(encoding="utf-8"))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of
