@@ -3,18 +3,21 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, RotateCcw, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { useShell } from "@/components/shell/ShellContext";
+import { creditUnit, formatCredits } from "@/lib/credits";
 import { ICONS } from "@/components/navigation/navIcons";
-import { useLibraryImages } from "@/components/studio/useLibraryImages";
+import { useLibraryImages, type LibraryPreview } from "@/components/studio/useLibraryImages";
 import { refreshCredits } from "@/lib/credits-live";
 import { coerceJobs, isActiveStatus, type StudioJob } from "@/lib/creative/studio";
 import { studioTilesFor } from "@/lib/navigation";
 import {
   EMPTY_STATE,
   KIND_SPEC,
+  COMPOSER_H,
+  COMPOSER_W,
   NODE_H,
   NODE_W,
   TOOL_KINDS,
@@ -46,9 +49,10 @@ import {
 import { LibraryDrawer, type DroppedAsset } from "./LibraryDrawer";
 import { Inspector, type PanelData } from "./Inspector";
 import { InlineComposer, QuickAddMenu, type QuickMenuState } from "./QuickAdd";
+import type { PanelQuote } from "@/components/studio/GeneratePanel";
 import { KIND_ICONS, Lamp, statusLine } from "./parts";
 import { Board } from "./FlowBoard";
-import { LAMP, inputOf, kindOpen, nodeAsset, nodeStatus, type JobReading, type NodeStatus } from "./nodeState";
+import { LAMP, inputOf, jobAsset, kindOpen, nodeAsset, nodeStatus, resultView, type JobReading, type NodeStatus } from "./nodeState";
 import "./studio-canvas.css";
 
 export { KIND_ICONS };
@@ -154,13 +158,31 @@ export function StudioCanvas({
   /** The card showing its own small composer (made with "+"); the inspector replaces it when opened. */
   const [composing, setComposing] = useState<string | null>(null);
   /** The server's quote per node, as its composer last reported it (never a number of ours). */
-  const [quotes, setQuotes] = useState<ReadonlyMap<string, number>>(() => new Map());
-  const setQuote = useCallback((id: string, credits: number | null) => {
+  const [quotes, setQuotes] = useState<ReadonlyMap<string, PanelQuote>>(() => new Map());
+  const setQuote = useCallback((id: string, q: PanelQuote | null) => {
     setQuotes((prev) => {
-      if ((prev.get(id) ?? null) === credits) return prev;
+      if ((prev.get(id) ?? null) === q) return prev;
       const next = new Map(prev);
-      if (credits === null) next.delete(id);
-      else next.set(id, credits);
+      if (q === null) next.delete(id);
+      else next.set(id, q);
+      return next;
+    });
+  }, []);
+  /**
+   * Nodes whose job is being created right now (the POST is in flight), with the token of the form that pressed. A node's
+   * status turns busy only once the POST returns its job id; until then a second form for it (the inspector after "More
+   * options", a reopened inspector, a remount on a new input) would offer Generate again and start, and pay for, a second
+   * job, whose id would then replace the first on the card. The token lets only the pressing form go on.
+   */
+  const [creating, setCreating] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const creatingRef = useRef(creating);
+  creatingRef.current = creating;
+  const setPressing = useCallback((id: string, on: boolean, token: string) => {
+    setCreating((prev) => {
+      if (on ? prev.get(id) === token : prev.get(id) !== token) return prev;
+      const next = new Map(prev);
+      if (on) next.set(id, token);
+      else next.delete(id);
       return next;
     });
   }, []);
@@ -261,6 +283,7 @@ export function StudioCanvas({
       // Decided from what was on screen before this read, not inside the state update (which React may run twice).
       const before = jobsRef.current;
       let finished = false;
+      let newFile = false;
       // Only the ids just read change: two refreshes ending in the same tick (a new job's first read and another's poll) must
       // both land, so the update merges into the latest state rather than replacing it with this refresh's snapshot.
       const next = new Map<string, JobReading>();
@@ -277,6 +300,10 @@ export function StudioCanvas({
         failures.current.delete(id);
         const wasActive = prev?.state === "ok" && (isActiveStatus(prev.job.status) || prev.job.status === "queued");
         if (wasActive && r.state === "ok" && !isActiveStatus(r.job.status) && r.job.status !== "queued") finished = true;
+        // A job first read already finished (it ended while the page was away) put a file the library read may not have.
+        const out = r.state === "ok" && r.job.status === "completed" ? r.job.result_asset_ids[0] : undefined;
+        const knewDone = prev?.state === "ok" && prev.job.status === "completed";
+        if (out && !knewDone && !libraryRef.current.previews.has(out)) newFile = true;
         next.set(id, r);
       }
       setJobs((prev) => {
@@ -285,10 +312,8 @@ export function StudioCanvas({
         return merged;
       });
       // A job that just ended charged or released its hold, and may have put a file in the library.
-      if (finished) {
-        if (orgId) void refreshCredits(orgId);
-        libraryRef.current.reload();
-      }
+      if (finished && orgId) void refreshCredits(orgId);
+      if (finished || newFile) libraryRef.current.reload();
     },
     [readJob, orgId],
   );
@@ -326,9 +351,55 @@ export function StudioCanvas({
 
   // ── derived ────────────────────────────────────────────────────────────────
   const libReady = library.state === "ready";
+  // A result beyond the library's first page (LIBRARY_PAGE, newest first) is read on its own (GET /api/media/{id}), so an
+  // older finished job still shows its picture instead of reading as "can't be shown". null: that read found no file.
+  const [direct, setDirect] = useState<ReadonlyMap<string, LibraryPreview | null>>(() => new Map());
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    if (library.state !== "ready" || !orgId) return;
+    for (const r of jobs.values()) {
+      const id = jobAsset(r);
+      if (!id || library.previews.has(id) || asked.current.has(id)) continue;
+      asked.current.add(id);
+      void (async () => {
+        let found: LibraryPreview | null = null;
+        try {
+          const res = await fetch(`/api/media/${encodeURIComponent(id)}`, { cache: "no-store" });
+          if (res.ok) {
+            const body = (await res.json()) as { asset?: { kind?: string }; urls?: Partial<Record<string, string>> };
+            const kind = body.asset?.kind;
+            if (kind === "image" || kind === "video" || kind === "audio") {
+              const u = body.urls ?? {};
+              found = { kind, thumbUrl: u.thumb ?? null, viewUrl: u.display ?? u.proxy ?? u.original ?? null };
+            }
+          }
+        } catch {
+          /* found stays null: the card says the result cannot be shown, with "Load again" */
+        }
+        setDirect((prev) => new Map(prev).set(id, found));
+      })();
+    }
+  }, [jobs, library.state, library.previews, orgId]);
+  const previews = useMemo(() => {
+    if (direct.size === 0) return library.previews;
+    const m = new Map(library.previews);
+    for (const [id, p] of direct) if (p && !m.has(id)) m.set(id, p);
+    return m;
+  }, [library.previews, direct]);
+  // Still being read: the library itself, or a direct read asked and not answered. A failed or unavailable library is not
+  // "still loading" for ever: its results read as missing, with "Load again".
+  const resultPending = useCallback(
+    (id: string) => library.state === "loading" || (asked.current.has(id) && !direct.has(id)) || (library.state === "ready" && !asked.current.has(id) && !library.previews.has(id)),
+    [library.state, library.previews, direct],
+  );
+  const reloadResults = useCallback(() => {
+    asked.current.clear();
+    setDirect(new Map());
+    libraryRef.current.reload();
+  }, []);
   const statusOf = useCallback(
-    (n: CanvasNode): NodeStatus => nodeStatus(canvas, n, jobs, availability, { ready: libReady, previews: library.previews }),
-    [canvas, jobs, availability, libReady, library.previews],
+    (n: CanvasNode): NodeStatus => nodeStatus(canvas, n, jobs, availability, { ready: libReady, previews }),
+    [canvas, jobs, availability, libReady, previews],
   );
   const nodeName = useCallback(
     (n: CanvasNode): string => {
@@ -365,6 +436,12 @@ export function StudioCanvas({
     return { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 };
   };
   const open = (id: string) => {
+    // The card's own composer is pressing: swapping it for the inspector would be a second form for the same job.
+    if (composing === id && creatingRef.current.has(id)) {
+      setSelected(id);
+      say(c.inspector.busy);
+      return;
+    }
     setSelected(id);
     setSelectedWire(null);
     setInspecting(true);
@@ -388,10 +465,16 @@ export function StudioCanvas({
   const quickAdd = (from: string, kind: ToolKind, at?: { x: number; y: number }) => {
     const src = canvas.nodes.find((n) => n.id === from);
     if (!src || !kindOpen(availability, kind)) return;
-    let spot = at ?? { x: src.x + NODE_W + 96, y: src.y };
+    // The new card opens with its composer (COMPOSER_W x COMPOSER_H), so all of that must be clear, not just a card's size;
+    // the source itself may be showing its composer too.
+    const w = kind === "effects" ? NODE_W : COMPOSER_W;
+    const h = kind === "effects" ? NODE_H : COMPOSER_H;
+    let spot = at ?? { x: src.x + (composing === src.id ? COMPOSER_W : NODE_W) + 96, y: src.y };
     if (!at) {
       // Down the column until the spot is clear, so the new card never lands on another.
-      while (canvas.nodes.some((n) => Math.abs(n.x - spot.x) < NODE_W + 40 && Math.abs(n.y - spot.y) < NODE_H)) spot = { x: spot.x, y: spot.y + NODE_H + 56 };
+      const hit = (p: { x: number; y: number }) =>
+        canvas.nodes.find((n) => p.x < n.x + NODE_W + 40 && n.x < p.x + w + 40 && p.y < n.y + NODE_H + 40 && n.y < p.y + h + 40);
+      for (let guard = 0, n = hit(spot); n && guard < 200; guard++, n = hit(spot)) spot = { x: spot.x, y: n.y + NODE_H + 56 };
     }
     const id = makeId();
     edit((s) => connect({ ...s, nodes: [...s.nodes, newNode(kind, spot.x, spot.y, id)] }, from, id, makeId()));
@@ -535,6 +618,14 @@ export function StudioCanvas({
         setPalette((p) => (p ? null : "all"));
         return;
       }
+      // The "+" menu closes on Escape wherever focus is (its own handler stops the key when focus is inside it).
+      if (e.key === "Escape" && document.querySelector("[data-quick-menu]")) {
+        setQuick((q) => {
+          (q?.opener as HTMLElement | null | undefined)?.focus?.();
+          return null;
+        });
+        return;
+      }
       if (document.querySelector('[role="dialog"], [data-quick-menu]')) return;
       if (e.key === "Escape") {
         if (drawer || inspecting) {
@@ -663,10 +754,12 @@ export function StudioCanvas({
         status={statusOf(sel)}
         closed={!kindOpen(availability, sel.kind)}
         data={data}
-        previews={library.previews}
+        previews={previews}
         nodeName={nodeName}
         retryNow={retryFor === sel.id}
         onQuote={(n) => setQuote(sel.id, n)}
+        creatingBy={creating.get(sel.id)}
+        onPressing={(on, token) => setPressing(sel.id, on, token)}
         onRetried={() => setRetryFor(null)}
         sheet={narrow}
         onClose={() => setInspecting(false)}
@@ -748,7 +841,7 @@ export function StudioCanvas({
     <QuoteKey
       node={sel}
       status={sel ? statusOf(sel) : null}
-      credits={sel ? quotes.get(sel.id) ?? null : null}
+      quote={sel ? quotes.get(sel.id) ?? null : null}
       onChoose={() => setPalette("add")}
       onPrice={() => {
         if (!sel) return;
@@ -782,10 +875,12 @@ export function StudioCanvas({
             statusOf={statusOf}
             nodeName={nodeName}
             jobs={jobs}
-            previews={library.previews}
+            previews={previews}
             selected={selected}
             onOpen={open}
             onPlus={(from, el) => setQuick({ from, x: 0, y: 0, opener: el, sheet: true })}
+            resultPending={resultPending}
+            onReload={reloadResults}
           />
         )}
         <div className="cv-flow-dock" role="toolbar" aria-label={c.dock.label}>
@@ -852,7 +947,7 @@ export function StudioCanvas({
           isClosed={(n) => !kindOpen(availability, n.kind)}
           nodeName={nodeName}
           jobs={jobs}
-          previews={library.previews}
+          previews={previews}
           canConnect={(from, to) => {
             const target = canvas.nodes.find((n) => n.id === to);
             return !!target && kindOpen(availability, target.kind) && canWire(canvas, from, to).ok;
@@ -861,10 +956,10 @@ export function StudioCanvas({
           onDrop={dropAsset}
           mapOpen={mapOpen}
           mapHidden={inspecting && !!sel}
-          libReady={libReady}
-          onReloadLibrary={() => library.reload()}
+          resultPending={resultPending}
+          onReloadLibrary={reloadResults}
           composerFor={(n) =>
-            composing === n.id && !inspecting && !n.jobId && kindOpen(availability, n.kind) ? (
+            composing === n.id && !!data.orgId && !inspecting && !n.jobId && kindOpen(availability, n.kind) ? (
               <InlineComposer
                 node={n}
                 state={canvas}
@@ -879,6 +974,8 @@ export function StudioCanvas({
                 }}
                 onMore={() => open(n.id)}
                 onQuote={(q) => setQuote(n.id, q)}
+                creatingBy={creating.get(n.id)}
+                onPressing={(on, token) => setPressing(n.id, on, token)}
               />
             ) : null
           }
@@ -945,15 +1042,59 @@ export function StudioCanvas({
  * make it for the price the server quoted. It never spends: it opens or focuses that step's composer, whose Generate is the only
  * press that creates a job (one per quote).
  */
-function QuoteKey({ node, status, credits, onChoose, onPrice }: { node: CanvasNode | null; status: NodeStatus | null; credits: number | null; onChoose: () => void; onPrice: () => void }) {
-  const { t, fmt } = useI18n();
+function QuoteKey({
+  node,
+  status,
+  quote,
+  onChoose,
+  onPrice,
+}: {
+  node: CanvasNode | null;
+  status: NodeStatus | null;
+  quote: PanelQuote | null;
+  onChoose: () => void;
+  onPrice: () => void;
+}) {
+  const { t, fmt, locale } = useI18n();
   const c = t.studioCanvas;
+  const path = useChannelPath();
   const priceable = !!node && node.kind !== "asset" && node.kind !== "prompt" && (status === "idle" || status === "failed");
-  const label = !priceable ? c.dock.choose : credits !== null ? fmt(c.dock.make, { n: credits }) : c.dock.getPrice;
+  // Short of credits: Generate would only be refused, so the key goes to the top-ups (a link; nothing is bought here).
+  if (priceable && quote?.state === "short") {
+    return (
+      <Link href={path("/credits")} className="cv-kbtn is-primary" title={c.quote} data-testid="dock-quote" data-state="topup">
+        {c.dock.topUp}
+      </Link>
+    );
+  }
+  const state = !priceable ? "choose" : quote?.state === "ready" ? "make" : "price";
+  const label =
+    state === "choose"
+      ? c.dock.choose
+      : quote?.state === "ready"
+        ? fmt(c.dock.make, { n: formatCredits(quote.credits, locale), unit: creditUnit(quote.credits, locale, t.shell.creditUnit) })
+        : c.dock.getPrice;
+  // The price cannot form (a locked model, no length, a refused quote): the reason is said beside the key, not left to guess.
+  const why = state === "price" && quote?.state === "blocked" ? quote.why : null;
   return (
-    <button type="button" className="cv-kbtn is-primary" onClick={priceable ? onPrice : onChoose} title={priceable ? c.quote : c.quoteHint} data-testid="dock-quote" data-state={!priceable ? "choose" : credits !== null ? "make" : "price"}>
-      {label}
-    </button>
+    <>
+      {why && (
+        <span className="cv-qwhy" id="cv-dock-why" data-testid="dock-why">
+          {why}
+        </span>
+      )}
+      <button
+        type="button"
+        className="cv-kbtn is-primary"
+        onClick={priceable ? onPrice : onChoose}
+        title={why ?? (priceable ? c.quote : c.quoteHint)}
+        aria-describedby={why ? "cv-dock-why" : undefined}
+        data-testid="dock-quote"
+        data-state={state}
+      >
+        {label}
+      </button>
+    </>
   );
 }
 
@@ -1283,15 +1424,19 @@ function FlowView({
   selected,
   onOpen,
   onPlus,
+  resultPending,
+  onReload,
 }: {
   canvas: CanvasState;
   statusOf: (n: CanvasNode) => NodeStatus;
   nodeName: (n: CanvasNode) => string;
   jobs: ReadonlyMap<string, JobReading>;
-  previews: ReadonlyMap<string, { thumbUrl: string | null; kind: string }>;
+  previews: ReadonlyMap<string, LibraryPreview>;
   selected: string | null;
   onOpen: (id: string) => void;
   onPlus: (from: string, el: HTMLElement) => void;
+  resultPending: (assetId: string) => boolean;
+  onReload: () => void;
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -1316,6 +1461,8 @@ function FlowView({
                 const job = reading?.state === "ok" ? reading.job : null;
                 const accepts = KIND_SPEC[n.kind].accepts.map((k) => c.ports[k]).join(" / ");
                 const working = s === "working" || s === "queued";
+                // As on the board: "Made" only beside the real result; a result that cannot be shown says so.
+                const rv = resultView(n, s, jobs, previews, resultPending);
                 return (
                   <li key={n.id} className="cv-fli">
                     {outputType(canvas, n) && (
@@ -1345,6 +1492,12 @@ function FlowView({
                           {thumb ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={thumb} alt="" />
+                          ) : rv === "missing" ? (
+                            <span className="cv-art-note" data-testid={`flow-result-missing-${n.id}`}>
+                              {c.node.resultMissing}
+                            </span>
+                          ) : rv === "loading" ? (
+                            <span className="cv-art-note">{c.node.resultLoading}</span>
                           ) : (
                             <Icon className="cv-art-glyph" />
                           )}
@@ -1356,11 +1509,20 @@ function FlowView({
                         </span>
                         <b>{nodeName(n)}</b>
                       </span>
-                      <Lamp tone={LAMP[s]} live={s === "working"} label={statusLine(t, s, job, accepts)} />
+                      <Lamp
+                        tone={rv === "missing" ? "warn" : rv === "loading" ? "idle" : LAMP[s]}
+                        live={s === "working"}
+                        label={rv === "missing" ? c.node.resultMissing : rv === "loading" ? c.node.resultLoading : statusLine(t, s, job, accepts)}
+                      />
                       {KIND_SPEC[n.kind].accepts.length > 0 && (
                         <span className="cv-fin">{input ? fmt(c.node.from, { name: nodeName(input.from) }) : c.flow.noInputs}</span>
                       )}
                     </button>
+                    {rv === "missing" && (
+                      <button type="button" className="cv-nchip is-flow" onClick={onReload} data-testid={`flow-result-reload-${n.id}`}>
+                        <RotateCcw aria-hidden className="size-3.5" /> {c.node.resultRetry}
+                      </button>
+                    )}
                   </li>
                 );
               })}

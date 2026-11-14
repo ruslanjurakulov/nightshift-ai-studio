@@ -108,23 +108,31 @@ const DOCK = [
   { name: "dock-choose", layout: ONE_IMAGE, state: "canvas", desktop: true, check: '[data-testid=dock-quote][data-state="choose"]' },
   // No words yet, so the composer has nothing to price: the key offers to get the price, and stops there.
   { name: "dock-price", layout: { ...ONE_IMAGE, nodes: [node("img", "image", 0, 0)] }, state: "canvas", desktop: true, act: click('[data-node-id="img"]'), check: '[data-testid=dock-quote][data-state="price"]' },
-  {
-    name: "dock-make",
-    layout: ONE_IMAGE,
-    state: "canvas",
-    desktop: true,
-    act: async (page) => {
-      await click('[data-node-id="img"]')(page);
-      await click(".ns-price-button")(page);
-    },
-    check: '[data-testid=dock-quote][data-state="make"]',
-  },
+  // The composer prices its words by itself (the free quote route); the script never presses its Generate (.ns-price-button):
+  // that key creates a job. Selecting the card is enough for the server's quote to reach the dock.
+  { name: "dock-make", layout: ONE_IMAGE, state: "canvas", desktop: true, act: click('[data-node-id="img"]'), check: '[data-testid=dock-quote][data-state="make"]' },
 ];
 const UX = [
   { name: "done-image", layout: DONE_IMAGE, state: "canvas", check: '[data-node-id="img"] img, [data-testid^=flow-node-image] img' },
   ...DOCK,
   // The palette's "add" list: a closed tool says only "Not available yet"; the reason is its tooltip.
   { name: "menu-copy", layout: ONE_IMAGE, state: "canvas", act: click("[data-testid=dock-add]"), check: "[data-testid=canvas-palette]", desktop: true },
+  // Quick add: the "+" by a finished picture, its menu, and the new card with its own composer (priced by the server; the wired
+  // picture is its source). docs/studio/qa/quick-*.png.
+  { name: "quick-plus", layout: DONE_IMAGE, state: "canvas", desktop: true, act: async (page) => page.hover('[data-node-id="img"]'), check: "[data-testid=plus-img]" },
+  { name: "quick-menu", layout: DONE_IMAGE, state: "canvas", desktop: true, act: click("[data-testid=plus-img]"), check: "[data-testid=quick-menu]" },
+  {
+    name: "quick-composer",
+    layout: DONE_IMAGE,
+    state: "canvas",
+    desktop: true,
+    act: async (page) => {
+      await click("[data-testid=plus-img]")(page);
+      await click("[data-testid=quick-animate]")(page);
+      await page.waitForTimeout(1500);
+    },
+    check: '[data-testid^="inline-composer-"]',
+  },
   // On the phone the same short copy, in the "+" sheet after a picture (Edit · Upscale is closed on this fake).
   { name: "menu-copy", layout: ONE_IMAGE, state: "canvas", phone: true, act: click("[data-testid=plus-img]"), check: "[data-testid=quick-menu]" },
 ];

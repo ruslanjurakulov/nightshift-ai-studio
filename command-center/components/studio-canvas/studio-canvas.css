@@ -542,8 +542,8 @@ main:has([data-studio-canvas]) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 3px 10px;
+  min-height: 40px; /* a touch target (Load again, Retry), not just a label */
+  padding: 3px 12px;
   border: 1px solid var(--rule);
   border-radius: 9px;
   color: var(--text);
@@ -650,6 +650,10 @@ main:has([data-studio-canvas]) {
 .cv-zoom output { width: 56px; text-align: center; font-size: 14px; font-weight: 600; }
 .cv-vsep { width: 1px; height: 26px; margin: 0 4px; background: var(--rule); }
 .cv-qnote { color: var(--dim); font-size: 13px; white-space: nowrap; }
+/* Why the price cannot form (a locked model, no length, a refused quote), beside the key that would get it. */
+.cv-qwhy { max-width: 320px; overflow: hidden; color: var(--caution); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.cv-link:disabled { opacity: 0.5; cursor: not-allowed; text-decoration: none; }
+.cv-nchip.is-flow { margin-top: 6px; }
 @media (max-width: 1180px) {
   .cv-root { --insp-w: 360px; --drawer-w: 260px; }
   .cv-qnote { display: none; }
@@ -724,7 +728,7 @@ main:has([data-studio-canvas]) {
   font-size: 13px;
 }
 .cv-link,
-.cv-text-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; color: var(--violet-ink); font-size: 13px; font-weight: 500; }
+.cv-text-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; color: var(--violet-ink); font-size: 13px; font-weight: 500; }
 .cv-link:hover,
 .cv-text-btn:hover { text-decoration: underline; }
 .cv-note { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.45; }
@@ -1127,13 +1131,13 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 /* ── quick add: "+" by a card's output, its menu, and the card's own composer ── */
 .cv-plus {
   position: absolute;
-  top: 9px;
-  right: -52px;
+  top: 5px;
+  right: -56px;
   z-index: 4;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: 1px solid var(--rule);
   border-radius: 10px;
   color: var(--text);

@@ -110,6 +110,9 @@ const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) !== null);
 /** The longest recording each voice tool takes (0050's source check; the database still decides). */
 const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_change: 300, dub: 1800 };
 
+/** What the form's Generate can do with the server's quote, for a page that shows it elsewhere (the canvas's dock). */
+export type PanelQuote = { state: "ready" | "short"; credits: number } | { state: "blocked"; why: string };
+
 /**
  * The Studio's composer. Make one image, video or voice (migration 0036), or
  * start from a library picture: edit, animate, upscale, cut out (0046), or
@@ -151,6 +154,7 @@ export function GeneratePanel({
   only,
   onePerQuote = false,
   onQuote,
+  onPressing,
 }: {
   /**
    * The tools this form may offer, narrower than its desk's (the Studio canvas: an Image → Video node is i2v only, so no tab
@@ -166,7 +170,13 @@ export function GeneratePanel({
    * Told the server's quote whenever it changes: its credits once the quote route answered, null otherwise (and when the form goes
    * away). Only ever a number the server returned; a page shows it (the Studio canvas's dock) and never prices anything itself.
    */
-  onQuote?: (credits: number | null) => void;
+  onQuote?: (quote: PanelQuote | null) => void;
+  /**
+   * Told synchronously when a press of Generate starts its POST and when that POST ends, even if this form has unmounted by then:
+   * a page that can mount a second form for the same thing (the canvas's card composer and inspector) keeps that one from
+   * pressing too. Unlike onSubmittingChange, an unmount never reports false while the POST is still in flight.
+   */
+  onPressing?: (pressing: boolean) => void;
   /**
    * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
    * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
@@ -604,14 +614,11 @@ export function GeneratePanel({
   const [spent, setSpent] = useState<QuoteState | null>(null);
   const quoteSpent = (composer || onePerQuote) && spent !== null && spent === quote;
 
-  // The server's quote, told to a page that shows it elsewhere (the canvas's dock); cleared when this form goes away.
   const quoteRef = useRef(onQuote);
   quoteRef.current = onQuote;
-  const quotedCredits = quote.status === "ready" ? quote.credits : null;
-  useEffect(() => {
-    quoteRef.current?.(quotedCredits);
-  }, [quotedCredits]);
   useEffect(() => () => quoteRef.current?.(null), []);
+  const pressingRef = useRef(onPressing);
+  pressingRef.current = onPressing;
 
   async function generate() {
     if (quote.status !== "ready" || submitting || !ready || quoteSpent || pressing.current) return;
@@ -620,6 +627,7 @@ export function GeneratePanel({
     if (!pressModel) return;
     const pressed = quote;
     pressing.current = true;
+    pressingRef.current?.(true);
     setSubmitting(true);
     setNotice(null);
     try {
@@ -661,6 +669,7 @@ export function GeneratePanel({
       setNotice({ kind: "error", code: "failed" });
     } finally {
       pressing.current = false;
+      pressingRef.current?.(false);
       setSubmitting(false);
     }
   }
@@ -693,6 +702,24 @@ export function GeneratePanel({
       : blocked
         ? t.gen.blocked[blocked]
         : null;
+
+  // The server's quote, told to a page that shows it elsewhere (the canvas's dock), with whether Generate can take it: short of
+  // credits, or a reason it cannot run at all. Only a number the server returned; cleared when this form goes away.
+  const why = locked ? t.gen.lockWhy[locked] : blockedText ?? (quote.status === "error" ? apiErrorMessage(t, quote.code) : null);
+  const panelQuote: PanelQuote | null =
+    why !== null
+      ? { state: "blocked", why }
+      : quote.status !== "ready" || submitting
+        ? null
+        : shortBy !== null
+          ? { state: "short", credits: quote.credits }
+          : { state: "ready", credits: quote.credits };
+  const quoteKey = panelQuote ? `${panelQuote.state}:${"credits" in panelQuote ? panelQuote.credits : panelQuote.why}` : "";
+  useEffect(() => {
+    quoteRef.current?.(panelQuote);
+    // panelQuote is a fresh object each render; its key says when it changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey]);
 
   const pick = (c: StudioCapability) => {
     // A picture, a recording and a video are never the same pick: switching

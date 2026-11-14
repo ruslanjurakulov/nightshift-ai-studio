@@ -10,13 +10,13 @@
  * the server did not return.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { GeneratePanel } from "@/components/studio/GeneratePanel";
+import { GeneratePanel, type PanelQuote } from "@/components/studio/GeneratePanel";
 import { useI18n } from "@/lib/i18n/context";
 import { useShell } from "@/components/shell/ShellContext";
 import { KIND_SPEC, TOOL_KINDS, type CanvasNode, type CanvasState, type PortType, type ToolKind } from "@/lib/studio/canvas";
 import { KIND_ICONS } from "./parts";
 import { inputOf, kindOpen, type JobReading } from "./nodeState";
-import { nodePrefill, toolsFor, type PanelData } from "./Inspector";
+import { nodePrefill, toolsFor, useFormToken, type PanelData } from "./Inspector";
 import "@/components/studio/desk.css";
 import "@/components/studio/availability.css";
 import "@/components/studio/studio-home.css";
@@ -63,9 +63,12 @@ export function QuickAddMenu({
     onClose();
     opener?.focus?.();
   };
-  // Focus goes to the first step that can be added.
+  // Focus goes to the first step that can be added; with none, to the first step (disabled ones stay focusable), and with no
+  // steps at all, to the menu itself. Focus always lands inside, so Escape always closes it and nothing is trapped.
   useEffect(() => {
-    box.current?.querySelector<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])')?.focus();
+    const b = box.current;
+    if (!b) return;
+    (b.querySelector<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? b.querySelector<HTMLElement>('[role="menuitem"]') ?? b).focus();
   }, []);
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const all = [...(box.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
@@ -99,6 +102,7 @@ export function QuickAddMenu({
         aria-label={fmt(c.quick.title, { name: fromName })}
         data-quick-menu=""
         data-testid="quick-menu"
+        tabIndex={-1}
         onKeyDown={onKey}
       >
         <p className="cv-pop-h">{fmt(c.quick.title, { name: fromName })}</p>
@@ -145,6 +149,8 @@ export function InlineComposer({
   onCreated,
   onMore,
   onQuote,
+  creatingBy,
+  onPressing,
 }: {
   node: CanvasNode;
   state: CanvasState;
@@ -153,7 +159,10 @@ export function InlineComposer({
   onDraft: (words: string) => void;
   onCreated: (jobId: string) => void;
   onMore: () => void;
-  onQuote?: (credits: number | null) => void;
+  onQuote?: (quote: PanelQuote | null) => void;
+  /** The form creating this node's job right now (its token), if any. */
+  creatingBy?: string;
+  onPressing?: (pressing: boolean, token: string) => void;
 }) {
   const { t } = useI18n();
   const c = t.studioCanvas;
@@ -165,11 +174,26 @@ export function InlineComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mounted, input?.type, input?.assetId],
   );
+  // The form is not remounted on a new input while its press is in flight: a fresh one would offer Generate again.
+  const liveKey = `${node.id}:${input?.type ?? ""}:${input?.assetId ?? ""}`;
+  const keyRef = useRef(liveKey);
+  if (creatingBy === undefined) keyRef.current = liveKey;
+  const token = useFormToken(keyRef.current);
+  const busy = creatingBy !== undefined;
   if (!data.orgId) return null;
+  if (busy && creatingBy !== token) {
+    return (
+      <div className="cv-ncomp nodrag nowheel nopan" data-testid={`inline-composer-${node.id}`} aria-label={c.quick.composer}>
+        <p className="cv-note" data-testid="inline-busy">
+          {c.inspector.busy}
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="cv-ncomp nodrag nowheel nopan" data-testid={`inline-composer-${node.id}`} aria-label={c.quick.composer}>
       <GeneratePanel
-        key={`${node.id}:${input?.type ?? ""}:${input?.assetId ?? ""}`}
+        key={keyRef.current}
         layout="composer"
         orgId={data.orgId}
         models={data.models}
@@ -183,11 +207,13 @@ export function InlineComposer({
         onDraftChange={onDraft}
         autoFocusPrompt
         onQuote={onQuote}
+        onPressing={(on) => onPressing?.(on, token)}
         onCreated={(created) => {
           if (created) onCreated(created.id);
         }}
       />
-      <button type="button" className="cv-link" onClick={onMore} data-testid={`inline-more-${node.id}`}>
+      {/* While its press is in flight the inspector would be a second form for the same node: "More options" waits. */}
+      <button type="button" className="cv-link" onClick={onMore} disabled={busy} title={busy ? c.inspector.busy : undefined} data-testid={`inline-more-${node.id}`}>
         {c.quick.more}
       </button>
     </div>

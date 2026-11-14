@@ -38,7 +38,8 @@ export const studioCanvasEn = {
   dock: {
     choose: "Choose a step",
     getPrice: "Get price",
-    make: "Make · {n} credits",
+    make: "Make · {n} {unit}",
+    topUp: "Top up credits",
     label: "Canvas tools",
     add: "Add node",
     library: "Library",
@@ -51,8 +52,6 @@ export const studioCanvasEn = {
     zoom: "Zoom {n}%",
   },
   map: "Map",
-  mapShow: "Show map",
-  mapHide: "Hide map",
   // The node kinds: every one is a real Studio tool.
   kinds: {
     prompt: { name: "Prompt", desc: "Words that feed a picture, a clip or a voice" },
@@ -75,7 +74,6 @@ export const studioCanvasEn = {
     noWords: "No words yet",
     reading: "Reading…",
     notAvailable: "Not available yet",
-    notStarted: "Not started",
     needsInput: "Needs {kinds}",
     unknown: "Status unknown",
     noFile: "File not in the library",
@@ -83,7 +81,6 @@ export const studioCanvasEn = {
     open: "Open",
     retry: "Retry",
     remove: "Remove",
-    result: "Result",
   },
   wire: {
     closed: "That tool is not available yet, so nothing can be wired into it",
@@ -173,8 +170,7 @@ export const studioCanvasEn = {
     blankLink: "Or start from a blank canvas",
     ask: "What shall we make?",
     askPlaceholder: "Describe your idea…",
-    askNote: "Pick what to make: Nightshift lays out the steps and opens the first one with your idea in it. Nothing is priced until you ask for a price.",
-    askGo: "Lay it out",
+    askNote: "Pick what to make: Nightshift lays out the steps and opens the first one with your idea in it. Nothing is spent until you press Make.",
     blankPhone: { name: "Blank canvas", desc: "Tap Add to place a node, or add a file from the Library" },
     title: "Start on the canvas",
     lead: "Every tool is a node. Wire a picture into a clip and the clip uses it. Adding and wiring nodes is free: a node spends only after you confirm its price.",

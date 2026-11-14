@@ -30,10 +30,10 @@ import "@xyflow/react/dist/base.css";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { failureReason, type StudioJob } from "@/lib/creative/studio";
-import { KIND_SPEC, NODE_H, NODE_W, ZOOM_MAX, ZOOM_MIN, outputType, toCanvas, type CanvasNode, type CanvasState, type PortType, type Viewport } from "@/lib/studio/canvas";
+import { COMPOSER_W, KIND_SPEC, NODE_H, NODE_W, ZOOM_MAX, ZOOM_MIN, outputType, toCanvas, type CanvasNode, type CanvasState, type PortType, type Viewport } from "@/lib/studio/canvas";
 import { ASSET_MIME, readDrop, type DroppedAsset } from "./LibraryDrawer";
 import { KIND_ICONS, Lamp, statusLine } from "./parts";
-import { LAMP, inputOf, nodeAsset, type JobReading, type NodeStatus } from "./nodeState";
+import { LAMP, inputOf, nodeAsset, resultView, type JobReading, type NodeStatus } from "./nodeState";
 
 /** Someone other than this person working on a node (an AI agent through MCP, later): a cursor, a label, a colour. */
 export type RemoteActor = { id: string; label: string; colour: string };
@@ -57,7 +57,8 @@ type CardData = {
   /** The "+" by the output: opens the next-step menu. Null on a card with no output. */
   onPlus: ((el: HTMLElement) => void) | null;
   /** The library has been read: a missing result picture is then really missing, not still loading. */
-  libReady: boolean;
+  /** A result file still being read (the library, or a direct read of a file beyond its first page). */
+  resultPending: (assetId: string) => boolean;
   onReloadLibrary: () => void;
 };
 type WireData = { type: PortType; live: boolean; hl: boolean };
@@ -65,7 +66,6 @@ type CardNode = Node<CardData, "card">;
 type WireEdge = Edge<WireData, "wire">;
 
 /** A card carrying its own composer is wider: the composer needs a line for its words and its keys. */
-const COMPOSER_W = 460;
 /** The zoom below which cards switch to their one-line overview read. */
 const LOD_BELOW = 0.87;
 /** A press that moves less than this is a click (it opens the inspector); more is a drag (it only moves the node). */
@@ -97,7 +97,7 @@ export type BoardProps = {
   /** The inspector is open: the focused cards sit where the map would. */
   mapHidden?: boolean;
   onToggleMap: () => void;
-  libReady?: boolean;
+  resultPending?: (assetId: string) => boolean;
   onReloadLibrary?: () => void;
   /** The small composer a card carries (a card made with "+"), or null. */
   composerFor?: (n: CanvasNode) => ReactNode;
@@ -145,7 +145,7 @@ function BoardInner({
   onToggleMap,
   composerFor,
   onPlus,
-  libReady = false,
+  resultPending = () => true,
   onReloadLibrary,
   actors,
   children,
@@ -184,7 +184,7 @@ function BoardInner({
             onRetry: () => onRetry(n.id),
             onOpen: () => onOpen(n.id),
             composer: composerFor?.(n) ?? null,
-            libReady,
+            resultPending,
             onReloadLibrary: () => onReloadLibrary?.(),
             onPlus:
               onPlus && outputType(canvas, n)
@@ -196,7 +196,7 @@ function BoardInner({
           },
         };
       }),
-    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod, composerFor, onPlus, libReady, onReloadLibrary],
+    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod, composerFor, onPlus, resultPending, onReloadLibrary],
   );
 
   const edges = useMemo<WireEdge[]>(() => {
@@ -293,7 +293,8 @@ function BoardInner({
         isValidConnection={(conn) => !!conn.source && !!conn.target && canConnect(conn.source, conn.target)}
         onConnectEnd={(event, conn) => {
           // A wire dropped on empty board: offer what could come next, right there.
-          if (conn.isValid || !conn.fromNode || !onPlus) return;
+          // Only from an output: a wire dragged out of an input asks for what feeds it, not what comes after.
+          if (conn.isValid || !conn.fromNode || !onPlus || conn.fromHandle?.type !== "source") return;
           const target = (event as MouseEvent).target as Element | null;
           if (!target?.closest(".react-flow__pane")) return;
           const p = "changedTouches" in event ? event.changedTouches[0] : (event as MouseEvent);
@@ -390,7 +391,7 @@ function NodeCard({
   onOpen,
   composer,
   onPlus,
-  libReady,
+  resultPending,
   onReloadLibrary,
 }: CardData & { selected: boolean; dragging: boolean }) {
   const { t, fmt } = useI18n();
@@ -409,9 +410,7 @@ function NodeCard({
   const working = status === "working" || status === "queued";
   // "Made" only with the real result in view (rule 5): a picture or clip result that cannot be shown says so, with a way to
   // load it again; while the library is still being read it says that instead. A voice result has no picture to show.
-  const pictureResult = node.kind !== "voice" && previews.get(asset ?? "")?.kind !== "audio";
-  const resultState: "shown" | "loading" | "missing" | null =
-    status === "done" && pictureResult ? (thumb ? "shown" : libReady ? "missing" : "loading") : null;
+  const resultState = resultView(node, status, jobs, previews, resultPending);
   const showArt = !!thumb || working || (node.kind === "asset" && status !== "missing") || status === "done";
   const cls = ["cv-node", `k-${node.kind}`, `s-${status}`, selected && "is-sel", dragging && "is-dragging", dropTarget && "is-drop", actor && "is-remote"]
     .filter(Boolean)
