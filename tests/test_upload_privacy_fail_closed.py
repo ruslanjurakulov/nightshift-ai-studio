@@ -6,6 +6,9 @@ explicit field is now the only thing between a misconfigured run and a public
 video (CLAUDE.md rule 2), so these pin that it is always sent and that anything
 but private/unlisted/public stops the upload before a byte is sent.
 """
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,6 +63,63 @@ class UploadPrivacyFailsClosed(unittest.TestCase):
             self.upload("hidden")
         self.assertIn("YOUTUBE_PRIVACY", str(cm.exception))
         self.assertIn("nothing was uploaded", str(cm.exception))
+
+
+
+class RunRefusesBeforeAnythingIsPaid(unittest.TestCase):
+    """main.run() checks the privacy right after the auto-publish clamp, before any stage spends.
+
+    The reachable route: a channel whose auto-publish switch is ON passes the request through the clamp, and the
+    made-for-kids hold only rewrites public/unlisted, so junk arrived at the upload after research, script, voice and
+    render were paid for. Runs in a child interpreter for the reason tests/test_auto_publish_never_public.py gives.
+    """
+
+    _CHILD = """
+import json, os, sys, tempfile
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+import main
+from modules.channels import ChannelContext
+ctx = ChannelContext.from_dict(json.loads(sys.argv[2]))
+reached = []
+os.chdir(tempfile.mkdtemp())
+out = {}
+with patch.object(main, "resolve_channel", return_value=ctx), \\
+        patch.object(main, "verify_voice", side_effect=lambda *a, **k: reached.append("voice")):
+    try:
+        main.run(privacy=sys.argv[3], channel=ctx.channel_id)
+        out["raised"] = None
+    except Exception as e:
+        out["raised"], out["message"] = type(e).__name__, str(e)
+out["reached"] = reached
+print("RESULT " + json.dumps(out))
+"""
+
+    def drive(self, privacy, auto_publish=True):
+        from pathlib import Path
+        root = str(Path(__file__).resolve().parent.parent)
+        row = {"channel_id": "news", "name": "news", "niche": "tech", "status": "ACTIVE",
+               "agent_config": {"language": "English"},
+               "credential_ref": {"youtube_channel_id": "UCnews", "verified_at": "2026-09-01T00:00:00Z"},
+               "auto_publish": auto_publish}
+        proc = subprocess.run([sys.executable, "-I", "-c", self._CHILD, root, json.dumps(row), privacy],
+                              capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir())
+        line = next((l for l in proc.stdout.splitlines() if l.startswith("RESULT ")), None)
+        self.assertIsNotNone(line, proc.stderr[-2000:])
+        return json.loads(line[len("RESULT "):])
+
+    def test_switch_on_and_junk_privacy_stops_before_the_first_stage(self):
+        for bad in ("hidden", "Private", "privat"):
+            out = self.drive(bad)
+            self.assertEqual(out["raised"], "InvalidPrivacy", (bad, out))
+            self.assertIn("the run did not start", out["message"])
+            self.assertEqual(out["reached"], [], bad)
+
+    def test_switch_off_clamps_junk_to_private_and_does_not_refuse(self):
+        # Off means "never public": the clamp turns anything into private, which is valid, so the privacy check
+        # is not what stops this run (whatever later stage does, it is not InvalidPrivacy).
+        out = self.drive("hidden", auto_publish=False)
+        self.assertNotEqual(out["raised"], "InvalidPrivacy", out)
 
 
 if __name__ == "__main__":

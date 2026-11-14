@@ -98,7 +98,7 @@ from modules import thumbnail_concept
 from modules import title_formulas
 from modules.title_planner import plan_titles
 from modules.topic_manager import TopicManager, TopicSelectionError
-from modules.youtube_uploader import YouTubeUploader, reconcile_privacy
+from modules.youtube_uploader import InvalidPrivacy, PRIVACY_WORDS, YouTubeUploader, reconcile_privacy
 from modules import made_for_kids as mfk
 from tools.generate_assets import ensure_assets
 
@@ -271,7 +271,7 @@ def _publish_short(
     """Cut and publish a vertical Short from the video that just went out.
 
     Off unless the channel asked for it — a Short is a second videos.insert,
-    roughly another 1600 quota units out of the 10,000 a day. Everything here
+    with its own quota cost (confirm the figure in Cloud Console -> Quotas). Everything here
     is best-effort: the long video has already published, so nothing below may
     turn a successful run into a failed one.
     """
@@ -842,7 +842,16 @@ def run(
     # The Command Center's auto-publish switch OFF means "never public": clamp
     # the requested privacy here, before any stage (the upload, the Short, the
     # two-person check) can read it. Uploads themselves are unchanged.
-    privacy = _effective_privacy(ctx, privacy)
+    # Resolved before the clamp, so the clamp, the upload and the comparison with what YouTube applied all see
+    # the one value the uploader will send (it would fill a blank from YOUTUBE_PRIVACY on its own).
+    privacy = _effective_privacy(ctx, privacy or YOUTUBE_PRIVACY)
+    # Fail early (rule 6): since YouTube's 2026-11-02 revision a missing privacyStatus means PUBLIC, so a value that is
+    # not exactly one of the three words (an empty YOUTUBE_PRIVACY, which argparse never checks as a default, or a typo)
+    # stops the run here, before anything is paid for. The uploader refuses it too, as the backstop.
+    if privacy not in PRIVACY_WORDS:
+        raise InvalidPrivacy(
+            f"privacy {privacy!r} is not one of private, unlisted, public; the run did not start. "
+            "Fix YOUTUBE_PRIVACY or --privacy (the default is private).")
     # Per-run overrides for the generator settings. AgentConfig and
     # ChannelContext are frozen, so this builds an overridden COPY for this run
     # rather than mutating shared state — two channels (or two tests) in one

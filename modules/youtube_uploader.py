@@ -284,6 +284,7 @@ def compose_description(description: str, chapters: list[str]) -> str:
 
 
 _OPENNESS = {"private": 0, "unlisted": 1, "public": 2}
+PRIVACY_WORDS = frozenset(_OPENNESS)
 
 
 class InvalidPrivacy(ValueError):
@@ -649,10 +650,10 @@ class YouTubeUploader:
         "not for kids" with nobody's confirmation raises ``MadeForKidsUnconfirmed``
         BEFORE anything is sent (modules/made_for_kids.py).
 
-        Quota: per YouTube's revision history, videos.insert has its own bucket
-        since 2026-06-01 (~100 units a call before that, ~1600 before
-        2025-12-04); a caption track adds ~400. Confirm in Cloud Console ->
-        Quotas before designing on a number. Chapters are description text and
+        Quota: per YouTube's revision history, videos.insert has its own quota
+        bucket since 2026-06-01, and a caption track costs more on top. Per-method
+        numbers are unverified here: confirm in Cloud Console -> Quotas before
+        designing on one. Chapters are description text and
         cost nothing. A marker lookup is ~3 units.
         """
         privacy = privacy or YOUTUBE_PRIVACY
@@ -662,7 +663,7 @@ class YouTubeUploader:
         # value that is not exactly one of the three words (an empty
         # YOUTUBE_PRIVACY, which argparse never validates as a default, or a
         # typo) stops here before a byte or a quota unit is spent.
-        if privacy not in _OPENNESS:
+        if privacy not in PRIVACY_WORDS:
             raise InvalidPrivacy(
                 f"privacy {privacy!r} is not one of private, unlisted, public; nothing was uploaded. "
                 "Fix YOUTUBE_PRIVACY or --privacy (the default is private).")

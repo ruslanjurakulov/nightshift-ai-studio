@@ -32,8 +32,8 @@ the one change this feature exists for: ``videos.update`` with ``status.privacyS
    (``declared_for_kids``, modules/made_for_kids.py). The request is marked ``submitting`` in the database right before, by
    the function that makes the last check.
 6. THE ANSWER IS NOT BELIEVED: the privacy is READ BACK. ``applied`` only when YouTube then says ``public``. A call that
-   succeeded while the video stays private (an API project that has not passed YouTube's compliance audit gets its videos
-   locked private) is ``refused`` with ``platform_kept_private``. ``videos.privacy`` follows the read-back and nothing else
+   succeeded while the video stays private (YouTube kept it private for its own reasons; before 2026-11-02 an
+   unaudited API project's videos were locked private) is ``refused`` with ``platform_kept_private``. ``videos.privacy`` follows the read-back and nothing else
    (``finish_visibility_request`` writes it). The database's answer to that write is checked too: a request the database
    did not record (not the holder any more, or unreachable) is logged loudly and never logged as applied.
 7. A request whose write was marked and whose claims ran out gets one more claim, READ-ONLY (``read_only``): it reads YouTube
