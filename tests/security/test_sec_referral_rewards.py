@@ -223,12 +223,18 @@ def world(conn):
 
 # ── what changes on apply ───────────────────────────────────────────────────
 
-def test_after_the_migration_the_reward_and_the_milestone_are_off_and_counting_starts_at_the_apply(conn):
+def test_after_the_migration_the_reward_and_the_milestone_are_off_and_the_programme_has_never_been_open(conn):
     with world(conn) as s:
         row = s.rows("select referral_enabled, milestone_enabled, referral_credits, referral_min_credits, referral_hold_days, "
-                     "referral_qualify_days, referral_monthly_cap, referral_daily_cap, referral_started_at <= now() "
+                     "referral_qualify_days, referral_monthly_cap, referral_daily_cap, "
+                     "(select count(*) from public.referral_open_periods where closed_at is null) "
                      "from public.friend_invite_settings")
-        assert row == [(False, False, 200, 1000, 30, 60, 10, 50, True)], row
+        assert row == [(False, False, 200, 1000, 30, 60, 10, 50, 0)], row
+        # The identity sequences' default grants are taken back from the API roles.
+        for seq in ("referral_settle_runs", "referral_open_periods"):
+            for role in ("anon", "authenticated"):
+                assert s.value("select has_sequence_privilege(%s, pg_get_serial_sequence(%s, 'id'), 'USAGE')",
+                               [role, f"public.{seq}"]) is False, (seq, role)
         terms = ok(call(s, ANON, "select public.referral_terms()"))
         assert (terms["enabled"], terms["credits"], terms["min_credits"], terms["hold_days"], terms["qualify_days"],
                 terms["monthly_cap"], terms["daily_cap"], terms["new_account_days"]) == (False, 200, 1000, 30, 60, 10, 50, 3)
@@ -249,15 +255,60 @@ def test_with_0092s_switch_on_and_the_reward_off_a_payment_still_earns_nothing(c
         assert rows(s, ref) == []
 
 
-def test_a_join_or_payment_before_the_programme_started_counting_never_counts(conn):
+def periods(s, *spans):
+    """Replace the open periods with these (start, end) offsets from now; an end of None is still open."""
+    as_owner(s)
+    s.conn.execute("delete from public.referral_open_periods")
+    for start, end in spans:
+        s.rows("insert into public.referral_open_periods (opened_at, closed_at) values (now() + %s::interval, "
+               "now() + %s::interval) returning 1", [start, end])
+
+
+def joined_at(s, who, offset):
+    as_owner(s)
+    s.rows("update public.friend_invite_joins set created_at = now() + %s::interval where invitee_id = %s returning 1", [offset, who.uid])
+
+
+def test_a_payment_made_while_the_programme_was_closed_never_counts_after_it_reopens(conn):
+    """A1: open, a friend joins, the programme closes, the friend pays, it reopens: the payment fell in the closed gap."""
     with world(conn) as s:
         settings(s)
         ref, org, token = referrer(s)
         f, forg = friend(s, token)
-        as_owner(s)
-        s.rows("update public.friend_invite_settings set referral_started_at = now() + interval '1 minute' where id returning 1")
+        joined_at(s, f, "-90 minutes")
+        periods(s, ("-2 hours", "-1 hour"), ("1 second", None))  # open, closed now (the payment), open again later
         buy(s, forg)
         assert claim(s, ref)["held"] == 0 and rows(s, ref) == []
+        # The same payment inside a reopened period counts: the period history, not a fresh start, decides.
+        periods(s, ("-2 hours", "-1 hour"), ("-1 minute", None))
+        assert claim(s, ref)["held"] == 1
+
+
+def test_a_join_made_while_the_programme_was_closed_never_counts(conn):
+    with world(conn) as s:
+        settings(s)
+        ref, org, token = referrer(s)
+        f, forg = friend(s, token)
+        joined_at(s, f, "-45 minutes")
+        periods(s, ("-2 hours", "-1 hour"), ("-30 minutes", None))
+        buy(s, forg)
+        assert claim(s, ref)["held"] == 0 and rows(s, ref) == []
+
+
+def test_switching_the_reward_on_and_off_writes_the_open_periods_in_its_audit(conn, sc):
+    with world(conn) as s:
+        as_owner(s)
+        before = s.value("select count(*) from public.referral_open_periods")
+        settings(s)
+        as_owner(s)
+        assert s.value("select count(*) from public.referral_open_periods where closed_at is null") == 1
+        settings(s)  # on again: no second period
+        settings(s, enabled=False)
+        as_owner(s)
+        assert s.value("select count(*) from public.referral_open_periods") == before + 1
+        assert s.value("select count(*) from public.referral_open_periods where closed_at is null") == 0
+        detail = s.value("select detail from public.security_events where kind = 'referral.settings' order by id desc limit 1")
+        assert detail["period"] == "closed"
 
 
 def test_sign_ups_alone_pay_nothing_now_that_the_milestone_has_its_own_switch(conn):
@@ -369,8 +420,9 @@ def test_a_small_first_payment_spends_the_workspaces_chance(conn):
         assert claim(s, ref)["held"] == 0 and rows(s, ref) == []
 
 
-def test_a_payment_of_nothing_never_qualifies_and_none_is_decided_before_the_providers_event(conn):
-    """M1: credits booked for a 100% promo or a $0 trial (the provider charged 0) are not a payment; a ledger row whose
+def test_a_payment_of_nothing_or_at_a_discount_is_not_a_payment_and_uses_up_nothing(conn):
+    """M1, A2, B4: credits booked for a $0 trial, a promo or any discount (paddle-webhook marks the event) are not a payment:
+    they never qualify and do not use up the workspace's chance; the next full-price payment does. A ledger row whose
     provider event is not there (yet) decides nothing until it is."""
     with world(conn) as s:
         settings(s)
@@ -378,27 +430,51 @@ def test_a_payment_of_nothing_never_qualifies_and_none_is_decided_before_the_pro
         f, forg = friend(s, token)
         buy(s, forg, paid_minor=0)
         assert claim(s, ref)["held"] == 0 and rows(s, ref) == []
+        promo = buy(s, forg, event=False)
+        ok(call(s, SERVICE, "select public.record_payment_event('paddle', %s, 'transaction.completed', now(), 'processed', "
+                            "%s, %s, %s, null, 1000, 'USD', 1)",
+                [f"evt_{uuid.uuid4().hex}", "credited 1000 credits · discounted (promo dsc_lab)", forg, promo]))
+        assert claim(s, ref)["held"] == 0 and rows(s, ref) == []
+        full = buy(s, forg)
+        assert claim(s, ref)["held"] == 1
+        as_owner(s)
+        assert s.value("select purchase_external_id from public.referral_rewards where invitee_id = %s", [f.uid]) == full
         g, gorg = friend(s, token)
         ext = buy(s, gorg, event=False)
-        assert claim(s, ref)["held"] == 0
+        assert claim(s, ref)["held"] == 1
         pay_event(s, "dodo", ext, gorg, MIN, 900)
+        assert claim(s, ref)["held"] == 2
+
+
+def test_a_near_free_usd_payment_is_below_the_floor(conn):
+    """A2: in USD a payment must be at least half the minimum's base price (1 credit = 1 US cent): 500 cents for 1000."""
+    with world(conn) as s:
+        settings(s)
+        ref, org, token = referrer(s)
+        f, forg = friend(s, token)
+        buy(s, forg, paid_minor=499)
+        assert claim(s, ref)["held"] == 0 and rows(s, ref) == []
+        g, gorg = friend(s, token)
+        buy(s, gorg, paid_minor=500)
         assert claim(s, ref)["held"] == 1
 
 
-def test_a_payment_before_joining_or_after_the_window_does_not_qualify(conn):
+def test_the_window_runs_from_the_account_and_a_join_recorded_late_still_counts(conn):
+    """B2: the friend's account anchors the rule, so a join recorded after the friend made a workspace and paid (a retried
+    cookie) does not void it; a payment past the window from the account's creation does not qualify."""
     with world(conn) as s:
         settings(s, qualify=10)
         ref, org, token = referrer(s)
-        early, eorg = friend(s, token)
         late, lorg = friend(s, token)
-        as_owner(s)
-        s.rows("update public.friend_invite_joins set created_at = now() + interval '1 minute' where invitee_id = %s returning 1",
-               [early.uid])
-        s.rows("update public.friend_invite_joins set created_at = now() - interval '11 days' where invitee_id = %s returning 1",
-               [late.uid])
-        buy(s, eorg)
         buy(s, lorg)
-        assert claim(s, ref)["held"] == 0 and rows(s, ref) == []
+        joined_at(s, late, "1 minute")  # recorded after the payment
+        periods(s, ("-1 hour", None))
+        assert claim(s, ref)["held"] == 1
+        old, oorg = friend(s, token)
+        as_owner(s)
+        s.rows("update auth.users set created_at = now() - interval '11 days' where id = %s returning 1", [old.uid])
+        buy(s, oorg)
+        assert claim(s, ref)["held"] == 1, "a payment 11 days after the account, with a 10-day window, does not qualify"
 
 
 def test_the_new_account_window_the_terms_state_is_the_one_a_join_applies(conn):
@@ -808,7 +884,7 @@ def test_the_settle_job_takes_a_batch_records_each_run_and_the_operator_sees_it(
         admin = ok(call(s, sc.operator, "select public.referral_admin()"))
         assert admin["schedule"] is False, "no pg_cron in the lab: the panel must say there is no schedule"
         assert admin["last_run"]["links"] == 2 and admin["last_run"]["failed"] == 0
-        assert {"runs_failed_24h", "claw_owed", "void_member", "reversed_by_event", "started_at"} <= set(admin)
+        assert {"runs_failed_24h", "claw_owed", "void_member", "reversed_by_event", "open_since", "orphaned"} <= set(admin)
         # The links settled longest ago come first: the next batch moves on.
         as_owner(s)
         before = s.value("select count(*) from public.friend_invite_links where referral_settled_at is null")
@@ -817,12 +893,31 @@ def test_the_settle_job_takes_a_batch_records_each_run_and_the_operator_sees_it(
         assert s.value("select count(*) from public.friend_invite_links where referral_settled_at is null") < before
 
 
+def test_a_referral_whose_link_is_gone_is_counted_for_the_operator_and_not_paid(conn, sc):
+    """B3: the link goes only with the referrer's account (an operator step); its referrals are not settled by a job."""
+    with world(conn) as s:
+        settings(s)
+        ref, org, token = referrer(s)
+        f, forg = friend(s, token)
+        buy(s, forg)
+        claim(s, ref)
+        due(s, f)
+        as_owner(s)
+        before = ok(call(s, sc.operator, "select public.referral_admin()"))["orphaned"]
+        s.rows("delete from public.friend_invite_links where token = %s returning 1", [token])
+        ok(call(s, SERVICE, "select public.referral_settle_all(500)"))
+        assert ok(call(s, sc.operator, "select public.referral_admin()"))["orphaned"] == before + 1
+        assert rows(s, ref) == [("held", None, CREDITS, 0, 0)]
+        assert ledger(s, org, "referral-reward:") == 0
+
+
 def _dsn(conn) -> str:
     return psycopg.conninfo.make_conninfo(sec_db.admin_dsn(), dbname=conn.info.dbname)
 
 
-def test_a_join_waits_at_most_five_seconds_behind_a_settle_that_holds_its_link(conn):
-    """M3: a join no longer queues without bound behind a link lock; it fails fast (55P03) and the app retries it."""
+def test_a_join_waits_at_most_two_seconds_behind_a_settle_that_holds_its_link(conn):
+    """M3, B2: a join no longer queues without bound behind a link lock; it fails within 2 s (55P03) and the app retries it,
+    so the auth callback stays bounded."""
     with as_superuser(conn, commit=True) as s:
         s.rows("update public.friend_invite_settings set enabled = true where id returning 1")
         ref, org, token = referrer(s)
@@ -835,7 +930,7 @@ def test_a_join_waits_at_most_five_seconds_behind_a_settle_that_holds_its_link(c
         waited = time.monotonic() - t0
         holder.rollback()
     assert not out.ok and out.sqlstate == "55P03", out
-    assert 4 <= waited < 15, waited
+    assert 1.5 <= waited < 8, waited
     with as_superuser(conn, commit=True) as s:
         s.rows("update public.friend_invite_settings set enabled = false where id returning 1")
 
@@ -862,11 +957,14 @@ def _race(conn, bodies):
 
 
 def _direct(conn, **kw):
-    """Committed settings, written directly (owner_guard's rate limit is tested on its own; the races must not spend it)."""
+    """Committed settings, written directly (owner_guard's rate limit is tested on its own; the races must not spend it),
+    with an open period as set_referral_settings would write it."""
     with as_superuser(conn, commit=True) as s:
         today = s.value(TODAY_PAID)
         s.rows("update public.friend_invite_settings set enabled = true, referral_enabled = %s, referral_daily_cap = %s "
                "where id returning 1", [kw.get("enabled", True), today + kw.get("room", 1000)])
+        s.conn.execute("insert into public.referral_open_periods (opened_at) select now() - interval '1 second' "
+                       "where not exists (select 1 from public.referral_open_periods where closed_at is null)")
 
 
 def _restore_defaults(conn):
@@ -874,6 +972,7 @@ def _restore_defaults(conn):
         s.rows("update public.friend_invite_settings set enabled = false, referral_enabled = false, milestone_enabled = false, "
                "referral_credits = 200, referral_min_credits = 1000, referral_hold_days = 30, referral_qualify_days = 60, "
                "referral_monthly_cap = 10, referral_daily_cap = 50 where id returning 1")
+        s.conn.execute("update public.referral_open_periods set closed_at = now() where closed_at is null")
 
 
 def _committed_due_referral(conn, **kw):
@@ -949,7 +1048,8 @@ def test_applying_the_migration_again_keeps_the_switches_numbers_and_referrals(c
         with as_superuser(conn, commit=True) as s:
             s.rows("update public.friend_invite_settings set referral_credits = 150, milestone_enabled = true where id returning 1")
         snap = ("select (select count(*) from public.referral_rewards), "
-                "(select row(referral_credits, referral_enabled, milestone_enabled, enabled, referral_started_at)::text "
+                "(select row(referral_credits, referral_enabled, milestone_enabled, enabled, "
+                "(select count(*) from public.referral_open_periods))::text "
                 "from public.friend_invite_settings)")
         with as_superuser(conn, commit=False) as s:
             before = s.rows(snap)[0]
@@ -978,6 +1078,7 @@ def test_the_rollback_refuses_while_a_referral_exists_then_puts_the_earlier_bodi
         for sig, h in BEFORE.items():
             assert md5_of(s, sig) == h, sig
         assert s.value("select to_regclass('public.referral_rewards') is null and to_regclass('public.referral_settle_runs') is null "
+                       "and to_regclass('public.referral_open_periods') is null "
                        "and to_regprocedure('public.my_referrals()') is null")
         assert s.value("select count(*) from information_schema.columns where table_schema = 'public' "
                        "and table_name = 'friend_invite_settings' and (column_name like 'referral_%%' or column_name = 'milestone_enabled')") == 0

@@ -340,7 +340,7 @@ RPC.my_referrals = { ...REFERRALS_EMPTY, joined: 6, held: 2, next_release_on: "2
 RPC.claim_referral_rewards = RPC.my_referrals;
 // The operator's panel (the `owner` session): no pg_cron schedule, so the panel's warning shows; one made-up last run.
 RPC.referral_admin = {
-  ...REFERRAL_NUMBERS, enabled: false, links_open: true, milestone_enabled: false, started_at: "2026-11-14T08:00:00Z",
+  ...REFERRAL_NUMBERS, enabled: false, links_open: true, milestone_enabled: false, open_since: null, orphaned: 0,
   daily_cap: 50, updated_at: "2026-11-14T08:00:00Z", schedule: false,
   last_run: { at: "2026-11-14T09:05:00Z", links: 12, changed: 2, failed: 0, error: null }, runs_failed_24h: 0,
   links: 12, joins: 31, held: 4, due: 1, paid: 6, paid_today: 1, credits_month: 1200, credits_total: 1200,

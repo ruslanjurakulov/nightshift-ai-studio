@@ -184,7 +184,8 @@ export interface ReferralAdmin extends ReferralNumbers {
   linksOpen: boolean;
   milestoneEnabled: boolean;
   dailyCap: number;
-  startedAt: string | null;
+  /** When the current open period began (null while the reward is off). */
+  openSince: string | null;
   updatedAt: string | null;
   /** Is the pg_cron job there? Without it, clawbacks wait for the referrer's next visit. */
   schedule: boolean;
@@ -205,6 +206,8 @@ export interface ReferralAdmin extends ReferralNumbers {
   clawOwed: number;
   /** Reversals only the payment provider reported (no credit refund was booked): a person's case. */
   reversedByEvent: number;
+  /** Referrals whose link is gone (the referrer's account was deleted): no longer settled, an operator's decision. */
+  orphaned: number;
   milestoneRewards: number;
 }
 
@@ -238,14 +241,15 @@ export function coerceReferralAdmin(raw: unknown): ReferralAdmin | null {
     voidMember: count(r.void_member),
     clawed: count(r.clawed),
     reversedByEvent: count(r.reversed_by_event),
+    orphaned: count(r.orphaned),
     milestoneRewards: count(r.milestone_rewards),
   };
   const money = { creditsMonth: finite(r.credits_month), creditsTotal: finite(r.credits_total), clawOwed: finite(r.claw_owed) };
   const updatedAt = isoOrNull(r.updated_at);
-  const startedAt = isoOrNull(r.started_at);
+  const openSince = isoOrNull(r.open_since);
   const lastRun = coerceRun(r.last_run);
   if (!nums || typeof r.milestone_enabled !== "boolean" || typeof r.links_open !== "boolean" || typeof r.schedule !== "boolean") return null;
-  if (updatedAt === undefined || startedAt === undefined || lastRun === undefined) return null;
+  if (updatedAt === undefined || openSince === undefined || lastRun === undefined) return null;
   if (Object.values(ints).some((v) => v === null) || Object.values(money).some((v) => v === null)) return null;
   return {
     ...nums,
@@ -253,7 +257,7 @@ export function coerceReferralAdmin(raw: unknown): ReferralAdmin | null {
     milestoneEnabled: r.milestone_enabled,
     schedule: r.schedule,
     lastRun,
-    startedAt,
+    openSince,
     updatedAt,
     ...(ints as Record<keyof typeof ints, number>),
     ...(money as Record<keyof typeof money, number>),

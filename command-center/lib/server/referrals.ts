@@ -39,7 +39,7 @@ async function rpcRead<T>(client: RpcClient, fn: string, coerce: (raw: unknown) 
 
 /**
  * The person's own referrals, settled first. When the settle itself fails (a lock wait, a timeout), the plain read still
- * answers: the counts are true as of the last settle, and the next visit (or the hourly job) settles again.
+ * answers: the counts are true as of the last settle, and the next visit (or the settle job, every 5 minutes) settles again.
  */
 export async function readMyReferrals(client: RpcClient, { settle = true }: { settle?: boolean } = {}): Promise<ReferralRead<MyReferrals>> {
   // A router prefetch only reads: settling is for a person actually opening the page (and the database rate-limits it).

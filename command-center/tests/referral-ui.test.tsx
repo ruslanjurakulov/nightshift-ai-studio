@@ -261,12 +261,12 @@ describe("the operator panel", () => {
   const admin: ReferralAdmin = {
     enabled: false, milestoneEnabled: false, credits: 200, minCredits: 1000, holdDays: 30, qualifyDays: 60, monthlyCap: 10, dailyCap: 50,
     updatedAt: null, links: 3, joins: 7, held: 2, due: 0, paid: 1, paidToday: 0, creditsMonth: 200, creditsTotal: 200, voidRefunded: 1,
-    voidSamePayer: 0, voidMember: 0, clawed: 0, clawOwed: 0, milestoneRewards: 0, linksOpen: true, schedule: true, startedAt: null,
+    voidSamePayer: 0, voidMember: 0, clawed: 0, clawOwed: 0, milestoneRewards: 0, linksOpen: true, schedule: true, openSince: null, orphaned: 0,
     lastRun: { at: "2026-11-14T09:00:00Z", links: 3, changed: 1, failed: 0, error: null }, runsFailed24h: 0, reversedByEvent: 0,
   };
 
   it("sends the switch, the milestone switch and the numbers to set_referral_settings", async () => {
-    h.rpc.mockResolvedValue({ data: { ...admin, enabled: true, milestone_enabled: false, min_credits: 1000, hold_days: 30, qualify_days: 60, monthly_cap: 10, daily_cap: 50, updated_at: null, paid_today: 0, credits_month: 200, credits_total: 200, void_refunded: 1, void_same_payer: 0, void_member: 0, claw_owed: 0, milestone_rewards: 0, links_open: true, schedule: true, started_at: null, runs_failed_24h: 0, reversed_by_event: 0, last_run: null }, error: null });
+    h.rpc.mockResolvedValue({ data: { ...admin, enabled: true, milestone_enabled: false, min_credits: 1000, hold_days: 30, qualify_days: 60, monthly_cap: 10, daily_cap: 50, updated_at: null, paid_today: 0, credits_month: 200, credits_total: 200, void_refunded: 1, void_same_payer: 0, void_member: 0, claw_owed: 0, milestone_rewards: 0, links_open: true, schedule: true, open_since: null, orphaned: 0, runs_failed_24h: 0, reversed_by_event: 0, last_run: null }, error: null });
     render(<ReferralAdminPanel admin={admin} />);
     fireEvent.click(screen.getByRole("checkbox", { name: new RegExp(en.referral.adminSwitch) }));
     fireEvent.click(screen.getByRole("button", { name: en.referral.adminSave }));

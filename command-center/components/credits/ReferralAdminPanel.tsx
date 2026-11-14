@@ -161,6 +161,11 @@ export function ReferralAdminPanel({ admin }: { admin: ReferralAdmin }) {
         {count(c.adminClawed, state.clawed)}
         {count(c.adminOwed, formatCredits(state.clawOwed, locale))}
       </dl>
+      {state.orphaned > 0 && (
+        <p role="alert" className="text-xs" style={{ color: "var(--color-fail)" }} data-referral-orphaned>
+          {fmt(c.adminOrphaned, { n: state.orphaned })}
+        </p>
+      )}
       {state.reversedByEvent > 0 && (
         <p role="alert" className="text-xs" style={{ color: "var(--color-fail)" }} data-referral-by-event>
           {fmt(c.adminByEvent, { n: state.reversedByEvent })}

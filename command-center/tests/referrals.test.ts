@@ -93,7 +93,7 @@ describe("referral_terms() and referral_admin()", () => {
     const admin = {
       ...terms, milestone_enabled: false, links: 4, joins: 9, held: 2, due: 1, paid: 3, paid_today: 1, credits_month: "600.00",
       credits_total: 800, void_refunded: 1, void_same_payer: 0, void_member: 0, clawed: 1, claw_owed: 50, milestone_rewards: 0,
-      links_open: true, schedule: false, started_at: "2026-11-14T08:00:00Z", runs_failed_24h: 0, reversed_by_event: 0,
+      links_open: true, schedule: false, open_since: "2026-11-14T08:00:00Z", runs_failed_24h: 0, reversed_by_event: 0, orphaned: 0,
       last_run: { at: "2026-11-14T09:00:00Z", links: 3, changed: 1, failed: 0, error: null },
     };
     expect(coerceReferralAdmin(admin)).toMatchObject({ milestoneEnabled: false, links: 4, creditsMonth: 600, clawOwed: 50, schedule: false, lastRun: { links: 3 } });

@@ -11,7 +11,7 @@
 --   1. Puts 0092's friend_invite_pay_locked, my_friend_invite and join_friend_invite and 0034's
 --      credit_transactions_apply_lots back, byte for byte, with their grants.
 --   2. Unschedules the pg_cron job 'nightshift-referral-settle' when it exists.
---   3. Drops the functions, the two tables and the columns 0165 added.
+--   3. Drops the functions, the three tables and the columns 0165 added.
 --   4. Asserts the end state: the four earlier bodies (md5) and none of 0165's names.
 
 begin;
@@ -35,15 +35,17 @@ begin
   foreach pair slice 1 in array array[
       ['public.friend_invite_pay_locked(public.friend_invite_links)', 'eeae5e2f28b289aab7439beabede3a6f'],
       ['public.my_friend_invite()', '4717561b1b5c47f7e754118f15fa03ea'],
-      ['public.join_friend_invite(text)', 'cf8304cfccf5d465f8040923fca707e6'],
+      ['public.join_friend_invite(text)', '8bc6fb874e4e65cf7378bddbfa3768d6'],
       ['public.credit_transactions_apply_lots()', 'fcd28a68b841d8d539d3798f919a0d01'],
       ['public.referral_payment_reversed(text)', 'c7ca11fcf4bf7e283ee77e43d7770a1b'],
-      ['public.referral_settle_locked(public.friend_invite_links)', '15d0d302f68f67857b1caddd1f3f7d98'],
+      ['public.referral_payment_paid(text)', '0a53c4290c5046ccc3a6accdd46d9e9c'],
+      ['public.referral_was_open(timestamptz)', '492d74b160d3bcf29d09a82d288e2a7e'],
+      ['public.referral_settle_locked(public.friend_invite_links)', 'aa1546a79a9a655bd278de1fad4d794a'],
       ['public.claim_referral_rewards()', '273fcc22a8e8116b86b57bcf03cf8ddb'],
       ['public.my_referrals()', 'c0ff6ab6e0f6ee0df46c44ddb6b2df8f'],
       ['public.referral_terms()', 'e2be2f76972e1e707e0ce4d52f47cf53'],
-      ['public.referral_admin()', 'bad7510f2b5f6d36078e3f72111cc86d'],
-      ['public.set_referral_settings(boolean, boolean, numeric, numeric, integer, integer, integer, integer)', '2e193d821efc8309ea368178ec3d1c33'],
+      ['public.referral_admin()', '6881c7fc37602e907793b0178bf5a73f'],
+      ['public.set_referral_settings(boolean, boolean, numeric, numeric, integer, integer, integer, integer)', 'c57ae2b4cd2d14bab35fbd85e9775cdf'],
       ['public.referral_settle_all(integer)', '5e640e5905f7d7b974b47c4e4af5b748']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(pair[1]);
     if h is distinct from pair[2] then
@@ -289,7 +291,10 @@ drop function if exists public.referral_terms();
 drop function if exists public.my_referrals();
 drop function if exists public.claim_referral_rewards();
 drop function if exists public.referral_settle_locked(public.friend_invite_links);
+drop function if exists public.referral_was_open(timestamptz);
+drop function if exists public.referral_payment_paid(text);
 drop function if exists public.referral_payment_reversed(text);
+drop table if exists public.referral_open_periods;
 drop table if exists public.referral_settle_runs;
 drop table if exists public.referral_rewards;
 alter table public.friend_invite_links drop column if exists referral_settled_at;
@@ -301,7 +306,6 @@ alter table public.friend_invite_settings drop column if exists referral_qualify
 alter table public.friend_invite_settings drop column if exists referral_hold_days;
 alter table public.friend_invite_settings drop column if exists referral_min_credits;
 alter table public.friend_invite_settings drop column if exists referral_credits;
-alter table public.friend_invite_settings drop column if exists referral_started_at;
 alter table public.friend_invite_settings drop column if exists milestone_enabled;
 alter table public.friend_invite_settings drop column if exists referral_enabled;
 

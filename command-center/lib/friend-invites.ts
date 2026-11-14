@@ -35,6 +35,25 @@ export function isInviteNotice(value: string | null | undefined): value is Invit
   return (INVITE_NOTICES as readonly string[]).includes(value ?? "");
 }
 
+/** How long a sign-in waits, at most, for the invite join it starts (it never waits at all: the call is not awaited). */
+export const INVITE_JOIN_TIMEOUT_MS = 4000;
+
+/**
+ * After a password sign-in: ask /api/invite/join (same origin, POST) to use an invite cookie the confirmation callback could
+ * not (its join failed and the cookie was kept). The route answers the same whatever happened, and with no cookie it does
+ * nothing. Never throws; bounded by INVITE_JOIN_TIMEOUT_MS.
+ */
+export function retryInviteJoin(fetcher: typeof fetch = fetch): Promise<void> {
+  try {
+    return fetcher("/api/invite/join", { method: "POST", signal: AbortSignal.timeout(INVITE_JOIN_TIMEOUT_MS) }).then(
+      () => undefined,
+      () => undefined,
+    );
+  } catch {
+    return Promise.resolve();
+  }
+}
+
 /** The address an owner shares. `origin` is the site's own, never a header. */
 export function inviteUrl(origin: string, token: string): string {
   return `${origin.replace(/\/+$/, "")}/i/${token}`;

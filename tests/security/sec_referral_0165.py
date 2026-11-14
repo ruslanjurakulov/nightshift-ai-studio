@@ -29,10 +29,14 @@ def extend(tables: dict, functions: dict) -> None:
         "referral_rewards": Service(),
         # the settle job's log: written by referral_settle_all, read through referral_admin
         "referral_settle_runs": Service(),
+        # when the reward was open: written by set_referral_settings only
+        "referral_open_periods": Service(),
     })
     functions.update({
-        # internal: is a payment reversed (credit_refunds, or the provider's own event)
+        # internals: is a payment reversed / a full-price payment of real money; was the reward open then
         "referral_payment_reversed": SERVICE,
+        "referral_payment_paid": SERVICE,
+        "referral_was_open": SERVICE,
         # the referrer, in their own session
         "claim_referral_rewards": USER,
         "my_referrals": USER,
@@ -65,3 +69,6 @@ def seed(conn, sc) -> None:
             "returning 1",
             [sc.dana.uid, hashlib.sha256(sc.dana.email.encode()).hexdigest(), sc.alice.actor.uid, link, sc.alice.org, sc.bob.org])
         s.rows("insert into public.referral_settle_runs (links, changed, failed) values (0, 0, 0) returning 1")
+        # A closed period (the reward was on for an hour, a day ago): nothing is open, as on a fresh apply.
+        s.rows("insert into public.referral_open_periods (opened_at, closed_at) "
+               "values (now() - interval '25 hours', now() - interval '24 hours') returning 1")

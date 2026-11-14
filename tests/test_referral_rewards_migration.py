@@ -24,7 +24,7 @@ ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0165_referral_rewards.sql").read_t
 MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 
-CREATED = ["referral_payment_reversed", "referral_settle_locked", "my_referrals", "claim_referral_rewards", "referral_terms",
+CREATED = ["referral_payment_reversed", "referral_payment_paid", "referral_was_open", "referral_settle_locked", "my_referrals", "claim_referral_rewards", "referral_terms",
            "referral_admin", "set_referral_settings", "referral_settle_all"]
 ORIGIN = {"friend_invite_pay_locked": M0092, "my_friend_invite": M0092, "join_friend_invite": M0092,
           "credit_transactions_apply_lots": M0034}
@@ -72,12 +72,12 @@ class ReferralRewardsMigration(unittest.TestCase):
         self.assertIn("if not s.enabled or not s.milestone_enabled then", body(SQL, "friend_invite_pay_locked"))
         self.assertIn("n >= s.required_joins and s.milestone_enabled", body(SQL, "my_friend_invite"))
         join = body(SQL, "join_friend_invite")
-        self.assertLess(join.index("perform set_config('lock_timeout', '5s', true);"),
+        self.assertLess(join.index("perform set_config('lock_timeout', '2s', true);"),
                         join.index("from public.friend_invite_links where id = l.id for update"))
         self.assertEqual(body(SQL, "join_friend_invite").replace(
-            "  -- 0165: waiting at most 5 seconds for a settle that holds the link; past that the call fails (55P03)\n"
+            "  -- 0165: waiting at most 2 seconds for a settle that holds the link; past that the call fails (55P03)\n"
             "  -- and the app retries it, keeping the person's cookie.\n"
-            "  perform set_config('lock_timeout', '5s', true);\n", ""), body(M0092, "join_friend_invite"))
+            "  perform set_config('lock_timeout', '2s', true);\n", ""), body(M0092, "join_friend_invite"))
         lots = body(SQL, "credit_transactions_apply_lots")
         self.assertIn("elsif new.kind = 'adjust' then", lots)
         self.assertIn("nullif(current_setting('nightshift.adjust_lot_first', true), '')", lots)
@@ -99,13 +99,21 @@ class ReferralRewardsMigration(unittest.TestCase):
     def test_both_switches_are_added_off_and_never_copied_from_0092s(self):
         self.assertIn("add column if not exists referral_enabled boolean not null default false;", SQL)
         self.assertIn("add column if not exists milestone_enabled boolean not null default false;", SQL)
-        self.assertIn("add column if not exists referral_started_at timestamptz not null default now();", SQL)
+        # Nothing has ever been open: the periods table starts empty, and only the setter writes it.
+        self.assertIn("create table if not exists public.referral_open_periods (", SQL)
+        self.assertEqual(CODE.count("insert into public.referral_open_periods"), 1)
+        self.assertIn("insert into public.referral_open_periods", body(SQL, "set_referral_settings"))
+        self.assertNotIn("referral_started_at", CODE)
         self.assertNotRegex(CODE, r"set\s+milestone_enabled\s*=\s*enabled|set\s+referral_enabled\s*=\s*enabled")
         self.assertIn("WHAT CHANGES ON APPLY", SQL)
         settle = body(SQL, "referral_settle_locked")
         self.assertIn("if s.referral_enabled then", settle)
-        self.assertIn("jj.created_at >= s.referral_started_at", settle)
-        self.assertIn("tx.created_at >= s.referral_started_at", settle)
+        self.assertIn("and public.referral_was_open(jj.created_at)", settle)
+        self.assertIn("or not public.referral_was_open(t.created_at)", settle)
+        setter = body(SQL, "set_referral_settings")
+        self.assertIn("insert into public.referral_open_periods (opened_at, opened_by) values (now(), auth.uid());", setter)
+        self.assertIn("update public.referral_open_periods set closed_at = now(), closed_by = auth.uid() where closed_at is null;", setter)
+        self.assertLess(setter.index("referral_open_periods"), setter.index("perform public.security_event_log("))
 
     def test_every_function_is_a_definer_with_a_pinned_search_path(self):
         for name in REPLACED + CREATED:
@@ -113,7 +121,8 @@ class ReferralRewardsMigration(unittest.TestCase):
             self.assertRegex(head, r"security definer set search_path = public, pg_temp", name)
 
     def test_the_grants_are_the_declared_ones(self):
-        for internal in ("referral_settle_locked(public.friend_invite_links)", "referral_payment_reversed(text)"):
+        for internal in ("referral_settle_locked(public.friend_invite_links)", "referral_payment_reversed(text)",
+                         "referral_payment_paid(text)", "referral_was_open(timestamptz)"):
             self.assertIn(f"revoke all on function public.{internal} from public, anon, authenticated, service_role;", SQL)
             self.assertNotIn(f"grant execute on function public.{internal}", CODE)
         self.assertIn("revoke all on function public.referral_settle_all(integer) from public, anon, authenticated;", SQL)
@@ -125,7 +134,8 @@ class ReferralRewardsMigration(unittest.TestCase):
         self.assertEqual(len(re.findall(r"(?m)^grant ", CODE)), 8)
 
     def test_the_tables_are_closed_to_every_api_role(self):
-        for table in ("referral_rewards", "referral_settle_runs"):
+        self.assertIn("execute format('revoke all on sequence %s from public, anon, authenticated, service_role', seq);", SQL)
+        for table in ("referral_rewards", "referral_settle_runs", "referral_open_periods"):
             self.assertIn(f"alter table public.{table} enable row level security;", SQL)
             self.assertIn(f"revoke all on public.{table} from public, anon, authenticated, service_role;", SQL)
         self.assertNotIn("create policy", CODE)
@@ -155,20 +165,29 @@ class ReferralRewardsMigration(unittest.TestCase):
     def test_a_payment_qualifies_only_in_the_friends_own_new_workspace_and_only_for_real_money(self):
         settle = body(SQL, "referral_settle_locked")
         for needle in ("where o.created_by = j.invitee_id",
-                       "and o.created_at >= j.created_at",
+                       "select u.created_at into born from auth.users u where u.id = j.invitee_id;",
+                       "and o.created_at >= born",
                        "and own.created_at <= tx.created_at",
                        "join public.org_members own on own.org_id = o.id and own.user_id = j.invitee_id and own.role = 'owner'",
                        "tx.kind in ('purchase', 'subscription')",
-                       "tx.amount >= s.referral_min_credits",
-                       "tx.created_at < j.created_at + make_interval(days => s.referral_qualify_days)",
-                       "and not exists (select 1 from public.credit_transactions p",
-                       "e.transaction_id = t.external_id",
+                       "and public.referral_payment_paid(tx.external_id)",
+                       "and public.referral_payment_paid(p.external_id))",
+                       "continue when t.amount < s.referral_min_credits",
+                       "or t.created_at >= born + make_interval(days => s.referral_qualify_days)",
+                       "and e.amount_minor < ceil(s.referral_min_credits / 2));",
+                       "jj.created_at >= now() - make_interval(days => s.referral_qualify_days + 2)"):
+            self.assertIn(needle, settle, needle)
+        paid = body(SQL, "referral_payment_paid")
+        for needle in ("e.transaction_id = p_ext",
                        "(e.provider = 'paddle' and e.event_type = 'transaction.completed')",
                        "(e.provider = 'dodo' and e.event_type = 'payment.succeeded')",
                        "e.status in ('processed', 'duplicate')",
                        "e.amount_minor > 0",
-                       "jj.created_at >= now() - make_interval(days => s.referral_qualify_days + 2)"):
-            self.assertIn(needle, settle, needle)
+                       "position(' · discounted' in coalesce(e.detail, '')) = 0"):
+            self.assertIn(needle, paid, needle)
+        # The marker is the webhook's own.
+        paddle = (ROOT / "supabase" / "functions" / "_shared" / "paddle.ts").read_text(encoding="utf-8")
+        self.assertIn('export const DISCOUNT_MARK = " · discounted";', paddle)
         reversed_ = body(SQL, "referral_payment_reversed")
         for needle in ("public.credit_refunds", "'adjustment.created', 'adjustment.updated'", "'dispute.expired'",
                        "e.status in ('processed', 'duplicate', 'rejected')"):
@@ -197,6 +216,8 @@ class ReferralRewardsMigration(unittest.TestCase):
         self.assertIn("'schedule', sched", admin)
         self.assertIn("'last_run'", admin)
         self.assertIn("'reversed_by_event'", admin)
+        self.assertIn("'orphaned'", admin)
+        self.assertIn("'open_since'", admin)
 
     def test_the_referrer_never_reads_a_payment_time(self):
         mine = body(SQL, "my_referrals")
@@ -228,7 +249,7 @@ class ReferralRewardsMigration(unittest.TestCase):
                         ROLLBACK.index("exists (select 1 from public.referral_rewards)"))
         for name, src in ORIGIN.items():
             self.assertIn(definition(src, name), ROLLBACK, name)
-        for table in ("referral_rewards", "referral_settle_runs"):
+        for table in ("referral_rewards", "referral_settle_runs", "referral_open_periods"):
             self.assertIn(f"drop table if exists public.{table};", ROLLBACK)
         for name in CREATED:
             self.assertRegex(ROLLBACK, rf"drop function if exists public\.{name}\(", name)

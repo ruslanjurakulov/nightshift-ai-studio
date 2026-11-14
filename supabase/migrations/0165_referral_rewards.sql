@@ -8,9 +8,10 @@
 --   2. 0092's sign-up milestone (5 confirmed sign-ups pay 100 credits once) is switched OFF: milestone_enabled is added
 --      false, not copied from `enabled`. Sign-ups alone can be farmed with throwaway mailboxes (docs/security/LEDGER.md
 --      BR-S-010). Live had 0 links and 0 joins, so nothing earned is lost; the operator can turn it back on deliberately.
---   3. referral_started_at is stamped with the apply time: no join and no payment before it ever counts.
---   4. join_friend_invite (0092) waits at most 5 seconds for its link lock (one hunk) instead of without bound, so a settle in
---      progress cannot hold a new account's join hostage; the app retries it and keeps the cookie on a failure.
+--   3. referral_open_periods is created EMPTY: the programme has never been open, and a join or a payment counts only when it
+--      falls inside a period the reward was open (each on/off of set_referral_settings opens or closes one, audited).
+--   4. join_friend_invite (0092) waits at most 2 seconds for its link lock (one hunk) instead of without bound, so a settle in
+--      progress cannot hold a new account's join hostage; the app retries it once and keeps the cookie on a failure.
 --   5. The ledger's lot trigger (0034, credit_transactions_apply_lots) takes an 'adjust' row's credits from a named lot first
 --      when the caller names one (one hunk, setting nightshift.adjust_lot_first): a referral clawback takes back the
 --      reward's own credits before plan or pack credits. No other writer sets it; every other row behaves as before.
@@ -20,13 +21,21 @@
 --
 -- THE RULE (enforced here, not in the app)
 --   * A friend is someone who joined through the link under 0092's rules (a NEW account: made after the link, at most 3 days
---     before it joined; e-mail confirmed; not the owner nor the owner's mailbox; one account and one mailbox once), at or
---     after referral_started_at.
---   * The friend qualifies with the FIRST purchase or subscription ledger row EVER of a workspace the friend CREATED after
---     joining and owned before that payment, of at least referral_min_credits (default 1000), within referral_qualify_days
---     (60) of joining, that is real money: the payment provider's own event for that transaction (paddle
---     transaction.completed / dodo payment.succeeded, processed) charged more than 0. A 100% promo, a $0 trial or a
---     workspace that paid before is never a qualifying payment. One referral per friend, per mailbox and per payment, for good.
+--     before it joined; e-mail confirmed; not the owner nor the owner's mailbox; one account and one mailbox once), and whose
+--     join fell inside an open period. A join made while the programme was closed never counts, even after it reopens.
+--   * A PAYMENT is a purchase or subscription ledger row whose provider event for that transaction (paddle
+--     transaction.completed / dodo payment.succeeded, processed) charged more than 0 at FULL PRICE: the webhook marks every
+--     discounted or promo payment (paddle-webhook appends " · discounted (…)" to the event detail; dodo-webhook credits no
+--     discounted payment at all). A row without such an event (a $0 trial, a promo, a discount) is not a payment: it neither
+--     qualifies nor uses up the workspace's chance.
+--   * The friend qualifies with the FIRST payment EVER of a workspace the friend CREATED (created_by) after their account was
+--     made, and owned before that payment, made inside an open period and within referral_qualify_days (60) of the account's
+--     creation, of at least referral_min_credits (default 1000). Anchored on the account, not the join, so a join recorded
+--     late does not void the friend's workspace. Why full price and a floor: an allowed promo books full credits at any paid
+--     share (99% off at $0.01), so "more than 0" alone is not money; a full-price payment of >= referral_min_credits costs the
+--     catalogue price of those credits. As a second line, a USD payment must also be at least half the minimum's base price
+--     (1 credit = 1 US cent, the Starter pack's own rate; half leaves room for regional pricing): referral_min_credits / 2
+--     cents. Other currencies rely on the full-price rule. One referral per friend, per mailbox and per payment, for good.
 --   * Void, recorded and never paid: the referrer is a member of the paying workspace, or the friend of the link's workspace,
 --     when it qualifies or when it is due ('member'; org_members keeps no history, so "was" is what these two moments saw);
 --     the friend's workspace and one of the referrer's share a subscription customer at the payment provider ('same_payer';
@@ -50,15 +59,20 @@
 --   referral_settle_all(n)    service role and pg_cron: the n links settled longest ago (skip locked), one run row each call
 --                             in referral_settle_runs, read back by referral_admin() with whether the schedule exists.
 -- Joins older than referral_qualify_days + 2 days are no longer looked at for a NEW referral.
+-- A link goes only when its owner's account is deleted (an operator step, a data request). Its referrals are then not settled
+-- any more: a held reward is never paid to an account that is gone, and a clawback still owed stays owed; referral_admin()
+-- counts these ('orphaned') for the operator to decide. Settling them by referrer_id would mean paying or charging a
+-- workspace whose person no longer exists, which is not a decision for a job to make.
 --
 -- WHAT IT ADDS
---   friend_invite_settings  + referral_enabled, milestone_enabled, referral_started_at, referral_credits, referral_min_credits,
---                             referral_hold_days, referral_qualify_days, referral_monthly_cap, referral_daily_cap,
---                             referral_updated_at.
+--   friend_invite_settings  + referral_enabled, milestone_enabled, referral_credits, referral_min_credits, referral_hold_days,
+--                             referral_qualify_days, referral_monthly_cap, referral_daily_cap, referral_updated_at.
 --   friend_invite_links     + referral_settled_at (which links the batch settles next).
 --   referral_rewards        one row per friend whose first payment was seen. referral_settle_runs: the settle job's log.
---                           Both: RLS on, no policy, every privilege revoked.
---   referral_payment_reversed(text) / referral_settle_locked(link)       internal (no API role)
+--   referral_open_periods   one row per time the reward was switched on (opened_at) and off (closed_at).
+--                           All three: RLS on, no policy, every privilege (and their sequences') revoked.
+--   referral_payment_reversed(text) / referral_payment_paid(text) / referral_was_open(timestamptz) / referral_settle_locked(link)
+--                                                                         internal (no API role)
 --   claim_referral_rewards() / my_referrals()                             AUTHENTICATED, the caller's own
 --   referral_terms()                                                      ANON and AUTHENTICATED (the public /referral)
 --   referral_admin() / set_referral_settings(...)                         a platform owner/admin (owner_guard on the setter)
@@ -66,7 +80,7 @@
 -- WHAT IT REPLACES (md5 drift guard: the earlier body, or this file's own on a replay)
 --   friend_invite_pay_locked (0092)       'off' while milestone_enabled is off.
 --   my_friend_invite (0092)               'pending' is false while milestone_enabled is off.
---   join_friend_invite (0092)             lock_timeout 5s before the link lock.
+--   join_friend_invite (0092)             lock_timeout 2s before the link lock.
 --   credit_transactions_apply_lots (0034) an 'adjust' row may name the lot it spends first.
 --
 -- NUMBER. 0165 (assigned): 0163 and 0164 are other open pull requests. Needs 0018, 0020, 0021, 0034, 0042, 0092 and 0107;
@@ -114,7 +128,7 @@ begin
   foreach trio slice 1 in array array[
       ['public.friend_invite_pay_locked(public.friend_invite_links)', '1cfc1f84f065d73e2cb7e84c18ca6ae2', 'eeae5e2f28b289aab7439beabede3a6f'],
       ['public.my_friend_invite()', 'b26806d4fdc88a8453e939087d53184c', '4717561b1b5c47f7e754118f15fa03ea'],
-      ['public.join_friend_invite(text)', '549632bae0dbb002dc66200d7f6c0998', 'cf8304cfccf5d465f8040923fca707e6'],
+      ['public.join_friend_invite(text)', '549632bae0dbb002dc66200d7f6c0998', '8bc6fb874e4e65cf7378bddbfa3768d6'],
       ['public.credit_transactions_apply_lots()', '8ab35cff8ac8a145403b0e6eca735697', 'fcd28a68b841d8d539d3798f919a0d01']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
     if h is null or h <> all (array[trio[2], trio[3]]) then
@@ -124,12 +138,14 @@ begin
   -- Each name this file creates: absent, or this file's own body.
   foreach trio slice 1 in array array[
       ['public.referral_payment_reversed(text)', 'c7ca11fcf4bf7e283ee77e43d7770a1b', ''],
-      ['public.referral_settle_locked(public.friend_invite_links)', '15d0d302f68f67857b1caddd1f3f7d98', ''],
+      ['public.referral_payment_paid(text)', '0a53c4290c5046ccc3a6accdd46d9e9c', ''],
+      ['public.referral_was_open(timestamptz)', '492d74b160d3bcf29d09a82d288e2a7e', ''],
+      ['public.referral_settle_locked(public.friend_invite_links)', 'aa1546a79a9a655bd278de1fad4d794a', ''],
       ['public.claim_referral_rewards()', '273fcc22a8e8116b86b57bcf03cf8ddb', ''],
       ['public.my_referrals()', 'c0ff6ab6e0f6ee0df46c44ddb6b2df8f', ''],
       ['public.referral_terms()', 'e2be2f76972e1e707e0ce4d52f47cf53', ''],
-      ['public.referral_admin()', 'bad7510f2b5f6d36078e3f72111cc86d', ''],
-      ['public.set_referral_settings(boolean, boolean, numeric, numeric, integer, integer, integer, integer)', '2e193d821efc8309ea368178ec3d1c33', ''],
+      ['public.referral_admin()', '6881c7fc37602e907793b0178bf5a73f', ''],
+      ['public.set_referral_settings(boolean, boolean, numeric, numeric, integer, integer, integer, integer)', 'c57ae2b4cd2d14bab35fbd85e9775cdf', ''],
       ['public.referral_settle_all(integer)', '5e640e5905f7d7b974b47c4e4af5b748', '']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
     if h is not null and h <> trio[2] then
@@ -154,7 +170,6 @@ end $$;
 -- columns there and changes nothing.
 alter table public.friend_invite_settings add column if not exists referral_enabled boolean not null default false;
 alter table public.friend_invite_settings add column if not exists milestone_enabled boolean not null default false;
-alter table public.friend_invite_settings add column if not exists referral_started_at timestamptz not null default now();
 alter table public.friend_invite_settings add column if not exists referral_credits numeric(14,2) not null default 200;
 alter table public.friend_invite_settings add column if not exists referral_min_credits numeric(14,2) not null default 1000;
 alter table public.friend_invite_settings add column if not exists referral_hold_days integer not null default 30;
@@ -242,6 +257,34 @@ comment on table public.referral_settle_runs is
   'One row per referral_settle_all() call (0165): how many links, changes and failures, and the last failure''s message. Kept 30 days. Read by referral_admin(). No API role has a privilege on this table.';
 alter table public.referral_settle_runs enable row level security;
 revoke all on public.referral_settle_runs from public, anon, authenticated, service_role;
+
+-- When the reward was open. A join and a payment count only inside one of these: switching the reward off and on again
+-- does not let what happened while it was closed count afterwards. Written only by set_referral_settings, in its audit.
+create table if not exists public.referral_open_periods (
+  id         bigint generated always as identity primary key,
+  opened_at  timestamptz not null default now(),
+  closed_at  timestamptz,
+  opened_by  uuid,
+  closed_by  uuid,
+  check (closed_at is null or closed_at >= opened_at)
+);
+-- At most one open period at a time.
+create unique index if not exists referral_open_periods_one_open on public.referral_open_periods ((true)) where closed_at is null;
+comment on table public.referral_open_periods is
+  'The times the referral reward was on (0165): one row per switch-on (opened_at) and its switch-off (closed_at, null while open). Written by set_referral_settings only. No API role has a privilege on this table.';
+alter table public.referral_open_periods enable row level security;
+revoke all on public.referral_open_periods from public, anon, authenticated, service_role;
+
+-- Supabase's default privileges also give the API roles the identity columns' sequences: taken back.
+do $$
+declare
+  seq text;
+begin
+  foreach seq in array array[pg_get_serial_sequence('public.referral_settle_runs', 'id'),
+                             pg_get_serial_sequence('public.referral_open_periods', 'id')] loop
+    execute format('revoke all on sequence %s from public, anon, authenticated, service_role', seq);
+  end loop;
+end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. The four replaced bodies (one hunk each)
@@ -380,9 +423,9 @@ begin
     return jsonb_build_object('status', 'invalid');
   end if;
   -- Joins to one link run one after another from here on.
-  -- 0165: waiting at most 5 seconds for a settle that holds the link; past that the call fails (55P03)
+  -- 0165: waiting at most 2 seconds for a settle that holds the link; past that the call fails (55P03)
   -- and the app retries it, keeping the person's cookie.
-  perform set_config('lock_timeout', '5s', true);
+  perform set_config('lock_timeout', '2s', true);
   select * into l from public.friend_invite_links where id = l.id for update;
 
   select id, email, email_confirmed_at, created_at into u from auth.users where id = uid;
@@ -499,6 +542,27 @@ create or replace function public.referral_payment_reversed(p_ext text) returns 
   end
 $$;
 
+-- Is this ledger row a payment? The provider's own event for that transaction, credited, charged more than 0, at full price
+-- (paddle-webhook appends " · discounted (…)" to the detail of any discounted or promo payment; dodo-webhook credits none).
+create or replace function public.referral_payment_paid(p_ext text) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (
+    select 1 from public.payment_events e
+     where e.transaction_id = p_ext
+       and ((e.provider = 'paddle' and e.event_type = 'transaction.completed')
+            or (e.provider = 'dodo' and e.event_type = 'payment.succeeded'))
+       and e.status in ('processed', 'duplicate')
+       and e.amount_minor > 0
+       and position(' · discounted' in coalesce(e.detail, '')) = 0)
+$$;
+
+-- Was the reward open at this moment (inside an opened, not yet closed period)?
+create or replace function public.referral_was_open(p_at timestamptz) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from public.referral_open_periods p
+                  where p.opened_at <= p_at and (p.closed_at is null or p_at < p.closed_at))
+$$;
+
 -- The link row is ALREADY LOCKED by the caller (for update). Qualifies, voids, pays and claws back this referrer's referrals,
 -- and returns how many rows changed. Lock order: the link row, the daily cap's advisory lock, the credit account.
 create or replace function public.referral_settle_locked(p_link public.friend_invite_links) returns integer
@@ -511,6 +575,7 @@ declare
   acc     public.credit_accounts;
   same    boolean;
   member  boolean;
+  born    timestamptz;
   rev     text;
   m       integer;
   owed    numeric;
@@ -527,46 +592,51 @@ begin
     for j in
       select * from public.friend_invite_joins jj
        where jj.link_id = p_link.id
-         and jj.created_at >= s.referral_started_at
+         -- A join made while the programme was closed never counts, even after it reopens.
+         and public.referral_was_open(jj.created_at)
          -- A join past its payment window (and two days of settle lag) can no longer qualify: not looked at again.
          and jj.created_at >= now() - make_interval(days => s.referral_qualify_days + 2)
          and not exists (select 1 from public.referral_rewards x
                           where x.invitee_id = jj.invitee_id or x.invitee_email_key = jj.email_key)
        order by jj.created_at, jj.id
     loop
-      -- The friend's workspace: one they CREATED after joining and owned before paying, whose very first purchase or
-      -- subscription row this is. An older workspace that promotes a new account to owner never qualifies.
+      -- Anchored on the friend's ACCOUNT (0092 admits only an account made at most 3 days before it joins): a join recorded
+      -- late, after the friend already made a workspace and paid, does not void that workspace.
+      select u.created_at into born from auth.users u where u.id = j.invitee_id;
+      continue when born is null;
+      -- The friend's workspace: one they CREATED after their account was made and owned before paying, and its FIRST
+      -- payment ever. Rows that are not payments (no full-price, positive-money provider event: a $0 trial, a promo, a
+      -- discount) are skipped and use up nothing. An older workspace that promotes a new account to owner never qualifies.
       select tx.* into t
         from public.organizations o
         join public.org_members own on own.org_id = o.id and own.user_id = j.invitee_id and own.role = 'owner'
         join public.credit_transactions tx on tx.org_id = o.id
        where o.created_by = j.invitee_id
-         and o.created_at >= j.created_at
+         and o.created_at >= born
          and o.id <> p_link.org_id
          and not public.credits_exempt(o.id)
          and own.created_at <= tx.created_at
          and tx.kind in ('purchase', 'subscription')
-         and tx.amount >= s.referral_min_credits
          and tx.external_id is not null
-         and tx.created_at >= j.created_at
-         and tx.created_at >= s.referral_started_at
-         and tx.created_at < j.created_at + make_interval(days => s.referral_qualify_days)
+         and public.referral_payment_paid(tx.external_id)
          and not exists (select 1 from public.credit_transactions p
-                          where p.org_id = o.id and p.kind in ('purchase', 'subscription')
-                            and (p.created_at < tx.created_at or (p.created_at = tx.created_at and p.id < tx.id)))
-         and not exists (select 1 from public.referral_rewards x where x.purchase_external_id = tx.external_id)
+                          where p.org_id = o.id and p.kind in ('purchase', 'subscription') and p.external_id is not null
+                            and (p.created_at < tx.created_at or (p.created_at = tx.created_at and p.id < tx.id))
+                            and public.referral_payment_paid(p.external_id))
        order by tx.created_at, tx.id
        limit 1;
       continue when t.id is null;
-      -- Real money: the provider's own event for this transaction charged more than nothing. Until that row is there
-      -- (the webhook records it after crediting), nothing is decided.
-      continue when not exists (
-        select 1 from public.payment_events e
-         where e.transaction_id = t.external_id
-           and ((e.provider = 'paddle' and e.event_type = 'transaction.completed')
-                or (e.provider = 'dodo' and e.event_type = 'payment.succeeded'))
-           and e.status in ('processed', 'duplicate')
-           and e.amount_minor > 0);
+      -- That first payment, and only it, decides: big enough, within the window from the account, made while the programme
+      -- was open, not already a referral, and (in USD) at least half the minimum's base price.
+      continue when t.amount < s.referral_min_credits
+                 or t.created_at < born
+                 or t.created_at >= born + make_interval(days => s.referral_qualify_days)
+                 or not public.referral_was_open(t.created_at)
+                 or exists (select 1 from public.referral_rewards x where x.purchase_external_id = t.external_id)
+                 or exists (select 1 from public.payment_events e
+                             where e.transaction_id = t.external_id and e.currency = 'USD'
+                               and e.status in ('processed', 'duplicate')
+                               and e.amount_minor < ceil(s.referral_min_credits / 2));
 
       member := exists (select 1 from public.org_members om where om.org_id = t.org_id and om.user_id = p_link.user_id)
                 or exists (select 1 from public.org_members om where om.org_id = p_link.org_id and om.user_id = j.invitee_id);
@@ -830,7 +900,7 @@ begin
     'enabled', s.referral_enabled,
     'links_open', s.enabled,
     'milestone_enabled', s.milestone_enabled,
-    'started_at', s.referral_started_at,
+    'open_since', (select opened_at from public.referral_open_periods where closed_at is null),
     'credits', s.referral_credits,
     'min_credits', s.referral_min_credits,
     'hold_days', s.referral_hold_days,
@@ -857,6 +927,10 @@ begin
     'clawed', (select count(*) from public.referral_rewards where status in ('clawing', 'clawed')),
     'claw_owed', coalesce((select sum(claw_shortfall) from public.referral_rewards where status = 'clawing'), 0),
     'reversed_by_event', (select count(*) from public.referral_rewards where reversed_by = 'event'),
+    -- Referrals whose link is gone (the referrer's account was deleted): no longer settled, an operator's decision.
+    'orphaned', (select count(*) from public.referral_rewards x
+                  where x.status in ('held', 'paid', 'clawing')
+                    and not exists (select 1 from public.friend_invite_links l where l.id = x.link_id)),
     'milestone_rewards', (select count(*) from public.friend_invite_rewards));
 end
 $$;
@@ -912,7 +986,15 @@ begin
          updated_at = now()
    where id
   returning * into n;
+  -- The open periods: off -> on opens one, on -> off closes it. A join or a payment counts only inside one.
+  if p_enabled and not s.referral_enabled then
+    insert into public.referral_open_periods (opened_at, opened_by) values (now(), auth.uid());
+  elsif s.referral_enabled and not p_enabled then
+    update public.referral_open_periods set closed_at = now(), closed_by = auth.uid() where closed_at is null;
+  end if;
   detail := jsonb_build_object(
+    'period', case when p_enabled and not s.referral_enabled then 'opened'
+                   when s.referral_enabled and not p_enabled then 'closed' end,
     'old', jsonb_build_object('referral_enabled', s.referral_enabled, 'links_open', s.enabled, 'milestone_enabled', s.milestone_enabled,
                               'credits', s.referral_credits, 'min_credits', s.referral_min_credits, 'hold_days', s.referral_hold_days,
                               'qualify_days', s.referral_qualify_days, 'monthly_cap', s.referral_monthly_cap,
@@ -981,6 +1063,8 @@ grant execute on function public.join_friend_invite(text) to authenticated;
 revoke all on function public.credit_transactions_apply_lots() from public, anon, authenticated, service_role;
 
 revoke all on function public.referral_payment_reversed(text) from public, anon, authenticated, service_role;
+revoke all on function public.referral_payment_paid(text) from public, anon, authenticated, service_role;
+revoke all on function public.referral_was_open(timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.referral_settle_locked(public.friend_invite_links) from public, anon, authenticated, service_role;
 revoke all on function public.claim_referral_rewards() from public, anon, service_role;
 revoke all on function public.my_referrals() from public, anon, service_role;
@@ -1023,10 +1107,12 @@ end $$;
 -- Verify (run after applying; every column should read true):
 --   select
 --     (select not referral_enabled and not milestone_enabled from public.friend_invite_settings) as both_switches_off,
+--     not exists (select 1 from public.referral_open_periods where closed_at is null) as never_open_yet,
 --     (select bool_and(relrowsecurity) from pg_class
---       where oid in ('public.referral_rewards'::regclass, 'public.referral_settle_runs'::regclass)) as rls_on,
+--       where oid in ('public.referral_rewards'::regclass, 'public.referral_settle_runs'::regclass,
+--                     'public.referral_open_periods'::regclass)) as rls_on,
 --     not exists (select 1 from information_schema.role_table_grants
---                  where table_schema = 'public' and table_name in ('referral_rewards', 'referral_settle_runs')
+--                  where table_schema = 'public' and table_name in ('referral_rewards', 'referral_settle_runs', 'referral_open_periods')
 --                    and grantee in ('anon', 'authenticated', 'public', 'service_role')) as no_table_grants,
 --     has_function_privilege('anon', 'public.referral_terms()', 'EXECUTE')
 --       and not has_function_privilege('anon', 'public.my_referrals()', 'EXECUTE')
