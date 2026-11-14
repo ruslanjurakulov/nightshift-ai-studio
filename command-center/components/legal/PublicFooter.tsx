@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { CONTACT_HREF, LEGAL } from "@/lib/legal";
-import { REFUND_PATH, ROADMAP_PATH } from "@/lib/public-paths";
+import { REFUND_PATH, ROADMAP_PATH, TRUST_PATH } from "@/lib/public-paths";
 import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { Wordmark } from "@/components/site/Wordmark";
 import { devFor } from "@/lib/i18n/dev";
@@ -67,6 +67,8 @@ export function PublicFooter({ t }: { t: Dictionary }) {
       title: f.company,
       links: [
         contact,
+        // What Nightshift may do with a channel, keys and money, and how to report a problem (app/trust).
+        { href: TRUST_PATH, label: t.site.trust.footer },
         { href: "/login", label: f.signIn },
         { href: "/#google-data", label: f.googleData },
         { href: GOOGLE_PERMISSIONS, label: f.googleAccess, external: true },

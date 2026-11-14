@@ -1,3 +1,5 @@
+import { pillarEn } from "../autopilot-pillar/en";
+
 /**
  * The landing's autopilot walk-through (components/site/AutopilotDemo.tsx) and the phone's Shorts feed of the vertical samples
  * (components/site/ShortsFeed.tsx). English is the source of truth; ru.ts and uz.ts are typed against it.
@@ -132,6 +134,8 @@ export const siteAutopilotEn = {
       secondary: "How publishing works",
     },
   },
+  /** The YouTube Autopilot pillar, /solutions/youtube-channels (lib/i18n/autopilot-pillar). */
+  pillar: pillarEn,
   shorts: {
     open: "Watch as Shorts",
     openNote: "{n} vertical samples, full screen",

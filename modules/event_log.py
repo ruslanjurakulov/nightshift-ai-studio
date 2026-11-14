@@ -134,7 +134,8 @@ PUBLISH_ALLOWED = "publish.allowed"
 # failure — `publish.allowed` still fired; the video is finished and on disk.
 PUBLISH_HELD = "publish.held"
 # The video WAS uploaded, but YouTube applied a stricter privacy than the run asked for (an API
-# project that has not passed the audit locks uploads private). `video.published` still fires,
+# project that had not passed the audit used to have uploads locked private; YouTube lifted that on
+# 2026-11-02, so this now means YouTube applied something else for another reason). `video.published` still fires,
 # carrying the privacy the video really has. Deliberately NOT `publish.held`: no consumer counts
 # this as held-for-review, because the video is on the channel, only not public.
 PRIVACY_FORCED = "publish.privacy_forced"

@@ -1,6 +1,7 @@
 import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
+import { trustUz } from "../trust/uz";
 import { siteAutopilotUz } from "../site-autopilot/uz";
 import { publicStatsUz } from "../public-stats/uz";
 
@@ -38,7 +39,7 @@ export const siteUz: SiteDictionary = {
     log: "Jurnal",
     rows: [
       { id: "channel", name: "Kanal", detail: "Google rozilik oynasi orqali ulangan" },
-      { id: "topic", name: "Mavzu", detail: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan" },
+      { id: "topic", name: "Mavzu", detail: "2050-yilda futbol qanday boʻladi" },
       { id: "script", name: "Ssenariy", detail: "Oʻrganilgan, kanal tilida yozilgan, tekshirilgan" },
       { id: "video", name: "Video", detail: "Ovoz, vizual, subtitrlar va montaj — kanal ovozida" },
       { id: "approval", name: "Sizning tasdigʻingiz", detail: "YouTube’ga shaxsiy holda yuklandi" },
@@ -57,7 +58,7 @@ export const siteUz: SiteDictionary = {
     bareNote: "Jarayon namunasi: siz soʻraysiz, Nightshift rejalashtiradi, videoni tayyorlaydi, uni YouTube’ga yopiq holda yuklaydi va sizni kutadi.",
     label: "Video yoʻli",
     steps: [
-      { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
+      { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "2050-yilda futbol qanday boʻladi", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
       { id: "plan", tab: "Reja", title: "Nima tayyorlanishini koʻring", body: "Ssenariy, ovoz, tasvir va subtitrlar — kanalingiz tilida.", items: [{ name: "Ssenariy", detail: "Oʻrganiladi va tekshiriladi" }, { name: "Ovoz", detail: "Kanalning oʻz ovozi" }, { name: "Tasvir", detail: "Kanal uslubida" }, { name: "Subtitrlar", detail: "Kanal tilida" }], priceNote: "Narx boshlashdan oldin tugmada koʻrinadi", key: "Boshlash" },
       { id: "approve", tab: "Tasdiq", title: "Koʻring, keyin qaror qiling", body: "Video YouTube’da shaxsiy holda kutadi. Hozircha hech narsa ommaviy emas.", lamp: "YouTube’da shaxsiy", check: "Nashr tekshiruvidan oʻtdi", key: "Videoni tasdiqlash", waiting: "Sizni kutmoqda" },
       { id: "live", tab: "Efirda", title: "Siz aytganda ommaviy", body: "Siz videoni ommaviy qildingiz, endi u efirda.", lamp: "YouTube’da ommaviy", sub: "Siz nashr qildingiz" },
@@ -72,13 +73,13 @@ export const siteUz: SiteDictionary = {
     fieldLabel: "Mavzuingiz",
     placeholder: "Kanalingiz uchun mavzu",
     pickLabel: "Yoki shulardan birini tanlang",
-    topics: ["Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", "Mayoq linzasi qanday ishlaydi", "Oy Yerga nega doim bir tomoni bilan qaraydi", "Xamir nega kabaradi"] as string[],
+    topics: ["2050-yilda futbol qanday boʻladi", "Mayoq linzasi qanday ishlaydi", "Oy Yerga nega doim bir tomoni bilan qaraydi", "Xamir nega kabaradi"] as string[],
     run: "Rejani koʻrsatish",
     again: "Boshqa mavzu",
     drafting: "Namuna tayyorlanmoqda…",
     sampleNote: "“{topic}” mavzusi uchun namuna reja. Oʻz mavzuingizni yozing, u oʻzgaradi.",
     thumbNote: "Chizilgan oʻrinbosar: sizning soʻzlaringiz muqovada qanday turishi.",
-    thumbArtNote: "Bu namunaning foni sunʼiy intellekt yaratgan tasvir.",
+    thumbArtNote: "Bu namunaning foni — Studiyamizda sunʼiy intellekt yaratgan klipning birinchi kadri.",
     ready: "Namuna reja tayyor. Bu yerda hech narsa yaratilmagan.",
     noTopic: "Avval mavzuni yozing yoki quyidan tanlang.",
     sections: [
@@ -134,7 +135,7 @@ export const siteUz: SiteDictionary = {
     ],
   },
   approvalCard: {
-    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Namuna mavzuning muqovasi — sunʼiy intellekt yaratgan tasvir: Samarqanddagi Registon, quyosh botayotgan payt. Undagi hamma narsa namuna.",
+    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Namuna mavzuning muqovasi — Studiyamizda sunʼiy intellekt yaratgan klip: tunda neon shahar uzra suzib yurgan stadion. Undagi hamma narsa namuna.",
   },
   fx: {
     pause: "Harakatni toʻxtatish",
@@ -174,10 +175,10 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Bitta rasm boshqacha: Ipak yoʻli misoli koʻrsatilgan har bir joydagi Samarqand Registoni Nightshift uchun sunʼiy intellekt yaratgan tasvir. Bu bezak, mahsulotning skrinshoti emas.",
+    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm ham mahsulotning skrinshoti emas.",
     licence: "Pexels litsenziyasi",
-    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan. Bitta istisno: Ipak yoʻli misoli koʻrsatilgan har bir joydagi Samarqand Registoni Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvir, mahsulotning skrinshoti emas.",
-    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan; yuqorida aytilgan Ipak yoʻli misolidagi Registon rasmi bundan mustasno.",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
+    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
   },
   gallery: {
     label: "Studiyada yaratilgan",
@@ -267,7 +268,6 @@ export const siteUz: SiteDictionary = {
       "tool-upscale": "Sunʼiy intellekt yaratgan tasvir: piksellashgan kapalak va uning oʻzi, ammo aniq",
       "tool-cutout": "Sunʼiy intellekt yaratgan tasvir: qogʻoz kartochkadan olingan oʻsimlik, konturi qolgan",
       "tool-styles": "Sunʼiy intellekt yaratgan tasvir: bir xil guldonning turli uslubdagi uchta kartochkasi",
-      "thumb-silkroad": "Sunʼiy intellekt yaratgan tasvir: Samarqanddagi Registon oltin soatda",
     },
   },
   caps: {
@@ -282,7 +282,7 @@ export const siteUz: SiteDictionary = {
         title: "Bir qatordan butun video.",
         body: "Mavzuni yozing. Nightshift ssenariy yozadi, ovozlaydi, tasvir va subtitrlar qoʻshadi hamda videoni kanalingiz uslubida montaj qiladi. Narxni boshlashdan oldin koʻrasiz.",
         cta: "Video yaratish",
-        bubble: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgani haqida video qil.",
+        bubble: "2050-yilda futbol qanday boʻlishi haqida video qil.",
         reply: "video yaratdi",
         chips: ["Kanalingiz tili", "Sokin diktor", "YouTube’da shaxsiy"] as string[],
       },
@@ -369,7 +369,8 @@ export const siteUz: SiteDictionary = {
   },
   how: {
     priceLater: "Narx shu yerda, boshlashdan oldin koʻrinadi",
-    phoneAlt: "Tayyor videodan namuna kadr: sunʼiy intellekt yaratgan tasvir — Samarqanddagi Registonda koshinli madrasa peshtoqi va minora, quyosh botayotgan payt",
+    phoneAlt: "Tayyor video namunasi, Studiyamizda sunʼiy intellekt yaratgan klip: yorugʻ formadagi futbolchi neon shahar uzra suzib yurgan stadionda qaychi usulida zarba beradi",
+    thumbAlt: "Studiyamizda sunʼiy intellekt yaratgan klip: tunda neon shahar uzra suzib yurgan futbol stadioni",
     slug: "Video yoʻli",
     title: "Bitta efir rejasi — kanaldan YouTube’gacha.",
     lead: "Har bir qadam ishlayotganda koʻrinib turadi. Oxirgisi doim sizniki.",
@@ -441,8 +442,8 @@ export const siteUz: SiteDictionary = {
       title: "Muharrir",
       tag: "Rasm",
       tracks: { video: "Video", text: "Matn", music: "Musiqa" },
-      clips: ["Boshlanish", "Bozor", "Karvon"],
-      caption: "Samarqand, 1404",
+      clips: ["Boshlanish", "Stadion", "Takror"],
+      caption: "Final, 2050",
       fade: "Pasayish",
     },
   },
@@ -539,6 +540,8 @@ export const siteUz: SiteDictionary = {
   studioPage: studioPageUz,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapUz,
+  /** The public /trust page (lib/i18n/trust; English is the source). */
+  trust: trustUz,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotUz,
   liveStats: publicStatsUz,
@@ -594,7 +597,7 @@ export const siteUz: SiteDictionary = {
         title: "Nashr pulti",
         channel: "Kanalingiz",
         tag: "Tasvir",
-        video: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan",
+        video: "2050-yilda futbol qanday boʻladi",
         private: "YouTube’da shaxsiy",
         check: "Nashr tekshiruvi",
         checkState: "Oʻtdi",
@@ -607,7 +610,7 @@ export const siteUz: SiteDictionary = {
         title: "Studiya",
         tag: "Rasm",
         describe: "Tasvirlab bering",
-        prompt: "Shom chogʻi Registon yonida karvon, uzun soyalar, iliq chang",
+        prompt: "Tunda neon shahar uzra suzib yurgan stadion, toʻp ortida yorugʻ iz",
         shape: "Shakl",
         style: "Uslub",
         styleName: "Tungi bozor",

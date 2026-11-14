@@ -460,8 +460,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-result-art { position: relative; overflow: hidden; border-radius: 20px; background: #12151c; aspect-ratio: 16 / 9; }
 .nx-result-art[data-ratio="audio"] { aspect-ratio: 16 / 7; }
 .nx-result-art .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
-/* The Silk Road example's picture in a chat card's frame (/pricing): a 16:9 picture in a 16:10 or 16:9 frame, covered. */
-.nx-result-art img[data-art-id="thumb-silkroad"] { object-fit: cover; }
 .nx-result-badge {
   position: absolute;
   left: 12px;
@@ -1776,12 +1774,10 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
 .nx-step-live[data-step="approve"] { flex-direction: row; align-items: stretch; justify-content: center; gap: 14px; padding-block: 12px; }
 .nx-step-phone { position: relative; flex: none; height: 216px; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 20px; border: 3px solid #1b1b22; background: #0b0b10; box-shadow: 0 12px 30px -18px rgba(0, 0, 0, 0.6); }
 @media (min-width: 860px) { .nx-step-phone { height: 100%; } }
-/* The finished video of step 1's ask: the Silk Road example's own 16:9 picture (lib/site/art.ts THUMB_ART), cut to the phone's 9:16.
-   A 9:16 cut of a 16:9 frame is 32% of its width; 86% across puts that window on the right madrasa's portal and its minaret (the
-   picture's x 565 to 869 of 960), not on the empty square in the middle. The drift (.nx-drift-pic: reduced motion and the pause
-   switch keep it still) pushes in towards the minaret, so the slow zoom never uncovers the plaza's empty left. */
-.nx-step-shot { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 86% 50%; }
-.nx-step-phone .nx-step-shot { transform-origin: 70% 35%; }
+/* The finished video of step 1's ask: the example's own vertical clip (components/site/slots.ts EXAMPLE_PHONE_JOB), already about
+   9:16 (1280 x 2240), so it fills the phone centred with almost no crop; the clip (.nx-clip) covers its first frame the same way.
+   The frame's drift (.nx-drift-pic) runs only where motion is allowed and the clip is not playing over it. */
+.nx-step-shot { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
 .nx-step-private { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 2; padding: 3px 6px; border-radius: 8px; background: rgba(0, 0, 0, 0.8); font-size: 13px; line-height: 1.25; color: #fff; text-align: center; }
 .nx-step-credit { position: absolute; top: 6px; left: 6px; right: 6px; z-index: 2; justify-content: center; }
 .nx-step-credit .nx-ai-badge { padding: 2px 8px; font-size: 13px; line-height: 1.25; text-align: center; }

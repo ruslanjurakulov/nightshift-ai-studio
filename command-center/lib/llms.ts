@@ -2,7 +2,7 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { getDevDictionary } from "@/lib/i18n/dev";
 import { getLegalTexts } from "@/lib/legal-docs";
 import { isSolutionId, solutionHref, SOLUTIONS_PATH } from "@/lib/solutions";
-import { REFUND_PATH, ROADMAP_PATH, STUDIO_PAGE_PATH } from "@/lib/public-paths";
+import { REFUND_PATH, ROADMAP_PATH, STUDIO_PAGE_PATH, TRUST_PATH } from "@/lib/public-paths";
 import { listedPagePaths } from "@/lib/site-pages";
 
 /**
@@ -39,7 +39,7 @@ const SECTIONS: Section[] = ["Product", "Solutions", "Developers", "Legal"];
 function sectionOf(path: string): Section {
   if (path === "/" || path === STUDIO_PAGE_PATH || path === "/pricing" || path === ROADMAP_PATH) return "Product";
   if (path === SOLUTIONS_PATH || path.startsWith(SOLUTIONS_PATH + "/")) return "Solutions";
-  if (path === "/privacy" || path === "/terms" || path === REFUND_PATH) return "Legal";
+  if (path === "/privacy" || path === "/terms" || path === REFUND_PATH || path === TRUST_PATH) return "Legal";
   return "Developers";
 }
 
@@ -63,6 +63,7 @@ function describe(path: string): { title: string; description: string } | null {
   if (path === "/privacy") return { title: legal.privacy.title, description: legal.privacy.summary };
   if (path === "/terms") return { title: legal.terms.title, description: t.site.legalMeta.terms };
   if (path === REFUND_PATH) return { title: legal.refund.title, description: legal.refund.summary };
+  if (path === TRUST_PATH) return { title: t.site.trust.title, description: t.site.trust.meta.description };
   return null;
 }
 

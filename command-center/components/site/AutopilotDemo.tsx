@@ -206,7 +206,7 @@ export function AutopilotDemo({ copy }: { copy: Copy }) {
               {copy.cta.primary}
               <ArrowRight aria-hidden />
             </Link>
-            <Link href="/studio#publish" className="nx-link">
+            <Link href="/solutions/youtube-channels#control" className="nx-link">
               {copy.cta.secondary}
             </Link>
           </div>
