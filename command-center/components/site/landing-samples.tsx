@@ -10,6 +10,7 @@ import { landingExcludedJobs } from "@/components/site/slots";
 import { ShowcaseCarousel } from "@/components/site/ShowcaseCarousel";
 import { BeforeAfter } from "@/components/site/BeforeAfter";
 import { PromptTicker } from "@/components/site/PromptTicker";
+import { EFFECTS } from "@/lib/effects/catalog";
 
 /**
  * The landing's three moving pieces, as Server Components that build their plain props from the data file and hand them to the
@@ -60,9 +61,13 @@ function slide(it: Item, c: ReturnType<typeof siteCarouselCopy>["carousel"], tit
   };
 }
 
-/** The samples whose files are here, less the ones the page shows elsewhere or not at all (`exclude`). */
+/**
+ * The samples whose files are here, less the ones the page shows elsewhere or not at all (`exclude`), and less the effects'
+ * previews: the Effects section shows each of those as its effect's result, so none of these pieces shows it again.
+ */
 function items(entries: readonly ShowcaseEntry[], files: Readonly<Record<string, ShowcaseFiles>>, exclude: readonly string[]): Item[] {
-  return showcaseItems(entries, files).filter(({ e }) => !exclude.includes(e.jobId));
+  const previews = effectPreviewJobs();
+  return showcaseItems(entries, files).filter(({ e }) => !exclude.includes(e.jobId) && !previews.includes(e.jobId));
 }
 
 /** The ticker's samples: wide (its box is 16:9) text-to-video clips with words. */
@@ -70,13 +75,80 @@ function tickerItems(list: readonly Item[]): Item[] {
   return list.filter(({ e, f }) => e.kind === "video" && e.capability === "t2v" && f.clip !== null && e.prompt.trim() !== "" && e.width > e.height);
 }
 
+
+/** The samples the Effects section shows as its effects' previews (lib/effects/catalog.ts): no other landing surface shows them. */
+export function effectPreviewJobs(): string[] {
+  return EFFECTS.flatMap((x) => (x.previewJobId ? [x.previewJobId] : []));
+}
+
 /**
- * The jobs picture → video and the ticker show, given the same `exclude`: the carousel leaves them out, so within these pieces no
- * clip is shown twice.
+ * How many samples the landing's explore grid shows besides the ones the model tiles link to: two rows on a wide screen (four
+ * columns), four on a phone (two). The grid was every sample, 8,000 px at 1440 and 23,000 px (27 screens) on a phone, with the
+ * same clips as the carousel above it.
+ */
+export const LANDING_GALLERY_MAX = 8;
+
+/**
+ * The sample each model tile on the landing links to (`#sample-<job>`, components/landing/Landing.tsx ModelTiles): per model, the
+ * first of the landing's samples (not in `exclude`) in the data file's order. Its box must be on the page, once.
+ */
+export function landingTileJobs(exclude: readonly string[], entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
+  const models = new Set<string>();
+  const out: string[] = [];
+  for (const { e } of showcaseItems(entries, files)) {
+    if (exclude.includes(e.jobId) || models.has(e.modelId)) continue;
+    models.add(e.modelId);
+    out.push(e.jobId);
+  }
+  return out;
+}
+
+/**
+ * How the landing shares its samples out, so each is shown once (tests/site-landing-dedupe.test.tsx). In this order:
+ * - picture → video takes every pair (its clip's box carries the `#sample-` anchor a model tile may point at);
+ * - the explore grid takes the samples the model tiles link to (their anchors are its cards), except a pair's clip;
+ * - the ticker takes the wide text-to-video clips with words that are left;
+ * - the grid fills up to LANDING_GALLERY_MAX with what is left, in the data file's order;
+ * - the carousel takes the rest.
+ * None takes an effect's preview (the Effects section shows it), except the grid when a model tile links to it: the Effects
+ * section's frames carry no anchor, so that one sample is in both until they do.
+ */
+function landingSplit(exclude: readonly string[], entries: readonly ShowcaseEntry[], files: Readonly<Record<string, ShowcaseFiles>>) {
+  const pairs = beforeAfterPairs(items(entries, files, exclude));
+  const pairJobs = pairs.flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]);
+  const pairClips = new Set(pairs.map(({ clip }) => clip.e.jobId));
+  const tiles = landingTileJobs(exclude, entries, files).filter((j) => !pairClips.has(j));
+  const ticker = tickerItems(items(entries, files, [...exclude, ...pairJobs, ...tiles])).map(({ e }) => e.jobId);
+  const sections = [...pairJobs, ...ticker];
+  const fill = items(entries, files, [...exclude, ...sections, ...tiles])
+    .slice(0, Math.max(0, LANDING_GALLERY_MAX - tiles.length))
+    .map(({ e }) => e.jobId);
+  const grid = new Set([...tiles, ...fill]);
+  const gallery = showcaseItems(entries, files)
+    .map(({ e }) => e.jobId)
+    .filter((j) => grid.has(j));
+  return { pairs, ticker, sections, gallery };
+}
+
+/**
+ * The jobs picture → video and the ticker show, given the same `exclude`: the carousel and the grid leave them out, so within these
+ * pieces no clip is shown twice.
  */
 export function sampleSectionJobs(exclude: readonly string[], entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
-  const list = items(entries, files, exclude);
-  return [...beforeAfterPairs(list).flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]), ...tickerItems(list).map(({ e }) => e.jobId)];
+  return landingSplit(exclude, entries, files).sections;
+}
+
+/** The landing's explore grid's share of the samples (landingSplit), in the data file's order. */
+export function landingGalleryJobs(exclude: readonly string[], entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
+  return landingSplit(exclude, entries, files).gallery;
+}
+
+/** What the landing's grid leaves out: every sample that is not its share (ShowcaseGallery takes an exclusion list). */
+export function landingGalleryExclude(exclude: readonly string[], entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
+  const share = new Set(landingGalleryJobs(exclude, entries, files));
+  return showcaseItems(entries, files)
+    .map(({ e }) => e.jobId)
+    .filter((j) => !share.has(j));
 }
 
 type Props = {
@@ -94,9 +166,13 @@ type Props = {
   exclude?: readonly string[];
 };
 
-/** The coverflow of the samples, under the facts: every one not left out, and not shown by picture → video or the ticker. */
+/**
+ * The coverflow of the samples, under the facts: every one not left out, and not shown by picture → video, the ticker, the
+ * Effects section or the explore grid (landingGalleryJobs).
+ */
 export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = landingExcludedJobs() }: Props) {
-  const elsewhere = [...exclude, ...sampleSectionJobs(exclude, entries, files)];
+  const split = landingSplit(exclude, entries, files);
+  const elsewhere = [...exclude, ...split.sections, ...split.gallery];
   const slides = carouselOrder(items(entries, files, elsewhere).map(slideMaker(t, locale, signedIn, now)));
   if (slides.length === 0) return null;
   const c = siteCarouselCopy(locale).carousel;
@@ -160,7 +236,11 @@ export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_
  * the hero is never the hero's (its slot is in landingExcludedJobs).
  */
 export function SampleTicker({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = landingExcludedJobs() }: Props) {
-  const list = tickerItems(items(entries, files, exclude)).map(slideMaker(t, locale, signedIn, now));
+  // The ticker's share (landingSplit): not a sample the explore grid holds for a model tile's link.
+  const share = new Set(landingSplit(exclude, entries, files).ticker);
+  const list = tickerItems(items(entries, files, exclude))
+    .filter(({ e }) => share.has(e.jobId))
+    .map(slideMaker(t, locale, signedIn, now));
   if (list.length === 0) return null;
   const c = siteCarouselCopy(locale).ticker;
   const g = t.site.gallery;

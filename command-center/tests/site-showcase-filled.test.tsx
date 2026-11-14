@@ -63,7 +63,19 @@ describe("with one sample merged", () => {
     const tile = container.querySelector(`#models [data-showcase-entry="${FIXTURE_JOB}"]`)!;
     expect(tile.querySelector(`a[href="#sample-${FIXTURE_JOB}"]`)).toBeTruthy();
     expect(container.querySelector(`#sample-${FIXTURE_JOB}`)).toBeTruthy();
-    expect(section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)?.textContent).toMatch(/Runway/);
+    // The card is its picture and the AI-generated badge (media first); its model is named in the dialog it opens, which is the
+    // sample's own box too (components/site/SampleDetail.tsx).
+    const card = section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
+    expect(card.textContent).toContain(t.site.gallery.badge);
+    expect(card.textContent).not.toMatch(/Runway/);
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    fireEvent.click(card.querySelector("button.nx-gallery-open")!);
+    const dialog = screen.getByRole("dialog", { name: t.site.gallery.detail });
+    expect(dialog.dataset.showcaseEntry).toBe(FIXTURE_JOB);
+    expect(dialog.textContent).toMatch(/Runway/);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    back.mockRestore();
     const rest = container.cloneNode(true) as HTMLElement;
     rest.querySelectorAll("[data-showcase-entry]").forEach((n) => n.remove());
     expect(rest.textContent).not.toMatch(PROVIDER_BRANDS);

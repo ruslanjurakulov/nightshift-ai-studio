@@ -29,7 +29,7 @@ import { FORMATS } from "@/lib/site/formats";
 import { STILL_MS, beforeAfterPairs, carouselOrder, clock, firstSentence, ringIndex, ringOffset, sliderKey } from "@/lib/site/carousel";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 import { PHONE_TURNS, pickTurns } from "@/components/site/clip-turns";
-import { SampleCarousel, SampleCompare, SampleTicker, sampleSectionJobs } from "@/components/site/landing-samples";
+import { SampleCarousel, SampleCompare, SampleTicker, effectPreviewJobs, landingGalleryJobs, sampleSectionJobs } from "@/components/site/landing-samples";
 import { LANDING_LEFT_OUT, landingExcludedJobs } from "@/components/site/slots";
 import { TOOL_JOBS } from "@/lib/site/tool-samples";
 import { holdClips } from "@/lib/site/clip-hold";
@@ -78,7 +78,9 @@ const items = showcaseItems();
 const SLOT_JOBS = landingExcludedJobs();
 const shown = items.filter(({ e }) => !SLOT_JOBS.includes(e.jobId));
 const carouselJobs = () => {
-  const elsewhere = [...SLOT_JOBS, ...sampleSectionJobs(SLOT_JOBS)];
+  // The carousel takes what the other landing surfaces leave: picture → video, the ticker, the explore grid's share and the
+  // Effects section's previews (components/site/landing-samples.tsx landingSplit).
+  const elsewhere = [...SLOT_JOBS, ...sampleSectionJobs(SLOT_JOBS), ...landingGalleryJobs(SLOT_JOBS), ...effectPreviewJobs()];
   return carouselOrder(items.filter(({ e }) => !elsewhere.includes(e.jobId)).map(({ e }) => e));
 };
 const centre = (root: ParentNode) => root.querySelector<HTMLElement>(".nxc-card[data-offset='0']")!;

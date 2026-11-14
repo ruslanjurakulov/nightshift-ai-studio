@@ -181,7 +181,7 @@ export const siteUz: SiteDictionary = {
   gallery: {
     label: "Studiyada yaratilgan",
     title: "Nightshift’da yaratilgan",
-    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Studiyada yaratgan. Har birida uni yaratgan model va unga berilgan soʻzlar koʻrsatilgan.",
+    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Studiyada yaratgan. Istalganini oching: uni yaratgan model va unga berilgan soʻzlar koʻrinadi.",
     badge: "Sunʼiy intellekt yaratgan",
     model: "Model",
     prompt: "Soʻrov",
@@ -201,6 +201,9 @@ export const siteUz: SiteDictionary = {
     bgImage: "Sunʼiy intellekt yaratgan tasvir",
     source: "Shu rasmdan yaratilgan:",
     altSource: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir: {model} modeli",
+    open: "Namunani ochish",
+    detail: "Namuna haqida",
+    close: "Yopish",
   },
   prompt: {
     label: "Qanday video yoki rasm kerakligini tasvirlang",

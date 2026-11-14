@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/link", () => ({
@@ -27,13 +27,14 @@ import { dictionaries, fmt, LOCALES } from "@/lib/i18n";
 import raw from "@/lib/site/showcase.json";
 import { SHOWCASE_ENTRIES, modelLeftOut, parseShowcase, parseShowcaseEntry, showcaseModels } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { ShowcaseGallery, showcaseItems } from "@/components/site/ShowcaseGallery";
+import { GRID_GUTTER_ROWS, ShowcaseGallery, gridSpan, showcaseItems } from "@/components/site/ShowcaseGallery";
 import { cutWords, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
 import { DEFAULT_AFTER_AUTH, STUDIO_NEXT_PREFIX, afterSignupPath, safeLoginReturn, safeNextPath, studioNext } from "@/lib/safe-redirect";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { prefillFromImprove, IMPROVE_PROMPT_MAX } from "@/lib/creative/improve";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { SLOTS } from "@/components/site/samples";
+import { useClipsHeld } from "@/lib/site/clip-hold";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, makerCreditProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
@@ -124,6 +125,30 @@ describe("the data file", () => {
   });
 });
 
+/**
+ * Opens a card's sample (components/site/SampleDetail.tsx) and returns its dialog. The dialog is drawn on <body>, outside the
+ * rendered container, so it is looked up in the document. history.back is mocked to do what a browser does (pop the dialog's
+ * entry), so closing it closes it; `restore` puts history.back back.
+ */
+function openSample(card: Element): { dialog: HTMLElement; opener: HTMLButtonElement; restore: () => void } {
+  const back = vi.spyOn(window.history, "back").mockImplementation(() => window.dispatchEvent(new PopStateEvent("popstate")));
+  const opener = card.querySelector<HTMLButtonElement>("button.nx-gallery-open")!;
+  expect(opener, "the card has no button that opens it").toBeTruthy();
+  act(() => {
+    fireEvent.click(opener);
+  });
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+  expect(dialog, "pressing the card opened no dialog").toBeTruthy();
+  return { dialog, opener, restore: () => back.mockRestore() };
+}
+
+function closeSample(dialog: HTMLElement, restore: () => void) {
+  act(() => {
+    fireEvent.keyDown(dialog, { key: "Escape" });
+  });
+  restore();
+}
+
 describe("the gallery", () => {
   it("renders nothing with no entry, or with entries whose files are missing (never a placeholder)", () => {
     expect(render(<ShowcaseGallery t={t} locale="en" entries={[]} />).container.innerHTML).toBe("");
@@ -133,107 +158,268 @@ describe("the gallery", () => {
     expect(showcaseItems(SHOWCASE_ENTRIES, {})).toEqual([]);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: one entry shows the badge, the model, the prompt, the date and Try this prompt, and no maker's credit", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: a card at rest is its picture and the AI-generated badge; no model, date, note or text block under it", (code) => {
     const d = dictionaries[code];
+    const g = d.site.gallery;
     const { container } = render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
     const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
     expect(card).toBeTruthy();
-    expect(card.querySelector(".nx-result-badge")?.textContent).toBe(d.site.gallery.badge);
-    expect(card.textContent).toContain("Runway Gen-4.5");
-    // The entry carries Runway's credit as data (the registry's attribution); the public card does not render it.
-    expect(FIXTURE_ENTRY.attribution).not.toBeNull();
+    // The badge is on the picture, always (it is required, and nothing may hide it).
+    expect(card.querySelector(".nx-gallery-pic > .nx-result-badge")?.textContent).toBe(g.badge);
+    // The model is named in the dialog only (the owner has not decided on the cards, 2026-11-14): not in the card's words, not in
+    // its picture's description, not in its link's name.
+    expect(card.textContent).not.toContain(FIXTURE_ENTRY.modelName);
+    expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(g.bgClip);
+    expect(card.querySelector(".nx-gallery-model, time, .nx-gallery-unavailable, .nx-gallery-use, .nx-gallery-source, .nx-gallery-body")).toBeNull();
+    for (const w of [g.notInStudio, g.gone, g.useNote, g.model, g.source]) expect(card.textContent).not.toContain(w);
+    // The card's direct children: the picture, the button that opens it, and the hover/focus layer. Nothing else under the picture.
+    expect([...card.children].map((c) => c.className)).toEqual(["nx-gallery-pic", "nx-gallery-open", "nx-gallery-over"]);
+    // The button is the whole card, named in this language and described by the sample's words.
+    const open = card.querySelector("button.nx-gallery-open") as HTMLButtonElement;
+    expect(open.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(open.getAttribute("aria-label")).toBe(g.open);
+    expect(document.getElementById(open.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    // The layer over the picture: the words (two lines by CSS) and "Use this prompt", never "try" a model the card does not name.
+    const over = card.querySelector(".nx-gallery-over") as HTMLElement;
+    expect(over.querySelector(".nx-gallery-prompt")?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    const use = within(over).getByRole("link", { name: g.use });
+    expect(use.getAttribute("href")).toBe(signupTryHref(FIXTURE_ENTRY));
+    expect(use.hasAttribute("aria-label")).toBe(false);
+    expect(document.getElementById(use.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    // The note on what the links do is said once, under the grid, not under each card.
+    expect(container.textContent).toContain(g.tryNoteSignedOut);
+    expect(container.textContent!.split(g.tryNoteSignedOut)).toHaveLength(2);
+    expect(container.textContent).not.toContain(g.useNote);
+    expect(container.querySelector("h2")?.textContent).toBe(g.title);
     expect(makerCreditProblems(container)).toEqual([]);
-    expect(within(card).queryByRole("link", { name: /powered by/i })).toBeNull();
-    expect(card.textContent).toContain(FIXTURE_ENTRY.prompt);
-    expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(FIXTURE_ENTRY.createdAt);
-    expect(card.querySelector("img")?.getAttribute("alt")).toContain("Runway Gen-4.5");
-    // An operator preview: the card says, as a fact, that the model is not in the Studio, and the button neither names it in its
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: the dialog shows the badge, the model, the whole prompt, the date and Use this prompt with its note, and no maker's credit", (code) => {
+    const d = dictionaries[code];
+    const g = d.site.gallery;
+    const { container } = render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
+    const { dialog, restore } = openSample(container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)!);
+    // The dialog is the sample's own box: the only kind of element that may name a model.
+    expect(dialog.dataset.showcaseEntry).toBe(FIXTURE_JOB);
+    expect(dialog.querySelector(".nx-result-badge")?.textContent).toBe(g.badge);
+    expect(dialog.querySelector(".nx-gallery-model strong")?.textContent).toBe("Runway Gen-4.5");
+    expect(dialog.querySelector(".nx-gallery-model")?.textContent).toContain(g.model);
+    expect(dialog.querySelector(".nx-sd-prompt")?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(dialog.querySelector("time")?.getAttribute("dateTime")).toBe(FIXTURE_ENTRY.createdAt);
+    expect(dialog.querySelector("img")?.getAttribute("alt")).toBe(fmt(g.altClip, { model: "Runway Gen-4.5" }));
+    // The entry carries Runway's credit as data (the registry's attribution); the dialog does not render it.
+    expect(FIXTURE_ENTRY.attribution).not.toBeNull();
+    expect(makerCreditProblems(dialog)).toEqual([]);
+    expect(within(dialog).queryByRole("link", { name: /powered by/i })).toBeNull();
+    // An operator preview: the dialog says, as a fact, that the model is not in the Studio, and the button neither names it in its
     // link nor in its accessible name. It says "Use this prompt" (never "try" a model its link will not open), and a visible note,
     // which also describes the button with the sample's prompt, says the words run on a model the Studio offers.
-    const tryIt = within(card).getByRole("link", { name: d.site.gallery.use });
-    expect(within(card).queryByRole("link", { name: d.site.gallery.try })).toBeNull();
+    const tryIt = within(dialog).getByRole("link", { name: g.use });
+    expect(within(dialog).queryByRole("link", { name: g.try })).toBeNull();
     expect(tryIt.getAttribute("href")).toBe(signupTryHref(FIXTURE_ENTRY));
-    expect(tryIt.textContent).toBe(d.site.gallery.use);
+    expect(tryIt.textContent).toBe(g.use);
     expect(tryIt.hasAttribute("aria-label")).toBe(false);
     const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
     expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
-    expect(document.getElementById(noteId)?.textContent).toBe(d.site.gallery.useNote);
-    expect(card.querySelector(".nx-gallery-use")?.textContent).toBe(d.site.gallery.useNote);
-    expect(card.querySelector(".nx-gallery-unavailable")?.textContent).toBe(d.site.gallery.notInStudio);
+    expect(document.getElementById(noteId)?.textContent).toBe(g.useNote);
+    expect(dialog.querySelector(".nx-gallery-use")?.textContent).toBe(g.useNote);
+    expect(dialog.querySelector(".nx-gallery-unavailable")?.textContent).toBe(g.notInStudio);
     expect(tryIt.getAttribute("href")).not.toContain("model");
-    // The heading and the note say what the section is, in this language.
-    expect(container.querySelector("h2")?.textContent).toBe(d.site.gallery.title);
-    expect(container.textContent).toContain(d.site.gallery.tryNoteSignedOut);
+    // Nothing in the dialog outside the sample's own box names a model: the box is the dialog itself.
+    expect(dialog.closest("[data-showcase-entry]")).toBe(dialog);
+    closeSample(dialog, restore);
   });
 
-  it("signed in, Try it is the Studio form itself", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: the dialog is an accessible modal: named, focus in and trapped, page inert and still, Escape and Back close it, focus returns to the card", (code) => {
+    const g = dictionaries[code].site.gallery;
+    function Held() {
+      return <p data-testid="held">{useClipsHeld() ? "held" : "free"}</p>;
+    }
+    render(<Held />);
+    const { container } = render(<ShowcaseGallery t={dictionaries[code]} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
+    window.history.replaceState(null, "");
+    const depth = window.history.length;
+    const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)!;
+    const { dialog, opener, restore } = openSample(card);
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.getByRole("dialog", { name: g.detail })).toBe(dialog);
+    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    // Focus moves to Close; the page under it is inert, does not scroll, and its clips hold; one history entry for the phone's Back.
+    const close = within(dialog).getByRole("button", { name: g.close });
+    expect(document.activeElement).toBe(close);
+    expect((container as HTMLElement).inert).toBe(true);
+    expect(dialog.closest("[inert]")).toBeNull();
+    expect(document.documentElement.style.overflow).toBe("hidden");
+    expect(screen.getByTestId("held").textContent).toBe("held");
+    expect(window.history.length).toBe(depth + 1);
+    // Tab wraps inside it, both ways.
+    const focusable = [...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')];
+    const last = focusable[focusable.length - 1];
+    last.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(focusable[0]);
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    // Escape from <body> (after a tap on the clip, focus is there) closes it; the page comes back and focus returns to the card.
+    (document.activeElement as HTMLElement).blur();
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    expect(document.documentElement.style.overflow).toBe("");
+    expect(screen.getByTestId("held").textContent).toBe("free");
+    restore();
+    // The phone's Back closes it the same way (a popstate), and Close does too.
+    window.history.replaceState(null, "");
+    const again = openSample(card);
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    again.restore();
+    window.history.replaceState(null, "");
+    const third = openSample(card);
+    act(() => {
+      fireEvent.click(within(third.dialog).getByRole("button", { name: g.close }));
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    third.restore();
+  });
+
+  it("signed in, both links are the Studio form itself", () => {
     const { container } = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
-    const href = container.querySelector(".nx-gallery-try")?.getAttribute("href");
-    expect(href).toBe(studioTryHref(FIXTURE_ENTRY));
+    expect(container.querySelector(".nx-gallery-try")?.getAttribute("href")).toBe(studioTryHref(FIXTURE_ENTRY));
     expect(container.textContent).toContain(t.site.gallery.tryNote);
+    const { dialog, restore } = openSample(container.querySelector(SAMPLE_CARD)!);
+    expect(dialog.querySelector(".nx-sd-try")?.getAttribute("href")).toBe(studioTryHref(FIXTURE_ENTRY));
+    closeSample(dialog, restore);
   });
 
-  it("a model customers can use: no not-available line, and the button names the model in its link and its accessible name", () => {
+  it("a model customers can use: no not-available line, and the dialog's button names the model in its link and its accessible name; the card's never does", () => {
     const onSale = { ...FIXTURE_ENTRY, modelId: "minimax-hailuo-2.3", modelName: "MiniMax Hailuo 2.3", provider: "minimax", operatorPreview: false, attribution: null };
     const { container } = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[onSale]} files={FIXTURE_FILES} />);
-    expect(container.querySelector(".nx-gallery-unavailable")).toBeNull();
-    const btn = container.querySelector(".nx-gallery-try")!;
+    const card = container.querySelector(SAMPLE_CARD)!;
+    expect(card.querySelector(".nx-gallery-try")?.textContent).toBe(t.site.gallery.use);
+    expect(card.querySelector(".nx-gallery-try")?.hasAttribute("aria-label")).toBe(false);
+    const { dialog, restore } = openSample(card);
+    expect(dialog.querySelector(".nx-gallery-unavailable")).toBeNull();
+    expect(dialog.querySelector(".nx-gallery-use")).toBeNull();
+    const btn = dialog.querySelector(".nx-sd-try")!;
+    expect(btn.textContent).toBe(t.site.gallery.try);
     expect(new URL(btn.getAttribute("href")!, "https://x.test").searchParams.get("model")).toBe("minimax-hailuo-2.3");
     expect(btn.getAttribute("aria-label")).toBe("Try this prompt: MiniMax Hailuo 2.3");
+    closeSample(dialog, restore);
   });
 
-  it("from the vendor's announced shutdown day, the card says the model is no longer in the Studio and stops naming it", () => {
+  it("from the vendor's announced shutdown day, the dialog says the model is no longer in the Studio and stops naming it", () => {
     const ending = { ...FIXTURE_ENTRY, modelId: "openai-gpt-image-2", modelName: "OpenAI GPT Image 2", provider: "openai", operatorPreview: false, attribution: null, capability: "t2i", shutdownOn: "2027-02-10" };
     const before = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[ending]} files={FIXTURE_FILES} now={new Date("2027-02-09T23:59:00Z")} />).container;
-    expect(before.querySelector(".nx-gallery-unavailable")).toBeNull();
-    expect(new URL(before.querySelector(".nx-gallery-try")!.getAttribute("href")!, "https://x.test").searchParams.get("model")).toBe("openai-gpt-image-2");
+    const b = openSample(before.querySelector(SAMPLE_CARD)!);
+    expect(b.dialog.querySelector(".nx-gallery-unavailable")).toBeNull();
+    expect(new URL(b.dialog.querySelector(".nx-sd-try")!.getAttribute("href")!, "https://x.test").searchParams.get("model")).toBe("openai-gpt-image-2");
+    closeSample(b.dialog, b.restore);
     cleanup();
     const after = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[ending]} files={FIXTURE_FILES} now={new Date("2027-02-10T00:00:00Z")} />).container;
-    expect(after.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.gone);
-    const btn = after.querySelector(".nx-gallery-try")!;
+    const a = openSample(after.querySelector(SAMPLE_CARD)!);
+    expect(a.dialog.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.gone);
+    const btn = a.dialog.querySelector(".nx-sd-try")!;
     expect(new URL(btn.getAttribute("href")!, "https://x.test").searchParams.has("model")).toBe(false);
     expect(btn.hasAttribute("aria-label")).toBe(false);
+    expect(new URL(after.querySelector(".nx-gallery-try")!.getAttribute("href")!, "https://x.test").searchParams.has("model")).toBe(false);
+    closeSample(a.dialog, a.restore);
     expect(modelLeftOut(ending, new Date("2027-02-10T00:00:00Z"))).toBe("shut_down");
     expect(modelLeftOut({ operatorPreview: true, shutdownOn: null })).toBe("preview");
     expect(modelLeftOut({ operatorPreview: false, shutdownOn: null })).toBeNull();
   });
 
-  it("a picture has no clip and no pause button; a sample without words says so instead of showing an empty quote", () => {
+  it("a picture has no clip and no pause button, on the card or in its dialog; a sample without words says so instead of showing an empty quote", () => {
     const pic = { ...FIXTURE_ENTRY, kind: "image" as const, capability: "t2i", modelId: "flux-2-pro", modelName: "FLUX.2 Pro", provider: "bfl", attribution: null, prompt: "" };
     const files = { [FIXTURE_JOB]: { ...FIXTURE_FILES[FIXTURE_JOB], clip: null } };
     const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[pic]} files={files} />);
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector(".nx-clip-pause")).toBeNull();
     expect(container.querySelector(".nx-gallery-pic")?.hasAttribute("data-clip")).toBe(false);
+    expect(container.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(t.site.gallery.bgImage);
     expect(container.querySelector(".nx-gallery-prompt")?.textContent).toBe(t.site.gallery.noPrompt);
+    const { dialog, restore } = openSample(container.querySelector(SAMPLE_CARD)!);
+    expect(dialog.querySelector("video")).toBeNull();
+    expect(dialog.querySelector(".nx-clip-pause")).toBeNull();
+    expect(dialog.querySelector(".nx-sd-media")?.hasAttribute("data-clip")).toBe(false);
+    expect(dialog.querySelector(".nx-sd-prompt")?.textContent).toBe(t.site.gallery.noPrompt);
+    expect(dialog.querySelector("img")?.getAttribute("alt")).toBe(fmt(t.site.gallery.altImage, { model: "FLUX.2 Pro" }));
+    closeSample(dialog, restore);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: a clip animated from another sample's picture shows that picture and its model, no maker's credit; any other input shows none", (code) => {
+  it("a clip's dialog: the box is a tap area for the page's pause switch, a keyboard has the hidden pause key, and nothing is fetched where clips are not allowed", () => {
+    const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
+    const { dialog, restore } = openSample(container.querySelector(SAMPLE_CARD)!);
+    const media = dialog.querySelector(".nx-sd-media") as HTMLElement;
+    expect(media.dataset.clip).toBe("sample");
+    const pause = media.querySelector("button.nx-clip-pause") as HTMLButtonElement;
+    expect(pause.textContent).toBe(t.site.fx.pause);
+    expect(pause.getAttribute("aria-pressed")).toBe("false");
+    // jsdom has no matchMedia, which clipsAllowed reads as "not allowed" (as reduced motion or Save-Data would be): the still only.
+    expect(dialog.querySelector("video")).toBeNull();
+    // The box keeps the file's shape and offers it to the stylesheet as a ratio, so it is never taller than the screen.
+    expect(media.style.aspectRatio).toBe(`${FIXTURE_ENTRY.width} / ${FIXTURE_ENTRY.height}`);
+    closeSample(dialog, restore);
+    const src = readFileSync(join(ROOT, "components/site/SampleDetail.tsx"), "utf8");
+    expect(src).toContain("d.clip !== null && clipsAllowed()");
+    expect(src).toMatch(/if \(!paused && document\.visibilityState === "visible"\)/);
+    expect(src).toContain("useMotionTap()");
+    expect(src).toContain("holdClips()");
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: a clip animated from another sample's picture shows that picture and its model in the dialog, no maker's credit; any other input shows none", (code) => {
     const d = dictionaries[code];
     const stillJob = "0d0d0d0d-1111-4222-8333-444455556666";
     const still = { ...FIXTURE_ENTRY, jobId: stillJob, kind: "image" as const, capability: "t2i", modelId: "ideogram-3", modelName: "Ideogram 3", provider: "ideogram", attribution: { text: "Powered by Ideogram", url: "https://ideogram.ai" }, input: { kind: "none" as const }, width: 1280, height: 718 };
     const alive = { ...FIXTURE_ENTRY, input: { kind: "operator_job" as const, jobId: stillJob, assetId: "0e0e0e0e-1111-4222-8333-444455556666" } };
     const files = { ...FIXTURE_FILES, [stillJob]: { poster: "/still.webp", posterSm: "/still-sm.webp", clip: null } };
     const { container } = render(<ShowcaseGallery t={d} locale={code} entries={[alive, still]} files={files} />);
-    const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
-    const fig = card.querySelector(".nx-gallery-source") as HTMLElement;
+    // Not on the card: the card is its own picture alone.
+    expect(container.querySelector(".nx-gallery-source")).toBeNull();
+    const opened = openSample(container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)!);
+    const fig = opened.dialog.querySelector(".nx-gallery-source") as HTMLElement;
     expect(fig.dataset.sourceEntry).toBe(stillJob);
     const img = fig.querySelector("img")!;
     expect(img.getAttribute("src")).toBe("/still-sm.webp");
     expect(img.getAttribute("alt")).toBe(fmt(d.site.gallery.altSource, { model: "Ideogram 3" }));
     expect(fig.textContent).toContain(d.site.gallery.source);
     expect(fig.querySelector("strong")?.textContent).toBe("Ideogram 3");
-    // Neither the picture's maker nor the clip's is linked or credited on the public card.
-    expect(makerCreditProblems(container)).toEqual([]);
-    // The picture's own card shows no source, and neither does an animation of site art or of a job that is not a sample here.
-    expect(container.querySelector(`[data-showcase-entry="${stillJob}"] .nx-gallery-source`)).toBeNull();
+    // Neither the picture's maker nor the clip's is linked or credited.
+    expect(makerCreditProblems(opened.dialog)).toEqual([]);
+    closeSample(opened.dialog, opened.restore);
+    // The picture's own dialog shows no source, and neither does an animation of site art or of a job that is not a sample here.
+    const own = openSample(container.querySelector(`[data-showcase-entry="${stillJob}"]`)!);
+    expect(own.dialog.querySelector(".nx-gallery-source")).toBeNull();
+    closeSample(own.dialog, own.restore);
     cleanup();
-    expect(render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />).container.querySelector(".nx-gallery-source")).toBeNull();
+    const plain = openSample(render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />).container.querySelector(SAMPLE_CARD)!);
+    expect(plain.dialog.querySelector(".nx-gallery-source")).toBeNull();
+    closeSample(plain.dialog, plain.restore);
     cleanup();
-    expect(render(<ShowcaseGallery t={d} locale={code} entries={[alive]} files={FIXTURE_FILES} />).container.querySelector(".nx-gallery-source")).toBeNull();
+    const stray = openSample(render(<ShowcaseGallery t={d} locale={code} entries={[alive]} files={FIXTURE_FILES} />).container.querySelector(SAMPLE_CARD)!);
+    expect(stray.dialog.querySelector(".nx-gallery-source")).toBeNull();
+    closeSample(stray.dialog, stray.restore);
   });
 
-  it("is the only place a model is named: outside the entry cards the section names no provider, and each card's model is a registry model with a job id", () => {
+  it("a format's sample names the format over its picture on hover and in full in its dialog, never as a block under the card", () => {
+    const fmtCard = { id: "fruit", job: FIXTURE_JOB, title: "Fruit drama", body: "Talking food in a soap-opera scene.", entry: FIXTURE_ENTRY };
+    const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} formats={[fmtCard]} />);
+    const card = container.querySelector(SAMPLE_CARD)!;
+    expect(card.querySelector(".nx-gallery-over .nx-gallery-over-format")?.textContent).toBe("Fruit drama");
+    expect(card.textContent).not.toContain(fmtCard.body);
+    const { dialog, restore } = openSample(card);
+    const box = dialog.querySelector(".nx-gallery-format") as HTMLElement;
+    expect(box.dataset.format).toBe("fruit");
+    expect(box.querySelector("h3")?.textContent).toBe("Fruit drama");
+    expect(box.textContent).toContain(fmtCard.body);
+    closeSample(dialog, restore);
+  });
+
+  it("is the only place a model is named: outside the entry boxes the section names no provider, and each card's model is a registry model with a job id", () => {
     const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
     const cards = [...container.querySelectorAll<HTMLElement>("[data-showcase-entry]")];
     expect(cards).toHaveLength(1);
@@ -255,6 +441,8 @@ describe("the gallery", () => {
     expect(s.gallery.badge).toMatch(AI);
     expect(s.credits.generated).toMatch(AI);
     expect(s.gallery.altClip).toContain("{model}");
+    expect(s.gallery.bgClip).toMatch(AI);
+    expect(s.gallery.bgImage).toMatch(AI);
     expect(s.gallery.tryAria.startsWith(s.gallery.try)).toBe(true);
     expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(PROVIDER_BRANDS);
     // Statements of fact, not promises (CLAUDE.md #5): nothing about when or whether it will come.
@@ -264,18 +452,70 @@ describe("the gallery", () => {
     expect(s.gallery.useNote).not.toMatch(PROVIDER_BRANDS);
     // The heading claims nothing about which models are on sale.
     expect(s.gallery.title).toContain("Nightshift");
+    // The dialog's own words exist in every language and differ from each other.
+    for (const w of [s.gallery.open, s.gallery.detail, s.gallery.close]) expect(w.trim().length).toBeGreaterThan(2);
+    expect(new Set([s.gallery.open, s.gallery.detail, s.gallery.close]).size).toBe(3);
   });
 
-  it("the stylesheet lays the cards out in one column on a phone (nothing scrolls sideways), a masonry above it, and styles no maker's credit link", () => {
+  it("the stylesheet lays the cards out media first: a two-column masonry on a phone (nothing scrolls sideways), three and four above it, row by row, tight gutters, no maker's credit link", () => {
     const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
-    expect(css).toMatch(/\.nx-gallery \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
+    expect(css).toMatch(/\.nx-gallery \{ --cols: 2; display: block; columns: var\(--cols\);/);
     expect(css).not.toMatch(/\.nx-gallery \{[^}]*overflow-x/);
-    expect(css).toMatch(/@media \(min-width: 600px\) \{\n  \.nx-gallery \{ display: block; columns: 2;/);
-    expect(css).toMatch(/\.nx-gallery-card \{ break-inside: avoid;/);
-    expect(css).toMatch(/@media \(min-width: 1100px\) \{ \.nx-gallery \{ columns: 3; \} \}/);
+    expect(css).toMatch(/\.nx-gallery-card \{ position: relative; break-inside: avoid; margin: 0 0 8px;/);
+    expect(css).toMatch(/@media \(min-width: 760px\) \{\n  \.nx-gallery \{ --cols: 3; \}/);
+    expect(css).toMatch(/@media \(min-width: 1240px\) \{ \.nx-gallery \{ --cols: 4; \} \}/);
+    // Where container units work (every current browser), a grid laid out row by row, so reading and Tab order go across the rows
+    // and the columns end as evenly as the cards allow: a row is a hundredth of a column, a card spans its file's height in rows (gridSpan).
+    expect(css).toMatch(/\.nx-gallery-box \{[^}]*container-type: inline-size;/);
+    const grid = css.slice(css.indexOf("@supports (width: 1cqw) {"), css.indexOf("}\n}", css.indexOf("@supports (width: 1cqw) {")));
+    expect(grid).toMatch(/\.nx-gallery \{ --cw: calc\(100cqw \/ \(var\(--cols\) \+ 0\.04 \* \(var\(--cols\) - 1\)\)\); display: grid; grid-template-columns: repeat\(var\(--cols\), minmax\(0, 1fr\)\); grid-auto-rows: calc\(var\(--cw\) \/ 100\);/);
+    expect(grid).toContain(".nx-gallery-card { grid-row-end: span var(--span, 60); margin: 0 0 calc(var(--cw) * 0.04); }");
+    expect(grid).not.toMatch(/(?<![-\w])columns:|grid-auto-flow: column/);
+    // The badge sits top right (a camera's timestamp burned into a picture sits top left), on an edged dark chip.
+    expect(css).toMatch(/\.nx-gallery-pic \.nx-result-badge \{[^}]*left: auto; right: 8px;[^}]*border: 1px solid/);
     // The box takes the clip's own shape from the element; the stylesheet forces none.
     expect(css).not.toMatch(/\.nx-gallery-pic \{[^}]*aspect-ratio/);
     expect(css).not.toMatch(/\.nx-gallery-attr|\.nx-ai-attr/);
+    // No text block under a card: the words are a layer over the picture, hidden at rest and taking no tap there, shown only under
+    // a fine pointer's hover or keyboard focus.
+    expect(css).not.toMatch(/\.nx-gallery-body/);
+    expect(css).toMatch(/\.nx-gallery-over \{ position: absolute;[^}]*opacity: 0; pointer-events: none; \}/);
+    expect(css).toContain(".nx-gallery-card:has(:focus-visible) .nx-gallery-over { opacity: 1; }");
+    expect(css).toMatch(/@media \(hover: hover\) and \(pointer: fine\) \{\n  \.nx-gallery-card:hover \.nx-gallery-over \{ opacity: 1; \}/);
+    expect(css).toMatch(/\.nx-gallery-prompt \{[^}]*-webkit-line-clamp: 2; line-clamp: 2;/);
+    // The badge is never hidden or cut: no display, visibility or opacity rule on it, and it wraps on a narrow card.
+    const badge = [...css.matchAll(/([^{}]*\.nx-gallery[^{}]*\.nx-result-badge[^{}]*)\{([^}]*)\}/g)];
+    expect(badge.length).toBeGreaterThan(0);
+    for (const [, , body] of badge) {
+      expect(body).not.toMatch(/display:\s*none|visibility:\s*hidden|opacity:\s*0|text-overflow/);
+    }
+    // The dialog's sheet: dark in both themes, above the page, the picture never taller than the screen.
+    const sd = readFileSync(join(ROOT, "components/site/sample-detail.css"), "utf8");
+    expect(sd).toMatch(/\.nx-sd \{[^}]*position: fixed;[^}]*inset: 0;/);
+    expect(sd).toMatch(/width: min\(100%, calc\(var\(--sd-mh\) \* var\(--sd-r, 1\)\)\)/);
+    // Motion only where it is allowed.
+    const outsideNoPref = sd.replace(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\}\n/g, "").replace(/@keyframes[^{]+\{(?:[^{}]|\{[^{}]*\})*\}/g, "");
+    expect(outsideNoPref).not.toMatch(/\btransition\s*:|\banimation\s*:/);
+  });
+
+  it("each card spans its file's height in grid rows, so two files a few pixels apart line up, and the grid has one pause key, not one per card", () => {
+    expect(gridSpan(1280, 720)).toBe(56 + GRID_GUTTER_ROWS);
+    // The live page's first row was off by 4 px: a 1280 x 718 picture beside 1280 x 720 clips. Same rows now.
+    expect(gridSpan(1280, 718)).toBe(gridSpan(1280, 720));
+    expect(gridSpan(1280, 2240)).toBe(175 + GRID_GUTTER_ROWS);
+    const tallJob = "0f0f0f0f-1111-4222-8333-444455556666";
+    const tall = { ...FIXTURE_ENTRY, jobId: tallJob, width: 1280, height: 2240 };
+    const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY, tall]} files={{ ...FIXTURE_FILES, [tallJob]: FIXTURE_FILES[FIXTURE_JOB] }} />);
+    const cards = [...container.querySelectorAll<HTMLElement>(SAMPLE_CARD)];
+    expect(cards.map((c) => c.style.getPropertyValue("--span"))).toEqual([String(gridSpan(FIXTURE_ENTRY.width, FIXTURE_ENTRY.height)), String(gridSpan(1280, 2240))]);
+    // Two clips, one keyboard pause key for the grid, outside the cards (each card is the button that opens its sample).
+    const pauses = [...container.querySelectorAll(".nx-clip-pause")];
+    expect(pauses).toHaveLength(1);
+    expect(pauses[0].closest(SAMPLE_CARD)).toBeNull();
+    expect(pauses[0].parentElement?.className).toBe("nx-gallery-box");
+    expect(pauses[0].textContent).toBe(t.site.fx.pause);
+    // The DOM order is the cards' order (the grid places them row by row in that order): Tab follows it.
+    expect(cards.map((c) => c.dataset.showcaseEntry)).toEqual([FIXTURE_JOB, tallJob]);
   });
 
   it("each card keeps its clip's own shape: a 9:16 sample stands tall, a 16:9 one lies wide, its box sized from the file before it loads", () => {
@@ -299,7 +539,7 @@ describe("the gallery", () => {
  * has merged. With nothing merged it renders nothing.
  */
 describe("the shipped samples", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: a card names a model only as its registry name, picture description and button; is labelled AI-generated; credits no maker; and claims no stock", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: a card names no model and is labelled AI-generated; its dialog names it only as its registry name, picture description and button; neither credits a maker or claims stock", (code) => {
     const d = dictionaries[code];
     const g = d.site.gallery;
     const { container } = render(<ShowcaseGallery t={d} locale={code} />);
@@ -310,10 +550,16 @@ describe("the shipped samples", () => {
     }
     const section = container.querySelector(GALLERY) as HTMLElement;
     expect(section).toBeTruthy();
-    // The section's own words (heading, lead, notes) name no model; only the cards do.
+    // The section's own words (heading, lead, notes) name no model; only the sample boxes do.
     expect(without(section, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
     const cards = [...section.querySelectorAll<HTMLElement>(SAMPLE_CARD)];
     expect(cards.map((c) => c.dataset.showcaseEntry)).toEqual(items.map(({ e }) => e.jobId));
+    const s = d.site.samples;
+    const noStock = (el: HTMLElement) => {
+      expect(el.querySelector("[data-sample], [data-art-id], [data-kind], .nx-result-credit, .nx-show-note")).toBeNull();
+      for (const stock of [s.tag, s.frameTag, s.clipTag, s.note]) expect(el.textContent).not.toContain(stock);
+      expect(el.innerHTML).not.toMatch(/pexels/i);
+    };
     for (const card of cards) {
       const { e, f } = items.find(({ e }) => e.jobId === card.dataset.showcaseEntry)!;
       const m = MODELS.get(e.modelId);
@@ -321,21 +567,36 @@ describe("the shipped samples", () => {
       expect(card.dataset.model).toBe(m.id);
       const clip = e.kind === "video" && f.clip !== null;
 
-      // Labelled as an AI generation, on the picture, clip or not; and nothing on it says stock or names a photographer.
-      expect(card.querySelector(".nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
+      // The card: labelled as an AI generation, on the picture, clip or not; nothing on it says stock or names a photographer, and
+      // nothing on it names a model (its link carries the model id for the Studio form only, and says "Use this prompt").
+      expect(card.querySelector(".nx-gallery-pic > .nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
       expect(card.querySelector(".nx-gallery-pic")?.getAttribute("data-clip") ?? null).toBe(clip ? "sample" : null);
-      expect(card.querySelector("[data-sample], [data-art-id], [data-kind], .nx-result-credit, .nx-show-note")).toBeNull();
-      const s = d.site.samples;
-      for (const stock of [s.tag, s.frameTag, s.clipTag, s.note]) expect(card.textContent).not.toContain(stock);
-      expect(card.innerHTML).not.toMatch(/pexels/i);
-
-      // Every place the card may name its model, each exactly as the registry has it; with those taken out, nothing names one
-      // (the prompt included: the words a job was given are shown, and they must not name a model or maker either).
+      noStock(card);
+      expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(clip ? g.bgClip : g.bgImage);
       const rest = card.cloneNode(true) as HTMLElement;
       rest.removeAttribute("data-model");
+      const link = rest.querySelector(".nx-gallery-try");
+      expect(link?.getAttribute("href") ?? null).toBe(tryHref(e, false));
+      if (link) {
+        expect(link.textContent).toBe(g.use);
+        expect(link.hasAttribute("aria-label")).toBe(false);
+        link.removeAttribute("href");
+      }
+      expect(rest.textContent, e.jobId).not.toContain(m.display_name);
+      expect(rest.textContent, e.jobId).not.toMatch(PROVIDER_BRANDS);
+      expect(rest.innerHTML, e.jobId).not.toMatch(PROVIDER_BRANDS);
+      expect(makerCreditProblems(card), e.jobId).toEqual([]);
+
+      // The dialog: every place it may name its model, each exactly as the registry has it; with those taken out, nothing names one
+      // (the prompt included: the words a job was given are shown, and they must not name a model or maker either).
+      const { dialog, restore } = openSample(card);
+      expect(dialog.dataset.showcaseEntry).toBe(e.jobId);
+      expect(dialog.querySelector(".nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
+      noStock(dialog);
+      const box = dialog.cloneNode(true) as HTMLElement;
       // A clip animated from another sample's picture shows that picture: named, credited and described exactly as that picture's
-      // own card is, and only when the input really is that sample's job.
-      const fig = rest.querySelector<HTMLElement>(".nx-gallery-source");
+      // own dialog does, and only when the input really is that sample's job.
+      const fig = box.querySelector<HTMLElement>(".nx-gallery-source");
       const src = e.kind === "video" && e.input.kind === "operator_job" ? items.find((it) => it.e.jobId === (e.input as { jobId: string }).jobId) : undefined;
       expect(fig?.dataset.sourceEntry ?? null, e.jobId).toBe(src?.e.jobId ?? null);
       if (fig && src) {
@@ -346,15 +607,15 @@ describe("the shipped samples", () => {
         expect(fig.querySelector("img")?.getAttribute("alt")).toBe(fmt(g.altSource, { model: sm.display_name }));
         fig.remove();
       }
-      const name = rest.querySelector(".nx-gallery-model strong")!;
+      const name = box.querySelector(".nx-gallery-model strong")!;
       expect(name.textContent).toBe(m.display_name);
       name.remove();
       // The maker's credit (Runway's and Ideogram's included) is data only: no link to a maker, no "Powered by".
-      expect(makerCreditProblems(card), e.jobId).toEqual([]);
-      const img = rest.querySelector("img")!;
+      expect(makerCreditProblems(dialog), e.jobId).toEqual([]);
+      const img = box.querySelector("img")!;
       expect(img.getAttribute("alt")).toBe(fmt(clip ? g.altClip : g.altImage, { model: m.display_name }));
       img.removeAttribute("alt");
-      const tryIt = rest.querySelector(".nx-gallery-try");
+      const tryIt = box.querySelector(".nx-sd-try");
       expect(tryIt?.getAttribute("href") ?? null).toBe(tryHref(e, false));
       if (tryIt) {
         const label = tryIt.getAttribute("aria-label");
@@ -362,11 +623,13 @@ describe("the shipped samples", () => {
         tryIt.removeAttribute("aria-label");
         tryIt.removeAttribute("href");
       }
-      expect(rest.textContent, e.jobId).not.toMatch(PROVIDER_BRANDS);
-      expect(rest.innerHTML, e.jobId).not.toMatch(PROVIDER_BRANDS);
+      expect(box.textContent, e.jobId).not.toMatch(PROVIDER_BRANDS);
+      expect(box.innerHTML, e.jobId).not.toMatch(PROVIDER_BRANDS);
+      closeSample(dialog, restore);
     }
   });
 });
+
 
 describe("Try it", () => {
   const sample = { capability: "i2v", modelId: "runway-gen4.5", prompt: "Paper lanterns drift up over a dark lake" };
