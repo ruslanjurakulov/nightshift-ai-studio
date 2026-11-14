@@ -70,6 +70,11 @@ export const siteCarouselEn = {
       "ced854a6-ba49-4668-b9dd-91ca46b72f6d": "A thumbnail with a stone giant",
       "c808297a-8479-45fe-ae33-1c7688be7cb2": "NIGHTSHIFT in balloon letters",
       "dcb96246-9379-4c3a-aa33-a8ee6bb7f846": "The neon city comes alive",
+      "ec9a7c43-0304-4da7-943a-134a259e4f90": "A giant ginger cat downtown",
+      "dd553f69-beb4-4f89-9722-91ad95a9d2cc": "A volcano in a snow globe",
+      "9b0f23e8-e22b-4a27-b957-3aade8572fbd": "Pink clay shapes itself",
+      "6a94865b-ac2f-4b1f-b273-fd4b10c8c477": "From orbit to the old town of Bukhara",
+      "9930ee16-a09b-4d55-aefe-5c2cb6f189de": "A skateboarder frozen mid-jump",
     } as Record<string, string>,
   },
   compare: {
