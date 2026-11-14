@@ -49,8 +49,8 @@
 -- NOT CHANGED: every other 0093 / 0147 function, oauth_limits(), the vendor class and its budgets, every grant; no other
 --   table or column.
 --
--- NUMBER. 0161, assigned to this branch: 0157 is the latest on main, 0158 to 0160 belong to other branches. Needs 0093 and
---   0147; names nothing of 0149's to 0157's.
+-- NUMBER. 0161, assigned to this branch: 0158 (#731) and 0159 (#745) are merged before it, 0160 belongs to another branch.
+--   Needs 0093 and 0147; names nothing of 0149's to 0159's.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
 --   select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.oauth_gc()'::regprocedure;

@@ -9,7 +9,7 @@ import { ResultsCarousel } from "@/components/docs/ResultsCarousel";
 import { sceneMedia } from "@/components/docs/SampleFrame";
 import { LoopClip } from "@/components/site/LoopClip";
 import { SAMPLES, SampleImg } from "@/components/site/samples";
-import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -80,7 +80,6 @@ export function McpLanding({ dev, site, oauthLive }: { dev: DevDictionary; site?
                       <span className="ml-ex-badge" data-kind="ai">
                         {site!.gallery.badge}
                       </span>
-                      <AiCredit entry={pic.entry} g={site!.gallery} badge={false} scope={`mcp-${scene}`} className="nx-ai-credit ml-ex-credit" />
                     </>
                   ) : (
                     <>

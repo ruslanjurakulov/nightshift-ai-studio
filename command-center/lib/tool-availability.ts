@@ -17,6 +17,7 @@
  * Pure and client-safe (tests/tool-availability.test.ts).
  */
 import { DESK_TOOLS, type Desk } from "@/lib/creative/desks";
+import { modelLock } from "@/lib/creative/studio";
 
 export type ToolAvailability =
   /** The models were read: `sold` is every capability at least one offered model has. */
@@ -47,6 +48,16 @@ export function onlyPriced<M extends { id: string }>(models: readonly M[], catal
   if (!catalog) return [...models];
   const unpriced = new Set(catalog.filter((m) => m.state === "not_on_sale").map((m) => m.id));
   return models.filter((m) => !unpriced.has(m.id));
+}
+
+/**
+ * The models less the ones no organization can buy: a plan-tier entitlement (models_video:premium ...), which creative_price refuses
+ * for every organization whatever its plan (modelLock "not_on_sale"; the Studio labels it "Not open to any workspace"). A tool whose
+ * only models are such is not available. A `paid` model is kept: an organization opens it with a first purchase. Previews (0139)
+ * are added after this and never pass through it.
+ */
+export function onlyOpenToSome<M extends { entitlement?: string | null }>(models: readonly M[]): M[] {
+  return models.filter((m) => modelLock(m.entitlement, null) !== "not_on_sale");
 }
 
 /**

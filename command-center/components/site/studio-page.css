@@ -62,7 +62,7 @@
 .sp-fake-key[data-quiet="true"] { font-weight: 500; color: var(--ns-text-dim); }
 .sp-hint { font-size: 14px; color: var(--ns-text-dim); }
 
-/* Editor example: three tracks on a shared 12-column ruler. Widths are fixed percentages, never measured. */
+/* Editor example: three tracks on a shared 12-column ruler. Widths are fixed shares, never measured; a video clip is never narrower than its name. */
 .sp-track { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; }
 .sp-track > b { font-size: 14px; font-weight: 600; color: var(--ns-text-dim); overflow-wrap: anywhere; }
 .sp-lane { display: flex; gap: 4px; min-width: 0; height: 40px; }
@@ -81,6 +81,7 @@
   text-overflow: ellipsis;
 }
 .sp-clip[data-xf="true"] { border-style: dashed; }
+.sp-clip[data-auto="true"] { flex: 1 1 0; min-width: max-content; }
 .sp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 
 /* Publish example: three lines in order, the last one waiting. */

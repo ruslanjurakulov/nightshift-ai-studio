@@ -39,8 +39,9 @@ import { MotionToggle } from "@/components/site/MotionToggle";
  *
  * What it promises is only what exists. The server takes API keys today; the
  * sign-in (OAuth) flow is switched on by MCP_OAUTH_LIVE (lib/mcp-oauth.ts).
- * Until then the sign-in-only tabs (ChatGPT, Claude, Gemini, Grok) say "Coming soon",
- * every other tab shows its API-key steps, and no "Add to …" button is drawn:
+ * Until then only Cursor and VS Code are tabs (their API-key steps), the sign-in-only
+ * assistants (ChatGPT, Claude, Gemini, Grok) are named in one "Coming soon" note under
+ * the card rather than as tabs that look available, and no "Add to …" button is drawn:
  * each one starts a sign-in the server would not yet accept. No error codes or
  * internal mechanics appear here.
  */
@@ -82,9 +83,6 @@ function oauthActions(id: string, url: string, client: McpClient, o: OauthWords)
   }
 }
 
-/** Where a "Coming soon" tab points while the sign-in is off: the two that work today with an API key. */
-const SOON_GOTO = ["cursor", "vscode"];
-
 export function McpPage({
   dev,
   origin,
@@ -118,7 +116,12 @@ export function McpPage({
   const url = `${origin}/api/mcp`;
 
   function stepsList(tabLabel: string, steps: { title: string; body: string }[], actions: Action[]) {
+    // A config block is not a step's button: in the middle of three columns it was cut to about a third of the card (at 1440px
+    // and at 390px alike). It runs the card's full width under the steps, and its long lines scroll sideways.
+    const codeAt = actions.findIndex((a) => a?.kind === "code");
+    const code = codeAt >= 0 ? actions[codeAt] : null;
     return (
+      <>
       <ol className="st-steps2" aria-label={tabLabel}>
         {steps.map((s, i) => {
           const a = actions[i];
@@ -134,9 +137,6 @@ export function McpPage({
               <div className="st-step2-action">
                 {a?.kind === "url" && (
                   <Field kind="url" text={a.text} name={`${tabLabel} · ${s.title}`} scrollLabel={labels.code} copy={dev.ui} />
-                )}
-                {a?.kind === "code" && (
-                  <Field kind="code" text={a.text} name={`${tabLabel} · ${s.title}`} scrollLabel={labels.code} copy={dev.ui} />
                 )}
                 {a?.kind === "install" && (
                   <div className="st-install">
@@ -157,6 +157,19 @@ export function McpPage({
           );
         })}
       </ol>
+      {code?.kind === "code" && (
+        <div className="st-steps2-code">
+          {/* Under all three steps, so it says which one it belongs to. */}
+          <p className="st-steps2-code-label">
+            <span className="st-circle" aria-hidden>
+              {codeAt + 1}
+            </span>
+            {steps[codeAt].title}
+          </p>
+          <Field kind="code" text={code.text} name={`${tabLabel} · ${steps[codeAt].title}`} scrollLabel={labels.code} copy={dev.ui} />
+        </div>
+      )}
+      </>
     );
   }
 
@@ -176,29 +189,18 @@ export function McpPage({
     );
   }
 
-  const tabs: ConnectTab[] = MCP_CLIENTS.map((client): ConnectTab => {
+  // Only an assistant that can connect today is a tab. With the sign-in off that is Cursor and VS Code (an API key); the four
+  // sign-in assistants led the row as tabs that looked available and opened a "Coming soon" panel, so they are named
+  // together in one note under the card instead. Once the sign-in is live all six are tabs, in the order the owner set.
+  // Both lists come from lib/dev/mcp-availability.ts, so this note and the tabs' "Ready to connect" line cannot disagree.
+  const tabClients = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) !== "soon");
+  const soonClients = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "soon");
+  const tabs: ConnectTab[] = tabClients.map((client): ConnectTab => {
     const base = { id: client.id, glyph: <BrandLogo id={client.id} />, tile: logoTile(client.id), group: "primary" as const, label: client.label };
-    // Connector-only tabs: the real steps when sign-in is live, an honest "Coming soon" until then.
+    // Connector-only tabs (sign-in live): the real steps.
     if (client.oauthOnly) {
       const o = c.oauth[client.id as "chatgpt" | "claude" | "gemini" | "grok"];
       const availability = mcpClientAvailability(client.id, oauthLive);
-      if (availability === "soon") {
-        const soon = c.soon[client.id as "chatgpt" | "claude" | "gemini" | "grok"];
-        const goto = SOON_GOTO;
-        return {
-          ...base,
-          soon: {
-            badge: c.soon.badge,
-            title: soon.title,
-            body: soon.body,
-            use: c.soon.use,
-            goto: goto.map((g) => {
-              const t = MCP_CLIENTS.find((x) => x.id === g)!;
-              return { id: g, label: t.label };
-            }),
-          },
-        };
-      }
       return {
         ...base,
         panel: (
@@ -252,13 +254,12 @@ export function McpPage({
   const worksWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "available").map((x) => x.label);
   const readyWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "ready").map((x) => x.label);
 
-  // With the sign-in off (MCP_OAUTH_LIVE) Claude and ChatGPT are "coming soon": nothing on the page may read as if they connect today.
-  const soonIds = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "soon").map((x) => x.id);
-  const names = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, x.label]));
-  const marks = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, <span key={x.id} className="st-pill-glyph" data-tile={logoTile(x.id)}><BrandLogo id={x.id} /></span>]));
+  // Only the tabs: the page below names the assistant the person picked, and with the sign-in off that is always one that connects.
+  const names = Object.fromEntries(tabClients.map((x) => [x.id, x.label]));
+  const marks = Object.fromEntries(tabClients.map((x) => [x.id, <span key={x.id} className="st-pill-glyph" data-tile={logoTile(x.id)}><BrandLogo id={x.id} /></span>]));
 
   return (
-    <McpClientProvider initialId={open} names={names} marks={marks} soonIds={soonIds}>
+    <McpClientProvider initialId={open} names={names} marks={marks}>
     <div className="st-doc st-mcp">
       <BrandSprite ids={MCP_CLIENTS.map((x) => x.id)} />
       <section aria-labelledby="mcp-title" className="st-mcphero">
@@ -301,6 +302,27 @@ export function McpPage({
                   {c.paid.link}
                 </Link>
               </>
+            }
+            after={
+              soonClients.length > 0 && (
+                // Keyed: without one, React's development check warned about a list child when this server element reached the client card.
+                <div key="soon" className="st-cc-soon">
+                  <span className="st-soon-badge">{c.soon.badge}</span>
+                  <p className="st-cc-soon-title">{c.soon.noteTitle}</p>
+                  {/* The names, each with its mark as its owner provides it (never faded): text, not a control, nothing to press. */}
+                  <ul className="st-cc-soon-list">
+                    {soonClients.map((x) => (
+                      <li key={x.id} data-id={x.id}>
+                        <span className="st-pill-glyph" data-tile={logoTile(x.id)} aria-hidden>
+                          <BrandLogo id={x.id} />
+                        </span>
+                        {x.label}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="st-small">{c.soon.noteBody}</p>
+                </div>
+              )
             }
           />
           <p className="st-mcphero-docs">

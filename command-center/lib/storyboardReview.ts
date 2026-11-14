@@ -217,7 +217,10 @@ export type ReopenState = { reopenable: boolean; reason: string | null };
 export type StoryboardQuote =
   | { kind: "paid"; credits: number }
   | { kind: "included" }
-  | { kind: "unavailable"; reason: "no_prices" | "no_length" | "no_history" | "unpriced_history" | "read_failed" | "not_enforced" };
+  | {
+      kind: "unavailable";
+      reason: "no_prices" | "no_length" | "no_history" | "unpriced_history" | "unpriced_concept_thumbnail" | "read_failed" | "not_enforced";
+    };
 
 // ── the database's answers ─────────────────────────────────────────────────
 

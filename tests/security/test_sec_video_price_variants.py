@@ -92,8 +92,10 @@ def db():
          "(%s,%s,'b9@x.io','owner')", [ORG_A, UA, ORG_B, UB])
     d.su("select public.grant_credits(%s, 1000, 'test')", [ORG_A])
     d.su("select public.grant_credits(%s, 1000, 'test')", [ORG_B])
+    # 0159: a quote refuses a length the model's spec does not list; these models make every length 1-60 s (what is tested here is not the length).
     rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": "video.acme", "capabilities": ["t2v", "i2v"],
-             "credit_unit": f"model_{m}_second", "entitlement": "any", "spec": spec} for m, spec in MODELS.items()]
+             "credit_unit": f"model_{m}_second", "entitlement": "any", "spec": {"durations_s": list(range(1, 61)), **spec}}
+            for m, spec in MODELS.items()]
     # 0052's, 0055's and 0060's tools, to prove 0070 did not take them away.
     rows += [
         {"id": "vup", "display_name": "vup", "provider": "acme", "adapter": "video.acme_up",

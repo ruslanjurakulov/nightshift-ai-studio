@@ -106,6 +106,8 @@ def db():
              "credit_unit": unit, "entitlement": "any",
              "spec": {"vendor_model": "acme-" + m,
                       "output": "video" if a.startswith("video") else "audio" if a.startswith("audio") else "image",
+                      # 0159: a quote refuses a length the model's spec does not list; these models make every length 1-60 s (what is tested here is not the length).
+                      "durations_s": list(range(1, 61)),
                       **extra}}
             for m, caps, a, extra, unit, _c in MODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])

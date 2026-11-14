@@ -32,7 +32,15 @@ export function linkWords(raw: string, max: number = PROMPT_MAX): string {
   return (space > 0 ? head.slice(0, space) : head).trim();
 }
 
-function studio(tool: PromptTool, words: string): string {
+/**
+ * The Studio form "+" opens: picture to video, the one form whose first field is a picture of the person's own (the Studio asks for
+ * it there, from the library or an upload; nothing is read from the device on this page). It takes the words from a link too
+ * (lib/creative/improve IMPROVE_STUDIO_TOOLS).
+ */
+export const ATTACH_TOOL = "i2v";
+type FormTool = PromptTool | typeof ATTACH_TOOL;
+
+function studio(tool: FormTool, words: string): string {
   const q = new URLSearchParams({ tool });
   if (words) q.set("prompt", words);
   return `${STUDIO_NEXT_PREFIX}?${q.toString()}`;
@@ -43,6 +51,15 @@ export function promptHref(tool: PromptTool, raw: string, signedIn: boolean): st
   if (!(PROMPT_TOOLS as readonly string[]).includes(tool)) return null;
   const words = linkWords(raw);
   if (!words) return null;
+  return viaSignup(tool, words, signedIn);
+}
+
+/** "+": the picture-to-video form with the words so far (none is fine: the picture is what it is for), through sign-up when signed out. */
+export function attachHref(raw: string, signedIn: boolean): string {
+  return viaSignup(ATTACH_TOOL, linkWords(raw), signedIn);
+}
+
+function viaSignup(tool: FormTool, words: string, signedIn: boolean): string {
   if (signedIn) return studio(tool, words);
   // Signed out, the whole form must still fit through the callback and /welcome: cut the words (on a word) until it does.
   let lo = 0;

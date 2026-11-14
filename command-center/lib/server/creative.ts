@@ -4,7 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
-import { coerceModels, coercePreviewModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { coerceModels, coercePreviewModels, modelLock, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { readPurchased } from "@/lib/server/model-discovery";
 import { withoutSwitchedOff } from "@/lib/model-switch";
 import { readSwitchedOffIds } from "@/lib/server/model-switch";
 import { hideBlockedModelsHere } from "@/lib/server/geo";
@@ -69,8 +70,31 @@ export async function creativeSession(): Promise<
  * and the Studio offers only what quote/create would accept. A missing table
  * or a failed read is "nothing to pick", never a crash.
  */
-export async function loadStudioModels(): Promise<StudioModel[]> {
-  return (await readStudioModels()) ?? [];
+export async function loadStudioModels(orgId: string | null = null): Promise<StudioModel[]> {
+  return withLocks((await readStudioModels()) ?? [], orgId);
+}
+
+/**
+ * Which models this organization cannot buy, by creative_price's own rule (modelLock): the picker then starts on one it can, and
+ * names the reason on the others instead of a red refusal. Purchases are read only when a model needs one (`paid`); without an
+ * organization (or on a failed read) a `paid` model is not shown locked (unknown is not a refusal), while a plan-tier model is
+ * refused for everyone and is shown so. The tool-availability marks read readStudioModels without locks, as before.
+ */
+async function withLocks(models: StudioModel[], orgId: string | null): Promise<StudioModel[]> {
+  if (models.length === 0) return models;
+  let purchased: boolean | null = null;
+  if (orgId && models.some((m) => m.entitlement === "paid")) {
+    try {
+      const supabase = await createClient();
+      purchased = supabase ? await readPurchased(supabase, orgId) : null;
+    } catch {
+      purchased = null;
+    }
+  }
+  return models.map((m) => {
+    const lock = modelLock(m.entitlement, purchased);
+    return lock ? { ...m, lock } : m;
+  });
 }
 
 /**

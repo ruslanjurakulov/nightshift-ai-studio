@@ -1258,14 +1258,14 @@ option {
   color: var(--color-fg);
 }
 .btn-sky.ghost::before { background: var(--color-panel-2); }
-.btn-sky.ghost:hover { color: var(--color-primary); box-shadow: none; }
+.btn-sky.ghost:hover:where(:not(:disabled, [aria-disabled="true"])) { color: var(--color-primary); box-shadow: none; }
 /* Quiet enough for a bar full of controls, and still the same sweep. */
 .btn-sky.is-quiet {
   border-color: var(--color-border);
   color: var(--color-muted);
 }
 .btn-sky.is-quiet::before { background: var(--color-panel-2); }
-.btn-sky.is-quiet:hover { color: var(--color-fg); border-color: var(--color-primary); box-shadow: none; }
+.btn-sky.is-quiet:hover:where(:not(:disabled, [aria-disabled="true"])) { color: var(--color-fg); border-color: var(--color-primary); box-shadow: none; }
 /* The arrow leans into the direction of travel. */
 .btn-sky .btn-arrow { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.25, 1); }
 .btn-sky:hover .btn-arrow { transform: translateX(4px); }
@@ -1838,6 +1838,33 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 }
 .studio-chip:disabled,
 .ns-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+/* The Studio's segment keys are 40px targets on a mouse too (Pixel audit, 2026-11-13: 36px), 44px under a finger (below); a chip already is (--ns-chip-h). */
+.studio-seg > button { min-height: 40px; }
+/* A setting with more values than fit as keys (a model with 16 lengths): the same frame, one select. */
+.studio-seg-select { position: relative; padding-right: 4px; }
+.studio-seg-select > select {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  font-size: var(--ns-t-small);
+  color: var(--color-fg);
+  outline: none;
+}
+.studio-seg-select:focus-within { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+/* A model this organization cannot buy: a quiet lock and its reason, never the failure red (the model is fine; the sale is not open). */
+.studio-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ns-r-chip);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
 /* THE action: full width, the lit key, the price on it (components/ui/PriceButton). */
 .studio-cta {
   display: inline-flex;
@@ -2406,7 +2433,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-seg > button,
   .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
-  .studio-seg > button { min-height: 44px; }
+  .studio-seg > button,
+  .studio-seg-select > select { min-height: 44px; }
 }
 
 /* A chip that is a radio's label (the editor's speed, transition and caption

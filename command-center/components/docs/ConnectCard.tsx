@@ -11,10 +11,8 @@ export type ConnectTab = {
   /** The surface the logo needs: the page's neutral tile, or a light "paper" tile on both themes. */
   tile: "theme" | "paper" | "bare" | "plain";
   group: "primary" | "more";
-  /** The tab's steps, rendered on the server. Absent when `soon` is set. */
-  panel?: React.ReactNode;
-  /** Not available yet: said honestly instead of a step list that cannot work. */
-  soon?: { badge: string; title: string; body: string; use: string; goto: { id: string; label: string }[] };
+  /** The tab's steps, rendered on the server. */
+  panel: React.ReactNode;
 };
 
 /**
@@ -39,6 +37,7 @@ export function ConnectCard({
   tablistLabel,
   moreLabel,
   banner,
+  after,
 }: {
   tabs: ConnectTab[];
   title: string;
@@ -46,6 +45,8 @@ export function ConnectCard({
   moreLabel: string;
   /** The paid-plan note, shown above the steps on every tab. */
   banner: React.ReactNode;
+  /** Under the panels, on every tab: what is not a tab yet (the assistants whose sign-in is coming). */
+  after?: React.ReactNode;
 }) {
   const uid = useId();
   // The open tab lives in the page-wide client context, so the long page below can name the assistant.
@@ -181,26 +182,11 @@ export function ConnectCard({
             data-group={t.group}
             className="st-tabpanel"
           >
-            {t.soon ? (
-              <div className="st-soon">
-                <span className="st-soon-badge">{t.soon.badge}</span>
-                <h3 className="st-soon-title">{t.soon.title}</h3>
-                <p className="st-body">{t.soon.body}</p>
-                <p className="st-small">{t.soon.use}</p>
-                <div className="st-soon-go">
-                  {t.soon.goto.map((g) => (
-                    <button key={g.id} type="button" className="st-key" data-size="sm" data-tone="quiet" onClick={() => choose(g.id, true)}>
-                      {g.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              t.panel
-            )}
+            {t.panel}
           </div>
         ))}
       </div>
+      {after}
     </div>
   );
 }

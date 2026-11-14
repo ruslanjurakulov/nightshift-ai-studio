@@ -9,6 +9,7 @@
  * ("step"). Only those shapes exist, which is also all the database accepts
  * for a binding: an input by name, or an earlier step by number.
  */
+import { isClipSeconds, isShape } from "@/lib/creative/studio";
 import {
   LABEL_MAX,
   MAX_STEPS,
@@ -25,8 +26,9 @@ import {
   type WorkflowStep,
 } from "@/lib/workflows";
 
-export type AspectChoice = "16:9" | "9:16" | "1:1";
-export type SecondsChoice = 5 | 10;
+/** A shape and a clip length the step's model lists (the builder snaps them to its lists: 0155 and 0159 refuse any other). */
+export type AspectChoice = string;
+export type SecondsChoice = number;
 export type FactorChoice = 2 | 4;
 
 export interface TextField {
@@ -206,8 +208,8 @@ export function fromDefinition(wf: Pick<Workflow, "name" | "inputs" | "steps">):
       } else {
         d.source = { mode: "input", step: 0, label: labelOf(wf.inputs, src) };
       }
-      if (p.aspect_ratio === "16:9" || p.aspect_ratio === "9:16" || p.aspect_ratio === "1:1") d.aspect = p.aspect_ratio;
-      if (p.duration_s === 5 || p.duration_s === 10) d.seconds = p.duration_s;
+      if (isShape(p.aspect_ratio)) d.aspect = p.aspect_ratio;
+      if (isClipSeconds(p.duration_s)) d.seconds = p.duration_s;
       if (p.factor === 2 || p.factor === 4) d.factor = p.factor;
       return d;
     }),

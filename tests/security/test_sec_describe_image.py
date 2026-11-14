@@ -66,7 +66,8 @@ def db():
                   "limits": {"max_source_seconds": 30}}},
         {"id": "i2v-end", "display_name": "i2v-end", "provider": "acme", "adapter": "video.acme",
          "capabilities": ["i2v"], "credit_unit": "model_i2v_end_second", "entitlement": "any",
-         "spec": {"vendor_model": "acme-i2v-end", "output": "video", "end_frame": True}},
+         # 0159: a quote refuses a length the model's spec does not list; these models make every length 1-60 s (what is tested here is not the length).
+         "spec": {"vendor_model": "acme-i2v-end", "output": "video", "end_frame": True, "durations_s": list(range(1, 61))}},
     ]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
     for m, cap, adapter in [("vup", "video_upscale", "video.acme_up"), ("i2v-end", "i2v", "video.acme")]:
