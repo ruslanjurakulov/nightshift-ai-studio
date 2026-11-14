@@ -100,6 +100,10 @@ begin
   if h is null or h <> all (array['b1cdcf014109e5902d0e6d9f05767186', '3ef7e3154b00584e7625225d20dfa705']) then
     raise exception '0176 found public.oauth_scopes_supported() with a body that is neither 0093''s nor 0176''s (md5 %): read the live body first', h;
   end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)');
+  if h is null or h <> all (array['1d77b561efdb9347dc9465e66fa87e8c', '5c12979d1937b35b5ca8fc353087d4f8']) then
+    raise exception '0176 found public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) with a body that is neither 0147''s nor 0176''s (md5 %): read the live body first', h;
+  end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_endpoint_scope(text)');
   if h is null or h <> all (array['ade9dedd7a1058b4938e9df7e8bd1b87', '4bc3b07f8a926be2ca055a9404d1e3d3']) then
     raise exception '0176 found public.oauth_endpoint_scope(text) with a body that is neither 0093''s nor 0176''s (md5 %): read the live body first', h;
@@ -118,6 +122,86 @@ end $$;
 create or replace function public.oauth_scopes_supported() returns text[]
   language sql immutable set search_path = public, pg_temp as $$
   select array['videos:read', 'videos:create', 'videos:publish', 'studio:create']::text[]
+$$;
+
+-- 0147's oauth_begin_authorization, with one marked hunk: "nothing asked for" still means 0093's three permissions.
+create or replace function public.oauth_begin_authorization(
+  p_client_id uuid, p_redirect_uri text, p_code_challenge text, p_method text, p_state text,
+  p_scope text, p_resource text, p_secret_hash text
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user   uuid := auth.uid();
+  c        public.oauth_clients;
+  v_org    uuid;
+  v_scopes text[];
+  lim      jsonb := public.oauth_limits();
+  v_plan   text;
+  v_name   text;
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  select * into c from public.oauth_clients where client_id = p_client_id;
+  if c.client_id is null then
+    return jsonb_build_object('ok', false, 'error', 'unknown_client');
+  end if;
+  -- Exact string match against what the client registered; until it matches,
+  -- nothing is ever sent to the URI.
+  if p_redirect_uri is null or not (p_redirect_uri = any (c.redirect_uris)) then
+    return jsonb_build_object('ok', false, 'error', 'redirect_mismatch');
+  end if;
+  if coalesce(p_method, '') <> 'S256' then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_request',
+      'description', 'PKCE with code_challenge_method=S256 is required.');
+  end if;
+  if coalesce(p_code_challenge, '') !~ '^[A-Za-z0-9_-]{43}$' then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_request',
+      'description', 'code_challenge must be the base64url SHA-256 of the verifier.');
+  end if;
+  if p_state is not null and (char_length(p_state) > 512 or p_state ~ '[[:cntrl:]]') then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_request', 'description', 'state is too long.');
+  end if;
+  if coalesce(p_resource, '') !~ '^https?://[^[:space:]#]{1,255}$' then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_target', 'description', 'resource must be the MCP server URL.');
+  end if;
+  if coalesce(p_secret_hash, '') !~ '^[0-9a-f]{64}$' then
+    return jsonb_build_object('ok', false, 'error', 'server_error');
+  end if;
+
+  -- Unknown scope words are ignored (RFC 6749 3.3: the server may grant less);
+  -- nothing asked for means everything the server offers.
+  v_scopes := array(select s from unnest(public.oauth_scopes_supported()) s
+                     where p_scope is not null and s = any (string_to_array(btrim(p_scope), ' ')));
+  if cardinality(v_scopes) = 0 then
+    -- 0176: everything but studio:create. Spending on Studio generations is its own consent, so a client gets it only by
+    -- asking for it by name; one that asks for nothing (or only words this server does not know) gets 0093's three.
+    v_scopes := array(select s from unnest(public.oauth_scopes_supported()) s where s <> 'studio:create');
+  end if;
+
+  v_org := public.oauth_workspace(v_user);
+  if v_org is null then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'no_workspace');
+  end if;
+  select o.name into v_name from public.organizations o where o.id = v_org;
+  v_plan := public.org_plan_internal(v_org);
+
+  -- 0147: every plan may approve, Free included. `entitled` below stays true for the consent page's shape.
+
+  delete from public.oauth_auth_requests where expires_at < now();
+  delete from public.oauth_auth_requests where id in (
+    select id from public.oauth_auth_requests where user_id = v_user order by created_at desc
+     offset (lim ->> 'max_pending_requests')::int - 1);
+  insert into public.oauth_auth_requests
+    (secret_hash, user_id, org_id, client_id, redirect_uri, code_challenge, state, scopes, resource)
+  values (p_secret_hash, v_user, v_org, c.client_id, p_redirect_uri, p_code_challenge, p_state, v_scopes, p_resource);
+
+  return jsonb_build_object('ok', true, 'entitled', true, 'client_name', c.client_name,
+    'redirect_uri', p_redirect_uri, 'workspace_name', v_name, 'plan', v_plan, 'scopes', to_jsonb(v_scopes),
+    'default_limit_credits', (lim ->> 'default_limit_credits')::numeric,
+    'max_limit_credits', (lim ->> 'max_limit_credits')::numeric,
+    'exempt', public.credits_exempt(v_org));
+end
 $$;
 
 -- 0093's check, widened to the fourth permission. Every existing row passes it (it held 1-3 of the first three).
@@ -239,7 +323,7 @@ $$;
 
 create or replace function public.oauth_creative_limits() returns jsonb
   language sql immutable set search_path = public, pg_temp as $$
-  select jsonb_build_object('quote_ttl_seconds', 900, 'quotes_per_minute', 30, 'creates_per_minute', 10,
+  select jsonb_build_object('quote_ttl_seconds', 900, 'quotes_per_minute', 30, 'creates_per_minute', 10, 'open_quotes_max', 50,
                             'media_list_max', 100)
 $$;
 
@@ -492,9 +576,19 @@ begin
       -- The Studio's own price for this workspace: the model, the settings, the source file (this workspace's, live), the
       -- entitlement. Computed nowhere else.
       v_q := public.creative_price(v_org, v_cap, v_model, v_p);
-      -- A connection's own quotes that ran out a day ago are of no use to anyone.
+      -- A connection's own quotes that ran out are of no use to anyone; a connection holds at most a few live ones (storage is a
+      -- ceiling: 30 quotes a minute of up to 16 KB each would otherwise pile up).
       delete from public.oauth_creative_quotes q
-       where q.grant_id = v_grant and q.job_id is null and q.expires_at < now() - interval '1 day';
+       where q.grant_id = v_grant and q.job_id is null and q.expires_at < now();
+      if (select count(*) from public.oauth_creative_quotes q where q.grant_id = v_grant and q.job_id is null)
+         >= (public.oauth_creative_limits() ->> 'open_quotes_max')::integer then
+        return public.api_finish(ctx, public.api_err(429, 'too_many_quotes',
+          'This connection has too many open quotes. Create from one, or wait for them to expire.',
+          jsonb_build_object('retry_after', 60)), 0);
+      end if;
+      -- The tier, resolution and soundtrack the price is for are written into the params, the way create_creative_job writes
+      -- them into the job: what runs is what was shown, even if a model's default changes before create.
+      v_p := v_p || (v_q - array(select k from jsonb_object_keys(v_q) k where k not in ('quality', 'resolution', 'audio')));
       insert into public.oauth_creative_quotes (grant_id, org_id, capability, model, params, credits, quote, expires_at)
       values (v_grant, v_org, v_cap, v_model, v_p, (v_q ->> 'credits')::numeric, v_q - 'exempt' - 'preview',
               now() + make_interval(secs => (public.oauth_creative_limits() ->> 'quote_ttl_seconds')::integer))
@@ -605,8 +699,9 @@ begin
     if v_state <> 'ok' then
       return public.api_finish(ctx, public.oauth_creative_state_refusal(v_state, q.model), 0);
     end if;
-    -- A limit of 0 is a read-only connection, whoever pays (0094's rule for videos).
-    if (ctx ->> 'exempt')::boolean and (ctx ->> 'limit_credits')::numeric <= 0 then
+    -- A limit of 0 is a read-only connection, whoever pays: a generation can be priced at 0, so `spent + 0 > 0` would let one
+    -- through on a paying workspace too (Lens).
+    if (ctx ->> 'limit_credits')::numeric <= 0 then
       return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
         'This connection is read-only: its monthly spending limit is 0.',
         jsonb_build_object('limit_credits', 0, 'spent_credits', 0, 'price_credits', q.credits)), 0);
@@ -739,6 +834,8 @@ $$;
 -- ───────────────────────────────────────────────────────────────────────────
 
 revoke all on function public.oauth_scopes_supported() from public, anon, authenticated, service_role;
+revoke all on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) to authenticated;
 revoke all on function public.oauth_endpoint_scope(text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_grant_month_credits(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_creative_capabilities() from public, anon, authenticated, service_role;
