@@ -638,3 +638,57 @@ def test_the_lab_takes_0171_off_with_the_chain_and_puts_it_back(db):
             assert _state(d) == before
     finally:
         sec_db.drop_database(db.admin, name)
+
+
+# ── the owner's price file (docs/sql/price_0171_voice_explainer.sql) ───────────────────────────────────────────────
+
+PRICE_FILE = sec_db.REPO / "docs" / "sql" / "price_0171_voice_explainer.sql"
+REAL = "nightshift-voice-explainer"
+REAL_UNIT = "model_nightshift_voice_explainer_second"
+
+
+def test_the_price_file_waits_for_the_probe_then_charges_0_4_a_second_and_never_writes_zero(db):
+    name, d = _scratch(db.admin, sec_db.build_sequence(), "price")
+    try:
+        text = PRICE_FILE.read_text(encoding="utf-8")
+        price = lambda: d.su("select credits_per_unit, margin from public.credit_prices where unit = %s", [REAL_UNIT])
+        # No row yet: a price must never be the first thing that makes the model look ready.
+        with pytest.raises(psycopg.Error) as e:
+            d.su(text)
+        assert "found no model row nightshift-voice-explainer" in str(e.value)
+        row = {**_rows()[0], "id": REAL, "credit_unit": REAL_UNIT}
+        d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps([row])])
+        with pytest.raises(psycopg.Error) as e:
+            d.su(text)
+        assert "has no passing probe" in str(e.value)
+        assert price() == []
+        d.su("select public.record_model_probe(%s, 'video.voice_explainer', 'voice-explainer-rules-1', 'voice_explainer', true, "
+             "null, null, 10, 100, 'security-lab')", [REAL])
+        d.su(text)
+        d.su(text)   # a replay writes the same row
+        assert [(float(c), float(m)) for c, m in price()] == [(0.05, 7.0)]
+        # The rate a person is quoted: 0.4 credits per measured second (30 s = 12 credits, 12.2 s = 13 s = 5.2 credits).
+        d.su("update public.model_registry set availability = 'beta' where id = %s", [REAL])
+        d.su("insert into auth.users (id, email) values (%s, 'p171@x.io')", [UA])
+        d.su("insert into public.organizations (id, name, slug) values (%s, 'P171', 'org-p171')", [ORG_A])
+        d.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'p171@x.io', 'owner')", [ORG_A, UA])
+        d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('job_minimum', 1, 0) "
+             "on conflict (unit) do update set credits_per_unit = 1, margin = 0")
+        for seconds, credits in ((30, 12), (12.2, 5.2), (600, 240), (1, 1)):
+            q = quote(d, UA, ORG_A, "voice_explainer", REAL, vv(media(d, ORG_A, "audio", "audio/mpeg", seconds)))
+            assert float(q["credits"]) == credits, (seconds, q)
+        # A zero, a negative or a NULL rate would make every voice video free (job_minimum floors only a price above 0).
+        for bad in ("0", "0.0", "-0.05", "null"):
+            edited = text.replace("v_credits_per_unit constant numeric := 0.05;", f"v_credits_per_unit constant numeric := {bad};")
+            assert edited != text
+            with pytest.raises(psycopg.Error) as e:
+                d.su(edited)
+            assert "price_0171 refuses credits_per_unit" in str(e.value), bad
+            assert [(float(c), float(m)) for c, m in price()] == [(0.05, 7.0)]
+        for bad in ("null", "-1", "10.5"):
+            edited = text.replace("v_margin constant numeric := 7.0;", f"v_margin constant numeric := {bad};")
+            with pytest.raises(psycopg.Error) as e:
+                d.su(edited)
+            assert "price_0171 refuses margin" in str(e.value), bad
+    finally:
+        sec_db.drop_database(db.admin, name)
