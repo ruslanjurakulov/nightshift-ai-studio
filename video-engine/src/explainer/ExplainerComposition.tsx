@@ -73,7 +73,8 @@ const CaptionLine: React.FC<{ words: Word[]; look: Look; sceneStart: number }> =
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = sceneStart + frame / fps;
-  const line = wordsForLine(words, t, 5);
+  // Four words: five wrapped to a second line at this size in Uzbek, and one line is what the eye can follow.
+  const line = wordsForLine(words, t, 4);
   if (!line.length) return null;
   return (
     <div style={{ fontFamily: SANS, fontSize: 48, fontWeight: 800, textAlign: "center", lineHeight: 1.25 }}>
