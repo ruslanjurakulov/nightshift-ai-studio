@@ -11,6 +11,7 @@ import { ShowcaseCarousel } from "@/components/site/ShowcaseCarousel";
 import { BeforeAfter } from "@/components/site/BeforeAfter";
 import { PromptTicker } from "@/components/site/PromptTicker";
 import { EFFECTS } from "@/lib/effects/catalog";
+import { bestLevelCost, gridSpan } from "@/lib/site/gallery-plan";
 
 /**
  * The landing's three moving pieces, as Server Components that build their plain props from the data file and hand them to the
@@ -108,7 +109,7 @@ export function landingTileJobs(exclude: readonly string[], entries: readonly Sh
  * - picture → video takes every pair (its clip's box carries the `#sample-` anchor a model tile may point at);
  * - the explore grid takes the samples the model tiles link to (their anchors are its cards), except a pair's clip;
  * - the ticker takes the wide text-to-video clips with words that are left;
- * - the grid fills up to LANDING_GALLERY_MAX with what is left, in the data file's order;
+ * - the grid fills up to LANDING_GALLERY_MAX with what is left, picking what leaves its columns most level (gallery-plan.ts);
  * - the carousel takes the rest.
  * None takes an effect's preview (the Effects section shows it), except the grid when a model tile links to it: the Effects
  * section's frames carry no anchor, so that one sample is in both until they do.
@@ -120,9 +121,23 @@ function landingSplit(exclude: readonly string[], entries: readonly ShowcaseEntr
   const tiles = landingTileJobs(exclude, entries, files).filter((j) => !pairClips.has(j));
   const ticker = tickerItems(items(entries, files, [...exclude, ...pairJobs, ...tiles])).map(({ e }) => e.jobId);
   const sections = [...pairJobs, ...ticker];
-  const fill = items(entries, files, [...exclude, ...sections, ...tiles])
-    .slice(0, Math.max(0, LANDING_GALLERY_MAX - tiles.length))
-    .map(({ e }) => e.jobId);
+  // The grid's other places go, one at a time, to the free sample that leaves the columns most level (lib/site/gallery-plan.ts);
+  // the first in the data file's order of equally good ones.
+  const pool = items(entries, files, [...exclude, ...sections, ...tiles]);
+  const spanOf = new Map(showcaseItems(entries, files).map(({ e }) => [e.jobId, gridSpan(e.width, e.height)]));
+  const fill: string[] = [];
+  while (fill.length < LANDING_GALLERY_MAX - tiles.length) {
+    const taken = [...tiles, ...fill].map((j) => spanOf.get(j) ?? 0);
+    let pick: string | null = null;
+    let best = Infinity;
+    for (const { e } of pool) {
+      if (fill.includes(e.jobId)) continue;
+      const c = bestLevelCost([...taken, spanOf.get(e.jobId) ?? 0]);
+      if (c < best - 1e-9) [pick, best] = [e.jobId, c];
+    }
+    if (!pick) break;
+    fill.push(pick);
+  }
   const grid = new Set([...tiles, ...fill]);
   const gallery = showcaseItems(entries, files)
     .map(({ e }) => e.jobId)

@@ -8,6 +8,7 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { ClipPause } from "@/components/site/ClipPause";
 import { posterSrcSet } from "@/lib/site/renditions";
+import { GRID_GUTTER_ROWS, PLANNED_COLUMNS, gridSpan, level, levelOrder } from "@/lib/site/gallery-plan";
 import { ShortsFeed } from "@/components/site/ShortsFeed";
 import { shortsItems } from "@/components/site/shorts";
 import { SampleDetail, type SampleDetailCopy } from "@/components/site/SampleDetail";
@@ -21,16 +22,7 @@ function madeOn(iso: string, locale: Locale): string {
   }
 }
 
-/**
- * How many of the grid's rows a card spans (site-next.css .nx-gallery): a row is a hundredth of a column's width, so a card of
- * width w and height h spans 100·h/w rows, plus four for the gutter under it. The grid then places the cards in their order,
- * each in the column that frees first (a masonry whose reading and Tab order is the page's order, row by row), and two cards
- * whose files differ by a few pixels (1280×718 and 1280×720) span the same rows, so a row's tops and bottoms line up.
- */
-export const GRID_GUTTER_ROWS = 4;
-export function gridSpan(width: number, height: number): number {
-  return Math.round((100 * height) / width) + GRID_GUTTER_ROWS;
-}
+export { GRID_GUTTER_ROWS, gridSpan };
 
 /** The entries the page can show: those whose files are here (an entry without its files is never shown as a gap). */
 export function showcaseItems(
@@ -86,8 +78,24 @@ export function ShowcaseGallery({
   formats?: readonly LandingFormat[];
 }) {
   const all = showcaseItems(entries, files);
-  const items = all.filter(({ e }) => !exclude.includes(e.jobId));
-  if (items.length === 0) return null;
+  const shown = all.filter(({ e }) => !exclude.includes(e.jobId));
+  if (shown.length === 0) return null;
+  // The grid ends level at three and four columns (lib/site/gallery-plan.ts): the order that crops least, and each card's column,
+  // first row and span for each, set inline (site-next.css reads them). A phone's two columns flow by themselves (--span).
+  const spans0 = shown.map(({ e }) => gridSpan(e.width, e.height));
+  const order = levelOrder(spans0);
+  const items = order.map((i) => shown[i]);
+  const spans = order.map((i) => spans0[i]);
+  const plans = PLANNED_COLUMNS.map((cols) => ({ cols, cells: level(spans, cols).cells }));
+  const place = (i: number): CSSProperties => {
+    const style: Record<string, number> = { "--span": spans[i] };
+    for (const { cols, cells } of plans) {
+      style[`--c${cols}`] = cells[i].col;
+      style[`--r${cols}`] = cells[i].row;
+      style[`--s${cols}`] = cells[i].span;
+    }
+    return style as CSSProperties;
+  };
   const g = t.site.gallery;
   // An animation of one of our own pictures reads as a trick without the picture it started from. Shown only when that picture is
   // itself a sample here (its file is in the repository and its own card names its model); any other input is not shown.
@@ -126,7 +134,7 @@ export function ShowcaseGallery({
               a sample's dialog): one Tab stop, not one per card. */}
           {items.some(({ e, f }) => e.kind === "video" && f.clip !== null) && <ClipPause label={t.site.fx.pause} />}
           <ul className="nx-gallery">
-            {items.map(({ e, f }) => {
+            {items.map(({ e, f }, i) => {
               const href = tryHref(e, signedIn, now);
               const leftOut = modelLeftOut(e, now);
               const promptId = `sample-prompt-${e.jobId}`;
@@ -136,7 +144,7 @@ export function ShowcaseGallery({
               const source = sourceOf(e);
               const words = e.prompt.trim() ? e.prompt : g.noPrompt;
               return (
-                <li key={e.jobId} id={`sample-${e.jobId}`} className="nx-gallery-card" data-showcase-entry={e.jobId} data-model={e.modelId} data-shape={shape} style={{ "--span": gridSpan(e.width, e.height) } as CSSProperties}>
+                <li key={e.jobId} id={`sample-${e.jobId}`} className="nx-gallery-card" data-showcase-entry={e.jobId} data-model={e.modelId} data-shape={shape} style={place(i)}>
                   <div className="nx-gallery-pic" data-clip={clip ? "sample" : undefined} style={{ aspectRatio: `${e.width} / ${e.height}` }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img

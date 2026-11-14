@@ -1441,8 +1441,12 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
   .nx-gallery { --cw: calc(100cqw / (var(--cols) + 0.04 * (var(--cols) - 1))); display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-auto-rows: calc(var(--cw) / 100); column-gap: calc(var(--cw) * 0.04); row-gap: 0; }
   .nx-gallery-card { grid-row-end: span var(--span, 60); margin: 0 0 calc(var(--cw) * 0.04); }
   .nx-gallery-pic { position: absolute; inset: 0; }
+  /* Three and four columns are planned on the server so they end level (lib/site/gallery-plan.ts): each card's column, first
+     row and span come inline. The last card of a short column spans a few more rows and its picture crops from the centre. */
+  @media (min-width: 760px) { .nx-gallery-card { grid-column: var(--c3, auto); grid-row: var(--r3, auto) / span var(--s3, var(--span, 60)); } }
+  @media (min-width: 1240px) { .nx-gallery-card { grid-column: var(--c4, auto); grid-row: var(--r4, auto) / span var(--s4, var(--span, 60)); } }
 }
-.nx-gallery-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.nx-gallery-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 /* The badge is never lost: in the top right corner (a camera's timestamp or a title burned into a picture sits top left), on a
    dark, edged chip that reads on a black frame too, small on a phone's narrow card, and it wraps rather than being cut. */
 .nx-gallery-pic .nx-result-badge { z-index: 2; top: 8px; left: auto; right: 8px; max-width: calc(100% - 16px); padding: 3px 8px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(10, 10, 14, 0.86); font-size: 11px; line-height: 1.3; pointer-events: none; }

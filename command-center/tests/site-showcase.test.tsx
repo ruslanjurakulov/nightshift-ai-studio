@@ -28,6 +28,7 @@ import raw from "@/lib/site/showcase.json";
 import { SHOWCASE_ENTRIES, modelLeftOut, parseShowcase, parseShowcaseEntry, showcaseModels } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { GRID_GUTTER_ROWS, ShowcaseGallery, gridSpan, showcaseItems } from "@/components/site/ShowcaseGallery";
+import { level, levelOrder } from "@/lib/site/gallery-plan";
 import { cutWords, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
 import { DEFAULT_AFTER_AUTH, STUDIO_NEXT_PREFIX, afterSignupPath, safeLoginReturn, safeNextPath, studioNext } from "@/lib/safe-redirect";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
@@ -516,6 +517,20 @@ describe("the gallery", () => {
     expect(pauses[0].textContent).toBe(t.site.fx.pause);
     // The DOM order is the cards' order (the grid places them row by row in that order): Tab follows it.
     expect(cards.map((c) => c.dataset.showcaseEntry)).toEqual([FIXTURE_JOB, tallJob]);
+    // At three and four columns each card carries its planned place (lib/site/gallery-plan.ts level), and the stylesheet uses it.
+    const spans = cards.map((c) => Number(c.style.getPropertyValue("--span")));
+    for (const cols of [3, 4]) {
+      const cells = level(spans, cols).cells;
+      cards.forEach((c, i) => {
+        expect(c.style.getPropertyValue(`--c${cols}`)).toBe(String(cells[i].col));
+        expect(c.style.getPropertyValue(`--r${cols}`)).toBe(String(cells[i].row));
+        expect(c.style.getPropertyValue(`--s${cols}`)).toBe(String(cells[i].span));
+      });
+    }
+    const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
+    expect(css).toContain("@media (min-width: 760px) { .nx-gallery-card { grid-column: var(--c3, auto); grid-row: var(--r3, auto) / span var(--s3, var(--span, 60)); } }");
+    expect(css).toContain("@media (min-width: 1240px) { .nx-gallery-card { grid-column: var(--c4, auto); grid-row: var(--r4, auto) / span var(--s4, var(--span, 60)); } }");
+    expect(css).toMatch(/\.nx-gallery-pic \.nx-art \{[^}]*object-fit: cover; object-position: center;/);
   });
 
   it("each card keeps its clip's own shape: a 9:16 sample stands tall, a 16:9 one lies wide, its box sized from the file before it loads", () => {
@@ -553,7 +568,9 @@ describe("the shipped samples", () => {
     // The section's own words (heading, lead, notes) name no model; only the sample boxes do.
     expect(without(section, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
     const cards = [...section.querySelectorAll<HTMLElement>(SAMPLE_CARD)];
-    expect(cards.map((c) => c.dataset.showcaseEntry)).toEqual(items.map(({ e }) => e.jobId));
+    // Every sample once, in the order the level plan lays them out (lib/site/gallery-plan.ts levelOrder over the data file's order).
+    const planned = levelOrder(items.map(({ e }) => gridSpan(e.width, e.height))).map((i) => items[i].e.jobId);
+    expect(cards.map((c) => c.dataset.showcaseEntry)).toEqual(planned);
     const s = d.site.samples;
     const noStock = (el: HTMLElement) => {
       expect(el.querySelector("[data-sample], [data-art-id], [data-kind], .nx-result-credit, .nx-show-note")).toBeNull();

@@ -31,7 +31,8 @@ vi.mock("next/link", () => ({
 
 import { dictionaries } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
-import { showcaseItems } from "@/components/site/ShowcaseGallery";
+import { gridSpan, showcaseItems } from "@/components/site/ShowcaseGallery";
+import { levelOrder } from "@/lib/site/gallery-plan";
 import { LANDING_GALLERY_MAX, effectPreviewJobs, landingGalleryExclude, landingGalleryJobs, landingTileJobs, sampleSectionJobs } from "@/components/site/landing-samples";
 import { landingExcludedJobs } from "@/components/site/slots";
 import type { MoneyAnchor } from "@/lib/landing";
@@ -81,7 +82,11 @@ describe("the landing shows each sample once", () => {
     expect(allowed.size).toBeLessThanOrEqual(new Set(showcaseItems().map(({ e }) => e.modelId)).size);
     // And the grid is there, with its share in the data file's order: not an empty section, and not every sample again.
     const grid = [...container.querySelectorAll("section#samples [data-showcase-entry]")].map((c) => c.getAttribute("data-showcase-entry"));
-    expect(grid).toEqual(landingGalleryJobs(landingExcludedJobs()));
+    // The grid's share, in the order its level plan lays it out (lib/site/gallery-plan.ts).
+    const share = landingGalleryJobs(landingExcludedJobs());
+    const byJob = new Map(showcaseItems().map(({ e }) => [e.jobId, e]));
+    const spans = share.map((j) => gridSpan(byJob.get(j)!.width, byJob.get(j)!.height));
+    expect(grid).toEqual(levelOrder(spans).map((i) => share[i]));
   });
 
   it("the grid's share is the samples the model tiles link to plus a few more, never a section's, and the landing hands its gallery exactly that", () => {
