@@ -8,7 +8,7 @@ import { STILL_MS, clock, ringIndex, ringOffset, type SampleSlide } from "@/lib/
 import { useMotionPaused } from "@/lib/site/motion";
 import type { SiteCarouselDictionary } from "@/lib/i18n/site-carousel";
 import { clipsAllowed } from "@/components/site/LoopClip";
-import { usePageVisible, useReducedMotion, useClipTurn } from "@/components/site/clip-turns";
+import { usePageVisible, useReducedMotion, useClipNear, useClipTurn } from "@/components/site/clip-turns";
 import "@/components/site/showcase-carousel.css";
 
 /** The few gallery words the centre card shares with the explore grid (t.site.gallery), so both say the same thing. */
@@ -27,8 +27,9 @@ export type CarouselGalleryCopy = { badge: string; model: string; altClip: strin
  *   and the hold stays after focus leaves, until the start control (or a tap) is pressed.
  * - Under reduced motion nothing plays or advances by itself: the posters stand still, and a clip plays only when its play button
  *   is pressed. With Save-Data or a slow link clips are not fetched until pressed either, and the posters advance on the timer.
- * - Only the centre card ever has a video, and only once the carousel has a turn to play (components/site/clip-turns.ts): at most
- *   one of the landing's sample players at a time on a phone.
+ * - Only the centre card ever has a video. It is put in the page once the carousel comes within half a screen of the viewport, so
+ *   it is buffered by the time it shows, and it plays while the carousel is on screen (components/site/clip-turns.ts: every clip
+ *   on screen plays, the page's other loops alongside it).
  * - Every box is sized before anything loads (the stage, the cards and the panel under them have fixed heights), so nothing on the
  *   page moves when a card or its words change by themselves.
  *
@@ -87,9 +88,10 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
   const auto = mounted && !reduced && !stopped && !pageHolds;
   // A press on play is the visitor's own choice, so it plays even with reduced motion or Save-Data on.
   const turn = useClipTurn(stage, mounted && (auto || pressedPlay));
+  const soon = useClipNear(stage, mounted);
   useEffect(() => {
-    if (turn) setWoke(true);
-  }, [turn]);
+    if (turn || soon) setWoke(true);
+  }, [turn, soon]);
 
   const hasClip = !!s && s.kind === "video" && s.clip !== null && !failed;
   const showVideo = hasClip && (pressedPlay || (allowed && woke && !reduced));
