@@ -9,12 +9,14 @@ One new table:
   site_settings              Service: the switch (public_stats_visible, default false) and the last measurement. RLS on, no
                              policy, every grant revoked: no API role reads or writes it, the service key included.
 
-Three new functions:
+Four new functions:
 
-  public_site_stats          anon and authenticated: the site's read. Hidden, it answers {"visible": false} and nothing else;
-                             visible, aggregate counts only. test_sec_public_stats.py proves both.
+  public_site_stats          anon and authenticated: the site's read. Hidden (switch off, nothing stored, or fewer than 5 counted
+                             workspaces), it answers {"visible": false} and nothing else; visible, aggregate counts only.
+                             test_sec_public_stats.py proves both.
   set_public_stats_visible   USER: a signed-in platform owner/admin (owner_guard, 0107) or the SQL editor; everyone else 42501.
-  public_site_stats_measure  SERVICE: internal, called by public_site_stats only.
+  public_site_stats_measure  SERVICE: internal, the measurement.
+  public_site_stats_refresh  SERVICE: internal, stores a measurement (pg_cron and the switch call it).
 """
 
 from __future__ import annotations
@@ -31,4 +33,5 @@ def extend(tables: dict, functions: dict) -> None:
         "public_site_stats": PUBLIC_READ,
         "set_public_stats_visible": USER,
         "public_site_stats_measure": SERVICE,
+        "public_site_stats_refresh": SERVICE,
     })

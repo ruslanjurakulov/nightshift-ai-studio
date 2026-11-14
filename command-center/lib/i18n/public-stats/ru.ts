@@ -7,10 +7,11 @@ export const publicStatsRu: PublicStatsDictionary = {
   asOf: "Данные на {time}",
   notMeasured: "ещё не измерено",
   counts: {
-    videos_rendered: "Видео отрендерено",
+    videos_rendered: "Видео отрендерено (не меньше)",
     videos_uploaded_private: "Видео загружено на YouTube приватно",
     videos_approved: "Видео одобрено человеком",
     studio_generations: "Генераций в Студии завершено",
   },
   lastRun: "Последний запуск конвейера завершён",
+  hourRange: "{day}, между {from} и {to} UTC",
 };

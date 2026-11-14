@@ -7,10 +7,11 @@ export const publicStatsUz: PublicStatsDictionary = {
   asOf: "{time} holatiga",
   notMeasured: "hali oʻlchanmagan",
   counts: {
-    videos_rendered: "Render qilingan videolar",
+    videos_rendered: "Render qilingan videolar (kamida)",
     videos_uploaded_private: "YouTubeʼga yopiq (private) holda yuklangan videolar",
     videos_approved: "Inson tasdiqlagan videolar",
     studio_generations: "Studiyada yakunlangan generatsiyalar",
   },
   lastRun: "Konveyerning oxirgi ishi tugagan vaqt",
+  hourRange: "{day}, {from} va {to} oraligʻida (UTC)",
 };

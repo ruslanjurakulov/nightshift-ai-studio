@@ -38,7 +38,7 @@ import { publicStatsUz } from "@/lib/i18n/public-stats/uz";
 import { PUBLIC_STAT_COUNTS, parsePublicStats, shownPublicStats, type PublicStats } from "@/lib/public-stats";
 import { PUBLIC_STATS_TTL_MS, readPublicSiteStats } from "@/lib/server/public-stats";
 import { FAIL_TTL_MS, resetPublicReads } from "@/lib/server/public-read";
-import { LiveStats, statsTime } from "@/components/site/LiveStats";
+import { LiveStats, statsHour, statsTime } from "@/components/site/LiveStats";
 import { Landing } from "@/components/landing/Landing";
 import type { MoneyAnchor } from "@/lib/landing";
 
@@ -49,7 +49,7 @@ const VISIBLE = {
   videos_uploaded_private: 0,
   videos_approved: 37,
   studio_generations: 5120,
-  last_run_at: "2026-11-14T04:58:00+00:00",
+  last_run_at: "2026-11-14T04:00:00+00:00",
 };
 const NO_MONEY: MoneyAnchor = { pack: { kind: "none" }, api: null, site: null };
 
@@ -153,12 +153,27 @@ describe("LiveStats: the strip", () => {
     expect(time.getAttribute("datetime")).toBe(VISIBLE.as_of);
     expect(time.textContent).toBe("As of Nov 14, 2026, 05:10 UTC");
     const row = (id: string) => container.querySelector(`[data-stat="${id}"]`)!;
-    expect(row("videos_rendered").querySelector("dt")!.textContent).toBe("Videos rendered");
+    expect(row("videos_rendered").querySelector("dt")!.textContent).toBe("Videos rendered (at least)");
     expect(row("videos_rendered").querySelector("dd")!.textContent).toBe("1,204");
     expect(row("studio_generations").querySelector("dd")!.textContent).toBe("5,120");
-    expect(row("last_run_at").querySelector("dd")!.textContent).toBe("Nov 14, 2026, 04:58 UTC");
+    expect(row("last_run_at").querySelector("dd")!.textContent).toBe("Nov 14, 2026, between 04:00 and 05:00 UTC");
     // A measured zero is a measurement.
     expect(row("videos_uploaded_private").querySelector("dd")!.textContent).toBe("0");
+  });
+
+  it("gives the last run only as the hour it fell in, never a minute, even if an answer carried one", () => {
+    const { container } = render(<LiveStats t={dictionaries.en} locale="en" stats={stats({}, "2026-11-14T23:58:41+00:00")} />);
+    const text = container.querySelector('[data-stat="last_run_at"] dd')!.textContent;
+    expect(text).toBe("Nov 14, 2026, between 23:00 and 24:00 UTC");
+    expect(text).not.toMatch(/:58|:41/);
+    for (const locale of ["ru", "uz"] as const) {
+      expect(statsHour("2026-11-14T04:00:00+00:00", locale, dictionaries[locale].site.liveStats.hourRange)).toMatch(/04:00.*05:00/);
+    }
+  });
+
+  it("never copies the number of counted workspaces (the database's preview-only key) into the page", () => {
+    const got = shownPublicStats(parsePublicStats({ ...VISIBLE, counted_orgs: 7, min_counted_orgs: 5 }));
+    expect(JSON.stringify(got)).not.toMatch(/counted|"7"|:7\b/);
   });
 
   it("shows 'not measured yet' for a null, never 0, and never a rate or a percentage", () => {

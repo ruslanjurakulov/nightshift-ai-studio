@@ -236,4 +236,6 @@ them as indicative, not as lab Lighthouse numbers.
    hidden. When real traffic grows, turn them on with one line in the Supabase
    SQL editor, `select public.set_public_stats_visible(true);` (off again:
    `select public.set_public_stats_visible(false);`). No redeploy; the site picks
-   it up within about five minutes. What each number counts: `docs/PUBLIC_STATS.md`.
+   it up within about five minutes, once at least 5 customer workspaces are
+   counted (`select public.public_site_stats();` shows `counted_orgs`). What each
+   number counts: `docs/PUBLIC_STATS.md`.

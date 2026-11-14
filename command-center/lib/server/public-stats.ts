@@ -5,14 +5,16 @@ import { cachedPublicRead } from "@/lib/server/public-read";
 
 /**
  * How long one answer of public_site_stats() is kept in this server's memory. The switch is a database row, so turning the
- * counters on or off reaches the site within this window with no redeploy (docs/PUBLIC_STATS.md). The database keeps its own
- * five-minute snapshot, so a number on the page is at most about ten minutes old, and its "as of" says when it was measured.
+ * counters on or off reaches the site within this window with no redeploy (docs/PUBLIC_STATS.md). The database stores one
+ * measurement, refreshed every 10 minutes by pg_cron or, without it, once it is 15 minutes old; so a number on the page was
+ * measured at most about 15 (20 without pg_cron) minutes earlier, and its "as of" says exactly when.
  */
 export const PUBLIC_STATS_TTL_MS = 5 * 60_000;
 
 /**
  * The site's live counters (migration 0164), read with the anon key and no session, bounded and shared
- * (lib/server/public-read.ts). null means "show nothing": no backend, the switch is off, 0164 is not applied yet (the
+ * (lib/server/public-read.ts). null means "show nothing": no backend, the switch is off, fewer than 5 customer workspaces are
+ * counted or nothing is stored yet (the database says hidden for both), 0164 is not applied yet (the
  * function is missing), the read failed or took too long, or the answer is not one we know. A hidden answer is kept as long
  * as a good one, so the hidden site costs one tiny read per five minutes; a failure only as long as a failure.
  */

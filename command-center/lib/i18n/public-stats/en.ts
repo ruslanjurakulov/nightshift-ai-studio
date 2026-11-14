@@ -13,12 +13,15 @@ export const publicStatsEn = {
   asOf: "As of {time}",
   notMeasured: "not measured yet",
   counts: {
-    videos_rendered: "Videos rendered",
+    /** A lower bound in the database (docs/PUBLIC_STATS.md): said so. */
+    videos_rendered: "Videos rendered (at least)",
     videos_uploaded_private: "Videos uploaded to YouTube as private",
     videos_approved: "Videos a person approved",
     studio_generations: "Studio generations completed",
   },
   lastRun: "Last pipeline run finished",
+  /** The database gives the last run only to the hour (so no customer can match it to their own run): {day} and the hour's two ends. */
+  hourRange: "{day}, between {from} and {to} UTC",
 };
 
 export type PublicStatsDictionary = typeof publicStatsEn;

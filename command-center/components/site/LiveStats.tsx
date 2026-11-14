@@ -12,9 +12,21 @@ export function statsTime(iso: string, locale: Locale): string {
 }
 
 /**
+ * "Nov 14, 2026, between 04:00 and 05:00 UTC": the database gives the last run only to the hour (migration 0164), so the page
+ * says the hour it fell in, never a minute it does not know. Floored here too, whatever the answer carried.
+ */
+export function statsHour(iso: string, locale: Locale, template: string): string {
+  const d = new Date(iso);
+  d.setUTCMinutes(0, 0, 0);
+  const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
+  return fmt(template, { day: formatDay(d, locale, "UTC"), from: hh(d.getUTCHours()), to: hh(d.getUTCHours() + 1) });
+}
+
+/**
  * "Live from our pipeline": what the pipeline has done, counted by the database (public_site_stats(), migration 0164;
  * docs/PUBLIC_STATS.md). Wired into the landing (under the facts row) and /solutions, and invisible until the owner turns
- * the switch on: `stats` is null while it is off, while 0164 is not applied, and when the read failed, and then this renders
+ * the switch on: `stats` is null while it is off, while fewer than 5 customer workspaces are counted (the database's k rule),
+ * while 0164 is not applied, and when the read failed, and then this renders
  * nothing at all (no empty box, no zeros).
  *
  * Every number carries the label of what it counts and the strip says when it was measured. A value the database did not send
@@ -28,7 +40,7 @@ export function LiveStats({ t, locale, stats }: { t: Dictionary; locale: Locale;
       const n = stats.counts[id];
       return { id, label: s.counts[id], value: n === null ? null : formatNumber(n, locale, 0) };
     }),
-    { id: "last_run_at", label: s.lastRun, value: stats.lastRunAt ? statsTime(stats.lastRunAt, locale) : null },
+    { id: "last_run_at", label: s.lastRun, value: stats.lastRunAt ? statsHour(stats.lastRunAt, locale, s.hourRange) : null },
   ];
   return (
     <section aria-labelledby="live-stats-title" className="nx-live" data-live-stats>
