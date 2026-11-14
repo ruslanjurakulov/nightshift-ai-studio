@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Projector } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { DESKS, deskHref, type Desk } from "@/lib/creative/desks";
@@ -14,6 +14,8 @@ import type { CreditAccount } from "@/lib/credits";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
 import { useShell } from "@/components/shell/ShellContext";
 import { deskOpen } from "@/lib/tool-availability";
+import { STUDIO_PROJECTS } from "@/lib/navigation";
+import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import "@/components/studio/desk.css";
 import "@/components/studio/availability.css";
 
@@ -24,10 +26,11 @@ import "@/components/studio/availability.css";
  * can be bookmarked, shared and opened from the sidebar. On a phone it is one
  * row that scrolls sideways, every key at least 44 px tall.
  */
-export function DeskBar({ current }: { current: Desk }) {
-  const { t } = useI18n();
+export function DeskBar({ current }: { current: Desk | "projects" }) {
+  const { t, locale } = useI18n();
   const path = useChannelPath();
-  const { tools } = useShell();
+  const { tools, features } = useShell();
+  const fp = filmStudioStrings(locale);
   return (
     <nav aria-label={t.desk.nav} className="desk-bar">
       <ul className="desk-bar-row">
@@ -60,6 +63,19 @@ export function DeskBar({ current }: { current: Desk }) {
             </li>
           );
         })}
+        {/* Projects (NIGHTSHIFT_FILM_STUDIO, resolved per viewer by the layout): a whole video planned scene by scene. Not a desk of
+            /create: it has pages of its own under it (lib/navigation STUDIO_PROJECTS). */}
+        {features.filmStudio === true && (
+          <li>
+            <Link href={path(STUDIO_PROJECTS)} aria-current={current === "projects" ? "page" : undefined} className="desk-key" data-desk="projects">
+              <Projector aria-hidden className="desk-key-icon" strokeWidth={1.75} />
+              <span className="flex min-w-0 flex-col">
+                <span className="desk-key-name">{fp.section}</span>
+                <span className="desk-key-sub">{fp.tagline}</span>
+              </span>
+            </Link>
+          </li>
+        )}
       </ul>
     </nav>
   );
