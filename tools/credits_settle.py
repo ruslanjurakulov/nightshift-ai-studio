@@ -101,6 +101,9 @@ def start(env: Mapping[str, str], client) -> int:
         "CREDITS_ORG": str(hold.org_id or ""),
         "CREDITS_SINCE": datetime.now(timezone.utc).isoformat(),
     }
+    # main.py refuses a thumbnail mode this hold was not checked for (credits.held_thumbnail_refusal).
+    if hold.thumbnail_mode:
+        values[credits.HELD_THUMBNAIL_MODE_ENV] = hold.thumbnail_mode
     # The organization id comes from the database, and goes into GITHUB_ENV.
     # Anything but a plain UUID is refused — but the hold is already claimed,
     # and a failed start skips the settle step, so give it back through the

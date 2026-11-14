@@ -95,6 +95,7 @@ from modules import strategy
 from modules.subtitle_generator import SubtitleGenerator
 from modules.thumbnail_generator import ThumbnailGenerator, overlay_is_missing
 from modules import thumbnail_concept
+from modules import credits as credit_rules
 from modules import title_formulas
 from modules.title_planner import plan_titles
 from modules.topic_manager import TopicManager, TopicSelectionError
@@ -723,6 +724,22 @@ def _preflight_disk(channel_id, free_fn=None) -> None:
                        channel_id, type(e).__name__)
 
 
+def _preflight_held_thumbnail(ctx, channel_id, env=None) -> None:
+    """Refuse the run, before it spends anything, when its credit hold was checked for frame
+    thumbnails and the channel now makes concept ones. The runner checks the hold against the
+    channel's settings (credits.minimum_reservation), but this process reads them again, later,
+    from its own registry load: an administrator switching concept on in between would have a
+    frame-priced hold pay for the generated images (the capture is capped at the hold)."""
+    concept = thumbnail_concept.settings_from_agent(ctx.agent).mode == thumbnail_concept.MODE_CONCEPT
+    why = credit_rules.held_thumbnail_refusal(os.environ if env is None else env, concept)
+    if why is None:
+        return
+    logger.error("[channel: %s] Run stopped before spending anything: %s", channel_id, why)
+    events.emit(events.AGENT_FAILED, agent="credits", status=events.STATUS_FAILED,
+                channel_id=channel_id, metadata={"error": why, "stage": "preflight"})
+    raise credit_rules.HeldTermsChanged(why)
+
+
 @contextlib.contextmanager
 def _presenter_stop_recorded(channel_id):
     """Record, then re-raise, the compositor's refusal to ship a half-presenter video.
@@ -941,6 +958,8 @@ def run(
     # Disk — a full volume kills the render after the script and the voice are paid for.
     # Checked here, right after the credentials and before the first spend (CLAUDE.md #6).
     _preflight_disk(channel_id)
+    # The thumbnail mode the credit hold was checked for: a switch since then stops here, unspent.
+    _preflight_held_thumbnail(ctx, channel_id)
     # Spend ceiling — a hard stop BEFORE the run spends anything. Off unless this
     # channel set a ceiling; then a run that would push its known monthly spend
     # at or past the ceiling does not start. It halts spending, never the publish

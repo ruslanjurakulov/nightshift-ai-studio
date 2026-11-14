@@ -14,6 +14,8 @@ What would break without these:
   browser made with reserve_credits, without the images the Command Center
   adds): its images are generated on the worker's keys and the capture is
   capped at the hold, so the platform pays for them;
+* an administrator switching concept thumbnails on after the runner checked a
+  frame-priced hold, before the run read the channel's settings itself;
 * the operator's own channels (the default org) needing credits.
 """
 
@@ -257,7 +259,7 @@ class OpenHold(unittest.TestCase):
     def test_a_concept_channel_hold_with_its_images_runs(self):
         c = FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT)
         hold = credits.open_hold(c, job_ref="r1", channel_id="news", duration_s=180, enforce=True)
-        self.assertEqual(hold, Hold("r1", CUSTOMER_ORG, 82.2))
+        self.assertEqual(hold, Hold("r1", CUSTOMER_ORG, 82.2, "concept"))
         self.assertIn(("agent_config", "news"), c.calls)
 
     def test_unpriced_concept_images_refuse_and_give_the_hold_back(self):
@@ -279,6 +281,34 @@ class OpenHold(unittest.TestCase):
                                                   params={"duration": 180}))
 
 
+class HeldThumbnailMode(unittest.TestCase):
+    """main.py's stop: the hold was checked for one thumbnail mode, the run reads its own settings later."""
+    ENV = credits.HELD_THUMBNAIL_MODE_ENV
+
+    def test_a_frame_checked_hold_never_pays_for_concept_images(self):
+        why = credits.held_thumbnail_refusal({self.ENV: "frame"}, run_mode_is_concept=True)
+        self.assertIn("turned on after this run's credits were checked", why)
+        self.assertIn("nothing was spent", why)
+        self.assertIn("start the run again from the Command Center", why)
+
+    def test_what_the_hold_covered_runs(self):
+        for held, concept in (("concept", True), ("concept", False), ("frame", False), (" Concept ", True)):
+            with self.subTest(held=held, concept=concept):
+                self.assertIsNone(credits.held_thumbnail_refusal({self.ENV: held}, concept))
+
+    def test_a_run_whose_hold_was_never_checked_is_not_stopped_here(self):
+        # The operator's exempt runs carry no hold; an unpaid customer run never got this far.
+        for env in ({}, {self.ENV: ""}):
+            with self.subTest(env=env):
+                self.assertIsNone(credits.held_thumbnail_refusal(env, run_mode_is_concept=True))
+
+    def test_main_py_checks_it_before_the_first_spend(self):
+        src = (ROOT / "main.py").read_text()
+        body = src[src.index("health = None\n    try:\n        health = check_run_credentials(ctx)"):]
+        self.assertLess(body.index("_preflight_held_thumbnail(ctx, channel_id)"), body.index("ceiling = getattr("))
+        self.assertIn("credit_rules.held_thumbnail_refusal(", src)
+
+
 class OpenQueueHold(unittest.TestCase):
     """The queue worker's floor (independent of NIGHTSHIFT_CREDITS_ENFORCE)."""
 
@@ -293,11 +323,11 @@ class OpenQueueHold(unittest.TestCase):
 
     def test_a_concept_channel_hold_with_its_images_runs(self):
         c = FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT)
-        self.assertEqual(self.open(c), Hold("r1", CUSTOMER_ORG, 82.2))
+        self.assertEqual(self.open(c), Hold("r1", CUSTOMER_ORG, 82.2, "concept"))
 
     def test_a_frame_channel_still_runs_on_the_length_alone(self):
         c = FakeCredits(hold=75.0, prices=CONCEPT_PRICES, agent_config={"thumbnail_mode": "frame"})
-        self.assertEqual(self.open(c), Hold("r1", CUSTOMER_ORG, 75.0))
+        self.assertEqual(self.open(c), Hold("r1", CUSTOMER_ORG, 75.0, "frame"))
 
     def test_unpriced_concept_images_refuse_with_the_fix_and_give_the_hold_back(self):
         c = FakeCredits(hold=500.0, agent_config=CONCEPT)
@@ -331,6 +361,11 @@ class OpenQueueHold(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIn("up to 4 generated concept-thumbnail images", msg)
         self.assertIn("start it again from the Command Center", msg)
+
+    def test_the_hold_carries_the_mode_its_floor_was_checked_for(self):
+        concept = self.open(FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT))
+        frame = self.open(FakeCredits(hold=82.2, prices=CONCEPT_PRICES))
+        self.assertEqual((concept.thumbnail_mode, frame.thumbnail_mode), ("concept", "frame"))
 
     def test_a_frame_refusal_does_not_mention_images(self):
         c = FakeCredits(hold=10.0, prices=CONCEPT_PRICES)
@@ -1032,6 +1067,22 @@ class WorkerCredits(unittest.TestCase):
         self.assertFalse(self.ran())
         self.assertEqual(fake.settled(), [("release", "rj-abc")])
 
+    def test_the_run_is_told_the_thumbnail_mode_its_hold_covers(self):
+        (self.repo / "main.py").write_text(
+            "import os\nopen('mode.out', 'w').write(os.environ.get('NIGHTSHIFT_HELD_THUMBNAIL_MODE', '<unset>'))\n"
+            + FAKE_MAIN)
+        self.env["NIGHTSHIFT_HELD_THUMBNAIL_MODE"] = "concept"      # the worker's own env never reaches a run
+        self.run_one(job(), FakeCredits(), [entry("tts_characters", 5000)])
+        self.assertEqual((self.repo / "mode.out").read_text(), "frame")
+
+    def test_an_exempt_run_gets_no_mode_even_if_the_worker_env_has_one(self):
+        (self.repo / "main.py").write_text(
+            "import os\nopen('mode.out', 'w').write(os.environ.get('NIGHTSHIFT_HELD_THUMBNAIL_MODE', '<unset>'))\n"
+            + FAKE_MAIN)
+        self.env["NIGHTSHIFT_HELD_THUMBNAIL_MODE"] = "frame"
+        self.run_one(job(credit_ref=None), FakeCredits(org=credits.DEFAULT_ORG_ID))
+        self.assertEqual((self.repo / "mode.out").read_text(), "<unset>")
+
     def test_a_concept_channels_job_without_an_image_price_never_runs_and_says_how_to_fix_it(self):
         fake = FakeCredits(hold=500.0, agent_config=CONCEPT)
         ends = self.run_one(job(), fake)
@@ -1064,6 +1115,13 @@ class ActionsSettle(unittest.TestCase):
         self.assertEqual(written["CREDITS_HOLD"], "40.00")
         self.assertEqual(written["CREDITS_ORG"], CUSTOMER_ORG)
         self.assertIn("CREDITS_SINCE", written)
+        self.assertEqual(written[credits.HELD_THUMBNAIL_MODE_ENV], "frame")
+
+    def test_start_hands_main_py_the_thumbnail_mode_the_hold_covers(self):
+        c = FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        self.assertEqual(credits_settle.start(self.env(INPUT_DURATION="180"), c), 0)
+        written = dict(line.split("=", 1) for line in self.github_env.read_text().splitlines())
+        self.assertEqual(written[credits.HELD_THUMBNAIL_MODE_ENV], "concept")
 
     def test_start_never_writes_an_organization_id_that_is_not_a_uuid(self):
         # GITHUB_ENV is line-oriented: a line break in a database value would

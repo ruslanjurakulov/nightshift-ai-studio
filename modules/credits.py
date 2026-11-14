@@ -425,6 +425,36 @@ class Hold:
     job_ref: str
     org_id: str
     amount: float
+    #: The thumbnail mode the floor was checked against ("concept" | "frame"),
+    #: or None when no floor was checked. The run is handed it
+    #: (HELD_THUMBNAIL_MODE_ENV) and refuses a mode the hold did not cover.
+    thumbnail_mode: Optional[str] = None
+
+
+#: How the runner tells main.py which thumbnail mode the hold was checked for.
+#: The run reads the channel's settings itself, later, from its own registry
+#: load; between the two an organization administrator (0158) could switch
+#: concept thumbnails on and have a frame-priced hold pay for 4 images.
+HELD_THUMBNAIL_MODE_ENV = "NIGHTSHIFT_HELD_THUMBNAIL_MODE"
+HELD_FRAME = "frame"
+HELD_CONCEPT = "concept"
+
+
+class HeldTermsChanged(RuntimeError):
+    """The run's settings are not the ones its hold was checked for. Raised by
+    main.py before anything is spent; the runner releases the hold."""
+
+
+def held_thumbnail_refusal(env: Mapping[str, str], run_mode_is_concept: bool) -> Optional[str]:
+    """Why the run must stop before spending, or None. Only a run whose hold
+    was checked carries the variable (the operator's exempt runs do not); a
+    hold checked for frame thumbnails never pays for concept images."""
+    held = str(env.get(HELD_THUMBNAIL_MODE_ENV, "") or "").strip().lower()
+    if not held or held == HELD_CONCEPT or not run_mode_is_concept:
+        return None
+    return ("concept thumbnails were turned on after this run's credits were checked, and its hold does not "
+            f"cover the up to {CONCEPT_THUMBNAIL_MAX_IMAGES} generated images — nothing was spent; start the run "
+            "again from the Command Center")
 
 
 class CreditRefused(Exception):
@@ -463,9 +493,10 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
                 raise CreditRefused("its credit reservation is not open (expired, settled, or "
                                     "for another organization)")
             return None
-        if floor is not None:
-            floor.check(client, ref, amount, "this run requires")
-        return Hold(ref, org, float(amount))
+        if floor is None:
+            return Hold(ref, org, float(amount))
+        floor.check(client, ref, amount, "this run requires")
+        return Hold(ref, org, float(amount), floor.held_mode)
     except CreditsUnavailable as e:
         if enforce:
             raise CreditRefused(f"credits are unavailable ({e})") from None
@@ -484,6 +515,10 @@ class _Floor:
     minimum: Optional[float]
     refusal: Optional[CreditRefused]
     concept: bool
+
+    @property
+    def held_mode(self) -> str:
+        return HELD_CONCEPT if self.concept else HELD_FRAME
 
     @staticmethod
     def read(client, channel_id: str, duration_s) -> "_Floor":
@@ -560,7 +595,7 @@ def open_queue_hold(client, *, job_ref: Optional[str], channel_id: str,
             raise CreditRefused("its credit reservation is not open (expired, settled, or for another "
                                 "organization)")
         floor.check(client, ref, amount, f"a {duration}-second run requires")
-        return Hold(ref, org, float(amount))
+        return Hold(ref, org, float(amount), floor.held_mode)
     except CreditsUnavailable as e:
         raise CreditRefused(f"credits are unavailable ({e})") from None
 

@@ -919,6 +919,13 @@ class Worker:
                 self._result_path(job_id).unlink(missing_ok=True)
             return status
 
+        # The run is told which thumbnail mode its hold was checked for, and refuses another
+        # (credits.held_thumbnail_refusal): main.py reads the channel's settings itself, later.
+        # Only a checked hold sets it; a value inherited from this worker's own env never reaches a run.
+        run_env = {k: v for k, v in run_env.items() if k != credit_rules.HELD_THUMBNAIL_MODE_ENV}
+        if hold is not None and hold.thumbnail_mode:
+            run_env[credit_rules.HELD_THUMBNAIL_MODE_ENV] = hold.thumbnail_mode
+
         # The settlement happens INSIDE _execute, before the queue row is
         # finished: a kill between the two used to leave a "succeeded" job with
         # an open hold, which the 24 h sweep then released (a free video).
