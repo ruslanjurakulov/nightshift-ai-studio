@@ -1434,46 +1434,6 @@ the API key's hash, never a session or the service key — and two things the St
   `tests/security/test_sec_mcp_studio_tools.py` and `tests/security/test_sec_breach_mcp_studio_0162.py` (a real PostgreSQL),
   `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
 
-## A concept-thumbnail channel's run is priced with its images (0169)
-
-0169 (`0169_concept_thumbnail_holds.sql`) is **live on apply**. It rewrites no row and widens no grant. **Apply it before the worker
-from the same pull request is deployed**: that worker refuses a hold that leaves a concept channel's images out, and without 0169 the
-two holds below are made without them.
-
-- **Why.** A channel with `agent_config.thumbnail_mode = "concept"` (0158) buys up to 4 generated images a run, on the worker's keys.
-  The Command Center's hold adds them (lib/credits.ts `withConceptThumbnail`); the worker now refuses a hold below that floor
-  (modules/credits.py `minimum_reservation`), because a browser could reserve the bare floor itself and the capture is capped at the
-  hold. Two holds are priced by the database, not the Command Center, and left the images out: a series episode (0120
-  `series_episode_price`, used by `quote_series_episode` / `start_series_episode`) and a video asked for over MCP (0094
-  `oauth_create_video`). With the worker change and without 0169, both are queued and then refused on a concept channel, and a refused
-  episode blocks every later episode of its series.
-- **What changes.** `concept_thumbnail_credits(channel)`: 0 for a frame channel; 4 x `image_generations` x (1 + margin) for a concept
-  one; NULL when `image_generations` has no price (then the episode is `unpriced` and the MCP call answers 503 `pricing_unavailable`
-  naming concept thumbnails: never the price without the images). "Concept" is read like `modules/credits.concept_thumbnail_on`: only
-  the JSON string, case and surrounding white space ignored. A two-argument `series_episode_price(duration, channel)` adds it, rounded
-  like the worker (floor first, then floor + images). The three callers are their latest bodies with only the price changed; the
-  one-argument `series_episode_price` is untouched. Both helpers are definers granted to no API role.
-- **md5.** before: `quote_series_episode` `9ba908b7888b5cab0281b8cf87e8659a`, `start_series_episode` `f3598d71d76e780b6973f88d8a743d2b`,
-  `oauth_create_video` `244a5779e4388525f5f345b59379029f`; after: `809576010f2eb785ec089d3c78fdc600`, `8250180e07903b999afbae093a99c3cb`,
-  `e67c7491ce92f0162c8547f3025103c0`, `concept_thumbnail_credits` `93ecebafdd6738762a480f75527fd508`, `series_episode_price(integer, text)`
-  `c27ede9c11d262b6047a93e0f81f4042` (drift guard, end-state check, rollback, `tests/security/sec_db.py`).
-- **Without it.** Before the worker change: series and MCP videos of a concept channel run, and their images are paid by the platform.
-  After it: they are refused at the worker ("…below the X a N-second run requires, which includes up to 4 generated concept-thumbnail
-  images…").
-- **Number.** 0169: 0163 is held by #736, 0164 and 0165 merged first (neither names anything of this file's), and 0166 to 0168
-  are open pull requests (#765, #766, #767). Needs 0094, 0120 and 0158. 0127's, 0131's and 0133's numbering tests list it as
-  reviewed (0127's holds it to reading `series_plans` only).
-- **A replay of 0093 or 0094 undoes part of it.** Neither has a drift guard: replaying 0094 puts its `oauth_create_video` back over
-  0169's (replaying 0093 puts 0093's back over both). MCP videos of a concept channel are then held without the images and refused by
-  the worker, and 0169's rollback refuses to run. After such a replay apply 0094 (if it was 0093) and then 0169 again; 0169's drift
-  guard accepts 0094's body.
-- **Undo.** `docs/sql/rollback_0169_concept_thumbnail_holds.sql` (owner-applied): refuses a body that is not 0169's, puts 0120's and
-  0094's bodies back byte for byte, drops the two helpers. Roll the worker back first.
-- **Tests.** `tests/test_concept_thumbnail_holds_migration.py` (the bodies differ from 0120's / 0094's only in the price, the rollback,
-  the hashes, the grants), `tests/security/test_sec_concept_thumbnail_holds.py` (a real PostgreSQL: the reading and the price equal the
-  worker's to the cent, privileges, replay, rollback, drift), the `0169` tests of `tests/security/test_sec_series_tables.py` and
-  `tests/security/test_sec_mcp_oauth.py` (the quote, the hold, the refusal).
-
 ## The site's live public counters (0164)
 
 0164 (`0164_public_site_stats.sql`) is **live on apply and still invisible**: it adds one table, four functions and (where pg_cron
@@ -1767,7 +1727,7 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   prints the action as stored). Every other line, price, hold, refusal and grant is 0147's.
 - **md5.** `api_request_download` before `055003f8a2fb5390bbd1b5f7820e6e2e` (0147), after `b59ca71d0e0379e217e47a6987c9ed0c`
   (drift guard, end state, Verify, rollback).
-- **Number.** 0170, provisional (0169 is held by an open pull request, #750); it is changed at merge if another branch takes it.
+- **Number.** 0170 (0169 was then held by an open pull request, #750, since renumbered 0175).
   Needs 0031, 0042, 0087 and 0147; names nothing of 0148 to 0169. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
 - **Replay.** `create or replace`, then revoke and grant: a replay changes nothing. Re-running 0147 after 0170 is refused by
   0147's drift guard: apply the rollback first, re-run 0147, then 0170 again.
@@ -1777,3 +1737,44 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
+
+## A concept-thumbnail channel's run is priced with its images (0175)
+
+0175 (`0175_concept_thumbnail_holds.sql`) is **live on apply**. It rewrites no row and widens no grant. **Apply it before the worker
+from the same pull request is deployed**: that worker refuses a hold that leaves a concept channel's images out, and without 0175 the
+two holds below are made without them.
+
+- **Why.** A channel with `agent_config.thumbnail_mode = "concept"` (0158) buys up to 4 generated images a run, on the worker's keys.
+  The Command Center's hold adds them (lib/credits.ts `withConceptThumbnail`); the worker now refuses a hold below that floor
+  (modules/credits.py `minimum_reservation`), because a browser could reserve the bare floor itself and the capture is capped at the
+  hold. Two holds are priced by the database, not the Command Center, and left the images out: a series episode (0120
+  `series_episode_price`, used by `quote_series_episode` / `start_series_episode`) and a video asked for over MCP (0094
+  `oauth_create_video`). With the worker change and without 0175, both are queued and then refused on a concept channel, and a refused
+  episode blocks every later episode of its series.
+- **What changes.** `concept_thumbnail_credits(channel)`: 0 for a frame channel; 4 x `image_generations` x (1 + margin) for a concept
+  one; NULL when `image_generations` has no price (then the episode is `unpriced` and the MCP call answers 503 `pricing_unavailable`
+  naming concept thumbnails: never the price without the images). "Concept" is read like `modules/credits.concept_thumbnail_on`: only
+  the JSON string, case and surrounding white space ignored. A two-argument `series_episode_price(duration, channel)` adds it, rounded
+  like the worker (floor first, then floor + images). The three callers are their latest bodies with only the price changed; the
+  one-argument `series_episode_price` is untouched. Both helpers are definers granted to no API role.
+- **md5.** before: `quote_series_episode` `9ba908b7888b5cab0281b8cf87e8659a`, `start_series_episode` `f3598d71d76e780b6973f88d8a743d2b`,
+  `oauth_create_video` `244a5779e4388525f5f345b59379029f`; after: `9ffa67413ea6a90ec58e3b0bc4214078`, `df19e5e9ad49c5772dbfa458919e1399`,
+  `73145e68348088237a95b335fc162c08`, `concept_thumbnail_credits` `93ecebafdd6738762a480f75527fd508`, `series_episode_price(integer, text)`
+  `c27ede9c11d262b6047a93e0f81f4042` (drift guard, end-state check, rollback, `tests/security/sec_db.py`).
+- **Without it.** Before the worker change: series and MCP videos of a concept channel run, and their images are paid by the platform.
+  After it: they are refused at the worker ("…below the X a N-second run requires, which includes up to 4 generated concept-thumbnail
+  images…").
+- **Number.** 0175 (drafted as 0163, then 0169): main ends at 0170, which is applied to production, and a migration numbered below
+  the latest applied one is rejected or skipped by the Supabase CLI/integration (see 0116 above); 0171 to 0174 are claimed by open
+  branches. 0164 to 0168 and 0170 merged first and name nothing of this file's. Needs 0094, 0120 and 0158. 0127's, 0131's and
+  0133's numbering tests list it as reviewed (0127's holds it to reading `series_plans` only).
+- **A replay of 0093 or 0094 undoes part of it.** Neither has a drift guard: replaying 0094 puts its `oauth_create_video` back over
+  0175's (replaying 0093 puts 0093's back over both). MCP videos of a concept channel are then held without the images and refused by
+  the worker, and 0175's rollback refuses to run. After such a replay apply 0094 (if it was 0093) and then 0175 again; 0175's drift
+  guard accepts 0094's body.
+- **Undo.** `docs/sql/rollback_0175_concept_thumbnail_holds.sql` (owner-applied): refuses a body that is not 0175's, puts 0120's and
+  0094's bodies back byte for byte, drops the two helpers. Roll the worker back first.
+- **Tests.** `tests/test_concept_thumbnail_holds_migration.py` (the bodies differ from 0120's / 0094's only in the price, the rollback,
+  the hashes, the grants), `tests/security/test_sec_concept_thumbnail_holds.py` (a real PostgreSQL: the reading and the price equal the
+  worker's to the cent, privileges, replay, rollback, drift), the `0175` tests of `tests/security/test_sec_series_tables.py` and
+  `tests/security/test_sec_mcp_oauth.py` (the quote, the hold, the refusal).

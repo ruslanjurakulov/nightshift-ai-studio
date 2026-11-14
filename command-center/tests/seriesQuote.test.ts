@@ -25,7 +25,7 @@ function estimate(credits: number | null, gap: EstimateGap | null): CreditEstima
 }
 
 describe("quoteSeries", () => {
-  it("prices a concept-thumbnail channel's episodes with their images, like the database (0169)", () => {
+  it("prices a concept-thumbnail channel's episodes with their images, like the database (0175)", () => {
     const prices = parsePrices([
       { unit: "video_minute", credits_per_unit: 20, margin: 0.25 },
       { unit: "image_generations", credits_per_unit: 2, margin: 0.25 },

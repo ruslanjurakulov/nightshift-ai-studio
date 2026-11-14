@@ -77,34 +77,34 @@ MIGRATION_0122 = MIGRATIONS / "0122_series_template_carrier.sql"
 ROLLBACK_0122 = REPO / "docs" / "sql" / "rollback_0122_series_template_carrier.sql"
 
 
-MIGRATION_0169 = MIGRATIONS / "0169_concept_thumbnail_holds.sql"
-ROLLBACK_0169 = REPO / "docs" / "sql" / "rollback_0169_concept_thumbnail_holds.sql"
-#: The bodies 0169 replaces, as 0120 and 0094 left them: 0169 goes back on only on top of these
+MIGRATION_0175 = MIGRATIONS / "0175_concept_thumbnail_holds.sql"
+ROLLBACK_0175 = REPO / "docs" / "sql" / "rollback_0175_concept_thumbnail_holds.sql"
+#: The bodies 0175 replaces, as 0120 and 0094 left them: 0175 goes back on only on top of these
 #: (the file's own drift guard checks the same three hashes).
-_BEFORE_0169 = {"public.quote_series_episode(uuid)": "9ba908b7888b5cab0281b8cf87e8659a",
+_BEFORE_0175 = {"public.quote_series_episode(uuid)": "9ba908b7888b5cab0281b8cf87e8659a",
                 "public.start_series_episode(uuid, numeric, text, boolean)": "f3598d71d76e780b6973f88d8a743d2b",
                 "public.oauth_create_video(text, text, jsonb, text, text)": "244a5779e4388525f5f345b59379029f"}
 
 
-def _has_0169(session) -> bool:
+def _has_0175(session) -> bool:
     return bool(session.conn.execute("select to_regprocedure('public.concept_thumbnail_credits(text)') is not null").fetchone()[0])
 
 
-def take_off_0169(session) -> None:
-    """0169 replaces quote_series_episode() and start_series_episode() on 0120's bodies and oauth_create_video() on 0094's: a replay of
+def take_off_0175(session) -> None:
+    """0175 replaces quote_series_episode() and start_series_episode() on 0120's bodies and oauth_create_video() on 0094's: a replay of
     0120 would silently put 0120's back, and 0120's rollback expects its own. Taken off with its own rollback when it is there; put back
-    with put_back_0169. Every test that reaches 0120's bodies comes through take_off_0122, which calls this first."""
-    if _has_0169(session):
-        text = ROLLBACK_0169.read_text(encoding="utf-8")
+    with put_back_0175. Every test that reaches 0120's bodies comes through take_off_0122, which calls this first."""
+    if _has_0175(session):
+        text = ROLLBACK_0175.read_text(encoding="utf-8")
         session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
-def put_back_0169(session) -> None:
-    """0169 again, once 0120's and 0094's bodies are live and it is not on already."""
-    if _has_0169(session):
+def put_back_0175(session) -> None:
+    """0175 again, once 0120's and 0094's bodies are live and it is not on already."""
+    if _has_0175(session):
         return
-    if all(_live_md5(session, sig) == h for sig, h in _BEFORE_0169.items()):
-        session.conn.execute(MIGRATION_0169.read_text(encoding="utf-8"))
+    if all(_live_md5(session, sig) == h for sig, h in _BEFORE_0175.items()):
+        session.conn.execute(MIGRATION_0175.read_text(encoding="utf-8"))
 
 
 def take_off_0122(session) -> None:
@@ -112,9 +112,9 @@ def take_off_0122(session) -> None:
     bodies, and 0120 (and its rollback) refuse any other body. A test that replays 0120 or applies its rollback on a database that has 0122
     takes 0122 off first with its own rollback, and puts it back with put_back_0122 where the chain goes on. 0127 sits on 0122's
     request_series_plan(), and 0122's rollback refuses any other body, so 0127 comes off first when it is there. 0145 sits on 0122's
-    render_job_params_valid(): it comes off first too, and goes back with put_back_0122. 0169 sits on 0120's series functions: it comes
-    off first as well (take_off_0169)."""
-    take_off_0169(session)
+    render_job_params_valid(): it comes off first too, and goes back with put_back_0122. 0175 sits on 0120's series functions: it comes
+    off first as well (take_off_0175)."""
+    take_off_0175(session)
     take_off_0145(session)
     if _has_0127(session):
         take_off_0127(session)
@@ -126,7 +126,7 @@ def put_back_0122(session) -> None:
     session.conn.execute(MIGRATION_0122.read_text(encoding="utf-8"))
     put_back_0127(session)
     put_back_0145(session)
-    put_back_0169(session)
+    put_back_0175(session)
 
 
 MIGRATION_0145 = MIGRATIONS / "0145_made_for_kids.sql"

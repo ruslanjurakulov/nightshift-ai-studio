@@ -124,7 +124,7 @@ class Numbering(unittest.TestCase):
         # pins: nothing of 0131's or 0133's.
         # 0162 (two read-only API functions for the MCP Studio tools: api_creative_models, api_creative_job_files) was reviewed
         # against these pins: nothing of 0131's or 0133's.
-        # 0169 (a concept-thumbnail channel's run is priced with its images: concept_thumbnail_credits, a two-argument
+        # 0175 (a concept-thumbnail channel's run is priced with its images: concept_thumbnail_credits, a two-argument
         # series_episode_price, and three series / MCP functions with only the price changed) was reviewed against these pins:
         # nothing of 0131's or 0133's.
         # 0164 (the site's live public counters: site_settings and three new functions over videos, intents, generations and runs)
@@ -139,7 +139,7 @@ class Numbering(unittest.TestCase):
         # one trigger on api_ledger) was reviewed against these pins: nothing of 0131's or 0133's.
         # 0170 (api_request_download audits a listed action name: one hunk in 0147's body) was reviewed against these pins:
         # nothing of 0131's or 0133's.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0169")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0175")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)

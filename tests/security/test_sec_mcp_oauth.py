@@ -1247,7 +1247,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     assert db.anon("select public.oauth_check(%s,null)", [sha(c["at"])])["ok"] is True
     # A replay of 0093 puts its own bodies and its `enforced` back: 0147 goes on again after it (docs/MIGRATIONS.md).
     assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "enforced"
-    # 0094 replaced oauth_create_video and oauth_get_balance on 0093's bodies, and 0169 replaced oauth_create_video on 0094's:
+    # 0094 replaced oauth_create_video and oauth_get_balance on 0093's bodies, and 0175 replaced oauth_create_video on 0094's:
     # the replay put 0093's back, so the chain goes on again in order, or every later test in this module runs on 0093's price.
     sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql"])
     later = sec_db.MIGRATIONS / "0147_mcp_free_tier.sql"
@@ -1267,8 +1267,8 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         sec_db.apply_files(db.dsn, [download])
         assert db.su("select position('video.download_request' in prosrc) > 0 from pg_proc "
                      "where oid = 'public.api_request_download(text,text,text,text,text,text)'::regprocedure")[0][0] is True
-    if sec_db.MIGRATION_0169.exists():
-        sec_db.apply_files(db.dsn, [sec_db.MIGRATION_0169])
+    if sec_db.MIGRATION_0175.exists():
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATION_0175])
         assert db.su("select position('concept_thumbnail_credits' in pg_get_functiondef("
                      "'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure)) > 0")[0][0] is True
 
@@ -1332,11 +1332,11 @@ def test_a_refused_registration_does_not_run_the_collector(db):
     assert db.su("select count(*) from public.oauth_clients where client_id=%s", [stale])[0][0] == 0
 
 
-# ── 0169: a concept-thumbnail channel's video is priced with its generated images ──────────────────────────────────────
+# ── 0175: a concept-thumbnail channel's video is priced with its generated images ──────────────────────────────────────
 
 def test_a_concept_channels_video_is_held_with_its_images_and_unpriced_images_hold_nothing(db):
     """The worker refuses a hold that leaves a concept channel's up to 4 generated images out (modules/credits.minimum_reservation).
-    Before 0169 this function priced the bare floor, so every MCP video of such a channel was queued and then refused by the worker."""
+    Before 0175 this function priced the bare floor, so every MCP video of such a channel was queued and then refused by the worker."""
     c = connect(db, UA, limit=1000)
     db.su("update public.channels set agent_config = agent_config || '{\"thumbnail_mode\": \" Concept \"}' where channel_id = 'chan-a'")
     try:

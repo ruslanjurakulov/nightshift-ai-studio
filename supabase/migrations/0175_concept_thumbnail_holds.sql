@@ -1,42 +1,153 @@
--- rollback_0169_concept_thumbnail_holds.sql — takes migration 0169 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the
--- app runs it.
+-- 0175 — a concept-thumbnail channel's run is priced with its generated images, wherever the database prices it.
 --
--- WHEN YOU NEED IT. If the database's own prices (a series episode, a video asked for over MCP) must stop carrying a concept-thumbnail
--- channel's generated images. ROLL BACK THE WORKER FIRST: the worker refuses a hold that leaves the images out
--- (modules/credits.minimum_reservation), so with this rolled back and the worker not, every series episode and MCP video of a concept
--- channel is refused again.
+-- WHY. A channel with agent_config.thumbnail_mode = 'concept' (0158) buys up to 4 generated images per run, on the
+-- worker's keys. The Command Center's hold adds them (lib/credits.ts withConceptThumbnail), and the worker now refuses a
+-- hold that leaves them out (modules/credits.minimum_reservation): a browser could otherwise reserve the bare floor and
+-- the capture is capped at the hold, so the platform paid for the images. Two holds are priced HERE, not by the
+-- Command Center, and left them out — a series episode (0120 series_episode_price) and a video asked for over MCP
+-- (0094 oauth_create_video). Without this migration the worker refuses both on a concept channel, and a refused
+-- episode blocks every later episode of its series.
 --
--- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if a live body is not 0169's (a later change would be undone).
---   1. Puts quote_series_episode() and start_series_episode() back to 0120's bodies and oauth_create_video() back to 0094's, byte for
---      byte, with their grants.
---   2. Drops series_episode_price(integer, text) and concept_thumbnail_credits(text). The one-argument series_episode_price is 0120's and
---      stays.
+-- WHAT. One price for the add-on, concept_thumbnail_credits(channel): 0 for a frame channel; 4 x image_generations x
+-- (1 + margin) for a concept one; NULL when image_generations has no price (unknown, never 0 — the run would be
+-- refused). Read like modules/credits.concept_thumbnail_on: only the JSON string "concept", case and surrounding white
+-- space ignored. A two-argument series_episode_price(duration, channel) adds it to the one-argument price, rounded the
+-- way the worker rounds (floor first, then floor + images); quote_series_episode, start_series_episode and
+-- oauth_create_video are their latest bodies (0120, 0120, 0094 — not redefined since) with only the price call
+-- changed. The one-argument series_episode_price is unchanged.
 --
--- tests/security/test_sec_concept_thumbnail_holds.py applies this file to the lab database and re-applies 0169.
+-- APPLY THIS BEFORE deploying the worker change that refuses holds without the images (the same pull request).
+--
+-- NUMBER. 0175 (drafted as 0163, then 0169): main ends at 0170, which production has applied, and a migration numbered below the
+--   latest applied one is rejected or skipped by the Supabase CLI/integration (docs/MIGRATIONS.md, 0116); 0171 to 0174 are claimed
+--   by open branches. Nothing merged from 0164 to 0170 names quote_series_episode, start_series_episode, oauth_create_video,
+--   concept_thumbnail_credits or series_episode_price.
+--
+-- WHAT TO VERIFY BEFORE YOU APPLY (read-only, the SQL editor on the live project). md5 of each body with every run of white space read
+-- as one space; the file checks them itself and raises on any other value:
+--     select 'quote_series_episode' as fn, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) as md5
+--       from pg_proc where oid = 'public.quote_series_episode(uuid)'::regprocedure
+--     union all select 'start_series_episode', md5(regexp_replace(prosrc, '\s+', ' ', 'g'))
+--       from pg_proc where oid = 'public.start_series_episode(uuid, numeric, text, boolean)'::regprocedure
+--     union all select 'oauth_create_video', md5(regexp_replace(prosrc, '\s+', ' ', 'g'))
+--       from pg_proc where oid = 'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure;
+--   expected BEFORE (0120 and 0094 applied, 0175 not):
+--     quote_series_episode         9ba908b7888b5cab0281b8cf87e8659a
+--     start_series_episode         f3598d71d76e780b6973f88d8a743d2b
+--     oauth_create_video           244a5779e4388525f5f345b59379029f
+--   expected AFTER (the last block of this file asserts the same, inside the transaction):
+--     quote_series_episode         9ffa67413ea6a90ec58e3b0bc4214078
+--     start_series_episode         df19e5e9ad49c5772dbfa458919e1399
+--     oauth_create_video           73145e68348088237a95b335fc162c08
+--     concept_thumbnail_credits    93ecebafdd6738762a480f75527fd508
+--     series_episode_price(i, t)   c27ede9c11d262b6047a93e0f81f4042
+--   If a live value is anything else, STOP: something was applied by hand, and replacing the body would silently undo it.
+--
+-- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1). Additive and
+-- idempotent: a second run finds this file's bodies and changes nothing. Rollback: docs/sql/rollback_0175_concept_thumbnail_holds.sql.
+-- REQUIRES 0094 (oauth_create_video's latest body), 0120 (the series tables, quote_series_episode's and start_series_episode's latest
+-- bodies, series_episode_price) and 0158 (thumbnail_mode is an administrator's to change).
 
-begin;
 set local lock_timeout = '5s';
 
 do $$
 declare
-  sig  text;
-  want text;
-  got  text;
+  q text;
+  st text;
+  o text;
+  c text;
+  sp text;
 begin
-  for sig, want in values
-    ('public.quote_series_episode(uuid)', '809576010f2eb785ec089d3c78fdc600'),
-    ('public.start_series_episode(uuid, numeric, text, boolean)', '8250180e07903b999afbae093a99c3cb'),
-    ('public.oauth_create_video(text, text, jsonb, text, text)', 'e67c7491ce92f0162c8547f3025103c0')
-  loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = to_regprocedure(sig);
-    if got is distinct from want then
-      raise exception 'rollback 0169: % is not 0169''s body (md5 %): read the live body first', sig, got;
-    end if;
-  end loop;
+  if to_regprocedure('public.series_episode_price(integer)') is null then
+    raise exception '0175 needs 0120_series_tables.sql (series_episode_price): apply it first';
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into q
+    from pg_proc p where p.oid = to_regprocedure('public.quote_series_episode(uuid)');
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into st
+    from pg_proc p where p.oid = to_regprocedure('public.start_series_episode(uuid, numeric, text, boolean)');
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into o
+    from pg_proc p where p.oid = to_regprocedure('public.oauth_create_video(text, text, jsonb, text, text)');
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into c
+    from pg_proc p where p.oid = to_regprocedure('public.concept_thumbnail_credits(text)');
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into sp
+    from pg_proc p where p.oid = to_regprocedure('public.series_episode_price(integer, text)');
+  if q is null or q <> all (array['9ba908b7888b5cab0281b8cf87e8659a', '9ffa67413ea6a90ec58e3b0bc4214078']) then
+    raise exception '0175 found a quote_series_episode() that is neither 0120''s body nor 0175''s (md5 %): read the live body first', q;
+  end if;
+  if st is null or st <> all (array['f3598d71d76e780b6973f88d8a743d2b', 'df19e5e9ad49c5772dbfa458919e1399']) then
+    raise exception '0175 found a start_series_episode() that is neither 0120''s body nor 0175''s (md5 %): read the live body first', st;
+  end if;
+  if o is null or o <> all (array['244a5779e4388525f5f345b59379029f', '73145e68348088237a95b335fc162c08']) then
+    raise exception '0175 found an oauth_create_video() that is neither 0094''s body nor 0175''s (md5 %): read the live body first', o;
+  end if;
+  if c is not null and c <> '93ecebafdd6738762a480f75527fd508' then
+    raise exception '0175 found a concept_thumbnail_credits() that is not this file''s body (md5 %): read the live body first', c;
+  end if;
+  if sp is not null and sp <> 'c27ede9c11d262b6047a93e0f81f4042' then
+    raise exception '0175 found a series_episode_price(integer, text) that is not this file''s body (md5 %): read the live body first', sp;
+  end if;
 end $$;
 
--- 0120's bodies, byte for byte.
+-- ───────────────────────────────────────────────────────────────────────────
+-- 1. The add-on's price
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.concept_thumbnail_credits(p_channel_id text) returns numeric
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_cfg jsonb;
+  ig    public.credit_prices;
+begin
+  select c.agent_config into v_cfg from public.channels c where c.channel_id = p_channel_id;
+  -- coalesce: a missing key, a null column or a non-string value is frame mode, never "unknown, so maybe concept".
+  -- The trimmed characters are exactly Python's str.strip() set (str.isspace), not the locale's \s: a value the worker
+  -- reads as concept and this read as frame would price the episode without the images, and the worker would refuse it.
+  if not coalesce(jsonb_typeof(v_cfg -> 'thumbnail_mode') = 'string'
+                  and lower(regexp_replace(v_cfg ->> 'thumbnail_mode',
+                        '^[\t\n\v\f\r\x1c-\x20\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r\x1c-\x20\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$',
+                        '', 'g')) = 'concept', false) then
+    return 0;
+  end if;
+  select * into ig from public.credit_prices where unit = 'image_generations';
+  -- modules/credits.parse_prices: a missing, negative or non-finite rate is unpriced; such a margin is 0. (numeric accepts 'NaN',
+  -- and NaN >= 0 holds in Postgres, so the table's check does not keep it out.)
+  if ig.unit is null or ig.credits_per_unit is null or ig.credits_per_unit < 0 or ig.credits_per_unit = 'NaN'::numeric then
+    return null;
+  end if;
+  -- 4: CONCEPT_THUMBNAIL_MAX_IMAGES (modules/credits.py, lib/credits.ts) — one image per A/B arm, at most 4 arms.
+  return ig.credits_per_unit
+         * (1 + case when ig.margin is null or ig.margin < 0 or ig.margin = 'NaN'::numeric then 0 else ig.margin end) * 4;
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 2. A series episode, priced for its channel
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.series_episode_price(p_duration_s integer, p_channel_id text) returns numeric
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_base numeric := public.series_episode_price(p_duration_s);
+  v_img  numeric;
+begin
+  if v_base is null then
+    return null;
+  end if;
+  v_img := public.concept_thumbnail_credits(p_channel_id);
+  if v_img is null then
+    return null;           -- unpriced images: the episode is unpriced, never priced without them
+  end if;
+  if v_img = 0 then
+    return v_base;
+  end if;
+  return round(public.credits_round_up(v_base + v_img), 2);
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 3. quote_series_episode and start_series_episode (0120's bodies; only the price call changes)
+-- ───────────────────────────────────────────────────────────────────────────
+
 create or replace function public.quote_series_episode(p_episode uuid) returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
@@ -54,7 +165,9 @@ begin
   end if;
   v_ex := public.credits_exempt(ep.org_id);
   v_block := public.series_episode_blocker(ep.id);
-  v_price := case when v_ex then null else public.series_episode_price(ep.duration_s) end;
+  -- 0175: the episode's channel decides one add-on (concept thumbnails), as the worker's floor does.
+  v_price := case when v_ex then null else public.series_episode_price(ep.duration_s,
+    (select p.channel_id from public.series_plans p where p.id = ep.plan_id)) end;
   return jsonb_build_object(
     'episode_id', ep.id, 'plan_id', ep.plan_id, 'n', ep.n, 'status', ep.status, 'duration_s', ep.duration_s,
     'exempt', v_ex,
@@ -138,7 +251,8 @@ begin
   end if;
 
   if not v_ex then
-    v_price := public.series_episode_price(ep.duration_s);
+    -- 0175: what the worker's floor demands of this channel's run (modules/credits.minimum_reservation).
+    v_price := public.series_episode_price(ep.duration_s, pl.channel_id);
     if v_price is null then
       raise exception 'unpriced' using errcode = 'NS400';
     end if;
@@ -176,7 +290,10 @@ begin
 end
 $$;
 
--- 0094's body, byte for byte.
+-- ───────────────────────────────────────────────────────────────────────────
+-- 4. A video asked for over MCP (0094's body; only the price changes)
+-- ───────────────────────────────────────────────────────────────────────────
+
 create or replace function public.oauth_create_video(
   p_token_hash text, p_channel_id text, p_params jsonb,
   p_idem_key text default null, p_request_id text default null
@@ -202,6 +319,7 @@ declare
   v_job   bigint;
   v_res   jsonb;
   v_hold  jsonb;
+  v_img   numeric;
 begin
   if not (ctx ->> 'ok')::boolean then
     return ctx;
@@ -277,6 +395,17 @@ begin
         return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
           'Video pricing is not set up on this deployment; nothing was held or charged.'));
       end if;
+      -- 0175: a concept-thumbnail channel's run also buys up to 4 generated images,
+      -- and the worker refuses a hold that leaves them out. Unpriced images are no
+      -- price at all, never the price without them.
+      v_img := public.concept_thumbnail_credits(ch.channel_id);
+      if v_img is null then
+        return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
+          'This channel makes concept thumbnails, and generated images have no price on this deployment; nothing was held or charged.'));
+      end if;
+      if v_img > 0 then
+        v_price := public.credits_round_up(v_price + v_img);
+      end if;
 
       -- Everything below runs under the credit account's row lock, so two calls
       -- of one connection cannot each pass the limit and jointly exceed it.
@@ -338,9 +467,12 @@ begin
 end
 $$;
 
-drop function if exists public.series_episode_price(integer, text);
-drop function if exists public.concept_thumbnail_credits(text);
+-- ───────────────────────────────────────────────────────────────────────────
+-- 5. Grants: the two helpers are internal; the callers keep 0120's / 0094's grants
+-- ───────────────────────────────────────────────────────────────────────────
 
+revoke all on function public.concept_thumbnail_credits(text) from public, anon, authenticated, service_role;
+revoke all on function public.series_episode_price(integer, text) from public, anon, authenticated, service_role;
 revoke all on function public.quote_series_episode(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.start_series_episode(uuid, numeric, text, boolean) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_create_video(text, text, jsonb, text, text) from public, anon, authenticated, service_role;
@@ -348,4 +480,33 @@ grant execute on function public.quote_series_episode(uuid) to authenticated;
 grant execute on function public.start_series_episode(uuid, numeric, text, boolean) to authenticated;
 grant execute on function public.oauth_create_video(text, text, jsonb, text, text) to anon;
 
-commit;
+-- ───────────────────────────────────────────────────────────────────────────
+-- 6. End state, asserted inside the transaction
+-- ───────────────────────────────────────────────────────────────────────────
+
+do $$
+declare
+  sig  text;
+  want text;
+  got  text;
+  r    text;
+begin
+  for sig, want in values
+    ('public.quote_series_episode(uuid)', '9ffa67413ea6a90ec58e3b0bc4214078'),
+    ('public.start_series_episode(uuid, numeric, text, boolean)', 'df19e5e9ad49c5772dbfa458919e1399'),
+    ('public.oauth_create_video(text, text, jsonb, text, text)', '73145e68348088237a95b335fc162c08'),
+    ('public.concept_thumbnail_credits(text)', '93ecebafdd6738762a480f75527fd508'),
+    ('public.series_episode_price(integer, text)', 'c27ede9c11d262b6047a93e0f81f4042')
+  loop
+    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = to_regprocedure(sig);
+    if got is distinct from want then
+      raise exception '0175 end state: % has md5 %, not %', sig, got, want;
+    end if;
+  end loop;
+  foreach r in array array['anon', 'authenticated', 'service_role'] loop
+    if has_function_privilege(r, 'public.concept_thumbnail_credits(text)', 'EXECUTE')
+       or has_function_privilege(r, 'public.series_episode_price(integer, text)', 'EXECUTE') then
+      raise exception '0175 end state: % may call an internal price helper', r;
+    end if;
+  end loop;
+end $$;

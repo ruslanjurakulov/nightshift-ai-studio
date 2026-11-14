@@ -423,7 +423,7 @@ export function aggregateSeriesQuote(durationsS: (number | null)[], estimates: C
  * Does not include the planning call (no credit price) or any voice. Throws a RangeError for 0 or more than
  * SERIES_MAX_EPISODES episodes: the caller validates a series before it asks for a price.
  * `agentConfig` is the channel's: a concept-thumbnail channel's episodes carry their generated images, as the
- * database's own episode price does (migration 0169) and the worker's floor demands.
+ * database's own episode price does (migration 0175) and the worker's floor demands.
  */
 export function quoteSeries(input: {
   prices: PriceMap;
