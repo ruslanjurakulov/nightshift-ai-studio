@@ -197,6 +197,11 @@ export const devEn = {
       badge: "Ready to connect",
       body: "Nightshift’s server follows {app}’s published requirements for custom servers. Follow the steps above.",
     },
+    /** A tab whose sign-in is "unverified" (lib/dev/mcp-availability.ts): the vendor's own steps, nothing more checked. */
+    unverified: {
+      badge: "Not tested yet",
+      body: "These steps come from {app}’s own documentation. Nobody has connected {app} to Nightshift yet, so we cannot say it works.",
+    },
     soon: {
       badge: "Coming soon",
       use: "Works today with an API key:",
@@ -441,6 +446,29 @@ export const devEn = {
           { id: "dunes", tag: "Weekly", prompt: "This week’s video for my channel, ready to approve." },
         ],
       },
+      /** The prompt gallery (components/docs/McpPrompts.tsx); items keyed by lib/dev/mcp-prompts.ts PROMPT_GALLERY. */
+      prompts: {
+        label: "Prompt gallery",
+        title: "Prompts that match real tools",
+        lead: "Each card names the tools your assistant will call, so you know what it can and cannot do before you paste it.",
+        copy: "Copy prompt",
+        copyName: "the prompt",
+        toolsLabel: "Tools:",
+        door: { either: "Sign-in or API key", key: "API key", studioKey: "API key with Studio permissions" },
+        openClaude: "Open in Claude",
+        openClaudeHint: "“Open in Claude” needs the Claude desktop app with Nightshift already connected. It fills in the prompt for you to read and send; it sends nothing by itself.",
+        keyNote: "The Studio’s tools (list_models, quote_generation, create_generation, get_generation) are offered only to an API key with the Studio permissions, never to an app connected with a sign-in.",
+        items: [
+          { id: "balance", title: "Check my balance", prompt: "What is my Nightshift balance, and how much is set aside for work in progress?" },
+          { id: "channels", title: "List my channels", prompt: "Which channels do I have in Nightshift? Give me each one’s name and id." },
+          { id: "plan", title: "Plan my next video", prompt: "Look at the last ten videos Nightshift made for my YouTube channel and suggest three topics for the next one. Don’t start anything yet." },
+          { id: "make", title: "Make it and follow it", prompt: "Make a five-minute video about how tea is grown for my channel, then follow the job until it is finished." },
+          { id: "review", title: "Where my video stands", prompt: "Show me my latest finished video: its privacy, its review state and any publish requests." },
+          { id: "models", title: "Models I can use", prompt: "Which Studio models can I use to make a short clip from words, and which lengths does each take?" },
+          { id: "quote", title: "Quote a 10-second clip", prompt: "Quote a 10-second 16:9 clip of waves at sunrise with one of my Studio models. Don’t make it yet." },
+          { id: "generate", title: "Make it within the quote", prompt: "Make that clip now, but never above the price you just quoted. Send me the file link when it is ready." },
+        ],
+      },
       works: {
         label: "Works with",
         title: "Works with the assistants you already use",
@@ -459,6 +487,14 @@ export const devEn = {
           { q: "Can it publish without asking me?", a: "No. Publishing passes the same publish check and approvals as the app, and YouTube uploads stay private until you decide." },
           { q: "How do I disconnect an assistant?", a: "An app connected with a sign-in is removed in Developers → Connected apps and stops at once. An API key is revoked in Developers → API keys." },
           { q: "What if I run out of credits?", a: "The request is refused before any work starts, and the assistant tells you what to do next. Nothing is held, queued or produced. After you add credits, the same connection works again on its next call." },
+          {
+            q: "Does connecting spend credits?",
+            a: "No. Connecting costs nothing, and neither does reading your channels, videos, jobs and balance. Only three tools spend. create_video sets the video’s price aside and charges it only when the video succeeds. With an API key, request_download is charged when the file is ready, and create_generation never charges more than the max_credits you agreed to after quote_generation, which itself costs nothing. Every app you connect with a sign-in has its own monthly spending limit: you set it when you allow the app and change it in Developers → Connected apps, and 0 makes the app read-only. An API key can have its own monthly limit too.",
+          },
+          {
+            q: "What does my assistant see?",
+            a: "Only what its tools return, and only with the permissions you ticked when you allowed it: your channels, videos and jobs, where you can publish, and your credits with this connection’s limit. With an API key that has the Studio permissions it also sees the Studio’s models, quotes and the key’s own generations. It never sees your password, your YouTube sign-in or any key. Nightshift receives only the tool calls your assistant makes, not your conversation.",
+          },
         ],
       },
       keyMode: {
@@ -471,6 +507,8 @@ export const devEn = {
           cost: "An API key spends your prepaid API balance. When a video is queued its price is set aside; it is charged only when the video succeeds, and a failed run costs nothing. Connecting with a sign-in, which spends your workspace’s credits instead on any plan, is coming soon.",
           disconnect: "An API key is revoked in Developers → API keys.",
           credits: "The request is refused before any work starts, and the assistant tells you what to do next. Nothing is held, queued or produced. After you top up your API balance, the same key works again on its next call.",
+          spend: "No. Adding the key costs nothing, and neither does reading your channels, videos, jobs, balance and the Studio’s models, or quote_generation. Only three tools spend. create_video and request_download are paid from your API balance: a video’s price is set aside and charged only when it succeeds, a download is charged when the file is ready. create_generation spends credits and never more than the max_credits you agreed to. Your organization can set a monthly limit, and each key its own.",
+          sees: "Only what its tools return for your key’s permissions: your channels, videos and jobs, where you can publish, your API balance and, with the Studio permissions, the Studio’s models, quotes and the key’s own generations. It never sees your password, your YouTube sign-in or any other key. Nightshift receives only the tool calls your assistant makes, not your conversation.",
         },
       },
       explore: { title: "Explore more", pricing: "Plans and prices", tools: "What your assistant can do" },

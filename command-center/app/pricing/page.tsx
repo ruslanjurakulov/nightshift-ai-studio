@@ -13,7 +13,11 @@ import { readSellableModels } from "@/lib/creative/registry";
 import { moneyAnchor, runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { PUBLIC_READ_TIMEOUT_MS } from "@/lib/server/public-read";
-import { readPublicCreditRates } from "@/lib/server/public-rates";
+import { readReferralTerms } from "@/lib/server/referrals";
+import { readPublicCreditRates, readPublicVideoPrices } from "@/lib/server/public-rates";
+import { readCustomerModels } from "@/lib/server/model-discovery";
+import { UNIT_JOB_MINIMUM, type PriceMap } from "@/lib/credits";
+import { studioRows, videoPrices, videoRateSetAt, type PlanFinderData } from "@/lib/plan-finder";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
@@ -60,6 +64,11 @@ export default async function PricingPage() {
   // (per minute and the smallest hold, 0089). Read alongside the rest.
   const apiPricesRead = readPublicApiPrices();
   const publicRatesRead = readPublicCreditRates();
+  // The referral programme (0165): mentioned only while open, with the database's numbers (a shared, bounded public read).
+  const referralRead = readReferralTerms();
+  // The same two rows, unrounded, for "what does my plan make?": a video there is quoted exactly as Run now quotes it.
+  const publicVideoRead = readPublicVideoPrices();
+  const readAt = new Date().toISOString();
 
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
@@ -76,8 +85,10 @@ export default async function PricingPage() {
   let rates: CreditRates | null = null;
   let ratesFailed = false;
   let genRates: GenerationRates | null = null;
+  let memberPrices: PriceMap | null = null;
+  let studio: PlanFinderData["studio"] = { status: supabase ? "signed_out" : "not_enabled" };
   if (supabase && user) {
-    const [res, models] = await Promise.all([readCreditPrices(supabase), readSellableModels(supabase)]);
+    const [res, models, customer] = await Promise.all([readCreditPrices(supabase), readSellableModels(supabase), readCustomerModels(supabase)]);
     // A failed read is no rates at all — not an empty price list — and the
     // page says it could not read them, which is not "not published yet".
     if (res.supported && !res.failed) {
@@ -85,16 +96,37 @@ export default async function PricingPage() {
       // "≈ N images · M videos" from the same two reads the Credits page uses;
       // a model list that could not be read leaves those parts out, never guessed.
       genRates = generationRates(models.status === "ok" ? models.models : null, res.prices);
+      memberPrices = res.prices;
     }
     ratesFailed = res.failed;
+    // The Studio rows need the list's job_minimum too (creative_price raises every quote to it): without a readable
+    // list an image's price is unknown, so the rows are not shown at all rather than shown without their floor.
+    studio =
+      customer.status === "ok" && memberPrices
+        ? { status: "ok", rows: studioRows(customer.models, memberPrices[UNIT_JOB_MINIMUM]?.creditsPerUnit ?? 0), stamp: { kind: "read", at: readAt } }
+        : customer.status === "not_enabled"
+          ? { status: "not_enabled" }
+          : customer.status === "forbidden"
+            ? { status: "signed_out" }
+            : { status: "failed" };
   }
   // Signed out (or before 0084), the rates panel, the pack minutes and the
   // money anchor read the public pair; unpublished stays null, never guessed.
   const publicRates = await publicRatesRead;
   if (!rates && !ratesFailed) rates = publicRates;
+  // A member's own list when it was read (it carries each rate's updated_at), the public pair otherwise, and nothing
+  // when the member's read failed — as the rates panel above: unknown, never the other list standing in for it.
+  const video = memberPrices ? videoPrices(memberPrices) : ratesFailed ? null : videoPrices(await publicVideoRead);
+  const setAt = videoRateSetAt(video);
+  const finder: PlanFinderData = {
+    video,
+    videoStamp: video ? (setAt ? { kind: "set", at: setAt } : { kind: "read", at: readAt }) : null,
+    studio,
+  };
   const catalogRead = await catalogPending;
   const catalog = planValue(catalogRead);
   const plans = sitePlanMatrix(catalog, locale);
+  const referral = await referralRead;
 
   return (
     <PublicShell t={t} fresh>
@@ -110,6 +142,8 @@ export default async function PricingPage() {
         plans={plans}
         expiry={packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS)}
         anchor={moneyAnchor(pricing, await apiPricesRead, publicRates)}
+        referral={referral.state === "ok" ? referral.value : null}
+        finder={finder}
       />
     </PublicShell>
   );

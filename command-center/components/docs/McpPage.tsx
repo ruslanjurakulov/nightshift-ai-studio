@@ -21,6 +21,7 @@ import { Field } from "@/components/docs/Field";
 import { InstallButton } from "@/components/docs/InstallButton";
 import { McpAfter, McpLanding } from "@/components/docs/McpLanding";
 import { McpClientProvider } from "@/components/docs/McpClientContext";
+import { McpPrompts } from "@/components/docs/McpPrompts";
 import { DevNav, DocSection, Statement, Table, type ScrollLabels } from "@/components/docs/doc-parts";
 import { ChatCard, type ChatCopy } from "@/components/landing/HeroCard";
 import { MotionToggle } from "@/components/site/MotionToggle";
@@ -206,12 +207,18 @@ export function McpPage({
         panel: (
           <>
             {stepsList(client.label, o.steps, oauthActions(client.id, url, client, o))}
-            {(availability === "ready" || ("note" in o && o.note)) && (
+            {(availability === "ready" || availability === "unverified" || ("note" in o && o.note)) && (
               <div className="st-panel-foot">
                 {/* "Ready", not "works": the server meets the vendor's published rules, and no real account has connected yet (lib/dev/mcp-availability.ts). */}
                 {availability === "ready" && (
                   <p className="st-small" data-availability="ready">
                     <strong>{c.ready.badge}.</strong> {fmt(c.ready.body, { app: client.label })}
+                  </p>
+                )}
+                {/* "Unverified": the steps are the vendor's own and nothing more is known, so the tab says so before anyone follows them. */}
+                {availability === "unverified" && (
+                  <p className="st-small" data-availability="unverified">
+                    <strong>{c.unverified.badge}.</strong> {fmt(c.unverified.body, { app: client.label })}
                   </p>
                 )}
                 {"note" in o && o.note && <p className="st-small">{o.note}</p>}
@@ -336,6 +343,8 @@ export function McpPage({
       </section>
 
       <McpLanding dev={dev} site={site} oauthLive={oauthLive} />
+
+      <McpPrompts dev={dev} oauthLive={oauthLive} />
 
       <DocSection id="tools" no={1} title={c.tools.slug}>
         <Statement>{c.tools.title}</Statement>

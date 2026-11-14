@@ -123,7 +123,7 @@ export function McpAfter({ dev, showCli, oauthLive }: { dev: DevDictionary; show
   const available = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "available").map((x) => x.label);
   const keyAnswers: Record<number, string> = oauthLive
     ? { 2: fmt(l.faq.items[2].a, { available: available.join(", ") }) }
-    : { 2: l.keyMode.faq.assistants, 3: l.keyMode.faq.connect, 4: l.keyMode.faq.cost, 6: l.keyMode.faq.disconnect, 7: l.keyMode.faq.credits };
+    : { 2: l.keyMode.faq.assistants, 3: l.keyMode.faq.connect, 4: l.keyMode.faq.cost, 6: l.keyMode.faq.disconnect, 7: l.keyMode.faq.credits, 8: l.keyMode.faq.spend, 9: l.keyMode.faq.sees };
   return (
     <>
       <section aria-labelledby="faq-title" className="ml-land ml-faq" data-tone="soft">

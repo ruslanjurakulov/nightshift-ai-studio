@@ -12,6 +12,7 @@ import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
 import { safeLoginReturn } from "@/lib/safe-redirect";
 import { clearAllDrafts } from "@/lib/create-draft";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
+import { retryInviteJoin } from "@/lib/friend-invites";
 import { FORGOT_PASSWORD_PATH } from "@/lib/public-paths";
 import { mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { signInNextStep, type MfaClient } from "@/lib/security/challenge";
@@ -67,6 +68,9 @@ export default function LoginPage() {
     // A username chosen at sign-up whose account was confirmed in another
     // browser has not been applied yet: do it now (quiet; never blocks sign-in).
     await applyPendingHandle(supabase as unknown as HandleClient);
+    // A friend's invite cookie the confirmation callback could not use (its join failed and was kept): tried once more now
+    // that this account is signed in. Bounded, not awaited, and silent: it never holds the sign-in up.
+    void retryInviteJoin();
     // A connection request from an AI app sent this person here: back to it
     // (only that exact page is honoured), otherwise the app as always.
     const destination = safeLoginReturn(new URLSearchParams(window.location.search).get("next"), "/command-center");

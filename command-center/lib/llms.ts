@@ -2,7 +2,7 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { getDevDictionary } from "@/lib/i18n/dev";
 import { getLegalTexts } from "@/lib/legal-docs";
 import { isSolutionId, solutionHref, SOLUTIONS_PATH } from "@/lib/solutions";
-import { REFUND_PATH, ROADMAP_PATH, STUDIO_PAGE_PATH } from "@/lib/public-paths";
+import { REFERRAL_PATH, REFUND_PATH, ROADMAP_PATH, STUDIO_PAGE_PATH, TRUST_PATH } from "@/lib/public-paths";
 import { listedPagePaths } from "@/lib/site-pages";
 
 /**
@@ -37,9 +37,9 @@ const SECTIONS: Section[] = ["Product", "Solutions", "Developers", "Legal"];
 
 /** Where each listed page belongs; a listed page missing here is a bug the test names. */
 function sectionOf(path: string): Section {
-  if (path === "/" || path === STUDIO_PAGE_PATH || path === "/pricing" || path === ROADMAP_PATH) return "Product";
+  if (path === "/" || path === STUDIO_PAGE_PATH || path === "/pricing" || path === ROADMAP_PATH || path === REFERRAL_PATH) return "Product";
   if (path === SOLUTIONS_PATH || path.startsWith(SOLUTIONS_PATH + "/")) return "Solutions";
-  if (path === "/privacy" || path === "/terms" || path === REFUND_PATH) return "Legal";
+  if (path === "/privacy" || path === "/terms" || path === REFUND_PATH || path === TRUST_PATH) return "Legal";
   return "Developers";
 }
 
@@ -52,6 +52,7 @@ function describe(path: string): { title: string; description: string } | null {
   if (path === STUDIO_PAGE_PATH) return { title: t.site.nav.studio, description: t.site.studioPage.meta.description };
   if (path === "/pricing") return { title: t.pricing.title, description: t.pricing.metaDescription };
   if (path === ROADMAP_PATH) return { title: t.site.roadmap.title, description: t.site.roadmap.meta.description };
+  if (path === REFERRAL_PATH) return { title: t.referral.page.title, description: t.referral.page.metaDescription };
   if (path === SOLUTIONS_PATH) return { title: t.site.solutions.meta.title, description: t.site.solutions.meta.description };
   const solution = t.site.solutions.pages.find((p) => isSolutionId(p.id) && solutionHref(p.id) === path);
   if (solution) return { title: solution.nav, description: solution.lead };
@@ -63,6 +64,7 @@ function describe(path: string): { title: string; description: string } | null {
   if (path === "/privacy") return { title: legal.privacy.title, description: legal.privacy.summary };
   if (path === "/terms") return { title: legal.terms.title, description: t.site.legalMeta.terms };
   if (path === REFUND_PATH) return { title: legal.refund.title, description: legal.refund.summary };
+  if (path === TRUST_PATH) return { title: t.site.trust.title, description: t.site.trust.meta.description };
   return null;
 }
 

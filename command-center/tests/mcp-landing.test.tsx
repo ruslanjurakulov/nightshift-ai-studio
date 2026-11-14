@@ -78,7 +78,8 @@ describe("the long /mcp page: order of sections", () => {
       expect(l.every.rows.map((r) => r.id)).toEqual(CAPABILITY_ROWS.map((r) => r.id));
       expect(l.asks.items.map((i) => i.id)).toEqual([...ASK_IDS]);
       expect(l.examples.cards.map((c) => c.id)).toEqual([...EXAMPLE_SCENES]);
-      expect(l.faq.items).toHaveLength(8);
+      // Eight, then "does connecting spend credits?" and "what does my assistant see?" (tests/mcp-prompts.test.tsx).
+      expect(l.faq.items).toHaveLength(10);
     }
   });
 
@@ -298,10 +299,10 @@ describe("the examples carousel is operable by keyboard and screen reader", () =
 });
 
 describe("the questions", () => {
-  it.each(LOCALES)("%s: eight disclosures, native (keyboard and no-JS work), each with an answer", (locale) => {
+  it.each(LOCALES)("%s: ten disclosures, native (keyboard and no-JS work), each with an answer", (locale) => {
     const d = doc(page(locale));
     const items = [...d.querySelectorAll("details.ml-faq-item")];
-    expect(items).toHaveLength(8);
+    expect(items).toHaveLength(10);
     for (const i of items) {
       expect(i.querySelector("summary")?.textContent?.trim().length).toBeGreaterThan(8);
       expect(i.querySelector("p")?.textContent?.trim().length).toBeGreaterThan(30);
