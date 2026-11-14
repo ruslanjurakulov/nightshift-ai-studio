@@ -35,8 +35,10 @@ import sec_db
 
 MIGRATION = sec_db.MIGRATIONS / "0147_mcp_free_tier.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
-# Later migrations that replace a function of 0147 (oauth_gc: 0161, tests/security/test_sec_mcp_chatgpt_client.py), with their undo.
-LATER = [(sec_db.MIGRATIONS / "0161_mcp_chatgpt_client.sql", sec_db.REPO / "docs" / "sql" / "rollback_0161_mcp_chatgpt_client.sql")]
+# Later migrations that replace a function of 0147, with their undo: oauth_gc (0161, tests/security/test_sec_mcp_chatgpt_client.py)
+# and api_request_download (0170, tests/security/test_sec_api_download.py).
+LATER = [(sec_db.MIGRATIONS / "0161_mcp_chatgpt_client.sql", sec_db.REPO / "docs" / "sql" / "rollback_0161_mcp_chatgpt_client.sql"),
+         (sec_db.MIGRATIONS / "0170_api_download_audit.sql", sec_db.REPO / "docs" / "sql" / "rollback_0170_api_download_audit.sql")]
 ORG_PAID = "aaaaaaaa-0000-0000-0000-000000000147"
 U_PAID = str(uuid.UUID(int=0xA147))
 RESOURCE = "https://nightshift-ai.studio/api/mcp"

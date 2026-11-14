@@ -1709,3 +1709,31 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   (partial holds, the 24-hour expiry, capture, two refunds, one hold met by two refunds with a later top-up, one refund over two
   holds, a later hold, a download hold, held cents not consumable, a forged release, replay, the record's guard, who wrote the
   collection, concurrency with `api_create_video` in both orders; a real PostgreSQL), `command-center/tests/api-topup-webhook.test.ts`.
+
+## An HD download through the public API audits a name the audit list has (0170)
+
+0170 (`0170_api_download_audit.sql`) is a **fix, live on apply**: from the moment it is applied, an API key's download request
+(`api_request_download`, behind `POST /api/v1/videos/{id}/downloads`) can create a paid, redownload or exempt download again.
+
+- **The failure.** `api_request_download` (0031, rebuilt by 0042 and 0147) audited itself as `video.download`. Since 0087,
+  `app_audit_log_stamp` refuses an action that `audit_action_allowed()` does not list with 22023 for the anon and
+  authenticated roles, which every API call runs as; the list has `video.download_request` and never had `video.download`.
+  The function's own `exception when others` turned that into `500 internal_error` and undid its block: no request row, no
+  hold, no ledger row, nothing charged. Only the "reused" answer (no audit row) worked. It failed closed, but the paid
+  feature did not work at all.
+- **The change.** One hunk in `api_request_download`: it audits `video.download_request`, the name the Command Center's own
+  download route writes for the same act (`command-center/app/api/downloads/route.ts`). The row still carries `via=api` and
+  the key's id. The audit list is not changed (nothing is widened); no reader expects `video.download` (the audit page
+  prints the action as stored). Every other line, price, hold, refusal and grant is 0147's.
+- **md5.** `api_request_download` before `055003f8a2fb5390bbd1b5f7820e6e2e` (0147), after `b59ca71d0e0379e217e47a6987c9ed0c`
+  (drift guard, end state, Verify, rollback).
+- **Number.** 0170, provisional (0169 is held by an open pull request, #750); it is changed at merge if another branch takes it.
+  Needs 0031, 0042, 0087 and 0147; names nothing of 0148 to 0169. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Replay.** `create or replace`, then revoke and grant: a replay changes nothing. Re-running 0147 after 0170 is refused by
+  0147's drift guard: apply the rollback first, re-run 0147, then 0170 again.
+- **Undo.** `docs/sql/rollback_0170_api_download_audit.sql` (owner-applied): refuses unless the body is 0170's, puts 0147's back
+  byte for byte with its grant (anon only). It brings the failure back.
+- **Tests.** `tests/security/test_sec_api_download.py` (a real PostgreSQL: a paid download with its hold, ledger and audit row,
+  the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list
+  not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
+  `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
