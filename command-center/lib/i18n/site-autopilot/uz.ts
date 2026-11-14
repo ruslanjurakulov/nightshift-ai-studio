@@ -1,4 +1,5 @@
 import type { SiteAutopilotDictionary } from "./en";
+import { pillarUz } from "../autopilot-pillar/uz";
 
 /** Bosh sahifadagi avtopilot va telefondagi Shorts lentasi. Manba — ./en.ts. */
 export const siteAutopilotUz: SiteAutopilotDictionary = {
@@ -126,6 +127,8 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
       secondary: "Nashr qanday ishlaydi",
     },
   },
+  /** The YouTube Autopilot pillar, /solutions/youtube-channels (lib/i18n/autopilot-pillar). */
+  pillar: pillarUz,
   shorts: {
     open: "Shorts sifatida koʻrish",
     openNote: "{n} ta vertikal namuna, toʻliq ekranda",
