@@ -541,7 +541,7 @@ def plan_chunks(scenes: Sequence[Mapping], duration_s: float, fps: int, *, targe
 
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
            browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
-           chunk_s: float = CHUNK_S) -> Path:
+           chunk_s: float = CHUNK_S, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
     """Render the props with Remotion. ``files`` maps each public path the props name
     (narration, music, effects) to the file on disk; they are copied into a private
     public dir for this render only. Raises ExplainerError with Remotion's last lines.
@@ -553,6 +553,9 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
     own mix, bit for bit what a single render carries (measured), without paying for a second picture. ffmpeg joins
     the pictures without re-encoding and encodes the sound once, as a single render does (AAC, 320 kb/s, 48 kHz). The
     result must have exactly the composition's frame count, or it is refused and deleted.
+
+    ``on_spawn`` receives every child process (the bundler, each Remotion render, ffmpeg) right after it starts, so a
+    caller that is stopped can kill its process group; None does nothing.
 
     Why not each chunk's own sound: Remotion mixes an effect that starts at or before a chunk's first frame
     differently from a whole render (measured on a whoosh at every cut), so the pieces would not join exactly."""
@@ -584,14 +587,14 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
         bundle = Path(tmp) / "bundle"
         try:
             _run(["npx", "remotion", "bundle", "src/index.ts", f"--out-dir={bundle}", f"--public-dir={pub}", "--log=error"],
-                 engine_dir, deadline, timeout_s, "bundling")
+                 engine_dir, deadline, timeout_s, "bundling", on_spawn)
             common = ["--log=error"]
             if browser:
                 common.append(f"--browser-executable={browser}")
 
             def remotion(out: Path, *extra: str, what: str, props_path: Path = props_file, tabs: int = concurrency) -> None:
                 _run(["npx", "remotion", "render", str(bundle), COMPOSITION, str(out), f"--props={props_path}", *extra,
-                      f"--concurrency={int(tabs)}", *common], engine_dir, deadline, timeout_s, what)
+                      f"--concurrency={int(tabs)}", *common], engine_dir, deadline, timeout_s, what, on_spawn)
                 if not out.exists() or out.stat().st_size == 0:
                     raise ExplainerError(f"Remotion wrote nothing for {what}")
 
@@ -614,7 +617,7 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
                 _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(vlist), "-i", str(sound),
                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
                       "-movflags", "+faststart", str(out_path.resolve())],
-                     engine_dir, deadline, timeout_s, "joining the chunks")
+                     engine_dir, deadline, timeout_s, "joining the chunks", on_spawn)
                 want = total_frames(props["duration_s"], props["fps"])
                 got = _frame_count(out_path)
                 if got != want:
@@ -631,7 +634,8 @@ def _now() -> float:
     return time.monotonic()
 
 
-def _run(cmd: List[str], cwd: Path, deadline: float, timeout_s: float, what: str) -> None:
+def _run(cmd: List[str], cwd: Path, deadline: float, timeout_s: float, what: str,
+         on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> None:
     """One step of a render, in its own process group with the trimmed environment, inside the render's overall time.
     On a timeout the whole tree goes (npx, node, the headless Chrome), so nothing keeps writing after the caller was
     told the render failed."""
@@ -640,6 +644,13 @@ def _run(cmd: List[str], cwd: Path, deadline: float, timeout_s: float, what: str
         raise ExplainerError(f"the render took longer than {timeout_s:.0f} s and was stopped (before {what})")
     proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=_render_env(),
                             start_new_session=True)
+    if on_spawn is not None:
+        try:
+            on_spawn(proc)
+        except BaseException:
+            # The caller could not take ownership of the process: it must not outlive this call.
+            _kill_group(proc)
+            raise
     try:
         stdout, stderr = proc.communicate(timeout=left)
     except subprocess.TimeoutExpired:

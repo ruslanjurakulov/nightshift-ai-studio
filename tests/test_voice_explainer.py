@@ -392,7 +392,7 @@ class ChunkedRender(unittest.TestCase):
 
     PROPS = {"fps": 30, "duration_s": 121.536, "scenes": sc(0, *[round(3.7 * i, 3) for i in range(1, 33)]), "sound_only": False}
 
-    def run_render(self, frames):
+    def run_render(self, frames, on_spawn=None):
         from unittest import mock
         calls = []
         props_seen = self.props_seen = []
@@ -422,7 +422,7 @@ class ChunkedRender(unittest.TestCase):
         with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Done), \
                 mock.patch.object(ve, "_frame_count", return_value=frames):
             try:
-                ve.render(self.PROPS, out, files={}, engine_dir=engine)
+                ve.render(self.PROPS, out, files={}, engine_dir=engine, on_spawn=on_spawn)
                 err = None
             except ve.ExplainerError as e:
                 err = e
@@ -459,6 +459,20 @@ class ChunkedRender(unittest.TestCase):
         self.assertIsInstance(err, ve.ExplainerError)
         self.assertIn("frames", str(err))
         self.assertFalse(out.exists())
+
+    def test_on_spawn_sees_every_child_process_once_right_after_it_starts(self):
+        seen = []
+        calls, out, err = self.run_render(ve.total_frames(121.536, 30), on_spawn=lambda p: seen.append(p))
+        self.assertIsNone(err)
+        # bundle, 3 picture chunks, the sound pass, the ffmpeg join: six processes, each handed over once, in order.
+        self.assertEqual(len(seen), len(calls))
+        self.assertEqual(len(seen), 6)
+        self.assertEqual(len({id(p) for p in seen}), 6)
+
+    def test_without_on_spawn_nothing_changes(self):
+        calls, out, err = self.run_render(ve.total_frames(121.536, 30))
+        self.assertIsNone(err)
+        self.assertTrue(out.exists())
 
     def test_a_short_video_is_bundled_and_rendered_once_with_its_sound(self):
         self.PROPS = {"fps": 30, "duration_s": 20.0, "scenes": sc(0, 5, 10), "sound_only": False}
