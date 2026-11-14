@@ -93,7 +93,9 @@ describe("public site copy", () => {
     expect(uz.common.theme).not.toBe("Mavzu");
     expect(uz.common.theme).not.toBe(uz.common.view);
     // oʻ and gʻ are written with U+02BB, never with a quote mark that looks like it.
-    for (const s of [...site, ...pilot]) expect(s).not.toMatch(/[oOgG][‘’']/);
+    // The one o before a quote mark that is right: the brand "Nightshift Studio" with a suffix (Studio’da), which takes U+2019 after a
+    // Latin name like YouTube’da (tests/uz-apostrophes.test.ts).
+    for (const s of [...site, ...pilot]) expect(s).not.toMatch(/(?<!Nightshift Studi)[oOgG][‘’']/);
   });
 
   it("states no money amount and no usage or customer figure", () => {

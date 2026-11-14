@@ -11,9 +11,9 @@ export const siteCarouselEn = {
   carousel: {
     label: "Watch",
     title: "One sample after another",
-    lead: "Real generations from our Studio. Each clip plays to its end, then the next one comes in. Pick any card to watch it.",
+    lead: "Real generations from Nightshift Studio. Each clip plays to its end, then the next one comes in. Pick any card to watch it.",
     /** The carousel's accessible name (aria-roledescription "carousel"). */
-    region: "Samples from our Studio",
+    region: "Samples from Nightshift Studio",
     roledescription: "carousel",
     slideRole: "slide",
     /** Each slide's accessible name. */
@@ -106,7 +106,7 @@ export const siteCarouselEn = {
     next: "Next example",
     /** The keyboard's hold (shown when focused); a tap on the result does the same. */
     pause: "Hold the examples",
-    note: "Real prompts from our Studio and the clips they made.",
+    note: "Real prompts from Nightshift Studio and the clips they made.",
   },
 };
 

@@ -100,7 +100,7 @@ export const en = {
   },
   nav: {
     design: "Design system",
-    hub: "Studio",
+    hub: "Nightshift Studio",
     home: "Home",
     settings: "Settings",
     sections: "Sections",
@@ -192,6 +192,8 @@ export const en = {
     addCredits: "Add credits",
     usage: "Usage",
     account: "Account",
+    /** The phone's bottom bar names the hub (nav.hub) in its short form: five tabs share 390px, and the full brand would be cut to "Nightshift S…". */
+    hubTab: "Studio",
   },
   notifications: {
     bell: "Notifications",
@@ -429,7 +431,7 @@ export const en = {
     done: "Done",
     finish: "Go to Command Center",
     /** The last button when the person came from a model sample's "Try it": it opens the Studio with that sample's tool and words. */
-    finishStudio: "Open the Studio with your sample",
+    finishStudio: "Open Nightshift Studio with your sample",
     unavailable: "We couldn't load your workspace just now. Reload the page in a moment.",
     welcomeCredits: "{n} free credits (≈ one Short) are in your workspace — a welcome gift.",
     finishSetup: "Finish setting up",
@@ -1711,7 +1713,7 @@ export const en = {
     addedBadge: "Added",
     justAdded: "Added to your styles. Find it in the Studio's style row.",
     alreadyAdded: "It is already in your styles — nothing was duplicated.",
-    useInStudio: "Use in Studio",
+    useInStudio: "Use in Nightshift Studio",
     opening: "Opening…",
     useHint: "Opens the Studio with this style selected. Nothing is priced or started until you press Generate.",
     close: "Close",
@@ -3856,7 +3858,7 @@ export const en = {
     before: "Before",
     after: "After",
     compareLabel: "Compare before and after",
-    useInStudio: "Use in Studio",
+    useInStudio: "Use in Nightshift Studio",
     aspectLabel: "Shape",
     durationLabel: "Length",
     seconds: "{n} s",
@@ -4100,7 +4102,7 @@ export const en = {
     mock: {
       label: "Illustration of the Nightshift Studio: a composer for images, video and voice beside a grid of results, each with its status, and a finished video waiting for your approval.",
       tag: "Illustration",
-      title: "Studio",
+      title: "Nightshift Studio",
       tabs: { image: "Image", video: "Video", voice: "Voice" },
       tools: { edit: "Edit", animate: "Animate", upscale: "Upscale", cutout: "Cut out" },
       model: "Model",
@@ -4154,7 +4156,7 @@ export const en = {
     make: {
       eyebrow: "What you can make",
       title: "Whole videos for your channel — and the tools around them.",
-      lead: "Start from a format and Nightshift makes the full video. Or open the Studio and make one picture, clip or voice-over at a time.",
+      lead: "Start from a format and Nightshift makes the full video. Or open Nightshift Studio and make one picture, clip or voice-over at a time.",
       formatsLabel: "Video formats",
       formats: {
         story: { title: "Story video", who: "Narrated story channels" },
@@ -4164,7 +4166,7 @@ export const en = {
         drama: { title: "Short drama", who: "Drama and emotional story channels" },
         shorts: { title: "Shorts", who: "Short vertical videos" },
       },
-      toolsLabel: "Studio tools",
+      toolsLabel: "Nightshift Studio tools",
       tools: {
         image: { title: "Image", sub: "From a description" },
         video: { title: "Video", sub: "A short clip from text" },
@@ -4838,7 +4840,7 @@ export const en = {
     moreOptions: "More options",
   },
   desk: {
-    nav: "Studio sections",
+    nav: "Nightshift Studio sections",
     names: { overview: "Overview", video: "Video", effects: "Effects", image: "Image", enhance: "Enhance", voice: "Voice", youtube: "YouTube video" },
     keySub: {
       overview: "Recent work",
@@ -5066,7 +5068,7 @@ export const en = {
     noChannelsTitle: "No channel yet",
     noChannelsBody: "Connect your YouTube channel. Nightshift then writes, voices and renders videos for it, and uploads each one as private. You make one public on YouTube or, where someone who manages the workspace has switched on “Publish when approved” for a channel (off by default), by approving it.",
     recentTitle: "Recent generations",
-    recentAll: "Open Studio",
+    recentAll: "Open Nightshift Studio",
     recentEmptyTitle: "Nothing made yet",
     recentEmptyBody: "Start with one picture — you see the price before it is made.",
     recentEmptyCta: "Make your first image",
@@ -5740,7 +5742,7 @@ export const en = {
       unknown: "May have started — check the videos",
     },
     progress: "{done} of {total} started",
-    openStudio: "See in Studio",
+    openStudio: "See in Nightshift Studio",
     openVideos: "Review videos",
     stopped: "Stopped here. Nothing after this was started.",
     reloaded: "The page was reloaded while starting. Continue finishes the rest — anything already started is not started again.",

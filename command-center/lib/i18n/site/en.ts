@@ -17,6 +17,7 @@ import { publicStatsEn } from "../public-stats/en";
 export const siteEn = {
   nav: {
     how: "How it works",
+    /** The header's short form of "Nightshift Studio" (the page's own name, studioPage.hero.label): the full brand wraps the desktop nav to two rows (ru and uz at 1440px, en at 1024px). */
     studio: "Studio",
     solutions: "Solutions",
     pricing: "Pricing",
@@ -200,9 +201,9 @@ export const siteEn = {
    * sale: some samples are made with models only the operator can try yet (`notInStudio` on their card).
    */
   gallery: {
-    label: "Made in the Studio",
+    label: "Made in Nightshift Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in the Studio. Open one to see the model that made it and the words it was given.",
+    lead: "Real generations, made by our team in Nightshift Studio. Open one to see the model that made it and the words it was given.",
     badge: "AI-generated",
     model: "Model",
     prompt: "Prompt",
@@ -274,7 +275,7 @@ export const siteEn = {
   /** Three facts the page can back (components/landing/Landing.tsx Facts): counted from the data files and the welcome grant, never typed in. */
   facts: {
     label: "What is on this page",
-    samples: "Real generations from our Studio",
+    samples: "Real generations from Nightshift Studio",
     models: "Models behind them",
     credits: "Free credits when you sign up",
   },
@@ -348,12 +349,12 @@ export const siteEn = {
       },
       {
         id: "studio",
-        pill: "Studio",
-        title: "Need just one piece? The Studio makes it.",
+        pill: "Nightshift Studio",
+        title: "Need just one piece? Nightshift Studio makes it.",
         body: "Make one picture, clip or voice-over at a time, then cut them together in the editor. Each tool shows its price on its button.",
         /** body while no Studio model is on sale (components/landing/Showcases.tsx). */
         bodyClosed: "One picture, clip or voice-over at a time, cut together in the editor. Its models are not on sale yet: this sample was made by our team. Sign up to be ready when they open.",
-        cta: "Open the Studio",
+        cta: "Open Nightshift Studio",
         bubble: "A misty mountain valley at sunrise, soft light, wide shot.",
         reply: "made an image",
         chips: ["16:9", "Night market style"] as string[],
@@ -466,7 +467,7 @@ export const siteEn = {
   toolStrip: { title: "What Nightshift can make" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Real outputs, made by our team in the Studio",
+    label: "Real outputs, made by our team in Nightshift Studio",
     note: "A tool’s picture or clip is a real job our team ran in the Studio. “Not available yet” means the tool is not on sale today. Once a tool opens, its price is on its button. The free ones say so.",
     /** Under a tile's sample, after the "AI-generated" badge word: who made it. No model name on the wall (the owner has not decided whether the public site names models). */
     byTeam: "made by our team",
@@ -478,8 +479,8 @@ export const siteEn = {
     less: "Show fewer tools",
   },
   studio: {
-    slug: "Studio",
-    title: "Need just one piece? The Studio makes it.",
+    slug: "Nightshift Studio",
+    title: "Need just one piece? Nightshift Studio makes it.",
     lead: "Make one picture, clip or voice-over at a time, then cut them together. Each tool shows its price on its button.",
     priced: "Price on its button",
     free: "No credits",
@@ -618,7 +619,7 @@ export const siteEn = {
     company: "Company",
     legal: "Legal",
     how: "How it works",
-    studio: "Studio",
+    studio: "Nightshift Studio",
     pricing: "Pricing",
     faq: "Questions",
     api: "API reference",
@@ -638,7 +639,7 @@ export const siteEn = {
   solutions: {
     meta: {
       title: "Solutions",
-      description: "What Nightshift does for YouTube channel operators, for creators making single pieces in the Studio, and for developers using the API.",
+      description: "What Nightshift does for YouTube channel operators, for creators making single pieces in Nightshift Studio, and for developers using the API.",
     },
     slug: "Solutions",
     title: "Three ways in. One price list, one approval gate.",
@@ -666,8 +667,8 @@ export const siteEn = {
         air: "It goes public only when you make it public on YouTube, or approve it on a channel with “Publish when approved” on.",
       },
       composer: {
-        figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate button that carries its price.",
-        title: "Studio",
+        figure: "Illustration of the Nightshift Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate button that carries its price.",
+        title: "Nightshift Studio",
         tag: "Illustration",
         describe: "Describe it",
         prompt: "A stadium floating over a neon city at night, the ball trailing light",
@@ -729,7 +730,7 @@ export const siteEn = {
           "It will not keep the credits of a generation that failed; they return on their own.",
           "It will not add a charge for a style kit — the price on the button is the whole price.",
         ],
-        start: ["Create a free account", "Open the Studio and pick a tool", "Describe what you want and press the priced button"],
+        start: ["Create a free account", "Open Nightshift Studio and pick a tool", "Describe what you want and press the priced button"],
       },
       {
         id: "developers",

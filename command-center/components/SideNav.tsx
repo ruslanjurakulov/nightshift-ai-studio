@@ -183,7 +183,7 @@ function BottomBar({ email, avatarV }: { email: string | null; avatarV: number |
                       )}
                     </span>
                   )}
-                  <span className="truncate">{t.nav[key]}</span>
+                  <span className="truncate">{centre ? t.shell.hubTab : t.nav[key]}</span>
                 </Link>
               </li>
             );
