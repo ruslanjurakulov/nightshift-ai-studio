@@ -203,6 +203,50 @@ function creditAccountFor(state) {
 const ADMIN = process.env.FAKE_ADMIN === "1";
 
 // ── what each app-screen state has made ────────────────────────────────────
+// Studio → Projects (migration 0166): made-up drafts for screenshots of the list and the canvas (run the app with
+// NIGHTSHIFT_FILM_STUDIO=on). `new` has none; every other session reads these. Writes stay refused like every other write.
+const FILM_ID = "0f000000-0000-4000-8000-00000000000f";
+const FILM_LIMITS = {
+  max_scenes: 60, scene_seconds_min: 3, scene_seconds_max: 30, max_shots: 3, max_film_seconds: 1200, target_seconds_min: 60,
+  target_seconds_max: 1200, max_topic_chars: 2000, max_script_chars: 40000, max_title_chars: 120, max_narration_chars: 2000,
+  max_prompt_chars: 2000, max_negative_chars: 1000, max_film_refs: 16, max_scene_refs: 8, max_open_drafts: 50, max_patch_bytes: 2000000,
+  max_films_total: 500, max_events_per_film: 5000, creates_per_hour: 30, saves_per_hour: 240, archives_per_hour: 60,
+};
+const FILM_SCENES = [
+  ["The stadium in orbit", "In 2050 the final is played above the clouds.", 18],
+  ["Into the light", "Aziza, number ten, hears the crowd before she sees it.", 22],
+  ["The floating ball", "The ball hangs for a second longer than it should.", 20],
+  ["The roaring stands", "Ninety thousand voices, and every one of them is a fan.", 24],
+  ["Rain turned off", "The storm is switched off at kick-off, as every week.", 16],
+  ["The coach", "Coach Bek has one sentence for the second half.", 14],
+].map(([title, narration, seconds], i) => ({
+  id: `5${i}000000-0000-4000-8000-00000000000${i}`, position: i, title, narration, visual_prompt: "A neon stadium floating above the clouds, wide shot",
+  negative_prompt: "", planned_seconds: seconds, shot_count: i === 1 ? 2 : 1, first_frame: i === 2 ? "previous" : "keyframe", first_frame_asset_id: null,
+  last_frame: "none", last_frame_asset_id: null, keyframe_model: null, clip_model: null, clip_params: {}, transition_in: null, current_version: null,
+  status: "draft", created_at: "2026-11-14T08:00:00Z", updated_at: "2026-11-14T08:00:00Z", first_frame_missing: false, last_frame_missing: false,
+  refs: [], takes: [],
+}));
+const FILM_ROW = {
+  id: FILM_ID, org_id: ORG.id, channel_id: "night-owl", title: "Football in 2050", source_kind: "topic", source_text: "Football in the year 2050: a final played above the clouds.",
+  language: "uz", aspect: "16:9", target_seconds: 300, resolution: null, style_kit_id: null, keyframe_model: null, clip_model: null, voice: null,
+  music_asset_id: null, music_gain_db: null, duck_db: null, captions_mode: "sidecar", transition_default: "cut", status: "draft", pause_reason: null,
+  pause_detail: null, version: 7, idempotency_key: "film-visualqa0001", created_by: USER.id, created_at: "2026-11-14T08:00:00Z",
+  updated_at: "2026-11-14T09:12:00Z", archived_at: null,
+};
+const FILM_LIST = [
+  FILM_ROW,
+  { ...FILM_ROW, id: "0f000000-0000-4000-8000-0000000000f2", title: "Samarkand at night, a city that never sleeps", language: "en", aspect: "9:16", target_seconds: 180, updated_at: "2026-11-13T18:40:00Z" },
+  { ...FILM_ROW, id: "0f000000-0000-4000-8000-0000000000f3", title: "Как работает дождь", language: "ru", aspect: "1:1", target_seconds: 480, status: "planned", updated_at: "2026-11-12T10:05:00Z" },
+];
+function filmJson(state) {
+  const scenes = state === "film_empty" ? [] : FILM_SCENES;
+  return {
+    film: FILM_ROW, editable: true, style_kit_missing: false, music_missing: false,
+    totals: { scenes: scenes.length, planned_seconds: scenes.reduce((s, x) => s + x.planned_seconds, 0) },
+    refs: [], scenes, takes: [], events: [], events_total: 7, events_truncated: false, limits: FILM_LIMITS,
+  };
+}
+
 const APP_STATES = new Set(["owner", "new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool"]);
 // Made-up held @usernames: the check says "taken" for these and "free" for anything else well formed.
 const TAKEN_HANDLES = new Set(["taken.name", "maria.k", "alice.lab", "night.owl"]);
@@ -471,6 +515,7 @@ export function startFakeSupabase(port = 54399) {
       if (state === "owner" && rpc[1] === "is_platform_admin") return send(res, 200, true);
       if (state === "owner" && rpc[1] === "bind_current_member") return send(res, 200, "owner");
       if (state === "owner" && rpc[1] === "my_organizations") return send(res, 200, OWNER_ORGS);
+      if (rpc[1] === "film_json") return state === "new" ? send(res, 404, { code: "P0002", message: "not_found" }) : send(res, 200, filmJson(state));
       if (rpc[1] in RPC) return send(res, 200, RPC[rpc[1]]);
       return send(res, 403, { code: "42501", message: "visual-qa fake: not available" });
     }
@@ -491,6 +536,7 @@ export function startFakeSupabase(port = 54399) {
         if (table[1] === "user_handles") rows = handleRow(state);
         if (table[1] === "model_registry") rows = state === "new" ? [] : MODELS;
       }
+      if (table[1] === "films") rows = state === "new" ? [] : FILM_LIST;
       if (state === "owner") {
         if (table[1] === "channels") rows = OWNER_CHANNELS;
         if (table[1] === "system_events") rows = OWNER_EVENTS();

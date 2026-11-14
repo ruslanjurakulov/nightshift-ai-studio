@@ -81,7 +81,7 @@ describe("the Studio section", () => {
     const link = screen.getByText("Projects").closest("a")!;
     expect(link.getAttribute("href")).toBe(`/chronos${STUDIO_PROJECTS}`);
     expect(link.getAttribute("aria-current")).toBe("page");
-    expect(screen.getByText("Scenes into a full video, from idea to YouTube")).toBeTruthy();
+    expect(screen.getByText("Scene by scene")).toBeTruthy();
     expect(STUDIO_PROJECTS).toBe("/create/projects");
   });
 

@@ -78,7 +78,7 @@ export function SceneDetail({
 
   return (
     <div className="fs-section" data-testid="fs-scene-detail">
-      <div className="fs-row">
+      <div className="fs-row fs-scene-head">
         <h2 id={headingId} className="fs-h2 fs-grow" tabIndex={-1}>
           {fmt(t.scene.heading, { n: index + 1 })}
         </h2>

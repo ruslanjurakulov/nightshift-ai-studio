@@ -71,7 +71,7 @@ export function DeskBar({ current }: { current: Desk | "projects" }) {
               <Projector aria-hidden className="desk-key-icon" strokeWidth={1.75} />
               <span className="flex min-w-0 flex-col">
                 <span className="desk-key-name">{fp.section}</span>
-                <span className="desk-key-sub">{fp.tagline}</span>
+                <span className="desk-key-sub">{fp.deskSub}</span>
               </span>
             </Link>
           </li>

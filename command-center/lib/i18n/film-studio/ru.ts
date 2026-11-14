@@ -7,6 +7,7 @@ import type { FilmStudioDictionary } from "./en";
 export const filmStudioRu: FilmStudioDictionary = {
   section: "Проекты",
   tagline: "Сцены складываются в целое видео: от идеи до YouTube",
+  deskSub: "Сцена за сценой",
   item: "Проект",
   loading: "Загрузка…",
   retry: "Повторить",

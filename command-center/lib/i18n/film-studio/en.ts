@@ -12,6 +12,8 @@
 export const filmStudioEn = {
   section: "Projects",
   tagline: "Scenes into a full video, from idea to YouTube",
+  /** The short line under the key in the Studio's desk bar (the tagline does not fit beside seven other keys). */
+  deskSub: "Scene by scene",
   item: "Project",
   loading: "Loading…",
   retry: "Try again",

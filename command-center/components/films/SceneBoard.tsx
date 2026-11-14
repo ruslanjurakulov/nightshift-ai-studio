@@ -10,6 +10,7 @@ import { problemText } from "@/components/films/SceneDetail";
 const isField = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+const narrow = () => typeof window !== "undefined" && window.matchMedia?.("(max-width: 1023.98px)").matches === true;
 const finePointer = () => typeof window !== "undefined" && window.matchMedia?.("(hover: hover) and (pointer: fine)").matches === true;
 
 export interface BoardActions {
@@ -153,7 +154,8 @@ export function SceneBoard({
               if (el) cells.current.set(s.key, el);
               else cells.current.delete(s.key);
             }}
-            onClick={() => (isSel ? actions.open(s.key) : actions.select(s.key))}
+            // A phone opens the scene on the first tap (there is no inspector beside the board); a wide screen selects first.
+            onClick={() => (isSel || narrow() ? actions.open(s.key) : actions.select(s.key))}
             onEdit={() => actions.edit(s.key)}
             onEditDone={() => {
               actions.edit(null);

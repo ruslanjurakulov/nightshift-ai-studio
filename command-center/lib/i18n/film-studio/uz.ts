@@ -8,6 +8,7 @@ import type { FilmStudioDictionary } from "./en";
 export const filmStudioUz: FilmStudioDictionary = {
   section: "Loyihalar",
   tagline: "Sahnalardan toʻliq video: gʻoyadan YouTubegacha",
+  deskSub: "Sahnama-sahna",
   item: "Loyiha",
   loading: "Yuklanmoqda…",
   retry: "Qayta urinish",

@@ -295,13 +295,11 @@ export function CanvasView({
       </span>
       {!readOnly && (
         <>
-          <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={undo} disabled={!p.canUndo} title={p.canUndo ? t.canvas.undo : t.canvas.nothingToUndo}>
+          <button type="button" className="fs-icon-key" aria-label={t.canvas.undo} onClick={undo} disabled={!p.canUndo} title={p.canUndo ? t.canvas.undo : t.canvas.nothingToUndo}>
             <Undo2 aria-hidden className="size-4" />
-            {t.canvas.undo}
           </button>
-          <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={redo} disabled={!p.canRedo} title={p.canRedo ? t.canvas.redo : t.canvas.nothingToRedo} data-testid="fs-redo">
+          <button type="button" className="fs-icon-key" aria-label={t.canvas.redo} onClick={redo} disabled={!p.canRedo} title={p.canRedo ? t.canvas.redo : t.canvas.nothingToRedo} data-testid="fs-redo">
             <Redo2 aria-hidden className="size-4" />
-            {t.canvas.redo}
           </button>
           <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void save()} disabled={!dirty || saving || conflict} data-testid="fs-save">
             {saving ? t.canvas.saving : t.canvas.save}
@@ -502,7 +500,7 @@ export function CanvasView({
               </div>
             ) : (
               <>
-                <p id={`${ids}-hint`} className="fs-small" style={{ marginBottom: 8 }}>
+                <p id={`${ids}-hint`} className="fs-sr">
                   {readOnly ? t.canvas.keyboardHint : t.canvas.dragHint}
                 </p>
                 <SceneBoard

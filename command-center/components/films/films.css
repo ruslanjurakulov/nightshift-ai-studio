@@ -214,6 +214,8 @@
 .fs-inspector { min-width: 0; border-radius: var(--ns-r-sheet); padding: 18px; display: flex; flex-direction: column; gap: 18px; }
 .fs-section { display: flex; flex-direction: column; gap: 12px; }
 .fs-section + .fs-section { border-top: 1px solid var(--ns-rule); padding-top: 16px; }
+.fs-scene-head { gap: 2px; }
+.fs-scene-head h2 { flex: 1 1 100%; }
 .fs-count { font-size: 13px; color: var(--ns-text-dim); font-variant-numeric: tabular-nums; }
 .fs-count[data-over="true"] { color: var(--ns-tally); }
 .fs-choice { display: flex; flex-direction: column; gap: 6px; }
@@ -272,7 +274,9 @@
   .fs-stage {
     grid-template-columns: minmax(0, 1fr) 380px;
     grid-template-rows: minmax(0, 1fr) auto;
-    height: max(640px, calc(100dvh - var(--ns-shell-h, 64px) - 64px));
+    /* One window tall: scrolling the page past the tabs brings the whole stage into view, and inside it the board, the inspector
+       and the timeline each scroll on their own. */
+    height: max(600px, calc(100dvh - var(--ns-shell-h, 64px) - 24px));
   }
   .fs-board-cell { grid-column: 1; grid-row: 1; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
   /* The board scrolls inside its own row; the dock is the next row, so the last scene always ends above it. */
@@ -285,7 +289,7 @@
 /* ── Narrow: one column. The scene detail is a bottom sheet; the project settings sit under the board; the dock is the last band in
    the page's flow, above the app's own tab bar padding: nothing covers it and it covers nothing. */
 @media (max-width: 1023.98px) {
-  .fs-inspector-wide { display: none; }
+  .fs-inspector-wide, .fs-dock-wide { display: none; }
   .fs-board-scroll { padding: 14px 12px 16px; }
   .fs-title { font-size: 26px; }
   .fs-board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
