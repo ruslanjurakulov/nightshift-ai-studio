@@ -45,7 +45,7 @@ export interface CreativeResult {
  * transcribe a recording there into a word-timed caption track (0072).
  * expand, relight and erase (0099) change one library picture and answer one
  * picture; no model is sold for them until the owner proves and prices one.
- * voice_explainer (0170) draws a 9:16 video over one library recording (the
+ * voice_explainer (0171) draws a 9:16 video over one library recording (the
  * person's own narration) with our own engine; sold like the others once the
  * owner probes and prices its model.
  */
@@ -162,20 +162,20 @@ export const VIDEO_SOURCE_CAPABILITIES = ["video_upscale"] as const satisfies re
 export const VIDEO_OP_CAPABILITIES = ["video_edit", "video_reframe", "video_remove_bg"] as const satisfies readonly CreativeCapability[];
 
 /**
- * Voice to video (0170): one library AUDIO recording (the person's own narration) in, a 1080x1920 motion-graphics video out,
+ * Voice to video (0171): one library AUDIO recording (the person's own narration) in, a 1080x1920 motion-graphics video out,
  * drawn by our own engine on the worker. Kept apart from MEDIA_SOURCE_CAPABILITIES (the voice tools take a video's soundtrack
  * too; this takes audio only, and its result is a video, not a voice). Priced by the recording's measured seconds.
  */
 export const NARRATION_CAPABILITIES = ["voice_explainer"] as const satisfies readonly CreativeCapability[];
 
 /**
- * 0170's explicit allow-list for a voice video's `look` (REQUIRED): the palette and type it is drawn in. The model must list it
+ * 0171's explicit allow-list for a voice video's `look` (REQUIRED): the palette and type it is drawn in. The model must list it
  * too (spec.explainer_looks). Mirrors modules/voice_explainer.LOOKS and video-engine/src/explainer/looks.ts (tests pin the three).
  */
 export const EXPLAINER_LOOKS = ["dusk", "midnight", "golden", "neon", "paper"] as const;
 export type ExplainerLook = (typeof EXPLAINER_LOOKS)[number];
 
-/** The longest recording a voice video takes (0170's source check: one render holds the whole video). */
+/** The longest recording a voice video takes (0171's source check: one render holds the whole video). */
 export const MAX_NARRATION_SECONDS = 600;
 
 /** Every capability whose input is a library video. */
@@ -476,7 +476,7 @@ export function videoOpProblem(capability: string, params: Record<string, unknow
 }
 
 /**
- * 0170's rules for a voice video, the same the database enforces: the recording (checked above) and a look of EXPLAINER_LOOKS,
+ * 0171's rules for a voice video, the same the database enforces: the recording (checked above) and a look of EXPLAINER_LOOKS,
  * required; no words, shape, size, seed, voice or length (the database measures the recording). null = nothing wrong (or not
  * a voice video).
  */

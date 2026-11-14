@@ -67,7 +67,7 @@
         "upscale_targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/upscale_target"}},
         "end_frame": {"type": "boolean"},
         "relight_looks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relight_look"}},
-        "explainer_looks": {"description": "The looks a voice_explainer model draws a video in (migration 0170: creative_price sells only a look listed here; a change of the list clears the model's proof).", "type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/explainer_look"}},
+        "explainer_looks": {"description": "The looks a voice_explainer model draws a video in (migration 0171: creative_price sells only a look listed here; a change of the list clears the model's proof).", "type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/explainer_look"}},
         "character_swap": {
           "description": "The vendor's own input limits for a video_character_swap entry (migration 0137, docs/CHARACTER_STUDIO.md). The worker refuses an input outside them before any paid call; the database refuses a length outside input_seconds when it quotes.",
           "type": "object",

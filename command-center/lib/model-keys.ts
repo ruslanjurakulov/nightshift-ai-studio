@@ -16,7 +16,7 @@
  *   A generation endpoint is never a strategy: a check must not cost money or make anything (CLAUDE.md rule 6 asks to fail early; it does not
  *   ask to spend to find out).
  *
- * The vendors are the providers of schemas/model_registry.json (tests/model-keys-registry.test.ts compares them). `unassigned-video-vendor` is a placeholder in the registry, not a vendor, and has no entry; nor has `nightshift`, our own engine (voice_explainer, 0170), which needs no key.
+ * The vendors are the providers of schemas/model_registry.json (tests/model-keys-registry.test.ts compares them). `unassigned-video-vendor` is a placeholder in the registry, not a vendor, and has no entry; nor has `nightshift`, our own engine (voice_explainer, 0171), which needs no key.
  */
 
 import { validateSecretValue } from "@/lib/server/secret-validators";

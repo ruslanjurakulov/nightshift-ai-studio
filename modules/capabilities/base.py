@@ -73,7 +73,7 @@ VIDEO_MUSIC = "video_music"  # video → music that follows it; the output is th
 #: input_images) + words that say who becomes whom → the same scene with those people replaced. Sold through 0137's own tables,
 #: never through creative_jobs, so the registry entries that list it are registry-only.
 VIDEO_CHARACTER_SWAP = "video_character_swap"
-#: Voice to video (0170, docs/VOICE_EXPLAINER.md): a person's own narration (one library audio file) → a 9:16 motion-graphics
+#: Voice to video (0171, docs/VOICE_EXPLAINER.md): a person's own narration (one library audio file) → a 9:16 motion-graphics
 #: explainer drawn by our own engine (modules/voice_explainer.py, Remotion). No vendor is called; CapabilityRequest.look names
 #: one of EXPLAINER_LOOKS.
 VOICE_EXPLAINER = "voice_explainer"
@@ -103,7 +103,7 @@ RELIGHT_LOOKS = ("soft", "warm", "cool", "golden_hour", "dramatic", "studio")
 #: The shapes an expand can extend a picture to (0099's allow-list; a model
 #: lists the ones it was proven for in ``aspect_ratios_by_capability.expand``).
 EXPAND_ASPECTS = ("16:9", "9:16", "1:1", "4:3", "3:4")
-#: The looks a voice video is drawn in (0170's allow-list; modules/voice_explainer.LOOKS and the engine's looks.ts, which
+#: The looks a voice video is drawn in (0171's allow-list; modules/voice_explainer.LOOKS and the engine's looks.ts, which
 #: tests pin to this tuple). A model lists the ones it was proven for in ``explainer_looks``.
 EXPLAINER_LOOKS = ("dusk", "midnight", "golden", "neon", "paper")
 #: Capabilities whose output is text kept on the job row, never a file in the
@@ -123,7 +123,7 @@ VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
 #: Captions (0072) start from one too: the recording is the whole input.
-#: A voice video (0170) starts from one too: the person's own narration (audio only, the database checks).
+#: A voice video (0171) starts from one too: the person's own narration (audio only, the database checks).
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS, VOICE_EXPLAINER})
 #: Capabilities whose input is a video file (0052) — also carried in
 #: CapabilityRequest.input_media, never as a picture, never with speech rules.
@@ -323,7 +323,7 @@ class CapabilityRequest:
     spoken_language: Optional[str] = None
     #: The light a ``relight`` is asked for by name (0099): one of RELIGHT_LOOKS,
     #: which the entry's ``relight_looks`` must list. None = the prompt names it.
-    #: For a ``voice_explainer`` (0170) the look the video is drawn in: one of
+    #: For a ``voice_explainer`` (0171) the look the video is drawn in: one of
     #: EXPLAINER_LOOKS, which the entry's ``explainer_looks`` must list (required).
     look: Optional[str] = None
 

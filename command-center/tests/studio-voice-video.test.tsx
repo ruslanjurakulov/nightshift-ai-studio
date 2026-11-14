@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * Voice to video (migration 0170): one of the organization's recordings (their own narration, audio only, at most ten
- * minutes) and a look in; a 9:16 video drawn by our own engine out. The params are exactly what 0170's
+ * Voice to video (migration 0171): one of the organization's recordings (their own narration, audio only, at most ten
+ * minutes) and a look in; a 9:16 video drawn by our own engine out. The params are exactly what 0171's
  * creative_params_problem accepts — the recording and a look, nothing else — and NEVER a length: the database prices the
  * recording's own measured seconds. The price is the database's, on the button, sent back as the ceiling. While no model is
  * proven and priced the tool says plainly that it is not available on this deployment yet and asks for nothing. A database
- * without 0170 answers "not enabled here yet".
+ * without 0171 answers "not enabled here yet".
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -77,7 +77,7 @@ const REC = "33333333-3333-4333-8333-333333333333";
 const LONG = "44444444-4444-4444-8444-444444444444";
 const CLIP = "55555555-5555-4555-8555-555555555555";
 const ROOT = join(__dirname, "..", "..");
-const SQL = readFileSync(join(ROOT, "supabase/migrations/0170_voice_video.sql"), "utf8");
+const SQL = readFileSync(join(ROOT, "supabase/migrations/0171_voice_video.sql"), "utf8");
 const REGISTRY = JSON.parse(readFileSync(join(ROOT, "schemas/model_registry.json"), "utf8")) as {
   models: { id: string; display_name: string; capabilities: string[]; explainer_looks?: string[]; limits: { max_source_seconds?: number } }[];
 };
@@ -170,7 +170,7 @@ afterEach(() => {
 
 // ── the request ──────────────────────────────────────────────────────────────
 
-describe("params (0170's rules)", () => {
+describe("params (0171's rules)", () => {
   it("the recording and the look, nothing else: never a length, words, a shape or a voice", () => {
     expect(buildParams(form({ sourceId: REC, explainerLook: "neon", prompt: "ignored", duration: 10, shape: "1:1", voiceId: "A".repeat(20) }))).toEqual({
       source_asset_id: REC,
@@ -208,7 +208,7 @@ describe("params (0170's rules)", () => {
     expect(voiceVideoProblem("dub", { look: "x" })).toBeNull();
   });
 
-  it("a database without 0170 reads as not enabled here, never as a crash or a price", async () => {
+  it("a database without 0171 reads as not enabled here, never as a crash or a price", async () => {
     const db: CreativeDb = {
       rpc: async () => ({ data: null, error: { code: "NS400", message: "capability_not_supported", details: "voice_explainer cannot be generated yet" } }),
       readJob: async () => ({ data: null, error: null }),

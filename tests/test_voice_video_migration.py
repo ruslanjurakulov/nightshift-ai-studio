@@ -1,11 +1,11 @@
-"""supabase/migrations/0170_voice_video.sql — "voice to video" sold as a creative job (our own engine, no vendor).
+"""supabase/migrations/0171_voice_video.sql — "voice to video" sold as a creative job (our own engine, no vendor).
 
 SQL does not run in this suite (tests/security/test_sec_voice_video.py does that, against a real Postgres). These pin what
 must not change by accident:
 
-* every function 0170 replaces is the latest earlier body plus exactly the hunks listed here: undo them and the rest is the
-  earlier text byte for byte (so applying 0170 keeps every rule the earlier migrations wrote);
-* the drift guards accept only those earlier bodies or 0170's own, and the end state, the rollback and the lab carry the
+* every function 0171 replaces is the latest earlier body plus exactly the hunks listed here: undo them and the rest is the
+  earlier text byte for byte (so applying 0171 keeps every rule the earlier migrations wrote);
+* the drift guards accept only those earlier bodies or 0171's own, and the end state, the rollback and the lab carry the
   hashes recomputed from the files;
 * the rollback puts every earlier body back byte for byte and refuses to run over anything else;
 * the closed lists the hunks extend are the same everywhere (SQL, Python, TypeScript, the engine).
@@ -18,8 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-NEW_PATH = MIG / "0170_voice_video.sql"
-ROLLBACK_PATH = ROOT / "docs" / "sql" / "rollback_0170_voice_video.sql"
+NEW_PATH = MIG / "0171_voice_video.sql"
+ROLLBACK_PATH = ROOT / "docs" / "sql" / "rollback_0171_voice_video.sql"
 
 #: Where each replaced function's previous body lives: the newest earlier migration that defines it.
 PREVIOUS = {
@@ -36,7 +36,7 @@ LOOKS = ("dusk", "midnight", "golden", "neon", "paper")
 LOOK_LIST = "'dusk', 'midnight', 'golden', 'neon', 'paper'"
 
 _AUDIO_SOURCE = """  if p_capability = 'voice_explainer' then
-    -- 0170: the person's own narration. An AUDIO file of THIS organization, live, a type the engine reads, of a measured
+    -- 0171: the person's own narration. An AUDIO file of THIS organization, live, a type the engine reads, of a measured
     -- length of at most ten minutes (one render holds the whole video; the model's own, possibly shorter, limit is
     -- creative_price's), small enough to copy to the worker. Another organization's file reads exactly like a missing one.
     select * into a from public.media_assets
@@ -47,7 +47,7 @@ _AUDIO_SOURCE = """  if p_capability = 'voice_explainer' then
       return 'source_asset_id names no recording in this organization''s library';
     end if;
     if a.kind <> 'audio' then
-      return 'a voice video starts from an audio recording: pick an audio file (MP3, M4A, WAV, OGG or FLAC)';
+      return 'a voice video starts from an audio recording: pick an audio file (MP3, M4A, WAV, OGG, FLAC, AAC or WebM)';
     end if;
     if a.mime not in ('audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/aac', 'audio/webm') then
       return 'this audio type cannot be used here; use MP3, M4A, WAV, OGG, FLAC, AAC or WebM';
@@ -66,14 +66,14 @@ _AUDIO_SOURCE = """  if p_capability = 'voice_explainer' then
 
 """
 
-#: (old, new) per function: ``old`` occurs once in the previous body, ``new`` once in 0170's, and nothing else differs.
+#: (old, new) per function: ``old`` occurs once in the previous body, ``new`` once in 0171's, and nothing else differs.
 HUNKS = {
     "model_registry_guard": [(
         "      or new.spec -> 'aspect_ratios_by_capability' -> 'video_reframe' is distinct from old.spec -> "
         "'aspect_ratios_by_capability' -> 'video_reframe') then\n",
         "      or new.spec -> 'aspect_ratios_by_capability' -> 'video_reframe' is distinct from old.spec -> "
         "'aspect_ratios_by_capability' -> 'video_reframe'\n"
-        "      -- 0170: the looks a model draws a voice video in.\n"
+        "      -- 0171: the looks a model draws a voice video in.\n"
         "      or new.spec -> 'explainer_looks' is distinct from old.spec -> 'explainer_looks') then\n",
     )],
     "sellable_models": [
@@ -82,7 +82,7 @@ HUNKS = {
          "                              'voice_explainer') then\n"),
         ("             'relight_looks', m.spec -> 'relight_looks',\n",
          "             'relight_looks', m.spec -> 'relight_looks',\n"
-         "             -- 0170: the looks a voice video is drawn in, so the Studio offers only those.\n"
+         "             -- 0171: the looks a voice video is drawn in, so the Studio offers only those.\n"
          "             'explainer_looks', m.spec -> 'explainer_looks',\n"),
     ],
     "creative_capability_supported": [(
@@ -93,7 +93,7 @@ HUNKS = {
     "creative_params_problem": [
         ("  told     boolean := p_capability = 'describe';\n",
          "  told     boolean := p_capability = 'describe';\n"
-         "  -- 0170: a voice video. The person's own narration is the whole input and the look the only choice.\n"
+         "  -- 0171: a voice video. The person's own narration is the whole input and the look the only choice.\n"
          "  narrated boolean := p_capability = 'voice_explainer';\n"),
         ("                                       'video_edit', 'video_reframe', 'video_remove_bg');\n"
          "  -- The output keeps the source's shape",
@@ -120,8 +120,8 @@ HUNKS = {
          "      if voiced then\n"),
         ("  if p_params ? 'look' then\n    -- relight (0099)",
          "  if narrated then\n"
-         "    -- 0170: a voice video is drawn in one look of the closed list, and the person picks it: required, never a\n"
-         "    -- default. The model must list it too (creative_price).\n"
+         "    -- 0171: a voice video is drawn in one look of the closed list: required, and never filled in here. The Studio\n"
+         "    -- sends the chip the person sees pressed. The model must list it too (creative_price).\n"
          "    if jsonb_typeof(p_params -> 'look') is distinct from 'string'\n"
          f"       or (p_params ->> 'look') not in ({LOOK_LIST}) then\n"
          "      return 'look (one of dusk, midnight, golden, neon, paper) is required for voice_explainer';\n"
@@ -135,7 +135,7 @@ HUNKS = {
     "creative_price": [
         ("      format('%s does not reframe a video to %s', mdl, p_params ->> 'aspect_ratio'));\n  end if;\n",
          "      format('%s does not reframe a video to %s', mdl, p_params ->> 'aspect_ratio'));\n  end if;\n"
-         "  -- 0170: nor a look of a voice video that the model was not proven (and listed) for.\n"
+         "  -- 0171: nor a look of a voice video that the model was not proven (and listed) for.\n"
          "  if cap = 'voice_explainer'\n"
          "     and not coalesce(jsonb_typeof(m_spec -> 'explainer_looks') = 'array'\n"
          "                      and (m_spec -> 'explainer_looks') @> jsonb_build_array(p_params ->> 'look'), false) then\n"
@@ -148,7 +148,7 @@ HUNKS = {
         ("        format('this model takes videos of up to %s seconds; trim this one first', longest));\n    end if;\n  end if;\n",
          "        format('this model takes videos of up to %s seconds; trim this one first', longest));\n    end if;\n  end if;\n"
          "  if cap = 'voice_explainer' then\n"
-         "    -- 0170: the model's own longest recording (limits.max_source_seconds), the video ops' rule: a model that states\n"
+         "    -- 0171: the model's own longest recording (limits.max_source_seconds), the video ops' rule: a model that states\n"
          "    -- none is not sold a length its render may refuse after the hold.\n"
          "    longest := case when jsonb_typeof(m_spec -> 'limits' -> 'max_source_seconds') = 'number'\n"
          "                    then (m_spec -> 'limits' ->> 'max_source_seconds')::numeric end;\n"
@@ -206,11 +206,11 @@ if NEW_PATH.exists():
 
 class BuiltOnTheLatestBodies(unittest.TestCase):
     def test_each_previous_body_is_the_newest_earlier_one(self):
-        # A migration numbered below 0170 that replaces one of these after the file it names would make 0170 undo it.
+        # A migration numbered below 0171 that replaces one of these after the file it names would make 0171 undo it.
         for name, src in PREVIOUS.items():
             newest = None
             for path in sorted(MIG.glob("*.sql")):
-                if path.name < "0170" and name in bodies(path.read_text(encoding="utf-8")):
+                if path.name < "0171" and name in bodies(path.read_text(encoding="utf-8")):
                     newest = path.name
             self.assertEqual(newest, src, name)
 
@@ -349,7 +349,7 @@ class AppliedSafely(unittest.TestCase):
         self.assertEqual(set(rb), set(PREVIOUS))
         for name in PREVIOUS:
             self.assertEqual(rb[name], previous(name), name)
-        self.assertIn("rollback 0170 found", ROLLBACK_TEXT)
+        self.assertIn("rollback 0171 found", ROLLBACK_TEXT)
         self.assertNotIn("drop function", ROLLBACK_TEXT.lower())
         self.assertEqual(len(re.findall(r"(?m)^begin;$", ROLLBACK_TEXT)), 1)
         self.assertEqual(len(re.findall(r"(?m)^commit;$", ROLLBACK_TEXT)), 1)
@@ -358,21 +358,21 @@ class AppliedSafely(unittest.TestCase):
 
     def test_the_number_is_unique_and_the_lab_knows_the_chain(self):
         numbers = [p.name[:4] for p in MIG.glob("*.sql")]
-        self.assertEqual(numbers.count("0170"), 1)
-        for needle in ("def take_off_0170(", "def put_back_0170(", "def has_0170(", "MIGRATION_0170 =", "ROLLBACK_0170 ="):
+        self.assertEqual(numbers.count("0171"), 1)
+        for needle in ("def take_off_0171(", "def put_back_0171(", "def has_0171(", "MIGRATION_0171 =", "ROLLBACK_0171 ="):
             self.assertIn(needle, LAB)
-        # 0159's rollback refuses 0170's creative_price, 0162's replay refuses 0170's api_creative_models: 0170 comes off first.
+        # 0159's rollback refuses 0171's creative_price, 0162's replay refuses 0171's api_creative_models: 0171 comes off first.
         off = LAB[LAB.index("def take_off_0159("):LAB.index("def put_back_0159(")]
-        self.assertIn("take_off_0170(session)", off)
+        self.assertIn("take_off_0171(session)", off)
         on = LAB[LAB.index("def put_back_0159("):LAB.index("MIGRATION_0167 =")]
-        self.assertIn("put_back_0170(session)", on)
+        self.assertIn("put_back_0171(session)", on)
 
     def test_the_docs_describe_it(self):
         docs = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
-        self.assertIn("(0170)", docs)
-        self.assertIn("rollback_0170_voice_video.sql", docs)
+        self.assertIn("(0171)", docs)
+        self.assertIn("rollback_0171_voice_video.sql", docs)
         explainer = (ROOT / "docs" / "VOICE_EXPLAINER.md").read_text(encoding="utf-8")
-        self.assertIn("0170", explainer)
+        self.assertIn("0171", explainer)
         self.assertNotIn("render_jobs` kind", explainer)
 
 

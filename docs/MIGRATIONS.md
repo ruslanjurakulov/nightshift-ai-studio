@@ -1738,9 +1738,9 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
 
-## Voice to video in the Studio (0170)
+## Voice to video in the Studio (0171)
 
-0170 (`0170_voice_video.sql`) is **live on apply** and writes no row: no model, no price, no availability. It teaches the database the
+0171 (`0171_voice_video.sql`) is **live on apply** and writes no row: no model, no price, no availability. It teaches the database the
 capability `voice_explainer` (a 9:16 video drawn by our own engine over one of the organization's recordings, docs/VOICE_EXPLAINER.md)
 by replacing seven functions on their latest bodies, each by the hunks its header lists and nothing else, and widening 0100's two
 capability CHECKs.
@@ -1756,17 +1756,17 @@ capability CHECKs.
   `creative_capability_supported`, `creative_source_problem` on 0100's bodies; `sellable_models` on 0125's; `creative_params_problem`
   on 0156's; `creative_price` on 0159's; `api_creative_models` on 0162's; the CHECKs `model_registry_capabilities_check` (at most 20
   per model) and `model_probe_runs_capability_check` on 0100's lists.
-- **Drift guards and end state.** Each function must be its earlier body or 0170's (md5 of prosrc, white space folded), and each CHECK
-  its 0100 definition or 0170's (md5 of `pg_get_constraintdef`); the "What to verify before you apply" query in the header reads them
+- **Drift guards and end state.** Each function must be its earlier body or 0171's (md5 of prosrc, white space folded), and each CHECK
+  its 0100 definition or 0171's (md5 of `pg_get_constraintdef`); the "What to verify before you apply" query in the header reads them
   all. The last block asserts every body, both CHECKs, the grants, the definer rights and the pinned search_path. Apply as ONE
   transaction.
-- **Rollback.** `docs/sql/rollback_0170_voice_video.sql` refuses while a model row or a probe run lists `voice_explainer` (take the
-  entry out of the registry first), and refuses a body or CHECK that is neither 0170's nor the earlier one; it puts every earlier body
+- **Rollback.** `docs/sql/rollback_0171_voice_video.sql` refuses while a model row or a probe run lists `voice_explainer` (take the
+  entry out of the registry first), and refuses a body or CHECK that is neither 0171's nor the earlier one; it puts every earlier body
   and both CHECKs back byte for byte with their grants.
-- **Order.** 0159's, 0156's, 0125's and 0162's replays and rollbacks refuse 0170's bodies: run the 0170 rollback first. The lab does:
-  `sec_db.take_off_0159` takes 0170 off first and `put_back_0159` puts it back; 0170 is in `sec_db.ON_0156` (so in every `ON_01xx`
-  tuple), and a sequence that puts `ON_0125` and `ON_0124` back applies them in filename order (0170 also needs 0162). Numbering: 0170
-  (claimed for this branch; 0168 and 0169 are held by other open branches). The numbering pins of 0127, 0131 and 0133 list it as
+- **Order.** 0159's, 0156's, 0125's and 0162's replays and rollbacks refuse 0171's bodies: run the 0171 rollback first. The lab does:
+  `sec_db.take_off_0159` takes 0171 off first and `put_back_0159` puts it back; 0171 is in `sec_db.ON_0156` (so in every `ON_01xx`
+  tuple), and a sequence that puts `ON_0125` and `ON_0124` back applies them in filename order (0171 also needs 0162). Numbering: 0171
+  (claimed for this branch; main ends at 0170, and 0169 is held by an open branch, #750). The numbering pins of 0127, 0131 and 0133 list it as
   reviewed. An open branch that replaces one of these functions and merges first makes this file's guard refuse: rebase the hunks.
 - **Before it sells anything.** Sync the registry (`tools/probe_models.py --sync`), probe `nightshift-voice-explainer` ON THE WORKER
   (the engine lives there), set its availability and its credit price (docs/VOICE_EXPLAINER.md, "Opening it").

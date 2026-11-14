@@ -188,7 +188,7 @@ describe("a desk's composer", () => {
     const tts = document.getElementById("gen-tab-tts") as HTMLElement;
     expect(tts.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(tts, { key: "ArrowLeft" });
-    // The desk's last tool (0170's voice video), never a tool of another desk.
+    // The desk's last tool (0171's voice video), never a tool of another desk.
     expect(document.getElementById("gen-tab-voice_explainer")?.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement?.id).toBe("gen-tab-voice_explainer");
   });

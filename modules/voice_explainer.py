@@ -16,7 +16,7 @@ Two planners fill the scenes, and the caller picks one; neither stands in for th
 
 This module spends nothing and talks to no provider by itself: transcription and the
 model are passed in. Two callers wire it: tools/voice_to_video.py (the operator's command)
-and modules/capabilities/voice_video.py (the Studio's paid creative job, migration 0170,
+and modules/capabilities/voice_video.py (the Studio's paid creative job, migration 0171,
 rules planner only; docs/VOICE_EXPLAINER.md).
 """
 

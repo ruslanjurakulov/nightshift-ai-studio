@@ -1,163 +1,92 @@
--- 0170_voice_video.sql — "voice to video" in the Studio: a person's own narration (one library recording) in, a 1080x1920
--- motion-graphics explainer out, drawn by OUR engine on the creative worker (no vendor), sold like every creative job.
+-- rollback_0171_voice_video.sql — takes migration 0171 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It widens two capability CHECKs and replaces seven
--- functions on their latest bodies, each by the hunks listed below and nothing else. It adds no row: no model, no price, no
--- availability. Nothing is sold by applying it: the registry entry that ships with it (schemas/model_registry.json,
--- nightshift-voice-explainer) is synced hidden, and it is sold only after the operator probes it on the worker, opens it and sets
--- its credit_prices row (docs/VOICE_EXPLAINER.md, "Opening it").
+-- WHEN YOU NEED IT. If the voice video's rules refuse something they should not, or before an earlier migration's rollback or replay
+-- that refuses 0171's bodies (0159's, 0156's, 0125's, 0162's ...). Afterwards the database no longer knows voice_explainer: a quote
+-- for it answers capability_not_supported (the Studio reads that as "not enabled here"), and every other capability is answered
+-- exactly as before 0171.
 --
--- THE CAPABILITY `voice_explainer` (modules/capabilities/voice_video.py, docs/VOICE_EXPLAINER.md):
---   params   source_asset_id  REQUIRED: an AUDIO file of the organization's library (the person's narration);
---            look             REQUIRED: one of dusk, midnight, golden, neon, paper, and one the model lists in spec.explainer_looks.
---            Everything else is refused (no prompt, shape, resolution, length, seed, voice, language, style): the recording is
---            the whole input and the look the only choice. Both keys were already accepted (0046, 0099): no new key.
---   source   creative_source_problem: an audio file of THIS organization, live, MP3 / M4A / WAV / OGG / FLAC / AAC / WebM, of a
---            measured length of at most 600 s (one render holds the whole video), at most 200 MB. Another organization's file,
---            a deleted one and an id that never existed read EXACTLY alike.
---   price    creative_price: the recording's seconds as the DATABASE measured them (creative_source_seconds, 0050), never a
---            client's number, at the model's credit_unit rate with its margin, floored at job_minimum (0036 / 0084, unchanged);
---            a look the model does not list is refused invalid_params; a model that states no limits.max_source_seconds is
---            refused model_not_sellable, a longer recording source_unavailable. All before anything is held.
---   output   one video in the library (the worker's own rule; 0046's attach, unchanged). Money: 0036's hold / capture /
---            release, unchanged: a render that fails releases the whole hold.
---
--- THE HUNKS (tests/test_voice_video_migration.py undoes each one and compares the rest with the earlier body byte for byte):
---   model_registry_guard          0100's + a change of spec.explainer_looks clears the model's proof (hidden until probed again)
---   sellable_models               0125's + the capability in its closed list + explainer_looks in the public half of spec
---   creative_capability_supported 0100's + the capability
---   creative_params_problem       0156's + the rules above (`narrated`), the look check before relight's
---   creative_source_problem       0100's + the audio check above, before the voice tools' recording check
---   creative_price                0159's + the look check, the seconds, the model's longest recording
---   api_creative_models           0162's + the capability in the API's list (command-center/lib/api/operations.ts
---                                 API_CREATIVE_CAPABILITIES; tests keep the two equal), so the MCP Studio tools list the model
--- and the CHECKs model_registry_capabilities_check (at most 20 per model) / model_probe_runs_capability_check (0100's) accept it.
--- Every other line, every other capability's answer and every grant is the earlier migration's.
---
--- WHY NO PLANNER MODEL. The rules planner is deterministic and free; a Gemini plan inside a paid job would be a second paid
--- provider whose failure the person's hold pays for. It is a later slice, with its own vendor_model, probe and price.
---
--- NUMBER AND ORDER. 0170 (claimed for this branch; main ends at 0167, and 0168 / 0169 are held by other open branches). Its drift
--- guards accept only the bodies it was written on, or its own: if another branch replaces one of these functions and merges first,
--- this file refuses to apply, and it must be rebased on that body (the hunks are small) rather than accepting both. The earlier
--- replays and rollbacks it sits on (0159's, 0156's, 0125's, 0162's ...) refuse 0170's bodies: run
--- docs/sql/rollback_0170_voice_video.sql FIRST (the security lab does: sec_db.take_off_0170, called by take_off_0159).
---
--- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
---   select
---     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.model_registry_guard()'::regprocedure)
---       = '76433cc2e02321c6805f58d9ffa462b9' as model_registry_guard_is_0100s,
---     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.sellable_models(text, text)'::regprocedure)
---       = 'ea8add748052456a6ef8898b4c87d610' as sellable_models_is_0125s,
---     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_capability_supported(text)'::regprocedure)
---       = 'c727aa5796222618ff0654aa04dcbb7d' as creative_capability_supported_is_0100s,
---     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure)
---       = '25ee9cc62a27ad3a19e71008b04f3f36' as creative_params_problem_is_0156s,
---     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_source_problem(uuid, text, jsonb)'::regprocedure)
---       = '964f7d34827901d004ef9de311f87024' as creative_source_problem_is_0100s,
---     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure)
---       = 'dafc5edae0000e741ac1b19bd0075790' as creative_price_is_0159s,
---     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.api_creative_models(text, text, text)'::regprocedure)
---       = 'fe49adb06e9344c925e14c1bfbe3330d' as api_creative_models_is_0162s,
---     (select md5(pg_get_constraintdef(oid)) from pg_constraint where conname = 'model_registry_capabilities_check') = '14f2d60c233e47115c2634d90a1fc8af' as model_registry_capabilities_check_is_0100s,
---     (select md5(pg_get_constraintdef(oid)) from pg_constraint where conname = 'model_probe_runs_capability_check') = 'e9ae3a9d5208f04c056e2d6287f5ce88' as model_probe_runs_capability_check_is_0100s
---
--- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
--- assumes it, and the last block asserts the end state. Additive and idempotent: drop-then-add constraints (the new lists hold the
--- old), create or replace, revoke-then-grant; a replay finds this file's bodies and changes nothing.
--- Rollback: docs/sql/rollback_0170_voice_video.sql (owner-applied; refuses while a model row lists voice_explainer, and refuses a
--- body that is neither 0170's nor the one it was written on; puts every earlier body and both CHECKs back). Docs: docs/MIGRATIONS.md,
--- "Voice to video in the Studio (0170)", and docs/VOICE_EXPLAINER.md.
+-- WHAT IT DOES, in one transaction:
+--   1. Refuses to run while a model_registry row (or a probe run) lists voice_explainer: the narrowed CHECKs would refuse them. Remove
+--      the entry from schemas/model_registry.json, delete its row and its probe runs first (a deliberate act, not this file's).
+--   2. Refuses to run if a function or a CHECK is neither 0171's nor the one 0171 was written on (something changed it since: running
+--      this would silently undo that change). md5 of the body with every run of white space read as one space.
+--   3. Puts the seven functions back to their earlier bodies byte for byte (0100's, 0125's, 0156's, 0159's, 0162's) with their grants,
+--      and both CHECKs back to 0100's lists.
+-- It rewrites no row. Jobs already made keep their rows and their library videos. tests/security/test_sec_voice_video.py applies
+-- this file to a lab database and re-applies 0171.
 
+begin;
 set local lock_timeout = '5s';
 
 do $$
 begin
-  if to_regprocedure('public.creative_price(uuid, text, text, jsonb)') is null
-     or to_regprocedure('public.creative_params_problem(text, jsonb)') is null
-     or to_regprocedure('public.creative_source_seconds(uuid, jsonb)') is null
-     or to_regprocedure('public.creative_operator_preview(uuid, text, jsonb)') is null
-     or to_regprocedure('public.model_past_shutdown(jsonb)') is null
-     or to_regprocedure('public.model_is_available(text)') is null
-     or to_regprocedure('public.api_creative_models(text, text, text)') is null then
-    raise exception '0170 needs 0159_duration_offered_by_model.sql and 0162_api_creative_models.sql (and 0156, 0125, 0124, 0100, 0050): apply them first';
+  if exists (select 1 from public.model_registry where 'voice_explainer' = any (capabilities))
+     or exists (select 1 from public.model_probe_runs where capability = 'voice_explainer') then
+    raise exception 'rollback 0171 found a model row or a probe run for voice_explainer: take the model out of the registry first';
   end if;
 end $$;
 
--- The live bodies must be the ones this file was written on, or this file's own (a replay). Anything else was changed since (by hand,
--- or by a migration this file has not seen), and replacing it would silently undo that change (the 0064/0103 lesson). md5 of prosrc
--- with every run of white space read as one space; the constraints as pg_get_constraintdef prints them. The test recomputes every hash.
 
 do $$
 declare
   h text;
 begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.model_registry_guard()'::regprocedure;
-  if h is null or h <> all (array['76433cc2e02321c6805f58d9ffa462b9', 'a691607ad124d3838ea9f27684394e93']) then
-    raise exception '0170 found a model_registry_guard() that is neither 0170''s body nor the one it replaces (md5 %): read the live body first', h;
+  if h is null or h <> all (array['8cbfab36aca302e738c4631eeab076a2', '76433cc2e02321c6805f58d9ffa462b9']) then
+    raise exception 'rollback 0171 found a model_registry_guard() that is neither 0171''s body nor the one 0171 replaced (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.sellable_models(text, text)'::regprocedure;
-  if h is null or h <> all (array['ea8add748052456a6ef8898b4c87d610', '81847cd71ad1edfee4fbffd05b4bd100']) then
-    raise exception '0170 found a sellable_models() that is neither 0170''s body nor the one it replaces (md5 %): read the live body first', h;
+  if h is null or h <> all (array['900103ab5248afeff3755b304c75b3a4', 'ea8add748052456a6ef8898b4c87d610']) then
+    raise exception 'rollback 0171 found a sellable_models() that is neither 0171''s body nor the one 0171 replaced (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_capability_supported(text)'::regprocedure;
-  if h is null or h <> all (array['c727aa5796222618ff0654aa04dcbb7d', '5de759d4adb2bbba5a696fa1795be2ac']) then
-    raise exception '0170 found a creative_capability_supported() that is neither 0170''s body nor the one it replaces (md5 %): read the live body first', h;
+  if h is null or h <> all (array['5de759d4adb2bbba5a696fa1795be2ac', 'c727aa5796222618ff0654aa04dcbb7d']) then
+    raise exception 'rollback 0171 found a creative_capability_supported() that is neither 0171''s body nor the one 0171 replaced (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_params_problem(text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['25ee9cc62a27ad3a19e71008b04f3f36', '232b83510bce2fc9088ecbdd3af79eda']) then
-    raise exception '0170 found a creative_params_problem() that is neither 0170''s body nor the one it replaces (md5 %): read the live body first', h;
+  if h is null or h <> all (array['2f38c8aa1b2d7c03f1cf7919df265f4b', '25ee9cc62a27ad3a19e71008b04f3f36']) then
+    raise exception 'rollback 0171 found a creative_params_problem() that is neither 0171''s body nor the one 0171 replaced (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_source_problem(uuid, text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['964f7d34827901d004ef9de311f87024', '51ab4ef7a395d5d3ca8eb5a502884406']) then
-    raise exception '0170 found a creative_source_problem() that is neither 0170''s body nor the one it replaces (md5 %): read the live body first', h;
+  if h is null or h <> all (array['873ea0c4516b86aaef6f5ab29799460b', '964f7d34827901d004ef9de311f87024']) then
+    raise exception 'rollback 0171 found a creative_source_problem() that is neither 0171''s body nor the one 0171 replaced (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['dafc5edae0000e741ac1b19bd0075790', '61430edcfe6eb08416381684b9143661']) then
-    raise exception '0170 found a creative_price() that is neither 0170''s body nor the one it replaces (md5 %): read the live body first', h;
+  if h is null or h <> all (array['eee6b9b5d7ab39a1858c347c9cfe0f78', 'dafc5edae0000e741ac1b19bd0075790']) then
+    raise exception 'rollback 0171 found a creative_price() that is neither 0171''s body nor the one 0171 replaced (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.api_creative_models(text, text, text)'::regprocedure;
-  if h is null or h <> all (array['fe49adb06e9344c925e14c1bfbe3330d', '7fe653e82bf16f877075ff1e3331fe8d']) then
-    raise exception '0170 found a api_creative_models() that is neither 0170''s body nor the one it replaces (md5 %): read the live body first', h;
+  if h is null or h <> all (array['7fe653e82bf16f877075ff1e3331fe8d', 'fe49adb06e9344c925e14c1bfbe3330d']) then
+    raise exception 'rollback 0171 found a api_creative_models() that is neither 0171''s body nor the one 0171 replaced (md5 %): read the live body first', h;
   end if;
   select md5(pg_get_constraintdef(k.oid)) into h from pg_constraint k
    where k.conrelid = 'public.model_registry'::regclass and k.conname = 'model_registry_capabilities_check';
-  if h is null or h <> all (array['14f2d60c233e47115c2634d90a1fc8af', 'faec146cbdef4b642fb0c9fb01912dfd']) then
-    raise exception '0170 found a model_registry_capabilities_check that is neither 0170''s nor the one it replaces (md5 %): read the live constraint first', h;
+  if h is null or h <> all (array['faec146cbdef4b642fb0c9fb01912dfd', '14f2d60c233e47115c2634d90a1fc8af']) then
+    raise exception 'rollback 0171 found a model_registry_capabilities_check that is neither 0171''s nor the one 0171 replaced (md5 %): read the live constraint first', h;
   end if;
   select md5(pg_get_constraintdef(k.oid)) into h from pg_constraint k
    where k.conrelid = 'public.model_probe_runs'::regclass and k.conname = 'model_probe_runs_capability_check';
-  if h is null or h <> all (array['e9ae3a9d5208f04c056e2d6287f5ce88', 'e4001c1cb3d83d6c172aea5fde503103']) then
-    raise exception '0170 found a model_probe_runs_capability_check that is neither 0170''s nor the one it replaces (md5 %): read the live constraint first', h;
+  if h is null or h <> all (array['e4001c1cb3d83d6c172aea5fde503103', 'e9ae3a9d5208f04c056e2d6287f5ce88']) then
+    raise exception 'rollback 0171 found a model_probe_runs_capability_check that is neither 0171''s nor the one 0171 replaced (md5 %): read the live constraint first', h;
   end if;
 end $$;
 
--- ───────────────────────────────────────────────────────────────────────────
--- 1. The registry knows the capability (0100's lists + voice_explainer)
--- ───────────────────────────────────────────────────────────────────────────
-
 alter table public.model_registry drop constraint if exists model_registry_capabilities_check;
 alter table public.model_registry add constraint model_registry_capabilities_check
-  check (cardinality(capabilities) between 1 and 20
+  check (cardinality(capabilities) between 1 and 19
          and capabilities <@ array['t2i','edit','t2v','i2v','tts','sfx','upscale','remove_bg',
                                    'voice_change','dub','video_upscale','describe','captions',
                                    'expand','relight','erase',
-                                   'video_edit','video_reframe','video_remove_bg',
-                                   'voice_explainer']::text[]);
+                                   'video_edit','video_reframe','video_remove_bg']::text[]);
 
 alter table public.model_probe_runs drop constraint if exists model_probe_runs_capability_check;
 alter table public.model_probe_runs add constraint model_probe_runs_capability_check
   check (capability in ('t2i', 'edit', 't2v', 'i2v', 'tts', 'sfx', 'upscale', 'remove_bg',
                         'voice_change', 'dub', 'video_upscale', 'describe', 'captions',
                         'expand', 'relight', 'erase',
-                        'video_edit', 'video_reframe', 'video_remove_bg',
-                        'voice_explainer'));
+                        'video_edit', 'video_reframe', 'video_remove_bg'));
 
--- ───────────────────────────────────────────────────────────────────────────
--- 2. The functions (each the earlier body plus the hunks in the header)
--- ───────────────────────────────────────────────────────────────────────────
-
--- 0100's guard, plus the looks a model draws a voice video in: a change of them is a new claim, so the old proof stops standing.
+-- 0100's model_registry_guard, byte for byte.
 create or replace function public.model_registry_guard() returns trigger
   language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -183,9 +112,7 @@ begin
       or new.spec -> 'relight_looks' is distinct from old.spec -> 'relight_looks'
       or new.spec -> 'aspect_ratios_by_capability' -> 'expand' is distinct from old.spec -> 'aspect_ratios_by_capability' -> 'expand'
       -- 0100: the shapes a model reframes a video to.
-      or new.spec -> 'aspect_ratios_by_capability' -> 'video_reframe' is distinct from old.spec -> 'aspect_ratios_by_capability' -> 'video_reframe'
-      -- 0170: the looks a model draws a voice video in.
-      or new.spec -> 'explainer_looks' is distinct from old.spec -> 'explainer_looks') then
+      or new.spec -> 'aspect_ratios_by_capability' -> 'video_reframe' is distinct from old.spec -> 'aspect_ratios_by_capability' -> 'video_reframe') then
     if new.verified_probe_id is not distinct from old.verified_probe_id then
       new.verified_at := null;
       new.verified_by := null;
@@ -216,7 +143,7 @@ begin
 end
 $$;
 
--- 0125's sellable_models, accepting voice_explainer and handing the Studio the looks a model draws in. Every other line is 0125's.
+-- 0125's sellable_models, byte for byte.
 create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
   returns table (
     id text, display_name text, provider text, capabilities text[], availability text,
@@ -230,8 +157,7 @@ begin
   if p_capability is not null
      and p_capability not in ('t2i', 'edit', 't2v', 'i2v', 'tts', 'sfx', 'upscale', 'remove_bg',
                               'voice_change', 'dub', 'video_upscale', 'describe', 'captions',
-                              'expand', 'relight', 'erase', 'video_edit', 'video_reframe', 'video_remove_bg',
-                              'voice_explainer') then
+                              'expand', 'relight', 'erase', 'video_edit', 'video_reframe', 'video_remove_bg') then
     raise exception 'unknown capability %', p_capability using errcode = '22023';
   end if;
   -- Captions are a web tool (0072): the transcript lives in caption_tracks,
@@ -261,8 +187,6 @@ begin
              'async', m.spec -> 'async', 'unit', m.spec -> 'pricing' -> 'unit',
              'qualities', m.spec -> 'qualities',
              'relight_looks', m.spec -> 'relight_looks',
-             -- 0170: the looks a voice video is drawn in, so the Studio offers only those.
-             'explainer_looks', m.spec -> 'explainer_looks',
              'default_resolution', m.spec -> 'default_resolution',
              'price_variants_by', m.spec -> 'pricing' -> 'variants' -> 'by',
              'attribution', m.spec -> 'attribution', 'api_exposure', m.spec -> 'api_exposure',
@@ -303,17 +227,16 @@ begin
 end
 $$;
 
--- 0100's, with voice_explainer in the list.
+-- 0100's creative_capability_supported, byte for byte.
 create or replace function public.creative_capability_supported(p_capability text) returns boolean
   language sql immutable set search_path = public, pg_temp as $$
   select p_capability in ('t2i', 't2v', 'tts', 'sfx', 'music', 'edit', 'i2v', 'upscale', 'remove_bg',
                           'voice_change', 'dub', 'video_upscale', 'describe', 'captions',
                           'expand', 'relight', 'erase',
-                          'video_edit', 'video_reframe', 'video_remove_bg',
-                          'voice_explainer')
+                          'video_edit', 'video_reframe', 'video_remove_bg')
 $$;
 
--- 0156's params check, plus the voice video's rules (`narrated`, header). Every other answer is 0156's.
+-- 0156's creative_params_problem, byte for byte.
 create or replace function public.creative_params_problem(p_capability text, p_params jsonb)
   returns text
   language plpgsql immutable set search_path = public, pg_temp as $$
@@ -332,13 +255,10 @@ declare
   reframed boolean := p_capability = 'video_reframe';
   -- describe (0055): a picture is the whole input; the output is text.
   told     boolean := p_capability = 'describe';
-  -- 0170: a voice video. The person's own narration is the whole input and the look the only choice.
-  narrated boolean := p_capability = 'voice_explainer';
   sourced  boolean := p_capability in ('edit', 'i2v', 'upscale', 'remove_bg', 'voice_change', 'dub',
                                        'video_upscale', 'describe', 'captions',
                                        'expand', 'relight', 'erase',
-                                       'video_edit', 'video_reframe', 'video_remove_bg',
-                                       'voice_explainer');
+                                       'video_edit', 'video_reframe', 'video_remove_bg');
   -- The output keeps the source's shape: framing settings would be ignored.
   reshaped boolean := p_capability in ('upscale', 'remove_bg', 'video_upscale', 'relight', 'erase',
                                        'video_edit', 'video_remove_bg');
@@ -346,7 +266,7 @@ declare
   grown    boolean := p_capability = 'expand';
   prompted boolean := p_capability not in ('i2v', 'upscale', 'remove_bg', 'voice_change', 'dub', 'video_upscale',
                                            'describe', 'captions', 'expand', 'relight',
-                                           'video_reframe', 'video_remove_bg', 'voice_explainer');
+                                           'video_reframe', 'video_remove_bg');
   -- The capabilities a look can steer.
   styled   boolean := p_capability in ('t2i', 't2v', 'edit', 'i2v');
   uuid_re  constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
@@ -383,7 +303,7 @@ begin
       return problem;
     end if;
   end if;
-  if (p_capability = 'remove_bg' or voiced or filmed or told or unworded or narrated) and p_params ? 'prompt' then
+  if (p_capability = 'remove_bg' or voiced or filmed or told or unworded) and p_params ? 'prompt' then
     return format('prompt does not apply to %s', p_capability);
   end if;
   -- 0126: a region edit has no prompt of its own (creative_regions_problem refuses the key): each region carries its words.
@@ -397,7 +317,7 @@ begin
     end if;
   end if;
   if p_params ? 'negative_prompt' then
-    if reshaped or grown or reframed or voiced or told or narrated then
+    if reshaped or grown or reframed or voiced or told then
       return format('negative_prompt does not apply to %s', p_capability);
     end if;
     if jsonb_typeof(p_params -> 'negative_prompt') <> 'string'
@@ -409,7 +329,7 @@ begin
     if reshaped then
       return format('aspect_ratio does not apply to %s: the result keeps the source''s shape', p_capability);
     end if;
-    if voiced or told or narrated then
+    if voiced or told then
       return format('aspect_ratio does not apply to %s', p_capability);
     end if;
     if jsonb_typeof(p_params -> 'aspect_ratio') <> 'string'
@@ -437,7 +357,7 @@ begin
     if filmed then
       return 'resolution does not apply to video_upscale: name the result''s size as target_resolution';
     end if;
-    if reshaped or grown or reframed or voiced or told or narrated then
+    if reshaped or grown or reframed or voiced or told then
       return format('resolution does not apply to %s', p_capability);
     end if;
     -- 0156: the shape of a resolution name in the registry (the resolution pattern of schemas/model_registry.schema.json), so a model's own
@@ -473,7 +393,7 @@ begin
     end if;
   end if;
   if p_params ? 'seed' then
-    if reshaped or grown or reframed or voiced or told or narrated then
+    if reshaped or grown or reframed or voiced or told then
       return format('seed does not apply to %s', p_capability);
     end if;
     if not public.creative_json_int(p_params -> 'seed', 0, 2147483647) then
@@ -483,9 +403,6 @@ begin
   if sourced then
     if jsonb_typeof(p_params -> 'source_asset_id') is distinct from 'string'
        or (p_params ->> 'source_asset_id') !~ uuid_re then
-      if narrated then
-        return 'source_asset_id (the id of an audio recording in the media library) is required for voice_explainer';
-      end if;
       if voiced then
         return format('source_asset_id (the id of an audio or video file in the media library) is required for %s',
                       p_capability);
@@ -572,14 +489,7 @@ begin
       return 'audio must be true or false';
     end if;
   end if;
-  if narrated then
-    -- 0170: a voice video is drawn in one look of the closed list, and the person picks it: required, never a
-    -- default. The model must list it too (creative_price).
-    if jsonb_typeof(p_params -> 'look') is distinct from 'string'
-       or (p_params ->> 'look') not in ('dusk', 'midnight', 'golden', 'neon', 'paper') then
-      return 'look (one of dusk, midnight, golden, neon, paper) is required for voice_explainer';
-    end if;
-  elsif p_params ? 'look' then
+  if p_params ? 'look' then
     -- relight (0099): the light, from the closed list. The model must list it
     -- too (creative_price).
     if p_capability <> 'relight' then
@@ -633,7 +543,7 @@ begin
 end
 $$;
 
--- 0100's, plus the voice video's audio check (header).
+-- 0100's creative_source_problem, byte for byte.
 create or replace function public.creative_source_problem(p_org uuid, p_capability text, p_params jsonb)
   returns text
   language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -686,35 +596,6 @@ begin
     end if;
     if a.bytes > 26214400 then
       return 'this video is larger than 25 MB; use a smaller copy';
-    end if;
-    return null;
-  end if;
-
-  if p_capability = 'voice_explainer' then
-    -- 0170: the person's own narration. An AUDIO file of THIS organization, live, a type the engine reads, of a measured
-    -- length of at most ten minutes (one render holds the whole video; the model's own, possibly shorter, limit is
-    -- creative_price's), small enough to copy to the worker. Another organization's file reads exactly like a missing one.
-    select * into a from public.media_assets
-     where id = (p_params ->> 'source_asset_id')::uuid
-       and org_id = p_org
-       and deleted_at is null and purged_at is null;
-    if not found then
-      return 'source_asset_id names no recording in this organization''s library';
-    end if;
-    if a.kind <> 'audio' then
-      return 'a voice video starts from an audio recording: pick an audio file (MP3, M4A, WAV, OGG or FLAC)';
-    end if;
-    if a.mime not in ('audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/aac', 'audio/webm') then
-      return 'this audio type cannot be used here; use MP3, M4A, WAV, OGG, FLAC, AAC or WebM';
-    end if;
-    if a.duration_s is null or a.duration_s <= 0 then
-      return 'the length of this recording is not known, so it cannot be priced; upload it again';
-    end if;
-    if a.duration_s > 600 then
-      return 'a voice video takes recordings of up to 10 minutes; trim this one first';
-    end if;
-    if a.bytes > 209715200 then
-      return 'this recording is larger than 200 MB; use a smaller copy';
     end if;
     return null;
   end if;
@@ -795,7 +676,7 @@ begin
 end
 $$;
 
--- 0159's quote, plus the voice video's look, seconds and longest recording (header). Every other line is 0159's.
+-- 0159's creative_price, byte for byte.
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -942,13 +823,6 @@ begin
                       and (m_spec -> 'aspect_ratios_by_capability' -> 'video_reframe') @> jsonb_build_array(p_params ->> 'aspect_ratio'), false) then
     perform public.creative_refuse('invalid_params',
       format('%s does not reframe a video to %s', mdl, p_params ->> 'aspect_ratio'));
-  end if;
-  -- 0170: nor a look of a voice video that the model was not proven (and listed) for.
-  if cap = 'voice_explainer'
-     and not coalesce(jsonb_typeof(m_spec -> 'explainer_looks') = 'array'
-                      and (m_spec -> 'explainer_looks') @> jsonb_build_array(p_params ->> 'look'), false) then
-    perform public.creative_refuse('invalid_params',
-      format('%s does not draw the %s look', mdl, p_params ->> 'look'));
   end if;
   -- 0155: nor any shape the model does not list for this capability: spec.aspect_ratios_by_capability[cap] when it names
   -- some, else spec.aspect_ratios, the same list the worker checks before it calls the vendor (ModelEntry.aspects_for). An
@@ -1104,8 +978,7 @@ begin
       format('%s has no credit price yet; a platform admin sets it on the Credits page', mdl));
   end if;
 
-  if cap in ('voice_change', 'dub', 'video_upscale', 'captions', 'video_edit', 'video_reframe', 'video_remove_bg',
-             'voice_explainer') then
+  if cap in ('voice_change', 'dub', 'video_upscale', 'captions', 'video_edit', 'video_reframe', 'video_remove_bg') then
     -- The file's measured length, from the database — never the client's.
     qty := public.creative_source_seconds(p_org, p_params);
   else
@@ -1143,20 +1016,6 @@ begin
         format('this model takes videos of up to %s seconds; trim this one first', longest));
     end if;
   end if;
-  if cap = 'voice_explainer' then
-    -- 0170: the model's own longest recording (limits.max_source_seconds), the video ops' rule: a model that states
-    -- none is not sold a length its render may refuse after the hold.
-    longest := case when jsonb_typeof(m_spec -> 'limits' -> 'max_source_seconds') = 'number'
-                    then (m_spec -> 'limits' ->> 'max_source_seconds')::numeric end;
-    if longest is null or longest <= 0 then
-      perform public.creative_refuse('model_not_sellable',
-        format('%s does not state the longest recording it takes', mdl));
-    end if;
-    if qty > longest then
-      perform public.creative_refuse('source_unavailable',
-        format('this model makes videos from recordings of up to %s seconds; trim this one first', longest));
-    end if;
-  end if;
   -- Rounded to 6 places before the upward cent, so numeric division noise
   -- never adds a cent (0030 does the same).
   price := public.credits_round_up(round(qty * rate.credits_per_unit * (1 + rate.margin), 6));
@@ -1183,7 +1042,7 @@ begin
 end
 $$;
 
--- 0162's, with voice_explainer among the capabilities the API generates (the MCP Studio tools list its model).
+-- 0162's api_creative_models, byte for byte.
 create or replace function public.api_creative_models(
   p_key_hash text, p_capability text default null, p_request_id text default null
 ) returns jsonb
@@ -1223,7 +1082,7 @@ begin
          -- (command-center/lib/api/operations.ts API_CREATIVE_CAPABILITIES; tests/test_api_creative_models_migration.py keeps the two equal).
          and s.capabilities && array['t2i', 'edit', 't2v', 'i2v', 'tts', 'sfx', 'upscale', 'remove_bg', 'voice_change', 'dub',
                                      'video_upscale', 'describe', 'expand', 'relight', 'erase', 'video_edit', 'video_reframe',
-                                     'video_remove_bg', 'voice_explainer']::text[];
+                                     'video_remove_bg']::text[];
       return public.api_finish(ctx, public.api_ok(jsonb_build_object('capability', v_cap, 'models', v_list)));
     exception when others then
       get stacked diagnostics v_msg = message_text, v_detail = pg_exception_detail;
@@ -1239,10 +1098,6 @@ begin
 end
 $$;
 
--- ───────────────────────────────────────────────────────────────────────────
--- 3. Privileges (each function keeps its earlier grants)
--- ───────────────────────────────────────────────────────────────────────────
-
 revoke all on function public.model_registry_guard() from public, anon, authenticated;
 revoke all on function public.sellable_models(text, text) from public, anon;
 grant execute on function public.sellable_models(text, text) to authenticated, service_role;
@@ -1253,50 +1108,47 @@ revoke all on function public.creative_price(uuid, text, text, jsonb) from publi
 revoke all on function public.api_creative_models(text, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.api_creative_models(text, text, text) to anon;
 
--- ───────────────────────────────────────────────────────────────────────────
--- The end state, asserted inside the transaction
--- ───────────────────────────────────────────────────────────────────────────
 do $$
 declare
   h text;
 begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.model_registry_guard()'::regprocedure;
-  if h is distinct from 'a691607ad124d3838ea9f27684394e93' then
-    raise exception '0170 end state: model_registry_guard() does not hold 0170''s body (md5 %)', h;
+  if h is distinct from '76433cc2e02321c6805f58d9ffa462b9' then
+    raise exception 'rollback 0171 end state: model_registry_guard() does not hold the earlier''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.sellable_models(text, text)'::regprocedure;
-  if h is distinct from '81847cd71ad1edfee4fbffd05b4bd100' then
-    raise exception '0170 end state: sellable_models() does not hold 0170''s body (md5 %)', h;
+  if h is distinct from 'ea8add748052456a6ef8898b4c87d610' then
+    raise exception 'rollback 0171 end state: sellable_models() does not hold the earlier''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_capability_supported(text)'::regprocedure;
-  if h is distinct from '5de759d4adb2bbba5a696fa1795be2ac' then
-    raise exception '0170 end state: creative_capability_supported() does not hold 0170''s body (md5 %)', h;
+  if h is distinct from 'c727aa5796222618ff0654aa04dcbb7d' then
+    raise exception 'rollback 0171 end state: creative_capability_supported() does not hold the earlier''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_params_problem(text, jsonb)'::regprocedure;
-  if h is distinct from '232b83510bce2fc9088ecbdd3af79eda' then
-    raise exception '0170 end state: creative_params_problem() does not hold 0170''s body (md5 %)', h;
+  if h is distinct from '25ee9cc62a27ad3a19e71008b04f3f36' then
+    raise exception 'rollback 0171 end state: creative_params_problem() does not hold the earlier''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_source_problem(uuid, text, jsonb)'::regprocedure;
-  if h is distinct from '51ab4ef7a395d5d3ca8eb5a502884406' then
-    raise exception '0170 end state: creative_source_problem() does not hold 0170''s body (md5 %)', h;
+  if h is distinct from '964f7d34827901d004ef9de311f87024' then
+    raise exception 'rollback 0171 end state: creative_source_problem() does not hold the earlier''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
-  if h is distinct from '61430edcfe6eb08416381684b9143661' then
-    raise exception '0170 end state: creative_price() does not hold 0170''s body (md5 %)', h;
+  if h is distinct from 'dafc5edae0000e741ac1b19bd0075790' then
+    raise exception 'rollback 0171 end state: creative_price() does not hold the earlier''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.api_creative_models(text, text, text)'::regprocedure;
-  if h is distinct from '7fe653e82bf16f877075ff1e3331fe8d' then
-    raise exception '0170 end state: api_creative_models() does not hold 0170''s body (md5 %)', h;
+  if h is distinct from 'fe49adb06e9344c925e14c1bfbe3330d' then
+    raise exception 'rollback 0171 end state: api_creative_models() does not hold the earlier''s body (md5 %)', h;
   end if;
   select md5(pg_get_constraintdef(k.oid)) into h from pg_constraint k
    where k.conrelid = 'public.model_registry'::regclass and k.conname = 'model_registry_capabilities_check';
-  if h is distinct from 'faec146cbdef4b642fb0c9fb01912dfd' then
-    raise exception '0170 end state: model_registry_capabilities_check is not 0170''s (md5 %)', h;
+  if h is distinct from '14f2d60c233e47115c2634d90a1fc8af' then
+    raise exception 'rollback 0171 end state: model_registry_capabilities_check is not the earlier''s (md5 %)', h;
   end if;
   select md5(pg_get_constraintdef(k.oid)) into h from pg_constraint k
    where k.conrelid = 'public.model_probe_runs'::regclass and k.conname = 'model_probe_runs_capability_check';
-  if h is distinct from 'e4001c1cb3d83d6c172aea5fde503103' then
-    raise exception '0170 end state: model_probe_runs_capability_check is not 0170''s (md5 %)', h;
+  if h is distinct from 'e9ae3a9d5208f04c056e2d6287f5ce88' then
+    raise exception 'rollback 0171 end state: model_probe_runs_capability_check is not the earlier''s (md5 %)', h;
   end if;
   -- The internals: no API role at all. A NULL ACL would mean "default privileges", and the default includes public.
   if exists (select 1 from pg_proc p
@@ -1306,52 +1158,24 @@ begin
                      or exists (select 1 from aclexplode(p.proacl) a
                                  where a.grantee = 0
                                     or a.grantee in (select o.oid from pg_roles o where o.rolname in ('anon', 'authenticated', 'service_role'))))) then
-    raise exception '0170 end state: an internal creative function is executable by an API role';
+    raise exception 'rollback 0171 end state: an internal creative function is executable by an API role';
   end if;
   if has_function_privilege('anon', 'public.sellable_models(text, text)', 'EXECUTE')
      or not has_function_privilege('authenticated', 'public.sellable_models(text, text)', 'EXECUTE') then
-    raise exception '0170 end state: sellable_models has the wrong grants';
+    raise exception 'rollback 0171 end state: sellable_models has the wrong grants';
   end if;
   if not has_function_privilege('anon', 'public.api_creative_models(text, text, text)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.api_creative_models(text, text, text)', 'EXECUTE')
      or has_function_privilege('service_role', 'public.api_creative_models(text, text, text)', 'EXECUTE') then
-    raise exception '0170 end state: api_creative_models has the wrong grants';
+    raise exception 'rollback 0171 end state: api_creative_models has the wrong grants';
   end if;
   if exists (select 1 from pg_proc p
               where p.oid in ('public.sellable_models(text, text)'::regprocedure, 'public.creative_source_problem(uuid, text, jsonb)'::regprocedure,
                               'public.creative_price(uuid, text, text, jsonb)'::regprocedure, 'public.api_creative_models(text, text, text)'::regprocedure,
                               'public.model_registry_guard()'::regprocedure)
                 and (not p.prosecdef or not coalesce(p.proconfig @> array['search_path=public, pg_temp'], false))) then
-    raise exception '0170 end state: a security-definer function lost its definer rights or its pinned search_path';
+    raise exception 'rollback 0171 end state: a security-definer function lost its definer rights or its pinned search_path';
   end if;
 end $$;
 
--- ───────────────────────────────────────────────────────────────────────────
--- Verify (run after applying; every column should read true)
--- ───────────────────────────────────────────────────────────────────────────
--- select
---   public.creative_capability_supported('voice_explainer') as capability_on,
---   public.creative_params_problem('voice_explainer',
---       '{"source_asset_id":"00000000-0000-4000-8000-000000000000","look":"dusk"}') is null
---     and public.creative_params_problem('voice_explainer',
---       '{"source_asset_id":"00000000-0000-4000-8000-000000000000"}') is not null
---     and public.creative_params_problem('voice_explainer',
---       '{"source_asset_id":"00000000-0000-4000-8000-000000000000","look":"sepia"}') is not null
---     and public.creative_params_problem('voice_explainer',
---       '{"source_asset_id":"00000000-0000-4000-8000-000000000000","look":"dusk","prompt":"x"}') is not null
---     and public.creative_params_problem('voice_explainer', '{"look":"dusk"}') is not null as params_checked,
---   public.creative_params_problem('relight',
---       '{"source_asset_id":"00000000-0000-4000-8000-000000000000","look":"warm"}') is null
---     and public.creative_params_problem('captions',
---       '{"source_asset_id":"00000000-0000-4000-8000-000000000000"}') is null
---     and public.creative_params_problem('t2v', '{"prompt":"x","duration_s":5,"resolution":"768p"}') is null as earlier_tools_kept,
---   -- Nothing became sellable by applying this file: no model lists the capability with a price and a probe yet.
---   not exists (select 1 from public.sellable_models('voice_explainer')) as nothing_sold_yet,
---   not has_function_privilege('authenticated', 'public.creative_price(uuid,text,text,jsonb)', 'EXECUTE')
---     and not has_function_privilege('authenticated', 'public.creative_source_problem(uuid,text,jsonb)', 'EXECUTE')
---     and not has_function_privilege('anon', 'public.sellable_models(text,text)', 'EXECUTE')
---     and has_function_privilege('anon', 'public.api_creative_models(text,text,text)', 'EXECUTE') as functions_scoped;
---
--- The model row once the registry is synced (tools/probe_models.py --sync): hidden, unproven, no price until the owner opens it.
---   select id, availability, verified_at, spec -> 'explainer_looks', spec -> 'limits' -> 'max_source_seconds'
---     from public.model_registry where 'voice_explainer' = any (capabilities);
+commit;

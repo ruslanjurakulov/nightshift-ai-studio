@@ -87,7 +87,7 @@ export interface PublicSpec {
   relightLooks: RelightLook[];
   /** Shapes the model reframes a video to (0100); empty unless it can. */
   reframeAspects: ExpandAspect[];
-  /** Looks the model draws a voice video in (0170); empty unless it can. */
+  /** Looks the model draws a voice video in (0171); empty unless it can. */
   explainerLooks: ExplainerLook[];
   /** Languages the model dubs into (0050); empty unless it can dub. */
   languages: string[];

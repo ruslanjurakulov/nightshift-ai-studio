@@ -1,4 +1,4 @@
-# Voice to 2D video (slice 1a: the engine; slice 1b: the Studio tool, migration 0170)
+# Voice to 2D video (slice 1a: the engine; slice 1b: the Studio tool, migration 0171)
 
 A person's own narration in, a 9:16 motion-graphics explainer out: every sentence gets a
 small kicker line, a big headline with one marked word, one drawn visual and an italic
@@ -54,7 +54,7 @@ A 30 s Uzbek narration (54 words, 8 sentences) rendered to 1080×1920 at 30 fps 
 with one Remotion worker, in a 4-core cloud container. The mixed audio's mean level was
 -24.9 dB against the narration's -23.7 dB, so the music does not drown the voice.
 
-## Slice 1b: "Voice to video" in the Studio (migration 0170)
+## Slice 1b: "Voice to video" in the Studio (migration 0171)
 
 A person picks one of their library recordings (their own narration, audio only, at most 600 s) and one of the five looks on
 the Studio's **Voice** desk, sees the database's price, and presses Generate. The creative worker draws the video on this
@@ -64,14 +64,14 @@ a full release on every failure (`create_creative_job`, 0036; nothing new in the
 
 | Part | Where |
 | :-- | :-- |
-| The capability `voice_explainer`: params, source, price, the CHECKs, the API's list | `supabase/migrations/0170_voice_video.sql` (rollback: `docs/sql/rollback_0170_voice_video.sql`) |
+| The capability `voice_explainer`: params, source, price, the CHECKs, the API's list | `supabase/migrations/0171_voice_video.sql` (rollback: `docs/sql/rollback_0171_voice_video.sql`) |
 | The adapter (our own engine, no vendor) | `modules/capabilities/voice_video.py` (`video.voice_explainer`) |
 | The registry entry (ships dark) | `schemas/model_registry.json` `nightshift-voice-explainer` (vendor model `voice-explainer-rules-1`) |
 | The worker's lists | `modules/creative_worker.py` (`SOURCE_` / `MEDIA_SOURCE_` / `AUDIO_SOURCE_CAPABILITIES`, `OUTPUT_KIND`) |
 | The Studio tool | `command-center/lib/creative/{operations,studio,desks}.ts`, `components/studio/GeneratePanel.tsx` (Voice desk) |
 | The worker image | `Dockerfile.worker`: Node 22, the engine (`npm ci`), Remotion's headless Chrome, its Debian libraries, Inter, the effects |
 
-### What the database decides (0170)
+### What the database decides (0171)
 
 - **params**: `source_asset_id` (required: an audio file of the organization's library) and `look` (required: one of
   `dusk`, `midnight`, `golden`, `neon`, `paper`, and one the model lists in `spec.explainer_looks`). Everything else is
@@ -112,7 +112,7 @@ No silent fallback anywhere (CLAUDE.md rule 4). Every refusal fails the job, rel
 
 The entry ships **hidden**: no `credit_prices` row, no probe, no availability. To sell it, in order:
 
-1. Apply 0170 (it is live on apply when merged) and deploy the worker image (Node, the engine, Chrome, Inter, the effects).
+1. Apply 0171 (it is live on apply when merged) and deploy the worker image (Node, the engine, Chrome, Inter, the effects).
 2. `tools/probe_models.py --sync` (Actions → Probe models), so the database has the row.
 3. Probe it **on the worker**, where the engine is: the probe proves that THIS machine renders, and the Actions runner has no
    engine (its probe answers `not_configured`, honestly). For example

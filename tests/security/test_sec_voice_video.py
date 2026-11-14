@@ -1,12 +1,12 @@
-"""Voice to video (0170) attacked in a real database.
+"""Voice to video (0171) attacked in a real database.
 
 A person's own narration (one AUDIO file of the organization's library) and a look in; a video drawn by our own engine out. The
 database alone decides whether the recording may be used (the SAME organization's, live, audio, a type the engine reads, of a
 measured length of at most 600 s, at most 200 MB), what the settings may be (a look of the closed list, one the model lists;
 nothing else), and what it costs: the recording's own measured seconds at the model's price per second, against the model's stated
 longest recording. Bob (org B) tries to use Alice's recording every way the API lets him; the answer must be exactly the answer for
-an id that does not exist, and nothing may be held. Every earlier capability must be answered exactly as before 0170 (a corpus is
-judged by 0170's bodies and by the earlier ones, side by side). The file itself: a replay changes nothing, a body edited by hand is
+an id that does not exist, and nothing may be held. Every earlier capability must be answered exactly as before 0171 (a corpus is
+judged by 0171's bodies and by the earlier ones, side by side). The file itself: a replay changes nothing, a body edited by hand is
 refused, and the rollback puts every earlier body and both CHECKs back byte for byte.
 
 Runs in its own scratch databases (it commits), like the 0100 lab.
@@ -98,7 +98,7 @@ def db():
         "b_mp3": media(d, ORG_B, "audio", "audio/mpeg", 8),
     }
     d.act("authenticated", UA, "select public.soft_delete_asset(%s)", [d.assets["a_deleted"]])
-    # An API key for each organization (the MCP Studio tools' door, 0162 / 0170).
+    # An API key for each organization (the MCP Studio tools' door, 0162 / 0171).
     d.su("insert into public.api_settings (org_id, activated_at, activated_by, terms_version) values "
          "(%s, now(), %s, 'v1'), (%s, now(), %s, 'v1')", [ORG_A, UA, ORG_B, UB])
     d.su("insert into public.api_accounts (org_id, balance_cents, paid_total_cents) values (%s, 0, 100000), (%s, 0, 100000)",
@@ -459,7 +459,7 @@ def test_anon_cannot_quote_or_list(db):
     assert e.value.sqlstate == "42501"
 
 
-# ── every earlier tool is answered exactly as before 0170 ──────────────────────────────────────────────────────────
+# ── every earlier tool is answered exactly as before 0171 ──────────────────────────────────────────────────────────
 
 def _function(path, name, rename):
     m = re.search(r"(?ms)^create or replace function public\.%s\(.*?^\$\$;\n" % name, path.read_text(encoding="utf-8"))
@@ -471,8 +471,8 @@ CAPS_BEFORE = ["t2i", "t2v", "i2v", "tts", "sfx", "music", "edit", "upscale", "r
 
 
 def test_every_other_capability_gets_the_same_params_and_source_answers_as_before(db):
-    db.su(_function(sec_db.MIGRATIONS / "0156_named_resolution_params.sql", "creative_params_problem", "zz_old_params_0170"))
-    db.su(_function(sec_db.MIGRATIONS / "0100_video_ai_ops.sql", "creative_source_problem", "zz_old_source_0170"))
+    db.su(_function(sec_db.MIGRATIONS / "0156_named_resolution_params.sql", "creative_params_problem", "zz_old_params_0171"))
+    db.su(_function(sec_db.MIGRATIONS / "0100_video_ai_ops.sql", "creative_source_problem", "zz_old_source_0171"))
     try:
         src = db.assets["a_mp3"]
         keys = {"prompt": ["x", "", 4], "aspect_ratio": ["16:9", "bad"], "resolution": ["720p", "768p", "9p"], "duration_s": [4, 0],
@@ -487,7 +487,7 @@ def test_every_other_capability_gets_the_same_params_and_source_answers_as_befor
         diffs = []
         for cap in CAPS_BEFORE:
             for p in corpus:
-                a = db.su("select public.creative_params_problem(%s, %s::jsonb), public.zz_old_params_0170(%s, %s::jsonb)",
+                a = db.su("select public.creative_params_problem(%s, %s::jsonb), public.zz_old_params_0171(%s, %s::jsonb)",
                           [cap, json.dumps(p), cap, json.dumps(p)])[0]
                 if a[0] != a[1]:
                     diffs.append((cap, p, a))
@@ -497,27 +497,27 @@ def test_every_other_capability_gets_the_same_params_and_source_answers_as_befor
             for key in db.assets:
                 p = json.dumps({"source_asset_id": db.assets[key], "end_asset_id": db.assets["a_png"]})
                 for org in (ORG_A, ORG_B):
-                    a = db.su("select public.creative_source_problem(%s, %s, %s::jsonb), public.zz_old_source_0170(%s, %s, %s::jsonb)",
+                    a = db.su("select public.creative_source_problem(%s, %s, %s::jsonb), public.zz_old_source_0171(%s, %s, %s::jsonb)",
                               [org, cap, p, org, cap, p])[0]
                     assert a[0] == a[1], (cap, key, org, a)
     finally:
-        db.su("drop function public.zz_old_params_0170(text, jsonb)")
-        db.su("drop function public.zz_old_source_0170(uuid, text, jsonb)")
+        db.su("drop function public.zz_old_params_0171(text, jsonb)")
+        db.su("drop function public.zz_old_source_0171(uuid, text, jsonb)")
 
 
 def test_sellable_models_answers_every_other_capability_as_before(db):
-    db.su(_function(sec_db.MIGRATIONS / "0125_model_shutdown.sql", "sellable_models", "zz_old_sellable_0170"))
+    db.su(_function(sec_db.MIGRATIONS / "0125_model_shutdown.sql", "sellable_models", "zz_old_sellable_0171"))
     try:
         for cap in [None, *(c for c in CAPS_BEFORE[:-2] if c != "music")]:  # music is no database capability (sellable_models 22023)
             for surface in ("web", "api", "mcp"):
                 new = db.su("select id, spec from public.sellable_models(%s, %s) order by id", [cap, surface])
-                old = db.su("select id, spec from public.zz_old_sellable_0170(%s, %s) order by id", [cap, surface])
+                old = db.su("select id, spec from public.zz_old_sellable_0171(%s, %s) order by id", [cap, surface])
                 # The only difference: the voice video models' own rows (listed with no capability named) carry their looks.
                 strip = lambda rows: [(i, {k: v for k, v in s.items() if k != "explainer_looks"}) for i, s in rows]
                 assert strip(new) == strip(old), (cap, surface)
                 assert all("explainer_looks" not in s for i, s in new if not i.startswith("vx")), (cap, surface)
     finally:
-        db.su("drop function public.zz_old_sellable_0170(text, text)")
+        db.su("drop function public.zz_old_sellable_0171(text, text)")
 
 
 # ── the file itself: order, drift guards, replay, rollback ─────────────────────────────────────────────────────────
@@ -553,8 +553,8 @@ def test_it_refuses_to_apply_on_a_body_it_was_not_written_on(db):
     try:
         before = _state(d)
         with pytest.raises(psycopg.Error) as e:
-            d.su(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))
-        assert "0170 found a creative_price() that is neither 0170's body nor the one it replaces" in str(e.value)
+            d.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8"))
+        assert "0171 found a creative_price() that is neither 0171's body nor the one it replaces" in str(e.value)
         assert _state(d) == before
     finally:
         sec_db.drop_database(db.admin, name)
@@ -564,65 +564,65 @@ def test_a_replay_changes_nothing_and_a_body_edited_by_hand_is_refused(db):
     name, d = _scratch(db.admin, sec_db.build_sequence(), "guard")
     try:
         before = _state(d)
-        d.su(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))
+        d.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8"))
         assert _state(d) == before
         for fn, sig in (("creative_source_problem", FUNCS["creative_source_problem"]), ("api_creative_models", FUNCS["api_creative_models"])):
             body = d.su(f"select pg_get_functiondef('{sig}'::regprocedure)")[0][0]
             d.su(body.replace("begin\n", "begin\n  -- edited by hand\n", 1))
             with pytest.raises(psycopg.Error) as e:
-                d.su(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))
-            assert f"0170 found a {fn}() that is neither 0170's body" in str(e.value), str(e.value)
+                d.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8"))
+            assert f"0171 found a {fn}() that is neither 0171's body" in str(e.value), str(e.value)
             d.su(body)
         # A CHECK widened by hand is refused too (it would be narrowed back without a word).
         d.su("alter table public.model_probe_runs drop constraint model_probe_runs_capability_check")
         d.su("alter table public.model_probe_runs add constraint model_probe_runs_capability_check check (capability is not null)")
         with pytest.raises(psycopg.Error) as e:
-            d.su(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))
-        assert "0170 found a model_probe_runs_capability_check" in str(e.value)
+            d.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8"))
+        assert "0171 found a model_probe_runs_capability_check" in str(e.value)
     finally:
         sec_db.drop_database(db.admin, name)
 
 
 def test_the_rollback_puts_everything_back_byte_for_byte_refuses_while_a_model_lists_it_and_the_file_applies_again(db):
-    name, d = _scratch(db.admin, [f for f in sec_db.build_sequence() if f.name != sec_db.MIGRATION_0170.name], "roll")
+    name, d = _scratch(db.admin, [f for f in sec_db.build_sequence() if f.name != sec_db.MIGRATION_0171.name], "roll")
     try:
         pre = _state(d)
-        d.su(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))
+        d.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8"))
         after = _state(d)
         assert after != pre
-        rb = sec_db.ROLLBACK_0170.read_text(encoding="utf-8")
+        rb = sec_db.ROLLBACK_0171.read_text(encoding="utf-8")
         d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(_rows()[:1])])
         with pytest.raises(psycopg.Error) as e:
             d.su(rb)
-        assert "rollback 0170 found a model row or a probe run for voice_explainer" in str(e.value)
+        assert "rollback 0171 found a model row or a probe run for voice_explainer" in str(e.value)
         assert _state(d) == after
         d.su("delete from public.model_registry where id = 'vx'")
         d.su(rb)
         assert _state(d) == pre, "byte for byte, grants included"
         assert d.su("select public.creative_capability_supported('voice_explainer')") == [(False,)]
-        d.su(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))   # and again on the rolled-back database
+        d.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8"))   # and again on the rolled-back database
         assert _state(d) == after
-        # The rollback refuses a body that is neither 0170's nor the earlier one.
+        # The rollback refuses a body that is neither 0171's nor the earlier one.
         body = d.su(f"select pg_get_functiondef('{FUNCS['creative_price']}'::regprocedure)")[0][0]
         d.su(body.replace("begin\n", "begin\n  -- edited by hand\n", 1))
         with pytest.raises(psycopg.Error) as e:
             d.su(rb)
-        assert "rollback 0170 found a creative_price() that is neither 0170's body nor the one 0170 replaced" in str(e.value)
+        assert "rollback 0171 found a creative_price() that is neither 0171's body nor the one 0171 replaced" in str(e.value)
     finally:
         sec_db.drop_database(db.admin, name)
 
 
-def test_the_lab_takes_0170_off_with_the_chain_and_puts_it_back(db):
+def test_the_lab_takes_0171_off_with_the_chain_and_puts_it_back(db):
     name, d = _scratch(db.admin, sec_db.build_sequence(), "chain")
     try:
         with psycopg.connect(d.dsn, autocommit=True) as c:
             s = type("S", (), {"conn": c})()
             before = _state(d)
-            assert sec_db.has_0170(c) and not sec_db.has_0159(c)
-            sec_db.take_off_0156(s)          # 0170 first, then 0159, then 0156
-            assert not sec_db.has_0170(c) and sec_db.has_0155(c)
+            assert sec_db.has_0171(c) and not sec_db.has_0159(c)
+            sec_db.take_off_0156(s)          # 0171 first, then 0159, then 0156
+            assert not sec_db.has_0171(c) and sec_db.has_0155(c)
             sec_db.put_back_0156(s)
-            assert sec_db.has_0170(c)
+            assert sec_db.has_0171(c)
             assert _state(d) == before
     finally:
         sec_db.drop_database(db.admin, name)

@@ -42,7 +42,7 @@ describe("the closed set of vendors", () => {
     // The registry names Google "google", ByteDance "bytedance", Alibaba "alibaba": the same ids as here, on purpose.
     // `unassigned-video-vendor` is a placeholder for the generic video ops, not a vendor.
     providers.delete("unassigned-video-vendor");
-    // `nightshift` is our own engine (voice_explainer, 0170): it calls no vendor, so it has no key.
+    // `nightshift` is our own engine (voice_explainer, 0171): it calls no vendor, so it has no key.
     providers.delete("nightshift");
     const missing = [...providers].filter((p) => !(MODEL_KEY_PROVIDER_IDS as readonly string[]).includes(p));
     expect(missing, `registry providers with no entry in lib/model-keys.ts: ${missing}`).toEqual([]);

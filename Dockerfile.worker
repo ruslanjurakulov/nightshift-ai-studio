@@ -11,7 +11,7 @@
 # same one-line policy fix, DejaVu fonts, requirements.txt.
 #
 # Node 22 and the Remotion engine (video-engine/, with its own headless Chrome)
-# are here for ONE consumer: the Studio's voice video (migration 0170,
+# are here for ONE consumer: the Studio's voice video (migration 0171,
 # modules/capabilities/voice_video.py), which the creative worker renders on
 # this machine. The pipeline's Remotion path (modules/remotion_renderer.py)
 # stays off unless CHRONOS_REMOTION=1, exactly as before: installing the engine

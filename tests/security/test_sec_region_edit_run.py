@@ -339,7 +339,7 @@ def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0126(db):
     diffs = []
     # 0156 replaced creative_params_problem on 0126's body (the resolution words, which this corpus touches with "9p"): judge 0126's own
     # body here, and put 0156 back after.
-    db.su(sec_db.rollback_0170_body())  # 0170 sits on 0159's creative_price: off first
+    db.su(sec_db.rollback_0171_body())  # 0171 sits on 0159's creative_price: off first
     db.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
     db.su(sec_db.rollback_0156_body())
     try:
@@ -347,7 +347,7 @@ def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0126(db):
     finally:
         db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))  # and 0159 back on it
-        db.su(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))  # and 0170 back on 0159's
+        db.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8"))  # and 0171 back on 0159's
     assert not diffs, diffs[:5]
 
 
@@ -789,7 +789,7 @@ def test_a_replay_changes_nothing_and_a_foreign_body_is_refused(db):
     try:
         text = MIGRATION.read_text(encoding="utf-8")
         # 0156 sits on 0126's creative_params_problem, and 0126's guard refuses any other body: it comes off first.
-        d.su(sec_db.rollback_0170_body())  # 0170 sits on 0159's creative_price: off first
+        d.su(sec_db.rollback_0171_body())  # 0171 sits on 0159's creative_price: off first
         d.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         d.su(sec_db.rollback_0156_body())
         mine = _md5s(d)  # the lab applied 0126 already
@@ -811,7 +811,7 @@ def test_the_rollback_restores_the_three_bodies_refuses_while_a_region_edit_is_i
     name, d = _fresh(admin, "roll")
     try:
         # 0156 sits on 0126's creative_params_problem, and 0126's rollback refuses any other body: it comes off first.
-        d.su(sec_db.rollback_0170_body())  # 0170 sits on 0159's creative_price: off first
+        d.su(sec_db.rollback_0171_body())  # 0171 sits on 0159's creative_price: off first
         d.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         d.su(sec_db.rollback_0156_body())
         mine = _md5s(d)
