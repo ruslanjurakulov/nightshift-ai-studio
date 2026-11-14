@@ -77,6 +77,8 @@ class Timing(unittest.TestCase):
                  {"word": "g", "start": 2.1, "end": 2.5},  # Whisper's shape counts the same
                  {"t": "h", "s": True, "e": 3.0}]         # a bool is not a time
         self.assertAlmostEqual(sc.timing_share(words, 3.0), 3 / 8)
+        # A numeric string is a time, as the job reads it (modules/captions), so it counts here too.
+        self.assertEqual(sc.timing_share([{"t": "a", "s": "0.1", "e": "0.4"}, {"t": "b", "s": "x", "e": 1.0}], 3.0), 0.5)
 
     def test_no_words_is_nothing_to_judge(self):
         self.assertIsNone(sc.timing_share([], 3.0))

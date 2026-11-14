@@ -14,7 +14,7 @@ For every recording and engine it reports:
   ``o‘`` compare equal). A plain word-level Levenshtein: no dependency. An empty reference has no WER ("n/a"), never 0.
   It is computed over EVERY word the engine returned, timed or not: what the engine heard in the narration the person
   hears. For Scribe that is the vendor's own list (``VoiceVideoAdapter.scribe(raw=True)``), not the job's, which leaves
-  out the words without times; how many of those the job could place is the next two columns.
+  out the words without times; ``timed`` says how many of them the job could place.
 * **words**: how many words the engine returned (for Scribe: every ``type: word`` entry with text, timed or not).
 * **timed**: the share of those words whose times are numbers, run forward (each start at or after the one before, each
   end at or after its start) and lie inside the recording. That is what the scenes and captions are cut on. Both engines
@@ -102,10 +102,11 @@ def wer(reference: str, hypothesis: str) -> Optional[float]:
 
 
 def _num(v) -> Optional[float]:
-    if isinstance(v, bool) or not isinstance(v, (int, float)):
-        return None
-    f = float(v)
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
+    """A time as the job reads one (modules/captions: a number or a numeric string, never a bool, NaN or infinity), so
+    ``timed`` counts what the job could place, not a stricter or looser rule of its own."""
+    from modules import captions  # noqa: PLC0415
+
+    return captions._seconds(v)
 
 
 def timing_share(words: Sequence[Mapping], duration_s: float) -> Optional[float]:
