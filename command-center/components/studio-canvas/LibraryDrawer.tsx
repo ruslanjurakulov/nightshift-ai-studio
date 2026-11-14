@@ -58,9 +58,9 @@ export function LibraryDrawer({
   const item = (a: DroppedAsset, thumb: string | null) => {
     const name = a.name || c.untitled;
     return (
-      <li key={a.id} className="sc-asset">
+      <li key={a.id} className="cv-asset">
         <div
-          className="sc-asset-tile"
+          className="cv-asset-tile"
           draggable={!sheet}
           onDragStart={(e) => {
             e.dataTransfer.setData(ASSET_MIME, JSON.stringify(a));
@@ -76,59 +76,59 @@ export function LibraryDrawer({
           ) : (
             <Film aria-hidden className="size-6" />
           )}
-          <span className="sc-asset-name">{name}</span>
+          <span className="cv-asset-name">{name}</span>
         </div>
-        <button type="button" className="sc-asset-add" onClick={() => onAdd(a)} aria-label={fmt(c.add, { name })} title={fmt(c.add, { name })}>
+        <button type="button" className="cv-asset-add" onClick={() => onAdd(a)} aria-label={fmt(c.add, { name })} title={fmt(c.add, { name })}>
           <Plus aria-hidden className="size-4" />
         </button>
       </li>
     );
   };
   return (
-    <aside className={sheet ? "sc-drawer is-sheet" : "sc-drawer"} aria-label={c.title} data-testid="canvas-library">
-      <header className="sc-inspector-head">
+    <aside className={sheet ? "cv-drawer is-sheet" : "cv-drawer"} aria-label={c.title} data-testid="canvas-library">
+      <header className="cv-inspector-head">
         <div className="min-w-0">
-          <h2 className="sc-inspector-title">{c.title}</h2>
-          <p className="sc-note">{c.hint}</p>
+          <h2 className="cv-inspector-title">{c.title}</h2>
+          <p className="cv-note">{c.hint}</p>
         </div>
-        <button type="button" className="sc-icon-btn" onClick={onClose} aria-label={c.close} title={c.close}>
+        <button type="button" className="cv-icon-btn" onClick={onClose} aria-label={c.close} title={c.close}>
           <X aria-hidden className="size-4" />
         </button>
       </header>
       {state === "loading" ? (
-        <p className="sc-note" role="status">
+        <p className="cv-note" role="status">
           {c.loading}
         </p>
       ) : state === "failed" ? (
         <div className="flex flex-col items-start gap-2">
-          <p className="sc-note is-fail">{c.failed}</p>
+          <p className="cv-note is-fail">{c.failed}</p>
           <button type="button" className="btn-quiet min-h-11 px-4 text-sm" onClick={onReload}>
             {c.retry}
           </button>
         </div>
       ) : state === "unavailable" ? (
-        <p className="sc-note">{c.unavailable}</p>
+        <p className="cv-note">{c.unavailable}</p>
       ) : images.length === 0 && recordings.length === 0 ? (
-        <p className="sc-note" data-testid="library-empty">
+        <p className="cv-note" data-testid="library-empty">
           {c.empty}
         </p>
       ) : (
         <>
           {images.length > 0 && (
             <>
-              <h3 className="sc-block-title">{c.pictures}</h3>
-              <ul className="sc-assets">{images.map((i) => item({ id: i.id, kind: "image", name: i.name }, i.thumbUrl))}</ul>
+              <h3 className="cv-block-title">{c.pictures}</h3>
+              <ul className="cv-assets">{images.map((i) => item({ id: i.id, kind: "image", name: i.name }, i.thumbUrl))}</ul>
             </>
           )}
           {recordings.length > 0 && (
             <>
-              <h3 className="sc-block-title">{c.recordings}</h3>
-              <ul className="sc-assets">{recordings.map((r) => item({ id: r.id, kind: r.kind, name: r.name }, r.thumbUrl))}</ul>
+              <h3 className="cv-block-title">{c.recordings}</h3>
+              <ul className="cv-assets">{recordings.map((r) => item({ id: r.id, kind: r.kind, name: r.name }, r.thumbUrl))}</ul>
             </>
           )}
         </>
       )}
-      <Link href={path("/library")} className="sc-text-btn mt-auto">
+      <Link href={path("/library")} className="cv-text-btn mt-auto">
         {c.openFull}
       </Link>
     </aside>

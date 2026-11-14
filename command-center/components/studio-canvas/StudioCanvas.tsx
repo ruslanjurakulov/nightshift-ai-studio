@@ -339,6 +339,22 @@ export function StudioCanvas({
     setView((v) => zoomAt(v, v.k * f, w / 2, h / 2));
   };
 
+  // A node opened in the inspector stays in view: the board narrows by the inspector's width, so pan it back if it went under.
+  useEffect(() => {
+    if (narrow || !inspecting || !selected) return;
+    const id = requestAnimationFrame(() => {
+      const n = canvas.nodes.find((m) => m.id === selected);
+      const w = boardRef.current?.getBoundingClientRect().width;
+      if (!n || !w) return;
+      const left = n.x * canvas.view.k + canvas.view.x;
+      const right = left + NODE_W * canvas.view.k;
+      const shift = right > w - 24 ? w - 24 - right : left < 24 ? 24 - left : 0;
+      if (shift) setCanvas((s) => ({ ...s, view: { ...s.view, x: s.view.x + shift } }));
+    });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspecting, selected, narrow]);
+
   // First open with a stored layout and no stored view: show all of it.
   const fitted = useRef(false);
   useEffect(() => {
@@ -404,14 +420,14 @@ export function StudioCanvas({
     if (narrow) return;
     const el = rootRef.current;
     if (!el) return;
-    const size = () => el.style.setProperty("--sc-top", `${Math.max(0, el.getBoundingClientRect().top + window.scrollY)}px`);
+    const size = () => el.style.setProperty("--cv-top", `${Math.max(0, el.getBoundingClientRect().top + window.scrollY)}px`);
     size();
     window.addEventListener("resize", size);
     return () => window.removeEventListener("resize", size);
   }, [narrow]);
 
   const status = (
-    <div className="sc-strip" data-testid="canvas-status">
+    <div className="cv-strip" data-testid="canvas-status">
       {canvas.nodes.length === 0 ? (
         <span>{c.statusEmpty}</span>
       ) : (
@@ -425,7 +441,7 @@ export function StudioCanvas({
           {!!counts.closed && <StatusLamp tone="idle" label={fmt(c.statusClosed, { n: counts.closed })} />}
         </>
       )}
-      {!saved && <span className="sc-strip-note">{c.notSaved}</span>}
+      {!saved && <span className="cv-strip-note">{c.notSaved}</span>}
     </div>
   );
 
@@ -503,9 +519,9 @@ export function StudioCanvas({
 
   if (!loaded) {
     return (
-      <div className="sc-root" data-studio-canvas="" ref={rootRef}>
+      <div className="cv-root" data-studio-canvas="" ref={rootRef}>
         {bar}
-        <p className="sc-loading" role="status">
+        <p className="cv-loading" role="status">
           {c.loading}
         </p>
       </div>
@@ -514,11 +530,11 @@ export function StudioCanvas({
 
   if (narrow) {
     return (
-      <div className="sc-root is-flow" data-studio-canvas="" ref={rootRef}>
+      <div className="cv-root is-flow" data-studio-canvas="" ref={rootRef}>
         {bar}
         {status}
         {live}
-        {notice && <p className="sc-toast">{notice}</p>}
+        {notice && <p className="cv-toast">{notice}</p>}
         {firstRun ?? (
           <FlowView
             canvas={canvas}
@@ -532,18 +548,18 @@ export function StudioCanvas({
             }}
           />
         )}
-        <div className="sc-flow-dock" role="toolbar" aria-label={c.dock.label}>
-          <button type="button" className="sc-dock-btn" onClick={() => setPalette("add")}>
+        <div className="cv-flow-dock" role="toolbar" aria-label={c.dock.label}>
+          <button type="button" className="cv-dock-btn" onClick={() => setPalette("add")}>
             <Plus aria-hidden className="size-4" /> {c.dock.add}
           </button>
-          <button type="button" className="sc-dock-btn" onClick={() => setDrawer(true)} aria-label={c.dock.library} title={c.dock.library}>
+          <button type="button" className="cv-dock-btn" onClick={() => setDrawer(true)} aria-label={c.dock.library} title={c.dock.library}>
             <Layers aria-hidden className="size-4" />
           </button>
           <QuoteKey node={sel} onOpen={() => setInspecting(true)} />
         </div>
         {(inspector || drawerEl) && (
           <div
-            className="sc-sheet-scrim"
+            className="cv-sheet-scrim"
             onClick={() => {
               setInspecting(false);
               setDrawer(false);
@@ -559,10 +575,10 @@ export function StudioCanvas({
   }
 
   return (
-    <div className="sc-root" data-studio-canvas="" ref={rootRef} data-mode={space ? "hand" : mode}>
+    <div className="cv-root" data-studio-canvas="" ref={rootRef} data-mode={space ? "hand" : mode}>
       {bar}
       {status}
-      <div className="sc-main">
+      <div className="cv-main">
         {drawerEl}
         <Board
           boardRef={boardRef}
@@ -585,47 +601,47 @@ export function StudioCanvas({
         >
           {firstRun}
           {!firstRun && canvas.nodes.length === 0 && (
-            <p className="sc-empty-hint">{c.firstRun.blank.desc}</p>
+            <p className="cv-empty-hint">{c.firstRun.blank.desc}</p>
           )}
-          {notice && <p className="sc-toast">{notice}</p>}
+          {notice && <p className="cv-toast">{notice}</p>}
           {live}
         </Board>
         {inspector}
       </div>
-      <div className="sc-dock" role="toolbar" aria-label={c.dock.label}>
-        <button type="button" className="sc-dock-btn" onClick={() => setPalette("add")} aria-haspopup="dialog" data-testid="dock-add">
+      <div className="cv-dock" role="toolbar" aria-label={c.dock.label}>
+        <button type="button" className="cv-dock-btn" onClick={() => setPalette("add")} aria-haspopup="dialog" data-testid="dock-add">
           <Plus aria-hidden className="size-4" /> {c.dock.add}
         </button>
-        <button type="button" className="sc-dock-btn" aria-pressed={drawer} onClick={() => setDrawer((d) => !d)} data-testid="dock-library">
+        <button type="button" className="cv-dock-btn" aria-pressed={drawer} onClick={() => setDrawer((d) => !d)} data-testid="dock-library">
           <Layers aria-hidden className="size-4" /> {c.dock.library}
         </button>
-        <div className="sc-seg" role="group">
-          <button type="button" className="sc-dock-btn" aria-pressed={mode === "select"} onClick={() => setMode("select")} aria-label={c.dock.select} title={c.dock.select}>
+        <div className="cv-seg" role="group">
+          <button type="button" className="cv-dock-btn" aria-pressed={mode === "select"} onClick={() => setMode("select")} aria-label={c.dock.select} title={c.dock.select}>
             <MousePointer2 aria-hidden className="size-4" />
           </button>
-          <button type="button" className="sc-dock-btn" aria-pressed={mode === "hand"} onClick={() => setMode("hand")} aria-label={c.dock.hand} title={c.dock.hand}>
+          <button type="button" className="cv-dock-btn" aria-pressed={mode === "hand"} onClick={() => setMode("hand")} aria-label={c.dock.hand} title={c.dock.hand}>
             <Hand aria-hidden className="size-4" />
           </button>
         </div>
-        <button type="button" className="sc-dock-btn" onClick={() => setCanvas((s) => tidy(s))} disabled={canvas.nodes.length < 2}>
+        <button type="button" className="cv-dock-btn" onClick={() => setCanvas((s) => tidy(s))} disabled={canvas.nodes.length < 2}>
           <LayoutGrid aria-hidden className="size-4" /> {c.dock.tidy}
         </button>
-        <div className="sc-seg" role="group">
-          <button type="button" className="sc-dock-btn" onClick={() => zoomBy(1 / 1.2)} aria-label={c.dock.zoomOut} title={c.dock.zoomOut}>
+        <div className="cv-seg" role="group">
+          <button type="button" className="cv-dock-btn" onClick={() => zoomBy(1 / 1.2)} aria-label={c.dock.zoomOut} title={c.dock.zoomOut}>
             <Minus aria-hidden className="size-4" />
           </button>
-          <span className="sc-zoom" aria-live="off" title={fmt(c.dock.zoom, { n: Math.round(canvas.view.k * 100) })}>
+          <span className="cv-zoom" aria-live="off" title={fmt(c.dock.zoom, { n: Math.round(canvas.view.k * 100) })}>
             {Math.round(canvas.view.k * 100)}%
           </span>
-          <button type="button" className="sc-dock-btn" onClick={() => zoomBy(1.2)} aria-label={c.dock.zoomIn} title={c.dock.zoomIn}>
+          <button type="button" className="cv-dock-btn" onClick={() => zoomBy(1.2)} aria-label={c.dock.zoomIn} title={c.dock.zoomIn}>
             <ZoomIn aria-hidden className="size-4" />
           </button>
-          <button type="button" className="sc-dock-btn" onClick={() => fit()} aria-label={c.dock.fit} title={c.dock.fit}>
+          <button type="button" className="cv-dock-btn" onClick={() => fit()} aria-label={c.dock.fit} title={c.dock.fit}>
             <Maximize aria-hidden className="size-4" />
           </button>
         </div>
-        <span className="sc-dock-spacer" />
-        <span className="sc-dock-note">{c.nothingSpends}</span>
+        <span className="cv-dock-spacer" />
+        <span className="cv-dock-note">{c.nothingSpends}</span>
         <QuoteKey node={sel} onOpen={() => setInspecting(true)} />
       </div>
       {paletteEl}
@@ -639,7 +655,7 @@ function QuoteKey({ node, onOpen }: { node: CanvasNode | null; onOpen: () => voi
   const c = t.studioCanvas;
   const can = !!node && node.kind !== "asset";
   return (
-    <button type="button" className="sc-quote" disabled={!can} onClick={onOpen} title={can ? c.quote : c.quoteHint} data-testid="dock-quote">
+    <button type="button" className="cv-quote" disabled={!can} onClick={onOpen} title={can ? c.quote : c.quoteHint} data-testid="dock-quote">
       {c.quote}
     </button>
   );
@@ -678,25 +694,25 @@ function ProjectBar({
   }, [open]);
   const tiles = studioTilesFor(operator, features).filter((x) => x.key !== "create" && x.key !== "editor");
   return (
-    <div className="sc-bar">
+    <div className="cv-bar">
       <div className="relative" ref={menu}>
-        <button type="button" className="sc-switch" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((o) => !o)} aria-label={c.switcher} data-testid="project-switcher">
+        <button type="button" className="cv-switch" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((o) => !o)} aria-label={c.switcher} data-testid="project-switcher">
           <span className="flex min-w-0 flex-col items-start leading-tight">
-            <span className="sc-switch-title">{c.sketch}</span>
-            <span className="sc-switch-sub">{c.sketchSub}</span>
+            <span className="cv-switch-title">{c.sketch}</span>
+            <span className="cv-switch-sub">{c.sketchSub}</span>
           </span>
           <ChevronDown aria-hidden className="size-4 shrink-0" />
         </button>
         {open && (
-          <div className="sc-menu" role="menu" aria-label={c.switcher}>
-            <p className="sc-menu-group">{c.views}</p>
+          <div className="cv-menu" role="menu" aria-label={c.switcher}>
+            <p className="cv-menu-group">{c.views}</p>
             <MenuLink href={path("/studio")} icon={<Check aria-hidden className="size-4" />} label={c.viewCanvas} current />
             <MenuLink href={path("/studio?shelf=videos")} icon={<Film aria-hidden className="size-4" />} label={c.viewVideos} />
             <MenuLink href={path("/studio?shelf=projects")} icon={<ICONS.editor aria-hidden className="size-4" />} label={c.viewEditor} />
             {filmStudio && (
               <MenuLink href={path("/create/projects")} icon={<Projector aria-hidden className="size-4" />} label={c.projects} sub={c.projectsSub} testid="menu-projects" />
             )}
-            <p className="sc-menu-group">{c.tools}</p>
+            <p className="cv-menu-group">{c.tools}</p>
             {tiles.map((tile) => {
               const Icon = tile.key === "presets" ? LayoutGrid : ICONS[tile.key];
               return <MenuLink key={tile.href} href={path(tile.href)} icon={<Icon aria-hidden className="size-4" />} label={tile.key === "presets" ? t.presets.title : t.nav[tile.key]} />;
@@ -705,15 +721,15 @@ function ProjectBar({
         )}
       </div>
       {/* Brand look, one click from where its old bookmark lands (STUDIO_IA.md §9.1). */}
-      <Link href={path("/studio/look")} className="sc-chip-link" data-testid="channel-look-chip">
+      <Link href={path("/studio/look")} className="cv-chip-link" data-testid="channel-look-chip" aria-label={t.studioHub.channelLook} title={t.studioHub.channelLook}>
         <Palette aria-hidden className="size-4" />
-        <span>{t.studioHub.channelLook}</span>
+        <span className="cv-chip-label">{t.studioHub.channelLook}</span>
       </Link>
-      <span className="sc-bar-spacer" />
-      <button type="button" className="sc-search" onClick={onSearch} data-testid="canvas-search">
+      <span className="cv-bar-spacer" />
+      <button type="button" className="cv-search" onClick={onSearch} data-testid="canvas-search">
         <Search aria-hidden className="size-4" />
-        <span className="sc-search-label">{c.search}</span>
-        <kbd className="sc-kbd">⌘K</kbd>
+        <span className="cv-search-label">{c.search}</span>
+        <kbd className="cv-kbd">⌘K</kbd>
       </button>
     </div>
   );
@@ -721,11 +737,11 @@ function ProjectBar({
 
 function MenuLink({ href, icon, label, sub, current = false, testid }: { href: string; icon: ReactNode; label: string; sub?: string; current?: boolean; testid?: string }) {
   return (
-    <Link href={href} role="menuitem" className="sc-menu-item" aria-current={current ? "page" : undefined} data-testid={testid}>
+    <Link href={href} role="menuitem" className="cv-menu-item" aria-current={current ? "page" : undefined} data-testid={testid}>
       {icon}
       <span className="flex min-w-0 flex-col">
         <span>{label}</span>
-        {sub && <span className="sc-note">{sub}</span>}
+        {sub && <span className="cv-note">{sub}</span>}
       </span>
     </Link>
   );
@@ -791,7 +807,7 @@ function Board({
     const el = boardRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if ((e.target as Element).closest(".sc-map")) return;
+      if ((e.target as Element).closest(".cv-map")) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey) {
@@ -815,7 +831,7 @@ function Board({
     }
     if (e.button !== 0 && e.pointerType === "mouse") return;
     const target = e.target as Element;
-    if (target.closest(".sc-map, .sc-firstrun, .sc-toast")) return;
+    if (target.closest(".cv-map, .cv-firstrun, .cv-toast")) return;
     const port = target.closest<HTMLElement>("[data-port-out]");
     if (port && !hand) {
       drag.current = { kind: "wire", from: port.dataset.portOut! };
@@ -880,7 +896,7 @@ function Board({
   return (
     <div
       ref={boardRef}
-      className="sc-board"
+      className="cv-board"
       data-hand={hand ? "true" : undefined}
       style={{ backgroundPosition: `${view.x}px ${view.y}px`, backgroundSize: `${24 * view.k}px ${24 * view.k}px` }}
       onPointerDown={onPointerDown}
@@ -907,17 +923,17 @@ function Board({
       }}
       data-testid="canvas-board"
     >
-      <div className="sc-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
-        <svg className="sc-wires" aria-hidden>
+      <div className="cv-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
+        <svg className="cv-wires" aria-hidden>
           {canvas.wires.map((w) => {
             const a = nodesById.get(w.from);
             const b = nodesById.get(w.to);
             if (!a || !b) return null;
             const type = outputType(canvas, a) ?? "image";
             const working = statusOf(a) === "working" || statusOf(b) === "working";
-            return <path key={w.id} d={wirePath(a, b)} className={`sc-wire is-${type}${working ? " is-live" : ""}`} data-wire={`${w.from}->${w.to}`} />;
+            return <path key={w.id} d={wirePath(a, b)} className={`cv-wire is-${type}${working ? " is-live" : ""}`} data-wire={`${w.from}->${w.to}`} />;
           })}
-          {from && tip && <path d={wirePath(from, { x: tip.x, y: tip.y - NODE_H / 2 })} className="sc-wire is-draft" />}
+          {from && tip && <path d={wirePath(from, { x: tip.x, y: tip.y - NODE_H / 2 })} className="cv-wire is-draft" />}
         </svg>
         {canvas.nodes.map((n) => (
           <NodeCard
@@ -940,7 +956,7 @@ function Board({
       </div>
       {children}
       {canvas.nodes.length > 0 && (showMap ? <Minimap canvas={canvas} boardRef={boardRef} onCentre={setView} onHide={onToggleMap} /> : (
-        <button type="button" className="sc-map-show" onClick={onToggleMap}>
+        <button type="button" className="cv-map-show" onClick={onToggleMap}>
           {c.mapShow}
         </button>
       ))}
@@ -984,7 +1000,7 @@ function NodeCard({
   const line = statusLine(t, status, job, accepts);
   return (
     <div
-      className="sc-node"
+      className="cv-node"
       data-node-id={node.id}
       data-kind={node.kind}
       data-status={status}
@@ -995,28 +1011,28 @@ function NodeCard({
       aria-label={`${name}: ${line}`}
     >
       {spec.accepts.length > 0 && (
-        <span className={`sc-port sc-port-in is-${spec.accepts[0]}`} data-port-in={node.id} title={fmt(c.ports.in, { kinds: accepts })}>
+        <span className={`cv-port cv-port-in is-${spec.accepts[0]}`} data-port-in={node.id} title={fmt(c.ports.in, { kinds: accepts })}>
           <span aria-hidden>{spec.accepts.map((k) => PORT_LETTER[k]).join("")}</span>
         </span>
       )}
-      <button type="button" className="sc-node-head" onClick={onOpen} aria-pressed={selected}>
+      <button type="button" className="cv-node-head" onClick={onOpen} aria-pressed={selected}>
         <Icon aria-hidden className="size-4 shrink-0" />
         <span className="truncate">{name}</span>
       </button>
-      <div className="sc-node-body" aria-hidden={!thumb}>
+      <div className="cv-node-body" aria-hidden={!thumb}>
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={thumb} alt="" draggable={false} />
         ) : (
-          <Icon aria-hidden className="sc-node-glyph" />
+          <Icon aria-hidden className="cv-node-glyph" />
         )}
       </div>
-      <div className="sc-node-foot">
+      <div className="cv-node-foot">
         <StatusLamp tone={LAMP[status]} live={status === "working"} label={line} />
-        {sourceName && <span className="sc-node-sub">{fmt(c.node.from, { name: sourceName })}</span>}
+        {sourceName && <span className="cv-node-sub">{fmt(c.node.from, { name: sourceName })}</span>}
       </div>
       {out && (
-        <span className={`sc-port sc-port-out is-${out}`} data-port-out={node.id} title={`${fmt(c.ports.out, { kind: c.ports[out] })} · ${c.wire.drag}`}>
+        <span className={`cv-port cv-port-out is-${out}`} data-port-out={node.id} title={`${fmt(c.ports.out, { kind: c.ports[out] })} · ${c.wire.drag}`}>
           <span aria-hidden>{PORT_LETTER[out]}</span>
         </span>
       )}
@@ -1077,10 +1093,10 @@ function Minimap({
   const minY = Math.min(...ys);
   const s = Math.min(W / (Math.max(...xs) - minX || 1), H / (Math.max(...ys) - minY || 1));
   return (
-    <div className="sc-map">
-      <div className="sc-map-head">
+    <div className="cv-map">
+      <div className="cv-map-head">
         <span>{c.map}</span>
-        <button type="button" className="sc-icon-btn is-small" onClick={onHide} aria-label={c.mapHide} title={c.mapHide}>
+        <button type="button" className="cv-icon-btn is-small" onClick={onHide} aria-label={c.mapHide} title={c.mapHide}>
           <X aria-hidden className="size-3.5" />
         </button>
       </div>
@@ -1097,9 +1113,9 @@ function Minimap({
         }}
       >
         {canvas.nodes.map((n) => (
-          <rect key={n.id} x={(n.x - minX) * s} y={(n.y - minY) * s} width={NODE_W * s} height={NODE_H * s} rx={2} className="sc-map-node" />
+          <rect key={n.id} x={(n.x - minX) * s} y={(n.y - minY) * s} width={NODE_W * s} height={NODE_H * s} rx={2} className="cv-map-node" />
         ))}
-        <rect x={(tl.x - minX) * s} y={(tl.y - minY) * s} width={(br.x - tl.x) * s} height={(br.y - tl.y) * s} className="sc-map-view" />
+        <rect x={(tl.x - minX) * s} y={(tl.y - minY) * s} width={(br.x - tl.x) * s} height={(br.y - tl.y) * s} className="cv-map-view" />
       </svg>
     </div>
   );
@@ -1146,9 +1162,9 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
   const shown = needle ? items.filter((i) => `${i.label} ${i.sub}`.toLowerCase().includes(needle)) : items;
   const pick = (i: Item | undefined) => i?.run();
   return (
-    <div className="sc-palette-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="sc-palette" role="dialog" aria-modal="true" aria-label={mode === "add" ? c.add.title : c.palette.label} data-testid="canvas-palette">
-        <div className="sc-palette-head">
+    <div className="cv-palette-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="cv-palette" role="dialog" aria-modal="true" aria-label={mode === "add" ? c.add.title : c.palette.label} data-testid="canvas-palette">
+        <div className="cv-palette-head">
           <Search aria-hidden className="size-4" />
           <input
             ref={input}
@@ -1172,22 +1188,22 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
             }}
             placeholder={c.palette.placeholder}
             aria-label={c.palette.placeholder}
-            className="sc-palette-input"
+            className="cv-palette-input"
           />
-          <button type="button" className="sc-icon-btn" onClick={onClose} aria-label={c.add.close} title={c.add.close}>
+          <button type="button" className="cv-icon-btn" onClick={onClose} aria-label={c.add.close} title={c.add.close}>
             <X aria-hidden className="size-4" />
           </button>
         </div>
-        <ul className="sc-palette-list" role="listbox" aria-label={c.palette.label}>
-          {shown.length === 0 && <li className="sc-note px-3 py-2">{c.palette.empty}</li>}
+        <ul className="cv-palette-list" role="listbox" aria-label={c.palette.label}>
+          {shown.length === 0 && <li className="cv-note px-3 py-2">{c.palette.empty}</li>}
           {shown.map((i, n) => (
             <li key={i.id}>
-              {(n === 0 || shown[n - 1].group !== i.group) && <p className="sc-menu-group">{i.group === "add" ? c.palette.addGroup : c.palette.openGroup}</p>}
+              {(n === 0 || shown[n - 1].group !== i.group) && <p className="cv-menu-group">{i.group === "add" ? c.palette.addGroup : c.palette.openGroup}</p>}
               <button
                 type="button"
                 role="option"
                 aria-selected={n === active}
-                className="sc-palette-item"
+                className="cv-palette-item"
                 data-closed={i.closed ? "true" : undefined}
                 onMouseEnter={() => setActive(n)}
                 onClick={() => pick(i)}
@@ -1196,13 +1212,13 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
                 <i.Icon aria-hidden className="size-4 shrink-0" />
                 <span className="flex min-w-0 flex-col text-left">
                   <span className="font-semibold">{i.label}</span>
-                  {i.sub && <span className="sc-note">{i.sub}</span>}
+                  {i.sub && <span className="cv-note">{i.sub}</span>}
                 </span>
               </button>
             </li>
           ))}
         </ul>
-        <p className="sc-palette-foot">{c.palette.hint}</p>
+        <p className="cv-palette-foot">{c.palette.hint}</p>
       </div>
     </div>
   );
@@ -1215,32 +1231,32 @@ function FirstRun({ filmStudio, onRecipe, onBlank }: { filmStudio: boolean; onRe
   const c = t.studioCanvas.firstRun;
   const path = useChannelPath();
   return (
-    <section className="sc-firstrun" aria-labelledby="sc-firstrun-title" data-testid="canvas-first-run">
-      <h2 id="sc-firstrun-title" className="sc-firstrun-title">
+    <section className="cv-firstrun" aria-labelledby="cv-firstrun-title" data-testid="canvas-first-run">
+      <h2 id="cv-firstrun-title" className="cv-firstrun-title">
         {c.title}
       </h2>
-      <p className="sc-firstrun-lead">{c.lead}</p>
-      <p className="sc-menu-group">{c.from}</p>
-      <ul className="sc-recipes">
+      <p className="cv-firstrun-lead">{c.lead}</p>
+      <p className="cv-menu-group">{c.from}</p>
+      <ul className="cv-recipes">
         {RECIPES.map((r) => (
           <li key={r}>
-            <button type="button" className="sc-recipe" onClick={() => onRecipe(r)} data-testid={`recipe-${r}`}>
+            <button type="button" className="cv-recipe" onClick={() => onRecipe(r)} data-testid={`recipe-${r}`}>
               <span className="font-semibold">{c[r].name}</span>
-              <span className="sc-note">{c[r].desc}</span>
+              <span className="cv-note">{c[r].desc}</span>
             </button>
           </li>
         ))}
         <li>
-          <button type="button" className="sc-recipe" onClick={onBlank} data-testid="recipe-blank">
+          <button type="button" className="cv-recipe" onClick={onBlank} data-testid="recipe-blank">
             <span className="font-semibold">{c.blank.name}</span>
-            <span className="sc-note">{c.blank.desc}</span>
+            <span className="cv-note">{c.blank.desc}</span>
           </button>
         </li>
         {filmStudio && (
           <li>
-            <Link href={path("/create/projects")} className="sc-recipe" data-testid="recipe-projects">
+            <Link href={path("/create/projects")} className="cv-recipe" data-testid="recipe-projects">
               <span className="font-semibold">{t.studioCanvas.projects}</span>
-              <span className="sc-note">{t.studioCanvas.projectsSub}</span>
+              <span className="cv-note">{t.studioCanvas.projectsSub}</span>
             </Link>
           </li>
         )}
@@ -1274,17 +1290,17 @@ function FlowView({
     { id: "make", nodes: order.filter((n) => depthOf(canvas, n.id) === 1) },
     { id: "finish", nodes: order.filter((n) => depthOf(canvas, n.id) >= 2) },
   ];
-  if (canvas.nodes.length === 0) return <p className="sc-empty-hint is-flow">{c.firstRun.blank.desc}</p>;
+  if (canvas.nodes.length === 0) return <p className="cv-empty-hint is-flow">{c.firstRun.blank.desc}</p>;
   return (
-    <div className="sc-flow" aria-label={c.flow.label}>
+    <div className="cv-flow" aria-label={c.flow.label}>
       {groups
         .filter((g) => g.nodes.length > 0)
         .map((g) => (
-          <section key={g.id} className="sc-flow-group" aria-labelledby={`flow-${g.id}`}>
-            <h2 id={`flow-${g.id}`} className="sc-flow-title">
+          <section key={g.id} className="cv-flow-group" aria-labelledby={`flow-${g.id}`}>
+            <h2 id={`flow-${g.id}`} className="cv-flow-title">
               {c.flow[g.id]}
             </h2>
-            <ul className="sc-flow-list">
+            <ul className="cv-flow-list">
               {g.nodes.map((n) => {
                 const s = statusOf(n);
                 const Icon = KIND_ICONS[n.kind];
@@ -1296,10 +1312,10 @@ function FlowView({
                 const accepts = KIND_SPEC[n.kind].accepts.map((k) => c.ports[k]).join(" / ");
                 return (
                   <li key={n.id}>
-                    <button type="button" className="sc-flow-card" data-status={s} onClick={() => onOpen(n.id)} data-testid={`flow-node-${n.kind}`}>
+                    <button type="button" className="cv-flow-card" data-status={s} onClick={() => onOpen(n.id)} data-testid={`flow-node-${n.kind}`}>
                       {thumb && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={thumb} alt="" className="sc-flow-thumb" />
+                        <img src={thumb} alt="" className="cv-flow-thumb" />
                       )}
                       <span className="flex items-center gap-2 font-semibold">
                         <Icon aria-hidden className="size-4 shrink-0" />
@@ -1307,9 +1323,9 @@ function FlowView({
                       </span>
                       <StatusLamp tone={LAMP[s]} live={s === "working"} label={statusLine(t, s, job, accepts)} />
                       {KIND_SPEC[n.kind].accepts.length > 0 && (
-                        <span className="sc-flow-inputs">
-                          <span className="sc-note">{c.flow.inputs}:</span>{" "}
-                          {input ? <span className="sc-chip">{fmt(c.node.from, { name: nodeName(input.from) })}</span> : <span className="sc-chip is-empty">{c.flow.noInputs}</span>}
+                        <span className="cv-flow-inputs">
+                          <span className="cv-note">{c.flow.inputs}:</span>{" "}
+                          {input ? <span className="cv-chip">{fmt(c.node.from, { name: nodeName(input.from) })}</span> : <span className="cv-chip is-empty">{c.flow.noInputs}</span>}
                         </span>
                       )}
                     </button>

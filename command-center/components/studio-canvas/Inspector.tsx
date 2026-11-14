@@ -24,6 +24,9 @@ import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
 import type { LibraryPreview } from "@/components/studio/useLibraryImages";
 import { inputOf, wireCandidates, type JobReading, type NodeStatus } from "./nodeState";
+// The composer's desk layout (its tool tabs) and its "not available" styles: the same sheets /create loads for it.
+import "@/components/studio/desk.css";
+import "@/components/studio/availability.css";
 
 export interface PanelData {
   orgId: string | null;
@@ -137,38 +140,38 @@ export function Inspector({
   const preview = job?.result_asset_ids[0] ? previews.get(job.result_asset_ids[0]) : undefined;
 
   return (
-    <aside className={sheet ? "sc-inspector is-sheet" : "sc-inspector"} aria-label={c.inspector.label} data-testid="canvas-inspector" style={dock}>
-      <header className="sc-inspector-head">
+    <aside className={sheet ? "cv-inspector is-sheet" : "cv-inspector"} aria-label={c.inspector.label} data-testid="canvas-inspector" style={dock}>
+      <header className="cv-inspector-head">
         <div className="min-w-0">
-          <p className="sc-eyebrow">{c.inspector.label}</p>
-          <h2 className="sc-inspector-title">{nodeName(node)}</h2>
+          <p className="cv-eyebrow">{c.inspector.label}</p>
+          <h2 className="cv-inspector-title">{nodeName(node)}</h2>
         </div>
-        <button type="button" className="sc-icon-btn" onClick={onClose} aria-label={c.inspector.close} title={c.inspector.close}>
+        <button type="button" className="cv-icon-btn" onClick={onClose} aria-label={c.inspector.close} title={c.inspector.close}>
           <X aria-hidden className="size-4" />
         </button>
       </header>
 
       {spec.accepts.length > 0 && (
-        <section className="sc-inspector-block" aria-label={c.inspector.inputs}>
-          <h3 className="sc-block-title">{c.inspector.inputs}</h3>
+        <section className="cv-inspector-block" aria-label={c.inspector.inputs}>
+          <h3 className="cv-block-title">{c.inspector.inputs}</h3>
           {input ? (
-            <div className="sc-input-row">
-              <span className="sc-chip">{fmt(c.node.from, { name: nodeName(input.from) })}</span>
-              <button type="button" className="sc-text-btn" onClick={onDisconnect}>
+            <div className="cv-input-row">
+              <span className="cv-chip">{fmt(c.node.from, { name: nodeName(input.from) })}</span>
+              <button type="button" className="cv-text-btn" onClick={onDisconnect}>
                 <Unplug aria-hidden className="size-3.5" /> {c.inspector.disconnect}
               </button>
             </div>
           ) : (
-            <p className={spec.required ? "sc-note is-warn" : "sc-note"} data-testid="inspector-needs">
+            <p className={spec.required ? "cv-note is-warn" : "cv-note"} data-testid="inspector-needs">
               {spec.required ? fmt(c.node.needsInput, { kinds: accepts }) : c.inspector.inputNone}
             </p>
           )}
-          {input && !input.assetId && <p className="sc-note">{c.inspector.waitingInput}</p>}
-          <label className="sc-field">
-            <span className="sc-field-label">{c.inspector.pick}</span>
+          {input && !input.assetId && <p className="cv-note">{c.inspector.waitingInput}</p>}
+          <label className="cv-field">
+            <span className="cv-field-label">{c.inspector.pick}</span>
             {candidates.length > 0 ? (
               <select
-                className="sc-select"
+                className="cv-select"
                 value={input?.from.id ?? ""}
                 onChange={(e) => (e.target.value ? onWire(e.target.value) : onDisconnect())}
                 data-testid="inspector-wire"
@@ -181,17 +184,17 @@ export function Inspector({
                 ))}
               </select>
             ) : (
-              <span className="sc-note">{fmt(c.inspector.pickNone, { kinds: accepts })}</span>
+              <span className="cv-note">{fmt(c.inspector.pickNone, { kinds: accepts })}</span>
             )}
           </label>
         </section>
       )}
 
       {node.kind === "effects" && !closed && (
-        <section className="sc-inspector-block">
-          <h3 className="sc-block-title">{effect ? t.effects.items[effect.id].name : c.inspector.effectPick}</h3>
+        <section className="cv-inspector-block">
+          <h3 className="cv-block-title">{effect ? t.effects.items[effect.id].name : c.inspector.effectPick}</h3>
           {effect ? (
-            <button type="button" className="sc-text-btn" onClick={() => onEffect(null)}>
+            <button type="button" className="cv-text-btn" onClick={() => onEffect(null)}>
               {c.inspector.effectChange}
             </button>
           ) : (
@@ -201,23 +204,23 @@ export function Inspector({
       )}
 
       {job && (
-        <section className="sc-inspector-block" data-testid="inspector-result">
-          <h3 className="sc-block-title">{c.inspector.resultTitle}</h3>
-          <div className="sc-input-row">
+        <section className="cv-inspector-block" data-testid="inspector-result">
+          <h3 className="cv-block-title">{c.inspector.resultTitle}</h3>
+          <div className="cv-input-row">
             <StatusLamp tone={statusView(t, job.status).tone} label={statusView(t, job.status).label} live={statusView(t, job.status).live} />
             {href && (
-              <a href={href} target="_blank" rel="noreferrer" className="sc-text-btn">
+              <a href={href} target="_blank" rel="noreferrer" className="cv-text-btn">
                 <ExternalLink aria-hidden className="size-3.5" /> {c.inspector.openResult}
               </a>
             )}
           </div>
           {preview?.thumbUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview.thumbUrl} alt="" className="sc-inspector-thumb" />
+            <img src={preview.thumbUrl} alt="" className="cv-inspector-thumb" />
           )}
           {status === "failed" && (
             <>
-              <p className="sc-note is-fail" data-testid="inspector-failure">
+              <p className="cv-note is-fail" data-testid="inspector-failure">
                 {failureReason(t, job)}
               </p>
               <button
@@ -228,20 +231,20 @@ export function Inspector({
               >
                 {c.node.retry}
               </button>
-              <p className="sc-note">{c.inspector.retryHint}</p>
+              <p className="cv-note">{c.inspector.retryHint}</p>
             </>
           )}
         </section>
       )}
 
-      {reading?.state === "unknown" && <p className="sc-note is-warn">{c.node.unknown}</p>}
+      {reading?.state === "unknown" && <p className="cv-note is-warn">{c.node.unknown}</p>}
 
-      <section className="sc-inspector-form">
+      <section className="cv-inspector-form">
         {!data.orgId ? (
-          <p className="sc-note">{c.inspector.noOrg}</p>
+          <p className="cv-note">{c.inspector.noOrg}</p>
         ) : closed ? (
           // Nothing on sale for this tool: said in words, and no form that would only end in "no model".
-          <p className="sc-note is-warn" data-testid="inspector-unavailable">
+          <p className="cv-note is-warn" data-testid="inspector-unavailable">
             <strong>{c.node.notAvailable}.</strong> {c.inspector.unavailable}
           </p>
         ) : node.kind === "effects" && !effect ? null : prefill || node.kind !== "asset" ? (
@@ -257,6 +260,8 @@ export function Inspector({
             desk={spec.desk}
             unavailable={data.unavailable}
             onDraftChange={onDraft}
+            // The inspector opens on its inputs and the node's last result; the words box does not grab focus and scroll them away.
+            autoFocusPrompt={false}
             onCreated={(created) => {
               if (created) onCreated(created.id);
             }}
@@ -271,16 +276,16 @@ function EffectList({ models, onPick }: { models: readonly StudioModel[]; onPick
   const { t } = useI18n();
   const c = t.studioCanvas;
   const list = EFFECTS.map((e) => ({ e, pick: resolveEffect(e, models) }));
-  if (!list.some((x) => x.pick.state === "ready")) return <p className="sc-note">{c.inspector.effectNone}</p>;
+  if (!list.some((x) => x.pick.state === "ready")) return <p className="cv-note">{c.inspector.effectNone}</p>;
   return (
-    <ul className="sc-effects">
+    <ul className="cv-effects">
       {list.map(({ e, pick }) => (
         <li key={e.id}>
-          <button type="button" className="sc-effect" disabled={pick.state !== "ready"} onClick={() => onPick(e.id)} data-testid={`effect-${e.id}`}>
-            <span className="sc-effect-swatch" aria-hidden style={{ background: `linear-gradient(135deg, ${e.hues[0]}, ${e.hues[1]})` }} />
+          <button type="button" className="cv-effect" disabled={pick.state !== "ready"} onClick={() => onPick(e.id)} data-testid={`effect-${e.id}`}>
+            <span className="cv-effect-swatch" aria-hidden style={{ background: `linear-gradient(135deg, ${e.hues[0]}, ${e.hues[1]})` }} />
             <span className="flex min-w-0 flex-col text-left">
               <span className="font-semibold">{t.effects.items[e.id].name}</span>
-              <span className="sc-note">{pick.state === "ready" ? c.inspector.effectReady : c.node.notAvailable}</span>
+              <span className="cv-note">{pick.state === "ready" ? c.inspector.effectReady : c.node.notAvailable}</span>
             </span>
           </button>
         </li>
