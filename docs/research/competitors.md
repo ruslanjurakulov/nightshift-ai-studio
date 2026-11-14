@@ -8,6 +8,8 @@ Evidence levels used below:
 - **tool**: read from the product's own read-only MCP listing.
 - **browser**: read in the product owner's own logged-in browser by a read-only inspection (nothing created, bought or changed), 2026-10-01. Free plans only.
 - **search**: web-search snippets or third-party reviews; treat as unverified until a screenshot confirms it.
+- **public**: the product's own public posts (captions, view counts, a scene-by-scene read of a reel) fetched through a
+  third-party analytics tool. What the product SAYS about itself, not what it does: unverified claims stay claims.
 
 The research environment could not open krea.ai, higgsfield.ai or magiclight.ai directly (network policy), so everything not marked **seen** needs a screenshot or a re-read from a session with those hosts allowed.
 
@@ -63,6 +65,41 @@ The research environment could not open krea.ai, higgsfield.ai or magiclight.ai 
 - Plans (search): Free 300 credits; Standard $15 ($7.5 yearly) 8,000; Plus $28 27,000; Pro $44 47,000; Ultra $90 150,000; Ultimate $150 280,000.
 - No direct YouTube publishing, no approval gate, no confirmed Russian/Uzbek.
 - Pattern worth copying: read the script, then review storyboard cards, then approve. Pattern to avoid: hiding the price until render.
+
+### AutoClips (evidence: public, 2026-11-14; nothing signed up for or bought)
+
+Instagram @autoclips.app (verified badge, about 5K followers, 324 posts, links autoclips.app); 12 newest/pinned reels read,
+three watched scene by scene.
+
+- Position: "one sentence in, a posted video out" for faceless channels, aimed at one person running several channels
+  ("5 faceless channels beat 1"). Writes the script, makes the video, can post it.
+- Formats offered as one-tap entries (public): stickman video from a true story (a progress line "Sketching scenes: 8 of
+  16 drawn"), 3D Pixar-style character stories, "fruit AI stories", explainers, cinematic stories. A stickman series where
+  part 1 ends on a vote, viewers comment one word, part 2 opens on the result with the same cast (the claim: 206K followers
+  in 8 days).
+- After render (public, from the stickman demo): play, one-tap thumbnail, copy title and description, a speed slider (1.4x)
+  with "update video", publish to YouTube, TikTok and Instagram at once.
+- MCP and API (public): "Claude can make videos now": one-click connect to Claude, ChatGPT, Cursor, VS Code, Gemini, Grok;
+  an API (`POST /api/v1/v3/projects/quick` shown on screen). The same idea as our `/mcp` and API (docs/MCP.md, docs/API.md).
+- Pricing claims (public, unverified): "our own video model, built on MiniMax H3 Max, post-trained by AutoClips", 14 credits
+  a second against 52 for regular MiniMax; ElevenLabs v4 voice with moods (excited, bored, whispering, amazed).
+- No fact-check, approval gate or private-by-default upload mentioned anywhere: their pitch is speed, ours is that nothing
+  wrong or unapproved goes out.
+- Marketing lesson (public, the strongest signal in the scan): the reels that are STORIES about the product reached
+  3.4M plays (a father gives his son 5 days to earn a dollar posting videos; ends on "should I forgive my dad? comment
+  below") and 742K; feature demos and announcements reached 1K to 122K. Character, conflict, payoff, then a question for
+  the comments.
+
+### Reference videos the owner sent (evidence: seen, 2026-11-14)
+
+- **"aiTrends 2D Studio"** (an Uzbek-language reel for a Claude skill, given away on Telegram): you hand it your own voice
+  (mp3); it "draws" a 2D scene, characters, graphics and 3D shots for every sentence, adds music, 36 sound effects and
+  Reels subtitles, in 5 looks (Cinematic Dusk, Midnight Blue, Golden Hour, Neon Noir, Storybook), 9:16. Commands
+  `/new-video`, `/video-styles`, `/render-video`. The reel itself is code-drawn motion graphics (kinetic headlines, one
+  highlighted word, UI cards), not model output.
+- **"Fable 5.2 + Higgsfield MCP"** (an ad, "comment FREE for 3 days free"): a DaVinci Resolve project with an AI-made
+  object clip and dozens of sound-effect clips (WHOOSH, METAL LATCH, CLICK) on the timeline. The frames do not show who
+  placed the effects; Higgsfield's MCP makes media, and driving Resolve needs a separate desktop connector.
 
 ### Kling mobile (evidence: seen)
 
@@ -243,3 +280,20 @@ Free credits are a one-time grant on sign-up, never a daily refill
 Nightshift already does this: `grant_welcome_credits` (0027) gives each new
 user 100 credits once, and the pricing page says so. Packs stay buyable on
 the free plan.
+
+## 10. What Nightshift takes from AutoClips and the 2D-skill reel (2026-11-14)
+
+Ranked by value for our users, cheapest first; each is its own pull request (owner decision, 2026-11-14: separate PRs,
+built one after another).
+
+1. **Voice to 2D video.** The owner's own recording (mp3) instead of text to speech, a scene plan per sentence, code-drawn
+   2D scenes and kinetic text in the Remotion engine (`video-engine/`), music and effects (`modules/audio_mixer.py`),
+   word-timed captions, a handful of looks, 9:16. Most parts exist; the gaps are the voice upload and 2D character scenes.
+2. **Format entry cards** on the channel pipeline: stickman true story, 3D character story, explainer, and an interactive
+   series whose next part follows the comments (on top of the Series Factory, docs/SERIES_FACTORY.md).
+3. **A wider MCP**, toward Higgsfield's breadth: our own capabilities as tools first; a new provider only after it is
+   verified and a real call through its adapter has succeeded (CLAUDE.md, Definition of Done).
+4. **Marketing:** story-shaped reels about the product, ending on a question for the comments.
+
+Not copied: "our own model" pricing claims (unverified, and a model is a vendor decision, not a feature), and publishing
+without a person's approval (CLAUDE.md rules 2 and 3 stand).
