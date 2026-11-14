@@ -450,6 +450,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Character Studio (0137): tests/security/sec_character_swap_0137.py — one consent and one ready swap per tenant, one sample.
     import sec_character_swap_0137
     sec_character_swap_0137.seed(conn, sc)
+    # Film Studio P1 (0166): tests/security/sec_films_0166.py — one draft of two scenes, a style reference and a take per tenant.
+    import sec_films_0166
+    sec_films_0166.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

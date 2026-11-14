@@ -711,3 +711,8 @@ sec_public_stats_0164.extend(TABLES, FUNCTIONS)
 import sec_referral_0165  # noqa: E402
 
 sec_referral_0165.extend(TABLES, FUNCTIONS)
+
+# Migration 0166 (Film Studio P1: films, their storyboard, references, takes and the append-only film_events; drafts only, no spend): tests/security/sec_films_0166.py
+import sec_films_0166  # noqa: E402
+
+sec_films_0166.extend(TABLES, FUNCTIONS)

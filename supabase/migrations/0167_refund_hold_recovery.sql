@@ -68,7 +68,7 @@
 -- The API balance's top-up refund (api_refund_topup, 0031, in cents) and owner_reverse_grant (0107) have the same "available only" rule
 -- and are NOT changed here (separate tables; reported to Sentinel).
 --
--- NUMBER. 0167 (provisional): 0163 and 0166 are held by other open branches. 0165 (the referral programme) replaced
+-- NUMBER. 0167 (provisional): 0163 is held by another open branch; 0164 to 0166 are merged. 0165 (the referral programme) replaced
 -- credit_transactions_apply_lots first; 0167 is built on 0165's body and its guard refuses any other (0034's included), so 0167 must
 -- apply after 0165. 0146's drift guard pins refund_purchased_credits
 -- at 0034's body ("what it builds on and leaves alone"), so a REPLAY of 0146 after 0167 refuses: take 0167 off with its rollback
