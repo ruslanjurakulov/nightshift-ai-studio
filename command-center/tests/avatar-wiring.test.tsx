@@ -276,17 +276,22 @@ describe("the invite shortcut", () => {
     const credits = readFileSync(path.join(process.cwd(), "app/(app)/[channel]/credits/page.tsx"), "utf8");
     const settings = readFileSync(path.join(process.cwd(), "app/(app)/[channel]/organization/page.tsx"), "utf8");
     expect(credits).toContain("inviteCardShown(org.current, inviteRead.state)");
-    expect(credits).toMatch(/showInvite && inviteRead\.state === "ok"/);
-    expect(credits).toMatch(/showInvite && inviteRead\.state === "failed"/);
+    // The section (0165's referral card, or 0092's card before it) is drawn under exactly that predicate.
+    expect(credits).toMatch(/\{showInvite && \(\s*<Suspense fallback=\{<ReferralCardSkeleton \/>\}>\s*<ReferralSection orgId=\{orgId\} legacy=\{inviteRead\} \/>/);
     expect(settings).toContain("inviteCardShown(org.current,");
     expect(settings.match(/showInvite=\{showInvite\}/g)).toHaveLength(3);
   });
 
   it("lands on a card the Credits page draws with that id, clear of the sticky bar", () => {
-    const card = readFileSync(path.join(process.cwd(), "components/credits/InviteFriendsCard.tsx"), "utf8");
-    expect(card).toMatch(/<section id="invite" className="[^"]*scroll-mt-7/);
-    const page = readFileSync(path.join(process.cwd(), "app/(app)/[channel]/credits/page.tsx"), "utf8");
-    expect(page).toMatch(/<section id="invite" className="[^"]*scroll-mt-7/);
+    // Every shape the section takes (0165's card, its loading and error and closed lines, 0092's card before it) is #invite.
+    for (const f of ["components/credits/InviteFriendsCard.tsx", "components/credits/ReferralCard.tsx", "components/credits/ReferralSection.tsx"]) {
+      const src = readFileSync(path.join(process.cwd(), f), "utf8");
+      expect(src, f).toMatch(/<section id="invite" className="[^"]*scroll-mt-7/);
+    }
+    const section = readFileSync(path.join(process.cwd(), "components/credits/ReferralSection.tsx"), "utf8");
+    expect(section.match(/<section id="invite" className="[^"]*scroll-mt-7/g)).toHaveLength(2);
+    const card = readFileSync(path.join(process.cwd(), "components/credits/ReferralCard.tsx"), "utf8");
+    expect(card.match(/<section id="invite" className="[^"]*scroll-mt-7/g)).toHaveLength(2);
   });
 
   it("has a label in every language", () => {

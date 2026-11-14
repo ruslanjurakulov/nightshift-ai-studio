@@ -148,11 +148,36 @@ describe("joining after the e-mail is confirmed", () => {
     expect(h.jar.has(INVITE_COOKIE)).toBe(false);
   });
 
-  it("never lets a failure touch the sign-in, and still clears the cookie", async () => {
+  it("never lets a failure touch the sign-in, and keeps the cookie so the friend can still count later", async () => {
     h.jar.set(INVITE_COOKIE, TOKEN);
     h.rpc.mockRejectedValue(new Error("down"));
     await expect(joinFromCookie({ rpc: h.rpc })).resolves.toBeUndefined();
+    expect(h.jar.has(INVITE_COOKIE)).toBe(true);
+  });
+
+  it("a join that waits too long behind a settle (55P03) is tried again, then the cookie goes", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    h.jar.set(INVITE_COOKIE, TOKEN);
+    let joins = 0;
+    h.rpc.mockImplementation(async (fn: string) => {
+      if (fn === "take_web_rate") return { data: true, error: null };
+      joins += 1;
+      return joins === 1 ? { data: null, error: { code: "55P03", message: "lock timeout" } } : { data: { status: "counted" }, error: null };
+    });
+    await joinFromCookie({ rpc: h.rpc });
+    expect(joins).toBe(2);
     expect(h.jar.has(INVITE_COOKIE)).toBe(false);
+  });
+
+  it("a join that keeps failing keeps the cookie and says so without the token", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    h.jar.set(INVITE_COOKIE, TOKEN);
+    h.rpc.mockImplementation(async (fn: string) =>
+      fn === "take_web_rate" ? { data: true, error: null } : { data: null, error: { code: "55P03", message: "lock timeout" } });
+    await joinFromCookie({ rpc: h.rpc });
+    expect(h.jar.has(INVITE_COOKIE)).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(TOKEN);
   });
 
   it("a tampered cookie is dropped without a call", async () => {

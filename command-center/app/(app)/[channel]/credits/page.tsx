@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
@@ -26,12 +27,14 @@ import { readSellableModels } from "@/lib/creative/registry";
 import { planValue, readBillingSummary, readCreditLots, readPlanCatalog } from "@/lib/server/plans";
 import { PlanPanel } from "@/components/credits/PlanPanel";
 import { CreditLots } from "@/components/credits/CreditLots";
-import { InviteFriendsCard } from "@/components/credits/InviteFriendsCard";
 import { InviteAdminPanel } from "@/components/credits/InviteAdminPanel";
+import { ReferralAdminPanel } from "@/components/credits/ReferralAdminPanel";
+import { ReferralCardSkeleton } from "@/components/credits/ReferralCard";
+import { ReferralSection } from "@/components/credits/ReferralSection";
 import { UsageLinkCard } from "@/components/usage/UsageLinkCard";
 import { readUsageSummary } from "@/lib/server/usage";
 import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
-import { inviteWorthShowing } from "@/lib/friend-invites";
+import { readReferralAdmin } from "@/lib/server/referrals";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 import { ScrollToHash } from "@/components/navigation/ScrollToHash";
@@ -115,7 +118,7 @@ export default async function CreditsPage() {
   // the database (0084) shows a platform owner/admin only. Never read for
   // anyone else, so a member's page never carries a margin.
   const priceList = platformAdmin ? await readCreditPriceList(supabase) : null;
-  const inviteAdmin = platformAdmin ? await readInviteAdmin(supabase) : null;
+  const [referralAdmin, inviteAdmin] = platformAdmin ? await Promise.all([readReferralAdmin(supabase), readInviteAdmin(supabase)]) : [null, null];
   // NIGHTSHIFT_OWNER_RPC=on: grants, prices and their history go through the server's audited, capped functions
   // (migration 0107). Off, or 0107 not applied yet (owner_security_get does not exist): the page is what it was.
   const ownerSecurity = platformAdmin && ownerRpcOn() ? await readOwnerSecurity(supabase) : null;
@@ -239,30 +242,13 @@ export default async function CreditsPage() {
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
       {history && <DodoPurchaseHistory read={history} />}
 
-      {/* Invite friends: for a workspace that pays (the reward is paid into it);
-          the database refuses anyone who does not run the workspace. Left out
-          before migration 0092. */}
-      {/* While invites are closed and this workspace has no link yet, the card gives way to one line: a disabled "Create my link" is
-          a button that cannot be pressed for a reason nobody can act on. The line keeps #invite, which the account menu links to, so
-          that link never lands nowhere. A workspace that already has a link keeps its card and its progress. */}
-      {showInvite && inviteRead.state === "ok" && inviteWorthShowing(inviteRead.value) && (
-        <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
-      )}
-      {showInvite && inviteRead.state === "ok" && !inviteWorthShowing(inviteRead.value) && (
-        <section id="invite" className="flex scroll-mt-7 flex-col gap-1" aria-labelledby="invite-title" data-invite-closed>
-          <h2 id="invite-title" className="t-section">
-            {t.invite.title}
-          </h2>
-          <p className="text-sm text-[var(--color-muted)]">{t.invite.closedShort}</p>
-        </section>
-      )}
-      {showInvite && inviteRead.state === "failed" && (
-        <section id="invite" className="panel flex scroll-mt-7 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">
-          <h2 id="invite-title" className="t-section">
-            {t.invite.title}
-          </h2>
-          <ErrorState compact message={t.invite.readFailed} />
-        </section>
+      {/* Invite friends: for a workspace that pays (the reward is paid into it); the database refuses anyone who does not run
+          the workspace. Left out before migration 0092. The referral card (0165) settles and reads the person's own referrals in
+          the database; it streams in behind its own loading state, and before 0165 the section is 0092's card as it was. */}
+      {showInvite && (
+        <Suspense fallback={<ReferralCardSkeleton />}>
+          <ReferralSection orgId={orgId} legacy={inviteRead} />
+        </Suspense>
       )}
 
       {ledgerFailed ? (
@@ -320,8 +306,16 @@ export default async function CreditsPage() {
               creditsPerUsd={priceList && !priceList.failed && priceList.prices[UNIT_USD] ? chargePerUnit(priceList.prices[UNIT_USD]) : null}
             />
           )}
-          {inviteAdmin?.state === "ok" && <InviteAdminPanel admin={inviteAdmin.value} />}
-          {inviteAdmin?.state === "failed" && (
+          {referralAdmin?.state === "ok" && <ReferralAdminPanel admin={referralAdmin.value} />}
+          {referralAdmin?.state === "failed" && (
+            <div className="panel p-5 sm:p-6">
+              <h2 className="t-section">{t.referral.adminTitle}</h2>
+              <ErrorState compact message={t.referral.adminReadFailed} />
+            </div>
+          )}
+          {/* Before 0165: 0092's settings panel, as it was. */}
+          {referralAdmin?.state === "unsupported" && inviteAdmin?.state === "ok" && <InviteAdminPanel admin={inviteAdmin.value} />}
+          {referralAdmin?.state === "unsupported" && inviteAdmin?.state === "failed" && (
             <div className="panel p-5 sm:p-6">
               <h2 className="t-section">{t.invite.adminTitle}</h2>
               <ErrorState compact message={t.invite.adminReadFailed} />

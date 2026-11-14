@@ -1486,3 +1486,68 @@ public read answers `{"visible": false}` and nothing else. The one command, the 
   `{"visible": false}`; hidden below 5 counted workspaces and shown at 5; the preview's `counted_orgs`; only the named keys; the
   operator's and staff workspaces left out; the last run to the hour; a null stays null; nothing stored means hidden; the 15-minute
   refresh; a read-only GET; replay, drift and rollback), `command-center/tests/public-stats.test.tsx` (the reader and the strip).
+
+## The referral programme (0165)
+
+0165 (`0165_referral_rewards.sql`) adds a referral reward that **pays nothing on apply**: it has its own switch,
+`referral_enabled`, added OFF, which only a platform owner/admin can turn on (`set_referral_settings`, behind `owner_guard`).
+
+- **What changes on apply.**
+  1. `referral_enabled` is added off. 0092's `enabled` (true on live) only keeps links and joins working.
+  2. 0092's sign-up milestone is switched **off**: `milestone_enabled` is added false, not copied. Sign-ups alone are farmable
+     (`docs/security/LEDGER.md` BR-S-010). Live had 0 links and 0 joins, so nothing earned is lost.
+  3. `referral_open_periods` starts empty: a join and a payment count only inside a period the reward was on (each on/off
+     of `set_referral_settings` opens or closes one, in its audit). Nothing done while it was closed ever counts.
+  4. `join_friend_invite` waits at most 2 s for its link lock (one hunk); the app retries once and keeps the cookie on a
+     failure, and a password sign-in retries a kept cookie too.
+  5. The lot trigger `credit_transactions_apply_lots` (0034) lets an `adjust` row name the lot it spends first
+     (`nightshift.adjust_lot_first`, one hunk); only the referral clawback sets it.
+  6. With pg_cron, `nightshift-referral-settle` runs `referral_settle_all(50)` every 5 minutes.
+  No webhook, purchase, refund or reservation function, no policy and no existing row changes.
+- **The rule.** A **payment** is a purchase or subscription row whose provider event (`transaction.completed` /
+  `payment.succeeded`, processed) charged more than 0 **at full price**: paddle-webhook now appends ` · discounted (…)` to the
+  event detail of any discounted or promo payment (an allowed promo books full credits at any paid share), and dodo-webhook
+  credits no discounted payment. Rows that are not payments are skipped and use nothing up. A friend who joined under 0092's
+  rules inside an open period qualifies with the **first payment ever** of a workspace they **created after their account
+  was made** (anchored on the account, so a late-recorded join does not void it) and owned before paying, made inside an open
+  period, within `referral_qualify_days` (60) of the account's creation, of at least `referral_min_credits` (1000), and, in
+  USD, of at least `referral_min_credits / 2` cents (half the minimum's base price at 1 credit = 1 US cent).
+  Void and recorded: a membership overlap (referrer in the paying workspace, friend in the link's) when it qualifies or when it
+  is due (`member`; `org_members` has no history, so "was" is what those two moments saw), the same subscription customer on
+  both sides (`same_payer`; one-time payments carry no payer identity and there is no device signal), a reversal during the hold
+  (`refunded`). A reversal is a `credit_refunds` row, or the provider's own refund / chargeback / dispute event when a person
+  must act (Paddle `adjustment.*` processed or rejected, Dodo `refund.succeeded`, `dispute.accepted|lost|expired`); the second
+  kind is counted on the operator's panel (`reversed_by = 'event'`). The reward (`referral_credits`, 200, at most the minimum
+  payment) is held `referral_hold_days` (30, at least 7), then paid as one `grant` row `referral-reward:<ref>` (an opaque uuid),
+  at most `referral_monthly_cap` (10) per referrer per UTC month and `referral_daily_cap` (50) per UTC day; a capped reward waits.
+  A reversal after the payout claws the reward back from its own lot first, as far as credits are available; the rest stays
+  owed (`clawing`) and every later settle takes more (`referral-clawback:<ref>:<n>`, authored by the platform) until nothing is
+  owed. The balance never goes negative.
+- **A deleted referrer.** A link goes only with its owner's account (an operator step). Its referrals are then no longer
+  settled (no payout to an account that is gone, a clawback still owed stays owed); `referral_admin` counts them as
+  `orphaned` for the operator.
+- **When it settles.** Under the referrer's link lock, in one order (link, advisory lock, account): `claim_referral_rewards()`
+  (the Credits page, server-side, at most 60 an hour a person) and `referral_settle_all(n)` (service role and pg_cron; the n
+  links settled longest ago, skip locked; one row in `referral_settle_runs` per call, kept 30 days). Joins older than the payment
+  window plus two days are no longer looked at for a new referral.
+- **Who may call what.** `my_referrals`, `claim_referral_rewards`: signed in, the caller's own only (counts, the link's
+  workspace, the next hold's end as a day). `referral_terms`: anon and signed in. `referral_admin`: platform owner/admin (it also
+  says whether the schedule exists, the last run and failures). `set_referral_settings`: `owner_guard('referral_settings', 10)`
+  (second factor, rate limit), an `app_audit_log` row (`billing.settings`) and a `security_events` row (`referral.settings`, old
+  and new values) in the same transaction. `referral_settle_all`: service role. `referral_settle_locked`,
+  `referral_payment_reversed`, `referral_payment_paid`, `referral_was_open`: nobody. The three tables: RLS on, no policy,
+  every privilege revoked, and the identity sequences' default grants revoked from the API roles.
+- **md5.** Before: `friend_invite_pay_locked` `1cfc1f84f065d73e2cb7e84c18ca6ae2`, `my_friend_invite`
+  `b26806d4fdc88a8453e939087d53184c`, `join_friend_invite` `549632bae0dbb002dc66200d7f6c0998`, `credit_transactions_apply_lots`
+  `8ab35cff8ac8a145403b0e6eca735697`. After: `friend_invite_pay_locked` `eeae5e2f28b289aab7439beabede3a6f`, `my_friend_invite` `4717561b1b5c47f7e754118f15fa03ea`, `join_friend_invite` `8bc6fb874e4e65cf7378bddbfa3768d6`, `credit_transactions_apply_lots` `fcd28a68b841d8d539d3798f919a0d01`, `referral_payment_reversed` `c7ca11fcf4bf7e283ee77e43d7770a1b`, `referral_payment_paid` `0a53c4290c5046ccc3a6accdd46d9e9c`, `referral_was_open` `492d74b160d3bcf29d09a82d288e2a7e`, `referral_settle_locked` `aa1546a79a9a655bd278de1fad4d794a`, `my_referrals` `c0ff6ab6e0f6ee0df46c44ddb6b2df8f`, `claim_referral_rewards` `273fcc22a8e8116b86b57bcf03cf8ddb`, `referral_terms` `e2be2f76972e1e707e0ce4d52f47cf53`, `referral_admin` `6881c7fc37602e907793b0178bf5a73f`, `set_referral_settings` `c57ae2b4cd2d14bab35fbd85e9775cdf`, `referral_settle_all` `5e640e5905f7d7b974b47c4e4af5b748` (drift guard, rollback).
+- **Without it.** The Credits page shows 0092's card and settings panel exactly as before; `/referral` says the programme is not
+  available here; the pricing page does not mention it.
+- **Number.** 0165 (assigned; 0163 and 0164 are other open pull requests). Needs 0018, 0020, 0021, 0034, 0042, 0092 and 0107;
+  names nothing of 0108–0164. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0165_referral_rewards.sql` (owner-applied): locks `referral_rewards`, refuses while any row exists
+  or a body is not 0165's; puts the four earlier bodies back byte for byte; unschedules the job; drops what 0165 added.
+- **Tests.** `tests/test_referral_rewards_migration.py`, `tests/security/test_sec_referral_rewards.py` (a real PostgreSQL),
+  `tests/security/test_sec_breach_referral_0165.py` (Breach: BR-0165-01..03), `tests/security/test_sec_friend_invites.py` (0092's
+  milestone with its switch on), `command-center/tests/referrals.test.ts`, `command-center/tests/referral-ui.test.tsx`,
+  `command-center/tests/friend-invites-routes.test.ts` (the join's retry), `command-center/tests/paddle-webhook.test.ts` (the
+  discount mark), `command-center/tests/login-invite.test.ts` (a kept cookie retried after a password sign-in).
