@@ -9,6 +9,7 @@ import { customVoiceEn } from "./custom-voice/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { studioHubEn } from "./studio-hub/en";
+import { studioCanvasEn } from "./studio-canvas/en";
 import { ownerSafetyEn } from "./owner-safety/en";
 import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
@@ -67,6 +68,7 @@ export const en = {
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
   studioHub: studioHubEn,
+  studioCanvas: studioCanvasEn,
   ownerSafety: ownerSafetyEn,
   confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,

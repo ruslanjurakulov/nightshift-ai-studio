@@ -9,6 +9,7 @@ import { customVoiceRu } from "./custom-voice/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { studioHubRu } from "./studio-hub/ru";
+import { studioCanvasRu } from "./studio-canvas/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -58,6 +59,7 @@ export const ru: Dictionary = {
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
   studioHub: studioHubRu,
+  studioCanvas: studioCanvasRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,

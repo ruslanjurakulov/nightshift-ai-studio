@@ -210,7 +210,11 @@ export function GeneratePanel({
    * never pays): no dialog, the message alone.
    */
   plans?: UpsellCatalog | null;
-  onCreated?: () => void;
+  /**
+   * After a priced press went through: the job the database created (its id), so a page that tracks its own jobs (the Studio
+   * canvas's nodes) can follow that one. Callers that only refresh a feed ignore the argument.
+   */
+  onCreated?: (job: { id: string } | null) => void;
   /**
    * The model ids the owner switched off for now (migration 0124, models_switched_off()): ids only, never a reason. A model the form came
    * with (a retried job, a link from the catalog) that is one of them is NOT swapped for another: the form says it is temporarily
@@ -602,11 +606,11 @@ export function GeneratePanel({
           max_credits: quote.credits,
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: unknown; detail?: unknown };
+      const body = (await res.json().catch(() => ({}))) as { error?: unknown; detail?: unknown; job?: { id?: unknown } };
       if (res.ok) {
         setNotice({ kind: "ok" });
         if (composer) setSpent(pressed);
-        onCreated?.();
+        onCreated?.(typeof body.job?.id === "string" ? { id: body.job.id } : null);
         // The hold was just placed: the header's credits (and the short-of-credits check below) read it now, not on the next page.
         void refreshCredits(orgId);
       } else {

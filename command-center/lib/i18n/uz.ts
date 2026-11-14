@@ -9,6 +9,7 @@ import { customVoiceUz } from "./custom-voice/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { studioHubUz } from "./studio-hub/uz";
+import { studioCanvasUz } from "./studio-canvas/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -58,6 +59,7 @@ export const uz: Dictionary = {
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
   studioHub: studioHubUz,
+  studioCanvas: studioCanvasUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,

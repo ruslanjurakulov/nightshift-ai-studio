@@ -32,7 +32,8 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { ShellProvider } from "@/components/shell/ShellContext";
-import { StudioTiles } from "@/components/studio-hub/StudioTiles";
+import { kindOpen, nodeStatus } from "@/components/studio-canvas/nodeState";
+import { newNode } from "@/lib/studio/canvas";
 import { DeskBar } from "@/components/studio/Desks";
 import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
 import { HomeHub } from "@/components/home/HomeHub";
@@ -121,30 +122,22 @@ describe("the availability itself (pure)", () => {
   });
 });
 
-describe("Studio home's Create tile (the desks the sidebar used to list)", () => {
-  it("marks a desk with nothing on sale 'Not available yet' and does not link it; a desk on sale stays a link", () => {
-    pathname = "/chronos/studio";
-    render(wrap(<StudioTiles />, PICTURES));
-    const image = screen.getByTestId("studio-desk-image");
-    expect(image.tagName).toBe("A");
-    expect(image.getAttribute("href")).toBe("/chronos/create?desk=image");
-    // Effects only fill the Video desk's composer, so they are closed with it.
-    for (const d of ["video", "effects", "enhance", "voice"]) {
-      const row = screen.getByTestId(`studio-desk-${d}`);
-      expect(row.tagName, d).not.toBe("A");
-      expect(row.getAttribute("href")).toBeNull();
-      expect(within(row).getByText(t.availability.notYet)).toBeTruthy();
+describe("the Studio canvas's nodes (the desks the sidebar used to list)", () => {
+  const node = (kind: Parameters<typeof newNode>[0]) => newNode(kind, 0, 0, `n-${kind}`);
+  const lib = { ready: true, previews: new Map() };
+
+  it("a tool with nothing on sale is 'Not available yet' on its node, never drawn as ready", () => {
+    // PICTURES sells the picture tools only: clips, voice and the enhance desk are closed (Effects close with the Video desk).
+    for (const k of ["video", "animate", "effects", "enhance", "voice"] as const) {
+      expect(kindOpen(PICTURES, k), k).toBe(false);
+      expect(nodeStatus({ wires: [] }, node(k), new Map(), PICTURES, lib), k).toBe("closed");
     }
-    // What does work is still a link: the YouTube video, and the Create tile itself (the overview).
-    expect(screen.getByTestId("studio-desk-youtube").tagName).toBe("A");
-    expect(document.querySelector('[data-studio-tile="create"]')?.getAttribute("href")).toBe("/chronos/create");
+    expect(kindOpen(PICTURES, "image")).toBe(true);
+    expect(nodeStatus({ wires: [] }, node("image"), new Map(), PICTURES, lib)).toBe("idle");
   });
 
-  it("draws every desk as a link while availability is unknown", () => {
-    pathname = "/chronos/studio";
-    render(wrap(<StudioTiles />));
-    for (const d of ["video", "effects", "image", "enhance", "voice", "youtube"]) expect(screen.getByTestId(`studio-desk-${d}`).tagName, d).toBe("A");
-    expect(screen.queryByText(t.availability.notYet)).toBeNull();
+  it("draws every tool as open while availability is unknown", () => {
+    for (const k of ["image", "video", "animate", "effects", "enhance", "voice"] as const) expect(kindOpen(UNKNOWN_TOOLS, k), k).toBe(true);
   });
 });
 

@@ -157,7 +157,7 @@ describe("customer sidebar (rendered)", () => {
     const links = within(nav).getAllByRole("link");
     expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.studio, en.nav.inbox, en.nav.channels]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual(["/chronos/home", "/chronos/studio", "/chronos/inbox", "/chronos/channels"]);
-    // The desks and the per-screen rows are tiles on Studio home now (components/studio-hub/StudioTiles).
+    // The desks and the per-screen rows are nodes on the Studio canvas now (components/studio-canvas).
     expect(within(nav).queryByRole("heading", { name: en.shell.gCreate })).toBeNull();
     for (const d of DESKS) expect(within(nav).queryByRole("link", { name: en.desk.names[d] })).toBeNull();
 

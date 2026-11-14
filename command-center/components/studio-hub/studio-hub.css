@@ -1,5 +1,5 @@
 /*
- * Nightshift Studio's home (app/(app)/[channel]/studio): the Channel look chip, the tool tiles and the
+ * Nightshift Studio's list views (app/(app)/[channel]/studio?shelf=): the Channel look chip, and the
  * one-line "moved" notice. Tokens only (light and dark come from globals.css); no violet or amber here,
  * which are kept for "the machine is working" and "a person's mark".
  */
@@ -20,82 +20,6 @@
 .studio-look-chip:hover { border-color: var(--ns-rule-strong); background: var(--ns-hover); }
 .studio-look-chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .studio-look-chip-sub { font-size: 0.75rem; color: var(--color-muted); }
-
-.studio-tiles-group {
-  margin: 4px 0 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--color-muted);
-}
-.studio-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.studio-tile {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-panel);
-  padding: 12px;
-}
-.studio-tile:has(.studio-desks) { grid-column: 1 / -1; }
-.studio-tile-link {
-  display: flex;
-  min-height: 44px;
-  align-items: flex-start;
-  gap: 12px;
-  border-radius: 10px;
-  color: var(--color-fg);
-}
-.studio-tile-link:hover .studio-tile-name { text-decoration: underline; text-underline-offset: 3px; }
-.studio-tile-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
-.studio-tile-icon {
-  display: inline-flex;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: var(--ns-hover);
-  color: var(--color-fg);
-}
-.studio-tile-name { font-size: 0.9375rem; font-weight: 600; overflow-wrap: anywhere; }
-.studio-tile-desc { font-size: 0.8125rem; line-height: 1.35; color: var(--color-muted); overflow-wrap: anywhere; }
-
-.studio-desks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0 0 0 46px;
-  list-style: none;
-}
-@media (max-width: 520px) { .studio-desks { padding-left: 0; } }
-.studio-desk {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 0 12px;
-  font-size: 0.8125rem;
-  color: var(--color-fg);
-}
-a.studio-desk:hover { border-color: var(--ns-rule-strong); background: var(--ns-hover); }
-a.studio-desk:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-/* Nothing on sale: quieter, not a link, and it says so in words (never colour alone). */
-.studio-desk[data-unavailable] { cursor: default; opacity: 0.72; }
-.studio-desk-soon { font-size: 0.75rem; color: var(--color-muted); }
 
 .studio-moved {
   display: flex;
@@ -119,3 +43,17 @@ a.studio-desk:focus-visible { outline: 2px solid var(--color-primary); outline-o
 }
 .studio-moved-close:hover { background: var(--ns-hover); color: var(--color-fg); }
 .studio-moved-close:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* The list views behind the canvas keep the page's own inset (the canvas takes the full window). */
+.studio-shelf-view { padding: clamp(1rem, 2.5vw, 40px) clamp(0.75rem, 3vw, 56px); max-width: 1440px; margin-inline: auto; width: 100%; }
+main:has(.studio-shelf-view) { padding: 0 !important; max-width: none !important; }
+.studio-back-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+}
+.studio-back-link:hover { text-decoration: underline; }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /**
- * Nightshift Studio's home (/{channel}/studio) and the one-line "moved" notice.
+ * Nightshift Studio's list views (/{channel}/studio?shelf=…, where /videos and /editor redirect) and the
+ * one-line "moved" notice. The canvas itself is tests/studio-canvas-ui.test.tsx.
  *
  * What would break without these: Brand look more than one click from where its old bookmark lands;
  * the Videos shelf not opening from `?shelf=videos` (where /videos now redirects); a customer shown
@@ -40,7 +41,6 @@ vi.mock("@/components/studio-hub/ProjectsShelf", () => ({ ProjectsShelf: () => <
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { ShellProvider } from "@/components/shell/ShellContext";
-import { StudioTiles } from "@/components/studio-hub/StudioTiles";
 import { StudioMovedNotice, movedSectionFor } from "@/components/studio-hub/StudioMovedNotice";
 
 const en = dictionaries.en;
@@ -67,16 +67,16 @@ async function page(sp: Record<string, string> = {}) {
   return renderToStaticMarkup(wrap(await StudioHome({ searchParams: Promise.resolve(sp) })));
 }
 
-describe("Studio home", () => {
-  it("is titled with the brand, and Brand look is one click away: the Channel look chip", async () => {
-    const html = await page();
+describe("Studio's list views", () => {
+  it("are titled with the brand, keep Brand look one click away, and lead back to the canvas", async () => {
+    const html = await page({ shelf: "projects" });
     expect(html).toContain(">Nightshift Studio<");
     expect(html).toMatch(/href="\/chronos\/studio\/look"[^>]*data-testid="channel-look-chip"/);
-    expect(html).toContain(en.studioHub.channelLook);
+    expect(html).toMatch(/href="\/chronos\/studio"[^>]*data-testid="back-to-canvas"/);
   });
 
-  it("opens on the Projects shelf, and on Videos from ?shelf=videos (where /videos redirects)", async () => {
-    const projects = await page();
+  it("open the editor's projects on ?shelf=projects, and Videos on ?shelf=videos (where /videos redirects)", async () => {
+    const projects = await page({ shelf: "projects" });
     expect(projects).toContain('data-shelf="projects"');
     expect(projects).not.toContain('data-shelf="videos"');
     expect(projects).toMatch(/aria-current="page"[^>]*data-testid="studio-shelf-projects"/);
@@ -90,39 +90,12 @@ describe("Studio home", () => {
     expect(dictionaries.ru.studioHub.shelfProjects).toBe("Проекты");
     expect(dictionaries.uz.studioHub.shelfProjects).toBe("Loyihalar");
     for (const loc of ["en", "ru", "uz"] as const) {
-      const text = JSON.stringify(dictionaries[loc].studioHub).toLowerCase();
-      expect(text, loc).not.toMatch(/\bfilm|фильм|long video|длинн|uzun video/);
+      for (const dict of [dictionaries[loc].studioHub, dictionaries[loc].studioCanvas]) {
+        const text = JSON.stringify(dict).toLowerCase();
+        expect(text, loc).not.toMatch(/\bfilm\b|фильм|long video|длинн|uzun video/);
+      }
       expect(dictionaries[loc].studioHub.title).toBe("Nightshift Studio");
     }
-  });
-});
-
-describe("Studio home tiles", () => {
-  const keys = () => Array.from(document.querySelectorAll("[data-studio-tile]")).map((a) => a.getAttribute("data-studio-tile"));
-
-  it("give a customer every creative tool plus the old hub tabs, and never an operator-only screen", () => {
-    render(wrap(<StudioTiles />));
-    expect(keys()).toEqual(["create", "library", "editor", "workflows", "styles", "presets", "brandLook", "inbox", "series", "models"]);
-    expect(document.querySelector('[data-studio-tile="pipeline"]')).toBeNull();
-  });
-
-  it("give the operator Pipeline too, and not the channel screens their rail already lists", () => {
-    render(wrap(<StudioTiles />, true));
-    expect(keys()).toEqual(["create", "library", "editor", "workflows", "styles", "presets", "brandLook", "pipeline"]);
-    expect(screen.getByRole("link", { name: new RegExp(en.nav.pipeline) }).getAttribute("href")).toBe("/chronos/pipeline");
-  });
-
-  it("list a switched section only while its switch is on", () => {
-    render(wrap(<StudioTiles />, false, { adsFactory: true, characterStudio: true }));
-    expect(keys()).toContain("ads");
-    expect(keys()).toContain("characterStudio");
-  });
-
-  it("are links only: no tile names a price or a credit", () => {
-    render(wrap(<StudioTiles />, true));
-    const text = document.body.textContent ?? "";
-    expect(text).not.toMatch(/\bcr\b|credit|\d+\s*(кр|kr)/i);
-    for (const a of within(document.body).getAllByRole("link")) expect(a.getAttribute("href")).toMatch(/^\/chronos\//);
   });
 });
 
