@@ -1580,7 +1580,12 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   (and in a duplicate's), and a ledger note that says how much is on hold instead of calling it spent. Same signature, refusals,
   idempotency on the refund id, `paid_total_cents` arithmetic and grants (service role only).
 - **The webhook.** `supabase/functions/_shared/paddle.ts` reads `on_hold_cents` and words the shortfall as on hold or spent; when the
-  database does not answer it (0168 not applied) it says it does not know which, rather than "spent" (rule 5).
+  database does not answer it (0168 not applied) it says it does not know which, rather than "spent" (rule 5). A duplicate delivery is
+  not logged again: its on-hold figure is the one recorded when the refund first landed.
+- **Still open.** The footer's query lists a recovery only while `collected < owed` AND one of its holds is still `open`; a
+  refund whose holds were all captured keeps `collected < owed` for good and is a shortfall that stands, not an open one.
+- **Locks.** First run: CREATE TRIGGER, SHARE ROW EXCLUSIVE on `api_ledger`. A re-run: DROP TRIGGER of the existing trigger,
+  ACCESS EXCLUSIVE on `api_ledger` (reads wait too) until commit; `lock_timeout` 5s.
 - **md5.** `api_refund_topup` before `a9d2287173b12b704808e7b3747b05e0` (0031), after `74ea95ec27564e57b7b989a906a15842`;
   `api_refund_recover` `785ca1a1df7d72192bd98dbfd9122a37` (drift guard, end state, rollback).
 - **Not changed here.** `owner_reverse_grant` (0107, site credits) has the same "available only" rule (BR-0107-01, low, open, a failing

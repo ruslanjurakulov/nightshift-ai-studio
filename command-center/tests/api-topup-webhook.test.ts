@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   apiShortfallWords,
+  createRestStore,
   decideApiTopup,
   decideTransaction,
   handlePaddleWebhook,
@@ -373,17 +374,17 @@ describe("an API top-up refund that met holds", () => {
   };
   const txnEvent = { event_id: "evt_01topupheld", event_type: "transaction.completed", occurred_at: "2026-09-27T10:00:00Z", data: txn() };
 
-  function storeAnswering(onHold: number | null | undefined) {
+  function storeAnswering(onHold: number | null | undefined, duplicate = false) {
     const store = new Store();
     store.refundApiTopup = async (_ext: string, id: string, cents: number | null) => {
       store.apiRefunds.set(id, cents);
-      return { duplicate: false, requested: 1250, taken: 250, shortfall: 1000, onHold };
+      return { duplicate, requested: 1250, taken: 250, shortfall: 1000, onHold };
     };
     return store;
   }
 
-  async function run(onHold: number | null | undefined) {
-    const store = storeAnswering(onHold);
+  async function run(onHold: number | null | undefined, duplicate = false) {
+    const store = storeAnswering(onHold, duplicate);
     const warned: string[] = [];
     const log = { info() {}, warn: (m: string) => void warned.push(m), error() {} };
     const send = (e: Record<string, unknown>) => {
@@ -418,10 +419,57 @@ describe("an API top-up refund that met holds", () => {
     }
   });
 
+  it("does not repeat a recorded on-hold figure on a duplicate delivery", async () => {
+    // The database answers a duplicate with what it recorded when the refund first landed; those cents may since have been
+    // collected (released) or spent (captured), so the webhook neither logs nor records them as on hold today.
+    const { detail, warned } = await run(700, true);
+    expect(warned).toBe("");
+    expect(detail).toBe("refund of API top-up already recorded");
+  });
+
   it("never reports more on hold than the shortfall", () => {
     expect(apiShortfallWords(1000, 5000)).toBe(
       "1000 API cents not taken back yet: 1000 on hold (taken back if the hold is released), 0 already spent",
     );
     expect(apiShortfallWords(1000, Number.NaN)).toContain("did not say which");
+  });
+});
+
+describe("createRestStore: api_refund_topup's answer", () => {
+  function storeReturning(answer: Record<string, unknown>) {
+    const calls: { url: string; body: unknown }[] = [];
+    const store = createRestStore({
+      url: "https://proj.supabase.co",
+      serviceKey: "service-key-never-logged",
+      fetch: async (url, init) => {
+        calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+        return new Response(JSON.stringify(answer), { status: 200 });
+      },
+    });
+    return { store, calls };
+  }
+
+  it("maps on_hold_cents (0168) to onHold, with the RPC's own arguments", async () => {
+    const { store, calls } = storeReturning({
+      duplicate: false, requested_cents: 2500, taken_cents: 500, shortfall_cents: 2000, on_hold_cents: 1500, ledger_id: 9,
+    });
+    const res = await store.refundApiTopup!(TXN, ADJ, null, "Paddle adj", "chargeback");
+    expect(res).toEqual({ duplicate: false, requested: 2500, taken: 500, shortfall: 2000, onHold: 1500 });
+    expect(calls).toEqual([{
+      url: "https://proj.supabase.co/rest/v1/rpc/api_refund_topup",
+      body: { p_external_id: TXN, p_refund_id: ADJ, p_cents: null, p_note: "Paddle adj", p_reason: "chargeback" },
+    }]);
+  });
+
+  it("keeps 0 as 0 and a missing on_hold_cents (0168 not applied) as unknown", async () => {
+    const zero = await storeReturning({ duplicate: false, requested_cents: 2500, taken_cents: 2500, shortfall_cents: 0, on_hold_cents: 0 })
+      .store.refundApiTopup!(TXN, ADJ, null, "n", "refund");
+    expect(zero.onHold).toBe(0);
+    const before = await storeReturning({ duplicate: false, requested_cents: 2500, taken_cents: 500, shortfall_cents: 2000 })
+      .store.refundApiTopup!(TXN, ADJ, null, "n", "refund");
+    expect(before.onHold).toBeNull();
+    const nulled = await storeReturning({ duplicate: true, requested_cents: 2500, taken_cents: 500, shortfall_cents: 2000, on_hold_cents: null })
+      .store.refundApiTopup!(TXN, ADJ, null, "n", "refund");
+    expect(nulled.onHold).toBeNull();
   });
 });

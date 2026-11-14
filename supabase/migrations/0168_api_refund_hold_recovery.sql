@@ -70,9 +70,12 @@
 --     api_refund_recover   785ca1a1df7d72192bd98dbfd9122a37
 --   If a live value is anything else, STOP: something was applied by hand, and replacing the body would silently undo it.
 --
--- APPLY AS ONE TRANSACTION. Additive and idempotent: a second run finds this file's bodies and changes nothing. Locks: one new table, and
--- CREATE TRIGGER takes a SHARE ROW EXCLUSIVE lock on api_ledger for an instant (lock_timeout 5s: it fails rather than queue behind a
--- long writer). Rollback: docs/sql/rollback_0168_api_refund_hold_recovery.sql.
+-- APPLY AS ONE TRANSACTION. Additive and idempotent: a second run finds this file's bodies and changes nothing. Locks, held until the
+-- transaction commits: one new table; on the first run CREATE TRIGGER takes SHARE ROW EXCLUSIVE on api_ledger (writers wait, readers do
+-- not); on a RE-RUN the DROP TRIGGER IF EXISTS of the trigger already there takes ACCESS EXCLUSIVE on api_ledger, which also blocks
+-- every read of it (the Developer console, the webhook's top-up lookup) for the rest of the file. Both are a few milliseconds of work;
+-- lock_timeout 5s makes the file fail rather than queue behind a long transaction on api_ledger, and the queue that forms behind it.
+-- Rollback: docs/sql/rollback_0168_api_refund_hold_recovery.sql.
 -- REQUIRES 0031 (api_accounts, api_ledger, api_holds, api_refund_topup's latest body).
 
 set local lock_timeout = '5s';
@@ -260,6 +263,11 @@ $$;
 -- the expiry's callers). By then the hold is 'released' and reserved_cents is down by its amount: that amount is what this release gave
 -- back to the spendable balance, and the collections it pays, together, take at most that. The ledger row is written here, not through
 -- api_log, so that it never carries the customer's id when the release ran inside the customer's own API call (see WHO WROTE IT).
+-- The released-hold check below cannot tell a second 'release' row for the same hold from the first: api_holds still says released,
+-- same amount, so a forged duplicate would collect again (never past `owed`, nor past what is available). Nothing reachable writes one:
+-- api_settle_locked releases a hold once (status 'open' -> 'released' under the hold's row lock), api_ledger is closed to every API
+-- role including the service key (0031: no INSERT grant), and its definer functions write only their own kinds. Only the database
+-- owner, in the SQL editor, could insert such a row.
 
 create or replace function public.api_refund_recover() returns trigger
   language plpgsql security definer set search_path = public, pg_temp as $$
@@ -374,5 +382,9 @@ end $$;
 --       and not has_table_privilege('authenticated', 'public.api_refund_recoveries', 'SELECT') as recoveries_closed,
 --     not has_function_privilege('authenticated', 'public.api_refund_topup(text,text,bigint,text,text)', 'EXECUTE') as service_only;
 --
--- Refunds whose held part is still open (each is collected when one of its holds is released):
---   select refund_id, org_id, owed, collected, holds from public.api_refund_recoveries where collected < owed order by created_at;
+-- Refunds whose held part is still open (each is collected when one of its holds is released; a refund whose holds were all captured
+-- or released is not open, whatever is left of `owed`):
+--   select r.refund_id, r.org_id, r.owed, r.collected, r.holds from public.api_refund_recoveries r
+--    where r.collected < r.owed
+--      and exists (select 1 from public.api_holds h where h.ref = any (r.holds) and h.status = 'open')
+--    order by r.created_at;

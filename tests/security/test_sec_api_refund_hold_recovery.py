@@ -310,6 +310,47 @@ def test_replays_of_the_refund_the_release_the_expiry_and_the_migration_collect_
         assert dup2["duplicate"] is True and dup2["on_hold_cents"] == 5000
 
 
+# ── the documented "still open" query ───────────────────────────────────────
+
+def _open_recoveries_query() -> str:
+    """The query 0168's footer gives the owner for "refunds whose held part is still open", exactly as written there."""
+    lines = MIGRATION.read_text(encoding="utf-8").split("-- Refunds whose held part is still open", 1)[1].splitlines()[1:]
+    query = []
+    for ln in lines:
+        if ln.startswith("--   ") or ln.startswith("--    "):
+            query.append(ln[2:])
+        elif query:
+            break
+    assert query and query[-1].rstrip().endswith(";"), query
+    return "\n".join(query)
+
+
+def test_the_documented_open_recoveries_query_lists_only_refunds_that_a_release_can_still_pay(conn):
+    """Lens L1 on 0168: a refund whose holds were all captured still has collected < owed, for good; it is a shortfall that stands, not
+    an open one. The footer's query must not list it, and must list one whose hold can still be released."""
+    query = _open_recoveries_query()
+    assert "h.status = 'open'" in query
+    with as_superuser(conn, commit=False) as s:
+        def held_and_refunded():
+            c = customer(s)
+            ext = topup(s, c, 2000)
+            job, ref, _ = run(s, c, 1000)                     # all 2000 held
+            rid, out = refund(s, ext)
+            assert out["on_hold_cents"] == 2000, out
+            return job, ref, rid
+
+        spent, _r1, rid1 = held_and_refunded()
+        end_job(s, spent, "succeeded")                        # captured: 2000 owed for good, nothing left to release
+        failed, _r2, rid2 = held_and_refunded()
+        end_job(s, failed, "failed")                          # released: collected in full
+        _open, ref3, rid3 = held_and_refunded()               # still on hold
+        assert (_recovery(s, rid1)[1], _recovery(s, rid2)[1], _recovery(s, rid3)[1]) == (0, 2000, 0)
+        assert _recovery(s, rid1)[0] > _recovery(s, rid1)[1], "precondition: the captured refund still has owed > collected"
+        listed = [row[0] for row in s.rows(query) if row[0] in (rid1, rid2, rid3)]
+        assert listed == [rid3], listed
+        assert hold_status(s, ref3) == "open"
+
+
 # ── the record, and who wrote the collection ────────────────────────────────
 
 def test_the_recovery_record_is_written_by_the_functions_only(conn):

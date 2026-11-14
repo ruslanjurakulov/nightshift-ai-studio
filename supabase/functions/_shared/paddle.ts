@@ -1308,7 +1308,9 @@ async function execute(
           return { httpStatus: 200, row: { status: "ignored", detail: "refund worth less than one cent", orgId: topup.orgId, ...ids } };
         }
         const res = await store.refundApiTopup(decision.transactionId, decision.adjustmentId, cents, `Paddle ${decision.adjustmentId}`, decision.reason);
-        if (res.shortfall > 0)
+        // A duplicate answers what was recorded when the refund first landed: its on-hold figure may since have been collected or
+        // captured, so it is not repeated as if it were today's (rule 5). The first delivery already logged it.
+        if (res.shortfall > 0 && !res.duplicate)
           log.warn(`paddle-webhook: ${decision.reason} ${decision.adjustmentId}: ${apiShortfallWords(res.shortfall, res.onHold)}`);
         return {
           httpStatus: 200,

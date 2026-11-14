@@ -192,6 +192,23 @@ class HashesAndRollback(unittest.TestCase):
         self.assertNotRegex(SQL, r"(?m)^(begin|commit);$")
         self.assertIn("-- Verify", SQL)
 
+    def test_the_header_names_the_lock_a_re_run_takes(self):
+        # Lens N1: a re-run's DROP TRIGGER of the trigger already there takes ACCESS EXCLUSIVE on api_ledger (measured on PG16).
+        head = " ".join(ln.lstrip("- ") for ln in SQL.split("set local lock_timeout", 1)[0].splitlines())
+        self.assertIn("on a RE-RUN the DROP TRIGGER IF EXISTS of the trigger already there takes ACCESS EXCLUSIVE on api_ledger", head)
+        self.assertIn("CREATE TRIGGER takes SHARE ROW EXCLUSIVE on api_ledger", head)
+
+    def test_the_open_recoveries_query_requires_a_hold_that_can_still_be_released(self):
+        # Lens L1: a refund whose holds were all captured keeps collected < owed for good; it is not open.
+        footer = SQL.split("-- Refunds whose held part is still open", 1)[1]
+        self.assertIn("where r.collected < r.owed", footer)
+        self.assertIn("and exists (select 1 from public.api_holds h where h.ref = any (r.holds) and h.status = 'open')", footer)
+
+    def test_the_forged_second_release_is_named_with_who_could_write_one(self):
+        # Lens N2: the released-hold check cannot tell a second release row of one hold from the first.
+        self.assertIn("a forged duplicate would collect again", SQL)
+        self.assertIn("Only the database\n-- owner, in the SQL editor, could insert such a row.", SQL)
+
     def test_the_rollback_puts_0031s_body_back_verbatim_and_refuses_another(self):
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")
         self.assertEqual(len(re.findall(r"(?m)^commit;$", ROLLBACK)), 1)
@@ -211,6 +228,9 @@ class Webhook(unittest.TestCase):
         # 0031's log line called the whole shortfall spent; it now goes through apiShortfallWords, which keeps the held part apart.
         self.assertNotIn("${res.shortfall} API cents were already spent", PADDLE)
         self.assertEqual(PADDLE.count("apiShortfallWords(res.shortfall, res.onHold)"), 2)
+        # Lens L2: a duplicate's recorded on-hold figure is not logged as today's.
+        self.assertIn("if (res.shortfall > 0 && !res.duplicate)\n          log.warn(`paddle-webhook: ${decision.reason} ${decision.adjustmentId}: "
+                      "${apiShortfallWords(res.shortfall, res.onHold)}`);", PADDLE)
 
 
 class Numbering(unittest.TestCase):
