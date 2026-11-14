@@ -3,18 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
+import { isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert } from "@/components/auth/AuthShell";
-import { GOOGLE_PROVIDER, googleRedirectTo, isGoogleEnabled, isGoogleError, type GoogleError } from "@/lib/google-signin";
+import { GOOGLE_PROVIDER, googleRedirectTo, isGoogleError, type GoogleError } from "@/lib/google-signin";
 import { DEFAULT_AFTER_AUTH, afterSignupPath, studioNext } from "@/lib/safe-redirect";
-import { useGoogleEnabledFromServer } from "@/components/auth/google-enabled-context";
+import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
 import "@/components/auth/google-button.css";
 
 /** Google's multi-colour "G", from Google's sign-in branding assets, unaltered. */
 function GoogleG() {
   return (
-    <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true" focusable="false">
+    <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true" focusable="false">
       <path
         fill="#EA4335"
         d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
@@ -36,9 +36,11 @@ function GoogleG() {
 }
 
 /**
- * "Continue with Google", above the email form on /login and /signup, with the
- * "or" divider under it. An outlined neutral button on purpose: the email
- * submit stays the page's one filled key.
+ * "Continue with Google", the first choice on /login and /signup, with the
+ * "or" divider under it and the email form after that. It is the page's
+ * primary key: Google's light button (white, dark label, the unaltered G) in
+ * both themes, and the email submit steps down to the quiet key while it is
+ * there (the pages read the same useGoogleEnabled answer).
  *
  * The click only starts the round trip (supabase.auth.signInWithOAuth, PKCE);
  * the session is made by /auth/callback, which also applies the verified-email
@@ -48,8 +50,9 @@ function GoogleG() {
  *
  * The button is rendered only when Supabase reports the Google provider as
  * enabled (the server asks while rendering /login and /signup, see
- * components/auth/GoogleEnabled.tsx; isGoogleEnabled is the browser fallback); until the owner switches it on, the page is the
- * plain email form. A failure that comes back in the URL is still explained.
+ * components/auth/GoogleEnabled.tsx; useGoogleEnabled asks from the browser when the server did not say); until the
+ * owner switches it on, the page is the plain email form with its filled submit, and no divider. A failure that comes
+ * back in the URL is still explained.
  *
  * The line under the button carries the same consent (Terms, Privacy and the 18-or-older confirmation) the sign-up form's
  * checkboxes do, on /login as well as /signup: with sign-up open, a Google
@@ -61,22 +64,7 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
   const g = t.site.auth.google;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<GoogleError | null>(null);
-  // The server's answer is there from the first paint (no layout jump). Without
-  // one (a page that is not wrapped by <GoogleEnabled>) the browser asks Supabase itself.
-  const fromServer = useGoogleEnabledFromServer();
-  const [asked, setAsked] = useState(false);
-  const enabled = fromServer ?? asked;
-
-  useEffect(() => {
-    if (fromServer !== undefined) return;
-    let live = true;
-    void isGoogleEnabled(SUPABASE_URL, SUPABASE_ANON_KEY).then((on) => {
-      if (live) setAsked(on);
-    });
-    return () => {
-      live = false;
-    };
-  }, [fromServer]);
+  const enabled = useGoogleEnabled();
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("error");
@@ -142,7 +130,7 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
             disabled={!isSupabaseConfigured}
             aria-busy={busy || undefined}
           >
-            {/* The mark and the spinner share one 18px box, so pressing the button moves nothing. */}
+            {/* The mark and the spinner share one 20px box, so pressing the button moves nothing. */}
             {busy ? <span className="ns-google-spin" aria-hidden="true" /> : <GoogleG />}
             <span>{g.button}</span>
           </button>
