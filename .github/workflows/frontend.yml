@@ -44,7 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     # 10 was too tight: on 2026-11-14 three runs were cancelled mid-vitest at the 10-minute mark while
     # the same suite had passed in ~8.5 minutes earlier that day. A cancelled run is not a result.
-    timeout-minutes: 20
+    # 20 was then too tight as well: PR #779's run that evening spent 15 min 8 s in vitest (626 files) and was
+    # cancelled three minutes into `next build`. The suite keeps growing; the limit is a hang guard, not a budget.
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: command-center
