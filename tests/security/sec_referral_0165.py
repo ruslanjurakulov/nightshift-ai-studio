@@ -4,15 +4,17 @@ Wired in at the bottom of sec_expectations.py, like the other per-migration file
 
     import sec_referral_0165; sec_referral_0165.extend(TABLES, FUNCTIONS)
 
-One new table, closed to every API role (Service()): referral_rewards, read only through the functions below. The functions:
+Two new tables, closed to every API role (Service()): referral_rewards and referral_settle_runs, read only through the
+functions below. The functions:
 
-  claim_referral_rewards  USER: the caller's own referrals settled (under their link lock), then my_referrals().
-  my_referrals            USER: the caller's own link and counts; never a friend's id, mailbox, workspace or payment.
-  referral_terms          PRICE_LIST: the switch and the numbers, anon and signed in (the public /referral page).
-  referral_admin          USER: a platform owner/admin only (it checks itself).
-  set_referral_settings   USER: a platform owner/admin only (it checks itself).
-  referral_settle_all     SERVICE: pg_cron and the service role; no browser.
-  referral_settle_locked  SERVICE: internal, nobody calls it through the API (execute revoked from every API role).
+  claim_referral_rewards     USER: the caller's own referrals settled (under their link lock, rate-limited), then my_referrals().
+  my_referrals               USER: the caller's own link and counts; never a friend's id, mailbox, workspace or payment.
+  referral_terms             PRICE_LIST: the switch and the numbers, anon and signed in (the public /referral page).
+  referral_admin             USER: a platform owner/admin only (it checks itself).
+  set_referral_settings      USER: a platform owner/admin only, through owner_guard (second factor, rate limit).
+  referral_settle_all        SERVICE: pg_cron and the service role; no browser.
+  referral_settle_locked     SERVICE: internal, nobody calls it through the API (execute revoked from every API role).
+  referral_payment_reversed  SERVICE: internal, the same.
 
 The attacks and the money paths are in test_sec_referral_rewards.py.
 """
@@ -25,8 +27,12 @@ def extend(tables: dict, functions: dict) -> None:
 
     tables.update({
         "referral_rewards": Service(),
+        # the settle job's log: written by referral_settle_all, read through referral_admin
+        "referral_settle_runs": Service(),
     })
     functions.update({
+        # internal: is a payment reversed (credit_refunds, or the provider's own event)
+        "referral_payment_reversed": SERVICE,
         # the referrer, in their own session
         "claim_referral_rewards": USER,
         "my_referrals": USER,
@@ -58,3 +64,4 @@ def seed(conn, sc) -> None:
             "values (%s, %s, %s, %s, %s, %s, 'seed-payment-0165', 'purchase', now(), 200, 'held', now() + interval '30 days') "
             "returning 1",
             [sc.dana.uid, hashlib.sha256(sc.dana.email.encode()).hexdigest(), sc.alice.actor.uid, link, sc.alice.org, sc.bob.org])
+        s.rows("insert into public.referral_settle_runs (links, changed, failed) values (0, 0, 0) returning 1")

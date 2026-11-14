@@ -28,7 +28,9 @@ const mine = (over: Record<string, unknown> = {}) => ({
   joined: 3,
   held: 1,
   due: 0,
-  next_release_at: "2026-12-14T10:00:00Z",
+  next_release_on: "2026-12-14",
+  org: { id: "org-1", name: "Ana Studio" },
+  claw_owed: 0,
   paid: 1,
   earned: 200,
   paid_this_month: 1,
@@ -48,14 +50,15 @@ describe("my_referrals()", () => {
   });
 
   it("is unknown, never zero, when a count or a number is missing or not a count", () => {
-    for (const key of ["joined", "held", "due", "paid", "paid_this_month", "clawed", "void", "earned", "clawed_credits", "credits", "hold_days", "enabled"]) {
+    for (const key of ["joined", "held", "due", "paid", "paid_this_month", "clawed", "void", "earned", "clawed_credits", "claw_owed", "credits", "hold_days", "enabled"]) {
       const raw = mine();
       delete (raw as Record<string, unknown>)[key];
       expect(coerceMyReferrals(raw), key).toBeNull();
     }
     expect(coerceMyReferrals(mine({ joined: -1 }))).toBeNull();
     expect(coerceMyReferrals(mine({ held: 1.5 }))).toBeNull();
-    expect(coerceMyReferrals(mine({ next_release_at: "soon" }))).toBeNull();
+    expect(coerceMyReferrals(mine({ next_release_on: "2026-12-14T10:00:00Z" }))).toBeNull();
+    expect(coerceMyReferrals(mine({ org: { id: 1 } }))).toBeNull();
     expect(coerceMyReferrals(null)).toBeNull();
     expect(coerceMyReferrals("x")).toBeNull();
   });
@@ -89,9 +92,11 @@ describe("referral_terms() and referral_admin()", () => {
   it("reads the operator's counts, and nothing when one is missing", () => {
     const admin = {
       ...terms, milestone_enabled: false, links: 4, joins: 9, held: 2, due: 1, paid: 3, paid_today: 1, credits_month: "600.00",
-      credits_total: 800, void_refunded: 1, void_same_payer: 0, clawed: 1, claw_shortfall: 50, milestone_rewards: 0,
+      credits_total: 800, void_refunded: 1, void_same_payer: 0, void_member: 0, clawed: 1, claw_owed: 50, milestone_rewards: 0,
+      links_open: true, schedule: false, started_at: "2026-11-14T08:00:00Z", runs_failed_24h: 0, reversed_by_event: 0,
+      last_run: { at: "2026-11-14T09:00:00Z", links: 3, changed: 1, failed: 0, error: null },
     };
-    expect(coerceReferralAdmin(admin)).toMatchObject({ milestoneEnabled: false, links: 4, creditsMonth: 600, clawShortfall: 50 });
+    expect(coerceReferralAdmin(admin)).toMatchObject({ milestoneEnabled: false, links: 4, creditsMonth: 600, clawOwed: 50, schedule: false, lastRun: { links: 3 } });
     expect(coerceReferralAdmin({ ...admin, paid: null })).toBeNull();
     expect(coerceReferralAdmin({ ...admin, milestone_enabled: "no" })).toBeNull();
   });

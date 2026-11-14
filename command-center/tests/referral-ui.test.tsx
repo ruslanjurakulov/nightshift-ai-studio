@@ -18,6 +18,7 @@ import type { MyReferrals, ReferralAdmin, ReferralTerms } from "../lib/referrals
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
   refresh: vi.fn(),
+  headers: new Headers(),
   server: { rpc: vi.fn() } as { rpc: ReturnType<typeof vi.fn> } | null,
 }));
 
@@ -36,6 +37,7 @@ vi.mock("@/lib/i18n/server", async () => {
   return { getDictionary: async () => ({ t: en, locale: "en" }) };
 });
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: h.refresh, push: () => {} }) }));
+vi.mock("next/headers", () => ({ headers: async () => h.headers, cookies: async () => ({ get: () => undefined }) }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
@@ -61,24 +63,26 @@ const base: MyReferrals = {
   qualifyDays: 60,
   monthlyCap: 10,
   link: null,
+  org: null,
   joined: 0,
   held: 0,
   due: 0,
-  nextReleaseAt: null,
+  nextReleaseOn: null,
   paid: 0,
   earned: 0,
   paidThisMonth: 0,
   clawed: 0,
   clawedCredits: 0,
+  clawOwed: 0,
   void: 0,
   milestoneCredits: null,
 };
 const withLink = (over: Partial<MyReferrals> = {}): MyReferrals => ({ ...base, link: { token: TOKEN, createdAt: "2026-11-01T00:00:00Z" }, ...over });
 const dbShape = (m: MyReferrals) => ({
   enabled: m.enabled, credits: m.credits, min_credits: m.minCredits, hold_days: m.holdDays, qualify_days: m.qualifyDays,
-  monthly_cap: m.monthlyCap, link: m.link ? { token: m.link.token, created_at: m.link.createdAt } : null, joined: m.joined,
-  held: m.held, due: m.due, next_release_at: m.nextReleaseAt, paid: m.paid, earned: m.earned, paid_this_month: m.paidThisMonth,
-  clawed: m.clawed, clawed_credits: m.clawedCredits, void: m.void, milestone_credits: m.milestoneCredits,
+  monthly_cap: m.monthlyCap, link: m.link ? { token: m.link.token, created_at: m.link.createdAt } : null, org: m.org, joined: m.joined,
+  held: m.held, due: m.due, next_release_on: m.nextReleaseOn, paid: m.paid, earned: m.earned, paid_this_month: m.paidThisMonth,
+  clawed: m.clawed, clawed_credits: m.clawedCredits, claw_owed: m.clawOwed, void: m.void, milestone_credits: m.milestoneCredits,
 });
 const statValue = (label: string) => screen.getByText(label, { selector: "dt" }).parentElement?.querySelector("dd")?.textContent;
 
@@ -140,7 +144,7 @@ describe("the referral card", () => {
   it("with referrals: pending is a count and a date, never credits; earned is only what was paid", () => {
     render(
       <ReferralCard
-        referrals={withLink({ joined: 5, held: 3, due: 1, nextReleaseAt: "2026-12-14T10:00:00Z", paid: 2, earned: 400, paidThisMonth: 2, clawed: 1, clawedCredits: 200, void: 1 })}
+        referrals={withLink({ joined: 5, held: 3, due: 1, nextReleaseOn: "2026-12-14", paid: 2, earned: 400, paidThisMonth: 2, clawed: 1, clawedCredits: 200, clawOwed: 50, void: 1, org: { id: "org-9", name: "Ana Studio" } })}
         orgId="org-1"
       />,
     );
@@ -153,6 +157,9 @@ describe("the referral card", () => {
     expect(screen.getByText(fmt(en.referral.monthUsed, { n: 2, cap: 10 }))).toBeTruthy();
     expect(screen.getByText(fmt(en.referral.clawed, { n: 1, credits: "200" }))).toBeTruthy();
     expect(screen.getByText(fmt(en.referral.void, { n: 1 }))).toBeTruthy();
+    expect(screen.getByText(fmt(en.referral.clawOwed, { credits: "50" }))).toBeTruthy();
+    // Where the reward went is the link's workspace, named; never "this workspace" when it may be another.
+    expect(screen.getByText(fmt(en.referral.earnedHint, { workspace: "Ana Studio" }))).toBeTruthy();
     // 3 pending × 200 would be 600: that is an estimate, and it is never shown.
     expect(document.body.textContent).not.toContain("600");
     expect(screen.queryByText(en.referral.empty)).toBeNull();
@@ -214,6 +221,14 @@ describe("the Credits page section", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("a router prefetch only reads (my_referrals): settling is for a real visit", async () => {
+    h.headers = new Headers({ "next-router-prefetch": "1" });
+    h.server!.rpc.mockResolvedValue({ data: dbShape(withLink({ joined: 2 })), error: null });
+    render(await ReferralSection({ orgId: "org-1", legacy }));
+    expect(h.server!.rpc.mock.calls.map((c) => c[0])).toEqual(["my_referrals"]);
+    h.headers = new Headers();
+  });
+
   it("before 0165: 0092's card, exactly as it was", async () => {
     h.server!.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
     render(await ReferralSection({ orgId: "org-1", legacy }));
@@ -246,11 +261,12 @@ describe("the operator panel", () => {
   const admin: ReferralAdmin = {
     enabled: false, milestoneEnabled: false, credits: 200, minCredits: 1000, holdDays: 30, qualifyDays: 60, monthlyCap: 10, dailyCap: 50,
     updatedAt: null, links: 3, joins: 7, held: 2, due: 0, paid: 1, paidToday: 0, creditsMonth: 200, creditsTotal: 200, voidRefunded: 1,
-    voidSamePayer: 0, clawed: 0, clawShortfall: 0, milestoneRewards: 0,
+    voidSamePayer: 0, voidMember: 0, clawed: 0, clawOwed: 0, milestoneRewards: 0, linksOpen: true, schedule: true, startedAt: null,
+    lastRun: { at: "2026-11-14T09:00:00Z", links: 3, changed: 1, failed: 0, error: null }, runsFailed24h: 0, reversedByEvent: 0,
   };
 
   it("sends the switch, the milestone switch and the numbers to set_referral_settings", async () => {
-    h.rpc.mockResolvedValue({ data: { ...admin, enabled: true, milestone_enabled: false, min_credits: 1000, hold_days: 30, qualify_days: 60, monthly_cap: 10, daily_cap: 50, updated_at: null, paid_today: 0, credits_month: 200, credits_total: 200, void_refunded: 1, void_same_payer: 0, claw_shortfall: 0, milestone_rewards: 0 }, error: null });
+    h.rpc.mockResolvedValue({ data: { ...admin, enabled: true, milestone_enabled: false, min_credits: 1000, hold_days: 30, qualify_days: 60, monthly_cap: 10, daily_cap: 50, updated_at: null, paid_today: 0, credits_month: 200, credits_total: 200, void_refunded: 1, void_same_payer: 0, void_member: 0, claw_owed: 0, milestone_rewards: 0, links_open: true, schedule: true, started_at: null, runs_failed_24h: 0, reversed_by_event: 0, last_run: null }, error: null });
     render(<ReferralAdminPanel admin={admin} />);
     fireEvent.click(screen.getByRole("checkbox", { name: new RegExp(en.referral.adminSwitch) }));
     fireEvent.click(screen.getByRole("button", { name: en.referral.adminSave }));
@@ -259,6 +275,28 @@ describe("the operator panel", () => {
       p_enabled: true, p_milestone_enabled: false, p_credits: 200, p_min_credits: 1000, p_hold_days: 30, p_qualify_days: 60, p_monthly_cap: 10, p_daily_cap: 50,
     });
     expect(await screen.findByText(en.referral.adminSaved)).toBeTruthy();
+  });
+
+  it("says plainly when no settle job is scheduled, and what the last run did", () => {
+    render(<ReferralAdminPanel admin={{ ...admin, schedule: false, runsFailed24h: 2, reversedByEvent: 1 }} />);
+    expect(screen.getByText(en.referral.adminNoSchedule)).toBeTruthy();
+    expect(screen.getByText(fmt(en.referral.adminRunsFailed, { n: 2 }))).toBeTruthy();
+    expect(screen.getByText(fmt(en.referral.adminByEvent, { n: 1 }))).toBeTruthy();
+    cleanup();
+    render(<ReferralAdminPanel admin={admin} />);
+    expect(screen.queryByText(en.referral.adminNoSchedule)).toBeNull();
+    expect(screen.getByText((_, el) => el?.hasAttribute("data-referral-last-run") ?? false).textContent).toContain("2026-11-14 09:00 UTC");
+  });
+
+  it("names the second-factor and rate-limit refusals of owner_guard in our words", async () => {
+    for (const [code, text] of [["mfa_required", en.referral.adminMfa], ["rate_limited", en.referral.adminRateLimited]] as const) {
+      h.rpc.mockResolvedValueOnce({ data: { ok: false, error: code, message: "server text" }, error: null });
+      render(<ReferralAdminPanel admin={admin} />);
+      fireEvent.click(screen.getByRole("button", { name: en.referral.adminSave }));
+      expect(await screen.findByText(text)).toBeTruthy();
+      expect(screen.queryByText("server text")).toBeNull();
+      cleanup();
+    }
   });
 
   it("refuses a reward above the smallest payment before anything is sent", () => {
@@ -317,7 +355,8 @@ describe("/referral", () => {
     expect(screen.getByText(en.referral.page.unknown)).toBeTruthy();
     expect(screen.queryByText(en.referral.page.numbersTitle)).toBeNull();
     for (const sel of ["ol li", "ul li"]) {
-      for (const li of Array.from(document.querySelectorAll(sel))) expect(li.textContent).not.toMatch(/\{|\d/);
+      // No placeholder and no number of the programme's (the fixed "100%" of a free promo is a word of the rule, not a number of it).
+      for (const li of Array.from(document.querySelectorAll(sel))) expect(li.textContent?.replace("100%", "")).not.toMatch(/\{|\d/);
     }
   });
 

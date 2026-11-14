@@ -63,24 +63,27 @@ function coerceNumbers(r: Record<string, unknown>): ReferralNumbers | null {
 /** my_referrals() / claim_referral_rewards(): the person's own link and counts. Counts only — never who. */
 export interface MyReferrals extends ReferralNumbers {
   link: { token: string; createdAt: string } | null;
+  /** The workspace the link was made in: where rewards are added (it may not be the one on screen). */
+  org: { id: string; name: string } | null;
   /** New, confirmed accounts that joined through the link. */
   joined: number;
   /** Friends whose payment is on hold now. */
   held: number;
   /** Of those, past their hold and waiting for room under a cap. */
   due: number;
-  /** When the next hold ends (null when nothing is on hold, or everything held is already due). */
-  nextReleaseAt: string | null;
+  /** The UTC day the next hold ends (YYYY-MM-DD; a day, never the moment of a payment), or null. */
+  nextReleaseOn: string | null;
   /** Rewards paid and still standing. */
   paid: number;
   /** Credits those paid rewards added. */
   earned: number;
   /** Rewards paid this calendar month (counts toward `monthlyCap`, taken back or not). */
   paidThisMonth: number;
-  /** Rewards taken back after a refund, and the credits that came back. */
+  /** Rewards taken back (or being taken back) after a reversal, the credits that came back, and what is still owed. */
   clawed: number;
   clawedCredits: number;
-  /** Referrals that will never pay (refunded during the hold, or the same payer). */
+  clawOwed: number;
+  /** Referrals that will never pay (reversed during the hold, the same payer, a membership overlap). */
   void: number;
   /** 0092's one-off sign-up reward, when it was paid to this person. */
   milestoneCredits: number | null;
@@ -99,6 +102,12 @@ export function coerceMyReferrals(raw: unknown): MyReferrals | null {
     if (!token) return null;
     link = { token, createdAt: typeof l.created_at === "string" ? l.created_at : "" };
   }
+  let org: MyReferrals["org"] = null;
+  if (r.org !== null && r.org !== undefined) {
+    const o = r.org as Record<string, unknown>;
+    if (typeof o !== "object" || typeof o.id !== "string" || typeof o.name !== "string") return null;
+    org = { id: o.id, name: o.name };
+  }
   const c = {
     joined: count(r.joined),
     held: count(r.held),
@@ -110,19 +119,23 @@ export function coerceMyReferrals(raw: unknown): MyReferrals | null {
   };
   const earned = finite(r.earned);
   const clawedCredits = finite(r.clawed_credits);
-  const next = isoOrNull(r.next_release_at);
+  const clawOwed = finite(r.claw_owed);
+  const next = r.next_release_on === null || r.next_release_on === undefined ? null : r.next_release_on;
   if (Object.values(c).some((v) => v === null) || earned === null || earned < 0 || clawedCredits === null || clawedCredits < 0) return null;
-  if (next === undefined) return null;
+  if (clawOwed === null || clawOwed < 0) return null;
+  if (next !== null && (typeof next !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(next))) return null;
   const milestone = r.milestone_credits === null || r.milestone_credits === undefined ? null : finite(r.milestone_credits);
   return {
     ...nums,
     link,
+    org,
     ...(c as Record<keyof typeof c, number>),
     // A count of "due" above "held" is a database that broke its promise: never shown as more waiting than there is.
     due: Math.min(c.due as number, c.held as number),
-    nextReleaseAt: next,
+    nextReleaseOn: next,
     earned,
     clawedCredits,
+    clawOwed,
     milestoneCredits: milestone,
   };
 }
@@ -156,11 +169,27 @@ export function coerceReferralTerms(raw: unknown): ReferralTerms | null {
   return { ...nums, dailyCap, linkHourlyCap, newAccountDays, updatedAt };
 }
 
+/** The settle job's last run (referral_settle_runs). */
+export interface ReferralRun {
+  at: string;
+  links: number;
+  changed: number;
+  failed: number;
+  error: string | null;
+}
+
 /** referral_admin(): the operator's numbers and the platform's counts. */
 export interface ReferralAdmin extends ReferralNumbers {
+  /** 0092's switch: links and joins work. */
+  linksOpen: boolean;
   milestoneEnabled: boolean;
   dailyCap: number;
+  startedAt: string | null;
   updatedAt: string | null;
+  /** Is the pg_cron job there? Without it, clawbacks wait for the referrer's next visit. */
+  schedule: boolean;
+  lastRun: ReferralRun | null;
+  runsFailed24h: number;
   links: number;
   joins: number;
   held: number;
@@ -171,9 +200,24 @@ export interface ReferralAdmin extends ReferralNumbers {
   creditsTotal: number;
   voidRefunded: number;
   voidSamePayer: number;
+  voidMember: number;
   clawed: number;
-  clawShortfall: number;
+  clawOwed: number;
+  /** Reversals only the payment provider reported (no credit refund was booked): a person's case. */
+  reversedByEvent: number;
   milestoneRewards: number;
+}
+
+function coerceRun(raw: unknown): ReferralRun | null | undefined {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const at = isoOrNull(r.at);
+  const links = count(r.links);
+  const changed = count(r.changed);
+  const failed = count(r.failed);
+  if (!at || links === null || changed === null || failed === null) return undefined;
+  return { at, links, changed, failed, error: typeof r.error === "string" ? r.error : null };
 }
 
 export function coerceReferralAdmin(raw: unknown): ReferralAdmin | null {
@@ -182,6 +226,7 @@ export function coerceReferralAdmin(raw: unknown): ReferralAdmin | null {
   const nums = coerceNumbers(r);
   const ints = {
     dailyCap: count(r.daily_cap),
+    runsFailed24h: count(r.runs_failed_24h),
     links: count(r.links),
     joins: count(r.joins),
     held: count(r.held),
@@ -190,20 +235,36 @@ export function coerceReferralAdmin(raw: unknown): ReferralAdmin | null {
     paidToday: count(r.paid_today),
     voidRefunded: count(r.void_refunded),
     voidSamePayer: count(r.void_same_payer),
+    voidMember: count(r.void_member),
     clawed: count(r.clawed),
+    reversedByEvent: count(r.reversed_by_event),
     milestoneRewards: count(r.milestone_rewards),
   };
-  const money = { creditsMonth: finite(r.credits_month), creditsTotal: finite(r.credits_total), clawShortfall: finite(r.claw_shortfall) };
+  const money = { creditsMonth: finite(r.credits_month), creditsTotal: finite(r.credits_total), clawOwed: finite(r.claw_owed) };
   const updatedAt = isoOrNull(r.updated_at);
-  if (!nums || typeof r.milestone_enabled !== "boolean" || updatedAt === undefined) return null;
+  const startedAt = isoOrNull(r.started_at);
+  const lastRun = coerceRun(r.last_run);
+  if (!nums || typeof r.milestone_enabled !== "boolean" || typeof r.links_open !== "boolean" || typeof r.schedule !== "boolean") return null;
+  if (updatedAt === undefined || startedAt === undefined || lastRun === undefined) return null;
   if (Object.values(ints).some((v) => v === null) || Object.values(money).some((v) => v === null)) return null;
   return {
     ...nums,
+    linksOpen: r.links_open,
     milestoneEnabled: r.milestone_enabled,
+    schedule: r.schedule,
+    lastRun,
+    startedAt,
     updatedAt,
     ...(ints as Record<keyof typeof ints, number>),
     ...(money as Record<keyof typeof money, number>),
   };
+}
+
+/** owner_guard's refusal (0107): `{ ok: false, error, message }`. The code decides the words on screen, never the text. */
+export function ownerRefusal(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return r.ok === false && typeof r.error === "string" ? r.error : null;
 }
 
 /** The operator form's text fields. */

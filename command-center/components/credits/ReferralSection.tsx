@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { readMyReferrals } from "@/lib/server/referrals";
@@ -16,8 +17,10 @@ import { ErrorState } from "@/components/ReadError";
  *   0165 missing   0092's card exactly as before (`legacy`): the database still runs 0092's rules, so its card is the true one.
  */
 export async function ReferralSection({ orgId, legacy }: { orgId: string; legacy: InviteRead<MyInvite> }) {
-  const [{ t }, supabase] = await Promise.all([getDictionary(), createClient()]);
-  const read = supabase ? await readMyReferrals(supabase) : ({ state: "failed" } as const);
+  const [{ t }, supabase, h] = await Promise.all([getDictionary(), createClient(), headers()]);
+  // A router prefetch renders this too: it reads, and only a real visit settles.
+  const prefetch = h.get("next-router-prefetch") !== null || h.get("purpose") === "prefetch";
+  const read = supabase ? await readMyReferrals(supabase, { settle: !prefetch }) : ({ state: "failed" } as const);
 
   if (read.state === "unsupported") {
     if (legacy.state === "ok" && inviteWorthShowing(legacy.value)) return <InviteFriendsCard invite={legacy.value} orgId={orgId} />;

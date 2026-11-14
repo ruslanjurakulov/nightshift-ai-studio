@@ -332,10 +332,11 @@ const REFERRAL_NUMBERS = { enabled: true, credits: 200, min_credits: 1000, hold_
 const REFERRALS_EMPTY = {
   ...REFERRAL_NUMBERS,
   link: { token: "0123456789abcdef0123456789abcdef", created_at: "2026-10-01T00:00:00Z" },
-  joined: 0, held: 0, due: 0, next_release_at: null, paid: 0, earned: 0, paid_this_month: 0, clawed: 0, clawed_credits: 0, void: 0,
+  org: { id: ORG.id, name: "QA Studio" },
+  joined: 0, held: 0, due: 0, next_release_on: null, paid: 0, earned: 0, paid_this_month: 0, clawed: 0, clawed_credits: 0, claw_owed: 0, void: 0,
   milestone_credits: null,
 };
-RPC.my_referrals = { ...REFERRALS_EMPTY, joined: 6, held: 2, next_release_at: "2026-12-09T10:00:00Z", paid: 3, earned: 600, paid_this_month: 1, void: 1 };
+RPC.my_referrals = { ...REFERRALS_EMPTY, joined: 6, held: 2, next_release_on: "2026-12-09", paid: 3, earned: 600, paid_this_month: 1, void: 1 };
 RPC.claim_referral_rewards = RPC.my_referrals;
 RPC.referral_terms = { ...REFERRAL_NUMBERS, daily_cap: 50, link_hourly_cap: 10, new_account_days: 3, updated_at: "2026-11-14T08:00:00Z" };
 

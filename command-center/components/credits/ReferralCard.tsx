@@ -12,13 +12,6 @@ import { coerceMyInvite, inviteUrl } from "@/lib/friend-invites";
 import { hasReferrals, telegramShareUrl, type MyReferrals } from "@/lib/referrals";
 import { REFERRAL_PATH } from "@/lib/public-paths";
 
-/** YYYY-MM-DD of an instant, in UTC: the same text on the server and in the browser. */
-function utcDay(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-}
-
 /**
  * "Invite friends" on the Credits page (migration 0165): the person's link, Copy / Share / Telegram, the reward terms in one
  * line, and their own referrals as the database counts them — joined, qualified, pending, credits earned.
@@ -99,7 +92,7 @@ export function ReferralCard({ referrals, orgId }: { referrals: MyReferrals; org
     cap: state.monthlyCap,
   });
   const qualified = state.held + state.paid;
-  const next = utcDay(state.nextReleaseAt);
+  const next = state.nextReleaseOn;
   const waiting = state.held - state.due;
 
   return (
@@ -193,7 +186,7 @@ export function ReferralCard({ referrals, orgId }: { referrals: MyReferrals; org
               <Stat label={c.joined} hint={c.joinedHint} value={String(state.joined)} />
               <Stat label={c.qualified} hint={c.qualifiedHint} value={String(qualified)} />
               <Stat label={c.pending} hint={c.pendingHint} value={state.held > 0 ? String(state.held) : c.pendingNone} />
-              <Stat label={c.earned} hint={c.earnedHint} value={formatCredits(state.earned, locale)} />
+              <Stat label={c.earned} hint={state.org ? fmt(c.earnedHint, { workspace: state.org.name }) : ""} value={formatCredits(state.earned, locale)} />
             </dl>
             {!hasReferrals(state) ? (
               <p className="text-sm text-[var(--color-muted)]" data-referral-empty>
@@ -205,6 +198,7 @@ export function ReferralCard({ referrals, orgId }: { referrals: MyReferrals; org
                 {state.due > 0 && <li>{fmt(c.heldDue, { n: state.due })}</li>}
                 {state.paidThisMonth > 0 && <li>{fmt(c.monthUsed, { n: state.paidThisMonth, cap: state.monthlyCap })}</li>}
                 {state.clawed > 0 && <li>{fmt(c.clawed, { n: state.clawed, credits: formatCredits(state.clawedCredits, locale) })}</li>}
+                {state.clawOwed > 0 && <li>{fmt(c.clawOwed, { credits: formatCredits(state.clawOwed, locale) })}</li>}
                 {state.void > 0 && <li className="text-[var(--color-muted)]">{fmt(c.void, { n: state.void })}</li>}
               </ul>
             )}
@@ -226,7 +220,7 @@ function Stat({ label, hint, value }: { label: string; hint: string; value: stri
     <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-[var(--color-border)] p-3">
       <dt className="text-xs text-[var(--color-muted)]">{label}</dt>
       <dd className="tnum text-lg text-[var(--color-fg)]">{value}</dd>
-      <dd className="text-[0.7rem] leading-snug text-[var(--color-muted)]">{hint}</dd>
+      {hint && <dd className="text-[0.7rem] leading-snug text-[var(--color-muted)]">{hint}</dd>}
     </div>
   );
 }

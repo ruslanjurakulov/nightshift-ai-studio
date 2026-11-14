@@ -6,13 +6,20 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
-import { coerceReferralAdmin, parseReferralSettings, type ReferralAdmin } from "@/lib/referrals";
+import { coerceReferralAdmin, ownerRefusal, parseReferralSettings, type ReferralAdmin } from "@/lib/referrals";
+
+/** YYYY-MM-DD HH:MM UTC: the same text on the server and in the browser. */
+function utcStamp(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
 
 /**
- * The operator's side of the referral programme (migration 0165): the switch (off until the operator turns it on), 0092's old
- * sign-up reward as a switch of its own, the numbers, the worst case one day can pay, and platform-wide counts. Saved by
- * set_referral_settings(), which refuses anyone but a platform owner/admin and any number out of range — this panel is only
- * offered to them, and hiding it was never the protection.
+ * The operator's side of the referral programme (migration 0165): the reward's own switch (off until the operator turns it
+ * on), 0092's old sign-up reward as a switch of its own, the numbers, the worst case one day can pay, whether the settle job
+ * is scheduled and how its last run went, and platform-wide counts. Saved by set_referral_settings(), which goes through
+ * owner_guard (the second factor when the gate is on, a rate limit) and writes the audit trail — this panel is only offered to
+ * a platform owner/admin, and hiding it was never the protection.
  */
 export function ReferralAdminPanel({ admin }: { admin: ReferralAdmin }) {
   const { t, locale } = useI18n();
@@ -56,6 +63,11 @@ export function ReferralAdminPanel({ admin }: { admin: ReferralAdmin }) {
       p_daily_cap: parsed.dailyCap,
     });
     setBusy(false);
+    const refusal = error ? null : ownerRefusal(data);
+    if (refusal) {
+      setMsg({ ok: false, text: refusal === "mfa_required" ? c.adminMfa : refusal === "rate_limited" ? c.adminRateLimited : c.adminSaveFailed });
+      return;
+    }
     const next = error ? null : coerceReferralAdmin(data);
     if (!next) {
       setMsg({ ok: false, text: c.adminSaveFailed });
@@ -80,6 +92,7 @@ export function ReferralAdminPanel({ admin }: { admin: ReferralAdmin }) {
       <dd className="tnum text-base text-[var(--color-fg)]">{value}</dd>
     </div>
   );
+  const run = state.lastRun;
 
   return (
     <section className="panel flex flex-col gap-4 p-5 sm:p-6" aria-labelledby="referral-admin-title" data-referral-admin>
@@ -87,6 +100,18 @@ export function ReferralAdminPanel({ admin }: { admin: ReferralAdmin }) {
         {c.adminTitle}
       </h2>
       <p className="max-w-[64ch] text-xs leading-relaxed text-[var(--color-muted)]">{c.adminHint}</p>
+
+      {!state.schedule && (
+        <p role="alert" className="rounded-lg border p-3 text-sm" style={{ borderColor: "var(--color-fail)", color: "var(--color-fail)" }} data-referral-no-schedule>
+          {c.adminNoSchedule}
+        </p>
+      )}
+      <p className="text-xs text-[var(--color-muted)]" data-referral-last-run>
+        {run
+          ? fmt(run.failed > 0 ? c.adminLastRunFailed : c.adminLastRun, { at: utcStamp(run.at), links: run.links, failed: run.failed })
+          : c.adminNoRun}{" "}
+        {state.runsFailed24h > 0 && <span style={{ color: "var(--color-fail)" }}>{fmt(c.adminRunsFailed, { n: state.runsFailed24h })}</span>}
+      </p>
 
       <label className="flex min-h-11 items-center gap-3 text-sm text-[var(--color-fg)]">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="size-6 accent-[var(--ns-amber)]" />
@@ -131,10 +156,15 @@ export function ReferralAdminPanel({ admin }: { admin: ReferralAdmin }) {
         {count(c.adminPaid, state.paid)}
         {count(c.adminPaidToday, `${state.paidToday} / ${state.dailyCap}`)}
         {count(c.adminCreditsMonth, formatCredits(state.creditsMonth, locale))}
-        {count(c.adminVoid, state.voidRefunded + state.voidSamePayer)}
+        {count(c.adminVoid, state.voidRefunded + state.voidSamePayer + state.voidMember)}
         {count(c.adminClawed, state.clawed)}
-        {count(c.adminShortfall, formatCredits(state.clawShortfall, locale))}
+        {count(c.adminOwed, formatCredits(state.clawOwed, locale))}
       </dl>
+      {state.reversedByEvent > 0 && (
+        <p role="alert" className="text-xs" style={{ color: "var(--color-fail)" }} data-referral-by-event>
+          {fmt(c.adminByEvent, { n: state.reversedByEvent })}
+        </p>
+      )}
     </section>
   );
 }
