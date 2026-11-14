@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { Suspense, useState } from "react";
-import { PanelLeft } from "lucide-react";
+import { PanelLeft, Projector } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem } from "@/lib/navigation";
+import { CUSTOMER_SIDEBAR, STUDIO_PROJECTS, sidebarCurrent, type NavItem } from "@/lib/navigation";
+import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { DESKS, deskFromQuery, deskHref, type Desk } from "@/lib/creative/desks";
 import { runPrefillFromQuery } from "@/lib/home";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
@@ -135,17 +136,20 @@ function CurrentRows({ collapsed }: { collapsed: boolean }) {
   const q = useSearchParams();
   const tool = q.get("tool");
   // On /create the row is the desk the page opens (lib/creative/desks), from the same query it reads.
-  const onCreate = section === "/create" || section.startsWith("/create/");
+  // Studio → Projects lives under /create but is not a desk: its own row is the current one there.
+  const onProjects = section === STUDIO_PROJECTS || section.startsWith(STUDIO_PROJECTS + "/");
+  const onCreate = !onProjects && (section === "/create" || section.startsWith("/create/"));
   // The same validated read the page makes (lib/home), so a junk ?lang= never lights the YouTube desk.
   const hasRunPrefill = onCreate && !!runPrefillFromQuery({ topic: q.get("topic") ?? undefined, length: q.get("length") ?? undefined, lang: q.get("lang") ?? undefined, format: q.get("format") ?? undefined });
   const desk = onCreate ? deskFromQuery({ desk: q.get("desk"), tool, hasRunPrefill }) : null;
-  const current = desk ? `desk:${desk}` : sidebarCurrent(section, tool);
+  const current = onProjects ? "studio:projects" : desk ? `desk:${desk}` : sidebarCurrent(section, tool);
   return <SidebarRows current={current} collapsed={collapsed} />;
 }
 
 function SidebarRows({ current, collapsed }: { current: string | null; collapsed: boolean }) {
-  const { t, fmt } = useI18n();
-  const { tools } = useShell();
+  const { t, fmt, locale } = useI18n();
+  const { tools, features } = useShell();
+  const projectsName = filmStudioStrings(locale).section;
   const path = useChannelPath();
   const { home, work } = CUSTOMER_SIDEBAR;
   const HomeIcon = ICONS[home.key];
@@ -206,6 +210,18 @@ function SidebarRows({ current, collapsed }: { current: string | null; collapsed
             </li>
           );
         })}
+        {/* Studio → Projects, beside the desks (NIGHTSHIFT_FILM_STUDIO, resolved per viewer by the layout). */}
+        {features.filmStudio === true && (
+          <li>
+            <Link href={path(STUDIO_PROJECTS)} aria-current={current === "studio:projects" ? "page" : undefined} className={rowClass(current === "studio:projects")} data-tip={collapsed ? projectsName : undefined} data-testid="sidebar-studio-projects">
+              {current === "studio:projects" && <Plate id={PLATE} />}
+              <span aria-hidden className="shell-tile">
+                <Projector className="size-3.5" strokeWidth={2} />
+              </span>
+              <span className={collapsed ? "sr-only" : "truncate"}>{projectsName}</span>
+            </Link>
+          </li>
+        )}
       </ul>
 
       <h2 className="shell-group">{t.shell.gWork}</h2>

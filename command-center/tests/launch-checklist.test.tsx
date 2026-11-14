@@ -501,8 +501,10 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
   });
 
   it("the site loads no third-party analytics, advertising or tracking script or pixel", () => {
+    // The ad network is matched by its domain, not the bare word: React's `onDoubleClick`
+    // handler contains "doubleclick" and is a mouse event, not a tracker.
     const TRACKERS =
-      /google-analytics|googletagmanager|gtag\(|doubleclick|googlesyndication|facebook\.net|connect\.facebook|fbq\(|hotjar|clarity\.ms|mixpanel|segment\.(?:com|io)|plausible\.io|posthog|amplitude\.com|fullstory|heap-analytics|hubspot|tiktok\.com\/i18n\/pixel|analytics\.tiktok|snap(?:chat)?\.com\/scevent|linkedin\.com\/px|@vercel\/analytics|@vercel\/speed-insights|matomo|umami|cloudflareinsights/i;
+      /google-analytics|googletagmanager|gtag\(|doubleclick\.net|googlesyndication|facebook\.net|connect\.facebook|fbq\(|hotjar|clarity\.ms|mixpanel|segment\.(?:com|io)|plausible\.io|posthog|amplitude\.com|fullstory|heap-analytics|hubspot|tiktok\.com\/i18n\/pixel|analytics\.tiktok|snap(?:chat)?\.com\/scevent|linkedin\.com\/px|@vercel\/analytics|@vercel\/speed-insights|matomo|umami|cloudflareinsights/i;
     const offenders: string[] = [];
     for (const dir of ["app", "components", "lib"]) {
       for (const f of walk(join(ROOT, dir)).filter((f) => /\.(tsx?|css)$/.test(f))) {

@@ -1251,6 +1251,10 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     # the replay put 0093's back, so the chain goes on again in order, or every later test in this module runs on 0093's price.
     sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql"])
     later = sec_db.MIGRATIONS / "0147_mcp_free_tier.sql"
+    # 0170 replaced 0147's api_request_download, which 0147's drift guard refuses: it comes off first and goes on again last.
+    download = sec_db.MIGRATIONS / "0170_api_download_audit.sql"
+    if later.exists() and download.exists():
+        sec_db.apply_files(db.dsn, [sec_db.REPO / "docs" / "sql" / "rollback_0170_api_download_audit.sql"])
     if later.exists():
         sec_db.apply_files(db.dsn, [later])
         assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "planned"
@@ -1259,6 +1263,10 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     if chatgpt.exists():
         sec_db.apply_files(db.dsn, [chatgpt])
         assert db.su("select position('kc.chatgpt' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0")[0][0] is True
+    if later.exists() and download.exists():
+        sec_db.apply_files(db.dsn, [download])
+        assert db.su("select position('video.download_request' in prosrc) > 0 from pg_proc "
+                     "where oid = 'public.api_request_download(text,text,text,text,text,text)'::regprocedure")[0][0] is True
     if sec_db.MIGRATION_0169.exists():
         sec_db.apply_files(db.dsn, [sec_db.MIGRATION_0169])
         assert db.su("select position('concept_thumbnail_credits' in pg_get_functiondef("

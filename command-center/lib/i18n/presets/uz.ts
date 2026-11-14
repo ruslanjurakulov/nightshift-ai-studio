@@ -20,7 +20,7 @@ export const presetsUz: PresetsDictionary = {
       hint: "Studiya rasmlari uchun yozma badiiy yoʻnalishlar. Bu yerda uslubning oʻzi ochiladi va uni uslublaringizga qoʻshish mumkin. Bu modelga yoʻnalish, rasm qanday chiqishiga vaʼda emas.",
     },
     starter: {
-      title: "Studiya namunalari",
+      title: "Nightshift Studio namunalari",
       hint: "Studiya vositasini tayyor tavsif va shakl bilan ochadi. Namuna matni ataylab inglizcha; [qavslar]ni almashtiring.",
     },
     voice: {

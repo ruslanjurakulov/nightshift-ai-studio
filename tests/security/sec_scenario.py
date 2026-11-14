@@ -190,6 +190,15 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
                [org, t.api_key_id])
         s.rows("insert into public.api_holds (ref, org_id, key_id, amount_cents) values (%s, %s, %s, 100) returning 1",
                [f"ah-{uuid.uuid4()}", org, t.api_key_id])
+        # 0168: a refund's held part, owed on a hold ref that does not exist, so that no release in another test ever collects it.
+        if s.value("select to_regclass('public.api_refund_recoveries') is not null"):
+            refund_row = s.value(
+                "insert into public.api_ledger (org_id, kind, amount_cents, balance_after, reserved_after, requested_cents, "
+                "external_id, source_external_id, note) values (%s, 'refund', 0, 1000, 0, 1, %s, %s, 'seed') returning id",
+                [org, f"adj-seed-{k}", f"txn-seed-{k}"])
+            s.rows("insert into public.api_refund_recoveries (refund_id, refund_ledger_id, topup_external_id, org_id, reason, holds, owed) "
+                   "values (%s, %s, %s, %s, 'refund', %s, 1) returning 1",
+                   [f"adj-seed-{k}", refund_row, f"txn-seed-{k}", org, [f"ah-{uuid.uuid4()}"]])
         s.rows("insert into public.api_idempotency (key_id, idem_key, endpoint, fingerprint) values (%s, %s, 'videos.create', %s) returning 1",
                [t.api_key_id, f"idem-{k}", _hex64(k)])
         s.rows("insert into public.api_rate_counters (key_id, minute, count) values (%s, date_trunc('minute', now()), 1) returning 1",
