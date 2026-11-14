@@ -89,11 +89,15 @@ async function listed(scopes: string[]) {
 }
 
 describe("the tools an OAuth caller is offered follow what the person allowed", () => {
-  it("all three permissions: eight tools, and never the two paid-download tools", async () => {
+  it("all three video permissions: eight tools, and never the two paid-download tools or the Studio's", async () => {
     const names = await listed(["videos:read", "videos:create", "videos:publish"]);
-    expect(names).toEqual(Object.keys(OAUTH_TOOL_SCOPES).sort());
+    expect(names).toEqual(Object.keys(OAUTH_TOOL_SCOPES).filter((t) => OAUTH_TOOL_SCOPES[t as keyof typeof OAUTH_TOOL_SCOPES] !== "studio:create").sort());
+    expect(names).toHaveLength(8);
     expect(names).not.toContain("request_download");
     expect(names).not.toContain("get_download");
+  });
+  it("all four permissions: every connected-app tool", async () => {
+    expect(await listed(["videos:read", "videos:create", "videos:publish", "studio:create"])).toEqual(Object.keys(OAUTH_TOOL_SCOPES).sort());
   });
   it("read only: nothing that spends or publishes", async () => {
     expect(await listed(["videos:read"])).toEqual(["get_balance", "get_job_status", "get_video", "list_channels", "list_connected_accounts", "list_videos"]);

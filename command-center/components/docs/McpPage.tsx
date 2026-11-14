@@ -349,6 +349,8 @@ export function McpPage({
       <DocSection id="tools" no={1} title={c.tools.slug}>
         <Statement>{c.tools.title}</Statement>
         <p className="st-body">{c.tools.lead}</p>
+        {/* 0175: a sign-in connection's Studio tools, said only as "for models that allow it" (CLAUDE.md #5: no model is named or promised). */}
+        <p className="st-body">{c.tools.assistantStudio}</p>
         {/* The tool table opens on a tap: a visitor who only wants to connect is not walked past a table first. */}
         <details className="nx-math nx-mcp-tools">
           <summary>

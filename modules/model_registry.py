@@ -629,6 +629,17 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # functions directly (docs/GEO_BLOCK.md "What it cannot do"). Until the database refuses by country, a model with a
             # country list stays off sale: a terms_gate keeps it hidden (0035), and 0142 refuses beta/ga for it in the database too.
             errors.append(_err(mid, "blocked_countries needs a terms_gate until the database checks the country"))
+        if "mcp_oauth_exposure" in m and m["mcp_oauth_exposure"] is not True and m["mcp_oauth_exposure"] is not False:
+            errors.append(_err(mid, "mcp_oauth_exposure is true or false"))
+        if m.get("mcp_oauth_exposure") is True:
+            # A connected assistant's request has no visitor address to check a country against, and a rights acknowledgement is the
+            # person's own act in the Studio (0174); migration 0175 refuses both for an assistant, so the file must not promise them.
+            if m.get("blocked_countries"):
+                errors.append(_err(mid, "mcp_oauth_exposure cannot be combined with blocked_countries"))
+            if m.get("requires_acknowledgement"):
+                errors.append(_err(mid, "mcp_oauth_exposure cannot be combined with requires_acknowledgement"))
+            if CAPTIONS in caps:
+                errors.append(_err(mid, "captions are a web tool: mcp_oauth_exposure cannot be true"))
         ent = m["entitlement"]
         if ent and ent.split(":")[0] != f"models_{m['output']}":
             errors.append(_err(mid, "entitlement category must match the output"))

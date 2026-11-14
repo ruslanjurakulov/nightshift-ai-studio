@@ -421,6 +421,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # One rate credit for that connection (0147): tests/security/sec_mcp_free_tier_0147.py.
     import sec_mcp_free_tier_0147
     sec_mcp_free_tier_0147.seed(conn, sc)
+    # A connected assistant's Studio quote, the generation it paid for and a rate counter (0175):
+    # tests/security/sec_mcp_oauth_creative_0175.py.
+    import sec_mcp_oauth_creative_0175
+    sec_mcp_oauth_creative_0175.seed(conn, sc)
     # A LEGACY pending invite into org A, addressed to Ivan's email: written as the
     # database owner, because since 0091 no API role can create one (and the
     # migration deleted every one that existed). It is kept so the lab keeps

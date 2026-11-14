@@ -59,7 +59,7 @@ function describe(path: string): { title: string; description: string } | null {
   if (solution) return { title: solution.nav, description: solution.lead };
   if (path === "/docs/api") return { title: dev.api.meta.title, description: dev.api.meta.description };
   if (path === OPENAPI_PATH) return { title: "OpenAPI specification", description: "The public REST API described in the OpenAPI format (JSON)." };
-  if (path === "/mcp") return { title: dev.mcp.meta.title, description: "How to connect an AI assistant to Nightshift over MCP, then make videos by asking the assistant." };
+  if (path === "/mcp") return { title: dev.mcp.meta.title, description: "How to connect an AI assistant to Nightshift over MCP, then make videos by asking the assistant; an assistant connected with a sign-in can also quote and start Studio generations, for models that allow it, after the person confirms the price." };
   if (path === "/docs/cli") return { title: dev.cli.meta.title, description: dev.cli.meta.description };
   if (path === "/docs/skills") return { title: dev.skills.meta.title, description: dev.skills.meta.description };
   if (path === "/privacy") return { title: legal.privacy.title, description: legal.privacy.summary };

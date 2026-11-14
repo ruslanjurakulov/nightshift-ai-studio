@@ -18,6 +18,12 @@ import {
   getCreativeJobFiles,
   listCreativeModels,
   quoteCreative,
+  oauthCreateCreative,
+  oauthGetCreativeJob,
+  oauthListCreativeModels,
+  oauthListMedia,
+  oauthQuoteCreative,
+  MEDIA_KINDS,
   getDownload,
   getJob,
   getVideo,
@@ -30,7 +36,9 @@ import {
 } from "@/lib/api/operations";
 import { apiError, toWire, type ApiResult } from "@/lib/api/http";
 import { MODEL_ID_RE } from "@/lib/models-admin";
-import { missingScope, OAUTH_TOOL_SCOPES, oauthRefusalText } from "@/lib/api/mcp-oauth";
+import { missingScope, OAUTH_STUDIO_TOOL_NAMES, OAUTH_TOOL_SCOPES, oauthRefusalText } from "@/lib/api/mcp-oauth";
+
+export { OAUTH_STUDIO_TOOL_NAMES };
 
 export const MCP_SERVER_INFO = { name: "nightshift", version: "1.0.0" } as const;
 
@@ -109,6 +117,14 @@ function oauthInstructions(has: (tool: string) => boolean): string {
   }
   if (has("get_job_status")) s.push(has("list_videos") ? "Poll get_job_status until a job succeeds, then list_videos to find the video." : "Poll get_job_status until a job succeeds.");
   else if (has("list_videos")) s.push("list_videos and get_video show the workspace's videos.");
+  if (has("quote_creative"))
+    s.push(
+      "For a single picture, clip or edit from the Studio: list_creative_models shows the models offered to connected apps (only " +
+        "those whose terms allow it, so the list can be short or empty), list_media the workspace's own files for source_asset_id. " +
+        "quote_creative is free and returns the price in credits and a quote_id. ALWAYS tell the person that price and get their " +
+        "confirmation before create_creative, which spends it (within this connection's monthly limit) and takes only the quote_id " +
+        "and a fresh idempotency_key. Poll get_creative_job until it is completed for short-lived file links.",
+    );
   if (has("publish_video"))
     s.push(
       "publish_video sends a finished video that passed review to connected accounts" +
@@ -119,6 +135,7 @@ function oauthInstructions(has: (tool: string) => boolean): string {
     ...(has("list_channels") ? [] : ["read the workspace's channels, videos and jobs"]),
     ...(has("create_video") ? [] : ["create videos"]),
     ...(has("publish_video") ? [] : ["publish videos"]),
+    ...(has("quote_creative") ? [] : ["generate pictures and clips in the Studio"]),
   ];
   if (cannot.length)
     s.push(`This connection was not given permission to ${cannot.join(" or to ")}; the person can disconnect it and connect it again, allowing that.`);
@@ -197,6 +214,10 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
   const done = oauth
     ? (r: ApiResult): CallToolResult => (r.ok ? toToolResult(r, caller.requestId) : refusal(oauthRefusalText(r, oauth.origin)))
     : (r: ApiResult) => toToolResult(r, caller.requestId);
+  // A connected app's Studio tool (0175): its refusal reads for a generation, and create's "not known whether it started" names the
+  // only safe retry (the same quote and key).
+  const studioDone = (kind: "create" | "other") => (r: ApiResult): CallToolResult =>
+    r.ok ? toToolResult(r, caller.requestId) : refusal(oauthRefusalText(r, oauth?.origin ?? "", { studio: kind }));
 
   // A callback that throws (a dropped socket, a driver bug) would reach the
   // assistant as the exception's own message: the SDK turns a throw into a tool
@@ -498,6 +519,101 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     },
     async ({ generation_id }) => done(withRemedy(await getCreativeJobFiles(caller, generation_id))),
   );
+
+  // ── The Studio for a connected assistant (OAuth only, 0175) ───────────────
+  // A connection's own doors (oauth_creative_*), never an API key's: a key keeps the four tools above. The price is the database's
+  // quote; create takes nothing but the quote's id and an idempotency key, so what runs is exactly what the person was shown, and
+  // the hold, capture and refund are the Studio's own (create_creative_job). Every model is off here until its terms allow it.
+  if (oauth) {
+    const capabilityArg = z
+      .enum(API_CREATIVE_CAPABILITIES)
+      .describe("What to make: t2i (a picture from words), edit (change a picture), t2v (a clip from words), i2v (a clip from a picture), upscale, remove_bg and the other effects.");
+
+    register(
+      "list_creative_models",
+      {
+        title: "List Studio models for this app",
+        description:
+          "The Studio models this workspace can generate with through a connected app, each with what it makes and the shapes, " +
+          "durations and resolutions it takes. Only models whose terms allow use through an assistant are offered, so the list can be " +
+          "short or empty; every model can still be used in the Studio itself. No prices: quote_creative gives the price of one request.",
+        inputSchema: z.object({ capability: capabilityArg.optional() }).strict(),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ capability: cap }) => studioDone("other")(await oauthListCreativeModels(caller, cap ?? null)),
+    );
+
+    register(
+      "list_media",
+      {
+        title: "List the workspace's media",
+        description:
+          "The workspace's own media library, newest first: pictures, clips and recordings, each with its asset_id. An edit or a " +
+          "picture-to-clip (i2v) takes one of these ids as params.source_asset_id; a file from anywhere else cannot be used.",
+        inputSchema: z
+          .object({ kind: z.enum(MEDIA_KINDS).optional(), limit: z.number().int().min(1).max(100).optional() })
+          .strict(),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ kind, limit }) => studioDone("other")(await oauthListMedia(caller, kind ?? null, limit ?? null)),
+    );
+
+    register(
+      "quote_creative",
+      {
+        title: "Quote a Studio generation",
+        description:
+          "The price in credits of one picture, clip or edit with these exact settings, and a quote_id that holds that price for a " +
+          "few minutes (expires_at). Free: nothing is held or charged. Tell the person the price and ask them to confirm before " +
+          "calling create_creative with this quote_id.",
+        inputSchema: z
+          .object({
+            capability: capabilityArg,
+            model: z.string().regex(MODEL_ID_RE).describe("A model id from list_creative_models."),
+            params: z
+              .record(z.string(), z.unknown())
+              .describe('The model\'s settings, e.g. { "prompt": "…", "aspect_ratio": "16:9", "duration_s": 5 }; for edit and i2v also "source_asset_id" from list_media.'),
+          })
+          .strict(),
+        annotations: { readOnlyHint: true },
+      },
+      async (body) => studioDone("other")(await oauthQuoteCreative(caller, body)),
+    );
+
+    register(
+      "create_creative",
+      {
+        title: "Start a Studio generation",
+        description:
+          "Start the generation a quote priced, at exactly that price, paid in CREDITS from the person's workspace: set aside now, " +
+          "charged when it succeeds and returned if it fails, and never past this connection's monthly spending limit. Only call it " +
+          "after the person saw the quoted price and agreed. It takes the quote_id and nothing else about the generation: an expired " +
+          "quote or a price that changed is refused, never charged. idempotency_key is required: a fresh one per generation, the same " +
+          "one only to retry it. Returns the generation's id for get_creative_job.",
+        inputSchema: z
+          .object({
+            quote_id: z.string().uuid().describe("The quote_id from quote_creative that the person agreed to."),
+            idempotency_key: z.string().regex(IDEMPOTENCY_KEY_RE).describe("Required. A fresh value per generation; reuse it only to retry the same one."),
+          })
+          .strict(),
+        annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      },
+      async ({ quote_id, idempotency_key }) => studioDone("create")(await oauthCreateCreative(caller, quote_id, idempotency_key)),
+    );
+
+    register(
+      "get_creative_job",
+      {
+        title: "Get a Studio generation",
+        description:
+          "A generation this connection started: its status (queued, running, completed, failed), what was held and charged, the " +
+          "error_code if it failed, and once it completed a link to each file, which expires after a few minutes (ask again for a fresh one).",
+        inputSchema: z.object({ job_id: z.string().uuid() }).strict(),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ job_id }) => studioDone("other")(await oauthGetCreativeJob(caller, job_id)),
+    );
+  }
 
   return server;
 }

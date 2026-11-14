@@ -718,3 +718,9 @@ sec_referral_0165.extend(TABLES, FUNCTIONS)
 import sec_films_0166  # noqa: E402
 
 sec_films_0166.extend(TABLES, FUNCTIONS)
+
+# Migration 0175 (the Studio's generations for a connected assistant: quotes, jobs and rate buckets of a connection's own, five
+# token-only doors, every model off): tests/security/sec_mcp_oauth_creative_0175.py
+import sec_mcp_oauth_creative_0175  # noqa: E402
+
+sec_mcp_oauth_creative_0175.extend(TABLES, FUNCTIONS)

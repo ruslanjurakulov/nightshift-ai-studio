@@ -1,0 +1,126 @@
+-- rollback_0175_mcp_oauth_creative.sql — takes migration 0175 (the Studio's generations for a connected assistant) out again.
+-- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
+--
+-- WHAT IS KEPT: the record. oauth_creative_quotes and oauth_creative_jobs (which connection started which generation, from which
+-- quote, holding what) stay, unreadable by any API role as before; oauth_creative_rate_counters stays too (it holds nothing of
+-- value; drop it by hand if you want). A generation already started finishes, is captured or refunded by the worker as usual.
+--
+-- WHAT IS LOST: the five doors. After this, a connected app's quote_creative / create_creative / get_creative_job /
+-- list_creative_models / list_media answer 503 api_unavailable naming migration 0175, and nothing new can be started. The
+-- connection's monthly spend goes back to counting videos only (0093), which is safe because no new generation can be started.
+--
+-- WHAT IT DOES, in one transaction:
+--   0. REFUSES (changes nothing) if a replaced function is not 0175's body (a later change would be undone), or if any connection
+--      holds the studio:create permission: 0093's check cannot hold such a row, and taking a permission away from a person's
+--      connection is their decision. Disconnect those connections first (Developers → Connected apps), then run this again.
+--   1. Drops the five doors and 0175's helpers.
+--   2. Puts back 0093's oauth_scopes_supported, oauth_endpoint_scope and oauth_grant_month_credits, byte for byte, and 0093's check.
+--   3. Asserts the end state.
+
+begin;
+set local lock_timeout = '5s';
+
+do $$
+declare
+  h text;
+begin
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_scopes_supported()');
+  if h is distinct from '3ef7e3154b00584e7625225d20dfa705' then
+    raise exception 'rollback 0175: public.oauth_scopes_supported() is not 0175''s body (md5 %): read the live body first', h;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_endpoint_scope(text)');
+  if h is distinct from '8d0d2c6e236fde2b82aed988a7e7f377' then
+    raise exception 'rollback 0175: public.oauth_endpoint_scope(text) is not 0175''s body (md5 %): read the live body first', h;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_grant_month_credits(uuid)');
+  if h is distinct from '4a3f226949bf5b91529a4e60d943fff3' then
+    raise exception 'rollback 0175: public.oauth_grant_month_credits(uuid) is not 0175''s body (md5 %): read the live body first', h;
+  end if;
+  if exists (select 1 from public.oauth_grants g where 'studio:create' = any (g.scopes)) then
+    raise exception 'rollback 0175: % connection(s) hold the studio:create permission; disconnect them first (Developers → Connected apps)',
+      (select count(*) from public.oauth_grants g where 'studio:create' = any (g.scopes));
+  end if;
+end $$;
+
+drop function if exists public.oauth_creative_models(text, text, text);
+drop function if exists public.oauth_media_list(text, text, integer, text);
+drop function if exists public.oauth_creative_quote(text, text, text, jsonb, text);
+drop function if exists public.oauth_creative_create(text, uuid, text, text);
+drop function if exists public.oauth_creative_get(text, uuid, text);
+drop function if exists public.oauth_creative_quote_json(public.oauth_creative_quotes);
+drop function if exists public.oauth_creative_rate_refusal(uuid, text);
+drop function if exists public.oauth_creative_rate_take(uuid, text);
+drop function if exists public.oauth_creative_state_refusal(text, text);
+drop function if exists public.oauth_creative_model_state(text, text);
+drop function if exists public.oauth_creative_limits();
+drop function if exists public.oauth_creative_capabilities();
+
+create or replace function public.oauth_scopes_supported() returns text[]
+  language sql immutable set search_path = public, pg_temp as $$
+  select array['videos:read', 'videos:create', 'videos:publish']::text[]
+$$;
+
+alter table public.oauth_grants drop constraint if exists oauth_grants_scopes_check;
+alter table public.oauth_grants add constraint oauth_grants_scopes_check
+  check (cardinality(scopes) between 1 and 3
+         and scopes <@ array['videos:read', 'videos:create', 'videos:publish']::text[]);
+
+create or replace function public.oauth_endpoint_scope(p_endpoint text) returns text
+  language sql immutable set search_path = public, pg_temp as $$
+  select case p_endpoint
+           when 'oauth.check' then 'any'
+           when 'channels.list' then 'videos:read'
+           when 'accounts.list' then 'videos:read'
+           when 'videos.list' then 'videos:read'
+           when 'videos.get' then 'videos:read'
+           when 'oauth.jobs.get' then 'videos:read'
+           when 'oauth.balance' then 'videos:read'
+           when 'oauth.videos.create' then 'videos:create'
+           when 'videos.publish' then 'videos:publish'
+         end
+$$;
+
+create or replace function public.oauth_grant_month_credits(p_grant uuid) returns numeric
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(sum(case cr.status
+                        when 'open' then cr.amount
+                        when 'captured' then coalesce(cr.captured, cr.amount)
+                        else 0 end), 0)
+    from public.oauth_runs r
+    join public.credit_reservations cr on cr.job_id = r.credit_ref
+   where r.grant_id = p_grant and r.created_at >= public.oauth_month_start()
+$$;
+
+revoke all on function public.oauth_scopes_supported() from public, anon, authenticated, service_role;
+revoke all on function public.oauth_endpoint_scope(text) from public, anon, authenticated, service_role;
+revoke all on function public.oauth_grant_month_credits(uuid) from public, anon, authenticated, service_role;
+
+do $$
+declare
+  h text;
+begin
+  if to_regprocedure('public.oauth_creative_create(text, uuid, text, text)') is not null
+     or to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is not null
+     or to_regprocedure('public.oauth_creative_model_state(text, text)') is not null then
+    raise exception 'rollback 0175 end state: a 0175 function is still there';
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_endpoint_scope(text)');
+  if h is distinct from 'ade9dedd7a1058b4938e9df7e8bd1b87' then
+    raise exception 'rollback 0175 end state: oauth_endpoint_scope is not 0093''s body (md5 %)', h;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_grant_month_credits(uuid)');
+  if h is distinct from '6329f5ed73f203e67e31e885238fa1ab' then
+    raise exception 'rollback 0175 end state: oauth_grant_month_credits is not 0093''s body (md5 %)', h;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_scopes_supported()');
+  if h is distinct from 'b1cdcf014109e5902d0e6d9f05767186' then
+    raise exception 'rollback 0175 end state: oauth_scopes_supported is not 0093''s body (md5 %)', h;
+  end if;
+end $$;
+
+commit;
+
+-- Verify (every column should read true)
+-- select to_regprocedure('public.oauth_creative_create(text, uuid, text, text)') is null as doors_gone,
+--        not ('studio:create' = any (public.oauth_scopes_supported())) as permission_gone,
+--        to_regclass('public.oauth_creative_jobs') is not null as record_kept;

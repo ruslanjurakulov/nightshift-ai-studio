@@ -107,7 +107,12 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   }
 
   const where = describeRedirect(view.redirectUri);
-  const scopeText: Record<string, string> = { "videos:read": o.scopeRead, "videos:create": o.scopeCreate, "videos:publish": o.scopePublish };
+  const scopeText: Record<string, string> = {
+    "videos:read": o.scopeRead,
+    "videos:create": o.scopeCreate,
+    "videos:publish": o.scopePublish,
+    "studio:create": o.scopeStudio,
+  };
   return (
     <OAuthShell title={withParts(o.title, { app: <AppName name={view.clientName} /> })}>
       <p className="st-body mt-3 [overflow-wrap:anywhere]">{withParts(o.lead, { app: <AppName name={view.clientName} /> })}</p>
@@ -145,7 +150,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
             <strong className="font-semibold text-[var(--ns-text)]">{o.cannotTitle}</strong> {o.cannot}
           </p>
           {/* Free can approve since 0147: say up front that credits, not the plan, are what this app's videos need. */}
-          {!view.exempt && view.scopes.includes("videos:create") && <p className="fl-hint">{o.creditsNote}</p>}
+          {!view.exempt && (view.scopes.includes("videos:create") || view.scopes.includes("studio:create")) && <p className="fl-hint">{o.creditsNote}</p>}
         </section>
 
       <ConsentForm

@@ -7,6 +7,7 @@ import { mediaDir, mediaUrlSecret, signedMediaPath } from "@/lib/server/media";
 import { apiError, newRequestId, toResponse, type ApiResult } from "@/lib/api/http";
 import { authenticate, type ApiCaller, type Rpc } from "@/lib/api/operations";
 import { oauthRpc } from "@/lib/api/mcp-oauth";
+import { oauthOrigin } from "@/lib/oauth/config";
 
 /**
  * The server half of the public API: a Supabase client with the ANON key and
@@ -55,9 +56,18 @@ function mediaLink(assetId: string, variant: "original" | "thumb" | "proxy", mim
  * The caller of an AI app connected with OAuth (migration 0093): the access
  * token's hash, a database call that reaches only the allow-listed functions
  * (lib/api/mcp-oauth.ts), and no downloads (they are API-key only).
+ *
+ * Its file links (0175 get_creative_job) are the same signed, expiring library paths, made absolute on this deployment's own
+ * origin (never the request's Host): an assistant opens a URL, it has no origin to prefix a path with. Only ever called with an
+ * asset the database returned for a completed generation THIS connection started (oauth_creative_get).
  */
 export function oauthApiCaller(tokenHash: string, requestId: string): ApiCaller {
-  return { keyHash: tokenHash, requestId, rpc: oauthRpc(apiRpc), backend: runBackend, downloads: false };
+  return { keyHash: tokenHash, requestId, rpc: oauthRpc(apiRpc), backend: runBackend, downloads: false, mediaLink: oauthMediaLink };
+}
+
+function oauthMediaLink(assetId: string, variant: "original" | "thumb" | "proxy", mime: string): string | null {
+  const path = mediaLink(assetId, variant, mime);
+  return path === null ? null : oauthOrigin() + path;
 }
 
 /** oauth_check: is this hash a live access token — for which resource and permissions, entitled now or not. */
