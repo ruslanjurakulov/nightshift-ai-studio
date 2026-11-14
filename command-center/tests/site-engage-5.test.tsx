@@ -92,15 +92,16 @@ describe("the clips (round 5)", () => {
     expect(css).toMatch(/\.nx-clip \{ position: absolute; inset: 1px; width: calc\(100% - 2px\); height: calc\(100% - 2px\);/);
   });
 
-  it("are the stock fallback of seven slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
+  it("are the stock fallback of five slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
     // Round 10: these are what a slot shows only until one of our samples fills it (its `ai` line); the fallback stays declared.
     const fallback = (slot: keyof typeof SLOTS): string | null => {
       const s: PlaceDef = SLOTS[slot];
       return s.clip ?? null;
     };
-    // (The Approvals showcase has no slot any more: it is a drawn approval screen, components/landing/ApprovalCard.tsx.)
-    const moving = ["hero", "show.studio", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
-    expect(Object.keys(SLOTS)).not.toContain("show.approvals");
+    // (The Approvals showcase has no slot any more: it is a drawn approval screen, components/landing/ApprovalCard.tsx. Nor do the
+    // /pricing chat card and the publish desk's frame: both sit beside the Silk Road example and show its own picture.)
+    const moving = ["hero", "show.studio", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
+    for (const gone of ["show.approvals", "pricing.card", "solutions.youtube-channels"]) expect(Object.keys(SLOTS)).not.toContain(gone);
     for (const slot of moving) expect(SLOTS[slot].id, slot).toBe(fallback(slot));
     // The closing panel, the developers' photograph and the sign-in stage are still.
     for (const slot of ["landing.final", "solutions.developers", "auth.login"] as const) expect(fallback(slot), slot).toBeNull();

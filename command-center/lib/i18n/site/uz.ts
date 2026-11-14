@@ -133,7 +133,7 @@ export const siteUz: SiteDictionary = {
     ],
   },
   approvalCard: {
-    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Muqovasi Studiyamizda sunʼiy intellekt yaratgan tasvir. Undagi hamma narsa namuna.",
+    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Namuna mavzuning muqovasi — sunʼiy intellekt yaratgan tasvir: Samarqanddagi Registon, quyosh botayotgan payt. Undagi hamma narsa namuna.",
   },
   fx: {
     pause: "Harakatni toʻxtatish",
@@ -173,10 +173,10 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Bitta rasm boshqacha: amaliy misoldagi namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvir. Bu bezak, mahsulotning skrinshoti emas.",
+    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Bitta rasm boshqacha: Ipak yoʻli misoli koʻrsatilgan har bir joydagi Samarqand Registoni Nightshift uchun sunʼiy intellekt yaratgan tasvir. Bu bezak, mahsulotning skrinshoti emas.",
     licence: "Pexels litsenziyasi",
-    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan. Amaliy misoldagi namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvir, mahsulotning skrinshoti emas.",
-    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan. Bitta istisno: Ipak yoʻli misoli koʻrsatilgan har bir joydagi Samarqand Registoni Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvir, mahsulotning skrinshoti emas.",
+    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan; yuqorida aytilgan Ipak yoʻli misolidagi Registon rasmi bundan mustasno.",
   },
   gallery: {
     label: "Studiyada yaratilgan",
@@ -359,6 +359,7 @@ export const siteUz: SiteDictionary = {
   },
   how: {
     priceLater: "Narx shu yerda, boshlashdan oldin koʻrinadi",
+    phoneAlt: "Tayyor videodan namuna kadr: sunʼiy intellekt yaratgan tasvir — Samarqanddagi Registonda koshinli madrasa peshtoqi va minora, quyosh botayotgan payt",
     slug: "Video yoʻli",
     title: "Bitta efir rejasi — kanaldan YouTube’gacha.",
     lead: "Har bir qadam ishlayotganda koʻrinib turadi. Oxirgisi doim sizniki.",

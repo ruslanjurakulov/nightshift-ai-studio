@@ -68,19 +68,10 @@ export function toolSource(job: string | null): string | null {
   return e && e.kind === "video" && e.input.kind === "operator_job" ? e.input.jobId : null;
 }
 
-/** The sample the third step of "How it works" plays in its phone (a vertical clip, as a channel's short is). */
-export const STEP_PHONE_JOB = "a04d5d55-27ef-4cae-95a2-25488503829e";
-
 /**
- * The thumbnail on the Approvals band's drawn approval screen (components/landing/ApprovalCard.tsx): a sample made as a 16:9
- * YouTube thumbnail, so the screen shows a video waiting for approval with the kind of thumbnail a channel uses, and not more sea
- * (the owner found the page read as "all sea", 2026-11-13).
+ * Every sample the wall shows, for the gallery to leave out. The third step's phone and the Approvals band's thumbnail are not
+ * samples any more: both sit beside the Silk Road ask, so both show that example's own picture (lib/site/art.ts THUMB_ART). A
+ * showcase sample made from another prompt (a falling sneaker, a jungle explorer) under that topic said the result need not match
+ * the prompt (owner, 2026-11-14); those two samples are back in the gallery, under their own prompts.
  */
-export const APPROVAL_THUMB_JOB = "ced854a6-ba49-4668-b9dd-91ca46b72f6d";
-
-/** Every sample the wall, the steps and the approval screen show, for the gallery to leave out. */
-export const TOOL_JOBS: string[] = [
-  ...Object.values(TOOL_SAMPLES).flatMap((s) => [s.job, toolSource(s.job)].filter((x): x is string => Boolean(x))),
-  STEP_PHONE_JOB,
-  APPROVAL_THUMB_JOB,
-];
+export const TOOL_JOBS: string[] = Object.values(TOOL_SAMPLES).flatMap((s) => [s.job, toolSource(s.job)].filter((x): x is string => Boolean(x)));
