@@ -406,11 +406,11 @@ describe("the MCP page", () => {
     });
   });
 
-  it("lists the ten tools, free ones marked free and the two that spend money saying how they are charged", () => {
+  it("lists the fourteen tools, free ones marked free and the three that spend money saying how they are charged", () => {
     const d = doc(mcp());
     const rows = [...d.querySelectorAll("table tbody tr")];
-    expect(rows).toHaveLength(10);
-    expect(rows.filter((r) => /Free$/.test(r.textContent ?? ""))).toHaveLength(8);
+    expect(rows).toHaveLength(14);
+    expect(rows.filter((r) => /Free$/.test(r.textContent ?? ""))).toHaveLength(11);
   });
 
   it("links the CLI and Skills pages only while they are switched on", () => {

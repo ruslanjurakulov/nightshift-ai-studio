@@ -31,7 +31,7 @@ import { MotionToggle } from "@/components/site/MotionToggle";
  * one headline, one sentence), then one card with pill tabs and, under each
  * tab, three numbered steps with their action pinned to the bottom of the step
  * (a copyable field or one button). Under the card a link to the reference,
- * then "How it works", the ten tools, and a closing line.
+ * then "How it works", the tools, and a closing line.
  *
  * Original work on a known pattern: the tiles carry the clients' own logos where
  * their owners' rules allow (lib/dev/brand-logos.ts) and a plain icon where not;
@@ -340,7 +340,7 @@ export function McpPage({
       <DocSection id="tools" no={1} title={c.tools.slug}>
         <Statement>{c.tools.title}</Statement>
         <p className="st-body">{c.tools.lead}</p>
-        {/* The ten tools open on a tap: a visitor who only wants to connect is not walked past a table first. */}
+        {/* The tool table opens on a tap: a visitor who only wants to connect is not walked past a table first. */}
         <details className="nx-math nx-mcp-tools">
           <summary>
             <span>{c.tools.table}</span>
