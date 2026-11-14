@@ -175,8 +175,9 @@ class RedirectTests(Rig):
 
         self.assertEqual(sorted(k for k, c in ALL.items() if not c.follow_redirects),
                          ["audio.sonilo", "image.bfl", "image.bfl3", "image.gemini_interactions", "video.bfl", "video.gemini_omni",
-                          "video.kling_omni", "video.pika", "video.veo", "video.vidu"])
+                          "video.kling_omni", "video.pika", "video.veo", "video.vidu", "video.voice_explainer"])
         # sonilo / veo / pika / vidu / kling_omni (0137): their header key must not follow a 3xx
+        # voice_explainer (0176): its transcription sends the ElevenLabs key in xi-api-key, which requests would forward
 
 
 if __name__ == "__main__":
