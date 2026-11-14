@@ -1697,9 +1697,8 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   ACCESS EXCLUSIVE on `api_ledger` (reads wait too) until commit; `lock_timeout` 5s.
 - **md5.** `api_refund_topup` before `a9d2287173b12b704808e7b3747b05e0` (0031), after `74ea95ec27564e57b7b989a906a15842`;
   `api_refund_recover` `785ca1a1df7d72192bd98dbfd9122a37` (drift guard, end state, rollback).
-- **Not changed here.** `owner_reverse_grant` (0107, site credits) has the same "available only" rule (BR-0107-01, low, open, a failing
-  test in `tests/security/test_sec_breach_owner_reverse_hold.py`); its collection belongs next to 0167's trigger on
-  `credit_transactions` so that the two never both collect one release.
+- **Not changed here.** `owner_reverse_grant` (0107, site credits) has the same "available only" rule (BR-0107-01, low); fixed by 0172,
+  whose collection sits next to 0167's trigger on `credit_transactions` so that the two never both collect one release.
 - **Number.** 0168 (provisional; 0163 to 0167 are held by other open branches). Needs 0031; names nothing of 0032 to 0167. The
   numbering tests of 0127, 0131 and 0133 list it as reviewed.
 - **Undo.** `docs/sql/rollback_0168_api_refund_hold_recovery.sql` (owner-applied): refuses bodies that are not 0168's, drops the
@@ -1737,3 +1736,61 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
+
+## An owner's grant reversal that met a hold collects when the hold is released (0172)
+
+0172 (`0172_grant_reversal_hold_recovery.sql`) closes BR-0107-01 (low): a grant reversed while part of it was on hold was reversed only
+in part, for good. `owner_reverse_grant` (0107, never redefined) takes back at most the part of the grant's lot that is neither held
+nor unavailable and records the rest as a shortfall under the one-per-grant external id `owner-reverse:<grant id>`, so a retry answers
+duplicate. A hold is not spending: when the run never starts, fails or is cancelled, the hold is released and the workspace keeps those
+credits. In the lab: 100 granted, a run holding all but 30, the reversal takes 30, the hold is released, the workspace kept 70. It
+needs a platform owner or admin to make the grant and the reversal, hence low.
+
+- **Design.** 0167's for refunds, carried over to reversals. The held part of the shortfall stays open and is collected when those
+  holds are RELEASED (expired, failed, cancelled, the unused part of a capture); a CAPTURED hold is real spending and the shortfall
+  stands. No run is interrupted.
+- **`credit_grant_reversal_recoveries`.** One row per reversal whose shortfall met holds on the grant's own lot: the grant's ledger
+  row (primary key), the reversal's ledger row, the grant's lot, the organization, `holds` (the jobs that had credits of that lot in
+  `credit_hold_lots` at that moment), `owed` = least(shortfall, the lot's held credits, what those holds had of it), `collected` and
+  `lapsed` (0 <= collected + lapsed <= owed, only go up; a guard trigger refuses any other change, a delete or a truncate). RLS on,
+  no policy, select for the service role only.
+- **`credit_grant_reversal_recover()`.** AFTER INSERT trigger `credit_transactions_recover_reversals` on `credit_transactions`, for
+  `release` rows of a hold. By name it fires after the lot trigger and after 0167's `credit_transactions_recover_refunds`. It spends
+  only the grant's own lot, and per release at most least(still owed, what THIS release gave back to that lot less what was spent from
+  the lot since the release row (0167's collector, which may have taken some of it for a refund), what is free in the lot, what is
+  available), so the two collectors never both collect one release's credits and a purchase made later is never eaten. Only holds
+  on the lot when the reversal was recorded pay. The grant's own credits that expired on the hold count as `lapsed`, with no ledger
+  row. The collection is an `adjust` row (no external id, a note naming the grant and the hold) written with `created_by` NULL: a
+  release can run inside the member's own `reserve_credits` (the lazy expiry), and `credit_log` would have stamped their id on it.
+- **`owner_reverse_grant`.** 0107's body, line for line, plus lines marked `-- 0172`: the recovery row, `on_hold` in the answer, in a
+  duplicate's and in the audit entry (three of 0107's lines are replaced whole by marked lines that keep their text), and its own
+  `adjust` row now spends the grant's own lot first (0107's "lot attribution" limit). Same signature, refusals, idempotency and grants.
+  A grant that is ALL on hold still answers `nothing_to_reverse` and records nothing: nothing was made final, so the owner reverses it
+  once the hold has settled.
+- **`credit_transactions_apply_lots`.** 0167's body plus marked lines: an `adjust` row may name its first lot by id
+  (`nightshift.reverse_lot`, this organization's lots only); unset, it is 0167's behaviour exactly.
+- **Known residual.** When a refund (0167) and a reversal met the SAME hold, 0167's collector goes first and spends the release's lots
+  in spend order, the grant's lot included; the reversal then collects only what is left of its lot in that release. Nothing is
+  collected twice, but in that case the refund may take the grant's credits instead of its own pack's, and the workspace keeps up to
+  the reversal's held part (pinned in `test_a_refund_and_a_reversal_that_met_one_hold_together_take_no_more_than_it_gave_back`). The
+  fix would be in 0167's lot order; firing this collector first instead was rejected, because 0167's per-release cap does not see
+  what this one took and could then collect one release twice.
+- **The Command Center.** The reverse dialog words the shortfall as on hold or spent from `on_hold`, and says it does not know which
+  when the answer has no `on_hold` (0172 not applied), rather than "spent" (rule 5).
+- **Locks.** One new table; CREATE TRIGGER takes SHARE ROW EXCLUSIVE on `credit_transactions`, a re-run's DROP TRIGGER takes ACCESS
+  EXCLUSIVE until commit; `lock_timeout` 5s.
+- **md5.** `owner_reverse_grant` before `4c701e7930d213f6f1ba84485c366a36` (0107), after `de3893bbaba50d48edfa694baf39533f`;
+  `credit_transactions_apply_lots` before `6098f97a7630bed24807bb7c5ef6eefe` (0167), after `aec752383dd2c5cf3621ee273a677fe0`;
+  `credit_grant_reversal_recover` `e58362bc86d0b47c042f0bc8a2e15319` (drift guard, end state, rollback).
+- **Number.** 0172 (0171 is held by an open branch that touches neither function). Needs 0020, 0034, 0107, 0165 and 0167. A replay of
+  0167 after 0172 refuses (its guard and end state know only two collectors' worth of the ledger): take 0172 off first; the lab's
+  `sec_db.take_off_0167` / `put_back_0167` do it through `take_off_0172` / `put_back_0172`. The numbering tests of 0127, 0131 and
+  0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0172_grant_reversal_hold_recovery.sql` (owner-applied): refuses bodies that are not 0172's, drops the
+  trigger and its function, puts 0107's `owner_reverse_grant` and 0167's lot trigger back verbatim. The table stays as the record.
+- **Tests.** `tests/test_grant_reversal_hold_recovery_migration.py` (the text, the hashes, the rollback, the numbering, the ledger
+  row), `tests/security/test_sec_breach_owner_reverse_hold.py` (the finding, now passing) and
+  `tests/security/test_sec_grant_reversal_hold_recovery.py` (a partial hold from the grant's own lot, an expired lot, two holds with
+  a later purchase, capture, a later hold, replay of the reversal / release / expiry / migration, the record's guard, the collection
+  inside the member's own reserve written as the platform's, one release met by a refund and a reversal, credits restored into the
+  lot not paid twice, concurrency with `reserve_credits` in both orders; a real PostgreSQL).
