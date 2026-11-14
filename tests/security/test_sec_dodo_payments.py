@@ -389,6 +389,8 @@ def test_the_paddle_path_answers_the_same_with_and_without_0146():
     if not sec_db.admin_dsn():
         pytest.skip("no lab database")
     with scratch_db() as c:
+        # 0167 replaced refund_purchased_credits, which 0146 pins at 0034's body: off first, back on once 0146 is whole again.
+        sec_db.take_off_0167(c)
         with_0146 = paddle_scenario(c)
         apply(c, ROLLBACK)  # 0034's bodies and checks, byte for byte
         with as_superuser(c, commit=False) as s:
@@ -396,6 +398,8 @@ def test_the_paddle_path_answers_the_same_with_and_without_0146():
         without = paddle_scenario(c)
         apply(c, MIGRATION)
         again = paddle_scenario(c)
+        sec_db.put_back_0167(c)
+        assert sec_db.has_0167(c)
     assert with_0146 == without == again
     # The scenario is not vacuous: it grants, replays, scales, refuses and refunds.
     kinds = [x[0] for x in with_0146[:11]]
@@ -406,6 +410,7 @@ def test_drift_guard_rollback_refusals_and_reapply():
     if not sec_db.admin_dsn():
         pytest.skip("no lab database")
     with scratch_db() as c:
+        sec_db.take_off_0167(c)  # 0146 pins refund_purchased_credits at 0034's body; 0167 replaced it
         # A replay of 0146 on itself is fine.
         apply(c, MIGRATION)
         # A Dodo row makes the rollback refuse, changing nothing.

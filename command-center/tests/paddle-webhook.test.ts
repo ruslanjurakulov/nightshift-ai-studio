@@ -13,8 +13,11 @@ import {
   priceTableFromEnv,
   refundCredits,
   verifyPaddleSignature,
+  shortfallWords,
+  onHoldWords,
   type EventRecord,
   type EventStatus,
+  type Logger,
   type PaddleStore,
   type PurchaseRecord,
 } from "../../supabase/functions/_shared/paddle";
@@ -84,6 +87,8 @@ class FakeStore implements PaddleStore {
   orgs = new Set([ORG]);
   credited = new Map<string, { org: string; credits: number }>();
   refunds = new Map<string, { amount: number | null; reason: string }>();
+  /** What the next refund answers past `requested` (0167: part of a shortfall can be on hold). Null = everything taken. */
+  refundResult: { taken: number; shortfall: number; onHold?: number | null } | null = null;
   failNext: StoreError | Error | null = null;
 
   private maybeFail() {
@@ -130,16 +135,17 @@ class FakeStore implements PaddleStore {
     if (this.refunds.has(id)) return { duplicate: true, requested: 0, taken: 0, shortfall: 0 };
     this.refunds.set(id, { amount, reason });
     const requested = amount ?? this.credited.get(ext)?.credits ?? 0;
+    if (this.refundResult) return { duplicate: false, requested, ...this.refundResult };
     return { duplicate: false, requested, taken: requested, shortfall: 0 };
   }
 }
 
 const quiet = { info() {}, warn() {}, error() {} };
 
-function deliver(store: FakeStore, body: string, signature: string | null = sign(body), method = "POST") {
+function deliver(store: FakeStore, body: string, signature: string | null = sign(body), method = "POST", log: Logger = quiet) {
   return handlePaddleWebhook(
     { method, rawBody: body, signature },
-    { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet },
+    { secret: SECRET, prices, store, now: () => NOW_MS, log },
   );
 }
 
@@ -333,6 +339,30 @@ describe("handlePaddleWebhook", () => {
     await deliver(store, adjustment());
     await deliver(store, adjustment({}, "evt_01refund2"));
     expect(store.refunds.size).toBe(1);
+  });
+
+  it("a shortfall that sat on a hold is reported as on hold, not as spent (0167, rule 5)", async () => {
+    const store = new FakeStore();
+    await deliver(store, completed());
+    store.refundResult = { taken: 50, shortfall: 200, onHold: 150 };
+    const warns: string[] = [];
+    await deliver(store, adjustment(), sign(adjustment()), "POST", { info() {}, warn: (m: string) => warns.push(m), error() {} });
+    expect(store.events.get("evt_01refund")?.detail).toBe(
+      "refund: took back 50 of 250 credits; shortfall 200 (150 on hold, taken back if the hold is released and not spent)",
+    );
+    expect(warns).toEqual([
+      `paddle-webhook: refund ${ADJ}: 150 credits are on hold, taken back if the hold is released and not spent; 50 credits were already spent and could not be taken back`,
+    ]);
+  });
+
+  it("words a shortfall by what the database reports, and never calls an unknown split spent", () => {
+    expect(shortfallWords({ shortfall: 300, onHold: 0 })).toBe("300 credits were already spent and could not be taken back");
+    expect(shortfallWords({ shortfall: 300, onHold: 300 })).toBe("300 credits are on hold, taken back if the hold is released and not spent");
+    expect(shortfallWords({ shortfall: 300, onHold: null })).toBe("300 credits could not be taken back now");
+    expect(shortfallWords({ shortfall: 300 })).toBe("300 credits could not be taken back now");
+    // An on-hold figure above the shortfall is never reported as more than the shortfall.
+    expect(onHoldWords({ shortfall: 100, onHold: 400 })).toBe(" (100 on hold, taken back if the hold is released and not spent)");
+    expect(onHoldWords({ shortfall: 100, onHold: null })).toBe("");
   });
 
   it("a refund that arrives before its purchase asks Paddle to retry", async () => {

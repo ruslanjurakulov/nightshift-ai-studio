@@ -130,6 +130,8 @@ TABLES: Dict[str, Kind] = {
     "credit_transactions": Org(),
     "credit_reservations": Org(),
     "credit_refunds": Service(),
+    # 0167 (BR-0034-01): the held part of a refund's shortfall, collected when the hold is released; the service key reads it.
+    "credit_refund_recoveries": Service(),
     # 0084 (BR-G-001): the base rates, margins and notes are the operator's;
     # members read the rates as charged through credit_rates().
     "credit_prices": Platform(),

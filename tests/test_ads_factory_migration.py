@@ -162,7 +162,9 @@ class Numbering(unittest.TestCase):
         # 0166 (Film Studio P1: five new film tables and their own functions) was reviewed the same way: it reads, replaces and
         # alters nothing of 0131's (its text helpers are its own copies of ads_clean_text and ads_text_ok, so rollback_0131 still
         # drops 0131's freely).
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166")], [], "a later number needs its own review of this file's pins")
+        # 0167 (a refund that met a hold collects when the hold is released: refund_purchased_credits on 0034's body, one table, one
+        # trigger on credit_transactions) was reviewed the same way: it reads, replaces and alters nothing of 0131's.
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167")], [], "a later number needs its own review of this file's pins")
         later = next(MIG.glob("0134_*.sql")).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertNotRegex(code(later), r"\balter table\b")
