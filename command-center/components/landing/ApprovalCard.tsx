@@ -1,7 +1,7 @@
 import { Check, Lock } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
-import { ArtImg } from "@/components/site/art";
-import { THUMB_ART } from "@/lib/site/art";
+import { EXAMPLE_THUMB_JOB, exampleMedia } from "@/components/site/samples";
+import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
 
 /**
  * The Approvals band's picture: a drawn approval screen, so the band shows what its words say ("Nothing airs until you say so")
@@ -11,22 +11,24 @@ import { THUMB_ART } from "@/lib/site/art";
  * It is an illustration and says so: tagged "Example", one `role="img"` with a description, and every part inside it is drawn, so
  * nothing in it can be pressed or focused (the key is a span). Its rows are the same words the product's own approval step uses
  * (`site.stage.steps` approve), so the picture never promises a state the product does not have. The video's title is that step's
- * example topic (the Silk Road), so its thumbnail is the Silk Road example's own AI-generated picture (lib/site/art.ts THUMB_ART),
- * labelled AI-generated. Not a showcase sample: one made from another prompt (a jungle explorer) under this title said the result
- * need not match the prompt (owner, 2026-11-14), so the box names no sample job and no model. A Server Component.
+ * example topic (football in 2050), so its thumbnail is that example's own 16:9 clip, made in our Studio from a prompt about the
+ * topic (components/site/slots.ts EXAMPLE_THUMB_JOB), playing like every site clip and labelled AI-generated. A still there read as
+ * "you asked for a video and got a picture", and a sample made from another prompt (a jungle explorer) said the result need not
+ * match the ask (owner, 2026-11-14). No anchor: the model tiles link to the gallery's cards. A Server Component.
  */
 export function ApprovalCard({ t }: { t: Dictionary }) {
   const st = t.site.stage;
   const approve = st.steps.find((s) => s.id === "approve" && "check" in s) as Extract<(typeof st.steps)[number], { check: string }>;
   const brief = st.steps.find((s) => s.id === "brief" && "field" in s) as Extract<(typeof st.steps)[number], { field: string }>;
+  const m = exampleMedia(EXAMPLE_THUMB_JOB);
   return (
     <div className="nx-approve-art" role="img" aria-label={t.site.approvalCard.figure}>
       <div className="nx-approve-card" aria-hidden>
         <span className="nx-approve-tag">{st.tag}</span>
-        <span className="nx-approve-thumb">
+        <span className="nx-approve-thumb" {...(m ? placeBox(m) : {})}>
           {/* The description is the figure's (aria-label above); inside the aria-hidden drawing the picture has an empty alt. */}
-          <ArtImg id={THUMB_ART} alt="" />
-          <span className="nx-ai-badge">{t.site.gallery.badge}</span>
+          {m && <PlaceFill media={m} s={t.site} alt="" className="nx-approve-shot" compact sizes="(min-width: 860px) 360px, 90vw" labels={false} />}
+          {m && <span className="nx-ai-badge">{t.site.gallery.badge}</span>}
           <span className="nx-approve-private">
             <Lock aria-hidden />
             {approve.lamp}

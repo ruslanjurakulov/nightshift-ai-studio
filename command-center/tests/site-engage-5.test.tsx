@@ -99,7 +99,7 @@ describe("the clips (round 5)", () => {
       return s.clip ?? null;
     };
     // (The Approvals showcase has no slot any more: it is a drawn approval screen, components/landing/ApprovalCard.tsx. Nor do the
-    // /pricing chat card and the publish desk's frame: both sit beside the Silk Road example and show its own picture.)
+    // /pricing chat card and the publish desk's frame: both sit beside the example topic and play its own clip, components/site/slots.ts EXAMPLE_THUMB_JOB.)
     const moving = ["hero", "show.studio", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
     for (const gone of ["show.approvals", "pricing.card", "solutions.youtube-channels"]) expect(Object.keys(SLOTS)).not.toContain(gone);
     for (const slot of moving) expect(SLOTS[slot].id, slot).toBe(fallback(slot));
@@ -248,15 +248,15 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     }
     else expect(finCredit.textContent).toMatch(/ \/ Pexels$/);
     // A box that plays something says what it plays: a stock clip by its name, a sample's as "sample".
-    // (The model tiles, the tool wall and the third step play samples' loops too, each inside its sample's box: checked on their own.)
-    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models, #tools, .nx-step-live"));
+    // (The model tiles, the tool wall, the third step and the Approvals card play samples' loops too, each inside its sample's box: checked on their own.)
+    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models, #tools, .nx-step-live, .nx-approve-art"));
     const expected = (["hero", "show.studio", "landing.final"] as const).flatMap((s) => {
       const m = slotMedia(s);
       return m.kind === "ai" ? (m.moving ? ["sample"] : []) : m.clip ? [m.clip] : [];
     });
     expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(expected);
     for (const b of clipBoxes) expect(b.querySelector("img")?.hasAttribute("alt")).toBe(true);
-    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models, #tools, .nx-step-live"))).toHaveLength(expected.length);
+    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models, #tools, .nx-step-live, .nx-approve-art"))).toHaveLength(expected.length);
     // Inside the gallery, a clip box is a sample's, never a stock one's: in its card, labelled AI-generated, with no stock label.
     const { clips } = landingSamples();
     const sampleBoxes = [...container.querySelectorAll(`${GALLERY} [data-clip]`)];

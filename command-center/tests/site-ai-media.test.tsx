@@ -71,7 +71,7 @@ import { SLOTS, placeMedia, slotJobs, slotMedia, LANDING_SLOTS } from "@/compone
 import { stockInUse } from "@/components/site/stock-in-use";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
-import { THUMB_ART } from "@/lib/site/art";
+import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { PROMPT_MAX, PROMPT_TOOLS, TEXT_TOOL, linkWords, promptHref } from "@/lib/site/prompt-link";
 import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS } from "@/lib/creative/improve";
 import { SIGNUP_PATH } from "@/lib/public-paths";
@@ -223,7 +223,7 @@ describe("the landing with a sample in its hero slot", () => {
   });
 });
 
-describe("a chat card's frame: the slot's picture under a caller's own ask, the Silk Road picture under the default one", () => {
+describe("a chat card's frame: the slot's picture under a caller's own ask, the example topic's own clip under the default one", () => {
   it("labels a slot's frame as our sample with its badge only (no footnote under the card), and says nothing about stock", () => {
     const t = dictionaries.en;
     const ask = "A lemon whispers to an avocado in a fridge";
@@ -240,17 +240,16 @@ describe("a chat card's frame: the slot's picture under a caller's own ask, the 
     expect(ai.textContent).not.toMatch(/Pexels|stock/i);
   });
 
-  // The /pricing card asked for the Silk Road video and showed a chocolate pour (owner, 2026-11-14). Whatever a slot holds, the
-  // default ask's frame is that example's own picture, labelled AI-generated, with no sample, model or stock note on it.
-  it("shows the Silk Road picture under the default ask, whatever the slot holds", () => {
+  // The /pricing card asked for the example video and showed a chocolate pour (owner, 2026-11-14). Whatever a slot holds, the
+  // default ask's frame is that example's own clip and nothing else. This fixture's data file does not hold that clip: then the
+  // card has no frame at all, never the slot's sample or a stock picture standing in for it (the real data is tests/site-art.test.tsx).
+  it("never puts the slot's picture under the default ask: without the example's clip the card has no frame", () => {
     const t = dictionaries.en;
+    expect(SHOWCASE_ENTRIES.some((e) => e.jobId === EXAMPLE_THUMB_JOB)).toBe(false);
     for (const slot of ["hero", "auth.signup"] as const) {
       const { container } = render(<ChatCard copy={chatCopy(t, slot)} />);
-      const frame = container.querySelector(".nx-result-art")!;
-      expect(frame.querySelector("img")?.getAttribute("data-art-id")).toBe(THUMB_ART);
-      expect(frame.querySelector("[data-sample-job], [data-sample], video")).toBeNull();
-      expect(frame.hasAttribute("data-showcase-entry")).toBe(false);
-      expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
+      expect(container.querySelector(".nx-result-art, img, video, [data-sample], [data-showcase-entry]"), slot).toBeNull();
+      expect(container.querySelector(".nx-ui-status")).not.toBeNull();
       expect(container.querySelector("figcaption")).toBeNull();
       cleanup();
     }

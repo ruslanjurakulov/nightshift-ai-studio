@@ -31,15 +31,18 @@ export function buildPlan(sections: readonly PlanSection[], topic: string): Plan
   return sections.map((s) => ({ ...s, items: s.items.map((i) => ({ k: i.k, v: fill(i.v) })) }));
 }
 
-/** The six example frames (components/site/samples.tsx), by id; listed here so this file stays free of image imports. */
-export const STILL_IDS = ["silkroad", "library", "moon", "nightmarket", "valley", "lighthouse"] as const;
+/**
+ * The six example frames, by id; listed here so this file stays free of image imports. "football" is the first sample topic's
+ * (football in 2050, the example the whole public site tells; it was the Silk Road until 2026-11-14).
+ */
+export const STILL_IDS = ["football", "library", "moon", "nightmarket", "valley", "lighthouse"] as const;
 export type StillId = (typeof STILL_IDS)[number];
 
 /** Words (en, ru, uz) that point at one of the six frames. The first rule that matches wins. */
 const STILL_RULES: readonly [StillId, RegExp][] = [
   ["lighthouse", /lighthouse|storm|ship|\bsea\b|ocean|маяк|шторм|корабл|море|mayoq|boʻron|kema|dengiz/i],
   ["moon", /\bmoon\b|\bstars?\b|space|planet|galax|луна|луны|звёзд|звезд|космос|планет|\boy\b|yulduz|kosmos|osmon/i],
-  ["silkroad", /silk|caravan|desert|camel|samarkand|history|empire|шёлк|шелк|караван|пустын|самарканд|истори|ipak|karvon|choʻl|samarqand|tarix/i],
+  ["football", /football|soccer|stadium|futbol|футбол|стадион|stadion/i],
   ["library", /librar|book|scroll|ancient|science|writing|библиотек|книг|свит|древн|наук|kutubxona|kitob|qadimiy|\bfan\b/i],
   ["nightmarket", /market|food|bread|cook|street|lantern|dough|рынок|еда|еды|хлеб|тест|готов|улиц|bozor|\bnon\b|xamir|taom|koʻcha/i],
   ["valley", /mountain|river|valley|nature|forest|hike|\bhills?\b|гор[аыуе]|рек[аи]|долин|природ|лес\b|togʻ|daryo|vodiy|tabiat|oʻrmon/i],

@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import type { Effect } from "@/lib/effects/catalog";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { EffectArt } from "@/components/effects/EffectArt";
-import { effectSample } from "@/components/effects/effect-sample";
+import { effectSample, sampleKeepsShape } from "@/components/effects/effect-sample";
 
 export { effectSample };
 
@@ -26,7 +26,9 @@ export function EffectFrame({
   className?: string;
   sample?: ReturnType<typeof effectSample>;
 }) {
-  const style: CSSProperties = { aspectRatio: sample ? `${sample.entry.width} / ${sample.entry.height}` : RATIO[effect.aspect] };
+  // A sample of another shape than its effect's is cut to the effect's shape from the centre (effect-sample.ts sampleKeepsShape).
+  const own = sample && sampleKeepsShape(effect, sample.entry);
+  const style: CSSProperties = { aspectRatio: own ? `${sample.entry.width} / ${sample.entry.height}` : RATIO[effect.aspect] };
   return (
     <div className={className} style={style} data-sample={sample ? sample.entry.jobId : undefined}>
       {sample ? (
