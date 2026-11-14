@@ -674,6 +674,222 @@ class Worker(Tmp):
         self.assertEqual(self.e.rendered, [], "never rendered (and paid) twice")
 
 
+# ── the worker's one slot for a render on this machine, and its scratch ───────────
+
+VJOB_B = "0f0e0d0c-0b0a-4000-8000-00000000000b"
+TJOB = "0f0e0d0c-0b0a-4000-8000-0000000000c1"
+
+
+class SlotQueue:
+    """Several jobs, with 0036's rules for the steps the slot uses (submitting once, requeue only before a send)."""
+
+    def __init__(self, jobs, source):
+        self.waiting = [dict(j) for j in jobs]
+        self.state = {}
+        self.calls = []
+        self.finished = {}
+        self.source = source
+        self.lost = set()
+
+    def claim(self, worker_id, stale_minutes=10):
+        self.calls.append(("claim",))
+        if not self.waiting:
+            return None
+        j = self.waiting.pop(0)
+        self.state[j["id"]] = j
+        return dict(j)
+
+    def heartbeat(self, job_id, worker_id):
+        self.calls.append(("heartbeat", job_id))
+        return job_id not in self.lost
+
+    def advance(self, job_id, worker_id, step, task_id=None, route=None):
+        self.calls.append(("advance", job_id, step))
+        j = self.state[job_id]
+        if job_id in self.lost:
+            return False
+        if step == "submitting":
+            if j.get("submit_started_at") or j.get("provider_task_id"):
+                return False
+            j["submit_started_at"] = "now"
+        elif step == "submitted":
+            j["provider_task_id"] = task_id
+        elif step == "requeue":
+            if j.get("submit_started_at") and not j.get("provider_task_id"):
+                return False
+            self.waiting.append(dict(j))
+        return True
+
+    def steps(self, job_id):
+        return [c[2] for c in self.calls if c[0] == "advance" and c[1] == job_id]
+
+    def finish(self, job_id, worker_id, ok, *, charge=None, result=None, error_code=None, error=None):
+        self.finished[job_id] = {"ok": ok, "error_code": error_code, "result": result}
+        return {"status": "completed" if ok else "failed"}
+
+    def job_source(self, job_id, worker_id):
+        return self.source
+
+    def attach_assets(self, job_id, worker_id, ids):
+        return True
+
+    def record_cost(self, job_id, usage):
+        pass
+
+    def reroute(self, job_id, worker_id, code):
+        return None
+
+
+class TheSlot(Tmp):
+    """M1: a second voice video in the process is never sent while one renders, never blocks a thread, never starves the
+    vendor jobs behind it, and stays cancellable; a stop hands it back uncharged."""
+
+    def setUp(self):
+        super().setUp()
+        self.media = self.root / "media"
+        self.media.mkdir()
+        put_asset(self.media, SRC, MP3)
+        self.out = self.root / "jobs"
+        self.seconds.return_value = 41.3
+        self.vendor = None
+        self.paused = []
+        self.addCleanup(lambda: cw._SERIAL_SLOT.release() if cw._SERIAL_SLOT.locked() else None)
+
+    def worker(self, q, **kw):
+        from tests.test_creative_worker import FakeAdapter
+
+        e = reg.load()[MODEL]
+        ra = ca.RegistryAdapter(e, self.e.adapter(), sync_store={})
+        self.vendor = FakeAdapter()
+        kw.setdefault("heartbeat_seconds", 0)
+        return cw.CreativeWorker(q, lambda m: ra if m == e.id else self.vendor, worker_id="w1", out_dir=self.out,
+                                 credits=FakeCredits(), enforce=True, sleep=self.paused.append, media_root=self.media, **kw)
+
+    def test_busy_the_job_is_parked_unsent_vendor_jobs_run_and_it_runs_when_the_slot_frees(self):
+        q = SlotQueue([vv_job(), job(id=TJOB)], audio_source())
+        w = self.worker(q)
+        with cw._SERIAL_SLOT:   # another thread of this process is rendering
+            w.run_once()
+            self.assertEqual(q.steps(JOB), [], "not marked submitting, so it can still be cancelled")
+            self.assertEqual(len(w._parked), 1)
+            self.assertNotIn(JOB, q.finished)
+            w.run_once()        # the thread is free for the vendor job behind it
+            self.assertTrue(q.finished[TJOB]["ok"])
+            self.assertEqual(self.e.rendered, [])
+        w.run_once()            # the slot is free: the parked job runs first, before any new claim
+        self.assertEqual(q.steps(JOB)[:2], ["submitting", "submitted"])
+        self.assertTrue(q.finished[JOB]["ok"], q.finished)
+        self.assertEqual(len(self.e.rendered), 1)
+        self.assertEqual(w._parked, [])
+        self.assertFalse(cw._SERIAL_SLOT.locked())
+
+    def test_the_slot_is_held_through_the_whole_job_and_released_on_failure(self):
+        seen = []
+        real = self.e.render
+
+        def render(*a, **kw):
+            seen.append(cw._SERIAL_SLOT.locked())
+            return real(*a, **kw)
+
+        self.e.render = render
+        q = SlotQueue([vv_job()], audio_source())
+        self.worker(q).run_once()
+        self.assertEqual(seen, [True])
+        self.e.render_error = ve.RenderFailed("x")
+        q = SlotQueue([vv_job()], audio_source())
+        self.worker(q).run_once()
+        self.assertEqual(q.finished[JOB]["error_code"], "bad_response")
+        self.assertFalse(cw._SERIAL_SLOT.locked())
+
+    def test_a_parked_job_that_is_cancelled_is_dropped_and_never_sent(self):
+        q = SlotQueue([vv_job()], audio_source())
+        w = self.worker(q, heartbeat_seconds=0.01)
+        with cw._SERIAL_SLOT:
+            w.run_once()
+            q.lost.add(JOB)     # cancelled in the Studio: the heartbeat answers no
+            deadline = time.monotonic() + 5
+            while not w._parked[0][1].lost.is_set() and time.monotonic() < deadline:
+                time.sleep(0.01)
+        self.assertFalse(w.run_once())
+        self.assertEqual((w._parked, q.steps(JOB), q.finished), ([], [], {}))
+        self.assertEqual(self.e.rendered, [])
+
+    def test_a_stop_hands_every_parked_job_back_uncharged(self):
+        q = SlotQueue([vv_job()], audio_source())
+        w = self.worker(q)
+        with cw._SERIAL_SLOT:
+            w.run_once()
+            w.stop.set()
+            w.run_forever(idle_seconds=0)
+        self.assertEqual(q.steps(JOB), ["requeue"])
+        self.assertEqual((w._parked, q.finished), ([], {}))
+        self.assertEqual([j["id"] for j in q.waiting], [JOB], "back in the queue for the next start")
+
+    def test_past_the_parking_room_a_claim_is_handed_back_and_the_thread_pauses(self):
+        jobs = [vv_job(id=f"0f0e0d0c-0b0a-4000-8000-{i:012d}") for i in range(cw.MAX_PARKED + 1)]
+        q = SlotQueue(jobs, audio_source())
+        w = self.worker(q)
+        with cw._SERIAL_SLOT:
+            for _ in range(cw.MAX_PARKED + 1):
+                w.run_once()
+        self.assertEqual(len(w._parked), cw.MAX_PARKED)
+        last = jobs[-1]["id"]
+        self.assertEqual(q.steps(last), ["requeue"])
+        self.assertEqual(self.paused, [cw.BUSY_PAUSE_SECONDS])
+        self.assertEqual(q.finished, {})
+        w.hand_back_parked()
+
+    def test_a_vendor_job_takes_no_slot(self):
+        q = SlotQueue([job(id=TJOB)], audio_source())
+        with cw._SERIAL_SLOT:
+            self.worker(q).run_once()
+        self.assertTrue(q.finished[TJOB]["ok"])
+
+    def test_the_voice_job_folder_is_gone_on_every_way_out(self):
+        # A failed render, a task id that could not be stored (the job is no longer ours), and a source that is refused.
+        for case in ("render", "submitted", "source"):
+            self.e.render_error = ve.RenderFailed("x") if case == "render" else None
+            q = SlotQueue([vv_job()], audio_source("video/mp4", "video") if case == "source" else audio_source())
+            if case == "submitted":
+                real = q.advance
+                q.advance = lambda jid, wid, step, task_id=None, route=None: (
+                    False if step == "submitted" else real(jid, wid, step, task_id, route))
+            self.worker(q).run_once()
+            self.assertFalse((self.out / JOB).exists(), case)
+
+    def test_a_completed_job_without_the_library_keeps_its_video_and_drops_its_scratch(self):
+        q = SlotQueue([vv_job()], audio_source())
+        self.worker(q).run_once()
+        self.assertTrue(q.finished[JOB]["ok"])
+        self.assertEqual(sorted(p.name for p in (self.out / JOB).iterdir()), ["output_0.mp4"])
+
+
+class Sweep(unittest.TestCase):
+    def test_old_input_copies_go_and_kept_outputs_fresh_jobs_and_other_folders_stay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = time.time()
+            old, fresh, kept = (root / f"0f0e0d0c-0b0a-4000-8000-00000000000{i}" for i in (1, 2, 3))
+            for d in (old, fresh, kept):
+                (d / "input" / "voice-video").mkdir(parents=True)
+                (d / "input" / "source.webm").write_bytes(b"x")
+            (kept / "output_0.mp4").write_bytes(MP4)
+            other = root / "not-a-job" / "input"
+            other.mkdir(parents=True)
+            for d in (old / "input", kept / "input", other):
+                os.utime(d, (now - 30 * 3600, now - 30 * 3600))
+            self.assertEqual(cw.sweep_scratch(root, now=now), 2)
+            self.assertFalse(old.exists(), "an empty job folder goes with its input")
+            self.assertTrue((fresh / "input" / "source.webm").exists(), "a job of the last day may still be running")
+            self.assertEqual([p.name for p in kept.iterdir()], ["output_0.mp4"])
+            self.assertTrue(other.exists(), "only folders named by a job id are touched")
+            self.assertEqual(cw.sweep_scratch(root / "missing", now=now), 0)
+
+    def test_the_runner_sweeps_before_any_thread_claims(self):
+        text = (Path(__file__).resolve().parent.parent / "tools" / "creative_worker.py").read_text()
+        self.assertLess(text.index("cw.sweep_scratch(out_dir)"), text.index("threads = [threading.Thread"))
+
+
 @unittest.skipUnless(os.environ.get("NIGHTSHIFT_VOICE_VIDEO_E2E"), "opt-in: a real render (needs npm ci in video-engine/ and a browser)")
 class TheRealEngine(unittest.TestCase):
     """NIGHTSHIFT_VOICE_VIDEO_E2E=<narration.mp3>[:<words.json>] — the real Remotion render through the adapter. Whisper is used

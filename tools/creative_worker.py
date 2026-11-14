@@ -149,8 +149,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         idle_loop(cw.CreativeRest(url, key), stop)
         return 0
 
+    # Before any thread claims: input copies a crashed or killed worker left on the media volume (a render's scratch is
+    # under its job's input folder). Nothing of this process is running yet, so nothing in use can be taken.
+    try:
+        swept = cw.sweep_scratch(out_dir)
+    except OSError as e:
+        logger.warning("scratch sweep of %s failed (%s)", out_dir, type(e).__name__)
+    else:
+        if swept:
+            logger.info("removed %d leftover job input folder(s) older than %d hours", swept, cw.SCRATCH_MAX_AGE_HOURS)
+
     media_root = media_root_from(os.environ)
-    library_on = media_root is not None and os.access(media_root, os.W_OK)
+    library_on =media_root is not None and os.access(media_root, os.W_OK)
     tools = None
     if library_on:
         from modules import media_library as ml  # noqa: PLC0415

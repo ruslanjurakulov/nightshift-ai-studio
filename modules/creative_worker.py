@@ -159,6 +159,33 @@ source; an edit / upscale / cut-out is a new version of its source), and
 If the library cannot take them the job still completes: the files stay in
 the worker's job folder (``storage: worker``), as before 0046.
 
+One slot for a render on this machine
+-------------------------------------
+A voice video (0171) is not a vendor call: the whole render runs here, a
+headless Chrome, Node and ffmpeg for up to an hour, and two at once would race
+for the container's memory. Its capability is in ``SERIAL_CAPABILITIES``, and
+the process has ONE slot for them, taken without waiting BEFORE anything of the
+job runs (before ``advance 'submitting'``). A thread that claims one while the
+slot is busy keeps it claimed, not yet sent, with its heartbeat going ("parked"),
+and goes on claiming other jobs, so vendor jobs never wait behind a render. A
+parked job can still be cancelled (the heartbeat sees it and the job is
+dropped); the same thread runs it as soon as the slot is free; on a stop it is
+handed back to the queue (``advance 'requeue'``: the attempt is not counted,
+nothing is charged). Handing back on every busy claim instead would starve the
+queue: the claim takes the OLDEST job, so every free thread would claim, hand
+back and claim the same voice video again. Past ``MAX_PARKED`` per thread a
+claim is handed back and the thread pauses once.
+
+Scratch
+-------
+The job folder under ``out_dir`` holds the input copy and, for a render, the
+render's own files. A finished job removes it (or keeps only its outputs when
+the library could not take them); a failed one removes the input; a serial job
+removes everything but kept outputs on every way out, a lost one included (no
+other thread of the process can be running it: the slot is held). At start the
+CLI removes input copies older than ``SCRATCH_MAX_AGE_HOURS`` that a crashed
+worker left behind (:func:`sweep_scratch`).
+
 Nothing here logs a key, a token, a prompt or a provider response body: stored
 error text goes through the scrubber the CLI provides.
 """
@@ -239,6 +266,17 @@ OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg":
                "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text", "captions": "text",
                # 0171: our own engine draws the video over the recording (modules/capabilities/voice_video.py).
                "voice_explainer": "video"}
+#: Capabilities rendered on THIS machine, one at a time per process (module doc, "One slot"): 0171's voice video.
+SERIAL_CAPABILITIES = frozenset({"voice_explainer"})
+#: The one slot they share, across every CreativeWorker thread of the process. Never waited on.
+_SERIAL_SLOT = threading.Lock()
+#: Jobs one thread keeps claimed while the slot is busy; past this a claim is handed back to the queue.
+MAX_PARKED = 8
+#: After handing a job back for want of room, the thread pauses this long before it claims again.
+BUSY_PAUSE_SECONDS = 5.0
+#: Input copies older than this are a crashed worker's leftovers (a render ends within ~70 minutes; a vendor job polls
+#: for at most DEFAULT_MAX_POLL_SECONDS and needs no input once submitted).
+SCRATCH_MAX_AGE_HOURS = 24
 #: Capabilities whose result is text on the job row, never a library asset (0055).
 TEXT_CAPABILITIES = frozenset({"describe"})
 #: Capabilities whose result is a caption track in its own table (0072), never a library asset.
@@ -626,20 +664,44 @@ class CreativeWorker:
         self.stop = stop or threading.Event()
         self.sleep = sleep
         self.clock = clock
+        #: Serial jobs this thread claimed while the slot was busy, each with its heartbeat (module doc, "One slot").
+        self._parked: List[Tuple[Mapping[str, Any], "_Heartbeat"]] = []
 
     # -- one job ---------------------------------------------------------------
 
     def run_once(self) -> bool:
-        """Claim and run at most one job. False when the queue was empty."""
+        """Run a parked job when the slot is free, else claim and run at most one job. False when there was nothing to do."""
+        if self._parked and self._resume_parked():
+            return True
         job = self.queue.claim(self.worker_id, self.stale_minutes)
         if not job:
             return False
         self.process(job)
         return True
 
-    def process(self, job: Mapping[str, Any]) -> str:
-        """Run one claimed job to its end. Returns what happened, for logs."""
+    def process(self, job: Mapping[str, Any], *, slot_held: bool = False) -> str:
+        """Run one claimed job to its end. Returns what happened, for logs.
+
+        A serial job (module doc, "One slot") first takes the process's slot, without waiting; ``slot_held`` says the caller
+        already did. Busy, the job is parked, not sent and not charged."""
         job_id = str(job["id"])
+        serial = is_serial(job)
+        owns = slot_held
+        if serial and not owns:
+            if not _SERIAL_SLOT.acquire(blocking=False):
+                return self._park(job)
+            owns = True
+        outcome = "left"
+        try:
+            outcome = self._run(job, job_id)
+            return outcome
+        finally:
+            if serial:
+                self._clean_serial(job_id, outcome)
+            if owns:
+                _SERIAL_SLOT.release()
+
+    def _run(self, job: Mapping[str, Any], job_id: str) -> str:
         with _Heartbeat(self.queue, job_id, self.worker_id, self.heartbeat_seconds) as beat:
             try:
                 return self._process(job, beat)
@@ -657,6 +719,67 @@ class CreativeWorker:
                 logger.error("job %s: unexpected %s", job_id, type(e).__name__)
                 self._fail(job_id, "worker_error", f"the worker hit an unexpected {type(e).__name__}")
                 return "failed:worker_error"
+
+    # -- the serial slot (module doc, "One slot") --------------------------------
+
+    def _park(self, job: Mapping[str, Any]) -> str:
+        job_id = str(job["id"])
+        if self.stop.is_set() or len(self._parked) >= MAX_PARKED:
+            outcome = self._hand_back(job_id)
+            if not self.stop.is_set():
+                # Every free thread would otherwise claim this same oldest job again at once.
+                self.sleep(BUSY_PAUSE_SECONDS)
+            return outcome
+        beat = _Heartbeat(self.queue, job_id, self.worker_id, self.heartbeat_seconds)
+        beat.__enter__()
+        self._parked.append((job, beat))
+        logger.info("job %s: another render runs in this process; kept claimed, not sent, until the slot is free", job_id)
+        return "parked"
+
+    def _resume_parked(self) -> bool:
+        """The oldest parked job, run now if the slot is free. True when one ran."""
+        for item in list(self._parked):
+            job, beat = item
+            if beat.lost.is_set():
+                beat.__exit__(None, None, None)
+                self._parked.remove(item)
+                logger.info("job %s: no longer this worker's while it waited (cancelled or re-queued); dropped", job["id"])
+        if not self._parked or not _SERIAL_SLOT.acquire(blocking=False):
+            return False
+        job, beat = self._parked.pop(0)
+        beat.__exit__(None, None, None)
+        self.process(job, slot_held=True)
+        return True
+
+    def _hand_back(self, job_id: str) -> str:
+        """A claimed job that was never sent goes back to the queue: the attempt is not counted, nothing is charged."""
+        try:
+            ok = self.queue.advance(job_id, self.worker_id, "requeue")
+        except Exception as e:  # no heartbeat follows it: the claim's stale sweep re-queues it
+            logger.warning("job %s: could not be handed back (%s); left for the stale sweep", job_id, type(e).__name__)
+            return "left"
+        return "requeued" if ok else "left"
+
+    def hand_back_parked(self) -> int:
+        """Every parked job back to the queue (a stop). Returns how many went back."""
+        n = 0
+        while self._parked:
+            job, beat = self._parked.pop(0)
+            beat.__exit__(None, None, None)
+            if not beat.lost.is_set() and self._hand_back(str(job["id"])) == "requeued":
+                n += 1
+        return n
+
+    def _clean_serial(self, job_id: str, outcome: str) -> None:
+        """A serial job's folder on every way out: the input copy and the render's files always; the whole folder unless
+        it holds the outputs of a job that completed without the library. The slot is held, so no other thread of this
+        process can be running this job."""
+        if outcome == "parked":
+            return
+        job_dir = self.out_dir / job_id
+        shutil.rmtree(job_dir / "input", ignore_errors=True)
+        if not outcome.startswith("completed"):
+            shutil.rmtree(job_dir, ignore_errors=True)
 
     def _process(self, job: Mapping[str, Any], beat: _Heartbeat) -> str:
         job_id = str(job["id"])
@@ -1258,16 +1381,55 @@ class CreativeWorker:
     # -- the loop --------------------------------------------------------------
 
     def run_forever(self, *, idle_seconds: float = 5.0, once: bool = False) -> None:
-        while not self.stop.is_set():
-            try:
-                worked = self.run_once()
-            except Exception as e:
-                logger.warning("claim failed (%s)", type(e).__name__)
-                worked = False
-            if once:
-                return
-            if not worked:
-                self.stop.wait(idle_seconds)
+        try:
+            while not self.stop.is_set():
+                try:
+                    worked = self.run_once()
+                except Exception as e:
+                    logger.warning("claim failed (%s)", type(e).__name__)
+                    worked = False
+                if once:
+                    return
+                if not worked:
+                    self.stop.wait(idle_seconds)
+        finally:
+            # Parked jobs were never sent: back to the queue for the next start, nothing charged.
+            if self._parked:
+                logger.info("%d parked job(s) handed back to the queue", self.hand_back_parked())
+
+
+def is_serial(job: Mapping[str, Any]) -> bool:
+    """A job that renders on this machine (SERIAL_CAPABILITIES) and has not been sent yet. One with a stored task id
+    is only polled (a voice video's sync key finds no output after a restart and fails at once): it takes no slot."""
+    return str(job.get("capability") or "") in SERIAL_CAPABILITIES and not job.get("provider_task_id")
+
+
+def sweep_scratch(out_dir: Path, *, max_age_hours: float = SCRATCH_MAX_AGE_HOURS, now: Optional[float] = None) -> int:
+    """Remove the input copies (``<job id>/input``) a crashed worker left under ``out_dir``, older than ``max_age_hours``,
+    and the job folders that are empty after that. Only folders named by a job id are touched: kept outputs of a
+    completed job (no library) are not scratch and stay. Returns how many input folders went."""
+    root = Path(out_dir)
+    if not root.is_dir():
+        return 0
+    cutoff = (time.time() if now is None else now) - max_age_hours * 3600
+    removed = 0
+    for job_dir in root.iterdir():
+        try:
+            uuid.UUID(job_dir.name)
+        except ValueError:
+            continue
+        if not job_dir.is_dir() or job_dir.is_symlink():
+            continue
+        inp = job_dir / "input"
+        try:
+            if inp.is_dir() and not inp.is_symlink() and inp.stat().st_mtime < cutoff:
+                shutil.rmtree(inp, ignore_errors=True)
+                removed += 1
+            if not any(job_dir.iterdir()):
+                job_dir.rmdir()
+        except OSError:
+            continue
+    return removed
 
 
 def load_resolver(spec: str) -> AdapterResolver:
