@@ -162,6 +162,9 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
             ("insert into public.download_masters (video_id, org_id, width, height, duration_seconds, bytes) values (%s, %s, 1920, 1080, 60, 1000)", [vid, org]),
             ("insert into public.credit_refunds (refund_id, purchase_external_id, org_id, reason, requested, taken, shortfall) values (%s, %s, %s, 'refund', 1, 1, 0)",
              [f"rf-{k}", f"pay-{k}", org]),
+            # 0167: the held part of that refund, owed on a hold (a job id no reservation has: nothing collects it).
+            ("insert into public.credit_refund_recoveries (refund_id, purchase_external_id, org_id, holds, owed) values (%s, %s, %s, %s, 1)",
+             [f"rf-{k}", f"pay-{k}", org, [f"rj-seed-{k}"]]),
             ("insert into public.payment_events (provider, event_id, event_type, status, org_id) values ('paddle', %s, 'transaction.completed', 'processed', %s)",
              [f"evt-{k}", org]),
             ("insert into public.api_accounts (org_id, balance_cents, paid_total_cents) values (%s, 1000, 1000)", [org]),
