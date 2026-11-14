@@ -1113,17 +1113,18 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
 
 // ── the API-key door's own refusal sentences (they are the database's, passed through) ─
 
-/** Every message `code` is raised with in the LAST migration that raises it: what production answers. */
+/** Every message `code` is raised with in the LATEST body of each function that raises it: what production answers.
+ *  Per function, not per file: 0169 restated api_request_download alone, so the last file that raises a code need not
+ *  hold every function that does. */
 function lastMigrationMessages(code: string): string[] {
   const dir = path.resolve(process.cwd(), "..", "supabase", "migrations");
-  let found: string[] = [];
+  const latest = new Map<string, string>();
   for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql")).sort()) {
     const sql = readFileSync(path.join(dir, f), "utf8");
-    const re = new RegExp(`api_err\\(\\d{3}, '${code}',\\s*'((?:[^']|'')*)'`, "g");
-    const here = [...sql.matchAll(re)].map((m) => m[1]);
-    if (here.length) found = here;
+    for (const m of sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\n\$\$;/g)) latest.set(m[1], m[2]);
   }
-  return found;
+  const re = new RegExp(`api_err\\(\\d{3}, '${code}',\\s*'((?:[^']|'')*)'`, "g");
+  return [...latest.values()].flatMap((body) => [...body.matchAll(re)].map((m) => m[1]));
 }
 
 describe("API key refusals name the remedy (CLAUDE.md rule 6)", () => {
