@@ -1,4 +1,4 @@
-# Voice to 2D video (slice 1a: the engine; slice 1b: the Studio tool, migration 0171)
+# Voice to 2D video (slice 1a: the engine; slice 1b: the Studio tool, migration 0176)
 
 A person's own narration in, a 9:16 motion-graphics explainer out: every sentence gets a
 small kicker line, a big headline with one marked word, one drawn visual and an italic
@@ -54,7 +54,7 @@ A 30 s Uzbek narration (54 words, 8 sentences) rendered to 1080×1920 at 30 fps 
 with one Remotion worker, in a 4-core cloud container. The mixed audio's mean level was
 -24.9 dB against the narration's -23.7 dB, so the music does not drown the voice.
 
-## Slice 1b: "Voice to video" in the Studio (migration 0171)
+## Slice 1b: "Voice to video" in the Studio (migration 0176)
 
 A person picks one of their library recordings (their own narration, audio only, at most 600 s) and one of the five looks on
 the Studio's **Voice** desk, sees the database's price, and presses Generate. The creative worker draws the video on this
@@ -64,15 +64,15 @@ a full release on every failure (`create_creative_job`, 0036; nothing new in the
 
 | Part | Where |
 | :-- | :-- |
-| The capability `voice_explainer`: params, source, price, the CHECKs, the API's list | `supabase/migrations/0171_voice_video.sql` (rollback: `docs/sql/rollback_0171_voice_video.sql`) |
+| The capability `voice_explainer`: params, source, price, the CHECKs, the API's list | `supabase/migrations/0176_voice_video.sql` (rollback: `docs/sql/rollback_0176_voice_video.sql`) |
 | The adapter (our own engine, no vendor) | `modules/capabilities/voice_video.py` (`video.voice_explainer`) |
 | The registry entry (ships dark) | `schemas/model_registry.json` `nightshift-voice-explainer` (vendor model `voice-explainer-rules-1`) |
 | The worker's lists and its one render slot | `modules/creative_worker.py` (`SOURCE_` / `MEDIA_SOURCE_` / `AUDIO_SOURCE_` / `SERIAL_CAPABILITIES`, `OUTPUT_KIND`) |
-| The price (owner-applied, after the probe) | `docs/sql/price_0171_voice_explainer.sql` |
+| The price (owner-applied, after the probe) | `docs/sql/price_0176_voice_explainer.sql` |
 | The Studio tool | `command-center/lib/creative/{operations,studio,desks}.ts`, `components/studio/GeneratePanel.tsx` (Voice desk) |
 | The worker image | `Dockerfile.worker`: Node 22, the engine (`npm ci`), Remotion's headless Chrome, its Debian libraries, Inter and fontconfig, the effects, a warm render cache |
 
-### What the database decides (0171)
+### What the database decides (0176)
 
 - **params**: `source_asset_id` (required: an audio file of the organization's library) and `look` (required: one of
   `dusk`, `midnight`, `golden`, `neon`, `paper`, and one the model lists in `spec.explainer_looks`). Everything else is
@@ -119,7 +119,7 @@ No silent fallback anywhere (CLAUDE.md rule 4). Every refusal fails the job, rel
 
 The entry ships **hidden**: no `credit_prices` row, no probe, no availability.
 
-1. **Apply 0171.** It is live on apply when merged; it writes no row.
+1. **Apply 0176.** It is live on apply when merged; it writes no row.
 2. **Build and deploy the worker image** (`Dockerfile.worker`: Node, the engine, Remotion's Chrome, Inter and fontconfig, the
    effects, the warm render cache). `docker compose --profile worker build creative-worker`, then up.
 3. **Measure one 600 s render's peak memory as uid 1000 in the built image**, with the deploy's own limits (`mem_limit`, the
@@ -137,7 +137,7 @@ The entry ships **hidden**: no `credit_prices` row, no probe, no availability.
    engine (its probe answers `not_configured`, honestly). For example
    `docker compose --profile worker run --rm creative-worker python tools/probe_models.py --model nightshift-voice-explainer --voice-id <a voice of the account>`
    (the probe speaks its words with ElevenLabs Flash first: one small paid TTS call, as for every voice tool's probe).
-7. **Apply the price**: `docs/sql/price_0171_voice_explainer.sql` in the SQL editor (owner decision 2026-11-14:
+7. **Apply the price**: `docs/sql/price_0176_voice_explainer.sql` in the SQL editor (owner decision 2026-11-14:
    `credits_per_unit` 0.05 per second of recording, the fully-loaded unit cost, margin 7.0, so 0.4 credits a second, 24 a
    minute; the derivation is in its header). It refuses while the model is unprobed, and refuses 0 or NULL: a zero row
    would make every voice video free, because `job_minimum` floors only a price above 0.

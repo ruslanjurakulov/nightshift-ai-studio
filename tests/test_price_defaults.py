@@ -108,7 +108,7 @@ UNPRICED_ON_PURPOSE = {
     "model_generic_video_edit_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_generic_video_reframe_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_generic_video_remove_bg_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
-    "model_nightshift_voice_explainer_second": "registry: our own engine (voice to video, 0171), no vendor bill to start from; the owner sets a price from the worker's CPU once a probe on the worker has proven it",
+    "model_nightshift_voice_explainer_second": "registry: our own engine (voice to video, 0176), no vendor bill to start from; the owner sets a price from the worker's CPU once a probe on the worker has proven it",
     "model_assemblyai_universal_2_second": "registry: no price read, not sold (terms not reviewed)",
     "model_flux_3_image_image": "registry: FLUX 3 first-party, terms-gated (terms_review_required: BFL training licence on Input and Output, API Terms 2(b)) and unpriced; the owner prices it only after a person has decided",
     "model_flux_3_image_klein_image": "registry: FLUX 3 first-party, terms-gated (terms_review_required: BFL training licence on Input and Output, API Terms 2(b)) and unpriced; the owner prices it only after a person has decided",

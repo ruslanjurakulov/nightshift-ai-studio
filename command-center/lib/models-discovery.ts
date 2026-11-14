@@ -21,7 +21,7 @@ import { MODEL_ID_RE } from "@/lib/models-admin";
 
 // ── tasks ───────────────────────────────────────────────────────────────────
 
-/** The registry's capabilities (0171's model_registry_capabilities_check: 0100's and voice_explainer). */
+/** The registry's capabilities (0176's model_registry_capabilities_check: 0100's and voice_explainer). */
 export const REGISTRY_CAPABILITIES = [
   "t2i",
   "edit",
@@ -71,7 +71,7 @@ export const TASKS = [
   { id: "captions", caps: ["captions"] },
   // The video ops (0100): change a video by words, change its shape, take its background out.
   { id: "video_edit", caps: ["video_edit", "video_reframe", "video_remove_bg"] },
-  // Voice to video (0171): a video drawn over one of the library's recordings, by our own engine.
+  // Voice to video (0176): a video drawn over one of the library's recordings, by our own engine.
   { id: "voice_video", caps: ["voice_explainer"] },
 ] as const satisfies readonly { id: string; caps: readonly RegistryCapability[] }[];
 export type TaskId = (typeof TASKS)[number]["id"];
@@ -156,7 +156,7 @@ export const RECORDING_MIME = [
 ] as const;
 /** dub and captions also take these two (0072). */
 export const RECORDING_EXTRA_MIME = ["audio/aac", "audio/webm"] as const;
-/** A voice video starts from audio only (0171's source check). */
+/** A voice video starts from audio only (0176's source check). */
 export const NARRATION_MIME = ["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/flac", "audio/aac", "audio/webm"] as const;
 
 const MIME_LABEL: Record<string, string> = {

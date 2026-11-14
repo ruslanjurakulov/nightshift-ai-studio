@@ -161,7 +161,7 @@ the worker's job folder (``storage: worker``), as before 0046.
 
 One slot for a render on this machine
 -------------------------------------
-A voice video (0171) is not a vendor call: the whole render runs here, a
+A voice video (0176) is not a vendor call: the whole render runs here, a
 headless Chrome, Node and ffmpeg for up to an hour, and two at once would race
 for the container's memory. Its capability is in ``SERIAL_CAPABILITIES``, and
 the process has ONE slot for them, taken without waiting BEFORE anything of the
@@ -252,7 +252,7 @@ MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub", "video_upscale", "
                                        "video_edit", "video_reframe", "video_remove_bg", "voice_explainer"})
 #: Of those, the ones that take a VIDEO and nothing else (0052).
 VIDEO_SOURCE_CAPABILITIES = frozenset({"video_upscale", "video_edit", "video_reframe", "video_remove_bg"})
-#: Of those, the ones that take an AUDIO recording and nothing else (0171: a voice video is drawn over the person's own
+#: Of those, the ones that take an AUDIO recording and nothing else (0176: a voice video is drawn over the person's own
 #: narration; a video's soundtrack is not one).
 AUDIO_SOURCE_CAPABILITIES = frozenset({"voice_explainer"})
 #: Of those, the ones whose output is a new version of the input.
@@ -264,9 +264,9 @@ OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg":
                "video_edit": "video", "video_reframe": "video", "video_remove_bg": "video",
                "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio",
                "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text", "captions": "text",
-               # 0171: our own engine draws the video over the recording (modules/capabilities/voice_video.py).
+               # 0176: our own engine draws the video over the recording (modules/capabilities/voice_video.py).
                "voice_explainer": "video"}
-#: Capabilities rendered on THIS machine, one at a time per process (module doc, "One slot"): 0171's voice video.
+#: Capabilities rendered on THIS machine, one at a time per process (module doc, "One slot"): 0176's voice video.
 SERIAL_CAPABILITIES = frozenset({"voice_explainer"})
 #: The one slot they share, across every CreativeWorker thread of the process. Never waited on.
 _SERIAL_SLOT = threading.Lock()

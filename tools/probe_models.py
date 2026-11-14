@@ -293,7 +293,7 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
     task = None
     try:
         if not adapter.configured():
-            # Our own engine (the voice video, 0171) has no key: it says what this machine lacks to render instead.
+            # Our own engine (the voice video, 0176) has no key: it says what this machine lacks to render instead.
             missing = getattr(adapter, "missing", None)
             raise AdapterError(E_NOT_CONFIGURED, "; ".join(missing()) if callable(missing) and missing()
                                else f"no key for {entry.adapter} on this machine")

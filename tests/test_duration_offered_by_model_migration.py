@@ -156,8 +156,8 @@ class DurationOfferedByModelMigration(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0159"), 1)
         self.assertIn("0156", numbers)
-        # 0171 (voice to video) sits on 0159's creative_price, so it goes wherever 0159 goes (after it).
-        for needle in ("def take_off_0159(", "def put_back_0159(", "ON_0156 = (MIGRATION_0159.name, MIGRATION_0171.name)",
+        # 0176 (voice to video) sits on 0159's creative_price, so it goes wherever 0159 goes (after it).
+        for needle in ("def take_off_0159(", "def put_back_0159(", "ON_0156 = (MIGRATION_0159.name, MIGRATION_0176.name)",
                        "ON_0155 = (MIGRATION_0156.name, *ON_0156)", "ON_0153 = (MIGRATION_0155.name, *ON_0155)"):
             self.assertIn(needle, LAB)
         # take_off_0156 takes 0159 off first, and put_back_0156 puts it back: 0156's rollback and replay refuse 0159's body.

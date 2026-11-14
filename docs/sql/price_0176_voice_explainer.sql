@@ -1,4 +1,4 @@
--- price_0171_voice_explainer.sql — the credit price of the Studio's voice video (migration 0171, model nightshift-voice-explainer).
+-- price_0176_voice_explainer.sql — the credit price of the Studio's voice video (migration 0176, model nightshift-voice-explainer).
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it, and the app never writes a price on its own.
 --
 -- WHEN. Only after the model was probed ON THE WORKER (docs/VOICE_EXPLAINER.md, "Opening it", steps 1 to 6): this file refuses
@@ -9,7 +9,7 @@
 --   0.05 x (1 + 7.0) = 0.4 credits per second = 24 credits per minute of recording
 --   ≈ $0.24 a minute at retail ($0.01 per credit), ≈ $0.17 at the Studio plan's $0.0072 per credit.
 -- The quantity is the recording's length as the DATABASE measured it (creative_source_seconds), never a client's number, and
--- job_minimum still floors a short one. A ten-minute recording (the longest 0171 takes) is 240 credits.
+-- job_minimum still floors a short one. A ten-minute recording (the longest 0176 takes) is 240 credits.
 --
 -- THE DERIVATION. There is no vendor bill: the cost is this server's own work.
 --   * Measured render: 3.4x real time on 4 cores; memory ~+2.2 GB at 30 s and ~+3.8 GB at
@@ -40,30 +40,30 @@ declare
   v_credits_per_unit constant numeric := 0.05;
   v_margin constant numeric := 7.0;
   v_note constant text :=
-    '0171 voice video, owner 2026-11-14: fully-loaded cost 0.05/s (CPU incl. Whisper, storage, retries, server share, fees, '
-    'refunds, licence reserve), margin 7.0 = 0.4 credits/s (24/min). docs/sql/price_0171_voice_explainer.sql';
+    '0176 voice video, owner 2026-11-14: fully-loaded cost 0.05/s (CPU incl. Whisper, storage, retries, server share, fees, '
+    'refunds, licence reserve), margin 7.0 = 0.4 credits/s (24/min). docs/sql/price_0176_voice_explainer.sql';
   m record;
 begin
   if v_credits_per_unit is null or v_credits_per_unit <= 0 then
-    raise exception 'price_0171 refuses credits_per_unit %: 0 or NULL makes every voice video free (job_minimum applies only above 0)',
+    raise exception 'price_0176 refuses credits_per_unit %: 0 or NULL makes every voice video free (job_minimum applies only above 0)',
       coalesce(v_credits_per_unit::text, 'NULL');
   end if;
   if v_margin is null or v_margin < 0 or v_margin > 10 then
-    raise exception 'price_0171 refuses margin %: it must be between 0 and 10', coalesce(v_margin::text, 'NULL');
+    raise exception 'price_0176 refuses margin %: it must be between 0 and 10', coalesce(v_margin::text, 'NULL');
   end if;
   if v_credits_per_unit * (1 + v_margin) <= 0 then
-    raise exception 'price_0171 refuses a rate that charges nothing';
+    raise exception 'price_0176 refuses a rate that charges nothing';
   end if;
 
   select id, credit_unit, verified_at into m from public.model_registry where id = 'nightshift-voice-explainer';
   if not found then
-    raise exception 'price_0171 found no model row nightshift-voice-explainer: sync the registry first (tools/probe_models.py --sync)';
+    raise exception 'price_0176 found no model row nightshift-voice-explainer: sync the registry first (tools/probe_models.py --sync)';
   end if;
   if m.credit_unit is distinct from v_unit then
-    raise exception 'price_0171: the model''s credit unit is %, not %: read schemas/model_registry.json first', m.credit_unit, v_unit;
+    raise exception 'price_0176: the model''s credit unit is %, not %: read schemas/model_registry.json first', m.credit_unit, v_unit;
   end if;
   if m.verified_at is null then
-    raise exception 'price_0171: nightshift-voice-explainer has no passing probe: probe it on the worker first (docs/VOICE_EXPLAINER.md, "Opening it")';
+    raise exception 'price_0176: nightshift-voice-explainer has no passing probe: probe it on the worker first (docs/VOICE_EXPLAINER.md, "Opening it")';
   end if;
 
   insert into public.credit_prices (unit, credits_per_unit, margin, note)

@@ -76,7 +76,7 @@ class ProbeWorkflowShapeTests(unittest.TestCase):
         env = probe_step()["env"]
         for key, cls in ADAPTERS.items():
             if key == "video.voice_explainer":
-                # Our own engine (0171) has no key: on this runner its probe answers not_configured before any paid call (no
+                # Our own engine (0176) has no key: on this runner its probe answers not_configured before any paid call (no
                 # engine here), and the real probe runs on the worker (docs/VOICE_EXPLAINER.md, "Opening it").
                 self.assertEqual(tuple(cls.key_env), ())
                 continue

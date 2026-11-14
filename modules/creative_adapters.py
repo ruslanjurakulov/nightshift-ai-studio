@@ -151,10 +151,10 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         quality=_str(p.get("quality")),
         # t2v / i2v on a model that prices the soundtrack apart (0070).
         audio=_bool(p.get("audio")),
-        # relight (0099): the light, by name; the prompt carries it otherwise. A voice video (0171): the look it is
+        # relight (0099): the light, by name; the prompt carries it otherwise. A voice video (0176): the look it is
         # drawn in (required; the database checked it against the model's explainer_looks).
         look=_str(p.get("look")) if request.capability in ("relight", "voice_explainer") else None,
-        # A voice video (0171): the length the library measured and the job was priced on, so the engine can refuse a
+        # A voice video (0176): the length the library measured and the job was priced on, so the engine can refuse a
         # file that decodes to another one.
         source_seconds=request.source_duration_s if request.capability == "voice_explainer" else None,
     )

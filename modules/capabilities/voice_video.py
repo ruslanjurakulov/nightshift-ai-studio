@@ -1,4 +1,4 @@
-"""Voice to video as a creative job (migration 0171, docs/VOICE_EXPLAINER.md): our own engine, no vendor.
+"""Voice to video as a creative job (migration 0176, docs/VOICE_EXPLAINER.md): our own engine, no vendor.
 
 A person picks one of their library recordings (their own narration) and a look; the database prices the recording's
 measured seconds and holds the credits; the creative worker copies the recording by id and hands it here. This adapter

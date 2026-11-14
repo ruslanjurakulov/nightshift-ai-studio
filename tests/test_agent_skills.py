@@ -239,7 +239,7 @@ class SkillContentTests(unittest.TestCase):
             for field in ("id", "display_name", "vendor_model", "provider"):
                 value = m.get(field)
                 if field == "provider" and value == "nightshift":
-                    # Our own engine (the voice video, 0171): its provider is the product itself, which every skill names.
+                    # Our own engine (the voice video, 0176): its provider is the product itself, which every skill names.
                     continue
                 if isinstance(value, str) and len(value) >= 4 and value.lower() not in CAPABILITY_WORDS:
                     names.add(value)
