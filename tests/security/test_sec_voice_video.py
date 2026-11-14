@@ -51,7 +51,7 @@ PRICES = [("model_vx_second", 0.5), ("model_vx_two_second", 0.5), ("model_vx_nol
 def _rows():
     return [{"id": m, "display_name": m, "provider": "nightshift", "adapter": "video.voice_explainer",
              "capabilities": ["voice_explainer"], "credit_unit": unit, "entitlement": "any",
-             "spec": {"vendor_model": "voice-explainer-rules-1", "output": "video", **extra}}
+             "spec": {"vendor_model": "voice-explainer-rules-2", "output": "video", **extra}}
             for m, extra, unit in MODELS]
 
 
@@ -77,7 +77,7 @@ def db():
     for m, _x, _u in MODELS:
         if m == "vx-hidden":
             continue  # never probed, never listed: the owner has not said yes
-        d.su("select public.record_model_probe(%s, 'video.voice_explainer', 'voice-explainer-rules-1', 'voice_explainer', true, "
+        d.su("select public.record_model_probe(%s, 'video.voice_explainer', 'voice-explainer-rules-2', 'voice_explainer', true, "
              "null, null, 10, 100, 'security-lab')", [m])
         d.su("update public.model_registry set availability='beta' where id=%s", [m])
     d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values "
@@ -219,7 +219,7 @@ def test_changing_the_looks_needs_a_new_probe_and_nothing_else_does(db):
     assert db.su("select availability, verified_at is null from public.model_registry where id='vx-two'") == [("hidden", True)]
     db.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(db.rows)])
     for m in ("vx-nolimit", "vx-two"):
-        db.su("select public.record_model_probe(%s, 'video.voice_explainer', 'voice-explainer-rules-1', 'voice_explainer', true, "
+        db.su("select public.record_model_probe(%s, 'video.voice_explainer', 'voice-explainer-rules-2', 'voice_explainer', true, "
               "null, null, 10, 100, 'security-lab')", [m])
         db.su("update public.model_registry set availability='beta' where id=%s", [m])
 
@@ -388,7 +388,7 @@ def test_the_registry_accepts_the_capability_alone_or_with_others_and_nothing_ne
     assert e.value.sqlstate == "23514"
     db.su("update public.model_registry set capabilities = array['voice_explainer'] where id='vx-hidden'")
     with pytest.raises(psycopg.Error) as e:
-        db.su("select public.record_model_probe('vx', 'video.voice_explainer', 'voice-explainer-rules-1', 'voice_clone', true, "
+        db.su("select public.record_model_probe('vx', 'video.voice_explainer', 'voice-explainer-rules-2', 'voice_clone', true, "
               "null, null, 10, 1, 'x')")
     assert e.value.sqlstate in ("23514", "22023")
 
@@ -662,7 +662,7 @@ def test_the_price_file_waits_for_the_probe_then_charges_0_4_a_second_and_never_
             d.su(text)
         assert "has no passing probe" in str(e.value)
         assert price() == []
-        d.su("select public.record_model_probe(%s, 'video.voice_explainer', 'voice-explainer-rules-1', 'voice_explainer', true, "
+        d.su("select public.record_model_probe(%s, 'video.voice_explainer', 'voice-explainer-rules-2', 'voice_explainer', true, "
              "null, null, 10, 100, 'security-lab')", [REAL])
         d.su(text)
         d.su(text)   # a replay writes the same row
