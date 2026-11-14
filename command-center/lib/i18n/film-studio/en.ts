@@ -306,6 +306,7 @@ export const filmStudioEn = {
     model_not_offered: "That model is not offered for projects.",
     model_not_available: "That model is not on sale right now. Choose another.",
     asset_not_usable: "A chosen picture is no longer in this workspace's library. Choose another.",
+    reference_missing: "A reference picture or character was removed after the price was set. Choose another or remove it, then ask for the price again.",
     film_changed: "Someone else changed this project after you opened it. Nothing was overwritten.",
     film_not_editable: "This project can no longer be changed.",
     idempotency_conflict: "This request was already used for another project. Close the form and start again.",

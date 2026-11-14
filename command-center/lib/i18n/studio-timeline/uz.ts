@@ -102,6 +102,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
     film_changed: "Loyiha hisobdan keyin oʻzgartirildi. Narxni qayta soʻrang.",
     film_studio_disabled: "Loyihalar serverda oʻchirilgan. Hech narsa band qilinmadi.",
     film_not_startable: "Bu loyiha allaqachon boshlangan.",
+    reference_missing: "Narx hisoblangandan keyin namuna rasm yoki personaj oʻchirildi. Loyihada boshqasini tanlang yoki uni olib tashlang, soʻng narxni qayta soʻrang. Hech narsa band qilinmadi.",
     run_slots_full: "Tarifdagi barcha parallel ishga tushirishlar band. Hech narsa band qilinmadi.",
     limit_reached: "Ish maydonining boshqa loyihasi ishlayapti. Hech narsa band qilinmadi.",
     cap_exceeded: "Loyiha ish maydoni ruxsatidan qimmat. Hech narsa band qilinmadi.",

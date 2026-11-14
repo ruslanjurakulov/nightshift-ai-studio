@@ -109,6 +109,7 @@ export const studioTimelineEn = {
     film_changed: "The project was edited after the quote. Ask for the price again.",
     film_studio_disabled: "Projects are switched off on the server. Nothing was held.",
     film_not_startable: "This project has already started.",
+    reference_missing: "A reference picture or character was removed after the price was set. Choose another or remove it in the project, then ask for the price again. Nothing was held.",
     run_slots_full: "All of your plan's parallel runs are in use. Nothing was held.",
     limit_reached: "Another project of this workspace is running. Nothing was held.",
     cap_exceeded: "This project costs more than the workspace allows. Nothing was held.",

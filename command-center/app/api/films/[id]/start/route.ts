@@ -8,6 +8,23 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const QUOTE_RE = /^fq-[0-9]{1,9}-[0-9a-f]{32}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const REASON_RE = /^[a-z0-9_]{1,64}$/;
+
+/**
+ * Only what the screen reads (BR-790-01). start_film answers the whole segment, and on a replay after a worker claimed it that carries
+ * worker_id, heartbeat_at and credit_ref, which 0171's column grant withholds from members. A named allow-list, never the raw object,
+ * until a later migration makes start_film's own answer member-safe.
+ */
+function memberSafeStart(d: Record<string, unknown>) {
+  const out: Record<string, unknown> = { ok: d.ok === true };
+  if (typeof d.replayed === "boolean") out.replayed = d.replayed;
+  if (typeof d.reason === "string" && REASON_RE.test(d.reason)) out.reason = d.reason;
+  if (typeof d.id === "string" && UUID_RE.test(d.id)) out.id = d.id;
+  if (typeof d.status === "string" && REASON_RE.test(d.status)) out.status = d.status;
+  if (typeof d.confirmed_credits === "number" && Number.isFinite(d.confirmed_credits)) out.confirmed_credits = d.confirmed_credits;
+  return out;
+}
 
 /**
  * POST `{ quote_id, idem }`: 0171's start_film at the quote the person confirmed. The database re-prices, holds the credits in the
@@ -35,8 +52,13 @@ export const POST = requireSameOrigin(async function POST(request: Request, { pa
     if (error.code === "NS409" && (word === "film_studio_disabled" || word === "film_not_startable")) {
       return NextResponse.json({ start: { ok: false, reason: word } }, { headers: NO_STORE });
     }
+    // A reference deleted after the quote bumps no version, so the same quote would be refused forever (BR-790-02): named, so the
+    // screen says what to fix and asks for a new price.
+    if (error.code === "NS400" && word === "reference_missing") {
+      return NextResponse.json({ start: { ok: false, reason: word } }, { headers: NO_STORE });
+    }
     return filmRefusal(error);
   }
   if (!data || typeof data !== "object") return filmFail("failed", 502);
-  return NextResponse.json({ start: data }, { headers: NO_STORE });
+  return NextResponse.json({ start: memberSafeStart(data as Record<string, unknown>) }, { headers: NO_STORE });
 });

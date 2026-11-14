@@ -206,6 +206,59 @@ describe("Assemble", () => {
     await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toContain(c.started));
   });
 
+  it("after a refusal the next press asks for a new price, never the old quote again (BR-790-02)", async () => {
+    let quotes = 0;
+    answer = (url) => {
+      if (url.endsWith("/quote")) {
+        quotes += 1;
+        return { status: 200, body: { quote: priced } };
+      }
+      if (url.endsWith("/start")) return { status: 200, body: { start: { ok: false, reason: "reference_missing" } } };
+      return { status: 200, body: { film: film() } };
+    };
+    await open();
+    const key = () => screen.getAllByTestId("assemble-key")[0];
+    fireEvent.click(key());
+    await waitFor(() => expect(screen.getAllByTestId("assemble-amount")[0].textContent).toBe("16 credits"));
+    fireEvent.click(key());
+    fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
+    await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startFailed.reference_missing));
+    expect(screen.getAllByTestId("assemble-amount")[0].textContent).not.toMatch(/\d/);
+    const startsBefore = calls.filter((x) => x.url.endsWith("/start")).length;
+    fireEvent.click(key());
+    await waitFor(() => expect(quotes).toBe(2));
+    expect(calls.filter((x) => x.url.endsWith("/start")).length).toBe(startsBefore);
+  });
+
+  it("a server refusal of the start (an error status) also drops the quote; a network failure keeps it and its key", async () => {
+    let mode: "network" | "refuse" = "network";
+    answer = (url) => {
+      if (url.endsWith("/quote")) return { status: 200, body: { quote: priced } };
+      if (url.endsWith("/start")) {
+        if (mode === "network") throw new TypeError("fetch failed");
+        return { status: 400, body: { error: "invalid_params" } };
+      }
+      return { status: 200, body: { film: film() } };
+    };
+    await open();
+    const key = () => screen.getAllByTestId("assemble-key")[0];
+    fireEvent.click(key());
+    await waitFor(() => expect(screen.getAllByTestId("assemble-amount")[0].textContent).toBe("16 credits"));
+    fireEvent.click(key());
+    fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
+    await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startFailed.other));
+    mode = "refuse";
+    fireEvent.click(key());
+    await waitFor(() => expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(2));
+    const starts = calls.filter((x) => x.url.endsWith("/start"));
+    expect(starts[1].body?.idem).toBe(starts[0].body?.idem);
+    await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startFailed.other));
+    const quotesBefore = calls.filter((x) => x.url.endsWith("/quote")).length;
+    fireEvent.click(key());
+    await waitFor(() => expect(calls.filter((x) => x.url.endsWith("/quote")).length).toBe(quotesBefore + 1));
+    expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(2);
+  });
+
   it("insufficient credits: says so and links to add credits; the key does not start", async () => {
     answer = (url) => (url.endsWith("/quote") ? { status: 200, body: { quote: { ...priced, startable: false, blocked_by: [{ reason: "insufficient_credits" }] } } } : { status: 200, body: { film: film() } });
     await open();

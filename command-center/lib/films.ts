@@ -384,6 +384,8 @@ export const FILM_ERRORS = [
   "model_not_offered",
   "model_not_available",
   "asset_not_usable",
+  // 0171's start_film: a reference picture or character was deleted after the quote.
+  "reference_missing",
   "film_changed",
   "film_not_editable",
   "idempotency_conflict",
@@ -408,6 +410,7 @@ const NS400_WORDS: readonly FilmError[] = [
   "model_not_offered",
   "model_not_available",
   "asset_not_usable",
+  "reference_missing",
 ];
 const NS409_WORDS: readonly FilmError[] = ["film_changed", "film_not_editable", "idempotency_conflict", "scene_has_takes"];
 

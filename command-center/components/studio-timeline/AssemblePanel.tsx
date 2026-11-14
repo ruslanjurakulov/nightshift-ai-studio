@@ -128,12 +128,26 @@ export function AssemblePanel({
         void refreshCredits(orgId);
         onStarted();
       } else {
+        forgetQuote();
         setPhase({ at: "refused", reason: out.reason });
       }
-    } catch {
-      // The key is kept: pressing again retries the same start, never a second one.
-      setPhase({ at: "failed" });
+    } catch (e) {
+      if (e instanceof Error && e.message === "network") {
+        // No answer: the start may have gone through, so the key and the quote are kept and pressing again replays the same
+        // start (0171 answers the first segment), never a second one.
+        setPhase({ at: "failed" });
+      } else {
+        // The server answered with a refusal: that quote is spent (BR-790-02), the next press asks for a new price.
+        forgetQuote();
+        setPhase({ at: "refused", reason: "other" });
+      }
     }
+  }
+
+  /** After a refusal the old quote and its key are never sent again: the next press re-quotes. */
+  function forgetQuote() {
+    starter.reset();
+    quoteRef.current = null;
   }
 
   const q = phase.at === "quoted" || phase.at === "confirm" || phase.at === "starting" ? phase.quote : null;
