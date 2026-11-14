@@ -889,7 +889,8 @@ export interface PaddleStore {
     amount: number | null,
     note: string,
     reason: "refund" | "chargeback",
-  ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
+    // onHold (0167): the part of the shortfall that sat on holds, taken back if a hold is released. null = not reported (no 0167).
+  ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number; onHold?: number | null }>;
   /** Plans (0034). Optional so a store without them refuses plan events as a
    *  temporary failure (Paddle retries) instead of dropping them. */
   findSubscriptionOrg?(subscriptionId: string): Promise<string | null>;
@@ -1357,9 +1358,7 @@ async function execute(
           decision.reason,
         );
         if (res.shortfall > 0) {
-          log.warn(
-            `paddle-webhook: ${decision.reason} ${decision.adjustmentId}: ${res.shortfall} credits were already spent and could not be taken back`,
-          );
+          log.warn(`paddle-webhook: ${decision.reason} ${decision.adjustmentId}: ${shortfallWords(res)}`);
         }
         return {
           httpStatus: 200,
@@ -1368,7 +1367,7 @@ async function execute(
             detail: res.duplicate
               ? `${decision.reason} already recorded`
               : `${decision.reason}: took back ${res.taken} of ${res.requested} credits` +
-                (res.shortfall > 0 ? `; shortfall ${res.shortfall}` : ""),
+                (res.shortfall > 0 ? `; shortfall ${res.shortfall}${onHoldWords(res)}` : ""),
             orgId: purchase.orgId,
             credits: res.taken,
             currency: decision.currency,
@@ -1579,7 +1578,29 @@ export function createRestStore(opts: { url: string; serviceKey: string; fetch?:
         requested: n(res.requested),
         taken: n(res.taken),
         shortfall: n(res.shortfall),
+        onHold: res.on_hold === undefined || res.on_hold === null ? null : n(res.on_hold),
       };
     },
   };
+}
+
+/**
+ * A refund's shortfall in words (rule 5: on hold is not spent). Since 0167 the part that sat on holds is taken back when a hold is
+ * released and only stays lost if the hold is captured; the rest was spent. Without the split (onHold null: 0167 not applied) the
+ * shortfall is named as one figure and not called spent.
+ */
+export function shortfallWords(res: { shortfall: number; onHold?: number | null }): string {
+  if (res.onHold === undefined || res.onHold === null) return `${res.shortfall} credits could not be taken back now`;
+  const held = Math.min(Math.max(res.onHold, 0), res.shortfall);
+  const spent = Math.round((res.shortfall - held) * 100) / 100;
+  const parts: string[] = [];
+  if (held > 0) parts.push(`${held} credits are on hold, taken back if the hold is released and not spent`);
+  if (spent > 0) parts.push(`${spent} credits were already spent and could not be taken back`);
+  return parts.join("; ");
+}
+
+/** The on-hold part for the event row's detail: empty when there is none (or the database does not say). */
+export function onHoldWords(res: { shortfall: number; onHold?: number | null }): string {
+  const held = res.onHold === undefined || res.onHold === null ? 0 : Math.min(Math.max(res.onHold, 0), res.shortfall);
+  return held > 0 ? ` (${held} on hold, taken back if the hold is released and not spent)` : "";
 }

@@ -162,6 +162,9 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
             ("insert into public.download_masters (video_id, org_id, width, height, duration_seconds, bytes) values (%s, %s, 1920, 1080, 60, 1000)", [vid, org]),
             ("insert into public.credit_refunds (refund_id, purchase_external_id, org_id, reason, requested, taken, shortfall) values (%s, %s, %s, 'refund', 1, 1, 0)",
              [f"rf-{k}", f"pay-{k}", org]),
+            # 0167: the held part of that refund, owed on a hold (a job id no reservation has: nothing collects it).
+            ("insert into public.credit_refund_recoveries (refund_id, purchase_external_id, org_id, holds, owed) values (%s, %s, %s, %s, 1)",
+             [f"rf-{k}", f"pay-{k}", org, [f"rj-seed-{k}"]]),
             ("insert into public.payment_events (provider, event_id, event_type, status, org_id) values ('paddle', %s, 'transaction.completed', 'processed', %s)",
              [f"evt-{k}", org]),
             ("insert into public.api_accounts (org_id, balance_cents, paid_total_cents) values (%s, 1000, 1000)", [org]),
@@ -456,6 +459,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Character Studio (0137): tests/security/sec_character_swap_0137.py — one consent and one ready swap per tenant, one sample.
     import sec_character_swap_0137
     sec_character_swap_0137.seed(conn, sc)
+    # Film Studio P1 (0166): tests/security/sec_films_0166.py — one draft of two scenes, a style reference and a take per tenant.
+    import sec_films_0166
+    sec_films_0166.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
