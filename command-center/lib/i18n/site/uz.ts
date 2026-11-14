@@ -1,6 +1,7 @@
 import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
+import { trustUz } from "../trust/uz";
 import { siteAutopilotUz } from "../site-autopilot/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
@@ -538,6 +539,8 @@ export const siteUz: SiteDictionary = {
   studioPage: studioPageUz,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapUz,
+  /** The public /trust page (lib/i18n/trust; English is the source). */
+  trust: trustUz,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotUz,
   final: {

@@ -1,5 +1,6 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
+import { trustEn } from "../trust/en";
 import { siteAutopilotEn } from "../site-autopilot/en";
 
 /**
@@ -597,6 +598,8 @@ export const siteEn = {
   studioPage: studioPageEn,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapEn,
+  /** The public /trust page (lib/i18n/trust; English is the source). */
+  trust: trustEn,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotEn,
   final: {
