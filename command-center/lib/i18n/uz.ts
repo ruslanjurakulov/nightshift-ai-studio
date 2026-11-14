@@ -10,6 +10,7 @@ import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
+import { studioTimelineUz } from "./studio-timeline/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -60,6 +61,7 @@ export const uz: Dictionary = {
   ownerShell: ownerShellUz,
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
+  studioTimeline: studioTimelineUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,

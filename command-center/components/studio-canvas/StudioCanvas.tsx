@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
+import { AlignLeft, Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { useShell } from "@/components/shell/ShellContext";
@@ -594,7 +594,7 @@ export function StudioCanvas({
     </div>
   );
 
-  const bar = <ProjectBar filmStudio={filmStudio} onSearch={() => setPalette("all")} onTimeline={() => say(c.timelineSoon)} inline={!slot} />;
+  const bar = <ProjectBar filmStudio={filmStudio} onSearch={() => setPalette("all")} inline={!slot} view="canvas" />;
   const barEl = slot ? createPortal(bar, slot) : bar;
 
   const inspector =
@@ -831,7 +831,22 @@ function QuoteKey({ node, onOpen }: { node: CanvasNode | null; onOpen: () => voi
 
 // ── the project bar (in the app's header on this page) ─────────────────────────
 
-function ProjectBar({ filmStudio, onSearch, onTimeline, inline }: { filmStudio: boolean; onSearch: () => void; onTimeline: () => void; inline: boolean }) {
+export function ProjectBar({
+  filmStudio,
+  onSearch,
+  inline,
+  view,
+  title,
+  sub,
+}: {
+  filmStudio: boolean;
+  onSearch?: () => void;
+  inline: boolean;
+  view: "canvas" | "timeline";
+  /** The Timeline names the project it shows; the canvas is the person's sketch. */
+  title?: string;
+  sub?: string;
+}) {
   // The key a person actually presses: ⌘ on a Mac, Ctrl elsewhere (read after hydration, so the server's render is stable).
   const [mac, setMac] = useState(true);
   useEffect(() => setMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)), []);
@@ -860,15 +875,15 @@ function ProjectBar({ filmStudio, onSearch, onTimeline, inline }: { filmStudio: 
       <div className="relative min-w-0" ref={menu}>
         <button type="button" className="cv-pswitch" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((o) => !o)} aria-label={c.switcher} data-testid="project-switcher">
           <span className="flex min-w-0 flex-col items-start">
-            <span className="cv-pswitch-nm">{c.sketch}</span>
-            <span className="cv-pswitch-kd">{c.sketchSub}</span>
+            <span className="cv-pswitch-nm">{title ?? c.sketch}</span>
+            <span className="cv-pswitch-kd">{sub ?? c.sketchSub}</span>
           </span>
           <ChevronDown aria-hidden className="size-4 shrink-0" />
         </button>
         {open && (
           <div className="cv-pop" role="menu" aria-label={c.switcher}>
             <p className="cv-pop-h">{c.views}</p>
-            <MenuLink href={path("/studio")} icon={<Check aria-hidden className="size-4" />} label={c.viewCanvas} current />
+            <MenuLink href={path("/studio")} icon={<Check aria-hidden className="size-4" />} label={c.viewCanvas} current={view === "canvas"} />
             <MenuLink href={path("/studio?shelf=videos")} icon={<Film aria-hidden className="size-4" />} label={c.viewVideos} />
             <MenuLink href={path("/studio?shelf=projects")} icon={<ICONS.editor aria-hidden className="size-4" />} label={c.viewEditor} />
             {filmStudio && <MenuLink href={path("/create/projects")} icon={<Projector aria-hidden className="size-4" />} label={c.projects} sub={c.projectsSub} testid="menu-projects" />}
@@ -881,13 +896,12 @@ function ProjectBar({ filmStudio, onSearch, onTimeline, inline }: { filmStudio: 
         )}
       </div>
       <div className="cv-seg cv-deskonly" role="group" aria-label={c.views}>
-        <button type="button" aria-pressed="true">
+        <Link href={path("/studio")} aria-current={view === "canvas" ? "page" : undefined} data-testid="view-canvas">
           <GitBranch aria-hidden className="size-4" /> {c.viewCanvas}
-        </button>
-        {/* Honest about what is not built: the timeline arrives with scene-by-scene projects. */}
-        <button type="button" aria-disabled="true" title={c.timelineSoon} onClick={onTimeline} data-testid="view-timeline">
-          {c.timeline}
-        </button>
+        </Link>
+        <Link href={path("/studio?view=timeline")} aria-current={view === "timeline" ? "page" : undefined} data-testid="view-timeline">
+          <AlignLeft aria-hidden className="size-4" /> {c.timeline}
+        </Link>
       </div>
       {/* Brand look, one click from where its old bookmark lands (STUDIO_IA.md §9.1). */}
       <Link href={path("/studio/look")} className="cv-chip-link" data-testid="channel-look-chip" aria-label={t.studioHub.channelLook} title={t.studioHub.channelLook}>
@@ -895,11 +909,13 @@ function ProjectBar({ filmStudio, onSearch, onTimeline, inline }: { filmStudio: 
         <span className="cv-chip-label">{t.studioHub.channelLook}</span>
       </Link>
       <span className="cv-grow" />
-      <button type="button" className="cv-kbtn cv-search" onClick={onSearch} data-testid="canvas-search" aria-label={c.search}>
-        <Search aria-hidden className="size-4" />
-        <span className="cv-search-label">{c.search}</span>
-        <kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
-      </button>
+      {onSearch && (
+        <button type="button" className="cv-kbtn cv-search" onClick={onSearch} data-testid="canvas-search" aria-label={c.search}>
+          <Search aria-hidden className="size-4" />
+          <span className="cv-search-label">{c.search}</span>
+          <kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
+        </button>
+      )}
     </div>
   );
 }
