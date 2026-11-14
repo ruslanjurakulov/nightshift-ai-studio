@@ -50,21 +50,21 @@ begin
       ('public.film_take_money_json(public.film_takes)', '387f1f2650ad13eb82fec18ff75294bf'),
       ('public.film_lock_segment(uuid, text, boolean)', '053dc28514bf28fbdcdd1de097418f88'),
       ('public.film_lock_take(uuid, text)', '099be6f8255fa8cf59e2c2444d3b1a21'),
-      ('public.film_discard_assets(uuid, uuid[])', '4357ecf6a57e5f4ee076680f9e5b3b28'),
-      ('public.film_fail_locked(uuid, text, text, text, numeric)', 'd26ed5969d88566460c184eb3555e12c'),
-      ('public.film_record_skip(uuid, uuid, uuid, text, text, text)', '8e134baf7858ff4e5d4333ff7f0aadff'),
-      ('public.film_lose_inflight_locked(uuid)', 'c08be09f91c672775bc959d34622ce7e'),
-      ('public.film_settle_locked(uuid, uuid, text)', 'd8de6618a3092b6a6807788c5cc3eed0'),
+      ('public.film_discard_assets(uuid, uuid, uuid, uuid[])', 'bf9ca6a78df29e00e0bb9095e52bd5bd'),
+      ('public.film_fail_locked(uuid, text, text, text, numeric)', '5c479bb1bff1c0e6218ef9424ddeca49'),
+      ('public.film_record_skip(uuid, uuid, uuid, text, text, text)', 'f0f07d2362e5fdaea5cd277d34568494'),
+      ('public.film_lose_inflight_locked(uuid)', 'a1532b883a64b60cef101a260ee3ef02'),
+      ('public.film_settle_locked(uuid, uuid, text)', '19938f367460c80103dc97eb7f1fee35'),
       ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5'),
-      ('public.start_film(uuid, text, text)', 'f59f4525e07e1511bc8c3abb31830404'),
+      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38'),
       ('public.set_film_studio_enabled(boolean)', '2fa73220535a7351b493061e7fd0a0f4'),
       ('public.film_claim_segment(text, interval)', 'fddd014f8cbcb72603da0b792cc0d31a'),
       ('public.film_heartbeat_segment(uuid, text)', '17b89822d95a918a043229482591163b'),
-      ('public.film_begin_take(uuid, text)', 'f112ea9e9f0373b178d120c0cf7b14a0'),
-      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', 'e12f913eeeb6a4a3a9ab5abe64eeb84f'),
+      ('public.film_begin_take(uuid, text)', '3f949fee189a8ef37ef776e5a30ec182'),
+      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', '6ec9f78a431992a4a9261a53d97e7b03'),
       ('public.film_take_failed(uuid, text, text, text, text, numeric)', '76a5cac7de12839bb949a7992f65ae61'),
       ('public.film_begin_assembly(uuid, text)', '34413a61aa9611f244fc2fa02b497301'),
-      ('public.film_record_assembly(uuid, text, boolean, uuid)', '7ea3d7961f09b810b7f42942d41932dd'),
+      ('public.film_record_assembly(uuid, text, boolean, uuid)', 'a883850326d05dc055e5ab49931ea66d'),
       ('public.film_settle_segment(uuid, text, text)', '68ac358fbd91321b7875a42240b91417'),
       ('public.film_cancel_segment(uuid, text)', '90f06e840094949886f79cd7ab2fce46'),
       ('public.film_expire_segments()', '1c735690fd0bcc61b56e598eb9b0dfad')) v(sig, want) loop
@@ -115,7 +115,7 @@ drop function public.film_settle_locked(uuid, uuid, text);
 drop function public.film_lose_inflight_locked(uuid);
 drop function public.film_record_skip(uuid, uuid, uuid, text, text, text);
 drop function public.film_fail_locked(uuid, text, text, text, numeric);
-drop function public.film_discard_assets(uuid, uuid[]);
+drop function public.film_discard_assets(uuid, uuid, uuid, uuid[]);
 drop function public.film_lock_take(uuid, text);
 drop function public.film_lock_segment(uuid, text, boolean);
 drop function public.film_take_money_json(public.film_takes);
@@ -163,6 +163,7 @@ alter table public.film_takes drop column if exists charged_credits;
 alter table public.film_takes drop column if exists charge_basis;
 alter table public.film_takes drop column if exists output_seconds;
 alter table public.film_takes drop column if exists provider_task_id;
+alter table public.film_takes drop column if exists started_at;
 
 -- 5. The four tables (their policies, indexes and constraints go with them).
 drop table public.film_quotes;

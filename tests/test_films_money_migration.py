@@ -185,9 +185,20 @@ class FilmsMoneyMigration(unittest.TestCase):
         self.assertIn("if p_provider_task_id is null", ok)
         self.assertIn("not (p_output_seconds >= 0.01 and p_output_seconds <= 600)", ok)
         self.assertNotIn("p_output_seconds *", ok)  # the number handed to the call is never what is charged
-        self.assertIn("perform public.film_discard_assets(t.org_id, array[p_result_asset, p_last_frame_asset]);", ok)
+        self.assertIn("perform public.film_discard_assets(t.org_id, t.id, null, array[p_result_asset, p_last_frame_asset]);", ok)
+        # H1: the guard lives in the helper, so every caller is covered: only generated files made after the take began (or the
+        # segment was claimed) that nothing else names.
+        guard = function_body("film_discard_assets")
+        for needle in ("a.source = 'generated' and a.created_at >= since", "t.result_asset_id = a.id and t.id is distinct from p_take",
+                       "a.id = any (t.reference_asset_ids)", "sc.first_frame_asset_id = a.id or sc.last_frame_asset_id = a.id",
+                       "r.asset_id = a.id", "f.music_asset_id = a.id", "g.assembly_asset_id = a.id and g.id is distinct from p_segment",
+                       "cr.asset_id = a.id", "a.provenance ->> 'film_take_id' = p_take::text", "if since is null then"):
+            self.assertIn(needle, guard, needle)
         asm = function_body("film_record_assembly")
-        self.assertIn("select a.duration_s into secs from public.media_assets a where a.id = p_result_asset;", asm)
+        self.assertIn("select * into a from public.media_assets x where x.id = p_result_asset;", asm)
+        self.assertIn("secs := a.duration_s;", asm)
+        self.assertIn("a.created_at < s.claimed_at", asm)  # M-a: a file made for this segment
+        self.assertIn("'idempotency_conflict'", asm)
         self.assertNotIn("p_output_seconds", asm)
         self.assertIn("if owed > s.confirmed_credits then", function_body("film_settle_locked"))
 

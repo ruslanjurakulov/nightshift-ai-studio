@@ -231,13 +231,20 @@ The rule is the Studio's: a take that delivers is charged its line, and a take t
 "The recorded length" is `media_assets.duration_s`. The service wrote it into `register_asset` from its own probe of the file. It is
 not the number handed to `film_take_succeeded`, which is only checked (0.01-600) and logged.
 
-**A result is kept only when it is accepted (P3's contract).** The worker registers a take's file, then hands it to
-`film_take_succeeded`. The following are soft-deleted in the same transaction, so a result nobody paid for does not stay in the
-organization's library:
+**A result is kept only when it is accepted (P3's contract).** P3 registers every take file through the take's creative job
+(`register_asset`, source `generated`, provenance `{"film_take_id": <take>}`), and writes `result_asset_ids` as it registers. It
+registers the assembly file with provenance `{"film_segment_id": <segment>}`. Then it hands the file to `film_take_succeeded` or
+`film_record_assembly`. The following are soft-deleted in the same transaction:
 
 - a rejected file (too short, no recorded length) and its last frame;
-- every file a failed or lost take's creative job registered;
+- the files a failed or lost take's job registered, or whose provenance names it;
 - an assembly file handed in with a failure.
+
+So a result nobody paid for does not stay in the organization's library. `film_discard_assets` never touches a file that is not
+`generated`, that existed before the take began (or the segment was first claimed), or that is named anywhere else, whatever a
+caller hands in. "Named" means another take's result or last frame, a take's inputs, a scene's frames, a reference, a film's music,
+another assembly, or a character's pictures. An assembly's result must be a file made for that segment: generated after the claim,
+and no take's or other assembly's. A failed assembly refuses a file that is not a video.
 
 The same result handed in again answers as its first answer, accepted or rejected, with the retry the rejection planned.
 

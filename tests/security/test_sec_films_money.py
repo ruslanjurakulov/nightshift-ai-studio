@@ -112,14 +112,17 @@ class Db:
     def one(self, role, user, q, p=None):
         return self.act(role, user, q, p)[0][0]
 
-    def asset(self, org, kind="image", mime="image/png", duration=_UNSET):
+    def asset(self, org, kind="image", mime="image/png", duration=_UNSET, provenance=None):
         """A library file as the worker registers one; a video measures VIDEO_SECONDS unless given (None: not measured)."""
         if duration is _UNSET:
             duration = VIDEO_SECONDS if kind == "video" else None
         return str(self.su(
             "select public.register_asset(gen_random_uuid(), %s, %s, %s, 1000, %s, 'generated', "
-            "p_width => 64, p_height => 64, p_duration_s => %s::numeric, p_provenance => '{}'::jsonb) ->> 'id'",
-            [org, kind, mime, uuid.uuid4().hex * 2, duration])[0][0])
+            "p_width => 64, p_height => 64, p_duration_s => %s::numeric, p_provenance => %s::jsonb) ->> 'id'",
+            [org, kind, mime, uuid.uuid4().hex * 2, duration, json.dumps(provenance or {})])[0][0])
+
+    def live(self, asset):
+        return self.su("select deleted_at is null from public.media_assets where id = %s", [asset])[0][0]
 
     def new_org(self, credits=100, image=True):
         self.n += 1
@@ -403,7 +406,7 @@ WORKER_CALLS = [
     ("select public.film_price(f) from public.films f limit 1", []),
     ("select public.film_settle_locked(%s::uuid, %s::uuid, 'cancelled')", ["seg", "seg"]),
     ("select public.film_lose_inflight_locked(%s::uuid)", ["seg"]),
-    ("select public.film_discard_assets(%s::uuid, array[%s::uuid])", ["seg", "seg"]),
+    ("select public.film_discard_assets(%s::uuid, %s::uuid, null, array[%s::uuid])", ["seg", "seg", "seg"]),
     ("select public.film_record_skip(%s::uuid, %s::uuid, %s::uuid, 'claim', 'P0001', 'x')", ["seg", "seg", "seg"]),
 ]
 
@@ -914,6 +917,7 @@ def test_cancel_before_anything_ran_releases_every_hold_and_the_film_goes_back_t
     """Item 3: nothing was charged and nothing made, so the film is a draft again, editable and startable, its takes kept at 0."""
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
+    planned_ids = [str(t[0]) for t in db.takes(seg["id"])]
     out = db.cancel(seg["id"])
     assert (out["status"], out["captured_credits"], out["settled"]) == ("released", 0, True)
     assert db.holds(a.org)[0][2] == "released" and db.account(a.org) == (Decimal(100), 0)
@@ -921,6 +925,7 @@ def test_cancel_before_anything_ran_releases_every_hold_and_the_film_goes_back_t
     assert db.takes(seg["id"]) == []  # M2: never begun, all at 0: removed; the events keep the record
     detail = db.su("select detail from public.film_events where film_id = %s and event = 'segment_settled'", [fid])[0][0]
     assert (detail["back_to_draft"], detail["takes_removed"]) == (True, 4)
+    assert sorted(detail["removed_take_ids"]) == sorted(planned_ids)
     assert db.claim() is None
     assert db.cancel(seg["id"])["status"] == "released"
     db.save(a.editor, fid, db.version(fid), {"title": "The lighthouse, again"})
@@ -1003,9 +1008,96 @@ def test_the_assembly_is_charged_by_its_registered_file_never_by_a_number_and_ne
     for asset in (unmeasured, a.image, db.asset(db.new_org().org, "video", "video/mp4"), None):
         assert err(lambda: db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)", [seg["id"], asset]))[:2] == \
             ("NS400", "invalid_params"), asset
+    # M-a: a take's own result is not an assembly, nor a file that existed before the segment was claimed.
+    clip_result = db.su("select result_asset_id::text from public.film_takes where segment_id = %s and kind = 'clip' limit 1",
+                        [seg["id"]])[0][0]
+    early = db.su("select id::text from public.media_assets where org_id = %s and kind = 'video' and deleted_at is null "
+                  "order by created_at limit 1", [a.org])[0][0]
+    db.su("update public.media_assets set created_at = created_at - interval '1 day' where id = %s", [early])
+    for asset in (clip_result, early):
+        assert err(lambda: db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)", [seg["id"], asset]))[:2] == \
+            ("NS400", "invalid_params"), asset
     long_ = db.asset(a.org, "video", "video/mp4", duration=125)  # three minutes recorded; the line was confirmed for one
     out = db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)", [seg["id"], long_])
     assert out["assembly"]["charged_credits"] == 5 and out["assembly"]["asset_id"] == long_ and out["assembly"]["output_seconds"] == 125
+    # The same call again answers as it is; another file, or another outcome, is a conflict.
+    assert db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)", [seg["id"], long_])["assembly"]["asset_id"] == long_
+    other = db.asset(a.org, "video", "video/mp4", duration=50)
+    assert err(lambda: db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)", [seg["id"], other]))[:2] == \
+        ("NS409", "idempotency_conflict")
+    assert err(lambda: db.svc("select public.film_record_assembly(%s, 'w-1', false, null)", [seg["id"]]))[:2] == \
+        ("NS409", "idempotency_conflict")
+    assert db.live(long_) and db.live(clip_result)
+
+
+def test_a_charged_key_frame_handed_in_as_a_rejected_clips_last_frame_is_never_discarded(db, a):
+    """H1, Lens's first reproduction: film_discard_assets removes only files made for the rejected take, never another take's."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    kf, clip = db.takes(seg["id"])[0][0], db.takes(seg["id"])[1][0]
+    made = db.make(a, kf, "keyframe")
+    key_frame = made["result_asset_id"]
+    db.begin(clip)
+    short = db.asset(a.org, "video", "video/mp4", duration=2)
+    out = db.svc("select public.film_take_succeeded(%s::uuid, 'w-1', null, %s::uuid, %s::uuid, 'lab-task-1')", [clip, short, key_frame])
+    assert out["accepted"] is False
+    assert db.live(key_frame) is True and db.live(short) is False
+    assert db.su("select charged_credits from public.film_takes where id = %s", [kf])[0][0] == 3
+
+
+def test_a_failed_assembly_never_discards_a_library_file(db, a):
+    """H1, Lens's second reproduction: a failed assembly handed the organization's library image (the pricing stand-in) is refused,
+    and a video that was in the library before the segment was claimed survives a failure that names it."""
+    before = db.asset(a.org, "video", "video/mp4")
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    db.finish_all(a, seg["id"])
+    db.svc("select public.film_begin_assembly(%s, 'w-1')", [seg["id"]])
+    assert err(lambda: db.svc("select public.film_record_assembly(%s, 'w-1', false, %s::uuid)", [seg["id"], a.image]))[:2] == \
+        ("NS400", "invalid_params")
+    db.su("update public.media_assets set created_at = created_at - interval '1 day' where id = %s", [before])
+    out = db.svc("select public.film_record_assembly(%s, 'w-1', false, %s::uuid)", [seg["id"], before])
+    assert out["assembly"]["status"] == "failed" and out["assembly"]["charged_credits"] == 0
+    assert db.live(a.image) is True and db.live(before) is True
+    q = db.quote(a.editor, db.film(a))
+    assert q["priced"] is True  # the stand-in is still there to price a clip against
+
+
+def test_a_lost_takes_file_named_by_its_provenance_is_not_kept(db, a):
+    """M-b: a take file registered with provenance film_take_id (P3's contract) goes with a worker_lost, even with no job row; a file of
+    the same provenance registered before the take began is not the take's output and stays."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    clip = db.takes(seg["id"])[1][0]
+    stale = db.asset(a.org, "video", "video/mp4", provenance={"film_take_id": str(clip)})
+    db.su("update public.media_assets set created_at = created_at - interval '1 hour' where id = %s", [stale])
+    db.begin(clip)
+    made = db.asset(a.org, "video", "video/mp4", provenance={"film_take_id": str(clip)})
+    db.su("update public.film_segments set deadline_at = now() - interval '3 hours' where id = %s", [seg["id"]])
+    assert db.svc("select public.film_expire_segments()") == 1
+    assert db.live(made) is False and db.live(stale) is True
+
+
+def test_a_refused_hold_is_answered_and_recorded(db, a):
+    """L6 + N3: reserve_credits' own 22023 (here forced by a lab trigger) is answered as hold_refused and leaves a film_events row."""
+    fid = db.film(a)
+    qid = db.quote(a.editor, fid)["quote_id"]
+    db.su(f"""create or replace function lab_refuse_hold() returns trigger language plpgsql as $$
+              begin if new.org_id = '{a.org}' then raise exception 'lab: no hold' using errcode = '22023'; end if; return new; end $$""")
+    db.su("create trigger lab_refuse_hold before insert on public.credit_reservations for each row execute function lab_refuse_hold()")
+    try:
+        out = db.start(a.admin, fid, qid)
+        assert refused(out) == ("hold_refused", "22023")
+    finally:
+        db.su("drop trigger lab_refuse_hold on public.credit_reservations")
+        db.su("drop function lab_refuse_hold()")
+    ev = db.su("select detail ->> 'reason', detail ->> 'code', actor_role from public.film_events where film_id = %s and event = 'start_refused'",
+               [fid])
+    assert ev == [("hold_refused", "22023", "admin")], ev
+    assert db.holds(a.org) == [] and db.film_row(fid)[0] == "draft"
 
 
 def test_cancel_waits_for_a_take_in_flight_then_releases_the_rest(db, a):
