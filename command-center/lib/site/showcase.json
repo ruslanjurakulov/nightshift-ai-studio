@@ -1579,6 +1579,45 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T22:50:43Z"
+    },
+    {
+      "jobId": "e35f41fb-3162-4f9d-ae17-6420d558840d",
+      "assetId": "6f11b530-17e3-5077-b51c-d86d67db7f88",
+      "sha256": "5adfeca1e73e68dcb2896db881b61a27a4a539e31719e2bb3ecf6c61693d6a74",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The product in this picture stands centred on a clean studio backdrop. On a sharp beat it bursts apart into thousands of glossy paint droplets and fine glittering particles in its own colours, which swirl around in slow motion, then rush back together and snap into the intact product again. Crisp rim light, macro detail, static camera, seamless loop. Keep the product's shape, label and colours exactly as in the picture; no added text, no extra objects.",
+      "createdAt": "2026-11-14T03:32:00Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "e3da9148-f2f8-443e-95b1-8ed36ef3dea4",
+        "assetId": "9283b527-51ec-5f5a-97b0-125d6aea3cc8"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1600,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:38:36Z"
     }
   ]
 }
