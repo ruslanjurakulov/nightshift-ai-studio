@@ -153,6 +153,8 @@ export const STUDIO_REMEDIES: Readonly<Record<string, string>> = {
     "The same generation is still being started. Call create_generation again in a few seconds with the SAME idempotency_key, never a new one.",
   insufficient_scope: "This API key lacks the permission for this tool. An owner or admin can create a key with the Studio permissions (creative) in the Developer console.",
   run_limit_reached: "All of the plan's parallel runs are busy. Wait a minute for one to finish, then try again.",
+  failed_job_limit:
+    "Too many of this organization's generations failed or were refused in the last 24 hours; new ones start again at retry_at (UTC). Tell the person, suggest changing the prompt or the input file (a refusal is usually the provider's safety filter), and do not retry before retry_at. If it looks wrong, the person can contact support.",
   api_not_activated: "The API is not activated for this organization. An owner or admin can activate it in the Developer console.",
 };
 

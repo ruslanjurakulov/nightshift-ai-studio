@@ -7,6 +7,7 @@ import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks
 import { ATTACH_ACCEPT } from "@/lib/site/pending-attachment";
 import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
+import { failedJobLimitText } from "@/lib/creative/failed-job-limit";
 import { formatCredits } from "@/lib/credits";
 import { useChannelPath } from "@/lib/channels-client";
 import { SourcePicker } from "@/components/studio/SourcePicker";
@@ -1545,7 +1546,8 @@ export function GeneratePanel({
         </span>
       ) : errorCode ? (
         <span className="text-[var(--color-fail)]">
-          {apiErrorMessage(t, errorCode)}
+          {/* 0175: how many failed, the limit and when it frees, from the database's detail (no number without it). */}
+          {errorCode === "failed_job_limit" ? failedJobLimitText(t, errorDetail) : apiErrorMessage(t, errorCode)}
           {errorAction(errorCode) === "credits" && (
             <>
               {" "}

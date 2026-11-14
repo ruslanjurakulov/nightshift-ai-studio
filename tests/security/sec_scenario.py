@@ -465,6 +465,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Rights acknowledgement (0174): tests/security/sec_rights_acknowledgement_0174.py — one likeness_photo acknowledgement per tenant.
     import sec_rights_acknowledgement_0174
     sec_rights_acknowledgement_0174.seed(conn, sc)
+    # The failed-job cap (0175): tests/security/sec_failed_job_cap_0175.py — asserts each tenant starts below the limit.
+    import sec_failed_job_cap_0175
+    sec_failed_job_cap_0175.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

@@ -325,11 +325,12 @@ export function canCarryRun(
 
 /**
  * Why a step that has not started is waiting (0083, BR-L-011): everything the
- * plan may run at once is busy, or the balance is short for it. Both pass, so
- * the run stays running, holds nothing for the step, and starts it on a later
- * advance; a day after the price was confirmed it stops instead.
+ * plan may run at once is busy, or the balance is short for it, or (0175) the
+ * organization's failed or refused generations of the last 24 hours reached the
+ * limit. All pass, so the run stays running, holds nothing for the step, and
+ * starts it on a later advance; a day after the price was confirmed it stops instead.
  */
-export const WAIT_CODES = ["run_limit_reached", "insufficient_credits"] as const;
+export const WAIT_CODES = ["run_limit_reached", "insufficient_credits", "failed_job_limit"] as const;
 export type WaitCode = (typeof WAIT_CODES)[number];
 
 export function stepWaitCode(step: Pick<RunStepView, "status" | "error_code">): WaitCode | null {

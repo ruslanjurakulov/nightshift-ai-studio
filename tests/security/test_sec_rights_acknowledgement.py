@@ -22,6 +22,7 @@ production does.
 """
 import json
 import os
+import re
 import uuid
 
 import psycopg
@@ -580,17 +581,21 @@ def _gate_md5(db):
 def test_replaying_0174_changes_nothing_and_rollback_keeps_the_record(db):
     gate = _gate_md5(db)
     rows = db.su("select count(*) from public.rights_acknowledgements")[0][0]
-    db.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8"))
-    assert _gate_md5(db) == gate
+    # 0175 (the failed-job cap) sits on 0174's bodies and 0174's guard accepts only its own or the earlier ones: off for the replay.
     with psycopg.connect(db.dsn, autocommit=True) as c:
-        sec_db.take_off_0174(c)
+        sec_db.take_off_0175(c)
     try:
+        own = _gate_md5(db)
+        db.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8"))
+        assert _gate_md5(db) == own
+        with psycopg.connect(db.dsn, autocommit=True) as c:
+            sec_db.take_off_0174(c)
         assert _gate_md5(db) == "4c74918fd9d938c8fe4f5a3d26a09d84"
         assert db.su("select count(*) from public.rights_acknowledgements")[0][0] == rows
         assert db.su("select requires_acknowledgement from public.model_registry where id='vid-col'")[0][0] == ["likeness_photo"]
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
-            sec_db.put_back_0174(c)
+            sec_db.put_back_0174(c)  # and 0175 on it again
     assert _gate_md5(db) == gate
 
 
@@ -611,7 +616,8 @@ def test_a_replay_of_0075_silently_removes_the_gate_which_is_why_the_doc_says_un
         # And 0174 then refuses to go back on by itself: 0075 also put its own api_creative_refusal over 0124's. Re-running an
         # older file over newer ones is not a supported operation; the Verify query is how it is noticed.
         st, msg, _ = err(lambda: d.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8")))
-        assert "0174 found public.api_creative_refusal(text, text, text) with a body that is neither 0124's nor 0174's" in msg
+        # (0175 replaced 0174's start_workflow_run too, and 0174's guard reads that one before api_creative_refusal.)
+        assert re.search(r"0174 found public\.(api_creative_refusal|start_workflow_run)\(.*\) with a body that is neither", msg), msg
     finally:
         if not os.environ.get("NIGHTSHIFT_SECURITY_KEEP"):
             sec_db.drop_database(admin, name)

@@ -37,6 +37,8 @@ const ERROR_CODES = [
   "no_model_available",
   // 0174: the model needs a person to confirm their rights to the input in the Studio first; there is no API call for it.
   "acknowledgement_required",
+  // 0175: 5 or more of the organization's generations failed or were refused in the last 24 hours; retry_at names when it frees.
+  "failed_job_limit",
   "registry_missing",
   "forbidden",
   "invalid_body",

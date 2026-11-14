@@ -116,7 +116,14 @@ export function RunView({
         {waiting ? (
           // The deadline is in the reader's own time zone, which the server cannot know.
           <p role="status" className="m-0 text-sm" suppressHydrationWarning>
-            {fmt(waiting.wait === "run_limit_reached" ? p.waitingSlot : p.waitingCredits, { n: waiting.step_index + 1 })}{" "}
+            {fmt(
+              waiting.wait === "run_limit_reached"
+                ? p.waitingSlot
+                : waiting.wait === "failed_job_limit"
+                  ? p.waitingFailedJobs
+                  : p.waitingCredits,
+              { n: waiting.step_index + 1 },
+            )}{" "}
             {deadline
               ? fmt(p.waitingUntil, { when: deadline.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }) })
               : p.waitingUntilUnknown}

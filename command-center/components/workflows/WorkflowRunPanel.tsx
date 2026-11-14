@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Play } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { failedJobLimitText } from "@/lib/creative/failed-job-limit";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
 import { SourcePicker } from "@/components/studio/SourcePicker";
@@ -117,7 +118,9 @@ export function WorkflowRunPanel({
         void requote(values);
         return;
       }
-      setError(workflowErrorMessage(t, out.error));
+      // 0175: the organization's failed or refused generations reached the limit: the count and when it frees, from the detail.
+      const detail = (out.body as { detail?: unknown } | undefined)?.detail;
+      setError(out.error === "failed_job_limit" ? failedJobLimitText(t, detail) : workflowErrorMessage(t, out.error));
       return;
     }
     router.push(path(`/workflows/runs/${out.value.id}`));

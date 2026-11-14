@@ -14,6 +14,7 @@
  */
 
 import { extraOffFields } from "@/lib/credits";
+import { parseFailedJobLimit } from "@/lib/creative/failed-job-limit";
 
 export type DbError = { code?: string; message?: string; details?: string | null; hint?: string | null };
 export type DbAnswer = { data: unknown; error: DbError | null };
@@ -267,6 +268,8 @@ export const CREATIVE_ERRORS = [
   "no_model_available",
   "insufficient_credits",
   "run_limit_reached",
+  // 0175: too many failed or refused generations in this organization in 24 hours; nothing was held.
+  "failed_job_limit",
   "forbidden",
   "not_found",
   "not_cancellable",
@@ -362,6 +365,17 @@ export function mapCreativeError(error: DbError): CreativeResult {
       });
     }
     case "NS429": {
+      // 0175: 5 failed or refused jobs in 24 hours. The detail (failed=… limit=… retry_at=…) is passed on for the sentence;
+      // the numbers are null, never 0, when it cannot be read.
+      if (word === "failed_job_limit") {
+        const p = parseFailedJobLimit(error.details);
+        return fail(429, "failed_job_limit", {
+          failed: p ? p.failed : null,
+          limit: p ? p.limit : null,
+          retry_at: p ? p.retryAt : null,
+          ...(detail ? { detail } : {}),
+        });
+      }
       // 0034: the plan's parallel runs are all holding credits.
       const m = /active=(\d+)\s+limit=(\d+)/.exec(error.details ?? "");
       return fail(429, "run_limit_reached", { active: m ? Number(m[1]) : null, limit: m ? Number(m[2]) : null });
