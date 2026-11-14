@@ -10,6 +10,7 @@ import { fmt } from "@/lib/i18n/core";
 import { AuthAlert, AuthField, AuthNotice, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { useInvited } from "@/components/auth/InvitedContext";
 import { GoogleButton } from "@/components/auth/GoogleButton";
+import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
 import { AUTH_CALLBACK_PATH, HANDLE_CHECK_PATH } from "@/lib/public-paths";
 import { afterSignupPath } from "@/lib/safe-redirect";
 import { HandleInput } from "@/components/account/HandleInput";
@@ -53,6 +54,8 @@ export default function SignupPage() {
   const router = useRouter();
   const { t } = usePublicI18n();
   const invited = useInvited();
+  // With Google offered, it is the first and primary way in and the e-mail submit is the quiet key under it.
+  const google = useGoogleEnabled();
   const [email, setEmail] = useState("");
   const [handleInput, setHandleInput] = useState("");
   const { status: handleStatus, handle } = useHandleCheck(handleInput, useCallback(askHandleAvailable, []));
@@ -267,7 +270,11 @@ export default function SignupPage() {
               {shownProblem}
             </AuthAlert>
           )}
-          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured || handleStatus.kind === "checking"}>
+          <AuthSubmit
+            busy={busy}
+            disabled={!isSupabaseConfigured || handleStatus.kind === "checking"}
+            tone={google ? "quiet" : undefined}
+          >
             {busy ? t.signup.submitting : t.signup.submit}
           </AuthSubmit>
         </fieldset>

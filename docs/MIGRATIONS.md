@@ -1352,3 +1352,84 @@ function and adds one trigger.
   created, an unlisted one is refused before anything is held for the customer and for the operator's preview, an empty or missing list
   refuses, Auto skips a model that cannot make the length, every other answer is 0156's on a corpus, order, drift guard, replay and
   rollback on a scratch database).
+
+## ChatGPT keeps the client it registered (0161)
+
+0161 (`0161_mcp_chatgpt_client.sql`) is **live on apply** and changes only what the MCP OAuth collector deletes: `oauth_gc` is
+0147's body plus one hunk; ONE new internal helper, `oauth_chatgpt_callbacks_only(text[])`; and, so the collector stays cheap,
+the stored generated column `oauth_clients.chatgpt` (from that helper, like 0147's `vendor`) with the partial index
+`oauth_clients_chatgpt_idx`. No table, row, policy, trigger or grant on anything else.
+
+- **Why.** OpenAI's authentication guide for MCP servers (https://developers.openai.com/plugins/build/auth): ChatGPT runs dynamic
+  client registration once per MCP server connection and reuses that client id; "If your authorization server expires, deletes,
+  or replaces either credential, users and reviewers may receive an invalid_client error when they connect." 0147's collector
+  deleted a client a day after its every connection ended (its own note: "ChatGPT and others are re-added"), so a ChatGPT
+  connection that was disconnected, or reached its 90-day cap, and signed in again more than a day later was refused as an
+  unknown app until the person re-created the plugin. Claude registers a new client on every connection and is not affected.
+- **The rule.** A client whose every redirect URI is one of ChatGPT's own callbacks (`https://chatgpt.com/connector_platform_oauth_redirect`,
+  `https://chatgpt.com/connector/oauth/<id>`) is not taken by 0147's branch for 30 days after a person's last (redeemed) connection
+  with it ended, for at most 3 such clients per person, the ones that ended most recently. After that 0093's rules take it as
+  before (an ended grant goes at 30 days, then a client with none). A Claude client, a mixed registration and a ChatGPT client
+  nobody approved still go a day later. A kept client gives nobody a connection: its tokens stay dead and every sign-in shows
+  the consent screen.
+- **Rows.** The vendor class holds 60 000; registrations at their hourly ceiling hold 48 000 of them for a day, leaving about
+  12 000 that must be filled with rows that outlive a day. Live connections dominate: an account holds 20 live plus those ended in
+  the last day (about 40 rows, 0147's bound of roughly 300 accounts); 0161 adds at most 3 kept a person (about 43, roughly 280
+  accounts). Kept clients alone would need about 4 000 accounts.
+- **Cost.** The collector runs on every registration and code exchange. Measured (Breach on #744, then here) with 7 000 people
+  holding 6 ended ChatGPT clients each, 42 000 rows: the first form (the helper called per grant, then an array test per
+  candidate) took 0.5 to 1 s a collection; this form (the stored flag, a left anti-join) about 130 ms median, against 0147's about
+  47 ms on the same data. What is left is the ranking window over the flood's own ChatGPT grants; with few ChatGPT grants it is
+  near zero.
+- **md5.** `oauth_gc` before `b5d0423a7df82812106021e05488d9ad` (0147), after `d9262c411e083e9f8d970224a6cad17c`;
+  `oauth_chatgpt_callbacks_only` `2a5c8c75b77b0a59556852a93c6b9cb4` (drift guard, end state, rollback).
+- **Without it.** Everything works as under 0147; only ChatGPT's reconnect after more than a day fails, and the consent page then
+  tells the person to remove the app there and add it again.
+- **Replay.** `create or replace` plus revoke: a replay changes nothing. Re-running 0147 after 0161 is refused by 0147's own drift
+  guard (it knows only 0093's and its own collector): apply the 0161 rollback first, re-run 0147, then 0161. Re-running 0093 puts
+  0093's collector back: re-apply 0147, then 0161.
+- **Number.** 0161, assigned to this branch: 0158 (#731) and 0159 (#745) are merged before it, 0160 belongs to another branch.
+  Needs 0093 and 0147; names nothing of 0149's to 0159's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0161_mcp_chatgpt_client.sql` (owner-applied): refuses a collector that is not 0161's, puts 0147's
+  body back verbatim, drops the index, the column and then the helper.
+- **Tests.** `tests/test_mcp_chatgpt_client_migration.py` (0147's body plus the two hunks, byte for byte; the hashes; the
+  rollback; the numbering), `tests/security/test_sec_mcp_chatgpt_client.py` (a real PostgreSQL: the same client id signs in again
+  after a disconnect and after the 90-day cap, its old token stays dead, it goes at 30 days; Claude, mixed, ordinary and unapproved
+  clients still go after a day; 50 approve-redeem-revoke cycles keep 3; a shared workspace client stays while anyone ranks it; no
+  API role calls either function; replay, rollback and drift guard). `tests/security/test_sec_mcp_free_tier.py` undoes 0161 before
+  it replays and rolls back 0147.
+
+## The MCP Studio tools' model list and result files (0162)
+
+0162 (`0162_api_creative_models.sql`) adds two read-only API functions and changes nothing else (no table, column, row, policy, or
+existing function body). They exist because the MCP server calls the database the way every `/api/v1` route does — the ANON key and
+the API key's hash, never a session or the service key — and two things the Studio tools need had no door for such a caller.
+
+- **`api_creative_models(p_key_hash, p_capability, p_request_id)`.** The models an API key's organization can generate with through
+  the API, optionally for one capability: `sellable_models(capability, 'api')` (the set `api_creative_model_ok` lets
+  `api_creative_create` sell), narrowed by creative_price's own entitlement rule (0156: `any`, or `paid` once the organization bought
+  credits or is credits-exempt). Every other entitlement is refused at create, so it is not listed; nor is a model with none of the
+  API's capabilities (a SQL array twinned with `API_CREATIVE_CAPABILITIES` in `command-center/lib/api/operations.ts`). No price: the
+  quote is the only price a caller may act on. Answers `{ capability, models: [{ id, name, capabilities, availability, spec }] }`.
+  api_begin with `creative.quote` (scope `creative:quote`; api_endpoint_scope is not replaced): a call past api_begin is logged as
+  `creative.models`, one refused inside it (key, scope, request limit) as `creative.quote`. An unknown capability is 400
+  `invalid_params`.
+- **`api_creative_job_files(p_key_hash, p_job_id, p_request_id)`.** `api_creative_get`'s answer for a generation THIS key started
+  (0062's ownership rule, word for word) plus `files`: each result asset not deleted and stored `local` (the only storage the signed
+  file route serves), as `{ asset_id, kind, mime, variants, width, height, duration_s }`, so the server can sign
+  `/api/media/file/...` links. Files only for a `completed` job: the worker attaches a job's assets while it is still processing and
+  settles it afterwards, so a job that then failed (hold released, nothing charged) still names them (Breach BR-0162-1); any other
+  status answers `files: []`. api_begin with `creative.get` (scope `creative:read`).
+- **Who may call them.** `anon` only (PostgREST with the anon key), like every api_* entry point; not authenticated, not service_role,
+  not PUBLIC. A connected app's access token (0093) is refused by oauth_ctx (`not_available_for_connected_apps`): oauth_endpoint_scope
+  has no entry for creative.quote or creative.get. The last block asserts grants, definer and search_path.
+- **md5.** `api_creative_models` `fe49adb06e9344c925e14c1bfbe3330d`, `api_creative_job_files` `31afb0f38cd2bbe7fa69ae983ebc5c8c`
+  (drift guard, rollback).
+- **Without it.** The MCP tools `list_models` and `get_generation` answer 503 `api_unavailable` naming 0162; `quote_generation` and
+  `create_generation` call 0062's functions and work either way.
+- **Number.** 0162. Needs 0031, 0035, 0038, 0062, 0075 (`creative_route_quote`) and 0124 (`model_is_available`); names nothing of 0147's to 0161's. The numbering tests of 0127, 0131 and 0133
+  list it as reviewed.
+- **Undo.** `docs/sql/rollback_0162_api_creative_models.sql` (owner-applied): refuses a body that is not 0162's, drops both.
+- **Tests.** `tests/test_api_creative_models_migration.py` (the text, the hashes, the rollback, the numbering),
+  `tests/security/test_sec_mcp_studio_tools.py` and `tests/security/test_sec_breach_mcp_studio_0162.py` (a real PostgreSQL),
+  `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
