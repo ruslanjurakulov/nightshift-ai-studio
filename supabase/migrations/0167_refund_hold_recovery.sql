@@ -57,9 +57,10 @@
 --   refund_purchased_credits(text, text, numeric, text, text)   0034's body + the held part recorded in credit_refund_recoveries, the
 --                              ledger note says how much is on hold instead of calling it spent, and the answer carries `on_hold`.
 --                              Same signature, same refusals, same idempotency on refund_id, same grants (service role only).
---   credit_transactions_apply_lots()   0034's body + marked lines: a 'refund' row's spend may name its first lot
+--   credit_transactions_apply_lots()   0165's body (0034's plus the referral 'adjust' hunk) + marked lines: a 'refund' row's spend may
+--                              name its first lot
 --                              (nightshift.refund_lot, this organization's lots only), which credit_refund_recover sets per lot.
---                              Unset (every other caller), it is 0034's behaviour exactly. Same grants (no API role).
+--                              Unset (every other caller), it is 0165's behaviour exactly. Same grants (no API role).
 --
 -- WHAT THIS DOES NOT DO. It changes no row that exists (a refund recorded before 0167 has no recovery row and stays as it was). It does
 -- not change reserve, start, capture, release or expiry, who may call anything, prices, publishing or privacy. No balance goes below 0:
@@ -67,8 +68,10 @@
 -- The API balance's top-up refund (api_refund_topup, 0031, in cents) and owner_reverse_grant (0107) have the same "available only" rule
 -- and are NOT changed here (separate tables; reported to Sentinel).
 --
--- NUMBER. 0167 (provisional): 0163 to 0166 are held by other open branches. Names nothing of theirs. 0146's drift guard pins this
--- function at 0034's body ("what it builds on and leaves alone"), so a REPLAY of 0146 after 0167 refuses: take 0167 off with its rollback
+-- NUMBER. 0167 (provisional): 0163 and 0166 are held by other open branches. 0165 (the referral programme) replaced
+-- credit_transactions_apply_lots first; 0167 is built on 0165's body and its guard refuses any other (0034's included), so 0167 must
+-- apply after 0165. 0146's drift guard pins refund_purchased_credits
+-- at 0034's body ("what it builds on and leaves alone"), so a REPLAY of 0146 after 0167 refuses: take 0167 off with its rollback
 -- first (the lab does: tests/security/sec_db.py take_off_0167 / put_back_0167). Applying 0167 after 0146, the order live sees, is fine.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only, the SQL editor on the live project). md5 of the body with every run of white space read as
@@ -78,15 +81,15 @@
 --   expected BEFORE (0034 applied, 0167 not): 766daf507d4e70711b8622aebbea7705
 --   expected AFTER  (the last block of this file asserts the same, inside the transaction):
 --     refund_purchased_credits        1024ac369b7a18830ac547e41c5ca89e
---     credit_transactions_apply_lots  fdd309d7a7786168ae62b67bce11222d   (before, 0034: 8ab35cff8ac8a145403b0e6eca735697)
+--     credit_transactions_apply_lots  6098f97a7630bed24807bb7c5ef6eefe   (before, 0165: fcd28a68b841d8d539d3798f919a0d01)
 --     credit_refund_recover           0c16bb426e63c1bc1d9fa2518f45b921
 --   If a live value is anything else, STOP: something was applied by hand, and replacing the body would silently undo it.
 --
 -- APPLY AS ONE TRANSACTION. Additive and idempotent: a second run finds this file's bodies and changes nothing. Locks: one new table, and
 -- CREATE TRIGGER takes a SHARE ROW EXCLUSIVE lock on credit_transactions for an instant (lock_timeout 5s: it fails rather than queue
 -- behind a long writer). Rollback: docs/sql/rollback_0167_refund_hold_recovery.sql.
--- REQUIRES 0020 (credit_reservations, credit_log), 0021 (credit_refunds) and 0034 (refund_purchased_credits' and
--- credit_transactions_apply_lots' latest bodies, the lots).
+-- REQUIRES 0020 (credit_reservations, credit_log), 0021 (credit_refunds), 0034 (refund_purchased_credits' latest body, the lots) and
+-- 0165 (credit_transactions_apply_lots' latest body: 0167 is built on it and refuses 0034's).
 
 set local lock_timeout = '5s';
 
@@ -114,8 +117,8 @@ begin
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into a
     from pg_proc p where p.oid = to_regprocedure('public.credit_transactions_apply_lots()');
-  if a is null or a <> all (array['8ab35cff8ac8a145403b0e6eca735697', 'fdd309d7a7786168ae62b67bce11222d']) then
-    raise exception '0167 found a credit_transactions_apply_lots() that is neither 0034''s body nor 0167''s (md5 %): read the live body first', a;
+  if a is null or a <> all (array['fcd28a68b841d8d539d3798f919a0d01', '6098f97a7630bed24807bb7c5ef6eefe']) then
+    raise exception '0167 found a credit_transactions_apply_lots() that is neither 0165''s body nor 0167''s (md5 %): read the live body first', a;
   end if;
 end $$;
 
@@ -294,8 +297,10 @@ $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. A released hold pays the refund that met it
 -- ───────────────────────────────────────────────────────────────────────────
--- 0034's lot trigger, unchanged but for the marked lines: a collection says which lot it spends first. Without the setting (every
--- other caller) it is 0034's behaviour exactly.
+-- The lot trigger as 0165 left it (0034's body plus 0165's 'adjust' hunk), unchanged but for the lines marked 0167: a collection says
+-- which lot it spends first. Without the setting (every other caller) it is 0165's behaviour exactly. The two settings never meet:
+-- nightshift.refund_lot is read only for a 'refund' row and names a lot id, 0165's nightshift.adjust_lot_first only for an 'adjust'
+-- row and names an external id; both are set transaction-local by their one writer just before its insert and reset right after.
 create or replace function public.credit_transactions_apply_lots() returns trigger
   language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -330,6 +335,11 @@ begin
       prefer := coalesce((select l.id from public.credit_lots l  -- 0167
                            where l.org_id = new.org_id  -- 0167
                              and l.id::text = nullif(current_setting('nightshift.refund_lot', true), '')), prefer);  -- 0167
+    -- 0165: an 'adjust' row may name the lot it takes from first (a referral clawback takes the reward's own lot).
+    elsif new.kind = 'adjust' then
+      select id into prefer from public.credit_lots
+       where org_id = new.org_id
+         and external_id = nullif(current_setting('nightshift.adjust_lot_first', true), '');
     end if;
     perform public.credit_lots_spend_locked(new.org_id, -amt, new.job_id, new.id, prefer);
   end if;
@@ -467,7 +477,7 @@ begin
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
           where oid = 'public.credit_refund_recover()'::regprocedure) <> '0c16bb426e63c1bc1d9fa2518f45b921'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
-          where oid = 'public.credit_transactions_apply_lots()'::regprocedure) <> 'fdd309d7a7786168ae62b67bce11222d' then
+          where oid = 'public.credit_transactions_apply_lots()'::regprocedure) <> '6098f97a7630bed24807bb7c5ef6eefe' then
     raise exception '0167 end state: a function does not hold this file''s body';
   end if;
   -- Every enabled row-level AFTER INSERT trigger on the ledger, in the order Postgres fires them (by name, byte order): exactly the lot

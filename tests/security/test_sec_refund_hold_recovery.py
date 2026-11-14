@@ -345,8 +345,13 @@ def test_the_collection_spends_the_lot_the_release_gave_back_not_a_later_purchas
         _ok(_call(s, SERVICE, "select public.add_purchased_credits(%s, 1000, %s, 'later pack')", [org, ext_b]))
         s.rows("update public.credit_lots set expires_at = now() + interval '2 days' where org_id = %s and external_id = %s returning 1",
                [org, ext_b])                                 # B would come first in spend order
+        # 0165's setting for 'adjust' rows, left naming B, must not steer a 'refund' row (each setting is read in its own branch only).
+        s.rows("select set_config('nightshift.adjust_lot_first', %s, true)", [ext_b])
         _expire(s, org, job)
         assert _recovery(s, rid)[1] == 100
+        assert s.value("select current_setting('nightshift.refund_lot', true)") == "", "the collector resets its own setting"
+        assert s.value("select current_setting('nightshift.adjust_lot_first', true)") == ext_b, "and never touches 0165's"
+        s.rows("select set_config('nightshift.adjust_lot_first', '', true)")
         assert s.value("select remaining from public.credit_lots where id = %s", [w]) == 0, "W, the lot the release returned, pays"
         assert s.value("select remaining from public.credit_lots where org_id = %s and external_id = %s", [org, ext_b]) == 1000
         assert _balanced(s, org) == 1000

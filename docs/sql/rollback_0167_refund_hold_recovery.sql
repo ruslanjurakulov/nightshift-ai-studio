@@ -10,10 +10,10 @@
 --   0. REFUSES (changes nothing) if refund_purchased_credits(), credit_transactions_apply_lots() or credit_refund_recover() is not
 --      0167's body (a later change would be undone).
 --   1. Drops the trigger credit_transactions_recover_refunds and the function credit_refund_recover().
---   2. Puts back refund_purchased_credits() and credit_transactions_apply_lots() as 0034 left them, character for character, with
---      0021's and 0034's grants.
---   3. Asserts the end state: 0034's bodies (md5 766daf507d4e70711b8622aebbea7705 and 8ab35cff8ac8a145403b0e6eca735697), no recover
---      trigger or function.
+--   2. Puts back refund_purchased_credits() as 0034 left it and credit_transactions_apply_lots() as 0165 left it, character for
+--      character, with their grants.
+--   3. Asserts the end state: those bodies (md5 766daf507d4e70711b8622aebbea7705 and fcd28a68b841d8d539d3798f919a0d01), no
+--      recover trigger or function.
 
 begin;
 set local lock_timeout = '5s';
@@ -36,7 +36,7 @@ begin
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into a
     from pg_proc p where p.oid = to_regprocedure('public.credit_transactions_apply_lots()');
-  if a is distinct from 'fdd309d7a7786168ae62b67bce11222d' then
+  if a is distinct from '6098f97a7630bed24807bb7c5ef6eefe' then
     raise exception 'rollback 0167: credit_transactions_apply_lots() is not 0167''s body (md5 %): a later change would be undone; read the live body first', a;
   end if;
 end $$;
@@ -44,7 +44,8 @@ end $$;
 drop trigger if exists credit_transactions_recover_refunds on public.credit_transactions;
 drop function if exists public.credit_refund_recover();
 
--- 0034's lot trigger, verbatim (0167 added the nightshift.refund_lot lines; nothing else reads that setting once the collector is gone).
+-- The lot trigger as 0165 left it, verbatim (0167 added the nightshift.refund_lot lines; nothing else reads that setting once the
+-- collector is gone). 0165's own 'adjust' hunk stays.
 create or replace function public.credit_transactions_apply_lots() returns trigger
   language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -75,6 +76,11 @@ begin
       select id into prefer from public.credit_lots
        where org_id = new.org_id
          and external_id = nullif(current_setting('nightshift.refund_of', true), '');
+    -- 0165: an 'adjust' row may name the lot it takes from first (a referral clawback takes the reward's own lot).
+    elsif new.kind = 'adjust' then
+      select id into prefer from public.credit_lots
+       where org_id = new.org_id
+         and external_id = nullif(current_setting('nightshift.adjust_lot_first', true), '');
     end if;
     perform public.credit_lots_spend_locked(new.org_id, -amt, new.job_id, new.id, prefer);
   end if;
@@ -182,8 +188,8 @@ begin
     raise exception 'rollback 0167 end state: refund_purchased_credits() is not 0034''s body';
   end if;
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
-       where oid = 'public.credit_transactions_apply_lots()'::regprocedure) <> '8ab35cff8ac8a145403b0e6eca735697' then
-    raise exception 'rollback 0167 end state: credit_transactions_apply_lots() is not 0034''s body';
+       where oid = 'public.credit_transactions_apply_lots()'::regprocedure) <> 'fcd28a68b841d8d539d3798f919a0d01' then
+    raise exception 'rollback 0167 end state: credit_transactions_apply_lots() is not 0165''s body';
   end if;
   if to_regprocedure('public.credit_refund_recover()') is not null
      or exists (select 1 from pg_trigger where tgrelid = 'public.credit_transactions'::regclass and tgname = 'credit_transactions_recover_refunds') then

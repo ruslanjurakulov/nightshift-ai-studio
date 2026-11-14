@@ -41,9 +41,11 @@ def pg_md5(text: str) -> str:
 REFUND_0034 = body(BASE, "refund_purchased_credits")
 REFUND_0167 = body(SQL, "refund_purchased_credits")
 RECOVER = body(SQL, "credit_refund_recover")
-APPLY_0034 = body(BASE, "credit_transactions_apply_lots")
+# 0165 (the referral programme) replaced the lot trigger first (0034's body plus an 'adjust' hunk); 0167 is built on that body.
+APPLY_SRC = (MIG / "0165_referral_rewards.sql").read_text(encoding="utf-8")
+APPLY_BASE = body(APPLY_SRC, "credit_transactions_apply_lots")
 APPLY_0167 = body(SQL, "credit_transactions_apply_lots")
-APPLY_BEFORE = "8ab35cff8ac8a145403b0e6eca735697"
+APPLY_BEFORE = "fcd28a68b841d8d539d3798f919a0d01"
 
 
 def _marked(got):
@@ -52,15 +54,33 @@ def _marked(got):
 
 
 class ApplyLotsIsTheLatestPlusMarkedLines(unittest.TestCase):
-    def test_0034_is_the_latest_body_before_this_file(self):
+    def test_0165_is_the_latest_body_before_this_file(self):
         later = [p.name for p in sorted(MIG.glob("*.sql"))
                  if "0034" < p.name[:4] < "0167" and "function public.credit_transactions_apply_lots(" in p.read_text(encoding="utf-8")]
-        self.assertEqual(later, [])
-        self.assertEqual(pg_md5(APPLY_0034), APPLY_BEFORE)
+        self.assertEqual(later, ["0165_referral_rewards.sql"], "another body exists: 0167 must be rebuilt on the latest")
+        self.assertEqual(pg_md5(APPLY_BASE), APPLY_BEFORE)
+        # 0165's guard pins 0034's body and its after-md5 is the one 0167 expects.
+        self.assertIn(f"'8ab35cff8ac8a145403b0e6eca735697', '{APPLY_BEFORE}'", APPLY_SRC)
+
+    def test_0165s_adjust_hunk_survives_and_the_two_settings_stay_in_their_own_branch(self):
+        self.assertIn("elsif new.kind = 'adjust' then", APPLY_0167)
+        self.assertIn("nullif(current_setting('nightshift.adjust_lot_first', true), '')", APPLY_0167)
+        refund = APPLY_0167.split("if new.kind = 'refund' then", 1)[1].split("elsif new.kind = 'adjust' then", 1)[0]
+        adjust = APPLY_0167.split("elsif new.kind = 'adjust' then", 1)[1].split("end if;", 1)[0]
+        self.assertIn("nightshift.refund_lot", refund)
+        self.assertNotIn("nightshift.adjust_lot_first", refund)
+        self.assertNotIn("nightshift.refund_lot", adjust)
+        # The collector sets its setting just before its insert and resets it right after; it never touches 0165's.
+        self.assertNotIn("adjust_lot_first", RECOVER)
+        on = RECOVER.index("set_config('nightshift.refund_lot', lot.id::text, true)")
+        ins = RECOVER.index("insert into public.credit_transactions", on)
+        off = RECOVER.index("set_config('nightshift.refund_lot', '', true)", ins)
+        self.assertLess(on, ins)
+        self.assertEqual(RECOVER[ins:off].count(";"), 1, "the reset follows the insert directly")
 
     def test_every_0034_line_survives_in_order_and_only_marked_lines_are_new(self):
         it = iter(APPLY_0167.splitlines())
-        for line in APPLY_0034.splitlines():
+        for line in APPLY_BASE.splitlines():
             for got in it:
                 if got == line:
                     break
@@ -69,7 +89,7 @@ class ApplyLotsIsTheLatestPlusMarkedLines(unittest.TestCase):
                 self.fail(f"0034's line is missing or out of order: {line!r}")
         for rest in it:
             self.assertTrue(_marked(rest), rest)
-        code = "\n".join(line.split("--", 1)[0] for line in APPLY_0034.splitlines())
+        code = "\n".join(line.split("--", 1)[0] for line in APPLY_BASE.splitlines())
         for lit in set(re.findall(r"'(?:[^']|'')*'", code)):
             self.assertIn(lit, APPLY_0167, lit)
 
@@ -276,7 +296,7 @@ class HashesAndRollback(unittest.TestCase):
         self.assertIn(f"refund_purchased_credits        {after}", SQL)
         self.assertIn(f"credit_refund_recover           {recover}", SQL)
         apply_after = pg_md5(APPLY_0167)
-        self.assertIn(f"credit_transactions_apply_lots  {apply_after}   (before, 0034: {APPLY_BEFORE})", SQL)
+        self.assertIn(f"credit_transactions_apply_lots  {apply_after}   (before, 0165: {APPLY_BEFORE})", SQL)
         self.assertIn(f"array['{APPLY_BEFORE}', '{apply_after}']", SQL)
         self.assertIn(f"<> '{apply_after}' then", SQL.split("5. End state", 1)[1])
 
@@ -299,7 +319,7 @@ class HashesAndRollback(unittest.TestCase):
         self.assertIn("drop function if exists public.credit_refund_recover();", ROLLBACK)
         self.assertNotIn("drop table", ROLLBACK)
         self.assertIn("grant execute on function public.refund_purchased_credits(text, text, numeric, text, text) to service_role;", ROLLBACK)
-        self.assertEqual(definition(ROLLBACK, "credit_transactions_apply_lots"), definition(BASE, "credit_transactions_apply_lots"))
+        self.assertEqual(definition(ROLLBACK, "credit_transactions_apply_lots"), definition(APPLY_SRC, "credit_transactions_apply_lots"))
         self.assertIn(f"a is distinct from '{pg_md5(APPLY_0167)}'", ROLLBACK)
         self.assertIn(f"<> '{APPLY_BEFORE}' then", ROLLBACK)
 

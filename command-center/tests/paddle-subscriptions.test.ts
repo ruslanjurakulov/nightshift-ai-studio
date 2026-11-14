@@ -1,4 +1,6 @@
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createRestStore,
@@ -13,6 +15,8 @@ import {
   planTableFromEnv,
   priceTableFromEnv,
   promoAllowlistFromEnv,
+  DISCOUNT_MARK,
+  discountMark,
   type EventRecord,
   type PaddleEvent,
   type PaddleStore,
@@ -459,6 +463,40 @@ describe("discounts", () => {
     );
     expect(d).toMatchObject({ kind: "purchase", credits: 600 });
     expect(d.kind === "purchase" && d.note).toMatch(/60\.00% paid → 600 of 1000 credits/);
+  });
+
+  it("marks every discounted or promo payment for the referral programme (0165), and no full-price one", () => {
+    // 0165's referral_payment_paid() looks for exactly this text in the credited event's detail.
+    const sql = readFileSync(path.join(process.cwd(), "../supabase/migrations/0165_referral_rewards.sql"), "utf8");
+    expect(sql).toContain(`position('${DISCOUNT_MARK}' in coalesce(e.detail, '')) = 0`);
+    expect(discountMark({ share: 1, discountId: null, promo: false })).toBe("");
+    expect(discountMark({ share: 1, discountId: PROMO, promo: true })).toBe(`${DISCOUNT_MARK} (promo ${PROMO})`);
+    expect(discountMark({ share: 0.01, discountId: DSC, promo: false })).toBe(`${DISCOUNT_MARK} (discount ${DSC})`);
+    // A 99%-off allowed promo books full credits for a cent: it must carry the mark.
+    const nearFree = packTxn({ discount_id: PROMO, details: { totals: { subtotal: "1000", discount: "999", grand_total: "1" } } });
+    expect(decideTransaction(nearFree, packs, null, new Map(), promos)).toMatchObject({ kind: "purchase", credits: 1000, discount: `${DISCOUNT_MARK} (promo ${PROMO})` });
+    expect(decideTransaction(packTxn(), packs)).toMatchObject({ kind: "purchase", discount: "" });
+  });
+
+  it("writes the mark on the credited event the webhook records, for a pack and for a plan", async () => {
+    const store = new FakeStore();
+    // This file's store refuses packs (it is about plans); here a pack is what is being bought.
+    store.addPurchasedCredits = async () => ({ duplicate: false });
+    const promoPack = JSON.stringify({
+      event_id: "evt_promo_pack",
+      event_type: "transaction.completed",
+      occurred_at: "2026-10-01T10:00:05Z",
+      data: packTxn({ id: "txn_01h000000000000000000promo", discount_id: PROMO, details: { totals: { subtotal: "1000", discount: "999", grand_total: "1" } } }),
+    });
+    await handlePaddleWebhook(
+      { method: "POST", rawBody: promoPack, signature: sign(promoPack) },
+      { secret: SECRET, prices: packs, plans, store, promos, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+    );
+    expect(store.events.get("evt_promo_pack")?.detail).toBe(`credited 1000 credits${DISCOUNT_MARK} (promo ${PROMO})`);
+    await deliver(store, planPaid({ discount_id: DSC, details: { totals: { subtotal: "1900", discount: "950", grand_total: "950" } } }, "evt_plan_dsc"));
+    expect(store.events.get("evt_plan_dsc")?.detail).toContain(`${DISCOUNT_MARK} (discount ${DSC})`);
+    await deliver(store, planPaid({}, "evt_plan_full"));
+    expect(store.events.get("evt_plan_full")?.detail ?? "").not.toContain(DISCOUNT_MARK);
   });
 
   it("a 100%-discounted pack mints nothing unless the discount is an allowed promo", () => {

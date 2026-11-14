@@ -1434,6 +1434,124 @@ the API key's hash, never a session or the service key — and two things the St
   `tests/security/test_sec_mcp_studio_tools.py` and `tests/security/test_sec_breach_mcp_studio_0162.py` (a real PostgreSQL),
   `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
 
+## The site's live public counters (0164)
+
+0164 (`0164_public_site_stats.sql`) is **live on apply and still invisible**: it adds one table, four functions and (where pg_cron
+is installed) one cron job; it replaces nothing and alters no existing table. The switch starts OFF, and while it is off the
+public read answers `{"visible": false}` and nothing else. The one command, the k rule and what each number counts:
+`docs/PUBLIC_STATS.md`.
+
+- **`site_settings`.** One row (`id` is the constant true): `public_stats_visible boolean not null default false`, the stored
+  measurement (`stats`, `stats_at`) and who last changed the switch. RLS on, no policy, every grant revoked (the service key
+  included); the end state asserts no SELECT, INSERT, UPDATE or DELETE for anon, authenticated or service_role. A missing row reads as
+  hidden.
+- **`public_site_stats()`.** anon and authenticated. `{"visible": false}` while the switch is off, while nothing is stored yet, or
+  while fewer than 5 customer workspaces are counted (**the k rule**: otherwise a customer could subtract its own numbers from the
+  totals and read another tenant's). Otherwise the stored `videos_rendered` (a lower bound), `videos_uploaded_private`,
+  `videos_approved`, `studio_generations` (counts), `last_run_at` (the UTC hour, null when nothing finished), `visible`, `as_of`.
+  Nothing else: no organization, user, channel, video, title, and not `counted_orgs`. Anon never measures when nothing is stored;
+  once the stored one is older than 15 minutes, one caller (advisory lock) measures again, and a read-only transaction answers
+  without storing (`read_only_sql_transaction` is caught). The SQL editor and a signed-in platform owner/admin get a fresh
+  measurement with `counted_orgs` and `min_counted_orgs`, and `visible` says whether the site would show it.
+- **`set_public_stats_visible(boolean)`.** A signed-in platform owner/admin through `owner_guard` (0107: 42501 before anything is
+  read, the second factor, 10 calls per 10 minutes) or the SQL editor. The editor is an allow-list: no API claims, and the role the
+  call runs as (the SET ROLE, else the login) is not an API role and is a member of `postgres`; a role that merely inherits
+  `authenticated` is not it. Not anon, not the service key. A change writes one `security_events` row (`site.public_stats`,
+  `{from, to, via}`) in the same transaction; a call that changes nothing writes no event. Turning it on stores the first
+  measurement. Not `app_audit_log`: its browser-side allow list (`audit_action_allowed`, 0145's body) would have to be replaced,
+  and the owner's Security page already lists `security_events`.
+- **`public_site_stats_refresh()`.** Internal (no API role): while the switch is on, measure and store. pg_cron runs it every 10
+  minutes (`nightshift-public-site-stats`, scheduled as 0111 schedules its sweep: only when `cron.schedule`, `cron.unschedule` and
+  `cron.job` exist, unschedule-then-schedule, a notice otherwise).
+- **`public_site_stats_measure()`.** Internal (no API role). Also returns `counted_orgs`: distinct customer organizations with at
+  least one row in any count.
+- **Left out.** `default_org_id()` and every organization one of whose members is a bound `app_members` account (by user id, never by
+  e-mail). Rows with no organization are not counted.
+- **Freshness.** The site keeps an answer 5 minutes; a number on the page was measured at most about 15 minutes earlier with pg_cron
+  and about 20 without.
+- **md5.** `public_site_stats_measure` `e1fa900daf83fb55af871d3e118f8a31`, `public_site_stats_refresh`
+  `022ce0de3feaebde13aadd1432fcc626`, `public_site_stats` `fe0dfed7b1abb856b161b35d8cfd6abb`, `set_public_stats_visible`
+  `0b1793721bf2bb7aaad4c0eb248704e6` (drift guard, end state, rollback). The end state also asserts each is owned by `postgres`.
+- **Without it.** The site's reader (`command-center/lib/server/public-stats.ts`) treats the missing function as hidden: no strip.
+- **Number.** 0164, assigned to this branch; 0163 is held by an unmerged branch (#736) and is not reused. Needs 0007, 0016, 0017,
+  0018, 0036, 0107, 0112 and 0116; names nothing of 0147's to 0162's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+  `sec_db.ON_0124` lists it so that a lab sequence which leaves 0124 out and puts it back still ends on the newest file; the two lab
+  tests that roll 0112 and 0116 back leave it out of their base (`sec_db.NEEDS_0112_0116`) and take it off and put it back around
+  the rollbacks (`take_off_0164`, `put_back_0164`).
+- **Undo.** `docs/sql/rollback_0164_public_site_stats.sql` (owner-applied): refuses a body that is not 0164's, unschedules the cron
+  job, drops the four functions and the table.
+- **Tests.** `tests/test_public_site_stats_migration.py` (the text, the hashes, the rollback, the numbering),
+  `tests/security/test_sec_public_stats.py` (a real PostgreSQL: the switch refused for customers, anon, the service key and a role
+  that inherits `authenticated`, with no audit row; one audit row per change by the admin and by the SQL editor; hidden answers
+  `{"visible": false}`; hidden below 5 counted workspaces and shown at 5; the preview's `counted_orgs`; only the named keys; the
+  operator's and staff workspaces left out; the last run to the hour; a null stays null; nothing stored means hidden; the 15-minute
+  refresh; a read-only GET; replay, drift and rollback), `command-center/tests/public-stats.test.tsx` (the reader and the strip).
+
+## The referral programme (0165)
+
+0165 (`0165_referral_rewards.sql`) adds a referral reward that **pays nothing on apply**: it has its own switch,
+`referral_enabled`, added OFF, which only a platform owner/admin can turn on (`set_referral_settings`, behind `owner_guard`).
+
+- **What changes on apply.**
+  1. `referral_enabled` is added off. 0092's `enabled` (true on live) only keeps links and joins working.
+  2. 0092's sign-up milestone is switched **off**: `milestone_enabled` is added false, not copied. Sign-ups alone are farmable
+     (`docs/security/LEDGER.md` BR-S-010). Live had 0 links and 0 joins, so nothing earned is lost.
+  3. `referral_open_periods` starts empty: a join and a payment count only inside a period the reward was on (each on/off
+     of `set_referral_settings` opens or closes one, in its audit). Nothing done while it was closed ever counts.
+  4. `join_friend_invite` waits at most 2 s for its link lock (one hunk); the app retries once and keeps the cookie on a
+     failure, and a password sign-in retries a kept cookie too.
+  5. The lot trigger `credit_transactions_apply_lots` (0034) lets an `adjust` row name the lot it spends first
+     (`nightshift.adjust_lot_first`, one hunk); only the referral clawback sets it.
+  6. With pg_cron, `nightshift-referral-settle` runs `referral_settle_all(50)` every 5 minutes.
+  No webhook, purchase, refund or reservation function, no policy and no existing row changes.
+- **The rule.** A **payment** is a purchase or subscription row whose provider event (`transaction.completed` /
+  `payment.succeeded`, processed) charged more than 0 **at full price**: paddle-webhook now appends ` · discounted (…)` to the
+  event detail of any discounted or promo payment (an allowed promo books full credits at any paid share), and dodo-webhook
+  credits no discounted payment. Rows that are not payments are skipped and use nothing up. A friend who joined under 0092's
+  rules inside an open period qualifies with the **first payment ever** of a workspace they **created after their account
+  was made** (anchored on the account, so a late-recorded join does not void it) and owned before paying, made inside an open
+  period, within `referral_qualify_days` (60) of the account's creation, of at least `referral_min_credits` (1000), and, in
+  USD, of at least `referral_min_credits / 2` cents (half the minimum's base price at 1 credit = 1 US cent).
+  Void and recorded: a membership overlap (referrer in the paying workspace, friend in the link's) when it qualifies or when it
+  is due (`member`; `org_members` has no history, so "was" is what those two moments saw), the same subscription customer on
+  both sides (`same_payer`; one-time payments carry no payer identity and there is no device signal), a reversal during the hold
+  (`refunded`). A reversal is a `credit_refunds` row, or the provider's own refund / chargeback / dispute event when a person
+  must act (Paddle `adjustment.*` processed or rejected, Dodo `refund.succeeded`, `dispute.accepted|lost|expired`); the second
+  kind is counted on the operator's panel (`reversed_by = 'event'`). The reward (`referral_credits`, 200, at most the minimum
+  payment) is held `referral_hold_days` (30, at least 7), then paid as one `grant` row `referral-reward:<ref>` (an opaque uuid),
+  at most `referral_monthly_cap` (10) per referrer per UTC month and `referral_daily_cap` (50) per UTC day; a capped reward waits.
+  A reversal after the payout claws the reward back from its own lot first, as far as credits are available; the rest stays
+  owed (`clawing`) and every later settle takes more (`referral-clawback:<ref>:<n>`, authored by the platform) until nothing is
+  owed. The balance never goes negative.
+- **A deleted referrer.** A link goes only with its owner's account (an operator step). Its referrals are then no longer
+  settled (no payout to an account that is gone, a clawback still owed stays owed); `referral_admin` counts them as
+  `orphaned` for the operator.
+- **When it settles.** Under the referrer's link lock, in one order (link, advisory lock, account): `claim_referral_rewards()`
+  (the Credits page, server-side, at most 60 an hour a person) and `referral_settle_all(n)` (service role and pg_cron; the n
+  links settled longest ago, skip locked; one row in `referral_settle_runs` per call, kept 30 days). Joins older than the payment
+  window plus two days are no longer looked at for a new referral.
+- **Who may call what.** `my_referrals`, `claim_referral_rewards`: signed in, the caller's own only (counts, the link's
+  workspace, the next hold's end as a day). `referral_terms`: anon and signed in. `referral_admin`: platform owner/admin (it also
+  says whether the schedule exists, the last run and failures). `set_referral_settings`: `owner_guard('referral_settings', 10)`
+  (second factor, rate limit), an `app_audit_log` row (`billing.settings`) and a `security_events` row (`referral.settings`, old
+  and new values) in the same transaction. `referral_settle_all`: service role. `referral_settle_locked`,
+  `referral_payment_reversed`, `referral_payment_paid`, `referral_was_open`: nobody. The three tables: RLS on, no policy,
+  every privilege revoked, and the identity sequences' default grants revoked from the API roles.
+- **md5.** Before: `friend_invite_pay_locked` `1cfc1f84f065d73e2cb7e84c18ca6ae2`, `my_friend_invite`
+  `b26806d4fdc88a8453e939087d53184c`, `join_friend_invite` `549632bae0dbb002dc66200d7f6c0998`, `credit_transactions_apply_lots`
+  `8ab35cff8ac8a145403b0e6eca735697`. After: `friend_invite_pay_locked` `eeae5e2f28b289aab7439beabede3a6f`, `my_friend_invite` `4717561b1b5c47f7e754118f15fa03ea`, `join_friend_invite` `8bc6fb874e4e65cf7378bddbfa3768d6`, `credit_transactions_apply_lots` `fcd28a68b841d8d539d3798f919a0d01`, `referral_payment_reversed` `c7ca11fcf4bf7e283ee77e43d7770a1b`, `referral_payment_paid` `0a53c4290c5046ccc3a6accdd46d9e9c`, `referral_was_open` `492d74b160d3bcf29d09a82d288e2a7e`, `referral_settle_locked` `aa1546a79a9a655bd278de1fad4d794a`, `my_referrals` `c0ff6ab6e0f6ee0df46c44ddb6b2df8f`, `claim_referral_rewards` `273fcc22a8e8116b86b57bcf03cf8ddb`, `referral_terms` `e2be2f76972e1e707e0ce4d52f47cf53`, `referral_admin` `6881c7fc37602e907793b0178bf5a73f`, `set_referral_settings` `c57ae2b4cd2d14bab35fbd85e9775cdf`, `referral_settle_all` `5e640e5905f7d7b974b47c4e4af5b748` (drift guard, rollback).
+- **Without it.** The Credits page shows 0092's card and settings panel exactly as before; `/referral` says the programme is not
+  available here; the pricing page does not mention it.
+- **Number.** 0165 (assigned; 0163 and 0164 are other open pull requests). Needs 0018, 0020, 0021, 0034, 0042, 0092 and 0107;
+  names nothing of 0108–0164. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0165_referral_rewards.sql` (owner-applied): locks `referral_rewards`, refuses while any row exists
+  or a body is not 0165's; puts the four earlier bodies back byte for byte; unschedules the job; drops what 0165 added.
+- **Tests.** `tests/test_referral_rewards_migration.py`, `tests/security/test_sec_referral_rewards.py` (a real PostgreSQL),
+  `tests/security/test_sec_breach_referral_0165.py` (Breach: BR-0165-01..03), `tests/security/test_sec_friend_invites.py` (0092's
+  milestone with its switch on), `command-center/tests/referrals.test.ts`, `command-center/tests/referral-ui.test.tsx`,
+  `command-center/tests/friend-invites-routes.test.ts` (the join's retry), `command-center/tests/paddle-webhook.test.ts` (the
+  discount mark), `command-center/tests/login-invite.test.ts` (a kept cookie retried after a password sign-in).
+
 ## A refund that met a hold collects when the hold is released (0167)
 
 0167 (`0167_refund_hold_recovery.sql`) closes Breach BR-0034-01: a buyer could keep refunded credits by holding them first.
@@ -1468,8 +1586,12 @@ lab: a 1000-credit pack refunded in full left 1100 credits where 100 should have
   job (`credit_lot_moves_job_idx`), since `credit_lot_moves` has no index on `txn_id` (Lens measured 21.9 ms a release at 200k moves
   without it). Runs under the account lock the releasing function already holds, so it serialises with `reserve_credits` and the
   refund.
-- **`credit_transactions_apply_lots`.** 0034's body plus marked lines: a `refund` row's spend may name its first lot through
-  `nightshift.refund_lot` (this organization's lots only). Unset, which is every other caller, it is 0034's behaviour exactly.
+- **`credit_transactions_apply_lots`.** 0165's body (0034's plus the referral programme's `adjust` hunk) plus marked lines: a
+  `refund` row's spend may name its first lot through `nightshift.refund_lot` (a lot id, this organization's lots only). Unset, which
+  is every other caller, it is 0165's behaviour exactly. 0165's `nightshift.adjust_lot_first` is not reused: it names an external id
+  for an `adjust` row, while a collection must name a lot id (a grant or carry-over lot has no external id) for a `refund` row. Each
+  setting is read only in its own kind's branch, and each writer sets it transaction-local just before its insert and resets it
+  right after, so the two cannot meet.
 - **Known gap, by design.** A future path that refunds a CAPTURED run (credits given back after `capture_credits`) is not a release
   and would reopen the leak; it must consult `credit_refund_recoveries` or go through a release row. None exists today (0030's
   download refund restores a charge that had no hold).
@@ -1480,14 +1602,14 @@ lab: a 1000-credit pack refunded in full left 1100 credits where 100 should have
   (and in a duplicate's), and a ledger note that says how much is on hold instead of calling it spent. Same signature, refusals,
   idempotency on refund_id and grants.
 - **md5.** `refund_purchased_credits` before `766daf507d4e70711b8622aebbea7705` (0034), after `1024ac369b7a18830ac547e41c5ca89e`;
-  `credit_transactions_apply_lots` before `8ab35cff8ac8a145403b0e6eca735697` (0034), after `fdd309d7a7786168ae62b67bce11222d`;
+  `credit_transactions_apply_lots` before `fcd28a68b841d8d539d3798f919a0d01` (0165), after `6098f97a7630bed24807bb7c5ef6eefe`;
   `credit_refund_recover` `0c16bb426e63c1bc1d9fa2518f45b921` (drift guard, end state, rollback).
 - **Not changed here.** `api_refund_topup` (0031, the API balance in cents) and `owner_reverse_grant` (0107) apply the same "available
   only" rule to their own tables; reported for their own ledger rows.
-- **Number.** 0167 (provisional; 0163 to 0166 are held by other open branches). Needs 0020, 0021 and 0034; names nothing of 0035 to
-  0162. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Number.** 0167 (provisional; 0163 and 0166 are held by other open branches). Needs 0020, 0021, 0034 and 0165 (the lot
+  trigger's latest body); names nothing else of 0035 to 0166. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
 - **Undo.** `docs/sql/rollback_0167_refund_hold_recovery.sql` (owner-applied): refuses bodies that are not 0167's, drops the trigger
-  and its function, puts 0034's `refund_purchased_credits` and `credit_transactions_apply_lots` back verbatim. The table stays as the
+  and its function, puts 0034's `refund_purchased_credits` and 0165's `credit_transactions_apply_lots` back verbatim. The table stays as the
   record.
 - **Tests.** `tests/test_refund_hold_recovery_migration.py` (the text, the hashes, the rollback, the numbering),
   `tests/security/test_sec_breach_refund_hold.py` (the attack) and `tests/security/test_sec_refund_hold_recovery.py` (partial holds,
