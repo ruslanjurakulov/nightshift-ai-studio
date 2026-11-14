@@ -177,6 +177,18 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
         s.value("select public.grant_credits(%s, 500, 'seed')", [org])
         s.value("select public.reserve_credits(%s, %s, 60)", [org, f"job-{k}"])
 
+    # 0172: a grant reversal's held part, owed on a hold no reservation has (nothing collects it): the seed grant above, its lot, and
+    # a 0-credit ledger row standing for the reversal (no external id, so it is no owner reversal any test looks up).
+    with as_superuser(conn) as s:
+        if s.value("select to_regclass('public.credit_grant_reversal_recoveries') is not null"):
+            grant_txn, lot = s.rows("select t.id, l.id from public.credit_transactions t join public.credit_lots l on l.created_txn = t.id "
+                                    "where t.org_id = %s and t.kind = 'grant' and t.note = 'seed' order by t.id desc limit 1", [org])[0]
+            rev = s.value("insert into public.credit_transactions (org_id, kind, amount, balance_after, reserved_after, note) "
+                          "select %s, 'adjust', 0, a.balance, a.reserved, 'seed reversal' from public.credit_accounts a "
+                          "where a.org_id = %s returning id", [org, org])
+            s.rows("insert into public.credit_grant_reversal_recoveries (grant_txn_id, reversal_txn_id, lot_id, org_id, holds, owed) "
+                   "values (%s, %s, %s, %s, %s, 1) returning 1", [grant_txn, rev, lot, org, [f"rj-seed-reverse-{k}"]])
+
     # Rows the workers create through functions that are closed even to the
     # service role (render_jobs via claim, api_* via the API's own functions).
     # The tenant's render job is seeded after its plan (_seed_render_job).

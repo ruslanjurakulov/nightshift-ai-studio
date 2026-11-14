@@ -3,17 +3,16 @@ unavailable (v_unspent := l.remaining - l.held, then least(..., balance - reserv
 'owner-reverse:<grant id>'. A partial reversal is therefore final: the retry answers duplicate, and when the hold that covered the rest
 is released the organization keeps those credits for good. Its 'adjust' row also spends in normal lot order, not from the grant's lot.
 
-BR-0107-01  low. Pre-existing on main; a platform owner/admin has to make the grant and the reversal. Kept as a failing test until fixed
-(the credits-side collection belongs with 0167's credit_refund_recoveries trigger on credit_transactions, so the two cannot both
-collect one release).
+BR-0107-01  low. Pre-existing on main; a platform owner/admin has to make the grant and the reversal. Fixed by migration 0172: the held
+part of the shortfall is owed (credit_grant_reversal_recoveries) and collected from the grant's own lot when the hold is released, by a
+collector that fires after 0167's on credit_transactions and shares its per-release cap. The variants are in
+test_sec_grant_reversal_hold_recovery.py.
 """
 
 from __future__ import annotations
 
 import json
 import uuid
-
-import pytest
 
 from sec_db import SERVICE, as_superuser
 
@@ -42,7 +41,6 @@ def _value(s, actor, query, params=None):
         _owner(s)
 
 
-@pytest.mark.xfail(strict=True, reason="BR-0107-01 open")
 def test_BR_0107_01_a_grant_reversed_while_partly_held_does_not_stay_with_the_org_when_the_hold_is_released(conn, sc):
     with as_superuser(conn, commit=False) as s:
         org = sc.bob.org

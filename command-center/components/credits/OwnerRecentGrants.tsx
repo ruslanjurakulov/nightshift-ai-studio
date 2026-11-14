@@ -17,8 +17,10 @@ import { ErrorState } from "@/components/ReadError";
  *
  * Reversing is money moving back, so it is never one tap: Reverse opens a reason field (8 to 300 characters, kept in
  * the audit trail), Review opens a sheet that names the organization and the credits, and only that sheet's key
- * calls owner_reverse_grant. The database takes back only what is still unspent and records the rest as a
- * shortfall; the answer says which. A grant that already has a reversal shows "Reversed" and offers nothing.
+ * calls owner_reverse_grant. The database takes back what is free now and records the rest as a shortfall, of
+ * which the part a run holds (`on_hold`, migration 0172) is taken back if that run releases it. The answer says
+ * which; an answer without `on_hold` (0172 not applied) is worded as "not known", never as spent (rule 5). A grant
+ * that already has a reversal shows "Reversed" and offers nothing.
  */
 export function OwnerRecentGrants({
   orgName,
@@ -79,6 +81,7 @@ export function OwnerRecentGrants({
     const reversed = num(reply?.reversed);
     const granted = num(reply?.granted);
     const shortfall = num(reply?.shortfall);
+    const held = num(reply?.on_hold);
     setOpen(null);
     setReason("");
     setMsg({
@@ -87,7 +90,16 @@ export function OwnerRecentGrants({
         reply?.duplicate === true
           ? g.reverseDuplicate
           : reversed !== null && granted !== null && shortfall !== null && shortfall > 0
-            ? fmt(g.reverseShort, { reversed: formatCredits(reversed, locale), granted: formatCredits(granted, locale), shortfall: formatCredits(shortfall, locale) })
+            ? held === null
+              ? fmt(g.reverseShortUnknown, { reversed: formatCredits(reversed, locale), granted: formatCredits(granted, locale), shortfall: formatCredits(shortfall, locale) })
+              : held > 0
+                ? fmt(g.reverseShortHeld, {
+                    reversed: formatCredits(reversed, locale),
+                    granted: formatCredits(granted, locale),
+                    held: formatCredits(held, locale),
+                    spent: formatCredits(Math.max(shortfall - held, 0), locale),
+                  })
+                : fmt(g.reverseShort, { reversed: formatCredits(reversed, locale), granted: formatCredits(granted, locale), shortfall: formatCredits(shortfall, locale) })
             : fmt(g.reverseDone, { reversed: reversed === null ? shown : formatCredits(reversed, locale) }),
     });
     router.refresh();
