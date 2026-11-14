@@ -142,7 +142,7 @@ for (const loc of LOCALES)
       await page.waitForTimeout(1500);
       if (!phone && s.layout) await page.keyboard.press("0").catch(() => {});
       if (s.open) {
-        const target = phone ? `[data-testid=flow-node-${s.layout.nodes.find((n) => n.id === s.open).kind}]` : `[data-node-id="${s.open}"] .cv-nh`;
+        const target = phone ? `[data-testid=flow-node-${s.layout.nodes.find((n) => n.id === s.open).kind}]` : `[data-node-id="${s.open}"]`;
         await page.click(target).catch((e) => errors.push(`open: ${e.message}`));
         await page.waitForTimeout(1800);
       }

@@ -58,6 +58,8 @@ const HISTORY_MAX = 100;
 /** The map's corner, kept clear by Fit so the map never sits on a node. */
 const MAP_ROOM = 232;
 const MAP_TALL = 176;
+/** Where a card's eye line is, from its top: a focused card is centred on its title and art, not its full layout height. */
+const FOCUS_Y = 120;
 /** Where the app's header offers this page its bar (components/Header.tsx, Studio only). */
 export const BAR_SLOT_ID = "studio-bar-slot";
 
@@ -402,18 +404,16 @@ export function StudioCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, narrow]);
 
-  // A node opened in the inspector stays in view: the board narrows by the inspector's width, so pan it back if it went under.
+  // Opening a node brings it to 100% and centres it in the board beside the inspector (the prototype's focusNode(id, 1)).
+  // After layout: the board has just narrowed by the inspector's width.
   useEffect(() => {
     if (narrow || !inspecting || !selected) return;
     const id = requestAnimationFrame(() => {
       const n = canvasRef.current.nodes.find((m) => m.id === selected);
-      const w = boardRef.current?.getBoundingClientRect().width;
-      if (!n || !w) return;
-      const v = canvasRef.current.view;
-      const left = n.x * v.k + v.x;
-      const right = left + NODE_W * v.k;
-      const shift = right > w - 24 ? w - 24 - right : left < 24 ? 24 - left : 0;
-      if (shift) setCanvas((s) => ({ ...s, view: { ...s.view, x: s.view.x + shift } }));
+      const r = boardRef.current?.getBoundingClientRect();
+      if (!n || !r) return;
+      const k = 1;
+      setCanvas((s) => ({ ...s, view: { x: Math.round(r.width / 2 - (n.x + NODE_W / 2) * k), y: Math.round(r.height / 2 - (n.y + FOCUS_Y) * k), k } }));
     });
     return () => cancelAnimationFrame(id);
   }, [inspecting, selected, narrow]);
@@ -532,7 +532,7 @@ export function StudioCanvas({
     </div>
   );
 
-  const bar = <ProjectBar filmStudio={filmStudio} onSearch={() => setPalette("all")} inline={!slot} />;
+  const bar = <ProjectBar filmStudio={filmStudio} onSearch={() => setPalette("all")} onTimeline={() => say(c.timelineSoon)} inline={!slot} />;
   const barEl = slot ? createPortal(bar, slot) : bar;
 
   const inspector =
@@ -767,7 +767,10 @@ function QuoteKey({ node, onOpen }: { node: CanvasNode | null; onOpen: () => voi
 
 // ── the project bar (in the app's header on this page) ─────────────────────────
 
-function ProjectBar({ filmStudio, onSearch, inline }: { filmStudio: boolean; onSearch: () => void; inline: boolean }) {
+function ProjectBar({ filmStudio, onSearch, onTimeline, inline }: { filmStudio: boolean; onSearch: () => void; onTimeline: () => void; inline: boolean }) {
+  // The key a person actually presses: ⌘ on a Mac, Ctrl elsewhere (read after hydration, so the server's render is stable).
+  const [mac, setMac] = useState(true);
+  useEffect(() => setMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)), []);
   const { t } = useI18n();
   const c = t.studioCanvas;
   const path = useChannelPath();
@@ -818,7 +821,7 @@ function ProjectBar({ filmStudio, onSearch, inline }: { filmStudio: boolean; onS
           <GitBranch aria-hidden className="size-4" /> {c.viewCanvas}
         </button>
         {/* Honest about what is not built: the timeline arrives with scene-by-scene projects. */}
-        <button type="button" disabled aria-disabled="true" title={c.timelineSoon}>
+        <button type="button" aria-disabled="true" title={c.timelineSoon} onClick={onTimeline} data-testid="view-timeline">
           {c.timeline}
         </button>
       </div>
@@ -831,7 +834,7 @@ function ProjectBar({ filmStudio, onSearch, inline }: { filmStudio: boolean; onS
       <button type="button" className="cv-kbtn cv-search" onClick={onSearch} data-testid="canvas-search" aria-label={c.search}>
         <Search aria-hidden className="size-4" />
         <span className="cv-search-label">{c.search}</span>
-        <kbd>⌘K</kbd>
+        <kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
       </button>
     </div>
   );

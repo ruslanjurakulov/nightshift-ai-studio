@@ -56,6 +56,8 @@ type WireData = { type: PortType; live: boolean; hl: boolean };
 type CardNode = Node<CardData, "card">;
 type WireEdge = Edge<WireData, "wire">;
 
+/** The zoom below which cards switch to their one-line overview read. */
+const LOD_BELOW = 0.87;
 /** A press that moves less than this is a click (it opens the inspector); more is a drag (it only moves the node). */
 const CLICK_SLOP = 4;
 
@@ -132,6 +134,7 @@ function BoardInner({
   const [dims, setDims] = useState<Record<string, { width: number; height: number }>>({});
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
+  const lod = view.k < LOD_BELOW;
   const nodes = useMemo<CardNode[]>(
     () =>
       canvas.nodes.map((n) => {
@@ -140,7 +143,8 @@ function BoardInner({
           id: n.id,
           type: "card",
           position: { x: n.x, y: n.y },
-          dragHandle: ".cv-nh",
+          // The title bar is the handle; in the overview read it is hidden, so the whole card is.
+          dragHandle: lod ? undefined : ".cv-nh",
           selected: selected === n.id,
           measured: dims[n.id],
           data: {
@@ -158,7 +162,7 @@ function BoardInner({
           },
         };
       }),
-    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry],
+    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, lod],
   );
 
   const edges = useMemo<WireEdge[]>(() => {
@@ -228,7 +232,8 @@ function BoardInner({
   return (
     <div
       ref={boardRef}
-      className={`cv-stage${busy ? " is-busy" : ""}`}
+      // Below 87% the card's 15px text would render under 13px: the overview read takes over (the prototype's lod).
+      className={`cv-stage${busy ? " is-busy" : ""}${lod ? " is-lod" : ""}`}
       data-hand={hand ? "true" : undefined}
       style={{ "--gx": `${view.x}px`, "--gy": `${view.y}px`, "--gs": `${24 * view.k}px`, "--inv": 1 / view.k } as CSSProperties}
       onDragOver={onDragOver}
@@ -374,6 +379,10 @@ function NodeCard({
           {actor.label}
         </span>
       )}
+      <span className="cv-lodl" aria-hidden>
+        <span className={`cv-lamp is-${LAMP[status]}`} />
+        {name}
+      </span>
       {spec.accepts.length > 0 && (
         <Handle
           type="target"
@@ -384,7 +393,6 @@ function NodeCard({
           title={fmt(c.ports.in, { kinds: accepts })}
           aria-label={fmt(c.ports.in, { kinds: accepts })}
         >
-          <span aria-hidden>{c.ports.letters[spec.accepts[0]]}</span>
         </Handle>
       )}
       {/* The title bar is the drag handle; a press that does not move opens the inspector. */}
@@ -393,7 +401,7 @@ function NodeCard({
           <Icon className="size-4" strokeWidth={1.9} />
         </span>
         <span className="cv-nt">
-          <span className="cv-nt-k">{c.kinds[node.kind].name}</span>
+          {name !== c.kinds[node.kind].name && <span className="cv-nt-k">{c.kinds[node.kind].name}</span>}
           <span className="cv-nt-n">{name}</span>
         </span>
       </div>
@@ -408,10 +416,8 @@ function NodeCard({
             )}
           </div>
         )}
-        {/* The words it makes from, clamped; with none, a placeholder only where it is true ("Not started" on a node that has a job would contradict its lamp). */}
-        {node.kind !== "asset" && (words || !node.jobId) && (
-          <p className={words ? "cv-clamp" : "cv-clamp is-empty"}>{words || (node.kind === "prompt" ? c.node.noWords : c.node.notStarted)}</p>
-        )}
+        {/* The words it makes from, clamped. With none, nothing: the lamp below already says so, once. */}
+        {node.kind !== "asset" && words && <p className="cv-clamp">{words}</p>}
         <Lamp tone={LAMP[status]} live={status === "working"} label={status === "failed" ? t.gen.status.failed : line} />
         {sourceName && <span className="cv-nsub">{fmt(c.node.from, { name: sourceName })}</span>}
         {status === "failed" && job && (
@@ -432,7 +438,6 @@ function NodeCard({
           title={`${fmt(c.ports.out, { kind: c.ports[out] })} · ${c.wire.drag}`}
           aria-label={fmt(c.ports.out, { kind: c.ports[out] })}
         >
-          <span aria-hidden>{c.ports.letters[out]}</span>
         </Handle>
       )}
     </div>
