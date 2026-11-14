@@ -3,15 +3,17 @@
 --
 -- WHAT IS LOST: the collection. After this, a refund that meets a hold takes only what is available and records the rest as a
 -- shortfall for good, as 0034 did, and a released hold gives those credits back to the buyer (Breach BR-0034-01 is open again).
--- Nothing stored is lost: credit_refund_recoveries stays, with its guard (append-only but for `collected`), as the record of what was
+-- Nothing stored is lost: credit_refund_recoveries stays, with its guard (append-only but for `collected` and `lapsed`), as the record of what was
 -- owed and collected; every collection already made stays a 'refund' row in the ledger. No balance changes.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if refund_purchased_credits() or credit_refund_recover() is not 0167's body (a later change would be
---      undone).
+--   0. REFUSES (changes nothing) if refund_purchased_credits(), credit_transactions_apply_lots() or credit_refund_recover() is not
+--      0167's body (a later change would be undone).
 --   1. Drops the trigger credit_transactions_recover_refunds and the function credit_refund_recover().
---   2. Puts back refund_purchased_credits() as 0034 left it, character for character, with 0021's grants (service role only).
---   3. Asserts the end state: 0034's body (md5 766daf507d4e70711b8622aebbea7705), no recover trigger or function.
+--   2. Puts back refund_purchased_credits() and credit_transactions_apply_lots() as 0034 left them, character for character, with
+--      0021's and 0034's grants.
+--   3. Asserts the end state: 0034's bodies (md5 766daf507d4e70711b8622aebbea7705 and 8ab35cff8ac8a145403b0e6eca735697), no recover
+--      trigger or function.
 
 begin;
 set local lock_timeout = '5s';
@@ -20,6 +22,7 @@ do $$
 declare
   r text;
   c text;
+  a text;
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into r
     from pg_proc p where p.oid = to_regprocedure('public.refund_purchased_credits(text, text, numeric, text, text)');
@@ -28,13 +31,58 @@ begin
   if r is distinct from '1024ac369b7a18830ac547e41c5ca89e' then
     raise exception 'rollback 0167: refund_purchased_credits() is not 0167''s body (md5 %): a later change would be undone; read the live body first', r;
   end if;
-  if c is not null and c <> 'afd0aaef5404232e1f830d109f04a1b1' then
+  if c is not null and c <> '0c16bb426e63c1bc1d9fa2518f45b921' then
     raise exception 'rollback 0167: credit_refund_recover() is not 0167''s body (md5 %): a later change would be undone; read the live body first', c;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into a
+    from pg_proc p where p.oid = to_regprocedure('public.credit_transactions_apply_lots()');
+  if a is distinct from 'fdd309d7a7786168ae62b67bce11222d' then
+    raise exception 'rollback 0167: credit_transactions_apply_lots() is not 0167''s body (md5 %): a later change would be undone; read the live body first', a;
   end if;
 end $$;
 
 drop trigger if exists credit_transactions_recover_refunds on public.credit_transactions;
 drop function if exists public.credit_refund_recover();
+
+-- 0034's lot trigger, verbatim (0167 added the nightshift.refund_lot lines; nothing else reads that setting once the collector is gone).
+create or replace function public.credit_transactions_apply_lots() returns trigger
+  language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  amt    numeric := new.amount;
+  prefer bigint;
+  src    text;
+begin
+  if new.kind in ('subscription', 'expire') or amt = 0 then
+    return null;
+  end if;
+  if new.kind = 'reserve' then
+    perform public.credit_lots_hold_locked(new.org_id, new.job_id, amt, new.id);
+  elsif new.kind = 'release' then
+    perform public.credit_lots_release_locked(new.org_id, new.job_id, amt, new.id);
+    perform public.credit_expire_lots_locked(new.org_id);
+  elsif new.kind = 'capture' and new.job_id is not null
+        and exists (select 1 from public.credit_reservations r where r.job_id = new.job_id) then
+    perform public.credit_lots_capture_locked(new.org_id, new.job_id, -amt, new.id);
+  elsif new.kind = 'refund' and amt > 0 then
+    perform public.credit_lots_restore_locked(new.org_id, new.job_id, amt, new.id);
+    perform public.credit_expire_lots_locked(new.org_id);
+  elsif amt > 0 then
+    src := case new.kind when 'purchase' then 'pack' when 'grant' then 'grant' else 'adjustment' end;
+    perform public.credit_lots_add_locked(new.org_id, src, amt, public.credit_lot_expiry(src),
+                                          new.external_id, new.id, new.note);
+  else
+    if new.kind = 'refund' then
+      select id into prefer from public.credit_lots
+       where org_id = new.org_id
+         and external_id = nullif(current_setting('nightshift.refund_of', true), '');
+    end if;
+    perform public.credit_lots_spend_locked(new.org_id, -amt, new.job_id, new.id, prefer);
+  end if;
+  return null;
+end
+$$;
+
+revoke all on function public.credit_transactions_apply_lots() from public, anon, authenticated, service_role;
 
 -- 0034's body, verbatim.
 create or replace function public.refund_purchased_credits(
@@ -132,6 +180,10 @@ begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = 'public.refund_purchased_credits(text, text, numeric, text, text)'::regprocedure) <> '766daf507d4e70711b8622aebbea7705' then
     raise exception 'rollback 0167 end state: refund_purchased_credits() is not 0034''s body';
+  end if;
+  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+       where oid = 'public.credit_transactions_apply_lots()'::regprocedure) <> '8ab35cff8ac8a145403b0e6eca735697' then
+    raise exception 'rollback 0167 end state: credit_transactions_apply_lots() is not 0034''s body';
   end if;
   if to_regprocedure('public.credit_refund_recover()') is not null
      or exists (select 1 from pg_trigger where tgrelid = 'public.credit_transactions'::regclass and tgname = 'credit_transactions_recover_refunds') then

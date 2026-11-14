@@ -1551,7 +1551,7 @@ export function shortfallWords(res: { shortfall: number; onHold?: number | null 
   const held = Math.min(Math.max(res.onHold, 0), res.shortfall);
   const spent = Math.round((res.shortfall - held) * 100) / 100;
   const parts: string[] = [];
-  if (held > 0) parts.push(`${held} credits are on hold, collected if the hold is released`);
+  if (held > 0) parts.push(`${held} credits are on hold, taken back if the hold is released and not spent`);
   if (spent > 0) parts.push(`${spent} credits were already spent and could not be taken back`);
   return parts.join("; ");
 }
@@ -1559,5 +1559,5 @@ export function shortfallWords(res: { shortfall: number; onHold?: number | null 
 /** The on-hold part for the event row's detail: empty when there is none (or the database does not say). */
 export function onHoldWords(res: { shortfall: number; onHold?: number | null }): string {
   const held = res.onHold === undefined || res.onHold === null ? 0 : Math.min(Math.max(res.onHold, 0), res.shortfall);
-  return held > 0 ? ` (${held} on hold, collected if the hold is released)` : "";
+  return held > 0 ? ` (${held} on hold, taken back if the hold is released and not spent)` : "";
 }

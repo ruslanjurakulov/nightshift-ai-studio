@@ -41,6 +41,46 @@ def pg_md5(text: str) -> str:
 REFUND_0034 = body(BASE, "refund_purchased_credits")
 REFUND_0167 = body(SQL, "refund_purchased_credits")
 RECOVER = body(SQL, "credit_refund_recover")
+APPLY_0034 = body(BASE, "credit_transactions_apply_lots")
+APPLY_0167 = body(SQL, "credit_transactions_apply_lots")
+APPLY_BEFORE = "8ab35cff8ac8a145403b0e6eca735697"
+
+
+def _marked(got):
+    # New code carries the marker; a blank line, or one that is only a comment, changes nothing.
+    return "-- 0167" in got or got.lstrip().startswith("--") or not got.strip()
+
+
+class ApplyLotsIsTheLatestPlusMarkedLines(unittest.TestCase):
+    def test_0034_is_the_latest_body_before_this_file(self):
+        later = [p.name for p in sorted(MIG.glob("*.sql"))
+                 if "0034" < p.name[:4] < "0167" and "function public.credit_transactions_apply_lots(" in p.read_text(encoding="utf-8")]
+        self.assertEqual(later, [])
+        self.assertEqual(pg_md5(APPLY_0034), APPLY_BEFORE)
+
+    def test_every_0034_line_survives_in_order_and_only_marked_lines_are_new(self):
+        it = iter(APPLY_0167.splitlines())
+        for line in APPLY_0034.splitlines():
+            for got in it:
+                if got == line:
+                    break
+                self.assertTrue(_marked(got), f"an unmarked line that is not 0034's: {got!r}")
+            else:
+                self.fail(f"0034's line is missing or out of order: {line!r}")
+        for rest in it:
+            self.assertTrue(_marked(rest), rest)
+        code = "\n".join(line.split("--", 1)[0] for line in APPLY_0034.splitlines())
+        for lit in set(re.findall(r"'(?:[^']|'')*'", code)):
+            self.assertIn(lit, APPLY_0167, lit)
+
+    def test_the_new_lines_only_choose_among_this_orgs_lots_and_only_for_a_refund_spend(self):
+        new = "\n".join(ln for ln in APPLY_0167.splitlines() if "-- 0167" in ln and not ln.lstrip().startswith("--"))
+        self.assertIn("where l.org_id = new.org_id", new)
+        self.assertIn("nullif(current_setting('nightshift.refund_lot', true), '')", new)
+        self.assertIn("prefer);", new)
+        refund_branch = APPLY_0167.split("if new.kind = 'refund' then\n      select id into prefer", 1)[1].split("end if;", 1)[0]
+        self.assertIn("nightshift.refund_lot", refund_branch)
+        self.assertEqual(APPLY_0167.count("nightshift.refund_lot"), 1)
 
 
 class RefundBodyIsTheLatestPlusMarkedLines(unittest.TestCase):
@@ -129,7 +169,31 @@ class Collector(unittest.TestCase):
         self.assertIn("m.txn_id = new.id and m.kind = 'release'", live)
         self.assertIn("l.expired_at is null and (l.expires_at is null or l.expires_at > now())", live)
         self.assertNotIn("new.amount", RECOVER)
-        self.assertIn("live_ := live_ - x;", RECOVER)
+        self.assertIn("live_ := live_ - took;", RECOVER)
+
+    def test_a_release_that_meets_no_recovery_reads_nothing_else(self):
+        """Lens round 2 on #766: credit_lot_moves has no txn_id index; every release in every org ran the moves query."""
+        first = RECOVER.split("begin\n", 1)[1].split("end if;", 1)[0]
+        self.assertIn("if not exists (select 1 from public.credit_refund_recoveries r", first)
+        self.assertIn("where r.org_id = new.org_id and r.collected + r.lapsed < r.owed and new.job_id = any (r.holds)) then\n    return null;", first)
+        # The predicate is the open index's own WHERE, so the planner can use credit_refund_recoveries_open_idx.
+        self.assertIn("where collected + lapsed < owed;", CODE)
+        self.assertLess(RECOVER.index("return null;"), RECOVER.index("credit_lot_moves"))
+
+    def test_every_moves_query_is_narrowed_by_the_holds_job(self):
+        self.assertEqual(RECOVER.count("from public.credit_lot_moves m"), 3)
+        for q in RECOVER.split("from public.credit_lot_moves m")[1:]:
+            self.assertIn("m.job_id = new.job_id and m.txn_id = new.id and m.kind = 'release'", q.split(";", 1)[0])
+        self.assertIn("create index if not exists credit_lot_moves_job_idx on public.credit_lot_moves (job_id, lot_id)", BASE)
+
+    def test_the_collection_spends_from_the_lots_the_release_gave_back(self):
+        lots = RECOVER.split("for lot in", 1)[1].split("loop", 1)[0]
+        self.assertIn("l.expired_at is null and (l.expires_at is null or l.expires_at > now())", lots)
+        self.assertIn("order by (l.external_id is not distinct from rec.purchase_external_id) desc", lots)
+        self.assertIn("t := least(x - took, lot.back - coalesce((spent ->> lot.id::text)::numeric, 0), lot.free);", RECOVER)
+        self.assertIn("perform set_config('nightshift.refund_lot', lot.id::text, true);", RECOVER)
+        self.assertIn("perform set_config('nightshift.refund_lot', '', true);", RECOVER)
+        self.assertNotIn("nightshift.refund_of", RECOVER)
 
     def test_the_refunded_purchases_own_expired_credits_count_as_lapsed_not_collected(self):
         gone = RECOVER.split("into gone", 1)[1].split(";", 1)[0]
@@ -140,10 +204,14 @@ class Collector(unittest.TestCase):
 
     def test_every_collection_is_a_ledger_row_on_the_refunded_lot_first(self):
         self.assertIn("(org_id, kind, amount, balance_after, reserved_after, job_id, external_id, note, created_by)", RECOVER)
-        self.assertIn("select new.org_id, 'refund', -x, a.balance, a.reserved, null, null,", RECOVER)
-        self.assertIn("perform set_config('nightshift.refund_of', rec.purchase_external_id, true);", RECOVER)
-        self.assertIn("perform set_config('nightshift.refund_of', '', true);", RECOVER)
-        self.assertLess(RECOVER.index("set balance = balance - x"), RECOVER.index("insert into public.credit_transactions"))
+        self.assertIn("select new.org_id, 'refund', -t, a.balance, a.reserved, null, null,", RECOVER)
+        self.assertLess(RECOVER.index("set balance = balance - t"), RECOVER.index("insert into public.credit_transactions"))
+        self.assertLess(RECOVER.index("set_config('nightshift.refund_lot', lot.id::text, true)"),
+                        RECOVER.index("insert into public.credit_transactions"))
+
+    def test_the_subscription_lot_bound_is_explained(self):
+        self.assertIn("One subscription lot can carry two payments", SQL)
+        self.assertIn("`lapsed` never exceeds it", SQL)
 
     def test_the_collection_is_not_signed_by_whoever_released_the_hold(self):
         # credit_log stamps auth.uid(): inside a lazy release that is the buyer. The row is the platform's: created_by null.
@@ -191,7 +259,9 @@ class TableAndPrivileges(unittest.TestCase):
     def test_nothing_existing_is_dropped_or_rewritten(self):
         self.assertNotRegex(CODE, r"(?i)drop (table|function|column|policy|index)")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", CODE),
-                         ["credit_refund_recoveries_guard", "refund_purchased_credits", "credit_refund_recover"])
+                         ["credit_refund_recoveries_guard", "refund_purchased_credits", "credit_transactions_apply_lots",
+                          "credit_refund_recover"])
+        self.assertIn("revoke all on function public.credit_transactions_apply_lots() from public, anon, authenticated, service_role;", CODE)
 
 
 class HashesAndRollback(unittest.TestCase):
@@ -203,8 +273,15 @@ class HashesAndRollback(unittest.TestCase):
         self.assertIn(f"<> '{recover}'", SQL.split("5. End state", 1)[1])
         self.assertIn(f"= '{after}' as refund_body", SQL)
         self.assertIn(f"expected BEFORE (0034 applied, 0167 not): {BEFORE}", SQL)
-        self.assertIn(f"refund_purchased_credits   {after}", SQL)
-        self.assertIn(f"credit_refund_recover      {recover}", SQL)
+        self.assertIn(f"refund_purchased_credits        {after}", SQL)
+        self.assertIn(f"credit_refund_recover           {recover}", SQL)
+        apply_after = pg_md5(APPLY_0167)
+        self.assertIn(f"credit_transactions_apply_lots  {apply_after}   (before, 0034: {APPLY_BEFORE})", SQL)
+        self.assertIn(f"array['{APPLY_BEFORE}', '{apply_after}']", SQL)
+        self.assertIn(f"<> '{apply_after}' then", SQL.split("5. End state", 1)[1])
+
+    def test_the_not_recovered_label_names_other_lots_that_expired(self):
+        self.assertIn("plus credits of ANOTHER lot that", SQL)
 
     def test_the_file_is_one_transaction_with_a_lock_timeout_and_a_verify_query(self):
         self.assertIn("set local lock_timeout = '5s';", SQL)
@@ -222,6 +299,9 @@ class HashesAndRollback(unittest.TestCase):
         self.assertIn("drop function if exists public.credit_refund_recover();", ROLLBACK)
         self.assertNotIn("drop table", ROLLBACK)
         self.assertIn("grant execute on function public.refund_purchased_credits(text, text, numeric, text, text) to service_role;", ROLLBACK)
+        self.assertEqual(definition(ROLLBACK, "credit_transactions_apply_lots"), definition(BASE, "credit_transactions_apply_lots"))
+        self.assertIn(f"a is distinct from '{pg_md5(APPLY_0167)}'", ROLLBACK)
+        self.assertIn(f"<> '{APPLY_BEFORE}' then", ROLLBACK)
 
 
 class Numbering(unittest.TestCase):

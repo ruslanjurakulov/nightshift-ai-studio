@@ -348,20 +348,20 @@ describe("handlePaddleWebhook", () => {
     const warns: string[] = [];
     await deliver(store, adjustment(), sign(adjustment()), "POST", { info() {}, warn: (m: string) => warns.push(m), error() {} });
     expect(store.events.get("evt_01refund")?.detail).toBe(
-      "refund: took back 50 of 250 credits; shortfall 200 (150 on hold, collected if the hold is released)",
+      "refund: took back 50 of 250 credits; shortfall 200 (150 on hold, taken back if the hold is released and not spent)",
     );
     expect(warns).toEqual([
-      `paddle-webhook: refund ${ADJ}: 150 credits are on hold, collected if the hold is released; 50 credits were already spent and could not be taken back`,
+      `paddle-webhook: refund ${ADJ}: 150 credits are on hold, taken back if the hold is released and not spent; 50 credits were already spent and could not be taken back`,
     ]);
   });
 
   it("words a shortfall by what the database reports, and never calls an unknown split spent", () => {
     expect(shortfallWords({ shortfall: 300, onHold: 0 })).toBe("300 credits were already spent and could not be taken back");
-    expect(shortfallWords({ shortfall: 300, onHold: 300 })).toBe("300 credits are on hold, collected if the hold is released");
+    expect(shortfallWords({ shortfall: 300, onHold: 300 })).toBe("300 credits are on hold, taken back if the hold is released and not spent");
     expect(shortfallWords({ shortfall: 300, onHold: null })).toBe("300 credits could not be taken back now");
     expect(shortfallWords({ shortfall: 300 })).toBe("300 credits could not be taken back now");
     // An on-hold figure above the shortfall is never reported as more than the shortfall.
-    expect(onHoldWords({ shortfall: 100, onHold: 400 })).toBe(" (100 on hold, collected if the hold is released)");
+    expect(onHoldWords({ shortfall: 100, onHold: 400 })).toBe(" (100 on hold, taken back if the hold is released and not spent)");
     expect(onHoldWords({ shortfall: 100, onHold: null })).toBe("");
   });
 

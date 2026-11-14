@@ -325,6 +325,81 @@ def test_the_open_recoveries_query_leaves_out_one_whose_holds_were_all_captured(
         assert s.value(open_q, [rid]) == 0, "captured: spent, not open"
 
 
+def test_the_collection_spends_the_lot_the_release_gave_back_not_a_later_purchase(conn):
+    """Lens round 2 on #766: the refunded pack A is spent for real, 100 welcome credits are held, A is refunded (on hold 100), a pack B
+    is bought, the hold expires. The 100 that come back are W's, and W pays: B stays whole. (Before: the lot trigger preferred A, which
+    was empty, and then took B in spend order.)"""
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, ext = _buyer(s)
+        s.rows("update public.credit_lots set expires_at = null where org_id = %s and external_id is distinct from %s returning 1", [org, ext])
+        s.rows("update public.credit_lots set expires_at = now() + interval '1 day' where org_id = %s and external_id = %s returning 1",
+               [org, ext])
+        spend = _hold(s, buyer, org, 1000)                    # A expires first, so the hold (and the capture) sits on A
+        _ok(_call(s, SERVICE, "select public.start_credit_reservation(%s, %s)", [spend, org]))
+        _ok(_call(s, SERVICE, "select public.capture_credits(%s, 1000)", [spend]))
+        w = s.value("select id from public.credit_lots where org_id = %s and remaining > 0", [org])
+        job = _hold(s, buyer, org, 100)                       # on W, the only lot left
+        rid, out = _refund(s, ext)
+        assert (out["taken"], out["on_hold"]) == (0, 100), out
+        ext_b = f"pay_lab{uuid.uuid4().hex[:16]}"
+        _ok(_call(s, SERVICE, "select public.add_purchased_credits(%s, 1000, %s, 'later pack')", [org, ext_b]))
+        s.rows("update public.credit_lots set expires_at = now() + interval '2 days' where org_id = %s and external_id = %s returning 1",
+               [org, ext_b])                                 # B would come first in spend order
+        _expire(s, org, job)
+        assert _recovery(s, rid)[1] == 100
+        assert s.value("select remaining from public.credit_lots where id = %s", [w]) == 0, "W, the lot the release returned, pays"
+        assert s.value("select remaining from public.credit_lots where org_id = %s and external_id = %s", [org, ext_b]) == 1000
+        assert _balanced(s, org) == 1000
+
+
+def _plan(s, query):
+    s.rows("set local enable_seqscan = off")  # any index that can serve the predicate is then chosen; a missing one shows as Seq Scan
+    plan = "\n".join(r[0] for r in s.rows("explain " + query))
+    s.rows("set local enable_seqscan = on")
+    return plan
+
+
+def test_the_collectors_queries_never_scan_the_whole_moves_table(conn):
+    """Lens round 2 on #766: credit_lot_moves has no txn_id index; at 200k moves a release cost 21.9 ms instead of 0.04 ms. Each
+    query of the collector, as written in the migration, is planned here with the hold's job and the release row filled in."""
+    body = MIGRATION.read_text(encoding="utf-8").split("create or replace function public.credit_refund_recover()", 1)[1]
+    body = body.split("$$", 2)[1]
+    live_q = body.split("select coalesce(sum(-m.held_delta), 0) into live_", 1)[1].split(";", 1)[0]
+    lots_q = body.split("for lot in", 1)[1].split("\n    loop", 1)[0]
+    first = body.split("if not exists (", 1)[1].split(") then", 1)[0]
+    fill = {"new.job_id": "'rj-plan-x'", "new.id": "1", "new.org_id": "'00000000-0000-4000-8000-000000000000'::uuid",
+            "rec.purchase_external_id": "'pay_x'"}
+
+    def filled(q):
+        for k, v in fill.items():
+            q = q.replace(k, v)
+        return q
+
+    with as_superuser(conn, commit=False) as s:
+        for name, q in (("live", "select coalesce(sum(-m.held_delta), 0) " + live_q), ("lots", lots_q)):
+            plan = _plan(s, filled(q))
+            assert "Seq Scan on credit_lot_moves" not in plan, (name, plan)
+            assert "credit_lot_moves_job_idx" in plan, (name, plan)
+        # The control: without the job filter the job index is out of reach, and the moves are read from every live lot of every
+        # organization (no txn_id index), so the filter is what makes the plan above possible.
+        unfiltered = _plan(s, filled("select coalesce(sum(-m.held_delta), 0) " + live_q.replace("m.job_id = new.job_id and ", "")))
+        assert "credit_lot_moves_job_idx" not in unfiltered, unfiltered
+        plan = _plan(s, filled(first))
+        assert "credit_refund_recoveries_open_idx" in plan and "Seq Scan on credit_refund_recoveries" not in plan, plan
+
+
+def test_a_release_that_meets_no_recovery_does_not_read_the_moves_table(conn):
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, _ext = _buyer(s)
+        job = _hold(s, buyer, org, 500)
+        q = ("select coalesce(seq_scan, 0) + coalesce(idx_scan, 0) from pg_stat_xact_user_tables "
+             "where relid = 'public.credit_lot_moves'::regclass")
+        before = s.value(q)
+        _ok(_call(s, SERVICE, "select public.release_credits(%s)", [job]))
+        assert s.value(q) == before, "the collector returned before reading credit_lot_moves"
+        assert _balanced(s, org) == 1100
+
+
 # ── replay ──────────────────────────────────────────────────────────────────
 
 def test_replays_of_the_refund_the_release_the_expiry_and_the_migration_collect_once(conn):

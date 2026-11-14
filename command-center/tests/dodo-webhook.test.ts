@@ -711,9 +711,9 @@ describe("refunds and disputes", () => {
     const warns: string[] = [];
     await deliver(store, refund(), { id: "msg_ref", log: { info() {}, warn: (m) => warns.push(m), error() {} } });
     const row = [...store.events.values()].find((e) => e.eventType === "refund.succeeded");
-    expect(row?.detail).toBe("refund: took back 0 of 1000 credits; shortfall 1000 (800 on hold, collected if the hold is released)");
+    expect(row?.detail).toBe("refund: took back 0 of 1000 credits; shortfall 1000 (800 on hold, taken back if the hold is released and not spent)");
     expect(warns).toEqual([
-      "dodo-webhook: refund dodo_refund:ref_0001: 800 credits are on hold, collected if the hold is released; 200 credits were already spent and could not be taken back",
+      "dodo-webhook: refund dodo_refund:ref_0001: 800 credits are on hold, taken back if the hold is released and not spent; 200 credits were already spent and could not be taken back",
     ]);
     expect(warns.join(" ")).not.toContain("1000 credits were already spent");
   });
