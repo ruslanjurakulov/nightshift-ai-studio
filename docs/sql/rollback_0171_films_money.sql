@@ -46,26 +46,28 @@ begin
       ('public.film_try_price(uuid, text, text, jsonb)', '6f3ef9a01318ce782acf86fd2fd30e33'),
       ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c'),
       ('public.film_price(public.films)', '5de6c9bb2a74079e2078cad2d91b3c34'),
-      ('public.film_segment_json(public.film_segments)', '1d18426aec0a1fac38ea3c169f202fcc'),
+      ('public.film_segment_json(public.film_segments)', 'ebaeb21f07fb833951ccfa0f51af24ae'),
       ('public.film_take_money_json(public.film_takes)', '387f1f2650ad13eb82fec18ff75294bf'),
       ('public.film_lock_segment(uuid, text, boolean)', '053dc28514bf28fbdcdd1de097418f88'),
       ('public.film_lock_take(uuid, text)', '099be6f8255fa8cf59e2c2444d3b1a21'),
-      ('public.film_fail_locked(uuid, text, text, text, numeric)', 'd70036e2d4bee27d42021968fe13d23d'),
+      ('public.film_discard_assets(uuid, uuid[])', '4357ecf6a57e5f4ee076680f9e5b3b28'),
+      ('public.film_fail_locked(uuid, text, text, text, numeric)', 'd26ed5969d88566460c184eb3555e12c'),
+      ('public.film_record_skip(uuid, uuid, uuid, text, text, text)', '8e134baf7858ff4e5d4333ff7f0aadff'),
       ('public.film_lose_inflight_locked(uuid)', 'c08be09f91c672775bc959d34622ce7e'),
-      ('public.film_settle_locked(uuid, uuid, text)', '21e858f8ede3650b98312854084ec2c0'),
+      ('public.film_settle_locked(uuid, uuid, text)', 'd8de6618a3092b6a6807788c5cc3eed0'),
       ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5'),
-      ('public.start_film(uuid, text, text)', '150750a0de10b9cb3c34cc988f531c90'),
+      ('public.start_film(uuid, text, text)', 'f59f4525e07e1511bc8c3abb31830404'),
       ('public.set_film_studio_enabled(boolean)', '2fa73220535a7351b493061e7fd0a0f4'),
-      ('public.film_claim_segment(text, interval)', 'e2f4c69527685560c7887c1e145eeaae'),
+      ('public.film_claim_segment(text, interval)', 'fddd014f8cbcb72603da0b792cc0d31a'),
       ('public.film_heartbeat_segment(uuid, text)', '17b89822d95a918a043229482591163b'),
       ('public.film_begin_take(uuid, text)', 'f112ea9e9f0373b178d120c0cf7b14a0'),
-      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', 'da6cca64ce032474ca2e899ecc34188f'),
+      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', 'e12f913eeeb6a4a3a9ab5abe64eeb84f'),
       ('public.film_take_failed(uuid, text, text, text, text, numeric)', '76a5cac7de12839bb949a7992f65ae61'),
       ('public.film_begin_assembly(uuid, text)', '34413a61aa9611f244fc2fa02b497301'),
-      ('public.film_record_assembly(uuid, text, boolean, numeric)', '7d58188d203a5c7986212a845920ea90'),
+      ('public.film_record_assembly(uuid, text, boolean, uuid)', '7ea3d7961f09b810b7f42942d41932dd'),
       ('public.film_settle_segment(uuid, text, text)', '68ac358fbd91321b7875a42240b91417'),
       ('public.film_cancel_segment(uuid, text)', '90f06e840094949886f79cd7ab2fce46'),
-      ('public.film_expire_segments()', 'd2efd335d703a446b148e97a0600cb13')) v(sig, want) loop
+      ('public.film_expire_segments()', '1c735690fd0bcc61b56e598eb9b0dfad')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0171: % is missing or is not 0171''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
@@ -74,7 +76,7 @@ begin
   select string_agg(p.oid::regprocedure::text, ', ') into other
     from pg_proc p
    where p.pronamespace = 'public'::regnamespace and p.prosrc like '%film_segments%'
-     and p.proname not in ('film_money_limits', 'film_settings_of', 'film_studio_on', 'film_available', 'film_moderation_billing', 'film_stand_in', 'film_model_problem', 'film_try_price', 'film_precheck', 'film_price', 'film_segment_json', 'film_take_money_json', 'film_lock_segment', 'film_lock_take', 'film_fail_locked', 'film_lose_inflight_locked', 'film_settle_locked', 'quote_film', 'start_film', 'set_film_studio_enabled', 'film_claim_segment', 'film_heartbeat_segment', 'film_begin_take', 'film_take_succeeded', 'film_take_failed', 'film_begin_assembly', 'film_record_assembly', 'film_settle_segment', 'film_cancel_segment', 'film_expire_segments');
+     and p.proname not in ('film_money_limits', 'film_settings_of', 'film_studio_on', 'film_available', 'film_moderation_billing', 'film_stand_in', 'film_model_problem', 'film_try_price', 'film_precheck', 'film_price', 'film_segment_json', 'film_take_money_json', 'film_lock_segment', 'film_lock_take', 'film_discard_assets', 'film_fail_locked', 'film_record_skip', 'film_lose_inflight_locked', 'film_settle_locked', 'quote_film', 'start_film', 'set_film_studio_enabled', 'film_claim_segment', 'film_heartbeat_segment', 'film_begin_take', 'film_take_succeeded', 'film_take_failed', 'film_begin_assembly', 'film_record_assembly', 'film_settle_segment', 'film_cancel_segment', 'film_expire_segments');
   if other is not null then
     raise exception 'rollback 0171: a later migration reads film_segments (%): take it out first with its own rollback', other;
   end if;
@@ -105,13 +107,15 @@ drop function public.film_begin_take(uuid, text);
 drop function public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text);
 drop function public.film_take_failed(uuid, text, text, text, text, numeric);
 drop function public.film_begin_assembly(uuid, text);
-drop function public.film_record_assembly(uuid, text, boolean, numeric);
+drop function public.film_record_assembly(uuid, text, boolean, uuid);
 drop function public.film_settle_segment(uuid, text, text);
 drop function public.film_cancel_segment(uuid, text);
 drop function public.film_expire_segments();
 drop function public.film_settle_locked(uuid, uuid, text);
 drop function public.film_lose_inflight_locked(uuid);
+drop function public.film_record_skip(uuid, uuid, uuid, text, text, text);
 drop function public.film_fail_locked(uuid, text, text, text, numeric);
+drop function public.film_discard_assets(uuid, uuid[]);
 drop function public.film_lock_take(uuid, text);
 drop function public.film_lock_segment(uuid, text, boolean);
 drop function public.film_take_money_json(public.film_takes);

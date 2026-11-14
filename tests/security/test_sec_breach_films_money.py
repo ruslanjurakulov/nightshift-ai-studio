@@ -178,7 +178,9 @@ def test_a_cancel_racing_a_takes_begin_either_charges_it_or_skips_it_never_both(
         threads = [threading.Thread(target=begin), threading.Thread(target=cancel)]
         [t.start() for t in threads]
         [t.join() for t in threads]
-        status = db.takes(seg["id"])[0][4]
+        takes = db.takes(seg["id"])
+        # (Rebased on Lens's M2: when the cancel wins, nothing ran and the film goes back to draft; its never-begun takes are removed.)
+        status = takes[0][4] if takes else "removed"
         if out["begin"][0] == "ok":
             # The take began first: the cancel waits for it, and it is charged when it ends.
             assert status == "running" and db.segment(seg["id"])[0] == "draining", out
@@ -187,7 +189,7 @@ def test_a_cancel_racing_a_takes_begin_either_charges_it_or_skips_it_never_both(
             assert db.segment(seg["id"])[:2] == ("settled", 3)
         else:
             assert out["begin"] in (("NS409", "lease_lost"), ("NS409", "not_running"), ("NS409", "take_not_planned")), out
-            assert status == "skipped" and db.segment(seg["id"])[:2] == ("released", 0), out
+            assert status == "removed" and db.segment(seg["id"])[:2] == ("released", 0), out
         charged = sum(t[6] for t in db.takes(seg["id"]))
         assert db.segment(seg["id"])[1] == charged <= TOTAL
         assert db.account(o.org)[1] == 0 and db.holds(o.org)[0][2] in ("captured", "released")

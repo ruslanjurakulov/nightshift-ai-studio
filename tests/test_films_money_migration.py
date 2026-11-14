@@ -26,7 +26,7 @@ OWNER_CALLS = {"public.set_film_studio_enabled(boolean)"}
 SERVICE_CALLS = {
     "public.film_claim_segment(text, interval)", "public.film_heartbeat_segment(uuid, text)", "public.film_begin_take(uuid, text)",
     "public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)", "public.film_take_failed(uuid, text, text, text, text, numeric)",
-    "public.film_begin_assembly(uuid, text)", "public.film_record_assembly(uuid, text, boolean, numeric)",
+    "public.film_begin_assembly(uuid, text)", "public.film_record_assembly(uuid, text, boolean, uuid)",
     "public.film_settle_segment(uuid, text, text)", "public.film_cancel_segment(uuid, text)", "public.film_expire_segments()",
 }
 NEW_TABLES = ["film_segments", "org_film_settings", "film_quotes", "film_studio_settings"]
@@ -166,7 +166,12 @@ class FilmsMoneyMigration(unittest.TestCase):
         failed = function_body("film_fail_locked")
         self.assertIn("'moderated_vendor_billed'", failed)
         self.assertIn("'moderated_vendor_billing_unknown'", failed)
-        self.assertIn("charge := t.confirmed_credits;", failed)
+        # L1 (owner policy: match the Studio): a take that delivers nothing is charged nothing, whatever the vendor billed.
+        self.assertNotIn("charge := t.confirmed_credits", failed)
+        self.assertNotIn("charge := least", failed)
+        self.assertIn("'partial_not_delivered'", failed)
+        # M1: what a failed take's creative job registered is soft-deleted with it.
+        self.assertIn("perform public.film_discard_assets(t.org_id,", failed)
         # One retry within the line, charged 0 (the platform carries the failed try); never for a lost worker.
         self.assertIn("charged_credits = 0, charge_basis = 'retried_not_charged'", failed)
         self.assertIn("and p_failure <> 'worker_lost' then", failed)
@@ -179,7 +184,11 @@ class FilmsMoneyMigration(unittest.TestCase):
         self.assertIn("set status = 'completed', charged_credits = confirmed_credits", ok)
         self.assertIn("if p_provider_task_id is null", ok)
         self.assertIn("not (p_output_seconds >= 0.01 and p_output_seconds <= 600)", ok)
-        self.assertNotIn("p_output_seconds *", ok)  # the worker's number is never what is charged
+        self.assertNotIn("p_output_seconds *", ok)  # the number handed to the call is never what is charged
+        self.assertIn("perform public.film_discard_assets(t.org_id, array[p_result_asset, p_last_frame_asset]);", ok)
+        asm = function_body("film_record_assembly")
+        self.assertIn("select a.duration_s into secs from public.media_assets a where a.id = p_result_asset;", asm)
+        self.assertNotIn("p_output_seconds", asm)
         self.assertIn("if owed > s.confirmed_credits then", function_body("film_settle_locked"))
 
     def test_unknown_is_never_zero_in_the_quote(self):

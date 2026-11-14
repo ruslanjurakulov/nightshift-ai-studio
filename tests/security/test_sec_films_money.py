@@ -396,13 +396,15 @@ WORKER_CALLS = [
     ("select public.film_take_succeeded(%s::uuid, 'w-x', 5, %s::uuid)", ["seg", "seg"]),
     ("select public.film_take_failed(%s::uuid, 'w-x', 'provider_error', 'x')", ["seg"]),
     ("select public.film_begin_assembly(%s::uuid, 'w-x')", ["seg"]),
-    ("select public.film_record_assembly(%s::uuid, 'w-x', true, 60)", ["seg"]),
+    ("select public.film_record_assembly(%s::uuid, 'w-x', true, %s::uuid)", ["seg", "seg"]),
     ("select public.film_settle_segment(%s::uuid, 'w-x', 'cancelled')", ["seg"]),
     ("select public.film_cancel_segment(%s::uuid, 'cancelled')", ["seg"]),
     ("select public.film_expire_segments()", []),
     ("select public.film_price(f) from public.films f limit 1", []),
     ("select public.film_settle_locked(%s::uuid, %s::uuid, 'cancelled')", ["seg", "seg"]),
     ("select public.film_lose_inflight_locked(%s::uuid)", ["seg"]),
+    ("select public.film_discard_assets(%s::uuid, array[%s::uuid])", ["seg", "seg"]),
+    ("select public.film_record_skip(%s::uuid, %s::uuid, %s::uuid, 'claim', 'P0001', 'x')", ["seg", "seg", "seg"]),
 ]
 
 
@@ -781,7 +783,9 @@ def test_a_whole_film_settles_once_at_what_it_charged_and_the_film_is_ready(db, 
     db.finish_all(a, seg["id"])
     assert err(lambda: db.settle(seg["id"], "completed"))[:2] == ("NS409", "not_complete")  # the assembly has not run
     db.svc("select public.film_begin_assembly(%s, 'w-1')", [seg["id"]])
-    db.svc("select public.film_record_assembly(%s, 'w-1', true, 18.4)", [seg["id"]])
+    # L2: charged by the length recorded on the registered file (18.4 s: one minute), never by a number handed to the call.
+    db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)",
+           [seg["id"], db.asset(a.org, "video", "video/mp4", duration=18.4)])
     out = db.settle(seg["id"], "completed")
     assert out["settled"] is True and out["status"] == "settled" and out["captured_credits"] == TOTAL
     assert db.ledger(a.org, "capture") == [-TOTAL] and db.account(a.org) == (Decimal(100) - TOTAL, 0)
@@ -864,12 +868,14 @@ def test_a_failure_is_retried_once_within_its_line_and_charged_nothing(db, a):
     assert db.film_row(fid) == ("paused", "take_failed")
 
 
-@pytest.mark.parametrize("model,charged,basis", [
-    ("vid-runway", 20, "moderated_vendor_billed"),
-    ("vid-hh", 0, "moderated_vendor_not_billed"),
-    ("vid-clip", 0, "moderated_vendor_billing_unknown"),
+@pytest.mark.parametrize("model,basis", [
+    ("vid-runway", "moderated_vendor_billed"),
+    ("vid-hh", "moderated_vendor_not_billed"),
+    ("vid-clip", "moderated_vendor_billing_unknown"),
 ])
-def test_moderation_is_charged_only_where_the_vendor_bills_it(db, a, model, charged, basis):
+def test_a_moderated_take_delivers_nothing_and_is_charged_nothing_whatever_the_vendor_billed(db, a, model, basis):
+    """L1 (owner policy: match the Studio): a moderated task with no result costs the customer 0, even on Runway, which bills the
+    platform for it; the basis records what the platform absorbed."""
     fid = db.film(a, settings={**SETTINGS, "clip_model": model})
     seg = db.quoted_start(a, fid)
     db.claim()
@@ -879,26 +885,28 @@ def test_moderation_is_charged_only_where_the_vendor_bills_it(db, a, model, char
     db.make(a, planned, "keyframe")
     db.begin(clip)
     first = db.fail(clip, "moderated", code="policy")
-    assert (first["charged_credits"], first["charge_basis"]) == (0, "retried_not_charged")  # the platform carries the first try
+    assert (first["charged_credits"], first["charge_basis"]) == (0, "retried_not_charged")
     db.begin(first["retry_take_id"])
     out = db.fail(first["retry_take_id"], "moderated", code="policy")
-    assert (out["charged_credits"], out["charge_basis"]) == (charged, basis)
+    assert (out["status"], out["charged_credits"], out["charge_basis"]) == ("failed", 0, basis)
     settled = db.settle(seg["id"], "moderated")
-    assert settled["captured_credits"] == charged + 3 and settled["status"] == "settled"
+    assert settled["captured_credits"] == 3 and settled["status"] == "settled"
 
 
-def test_a_narration_that_voiced_part_of_its_text_is_charged_pro_rata(db, a):
-    """Item 6: the chunks that succeeded, by characters, at the confirmed rate (no minimum)."""
+def test_a_narration_that_voiced_part_of_its_text_delivers_nothing_and_is_charged_nothing(db, a):
+    """L1: a narration with a hole in it is thrown away, so it is charged 0 (partial_not_delivered); the voiced count is recorded."""
     fid = db.film(a, scenes=[{"narration": "n" * 2000, "visual_prompt": "x", "planned_seconds": 10}])
     seg = db.quoted_start(a, fid)
     db.claim()
     narr = [t for t in db.takes(seg["id"]) if t[1] == "narration"][0]
-    assert narr[5] == 20  # 2,000 characters x 0.01
+    assert narr[5] == 20
     db.begin(narr[0])
-    retry = db.fail(narr[0], "provider_error", units=1000)["retry_take_id"]  # the first try: never charged
+    retry = db.fail(narr[0], "provider_error", units=1000)["retry_take_id"]
     db.begin(retry)
     out = db.fail(retry, "provider_error", units=1500)
-    assert (out["status"], out["charged_credits"], out["charge_basis"]) == ("failed", 15, "per_character_partial")
+    assert (out["status"], out["charged_credits"], out["charge_basis"]) == ("failed", 0, "partial_not_delivered")
+    detail = db.su("select detail from public.film_events where film_id = %s and event = 'take_failed'", [fid])[0][0]
+    assert detail["units_done"] == 1500 and detail["charged"] == 0
     assert err(lambda: db.fail(db.takes(seg["id"])[0][0], "provider_error", units=5))[:2] == ("NS400", "invalid_params")
 
 
@@ -910,13 +918,94 @@ def test_cancel_before_anything_ran_releases_every_hold_and_the_film_goes_back_t
     assert (out["status"], out["captured_credits"], out["settled"]) == ("released", 0, True)
     assert db.holds(a.org)[0][2] == "released" and db.account(a.org) == (Decimal(100), 0)
     assert db.ledger(a.org, "capture") == [] and db.film_row(fid) == ("draft", None)
-    assert {(t[4], t[6], t[7]) for t in db.takes(seg["id"])} == {("skipped", 0, "cancelled_before_start")}
+    assert db.takes(seg["id"]) == []  # M2: never begun, all at 0: removed; the events keep the record
+    detail = db.su("select detail from public.film_events where film_id = %s and event = 'segment_settled'", [fid])[0][0]
+    assert (detail["back_to_draft"], detail["takes_removed"]) == (True, 4)
     assert db.claim() is None
     assert db.cancel(seg["id"])["status"] == "released"
     db.save(a.editor, fid, db.version(fid), {"title": "The lighthouse, again"})
     second = db.quoted_start(a, fid)
     assert second["n"] == 2 and db.holds(a.org)[-1][2] == "open"
     assert {t[4] for t in db.takes(second["id"])} == {"planned"}
+
+
+def test_after_a_film_goes_back_to_draft_a_scene_can_be_deleted_again(db, a):
+    """M2: start, cancel, draft, then a save that drops a scene succeeds (0166 refuses to delete a scene that has takes)."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.cancel(seg["id"])
+    assert db.film_row(fid)[0] == "draft"
+    first = db.su("select id from public.film_scenes where film_id = %s order by position limit 1", [fid])[0][0]
+    out = db.save(a.editor, fid, db.version(fid), {"scenes": [{"id": str(first)}]})
+    assert [sc["id"] for sc in out["scenes"]] == [str(first)]
+    assert db.quoted_start(a, fid)["ok"] is True
+
+
+def test_a_rejected_clip_is_not_kept_in_the_library(db, a):
+    """M1: a result is kept only when accepted. A file too short is soft-deleted with the rejection, in the same transaction."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    clip = [t[0] for t in db.takes(seg["id"]) if t[1] == "clip"][0]
+    db.begin(clip)
+    short = db.asset(a.org, "video", "video/mp4", duration=3)
+    frame = db.asset(a.org)
+    out = db.svc("select public.film_take_succeeded(%s::uuid, 'w-1', null, %s::uuid, %s::uuid, 'lab-task-1')", [clip, short, frame])
+    assert out["accepted"] is False
+    gone = db.su("select id::text, deleted_at is not null from public.media_assets where id in (%s, %s)", [short, frame])
+    assert dict(gone) == {short: True, frame: True}
+    assert db.one("authenticated", a.viewer, "select count(*) from public.media_assets where id = %s and deleted_at is null", [short]) == 0
+
+
+def test_the_files_a_lost_take_registered_are_not_kept_in_the_library(db, a):
+    """M1: a take whose worker was lost after its creative job registered a file: the file is soft-deleted with the worker_lost."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    clip = [t[0] for t in db.takes(seg["id"]) if t[1] == "clip"][0]
+    db.begin(clip)
+    made = db.asset(a.org, "video", "video/mp4")
+    job = db.su("insert into public.creative_jobs (org_id, capability, requested_model, payer, film_take_id, result_asset_ids) "
+                "values (%s, 'i2v', 'vid-clip', 'film', %s, array[%s::uuid]) returning id", [a.org, clip, made])[0][0]
+    try:
+        db.su("update public.film_segments set deadline_at = now() - interval '3 hours' where id = %s", [seg["id"]])
+        assert db.svc("select public.film_expire_segments()") == 1
+        assert db.su("select status, charge_basis from public.film_takes where id = %s", [clip])[0] == ("failed", "worker_lost_not_charged")
+        assert db.su("select deleted_at is not null from public.media_assets where id = %s", [made])[0][0] is True
+    finally:
+        db.su("delete from public.creative_jobs where id = %s", [job])  # P3 writes these; the lab keeps none (the rollback test)
+
+
+def test_a_rejected_result_handed_in_again_answers_as_its_rejection(db, a):
+    """L5: a retried film_take_succeeded for a take already rejected replays that rejection and its retry, never take_not_running."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    clip = [t[0] for t in db.takes(seg["id"]) if t[1] == "clip"][0]
+    db.begin(clip)
+    short = db.asset(a.org, "video", "video/mp4", duration=2)
+    first = db.succeed(clip, None, short)
+    again = db.succeed(clip, None, short)
+    assert first["accepted"] is again["accepted"] is False and again["replayed"] is True
+    assert again["retry_take_id"] == first["retry_take_id"]
+    assert len([t for t in db.takes(seg["id"]) if t[1] == "clip"]) == 3  # two clip slots, one retry: nothing new
+    assert err(lambda: db.succeed(clip, None, db.asset(a.org, "video", "video/mp4")))[:2] == ("NS409", "take_not_running")
+
+
+def test_the_assembly_is_charged_by_its_registered_file_never_by_a_number_and_never_above_its_line(db, a):
+    """L2: the assembly's result is a registered video of the organization; its recorded length decides, capped at the line."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    db.finish_all(a, seg["id"])
+    db.svc("select public.film_begin_assembly(%s, 'w-1')", [seg["id"]])
+    unmeasured = db.asset(a.org, "video", "video/mp4", duration=None)
+    for asset in (unmeasured, a.image, db.asset(db.new_org().org, "video", "video/mp4"), None):
+        assert err(lambda: db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)", [seg["id"], asset]))[:2] == \
+            ("NS400", "invalid_params"), asset
+    long_ = db.asset(a.org, "video", "video/mp4", duration=125)  # three minutes recorded; the line was confirmed for one
+    out = db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)", [seg["id"], long_])
+    assert out["assembly"]["charged_credits"] == 5 and out["assembly"]["asset_id"] == long_ and out["assembly"]["output_seconds"] == 125
 
 
 def test_cancel_waits_for_a_take_in_flight_then_releases_the_rest(db, a):
@@ -984,6 +1073,12 @@ def test_a_segment_that_raises_is_skipped_and_the_claim_goes_on(db, a, b):
     try:
         assert db.claim()["id"] == good["id"]
         assert db.segment(bad["id"])[0] == "queued"
+        # L4: a film_events row survives the rolled-back subtransaction, once an hour a segment and call.
+        db.claim()
+        skipped = db.su("select detail ->> 'segment_id', detail ->> 'call', detail ->> 'sqlstate', actor_role from public.film_events "
+                        "where event = 'segment_skipped' and film_id = (select film_id from public.film_segments where id = %s)",
+                        [bad["id"]])
+        assert skipped == [(bad["id"], "claim", "P0001", "service")], skipped
     finally:
         db.su("drop trigger lab_boom on public.film_segments")
         db.su("drop function pg_temp_lab_boom()")

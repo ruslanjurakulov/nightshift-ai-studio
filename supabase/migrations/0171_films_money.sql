@@ -29,7 +29,8 @@
 --     credit_transactions_apply_lots and refund_purchased_credits included). 0034 is not changed either: a running film takes one of the
 --     plan's parallel runs for up to unclaimed_hours + deadline_hours + grace_hours, and the quote says so (run_slot) before Start.
 --   * THE PRICE IS THE STUDIO'S. Every key frame and every clip shot is priced by creative_price (0159), the function behind
---     /api/creative/quote, so a take costs exactly what the same generation costs in the Studio (job_minimum included, per line). A clip
+--     /api/creative/quote, so a take that delivers costs exactly what the same generation costs in the Studio (job_minimum included,
+--     per line), and a take that delivers nothing costs nothing, as a failed Studio job does. A clip
 --     is i2v from a picture that does not exist yet (the key frame): its price does not depend on which picture, so it is priced against
 --     a stand-in, a usable picture among the organization's 50 newest, as 0073 prices a chained workflow step. None: the clip is unpriced
 --     (source_unavailable), never 0. A shot's length is the scene's planned seconds over its shots, rounded UP to a length the model
@@ -50,27 +51,32 @@
 --     priced; a rate, a model's sale or a price row that changed makes start_film's own re-pricing differ (price_changed).
 --   * WHAT A TAKE COSTS. A take's charge is set once, when it ends, never above its confirmed line.
 --       - A clip or extend is charged its FULL line, as the Studio charges a job, when its result is a live video of the organization
---         whose measured length (media_assets.duration_s, written when the file was registered, never the worker's number) is at least
---         90% of the seconds it was confirmed for, and the worker names the provider's task id. Shorter, or no measured length: the take
---         failed (charged 0). The worker's own seconds are checked (0.01 to 600, never NaN or infinite) and recorded, never charged by.
---       - A key frame or the narration is charged its line on success.
---       - A failure is charged 0, and gets ONE automatic retry within its line: the failed try is `superseded` (charged 0; the platform
---         carries what the vendor charged for it) and an attempt 2 is planned at the same confirmed line, so a single failure never ends
---         a film. The retry is charged once, only on success, like any take.
---       - A failure with no retry left: 0, except (a) a moderated task on a vendor that bills moderation — Runway (adapter video.runway,
---         Scout RW3: "Moderated generations have the same credit cost as successful generations"): its line, `moderated_vendor_billed`;
---         and (b) a narration that voiced part of the text: pro rata by the characters voiced (`per_character_partial`, no minimum).
---         HappyHorse and Seedance state that a moderated task is not billed (`moderated_vendor_not_billed`); every other vendor
---         (MiniMax, Kling, LTX) does not say, and the PLATFORM absorbs it: the customer is charged 0
---         (`moderated_vendor_billing_unknown`).
---       - A take whose worker was lost (its lease ran out, or the segment passed its deadline and grace) is charged 0 (`worker_lost`).
+--         whose recorded length (media_assets.duration_s: what the service passed to register_asset from its probe of the file, not
+--         the number handed to film_take_succeeded) is at least 90% of the seconds it was confirmed for, and the worker names the
+--         provider's task id. Shorter, or no recorded length: the take failed (charged 0). The seconds handed to the call are checked
+--         (0.01 to 600, never NaN or infinite) and recorded, never charged by.
+--       - A key frame or the narration is charged its line on success. The assembly is charged by its registered file's recorded
+--         length, in whole minutes, never above its line.
+--       - A failure is charged 0, and gets ONE automatic retry within its line: the failed try is `superseded` (charged 0) and an
+--         attempt 2 is planned at the same confirmed line, so a single failure never ends a film. The retry is charged once, only on
+--         success, like any take.
+--       - A take that delivers nothing is charged 0, whatever the vendor did: a moderated or failed task with no result, a narration
+--         that voiced only part of its text (thrown away), a take whose worker was lost (its lease ran out, or the segment passed its
+--         deadline and grace). As in the Studio, the PLATFORM absorbs what the vendor charged for it. The basis records what is known
+--         (Scout 2026-11-14): `moderated_vendor_billed` (Runway, RW3: "Moderated generations have the same credit cost as successful
+--         generations"), `moderated_vendor_not_billed` (HappyHorse, Seedance), `moderated_vendor_billing_unknown` (MiniMax, Kling,
+--         LTX, ...), `partial_not_delivered`, `worker_lost_not_charged`, `failed_not_charged`.
+--   * A RESULT IS KEPT ONLY WHEN IT IS ACCEPTED (P3's contract). The worker registers a take's file (register_asset) and then hands it
+--     to film_take_succeeded. A file that is rejected (too short, no recorded length), every file a failed or lost take's creative job
+--     registered, and an assembly file handed in with a failure are soft-deleted in the same transaction: a result nobody paid for
+--     does not stay in the organization's library.
 --     The segment settles once: capture_credits(ref, sum of the charges) — never above the hold (allow_over false) — and 0020 releases the
 --     rest in the same transaction; a segment that charged nothing is release_credits(ref).
 --   * NEVER RAN GOES BACK TO DRAFT. A segment that charged nothing and made nothing (cancelled before any charge, worker_unavailable,
 --     hold_expired, every take failed) returns its film to `draft` with its storyboard, so it can be edited and started again;
---     pause_reason says why it stopped. Its takes stay, all at 0, as the record (so 0166's save_film keeps those scenes: deleting one
---     needs a later migration). A segment that charged something leaves the film `paused` with the reason (or `ready`, or
---     `cancelled`).
+--     pause_reason says why it stopped. Its takes that never began (skipped, at 0, no creative job) are removed, so a scene can be
+--     deleted again; the started and segment_settled events keep the record. A segment that charged something leaves the film
+--     `paused` with the reason (or `ready`, or `cancelled`).
 --   * A REFUND DURING A FILM. film_begin_take refuses to start a take (and the segment settles with what it has) when the segment's hold
 --     is no longer open, or when an open credit_refund_recoveries row (0167) lists the hold: a refund is waiting to collect from it.
 --   * TIME. 0020 releases a hold never started within 3 hours, or started more than 24 hours ago. A worker's first claim starts the hold
@@ -85,7 +91,8 @@
 -- LOCK ORDER (every function here): the organization's start lock (start_film only) -> the film row (FOR NO KEY UPDATE) -> the
 --   segment -> its takes -> the credit account (inside reserve_credits / capture_credits / release_credits). The worker's claim and the
 --   sweep take the film and the segment with SKIP LOCKED, in the same order, each candidate inside its own subtransaction: a segment
---   that raises is skipped with a WARNING (its id and SQLSTATE in the log), never the whole call.
+--   that raises is skipped (never the whole call), with a WARNING and a durable film_events row (segment_skipped: the segment, the
+--   SQLSTATE, at most one an hour), written after the rolled-back block.
 --
 -- RATE LIMITS (db.film.quote 120 an hour, db.film.start 10 an hour, per person). The cheap refusals come first and are raised before
 --   anything is counted: who, the key and the quote id's shape, the replay, the film's state, its version, the switch, and
@@ -115,7 +122,7 @@
 --             NS400 <film_precheck's word: model_not_offered | model_not_available | reference_missing | asset_not_usable>
 --   returned by start_film after it is counted: {ok: false, reason: price_changed | quote_expired | insufficient_credits (code NS402,
 --             detail available=… needed=…) | cap_exceeded | limit_reached | <a quote refusal's own word, e.g. unpriced> |
---             run_slots_full (code NS429)}
+--             run_slots_full (code NS429) | hold_refused (reserve_credits' 22023 or 23505)}
 --
 -- LOCKS WHILE APPLYING. ALTER TABLE on creative_jobs (one column, its foreign key and unique index, two checks) and on films and
 --   film_takes (checks, columns, a foreign key) takes ACCESS EXCLUSIVE on each until commit, and each new check scans its table once.
@@ -216,26 +223,28 @@ begin
       ('public.film_try_price(uuid, text, text, jsonb)', '6f3ef9a01318ce782acf86fd2fd30e33'),
       ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c'),
       ('public.film_price(public.films)', '5de6c9bb2a74079e2078cad2d91b3c34'),
-      ('public.film_segment_json(public.film_segments)', '1d18426aec0a1fac38ea3c169f202fcc'),
+      ('public.film_segment_json(public.film_segments)', 'ebaeb21f07fb833951ccfa0f51af24ae'),
       ('public.film_take_money_json(public.film_takes)', '387f1f2650ad13eb82fec18ff75294bf'),
       ('public.film_lock_segment(uuid, text, boolean)', '053dc28514bf28fbdcdd1de097418f88'),
       ('public.film_lock_take(uuid, text)', '099be6f8255fa8cf59e2c2444d3b1a21'),
-      ('public.film_fail_locked(uuid, text, text, text, numeric)', 'd70036e2d4bee27d42021968fe13d23d'),
+      ('public.film_discard_assets(uuid, uuid[])', '4357ecf6a57e5f4ee076680f9e5b3b28'),
+      ('public.film_fail_locked(uuid, text, text, text, numeric)', 'd26ed5969d88566460c184eb3555e12c'),
+      ('public.film_record_skip(uuid, uuid, uuid, text, text, text)', '8e134baf7858ff4e5d4333ff7f0aadff'),
       ('public.film_lose_inflight_locked(uuid)', 'c08be09f91c672775bc959d34622ce7e'),
-      ('public.film_settle_locked(uuid, uuid, text)', '21e858f8ede3650b98312854084ec2c0'),
+      ('public.film_settle_locked(uuid, uuid, text)', 'd8de6618a3092b6a6807788c5cc3eed0'),
       ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5'),
-      ('public.start_film(uuid, text, text)', '150750a0de10b9cb3c34cc988f531c90'),
+      ('public.start_film(uuid, text, text)', 'f59f4525e07e1511bc8c3abb31830404'),
       ('public.set_film_studio_enabled(boolean)', '2fa73220535a7351b493061e7fd0a0f4'),
-      ('public.film_claim_segment(text, interval)', 'e2f4c69527685560c7887c1e145eeaae'),
+      ('public.film_claim_segment(text, interval)', 'fddd014f8cbcb72603da0b792cc0d31a'),
       ('public.film_heartbeat_segment(uuid, text)', '17b89822d95a918a043229482591163b'),
       ('public.film_begin_take(uuid, text)', 'f112ea9e9f0373b178d120c0cf7b14a0'),
-      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', 'da6cca64ce032474ca2e899ecc34188f'),
+      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', 'e12f913eeeb6a4a3a9ab5abe64eeb84f'),
       ('public.film_take_failed(uuid, text, text, text, text, numeric)', '76a5cac7de12839bb949a7992f65ae61'),
       ('public.film_begin_assembly(uuid, text)', '34413a61aa9611f244fc2fa02b497301'),
-      ('public.film_record_assembly(uuid, text, boolean, numeric)', '7d58188d203a5c7986212a845920ea90'),
+      ('public.film_record_assembly(uuid, text, boolean, uuid)', '7ea3d7961f09b810b7f42942d41932dd'),
       ('public.film_settle_segment(uuid, text, text)', '68ac358fbd91321b7875a42240b91417'),
       ('public.film_cancel_segment(uuid, text)', '90f06e840094949886f79cd7ab2fce46'),
-      ('public.film_expire_segments()', 'd2efd335d703a446b148e97a0600cb13')) v(sig, want) loop
+      ('public.film_expire_segments()', '1c735690fd0bcc61b56e598eb9b0dfad')) v(sig, want) loop
     -- (Before PostgreSQL 16, to_regprocedure raises for an argument type that does not exist instead of answering NULL.)
     if r.sig like '%public.film\_segments%' and to_regtype('public.film_segments') is null then
       continue;
@@ -324,6 +333,7 @@ create table if not exists public.film_segments (
   assembly_status            text not null default 'planned',
   assembly_output_seconds    numeric(8,2),
   assembly_charged_credits   numeric(14,2),
+  assembly_asset_id          uuid references public.media_assets (id),
   worker_id                  text,
   heartbeat_at               timestamptz,
   claimed_at                 timestamptz,
@@ -340,6 +350,9 @@ create table if not exists public.film_segments (
   constraint film_segments_film_fk
     foreign key (film_id, org_id) references public.films (id, org_id) on delete restrict
 );
+
+alter table public.film_segments add column if not exists assembly_asset_id uuid references public.media_assets (id);
+create index if not exists film_segments_assembly_asset_idx on public.film_segments (assembly_asset_id) where assembly_asset_id is not null;
 
 alter table public.film_segments drop constraint if exists film_segments_state_check;
 alter table public.film_segments add constraint film_segments_state_check
@@ -851,7 +864,8 @@ create or replace function public.film_segment_json(s public.film_segments) retu
                        + coalesce(s.assembly_charged_credits, 0),
     'assembly', jsonb_build_object('status', s.assembly_status, 'minutes', s.assembly_minutes,
                                    'credits_per_unit', s.assembly_unit_credits, 'confirmed_credits', s.assembly_confirmed_credits,
-                                   'charged_credits', s.assembly_charged_credits, 'output_seconds', s.assembly_output_seconds),
+                                   'charged_credits', s.assembly_charged_credits, 'output_seconds', s.assembly_output_seconds,
+                                   'asset_id', s.assembly_asset_id),
     'takes', (select jsonb_build_object(
                 'total', count(*), 'planned', count(*) filter (where t.status in ('planned', 'queued')),
                 'running', count(*) filter (where t.status = 'running'),
@@ -913,6 +927,20 @@ begin
 end
 $$;
 
+-- Soft-delete files of the organization that a rejected or lost take delivered (0038's soft delete: deleted_at, purged later), so a
+-- result nobody paid for does not stay in the library. Returns how many it removed.
+create or replace function public.film_discard_assets(p_org uuid, p_assets uuid[]) returns integer
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  n integer;
+begin
+  update public.media_assets set deleted_at = now()
+   where org_id = p_org and id = any (coalesce(p_assets, '{}'::uuid[])) and deleted_at is null;
+  get diagnostics n = row_count;
+  return n;
+end
+$$;
+
 -- A take ended without a usable result; the caller holds the locks. p_failure: provider_error | moderated | worker_lost.
 -- With a retry left (attempt 1, the segment running and inside its deadline, the worker not lost) the try is superseded at 0 and an
 -- attempt 2 is planned at the same line. Otherwise it is failed and charged by the rule of the header.
@@ -929,6 +957,11 @@ declare
 begin
   select * into t from public.film_takes where id = p_take;
   select * into s from public.film_segments where id = t.segment_id;
+  -- M1: what a failed take delivered is not the organization's to keep. Every file its creative job registered (P3) is soft-deleted
+  -- with the failure, in this transaction.
+  perform public.film_discard_assets(t.org_id, (select coalesce(array_agg(x), '{}'::uuid[])
+                                                  from public.creative_jobs j, unnest(j.result_asset_ids) x
+                                                 where j.film_take_id = t.id));
   if t.attempt < 1 + (public.film_money_limits() ->> 'retries_per_take')::integer
      and s.status = 'running' and (s.deadline_at is null or now() <= s.deadline_at) and p_failure <> 'worker_lost' then
     update public.film_takes
@@ -948,22 +981,17 @@ begin
                          'charged', 0));
     return public.film_take_money_json(t) || jsonb_build_object('retry_take_id', nt.id);
   end if;
+  -- A take that delivers nothing is charged nothing, as the Studio charges a failed job nothing; the basis records what the vendor
+  -- is known to have billed the platform, which the platform absorbs (see the header).
   if p_failure = 'moderated' then
     bill := public.film_moderation_billing(t.model);
-    if bill = 'billed' then
-      charge := t.confirmed_credits;
-      basis := 'moderated_vendor_billed';
-    elsif bill = 'not_billed' then
-      basis := 'moderated_vendor_not_billed';
-    else
-      basis := 'moderated_vendor_billing_unknown';
-    end if;
+    basis := case bill when 'billed' then 'moderated_vendor_billed' when 'not_billed' then 'moderated_vendor_not_billed'
+                       else 'moderated_vendor_billing_unknown' end;
   elsif p_failure = 'worker_lost' then
     basis := 'worker_lost_not_charged';
   elsif t.kind = 'narration' and coalesce(p_units_done, 0) > 0 then
-    -- The chunks that were voiced, pro rata by characters, at the rate confirmed (no minimum: the line's minimum was for all of it).
-    charge := least(public.credits_round_up(round(least(p_units_done, t.quantity) * t.unit_credits, 6)), t.confirmed_credits);
-    basis := 'per_character_partial';
+    -- Part of the text was voiced, but a narration with a hole in it is thrown away: nothing was delivered.
+    basis := 'partial_not_delivered';
   else
     basis := 'failed_not_charged';
   end if;
@@ -974,7 +1002,7 @@ begin
   returning * into t;
   perform public.film_log(t.film_id, t.org_id, t.scene_id, 'take_failed',
     jsonb_build_object('take_id', t.id, 'kind', t.kind, 'failure', p_failure, 'error_code', p_code,
-                       'confirmed', t.confirmed_credits, 'charged', charge, 'basis', basis));
+                       'confirmed', t.confirmed_credits, 'charged', charge, 'basis', basis, 'units_done', p_units_done));
   return public.film_take_money_json(t);
 end
 $$;
@@ -1013,6 +1041,7 @@ declare
   got     numeric := 0;
   status_ text;
   ran     boolean;
+  removed integer := 0;
 begin
   select * into s from public.film_segments where id = p_segment and film_id = p_film;
   if s.status in ('settled', 'released') then
@@ -1046,8 +1075,13 @@ begin
    where id = s.id
   returning * into s;
   if not ran then
-    -- Nothing was charged and nothing was made: the film goes back to its storyboard, editable and startable again. Its takes stay,
-    -- all at 0, as the record of what was planned (0166's save_film keeps a scene that has takes).
+    -- Nothing was charged and nothing was made: the film goes back to its storyboard, editable and startable again. The takes that
+    -- never began (skipped, all at 0) go, so 0166's save_film can delete their scenes; one a creative job names stays (that job's
+    -- record). The started and segment_settled events keep what happened.
+    delete from public.film_takes t
+     where t.segment_id = s.id and t.status = 'skipped'
+       and not exists (select 1 from public.creative_jobs j where j.film_take_id = t.id);
+    get diagnostics removed = row_count;
     update public.films
        set status = 'draft', pause_reason = case when why = 'cancelled' then null else why end, pause_detail = null,
            updated_at = now()
@@ -1061,7 +1095,7 @@ begin
   end if;
   perform public.film_log(p_film, s.org_id, null, 'segment_settled',
     jsonb_build_object('segment_id', s.id, 'reason', why, 'confirmed', s.confirmed_credits, 'charged', owed, 'captured', got,
-                       'exempt', s.exempt, 'back_to_draft', not ran)
+                       'exempt', s.exempt, 'back_to_draft', not ran, 'takes_removed', removed)
     || case when s.credit_ref is not null and got < owed then jsonb_build_object('not_captured', owed - got) else '{}'::jsonb end);
   return public.film_segment_json(s);
 end
@@ -1179,6 +1213,7 @@ declare
   v       integer;
   w       text;
   d       text;
+  msg     text;
   fq      public.film_quotes;
   lim     jsonb := public.film_money_limits();
 begin
@@ -1278,10 +1313,12 @@ begin
   else
     begin
       perform public.reserve_credits(org, ref, total);
-    exception when sqlstate 'NS402' or sqlstate 'NS429' then
-      get stacked diagnostics w = returned_sqlstate, d = pg_exception_detail;
-      return jsonb_build_object('ok', false, 'reason', case when w = 'NS402' then 'insufficient_credits' else 'run_slots_full' end,
-                                'code', w, 'detail', d);
+    exception when sqlstate 'NS402' or sqlstate 'NS429' or sqlstate '22023' or sqlstate '23505' then
+      get stacked diagnostics w = returned_sqlstate, d = pg_exception_detail, msg = message_text;
+      return jsonb_build_object('ok', false,
+                                'reason', case w when 'NS402' then 'insufficient_credits' when 'NS429' then 'run_slots_full'
+                                                 else 'hold_refused' end,
+                                'code', w, 'detail', coalesce(nullif(d, ''), msg));
     end;
   end if;
 
@@ -1370,6 +1407,8 @@ declare
   c    record;
   s    public.film_segments;
   lim  jsonb := public.film_money_limits();
+  st   text;
+  msg  text;
 begin
   if w = '' then
     raise exception 'film_claim_segment: p_worker is required' using errcode = '22023';
@@ -1377,10 +1416,11 @@ begin
   if p_stale_after is null or p_stale_after < interval '1 minute' then
     raise exception 'film_claim_segment: p_stale_after must be at least a minute' using errcode = '22023';
   end if;
-  for c in select x.id, x.film_id from public.film_segments x
+  for c in select x.id, x.film_id, x.org_id from public.film_segments x
             where x.status = 'queued'
                or (x.status in ('running', 'draining') and (x.heartbeat_at is null or x.heartbeat_at < now() - p_stale_after))
             order by x.created_at, x.id loop
+    st := null;
     begin
       perform 1 from public.films where id = c.film_id for no key update skip locked;
       if not found then
@@ -1417,10 +1457,38 @@ begin
                                   from public.film_takes t where t.segment_id = s.id), '[]'::jsonb));
     exception when others then
       -- One segment that cannot be claimed never takes the claim down for every other film.
-      raise warning 'film_claim_segment: segment % skipped (%: %)', c.id, sqlstate, sqlerrm;
+      st := sqlstate;
+      msg := sqlerrm;
+      raise warning 'film_claim_segment: segment % skipped (%: %)', c.id, st, msg;
     end;
+    -- Written after the block, whose writes were rolled back with it, so the record survives.
+    if st is not null then
+      perform public.film_record_skip(c.film_id, c.org_id, c.id, 'claim', st, msg);
+    end if;
   end loop;
   return null;
+end
+$$;
+
+-- The durable record of a segment the claim or the sweep had to skip: a film_events row (segment_skipped: the segment, the call, the
+-- SQLSTATE and the database's own message, cut to 200 characters), at most one an hour a segment and call, so a row that keeps
+-- failing does not write one on every loop. If even that row cannot be written, a security_events row says so instead.
+create or replace function public.film_record_skip(p_film uuid, p_org uuid, p_segment uuid, p_call text, p_state text, p_message text)
+  returns void
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+begin
+  if exists (select 1 from public.film_events e
+              where e.film_id = p_film and e.event = 'segment_skipped' and e.created_at > now() - interval '1 hour'
+                and e.detail ->> 'segment_id' = p_segment::text and e.detail ->> 'call' = p_call) then
+    return;
+  end if;
+  begin
+    perform public.film_log(p_film, p_org, null, 'segment_skipped',
+      jsonb_build_object('segment_id', p_segment, 'call', p_call, 'sqlstate', p_state, 'message', left(p_message, 200)));
+  exception when others then
+    perform public.security_event_log('film.segment_skipped', 'warning', p_segment::text,
+      jsonb_build_object('call', p_call, 'sqlstate', p_state, 'message', left(p_message, 200), 'film_events_failed', sqlstate));
+  end;
 end
 $$;
 
@@ -1479,11 +1547,12 @@ end
 $$;
 
 -- A take made its result. The result must be a live file of the organization of the right kind and the worker names the provider's
--- task id. The worker's own seconds (p_output_seconds) are checked (a number from 0.01 to 600) and recorded in the event, never
--- charged by. A clip or extend is accepted only when the file's own measured length (media_assets.duration_s) is at least 90% of the
--- seconds it was confirmed for, and is then charged its full line, as the Studio charges a job; shorter, or with no measured length,
--- it failed (charged 0, the retry rule applies) and the answer says accepted: false. A key frame or the narration is charged its line.
--- A retried call with the same result answers as it is.
+-- task id. The seconds handed to this call (p_output_seconds) are checked (a number from 0.01 to 600) and recorded in the event, never
+-- charged by. A clip or extend is accepted only when the length recorded on the file when it was registered (media_assets.duration_s,
+-- written by register_asset from the service's probe of the file) is at least 90% of the seconds it was confirmed for, and is then
+-- charged its full line, as the Studio charges a job; shorter, or with no recorded length, it failed (charged 0, the retry rule
+-- applies), its file is soft-deleted, and the answer says accepted: false. A key frame or the narration is charged its line.
+-- A retried call with the same result answers as it is, an accepted one and a rejected one alike.
 create or replace function public.film_take_succeeded(p_take uuid, p_worker text, p_output_seconds numeric, p_result_asset uuid,
                                                       p_last_frame_asset uuid default null, p_provider_task_id text default null)
   returns jsonb
@@ -1498,6 +1567,14 @@ begin
   select * into s from public.film_segments where id = t.segment_id;
   if t.status = 'completed' and t.result_asset_id is not distinct from p_result_asset then
     return public.film_take_money_json(t) || jsonb_build_object('accepted', true);
+  end if;
+  -- L5: the same result handed in again after it was rejected answers as that rejection (and the retry it planned), never as an error.
+  if t.status in ('failed', 'superseded') and p_result_asset is not null and t.result_asset_id = p_result_asset then
+    return public.film_take_money_json(t) || jsonb_build_object('accepted', false, 'replayed', true)
+           || coalesce((select jsonb_build_object('retry_take_id', x.id) from public.film_takes x
+                         where x.segment_id = t.segment_id and x.film_id = t.film_id and x.kind = t.kind and x.version = t.version
+                           and x.shot_index = t.shot_index and x.scene_id is not distinct from t.scene_id
+                           and x.attempt = t.attempt + 1), '{}'::jsonb);
   end if;
   if t.status <> 'running' or s.status not in ('running', 'draining') then
     perform public.creative_refuse('take_not_running', format('the take is %s and its segment %s', t.status, s.status), 'NS409');
@@ -1521,8 +1598,12 @@ begin
                                output_seconds = case when secs >= 0.01 then least(secs, 600) end
    where id = t.id;
   if t.kind in ('clip', 'extend') then
-    -- Never a worker's number, never a default as a measurement (CLAUDE.md #5): the file's own measured length.
+    -- The length recorded on the file when it was registered (register_asset, the service's probe of the file), never the number
+    -- handed to this call, and never a default read as a measurement (CLAUDE.md #5).
     if secs is null or secs < (public.film_money_limits() ->> 'min_clip_fraction')::numeric * coalesce(t.duration_s, t.quantity) then
+      -- M1: a rejected file is not the organization's to keep: it is soft-deleted here, and the take records which one it was.
+      perform public.film_discard_assets(t.org_id, array[p_result_asset, p_last_frame_asset]);
+      update public.film_takes set result_asset_id = p_result_asset where id = t.id;
       return public.film_fail_locked(t.id, 'provider_error',
                                      case when secs is null then 'output_length_unknown' else 'output_too_short' end,
                                      format('the clip measures %s s of the %s s it was confirmed for', coalesce(secs::text, 'unknown'),
@@ -1603,13 +1684,15 @@ begin
 end
 $$;
 
--- The assembly (captions included) ended: charged by its measured length in whole minutes at the confirmed rate, never above its
--- line; 0 on failure.
-create or replace function public.film_record_assembly(p_segment uuid, p_worker text, p_ok boolean, p_output_seconds numeric)
+-- The assembly (captions included) ended. On success the worker hands in the registered output file: a live video of the
+-- organization whose recorded length (media_assets.duration_s, as for a clip) is what is charged, in whole minutes at the confirmed
+-- rate, never above its line. A failure is charged 0, and a file handed in with it is soft-deleted. A retried call answers as it is.
+create or replace function public.film_record_assembly(p_segment uuid, p_worker text, p_ok boolean, p_result_asset uuid)
   returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   s      public.film_segments := public.film_lock_segment(p_segment, p_worker, true);
+  secs   numeric;
   charge numeric := 0;
 begin
   if s.assembly_status in ('completed', 'failed') then
@@ -1619,20 +1702,27 @@ begin
     perform public.creative_refuse('not_running', format('the assembly is %s', s.assembly_status), 'NS409');
   end if;
   if p_ok then
-    if p_output_seconds is null or p_output_seconds <= 0 or p_output_seconds > 3600 then
-      perform public.creative_refuse('invalid_params', 'an assembly is charged by its measured output seconds: give output_seconds');
+    if p_result_asset is null or not public.film_asset_live(s.org_id, p_result_asset, 'video') then
+      perform public.creative_refuse('invalid_params', 'the assembly''s result must be a live video of this library');
     end if;
-    charge := least(public.credits_round_up(round(ceil(p_output_seconds / 60.0) * s.assembly_unit_credits, 6)),
-                    s.assembly_confirmed_credits);
+    select a.duration_s into secs from public.media_assets a where a.id = p_result_asset;
+    if secs is null or secs < 0.01 or secs > 3600 then
+      perform public.creative_refuse('invalid_params',
+        'the assembly is charged by the length recorded on its file, and this file records none it can be charged by');
+    end if;
+    charge := least(public.credits_round_up(round(ceil(secs / 60.0) * s.assembly_unit_credits, 6)), s.assembly_confirmed_credits);
+  else
+    perform public.film_discard_assets(s.org_id, array[p_result_asset]);
   end if;
   update public.film_segments
      set assembly_status = case when p_ok then 'completed' else 'failed' end, assembly_charged_credits = charge,
-         assembly_output_seconds = case when p_ok then p_output_seconds end, updated_at = now()
+         assembly_output_seconds = case when p_ok then secs end, assembly_asset_id = case when p_ok then p_result_asset end,
+         updated_at = now()
    where id = s.id
   returning * into s;
   perform public.film_log(s.film_id, s.org_id, null, case when p_ok then 'assembly_completed' else 'assembly_failed' end,
     jsonb_build_object('segment_id', s.id, 'confirmed', s.assembly_confirmed_credits, 'charged', charge,
-                       'output_seconds', p_output_seconds));
+                       'recorded_seconds', secs, 'asset_id', p_result_asset));
   return public.film_segment_json(s);
 end
 $$;
@@ -1721,9 +1811,12 @@ declare
   n     integer := 0;
   lim   jsonb := public.film_money_limits();
   grace interval := make_interval(hours => (lim ->> 'grace_hours')::integer);
+  st    text;
+  msg   text;
 begin
-  for c in select x.id, x.film_id from public.film_segments x
+  for c in select x.id, x.film_id, x.org_id from public.film_segments x
             where x.status in ('queued', 'running', 'draining') order by x.created_at, x.id loop
+    st := null;
     begin
       perform 1 from public.films where id = c.film_id for no key update skip locked;
       if not found then
@@ -1750,8 +1843,13 @@ begin
         n := n + 1;
       end if;
     exception when others then
-      raise warning 'film_expire_segments: segment % skipped (%: %)', c.id, sqlstate, sqlerrm;
+      st := sqlstate;
+      msg := sqlerrm;
+      raise warning 'film_expire_segments: segment % skipped (%: %)', c.id, st, msg;
     end;
+    if st is not null then
+      perform public.film_record_skip(c.film_id, c.org_id, c.id, 'sweep', st, msg);
+    end if;
   end loop;
   return n;
 end
@@ -1771,7 +1869,7 @@ revoke all on public.film_segments, public.org_film_settings, public.film_quotes
 grant select on public.film_segments, public.org_film_settings, public.film_quotes to service_role;
 grant select (id, film_id, org_id, n, purpose, film_version, quote_id, status, credit_ref, exempt, confirmed_credits, captured_credits,
               assembly_minutes, assembly_unit_credits, assembly_confirmed_credits, assembly_status, assembly_output_seconds,
-              assembly_charged_credits, claimed_at, heartbeat_at, attempts, max_attempts, deadline_at, settle_reason,
+              assembly_charged_credits, assembly_asset_id, claimed_at, heartbeat_at, attempts, max_attempts, deadline_at, settle_reason,
               idempotency_key, created_by, created_at, updated_at, settled_at)
   on public.film_segments to authenticated;
 grant select (org_id, max_credits_per_film, max_active_films, updated_at) on public.org_film_settings to authenticated;
@@ -1804,7 +1902,9 @@ revoke all on function public.film_segment_json(public.film_segments) from publi
 revoke all on function public.film_take_money_json(public.film_takes) from public, anon, authenticated, service_role;
 revoke all on function public.film_lock_segment(uuid, text, boolean) from public, anon, authenticated, service_role;
 revoke all on function public.film_lock_take(uuid, text) from public, anon, authenticated, service_role;
+revoke all on function public.film_discard_assets(uuid, uuid[]) from public, anon, authenticated, service_role;
 revoke all on function public.film_fail_locked(uuid, text, text, text, numeric) from public, anon, authenticated, service_role;
+revoke all on function public.film_record_skip(uuid, uuid, uuid, text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.film_lose_inflight_locked(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.film_settle_locked(uuid, uuid, text) from public, anon, authenticated, service_role;
 
@@ -1821,7 +1921,7 @@ revoke all on function public.film_begin_take(uuid, text) from public, anon, aut
 revoke all on function public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.film_take_failed(uuid, text, text, text, text, numeric) from public, anon, authenticated, service_role;
 revoke all on function public.film_begin_assembly(uuid, text) from public, anon, authenticated, service_role;
-revoke all on function public.film_record_assembly(uuid, text, boolean, numeric) from public, anon, authenticated, service_role;
+revoke all on function public.film_record_assembly(uuid, text, boolean, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.film_settle_segment(uuid, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.film_cancel_segment(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.film_expire_segments() from public, anon, authenticated, service_role;
@@ -1831,7 +1931,7 @@ grant execute on function public.film_begin_take(uuid, text) to service_role;
 grant execute on function public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text) to service_role;
 grant execute on function public.film_take_failed(uuid, text, text, text, text, numeric) to service_role;
 grant execute on function public.film_begin_assembly(uuid, text) to service_role;
-grant execute on function public.film_record_assembly(uuid, text, boolean, numeric) to service_role;
+grant execute on function public.film_record_assembly(uuid, text, boolean, uuid) to service_role;
 grant execute on function public.film_settle_segment(uuid, text, text) to service_role;
 grant execute on function public.film_cancel_segment(uuid, text) to service_role;
 grant execute on function public.film_expire_segments() to service_role;
@@ -1846,16 +1946,16 @@ declare
 begin
   for r in select * from (values
       ('public.film_price(public.films)', '5de6c9bb2a74079e2078cad2d91b3c34'),
-      ('public.film_fail_locked(uuid, text, text, text, numeric)', 'd70036e2d4bee27d42021968fe13d23d'),
-      ('public.film_settle_locked(uuid, uuid, text)', '21e858f8ede3650b98312854084ec2c0'),
+      ('public.film_fail_locked(uuid, text, text, text, numeric)', 'd26ed5969d88566460c184eb3555e12c'),
+      ('public.film_settle_locked(uuid, uuid, text)', 'd8de6618a3092b6a6807788c5cc3eed0'),
       ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5'),
-      ('public.start_film(uuid, text, text)', '150750a0de10b9cb3c34cc988f531c90'),
+      ('public.start_film(uuid, text, text)', 'f59f4525e07e1511bc8c3abb31830404'),
       ('public.set_film_studio_enabled(boolean)', '2fa73220535a7351b493061e7fd0a0f4'),
-      ('public.film_claim_segment(text, interval)', 'e2f4c69527685560c7887c1e145eeaae'),
+      ('public.film_claim_segment(text, interval)', 'fddd014f8cbcb72603da0b792cc0d31a'),
       ('public.film_begin_take(uuid, text)', 'f112ea9e9f0373b178d120c0cf7b14a0'),
-      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', 'da6cca64ce032474ca2e899ecc34188f'),
+      ('public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)', 'e12f913eeeb6a4a3a9ab5abe64eeb84f'),
       ('public.film_take_failed(uuid, text, text, text, text, numeric)', '76a5cac7de12839bb949a7992f65ae61'),
-      ('public.film_expire_segments()', 'd2efd335d703a446b148e97a0600cb13')) v(sig, want) loop
+      ('public.film_expire_segments()', '1c735690fd0bcc61b56e598eb9b0dfad')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception '0171 end state: % does not hold this file''s body (md5 %)', r.sig, h;

@@ -1766,15 +1766,18 @@ provider or creates a creative or render job, and no credit function body is rep
     pictures against the reference limit.
 - **The hold.** One per segment: `reserve_credits(org, 'fm-<segment id>', total)`. Capture is once, at settle, never above the hold.
   0034 is unchanged, and the quote reports the run slot the film takes and for how long.
-- **Charges.**
-  - A clip is charged its full line when its file measures at least 90% of the confirmed seconds; otherwise it counts as failed.
+- **Charges (the Studio's rule).**
+  - A take that delivers is charged its line. A clip delivers when its file's recorded length (`media_assets.duration_s`, written at
+    registration) is at least 90% of the confirmed seconds; otherwise it counts as failed.
   - Each take gets one automatic retry within its line, charged once, on success.
-  - Moderation is charged only where the vendor bills it (Runway); every unknown vendor is 0 and the platform absorbs it.
-  - A partial narration is charged pro rata. A lost worker's take is 0.
+  - A take that delivers nothing is 0, whatever the vendor did (a moderated or failed task, a partial narration, a lost worker); the
+    platform absorbs the vendor's charge, and the basis records it.
+  - The assembly is charged by its registered file's recorded length.
+  - A result is kept only when accepted: a rejected or lost take's files are soft-deleted in the same transaction.
 - **Safety.**
-  - A segment that charged nothing and made nothing returns its film to `draft`.
+  - A segment that charged nothing and made nothing returns its film to `draft`, and its never-begun takes are removed.
   - No take begins once the hold is gone, or while a 0167 refund recovery waits on it.
-  - The claim and the sweep isolate each segment in its own subtransaction.
+  - The claim and the sweep isolate each segment in its own subtransaction, and a skipped one leaves a `segment_skipped` event.
   - A segment's leases are capped (3), and after that what it left in flight is ended as `worker_lost`.
   - Past the deadline plus 2 hours (22 h, inside 0020's 24) the sweep ends what is in flight and settles while the hold is open.
 - **Replaced constraints.** `films_status_check` (0166's plus `'queued'`) and `creative_jobs_payer_check` (0036's plus `'film'`).

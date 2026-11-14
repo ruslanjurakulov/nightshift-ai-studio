@@ -133,7 +133,16 @@ Rollback: `docs/sql/rollback_0166_films_core.sql`. It refuses while films exist,
 `film_studio_settings.film_studio_enabled` is **off** by default. While it is off, `start_film` refuses `film_studio_disabled` and
 the quote lists it in `blocked_by`. Only a platform owner or admin (through `owner_guard`: second factor, a rate limit) or the SQL
 editor changes it, with `set_film_studio_enabled(true|false)`, and every change writes a `security_events` row
-(`film_studio.enabled`). P3 turns it on once its worker is deployed.
+(`film_studio.enabled`).
+
+**Switch-on gates.** `film_studio_enabled` stays off until all of these hold:
+
+- archive and resume exist for `paused` and `cancelled` projects, so no project a person paid into is left without a way forward;
+- P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open;
+- P3 alerts on every `segment_settled` event with `not_captured` (charges a hold could no longer pay), and on every
+  `segment_skipped` event (a segment the claim or the sweep could not touch).
+
+The Command Center's own switch, `NIGHTSHIFT_FILM_STUDIO`, is separate: it shows the screens, and turns no money on.
 
 ### One hold per segment
 
@@ -202,20 +211,35 @@ detail}`, so the count survives it (BR-0171-01). They come in this order:
 2. The stored total against the available credits (`insufficient_credits`, code NS402), `cap_exceeded`, `limit_reached`. No pricing
    has run yet for any of these.
 3. The re-pricing at today's rates: an unpriced line's own word, or `price_changed`.
-4. `reserve_credits`' own NS402 (`insufficient_credits`) and NS429 (`run_slots_full`).
+4. `reserve_credits`' own NS402 (`insufficient_credits`) and NS429 (`run_slots_full`), and its 22023 / 23505 (`hold_refused`).
 
 Success is `{ok: true, ...}`: the segment and every planned take with its confirmed line, the film `queued`, and a `started` event.
 
 ### What a take costs
 
+The rule is the Studio's: a take that delivers is charged its line, and a take that delivers nothing is charged nothing.
+
 | Outcome | Charge |
 | :-- | :-- |
 | Key frame or narration made | its line |
-| Clip or extend made, and its file measures (`media_assets.duration_s`) at least 90% of the confirmed seconds, with the provider's task id | its full line, as the Studio charges a job |
-| Clip shorter than that, or not measured | 0: it failed, and the retry rule applies. The worker's own seconds are checked (0.01-600) and recorded, never charged by. |
-| A failure with its retry left (attempt 1) | 0 (`retried_not_charged`), and an attempt 2 is planned at the same line. The platform carries what the vendor charged for the failed try. A single failure never ends a film. |
-| A failure with no retry left | 0, except a moderated task on Runway, which bills moderation: its line (`moderated_vendor_billed`). A narration that voiced part of its text is charged pro rata by characters (`per_character_partial`, no minimum). HappyHorse and Seedance do not bill moderation (`moderated_vendor_not_billed`). Every other vendor does not say, so the customer pays 0 and **the platform absorbs it** (`moderated_vendor_billing_unknown`). |
-| The worker was lost (leases used up, or past the deadline and grace) | 0 (`worker_lost_not_charged`) |
+| Clip or extend made, with the provider's task id, and its file's recorded length at least 90% of the confirmed seconds | its full line, as the Studio charges a job |
+| Clip shorter than that, or with no recorded length | 0: it failed, its file is soft-deleted, and the retry rule applies |
+| A failure with its retry left (attempt 1) | 0 (`retried_not_charged`), and an attempt 2 is planned at the same line. A single failure never ends a project. |
+| A failure with no retry left: a provider error, a moderated task, a narration that voiced only part of its text (thrown away), a lost worker | 0, whatever the vendor did. **The platform absorbs** what the vendor charged, as it does for a failed Studio job. The basis records what is known: `moderated_vendor_billed` (Runway bills a moderated task like a success), `moderated_vendor_not_billed` (HappyHorse, Seedance), `moderated_vendor_billing_unknown` (MiniMax, Kling, LTX, ...), `partial_not_delivered`, `worker_lost_not_charged`, `failed_not_charged`. |
+| Assembly, captions included | its registered file's recorded length, in whole minutes, at the confirmed rate, never above its line; 0 on failure |
+
+"The recorded length" is `media_assets.duration_s`. The service wrote it into `register_asset` from its own probe of the file. It is
+not the number handed to `film_take_succeeded`, which is only checked (0.01-600) and logged.
+
+**A result is kept only when it is accepted (P3's contract).** The worker registers a take's file, then hands it to
+`film_take_succeeded`. The following are soft-deleted in the same transaction, so a result nobody paid for does not stay in the
+organization's library:
+
+- a rejected file (too short, no recorded length) and its last frame;
+- every file a failed or lost take's creative job registered;
+- an assembly file handed in with a failure.
+
+The same result handed in again answers as its first answer, accepted or rejected, with the retry the rejection planned.
 
 ### The settle path (the service role; P3's worker drives it)
 
@@ -226,7 +250,7 @@ Success is `{ok: true, ...}`: the segment and every planned take with its confir
 | `film_begin_take(take, worker)` | Marks a planned take running before the billable call. It is refused once the segment drains or passes its deadline. When the hold is no longer open, or a refund waits on it (an open `credit_refund_recoveries` row of 0167 that lists it), nothing begins: the segment settles with what it has, and the answer says `began: false` and why (`hold_lost`, `refund_pending`). |
 | `film_take_succeeded(take, worker, seconds, result, last_frame, provider_task_id)` | See the table above |
 | `film_take_failed(take, worker, provider_error / moderated, code, error, units_done)` | See the table above |
-| `film_begin_assembly`, `film_record_assembly` | The assembly line, captions included, charged by its measured whole minutes |
+| `film_begin_assembly`, `film_record_assembly(segment, worker, ok, result)` | The assembly line, captions included, charged by its registered file's recorded length |
 | `film_settle_segment(segment, worker, reason)` | Drains while something is in flight. Then it skips every take that never began, captures the charges once (never above the hold) and releases the rest. |
 | `film_cancel_segment(segment, reason)` | Releases every take that never began, and settles now or when the takes in flight end |
 | `film_expire_segments()` | Each segment in its own subtransaction. A hold 0020 released, or a segment nobody claimed in 3 hours, settles. Past the deadline the segment drains. Past the deadline plus 2 hours (before 0020's 24) the takes in flight fail as `worker_lost`, a running assembly fails, and it settles while the hold is still open. |
@@ -237,7 +261,11 @@ Where a film goes after a settle:
 - `cancelled` with a charge → `cancelled`.
 - Any other reason with a charge → `paused`, with that reason.
 - **Nothing charged and nothing made → `draft`**, storyboard kept, editable and startable again. `pause_reason` says why it stopped.
-  The takes stay at 0 as the record, so 0166's `save_film` still refuses to delete those scenes; that needs a later migration.
+  Its takes that never began (skipped, at 0, named by no creative job) are removed, so a scene can be deleted again. The `started`
+  and `segment_settled` events keep what happened.
+
+A segment the claim or the sweep cannot touch is skipped, never the whole call. It leaves a WARNING and a `film_events` row,
+`segment_skipped`, with the segment, the call and the SQLSTATE, at most one an hour.
 
 What a segment captured is the ledger's own answer: a hold that 0020 expired under a half-made film reads as captured 0, and the
 `segment_settled` event says how much was not captured.

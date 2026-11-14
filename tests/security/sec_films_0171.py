@@ -65,6 +65,8 @@ def extend(tables: dict, functions: dict) -> None:
         "film_precheck": SERVICE,
         "film_fail_locked": SERVICE,
         "film_lose_inflight_locked": SERVICE,
+        "film_discard_assets": SERVICE,
+        "film_record_skip": SERVICE,
     })
 
 
