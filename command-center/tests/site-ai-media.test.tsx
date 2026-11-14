@@ -3,7 +3,7 @@
  * Round 10: our own generations in the site's picture slots, the AI-studio landing (the first screen edge to edge, the prompt
  * bar, the facts, the explore grid, the model tiles), and the stock credits that shrink as samples replace the stock pictures.
  *
- * The data file and its generated module hold two fixture samples here (one exported for the "hero" and "pricing.card" slots
+ * The data file and its generated module hold two fixture samples here (one exported for the "hero" slot
  * through its `slot` field, one only for the gallery), so this is the site the day a slot's sample is merged.
  *
  * What would break if these failed: a slot showing an AI clip under a stock label (or stock footage under an AI one); a slot
@@ -71,6 +71,7 @@ import { SLOTS, placeMedia, slotJobs, slotMedia, LANDING_SLOTS } from "@/compone
 import { stockInUse } from "@/components/site/stock-in-use";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
+import { THUMB_ART } from "@/lib/site/art";
 import { PROMPT_MAX, PROMPT_TOOLS, TEXT_TOOL, linkWords, promptHref } from "@/lib/site/prompt-link";
 import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS } from "@/lib/creative/improve";
 import { SIGNUP_PATH } from "@/lib/public-paths";
@@ -222,20 +223,37 @@ describe("the landing with a sample in its hero slot", () => {
   });
 });
 
-describe("another page's slot with a sample: the /pricing chat card", () => {
-  it("labels the frame as our sample with its badge only (no footnote under the card), and says nothing about stock", () => {
+describe("a chat card's frame: the slot's picture under a caller's own ask, the Silk Road picture under the default one", () => {
+  it("labels a slot's frame as our sample with its badge only (no footnote under the card), and says nothing about stock", () => {
     const t = dictionaries.en;
-    // Only the hero is exported for a slot in the fixture; pricing.card still shows its stock picture, labelled stock.
-    const stock = render(<ChatCard copy={chatCopy(t, "pricing.card")} compactClip />).container;
-    expect(placeLabelProblems(stock.querySelector(".nx-result-art")!, slotMedia("pricing.card"), t.site)).toEqual([]);
+    const ask = "A lemon whispers to an avocado in a fridge";
+    // Only the hero is exported for a slot in the fixture; auth.signup still shows its stock picture, labelled stock.
+    const stock = render(<ChatCard copy={chatCopy(t, "auth.signup", ask)} compactClip />).container;
+    expect(placeLabelProblems(stock.querySelector(".nx-result-art")!, slotMedia("auth.signup"), t.site)).toEqual([]);
     expect(stock.querySelector("figcaption")?.textContent).toBe(`${t.site.samples.note} ${t.site.samples.clipNote}`);
     cleanup();
-    const ai = render(<ChatCard copy={chatCopy(t, "hero")} />).container;
+    const ai = render(<ChatCard copy={chatCopy(t, "hero", ask)} />).container;
     const art = ai.querySelector(".nx-result-art")!;
     expect(placeLabelProblems(art, slotMedia("hero"), t.site)).toEqual([]);
     expect(ai.querySelector("figcaption")).toBeNull();
     expect(ai.textContent).not.toContain(FIXTURE_ENTRY.modelName);
     expect(ai.textContent).not.toMatch(/Pexels|stock/i);
+  });
+
+  // The /pricing card asked for the Silk Road video and showed a chocolate pour (owner, 2026-11-14). Whatever a slot holds, the
+  // default ask's frame is that example's own picture, labelled AI-generated, with no sample, model or stock note on it.
+  it("shows the Silk Road picture under the default ask, whatever the slot holds", () => {
+    const t = dictionaries.en;
+    for (const slot of ["hero", "auth.signup"] as const) {
+      const { container } = render(<ChatCard copy={chatCopy(t, slot)} />);
+      const frame = container.querySelector(".nx-result-art")!;
+      expect(frame.querySelector("img")?.getAttribute("data-art-id")).toBe(THUMB_ART);
+      expect(frame.querySelector("[data-sample-job], [data-sample], video")).toBeNull();
+      expect(frame.hasAttribute("data-showcase-entry")).toBe(false);
+      expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
+      expect(container.querySelector("figcaption")).toBeNull();
+      cleanup();
+    }
   });
 });
 

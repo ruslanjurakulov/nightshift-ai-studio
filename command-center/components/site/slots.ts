@@ -33,10 +33,11 @@ export const SLOTS = {
   "show.studio": { ai: "f92a89ed-2145-4342-acd5-f24b8805a0f9", id: "pottery", clip: "pottery" },
   /** Behind the landing's closing panel. */
   "landing.final": { ai: "01c9f1f0-d54b-4fd3-a88f-ddf459aece73", id: "moon" },
-  /** The chat card on /pricing. */
-  "pricing.card": { ai: "a6768488-04c6-4325-9465-62d61f888a70", id: "floating", clip: "floating" },
-  /** /solutions: the publish desk's frame (channels), and one picture above each of the other two audiences. */
-  "solutions.youtube-channels": { ai: "b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9", id: "caravan", clip: "caravan" },
+  /**
+   * /solutions: one picture above each of the two audiences that are not channels. The chat card on /pricing and the publish
+   * desk's frame (channels) had slots too; both sit beside the Silk Road example, so both show that example's own picture
+   * (lib/site/art.ts THUMB_ART) and not a sample made from another prompt (owner, 2026-11-14).
+   */
   "solutions.creative-studio": { ai: "fc1fad12-16de-4cd5-9cd9-e77ed245f469", id: "loom", clip: "loom" },
   "solutions.developers": { ai: "1504b313-3a3c-4e78-bfda-5bca3ef7f3da", id: "citynight" },
   /** The sign-in stage and the sign-up stage. */

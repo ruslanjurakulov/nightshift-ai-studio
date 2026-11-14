@@ -145,7 +145,7 @@ export const siteEn = {
   },
   /** The landing's Approvals band: a drawn approval screen (components/landing/ApprovalCard.tsx), its rows from `stage`. */
   approvalCard: {
-    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail is an AI-generated picture made in our Studio. Everything shown is an example.",
+    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail, for the example topic, is an AI-generated image of the Registan in Samarkand at sunset. Everything shown is an example.",
   },
   fx: {
     pause: "Pause motion",
@@ -185,12 +185,12 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. One picture is different: the sample thumbnail in the hands-on example is an AI-generated image made for Nightshift. It is decoration, not a screenshot of the product.",
+    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. One picture is different: the Registan in Samarkand, shown wherever the Silk Road example appears, is an AI-generated image made for Nightshift. It is decoration, not a screenshot of the product.",
     licence: "Pexels License",
     /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
-    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models. The sample thumbnail in the hands-on example is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models, with one exception: the Registan in Samarkand, shown wherever the Silk Road example appears, is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
     /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
-    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models.",
+    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models, except the Silk Road example’s picture of the Registan, said above.",
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
@@ -414,6 +414,8 @@ export const siteEn = {
   },
   how: {
     priceLater: "Price shown here before you start",
+    /** The third step's phone: the finished video of the step-1 ask, cut to 9:16 from the Silk Road example's picture. */
+    phoneAlt: "Example frame of the finished video: an AI-generated image of a tiled madrasa portal and minaret on the Registan in Samarkand at sunset",
     slug: "How a video moves",
     title: "One rundown, from your channel to YouTube.",
     lead: "Each step is visible while it runs. The last one is always yours.",
@@ -423,7 +425,7 @@ export const siteEn = {
       steps: [
         { id: "topic", title: "Give it a topic", body: "Type a line, or let your channel pick its next topic from its niche. Nightshift writes the script, the voice, the visuals and the captions." },
         { id: "price", title: "Start it at a price you have seen", body: "The price is on the button before anything starts. If a run fails, the credits come back on their own." },
-        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private. You watch it and record your decision in the app. Until it is made public it stays private: you make it public on YouTube or, where someone who manages the workspace has switched on “Publish when approved” for the channel, approving that exact version asks YouTube to do it." },
+        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private while you watch it. You make it public yourself on YouTube, or, on a channel whose “Publish when approved” switch is on (it is off by default), your approval asks YouTube to do it." },
       ],
     },
     shotTag: "Screenshot",
@@ -457,7 +459,13 @@ export const siteEn = {
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
     label: "Real outputs, made by our team in the Studio",
-    note: "Where a tool shows a picture or a clip, it is a real job made by our team in the Studio, labelled with the model that made it. A tool marked “Not available yet” has nothing on sale today. Once a tool is open, its price is on its button; the ones that cost no credits say so.",
+    note: "A tool’s picture or clip is a real job our team ran in the Studio. “Not available yet” means the tool is not on sale today. Once a tool opens, its price is on its button. The free ones say so.",
+    /** Under a tile's sample, after the "AI-generated" badge word: who made it. No model name on the wall (the owner has not decided whether the public site names models). */
+    byTeam: "made by our team",
+    /** Under Animate's before and after: which half is the picture the clip started from. */
+    from: "Left: the picture this clip was made from",
+    /** The alt text of that picture, without its model. */
+    altFrom: "The AI-generated picture this clip was made from",
     more: "Show four more tools",
     less: "Show fewer tools",
   },

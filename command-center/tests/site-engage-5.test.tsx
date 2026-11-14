@@ -92,15 +92,16 @@ describe("the clips (round 5)", () => {
     expect(css).toMatch(/\.nx-clip \{ position: absolute; inset: 1px; width: calc\(100% - 2px\); height: calc\(100% - 2px\);/);
   });
 
-  it("are the stock fallback of seven slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
+  it("are the stock fallback of five slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
     // Round 10: these are what a slot shows only until one of our samples fills it (its `ai` line); the fallback stays declared.
     const fallback = (slot: keyof typeof SLOTS): string | null => {
       const s: PlaceDef = SLOTS[slot];
       return s.clip ?? null;
     };
-    // (The Approvals showcase has no slot any more: it is a drawn approval screen, components/landing/ApprovalCard.tsx.)
-    const moving = ["hero", "show.studio", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
-    expect(Object.keys(SLOTS)).not.toContain("show.approvals");
+    // (The Approvals showcase has no slot any more: it is a drawn approval screen, components/landing/ApprovalCard.tsx. Nor do the
+    // /pricing chat card and the publish desk's frame: both sit beside the Silk Road example and show its own picture.)
+    const moving = ["hero", "show.studio", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
+    for (const gone of ["show.approvals", "pricing.card", "solutions.youtube-channels"]) expect(Object.keys(SLOTS)).not.toContain(gone);
     for (const slot of moving) expect(SLOTS[slot].id, slot).toBe(fallback(slot));
     // The closing panel, the developers' photograph and the sign-in stage are still.
     for (const slot of ["landing.final", "solutions.developers", "auth.login"] as const) expect(fallback(slot), slot).toBeNull();
@@ -355,6 +356,17 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
       if (tile.hasAttribute("data-showcase-entry")) {
         expect(tile.dataset.showcaseEntry).toBe(def.job);
         expect(tile.querySelector(".nx-wall-credit")?.textContent).toContain(t.site.gallery.badge);
+        // One status line and one small credit line, and no model name anywhere on the tile, words or alt text: the owner has not
+        // decided whether the public site names models, and "this model is not in the Studio" only repeated "Not available yet"
+        // (owner, 2026-11-14).
+        expect(tile.querySelector(".nx-wall-credit")?.textContent).toBe(`${t.site.gallery.badge} · ${t.site.wall.byTeam}`);
+        const entry = SHOWCASE_ENTRIES.find((x) => x.jobId === def.job)!;
+        const names = [entry.modelName, ...(toolSource(def.job) ? [SHOWCASE_ENTRIES.find((x) => x.jobId === toolSource(def.job))!.modelName] : [])];
+        const said = tile.textContent + [...tile.querySelectorAll("img")].map((i) => i.getAttribute("alt")).join(" ");
+        for (const name of names) expect(said).not.toContain(name);
+        expect(said).not.toContain(t.site.gallery.notInStudio);
+        expect(tile.querySelectorAll(".nx-ai-badge, .nx-ai-model, .nx-wall-model-note")).toHaveLength(0);
+        if (toolSource(def.job)) expect(tile.querySelector(".nx-wall-from")?.textContent).toBe(t.site.wall.from);
         for (const img of tile.querySelectorAll("img")) expect(img.getAttribute("loading")).toBe("lazy");
         // Animate's still is the clip's own recorded input, never a typed id: before and after cannot disagree.
         const src = toolSource(def.job);
@@ -455,9 +467,11 @@ describe("the tool wall's lines", () => {
 
   // The live database on 2026-11-13 (a read-only check): all 82 model_registry rows availability='hidden', so no customer can make
   // anything in the Studio. Flip a line, and this list, only when the owner opens a model of it (PR #736 / migration 0160).
-  it("says every tool is closed today, as the live database is (all models hidden, 2026-11-13), and the landing's copy follows", () => {
+  it("says every model-backed tool is closed today, as the live database is (all models hidden, 2026-11-13), and the landing's copy follows", () => {
     const open = Object.entries(TOOL_SAMPLES).filter(([, d]) => d.inStudio).map(([id]) => id);
-    expect(open).toEqual([]);
+    // Styles is the free style library, not a model: hidden models do not close it (owner, 2026-11-14; evidence in tool-samples.ts).
+    expect(open).toEqual(["styles"]);
+    expect(TOOL_SAMPLES.styles.capability).toBeNull();
     expect(studioToolsOpen()).toBe(false);
   });
 

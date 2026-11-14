@@ -37,7 +37,7 @@ vi.mock("@/components/site/showcase-assets", async () => {
 vi.mock("@/components/site/slots", async (orig) => {
   const m = await orig<typeof import("@/components/site/slots")>();
   const S = m.SLOTS as unknown as Record<string, { ai: string | null }>;
-  for (const k of ["auth.signup", "solutions.youtube-channels", "solutions.creative-studio", "mcp.hero"]) S[k] = { ...S[k], ai: ids.clip };
+  for (const k of ["auth.signup", "solutions.creative-studio", "mcp.hero"]) S[k] = { ...S[k], ai: ids.clip };
   for (const k of ["auth.login", "solutions.developers"]) S[k] = { ...S[k], ai: ids.still };
   return m;
 });
@@ -82,6 +82,7 @@ import { slotMedia } from "@/components/site/samples";
 import { sceneMedia } from "@/components/docs/SampleFrame";
 import { stockInUse } from "@/components/site/stock-in-use";
 import { creditLine } from "@/lib/site/media";
+import { THUMB_ART } from "@/lib/site/art";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { SAMPLE_CARD, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 
@@ -163,23 +164,28 @@ describe("the sign-in and sign-up stages", () => {
 });
 
 describe("/solutions", () => {
-  it("labels each audience's picture and the publish desk's frame as our sample, with its badge only and no footnote", async () => {
+  it("labels each audience's picture as our sample, and the publish desk's frame as the Silk Road picture, badge only, no footnote", async () => {
     const { container } = render(await SolutionsPage());
     const photos = [...container.querySelectorAll<HTMLElement>("figure.nx-aud-photo")];
     expect(photos.length).toBe(2);
     for (const [fig, slot] of [[photos[0], "solutions.creative-studio"], [photos[1], "solutions.developers"]] as const) {
       expect(placeLabelProblems(fig, slotMedia(slot), t.site), slot).toEqual([]);
     }
+    // The desk's video is titled with the Silk Road topic, so its frame is that example's own picture, never a sample (it was a
+    // giant dog in a street, owner 2026-11-14) and never a stock picture.
     const frame = container.querySelector(".st-signoff-frame") as HTMLElement;
-    expect(frame.dataset.showcaseEntry).toBe(ids.clip);
+    expect(container.querySelector(".st-signoff-title")?.textContent).toBe(t.site.solutions.pictures.signoff.video);
+    expect(frame.querySelector("img")?.getAttribute("data-art-id")).toBe(THUMB_ART);
+    expect(frame.hasAttribute("data-showcase-entry")).toBe(false);
+    expect(frame.querySelector("[data-sample-job], [data-sample], video")).toBeNull();
     expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
     expect(container.querySelector(".st-signoff-caption")).toBeNull();
-    // All three pictures are ours here, so there is no note under them: the stock sentence would be false, and a sample has none.
+    // All three pictures are AI-made here, so there is no note under them: the stock sentence would be false.
     expect(container.querySelectorAll(".nx-sol-ways > .nx-show-note")).toHaveLength(0);
-    // The desk is a role="img" figure, which hides its words from assistive tech: the sample's badge is said again under it.
+    // The desk is a role="img" figure, which hides its words from assistive tech: the frame's badge is said again under it.
     const credit = container.querySelector(".nx-place-credit") as HTMLElement;
     expect(credit.closest("figure")).toBeNull();
-    expect(placeLabelProblems(credit, slotMedia("solutions.youtube-channels"), t.site)).toEqual([]);
+    expect(credit.hasAttribute("data-showcase-entry")).toBe(false);
     expect(credit.textContent).toBe(t.site.gallery.badge);
     expect(container.innerHTML).not.toMatch(/pexels/i);
     stockIsCredited(container);
@@ -221,10 +227,11 @@ describe("/mcp", () => {
 describe("the footer's credits follow the places", () => {
   it("drop each stock picture every place of which now shows a sample, and keep the ones still shown", () => {
     const used = stockInUse();
-    // desert (sign-in), loom (creative studio), citynight (developers), valley (/mcp hills): replaced everywhere they were used.
-    for (const gone of ["desert", "loom", "citynight", "valley"] as const) expect(used).not.toContain(gone);
-    // floating is still the /pricing card's; caravan still /mcp's sixth card; cloud still the landing's first screen.
-    for (const kept of ["floating", "caravan", "cloud"] as const) expect(used).toContain(kept);
+    // desert (sign-in), loom (creative studio), citynight (developers), valley (/mcp hills): replaced everywhere they were used;
+    // floating was also the /pricing card's, which now shows the Silk Road picture, so with sign-up's sample it is used nowhere.
+    for (const gone of ["desert", "loom", "citynight", "valley", "floating"] as const) expect(used).not.toContain(gone);
+    // caravan is still /mcp's sixth card; cloud still the landing's first screen.
+    for (const kept of ["caravan", "cloud"] as const) expect(used).toContain(kept);
     const { container } = render(<PublicFooter t={t} />);
     const links = [...container.querySelectorAll(".st-credits li a")].map((a) => a.textContent);
     expect(links).toEqual(used.map((id) => creditLine(id, t.site.samples.credit)));

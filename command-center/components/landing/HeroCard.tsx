@@ -5,6 +5,8 @@ import { BrandArt, type BrandArtKind } from "@/components/site/BrandArt";
 import { TypedText } from "@/components/site/TypedText";
 import { slotMedia, type PlaceMedia, type SlotId } from "@/components/site/samples";
 import { PlaceFill, placeAlt, placeBox, placeNote } from "@/components/site/PlaceFill";
+import { ArtImg } from "@/components/site/art";
+import { THUMB_ART } from "@/lib/site/art";
 
 /** Everything a chat card says, as plain strings, so any page (the landing, /pricing, /mcp) can print one from its own dictionary. */
 export type ChatCopy = {
@@ -21,6 +23,12 @@ export type ChatCopy = {
   note: string | null;
   /** What the card's slot shows (components/site/samples.tsx slotMedia), and the site dictionary its labels come from. */
   media: PlaceMedia;
+  /**
+   * The ask is the default one (the Silk Road), so the frame is that example's own picture, a render made for Nightshift (lib/site/art.ts
+   * THUMB_ART), never the slot's: a reply under "make a video about the Silk Road" with a chocolate pour in it said the result
+   * need not match the prompt (owner, 2026-11-14). A caller's own ask keeps the slot's picture (or drawn art).
+   */
+  thumb: boolean;
   site: Dictionary["site"];
   lamps: [string, string, string];
   key: string;
@@ -31,6 +39,7 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
   const st = t.site.stage;
   const media = slotMedia(slot);
   const approve = st.steps.find((s) => s.id === "approve" && "check" in s) as Extract<(typeof st.steps)[number], { check: string }>;
+  const thumb = ask === undefined;
   return {
     figure: st.figure,
     tag: st.tag,
@@ -39,10 +48,12 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
     current: "approve",
     ask: ask ?? t.site.caps.items[0].bubble,
     reply: t.site.caps.exampleReply,
-    alt: placeAlt(media, t.site),
+    alt: thumb ? t.site.art.alts[THUMB_ART] : placeAlt(media, t.site),
     badge: opts?.badge ?? t.site.stage.tag,
-    note: opts?.note ?? placeNote(media, t.site),
+    // The Silk Road picture carries its AI badge on the frame and needs no stock sentence under it.
+    note: opts?.note ?? (thumb ? null : placeNote(media, t.site)),
     media,
+    thumb,
     site: t.site,
     lamps: [approve.lamp, approve.check, approve.waiting],
     key: approve.key,
@@ -62,7 +73,8 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
  * so nothing flashes. Nothing in it can be pressed: a frame that shows one of our generations carries its AI badge
  * only (components/site/PlaceFill.tsx). Its frame has a fixed aspect ratio, so it cannot shift the page. A Server Component.
  *
- * `art` puts a drawing where the picture goes (the /mcp card); otherwise the frame is whatever chatCopy's slot shows.
+ * `art` puts a drawing where the picture goes (the /mcp card); otherwise, under the default (Silk Road) ask, the frame is that
+ * example's own picture (ChatCopy `thumb`), and under a caller's own ask it is whatever chatCopy's slot shows.
  */
 export function ChatCard({
   copy,
@@ -109,12 +121,19 @@ export function ChatCard({
         </div>
         <div className="nx-result nx-result-sign">
           {!bare && (
-            <div className="nx-result-art" data-ratio="wide" {...(art ? {} : placeBox(m))}>
+            <div className="nx-result-art" data-ratio="wide" {...(art ? {} : copy.thumb ? { "data-media": "art" } : placeBox(m))}>
               {art ? (
                 <>
                   <BrandArt kind={art} className="nx-art" />
                   <span className="nx-result-badge" data-kind="still">
                     {copy.badge}
+                  </span>
+                </>
+              ) : copy.thumb ? (
+                <>
+                  <ArtImg id={THUMB_ART} alt={copy.alt} className="nx-art" />
+                  <span className="nx-result-badge" data-kind="ai">
+                    {copy.site.gallery.badge}
                   </span>
                 </>
               ) : (

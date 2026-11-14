@@ -216,9 +216,11 @@ describe("clips on /signup, /mcp and the examples (round 9)", () => {
     const wide = render(<LoopClip clip="caravan" poster="p.webp" />);
     act(() => undefined);
     expect(wide.container.querySelector("source[type='video/webm']")?.getAttribute("src")).toBe(CLIPS.caravan.webm);
+    // The /pricing card and the publish desk played clips once; both sit beside the Silk Road example and now show its still
+    // picture (lib/site/art.ts THUMB_ART), so neither fetches a clip at all (tests/site-art.test.tsx pins the picture).
     const pricing = readFileSync(join(ROOT, "components/pricing/PricingView.tsx"), "utf8");
-    expect(pricing).toMatch(/chatCopy\(t, "pricing\.card"\)\} compactClip/);
-    expect(readFileSync(join(ROOT, "components/site/SolutionPictures.tsx"), "utf8")).toMatch(/<PlaceFill media=\{m\} s=\{t\.site\} alt="" compact /);
+    expect(pricing).toMatch(/<ChatCard copy=\{chatCopy\(t\)\} \/>/);
+    expect(readFileSync(join(ROOT, "components/site/SolutionPictures.tsx"), "utf8")).not.toMatch(/<PlaceFill|ShowcaseClip|LoopClip/);
   });
 
   it("has a still, a credit and a caption for the sign-in photograph, and nothing left of the pictures it replaced", () => {

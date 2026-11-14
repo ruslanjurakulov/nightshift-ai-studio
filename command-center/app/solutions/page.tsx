@@ -50,10 +50,9 @@ export default async function SolutionsPage() {
   const tabs = s.pages.flatMap((page) => {
     if (!isSolutionId(page.id)) return [];
     const Picture = WAY_PICTURE[page.id];
-    const slot = `solutions.${page.id}` as SlotId;
-    const media = slotMedia(slot);
-    // The channels tab's picture carries its own real frame (SignOffPicture), so only the other two get a photograph or clip above theirs.
-    const banner = page.id !== "youtube-channels";
+    // The channels tab's picture carries its own frame (SignOffPicture: the Silk Road example's picture, no slot), so only the
+    // other two have a slot, and a photograph or clip above theirs.
+    const media = page.id !== "youtube-channels" ? slotMedia(`solutions.${page.id}` as SlotId) : null;
     return [
       {
         id: page.id,
@@ -90,7 +89,7 @@ export default async function SolutionsPage() {
               </ul>
             </div>
             <div className="nx-aud-stage">
-              {banner && (
+              {media && (
                 <figure className="nx-aud-photo" {...placeBox(media)}>
                   <PlaceFill media={media} s={t.site} className="" sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
                 </figure>
@@ -102,7 +101,7 @@ export default async function SolutionsPage() {
       },
     ];
   });
-  const kinds = (["solutions.youtube-channels", "solutions.creative-studio", "solutions.developers"] as const).map((x) => slotMedia(x).kind);
+  const kinds = (["solutions.creative-studio", "solutions.developers"] as const).map((x) => slotMedia(x).kind);
   // Only the stock sentence: a sample behind an audience carries its AI-generated badge and no footnote (PlaceFill placeNote).
   const notes = kinds.includes("stock") ? [t.site.samples.note] : [];
   return (
