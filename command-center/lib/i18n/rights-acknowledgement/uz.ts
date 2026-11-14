@@ -41,6 +41,7 @@ export const rightsAckUz: RightsAckDictionary = {
   problems: {
     version_changed: "Sahifa ochilgandan keyin bu tasdiqlash matni oʻzgardi. Joriy matnni oʻqish uchun sahifani yangilang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
     stale: "Bu sahifada tasdiqlashning joriy matni yoʻq. Uni oʻqish uchun sahifani yangilang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
+    rate_limited: "Soʻnggi bir soatda juda koʻp fayl tasdiqladingiz. Keyinroq urinib koʻring. Hech narsa boshlanmadi va hisobdan yechilmadi.",
     source_unavailable: "Bu fayl endi tashkilotingiz kutubxonasida yoʻq. Uni qayta tanlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
     unavailable: "Bu tasdiqlash hozircha bu serverda mavjud emas, shuning uchun bu modelni faylingiz bilan ishlatib boʻlmaydi. Hech narsa boshlanmadi va hisobdan yechilmadi.",
     forbidden: "Bu ish maydoni uchun tasdiqlay olmaysiz. Hech narsa boshlanmadi va hisobdan yechilmadi.",

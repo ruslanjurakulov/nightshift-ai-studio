@@ -43,6 +43,7 @@ export const rightsAckEn = {
   problems: {
     version_changed: "The wording of this confirmation changed since the page was loaded. Reload the page to read the current text. Nothing was started or charged.",
     stale: "This page does not have the current wording of this confirmation. Reload the page to read it. Nothing was started or charged.",
+    rate_limited: "You have confirmed many files in the last hour. Try again later. Nothing was started or charged.",
     source_unavailable: "This file is no longer in your organization's library. Pick it again. Nothing was started or charged.",
     unavailable: "This confirmation is not available on this deployment yet, so this model cannot be used with your file. Nothing was started or charged.",
     forbidden: "You can't confirm for this workspace. Nothing was started or charged.",

@@ -11,10 +11,12 @@ infringing material; this step makes the promise explicit, per input, and record
 | :-- | :-- | :-- |
 | Kinds and their text version | `rights_acknowledgement_kinds` (0174), `command-center/lib/rights-acknowledgement.ts` | The closed list below, and the CURRENT version of each kind's words |
 | The words | `command-center/lib/i18n/rights-acknowledgement/{en,ru,uz}.ts` | The question and the statement the person confirms, per kind |
-| The record | `rights_acknowledgements` (0174) | Who (`auth.uid()`), which organization, which kind, which text version, which input (asset id and its sha256), when. **Append-only**; written only by `acknowledge_rights()`; members of the organization read it |
-| The model's requirement | `model_registry.requires_acknowledgement` and `spec.requires_acknowledgement` (`schemas/model_registry.json`) | The kinds a job of the model needs, for each input. The UNION of the two counts, so neither can drop the other's |
-| The gate | `create_creative_job` (0174 on 0075's body) | Refuses `acknowledgement_required` (NS400, HTTP 428; detail `kind=… version=… subject=…`) before anything is priced or held |
-| The dialog | `components/studio/RightsAcknowledgementDialog.tsx` | The exact words, an unticked "I take responsibility" box, a link to Terms §6.2; records the answer, then the same press is sent again |
+| The record | `rights_acknowledgements` (0174) | Who (`auth.uid()`), which organization, which kind, which text version, **which language the words were read in** (en / ru / uz), which input (asset id and its sha256), when. **Append-only**; written only by `acknowledge_rights()`, at most 60 new rows a person an hour; members of the organization read it |
+| The model's requirement | `model_registry.requires_acknowledgement` and `spec.requires_acknowledgement` (`schemas/model_registry.json`) | The kinds a job of the model needs, for each input. The UNION of the two counts. The column only grows: a sync copies the spec's kinds into it, and only a migration (the table's owner) can remove one; the service key cannot |
+| The gate | `create_creative_job` (0174 on 0075's body) | Refuses `acknowledgement_required` (NS400, HTTP 428; detail `kind=… version=… subject=…`) after the price and before the ceiling, the hold and the job row |
+| Workflows | `workflow_quote_steps`, `start_workflow_run` (0174 on 0073's bodies) | A step whose model requires a kind and takes a media input is refused at the quote and at the start, before any hold: an earlier step's output cannot be acknowledged in advance, and a later step may run in another member's session. Such a model is used from the Studio |
+| The public API | `api_creative_refusal` (0174 on 0124's body) | 428 `acknowledgement_required`: "confirm in the Studio"; the API has no call to acknowledge |
+| The dialog | `components/studio/RightsAcknowledgementDialog.tsx` | The exact words, one unticked "I take responsibility" box **per file**, a link to Terms §6.2; records the answer with the language shown, then the same press is sent again |
 
 ## The kinds
 
@@ -26,7 +28,8 @@ infringing material; this step makes the promise explicit, per input, and record
 
 Uzbek keeps the owner's tone, plain and direct: *"Bu odamning yuzidan foydalanish uchun javobgarlikni oʻz zimmangizga olasizmi?
 Rasmda yoki videoda koʻringan har bir insonning yuzi va qiyofasidan bu yerda foydalanishga roziligi borligini tasdiqlayman."* The ru
-and uz texts are drafts: a native speaker reads them before a model that needs them is sold.
+and uz texts are **pending native review**: machine drafts that a native speaker must read and correct before any model that
+requires a kind (today Runway) is sold. A correction that changes the meaning is a new text version (below).
 
 ## Known provider restrictions, mapped to a kind
 
@@ -52,10 +55,11 @@ and, for a restriction the database must hold even if the file is edited, to `mo
 - **The database decides** (CLAUDE.md rule 3). The browser shows words and records an answer; `create_creative_job` refuses a job
   without the record. Every way a generation starts goes through it: the Studio, the public API (`api_creative_create`), MCP and
   workflow runs.
-- **Before any spend** (rule 6). The check runs after an idempotent replay is answered and before the price, the expiry sweep and
-  the hold. A refused press leaves no job, no hold and no ledger row.
+- **Before any spend** (rule 6). The check runs after an idempotent replay is answered and after the price (so a model that is
+  refused anyway never asks anyone to take responsibility), and before the price ceiling, the hold and the job row. A refused press
+  leaves no job, no hold and no ledger row. Workflows are refused at the quote and the start, before their first hold.
 - **This person, this input, these words.** A colleague's acknowledgement, another organization's, and one of an older text version
-  do not count. The checkbox is never pre-ticked, nothing is kept in the browser, and a new input or new words ask again.
+  do not count. Each file has its own box, never pre-ticked; nothing is kept in the browser; a new input or new words ask again.
 - **Words the page does not carry are not shown.** When the database names a version this build does not have, the dialog asks for a
   reload and records nothing, so nobody acknowledges words they were not shown.
 - **A typo fails closed.** A kind outside the closed list can never be acknowledged, so a model that names one refuses every input.
@@ -67,8 +71,14 @@ A change of meaning in any language is a new version: a migration updates `right
 PR updates `RIGHTS_TEXT_VERSIONS` and the words (`tests/rights-acknowledgement.test.ts` fails when the two disagree). Every earlier
 acknowledgement then stops counting, and the record keeps both. Fixing a typo that changes nothing is not a new version.
 
-## Verify, undo
+## Verify, undo, replay
 
-- `create_creative_job` md5 before `4c74918fd9d938c8fe4f5a3d26a09d84` (0075), after `128fa773beb2f3ef30ac8a332088a5e2` (0174).
-- Undo: `docs/sql/rollback_0174_rights_acknowledgement.sql` puts 0075's body back and drops the two calls and two helpers; it **keeps
-  the record** (the tables, the append-only triggers, the column). Apply it only while no model that requires a kind is on sale.
+- md5 after 0174: `create_creative_job` `88107b00b0a8c143606ed17f5898c98d` (before `4c74918fd9d938c8fe4f5a3d26a09d84`, 0075), `workflow_quote_steps` `8f9f42da9844571a18a285d87bcffc84`,
+  `start_workflow_run` `8b3c4b4afbc19e6f336c09b4692ad7ed`, `api_creative_refusal` `e6ec45d0d912389a05eb2d40261c2c2a`. The migration's Verify query checks all four.
+- **Replay.** Re-running 0075 or 0073 over 0174 is NOT refused (0075's guard is a `position()` check that 0174's body passes; 0073
+  has none): it silently puts the old body back and the gate is gone. Undo 0174 first, and run the Verify query after any manual
+  replay.
+- Undo: `docs/sql/rollback_0174_rights_acknowledgement.sql` puts the four earlier bodies back and drops 0174's functions and the
+  requirement guard; it **keeps the record** (the tables with their rows, the append-only triggers, the column). Apply it only
+  while no model that requires a kind is on sale.
+- Not covered by 0174: the Film Studio's job path (0171, open), handled in a follow-up.

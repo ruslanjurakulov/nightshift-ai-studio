@@ -5284,6 +5284,7 @@ export const en = {
       totalTitle: "Total price",
       totalValue: "{n} credits",
       noTotal: "No price",
+      ackStepsWhy: "Step {steps} uses a model that asks you to confirm your rights to its input file, which a workflow cannot ask. Make that step in the Studio. Nothing is started.",
       noTotalWhy: "Run now is off because a step has no price yet: {steps}. Nothing is guessed and nothing is started.",
       stepLine: "Step {n} · {tool}",
       stepPrice: "{n} credits",

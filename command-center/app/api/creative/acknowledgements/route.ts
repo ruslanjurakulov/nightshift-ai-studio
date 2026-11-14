@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { creativeSession } from "@/lib/server/creative";
 import { requireSameOrigin } from "@/lib/server/same-origin";
-import { parseJsonCapped } from "@/lib/server/json-body";
+import { SMALL_BODY_BYTES, parseJsonCapped } from "@/lib/server/json-body";
 import { isUuid } from "@/lib/creative/operations";
 import { acknowledgeRights, acknowledgementStatus, parseAcknowledgeInput } from "@/lib/creative/acknowledgements";
 
@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
  * GET `?org_id=&model=&subjects=<uuid>,<uuid>`: the kinds the model requires, at which text version, and which inputs THIS
  * person has not acknowledged yet (rights_acknowledgement_status). Reads only the caller's own rows.
  *
- * POST `{ kind, text_version, subject }`: records that the signed-in person takes responsibility for the input `subject` (a
- * media asset of an organization they belong to) under the words of `text_version` (acknowledge_rights). The database records
+ * POST `{ kind, text_version, subject, locale }`: records that the signed-in person takes responsibility for the input `subject` (a
+ * media asset of an organization they belong to) under the words of `text_version`, read in `locale` (en / ru / uz) (acknowledge_rights). The database records
  * who from the session, refuses a version that is not the current one (409 acknowledgement_version_changed) and another
  * organization's file exactly like a missing one (422 source_unavailable). A replay answers the first row (200).
  *
@@ -41,7 +41,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   let body: unknown;
   try {
-    body = await parseJsonCapped(request);
+    // Four short fields: the small cap.
+    body = await parseJsonCapped(request, SMALL_BODY_BYTES);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }

@@ -78,17 +78,43 @@ describe("the dialog", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it("records each input at the version shown, then hands back once", async () => {
+  it("asks once per file, each in its own unticked box, records each at the version and language shown, then hands back once", async () => {
     const post = vi.fn<PostAcknowledgement>((i) => ok(i.subject));
     const { onAcknowledged, dialog } = open(ask([photo(PIC), photo(END)]), post);
-    expect(within(dialog).getByText(d.subjects.end_asset_id)).toBeTruthy();
+    expect(within(dialog).getByText(d.subjects.source_asset_id)).toBeTruthy();
+    expect(within(dialog).queryByText(d.subjects.end_asset_id)).toBeNull();
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: d.confirm }));
+    // The second file: a fresh, unticked box of its own.
+    await within(dialog).findByText(d.subjects.end_asset_id);
+    expect(onAcknowledged).not.toHaveBeenCalled();
+    expect((within(dialog).getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
     fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.click(within(dialog).getByRole("button", { name: d.confirm }));
     await waitFor(() => expect(onAcknowledged).toHaveBeenCalledTimes(1));
     expect(post.mock.calls.map((c) => c[0])).toEqual([
-      { kind: "likeness_photo", text_version: V1, subject: PIC },
-      { kind: "likeness_photo", text_version: V1, subject: END },
+      { kind: "likeness_photo", text_version: V1, subject: PIC, locale: "en" },
+      { kind: "likeness_photo", text_version: V1, subject: END, locale: "en" },
     ]);
+  });
+
+  it("records the language the words were read in", async () => {
+    const post = vi.fn<PostAcknowledgement>((i) => ok(i.subject));
+    const { onAcknowledged, dialog } = open(ask([photo(PIC)]), post, "uz");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: dictionaries.uz.rightsAck.confirm }));
+    await waitFor(() => expect(onAcknowledged).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0][0].locale).toBe("uz");
+  });
+
+  it("the hourly limit says so and offers no Confirm", async () => {
+    const post = vi.fn<PostAcknowledgement>(() => Promise.resolve({ status: 429, body: { error: "acknowledgement_limit" } }));
+    const { onAcknowledged, dialog } = open(ask([photo(PIC)]), post);
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: d.confirm }));
+    expect((await within(dialog).findByTestId("rights-ack-problem")).textContent).toBe(d.problems.rate_limited);
+    expect(within(dialog).queryByTestId("rights-ack-confirm")).toBeNull();
+    expect(onAcknowledged).not.toHaveBeenCalled();
   });
 
   it("loading: the button says it is recording and nothing can be pressed twice", async () => {
@@ -108,14 +134,14 @@ describe("the dialog", () => {
     await waitFor(() => expect(onAcknowledged).toHaveBeenCalledTimes(1));
   });
 
-  it("error and retry: a failure starts nothing, and Retry records only what is left", async () => {
+  it("error and retry: a failure starts nothing, and Retry records it then", async () => {
     let n = 0;
     const post = vi.fn<PostAcknowledgement>((i) => {
       n += 1;
-      if (n === 2) return Promise.resolve({ status: 502, body: { error: "failed" } });
+      if (n === 1) return Promise.resolve({ status: 502, body: { error: "failed" } });
       return ok(i.subject);
     });
-    const { onAcknowledged, dialog } = open(ask([photo(PIC), photo(END)]), post);
+    const { onAcknowledged, dialog } = open(ask([photo(PIC)]), post);
     fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.click(within(dialog).getByRole("button", { name: d.confirm }));
     const problem = await within(dialog).findByTestId("rights-ack-problem");
@@ -124,7 +150,7 @@ describe("the dialog", () => {
     expect(onAcknowledged).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: d.retry }));
     await waitFor(() => expect(onAcknowledged).toHaveBeenCalledTimes(1));
-    expect(post.mock.calls.map((c) => c[0].subject)).toEqual([PIC, END, END]);
+    expect(post.mock.calls.map((c) => c[0].subject)).toEqual([PIC, PIC]);
   });
 
   it("a network failure is a failure too", async () => {
@@ -273,7 +299,7 @@ describe("the Studio's generate flow", () => {
     fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.click(within(dialog).getByRole("button", { name: dictionaries.en.rightsAck.confirm }));
     await waitFor(() => expect(creates).toHaveLength(2));
-    expect(acks).toEqual([{ kind: "likeness_photo", text_version: V1, subject: PIC }]);
+    expect(acks).toEqual([{ kind: "likeness_photo", text_version: V1, subject: PIC, locale: "en" }]);
     // The same press: the same model, settings and confirmed price; a fresh idempotency key is a new request (nothing was held).
     const [first, second] = creates;
     expect(second.model).toBe(first.model);

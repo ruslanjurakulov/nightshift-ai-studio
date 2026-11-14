@@ -35,6 +35,8 @@ const ERROR_CODES = [
   "mode_not_supported",
   "route_changed",
   "no_model_available",
+  // 0174: the model needs a person to confirm their rights to the input in the Studio first; there is no API call for it.
+  "acknowledgement_required",
   "registry_missing",
   "forbidden",
   "invalid_body",

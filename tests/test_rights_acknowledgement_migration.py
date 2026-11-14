@@ -2,20 +2,23 @@
 
 What would break, and which test says so:
 
-* the job start path drifting from 0075's while the gate is added (a price, hold or refusal silently altered): 0174's
-  create_creative_job must be 0075's body plus exactly the two hunks listed here, byte for byte;
-* the gate moving after the price, the expiry sweep or the hold (rule 6), or before an idempotent replay is answered;
+* a replaced body drifting from the one it was built on (a price, hold or refusal silently altered): each of the four is the
+  earlier body plus inserted, marked 0174 blocks, and nothing deleted or changed;
+* the gate moving before the price (a model refused anyway would ask) or after the ceiling, the hold or the job row (rule 6),
+  or before an idempotent replay is answered;
 * an input key the database accepts that the gate does not ask about (a new media input would slip past it);
-* a model opened, or Runway's availability changed, in this PR;
-* the registry file and the migration disagreeing on which models require which kind;
-* md5 pins that no longer describe the files, grants that are not intended, a rollback that does not put 0075's body back
-  verbatim or that drops the record, the number not documented.
+* the requirement becoming removable by the service key, or the guard running as its owner (then everyone passes);
+* the record losing its language, or its hourly cap;
+* a model opened, or Runway's availability changed, in this PR; the file, the schema, the app and the migration disagreeing;
+* md5 pins that no longer describe the files, a rollback that does not put the earlier bodies back verbatim or that drops the
+  record, the replay hazard (0075 and 0073 do not protect 0174) not documented.
 
 The lab (tests/security/test_sec_rights_acknowledgement.py) runs the same file on a real PostgreSQL; this test needs none.
 """
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import re
@@ -24,7 +27,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-M0075 = (MIG / "0075_model_router.sql").read_text(encoding="utf-8")
 M0174 = (MIG / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8")
 ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0174_rights_acknowledgement.sql").read_text(encoding="utf-8")
 MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
@@ -33,33 +35,22 @@ REGISTRY = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encod
 SCHEMA = json.loads((ROOT / "schemas" / "model_registry.schema.json").read_text(encoding="utf-8"))
 TS = (ROOT / "command-center" / "lib" / "rights-acknowledgement.ts").read_text(encoding="utf-8")
 
-SIG = "public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)"
-BODY_0075 = "4c74918fd9d938c8fe4f5a3d26a09d84"
-BODY_0174 = "128fa773beb2f3ef30ac8a332088a5e2"
 KINDS = ["likeness_photo", "voice_clone", "third_party_content"]
+# name -> (the file it was built on, md5 before, md5 after, how many 0174 blocks are inserted)
+REPLACED = {
+    "create_creative_job": ("0075_model_router.sql", "4c74918fd9d938c8fe4f5a3d26a09d84", "88107b00b0a8c143606ed17f5898c98d", 2),
+    "workflow_quote_steps": ("0073_workflow_apps.sql", "48250650e93a951c6b64cad1e73e8a24", "8f9f42da9844571a18a285d87bcffc84", 1),
+    "start_workflow_run": ("0073_workflow_apps.sql", "c60ad7a487f7f11bf080ef92629c436e", "8b3c4b4afbc19e6f336c09b4692ad7ed", 1),
+    "api_creative_refusal": ("0124_model_switch.sql", "2253296a9c1ac2e5de3c25a2a726398e", "e6ec45d0d912389a05eb2d40261c2c2a", 1),
+}
 NEW_FUNCTIONS = {
     "rights_acknowledgements_append_only": "e885c3b71a6af4724016c12554ed728e",
-    "rights_acknowledgement_required": "bdae111d99c36aad7029cd99295fde7f",
+    "model_registry_requirement_guard": "598b4f2353046b4851abeb3b82090a2b",
+    "rights_acknowledgement_required": "5b27521f352a65bfebba335f584152de",
     "rights_acknowledgement_missing": "426ea90d162535b0ee6f10e752e5fe26",
-    "acknowledge_rights": "ff9ae30a102df6f68103420266139e2c",
+    "acknowledge_rights": "45f3e5ffdf69999f290363a55e81c303",
     "rights_acknowledgement_status": "d33d9861c2a2e5efca2614aabec3f311",
 }
-HUNKS = [
-    ("  rt    jsonb;\n",
-     "  rt    jsonb;\n"
-     "  -- 0174: the first input this person has not acknowledged, for a model that requires an acknowledgement.\n"
-     "  ack   jsonb;\n"),
-    ("      return jsonb_build_object('job', public.creative_job_json(prior), 'replay', true);\n    end if;\n  end if;\n\n",
-     "      return jsonb_build_object('job', public.creative_job_json(prior), 'replay', true);\n    end if;\n  end if;\n\n"
-     "  -- 0174: a model whose provider (or the law) makes the person confirm their rights to an input refuses here, before\n"
-     "  -- anything is priced or held, unless THIS person acknowledged THIS input in THIS organization at the CURRENT text\n"
-     "  -- version (rights_acknowledgement_missing). A replay of a job already created was answered above.\n"
-     "  ack := public.rights_acknowledgement_missing(p_org, uid, p_model, p_params);\n"
-     "  if ack is not null then\n"
-     "    perform public.creative_refuse('acknowledgement_required',\n"
-     "      format('kind=%s version=%s subject=%s', ack ->> 'kind', coalesce(ack ->> 'text_version', 'none'), ack ->> 'subject'));\n"
-     "  end if;\n\n"),
-]
 
 
 def definition(text: str, name: str) -> str:
@@ -78,41 +69,53 @@ def code(sql: str) -> str:
     return "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
 
 
-class BuiltOn0075(unittest.TestCase):
-    def test_create_creative_job_is_0075s_body_plus_the_two_hunks(self):
-        body = definition(M0075, "create_creative_job")
-        for old, new in HUNKS:
-            self.assertEqual(body.count(old), 1, old)
-            body = body.replace(old, new)
-        self.assertEqual(definition(M0174, "create_creative_job"), body)
+def latest(name: str, before: str = "0174") -> str:
+    out = None
+    for p in sorted(MIG.glob("*.sql")):
+        if p.name[:4] >= before:
+            continue
+        text = p.read_text(encoding="utf-8")
+        if re.search(rf"create or replace function public\.{re.escape(name)}\(", text):
+            out = (p.name, definition(text, name))
+    return out
 
-    def test_no_migration_between_0075_and_0174_redefines_it(self):
-        later = [p.name for p in sorted(MIG.glob("*.sql"))
-                 if "0075" < p.name[:4] < "0174"
-                 and re.search(r"create or replace function public\.create_creative_job\(", p.read_text(encoding="utf-8"))]
-        self.assertEqual(later, [], "create_creative_job was redefined after 0075: rebuild 0174 on the newer body")
+
+class BuiltOnTheEarlierBodies(unittest.TestCase):
+    def test_each_replaced_body_is_the_earlier_one_plus_inserted_marked_blocks_only(self):
+        for name, (src, _old, _new, blocks) in REPLACED.items():
+            old = definition((MIG / src).read_text(encoding="utf-8"), name).splitlines()
+            new = definition(M0174, name).splitlines()
+            ops = [op for op in difflib.SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes() if op[0] != "equal"]
+            self.assertEqual([op[0] for op in ops], ["insert"] * blocks, name)
+            for _tag, _i1, _i2, j1, j2 in ops:
+                self.assertIn("0174", "\n".join(new[j1:j2]), f"{name}: an inserted block names 0174")
+
+    def test_the_earlier_body_is_the_latest_one_before_0174(self):
+        for name, (src, *_rest) in REPLACED.items():
+            self.assertEqual(latest(name)[0], src, f"{name} was redefined after {src}: rebuild 0174 on the newer body")
 
     def test_the_md5_pins_describe_the_bodies(self):
-        self.assertEqual(pg_md5(definition(M0075, "create_creative_job")), BODY_0075)
-        self.assertEqual(pg_md5(definition(M0174, "create_creative_job")), BODY_0174)
-        self.assertGreaterEqual(M0174.count(BODY_0075), 2, "header and drift guard name 0075's body")
-        self.assertGreaterEqual(M0174.count(BODY_0174), 4, "header, drift guard, end state and Verify name 0174's body")
+        for name, (src, old, new, _b) in REPLACED.items():
+            self.assertEqual(pg_md5(definition((MIG / src).read_text(encoding="utf-8"), name)), old, name)
+            self.assertEqual(pg_md5(definition(M0174, name)), new, name)
+            self.assertGreaterEqual(M0174.count(old), 2, f"{name}: header and drift guard")
+            self.assertGreaterEqual(M0174.count(new), 4, f"{name}: header, drift guard, end state and Verify")
         for name, want in NEW_FUNCTIONS.items():
             self.assertEqual(pg_md5(definition(M0174, name)), want, name)
             self.assertIn(f"'{want}'", M0174, f"the drift guard pins {name}")
 
     def test_it_defines_exactly_these_functions(self):
         self.assertEqual(sorted(re.findall(r"create or replace function public\.(\w+)\(", code(M0174))),
-                         sorted([*NEW_FUNCTIONS, "create_creative_job"]))
+                         sorted([*NEW_FUNCTIONS, *REPLACED]))
 
     def test_the_grants(self):
-        self.assertIn(f"revoke all on function {SIG} from public, anon, authenticated, service_role;", M0174)
         self.assertEqual(sorted(re.findall(r"grant execute on function (.*?);", code(M0174))), sorted([
-            f"{SIG} to authenticated",
-            "public.acknowledge_rights(text, text, text) to authenticated",
+            "public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated",
+            "public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated",
+            "public.acknowledge_rights(text, text, text, text) to authenticated",
             "public.rights_acknowledgement_status(uuid, text, text[]) to authenticated",
         ]))
-        for name in NEW_FUNCTIONS:
+        for name in [*NEW_FUNCTIONS, *REPLACED]:
             self.assertRegex(M0174, rf"revoke all on function public\.{name}\([^)]*\) from public, anon, authenticated, service_role;")
         for name in ("create_creative_job", "acknowledge_rights", "rights_acknowledgement_status",
                      "rights_acknowledgement_required", "rights_acknowledgement_missing"):
@@ -120,31 +123,41 @@ class BuiltOn0075(unittest.TestCase):
 
 
 class TheGate(unittest.TestCase):
-    def test_it_refuses_after_a_replay_and_before_the_price_the_sweep_and_the_hold(self):
+    def test_it_asks_after_the_price_and_before_the_ceiling_the_hold_and_the_job(self):
         body = definition(M0174, "create_creative_job")
-        gate = body.index("ack := public.rights_acknowledgement_missing(p_org, uid, p_model, p_params);")
-        self.assertLess(body.index("'replay', true"), gate)
-        for later in ("perform public.creative_expire_locked(p_org);", "q := public.creative_price(", "public.creative_platform_reserve(",
+        gate = body.index("ack := public.rights_acknowledgement_missing(p_org, uid, q ->> 'model', p_params);")
+        for earlier in ("'replay', true", "q := public.creative_price("):
+            self.assertLess(body.index(earlier), gate, earlier)
+        for later in ("if p_max_credits is not null and price > p_max_credits then", "public.creative_platform_reserve(",
                       "insert into public.creative_jobs"):
             self.assertLess(gate, body.index(later), later)
 
     def test_the_gate_asks_about_every_media_input_the_database_accepts(self):
-        latest = None
-        for p in sorted(MIG.glob("*.sql")):
-            text = p.read_text(encoding="utf-8")
-            if re.search(r"create or replace function public\.creative_params_problem\(", text):
-                latest = definition(text, "creative_params_problem")
-        accepted = sorted(set(re.findall(r"'([a-z_]*asset_id)'", latest)))
+        accepted = sorted(set(re.findall(r"'([a-z_]*asset_id)'", latest("creative_params_problem")[1])))
         asked = sorted(set(re.findall(r"p_params ->> '([a-z_]+)'", definition(M0174, "rights_acknowledgement_missing"))))
         self.assertEqual(asked, accepted, "a media input the database accepts must be asked about too")
+        wf = definition(M0174, "workflow_quote_steps")
+        in_workflows = re.search(r"\?\| array\[([^\]]*)\]", wf).group(1)
+        self.assertEqual(sorted(s.strip().strip("'") for s in in_workflows.split(",")), accepted)
         self.assertIn('export const RIGHTS_SUBJECT_KEYS = ["source_asset_id", "end_asset_id"] as const;', TS)
 
-    def test_the_record_is_bound_to_the_session_not_to_an_argument(self):
+    def test_workflows_refuse_before_anything_is_held(self):
+        start = definition(M0174, "start_workflow_run")
+        refuse = start.index("perform public.creative_refuse('acknowledgement_required',")
+        self.assertLess(start.index("q := public.workflow_quote_steps(w, vals);"), refuse)
+        self.assertLess(refuse, start.index("insert into public.workflow_runs"))
+        self.assertLess(refuse, start.index("if not (q ->> 'priced')::boolean then"))
+
+    def test_the_record_is_bound_to_the_session_keeps_its_language_and_is_capped(self):
         body = definition(M0174, "acknowledge_rights")
-        self.assertIn("uid  uuid := auth.uid();", body)
-        self.assertIn("values (a.org_id, uid, k.kind, k.text_version, a.id, a.sha256)", body)
+        self.assertIn("uid    uuid := auth.uid();", body)
+        self.assertIn("values (a.org_id, uid, k.kind, k.text_version, p_locale, a.id, a.sha256)", body)
         self.assertIn("not public.is_org_member(a.org_id)", body)
-        self.assertRegex(body, r"p_text_version is distinct from k\.text_version")
+        self.assertIn("p_locale not in ('en', 'ru', 'uz')", body)
+        self.assertIn("constraint rights_acknowledgements_locale_check check (locale in ('en', 'ru', 'uz'))", M0174)
+        self.assertRegex(body, r"created_at > now\(\) - interval '1 hour'\) >= 60 then")
+        # A replay is answered before the cap is counted.
+        self.assertLess(body.index("'replay', true"), body.index(">= 60 then"))
 
     def test_the_record_is_append_only(self):
         c = code(M0174)
@@ -154,13 +167,24 @@ class TheGate(unittest.TestCase):
         self.assertEqual(re.findall(r"grant (\w+) on public\.rights_acknowledgements to ([a-z_, ]+);", c), [("select", "authenticated, service_role")])
         self.assertNotRegex(c, r"create policy \w+ on public\.rights_acknowledgements\s+for (insert|update|delete|all)")
 
+    def test_the_requirement_only_grows_and_the_guard_sees_its_caller(self):
+        guard = definition(M0174, "model_registry_requirement_guard")
+        self.assertNotIn("security definer", guard)
+        self.assertIn("current_user is distinct from (select pg_get_userbyid(c.relowner)", guard)
+        self.assertIn("not (coalesce(old.requires_acknowledgement, '{}') <@ new.requires_acknowledgement)", guard)
+        self.assertIn("before insert or update on public.model_registry", M0174)
+
+    def test_a_spec_of_another_shape_fails_closed(self):
+        req = definition(M0174, "rights_acknowledgement_required")
+        self.assertIn("else\n      from_spec := array['invalid_requires_acknowledgement'];", req)
+
 
 class NothingIsOpened(unittest.TestCase):
     def test_no_availability_or_terms_gate_is_changed(self):
         c = code(M0174)
-        self.assertNotRegex(c, r"(?i)\bavailability\s*=")
+        self.assertNotRegex(c, r"(?i)\bset\s+availability\s*=")
         self.assertNotIn("terms_gate", c)
-        self.assertNotIn("credit_prices", c)
+        self.assertNotIn("insert into public.credit_prices", c)
 
     def test_only_the_two_runway_entries_are_seeded_and_the_file_says_the_same(self):
         self.assertIn("where id in ('runway-gen4.5', 'runway-gen4-turbo')", M0174)
@@ -171,7 +195,7 @@ class NothingIsOpened(unittest.TestCase):
     def test_the_kinds_agree_everywhere(self):
         m = re.search(r"rights_acknowledgement_kinds_kind_check\s+check \(kind in \(([^)]*)\)\)", M0174)
         self.assertEqual([s.strip().strip("'") for s in m.group(1).split(",")], KINDS)
-        self.assertIn("array['likeness_photo', 'voice_clone', 'third_party_content']::text[]", M0174)
+        self.assertGreaterEqual(M0174.count("'likeness_photo', 'voice_clone', 'third_party_content'"), 3)
         self.assertEqual(SCHEMA["$defs"]["model"]["properties"]["requires_acknowledgement"]["items"]["enum"], KINDS)
         self.assertIn('export const RIGHTS_KINDS = ["likeness_photo", "voice_clone", "third_party_content"] as const;', TS)
         for k in KINDS:
@@ -180,26 +204,35 @@ class NothingIsOpened(unittest.TestCase):
 
 
 class TheRollbackAndTheDoc(unittest.TestCase):
-    def test_the_rollback_puts_0075s_body_back_verbatim_and_keeps_the_record(self):
-        self.assertEqual(definition(ROLLBACK, "create_creative_job"), definition(M0075, "create_creative_job"))
-        self.assertIn(BODY_0174, ROLLBACK)
-        self.assertIn(BODY_0075, ROLLBACK)
-        self.assertEqual(re.findall(r"grant execute on function (.*?);", code(ROLLBACK)), [f"{SIG} to authenticated"])
+    def test_the_rollback_puts_the_earlier_bodies_back_verbatim_and_keeps_the_record(self):
+        for name, (src, old, new, _b) in REPLACED.items():
+            self.assertEqual(definition(ROLLBACK, name), definition((MIG / src).read_text(encoding="utf-8"), name), name)
+            self.assertIn(old, ROLLBACK)
+            self.assertIn(new, ROLLBACK)
+        self.assertEqual(sorted(re.findall(r"grant execute on function (.*?);", code(ROLLBACK))), sorted([
+            "public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated",
+            "public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated"]))
         self.assertTrue(ROLLBACK.rstrip().endswith("commit;") and "\nbegin;\n" in ROLLBACK)
-        self.assertNotRegex(code(ROLLBACK), r"(?i)drop (table|trigger)|drop column|delete from|truncate")
+        self.assertNotRegex(code(ROLLBACK), r"(?i)drop table|drop column|delete from|truncate")
+        self.assertIn("drop trigger if exists model_registry_requirement_guard on public.model_registry;", ROLLBACK)
 
-    def test_the_file_says_how_to_apply_verify_and_undo(self):
+    def test_the_file_says_how_to_apply_verify_and_undo_and_what_replay_does(self):
         self.assertIn("APPLY AS ONE TRANSACTION", M0174)
         self.assertIn("set local lock_timeout = '5s';", M0174)
-        self.assertIn("-- Verify (run after applying", M0174)
+        self.assertIn("-- Verify (run after applying, AND after any manual replay of 0073 or 0075", M0174)
         self.assertIn("rollback_0174_rights_acknowledgement.sql", M0174)
-        self.assertIn("WHAT TO VERIFY BEFORE YOU APPLY", M0174)
+        self.assertIn("Re-running 0075 or 0073 after this file SILENTLY puts the old body back", M0174)
+        self.assertIn("It KEEPS the record", M0174)
+        self.assertNotIn("refused by 0075's own drift guard", M0174)
+        self.assertNotIn("dropped with", M0174)
 
     def test_the_migration_is_documented(self):
         self.assertIn("(0174)", MIGRATIONS_DOC)
         self.assertIn("0174_rights_acknowledgement.sql", MIGRATIONS_DOC)
         self.assertIn("rollback_0174_rights_acknowledgement.sql", MIGRATIONS_DOC)
-        self.assertIn(BODY_0174, DOC)
+        self.assertNotIn("Re-running 0075 after 0174 is refused", MIGRATIONS_DOC)
+        self.assertIn(REPLACED["create_creative_job"][2], DOC)
+        self.assertIn("pending native review", DOC)
         for k in KINDS:
             self.assertIn(f"`{k}`", DOC)
 

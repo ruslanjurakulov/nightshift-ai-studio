@@ -109,20 +109,23 @@ export function wordsFor(m: MissingAcknowledgement): { ok: true; kind: RightsKin
   return { ok: true, kind: m.kind, textVersion: m.textVersion };
 }
 
-/** The missing pairs of one dialog: the first kind asked about, with every subject of it. The rest wait for the next dialog. */
+/**
+ * The next thing to ask: ONE (kind, input) pair. Each file is its own question with its own box, so a person takes responsibility
+ * for the face in each picture they attached, not for "all of them" at once. The rest wait for the next box.
+ */
 export function nextGroup(missing: readonly MissingAcknowledgement[]): { kind: string; textVersion: string | null; subjects: string[] } | null {
   const first = missing[0];
   if (!first) return null;
-  const subjects = missing.filter((m) => m.kind === first.kind && m.textVersion === first.textVersion).map((m) => m.subject);
-  return { kind: first.kind, textVersion: first.textVersion, subjects: [...new Set(subjects)] };
+  return { kind: first.kind, textVersion: first.textVersion, subjects: [first.subject] };
 }
 
 /** The outcome of recording one acknowledgement, as the route answers it. */
-export type AcknowledgeProblem = "version_changed" | "source_unavailable" | "unavailable" | "forbidden" | "failed";
+export type AcknowledgeProblem = "version_changed" | "source_unavailable" | "rate_limited" | "unavailable" | "forbidden" | "failed";
 
 export function acknowledgeProblem(status: number, error: unknown): AcknowledgeProblem {
   if (error === "acknowledgement_version_changed") return "version_changed";
   if (error === "source_unavailable") return "source_unavailable";
+  if (error === "acknowledgement_limit" || status === 429) return "rate_limited";
   if (error === "acknowledgement_unavailable" || status === 503) return "unavailable";
   if (status === 401 || status === 403) return "forbidden";
   return "failed";

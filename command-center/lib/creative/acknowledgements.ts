@@ -10,6 +10,7 @@ import { RIGHTS_KINDS, parseStatus } from "@/lib/rights-acknowledgement";
 const MODEL_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const VERSION_RE = /^[a-z_]{3,40}\.v[0-9]{1,4}$/;
 const MAX_SUBJECTS = 4;
+const LOCALES = ["en", "ru", "uz"] as const;
 
 type DbError = { code?: string; message?: string; details?: string | null };
 
@@ -27,6 +28,8 @@ function refusal(error: DbError): CreativeResult {
     return answer(409, { error: "acknowledgement_version_changed", current: m ? m[1] : null });
   }
   if (error.code === "NS400" && word === "source_unavailable") return answer(422, { error: "source_unavailable" });
+  // The record cannot be cleaned up, so the database caps new rows per person (60 an hour).
+  if (error.code === "NS429" && word === "acknowledgement_limit") return answer(429, { error: "acknowledgement_limit" });
   if (error.code === "NS400") return answer(400, { error: "invalid_params" });
   return answer(502, { error: "failed" });
 }
@@ -57,25 +60,28 @@ export async function acknowledgementStatus(
 /** POST body → the one acknowledgement to record, or why not. */
 export function parseAcknowledgeInput(
   body: unknown,
-): { ok: true; kind: string; textVersion: string; subject: string } | { ok: false; result: CreativeResult } {
+): { ok: true; kind: string; textVersion: string; subject: string; locale: (typeof LOCALES)[number] } | { ok: false; result: CreativeResult } {
   const o = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
   if (!o) return { ok: false, result: answer(400, { error: "invalid_body" }) };
-  const { kind, text_version: textVersion, subject } = o;
+  const { kind, text_version: textVersion, subject, locale } = o;
   if (typeof kind !== "string" || !(RIGHTS_KINDS as readonly string[]).includes(kind)) return { ok: false, result: answer(400, { error: "invalid_params" }) };
   if (typeof textVersion !== "string" || !VERSION_RE.test(textVersion)) return { ok: false, result: answer(400, { error: "invalid_params" }) };
   if (!isUuid(subject)) return { ok: false, result: answer(400, { error: "invalid_params" }) };
-  return { ok: true, kind, textVersion, subject: subject as string };
+  // The language the words were shown in: the record says which of the three texts this person read.
+  if (typeof locale !== "string" || !(LOCALES as readonly string[]).includes(locale)) return { ok: false, result: answer(400, { error: "invalid_params" }) };
+  return { ok: true, kind, textVersion, subject: subject as string, locale: locale as (typeof LOCALES)[number] };
 }
 
 /** POST: record that THIS person takes responsibility for THIS input under THESE words (acknowledge_rights). */
 export async function acknowledgeRights(
   db: CreativeDb,
-  input: { kind: string; textVersion: string; subject: string },
+  input: { kind: string; textVersion: string; subject: string; locale: string },
 ): Promise<CreativeResult> {
   const { data, error } = await db.rpc("acknowledge_rights", {
     p_kind: input.kind,
     p_text_version: input.textVersion,
     p_subject: input.subject,
+    p_locale: input.locale,
   });
   if (error) return refusal(error);
   const out = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : null;
@@ -84,7 +90,7 @@ export async function acknowledgeRights(
     return answer(502, { error: "failed" });
   }
   return answer(out!.replay === true ? 200 : 201, {
-    acknowledgement: { kind: ack.kind, text_version: ack.text_version, subject: ack.subject, created_at: ack.created_at ?? null },
+    acknowledgement: { kind: ack.kind, text_version: ack.text_version, subject: ack.subject, locale: ack.locale ?? null, created_at: ack.created_at ?? null },
     replay: out!.replay === true,
   });
 }

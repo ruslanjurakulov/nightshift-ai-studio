@@ -44,6 +44,8 @@ MODELS = [
     ("vid-col", ["i2v"], {}, ["likeness_photo"], "model_vid_col_second", 2),
     # Requires nothing: the control.
     ("vid-free", ["i2v"], {}, None, "model_vid_free_second", 2),
+    # A picture model that requires nothing: a workflow's first step.
+    ("img-free", ["t2i"], {}, None, "model_img_free_image", 1),
 ]
 PRICES = ", ".join(f"('{u}', {c}, 0)" for _m, _c, _s, _col, u, c in MODELS) + ", ('job_minimum', 1, 0)"
 
@@ -102,14 +104,19 @@ def db():
          "(%s,%s,'a@x.io','owner'),(%s,%s,'a2@x.io','editor'),(%s,%s,'b@x.io','owner')", [ORG_A, UA, ORG_A, UA2, ORG_B, UB])
     d.su("select public.grant_credits(%s, 100, 'test')", [ORG_A])
     d.su("select public.grant_credits(%s, 100, 'test')", [ORG_B])
-    rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": "video.acme", "capabilities": caps,
+    def kind(m):
+        return "image" if m.startswith("img-") else "video"
+
+    rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": f"{kind(m)}.acme", "capabilities": caps,
              "credit_unit": unit, "entitlement": "any",
-             "spec": {"vendor_model": "acme-" + m, "output": "video", "durations_s": list(range(1, 61)), **extra}}
+             "spec": {"vendor_model": "acme-" + m, "output": kind(m), "durations_s": list(range(1, 61)), **extra}}
             for m, caps, extra, _col, unit, _c in MODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
+    # sync_model_registry disables every model it is NOT given (0035): every later sync here sends the whole set (sync_all).
+    d.rows = {r["id"]: r for r in rows}
     for m, caps, _x, col, _u, _c in MODELS:
-        d.su("select public.record_model_probe(%s, 'video.acme', %s, %s, true, null, null, 10, 100, 'security-lab')",
-             [m, "acme-" + m, caps[-1]])
+        d.su("select public.record_model_probe(%s, %s, %s, %s, true, null, null, 10, 100, 'security-lab')",
+             [m, f"{kind(m)}.acme", "acme-" + m, caps[-1]])
         d.su("update public.model_registry set availability='beta' where id=%s", [m])
         if col:
             d.su("update public.model_registry set requires_acknowledgement=%s where id=%s", [col, m])
@@ -122,14 +129,20 @@ def db():
             sec_db.drop_database(admin, name)
 
 
+def sync_all(db, **changed):
+    """One sync of every model this module installed, with `changed` rows replaced or added (a partial sync would disable the rest)."""
+    db.rows.update(changed)
+    db.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(list(db.rows.values()))])
+
+
 def err(fn):
     with pytest.raises(psycopg.Error) as e:
         fn()
     return e.value.sqlstate, str(e.value).splitlines()[0], (e.value.diag.message_detail or "")
 
 
-def ack(db, uid, subject, kind="likeness_photo", version=V1):
-    return db.act("authenticated", uid, "select public.acknowledge_rights(%s, %s, %s)", [kind, version, subject])[0][0]
+def ack(db, uid, subject, kind="likeness_photo", version=V1, locale="en"):
+    return db.act("authenticated", uid, "select public.acknowledge_rights(%s, %s, %s, %s)", [kind, version, subject, locale])[0][0]
 
 
 def create(db, uid, org, model, params, maxc=1000, idem=None, cap="i2v"):
@@ -265,11 +278,12 @@ def test_another_org_or_any_role_cannot_insert_directly(db, role, uid):
 
 
 def test_another_orgs_acknowledgement_does_not_open_a_job_in_mine(db):
-    # Bob acknowledges his own picture; Alice cannot use it (it is not her organization's), and his row says nothing for her.
+    # Bob acknowledges his own picture. Alice cannot use it: it is not her organization's, and the price (which comes first,
+    # so a model refused anyway never asks) says so exactly as for a missing file.
     pic_b = asset(db, ORG_B)
     ack(db, UB, pic_b)
     st, word, _ = err(lambda: create(db, UA, ORG_A, "vid-ack", {**I2V, "source_asset_id": pic_b}))
-    assert (st, word) == ("NS400", "acknowledgement_required")
+    assert (st, word) == ("NS400", "source_unavailable")
 
 
 # ── the text version ────────────────────────────────────────────────────────
@@ -302,6 +316,8 @@ def test_an_unknown_kind_or_version_is_refused(db):
     assert err(lambda: ack(db, UA, pic, version="likeness_photo.v0"))[:2] == ("NS409", "acknowledgement_version_changed")
     assert err(lambda: ack(db, UA, pic, version=None))[:2] == ("NS409", "acknowledgement_version_changed")
     assert err(lambda: ack(db, UA, "not-a-uuid"))[:2] == ("NS400", "source_unavailable")
+    assert err(lambda: ack(db, UA, pic, locale="de"))[:2] == ("NS400", "invalid_params")
+    assert err(lambda: ack(db, UA, pic, locale=None))[:2] == ("NS400", "invalid_params")
     assert rows_for(db, pic) == []
 
 
@@ -310,7 +326,7 @@ def test_an_unknown_kind_or_version_is_refused(db):
 def test_the_refusal_comes_before_any_hold(db):
     pic = asset(db, ORG_A)
     before = footprint(db, ORG_A)
-    # A confirmed price of 0 would be price_changed, and a price check needs the price: the acknowledgement is asked first.
+    # A confirmed price of 0 would be price_changed: the acknowledgement is asked right after the price, before its ceiling.
     st, word, _ = err(lambda: create(db, UA, ORG_A, "vid-ack", {**I2V, "source_asset_id": pic}, maxc=0))
     assert (st, word) == ("NS400", "acknowledgement_required")
     # An organization with no credits at all would be NS402: the acknowledgement is still asked first, and nothing moves.
@@ -427,6 +443,175 @@ def test_runway_requires_likeness_photo_and_stays_unsold(db):
                "capabilities": m["capabilities"], "credit_unit": m["credit_unit"], "entitlement": m["entitlement"],
                "spec": {k: v for k, v in m.items() if k not in ("id", "display_name", "provider", "adapter", "capabilities",
                                                                "credit_unit", "entitlement")}}
-        db.su("select public.sync_model_registry(%s::jsonb)", [json.dumps([row])])
+        sync_all(db, **{mid: row})
         assert db.su("select public.rights_acknowledgement_required(%s)", [mid])[0][0] == ["likeness_photo"]
         assert db.su("select availability from public.model_registry where id=%s", [mid])[0][0] == "hidden"
+
+
+# ── the language read (M4) ──────────────────────────────────────────────────
+
+def test_the_record_keeps_the_language_the_words_were_read_in(db):
+    pic = asset(db, ORG_A)
+    out = ack(db, UA, pic, locale="uz")
+    assert out["acknowledgement"]["locale"] == "uz"
+    assert db.su("select locale from public.rights_acknowledgements where subject_asset_id=%s", [pic]) == [("uz",)]
+    # A replay in another language answers the first row: the words were already read once.
+    again = ack(db, UA, pic, locale="ru")
+    assert again["replay"] is True and again["acknowledgement"]["locale"] == "uz"
+
+
+# ── the hourly cap (M3) ─────────────────────────────────────────────────────
+
+def test_a_person_cannot_flood_the_undeletable_record(db):
+    who = str(uuid.UUID(int=0x1A9))
+    db.su("insert into auth.users (id, email) values (%s, 'flood@x.io') on conflict do nothing", [who])
+    db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'flood@x.io', 'editor') "
+          "on conflict do nothing", [ORG_A, who])
+    pics = [asset(db, ORG_A) for _ in range(61)]
+    for p in pics[:60]:
+        assert ack(db, who, p)["replay"] is False
+    st, word, detail = err(lambda: ack(db, who, pics[60]))
+    assert (st, word, detail) == ("NS429", "acknowledgement_limit", "limit=60 window=1h")
+    assert rows_for(db, pics[60]) == []
+    # A replay is not a new row and is still answered.
+    assert ack(db, who, pics[0])["replay"] is True
+    # Another person is not held by this one's count.
+    assert ack(db, UA, pics[60])["replay"] is False
+
+
+# ── the requirement only grows (M2) ─────────────────────────────────────────
+
+def test_the_service_key_cannot_remove_a_requirement(db):
+    st, word, _ = err(lambda: db.act("service_role", None,
+                                     "update public.model_registry set requires_acknowledgement='{}' where id='vid-col'"))
+    assert (st, word) == ("42501", "requires_acknowledgement only grows")
+    assert db.su("select requires_acknowledgement from public.model_registry where id='vid-col'")[0][0] == ["likeness_photo"]
+    # Adding is allowed to the service key (it only narrows what is sold).
+    db.act("service_role", None, "update public.model_registry set requires_acknowledgement='{likeness_photo,third_party_content}' "
+                                 "where id='vid-col'")
+    assert db.su("select requires_acknowledgement from public.model_registry where id='vid-col'")[0][0] == ["likeness_photo", "third_party_content"]
+    # The table's owner (a migration) may remove it.
+    db.su("update public.model_registry set requires_acknowledgement='{likeness_photo}' where id='vid-col'")
+
+
+def test_a_sync_that_drops_the_spec_list_keeps_the_column(db):
+    assert db.su("select requires_acknowledgement from public.model_registry where id='vid-ack'")[0][0] == ["likeness_photo"]
+    row = dict(db.rows["vid-ack"])
+    row["spec"] = {k: v for k, v in row["spec"].items() if k != "requires_acknowledgement"}
+    db.rows["vid-ack"] = row
+    db.act("service_role", None, "select public.sync_model_registry(%s::jsonb)", [json.dumps(list(db.rows.values()))])
+    assert db.su("select spec ? 'requires_acknowledgement', requires_acknowledgement from public.model_registry where id='vid-ack'")[0] \
+        == (False, ["likeness_photo"])
+    pic = asset(db, ORG_A)
+    st, word, _ = err(lambda: create(db, UA, ORG_A, "vid-ack", {**I2V, "source_asset_id": pic}))
+    assert (st, word) == ("NS400", "acknowledgement_required")
+
+
+def test_a_spec_of_the_wrong_shape_fails_closed(db):
+    # L3: a number, an object or a boolean is not "nothing required": it is a kind nobody can acknowledge.
+    for bad in ("7", '{"kind": "likeness_photo"}', "true", '[3]'):
+        db.su("update public.model_registry set spec = jsonb_set(spec, '{requires_acknowledgement}', %s::jsonb) where id='vid-free'", [bad])
+        try:
+            assert "invalid_requires_acknowledgement" in db.su("select public.rights_acknowledgement_required('vid-free')")[0][0], bad
+            pic = asset(db, ORG_A)
+            st, word, _ = err(lambda: create(db, UA, ORG_A, "vid-free", {**I2V, "source_asset_id": pic}))
+            assert (st, word) == ("NS400", "acknowledgement_required"), bad
+        finally:
+            db.su("update public.model_registry set spec = spec - 'requires_acknowledgement' where id='vid-free'")
+    assert db.su("select public.rights_acknowledgement_required('vid-free')")[0][0] == []
+
+
+# ── workflows (M5) ──────────────────────────────────────────────────────────
+
+def _workflow(db, model, steps=None):
+    # A workflow has 2 to 6 steps (0073): a free picture first, then the step under test.
+    steps = steps or [{"capability": "t2i", "model": "img-free", "params": {"prompt": "a lighthouse"}},
+                      {"capability": "i2v", "model": model, "params": {"source_asset_id": {"$input": "pic"}, "duration_s": 4}}]
+    return db.act("authenticated", UA, "select public.save_workflow(%s::uuid, null, %s, %s::jsonb, %s::jsonb)",
+                  [ORG_A, f"wf-{model}-{uuid.uuid4().hex[:6]}", json.dumps([{"name": "pic", "kind": "asset"}]), json.dumps(steps)])[0][0]
+
+
+def test_a_workflow_step_that_needs_an_acknowledgement_is_refused_before_any_hold(db):
+    drain(db)
+    pic = asset(db, ORG_A)
+    ack(db, UA, pic)  # even acknowledged: a later step may run in another member's session
+    wf = _workflow(db, "vid-ack")
+    q = db.act("authenticated", UA, "select public.quote_workflow(%s, %s::jsonb)", [wf["id"], json.dumps({"pic": pic})])[0][0]
+    assert q["priced"] is False and q["steps"][1]["reason"] == "acknowledgement_required" and q["steps"][0]["priced"] is True
+    before = footprint(db, ORG_A)
+    st, word, detail = err(lambda: db.act("authenticated", UA,
+        "select public.start_workflow_run(%s::uuid, %s::uuid, %s::integer, %s::jsonb, %s::numeric)",
+        [str(uuid.uuid4()), wf["id"], wf["version"], json.dumps({"pic": pic}), 9]))
+    assert (st, word) == ("NS400", "acknowledgement_required") and detail.startswith("step(s) 2 ")
+    assert footprint(db, ORG_A) == before
+    assert db.su("select count(*) from public.workflow_runs where workflow_id=%s", [wf["id"]])[0][0] == 0
+
+
+def test_a_chained_step_is_refused_too_and_a_free_model_is_not(db):
+    drain(db)
+    asset(db, ORG_A)  # the quote's stand-in for the chained input
+    chained = [{"capability": "t2i", "model": "img-free", "params": {"prompt": "a lighthouse"}},
+               {"capability": "i2v", "model": "vid-ack", "params": {"source_asset_id": {"$step": 0}, "duration_s": 4}}]
+    wf = db.act("authenticated", UA, "select public.save_workflow(%s::uuid, null, %s, '[]'::jsonb, %s::jsonb)",
+                [ORG_A, "wf-chained", json.dumps(chained)])[0][0]
+    q = db.act("authenticated", UA, "select public.quote_workflow(%s, '{}'::jsonb)", [wf["id"]])[0][0]
+    assert q["steps"][1]["reason"] == "acknowledgement_required"
+    free = _workflow(db, "vid-free")
+    pic = asset(db, ORG_A)
+    q = db.act("authenticated", UA, "select public.quote_workflow(%s, %s::jsonb)", [free["id"], json.dumps({"pic": pic})])[0][0]
+    assert q["priced"] is True, q
+
+
+# ── the public API's answer (L1) ────────────────────────────────────────────
+
+def test_the_api_names_the_remedy(db):
+    out = db.su("select public.api_creative_refusal('NS400', 'acknowledgement_required', 'kind=likeness_photo version=likeness_photo.v1 subject=x')")[0][0]
+    assert out["status"] == 428 and out["error"]["code"] == "acknowledgement_required"
+    assert "in the Studio" in out["error"]["message"] and "Nothing was held or charged" in out["error"]["message"]
+
+
+# ── replay and rollback (M1) ────────────────────────────────────────────────
+
+def _gate_md5(db):
+    return db.su("select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc "
+                 "where oid='public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure")[0][0]
+
+
+def test_replaying_0174_changes_nothing_and_rollback_keeps_the_record(db):
+    gate = _gate_md5(db)
+    rows = db.su("select count(*) from public.rights_acknowledgements")[0][0]
+    db.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8"))
+    assert _gate_md5(db) == gate
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0174(c)
+    try:
+        assert _gate_md5(db) == "4c74918fd9d938c8fe4f5a3d26a09d84"
+        assert db.su("select count(*) from public.rights_acknowledgements")[0][0] == rows
+        assert db.su("select requires_acknowledgement from public.model_registry where id='vid-col'")[0][0] == ["likeness_photo"]
+    finally:
+        with psycopg.connect(db.dsn, autocommit=True) as c:
+            sec_db.put_back_0174(c)
+    assert _gate_md5(db) == gate
+
+
+def test_a_replay_of_0075_silently_removes_the_gate_which_is_why_the_doc_says_undo_first():
+    """M1, measured on a scratch database: 0075's guard is a position() check that 0174's body passes, so re-running 0075 over
+    0174 puts the old body back without a word. This pins the hazard the header and docs/MIGRATIONS.md describe; a later guard
+    that closes it shows up here, and the docs change with it."""
+    admin = sec_db.admin_dsn()
+    if not admin:
+        pytest.skip(f"{sec_db.DSN_ENV} is not set")
+    name = f"ns_rights_ack_replay_{uuid.uuid4().hex[:8]}"
+    d = Db(sec_db.build(admin, name))
+    try:
+        gate = _gate_md5(d)
+        assert gate != "4c74918fd9d938c8fe4f5a3d26a09d84"
+        d.su((sec_db.MIGRATIONS / "0075_model_router.sql").read_text(encoding="utf-8"))
+        assert _gate_md5(d) == "4c74918fd9d938c8fe4f5a3d26a09d84", "0075 replayed over 0174 and kept the gate: update the docs"
+        # And 0174 then refuses to go back on by itself: 0075 also put its own api_creative_refusal over 0124's. Re-running an
+        # older file over newer ones is not a supported operation; the Verify query is how it is noticed.
+        st, msg, _ = err(lambda: d.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8")))
+        assert "0174 found public.api_creative_refusal(text, text, text) with a body that is neither 0124's nor 0174's" in msg
+    finally:
+        if not os.environ.get("NIGHTSHIFT_SECURITY_KEEP"):
+            sec_db.drop_database(admin, name)

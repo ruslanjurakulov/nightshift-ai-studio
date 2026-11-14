@@ -321,8 +321,10 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: Migrations that call 0124's model_is_available() and refuse to apply without it (0151, the Studio's probe seed; 0162, the MCP
 #: Studio tools' API functions, whose guard names it): a sequence that leaves 0124 out leaves these out too, and puts them back
 #: after it, in this order. 0164 (the site's live counters) does not need 0124; it is listed so that a sequence which leaves 0124
-#: out and puts it back still ends on the newest file, as build_sequence() does.
-ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql")
+#: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
+#: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
+ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
+           "0174_rights_acknowledgement.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -549,15 +551,17 @@ ROLLBACK_0174 = REPO / "docs" / "sql" / "rollback_0174_rights_acknowledgement.sq
 
 def has_0174(conn_or_session) -> bool:
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    return bool(conn.execute("select to_regprocedure('public.acknowledge_rights(text, text, text)') is not null").fetchone()[0])
+    return bool(conn.execute("select to_regprocedure('public.acknowledge_rights(text, text, text, text)') is not null").fetchone()[0])
 
 
 def take_off_0174(conn_or_session) -> None:
-    """0174 replaces create_creative_job() on 0075's body, and 0075 (and any later file that pins that body) refuses any other
-    body. A test that replays 0075, or needs the job start path without the acknowledgement step, takes 0174 off first with its
-    own rollback: 0075's body comes back and the four acknowledgement functions go, while rights_acknowledgements (the record, with
-    its append-only triggers), rights_acknowledgement_kinds and model_registry.requires_acknowledgement stay, as the rollback keeps
-    them. put_back_0174 applies 0174 again where the chain goes on; it picks the kept tables up as its own."""
+    """0174 replaces create_creative_job() (0075's body), workflow_quote_steps() and start_workflow_run() (0073's) and
+    api_creative_refusal() (0124's). 0124's drift guard refuses any body but its own, so a test that replays 0124 takes 0174 off
+    first. 0075 and 0073 do NOT refuse: 0075's guard is a position() check that 0174's body also passes, and 0073 has none, so
+    replaying either over 0174 silently puts the old body back and removes the gate. A test that replays them takes 0174 off first
+    too, and puts it back after. The rollback brings the four earlier bodies back and drops 0174's functions and its requirement
+    guard, while rights_acknowledgements (the record, with its append-only triggers), rights_acknowledgement_kinds and
+    model_registry.requires_acknowledgement stay. put_back_0174 applies 0174 again; it picks the kept tables up as its own."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0174(conn):
         text = ROLLBACK_0174.read_text(encoding="utf-8")

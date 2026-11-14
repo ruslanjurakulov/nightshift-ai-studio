@@ -25,7 +25,7 @@ export type RightsAckState =
   | { phase: "ask"; missing: readonly MissingAcknowledgement[]; subjectKeys: Readonly<Record<string, RightsSubjectKey>> };
 
 /** One POST to /api/creative/acknowledgements; injectable so the dialog's states can be tested without a server. */
-export type PostAcknowledgement = (input: { kind: string; text_version: string; subject: string }) => Promise<{ status: number; body: Record<string, unknown> }>;
+export type PostAcknowledgement = (input: { kind: string; text_version: string; subject: string; locale: string }) => Promise<{ status: number; body: Record<string, unknown> }>;
 
 export const postAcknowledgement: PostAcknowledgement = async (input) => {
   const res = await fetch("/api/creative/acknowledgements", {
@@ -188,7 +188,7 @@ function AskGroup({
   onClose: () => void;
   onRecorded: () => void;
 }) {
-  const { t, fmt } = useI18n();
+  const { t, fmt, locale } = useI18n();
   const d = t.rightsAck;
   const uid = useId();
   const [checked, setChecked] = useState(false);
@@ -199,7 +199,8 @@ function AskGroup({
   const words = wordsFor({ kind: group.kind, textVersion: group.textVersion, subject: group.subjects[0] ?? "" });
   const shownProblem = words.ok ? problem : "stale";
   // Only a failure that another press could fix leaves the button on; the others need a reload or another file.
-  const final = shownProblem === "stale" || shownProblem === "version_changed" || shownProblem === "unavailable" || shownProblem === "forbidden";
+  const final =
+    shownProblem === "stale" || shownProblem === "version_changed" || shownProblem === "unavailable" || shownProblem === "forbidden" || shownProblem === "rate_limited";
 
   async function confirm() {
     if (!words.ok || !checked || busy || final) return;
@@ -208,7 +209,8 @@ function AskGroup({
     try {
       for (const subject of group.subjects) {
         if (recorded.current.has(subject)) continue;
-        const res = await post({ kind: words.kind, text_version: words.textVersion, subject });
+        // The language the words are shown in now is the one the record keeps.
+        const res = await post({ kind: words.kind, text_version: words.textVersion, subject, locale });
         if (res.status !== 200 && res.status !== 201) {
           setProblem(acknowledgeProblem(res.status, res.body.error));
           return;

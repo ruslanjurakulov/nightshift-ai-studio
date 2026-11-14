@@ -96,8 +96,9 @@ describe("the words, in en, ru and uz", () => {
     for (const s of Object.values(dictionaries.uz.rightsAck.kinds).flatMap((k) => [k.question, k.statement])) expect(s).not.toMatch(/['`]/);
   });
 
-  it("the refusal has a sentence in every locale", () => {
+  it("the refusal has a sentence in every locale, and the API lists the code", () => {
     expect(CREATIVE_ERRORS).toContain("acknowledgement_required");
+    expect(readFileSync(join(__dirname, "..", "lib/api/openapi.ts"), "utf8")).toMatch(/\n  "acknowledgement_required",\n/);
     for (const loc of ["en", "ru", "uz"] as const) {
       expect((dictionaries[loc].creative.errors as Record<string, string>).acknowledgement_required, loc).toBeTruthy();
     }
@@ -145,7 +146,7 @@ describe("reading the database", () => {
     }
   });
 
-  it("nextGroup: one kind at a time, with every subject of it", () => {
+  it("nextGroup: one (kind, file) at a time, so every file gets its own box", () => {
     const v = "likeness_photo.v1";
     expect(
       nextGroup([
@@ -153,7 +154,7 @@ describe("reading the database", () => {
         { kind: "third_party_content", textVersion: "third_party_content.v1", subject: A },
         { kind: "likeness_photo", textVersion: v, subject: B },
       ]),
-    ).toEqual({ kind: "likeness_photo", textVersion: v, subjects: [A, B] });
+    ).toEqual({ kind: "likeness_photo", textVersion: v, subjects: [A] });
     expect(nextGroup([])).toBeNull();
   });
 
@@ -161,6 +162,7 @@ describe("reading the database", () => {
     expect(acknowledgeProblem(409, "acknowledgement_version_changed")).toBe("version_changed");
     expect(acknowledgeProblem(422, "source_unavailable")).toBe("source_unavailable");
     expect(acknowledgeProblem(503, "acknowledgement_unavailable")).toBe("unavailable");
+    expect(acknowledgeProblem(429, "acknowledgement_limit")).toBe("rate_limited");
     expect(acknowledgeProblem(403, "forbidden")).toBe("forbidden");
     expect(acknowledgeProblem(502, "failed")).toBe("failed");
   });
@@ -211,26 +213,30 @@ describe("the route's two calls", () => {
   it("acknowledge: the body is checked, then the database decides", async () => {
     expect(parseAcknowledgeInput({ kind: "face_swap", text_version: "face_swap.v1", subject: A }).ok).toBe(false);
     expect(parseAcknowledgeInput({ kind: "likeness_photo", text_version: "1", subject: A }).ok).toBe(false);
-    expect(parseAcknowledgeInput({ kind: "likeness_photo", text_version: "likeness_photo.v1", subject: "x" }).ok).toBe(false);
-    const ok = parseAcknowledgeInput({ kind: "likeness_photo", text_version: "likeness_photo.v1", subject: A, user_id: "someone else" });
-    expect(ok).toEqual({ ok: true, kind: "likeness_photo", textVersion: "likeness_photo.v1", subject: A });
+    expect(parseAcknowledgeInput({ kind: "likeness_photo", text_version: "likeness_photo.v1", subject: "x", locale: "en" }).ok).toBe(false);
+    // The language the words were read in is required, and only the three the app speaks.
+    expect(parseAcknowledgeInput({ kind: "likeness_photo", text_version: "likeness_photo.v1", subject: A }).ok).toBe(false);
+    expect(parseAcknowledgeInput({ kind: "likeness_photo", text_version: "likeness_photo.v1", subject: A, locale: "de" }).ok).toBe(false);
+    const ok = parseAcknowledgeInput({ kind: "likeness_photo", text_version: "likeness_photo.v1", subject: A, locale: "uz", user_id: "someone else" });
+    expect(ok).toEqual({ ok: true, kind: "likeness_photo", textVersion: "likeness_photo.v1", subject: A, locale: "uz" });
 
-    const ack = { kind: "likeness_photo", text_version: "likeness_photo.v1", subject: A, created_at: "2026-11-14T10:00:00Z" };
+    const ack = { kind: "likeness_photo", text_version: "likeness_photo.v1", subject: A, locale: "uz", created_at: "2026-11-14T10:00:00Z" };
     const { db, calls } = fake({ data: { acknowledgement: ack, replay: false }, error: null });
-    expect(await acknowledgeRights(db, { kind: "likeness_photo", textVersion: "likeness_photo.v1", subject: A })).toEqual({
+    expect(await acknowledgeRights(db, { kind: "likeness_photo", textVersion: "likeness_photo.v1", subject: A, locale: "uz" })).toEqual({
       status: 201,
       body: { acknowledgement: ack, replay: false },
     });
     // Who is never sent: the database reads auth.uid().
-    expect(calls).toEqual([["acknowledge_rights", { p_kind: "likeness_photo", p_text_version: "likeness_photo.v1", p_subject: A }]]);
+    expect(calls).toEqual([["acknowledge_rights", { p_kind: "likeness_photo", p_text_version: "likeness_photo.v1", p_subject: A, p_locale: "uz" }]]);
   });
 
   it("acknowledge: each refusal in the route's own words", async () => {
-    const input = { kind: "likeness_photo", textVersion: "likeness_photo.v1", subject: A };
+    const input = { kind: "likeness_photo", textVersion: "likeness_photo.v1", subject: A, locale: "en" };
     const cases: Array<[unknown, number, Record<string, unknown>]> = [
       [{ code: "NS409", message: "acknowledgement_version_changed", details: "current=likeness_photo.v2" }, 409, { error: "acknowledgement_version_changed", current: "likeness_photo.v2" }],
       [{ code: "NS400", message: "source_unavailable", details: "subject names no file" }, 422, { error: "source_unavailable" }],
       [{ code: "42501", message: "forbidden" }, 403, { error: "forbidden" }],
+      [{ code: "NS429", message: "acknowledgement_limit", details: "limit=60 window=1h" }, 429, { error: "acknowledgement_limit" }],
       [{ code: "PGRST202", message: "Could not find the function public.acknowledge_rights" }, 503, { error: "acknowledgement_unavailable" }],
       [{ code: "XX000", message: "boom" }, 502, { error: "failed" }],
     ];

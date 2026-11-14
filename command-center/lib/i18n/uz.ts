@@ -5265,6 +5265,7 @@ export const uz: Dictionary = {
       totalTitle: "Umumiy narx",
       totalValue: "{n} kredit",
       noTotal: "Narx yoʻq",
+      ackStepsWhy: "{steps}-qadam kirish fayliga huquqingizni tasdiqlashni soʻraydigan modeldan foydalanadi, jarayon esa buni soʻray olmaydi. Bu qadamni Studiyada bajaring. Hech narsa boshlanmaydi.",
       noTotalWhy: "Ishga tushirish oʻchirilgan: qadamning narxi yoʻq — {steps}. Hech narsa taxmin qilinmaydi va hech narsa boshlanmaydi.",
       stepLine: "{n}-qadam · {tool}",
       stepPrice: "{n} kredit",

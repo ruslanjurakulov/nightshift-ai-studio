@@ -44,5 +44,5 @@ def seed(conn, sc) -> None:
 
     for t in sc.tenants():
         with acting(conn, t.actor, commit=True) as s:
-            out = s.value("select public.acknowledge_rights('likeness_photo', 'likeness_photo.v1', %s)", [t.media_asset])
+            out = s.value("select public.acknowledge_rights('likeness_photo', 'likeness_photo.v1', %s, 'en')", [t.media_asset])
             SUBJECT[t.key] = out["acknowledgement"]["subject"]
