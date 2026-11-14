@@ -118,7 +118,7 @@ class Numbering(unittest.TestCase):
         # it names none of the three words below.
         # 0162 (two read-only API functions for the MCP Studio tools: api_creative_models, api_creative_job_files) was reviewed the
         # same way: it names none of the three words below.
-        # 0163 (a concept-thumbnail channel's run is priced with its images) was reviewed against these pins: it replaces
+        # 0169 (a concept-thumbnail channel's run is priced with its images) was reviewed against these pins: it replaces
         # quote_series_episode and start_series_episode on 0120's bodies and oauth_create_video on 0094's, none of which is
         # request_series_plan, and names neither request_series_plan nor series_plan_cap_settings. It names series_plans, but only to
         # READ a plan's channel (and in 0120's own start_series_episode, carried over unchanged): it alters no planning table, so none of

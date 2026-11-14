@@ -1531,7 +1531,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.render_job_params_valid(jsonb,text)", "public.render_jobs_payment_guard()")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_", "0163_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_", "0169_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s_: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s_]).fetchone()[0],
                          b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s_]).fetchone()[0]) for s_ in sigs}
@@ -1640,7 +1640,7 @@ def test_the_rollback_strips_the_series_key_from_finished_runs_so_the_old_valida
     s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
 
 
-# ═══ 0163: a concept-thumbnail channel's episode is priced with its generated images ═══════════════════════════════════════
+# ═══ 0169: a concept-thumbnail channel's episode is priced with its generated images ═══════════════════════════════════════
 
 def make_concept(su, channel, mode="concept"):
     become(su, None)
@@ -1648,8 +1648,8 @@ def make_concept(su, channel, mode="concept"):
             "where channel_id = %s returning 1", [mode, channel])
 
 
-def test_0163_a_concept_channels_episode_is_quoted_and_held_with_its_images(conn, world):
-    """The worker refuses a hold that leaves the up to 4 generated images out (modules/credits.minimum_reservation). Before 0163 the episode
+def test_0169_a_concept_channels_episode_is_quoted_and_held_with_its_images(conn, world):
+    """The worker refuses a hold that leaves the up to 4 generated images out (modules/credits.minimum_reservation). Before 0169 the episode
     was held at the bare floor and refused at the worker, and a refused episode blocks every later one of its series."""
     s = world.su
     plan, eps = ready_plan(s, world.ed, world.chan_a)
@@ -1663,7 +1663,7 @@ def test_0163_a_concept_channels_episode_is_quoted_and_held_with_its_images(conn
     assert holds(s, world.org_a) == [("rj-se-" + eps[0].replace("-", ""), 25, "open")]
 
 
-def test_0163_unpriced_images_make_the_episode_unpriced_never_the_price_without_them(conn, world):
+def test_0169_unpriced_images_make_the_episode_unpriced_never_the_price_without_them(conn, world):
     s = world.su
     plan, eps = ready_plan(s, world.ed, world.chan_a)
     make_concept(s, world.chan_a)
@@ -1675,7 +1675,7 @@ def test_0163_unpriced_images_make_the_episode_unpriced_never_the_price_without_
     assert holds(s, world.org_a) == [] and run_jobs(s, world.chan_a) == []
 
 
-def test_0163_a_frame_channels_episode_keeps_0120s_price(conn, world):
+def test_0169_a_frame_channels_episode_keeps_0120s_price(conn, world):
     s = world.su
     plan, eps = ready_plan(s, world.ed, world.chan_a)
     for mode in ("frame", "conceptual", ""):

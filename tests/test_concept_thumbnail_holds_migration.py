@@ -1,7 +1,7 @@
-"""supabase/migrations/0163_concept_thumbnail_holds.sql — the database prices a concept-thumbnail channel's run with
+"""supabase/migrations/0169_concept_thumbnail_holds.sql — the database prices a concept-thumbnail channel's run with
 its generated images, as the worker's floor demands (modules/credits.minimum_reservation).
 
-The behaviour is attacked for real in tests/security/test_sec_concept_thumbnail_holds.py and the "0163" tests of
+The behaviour is attacked for real in tests/security/test_sec_concept_thumbnail_holds.py and the "0169" tests of
 test_sec_series_tables.py / test_sec_mcp_oauth.py (Postgres 16, CI job `rls`). These pin the text, so a later edit
 cannot quietly break what the lab happens not to exercise:
 
@@ -25,8 +25,8 @@ sys.path.insert(0, str(ROOT))
 from modules import credits  # noqa: E402
 
 MIGRATIONS = ROOT / "supabase" / "migrations"
-SQL = (MIGRATIONS / "0163_concept_thumbnail_holds.sql").read_text()
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0163_concept_thumbnail_holds.sql").read_text()
+SQL = (MIGRATIONS / "0169_concept_thumbnail_holds.sql").read_text()
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0169_concept_thumbnail_holds.sql").read_text()
 SEC_DB = (ROOT / "tests" / "security" / "sec_db.py").read_text()
 S0120 = (MIGRATIONS / "0120_series_tables.sql").read_text()
 S0094 = (MIGRATIONS / "0094_extra_credits_toggle.sql").read_text()
@@ -94,13 +94,13 @@ class Hashes(unittest.TestCase):
         return set(re.findall(r"\b[0-9a-f]{32}\b", text))
 
     def test_the_guard_the_end_state_the_rollback_and_the_lab_agree(self):
-        before = set(re.findall(r'"([0-9a-f]{32})"', SEC_DB.split("_BEFORE_0163 = ", 1)[1].split("}", 1)[0]))
+        before = set(re.findall(r'"([0-9a-f]{32})"', SEC_DB.split("_BEFORE_0169 = ", 1)[1].split("}", 1)[0]))
         self.assertEqual(len(before), 3)
         mig = self.hashes(SQL)
         self.assertTrue(before <= mig, "the lab's BEFORE hashes are the migration's")
         after = mig - before
         self.assertEqual(len(after), 5, "three replaced bodies and two new functions")
-        self.assertTrue(self.hashes(ROLLBACK) <= after, "the rollback refuses anything but 0163's bodies")
+        self.assertTrue(self.hashes(ROLLBACK) <= after, "the rollback refuses anything but 0169's bodies")
 
 
 class Contract(unittest.TestCase):

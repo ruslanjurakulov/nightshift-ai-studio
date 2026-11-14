@@ -1,4 +1,4 @@
--- rollback_0163_concept_thumbnail_holds.sql — takes migration 0163 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the
+-- rollback_0169_concept_thumbnail_holds.sql — takes migration 0169 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the
 -- app runs it.
 --
 -- WHEN YOU NEED IT. If the database's own prices (a series episode, a video asked for over MCP) must stop carrying a concept-thumbnail
@@ -7,13 +7,13 @@
 -- channel is refused again.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if a live body is not 0163's (a later change would be undone).
+--   0. REFUSES (changes nothing) if a live body is not 0169's (a later change would be undone).
 --   1. Puts quote_series_episode() and start_series_episode() back to 0120's bodies and oauth_create_video() back to 0094's, byte for
 --      byte, with their grants.
 --   2. Drops series_episode_price(integer, text) and concept_thumbnail_credits(text). The one-argument series_episode_price is 0120's and
 --      stays.
 --
--- tests/security/test_sec_concept_thumbnail_holds.py applies this file to the lab database and re-applies 0163.
+-- tests/security/test_sec_concept_thumbnail_holds.py applies this file to the lab database and re-applies 0169.
 
 begin;
 set local lock_timeout = '5s';
@@ -25,13 +25,13 @@ declare
   got  text;
 begin
   for sig, want in values
-    ('public.quote_series_episode(uuid)', 'bc65c3a373f86234e31f6a95564c3f72'),
-    ('public.start_series_episode(uuid, numeric, text, boolean)', 'e16dcc884ae25d0173a73ec1a04fcbd8'),
-    ('public.oauth_create_video(text, text, jsonb, text, text)', '6569154f72af9169e2c3b2d306531465')
+    ('public.quote_series_episode(uuid)', '809576010f2eb785ec089d3c78fdc600'),
+    ('public.start_series_episode(uuid, numeric, text, boolean)', '8250180e07903b999afbae093a99c3cb'),
+    ('public.oauth_create_video(text, text, jsonb, text, text)', 'e67c7491ce92f0162c8547f3025103c0')
   loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = to_regprocedure(sig);
     if got is distinct from want then
-      raise exception 'rollback 0163: % is not 0163''s body (md5 %): read the live body first', sig, got;
+      raise exception 'rollback 0169: % is not 0169''s body (md5 %): read the live body first', sig, got;
     end if;
   end loop;
 end $$;

@@ -1,4 +1,4 @@
-"""Migration 0163 — the database's own prices (a series episode, a video asked for over MCP) carry a concept-thumbnail
+"""Migration 0169 — the database's own prices (a series episode, a video asked for over MCP) carry a concept-thumbnail
 channel's generated images, exactly as the worker's floor demands them (modules/credits.minimum_reservation).
 
 What would break without these:
@@ -9,10 +9,10 @@ What would break without these:
   lands a cent under the worker's floor;
 * unpriced images read as 0, and the run is held without them;
 * an API role calls a price helper directly;
-* the rollback does not restore 0120's and 0094's bodies byte for byte, or 0163 does not apply again on top.
+* the rollback does not restore 0120's and 0094's bodies byte for byte, or 0169 does not apply again on top.
 
 The behaviour of the two callers (the quote, the hold, the refusal) is attacked where their worlds live:
-tests/security/test_sec_series_tables.py and tests/security/test_sec_mcp_oauth.py (the "0163" tests).
+tests/security/test_sec_series_tables.py and tests/security/test_sec_mcp_oauth.py (the "0169" tests).
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ from sec_db import as_superuser
 sys.path.insert(0, str(sec_db.REPO))
 from modules import credits  # noqa: E402 — stdlib only; the floor the worker applies
 
-MIGRATION = sec_db.MIGRATION_0163
-ROLLBACK = sec_db.ROLLBACK_0163
-CHANNEL = "chan-0163"
+MIGRATION = sec_db.MIGRATION_0169
+ROLLBACK = sec_db.ROLLBACK_0169
+CHANNEL = "chan-0169"
 BODIES = ("public.quote_series_episode(uuid)", "public.start_series_episode(uuid, numeric, text, boolean)",
           "public.oauth_create_video(text, text, jsonb, text, text)")
 
@@ -148,10 +148,10 @@ def test_a_replay_changes_nothing(su):
     assert _defs(su) == before
 
 
-def test_the_rollback_restores_0120s_and_0094s_bodies_byte_for_byte_and_0163_applies_again(su):
+def test_the_rollback_restores_0120s_and_0094s_bodies_byte_for_byte_and_0169_applies_again(su):
     applied = _defs(su)
     su.conn.execute(_body(ROLLBACK))
-    for sig, h in sec_db._BEFORE_0163.items():
+    for sig, h in sec_db._BEFORE_0169.items():
         assert sec_db._live_md5(su, sig) == h, sig
     for sig in ("public.concept_thumbnail_credits(text)", "public.series_episode_price(integer, text)"):
         assert su.value("select to_regprocedure(%s)", [sig]) is None, sig
@@ -167,12 +167,12 @@ def test_the_migration_refuses_a_body_it_does_not_know(su):
                         "language sql stable as $$ select '{}'::jsonb $$")
         with pytest.raises(Exception) as e:
             su.conn.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert "neither 0120's body nor 0163's" in str(e.value)
+        assert "neither 0120's body nor 0169's" in str(e.value)
     finally:
         su.conn.execute("rollback to savepoint sp")
 
 
-def test_the_rollback_refuses_a_body_that_is_not_0163s(su):
+def test_the_rollback_refuses_a_body_that_is_not_0169s(su):
     su.conn.execute("savepoint sp")
     try:
         su.conn.execute("create or replace function public.oauth_create_video(p_token_hash text, p_channel_id text, p_params jsonb, "
@@ -180,6 +180,6 @@ def test_the_rollback_refuses_a_body_that_is_not_0163s(su):
                         "language sql stable as $$ select '{}'::jsonb $$")
         with pytest.raises(Exception) as e:
             su.conn.execute(_body(ROLLBACK))
-        assert "is not 0163's body" in str(e.value)
+        assert "is not 0169's body" in str(e.value)
     finally:
         su.conn.execute("rollback to savepoint sp")

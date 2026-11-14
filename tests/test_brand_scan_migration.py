@@ -124,7 +124,7 @@ class Numbering(unittest.TestCase):
         # pins: nothing of 0131's or 0133's.
         # 0162 (two read-only API functions for the MCP Studio tools: api_creative_models, api_creative_job_files) was reviewed
         # against these pins: nothing of 0131's or 0133's.
-        # 0163 (a concept-thumbnail channel's run is priced with its images: concept_thumbnail_credits, a two-argument
+        # 0169 (a concept-thumbnail channel's run is priced with its images: concept_thumbnail_credits, a two-argument
         # series_episode_price, and three series / MCP functions with only the price changed) was reviewed against these pins:
         # nothing of 0131's or 0133's.
         # 0164 (the site's live public counters: site_settings and three new functions over videos, intents, generations and runs)

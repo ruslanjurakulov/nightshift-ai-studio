@@ -1,4 +1,4 @@
--- 0163 — a concept-thumbnail channel's run is priced with its generated images, wherever the database prices it.
+-- 0169 — a concept-thumbnail channel's run is priced with its generated images, wherever the database prices it.
 --
 -- WHY. A channel with agent_config.thumbnail_mode = 'concept' (0158) buys up to 4 generated images per run, on the
 -- worker's keys. The Command Center's hold adds them (lib/credits.ts withConceptThumbnail), and the worker now refuses a
@@ -26,20 +26,20 @@
 --       from pg_proc where oid = 'public.start_series_episode(uuid, numeric, text, boolean)'::regprocedure
 --     union all select 'oauth_create_video', md5(regexp_replace(prosrc, '\s+', ' ', 'g'))
 --       from pg_proc where oid = 'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure;
---   expected BEFORE (0120 and 0094 applied, 0163 not):
+--   expected BEFORE (0120 and 0094 applied, 0169 not):
 --     quote_series_episode         9ba908b7888b5cab0281b8cf87e8659a
 --     start_series_episode         f3598d71d76e780b6973f88d8a743d2b
 --     oauth_create_video           244a5779e4388525f5f345b59379029f
 --   expected AFTER (the last block of this file asserts the same, inside the transaction):
---     quote_series_episode         bc65c3a373f86234e31f6a95564c3f72
---     start_series_episode         e16dcc884ae25d0173a73ec1a04fcbd8
---     oauth_create_video           6569154f72af9169e2c3b2d306531465
+--     quote_series_episode         809576010f2eb785ec089d3c78fdc600
+--     start_series_episode         8250180e07903b999afbae093a99c3cb
+--     oauth_create_video           e67c7491ce92f0162c8547f3025103c0
 --     concept_thumbnail_credits    93ecebafdd6738762a480f75527fd508
 --     series_episode_price(i, t)   c27ede9c11d262b6047a93e0f81f4042
 --   If a live value is anything else, STOP: something was applied by hand, and replacing the body would silently undo it.
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1). Additive and
--- idempotent: a second run finds this file's bodies and changes nothing. Rollback: docs/sql/rollback_0163_concept_thumbnail_holds.sql.
+-- idempotent: a second run finds this file's bodies and changes nothing. Rollback: docs/sql/rollback_0169_concept_thumbnail_holds.sql.
 -- REQUIRES 0094 (oauth_create_video's latest body), 0120 (the series tables, quote_series_episode's and start_series_episode's latest
 -- bodies, series_episode_price) and 0158 (thumbnail_mode is an administrator's to change).
 
@@ -54,7 +54,7 @@ declare
   sp text;
 begin
   if to_regprocedure('public.series_episode_price(integer)') is null then
-    raise exception '0163 needs 0120_series_tables.sql (series_episode_price): apply it first';
+    raise exception '0169 needs 0120_series_tables.sql (series_episode_price): apply it first';
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into q
     from pg_proc p where p.oid = to_regprocedure('public.quote_series_episode(uuid)');
@@ -66,20 +66,20 @@ begin
     from pg_proc p where p.oid = to_regprocedure('public.concept_thumbnail_credits(text)');
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into sp
     from pg_proc p where p.oid = to_regprocedure('public.series_episode_price(integer, text)');
-  if q is null or q <> all (array['9ba908b7888b5cab0281b8cf87e8659a', 'bc65c3a373f86234e31f6a95564c3f72']) then
-    raise exception '0163 found a quote_series_episode() that is neither 0120''s body nor 0163''s (md5 %): read the live body first', q;
+  if q is null or q <> all (array['9ba908b7888b5cab0281b8cf87e8659a', '809576010f2eb785ec089d3c78fdc600']) then
+    raise exception '0169 found a quote_series_episode() that is neither 0120''s body nor 0169''s (md5 %): read the live body first', q;
   end if;
-  if st is null or st <> all (array['f3598d71d76e780b6973f88d8a743d2b', 'e16dcc884ae25d0173a73ec1a04fcbd8']) then
-    raise exception '0163 found a start_series_episode() that is neither 0120''s body nor 0163''s (md5 %): read the live body first', st;
+  if st is null or st <> all (array['f3598d71d76e780b6973f88d8a743d2b', '8250180e07903b999afbae093a99c3cb']) then
+    raise exception '0169 found a start_series_episode() that is neither 0120''s body nor 0169''s (md5 %): read the live body first', st;
   end if;
-  if o is null or o <> all (array['244a5779e4388525f5f345b59379029f', '6569154f72af9169e2c3b2d306531465']) then
-    raise exception '0163 found an oauth_create_video() that is neither 0094''s body nor 0163''s (md5 %): read the live body first', o;
+  if o is null or o <> all (array['244a5779e4388525f5f345b59379029f', 'e67c7491ce92f0162c8547f3025103c0']) then
+    raise exception '0169 found an oauth_create_video() that is neither 0094''s body nor 0169''s (md5 %): read the live body first', o;
   end if;
   if c is not null and c <> '93ecebafdd6738762a480f75527fd508' then
-    raise exception '0163 found a concept_thumbnail_credits() that is not this file''s body (md5 %): read the live body first', c;
+    raise exception '0169 found a concept_thumbnail_credits() that is not this file''s body (md5 %): read the live body first', c;
   end if;
   if sp is not null and sp <> 'c27ede9c11d262b6047a93e0f81f4042' then
-    raise exception '0163 found a series_episode_price(integer, text) that is not this file''s body (md5 %): read the live body first', sp;
+    raise exception '0169 found a series_episode_price(integer, text) that is not this file''s body (md5 %): read the live body first', sp;
   end if;
 end $$;
 
@@ -160,7 +160,7 @@ begin
   end if;
   v_ex := public.credits_exempt(ep.org_id);
   v_block := public.series_episode_blocker(ep.id);
-  -- 0163: the episode's channel decides one add-on (concept thumbnails), as the worker's floor does.
+  -- 0169: the episode's channel decides one add-on (concept thumbnails), as the worker's floor does.
   v_price := case when v_ex then null else public.series_episode_price(ep.duration_s,
     (select p.channel_id from public.series_plans p where p.id = ep.plan_id)) end;
   return jsonb_build_object(
@@ -246,7 +246,7 @@ begin
   end if;
 
   if not v_ex then
-    -- 0163: what the worker's floor demands of this channel's run (modules/credits.minimum_reservation).
+    -- 0169: what the worker's floor demands of this channel's run (modules/credits.minimum_reservation).
     v_price := public.series_episode_price(ep.duration_s, pl.channel_id);
     if v_price is null then
       raise exception 'unpriced' using errcode = 'NS400';
@@ -390,7 +390,7 @@ begin
         return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
           'Video pricing is not set up on this deployment; nothing was held or charged.'));
       end if;
-      -- 0163: a concept-thumbnail channel's run also buys up to 4 generated images,
+      -- 0169: a concept-thumbnail channel's run also buys up to 4 generated images,
       -- and the worker refuses a hold that leaves them out. Unpriced images are no
       -- price at all, never the price without them.
       v_img := public.concept_thumbnail_credits(ch.channel_id);
@@ -487,21 +487,21 @@ declare
   r    text;
 begin
   for sig, want in values
-    ('public.quote_series_episode(uuid)', 'bc65c3a373f86234e31f6a95564c3f72'),
-    ('public.start_series_episode(uuid, numeric, text, boolean)', 'e16dcc884ae25d0173a73ec1a04fcbd8'),
-    ('public.oauth_create_video(text, text, jsonb, text, text)', '6569154f72af9169e2c3b2d306531465'),
+    ('public.quote_series_episode(uuid)', '809576010f2eb785ec089d3c78fdc600'),
+    ('public.start_series_episode(uuid, numeric, text, boolean)', '8250180e07903b999afbae093a99c3cb'),
+    ('public.oauth_create_video(text, text, jsonb, text, text)', 'e67c7491ce92f0162c8547f3025103c0'),
     ('public.concept_thumbnail_credits(text)', '93ecebafdd6738762a480f75527fd508'),
     ('public.series_episode_price(integer, text)', 'c27ede9c11d262b6047a93e0f81f4042')
   loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = to_regprocedure(sig);
     if got is distinct from want then
-      raise exception '0163 end state: % has md5 %, not %', sig, got, want;
+      raise exception '0169 end state: % has md5 %, not %', sig, got, want;
     end if;
   end loop;
   foreach r in array array['anon', 'authenticated', 'service_role'] loop
     if has_function_privilege(r, 'public.concept_thumbnail_credits(text)', 'EXECUTE')
        or has_function_privilege(r, 'public.series_episode_price(integer, text)', 'EXECUTE') then
-      raise exception '0163 end state: % may call an internal price helper', r;
+      raise exception '0169 end state: % may call an internal price helper', r;
     end if;
   end loop;
 end $$;
