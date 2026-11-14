@@ -42,7 +42,9 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 10 was too tight: on 2026-11-14 three runs were cancelled mid-vitest at the 10-minute mark while
+    # the same suite had passed in ~8.5 minutes earlier that day. A cancelled run is not a result.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: command-center
