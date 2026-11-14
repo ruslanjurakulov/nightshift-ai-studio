@@ -512,7 +512,10 @@ class VoiceVideoAdapter(_ElevenLabs):
     def _transcribe_until_stopped(self, speech: Path, duration: float) -> list:
         """The transcription, on a thread this one watches: a stop of the worker or the time limit fails the job now
         (``unavailable``, hold released) instead of waiting on the request. The abandoned request may still be answered,
-        and billed to the platform; nothing reads that answer, and the person is not charged."""
+        and billed to the platform; nothing reads that answer, and the person is not charged.
+
+        The render slot is released with the job while that request may still be in flight, so the next voice video on
+        this worker can overlap one abandoned Scribe request (at most one per job given up: a request is never retried)."""
         limit = scribe_timeout(duration)
         box: dict = {}
 
@@ -534,9 +537,17 @@ class VoiceVideoAdapter(_ElevenLabs):
                 raise AdapterError(E_UNAVAILABLE, "the worker was stopped while the recording was being transcribed; nothing "
                                                   "was charged: start it again")
             if time.monotonic() > deadline:
-                if isinstance(self.session, requests.Session):
-                    # The abandoned request still holds this session; the next job of this adapter gets its own.
+                logger.warning("voice video: the transcription passed its %.0f s limit and was given up; its request may "
+                               "still be in flight", limit)
+                old = self.session
+                if isinstance(old, requests.Session):
+                    # The next job of this adapter gets its own session. The old one is closed now, which is safe while the
+                    # abandoned thread still uses it: Session.close() closes only the pools' idle connections and disables
+                    # the pools; the connection that request holds is checked out, so it runs to its end and is closed
+                    # when released (urllib3 closes a connection handed back to a closed pool). That thread sends nothing
+                    # else, and a request it had not started yet would get a fresh pool, not an error.
                     self.session = requests.Session()
+                    old.close()
                 raise AdapterError(E_UNAVAILABLE, f"the transcription took longer than {limit:.0f} s and was given up; "
                                                   "nothing was charged: try again later")
         if "error" in box:

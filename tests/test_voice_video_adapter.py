@@ -635,11 +635,29 @@ class Scribe(Tmp):
         self.addCleanup(self.e.block.set)
         a = self.e.adapter(session=vv_requests().Session())
         abandoned = a.session
+        closed = []
         with mock.patch.object(abandoned, "request", side_effect=lambda *x, **kw: self.e.block.wait(30)), \
+                mock.patch.object(abandoned, "close", side_effect=lambda: closed.append(True)), \
                 mock.patch.object(vv, "scribe_timeout", return_value=0.2), mock.patch.object(vv, "SCRIBE_GRACE_S", 0.1):
-            with self.assertRaises(AdapterError):
+            with self.assertLogs(vv.logger, level=logging.WARNING) as logs, self.assertRaises(AdapterError):
                 a.submit(self.req(), vv.RULES_ENGINE)
         self.assertIsNot(a.session, abandoned)
+        self.assertIsInstance(a.session, vv_requests().Session)
+        self.assertEqual(closed, [True], "the old session's idle connections are not left open")
+        self.assertIn("was given up; its request may still be in flight", "\n".join(logs.output))
+
+    def test_closing_a_session_does_not_break_a_request_still_using_it(self):
+        # Why the close above is safe for the abandoned thread: urllib3 closes only idle pooled connections; one that is
+        # checked out (the in-flight request's) is closed when it is handed back, never under the request.
+        import urllib3
+
+        pool = urllib3.HTTPConnectionPool("example.invalid", maxsize=1)
+        conn = pool._get_conn()
+        pool.close()
+        closed = []
+        conn.close = lambda: closed.append(True)
+        pool._put_conn(conn)
+        self.assertEqual(closed, [True])
 
     def test_a_stop_during_the_transcription_fails_the_job_at_once(self):
         stop = threading.Event()
