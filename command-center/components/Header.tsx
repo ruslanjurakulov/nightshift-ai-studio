@@ -82,16 +82,23 @@ export function Header({
       <header className="cv-appbar" data-studio-bar="">
         <div id="studio-bar-slot" className="cv-appbar-slot" />
         <div className="cv-appbar-tools">
-          <span className="hidden xl:contents">
+          {/* Nobody is stranded here: the workspace and channel pickers at every width (one combined picker on a phone), and
+              the language, view and account controls the full sidebar would have given. */}
+          <ContextSwitcher orgs={orgs} currentOrgId={currentOrgId} channels={channels} selection={selection} />
+          <span className="hidden sm:contents">
             <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
             <ChannelSwitcher channels={channels} selection={selection} />
           </span>
           {operator ? <CreditBalanceChip account={account} /> : <CreditMenu account={account} plan={plan} stale={stale} />}
           {operator ? <NotificationsCenter scope={scope} /> : <NotificationBell orgId={currentOrgId} channels={channels} />}
           <span className="hidden sm:contents">
+            <LanguageSelector />
             <ThemeToggle />
+            <span className="hidden lg:contents">
+              <ViewModeToggle compact />
+            </span>
+            <AccountMenu email={email} avatarV={avatarV} />
           </span>
-          {operator && <AccountMenu email={email} avatarV={avatarV} />}
         </div>
       </header>
     );

@@ -149,12 +149,18 @@ export function GeneratePanel({
   onSubmittingChange,
   onEdit,
   only,
+  onePerQuote = false,
 }: {
   /**
    * The tools this form may offer, narrower than its desk's (the Studio canvas: an Image → Video node is i2v only, so no tab
    * may turn it into a clip from words). One tool draws no tab row. Prices, the hold and the create call are unchanged.
    */
   only?: readonly StudioCapability[];
+  /**
+   * One create per quote in the panel layout too (the composer always has it): after a job is created from a quote, the key waits for a
+   * fresh quote (words or a setting changed). The Studio canvas's inspector sets it: a second press must not start a second paid job.
+   */
+  onePerQuote?: boolean;
   /**
    * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
    * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
@@ -238,7 +244,11 @@ export function GeneratePanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [capability, setCapability] = useState<StudioCapability>(
-    initial?.capability ?? tools.find((c) => modelsFor(models, c).length > 0) ?? tools[0] ?? "t2i",
+    // A prefilled tool this form does not offer (a retried job of another kind, a node locked by `only`) is not taken: the first allowed one is.
+    (initial?.capability && tools.includes(initial.capability) ? initial.capability : null) ??
+      tools.find((c) => modelsFor(models, c).length > 0) ??
+      tools[0] ??
+      "t2i",
   );
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const draftRef = useRef(onDraftChange);
@@ -586,7 +596,7 @@ export function GeneratePanel({
   // The composer's one send per quote: the quote a job was created with is spent. Enter or the key
   // sends again only after the words or a setting changed, which asks a fresh quote (a new object).
   const [spent, setSpent] = useState<QuoteState | null>(null);
-  const quoteSpent = composer && spent !== null && spent === quote;
+  const quoteSpent = (composer || onePerQuote) && spent !== null && spent === quote;
 
   async function generate() {
     if (quote.status !== "ready" || submitting || !ready || quoteSpent || pressing.current) return;
@@ -615,7 +625,7 @@ export function GeneratePanel({
       const body = (await res.json().catch(() => ({}))) as { error?: unknown; detail?: unknown; job?: { id?: unknown } };
       if (res.ok) {
         setNotice({ kind: "ok" });
-        if (composer) setSpent(pressed);
+        if (composer || onePerQuote) setSpent(pressed);
         onCreated?.(typeof body.job?.id === "string" ? { id: body.job.id } : null);
         // The hold was just placed: the header's credits (and the short-of-credits check below) read it now, not on the next page.
         void refreshCredits(orgId);
@@ -1477,7 +1487,7 @@ export function GeneratePanel({
             {styles.kits.length === 0 && (
               <span className="text-xs text-[var(--color-muted)]">
                 {t.gen.styleEmpty}{" "}
-                <Link href={path("/studio")} className="tap-link text-[var(--color-primary)] underline">
+                <Link href={path("/studio/look")} className="tap-link text-[var(--color-primary)] underline">
                   {t.gen.styleMake}
                 </Link>
               </span>

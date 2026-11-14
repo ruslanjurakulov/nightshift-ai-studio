@@ -55,6 +55,7 @@ import "./studio-canvas.css";
 export { KIND_ICONS };
 
 const JOB_POLL_MS = 5000;
+const POLL_CONCURRENCY = 6;
 const NARROW = "(max-width: 760px)";
 const HISTORY_MAX = 100;
 /** The map's corner, kept clear by Fit so the map never sits on a node. */
@@ -148,7 +149,8 @@ export function StudioCanvas({
   const [mapOpen, setMapOpen] = useState(true);
   const [firstRunDone, setFirstRunDone] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [retry, setRetry] = useState(0);
+  /** The node whose Retry chip was pressed: its inspector refills from the failed job once, then clears this. */
+  const [retryFor, setRetryFor] = useState<string | null>(null);
   const [quick, setQuick] = useState<QuickMenuState | null>(null);
   /** The card showing its own small composer (made with "+"); the inspector replaces it when opened. */
   const [composing, setComposing] = useState<string | null>(null);
@@ -228,21 +230,44 @@ export function StudioCanvas({
       return { state: "unknown" };
     }
   }, []);
+  // One request per job at a time, at most POLL_CONCURRENCY at once; a job whose read failed waits longer before the next.
+  const inFlight = useRef(new Set<string>());
+  const failures = useRef(new Map<string, { n: number; next: number }>());
   const refresh = useCallback(
-    async (ids: readonly string[]) => {
-      if (ids.length === 0) return;
-      const read = await Promise.all(ids.map(async (id) => [id, await readJob(id)] as const));
-      let finished = false;
-      setJobs((prev) => {
-        const next = new Map(prev);
-        for (const [id, r] of read) {
-          const before = prev.get(id);
-          const wasActive = before?.state === "ok" && (isActiveStatus(before.job.status) || before.job.status === "queued");
-          if (wasActive && r.state === "ok" && !isActiveStatus(r.job.status) && r.job.status !== "queued") finished = true;
-          next.set(id, r);
+    async (ids: readonly string[], force = false) => {
+      const now = Date.now();
+      const due = ids.filter((id) => !inFlight.current.has(id) && (force || (failures.current.get(id)?.next ?? 0) <= now));
+      if (due.length === 0) return;
+      due.forEach((id) => inFlight.current.add(id));
+      const read: (readonly [string, JobReading])[] = [];
+      try {
+        for (let i = 0; i < due.length; i += POLL_CONCURRENCY) {
+          const batch = due.slice(i, i + POLL_CONCURRENCY);
+          read.push(...(await Promise.all(batch.map(async (id) => [id, await readJob(id)] as const))));
         }
-        return next;
-      });
+      } finally {
+        due.forEach((id) => inFlight.current.delete(id));
+      }
+      // Decided from what was on screen before this read, not inside the state update (which React may run twice).
+      const before = jobsRef.current;
+      let finished = false;
+      const next = new Map(before);
+      for (const [id, r] of read) {
+        const prev = before.get(id);
+        if (r.state === "unknown") {
+          const f = failures.current.get(id);
+          const n = (f?.n ?? 0) + 1;
+          failures.current.set(id, { n, next: Date.now() + Math.min(60_000, JOB_POLL_MS * 2 ** n) });
+          // A failed poll keeps the last good reading (marked stale) and keeps polling: one 502 must not end the job's watch.
+          next.set(id, prev?.state === "ok" ? { ...prev, stale: true } : { state: "unknown" });
+          continue;
+        }
+        failures.current.delete(id);
+        const wasActive = prev?.state === "ok" && (isActiveStatus(prev.job.status) || prev.job.status === "queued");
+        if (wasActive && r.state === "ok" && !isActiveStatus(r.job.status) && r.job.status !== "queued") finished = true;
+        next.set(id, r);
+      }
+      setJobs(next);
       // A job that just ended charged or released its hold, and may have put a file in the library.
       if (finished) {
         if (orgId) void refreshCredits(orgId);
@@ -259,19 +284,25 @@ export function StudioCanvas({
         for (const id of unread) next.set(id, { state: "loading" });
         return next;
       });
-      void refresh(unread);
+      void refresh(unread, true);
     }
   }, [jobIds, refresh]);
+  // Polled while working or queued (a stale reading included), and while a job could not be read yet; never while the tab is hidden.
   const activeKey = jobIds
     .filter((id) => {
       const r = jobs.get(id);
+      // A job never read yet (or gone) is tried a few times, then left as "unknown" rather than polled for ever.
+      if (r?.state === "unknown") return (failures.current.get(id)?.n ?? 99) < 6;
       return r?.state === "ok" && (isActiveStatus(r.job.status) || r.job.status === "queued");
     })
     .join(",");
   useEffect(() => {
     if (!activeKey) return;
     const ids = activeKey.split(",");
-    const id = setInterval(() => void refresh(ids), JOB_POLL_MS);
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void refresh(ids);
+    }, JOB_POLL_MS);
     return () => clearInterval(id);
   }, [activeKey, refresh]);
 
@@ -402,6 +433,10 @@ export function StudioCanvas({
   };
   const startRecipe = (r: Recipe, words = "") => {
     const next = recipeState(r, makeId, words);
+    if (next.nodes.some((n) => !kindOpen(availability, n.kind))) {
+      say(c.wire.closed);
+      return;
+    }
     edit((s) => ({ ...next, view: s.view }));
     setFirstRunDone(true);
     const last = next.nodes[next.nodes.length - 1];
@@ -501,6 +536,11 @@ export function StudioCanvas({
         return;
       }
       if (typing(e.target)) return;
+      // The board's keys belong to the board: with focus in the inspector, the Library or anything else outside the stage (a
+      // composer's buttons, a radio group), Backspace must not delete the node and arrows must not move it.
+      const target = e.target;
+      const onBoard = !(target instanceof Element) || target === document.body || target === document.documentElement || (!!target.closest(".cv-stage") && !target.closest(".cv-drawer, .cv-ncomp"));
+      if (!onBoard) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -602,7 +642,8 @@ export function StudioCanvas({
         data={data}
         previews={library.previews}
         nodeName={nodeName}
-        retrySignal={retry}
+        retryNow={retryFor === sel.id}
+        onRetried={() => setRetryFor(null)}
         sheet={narrow}
         onClose={() => setInspecting(false)}
         onDraft={(words) => {
@@ -756,7 +797,7 @@ export function StudioCanvas({
           onOpen={open}
           onRetry={(id) => {
             open(id);
-            setRetry((r) => r + 1);
+            setRetryFor(id);
           }}
           hand={mode === "hand" || space}
           busy={busy}
@@ -1079,14 +1120,14 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
         </ul>
         <div className="cv-pal-f">
           <span>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd> {c.palette.keyMove}
+            <kbd>{c.palette.keys.up}</kbd>
+            <kbd>{c.palette.keys.down}</kbd> {c.palette.keyMove}
           </span>
           <span>
-            <kbd>Enter</kbd> {c.palette.keyChoose}
+            <kbd>{c.palette.keys.enter}</kbd> {c.palette.keyChoose}
           </span>
           <span>
-            <kbd>Esc</kbd> {c.palette.keyClose}
+            <kbd>{c.palette.keys.esc}</kbd> {c.palette.keyClose}
           </span>
           <span className="cv-pal-hint">{c.palette.hint}</span>
         </div>
@@ -1101,8 +1142,11 @@ function FirstRun({ filmStudio, phone, onRecipe, onBlank }: { filmStudio: boolea
   const { t } = useI18n();
   const c = t.studioCanvas.firstRun;
   const path = useChannelPath();
+  const { tools: availability } = useShell();
   const [words, setWords] = useState("");
   const blank = phone ? c.blankPhone : c.blank;
+  // A starter needing a tool with nothing on sale is shown with its reason, not built into cards that cannot run.
+  const closedIn = (r: Recipe) => recipeState(r, () => "x").nodes.some((n) => !kindOpen(availability, n.kind));
   return (
     <section className="cv-empty" aria-labelledby="cv-empty-title" data-testid="canvas-first-run">
       <div className="cv-ecard">
@@ -1111,13 +1155,13 @@ function FirstRun({ filmStudio, phone, onRecipe, onBlank }: { filmStudio: boolea
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (words.trim()) onRecipe("promptVideo", words.trim());
+            if (words.trim() && !closedIn("promptVideo")) onRecipe("promptVideo", words.trim());
           }}
         >
           <textarea className="cv-inp cv-ask" value={words} onChange={(e) => setWords(e.target.value.slice(0, 4000))} placeholder={c.askPlaceholder} aria-label={c.ask} data-testid="first-run-words" />
           <div className="cv-erow">
             <span className="cv-note">{c.askNote}</span>
-            <button type="submit" className="cv-kbtn is-primary" disabled={!words.trim()} data-testid="first-run-go">
+            <button type="submit" className="cv-kbtn is-primary" disabled={!words.trim() || closedIn("promptVideo")} data-testid="first-run-go">
               {c.askGo}
             </button>
           </div>
@@ -1126,9 +1170,17 @@ function FirstRun({ filmStudio, phone, onRecipe, onBlank }: { filmStudio: boolea
         <ul className="cv-estarts">
           {RECIPES.map((r) => (
             <li key={r}>
-              <button type="button" className="cv-estart" onClick={() => onRecipe(r)} data-testid={`recipe-${r}`}>
+              <button
+                type="button"
+                className="cv-estart"
+                aria-disabled={closedIn(r) ? "true" : undefined}
+                onClick={() => {
+                  if (!closedIn(r)) onRecipe(r);
+                }}
+                data-testid={`recipe-${r}`}
+              >
                 <b>{c[r].name}</b>
-                <span>{c[r].desc}</span>
+                <span>{closedIn(r) ? `${t.studioCanvas.node.notAvailable} · ${t.studioCanvas.palette.closedWhy}` : c[r].desc}</span>
               </button>
             </li>
           ))}

@@ -103,7 +103,8 @@ export function Inspector({
   data,
   previews,
   nodeName,
-  retrySignal,
+  retryNow = false,
+  onRetried,
   onClose,
   onDraft,
   onCreated,
@@ -121,7 +122,9 @@ export function Inspector({
   previews: ReadonlyMap<string, LibraryPreview>;
   nodeName: (n: CanvasNode) => string;
   /** Bumped by the node's Retry chip: the form refills from the failed job, and is priced again before it starts. */
-  retrySignal: number;
+  /** The node's Retry chip was pressed: refill the form from the failed job once (also when the inspector opens for it). */
+  retryNow?: boolean;
+  onRetried?: () => void;
   onClose: () => void;
   onDraft: (words: string) => void;
   onCreated: (jobId: string) => void;
@@ -152,13 +155,13 @@ export function Inspector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.id, node.effectId]);
 
-  // The node's Retry chip: a fresh form from that job.
-  const retryFrom = useRef(retrySignal);
+  // The node's Retry chip: a fresh form from that job, once, as soon as the job has been read.
   useEffect(() => {
-    if (retrySignal === retryFrom.current) return;
-    retryFrom.current = retrySignal;
-    if (job) setSeed((s) => ({ nonce: s.nonce + 1, prefill: prefillFromJob(job) }));
-  }, [retrySignal, job]);
+    if (!retryNow || !job) return;
+    setSeed((s) => ({ nonce: s.nonce + 1, prefill: prefillFromJob(job) }));
+    onRetried?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryNow, job]);
 
   // The wired file arrived or changed while the form is open: hand it in without clearing the words typed.
   const sourceId = input?.assetId ?? null;
@@ -302,6 +305,11 @@ export function Inspector({
             <p className="cv-note is-warn" data-testid="inspector-unavailable">
               <strong>{c.node.notAvailable}.</strong> {c.inspector.unavailable}
             </p>
+          ) : status === "working" || status === "queued" ? (
+            // One job per node at a time: a second press would start (and pay for) another and drop this one off the canvas.
+            <p className="cv-note" data-testid="inspector-busy">
+              {c.inspector.busy}
+            </p>
           ) : node.kind === "effects" && !effect ? null : (
             <GeneratePanel
               key={`${node.id}:${node.effectId ?? ""}:${input?.type ?? ""}:${seed.nonce}`}
@@ -314,6 +322,7 @@ export function Inspector({
               plans={data.plans}
               desk={spec.desk}
               only={only}
+              onePerQuote
               unavailable={data.unavailable}
               onDraftChange={onDraft}
               // The inspector opens on its inputs and the node's last result; the words box does not grab focus and scroll them away.

@@ -1,8 +1,8 @@
 /*
  * Nightshift Studio's canvas. Ported from docs/studio/prototype/studio-canvas-prototype.html: the same rules under a
- * `cv-` prefix (the app already has `.node`, `.seg`, `.pill`…), with its tokens in app/globals.css, scoped to the Studio.
- * Violet = the machine is working, amber = a person's mark; light is emitted only by real state (a wire glows only while
- * a node on it is working). Fixed chrome is layout, never laid over the work: the deck is its own row, the map keeps a
+ * `cv-` prefix (the app already has `.node`, `.seg`, `.pill`…), with its tokens at the top of this file, scoped to the Studio.
+ * Electric blue = the machine is working, neon lime = a person's mark (the token names still say violet and amber: same jobs);
+ * light is emitted only by real state (a wire glows only while a node on it is working). Fixed chrome is layout, never laid over the work: the deck is its own row, the map keeps a
  * corner that Fit leaves empty, and the Library is glass over the board's edge so the board keeps its width.
  */
 
@@ -877,7 +877,9 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 }
 .cv-estart b { font-weight: 600; }
 .cv-estart span { color: var(--dim); font-size: 13px; }
-.cv-estart:hover { background: var(--key-hi); }
+.cv-estart:hover:not([aria-disabled="true"]) { background: var(--key-hi); }
+.cv-estart[aria-disabled="true"] { cursor: not-allowed; color: var(--faint); }
+.cv-estart[aria-disabled="true"] span { color: var(--dim); }
 
 /* ── palette ──────────────────────────────────────────────────────────────── */
 .cv-scrim { position: fixed; inset: 0; z-index: 55; background: var(--scrim); }
