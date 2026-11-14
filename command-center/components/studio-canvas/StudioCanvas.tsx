@@ -17,7 +17,6 @@ import {
   KIND_SPEC,
   NODE_H,
   NODE_W,
-  RECIPES,
   TOOL_KINDS,
   canWire,
   connect,
@@ -154,6 +153,17 @@ export function StudioCanvas({
   const [quick, setQuick] = useState<QuickMenuState | null>(null);
   /** The card showing its own small composer (made with "+"); the inspector replaces it when opened. */
   const [composing, setComposing] = useState<string | null>(null);
+  /** The server's quote per node, as its composer last reported it (never a number of ours). */
+  const [quotes, setQuotes] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const setQuote = useCallback((id: string, credits: number | null) => {
+    setQuotes((prev) => {
+      if ((prev.get(id) ?? null) === credits) return prev;
+      const next = new Map(prev);
+      if (credits === null) next.delete(id);
+      else next.set(id, credits);
+      return next;
+    });
+  }, []);
   const [jobs, setJobs] = useState<Map<string, JobReading>>(() => new Map());
   const library = useLibraryImages(orgId ?? "", { enabled: !!orgId });
   const libraryRef = useRef(library);
@@ -447,10 +457,15 @@ export function StudioCanvas({
     }
     edit((s) => ({ ...next, view: s.view }));
     setFirstRunDone(true);
-    const last = next.nodes[next.nodes.length - 1];
-    if (last) {
-      setSelected(last.id);
-      setInspecting(r !== "photoClip" && !narrow);
+    // The first step that makes something opens with its composer, the idea already in it (from the wired words).
+    const first = next.nodes.find((n) => n.kind !== "prompt" && n.kind !== "asset") ?? next.nodes[0];
+    if (first) {
+      setSelected(first.id);
+      if (narrow) open(first.id);
+      else if (r !== "photoClip") {
+        setInspecting(false);
+        setComposing(first.id);
+      }
     }
     if (r === "photoClip") setDrawer(true);
     requestAnimationFrame(() => fit(next.nodes));
@@ -651,6 +666,7 @@ export function StudioCanvas({
         previews={library.previews}
         nodeName={nodeName}
         retryNow={retryFor === sel.id}
+        onQuote={(n) => setQuote(sel.id, n)}
         onRetried={() => setRetryFor(null)}
         sheet={narrow}
         onClose={() => setInspecting(false)}
@@ -717,7 +733,30 @@ export function StudioCanvas({
     </div>
   );
   const toast = notice ? <p className="cv-toast">{notice}</p> : null;
-  const quote = <QuoteKey node={sel} onOpen={() => sel && open(sel.id)} />;
+  // Focus the step's Generate (its composer: the card's own, or the inspector's): the dock never presses it.
+  const focusGenerate = (id: string) => {
+    let tries = 0;
+    const go = () => {
+      const box = document.querySelector(`[data-testid="inline-composer-${id}"]`) ?? document.querySelector('[data-testid="canvas-inspector"]');
+      const key = box?.querySelector<HTMLElement>(".ns-price-button");
+      if (key) key.focus();
+      else if (tries++ < 20) requestAnimationFrame(go);
+    };
+    requestAnimationFrame(go);
+  };
+  const quote = (
+    <QuoteKey
+      node={sel}
+      status={sel ? statusOf(sel) : null}
+      credits={sel ? quotes.get(sel.id) ?? null : null}
+      onChoose={() => setPalette("add")}
+      onPrice={() => {
+        if (!sel) return;
+        if (composing !== sel.id) open(sel.id);
+        focusGenerate(sel.id);
+      }}
+    />
+  );
 
   if (!loaded) {
     return (
@@ -822,6 +861,8 @@ export function StudioCanvas({
           onDrop={dropAsset}
           mapOpen={mapOpen}
           mapHidden={inspecting && !!sel}
+          libReady={libReady}
+          onReloadLibrary={() => library.reload()}
           composerFor={(n) =>
             composing === n.id && !inspecting && !n.jobId && kindOpen(availability, n.kind) ? (
               <InlineComposer
@@ -837,6 +878,7 @@ export function StudioCanvas({
                   setComposing(null);
                 }}
                 onMore={() => open(n.id)}
+                onQuote={(q) => setQuote(n.id, q)}
               />
             ) : null
           }
@@ -898,13 +940,19 @@ export function StudioCanvas({
 }
 
 /** The deck's price key: the price lives in the selected node's form (its backend quote), so it opens that form. */
-function QuoteKey({ node, onOpen }: { node: CanvasNode | null; onOpen: () => void }) {
-  const { t } = useI18n();
+/**
+ * The deck's main key, by what the person can do next: choose a step (nothing to price), get the price (a step that can run), or
+ * make it for the price the server quoted. It never spends: it opens or focuses that step's composer, whose Generate is the only
+ * press that creates a job (one per quote).
+ */
+function QuoteKey({ node, status, credits, onChoose, onPrice }: { node: CanvasNode | null; status: NodeStatus | null; credits: number | null; onChoose: () => void; onPrice: () => void }) {
+  const { t, fmt } = useI18n();
   const c = t.studioCanvas;
-  const can = !!node && node.kind !== "asset" && node.kind !== "prompt";
+  const priceable = !!node && node.kind !== "asset" && node.kind !== "prompt" && (status === "idle" || status === "failed");
+  const label = !priceable ? c.dock.choose : credits !== null ? fmt(c.dock.make, { n: credits }) : c.dock.getPrice;
   return (
-    <button type="button" className="cv-kbtn is-primary" disabled={!can} onClick={onOpen} title={can ? c.quote : c.quoteHint} data-testid="dock-quote">
-      {c.quote}
+    <button type="button" className="cv-kbtn is-primary" onClick={priceable ? onPrice : onChoose} title={priceable ? c.quote : c.quoteHint} data-testid="dock-quote" data-state={!priceable ? "choose" : credits !== null ? "make" : "price"}>
+      {label}
     </button>
   );
 }
@@ -1021,7 +1069,7 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
         id: `add:${k}`,
         group: "add" as const,
         label: c.kinds[k].name,
-        sub: closed ? `${c.node.notAvailable} · ${c.palette.closedWhy}` : c.kinds[k].desc,
+        sub: closed ? c.node.notAvailable : c.kinds[k].desc,
         closed,
         run: () => onAdd(k),
         Icon: KIND_ICONS[k],
@@ -1112,6 +1160,7 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
                 role="option"
                 aria-selected={n === active}
                 aria-disabled={i.closed ? "true" : undefined}
+                title={i.closed ? c.palette.closedWhy : undefined}
                 className="cv-pal-o"
                 onMouseEnter={() => setActive(n)}
                 onClick={() => pick(i)}
@@ -1146,67 +1195,78 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
 
 // ── first run ────────────────────────────────────────────────────────────────
 
+type Tile = "image" | "video" | "voice" | "project";
+const TILES: readonly Tile[] = ["image", "video", "voice", "project"];
+/** What each tile lays out: fixed chains, no planning call (a server-side planner comes later). */
+const TILE_RECIPE: Record<Exclude<Tile, "project">, Recipe> = { image: "promptImage", video: "promptVideo", voice: "promptVoice" };
+const TILE_ICON: Record<Tile, LucideIcon> = { image: KIND_ICONS.image, video: KIND_ICONS.video, voice: KIND_ICONS.voice, project: Projector };
+
+/**
+ * The empty canvas: "What shall we make?" with one idea box and four big tiles. Nightshift lays out the chain (the person does
+ * not wire anything), fits it, and opens the first making step with the idea in it. A tile whose tools are not on sale, or
+ * "Finished video" while projects are off, is shown and refused.
+ */
 function FirstRun({ filmStudio, phone, onRecipe, onBlank }: { filmStudio: boolean; phone: boolean; onRecipe: (r: Recipe, words?: string) => void; onBlank: () => void }) {
   const { t } = useI18n();
   const c = t.studioCanvas.firstRun;
   const path = useChannelPath();
   const { tools: availability } = useShell();
   const [words, setWords] = useState("");
-  const blank = phone ? c.blankPhone : c.blank;
-  // A starter needing a tool with nothing on sale is shown with its reason, not built into cards that cannot run.
   const closedIn = (r: Recipe) => recipeState(r, () => "x").nodes.some((n) => !kindOpen(availability, n.kind));
+  const closed = (tile: Tile) => (tile === "project" ? !filmStudio : closedIn(TILE_RECIPE[tile]));
   return (
     <section className="cv-empty" aria-labelledby="cv-empty-title" data-testid="canvas-first-run">
       <div className="cv-ecard">
         <h2 id="cv-empty-title">{c.ask}</h2>
-        <p>{c.lead}</p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (words.trim() && !closedIn("promptVideo")) onRecipe("promptVideo", words.trim());
-          }}
-        >
-          <textarea className="cv-inp cv-ask" value={words} onChange={(e) => setWords(e.target.value.slice(0, 4000))} placeholder={c.askPlaceholder} aria-label={c.ask} data-testid="first-run-words" />
-          <div className="cv-erow">
-            <span className="cv-note">{c.askNote}</span>
-            <button type="submit" className="cv-kbtn is-primary" disabled={!words.trim() || closedIn("promptVideo")} data-testid="first-run-go">
-              {c.askGo}
-            </button>
-          </div>
-        </form>
-        <h3>{c.from}</h3>
-        <ul className="cv-estarts">
-          {RECIPES.map((r) => (
-            <li key={r}>
-              <button
-                type="button"
-                className="cv-estart"
-                aria-disabled={closedIn(r) ? "true" : undefined}
-                onClick={() => {
-                  if (!closedIn(r)) onRecipe(r);
-                }}
-                data-testid={`recipe-${r}`}
-              >
-                <b>{c[r].name}</b>
-                <span>{closedIn(r) ? `${t.studioCanvas.node.notAvailable} · ${t.studioCanvas.palette.closedWhy}` : c[r].desc}</span>
-              </button>
-            </li>
-          ))}
-          <li>
-            <button type="button" className="cv-estart" onClick={onBlank} data-testid="recipe-blank">
-              <b>{blank.name}</b>
-              <span>{blank.desc}</span>
-            </button>
-          </li>
-          {filmStudio && (
-            <li>
-              <Link href={path("/create/projects")} className="cv-estart" data-testid="recipe-projects">
-                <b>{t.studioCanvas.projects}</b>
-                <span>{t.studioCanvas.projectsSub}</span>
-              </Link>
-            </li>
-          )}
+        <textarea
+          className="cv-inp cv-ask"
+          value={words}
+          onChange={(e) => setWords(e.target.value.slice(0, 4000))}
+          placeholder={c.askPlaceholder}
+          aria-label={c.ask}
+          data-testid="first-run-words"
+        />
+        <p className="cv-note">{c.askNote}</p>
+        <ul className="cv-tiles">
+          {TILES.map((tile) => {
+            const Icon = TILE_ICON[tile];
+            const off = closed(tile);
+            const body = (
+              <>
+                <span className="cv-tile-ic" aria-hidden>
+                  <Icon className="size-6" strokeWidth={1.7} />
+                </span>
+                <b>{c.tiles[tile].name}</b>
+                <span>{off ? t.studioCanvas.node.notAvailable : c.tiles[tile].desc}</span>
+              </>
+            );
+            return (
+              <li key={tile}>
+                {tile === "project" && !off ? (
+                  <Link href={path("/create/projects")} className="cv-tile" data-testid="tile-project">
+                    {body}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="cv-tile"
+                    aria-disabled={off ? "true" : undefined}
+                    title={off ? t.studioCanvas.palette.closedWhy : undefined}
+                    onClick={() => {
+                      if (!off && tile !== "project") onRecipe(TILE_RECIPE[tile], words.trim());
+                    }}
+                    data-testid={`tile-${tile}`}
+                  >
+                    {body}
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
+        <button type="button" className="cv-link" onClick={onBlank} data-testid="recipe-blank" title={(phone ? c.blankPhone : c.blank).desc}>
+          {c.blankLink}
+        </button>
       </div>
     </section>
   );

@@ -56,6 +56,9 @@ type CardData = {
   composer: ReactNode;
   /** The "+" by the output: opens the next-step menu. Null on a card with no output. */
   onPlus: ((el: HTMLElement) => void) | null;
+  /** The library has been read: a missing result picture is then really missing, not still loading. */
+  libReady: boolean;
+  onReloadLibrary: () => void;
 };
 type WireData = { type: PortType; live: boolean; hl: boolean };
 type CardNode = Node<CardData, "card">;
@@ -94,6 +97,8 @@ export type BoardProps = {
   /** The inspector is open: the focused cards sit where the map would. */
   mapHidden?: boolean;
   onToggleMap: () => void;
+  libReady?: boolean;
+  onReloadLibrary?: () => void;
   /** The small composer a card carries (a card made with "+"), or null. */
   composerFor?: (n: CanvasNode) => ReactNode;
   /** "+" pressed on a card, or a wire from it dropped on empty board: open the next-step menu there. */
@@ -140,6 +145,8 @@ function BoardInner({
   onToggleMap,
   composerFor,
   onPlus,
+  libReady = false,
+  onReloadLibrary,
   actors,
   children,
 }: BoardProps) {
@@ -177,6 +184,8 @@ function BoardInner({
             onRetry: () => onRetry(n.id),
             onOpen: () => onOpen(n.id),
             composer: composerFor?.(n) ?? null,
+            libReady,
+            onReloadLibrary: () => onReloadLibrary?.(),
             onPlus:
               onPlus && outputType(canvas, n)
                 ? (el: HTMLElement) => {
@@ -187,7 +196,7 @@ function BoardInner({
           },
         };
       }),
-    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod, composerFor, onPlus],
+    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod, composerFor, onPlus, libReady, onReloadLibrary],
   );
 
   const edges = useMemo<WireEdge[]>(() => {
@@ -381,6 +390,8 @@ function NodeCard({
   onOpen,
   composer,
   onPlus,
+  libReady,
+  onReloadLibrary,
 }: CardData & { selected: boolean; dragging: boolean }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -396,6 +407,11 @@ function NodeCard({
   const input = inputOf(canvas, node, jobs);
   const words = node.kind === "prompt" ? node.draft : node.draft || input?.text || "";
   const working = status === "working" || status === "queued";
+  // "Made" only with the real result in view (rule 5): a picture or clip result that cannot be shown says so, with a way to
+  // load it again; while the library is still being read it says that instead. A voice result has no picture to show.
+  const pictureResult = node.kind !== "voice" && previews.get(asset ?? "")?.kind !== "audio";
+  const resultState: "shown" | "loading" | "missing" | null =
+    status === "done" && pictureResult ? (thumb ? "shown" : libReady ? "missing" : "loading") : null;
   const showArt = !!thumb || working || (node.kind === "asset" && status !== "missing") || status === "done";
   const cls = ["cv-node", `k-${node.kind}`, `s-${status}`, selected && "is-sel", dragging && "is-dragging", dropTarget && "is-drop", actor && "is-remote"]
     .filter(Boolean)
@@ -462,14 +478,29 @@ function NodeCard({
             {thumb ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={thumb} alt="" draggable={false} />
+            ) : resultState === "missing" ? (
+              <span className="cv-art-note" data-testid={`result-missing-${node.id}`}>
+                {c.node.resultMissing}
+              </span>
+            ) : resultState === "loading" ? (
+              <span className="cv-art-note">{c.node.resultLoading}</span>
             ) : (
               <Icon className="cv-art-glyph" />
             )}
           </div>
         )}
+        {resultState === "missing" && (
+          <button type="button" className="cv-nchip nodrag" onClick={onReloadLibrary} data-testid={`result-reload-${node.id}`}>
+            <RotateCcw aria-hidden className="size-3.5" /> {c.node.resultRetry}
+          </button>
+        )}
         {/* The words it makes from, clamped. With none, nothing: the lamp below already says so, once. */}
         {node.kind !== "asset" && words && <p className="cv-clamp">{words}</p>}
-        <Lamp tone={LAMP[status]} live={status === "working"} label={status === "failed" ? t.gen.status.failed : line} />
+        <Lamp
+          tone={resultState === "missing" ? "warn" : resultState === "loading" ? "idle" : LAMP[status]}
+          live={status === "working"}
+          label={status === "failed" ? t.gen.status.failed : resultState === "missing" ? c.node.resultMissing : resultState === "loading" ? c.node.resultLoading : line}
+        />
         {sourceName && <span className="cv-nsub">{fmt(c.node.from, { name: sourceName })}</span>}
         {status === "failed" && job && (
           <div className="cv-nfail">

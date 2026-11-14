@@ -36,6 +36,9 @@ export const studioCanvasEn = {
   quoteHint: "Select a node to see its price",
   // The dock.
   dock: {
+    choose: "Choose a step",
+    getPrice: "Get price",
+    make: "Make · {n} credits",
     label: "Canvas tools",
     add: "Add node",
     library: "Library",
@@ -63,6 +66,11 @@ export const studioCanvasEn = {
   },
   ports: { text: "Words", image: "Picture", video: "Clip", audio: "Recording", in: "Input: {kinds}", out: "Output: {kind}", letters: { text: "T", image: "I", video: "V", audio: "A" } },
   node: {
+    readyToMake: "Ready to make",
+    made: "Made",
+    resultMissing: "Result can't be shown",
+    resultLoading: "Loading the result…",
+    resultRetry: "Load again",
     words: "Words ready",
     noWords: "No words yet",
     reading: "Reading…",
@@ -156,9 +164,16 @@ export const studioCanvasEn = {
     hint: "Adding a node is free. Nothing spends until you confirm a price in its form.",
   },
   firstRun: {
-    ask: "What do you want to make?",
-    askPlaceholder: "A fox crossing a snowy ridge at dawn",
-    askNote: "Starts words → picture → clip on the canvas. Nothing is priced until you open a node.",
+    tiles: {
+      image: { name: "Image", desc: "Your idea as a picture" },
+      video: { name: "Video", desc: "A picture, then a moving clip" },
+      voice: { name: "Voice", desc: "Your words, spoken" },
+      project: { name: "Finished video", desc: "A whole video, scene by scene" },
+    },
+    blankLink: "Or start from a blank canvas",
+    ask: "What shall we make?",
+    askPlaceholder: "Describe your idea…",
+    askNote: "Pick what to make: Nightshift lays out the steps and opens the first one with your idea in it. Nothing is priced until you ask for a price.",
     askGo: "Lay it out",
     blankPhone: { name: "Blank canvas", desc: "Tap Add to place a node, or add a file from the Library" },
     title: "Start on the canvas",

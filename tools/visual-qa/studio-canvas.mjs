@@ -10,6 +10,10 @@
  *     npx next build && npx next start -p 3417 &
  *   node tools/visual-qa/studio-canvas.mjs --base http://localhost:3417 --out /tmp/studio-canvas-shots
  *
+ * Real result pictures: pass `--media <dir>` and start the app with NIGHTSHIFT_MEDIA_DIR=<dir> and MEDIA_URL_SECRET set to any
+ * throwaway string of 32+ characters (local QA only; never a real key). The script draws the fake's pictures into <dir> in the
+ * worker's layout (<dir>/<aa>/<uuid>/thumb.jpg, display.jpg), so a done image shows its actual thumbnail.
+ *
  * Fails (exit 1) on horizontal overflow, a page error, or a scene whose landmark is missing. Reads and
  * screenshots only; spends nothing (the fake refuses every write). Not part of the product.
  */
@@ -93,6 +97,37 @@ const FAILURE = {
 };
 const ONE_IMAGE = { v: 1, nodes: [node("img", "image", 0, 0, { draft: "A paper boat on a flooded street" })], wires: [], view: { x: 0, y: 0, k: 1 } };
 
+// A finished picture alone: its card must show the real thumbnail beside "Made" (run with --media for the file).
+const DONE_IMAGE = { v: 1, nodes: [node("img", "image", 0, 0, { jobId: DONE })], wires: [], view: { x: 0, y: 0, k: 1 } };
+const click = (sel) => async (page) => {
+  await page.click(sel);
+  await page.waitForTimeout(1500);
+};
+// The dock's key in its three states: nothing selected, a ready node selected, and the server's quote back.
+const DOCK = [
+  { name: "dock-choose", layout: ONE_IMAGE, state: "canvas", desktop: true, check: '[data-testid=dock-quote][data-state="choose"]' },
+  // No words yet, so the composer has nothing to price: the key offers to get the price, and stops there.
+  { name: "dock-price", layout: { ...ONE_IMAGE, nodes: [node("img", "image", 0, 0)] }, state: "canvas", desktop: true, act: click('[data-node-id="img"]'), check: '[data-testid=dock-quote][data-state="price"]' },
+  {
+    name: "dock-make",
+    layout: ONE_IMAGE,
+    state: "canvas",
+    desktop: true,
+    act: async (page) => {
+      await click('[data-node-id="img"]')(page);
+      await click(".ns-price-button")(page);
+    },
+    check: '[data-testid=dock-quote][data-state="make"]',
+  },
+];
+const UX = [
+  { name: "done-image", layout: DONE_IMAGE, state: "canvas", check: '[data-node-id="img"] img, [data-testid^=flow-node-image] img' },
+  ...DOCK,
+  // The palette's "add" list: a closed tool says only "Not available yet"; the reason is its tooltip.
+  { name: "menu-copy", layout: ONE_IMAGE, state: "canvas", act: click("[data-testid=dock-add]"), check: "[data-testid=canvas-palette]", desktop: true },
+  // On the phone the same short copy, in the "+" sheet after a picture (Edit · Upscale is closed on this fake).
+  { name: "menu-copy", layout: ONE_IMAGE, state: "canvas", phone: true, act: click("[data-testid=plus-img]"), check: "[data-testid=quick-menu]" },
+];
 const SCENES = [
   { name: "first-run", layout: null, state: "canvas", check: "[data-testid=canvas-first-run]" },
   { name: "chain", layout: CHAIN, state: "canvas", check: '[data-wire="img->clip"], [data-testid=flow-node-animate]' },
@@ -103,6 +138,8 @@ const SCENES = [
   // The Library and the inspector both open: the board must stay usable between them.
   { name: "both", layout: CHAIN, state: "canvas", open: "clip", library: true, check: "[data-testid=canvas-library]" },
 ];
+const ONLY = arg("scenes", null);
+if (ONLY === "ux") SCENES.splice(0, SCENES.length, { name: "first-run", layout: null, state: "canvas", check: "[data-testid=canvas-first-run]" }, ...UX);
 const VIEWS = [
   { width: 1440, height: 900, theme: "dark" },
   { width: 1440, height: 900, theme: "light" },
@@ -112,6 +149,24 @@ const VIEWS = [
 
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: exe });
+const MEDIA = arg("media", null);
+if (MEDIA) {
+  // Pictures for the fake's three image assets, drawn here so nothing binary is committed.
+  const ART = {
+    "0c000000-0000-4000-8000-0000000000a1": "radial-gradient(60% 70% at 70% 30%, #ff9d4d, transparent 60%), linear-gradient(180deg, #2a4a7f 0%, #f4c38a 70%, #e9eef8 100%)",
+    "0c000000-0000-4000-8000-0000000000a2": "linear-gradient(135deg, #0a7fa0, #33d6ff 50%, #ffd23f)",
+    "0c000000-0000-4000-8000-0000000000a3": "radial-gradient(circle at 50% 50%, #2f8bff 0 30%, #0a0f1c 31%)",
+  };
+  const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
+  for (const [id, bg] of Object.entries(ART)) {
+    const dir = path.join(MEDIA, id.slice(0, 2), id);
+    mkdirSync(dir, { recursive: true });
+    await page.setContent(`<body style="margin:0;width:640px;height:360px;background:${bg}"><div style="position:absolute;left:38%;top:52%;width:70px;height:40px;border-radius:50% 50% 40% 40%;background:#c4581c;box-shadow:30px -12px 0 -14px #c4581c"></div></body>`);
+    await page.screenshot({ path: path.join(dir, "thumb.jpg"), type: "jpeg", quality: 85 });
+    await page.screenshot({ path: path.join(dir, "display.jpg"), type: "jpeg", quality: 85 });
+  }
+  await page.close();
+}
 const bad = [];
 const lines = [];
 for (const loc of LOCALES)
@@ -119,6 +174,9 @@ for (const loc of LOCALES)
     for (const s of SCENES) {
       // The full grid only in English and dark at 1440; the rest takes the scenes the brief names.
       if ((loc !== "en" || v.theme !== "dark") && !["first-run", "chain", "inspector", "error"].includes(s.name)) continue;
+      if (ONLY === "ux" && (loc !== "en" || v.theme !== "dark" || v.width === 768)) continue;
+      if (s.desktop && v.width < 1000) continue;
+      if (s.phone && v.width >= 600) continue;
       if (v.width === 768 && !["chain", "inspector"].includes(s.name)) continue;
       if (s.library && v.width < 1000) continue;
       const phone = v.width < 600;
@@ -155,6 +213,7 @@ for (const loc of LOCALES)
         await page.click("[data-testid=dock-library]").catch((e) => errors.push(`library: ${e.message}`));
         await page.waitForTimeout(500);
       }
+      if (s.act) await s.act(page).catch((e) => errors.push(`act: ${e.message}`));
       if (s.palette) {
         await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
         await page.waitForTimeout(500);

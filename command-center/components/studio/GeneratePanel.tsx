@@ -150,6 +150,7 @@ export function GeneratePanel({
   onEdit,
   only,
   onePerQuote = false,
+  onQuote,
 }: {
   /**
    * The tools this form may offer, narrower than its desk's (the Studio canvas: an Image → Video node is i2v only, so no tab
@@ -161,6 +162,11 @@ export function GeneratePanel({
    * fresh quote (words or a setting changed). The Studio canvas's inspector sets it: a second press must not start a second paid job.
    */
   onePerQuote?: boolean;
+  /**
+   * Told the server's quote whenever it changes: its credits once the quote route answered, null otherwise (and when the form goes
+   * away). Only ever a number the server returned; a page shows it (the Studio canvas's dock) and never prices anything itself.
+   */
+  onQuote?: (credits: number | null) => void;
   /**
    * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
    * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
@@ -597,6 +603,15 @@ export function GeneratePanel({
   // sends again only after the words or a setting changed, which asks a fresh quote (a new object).
   const [spent, setSpent] = useState<QuoteState | null>(null);
   const quoteSpent = (composer || onePerQuote) && spent !== null && spent === quote;
+
+  // The server's quote, told to a page that shows it elsewhere (the canvas's dock); cleared when this form goes away.
+  const quoteRef = useRef(onQuote);
+  quoteRef.current = onQuote;
+  const quotedCredits = quote.status === "ready" ? quote.credits : null;
+  useEffect(() => {
+    quoteRef.current?.(quotedCredits);
+  }, [quotedCredits]);
+  useEffect(() => () => quoteRef.current?.(null), []);
 
   async function generate() {
     if (quote.status !== "ready" || submitting || !ready || quoteSpent || pressing.current) return;

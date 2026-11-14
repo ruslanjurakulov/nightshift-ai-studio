@@ -105,6 +105,7 @@ export function Inspector({
   nodeName,
   retryNow = false,
   onRetried,
+  onQuote,
   onClose,
   onDraft,
   onCreated,
@@ -125,6 +126,8 @@ export function Inspector({
   /** The node's Retry chip was pressed: refill the form from the failed job once (also when the inspector opens for it). */
   retryNow?: boolean;
   onRetried?: () => void;
+  /** The composer's server quote for this node (credits, or null), for the dock's key. */
+  onQuote?: (credits: number | null) => void;
   onClose: () => void;
   onDraft: (words: string) => void;
   onCreated: (jobId: string) => void;
@@ -323,6 +326,7 @@ export function Inspector({
               desk={spec.desk}
               only={only}
               onePerQuote
+              onQuote={onQuote}
               unavailable={data.unavailable}
               onDraftChange={onDraft}
               // The inspector opens on its inputs and the node's last result; the words box does not grab focus and scroll them away.

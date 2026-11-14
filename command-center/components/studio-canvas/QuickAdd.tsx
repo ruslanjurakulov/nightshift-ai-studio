@@ -112,6 +112,7 @@ export function QuickAddMenu({
               role="menuitem"
               className="cv-pal-o"
               aria-disabled={closed ? "true" : undefined}
+              title={closed ? c.palette.closedWhy : undefined}
               onClick={() => {
                 if (!closed) onPick(k);
               }}
@@ -120,7 +121,7 @@ export function QuickAddMenu({
               <Icon aria-hidden className="size-4 shrink-0" />
               <span className="flex min-w-0 flex-col text-left">
                 <span className="cv-opt-on">{c.kinds[k].name}</span>
-                <span className={closed ? "cv-opt-why" : "cv-opt-os"}>{closed ? `${c.node.notAvailable} · ${c.palette.closedWhy}` : c.kinds[k].desc}</span>
+                <span className={closed ? "cv-opt-why" : "cv-opt-os"}>{closed ? c.node.notAvailable : c.kinds[k].desc}</span>
               </span>
             </button>
           );
@@ -143,6 +144,7 @@ export function InlineComposer({
   onDraft,
   onCreated,
   onMore,
+  onQuote,
 }: {
   node: CanvasNode;
   state: CanvasState;
@@ -151,6 +153,7 @@ export function InlineComposer({
   onDraft: (words: string) => void;
   onCreated: (jobId: string) => void;
   onMore: () => void;
+  onQuote?: (credits: number | null) => void;
 }) {
   const { t } = useI18n();
   const c = t.studioCanvas;
@@ -179,6 +182,7 @@ export function InlineComposer({
         unavailable={data.unavailable}
         onDraftChange={onDraft}
         autoFocusPrompt
+        onQuote={onQuote}
         onCreated={(created) => {
           if (created) onCreated(created.id);
         }}
