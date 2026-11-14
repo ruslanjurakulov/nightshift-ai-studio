@@ -86,6 +86,7 @@ const explainerDefaults: ExplainerProps = {
   ],
   captions: true,
   media_card: true,
+  sound_only: false,
 };
 
 export const RemotionRoot: React.FC = () => (

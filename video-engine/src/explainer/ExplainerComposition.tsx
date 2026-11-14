@@ -253,19 +253,27 @@ const SceneView: React.FC<{ scene: ExplainerScene; look: Look; words: Word[]; ca
   );
 };
 
+/** The sound: narration, the music bed and the effects. Shared by the full render and the sound-only pass. */
+const Sound: React.FC<{ props: ExplainerProps; fps: number }> = ({ props, fps }) => (
+  <>
+    {props.narration ? <Audio src={staticFile(props.narration)} /> : null}
+    {props.music ? <Audio src={staticFile(props.music)} volume={props.music_volume} loop /> : null}
+    {props.sfx.map((c, i) => (
+      <Sequence key={`sfx-${i}`} from={Math.max(0, Math.round(c.at_s * fps))} layout="none">
+        <Audio src={staticFile(c.src)} volume={c.volume} />
+      </Sequence>
+    ))}
+  </>
+);
+
 export const ExplainerComposition: React.FC<ExplainerProps> = (props) => {
   const { fps } = useVideoConfig();
   const look = lookFor(props.look);
+  if (props.sound_only) return <Sound props={props} fps={fps} />;
   return (
     <AbsoluteFill>
       <Backdrop look={look} />
-      {props.narration ? <Audio src={staticFile(props.narration)} /> : null}
-      {props.music ? <Audio src={staticFile(props.music)} volume={props.music_volume} loop /> : null}
-      {props.sfx.map((c, i) => (
-        <Sequence key={`sfx-${i}`} from={Math.max(0, Math.round(c.at_s * fps))} layout="none">
-          <Audio src={staticFile(c.src)} volume={c.volume} />
-        </Sequence>
-      ))}
+      <Sound props={props} fps={fps} />
       {props.scenes.map((s, i) => {
         const { from, duration } = sceneFrames(s, fps);
         return (

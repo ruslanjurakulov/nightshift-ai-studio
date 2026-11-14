@@ -85,4 +85,10 @@ export type ExplainerProps = {
   captions: boolean;
   /** Frame each character scene as a video card (a title row and a line that grows through the scene). */
   media_card: boolean;
+  /**
+   * Draw nothing, play everything: the sound pass of a chunked render (modules/voice_explainer.render). The same
+   * <Audio> elements at the same frames and volumes as a full render, so the mix is Remotion's own, without paying
+   * for a picture nobody sees. False in every other render.
+   */
+  sound_only: boolean;
 };

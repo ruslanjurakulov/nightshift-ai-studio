@@ -375,6 +375,12 @@ class Chunks(unittest.TestCase):
         chunks = ve.plan_chunks(sc(0, 1.25), 2.5, 2, target_s=1.0)
         self.assertEqual(chunks, [(0, 2), (3, 4)])
 
+    def test_ffprobes_count_is_read_with_its_trailing_separator_and_nothing_else_is_guessed(self):
+        self.assertEqual(ve.parse_count("912,\n"), 912)
+        self.assertEqual(ve.parse_count("3647"), 3647)
+        for bad in ("", "N/A", "912,13", "-1", None):
+            self.assertIsNone(ve.parse_count(bad))
+
     def test_the_frame_count_matches_the_composition(self):
         self.assertEqual(ve.total_frames(30.384, 30), 912)
         self.assertEqual(ve.total_frames(10, 30), 300)
@@ -384,11 +390,12 @@ class ChunkedRender(unittest.TestCase):
     """The render's command sequence, with every process mocked: bundle once, picture in muted chunks, sound once,
     joined without re-encoding, and refused when the join's frame count is not the composition's."""
 
-    PROPS = {"fps": 30, "duration_s": 121.536, "scenes": sc(0, *[round(3.7 * i, 3) for i in range(1, 33)])}
+    PROPS = {"fps": 30, "duration_s": 121.536, "scenes": sc(0, *[round(3.7 * i, 3) for i in range(1, 33)]), "sound_only": False}
 
     def run_render(self, frames):
         from unittest import mock
         calls = []
+        props_seen = self.props_seen = []
 
         class Done:
             pid = 1
@@ -396,9 +403,11 @@ class ChunkedRender(unittest.TestCase):
 
             def __init__(self, cmd, **kw):
                 calls.append(cmd)
-                for a in cmd:  # the step's output file, so the size check passes
-                    if a.endswith((".mp4", ".aac")) and cmd[0] == "npx":
+                for a in cmd:  # the step's output, so the existence check passes
+                    if a.endswith((".mp4", ".wav")) and cmd[0] == "npx":
                         Path(a).write_bytes(b"x")
+                    if a.startswith("--props="):
+                        props_seen.append(json.loads(Path(a.split("=", 1)[1]).read_text()))
                 if cmd[0] == "ffmpeg":
                     Path(cmd[-1]).write_bytes(b"x")
 
@@ -419,7 +428,7 @@ class ChunkedRender(unittest.TestCase):
                 err = e
         return calls, out, err
 
-    def test_bundle_once_then_muted_chunks_then_the_sound_then_a_lossless_join(self):
+    def test_bundle_once_then_muted_chunks_then_one_sound_pass_then_a_join(self):
         calls, out, err = self.run_render(ve.total_frames(121.536, 30))
         self.assertIsNone(err)
         self.assertTrue(out.exists())
@@ -429,11 +438,18 @@ class ChunkedRender(unittest.TestCase):
         renders = [c for c in calls if c[:3] == ["npx", "remotion", "render"]]
         bundle_dir = next(a.split("=", 1)[1] for a in calls[0] if a.startswith("--out-dir="))
         self.assertTrue(all(c[3] == bundle_dir for c in renders), "every render reuses the one bundle")
-        chunks = [c for c in renders if any(a.startswith("--frames=") for a in c)]
-        self.assertEqual(len(chunks), 3)
-        self.assertTrue(all("--muted" in c for c in chunks))
-        self.assertIn("--codec=aac", renders[-1])
-        self.assertIn("copy", calls[-1], "the chunks are joined without re-encoding")
+        for c in renders[:-1]:
+            self.assertTrue(any(a.startswith("--frames=") for a in c))
+            self.assertIn("--muted", c)
+        # The sound: the whole timeline, lossless, from the same composition told to draw nothing.
+        self.assertIn("--codec=wav", renders[-1])
+        self.assertFalse(any(a.startswith("--frames=") for a in renders[-1]))
+        self.assertEqual([p["sound_only"] for p in self.props_seen], [False, False, False, True])
+        self.assertEqual({k: v for k, v in self.props_seen[-1].items() if k != "sound_only"},
+                         {k: v for k, v in self.props_seen[0].items() if k != "sound_only"})
+        join = calls[-1]
+        self.assertEqual(join[join.index("-c:v") + 1], "copy", "the pictures are joined without re-encoding")
+        self.assertEqual((join[join.index("-c:a") + 1], join[join.index("-b:a") + 1]), ("aac", "320k"))
 
     def test_a_joined_video_of_the_wrong_length_is_refused_and_removed(self):
         calls, out, err = self.run_render(ve.total_frames(121.536, 30) - 1)
@@ -442,11 +458,12 @@ class ChunkedRender(unittest.TestCase):
         self.assertFalse(out.exists())
 
     def test_a_short_video_is_bundled_and_rendered_once_with_its_sound(self):
-        self.PROPS = {"fps": 30, "duration_s": 20.0, "scenes": sc(0, 5, 10)}
+        self.PROPS = {"fps": 30, "duration_s": 20.0, "scenes": sc(0, 5, 10), "sound_only": False}
         calls, out, err = self.run_render(None)
         self.assertIsNone(err)
         self.assertEqual([c[2] for c in calls], ["bundle", "render"])
         self.assertNotIn("--muted", calls[1])
+        self.assertFalse(self.props_seen[0]["sound_only"])
 
 
 class WalkPose(unittest.TestCase):
@@ -460,7 +477,9 @@ class WalkPose(unittest.TestCase):
     def test_the_media_card_is_on_by_default_and_can_be_turned_off(self):
         ss = ve.split_sentences(words("Bir ikki uch to'rt."))
         scenes = ve.build_scenes(ss, ve.plan_rules(ss), 2.0)
-        self.assertTrue(ve.build_props(look="dusk", duration_s=2.0, words=[], scenes=scenes, narration="")["media_card"])
+        props = ve.build_props(look="dusk", duration_s=2.0, words=[], scenes=scenes, narration="")
+        self.assertTrue(props["media_card"])
+        self.assertFalse(props["sound_only"], "only render() turns the picture off, for its sound pass")
         self.assertFalse(ve.build_props(look="dusk", duration_s=2.0, words=[], scenes=scenes, narration="", media_card=False)["media_card"])
 
 

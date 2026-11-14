@@ -481,6 +481,8 @@ def build_props(*, look: str, duration_s: float, words: Sequence[Word], scenes: 
         "scenes": [s.to_dict() for s in scenes],
         "captions": bool(captions),
         "media_card": bool(media_card),
+        # Only render() sets it, for the sound pass of a chunked render.
+        "sound_only": False,
     }
 
 
@@ -500,7 +502,8 @@ def audio_seconds(path: Path) -> float:
 #: The window one Remotion render covers. Memory is NOT what grows with length here (measured: a 30 s and a 121 s render
 #: peaked within 25 MB of each other, docs/VOICE_EXPLAINER.md "Memory"); chunks bound the one part that does creep (the
 #: browser's heap) and keep every process short-lived. Each successful render counts once toward Remotion's licence,
-#: so chunks are never shorter than this: a 121 s narration is 4 video renders and 1 audio render, a 59 s one is 1.
+#: so chunks are never shorter than this: a 121 s narration is 3 or 4 picture chunks (by where its scenes start) plus
+#: one sound pass; a 59 s one is a single render.
 CHUNK_S = 30.0
 
 
@@ -541,14 +544,19 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
 
     The project is bundled once (webpack runs in its own short process, so no render holds it). A video up to two
     chunks long is then one render, sound included. A longer one renders its picture in scene-aligned chunks without
-    sound (``--frames``, ``--muted``), its sound once (the same composition, ``--codec=aac``: Remotion's own mix, so it
-    is exactly what a single render would have carried), and ffmpeg joins them without re-encoding. The result must
-    have exactly the composition's frame count, or it is refused."""
+    sound (``--frames``, ``--muted``) and its sound once, over the whole timeline, as lossless PCM: the same
+    composition with ``sound_only`` set, which plays the same <Audio> elements and draws nothing. That is Remotion's
+    own mix, bit for bit what a single render carries (measured), without paying for a second picture. ffmpeg joins
+    the pictures without re-encoding and encodes the sound once, as a single render does (AAC, 320 kb/s, 48 kHz). The
+    result must have exactly the composition's frame count, or it is refused and deleted.
+
+    Why not each chunk's own sound: Remotion mixes an effect that starts at or before a chunk's first frame
+    differently from a whole render (measured on a whoosh at every cut), so the pieces would not join exactly."""
     if not (engine_dir / "node_modules").exists():
         raise ExplainerError(f"the Remotion engine is not installed: run `npm ci` in {engine_dir}")
     if shutil.which("npx") is None:
         raise ExplainerError("npx is not on PATH: install Node 22 to render")
-    chunks = plan_chunks(props.get("scenes") or [], props.get("duration_s") or 0, props.get("fps") or 30, target_s=chunk_s) \
+    chunks = plan_chunks(props["scenes"], props.get("duration_s") or 0, int(props.get("fps") or 30), target_s=chunk_s) \
         if props.get("scenes") else [(0, 0)]
     if len(chunks) > 1 and (shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None):
         raise ExplainerError("ffmpeg and ffprobe are needed to join a long render: install ffmpeg")
@@ -573,30 +581,33 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
         try:
             _run(["npx", "remotion", "bundle", "src/index.ts", f"--out-dir={bundle}", f"--public-dir={pub}", "--log=error"],
                  engine_dir, deadline, timeout_s, "bundling")
-            common = [f"--props={props_file}", f"--concurrency={int(concurrency)}", "--log=error"]
+            common = [f"--concurrency={int(concurrency)}", "--log=error"]
             if browser:
                 common.append(f"--browser-executable={browser}")
 
-            def remotion(out: Path, *extra: str, what: str) -> None:
-                _run(["npx", "remotion", "render", str(bundle), COMPOSITION, str(out), *extra, *common], engine_dir, deadline,
-                     timeout_s, what)
+            def remotion(out: Path, *extra: str, what: str, props_path: Path = props_file) -> None:
+                _run(["npx", "remotion", "render", str(bundle), COMPOSITION, str(out), f"--props={props_path}", *extra, *common],
+                     engine_dir, deadline, timeout_s, what)
                 if not out.exists() or out.stat().st_size == 0:
                     raise ExplainerError(f"Remotion wrote nothing for {what}")
 
             if len(chunks) == 1:
                 remotion(out_path.resolve(), what="the video")
             else:
-                parts = []
+                videos = []
                 for i, (a, b) in enumerate(chunks):
-                    part = Path(tmp) / f"part{i:02d}.mp4"
-                    remotion(part, f"--frames={a}-{b}", "--muted", what=f"chunk {i + 1}/{len(chunks)} (frames {a}-{b})")
-                    parts.append(part)
-                audio = Path(tmp) / "audio.aac"
-                remotion(audio, "--codec=aac", what="the sound")
-                listing = Path(tmp) / "parts.txt"
-                listing.write_text("".join(f"file '{p}'\n" for p in parts), encoding="utf-8")
-                _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-i", str(audio),
-                      "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-movflags", "+faststart", str(out_path.resolve())],
+                    video = Path(tmp) / f"part{i:02d}.mp4"
+                    remotion(video, f"--frames={a}-{b}", "--muted", what=f"chunk {i + 1}/{len(chunks)} (frames {a}-{b})")
+                    videos.append(video)
+                sound_props = Path(tmp) / "props-sound.json"
+                sound_props.write_text(json.dumps({**props, "sound_only": True}), encoding="utf-8")
+                sound = Path(tmp) / "sound.wav"
+                remotion(sound, "--codec=wav", what="the sound", props_path=sound_props)
+                vlist = Path(tmp) / "videos.txt"
+                vlist.write_text("".join(f"file '{p}'\n" for p in videos), encoding="utf-8")
+                _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(vlist), "-i", str(sound),
+                      "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
+                      "-movflags", "+faststart", str(out_path.resolve())],
                      engine_dir, deadline, timeout_s, "joining the chunks")
                 want = total_frames(props["duration_s"], props["fps"])
                 got = _frame_count(out_path)
@@ -640,7 +651,14 @@ def _frame_count(path: Path) -> Optional[int]:
                              capture_output=True, text=True, timeout=120, check=True).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return None
-    return int(out) if out.isdigit() else None
+    return parse_count(out)
+
+
+def parse_count(text: str) -> Optional[int]:
+    """ffprobe's packet count. It prints ``912,`` (a trailing separator) in csv mode: anything that is not exactly one
+    count is None, never a guess."""
+    m = re.fullmatch(r"\s*(\d+),?\s*", text or "")
+    return int(m.group(1)) if m else None
 
 
 #: What the render needs from the environment; everything else (provider keys among it) stays out of it.
