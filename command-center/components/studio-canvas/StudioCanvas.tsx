@@ -246,7 +246,9 @@ export function StudioCanvas({
       // Decided from what was on screen before this read, not inside the state update (which React may run twice).
       const before = jobsRef.current;
       let finished = false;
-      const next = new Map(before);
+      // Only the ids just read change: two refreshes ending in the same tick (a new job's first read and another's poll) must
+      // both land, so the update merges into the latest state rather than replacing it with this refresh's snapshot.
+      const next = new Map<string, JobReading>();
       for (const [id, r] of read) {
         const prev = before.get(id);
         if (r.state === "unknown") {
@@ -262,7 +264,11 @@ export function StudioCanvas({
         if (wasActive && r.state === "ok" && !isActiveStatus(r.job.status) && r.job.status !== "queued") finished = true;
         next.set(id, r);
       }
-      setJobs(next);
+      setJobs((prev) => {
+        const merged = new Map(prev);
+        for (const [id, r] of next) merged.set(id, r);
+        return merged;
+      });
       // A job that just ended charged or released its hold, and may have put a file in the library.
       if (finished) {
         if (orgId) void refreshCredits(orgId);
@@ -288,6 +294,8 @@ export function StudioCanvas({
       const r = jobs.get(id);
       // A job never read yet (or gone) is tried a few times, then left as "unknown" rather than polled for ever.
       if (r?.state === "unknown") return (failures.current.get(id)?.n ?? 99) < 6;
+      // Not read yet: polled too, so a first read lost or still pending never leaves the node "loading" for ever.
+      if (!r || r.state === "loading") return true;
       return r?.state === "ok" && (isActiveStatus(r.job.status) || r.job.status === "queued");
     })
     .join(",");
