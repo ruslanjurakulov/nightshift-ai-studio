@@ -118,6 +118,11 @@ class Numbering(unittest.TestCase):
         # it names none of the three words below.
         # 0162 (two read-only API functions for the MCP Studio tools: api_creative_models, api_creative_job_files) was reviewed the
         # same way: it names none of the three words below.
+        # 0175 (a concept-thumbnail channel's run is priced with its images) was reviewed against these pins: it replaces
+        # quote_series_episode and start_series_episode on 0120's bodies and oauth_create_video on 0094's, none of which is
+        # request_series_plan, and names neither request_series_plan nor series_plan_cap_settings. It names series_plans, but only to
+        # READ a plan's channel (and in 0120's own start_series_episode, carried over unchanged): it alters no planning table, so none of
+        # 0127's pins moves. The second loop holds it to exactly that.
         # 0164 (the site's live public counters: site_settings and three new functions; its run count reads only 'daily' and
         # 'repair' jobs) was reviewed the same way: it names none of the three words below.
         # 0165 (the referral programme: two tables, eight functions, four earlier bodies with one hunk each) was reviewed the
@@ -131,11 +136,19 @@ class Numbering(unittest.TestCase):
         # 0170 (api_request_download audits a listed action name: one hunk in 0147's body) was reviewed the same way: it names
         # none of the three words below.
         reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170")
-        self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
+        reads_plans = ("0175",)
+        self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed + reads_plans], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
             for word in ("request_series_plan", "series_plans", "series_plan_cap_settings"):
                 self.assertNotIn(word, text, f"{n} touches {word}: review it against this file's pins")
+        for n in reads_plans:
+            text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
+            for word in ("request_series_plan", "series_plan_cap_settings"):
+                self.assertNotIn(word, text, f"{n} touches {word}: review it against this file's pins")
+            for line in (ln for ln in text.splitlines() if "series_plans" in ln and not ln.lstrip().startswith("--")):
+                self.assertRegex(line, r"from public\.series_plans\b|^\s+pl\s+public\.series_plans;$",
+                                 f"{n} does more than read series_plans: review it against this file's pins")
 
     def test_the_rollback_exists_and_is_one_transaction(self):
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")

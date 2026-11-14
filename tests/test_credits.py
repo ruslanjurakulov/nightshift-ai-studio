@@ -10,6 +10,12 @@ What would break without these:
 * a failed run charged at all;
 * a queued job inserted straight from a browser (no hold, or a token hold)
   running for free when enforcement is on;
+* a concept-thumbnail channel's run filed against the bare floor (a hold the
+  browser made with reserve_credits, without the images the Command Center
+  adds): its images are generated on the worker's keys and the capture is
+  capped at the hold, so the platform pays for them;
+* an administrator switching concept thumbnails on after the runner checked a
+  frame-priced hold, before the run read the channel's settings itself;
 * the operator's own channels (the default org) needing credits.
 """
 
@@ -46,6 +52,11 @@ PRICES = {
     "video_minute": Price(20.0, 0.25),
     "job_minimum": Price(5.0, 0.0),
 }
+
+
+#: A concept-thumbnail channel (agent_config.thumbnail_mode, migration 0158) and the image price it needs.
+CONCEPT = {"thumbnail_mode": "concept"}
+CONCEPT_PRICES = {**PRICES, "image_generations": Price(1.5, 0.2)}
 
 
 def entry(unit, qty, usd=None, channel="news", at="2026-09-26T10:05:00+00:00"):
@@ -87,6 +98,48 @@ class Pricing(unittest.TestCase):
         self.assertEqual(credits.minimum_reservation(PRICES, 180), 75.0)  # 3 min * 20 * 1.25
         self.assertIsNone(credits.minimum_reservation({}, 180))
 
+    def test_a_concept_thumbnail_channels_floor_carries_its_four_images(self):
+        # 75.00 for the length + 4 x 1.5 x 1.2 = 7.20 for the images: the hold the Command Center makes
+        # (withConceptThumbnail). Without it a 75.00 hold ran, metered 82.20, and was capped at 75.00.
+        self.assertEqual(credits.minimum_reservation(CONCEPT_PRICES, 180, CONCEPT), 82.2)
+        self.assertEqual(credits.minimum_reservation(CONCEPT_PRICES, None, CONCEPT), 12.2)  # job_minimum + images
+
+    def test_the_images_are_held_even_with_no_other_floor(self):
+        only_images = {"image_generations": Price(1.5, 0.2)}
+        self.assertEqual(credits.minimum_reservation(only_images, 180, CONCEPT), 7.2)
+
+    def test_a_frame_mode_channels_floor_is_unchanged(self):
+        for cfg in (None, {}, {"thumbnail_mode": "frame"}, {"thumbnail_mode": "conceptual"},
+                    {"thumbnail_mode": ["concept"]}, {"thumbnail_mode": None}, "concept", ["concept"]):
+            with self.subTest(cfg=cfg):
+                self.assertEqual(credits.minimum_reservation(CONCEPT_PRICES, 180, cfg), 75.0)
+                self.assertEqual(credits.minimum_reservation({}, 180, cfg), None)
+
+    def test_concept_is_read_like_the_run_reads_it(self):
+        from modules.thumbnail_concept import MODE_CONCEPT, normalize_mode
+        for raw in ("concept", " Concept ", "CONCEPT\n", "frame", "", "concepts", "con cept"):
+            with self.subTest(raw=raw):
+                self.assertEqual(credits.concept_thumbnail_on({"thumbnail_mode": raw}),
+                                 normalize_mode(raw) == MODE_CONCEPT)
+
+    def test_unpriced_images_refuse_with_the_fix_never_the_floor_without_them(self):
+        with self.assertRaises(CreditRefused) as ctx:
+            credits.minimum_reservation(PRICES, 180, CONCEPT)
+        msg = str(ctx.exception)
+        self.assertIn("image_generations", msg)
+        self.assertIn("add an image_generations row to credit_prices", msg)
+        self.assertIn("frame mode", msg)
+
+    def test_the_image_ceiling_matches_the_command_centers_and_the_runs(self):
+        ts = (ROOT / "command-center" / "lib" / "credits.ts").read_text()
+        self.assertIn(f"CONCEPT_THUMBNAIL_MAX_IMAGES = {credits.CONCEPT_THUMBNAIL_MAX_IMAGES};", ts)
+        self.assertIn(f'UNIT_IMAGE_GENERATIONS = "{credits.UNIT_IMAGE_GENERATIONS}"', ts)
+        from modules import cost_ledger
+        self.assertEqual(credits.UNIT_IMAGE_GENERATIONS, cost_ledger.IMAGE_GENERATIONS)
+        # The run clamps its arms to 2..4 (config.THUMBNAIL_VARIANT_COUNT): the ceiling is the most it can make.
+        cfg = (ROOT / "config.py").read_text()
+        self.assertRegex(cfg, r'THUMBNAIL_VARIANT_COUNT = _clamp_int\(os.getenv\("CHRONOS_THUMBNAIL_VARIANTS", "2"\), 2, 2, 4\)')
+
 
 class Settlement(unittest.TestCase):
     def test_fully_priced_run_is_charged_what_it_used_rounded_up(self):
@@ -122,9 +175,10 @@ class Settlement(unittest.TestCase):
 class FakeCredits:
     """The service-key client, in memory."""
 
-    def __init__(self, org=CUSTOMER_ORG, hold=40.0, prices=None, down=False):
+    def __init__(self, org=CUSTOMER_ORG, hold=40.0, prices=None, down=False, agent_config=None):
         self.org = org
         self.hold = hold
+        self.agent_config = {} if agent_config is None else agent_config
         self.price_map = PRICES if prices is None else prices
         self.down = down
         self.calls = []
@@ -137,6 +191,13 @@ class FakeCredits:
         self._check()
         self.calls.append(("org", channel_id))
         return self.org
+
+    def channel_agent_config(self, channel_id):
+        self._check()
+        self.calls.append(("agent_config", channel_id))
+        if isinstance(self.agent_config, Exception):
+            raise self.agent_config
+        return self.agent_config
 
     def start(self, ref, org):
         self._check()
@@ -188,6 +249,129 @@ class OpenHold(unittest.TestCase):
     def test_unreachable_credits_refuse_when_enforced(self):
         with self.assertRaisesRegex(CreditRefused, "unavailable"):
             credits.open_hold(FakeCredits(down=True), job_ref="r1", channel_id="news", enforce=True)
+
+    def test_a_concept_channel_hold_without_its_images_is_refused_and_released(self):
+        c = FakeCredits(hold=75.0, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        with self.assertRaisesRegex(CreditRefused, "75.00 credits is below the 82.20"):
+            credits.open_hold(c, job_ref="r1", channel_id="news", duration_s=180, enforce=True)
+        self.assertEqual(c.settled(), [("release", "r1")])
+
+    def test_a_concept_channel_hold_with_its_images_runs(self):
+        c = FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        hold = credits.open_hold(c, job_ref="r1", channel_id="news", duration_s=180, enforce=True)
+        self.assertEqual(hold, Hold("r1", CUSTOMER_ORG, 82.2, "concept"))
+        self.assertIn(("agent_config", "news"), c.calls)
+
+    def test_unpriced_concept_images_refuse_and_give_the_hold_back(self):
+        c = FakeCredits(hold=500.0, agent_config=CONCEPT)      # PRICES has no image_generations
+        with self.assertRaisesRegex(CreditRefused, "image_generations"):
+            credits.open_hold(c, job_ref="r1", channel_id="news", duration_s=180, enforce=True)
+        self.assertEqual(c.settled(), [("release", "r1")])
+
+    def test_unreadable_settings_refuse_before_the_hold_is_claimed(self):
+        c = FakeCredits(agent_config=CreditsUnavailable("channels: HTTP 503"))
+        with self.assertRaisesRegex(CreditRefused, "unavailable .*HTTP 503"):
+            credits.open_hold(c, job_ref="r1", channel_id="news", duration_s=180, enforce=True)
+        self.assertNotIn("start", [x[0] for x in c.calls])
+
+    def test_the_operators_own_channels_never_read_settings(self):
+        c = FakeCredits(org=credits.DEFAULT_ORG_ID, agent_config=CreditsUnavailable("channels: HTTP 503"))
+        self.assertIsNone(credits.open_hold(c, job_ref="r1", channel_id="chronos", enforce=True))
+        self.assertIsNone(credits.open_queue_hold(c, job_ref="r1", channel_id="chronos",
+                                                  params={"duration": 180}))
+
+
+class HeldThumbnailMode(unittest.TestCase):
+    """main.py's stop: the hold was checked for one thumbnail mode, the run reads its own settings later."""
+    ENV = credits.HELD_THUMBNAIL_MODE_ENV
+
+    def test_a_frame_checked_hold_never_pays_for_concept_images(self):
+        why = credits.held_thumbnail_refusal({self.ENV: "frame"}, run_mode_is_concept=True)
+        self.assertIn("turned on after this run's credits were checked", why)
+        self.assertIn("nothing was spent", why)
+        self.assertIn("start the run again from the Command Center", why)
+
+    def test_what_the_hold_covered_runs(self):
+        for held, concept in (("concept", True), ("concept", False), ("frame", False), (" Concept ", True)):
+            with self.subTest(held=held, concept=concept):
+                self.assertIsNone(credits.held_thumbnail_refusal({self.ENV: held}, concept))
+
+    def test_a_run_whose_hold_was_never_checked_is_not_stopped_here(self):
+        # The operator's exempt runs carry no hold; an unpaid customer run never got this far.
+        for env in ({}, {self.ENV: ""}):
+            with self.subTest(env=env):
+                self.assertIsNone(credits.held_thumbnail_refusal(env, run_mode_is_concept=True))
+
+    def test_main_py_checks_it_before_the_first_spend(self):
+        src = (ROOT / "main.py").read_text()
+        body = src[src.index("health = None\n    try:\n        health = check_run_credentials(ctx)"):]
+        self.assertLess(body.index("_preflight_held_thumbnail(ctx, channel_id)"), body.index("ceiling = getattr("))
+        self.assertIn("credit_rules.held_thumbnail_refusal(", src)
+
+
+class OpenQueueHold(unittest.TestCase):
+    """The queue worker's floor (independent of NIGHTSHIFT_CREDITS_ENFORCE)."""
+
+    def open(self, c):
+        return credits.open_queue_hold(c, job_ref="r1", channel_id="news", params={"duration": 180})
+
+    def test_a_concept_channel_hold_without_its_images_is_refused_and_released(self):
+        c = FakeCredits(hold=75.0, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        with self.assertRaisesRegex(CreditRefused, "75.00 credits is below the 82.20 a 180-second run"):
+            self.open(c)
+        self.assertEqual(c.settled(), [("release", "r1")])
+
+    def test_a_concept_channel_hold_with_its_images_runs(self):
+        c = FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        self.assertEqual(self.open(c), Hold("r1", CUSTOMER_ORG, 82.2, "concept"))
+
+    def test_a_frame_channel_still_runs_on_the_length_alone(self):
+        c = FakeCredits(hold=75.0, prices=CONCEPT_PRICES, agent_config={"thumbnail_mode": "frame"})
+        self.assertEqual(self.open(c), Hold("r1", CUSTOMER_ORG, 75.0, "frame"))
+
+    def test_unpriced_concept_images_refuse_with_the_fix_and_give_the_hold_back(self):
+        c = FakeCredits(hold=500.0, agent_config=CONCEPT)
+        with self.assertRaisesRegex(CreditRefused, "add an image_generations row to credit_prices"):
+            self.open(c)
+        self.assertEqual(c.settled(), [("release", "r1")])
+
+    def test_unreadable_settings_refuse_before_the_hold_is_claimed(self):
+        c = FakeCredits(agent_config=CreditsUnavailable("channels: HTTP 503"))
+        with self.assertRaisesRegex(CreditRefused, "credits are unavailable"):
+            self.open(c)
+        self.assertNotIn("start", [x[0] for x in c.calls])
+
+    class PricesDown(FakeCredits):
+        def prices(self):
+            raise CreditsUnavailable("credit_prices: ReadTimeout")
+
+    def test_unreadable_prices_refuse_before_the_hold_is_claimed_so_none_is_stranded(self):
+        # Used to read the prices after start(): the refusal then left the hold claimed until the 24 h sweep.
+        for opener in (self.open, lambda c: credits.open_hold(c, job_ref="r1", channel_id="news",
+                                                              duration_s=180, enforce=True)):
+            c = self.PricesDown()
+            with self.assertRaisesRegex(CreditRefused, "credit_prices: ReadTimeout"):
+                opener(c)
+            self.assertNotIn("start", [x[0] for x in c.calls])
+
+    def test_a_concept_refusal_says_the_images_are_why_and_what_to_do(self):
+        c = FakeCredits(hold=75.0, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        with self.assertRaises(CreditRefused) as ctx:
+            self.open(c)
+        msg = str(ctx.exception)
+        self.assertIn("up to 4 generated concept-thumbnail images", msg)
+        self.assertIn("start it again from the Command Center", msg)
+
+    def test_the_hold_carries_the_mode_its_floor_was_checked_for(self):
+        concept = self.open(FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT))
+        frame = self.open(FakeCredits(hold=82.2, prices=CONCEPT_PRICES))
+        self.assertEqual((concept.thumbnail_mode, frame.thumbnail_mode), ("concept", "frame"))
+
+    def test_a_frame_refusal_does_not_mention_images(self):
+        c = FakeCredits(hold=10.0, prices=CONCEPT_PRICES)
+        with self.assertRaises(CreditRefused) as ctx:
+            self.open(c)
+        self.assertNotIn("image", str(ctx.exception))
 
     def test_not_enforced_and_no_hold_touches_nothing(self):
         c = FakeCredits()
@@ -873,6 +1057,40 @@ class WorkerCredits(unittest.TestCase):
         self.assertFalse(self.ran())
         self.assertEqual(fake.settled(), [("release", "rj-abc")])
 
+    def test_a_concept_channels_job_on_a_hold_without_its_images_never_runs(self):
+        # The hold covers the minute (25.00) but not the 4 images (7.20): main.py would generate them on the
+        # worker's keys and the capture would stop at 25.00.
+        fake = FakeCredits(hold=25.0, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        ends = self.run_one(job(), fake, [entry("tts_characters", 5000)])
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("25.00 credits is below the 32.20", ends[0][1])
+        self.assertFalse(self.ran())
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
+
+    def test_the_run_is_told_the_thumbnail_mode_its_hold_covers(self):
+        (self.repo / "main.py").write_text(
+            "import os\nopen('mode.out', 'w').write(os.environ.get('NIGHTSHIFT_HELD_THUMBNAIL_MODE', '<unset>'))\n"
+            + FAKE_MAIN)
+        self.env["NIGHTSHIFT_HELD_THUMBNAIL_MODE"] = "concept"      # the worker's own env never reaches a run
+        self.run_one(job(), FakeCredits(), [entry("tts_characters", 5000)])
+        self.assertEqual((self.repo / "mode.out").read_text(), "frame")
+
+    def test_an_exempt_run_gets_no_mode_even_if_the_worker_env_has_one(self):
+        (self.repo / "main.py").write_text(
+            "import os\nopen('mode.out', 'w').write(os.environ.get('NIGHTSHIFT_HELD_THUMBNAIL_MODE', '<unset>'))\n"
+            + FAKE_MAIN)
+        self.env["NIGHTSHIFT_HELD_THUMBNAIL_MODE"] = "frame"
+        self.run_one(job(credit_ref=None), FakeCredits(org=credits.DEFAULT_ORG_ID))
+        self.assertEqual((self.repo / "mode.out").read_text(), "<unset>")
+
+    def test_a_concept_channels_job_without_an_image_price_never_runs_and_says_how_to_fix_it(self):
+        fake = FakeCredits(hold=500.0, agent_config=CONCEPT)
+        ends = self.run_one(job(), fake)
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("add an image_generations row to credit_prices", ends[0][1])
+        self.assertFalse(self.ran())
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
+
 
 # ── the Actions settle step ──────────────────────────────────────────────
 
@@ -897,6 +1115,13 @@ class ActionsSettle(unittest.TestCase):
         self.assertEqual(written["CREDITS_HOLD"], "40.00")
         self.assertEqual(written["CREDITS_ORG"], CUSTOMER_ORG)
         self.assertIn("CREDITS_SINCE", written)
+        self.assertEqual(written[credits.HELD_THUMBNAIL_MODE_ENV], "frame")
+
+    def test_start_hands_main_py_the_thumbnail_mode_the_hold_covers(self):
+        c = FakeCredits(hold=82.2, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        self.assertEqual(credits_settle.start(self.env(INPUT_DURATION="180"), c), 0)
+        written = dict(line.split("=", 1) for line in self.github_env.read_text().splitlines())
+        self.assertEqual(written[credits.HELD_THUMBNAIL_MODE_ENV], "concept")
 
     def test_start_never_writes_an_organization_id_that_is_not_a_uuid(self):
         # GITHUB_ENV is line-oriented: a line break in a database value would
@@ -1012,6 +1237,30 @@ class CreditsRestClient(unittest.TestCase):
         url, body = s.posts[0]
         self.assertTrue(url.endswith("/rest/v1/rpc/expire_credit_lots"))
         self.assertEqual(body, {})
+
+    def test_agent_config_is_read_from_the_channels_row(self):
+        s = self.Session(self.Resp(200, [{"agent_config": {"thumbnail_mode": "concept"}}]))
+        c = credits.CreditsRest("https://x.supabase.co", "service-secret", session=s)
+        self.assertEqual(c.channel_agent_config("news"), {"thumbnail_mode": "concept"})
+        url, params = s.posts[0]
+        self.assertTrue(url.endswith("/rest/v1/channels"))
+        self.assertEqual(params, {"select": "agent_config", "channel_id": "eq.news"})
+
+    def test_a_null_agent_config_is_the_defaults_and_a_missing_row_is_not(self):
+        c = credits.CreditsRest("https://x.supabase.co", "k", session=self.Session(self.Resp(200, [{"agent_config": None}])))
+        self.assertEqual(c.channel_agent_config("news"), {})
+        c = credits.CreditsRest("https://x.supabase.co", "k", session=self.Session(self.Resp(200, [])))
+        with self.assertRaises(CreditsUnavailable):
+            c.channel_agent_config("news")
+
+    def test_a_reply_that_is_not_json_is_unavailable_not_empty(self):
+        class NotJson(self.Resp):
+            def json(self):
+                raise ValueError("Expecting value")
+        c = credits.CreditsRest("https://x.supabase.co", "k", session=self.Session(NotJson(200, None)))
+        for read in (c.channel_agent_config, c.channel_org):
+            with self.subTest(read=read.__name__), self.assertRaises(CreditsUnavailable):
+                read("news")
 
     def test_http_error_names_the_status_not_the_body_or_key(self):
         s = self.Session(self.Resp(401, {"message": "service-secret leaked?"}))

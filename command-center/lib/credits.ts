@@ -422,16 +422,20 @@ export function aggregateSeriesQuote(durationsS: (number | null)[], estimates: C
  * passed on as null, so a channel with history can still price it per video), then the aggregate above. Pure.
  * Does not include the planning call (no credit price) or any voice. Throws a RangeError for 0 or more than
  * SERIES_MAX_EPISODES episodes: the caller validates a series before it asks for a price.
+ * `agentConfig` is the channel's: a concept-thumbnail channel's episodes carry their generated images, as the
+ * database's own episode price does (migration 0175) and the worker's floor demands.
  */
 export function quoteSeries(input: {
   prices: PriceMap;
   durationsS: (number | null)[];
   videos: Pick<VideoEconomics, "drivers" | "durationS">[];
+  agentConfig?: unknown;
 }): SeriesQuote {
   const n = input.durationsS.length;
   if (n < 1 || n > SERIES_MAX_EPISODES) throw new RangeError(`a series has 1 to ${SERIES_MAX_EPISODES} episodes`);
   const durations = input.durationsS.map((d) => (typeof d === "number" && Number.isFinite(d) && d > 0 ? d : null));
-  const estimates = durations.map((durationS) => estimateRunCredits({ prices: input.prices, durationS, videos: input.videos }));
+  const estimates = durations.map((durationS) =>
+    withConceptThumbnail(estimateRunCredits({ prices: input.prices, durationS, videos: input.videos }), input.agentConfig ?? null, input.prices));
   return aggregateSeriesQuote(durations, estimates);
 }
 

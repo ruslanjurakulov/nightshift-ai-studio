@@ -704,6 +704,11 @@ import sec_mcp_chatgpt_client_0161  # noqa: E402
 
 sec_mcp_chatgpt_client_0161.extend(TABLES, FUNCTIONS)
 
+# Migration 0175 (a concept-thumbnail channel's run is priced with its generated images): tests/security/sec_concept_thumbnail_holds_0175.py
+import sec_concept_thumbnail_holds_0175  # noqa: E402
+
+sec_concept_thumbnail_holds_0175.extend(TABLES, FUNCTIONS)
+
 # Migration 0164 (the marketing site's live public counters, hidden behind an admin's switch): tests/security/sec_public_stats_0164.py
 import sec_public_stats_0164  # noqa: E402
 

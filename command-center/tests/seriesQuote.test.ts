@@ -25,6 +25,29 @@ function estimate(credits: number | null, gap: EstimateGap | null): CreditEstima
 }
 
 describe("quoteSeries", () => {
+  it("prices a concept-thumbnail channel's episodes with their images, like the database (0175)", () => {
+    const prices = parsePrices([
+      { unit: "video_minute", credits_per_unit: 20, margin: 0.25 },
+      { unit: "image_generations", credits_per_unit: 2, margin: 0.25 },
+    ]);
+    const q = quoteSeries({ prices, durationsS: [180, 300], videos: [], agentConfig: { thumbnail_mode: "concept" } });
+    expect(q.episodes.map((e) => e.credits)).toEqual([85, 135]); // 75 / 125 + 4 x 2 x 1.25
+    expect(q.totalCredits).toBe(220);
+  });
+
+  it("leaves a concept channel's episodes unpriced, never priced without the images, when images have no price", () => {
+    const q = quoteSeries({ prices: PER_MINUTE, durationsS: [180, 300], videos: [], agentConfig: { thumbnail_mode: "concept" } });
+    expect(q.episodes.map((e) => [e.credits, e.gap])).toEqual([[null, "unpriced_concept_thumbnail"], [null, "unpriced_concept_thumbnail"]]);
+    expect(q.totalCredits).toBeNull();
+  });
+
+  it("is unchanged for a frame channel or no settings", () => {
+    for (const agentConfig of [undefined, null, {}, { thumbnail_mode: "frame" }]) {
+      const q = quoteSeries({ prices: PER_MINUTE, durationsS: [180], videos: [], agentConfig });
+      expect(q.episodes[0].credits).toBe(75);
+    }
+  });
+
   it("prices every episode with estimateRunCredits and sums them", () => {
     const q = quoteSeries({ prices: PER_MINUTE, durationsS: [180, 300, 600], videos: [] });
     expect(q.episodes.map((e) => e.credits)).toEqual([75, 125, 250]);

@@ -384,6 +384,9 @@ class FakeCredits:
     def channel_org(self, channel_id):
         return CUSTOMER_ORG
 
+    def channel_agent_config(self, channel_id):
+        return {}       # frame thumbnails: the floor is the length alone
+
     def start(self, ref, org):
         self.calls.append(("start", ref))
         return 60.0
