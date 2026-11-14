@@ -56,6 +56,16 @@ describe("the limits", () => {
     expect(v.totals).toEqual({ scenes: 2, plannedSeconds: 16 });
   });
 
+  it("reads and lists a queued project (0171: the hold is taken, the worker has not started it yet)", () => {
+    const v = coerceFilmView(filmJson({ status: "queued" }, [sceneJson(S1, 0)]));
+    expect(v).not.toBeNull();
+    expect(v!.film.status).toBe("queued");
+    const rows = coerceFilmList([
+      { id: FILM, title: "Q", status: "queued", language: "en", aspect: "16:9", target_seconds: 120, updated_at: null, archived_at: null },
+    ]);
+    expect(rows.map((r) => [r.id, r.status])).toEqual([[FILM, "queued"]]);
+  });
+
   it("the list drops rows it cannot read rather than inventing fields", () => {
     const rows = coerceFilmList([
       { id: FILM, title: "A", status: "draft", language: "uz", aspect: "9:16", target_seconds: 120, updated_at: null, archived_at: null },

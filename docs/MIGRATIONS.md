@@ -1738,6 +1738,70 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
 
+## Film Studio P2: the price of a film, one hold, and the settle path (0171)
+
+0171 (`0171_films_money.sql`) lets a film be priced and started, and gives P3's worker the calls that settle it. Nothing in it calls a
+provider or creates a creative or render job, and no credit function body is replaced. The plan is in `docs/FILM_STUDIO.md`,
+"Money (P2)".
+
+- **Adds.**
+  - `film_studio_settings`: the switch, OFF, set only by `set_film_studio_enabled` (owner_guard or the SQL editor; audited).
+  - `film_quotes`: the stored quotes, 30 minutes each.
+  - `film_segments`: one funding hold of a film, its assembly line with the captions, and the worker's lease.
+  - `org_film_settings`: a per-film cap, none by default, and how many films run at once, 1 by default.
+  - The money columns and the provider task id of `film_takes`.
+  - `creative_jobs.film_take_id` with `payer = 'film'`, set exactly together and never with a hold of its own.
+  - `'queued'` in `films_status_check`.
+- **The browser's calls.**
+  - `quote_film(film, version)`: editors and above.
+  - `start_film(film, quote_id, idempotency_key)`: owners and admins; in the exempt organization a platform owner or admin.
+  - Both are rate-limited in the database: 120 quotes and 10 starts a person an hour (`db.film.*`).
+  - A start refused after it is counted is answered as `{ok: false, reason, code, detail}`, so it still counts (BR-0171-01).
+- **The price.**
+  - Key frames and clip shots are priced by `creative_price` (0159). A clip is priced against a library picture as a stand-in, the
+    50 newest only, following 0073's rule.
+  - Narration is the tts rate times every character, never less than its minimum once per 4,000-character call.
+  - Assembly with captions is `film_assembly_minute` times the planned minutes. **No price row is seeded.**
+  - Any line that cannot be priced makes the total and the quote id NULL and names the reason. A character counts as all of its
+    pictures against the reference limit.
+- **The hold.** One per segment: `reserve_credits(org, 'fm-<segment id>', total)`. Capture is once, at settle, never above the hold.
+  0034 is unchanged, and the quote reports the run slot the film takes and for how long.
+- **Charges (the Studio's rule).**
+  - A take that delivers is charged its line. A clip delivers when its file's recorded length (`media_assets.duration_s`, written at
+    registration) is at least 90% of the confirmed seconds; otherwise it counts as failed.
+  - Each take gets one automatic retry within its line, charged once, on success.
+  - A take that delivers nothing is 0, whatever the vendor did (a moderated or failed task, a partial narration, a lost worker); the
+    platform absorbs the vendor's charge, and the basis records it.
+  - The assembly is charged by its registered file's recorded length.
+  - A result is kept only when accepted: a rejected or lost take's files are soft-deleted in the same transaction.
+- **Safety.**
+  - A segment that charged nothing and made nothing returns its film to `draft`, and its never-begun takes are removed.
+  - No take begins once the hold is gone, or while a 0167 refund recovery waits on it.
+  - The claim and the sweep isolate each segment in its own subtransaction, and a skipped one leaves a `segment_skipped` event.
+  - A segment's leases are capped (3), and after that what it left in flight is ended as `worker_lost`.
+  - Past the deadline plus 2 hours (22 h, inside 0020's 24) the sweep ends what is in flight and settles while the hold is open.
+- **Replaced constraints.** `films_status_check` (0166's plus `'queued'`) and `creative_jobs_payer_check` (0036's plus `'film'`).
+  The drift guard compares the exact set of quoted words with the earlier file's and 0171's. Replaying 0166 or 0036 after 0171 would
+  put the narrower check back: replay 0171 after it (the lab's `sec_db.take_off_0171` / `put_back_0171`).
+- **Locks while applying.** ACCESS EXCLUSIVE on `creative_jobs`, `films` and `film_takes` until commit, and one scan for each new
+  check. `lock_timeout` is 5 s, so the file fails rather than queueing behind the creative worker. Apply it as one transaction.
+- **md5.** The replay guard and the rollback pin every function body the file creates; the end state pins the money ones.
+- **Number.** Provisionally 0171 (0169 is another open pull request; 0170 is the API download audit). It needs 0020, 0034, 0036,
+  0052, 0094, 0107, 0159, 0166 and 0167. The numbering tests of 0127, 0131 and 0133 list it as reviewed. 0166's header says "0167"
+  for this phase: that was the plan's number, and a merged file is never edited.
+- **Undo.** `docs/sql/rollback_0171_films_money.sql` (owner-applied). It refuses in any of these cases:
+  - a segment is live;
+  - a `payer = 'film'` job exists;
+  - a body is not 0171's, or a later function reads `film_segments`;
+  - any segment exists and its override line is not set.
+
+  The credit ledger keeps every movement either way.
+- **Tests.**
+  - `tests/test_films_money_migration.py`: the text, the grants, the hashes, the constraints, the rollback.
+  - `tests/security/test_sec_films_money.py`: a real PostgreSQL.
+  - `tests/security/test_sec_breach_films_money.py`: Breach, BR-0171-01 and the refused attacks.
+  - `tests/security/sec_films_0171.py`: the shared lab's contract and seed.
+
 ## Rights acknowledgement: a recorded "I take responsibility" before restricted models (0174)
 
 0174 (`0174_rights_acknowledgement.sql`) puts an explicit, recorded acknowledgement in front of a model whose provider (or the law)
