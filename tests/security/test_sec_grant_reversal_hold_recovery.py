@@ -181,7 +181,10 @@ def test_two_holds_each_pay_only_what_they_gave_back_and_a_later_purchase_stays_
         b = _hold(s, member, org, 50)                        # 50 of the grant; 20 free
         out = _reverse(s, sc, g)
         assert (out["reversed"], out["shortfall"], out["on_hold"]) == (20, 80, 80), out
-        assert _recovery(s, g) == (80, 0, 0, [a, b])
+        rec = _recovery(s, g)
+        # Both holds are placed in one transaction, so their created_at ties and the order falls to the random job ids;
+        # nothing reads the order of the recorded holds, only which ones they are.
+        assert rec[:3] == (80, 0, 0) and sorted(rec[3]) == sorted([a, b]), rec
 
         _buy(s, org, 500)                                    # bought after the reversal: never the reversal's to take
         _release(s, a)
