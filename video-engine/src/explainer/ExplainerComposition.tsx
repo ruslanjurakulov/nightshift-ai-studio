@@ -40,7 +40,7 @@ const Headline: React.FC<{ text: string; look: Look; width: number; words: Word[
       {parts.map((p, i) => {
         if (p.space) return <span key={i}>{p.text}</span>;
         const k = wi++;
-        const start = 3 + k * 4;
+        const start = 1 + k * 4;
         const e = ramp(frame, start, 12);
         let pop = 0;
         if (p.accent) {
@@ -169,7 +169,7 @@ const SceneView: React.FC<{ scene: ExplainerScene; look: Look; words: Word[]; ca
   // Leaving: the last few frames of this scene's own window, never beyond it.
   const out = exitProgress(frame, duration, fps, isLast);
   const kicker = ramp(frame, 0, 12);
-  const panel = ramp(frame, 5, 16);
+  const panel = ramp(frame, 2, 16);
   const accentAt = Math.round(accentLineAt(scene.accent, own, scene.start_s, seconds) * fps);
   const accentIn = ramp(frame, accentAt, 14);
 

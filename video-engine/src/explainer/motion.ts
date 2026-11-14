@@ -116,9 +116,12 @@ export const accentSpokenAt = (accent: string, words: Word[]): number | null => 
   return null;
 };
 
-/** Frames a scene uses to leave: never more than a third of a short scene, so a 1.6 s scene still reads. */
+/**
+ * Frames a scene uses to leave: about a quarter second, never more than a third of a short scene so a 1.6 s scene
+ * still reads. Longer (0.3 s) left a visible gap of empty backdrop between two scenes on the contact sheet.
+ */
 export const exitFrames = (durationFrames: number, fps: number): number =>
-  Math.max(0, Math.min(Math.round(fps * 0.3), Math.floor(durationFrames / 3)));
+  Math.max(0, Math.min(Math.round(fps * 0.24), Math.floor(durationFrames / 3)));
 
 /**
  * 0 while the scene is fully on screen, rising to 1 on its last frame. The exit happens INSIDE the scene's own window:
