@@ -1,34 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import {
-  AudioLines,
-  Check,
-  ChevronDown,
-  Clapperboard,
-  Film,
-  Hand,
-  Image as ImageIcon,
-  Layers,
-  LayoutGrid,
-  Maximize,
-  Minus,
-  MousePointer2,
-  Palette,
-  Plus,
-  Projector,
-  Search,
-  Sparkles,
-  Wand2,
-  X,
-  ZoomIn,
-  type LucideIcon,
-} from "lucide-react";
+import { Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, RotateCcw, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { useShell } from "@/components/shell/ShellContext";
-import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { refreshCredits } from "@/lib/credits-live";
@@ -39,12 +17,12 @@ import {
   KIND_SPEC,
   NODE_H,
   NODE_W,
+  PORT_Y,
   RECIPES,
   TOOL_KINDS,
   canWire,
   clampZoom,
   connect,
-  depthOf,
   disconnect,
   fitView,
   flowOrder,
@@ -63,8 +41,8 @@ import {
   zoomAt,
   type CanvasNode,
   type CanvasState,
+  type CanvasWire,
   type NodeKind,
-  type PortType,
   type Recipe,
   type ToolKind,
   type Viewport,
@@ -72,22 +50,22 @@ import {
 } from "@/lib/studio/canvas";
 import { ASSET_MIME, LibraryDrawer, readDrop, type DroppedAsset } from "./LibraryDrawer";
 import { Inspector, type PanelData } from "./Inspector";
+import { KIND_ICONS, Lamp } from "./parts";
 import { LAMP, inputOf, kindOpen, nodeAsset, nodeStatus, type JobReading, type NodeStatus } from "./nodeState";
 import "./studio-canvas.css";
 
-export const KIND_ICONS: Record<NodeKind, LucideIcon> = {
-  image: ImageIcon,
-  video: Clapperboard,
-  animate: Film,
-  effects: Sparkles,
-  enhance: Wand2,
-  voice: AudioLines,
-  asset: Layers,
-};
+export { KIND_ICONS };
 
-const PORT_LETTER: Record<PortType, string> = { image: "I", video: "V", audio: "A" };
 const JOB_POLL_MS = 5000;
 const NARROW = "(max-width: 760px)";
+/** A press that moves less than this is a click (it opens the inspector); more is a drag (it only moves the node). */
+const CLICK_SLOP = 4;
+const HISTORY_MAX = 100;
+/** The map's corner, kept clear by Fit so the map never sits on a node. */
+const MAP_ROOM = 232;
+const MAP_TALL = 176;
+/** Where the app's header offers this page its bar (components/Header.tsx, Studio only). */
+export const BAR_SLOT_ID = "studio-bar-slot";
 
 const makeId = () => {
   try {
@@ -118,15 +96,28 @@ function storage(): Storage | null {
   }
 }
 
+type Snapshot = Pick<CanvasState, "nodes" | "wires">;
+
+/** Groups of the phone's flow, by what a node is (not by depth): words and files, then making, then finishing. */
+const FLOW_GROUP: Record<NodeKind, "sources" | "make" | "finish"> = {
+  prompt: "sources",
+  asset: "sources",
+  image: "make",
+  video: "make",
+  animate: "make",
+  effects: "make",
+  voice: "make",
+  enhance: "finish",
+};
+
 /**
- * Nightshift Studio's canvas (docs/studio/STUDIO_IA.md §2, the person's `sketch` project, prototype in
- * docs/studio/prototype/). Every tool is a node; a wire is a real input; the inspector is the existing
- * composer; results land on the node from the job the database reports.
+ * Nightshift Studio's canvas (docs/studio/STUDIO_IA.md §2, the person's `sketch` project; prototype in
+ * docs/studio/prototype/). Every tool is a node; a wire is a real input; the inspector is the existing composer
+ * locked to the node's tools; results land on the node from the job the database reports.
  *
- * What it never does: price or start anything by itself (rule 3: only the composer's quote → start does),
- * put another model in place of one that is off (rule 4), or show a state it did not read (rule 5: an
- * unreadable job is "unknown"). The layout (positions and wires) lives in this browser only, per
- * organization, channel and person, until a studio_layouts table exists.
+ * What it never does: price or start anything by itself (rule 3: only the composer's quote → start does), put
+ * another model in place of one that is off (rule 4), or show a state it did not read (rule 5). The layout lives
+ * in this browser only, per organization, channel and person, until a studio_layouts table exists.
  */
 export function StudioCanvas({
   data,
@@ -142,7 +133,7 @@ export function StudioCanvas({
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
-  const { tools: availability, operator, features } = useShell();
+  const { tools: availability } = useShell();
   const narrow = useNarrow();
   const orgId = data.orgId;
   const key = orgId ? layoutKey(orgId, channel, userId) : null;
@@ -151,17 +142,21 @@ export function StudioCanvas({
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedWire, setSelectedWire] = useState<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState<null | "all" | "add">(null);
   const [mode, setMode] = useState<"select" | "hand">("select");
-  const [showMap, setShowMap] = useState(true);
+  const [mapOpen, setMapOpen] = useState(true);
   const [firstRunDone, setFirstRunDone] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const [jobs, setJobs] = useState<Map<string, JobReading>>(() => new Map());
   const library = useLibraryImages(orgId ?? "", { enabled: !!orgId });
   const libraryRef = useRef(library);
   libraryRef.current = library;
+  const canvasRef = useRef(canvas);
+  canvasRef.current = canvas;
 
   // ── layout: read once, then saved on every change (this browser only) ──────
   useEffect(() => {
@@ -178,6 +173,44 @@ export function StudioCanvas({
     setNotice(text);
     window.setTimeout(() => setNotice((n) => (n === text ? null : n)), 3200);
   }, []);
+
+  // ── undo / redo: a person's edits (add, delete, move, wire), never a job ─────
+  const past = useRef<Snapshot[]>([]);
+  const future = useRef<Snapshot[]>([]);
+  const snap = (s: CanvasState): Snapshot => ({ nodes: s.nodes, wires: s.wires });
+  const record = useCallback(() => {
+    past.current.push(snap(canvasRef.current));
+    if (past.current.length > HISTORY_MAX) past.current.shift();
+    future.current = [];
+  }, []);
+  const edit = useCallback(
+    (fn: (s: CanvasState) => CanvasState) => {
+      record();
+      setCanvas(fn);
+    },
+    [record],
+  );
+  /** Restoring an edit keeps what happened since (a job started, words typed): only the person's layout goes back. */
+  const restore = (target: Snapshot, now: CanvasState): CanvasState => ({
+    ...now,
+    wires: target.wires,
+    nodes: target.nodes.map((n) => {
+      const live = now.nodes.find((m) => m.id === n.id);
+      return live ? { ...n, jobId: live.jobId ?? n.jobId, draft: live.draft } : n;
+    }),
+  });
+  const undo = () => {
+    const prev = past.current.pop();
+    if (!prev) return;
+    future.current.push(snap(canvasRef.current));
+    setCanvas((s) => restore(prev, s));
+  };
+  const redo = () => {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(snap(canvasRef.current));
+    setCanvas((s) => restore(next, s));
+  };
 
   // ── jobs: each node's own generation, read as the member, polled while working ──
   const jobIds = useMemo(() => [...new Set(canvas.nodes.map((n) => n.jobId).filter((x): x is string => !!x))], [canvas.nodes]);
@@ -203,8 +236,8 @@ export function StudioCanvas({
         const next = new Map(prev);
         for (const [id, r] of read) {
           const before = prev.get(id);
-          const wasActive = before?.state === "ok" && isActiveStatus(before.job.status);
-          if (wasActive && r.state === "ok" && !isActiveStatus(r.job.status)) finished = true;
+          const wasActive = before?.state === "ok" && (isActiveStatus(before.job.status) || before.job.status === "queued");
+          if (wasActive && r.state === "ok" && !isActiveStatus(r.job.status) && r.job.status !== "queued") finished = true;
           next.set(id, r);
         }
         return next;
@@ -228,11 +261,12 @@ export function StudioCanvas({
       void refresh(unread);
     }
   }, [jobIds, refresh]);
-  const activeIds = jobIds.filter((id) => {
-    const r = jobs.get(id);
-    return r?.state === "ok" && (isActiveStatus(r.job.status) || r.job.status === "queued");
-  });
-  const activeKey = activeIds.join(",");
+  const activeKey = jobIds
+    .filter((id) => {
+      const r = jobs.get(id);
+      return r?.state === "ok" && (isActiveStatus(r.job.status) || r.job.status === "queued");
+    })
+    .join(",");
   useEffect(() => {
     if (!activeKey) return;
     const ids = activeKey.split(",");
@@ -246,7 +280,6 @@ export function StudioCanvas({
     (n: CanvasNode): NodeStatus => nodeStatus(canvas, n, jobs, availability, { ready: libReady, previews: library.previews }),
     [canvas, jobs, availability, libReady, library.previews],
   );
-  const kindName = useCallback((k: NodeKind) => c.kinds[k].name, [c]);
   const nodeName = useCallback(
     (n: CanvasNode): string => {
       if (n.kind === "asset") {
@@ -254,10 +287,11 @@ export function StudioCanvas({
         return lib?.name || c.kinds.asset.name;
       }
       const same = canvas.nodes.filter((m) => m.kind === n.kind);
-      const label = n.kind === "effects" && n.effectId && n.effectId in t.effects.items ? t.effects.items[n.effectId as keyof typeof t.effects.items].name : kindName(n.kind);
+      const label =
+        n.kind === "effects" && n.effectId && n.effectId in t.effects.items ? t.effects.items[n.effectId as keyof typeof t.effects.items].name : c.kinds[n.kind].name;
       return same.length > 1 ? `${label} ${same.findIndex((m) => m.id === n.id) + 1}` : label;
     },
-    [canvas.nodes, library.images, library.recordings, c, kindName, t],
+    [canvas.nodes, library.images, library.recordings, c, t],
   );
   const counts = useMemo(() => {
     const out: Partial<Record<NodeStatus, number>> = {};
@@ -280,80 +314,90 @@ export function StudioCanvas({
     const p = toCanvas(canvas.view, w / 2, h / 2);
     return { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 };
   };
+  const open = (id: string) => {
+    setSelected(id);
+    setSelectedWire(null);
+    setInspecting(true);
+  };
   const addNode = (kind: NodeKind, at?: { x: number; y: number }, extra: Partial<CanvasNode> = {}) => {
+    if (!kindOpen(availability, kind)) {
+      say(c.wire.closed);
+      return null;
+    }
     const id = makeId();
     const spot = at ?? (canvas.nodes.length ? nextSpot(canvas.nodes) : centreSpot());
-    setCanvas((s) => ({ ...s, nodes: [...s.nodes, newNode(kind, spot.x, spot.y, id, extra)] }));
-    setSelected(id);
-    if (kind !== "asset") setInspecting(true);
+    edit((s) => ({ ...s, nodes: [...s.nodes, newNode(kind, spot.x, spot.y, id, extra)] }));
     setFirstRunDone(true);
+    if (kind === "asset") setSelected(id);
+    else open(id);
     return id;
   };
   const patchNode = (id: string, patch: Partial<CanvasNode>) =>
     setCanvas((s) => ({ ...s, nodes: s.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }));
   const wire = (from: string, to: string) => {
+    const target = canvas.nodes.find((n) => n.id === to);
+    if (target && !kindOpen(availability, target.kind)) {
+      say(c.wire.closed);
+      return false;
+    }
     const check = canWire(canvas, from, to);
     if (!check.ok) {
       say(c.wire[check.why as WireRefusal]);
       return false;
     }
-    setCanvas((s) => connect(s, from, to, makeId()));
+    edit((s) => connect(s, from, to, makeId()));
     return true;
   };
   const dropAsset = (a: DroppedAsset, at?: { x: number; y: number }, onto?: string) => {
     const target = onto ? canvas.nodes.find((n) => n.id === onto) : undefined;
-    if (target && KIND_SPEC[target.kind].accepts.includes(a.kind)) {
+    if (target && KIND_SPEC[target.kind].accepts.includes(a.kind) && kindOpen(availability, target.kind)) {
       // Onto a node's input: the file sits beside it, wired in at once.
       const id = makeId();
       const node = newNode("asset", target.x - NODE_W - 96, target.y, id, { assetId: a.id, assetKind: a.kind });
-      setCanvas((s) => connect({ ...s, nodes: [...s.nodes, node] }, id, target.id, makeId()));
-      setSelected(target.id);
-      setInspecting(true);
+      edit((s) => connect({ ...s, nodes: [...s.nodes, node] }, id, target.id, makeId()));
       setFirstRunDone(true);
+      open(target.id);
       return;
     }
     if (target) say(c.wire.wrong_type);
     addNode("asset", at, { assetId: a.id, assetKind: a.kind });
   };
-  const startRecipe = (r: Recipe) => {
-    const next = recipeState(r, makeId);
-    setCanvas((s) => ({ ...next, view: s.view }));
+  const startRecipe = (r: Recipe, words = "") => {
+    const next = recipeState(r, makeId, words);
+    edit((s) => ({ ...next, view: s.view }));
     setFirstRunDone(true);
-    setSelected(next.nodes[next.nodes.length - 1]?.id ?? null);
+    const last = next.nodes[next.nodes.length - 1];
+    if (last) {
+      setSelected(last.id);
+      setInspecting(r !== "photoClip" && !narrow);
+    }
     if (r === "photoClip") setDrawer(true);
     requestAnimationFrame(() => fit(next.nodes));
   };
   const deleteSelected = () => {
+    if (selectedWire) {
+      edit((s) => ({ ...s, wires: s.wires.filter((w) => w.id !== selectedWire) }));
+      setSelectedWire(null);
+      return;
+    }
     if (!selected) return;
-    setCanvas((s) => removeNode(s, selected));
+    edit((s) => removeNode(s, selected));
     setSelected(null);
     setInspecting(false);
   };
   const setView = (v: Viewport | ((v: Viewport) => Viewport)) => setCanvas((s) => ({ ...s, view: typeof v === "function" ? v(s.view) : v }));
   const fit = (nodes: readonly CanvasNode[] = canvas.nodes) => {
     const { w, h } = boardSize();
-    setView(fitView(nodes, w, h));
+    // The map keeps its corner: the fit leaves that room beside or above it (whichever costs less zoom), so it never sits on a node.
+    if (!mapOpen) return setView(fitView(nodes, w, h));
+    const beside = fitView(nodes, Math.max(320, w - MAP_ROOM), h);
+    const above = fitView(nodes, w, Math.max(240, h - MAP_TALL));
+    setView(above.k > beside.k ? above : beside);
   };
   const zoomBy = (f: number) => {
     const { w, h } = boardSize();
     setView((v) => zoomAt(v, v.k * f, w / 2, h / 2));
   };
-
-  // A node opened in the inspector stays in view: the board narrows by the inspector's width, so pan it back if it went under.
-  useEffect(() => {
-    if (narrow || !inspecting || !selected) return;
-    const id = requestAnimationFrame(() => {
-      const n = canvas.nodes.find((m) => m.id === selected);
-      const w = boardRef.current?.getBoundingClientRect().width;
-      if (!n || !w) return;
-      const left = n.x * canvas.view.k + canvas.view.x;
-      const right = left + NODE_W * canvas.view.k;
-      const shift = right > w - 24 ? w - 24 - right : left < 24 ? 24 - left : 0;
-      if (shift) setCanvas((s) => ({ ...s, view: { ...s.view, x: s.view.x + shift } }));
-    });
-    return () => cancelAnimationFrame(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inspecting, selected, narrow]);
 
   // First open with a stored layout and no stored view: show all of it.
   const fitted = useRef(false);
@@ -364,8 +408,23 @@ export function StudioCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, narrow]);
 
-  // ── keys: N adds, ⌘K searches, Delete removes, + / − / 0 zoom ──────────────────
-  const rootRef = useRef<HTMLDivElement>(null);
+  // A node opened in the inspector stays in view: the board narrows by the inspector's width, so pan it back if it went under.
+  useEffect(() => {
+    if (narrow || !inspecting || !selected) return;
+    const id = requestAnimationFrame(() => {
+      const n = canvasRef.current.nodes.find((m) => m.id === selected);
+      const w = boardRef.current?.getBoundingClientRect().width;
+      if (!n || !w) return;
+      const v = canvasRef.current.view;
+      const left = n.x * v.k + v.x;
+      const right = left + NODE_W * v.k;
+      const shift = right > w - 24 ? w - 24 - right : left < 24 ? 24 - left : 0;
+      if (shift) setCanvas((s) => ({ ...s, view: { ...s.view, x: s.view.x + shift } }));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [inspecting, selected, narrow]);
+
+  // ── keys: ⌘K searches, N adds, Delete removes, ⌘Z undoes, + / − / 0 zoom, Escape closes ──
   const [space, setSpace] = useState(false);
   useEffect(() => {
     const typing = (el: EventTarget | null) => {
@@ -380,28 +439,47 @@ export function StudioCanvas({
         setPalette((p) => (p ? null : "all"));
         return;
       }
-      if (typing(e.target) || document.querySelector('[role="dialog"]')) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      if (e.key === "Escape") {
+        if (drawer || inspecting) {
+          setDrawer(false);
+          setInspecting(false);
+        } else {
+          setSelected(null);
+          setSelectedWire(null);
+        }
+        return;
+      }
+      if (typing(e.target)) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+        return;
+      }
       if (e.key === " " && !e.repeat) setSpace(true);
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "n" || e.key === "N") {
         e.preventDefault();
         setPalette("add");
-      } else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+      } else if ((e.key === "Delete" || e.key === "Backspace") && (selected || selectedWire)) {
         e.preventDefault();
         deleteSelected();
       } else if (e.key === "+" || e.key === "=") zoomBy(1.2);
       else if (e.key === "-") zoomBy(1 / 1.2);
       else if (e.key === "0") fit();
-      else if (e.key === "Escape") {
-        setInspecting(false);
-        setSelected(null);
-      } else if (selected && e.key.startsWith("Arrow")) {
+      else if (selected && e.key.startsWith("Arrow")) {
         // The keyboard's way to move a node (no drag needed).
         e.preventDefault();
         const step = e.shiftKey ? 64 : 16;
         const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-        setCanvas((s) => ({ ...s, nodes: s.nodes.map((n) => (n.id === selected ? { ...n, x: n.x + dx, y: n.y + dy } : n)) }));
+        edit((s) => ({ ...s, nodes: s.nodes.map((n) => (n.id === selected ? { ...n, x: n.x + dx, y: n.y + dy } : n)) }));
       }
     }
     function onUp(e: KeyboardEvent) {
@@ -415,7 +493,8 @@ export function StudioCanvas({
     };
   });
 
-  // The workspace fills the window below the app's header, so the canvas never makes the page scroll.
+  // The workspace fills the window below the bar, so the canvas never makes the page scroll.
+  const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (narrow) return;
     const el = rootRef.current;
@@ -424,35 +503,43 @@ export function StudioCanvas({
     size();
     window.addEventListener("resize", size);
     return () => window.removeEventListener("resize", size);
-  }, [narrow]);
+  }, [narrow, loaded]);
 
+  // The project bar goes into the app's own header on this page (one bar, not two); without it (tests), inline.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSlot(document.getElementById(BAR_SLOT_ID));
+  }, []);
+
+  // Sheets and the palette go to <body>: the app's frame makes its own stacking context, so from inside the page a
+  // scrim could dim neither the header nor the tab bar, and a phone sheet would sit under the tab bar.
+  const [portalReady, setPortalReady] = useState(false);
+  useEffect(() => setPortalReady(true), []);
+  const overlay = (el: ReactNode) => (el && portalReady ? createPortal(<div className="cv-tok">{el}</div>, document.body) : el);
+
+  const busy = (counts.working ?? 0) + (counts.queued ?? 0) > 0;
+  const nodesWord = canvas.nodes.length === 1 ? c.statusNodesOne : fmt(c.statusNodes, { n: canvas.nodes.length });
   const status = (
     <div className="cv-strip" data-testid="canvas-status">
       {canvas.nodes.length === 0 ? (
         <span>{c.statusEmpty}</span>
       ) : (
         <>
-          <span className="font-semibold">{fmt(c.statusNodes, { n: canvas.nodes.length })}</span>
-          {!!counts.working && <StatusLamp tone="run" live label={fmt(c.statusWorking, { n: counts.working })} />}
-          {!!counts.done && <StatusLamp tone="ok" label={fmt(c.statusDone, { n: counts.done })} />}
-          {!!counts.failed && <StatusLamp tone="fail" label={fmt(c.statusFailed, { n: counts.failed })} />}
-          {!!counts.needs && <StatusLamp tone="warn" label={fmt(c.statusNeeds, { n: counts.needs })} />}
-          {!!counts.unknown && <StatusLamp tone="warn" label={fmt(c.statusUnknown, { n: counts.unknown })} />}
-          {!!counts.closed && <StatusLamp tone="idle" label={fmt(c.statusClosed, { n: counts.closed })} />}
+          <b>{nodesWord}</b>
+          {!!counts.working && <Lamp tone="run" live label={fmt(c.statusWorking, { n: counts.working })} />}
+          {!!counts.done && <Lamp tone="ok" label={fmt(c.statusDone, { n: counts.done })} />}
+          {!!counts.failed && <Lamp tone="fail" label={fmt(c.statusFailed, { n: counts.failed })} />}
+          {!!counts.needs && <Lamp tone="warn" label={fmt(c.statusNeeds, { n: counts.needs })} />}
+          {!!counts.unknown && <Lamp tone="warn" label={fmt(c.statusUnknown, { n: counts.unknown })} />}
+          {!!counts.closed && <Lamp tone="idle" label={fmt(c.statusClosed, { n: counts.closed })} />}
         </>
       )}
-      {!saved && <span className="cv-strip-note">{c.notSaved}</span>}
+      {!saved && <span className="cv-strip-warn">{c.notSaved}</span>}
     </div>
   );
 
-  const bar = (
-    <ProjectBar
-      filmStudio={filmStudio}
-      operator={operator}
-      features={features}
-      onSearch={() => setPalette("all")}
-    />
-  );
+  const bar = <ProjectBar filmStudio={filmStudio} onSearch={() => setPalette("all")} inline={!slot} />;
+  const barEl = slot ? createPortal(bar, slot) : bar;
 
   const inspector =
     sel && inspecting ? (
@@ -465,6 +552,7 @@ export function StudioCanvas({
         data={data}
         previews={library.previews}
         nodeName={nodeName}
+        retrySignal={retry}
         sheet={narrow}
         onClose={() => setInspecting(false)}
         onDraft={(words) => {
@@ -476,7 +564,7 @@ export function StudioCanvas({
           void refresh([jobId]);
         }}
         onWire={(from) => wire(from, sel.id)}
-        onDisconnect={() => setCanvas((s) => disconnect(s, sel.id))}
+        onDisconnect={() => edit((s) => disconnect(s, sel.id))}
         onEffect={(effectId) => patchNode(sel.id, { effectId })}
       />
     ) : null;
@@ -497,30 +585,33 @@ export function StudioCanvas({
     />
   ) : null;
 
-  const paletteEl = palette ? (
+  const paletteEl = palette ? overlay(
     <CanvasPalette
       mode={palette}
       filmStudio={filmStudio}
       onClose={() => setPalette(null)}
       onAdd={(k) => {
-        addNode(k);
-        setPalette(null);
+        if (addNode(k)) setPalette(null);
       }}
-    />
+    />,
   ) : null;
 
   const showFirstRun = loaded && canvas.nodes.length === 0 && !firstRunDone;
-  const firstRun = showFirstRun ? <FirstRun filmStudio={filmStudio} onRecipe={startRecipe} onBlank={() => setFirstRunDone(true)} /> : null;
+  const firstRun = showFirstRun ? (
+    <FirstRun filmStudio={filmStudio} phone={narrow} onRecipe={startRecipe} onBlank={() => setFirstRunDone(true)} />
+  ) : null;
   const live = (
     <div className="sr-only" role="status" aria-live="polite">
       {notice}
     </div>
   );
+  const toast = notice ? <p className="cv-toast">{notice}</p> : null;
+  const quote = <QuoteKey node={sel} onOpen={() => sel && open(sel.id)} />;
 
   if (!loaded) {
     return (
       <div className="cv-root" data-studio-canvas="" ref={rootRef}>
-        {bar}
+        {barEl}
         <p className="cv-loading" role="status">
           {c.loading}
         </p>
@@ -530,11 +621,11 @@ export function StudioCanvas({
 
   if (narrow) {
     return (
-      <div className="cv-root is-flow" data-studio-canvas="" ref={rootRef}>
-        {bar}
+      <div className="cv-root is-flow" data-studio-canvas="" ref={rootRef} data-sheet={inspector || drawerEl ? "" : undefined}>
+        {barEl}
         {status}
         {live}
-        {notice && <p className="cv-toast">{notice}</p>}
+        {toast}
         {firstRun ?? (
           <FlowView
             canvas={canvas}
@@ -542,33 +633,35 @@ export function StudioCanvas({
             nodeName={nodeName}
             jobs={jobs}
             previews={library.previews}
-            onOpen={(id) => {
-              setSelected(id);
-              setInspecting(true);
-            }}
+            selected={selected}
+            onOpen={open}
           />
         )}
         <div className="cv-flow-dock" role="toolbar" aria-label={c.dock.label}>
-          <button type="button" className="cv-dock-btn" onClick={() => setPalette("add")}>
+          <button type="button" className="cv-kbtn" onClick={() => setPalette("add")}>
             <Plus aria-hidden className="size-4" /> {c.dock.add}
           </button>
-          <button type="button" className="cv-dock-btn" onClick={() => setDrawer(true)} aria-label={c.dock.library} title={c.dock.library}>
+          <button type="button" className="cv-kbtn is-icon" onClick={() => setDrawer(true)} aria-label={c.dock.library} title={c.dock.library}>
             <Layers aria-hidden className="size-4" />
           </button>
-          <QuoteKey node={sel} onOpen={() => setInspecting(true)} />
+          {quote}
         </div>
-        {(inspector || drawerEl) && (
-          <div
-            className="cv-sheet-scrim"
-            onClick={() => {
-              setInspecting(false);
-              setDrawer(false);
-            }}
-            aria-hidden
-          />
+        {overlay(
+          inspector || drawerEl ? (
+            <>
+              <div
+                className="cv-scrim"
+                onClick={() => {
+                  setInspecting(false);
+                  setDrawer(false);
+                }}
+                aria-hidden
+              />
+              {inspector}
+              {drawerEl}
+            </>
+          ) : null,
         )}
-        {inspector}
-        {drawerEl}
         {paletteEl}
       </div>
     );
@@ -576,107 +669,110 @@ export function StudioCanvas({
 
   return (
     <div className="cv-root" data-studio-canvas="" ref={rootRef} data-mode={space ? "hand" : mode}>
-      {bar}
+      {barEl}
       {status}
-      <div className="cv-main">
-        {drawerEl}
+      <div className="cv-work">
         <Board
           boardRef={boardRef}
           canvas={canvas}
           setCanvas={setCanvas}
+          record={record}
           selected={selected}
+          selectedWire={selectedWire}
           onSelect={(id) => {
             setSelected(id);
-            setInspecting(!!id);
+            setSelectedWire(null);
+            if (!id) setInspecting(false);
+          }}
+          onSelectWire={(id) => {
+            setSelectedWire(id);
+            setSelected(null);
+            setInspecting(false);
+          }}
+          onOpen={open}
+          onRetry={(id) => {
+            open(id);
+            setRetry((r) => r + 1);
           }}
           hand={mode === "hand" || space}
+          busy={busy}
           statusOf={statusOf}
           nodeName={nodeName}
           jobs={jobs}
           previews={library.previews}
           onWire={wire}
           onDrop={dropAsset}
-          showMap={showMap}
-          onToggleMap={() => setShowMap((m) => !m)}
+          mapOpen={mapOpen}
+          onToggleMap={() => setMapOpen((m) => !m)}
         >
           {firstRun}
-          {!firstRun && canvas.nodes.length === 0 && (
-            <p className="cv-empty-hint">{c.firstRun.blank.desc}</p>
-          )}
-          {notice && <p className="cv-toast">{notice}</p>}
+          {!firstRun && canvas.nodes.length === 0 && <p className="cv-hint">{c.firstRun.blank.desc}</p>}
+          {toast}
           {live}
+          {/* The Library is glass over the board's left edge: the board keeps its width, so both panels can be open at once. */}
+          {drawerEl}
         </Board>
         {inspector}
       </div>
-      <div className="cv-dock" role="toolbar" aria-label={c.dock.label}>
-        <button type="button" className="cv-dock-btn" onClick={() => setPalette("add")} aria-haspopup="dialog" data-testid="dock-add">
-          <Plus aria-hidden className="size-4" /> {c.dock.add}
+      <div className="cv-deck" role="toolbar" aria-label={c.dock.label}>
+        <button type="button" className="cv-kbtn" onClick={() => setPalette("add")} aria-haspopup="dialog" aria-label={c.dock.add} title={c.dock.add} data-testid="dock-add">
+          <Plus aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.add}</span>
         </button>
-        <button type="button" className="cv-dock-btn" aria-pressed={drawer} onClick={() => setDrawer((d) => !d)} data-testid="dock-library">
-          <Layers aria-hidden className="size-4" /> {c.dock.library}
+        <button type="button" className="cv-kbtn" aria-pressed={drawer} onClick={() => setDrawer((d) => !d)} aria-label={c.dock.library} title={c.dock.library} data-testid="dock-library">
+          <Layers aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.library}</span>
         </button>
         <div className="cv-seg" role="group">
-          <button type="button" className="cv-dock-btn" aria-pressed={mode === "select"} onClick={() => setMode("select")} aria-label={c.dock.select} title={c.dock.select}>
+          <button type="button" aria-pressed={mode === "select"} onClick={() => setMode("select")} aria-label={c.dock.select} title={c.dock.select}>
             <MousePointer2 aria-hidden className="size-4" />
           </button>
-          <button type="button" className="cv-dock-btn" aria-pressed={mode === "hand"} onClick={() => setMode("hand")} aria-label={c.dock.hand} title={c.dock.hand}>
+          <button type="button" aria-pressed={mode === "hand"} onClick={() => setMode("hand")} aria-label={c.dock.hand} title={c.dock.hand}>
             <Hand aria-hidden className="size-4" />
           </button>
         </div>
-        <button type="button" className="cv-dock-btn" onClick={() => setCanvas((s) => tidy(s))} disabled={canvas.nodes.length < 2}>
-          <LayoutGrid aria-hidden className="size-4" /> {c.dock.tidy}
+        <button type="button" className="cv-kbtn" onClick={() => edit((s) => tidy(s))} disabled={canvas.nodes.length < 2} aria-label={c.dock.tidy} title={c.dock.tidy}>
+          <LayoutGrid aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.tidy}</span>
         </button>
-        <div className="cv-seg" role="group">
-          <button type="button" className="cv-dock-btn" onClick={() => zoomBy(1 / 1.2)} aria-label={c.dock.zoomOut} title={c.dock.zoomOut}>
+        <span className="cv-vsep" aria-hidden />
+        <div className="cv-zoom" role="group">
+          <button type="button" className="cv-kbtn is-icon" onClick={() => zoomBy(1 / 1.2)} aria-label={c.dock.zoomOut} title={c.dock.zoomOut}>
             <Minus aria-hidden className="size-4" />
           </button>
-          <span className="cv-zoom" aria-live="off" title={fmt(c.dock.zoom, { n: Math.round(canvas.view.k * 100) })}>
-            {Math.round(canvas.view.k * 100)}%
-          </span>
-          <button type="button" className="cv-dock-btn" onClick={() => zoomBy(1.2)} aria-label={c.dock.zoomIn} title={c.dock.zoomIn}>
+          <output title={fmt(c.dock.zoom, { n: Math.round(canvas.view.k * 100) })}>{Math.round(canvas.view.k * 100)}%</output>
+          <button type="button" className="cv-kbtn is-icon" onClick={() => zoomBy(1.2)} aria-label={c.dock.zoomIn} title={c.dock.zoomIn}>
             <ZoomIn aria-hidden className="size-4" />
           </button>
-          <button type="button" className="cv-dock-btn" onClick={() => fit()} aria-label={c.dock.fit} title={c.dock.fit}>
+          <button type="button" className="cv-kbtn is-icon" onClick={() => fit()} aria-label={c.dock.fit} title={c.dock.fit}>
             <Maximize aria-hidden className="size-4" />
           </button>
         </div>
-        <span className="cv-dock-spacer" />
-        <span className="cv-dock-note">{c.nothingSpends}</span>
-        <QuoteKey node={sel} onOpen={() => setInspecting(true)} />
+        <span className="cv-grow" />
+        <span className="cv-qnote">{c.nothingSpends}</span>
+        {quote}
       </div>
       {paletteEl}
     </div>
   );
 }
 
-/** The dock's price key: the price lives in the selected node's form (its backend quote), so it opens that form. */
+/** The deck's price key: the price lives in the selected node's form (its backend quote), so it opens that form. */
 function QuoteKey({ node, onOpen }: { node: CanvasNode | null; onOpen: () => void }) {
   const { t } = useI18n();
   const c = t.studioCanvas;
-  const can = !!node && node.kind !== "asset";
+  const can = !!node && node.kind !== "asset" && node.kind !== "prompt";
   return (
-    <button type="button" className="cv-quote" disabled={!can} onClick={onOpen} title={can ? c.quote : c.quoteHint} data-testid="dock-quote">
+    <button type="button" className="cv-kbtn is-primary" disabled={!can} onClick={onOpen} title={can ? c.quote : c.quoteHint} data-testid="dock-quote">
       {c.quote}
     </button>
   );
 }
 
-// ── the project bar ──────────────────────────────────────────────────────────
+// ── the project bar (in the app's header on this page) ─────────────────────────
 
-function ProjectBar({
-  filmStudio,
-  operator,
-  features,
-  onSearch,
-}: {
-  filmStudio: boolean;
-  operator: boolean;
-  features: Parameters<typeof studioTilesFor>[1];
-  onSearch: () => void;
-}) {
+function ProjectBar({ filmStudio, onSearch, inline }: { filmStudio: boolean; onSearch: () => void; inline: boolean }) {
   const { t } = useI18n();
   const c = t.studioCanvas;
   const path = useChannelPath();
+  const { operator, features } = useShell();
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -694,25 +790,23 @@ function ProjectBar({
   }, [open]);
   const tiles = studioTilesFor(operator, features).filter((x) => x.key !== "create" && x.key !== "editor");
   return (
-    <div className="cv-bar">
-      <div className="relative" ref={menu}>
-        <button type="button" className="cv-switch" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((o) => !o)} aria-label={c.switcher} data-testid="project-switcher">
-          <span className="flex min-w-0 flex-col items-start leading-tight">
-            <span className="cv-switch-title">{c.sketch}</span>
-            <span className="cv-switch-sub">{c.sketchSub}</span>
+    <div className={inline ? "cv-pbar is-inline" : "cv-pbar"}>
+      <div className="relative min-w-0" ref={menu}>
+        <button type="button" className="cv-pswitch" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((o) => !o)} aria-label={c.switcher} data-testid="project-switcher">
+          <span className="flex min-w-0 flex-col items-start">
+            <span className="cv-pswitch-nm">{c.sketch}</span>
+            <span className="cv-pswitch-kd">{c.sketchSub}</span>
           </span>
           <ChevronDown aria-hidden className="size-4 shrink-0" />
         </button>
         {open && (
-          <div className="cv-menu" role="menu" aria-label={c.switcher}>
-            <p className="cv-menu-group">{c.views}</p>
+          <div className="cv-pop" role="menu" aria-label={c.switcher}>
+            <p className="cv-pop-h">{c.views}</p>
             <MenuLink href={path("/studio")} icon={<Check aria-hidden className="size-4" />} label={c.viewCanvas} current />
             <MenuLink href={path("/studio?shelf=videos")} icon={<Film aria-hidden className="size-4" />} label={c.viewVideos} />
             <MenuLink href={path("/studio?shelf=projects")} icon={<ICONS.editor aria-hidden className="size-4" />} label={c.viewEditor} />
-            {filmStudio && (
-              <MenuLink href={path("/create/projects")} icon={<Projector aria-hidden className="size-4" />} label={c.projects} sub={c.projectsSub} testid="menu-projects" />
-            )}
-            <p className="cv-menu-group">{c.tools}</p>
+            {filmStudio && <MenuLink href={path("/create/projects")} icon={<Projector aria-hidden className="size-4" />} label={c.projects} sub={c.projectsSub} testid="menu-projects" />}
+            <p className="cv-pop-h">{c.tools}</p>
             {tiles.map((tile) => {
               const Icon = tile.key === "presets" ? LayoutGrid : ICONS[tile.key];
               return <MenuLink key={tile.href} href={path(tile.href)} icon={<Icon aria-hidden className="size-4" />} label={tile.key === "presets" ? t.presets.title : t.nav[tile.key]} />;
@@ -720,16 +814,25 @@ function ProjectBar({
           </div>
         )}
       </div>
+      <div className="cv-seg cv-deskonly" role="group" aria-label={c.views}>
+        <button type="button" aria-pressed="true">
+          <GitBranch aria-hidden className="size-4" /> {c.viewCanvas}
+        </button>
+        {/* Honest about what is not built: the timeline arrives with scene-by-scene projects. */}
+        <button type="button" disabled aria-disabled="true" title={c.timelineSoon}>
+          {c.timeline}
+        </button>
+      </div>
       {/* Brand look, one click from where its old bookmark lands (STUDIO_IA.md §9.1). */}
       <Link href={path("/studio/look")} className="cv-chip-link" data-testid="channel-look-chip" aria-label={t.studioHub.channelLook} title={t.studioHub.channelLook}>
         <Palette aria-hidden className="size-4" />
         <span className="cv-chip-label">{t.studioHub.channelLook}</span>
       </Link>
-      <span className="cv-bar-spacer" />
-      <button type="button" className="cv-search" onClick={onSearch} data-testid="canvas-search">
+      <span className="cv-grow" />
+      <button type="button" className="cv-kbtn cv-search" onClick={onSearch} data-testid="canvas-search" aria-label={c.search}>
         <Search aria-hidden className="size-4" />
         <span className="cv-search-label">{c.search}</span>
-        <kbd className="cv-kbd">⌘K</kbd>
+        <kbd>⌘K</kbd>
       </button>
     </div>
   );
@@ -737,11 +840,11 @@ function ProjectBar({
 
 function MenuLink({ href, icon, label, sub, current = false, testid }: { href: string; icon: ReactNode; label: string; sub?: string; current?: boolean; testid?: string }) {
   return (
-    <Link href={href} role="menuitem" className="cv-menu-item" aria-current={current ? "page" : undefined} data-testid={testid}>
+    <Link href={href} role="menuitem" className="cv-opt" aria-current={current ? "page" : undefined} data-testid={testid}>
       {icon}
       <span className="flex min-w-0 flex-col">
-        <span>{label}</span>
-        {sub && <span className="cv-note">{sub}</span>}
+        <span className="cv-opt-on">{label}</span>
+        {sub && <span className="cv-opt-os">{sub}</span>}
       </span>
     </Link>
   );
@@ -750,51 +853,63 @@ function MenuLink({ href, icon, label, sub, current = false, testid }: { href: s
 // ── the board: pan, zoom, nodes, wires, minimap ───────────────────────────────
 
 type Drag =
-  | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
-  | { kind: "node"; id: string; sx: number; sy: number; ox: number; oy: number }
+  | { kind: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean }
+  | { kind: "node"; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean }
   | { kind: "wire"; from: string };
 
 function Board({
   boardRef,
   canvas,
   setCanvas,
+  record,
   selected,
+  selectedWire,
   onSelect,
+  onSelectWire,
+  onOpen,
+  onRetry,
   hand,
+  busy,
   statusOf,
   nodeName,
   jobs,
   previews,
   onWire,
   onDrop,
-  showMap,
+  mapOpen,
   onToggleMap,
   children,
 }: {
   boardRef: React.RefObject<HTMLDivElement | null>;
   canvas: CanvasState;
   setCanvas: React.Dispatch<React.SetStateAction<CanvasState>>;
+  record: () => void;
   selected: string | null;
+  selectedWire: string | null;
   onSelect: (id: string | null) => void;
+  onSelectWire: (id: string) => void;
+  onOpen: (id: string) => void;
+  onRetry: (id: string) => void;
   hand: boolean;
+  busy: boolean;
   statusOf: (n: CanvasNode) => NodeStatus;
   nodeName: (n: CanvasNode) => string;
   jobs: ReadonlyMap<string, JobReading>;
   previews: ReadonlyMap<string, { thumbUrl: string | null; kind: string }>;
   onWire: (from: string, to: string) => boolean;
   onDrop: (a: DroppedAsset, at: { x: number; y: number }, onto?: string) => void;
-  showMap: boolean;
+  mapOpen: boolean;
   onToggleMap: () => void;
   children: ReactNode;
 }) {
-  const { t } = useI18n();
-  const c = t.studioCanvas;
   const view = canvas.view;
   const drag = useRef<Drag | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ d: number; k: number } | null>(null);
   const [tip, setTip] = useState<{ from: string; x: number; y: number } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [panning, setPanning] = useState(false);
 
   const local = (e: { clientX: number; clientY: number }) => {
     const r = boardRef.current!.getBoundingClientRect();
@@ -807,7 +922,7 @@ function Board({
     const el = boardRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if ((e.target as Element).closest(".cv-map")) return;
+      if ((e.target as Element).closest(".cv-mini, .cv-drawer, .cv-empty")) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey) {
@@ -831,7 +946,12 @@ function Board({
     }
     if (e.button !== 0 && e.pointerType === "mouse") return;
     const target = e.target as Element;
-    if (target.closest(".cv-map, .cv-firstrun, .cv-toast")) return;
+    if (target.closest(".cv-mini, .cv-empty, .cv-toast, .cv-drawer")) return;
+    const hit = target.closest<SVGElement>("[data-wire-hit]");
+    if (hit && !hand) {
+      onSelectWire(hit.dataset.wireHit!);
+      return;
+    }
     const port = target.closest<HTMLElement>("[data-port-out]");
     if (port && !hand) {
       drag.current = { kind: "wire", from: port.dataset.portOut! };
@@ -845,14 +965,14 @@ function Board({
       if (target.closest("button, a, input, select, textarea")) return;
       const n = canvas.nodes.find((m) => m.id === nodeEl.dataset.nodeId);
       if (!n) return;
+      // Selecting is not opening: a press that does not move opens the inspector on release; a drag only moves the node.
       onSelect(n.id);
-      drag.current = { kind: "node", id: n.id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
+      drag.current = { kind: "node", id: n.id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y, moved: false };
       e.currentTarget.setPointerCapture?.(e.pointerId);
       return;
     }
     if (target.closest("button, a, input, select, textarea")) return;
-    if (!nodeEl) onSelect(null);
-    drag.current = { kind: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
+    drag.current = { kind: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
 
@@ -866,8 +986,19 @@ function Board({
     }
     const d = drag.current;
     if (!d) return;
-    if (d.kind === "pan") setView({ ...view, x: d.vx + (e.clientX - d.sx), y: d.vy + (e.clientY - d.sy) });
-    else if (d.kind === "node") {
+    if (d.kind === "pan") {
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > CLICK_SLOP) {
+        d.moved = true;
+        setPanning(true);
+      }
+      if (d.moved) setView({ ...view, x: d.vx + (e.clientX - d.sx), y: d.vy + (e.clientY - d.sy) });
+    } else if (d.kind === "node") {
+      if (!d.moved) {
+        if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) <= CLICK_SLOP) return;
+        d.moved = true;
+        record();
+        setDragging(d.id);
+      }
       const x = Math.round(d.ox + (e.clientX - d.sx) / view.k);
       const y = Math.round(d.oy + (e.clientY - d.sy) / view.k);
       setCanvas((s) => ({ ...s, nodes: s.nodes.map((n) => (n.id === d.id ? { ...n, x, y } : n)) }));
@@ -882,23 +1013,31 @@ function Board({
     if (pointers.current.size < 2) pinch.current = null;
     const d = drag.current;
     drag.current = null;
+    setDragging(null);
+    setPanning(false);
     if (d?.kind === "wire") {
       setTip(null);
       const under = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-node-id]");
       const to = under?.dataset.nodeId;
       if (to && to !== d.from) onWire(d.from, to);
+    } else if (d?.kind === "node" && !d.moved) {
+      onOpen(d.id);
+    } else if (d?.kind === "pan" && !d.moved) {
+      onSelect(null);
     }
   };
 
   const nodesById = new Map(canvas.nodes.map((n) => [n.id, n]));
   const from = tip ? nodesById.get(tip.from) : undefined;
+  const inv = 1 / view.k;
 
   return (
     <div
       ref={boardRef}
-      className="cv-board"
+      className={`cv-stage${busy ? " is-busy" : ""}`}
       data-hand={hand ? "true" : undefined}
-      style={{ backgroundPosition: `${view.x}px ${view.y}px`, backgroundSize: `${24 * view.k}px ${24 * view.k}px` }}
+      data-panning={panning ? "true" : undefined}
+      style={{ "--gx": `${view.x}px`, "--gy": `${view.y}px`, "--gs": `${24 * view.k}px` } as React.CSSProperties}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -923,17 +1062,25 @@ function Board({
       }}
       data-testid="canvas-board"
     >
-      <div className="cv-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
-        <svg className="cv-wires" aria-hidden>
-          {canvas.wires.map((w) => {
+      <div className="cv-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, "--inv": inv } as React.CSSProperties}>
+        <svg className="cv-edges">
+          {canvas.wires.map((w: CanvasWire) => {
             const a = nodesById.get(w.from);
             const b = nodesById.get(w.to);
             if (!a || !b) return null;
             const type = outputType(canvas, a) ?? "image";
-            const working = statusOf(a) === "working" || statusOf(b) === "working";
-            return <path key={w.id} d={wirePath(a, b)} className={`cv-wire is-${type}${working ? " is-live" : ""}`} data-wire={`${w.from}->${w.to}`} />;
+            const d = wirePath(a, b);
+            const live = statusOf(a) === "working" || statusOf(b) === "working";
+            const hl = selected === w.from || selected === w.to;
+            return (
+              <g key={w.id}>
+                <path d={d} className={`cv-e t-${type}${hl ? " is-hl" : ""}${selectedWire === w.id ? " is-sel" : ""}`} data-wire={`${w.from}->${w.to}`} />
+                {live && <path d={d} className="cv-flowline" aria-hidden />}
+                <path d={d} className="cv-hit" data-wire-hit={w.id} />
+              </g>
+            );
           })}
-          {from && tip && <path d={wirePath(from, { x: tip.x, y: tip.y - NODE_H / 2 })} className="cv-wire is-draft" />}
+          {from && tip && <path d={wirePath(from, { x: tip.x, y: tip.y - PORT_Y })} className="cv-ghost" />}
         </svg>
         {canvas.nodes.map((n) => (
           <NodeCard
@@ -947,19 +1094,18 @@ function Board({
               return i ? nodeName(i.from) : null;
             })()}
             selected={selected === n.id}
+            dragging={dragging === n.id}
             dropTarget={dropTarget === n.id}
+            connecting={!!tip}
             jobs={jobs}
             previews={previews}
-            onOpen={() => onSelect(n.id)}
+            onOpen={() => onOpen(n.id)}
+            onRetry={() => onRetry(n.id)}
           />
         ))}
       </div>
       {children}
-      {canvas.nodes.length > 0 && (showMap ? <Minimap canvas={canvas} boardRef={boardRef} onCentre={setView} onHide={onToggleMap} /> : (
-        <button type="button" className="cv-map-show" onClick={onToggleMap}>
-          {c.mapShow}
-        </button>
-      ))}
+      {canvas.nodes.length > 0 && <Minimap canvas={canvas} boardRef={boardRef} onCentre={setView} open={mapOpen} onToggle={onToggleMap} selected={selected} statusOf={statusOf} />}
     </div>
   );
 }
@@ -971,10 +1117,13 @@ function NodeCard({
   name,
   sourceName,
   selected,
+  dragging,
   dropTarget,
+  connecting,
   jobs,
   previews,
   onOpen,
+  onRetry,
 }: {
   node: CanvasNode;
   canvas: CanvasState;
@@ -982,10 +1131,13 @@ function NodeCard({
   name: string;
   sourceName: string | null;
   selected: boolean;
+  dragging: boolean;
   dropTarget: boolean;
+  connecting: boolean;
   jobs: ReadonlyMap<string, JobReading>;
   previews: ReadonlyMap<string, { thumbUrl: string | null; kind: string }>;
   onOpen: () => void;
+  onRetry: () => void;
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -998,42 +1150,82 @@ function NodeCard({
   const job = reading?.state === "ok" ? reading.job : null;
   const accepts = spec.accepts.map((k) => c.ports[k]).join(" / ");
   const line = statusLine(t, status, job, accepts);
+  const input = inputOf(canvas, node, jobs);
+  const words = node.kind === "prompt" ? node.draft : node.draft || input?.text || "";
+  const working = status === "working" || status === "queued";
+  const showArt = !!thumb || working || (node.kind === "asset" && status !== "missing") || status === "done";
+  const cls = ["cv-node", `k-${node.kind}`, `s-${status}`, selected && "is-sel", dragging && "is-dragging", dropTarget && "is-drop"].filter(Boolean).join(" ");
   return (
     <div
-      className="cv-node"
+      className={cls}
       data-node-id={node.id}
       data-kind={node.kind}
       data-status={status}
-      data-selected={selected ? "true" : undefined}
-      data-drop={dropTarget ? "true" : undefined}
-      style={{ transform: `translate(${node.x}px, ${node.y}px)`, width: NODE_W, height: NODE_H }}
+      style={{ transform: `translate(${node.x}px, ${node.y}px)`, width: NODE_W }}
       role="group"
+      tabIndex={0}
       aria-label={`${name}: ${line}`}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       {spec.accepts.length > 0 && (
-        <span className={`cv-port cv-port-in is-${spec.accepts[0]}`} data-port-in={node.id} title={fmt(c.ports.in, { kinds: accepts })}>
-          <span aria-hidden>{spec.accepts.map((k) => PORT_LETTER[k]).join("")}</span>
+        <span
+          className={`cv-port is-in t-${spec.accepts[0]}${connecting ? " is-target" : ""}`}
+          data-port-in={node.id}
+          title={fmt(c.ports.in, { kinds: accepts })}
+          aria-label={fmt(c.ports.in, { kinds: accepts })}
+        >
+          <span aria-hidden>{c.ports.letters[spec.accepts[0]]}</span>
         </span>
       )}
-      <button type="button" className="cv-node-head" onClick={onOpen} aria-pressed={selected}>
-        <Icon aria-hidden className="size-4 shrink-0" />
-        <span className="truncate">{name}</span>
-      </button>
-      <div className="cv-node-body" aria-hidden={!thumb}>
-        {thumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumb} alt="" draggable={false} />
-        ) : (
-          <Icon aria-hidden className="cv-node-glyph" />
+      {/* The title bar is the drag handle; a press that does not move opens the inspector. */}
+      <div className="cv-nh">
+        <span aria-hidden className={`cv-ty k-${node.kind}`}>
+          <Icon className="size-4" strokeWidth={1.9} />
+        </span>
+        <span className="cv-nt">
+          <span className="cv-nt-k">{c.kinds[node.kind].name}</span>
+          <span className="cv-nt-n">{name}</span>
+        </span>
+      </div>
+      <div className="cv-nb">
+        {showArt && (
+          <div className={`cv-art${working ? " is-working" : ""}${status === "failed" ? " is-failed" : ""}`} aria-hidden>
+            {thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={thumb} alt="" draggable={false} />
+            ) : (
+              <Icon className="cv-art-glyph" />
+            )}
+          </div>
+        )}
+        {/* The words it makes from, clamped; with none, a placeholder only where it is true ("Not started" on a node that has a job would contradict its lamp). */}
+        {node.kind !== "asset" && (words || !node.jobId) && (
+          <p className={words ? "cv-clamp" : "cv-clamp is-empty"}>{words || (node.kind === "prompt" ? c.node.noWords : c.node.notStarted)}</p>
+        )}
+        <Lamp tone={LAMP[status]} live={status === "working"} label={status === "failed" ? t.gen.status.failed : line} />
+        {sourceName && <span className="cv-nsub">{fmt(c.node.from, { name: sourceName })}</span>}
+        {status === "failed" && job && (
+          <div className="cv-nfail">
+            <span className="cv-nfail-why">{failureReason(t, job)}</span>
+            <button type="button" className="cv-nchip" onClick={onRetry} data-testid={`retry-${node.id}`}>
+              <RotateCcw aria-hidden className="size-3.5" /> {c.node.retry}
+            </button>
+          </div>
         )}
       </div>
-      <div className="cv-node-foot">
-        <StatusLamp tone={LAMP[status]} live={status === "working"} label={line} />
-        {sourceName && <span className="cv-node-sub">{fmt(c.node.from, { name: sourceName })}</span>}
-      </div>
       {out && (
-        <span className={`cv-port cv-port-out is-${out}`} data-port-out={node.id} title={`${fmt(c.ports.out, { kind: c.ports[out] })} · ${c.wire.drag}`}>
-          <span aria-hidden>{PORT_LETTER[out]}</span>
+        <span
+          className={`cv-port is-out t-${out}`}
+          data-port-out={node.id}
+          title={`${fmt(c.ports.out, { kind: c.ports[out] })} · ${c.wire.drag}`}
+          aria-label={fmt(c.ports.out, { kind: c.ports[out] })}
+        >
+          <span aria-hidden>{c.ports.letters[out]}</span>
         </span>
       )}
     </div>
@@ -1058,6 +1250,10 @@ function statusLine(t: ReturnType<typeof useI18n>["t"], status: NodeStatus, job:
       return c.kinds.asset.name;
     case "missing":
       return c.node.noFile;
+    case "words":
+      return c.node.words;
+    case "empty":
+      return c.node.noWords;
     case "failed":
       return job ? `${t.gen.status.failed} · ${failureReason(t, job)}` : t.gen.status.failed;
     default:
@@ -1071,12 +1267,18 @@ function Minimap({
   canvas,
   boardRef,
   onCentre,
-  onHide,
+  open,
+  onToggle,
+  selected,
+  statusOf,
 }: {
   canvas: CanvasState;
   boardRef: React.RefObject<HTMLDivElement | null>;
   onCentre: (v: Viewport) => void;
-  onHide: () => void;
+  open: boolean;
+  onToggle: () => void;
+  selected: string | null;
+  statusOf: (n: CanvasNode) => NodeStatus;
 }) {
   const { t } = useI18n();
   const c = t.studioCanvas;
@@ -1093,30 +1295,40 @@ function Minimap({
   const minY = Math.min(...ys);
   const s = Math.min(W / (Math.max(...xs) - minX || 1), H / (Math.max(...ys) - minY || 1));
   return (
-    <div className="cv-map">
-      <div className="cv-map-head">
+    <div className={open ? "cv-mini" : "cv-mini is-min"}>
+      <div className="cv-mini-h">
         <span>{c.map}</span>
-        <button type="button" className="cv-icon-btn is-small" onClick={onHide} aria-label={c.mapHide} title={c.mapHide}>
-          <X aria-hidden className="size-3.5" />
+        <button type="button" onClick={onToggle} aria-label={open ? c.mapMin : c.mapMax} title={open ? c.mapMin : c.mapMax} aria-expanded={open}>
+          {open ? <Minus aria-hidden className="size-3.5" /> : <Plus aria-hidden className="size-3.5" />}
         </button>
       </div>
-      <svg
-        width={W}
-        height={H}
-        role="img"
-        aria-label={c.map}
-        onPointerDown={(e) => {
-          const box = e.currentTarget.getBoundingClientRect();
-          const wx = (e.clientX - box.left) / s + minX;
-          const wy = (e.clientY - box.top) / s + minY;
-          onCentre({ ...canvas.view, x: vw / 2 - wx * canvas.view.k, y: vh / 2 - wy * canvas.view.k });
-        }}
-      >
-        {canvas.nodes.map((n) => (
-          <rect key={n.id} x={(n.x - minX) * s} y={(n.y - minY) * s} width={NODE_W * s} height={NODE_H * s} rx={2} className="cv-map-node" />
-        ))}
-        <rect x={(tl.x - minX) * s} y={(tl.y - minY) * s} width={(br.x - tl.x) * s} height={(br.y - tl.y) * s} className="cv-map-view" />
-      </svg>
+      {open && (
+        <svg
+          width={W}
+          height={H}
+          role="img"
+          aria-label={c.map}
+          onPointerDown={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            const wx = (e.clientX - box.left) / s + minX;
+            const wy = (e.clientY - box.top) / s + minY;
+            onCentre({ ...canvas.view, x: vw / 2 - wx * canvas.view.k, y: vh / 2 - wy * canvas.view.k });
+          }}
+        >
+          {canvas.nodes.map((n) => (
+            <rect
+              key={n.id}
+              x={(n.x - minX) * s}
+              y={(n.y - minY) * s}
+              width={NODE_W * s}
+              height={NODE_H * s}
+              rx={2}
+              className={`cv-mn${n.id === selected ? " is-sel" : statusOf(n) === "working" ? " is-run" : ""}`}
+            />
+          ))}
+          <rect x={(tl.x - minX) * s} y={(tl.y - minY) * s} width={(br.x - tl.x) * s} height={(br.y - tl.y) * s} className="cv-mv" />
+        </svg>
+      )}
     </div>
   );
 }
@@ -1131,18 +1343,27 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
+  const dialog = useRef<HTMLDivElement>(null);
+  // Focus goes into the dialog, and back to whatever opened it when it closes.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    input.current?.focus();
+    return () => opener?.focus?.();
+  }, []);
   type Item = { id: string; group: "add" | "open"; label: string; sub: string; closed?: boolean; run: () => void; Icon: LucideIcon };
   const items: Item[] = [
-    ...TOOL_KINDS.map((k) => ({
-      id: `add:${k}`,
-      group: "add" as const,
-      label: c.kinds[k].name,
-      sub: kindOpen(availability, k) ? c.kinds[k].desc : c.node.notAvailable,
-      closed: !kindOpen(availability, k),
-      run: () => onAdd(k),
-      Icon: KIND_ICONS[k],
-    })),
+    ...TOOL_KINDS.map((k) => {
+      const closed = !kindOpen(availability, k);
+      return {
+        id: `add:${k}`,
+        group: "add" as const,
+        label: c.kinds[k].name,
+        sub: closed ? `${c.node.notAvailable} · ${c.palette.closedWhy}` : c.kinds[k].desc,
+        closed,
+        run: () => onAdd(k),
+        Icon: KIND_ICONS[k],
+      };
+    }),
     ...(mode === "all"
       ? [
           ...(filmStudio ? [{ id: "open:projects", group: "open" as const, label: c.projects, sub: c.projectsSub, run: () => (window.location.href = path("/create/projects")), Icon: Projector }] : []),
@@ -1160,11 +1381,37 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
   ];
   const needle = q.trim().toLowerCase();
   const shown = needle ? items.filter((i) => `${i.label} ${i.sub}`.toLowerCase().includes(needle)) : items;
-  const pick = (i: Item | undefined) => i?.run();
+  // A tool with nothing on sale is listed with its reason and cannot be added.
+  const pick = (i: Item | undefined) => {
+    if (i && !i.closed) i.run();
+  };
   return (
-    <div className="cv-palette-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="cv-palette" role="dialog" aria-modal="true" aria-label={mode === "add" ? c.add.title : c.palette.label} data-testid="canvas-palette">
-        <div className="cv-palette-head">
+    <>
+      <div className="cv-scrim is-pal" onMouseDown={onClose} aria-hidden />
+      <div
+        ref={dialog}
+        className="cv-pal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === "add" ? c.add.title : c.palette.label}
+        data-testid="canvas-palette"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+          } else if (e.key === "Tab") {
+            // A focus trap: Tab cycles inside the dialog.
+            const f = [...(dialog.current?.querySelectorAll<HTMLElement>("input, button:not([disabled])") ?? [])];
+            if (f.length === 0) return;
+            const i = f.indexOf(document.activeElement as HTMLElement);
+            const next = e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : i === f.length - 1 ? 0 : i + 1;
+            e.preventDefault();
+            f[next].focus();
+          }
+        }}
+      >
+        <div className="cv-pi">
           <Search aria-hidden className="size-4" />
           <input
             ref={input}
@@ -1174,8 +1421,7 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
               setActive(0);
             }}
             onKeyDown={(e) => {
-              if (e.key === "Escape") onClose();
-              else if (e.key === "ArrowDown") {
+              if (e.key === "ArrowDown") {
                 e.preventDefault();
                 setActive((a) => Math.min(shown.length - 1, a + 1));
               } else if (e.key === "ArrowUp") {
@@ -1188,79 +1434,106 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
             }}
             placeholder={c.palette.placeholder}
             aria-label={c.palette.placeholder}
-            className="cv-palette-input"
           />
-          <button type="button" className="cv-icon-btn" onClick={onClose} aria-label={c.add.close} title={c.add.close}>
+          <button type="button" className="cv-icon" onClick={onClose} aria-label={c.add.close} title={c.add.close}>
             <X aria-hidden className="size-4" />
           </button>
         </div>
-        <ul className="cv-palette-list" role="listbox" aria-label={c.palette.label}>
+        <ul className="cv-pal-list" role="listbox" aria-label={c.palette.label}>
           {shown.length === 0 && <li className="cv-note px-3 py-2">{c.palette.empty}</li>}
           {shown.map((i, n) => (
             <li key={i.id}>
-              {(n === 0 || shown[n - 1].group !== i.group) && <p className="cv-menu-group">{i.group === "add" ? c.palette.addGroup : c.palette.openGroup}</p>}
+              {(n === 0 || shown[n - 1].group !== i.group) && <p className="cv-pop-h">{i.group === "add" ? c.palette.addGroup : c.palette.openGroup}</p>}
               <button
                 type="button"
                 role="option"
                 aria-selected={n === active}
-                className="cv-palette-item"
-                data-closed={i.closed ? "true" : undefined}
+                aria-disabled={i.closed ? "true" : undefined}
+                className="cv-pal-o"
                 onMouseEnter={() => setActive(n)}
                 onClick={() => pick(i)}
                 data-testid={i.id}
               >
                 <i.Icon aria-hidden className="size-4 shrink-0" />
                 <span className="flex min-w-0 flex-col text-left">
-                  <span className="font-semibold">{i.label}</span>
-                  {i.sub && <span className="cv-note">{i.sub}</span>}
+                  <span className="cv-opt-on">{i.label}</span>
+                  {i.sub && <span className={i.closed ? "cv-opt-why" : "cv-opt-os"}>{i.sub}</span>}
                 </span>
               </button>
             </li>
           ))}
         </ul>
-        <p className="cv-palette-foot">{c.palette.hint}</p>
+        <div className="cv-pal-f">
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> {c.palette.keyMove}
+          </span>
+          <span>
+            <kbd>Enter</kbd> {c.palette.keyChoose}
+          </span>
+          <span>
+            <kbd>Esc</kbd> {c.palette.keyClose}
+          </span>
+          <span className="cv-pal-hint">{c.palette.hint}</span>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
 // ── first run ────────────────────────────────────────────────────────────────
 
-function FirstRun({ filmStudio, onRecipe, onBlank }: { filmStudio: boolean; onRecipe: (r: Recipe) => void; onBlank: () => void }) {
+function FirstRun({ filmStudio, phone, onRecipe, onBlank }: { filmStudio: boolean; phone: boolean; onRecipe: (r: Recipe, words?: string) => void; onBlank: () => void }) {
   const { t } = useI18n();
   const c = t.studioCanvas.firstRun;
   const path = useChannelPath();
+  const [words, setWords] = useState("");
+  const blank = phone ? c.blankPhone : c.blank;
   return (
-    <section className="cv-firstrun" aria-labelledby="cv-firstrun-title" data-testid="canvas-first-run">
-      <h2 id="cv-firstrun-title" className="cv-firstrun-title">
-        {c.title}
-      </h2>
-      <p className="cv-firstrun-lead">{c.lead}</p>
-      <p className="cv-menu-group">{c.from}</p>
-      <ul className="cv-recipes">
-        {RECIPES.map((r) => (
-          <li key={r}>
-            <button type="button" className="cv-recipe" onClick={() => onRecipe(r)} data-testid={`recipe-${r}`}>
-              <span className="font-semibold">{c[r].name}</span>
-              <span className="cv-note">{c[r].desc}</span>
+    <section className="cv-empty" aria-labelledby="cv-empty-title" data-testid="canvas-first-run">
+      <div className="cv-ecard">
+        <h2 id="cv-empty-title">{c.ask}</h2>
+        <p>{c.lead}</p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (words.trim()) onRecipe("promptVideo", words.trim());
+          }}
+        >
+          <textarea className="cv-inp cv-ask" value={words} onChange={(e) => setWords(e.target.value.slice(0, 4000))} placeholder={c.askPlaceholder} aria-label={c.ask} data-testid="first-run-words" />
+          <div className="cv-erow">
+            <span className="cv-note">{c.askNote}</span>
+            <button type="submit" className="cv-kbtn is-primary" disabled={!words.trim()} data-testid="first-run-go">
+              {c.askGo}
+            </button>
+          </div>
+        </form>
+        <h3>{c.from}</h3>
+        <ul className="cv-estarts">
+          {RECIPES.map((r) => (
+            <li key={r}>
+              <button type="button" className="cv-estart" onClick={() => onRecipe(r)} data-testid={`recipe-${r}`}>
+                <b>{c[r].name}</b>
+                <span>{c[r].desc}</span>
+              </button>
+            </li>
+          ))}
+          <li>
+            <button type="button" className="cv-estart" onClick={onBlank} data-testid="recipe-blank">
+              <b>{blank.name}</b>
+              <span>{blank.desc}</span>
             </button>
           </li>
-        ))}
-        <li>
-          <button type="button" className="cv-recipe" onClick={onBlank} data-testid="recipe-blank">
-            <span className="font-semibold">{c.blank.name}</span>
-            <span className="cv-note">{c.blank.desc}</span>
-          </button>
-        </li>
-        {filmStudio && (
-          <li>
-            <Link href={path("/create/projects")} className="cv-recipe" data-testid="recipe-projects">
-              <span className="font-semibold">{t.studioCanvas.projects}</span>
-              <span className="cv-note">{t.studioCanvas.projectsSub}</span>
-            </Link>
-          </li>
-        )}
-      </ul>
+          {filmStudio && (
+            <li>
+              <Link href={path("/create/projects")} className="cv-estart" data-testid="recipe-projects">
+                <b>{t.studioCanvas.projects}</b>
+                <span>{t.studioCanvas.projectsSub}</span>
+              </Link>
+            </li>
+          )}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -1273,6 +1546,7 @@ function FlowView({
   nodeName,
   jobs,
   previews,
+  selected,
   onOpen,
 }: {
   canvas: CanvasState;
@@ -1280,27 +1554,22 @@ function FlowView({
   nodeName: (n: CanvasNode) => string;
   jobs: ReadonlyMap<string, JobReading>;
   previews: ReadonlyMap<string, { thumbUrl: string | null; kind: string }>;
+  selected: string | null;
   onOpen: (id: string) => void;
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
   const order = flowOrder(canvas);
-  const groups: { id: "sources" | "make" | "finish"; nodes: CanvasNode[] }[] = [
-    { id: "sources", nodes: order.filter((n) => depthOf(canvas, n.id) === 0) },
-    { id: "make", nodes: order.filter((n) => depthOf(canvas, n.id) === 1) },
-    { id: "finish", nodes: order.filter((n) => depthOf(canvas, n.id) >= 2) },
-  ];
-  if (canvas.nodes.length === 0) return <p className="cv-empty-hint is-flow">{c.firstRun.blank.desc}</p>;
+  const groups = (["sources", "make", "finish"] as const).map((id) => ({ id, nodes: order.filter((n) => FLOW_GROUP[n.kind] === id) }));
+  if (canvas.nodes.length === 0) return <p className="cv-hint is-flow">{c.firstRun.blankPhone.desc}</p>;
   return (
     <div className="cv-flow" aria-label={c.flow.label}>
       {groups
         .filter((g) => g.nodes.length > 0)
         .map((g) => (
-          <section key={g.id} className="cv-flow-group" aria-labelledby={`flow-${g.id}`}>
-            <h2 id={`flow-${g.id}`} className="cv-flow-title">
-              {c.flow[g.id]}
-            </h2>
-            <ul className="cv-flow-list">
+          <section key={g.id} className="cv-fgrp" aria-labelledby={`flow-${g.id}`}>
+            <h2 id={`flow-${g.id}`}>{c.flow[g.id]}</h2>
+            <ul className="cv-fcards">
               {g.nodes.map((n) => {
                 const s = statusOf(n);
                 const Icon = KIND_ICONS[n.kind];
@@ -1310,23 +1579,38 @@ function FlowView({
                 const reading = n.jobId ? jobs.get(n.jobId) : undefined;
                 const job = reading?.state === "ok" ? reading.job : null;
                 const accepts = KIND_SPEC[n.kind].accepts.map((k) => c.ports[k]).join(" / ");
+                const working = s === "working" || s === "queued";
                 return (
                   <li key={n.id}>
-                    <button type="button" className="cv-flow-card" data-status={s} onClick={() => onOpen(n.id)} data-testid={`flow-node-${n.kind}`}>
-                      {thumb && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={thumb} alt="" className="cv-flow-thumb" />
-                      )}
-                      <span className="flex items-center gap-2 font-semibold">
-                        <Icon aria-hidden className="size-4 shrink-0" />
-                        <span className="truncate">{nodeName(n)}</span>
-                      </span>
-                      <StatusLamp tone={LAMP[s]} live={s === "working"} label={statusLine(t, s, job, accepts)} />
-                      {KIND_SPEC[n.kind].accepts.length > 0 && (
-                        <span className="cv-flow-inputs">
-                          <span className="cv-note">{c.flow.inputs}:</span>{" "}
-                          {input ? <span className="cv-chip">{fmt(c.node.from, { name: nodeName(input.from) })}</span> : <span className="cv-chip is-empty">{c.flow.noInputs}</span>}
+                    <button
+                      type="button"
+                      className={`cv-fcard s-${s}${selected === n.id ? " is-sel" : ""}`}
+                      data-status={s}
+                      onClick={() => onOpen(n.id)}
+                      data-testid={`flow-node-${n.kind}`}
+                    >
+                      {/* A prompt's picture is its words. */}
+                      {n.kind === "prompt" ? (
+                        <span className={n.draft.trim() ? "cv-fwords" : "cv-fwords is-empty"}>{n.draft.trim() || c.node.noWords}</span>
+                      ) : (
+                        <span className={`cv-art${working ? " is-working" : ""}${s === "failed" ? " is-failed" : ""}`} aria-hidden>
+                          {thumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumb} alt="" />
+                          ) : (
+                            <Icon className="cv-art-glyph" />
+                          )}
                         </span>
+                      )}
+                      <span className="cv-ft">
+                        <span aria-hidden className={`cv-ty is-sm k-${n.kind}`}>
+                          <Icon className="size-3.5" strokeWidth={1.9} />
+                        </span>
+                        <b>{nodeName(n)}</b>
+                      </span>
+                      <Lamp tone={LAMP[s]} live={s === "working"} label={statusLine(t, s, job, accepts)} />
+                      {KIND_SPEC[n.kind].accepts.length > 0 && (
+                        <span className="cv-fin">{input ? fmt(c.node.from, { name: nodeName(input.from) }) : c.flow.noInputs}</span>
                       )}
                     </button>
                   </li>

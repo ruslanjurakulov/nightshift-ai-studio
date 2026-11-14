@@ -22,6 +22,7 @@ export const studioCanvasEn = {
   search: "Search, add, open",
   // The status strip: counts from the nodes' real jobs; an unread status is "unknown", never "done".
   statusEmpty: "Empty canvas · nothing spent",
+  statusNodesOne: "1 node",
   statusNodes: "{n} nodes",
   statusWorking: "{n} working",
   statusDone: "{n} done",
@@ -51,6 +52,7 @@ export const studioCanvasEn = {
   mapHide: "Hide map",
   // The node kinds: every one is a real Studio tool.
   kinds: {
+    prompt: { name: "Prompt", desc: "Words that feed a picture, a clip or a voice" },
     image: { name: "Image", desc: "Words into a picture" },
     video: { name: "Video", desc: "Words into a clip" },
     animate: { name: "Image → Video", desc: "A picture into a moving clip" },
@@ -59,8 +61,10 @@ export const studioCanvasEn = {
     voice: { name: "Voice", desc: "Words into a voice-over" },
     asset: { name: "From library", desc: "A file you already have" },
   },
-  ports: { image: "Picture", video: "Clip", audio: "Recording", in: "Input: {kinds}", out: "Output: {kind}" },
+  ports: { text: "Words", image: "Picture", video: "Clip", audio: "Recording", in: "Input: {kinds}", out: "Output: {kind}", letters: { text: "T", image: "I", video: "V", audio: "A" } },
   node: {
+    words: "Words ready",
+    noWords: "No words yet",
     reading: "Reading…",
     notAvailable: "Not available yet",
     notStarted: "Not started",
@@ -74,6 +78,7 @@ export const studioCanvasEn = {
     result: "Result",
   },
   wire: {
+    closed: "That tool is not available yet, so nothing can be wired into it",
     drag: "Drag to an input to wire it",
     same_node: "A node cannot feed itself",
     no_input: "This node takes no input",
@@ -83,6 +88,10 @@ export const studioCanvasEn = {
     no_output: "Wire something into this node first: its output is not known yet",
   },
   inspector: {
+    promptLabel: "Words",
+    promptHint: "Wired into an Image, Video or Voice node, these words fill its form. Free: they are text.",
+    wireHint: "Drag a wire from a matching output onto this node's input.",
+    fromWords: "Words from {name}",
     label: "Inspector",
     close: "Close",
     inputs: "Inputs",
@@ -116,11 +125,20 @@ export const studioCanvasEn = {
     openFull: "Open the full library",
     untitled: "Untitled",
   },
+  timeline: "Timeline",
+  timelineSoon: "The timeline comes with scene-by-scene projects",
+  mapMin: "Minimize map",
+  mapMax: "Expand map",
+  rail: { label: "Studio navigation", command: "Command", studio: "Studio", inbox: "Inbox", analytics: "Analytics", admin: "Admin", home: "Home", channels: "Channels", credits: "Credits", settings: "Settings" },
   add: {
     title: "Add node",
     close: "Close",
   },
   palette: {
+    keyMove: "move",
+    keyChoose: "choose",
+    keyClose: "close",
+    closedWhy: "No model for it is on sale right now",
     label: "Search, add, open",
     placeholder: "Add a node or open a page…",
     addGroup: "Add a node",
@@ -129,6 +147,11 @@ export const studioCanvasEn = {
     hint: "Adding a node is free. Nothing spends until you confirm a price in its form.",
   },
   firstRun: {
+    ask: "What do you want to make?",
+    askPlaceholder: "A fox crossing a snowy ridge at dawn",
+    askNote: "Starts words → picture → clip on the canvas. Nothing is priced until you open a node.",
+    askGo: "Lay it out",
+    blankPhone: { name: "Blank canvas", desc: "Tap Add to place a node, or add a file from the Library" },
     title: "Start on the canvas",
     lead: "Every tool is a node. Wire a picture into a clip and the clip uses it. Adding and wiring nodes is free: a node spends only after you confirm its price.",
     from: "Start from",

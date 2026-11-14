@@ -70,14 +70,19 @@ const node = (id, kind, x, y, extra = {}) => ({ id, kind, x, y, jobId: null, ass
 const CHAIN = {
   v: 1,
   nodes: [
-    node("img", "image", 0, 0, { jobId: DONE, draft: "A fox crossing a snowy ridge at dawn" }),
+    node("words", "prompt", -336, 0, { draft: "A fox crossing a snowy ridge at dawn, long shadows, film grain" }),
+    node("img", "image", 0, 0, { jobId: DONE }),
     node("clip", "animate", 336, 0),
-    node("lib", "asset", 0, 232, { assetId: FOX, assetKind: "image" }),
-    node("vid", "video", 336, 232, { jobId: RUNNING }),
+    node("lib", "asset", 0, 356, { assetId: FOX, assetKind: "image" }),
+    node("vid", "video", 336, 356, { jobId: RUNNING }),
     node("enh", "enhance", 672, 0),
-    node("voice", "voice", 0, 464),
+    node("voice", "voice", 0, 712),
   ],
-  wires: [{ id: "w1", from: "img", to: "clip" }],
+  wires: [
+    { id: "w0", from: "words", to: "img" },
+    { id: "w1", from: "img", to: "clip" },
+    { id: "w2", from: "vid", to: "enh" },
+  ],
   view: { x: 0, y: 0, k: 1 },
 };
 const FAILURE = {
@@ -95,10 +100,13 @@ const SCENES = [
   { name: "error", layout: FAILURE, state: "canvas", open: "clip", check: '[data-status="failed"]' },
   { name: "low-credits", layout: ONE_IMAGE, state: "low", open: "img", check: "[data-testid=canvas-inspector]" },
   { name: "palette", layout: CHAIN, state: "canvas", palette: true, check: "[data-testid=canvas-palette]" },
+  // The Library and the inspector both open: the board must stay usable between them.
+  { name: "both", layout: CHAIN, state: "canvas", open: "clip", library: true, check: "[data-testid=canvas-library]" },
 ];
 const VIEWS = [
   { width: 1440, height: 900, theme: "dark" },
   { width: 1440, height: 900, theme: "light" },
+  { width: 768, height: 1024, theme: "dark" },
   { width: 390, height: 844, theme: "dark" },
 ];
 
@@ -111,6 +119,8 @@ for (const loc of LOCALES)
     for (const s of SCENES) {
       // The full grid only in English and dark at 1440; the rest takes the scenes the brief names.
       if ((loc !== "en" || v.theme !== "dark") && !["first-run", "chain", "inspector", "error"].includes(s.name)) continue;
+      if (v.width === 768 && !["chain", "inspector"].includes(s.name)) continue;
+      if (s.library && v.width < 1000) continue;
       const phone = v.width < 600;
       const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height }, colorScheme: v.theme, reducedMotion: "reduce", isMobile: phone, hasTouch: phone, deviceScaleFactor: 1 });
       await ctx.addCookies([{ name: "chronos_locale", value: loc, url: BASE }, { ...sessionCookie(FAKE, s.state), url: BASE }]);
@@ -132,7 +142,7 @@ for (const loc of LOCALES)
       await page.waitForTimeout(1500);
       if (!phone && s.layout) await page.keyboard.press("0").catch(() => {});
       if (s.open) {
-        const target = phone ? `[data-testid=flow-node-${s.layout.nodes.find((n) => n.id === s.open).kind}]` : `[data-node-id="${s.open}"] .cv-node-head`;
+        const target = phone ? `[data-testid=flow-node-${s.layout.nodes.find((n) => n.id === s.open).kind}]` : `[data-node-id="${s.open}"] .cv-nh`;
         await page.click(target).catch((e) => errors.push(`open: ${e.message}`));
         await page.waitForTimeout(1800);
       }
@@ -140,6 +150,10 @@ for (const loc of LOCALES)
       if (s.name === "low-credits") {
         await page.evaluate(() => document.querySelector("[data-testid=canvas-inspector]")?.scrollTo(0, 1e6));
         await page.waitForTimeout(400);
+      }
+      if (s.library) {
+        await page.click("[data-testid=dock-library]").catch((e) => errors.push(`library: ${e.message}`));
+        await page.waitForTimeout(500);
       }
       if (s.palette) {
         await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
@@ -150,10 +164,29 @@ for (const loc of LOCALES)
         landmark: !!document.querySelector(sel),
         nodes: [...document.querySelectorAll("[data-node-id], [data-testid^=flow-node-]")].map((n) => `${n.getAttribute("data-kind") ?? n.getAttribute("data-testid")}:${n.getAttribute("data-status")}`),
         panel: !!document.querySelector("[data-testid=canvas-inspector] form, [data-testid=canvas-inspector] textarea"),
+        // The phone's dock must not sit on the last card, and a sheet must rise from the bottom edge (not hang from the top).
+        dockCovers: (() => {
+          const dock = document.querySelector(".cv-flow-dock");
+          const cards = [...document.querySelectorAll(".cv-fcard")];
+          if (!dock || !cards.length || getComputedStyle(dock).display === "none") return false;
+          window.scrollTo(0, document.documentElement.scrollHeight);
+          const last = cards[cards.length - 1].getBoundingClientRect();
+          const top = dock.getBoundingClientRect().top;
+          window.scrollTo(0, 0);
+          return last.bottom > top;
+        })(),
+        sheet: (() => {
+          const el = document.querySelector(".is-sheet");
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { top: Math.round(r.top), bottom: Math.round(window.innerHeight - r.bottom) };
+        })(),
       }), s.check);
       const name = `${s.name}-${v.width}-${v.theme}-${loc}.png`;
       await page.screenshot({ path: path.join(OUT, name), fullPage: false });
-      lines.push(`${name}  overflow=${m.overflow}  landmark=${m.landmark}  form=${m.panel}  ${m.nodes.join(" ")}`);
+      lines.push(`${name}  overflow=${m.overflow}  landmark=${m.landmark}  form=${m.panel}  sheet=${JSON.stringify(m.sheet)}  ${m.nodes.join(" ")}`);
+      if (m.dockCovers) bad.push(`${name}: the flow's dock covers the last card`);
+      if (m.sheet && (m.sheet.bottom !== 0 || m.sheet.top <= 0)) bad.push(`${name}: sheet not anchored to the bottom (${JSON.stringify(m.sheet)})`);
       if (m.overflow > 0) bad.push(`${name}: ${m.overflow}px sideways`);
       if (!m.landmark) bad.push(`${name}: ${s.check} missing`);
       for (const e of errors) bad.push(`${name}: ${e}`);

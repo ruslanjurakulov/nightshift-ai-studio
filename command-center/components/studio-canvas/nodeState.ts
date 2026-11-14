@@ -22,11 +22,13 @@ export type NodeStatus =
   | "done"
   | "failed"
   | "asset" // a library file
-  | "missing"; // a library file the library no longer has
+  | "missing" // a library file the library no longer has
+  | "words" // a prompt with words in it
+  | "empty"; // a prompt with nothing typed yet
 
 /** Is this kind's tool on sale? Unknown availability draws every tool as before (lib/tool-availability.ts). */
 export function kindOpen(av: ToolAvailability, kind: NodeKind): boolean {
-  if (kind === "asset") return true;
+  if (kind === "asset" || kind === "prompt") return true;
   if (kind === "image" || kind === "video" || kind === "animate") return toolOpen(av, KIND_SPEC[kind].capability!);
   if (kind === "effects") return deskOpen(av, "effects");
   return deskOpen(av, KIND_SPEC[kind].desk!);
@@ -40,6 +42,7 @@ export function nodeStatus(
   library: { ready: boolean; previews: ReadonlyMap<string, LibraryPreview> },
 ): NodeStatus {
   if (node.kind === "asset") return library.ready && node.assetId && !library.previews.has(node.assetId) ? "missing" : "asset";
+  if (node.kind === "prompt") return node.draft.trim() ? "words" : "empty";
   if (node.jobId) {
     const r = jobs.get(node.jobId);
     if (!r || r.state === "loading") return "loading";
@@ -71,11 +74,17 @@ export function nodeAsset(node: CanvasNode, jobs: ReadonlyMap<string, JobReading
  * What a node's input is fed with: the wired node, and that node's file once there is one. `assetId` null with
  * a `from` means the source is still being made (or failed): the form gets nothing until a real file exists.
  */
-export function inputOf(state: CanvasState, node: CanvasNode, jobs: ReadonlyMap<string, JobReading>): { from: CanvasNode; type: PortType | null; assetId: string | null } | null {
+export function inputOf(
+  state: CanvasState,
+  node: CanvasNode,
+  jobs: ReadonlyMap<string, JobReading>,
+): { from: CanvasNode; type: PortType | null; assetId: string | null; text: string | null } | null {
   const w = wireInto(state, node.id);
   const from = w ? state.nodes.find((n) => n.id === w.from) : undefined;
   if (!from) return null;
-  return { from, type: outputType(state, from), assetId: nodeAsset(from, jobs) };
+  const type = outputType(state, from);
+  // A prompt hands over its words; everything else hands over a file once there is one.
+  return { from, type, assetId: nodeAsset(from, jobs), text: type === "text" ? from.draft.trim() || null : null };
 }
 
 /** The canvas nodes that could feed this node's input now (the phone and the inspector wire from this list). */
@@ -101,4 +110,6 @@ export const LAMP: Record<NodeStatus, "ok" | "run" | "fail" | "warn" | "idle"> =
   failed: "fail",
   asset: "ok",
   missing: "warn",
+  words: "ok",
+  empty: "idle",
 };

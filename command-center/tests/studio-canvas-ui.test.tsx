@@ -77,6 +77,18 @@ const job = (id: string, status: string, extra: Record<string, unknown> = {}) =>
   ...extra,
 });
 
+// jsdom has no PointerEvent: without one, fireEvent's pointer events carry no coordinates and a drag cannot be told from a click.
+if (typeof window.PointerEvent === "undefined") {
+  (window as unknown as { PointerEvent: typeof MouseEvent }).PointerEvent = class extends MouseEvent {} as typeof MouseEvent;
+}
+
+/** A press that does not move: on a node's title bar, it opens the inspector. */
+function openNode(id: string) {
+  const head = document.querySelector(`[data-node-id="${id}"] .cv-nh`) as HTMLElement;
+  fireEvent.pointerDown(head, { clientX: 10, clientY: 10, button: 0 });
+  fireEvent.pointerUp(head, { clientX: 10, clientY: 10, button: 0 });
+}
+
 let narrow = false;
 function mockFetch() {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -138,12 +150,12 @@ describe("first run", () => {
     expect((await screen.findByTestId("recipe-projects")).getAttribute("href")).toBe("/chronos/create/projects");
   });
 
-  it("'Prompt → image → video' lays out an Image wired into Image → Video, and starts nothing", async () => {
+  it("'Prompt → image → video' lays out Prompt → Image → Image → Video, and starts nothing", async () => {
     mount();
     fireEvent.click(await screen.findByTestId("recipe-promptVideo"));
     const nodes = document.querySelectorAll("[data-node-id]");
-    expect([...nodes].map((n) => n.getAttribute("data-kind"))).toEqual(["image", "animate"]);
-    expect(document.querySelectorAll("[data-wire]")).toHaveLength(1);
+    expect([...nodes].map((n) => n.getAttribute("data-kind"))).toEqual(["prompt", "image", "animate"]);
+    expect(document.querySelectorAll("[data-wire]")).toHaveLength(2);
     // Nothing was asked of the jobs API: a recipe is a layout.
     expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([u]) => String(u).startsWith("/api/creative"))).toBe(false);
   });
@@ -163,7 +175,7 @@ describe("wires are real inputs", () => {
     store({ nodes: [node("img", "image", 0, { jobId: JOB_DONE }), node("clip", "animate", 400)], wires: [{ id: "w1", from: "img", to: "clip" }] });
     mount();
     await waitFor(() => expect(document.querySelector('[data-node-id="img"]')!.getAttribute("data-status")).toBe("done"));
-    fireEvent.click(within(document.querySelector('[data-node-id="clip"]') as HTMLElement).getByRole("button", { pressed: false }));
+    openNode("clip");
     const form = await screen.findByTestId("generate-panel");
     expect(form.getAttribute("data-cap")).toBe("i2v");
     expect(form.getAttribute("data-source")).toBe(OUT);
@@ -173,16 +185,26 @@ describe("wires are real inputs", () => {
     expect((await screen.findByTestId("inspector-needs")).textContent).toContain("Needs Picture");
   });
 
-  it("the inspector wires from the canvas (the phone's way), refusing nothing it lists", async () => {
+  it("the phone's inspector wires from the canvas (it has no wires to drag), refusing nothing it lists", async () => {
+    narrow = true;
     store({ nodes: [node("pic", "asset", -400, { assetId: PIC, assetKind: "image" }), node("clip", "animate", 0), node("voice", "voice", 0)], wires: [] });
     mount();
-    fireEvent.click(within((await screen.findAllByRole("group")).find((g) => g.getAttribute("data-node-id") === "clip")!).getAllByRole("button")[0]);
+    fireEvent.click(await screen.findByTestId("flow-node-animate"));
     const pick = await screen.findByTestId("inspector-wire");
     // A voice-over cannot feed a clip: only the picture is offered.
     expect([...pick.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["—", "Fox"]);
     fireEvent.change(pick, { target: { value: "pic" } });
-    await waitFor(() => expect(document.querySelectorAll("[data-wire]")).toHaveLength(1));
-    expect(document.querySelector('[data-node-id="clip"]')!.getAttribute("data-status")).toBe("idle");
+    await waitFor(() => expect(screen.getByTestId("flow-node-animate").getAttribute("data-status")).toBe("idle"));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).wires).toHaveLength(1));
+  });
+
+  it("on a desktop the inspector does not repeat the wire as a select: the wire on the board is the input", async () => {
+    store({ nodes: [node("pic", "asset", -400, { assetId: PIC, assetKind: "image" }), node("clip", "animate", 0)], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("clip");
+    expect(await screen.findByTestId("canvas-inspector")).toBeTruthy();
+    expect(screen.queryByTestId("inspector-wire")).toBeNull();
   });
 });
 
@@ -195,7 +217,9 @@ describe("results land on the node, from the job the database reports", () => {
     expect(document.querySelector('[data-node-id="b"]')!.textContent).toContain(c.node.unknown);
     expect(screen.getByTestId("canvas-status").textContent).toContain("1 failed");
     expect(screen.getByTestId("canvas-status").textContent).toContain("1 status unknown");
-    fireEvent.click(within(document.querySelector('[data-node-id="a"]') as HTMLElement).getAllByRole("button")[0]);
+    // The node says why on its own face, and its Retry chip opens the form.
+    expect(document.querySelector('[data-node-id="a"] .cv-nfail-why')!.textContent!.length).toBeGreaterThan(3);
+    fireEvent.click(screen.getByTestId("retry-a"));
     expect((await screen.findByTestId("inspector-failure")).textContent!.length).toBeGreaterThan(3);
     const before = panel.props.length;
     fireEvent.click(screen.getByTestId("inspector-retry"));
@@ -206,7 +230,8 @@ describe("results land on the node, from the job the database reports", () => {
   it("a press in the composer attaches the job it created to the node, and its state is read back", async () => {
     store({ nodes: [node("a", "image")], wires: [] });
     mount();
-    fireEvent.click(within((await screen.findAllByRole("group"))[0]).getAllByRole("button")[0]);
+    await screen.findByTestId("canvas-board");
+    openNode("a");
     fireEvent.click(await screen.findByRole("button", { name: "press" }));
     await waitFor(() => expect(document.querySelector('[data-node-id="a"]')!.getAttribute("data-status")).toBe("working"));
     await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].jobId).toBe(JOB_NEW));
@@ -224,7 +249,7 @@ describe("honest states", () => {
     });
     expect(v.getAttribute("data-status")).toBe("closed");
     expect(v.textContent).toContain(c.node.notAvailable);
-    fireEvent.click(within(v).getAllByRole("button")[0]);
+    openNode("v");
     expect(await screen.findByTestId("inspector-unavailable")).toBeTruthy();
     expect(screen.queryByTestId("generate-panel")).toBeNull();
   });
@@ -240,7 +265,7 @@ describe("honest states", () => {
     try {
       mount();
       fireEvent.click(await screen.findByTestId("recipe-promptVoice"));
-      expect(document.querySelectorAll("[data-node-id]")).toHaveLength(1);
+      expect(document.querySelectorAll("[data-node-id]")).toHaveLength(2);
       expect(await screen.findByText(c.notSaved)).toBeTruthy();
     } finally {
       Object.defineProperty(window, "localStorage", real);
@@ -252,8 +277,7 @@ describe("honest states", () => {
     mount();
     const quote = await screen.findByTestId("dock-quote");
     expect(quote.hasAttribute("disabled")).toBe(true);
-    fireEvent.pointerDown(screen.getByTestId("canvas-board"));
-    fireEvent.click(within(document.querySelector('[data-node-id="a"]') as HTMLElement).getAllByRole("button")[0]);
+    openNode("a");
     fireEvent.click(screen.getByRole("button", { name: c.inspector.close }));
     expect(screen.queryByTestId("generate-panel")).toBeNull();
     fireEvent.click(screen.getByTestId("dock-quote"));
@@ -261,7 +285,86 @@ describe("honest states", () => {
   });
 });
 
+describe("the board's hand", () => {
+  it("a drag moves a node and does not open the inspector; a press that does not move opens it", async () => {
+    store({ nodes: [node("a", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    const head = document.querySelector('[data-node-id="a"] .cv-nh') as HTMLElement;
+    fireEvent.pointerDown(head, { clientX: 10, clientY: 10, button: 0 });
+    fireEvent.pointerMove(head, { clientX: 90, clientY: 50, button: 0 });
+    fireEvent.pointerUp(head, { clientX: 90, clientY: 50, button: 0 });
+    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].x).toBe(80));
+    openNode("a");
+    expect(await screen.findByTestId("canvas-inspector")).toBeTruthy();
+  });
+
+  it("a wire can be selected and deleted with Delete, and ⌘Z puts it back", async () => {
+    store({ nodes: [node("img", "image"), node("clip", "animate", 400)], wires: [{ id: "w1", from: "img", to: "clip" }] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    const hit = document.querySelector('[data-wire-hit="w1"]')!;
+    fireEvent.pointerDown(hit, { clientX: 5, clientY: 5, button: 0 });
+    await waitFor(() => expect(document.querySelector('[data-wire="img->clip"]')!.getAttribute("class")).toContain("is-sel"));
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
+    });
+    expect(document.querySelectorAll("[data-wire]")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-node-id]")).toHaveLength(2);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    });
+    expect(document.querySelectorAll("[data-wire]")).toHaveLength(1);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true, bubbles: true }));
+    });
+    expect(document.querySelectorAll("[data-wire]")).toHaveLength(0);
+  });
+
+  it("a selected node's wires are lit; the rest are not", async () => {
+    store({
+      nodes: [node("p", "prompt", -400, { draft: "a fox" }), node("img", "image"), node("v", "voice", 400)],
+      wires: [{ id: "w1", from: "p", to: "img" }],
+    });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    await waitFor(() => expect(document.querySelector('[data-wire="p->img"]')!.getAttribute("class")).toContain("is-hl"));
+  });
+});
+
 describe("keys and the palette", () => {
+  it("a tool with nothing on sale is listed disabled with its reason, and cannot be added", async () => {
+    mount({ tools: { state: "known", sold: ["t2i"] } });
+    await screen.findByTestId("canvas-first-run");
+    fireEvent.click(screen.getByTestId("recipe-blank"));
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true }));
+    });
+    const pal = await screen.findByTestId("canvas-palette");
+    const video = within(pal).getByTestId("add:video");
+    expect(video.getAttribute("aria-disabled")).toBe("true");
+    expect(video.textContent).toContain(c.palette.closedWhy);
+    fireEvent.click(video);
+    expect(document.querySelector('[data-kind="video"]')).toBeNull();
+    fireEvent.click(within(pal).getByTestId("add:image"));
+    expect(document.querySelector('[data-kind="image"]')).toBeTruthy();
+  });
+
+  it("Escape closes the palette and focus goes back to what opened it", async () => {
+    store({ nodes: [node("a", "image")], wires: [] });
+    mount();
+    const add = await screen.findByTestId("dock-add");
+    add.focus();
+    fireEvent.click(add);
+    const pal = await screen.findByTestId("canvas-palette");
+    expect(document.activeElement?.tagName).toBe("INPUT");
+    fireEvent.keyDown(pal, { key: "Escape" });
+    expect(screen.queryByTestId("canvas-palette")).toBeNull();
+    expect(document.activeElement).toBe(add);
+  });
+
   it("⌘K opens the canvas palette (not the app's), N adds; adding a node is free", async () => {
     const appPalette = vi.fn();
     window.addEventListener("keydown", appPalette);

@@ -6,7 +6,7 @@ import { Ellipsis } from "lucide-react";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
+import { ALL_SECTIONS, CUSTOMER_RAIL, HOME, OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import { useShell } from "@/components/shell/ShellContext";
 import { type AccountPlan } from "@/lib/account";
@@ -103,8 +103,16 @@ export function SideNav({
   avatarV?: number | null;
   plan?: AccountPlan | null;
 }) {
+  const pathname = usePathname();
+  const path = useChannelPath();
+  // On Nightshift Studio the sidebar steps back to a 76px icon rail, so the canvas gets the width (one workspace).
+  const studio = pathname === path("/studio");
   return (
     <>
+      {studio ? (
+        <StudioRail operator={operator} />
+      ) : (
+      <>
       {/* Desktop rail. z-30 keeps it above a section panel's scrim (z-0) so the
           nav stays bright and clickable while a panel is open — clicking a
           section jumps straight there instead of the scrim closing to home. */}
@@ -115,6 +123,8 @@ export function SideNav({
       ) : (
         <CustomerSidebar email={email} avatarV={avatarV} plan={plan} />
       )}
+      </>
+      )}
 
       {/* A customer's phone: the five destinations as a bottom tab bar, Studio in
           the middle and raised — where the thumb is, as phone apps do. */}
@@ -123,6 +133,50 @@ export function SideNav({
       {/* The owner's phone: the same bottom-bar idea, with the owner's five destinations. */}
       {operator && <OperatorBottomBar />}
     </>
+  );
+}
+
+/**
+ * The Studio's rail (the prototype's): the daily destinations as icon + short label, 76px wide, the current one marked
+ * with the amber bar. The operator's ends in Admin (the page listing every section); a customer's is their five
+ * destinations. From `lg` up; below that the bottom tab bar is the rail.
+ */
+function StudioRail({ operator }: { operator: boolean }) {
+  const { t } = useI18n();
+  const path = useChannelPath();
+  const isActive = useIsActive();
+  const r = t.studioCanvas.rail;
+  const items: { href: string; key: NavKey; label: string }[] = operator
+    ? [
+        { href: HOME, key: "command", label: r.command },
+        { href: "/studio", key: "studio", label: r.studio },
+        { href: "/inbox", key: "inbox", label: r.inbox },
+        { href: "/analytics", key: "analytics", label: r.analytics },
+      ]
+    : CUSTOMER_RAIL.map((i) => ({ href: i.href, key: i.key, label: i.key in r ? r[i.key as keyof typeof r] : t.nav[i.key] }));
+  return (
+    <nav aria-label={r.label} className={operator ? "cv-rail is-operator" : "cv-rail"} data-studio-rail="">
+      <Link href={path(items[0].href)} className="cv-rail-logo" aria-label={t.brand.name} title={t.brand.name}>
+        N
+      </Link>
+      {items.map(({ href, key, label }) => {
+        const Icon = ICONS[key];
+        const active = isActive(href, key);
+        return (
+          <Link key={href} href={path(href)} aria-current={active ? "page" : undefined} title={t.nav[key]}>
+            <Icon aria-hidden className="size-5" strokeWidth={1.8} />
+            <span className="cv-rail-label">{label}</span>
+          </Link>
+        );
+      })}
+      <span className="cv-rail-sp" />
+      {operator && (
+        <Link href={path(ALL_SECTIONS)} title={t.nav.allSections}>
+          <Ellipsis aria-hidden className="size-5" strokeWidth={1.8} />
+          <span className="cv-rail-label">{r.admin}</span>
+        </Link>
+      )}
+    </nav>
   );
 }
 

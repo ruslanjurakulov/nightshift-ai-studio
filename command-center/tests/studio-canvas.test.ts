@@ -64,7 +64,11 @@ describe("wires are typed inputs", () => {
     expect(canWire(s, "pic", "clip")).toEqual({ ok: true, type: "image" });
     expect(canWire(s, "rec", "clip")).toEqual({ ok: false, why: "wrong_type" });
     expect(canWire(s, "voice", "clip")).toEqual({ ok: false, why: "wrong_type" });
-    expect(canWire(s, "clip", "img")).toEqual({ ok: false, why: "no_input" });
+    // An Image takes words, not a clip; a Prompt takes nothing at all.
+    expect(canWire(s, "clip", "img")).toEqual({ ok: false, why: "wrong_type" });
+    const words = { ...s, nodes: [...s.nodes, newNode("prompt", 0, 0, "words", { draft: "a fox" })] };
+    expect(canWire(words, "words", "img")).toEqual({ ok: true, type: "text" });
+    expect(canWire(words, "img", "words")).toEqual({ ok: false, why: "no_input" });
     expect(canWire(s, "clip", "clip")).toEqual({ ok: false, why: "same_node" });
     expect(canWire(s, "nope", "clip")).toEqual({ ok: false, why: "unknown_node" });
     // A clip into Edit · Upscale, then Edit back into the clip's source chain would loop.
@@ -126,14 +130,18 @@ describe("order and layout", () => {
   });
 
   it("starter recipes lay out nodes and wires only: no job, nothing priced", () => {
-    const pv = recipeState("promptVideo", id);
-    expect(pv.nodes.map((x) => x.kind)).toEqual(["image", "animate"]);
-    expect(pv.wires).toHaveLength(1);
+    // "Prompt → image → video" begins with the words: a Prompt node wired into the Image, wired into Image → Video.
+    const pv = recipeState("promptVideo", id, "a fox on a ridge");
+    expect(pv.nodes.map((x) => x.kind)).toEqual(["prompt", "image", "animate"]);
+    expect(pv.wires).toHaveLength(2);
+    expect(pv.nodes[0].draft).toBe("a fox on a ridge");
     expect(pv.nodes.every((x) => x.jobId === null)).toBe(true);
     const pc = recipeState("photoClip", id);
     expect(pc.nodes.map((x) => x.kind)).toEqual(["animate"]);
     expect(missingInput(pc, pc.nodes[0])).toBe(true);
-    expect(recipeState("promptVoice", id).nodes.map((x) => x.kind)).toEqual(["voice"]);
+    const vo = recipeState("promptVoice", id);
+    expect(vo.nodes.map((x) => x.kind)).toEqual(["prompt", "voice"]);
+    expect(vo.wires).toHaveLength(1);
   });
 });
 

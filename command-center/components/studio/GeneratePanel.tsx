@@ -148,7 +148,13 @@ export function GeneratePanel({
   attachNote = null,
   onSubmittingChange,
   onEdit,
+  only,
 }: {
+  /**
+   * The tools this form may offer, narrower than its desk's (the Studio canvas: an Image → Video node is i2v only, so no tab
+   * may turn it into a clip from words). One tool draws no tab row. Prices, the hold and the create call are unchanged.
+   */
+  only?: readonly StudioCapability[];
   /**
    * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
    * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
@@ -225,7 +231,7 @@ export function GeneratePanel({
   const { t, fmt, locale } = useI18n();
   const path = useChannelPath();
   // The tools this composer offers: its desk's, or every one.
-  const tools: readonly StudioCapability[] = desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES;
+  const tools: readonly StudioCapability[] = only && only.length > 0 ? only : desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES;
   // `desk` picks the tools; `arrange` is the desk's own look, which the composer does not use.
   const composer = layout === "composer";
   const arrange: MediaDesk | null = composer ? null : desk;
@@ -873,7 +879,7 @@ export function GeneratePanel({
         {tools.map(tab)}
       </div>
     ) : null
-  ) : arrange ? (
+  ) : only && tools.length < 2 ? null : arrange ? (
     <div role="tablist" aria-label={t.gen.kindLabel} className="desk-tools" data-count={tools.length}>
       {tools.map(tab)}
     </div>

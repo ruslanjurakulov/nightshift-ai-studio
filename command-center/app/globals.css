@@ -2662,3 +2662,96 @@ html:has(.app-shell) { scroll-padding-top: calc(var(--ns-shell-h, 4rem) + 0.5rem
   background: currentColor;
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 28%, transparent);
 }
+
+/* ── Nightshift Studio canvas tokens ───────────────────────────────────────────
+   Ported from docs/studio/prototype/studio-canvas-prototype.html. Scoped to the Studio's own surfaces
+   (the canvas, its bar, its rail, and `.cv-tok`: what the canvas portals over the app, its sheets and palette), so no other page changes colour. Violet = the machine is working,
+   amber = a person's mark; light is emitted only by real state. Light is the default, dark follows the
+   app's theme selectors above (an explicit choice wins, then the system preference). */
+.cv-root,
+.cv-appbar,
+.cv-rail,
+.cv-tok {
+  --violet-a: #5546d1;
+  --violet-b: #8236c8;
+  --grad: linear-gradient(135deg, var(--violet-a), var(--violet-b));
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --d-state: 200ms;
+  --d-scene: 560ms;
+  --ground: #f3f2f7; --canvas: #f6f5fa; --console: #ffffff; --raise: #fbfaff; --key: #eeecf4; --key-hi: #e4e1ee;
+  --rule: rgb(30 24 60 / 0.12); --rule-strong: #85809a;
+  --text: #17141f; --dim: #514b5f; --faint: #5f596d;
+  --violet-ink: #5232b8; --violet-soft: rgb(85 70 209 / 0.10); --violet-light: rgb(120 70 230 / 0.32);
+  --amber: #f29a1e; --amber-ink: #9c5300; --on-amber: #1b1a17; --amber-soft: rgb(242 154 30 / 0.16); --amber-light: rgb(242 154 30 / 0.38);
+  --go: #0a7346; --tally: #b9341f; --caution: #7e6100; --tally-soft: rgb(185 52 31 / 0.08);
+  --focus: #a85a00; --film: #04040a; --lamp-off: #a29db2; --scrim: rgb(23 20 31 / 0.4);
+  --p-text: #4d586b; --p-image: #0a7fa0; --p-video: #c02a6e; --p-audio: #0a7346;
+  /* A port's letter sits on the port's own colour: white on these darker light-theme ports (≥ 4.5:1). */
+  --port-ink: #ffffff;
+  --dot: rgb(30 24 60 / 0.13);
+  --node-bg: linear-gradient(165deg, #ffffff, #fbfaff 60%);
+  --glass: rgb(255 255 255 / 0.9);
+  --nebula: radial-gradient(1000px 560px at 10% -10%, rgb(110 90 240 / 0.14), transparent 62%),
+            radial-gradient(900px 520px at 100% 0%, rgb(170 90 230 / 0.10), transparent 60%),
+            radial-gradient(1100px 520px at 55% 120%, rgb(255 170 80 / 0.12), transparent 62%);
+  --lift-1: 0 1px 2px rgb(30 24 60 / 0.06), 0 6px 16px -8px rgb(30 24 60 / 0.18);
+  --lift-2: 0 2px 4px rgb(30 24 60 / 0.07), 0 18px 36px -16px rgb(30 24 60 / 0.32);
+  --lift-3: 0 1px 2px rgb(30 24 60 / 0.06), 0 26px 60px -18px rgb(30 24 60 / 0.34);
+  --flow: #6a45e0;
+  --flow-glow: drop-shadow(0 0 3px rgb(106 69 224 / 0.5));
+  /* The composer inside the inspector draws with the app's tokens: point them at the canvas's, so it is one surface. */
+  --color-panel: var(--console);
+  --color-border: var(--rule);
+  --color-fg: var(--text);
+  --color-muted: var(--dim);
+}
+:root[data-theme="dark"] :is(.cv-root, .cv-appbar, .cv-rail, .cv-tok) {
+  --ground: #07060c; --canvas: #0b0a12; --console: #12101a; --raise: #1a1724; --key: #1f1c2a; --key-hi: #292536;
+  --rule: rgb(255 255 255 / 0.09); --rule-strong: #6d6780;
+  --text: #f3efe8; --dim: #b7b0c2; --faint: #9a93a8;
+  --violet-ink: #c9b8ff; --violet-soft: rgb(130 54 200 / 0.18); --violet-light: rgb(140 90 255 / 0.55);
+  --amber: #ffb547; --amber-ink: #ffbe5e; --on-amber: #1a1105; --amber-soft: rgb(255 181 71 / 0.16); --amber-light: rgb(255 181 71 / 0.45);
+  --go: #5fd49a; --tally: #ff6e5e; --caution: #f3d36b; --tally-soft: rgb(255 110 94 / 0.12);
+  --focus: #ffc266; --lamp-off: #6d6780; --scrim: rgb(4 3 10 / 0.66);
+  --p-text: #a9b4c8; --p-image: #5ee7ff; --p-video: #ff7ab6; --p-audio: #5fd49a;
+  /* Dark ink on these bright dark-theme ports (≥ 4.5:1 on each). */
+  --port-ink: #07060c;
+  --dot: rgb(255 255 255 / 0.10);
+  --node-bg: linear-gradient(165deg, #1a1724, #14121d 60%);
+  --glass: rgb(18 16 26 / 0.86);
+  --nebula: radial-gradient(1100px 620px at 12% -12%, rgb(85 70 209 / 0.30), transparent 62%),
+            radial-gradient(900px 520px at 96% -6%, rgb(130 54 200 / 0.22), transparent 60%),
+            radial-gradient(1200px 520px at 55% 118%, rgb(255 160 70 / 0.08), transparent 62%);
+  --lift-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 20px -10px rgb(0 0 0 / 0.7);
+  --lift-2: 0 2px 4px rgb(0 0 0 / 0.45), 0 22px 44px -18px rgb(0 0 0 / 0.9);
+  --lift-3: 0 0 0 1px rgb(255 255 255 / 0.05), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+  --flow: #b9a3ff;
+  --flow-glow: drop-shadow(0 0 4px #8c5aff);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.cv-root, .cv-appbar, .cv-rail, .cv-tok) {
+    --ground: #07060c; --canvas: #0b0a12; --console: #12101a; --raise: #1a1724; --key: #1f1c2a; --key-hi: #292536;
+    --rule: rgb(255 255 255 / 0.09); --rule-strong: #6d6780;
+    --text: #f3efe8; --dim: #b7b0c2; --faint: #9a93a8;
+    --violet-ink: #c9b8ff; --violet-soft: rgb(130 54 200 / 0.18); --violet-light: rgb(140 90 255 / 0.55);
+    --amber: #ffb547; --amber-ink: #ffbe5e; --on-amber: #1a1105; --amber-soft: rgb(255 181 71 / 0.16); --amber-light: rgb(255 181 71 / 0.45);
+    --go: #5fd49a; --tally: #ff6e5e; --caution: #f3d36b; --tally-soft: rgb(255 110 94 / 0.12);
+    --focus: #ffc266; --lamp-off: #6d6780; --scrim: rgb(4 3 10 / 0.66);
+    --p-text: #a9b4c8; --p-image: #5ee7ff; --p-video: #ff7ab6; --p-audio: #5fd49a;
+    --port-ink: #07060c;
+    --dot: rgb(255 255 255 / 0.10);
+    --node-bg: linear-gradient(165deg, #1a1724, #14121d 60%);
+    --glass: rgb(18 16 26 / 0.86);
+    --nebula: radial-gradient(1100px 620px at 12% -12%, rgb(85 70 209 / 0.30), transparent 62%),
+              radial-gradient(900px 520px at 96% -6%, rgb(130 54 200 / 0.22), transparent 60%),
+              radial-gradient(1200px 520px at 55% 118%, rgb(255 160 70 / 0.08), transparent 62%);
+    --lift-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 20px -10px rgb(0 0 0 / 0.7);
+    --lift-2: 0 2px 4px rgb(0 0 0 / 0.45), 0 22px 44px -18px rgb(0 0 0 / 0.9);
+    --lift-3: 0 0 0 1px rgb(255 255 255 / 0.05), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+    --flow: #b9a3ff;
+    --flow-glow: drop-shadow(0 0 4px #8c5aff);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :is(.cv-root, .cv-appbar, .cv-rail, .cv-tok) { --glass: var(--console); }
+}

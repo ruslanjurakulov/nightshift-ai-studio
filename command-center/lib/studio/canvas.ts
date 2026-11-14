@@ -14,12 +14,12 @@ import type { StudioCapability } from "@/lib/creative/studio";
 // ── nodes ──────────────────────────────────────────────────────────────────────
 
 /** What travels on a wire. A port's kind is told apart by shape and a letter, never by colour alone (IA §3). */
-export type PortType = "image" | "video" | "audio";
+export type PortType = "text" | "image" | "video" | "audio";
 
-export const NODE_KINDS = ["image", "video", "animate", "effects", "enhance", "voice", "asset"] as const;
+export const NODE_KINDS = ["prompt", "image", "video", "animate", "effects", "enhance", "voice", "asset"] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
 /** The kinds a person adds from "Add node" (an asset node comes from the Library drawer). */
-export const TOOL_KINDS = ["image", "video", "animate", "effects", "enhance", "voice"] as const satisfies readonly NodeKind[];
+export const TOOL_KINDS = ["prompt", "image", "video", "animate", "effects", "enhance", "voice"] as const satisfies readonly NodeKind[];
 export type ToolKind = (typeof TOOL_KINDS)[number];
 
 export interface KindSpec {
@@ -36,14 +36,16 @@ export interface KindSpec {
 }
 
 export const KIND_SPEC: Record<NodeKind, KindSpec> = {
-  image: { desk: "image", capability: "t2i", accepts: [], required: false, out: "image" },
-  video: { desk: "video", capability: "t2v", accepts: [], required: false, out: "video" },
+  // Words, typed once: wired into an Image, Video or Voice node they fill its form's words. Free: it is text.
+  prompt: { desk: null, capability: null, accepts: [], required: false, out: "text" },
+  image: { desk: "image", capability: "t2i", accepts: ["text"], required: false, out: "image" },
+  video: { desk: "video", capability: "t2v", accepts: ["text"], required: false, out: "video" },
   animate: { desk: "video", capability: "i2v", accepts: ["image"], required: true, out: "video" },
   // An effect is a Video-desk form filled with its words; a picture effect takes one picture.
   effects: { desk: "video", capability: "t2v", accepts: ["image"], required: false, out: "video" },
   enhance: { desk: "enhance", capability: "upscale", accepts: ["image", "video"], required: true, out: null },
   // Voice-over starts from words; a voice change or a dub takes a recording.
-  voice: { desk: "voice", capability: "tts", accepts: ["audio", "video"], required: false, out: "audio" },
+  voice: { desk: "voice", capability: "tts", accepts: ["text", "audio", "video"], required: false, out: "audio" },
   asset: { desk: null, capability: null, accepts: [], required: false, out: null },
 };
 
@@ -88,7 +90,10 @@ export interface CanvasState {
 
 /** Drawn size of a node card: fixed, so ports and wires line up without measuring the DOM. */
 export const NODE_W = 240;
-export const NODE_H = 176;
+/** A card's height for layout maths (bounds, fit, Tidy), at its tallest everyday height (title, 16:9 art, three lines of words, its lamp and its source), so Tidy never stacks one card into the next. */
+export const NODE_H = 300;
+/** Where the ports sit: level with the card's title bar, so a wire meets a card at the same place whatever its body holds. */
+export const PORT_Y = 25;
 export const ZOOM_MIN = 0.25;
 export const ZOOM_MAX = 2;
 
@@ -257,9 +262,9 @@ export function toCanvas(view: Viewport, sx: number, sy: number): { x: number; y
 /** A wire's path between an output port (right edge) and an input port (left edge): a calm horizontal S. */
 export function wirePath(a: Pick<CanvasNode, "x" | "y">, b: Pick<CanvasNode, "x" | "y">): string {
   const x1 = a.x + NODE_W;
-  const y1 = a.y + NODE_H / 2;
+  const y1 = a.y + PORT_Y;
   const x2 = b.x;
-  const y2 = b.y + NODE_H / 2;
+  const y2 = b.y + PORT_Y;
   const c = Math.max(48, Math.abs(x2 - x1) / 2);
   return `M ${x1} ${y1} C ${x1 + c} ${y1}, ${x2 - c} ${y2}, ${x2} ${y2}`;
 }
@@ -269,18 +274,30 @@ export function wirePath(a: Pick<CanvasNode, "x" | "y">, b: Pick<CanvasNode, "x"
 export const RECIPES = ["photoClip", "promptVideo", "promptVoice"] as const;
 export type Recipe = (typeof RECIPES)[number];
 
-export function recipeState(recipe: Recipe, makeId: () => string): CanvasState {
+const STEP = NODE_W + GAP_X;
+
+/** Real chains, as the prototype's starters: words → picture → clip, a library picture → clip, words → voice. */
+export function recipeState(recipe: Recipe, makeId: () => string, words = ""): CanvasState {
   if (recipe === "photoClip") {
     // The picture comes from the Library (the drawer opens): the clip node shows its missing input until then.
-    const clip = newNode("animate", NODE_W + GAP_X, 0, makeId());
+    const clip = newNode("animate", STEP, 0, makeId());
     return { ...EMPTY_STATE, nodes: [clip] };
   }
+  const prompt = newNode("prompt", 0, 0, makeId(), { draft: words });
   if (recipe === "promptVideo") {
-    const image = newNode("image", 0, 0, makeId());
-    const clip = newNode("animate", NODE_W + GAP_X, 0, makeId());
-    return { ...EMPTY_STATE, nodes: [image, clip], wires: [{ id: makeId(), from: image.id, to: clip.id }] };
+    const image = newNode("image", STEP, 0, makeId());
+    const clip = newNode("animate", STEP * 2, 0, makeId());
+    return {
+      ...EMPTY_STATE,
+      nodes: [prompt, image, clip],
+      wires: [
+        { id: makeId(), from: prompt.id, to: image.id },
+        { id: makeId(), from: image.id, to: clip.id },
+      ],
+    };
   }
-  return { ...EMPTY_STATE, nodes: [newNode("voice", 0, 0, makeId())] };
+  const voice = newNode("voice", STEP, 0, makeId());
+  return { ...EMPTY_STATE, nodes: [prompt, voice], wires: [{ id: makeId(), from: prompt.id, to: voice.id }] };
 }
 
 // ── persistence: this browser only, until a studio_layouts table exists ────────────

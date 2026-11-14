@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
@@ -71,6 +72,30 @@ export function Header({
   const path = useChannelPath();
   // The layout's reading seeds the live value; a generation started, cancelled or finished re-reads it (lib/credits-live.ts).
   const { account, stale } = useLiveCreditsState(currentOrgId, credits, creditsReadAt);
+
+  const pathname = usePathname();
+
+  // Nightshift Studio is one workspace: its own bar replaces this one (the canvas portals its project bar into the
+  // slot), so the page has ONE bar, not the app's plus the canvas's. Every other route keeps its bar unchanged.
+  if (pathname === path("/studio")) {
+    return (
+      <header className="cv-appbar" data-studio-bar="">
+        <div id="studio-bar-slot" className="cv-appbar-slot" />
+        <div className="cv-appbar-tools">
+          <span className="hidden xl:contents">
+            <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
+            <ChannelSwitcher channels={channels} selection={selection} />
+          </span>
+          {operator ? <CreditBalanceChip account={account} /> : <CreditMenu account={account} plan={plan} stale={stale} />}
+          {operator ? <NotificationsCenter scope={scope} /> : <NotificationBell orgId={currentOrgId} channels={channels} />}
+          <span className="hidden sm:contents">
+            <ThemeToggle />
+          </span>
+          {operator && <AccountMenu email={email} avatarV={avatarV} />}
+        </div>
+      </header>
+    );
+  }
 
   function openPalette() {
     window.dispatchEvent(new CustomEvent("chronos:palette-open"));
