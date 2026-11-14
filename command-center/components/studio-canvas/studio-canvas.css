@@ -6,6 +6,143 @@
  * corner that Fit leaves empty, and the Library is glass over the board's edge so the board keeps its width.
  */
 
+/* ── Nightshift Studio canvas tokens ───────────────────────────────────────────
+   The owner's look (sampled from their reference video): dark navy, electric blue for the machine working,
+   neon lime for a person's mark, a neon colour per wire type. Scoped to the Studio's own surfaces (the canvas,
+   its bar, its rail, and `.cv-tok`: what the canvas portals over the app), so no other page changes colour. They live here, not in app/globals.css,
+   whose theme tests count each app token's declarations (light, prefers-dark, data-theme=dark).
+   Dark is the default here; light follows the app's theme selectors (an explicit choice wins, then the system).
+   Primary keys use a deeper blue (#1a5fd0 → #1f6fe5) so their white words keep 4.5:1; the glow is #2f8bff. */
+.cv-root,
+.cv-appbar,
+.cv-rail,
+.cv-tok {
+  --grad: linear-gradient(135deg, #1a5fd0, #1f6fe5);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --d-state: 200ms;
+  --d-scene: 560ms;
+  --ground: #050811; --canvas: #070a14; --console: #0a0f1c; --raise: #0f1626; --key: #121b2e; --key-hi: #19243b;
+  --rule: rgb(80 140 220 / 0.16); --rule-strong: #4a5d82;
+  --text: #e6eefc; --dim: #8fa3c4; --faint: #5e6a8e;
+  /* The machine working: electric blue (the names say violet; the tokens are the old violet's jobs). */
+  --run: #2f8bff; --run-hi: #57a2ff; --run-glow: rgb(47 139 255 / 0.75);
+  --violet-ink: #57a2ff; --violet-soft: rgb(47 139 255 / 0.16); --violet-light: rgb(47 139 255 / 0.5);
+  /* A person's mark: neon lime (the names say amber; same job). */
+  --amber: #c8ff2e; --amber-ink: #c8ff2e; --on-amber: #0a1200; --amber-soft: rgb(200 255 46 / 0.14); --amber-light: rgb(200 255 46 / 0.4);
+  --go: #3dff8a; --tally: #ff4d5e; --caution: #ffd23f; --tally-soft: rgb(255 77 94 / 0.12);
+  --focus: #57a2ff; --film: #03050b; --lamp-off: #6b7a99; --scrim: rgb(2 5 12 / 0.7);
+  --p-text: #ffd23f; --p-image: #33d6ff; --p-video: #ff4fa3; --p-audio: #3dff8a;
+  --dot: rgb(120 170 255 / 0.10);
+  --node-bg: linear-gradient(165deg, #0f1a2e, #0a1222 60%);
+  --glass: rgb(8 18 36 / 0.86);
+  --nebula: radial-gradient(1100px 620px at 15% -15%, rgb(8 26 48 / 0.9), transparent 62%),
+            radial-gradient(1000px 560px at 95% -10%, rgb(4 17 38 / 0.85), transparent 60%);
+  --lift-1: 0 1px 2px rgb(0 0 0 / 0.45), 0 8px 20px -10px rgb(0 0 0 / 0.75);
+  --lift-2: 0 2px 4px rgb(0 0 0 / 0.5), 0 22px 44px -18px rgb(0 0 0 / 0.9);
+  --lift-3: 0 0 0 1px rgb(80 140 220 / 0.08), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+  --flow: #57a2ff;
+  --flow-glow: drop-shadow(0 0 4px #2f8bff);
+  --art-working: linear-gradient(135deg, #0b2348, #060d1c 55%, #0d2a55);
+  --shimmer: rgb(47 139 255 / 0.28);
+  /* The composer inside the inspector draws with the app's tokens: point them at the canvas's, so it is one surface. */
+  --color-panel: var(--console);
+  --color-border: var(--rule);
+  --color-fg: var(--text);
+  --color-muted: var(--dim);
+  --color-primary: var(--violet-ink);
+  --ns-cta-bg: var(--grad);
+  --ns-cta-fg: #ffffff;
+  /* Resolved at :root from the old --ns-cta-bg, so they are set again here. */
+  --cta-base: #1a5fd0;
+  --cta-fg: #ffffff;
+  --studio-cta-bg: var(--grad);
+  --studio-cta-fg: #ffffff;
+  --studio-field: var(--key);
+  --studio-raised: var(--console);
+  /* The brand key's tinted glass (app/glass.css, app/(app)/app-glass.css): electric blue on the Studio, white words >= 4.7:1. */
+  --glass-primary: rgb(26 95 208 / 0.95);
+  --glass-primary-fg: #ffffff;
+  --glass-primary-edge-hi: #57a2ff;
+  --glass-primary-edge-lo: #0d3f96;
+  --glass-primary-glow: 0 1px 2px rgb(13 63 150 / 0.3), 0 8px 20px -8px rgb(47 139 255 / 0.6);
+  --ns-amber: var(--amber);
+  --ns-amber-ink: var(--amber-ink);
+  --ns-on-amber: var(--on-amber);
+  --ns-act: var(--run);
+  --ns-act-ink: var(--violet-ink);
+  --ns-act-soft: var(--violet-soft);
+  --ns-focus: var(--focus);
+  --ns-lit-edge: var(--run-glow);
+  --ns-lit-glow: var(--run-glow);
+  --ns-console: var(--console);
+  --ns-key: var(--key);
+  --ns-key-hi: var(--key-hi);
+  --ns-rule: var(--rule);
+  --ns-rule-strong: var(--rule-strong);
+  --ns-text: var(--text);
+  --ns-text-dim: var(--dim);
+  --ns-hover: var(--key);
+  --ns-go: var(--go);
+  --ns-tally: var(--tally);
+  --ns-caution: var(--caution);
+  --ns-lamp-off: var(--lamp-off);
+}
+:root[data-theme="light"] :is(.cv-root, .cv-appbar, .cv-rail, .cv-tok) {
+  --ground: #e9f0fa; --canvas: #f3f7fd; --console: #ffffff; --raise: #f8fbff; --key: #e8eff9; --key-hi: #dce6f4;
+  --rule: rgb(30 70 140 / 0.14); --rule-strong: #7d8aa6;
+  --text: #0f1b33; --dim: #45526d; --faint: #5b6782;
+  --run: #1f6fe5; --run-hi: #1a5fd0; --run-glow: rgb(31 111 229 / 0.45);
+  --violet-ink: #1a5fd0; --violet-soft: rgb(31 111 229 / 0.10); --violet-light: rgb(31 111 229 / 0.3);
+  --amber: #5a8f00; --amber-ink: #4a7600; --on-amber: #ffffff; --amber-soft: rgb(90 143 0 / 0.14); --amber-light: rgb(90 143 0 / 0.35);
+  --go: #0a7a3a; --tally: #c8102e; --caution: #8a6d00; --tally-soft: rgb(200 16 46 / 0.08);
+  --focus: #1f6fe5; --film: #03050b; --lamp-off: #8c97ad; --scrim: rgb(15 27 51 / 0.4);
+  /* The neon type colours, darkened to at least 3:1 on white. */
+  --p-text: #8a6d00; --p-image: #0a7fa0; --p-video: #c2186f; --p-audio: #0a7a3a;
+  --dot: rgb(30 70 140 / 0.13);
+  --node-bg: linear-gradient(165deg, #ffffff, #f8fbff 60%);
+  --glass: rgb(255 255 255 / 0.9);
+  --nebula: radial-gradient(1000px 560px at 10% -10%, rgb(31 111 229 / 0.10), transparent 62%),
+            radial-gradient(900px 520px at 100% 0%, rgb(51 214 255 / 0.08), transparent 60%);
+  --lift-1: 0 1px 2px rgb(30 70 140 / 0.06), 0 6px 16px -8px rgb(30 70 140 / 0.18);
+  --lift-2: 0 2px 4px rgb(30 70 140 / 0.07), 0 18px 36px -16px rgb(30 70 140 / 0.3);
+  --lift-3: 0 1px 2px rgb(30 70 140 / 0.06), 0 26px 60px -18px rgb(30 70 140 / 0.32);
+  --flow: #1f6fe5;
+  --flow-glow: drop-shadow(0 0 3px rgb(31 111 229 / 0.5));
+  --art-working: linear-gradient(135deg, #0b2348, #060d1c 55%, #0d2a55);
+  --shimmer: rgb(47 139 255 / 0.28);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) :is(.cv-root, .cv-appbar, .cv-rail, .cv-tok) {
+    --ground: #e9f0fa; --canvas: #f3f7fd; --console: #ffffff; --raise: #f8fbff; --key: #e8eff9; --key-hi: #dce6f4;
+    --rule: rgb(30 70 140 / 0.14); --rule-strong: #7d8aa6;
+    --text: #0f1b33; --dim: #45526d; --faint: #5b6782;
+    --run: #1f6fe5; --run-hi: #1a5fd0; --run-glow: rgb(31 111 229 / 0.45);
+    --violet-ink: #1a5fd0; --violet-soft: rgb(31 111 229 / 0.10); --violet-light: rgb(31 111 229 / 0.3);
+    --amber: #5a8f00; --amber-ink: #4a7600; --on-amber: #ffffff; --amber-soft: rgb(90 143 0 / 0.14); --amber-light: rgb(90 143 0 / 0.35);
+    --go: #0a7a3a; --tally: #c8102e; --caution: #8a6d00; --tally-soft: rgb(200 16 46 / 0.08);
+    --focus: #1f6fe5; --film: #03050b; --lamp-off: #8c97ad; --scrim: rgb(15 27 51 / 0.4);
+    /* The neon type colours, darkened to at least 3:1 on white. */
+    --p-text: #8a6d00; --p-image: #0a7fa0; --p-video: #c2186f; --p-audio: #0a7a3a;
+    --dot: rgb(30 70 140 / 0.13);
+    --node-bg: linear-gradient(165deg, #ffffff, #f8fbff 60%);
+    --glass: rgb(255 255 255 / 0.9);
+    --nebula: radial-gradient(1000px 560px at 10% -10%, rgb(31 111 229 / 0.10), transparent 62%),
+              radial-gradient(900px 520px at 100% 0%, rgb(51 214 255 / 0.08), transparent 60%);
+    --lift-1: 0 1px 2px rgb(30 70 140 / 0.06), 0 6px 16px -8px rgb(30 70 140 / 0.18);
+    --lift-2: 0 2px 4px rgb(30 70 140 / 0.07), 0 18px 36px -16px rgb(30 70 140 / 0.3);
+    --lift-3: 0 1px 2px rgb(30 70 140 / 0.06), 0 26px 60px -18px rgb(30 70 140 / 0.32);
+    --flow: #1f6fe5;
+    --flow-glow: drop-shadow(0 0 3px rgb(31 111 229 / 0.5));
+    --art-working: linear-gradient(135deg, #0b2348, #060d1c 55%, #0d2a55);
+    --shimmer: rgb(47 139 255 / 0.28);
+}
+}
+@media (prefers-reduced-transparency: reduce) {
+  :is(.cv-root, .cv-appbar, .cv-rail, .cv-tok) { --glass: var(--console); }
+}
+/* The phone tab bar's raised Studio key takes the Studio's blue on the Studio only. */
+.app-shell:has([data-studio-canvas]) .ns-tab-create { background: #2f8bff; box-shadow: 0 8px 22px -8px rgb(47 139 255 / 0.7); }
+
 /* The workspace fills the window below the bar: the page itself never scrolls on a desktop. */
 main:has([data-studio-canvas]) {
   padding: 0 !important;
