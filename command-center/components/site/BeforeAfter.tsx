@@ -7,7 +7,7 @@ import { sliderKey, type SampleSlide } from "@/lib/site/carousel";
 import { useMotionPaused } from "@/lib/site/motion";
 import type { SiteCarouselDictionary } from "@/lib/i18n/site-carousel";
 import { clipsAllowed } from "@/components/site/LoopClip";
-import { usePageVisible, useReducedMotion, useClipTurn } from "@/components/site/clip-turns";
+import { usePageVisible, useReducedMotion, useClipNear, useClipTurn } from "@/components/site/clip-turns";
 import "@/components/site/before-after.css";
 
 export type CompareGalleryCopy = { badge: string; model: string; altClip: string; altImage: string };
@@ -46,13 +46,15 @@ export function BeforeAfter({ clip, picture, title, copy, g }: { clip: SampleSli
 
   const auto = mounted && allowed && !reduced && !pagePaused && !stopped;
   const turn = useClipTurn(frame, mounted && (auto || pressed));
+  const near = useClipNear(frame, mounted);
   // Clips started by hand (reduced motion, Save-Data, a slow link): a visible play button, toggled by `pressed`. Otherwise the clip
   // plays by itself and its only control is the keyboard's pause, toggled by `stopped`.
   const byHand = reduced || !allowed;
   const hasClip = clip.clip !== null && !failed;
-  // A clip playing by itself that loses its turn is taken out of the page, not only paused, so a phone never holds a second
-  // decoder for it (components/site/clip-turns.ts); it comes back from the cache when it has a turn again.
-  const showVideo = hasClip && (pressed || (auto && turn));
+  // A clip playing by itself is put in the page when the frame comes within half a screen of the viewport (so it is buffered and
+  // its first frame decoded before it shows), and taken out again, not only paused, once it is neither near nor on screen, so a
+  // phone holds no decoder for it far away (components/site/clip-turns.ts); it comes back from the cache.
+  const showVideo = hasClip && (pressed || (auto && (turn || near)));
   const playing = showVideo && turn && visible && (pressed || auto);
 
   useEffect(() => {

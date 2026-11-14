@@ -5,7 +5,7 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 
 /**
  * A model sample's loop, over its own first frame. A Client Component so the build copies the sample's video files to
- * /_next/static/media/ (see showcase-assets.ts); every rule of LoopClip holds (reduced motion, Save-Data, one clip at a time, the
+ * /_next/static/media/ (see showcase-assets.ts); every rule of LoopClip holds (reduced motion, Save-Data, plays while on screen, the
  * page's pause switch). Nothing for a picture or an entry whose files are missing.
  *
  * `compact` defaults to true (a gallery card is never wide); a slot that fills a wide box (the landing's first screen) passes
