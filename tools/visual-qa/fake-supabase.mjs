@@ -338,7 +338,15 @@ const REFERRALS_EMPTY = {
 };
 RPC.my_referrals = { ...REFERRALS_EMPTY, joined: 6, held: 2, next_release_on: "2026-12-09", paid: 3, earned: 600, paid_this_month: 1, void: 1 };
 RPC.claim_referral_rewards = RPC.my_referrals;
-RPC.referral_terms = { ...REFERRAL_NUMBERS, daily_cap: 50, link_hourly_cap: 10, new_account_days: 3, updated_at: "2026-11-14T08:00:00Z" };
+// The operator's panel (the `owner` session): no pg_cron schedule, so the panel's warning shows; one made-up last run.
+RPC.referral_admin = {
+  ...REFERRAL_NUMBERS, enabled: false, links_open: true, milestone_enabled: false, started_at: "2026-11-14T08:00:00Z",
+  daily_cap: 50, updated_at: "2026-11-14T08:00:00Z", schedule: false,
+  last_run: { at: "2026-11-14T09:05:00Z", links: 12, changed: 2, failed: 0, error: null }, runs_failed_24h: 0,
+  links: 12, joins: 31, held: 4, due: 1, paid: 6, paid_today: 1, credits_month: 1200, credits_total: 1200,
+  void_refunded: 1, void_same_payer: 0, void_member: 1, clawed: 1, claw_owed: 50, reversed_by_event: 0, milestone_rewards: 0,
+};
+RPC.referral_terms ={ ...REFERRAL_NUMBERS, daily_cap: 50, link_hourly_cap: 10, new_account_days: 3, updated_at: "2026-11-14T08:00:00Z" };
 
 // The consent screen and Connected apps (0093): made-up app, made-up return address.
 RPC.oauth_begin_authorization = { ok: true, entitled: true, client_name: "Claude", redirect_uri: "https://claude.ai/api/mcp/auth_callback", workspace_name: "QA Studio", plan: "creator", scopes: ["videos:read", "videos:create", "videos:publish"], default_limit_credits: 500, max_limit_credits: 20000, exempt: false };

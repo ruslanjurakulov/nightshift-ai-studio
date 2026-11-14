@@ -79,7 +79,8 @@ export function ReferralAdminPanel({ admin }: { admin: ReferralAdmin }) {
   }
 
   const inputClass =
-    "min-h-11 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+    // 16px on a phone: a smaller field makes iOS zoom the page on focus.
+    "min-h-11 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-base sm:text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
   const field = (key: keyof typeof form, label: string, mode: "numeric" | "decimal") => (
     <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
       {label}
