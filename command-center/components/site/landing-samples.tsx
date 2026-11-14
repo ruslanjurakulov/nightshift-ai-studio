@@ -91,18 +91,58 @@ export const LANDING_GALLERY_MAX = 8;
 
 /**
  * The sample each model tile on the landing links to (`#sample-<job>`, components/landing/Landing.tsx ModelTiles): per model, the
- * first of the landing's samples (not in `exclude`) in the data file's order. Its box must be on the page, once.
+ * first of the landing's samples (not in `exclude`) in the gallery's order that is not an effect's preview (its first preview only
+ * when the model has nothing else), unless another of that model's samples lets the grid end more level. Its box must be on the
+ * page, once.
+ *
+ * Why not simply the first: a preview is the Effects section's, so a tile that links to one shows it twice; and the tiles are the
+ * grid's first cards, so their shapes decide whether it can end level at all. With the newest MiniMax H3 sample a 9:16 (liquid-
+ * reveal's preview, then a rooftop party) the eight tiles were three tall cards and five wide ones, which no plan levels without
+ * cutting a card by a third (tests/site-gallery-plan.test.ts). So each model's candidates (the first of each shape) are weighed
+ * together, and the most level set wins; between equally level sets, the earliest in the gallery's order.
  */
 export function landingTileJobs(exclude: readonly string[], entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
-  const models = new Set<string>();
-  const out: string[] = [];
+  const previews = effectPreviewJobs();
+  const byModel = new Map<string, ShowcaseEntry[]>();
   for (const { e } of showcaseItems(entries, files)) {
-    if (exclude.includes(e.jobId) || models.has(e.modelId)) continue;
-    models.add(e.modelId);
-    out.push(e.jobId);
+    if (exclude.includes(e.jobId)) continue;
+    byModel.set(e.modelId, [...(byModel.get(e.modelId) ?? []), e]);
   }
-  return out;
+  // A pair's clip carries its anchor in picture → video, not in the grid (landingSplit): its shape does not count there.
+  const pairClips = new Set(beforeAfterPairs(items(entries, files, exclude)).map(({ clip }) => clip.e.jobId));
+  const options = [...byModel.values()].map((list) => {
+    const own = list.filter((e) => !previews.includes(e.jobId));
+    const seen = new Set<number>();
+    // Two samples of one shape level the grid the same way, so the first of them stands for both.
+    return (own.length > 0 ? own : list.slice(0, 1)).filter((e) => {
+      const s = gridSpan(e.width, e.height);
+      if (seen.has(s)) return false;
+      seen.add(s);
+      return true;
+    });
+  });
+  const cost = (pick: readonly number[]) =>
+    bestLevelCost(pick.flatMap((k, m) => (pairClips.has(options[m][k].jobId) ? [] : [gridSpan(options[m][k].width, options[m][k].height)])));
+  // Every set, in the gallery's order (an odometer from all-first), when there are few enough; else each model's first.
+  let best = options.map(() => 0);
+  const sets = options.reduce((n, o) => n * o.length, 1);
+  if (sets > 1 && sets <= TILE_SETS_MAX) {
+    let bestCost = cost(best);
+    const pick = options.map(() => 0);
+    for (let n = 1; n < sets; n++) {
+      for (let m = pick.length - 1; m >= 0; m--) {
+        pick[m] = (pick[m] + 1) % options[m].length;
+        if (pick[m] !== 0) break;
+      }
+      const c = cost(pick);
+      if (c < bestCost - 1e-9) [best, bestCost] = [pick.slice(), c];
+    }
+  }
+  return best.map((k, m) => options[m][k].jobId);
 }
+
+/** Above this many sets of tiles to weigh, each model's first sample is its tile (each set costs one levelOrder of up to nine cards). */
+const TILE_SETS_MAX = 4096;
 
 /**
  * How the landing shares its samples out, so each is shown once (tests/site-landing-dedupe.test.tsx). In this order:

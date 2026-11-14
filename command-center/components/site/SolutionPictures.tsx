@@ -2,9 +2,8 @@ import { Lock } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
-import { AiBadge } from "@/components/site/PlaceFill";
-import { ArtImg } from "@/components/site/art";
-import { THUMB_ART } from "@/lib/site/art";
+import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { EXAMPLE_THUMB_JOB, exampleMedia } from "@/components/site/samples";
 
 /**
  * The Studio composer, drawn: a description, the shape keys, a style chip and
@@ -100,6 +99,7 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
     { id: "check", name: s.check, state: s.checkState, tone: "ok" as const },
     { id: "first", name: s.first, state: s.firstState, tone: "run" as const },
   ];
+  const m = exampleMedia(EXAMPLE_THUMB_JOB);
   return (
     <>
     <figure role="img" aria-label={s.figure} className="st-monitor">
@@ -111,14 +111,17 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         <span className="st-tag">{s.tag}</span>
       </div>
       <div className="flex flex-col gap-4 p-4">
-        {/* The desk's own frame is the frame of the video named under it (the Silk Road example), so it is that example's own
-            AI-generated picture; the desk around it is the drawing. */}
-        <div className="st-signoff-frame" data-media="art">
-          <ArtImg id={THUMB_ART} alt="" className="nx-art" />
+        {/* The desk's own frame is the video named under it (the example topic, football in 2050), so it plays that example's own
+            clip made in our Studio (components/site/slots.ts EXAMPLE_THUMB_JOB); the desk around it is the drawing. Without the
+            clip's files the frame is empty, never a stand-in picture. */}
+        <div className="st-signoff-frame" {...(m ? placeBox(m) : {})}>
+          {m && <PlaceFill media={m} s={t.site} alt="" compact sizes="(min-width: 1024px) 520px, 90vw" labels={false} />}
           <span className="st-signoff-private">{s.private}</span>
-          <span className="nx-result-badge st-signoff-badge" data-kind="ai">
-            {t.site.gallery.badge}
-          </span>
+          {m && (
+            <span className="nx-result-badge st-signoff-badge" data-kind="ai">
+              {t.site.gallery.badge}
+            </span>
+          )}
         </div>
         <p className="st-signoff-title">{s.video}</p>
         <ol className="st-signoff-gates">
@@ -136,9 +139,11 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
       </div>
     </figure>
     {/* A role="img" figure hides its words from assistive tech, so the frame's AI-generated badge is said again under it. */}
-    <p className="nx-place-credit" data-media="art">
-      <AiBadge g={t.site.gallery} />
-    </p>
+    {m && (
+      <p className="nx-place-credit" data-media="ai">
+        <AiBadge g={t.site.gallery} />
+      </p>
+    )}
     </>
   );
 }

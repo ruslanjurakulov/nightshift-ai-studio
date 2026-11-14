@@ -327,8 +327,9 @@ export function PricingView({
               </dl>
             </details>
           </div>
-          {/* The default ask (the Silk Road), so the frame is that example's own picture (chatCopy `thumb`), not a slot's sample. */}
-          <ChatCard copy={chatCopy(t)} />
+          {/* The default ask (football in 2050), so the frame plays that example's own clip (chatCopy), not a slot's sample. The
+              card is never wider than about 560 px, so its clip is the 640 px file. */}
+          <ChatCard copy={chatCopy(t)} compactClip />
         </div>
       </section>
 

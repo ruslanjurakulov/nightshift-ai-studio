@@ -76,4 +76,4 @@ export function SampleImg({ id, alt = "", className, eager = false, position, si
 }
 
 /** The places and what each shows (components/site/slots.ts), here too so a page imports one module for its pictures. */
-export { SLOTS, LANDING_SLOTS, LANDING_LEFT_OUT, landingExcludedJobs, landingPlacedJobs, placeMedia, slotJobs, slotMedia, type PlaceDef, type PlaceMedia, type SlotId } from "@/components/site/slots";
+export { SLOTS, EXAMPLE_JOBS, EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB, exampleMedia, LANDING_SLOTS, LANDING_LEFT_OUT, landingExcludedJobs, landingPlacedJobs, placeMedia, slotJobs, slotMedia, type PlaceDef, type PlaceMedia, type SlotId } from "@/components/site/slots";

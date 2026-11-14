@@ -1,7 +1,7 @@
 /**
  * The public site's AI-generated pictures, and which one stands where. They are NOT stock photographs (those are lib/site/media.ts,
  * with a photographer's credit each) and NOT screenshots of the product: they are renders made for Nightshift and used as
- * decoration, and the page says so (lib/i18n/site/*.ts, site.credits, site.try.thumbArtNote; the thumbnail's alt says "AI-generated
+ * decoration, and the page says so (lib/i18n/site/*.ts, site.credits; a slot picture's alt says "AI-generated
  * image"). The files are components/site/art/NAME.webp, derivatives only (scripts/make-site-art.py): the PNG originals are not in
  * the repository.
  *
@@ -12,14 +12,6 @@
 export const HERO_ART = "hero-night";
 /** The same picture cut to a portrait (the mic, the plants, the curtain) for the phone panel below 1024 px, so a phone never fetches the wide file. */
 export const HERO_ART_SM = "hero-night-sm";
-
-/**
- * The Silk Road example's picture (the Registan at sunset), and the only picture the public site may put beside that topic: the
- * plan demo's sample thumbnail, the phone of the landing's third step, the Approvals card's thumbnail, the /pricing chat card's
- * frame and the publish desk's frame on /solutions. A showcase sample made from another prompt beside this topic said the result
- * need not match the prompt (owner, 2026-11-14); tests/site-art.test.tsx pins every place.
- */
-export const THUMB_ART = "thumb-silkroad";
 
 /**
  * The eleven picture slots: one per step of "How it works" (a square) and one per tool tile of the capability wall (4:3), each
@@ -46,9 +38,12 @@ export type SlotSlug = (typeof SLOT_DEFS)[number]["slug"];
 export const ART_SIZE = {
   "hero-night": { width: 1672, height: 941 },
   "hero-night-sm": { width: 630, height: 941 },
-  "thumb-silkroad": { width: 960, height: 540 },
 } as const;
 
-/** Every picture that has a description in `site.art.alts` (the hero's backdrop is decorative: an empty alt). */
-export type ArtId = typeof THUMB_ART | SlotSlug;
-export const ART_IDS: ArtId[] = [...SLOT_DEFS.map((d) => d.altKey), THUMB_ART];
+/**
+ * Every picture that has a description in `site.art.alts` (the hero's backdrop is decorative: an empty alt). The Silk Road example's
+ * picture (the Registan) was here too until the example topic became football in 2050, shown by its own clips made in our Studio
+ * (components/site/slots.ts EXAMPLE_JOBS): a still as the result of "make a video" was not believable (owner, 2026-11-14).
+ */
+export type ArtId = SlotSlug;
+export const ART_IDS: ArtId[] = SLOT_DEFS.map((d) => d.altKey);

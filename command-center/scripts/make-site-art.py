@@ -35,7 +35,6 @@ OUT = {
     "tool-upscale": (800, 90 * KB),
     "tool-cutout": (800, 90 * KB),
     "tool-styles": (800, 90 * KB),
-    "thumb-silkroad": (960, 150 * KB),
 }
 
 

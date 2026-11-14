@@ -12,7 +12,7 @@
       "duration": 10,
       "motif": "life",
       "hues": ["#f6d365", "#fda085"],
-      "previewJobId": null
+      "previewJobId": "49af4517-9ebf-44d9-80ed-f652cea6e071"
     },
     {
       "id": "product-burst",
@@ -25,7 +25,7 @@
       "duration": 10,
       "motif": "burst",
       "hues": ["#ff0f7b", "#f89b29"],
-      "previewJobId": null
+      "previewJobId": "e35f41fb-3162-4f9d-ae17-6420d558840d"
     },
     {
       "id": "liquid-reveal",
@@ -38,7 +38,7 @@
       "duration": 10,
       "motif": "spiral",
       "hues": ["#4facfe", "#8e2de2"],
-      "previewJobId": null
+      "previewJobId": "cf2af7b1-5433-4661-979b-f65f3f8a4dbf"
     },
     {
       "id": "giant-in-the-city",

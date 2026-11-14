@@ -19,6 +19,7 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { buildPlan, cleanTopic, pickStill, STILL_IDS, TOPIC_MAX } from "@/lib/site/demo-plan";
+import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { MEDIA_IDS } from "@/lib/site/media";
 import { freeMinutes, priceRatesFrom, quoteCents, quoteCredits } from "@/lib/site/price-check";
 import { setMotionPaused } from "@/lib/site/motion";
@@ -215,8 +216,11 @@ describe("the landing page's reasons to stay", () => {
     const section = container.querySelector("#try") as HTMLElement;
     // Drawn, not a still: the topic's own words, set on the stage (BrandArt ThumbArt), and the same topic always the same drawing.
     const thumb = () => [...section.querySelectorAll(".nx-try-thumb svg[data-art='thumb'] text")].map((x) => x.textContent);
-    // The sample topic (the first) also has an AI-generated picture behind its words, with its own alt and a caption that says so; any other topic is the drawing alone.
-    expect(section.querySelector(".nx-try-thumb img")?.getAttribute("alt")).toBe(dictionaries.en.site.art.alts["thumb-silkroad"]);
+    // The sample topic (the first) also has a picture behind its words, the first frame of the example's own clip, with its own
+    // alt and a caption that says so; any other topic is the drawing alone.
+    const bg = section.querySelector(".nx-try-thumb img")!;
+    expect(bg.getAttribute("alt")).toBe(dictionaries.en.site.how.thumbAlt);
+    expect(bg.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
     expect(section.querySelector(".nx-try-thumb figcaption")?.textContent).toBe(`${t.thumbNote} ${t.thumbArtNote}`);
     const first = thumb();
     expect(first.length).toBeGreaterThan(0);
@@ -385,7 +389,7 @@ describe("the stock-picture disclosure is printed, not only labelled", () => {
 describe("the demo's stand-in frame", () => {
   it.each(LOCALES.map((l) => l.code))("%s: each sample topic maps to its own frame, the same one every time", (code) => {
     const topics = dictionaries[code].site.try.topics;
-    expect(topics.map((t) => pickStill(t))).toEqual(["silkroad", "lighthouse", "moon", "nightmarket"]);
+    expect(topics.map((t) => pickStill(t))).toEqual(["football", "lighthouse", "moon", "nightmarket"]);
     expect(topics.map((t) => pickStill(t))).toEqual(topics.map((t) => pickStill(t)));
   });
 
