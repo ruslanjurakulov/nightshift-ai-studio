@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nightshift Studio · Timeline prototype</title>
+<!--
+  Nightshift Studio, TIMELINE prototype (static, mock data throughout; the owner approved the Timeline stage).
+  Same navy + electric-blue neon tokens as the canvas (components/studio-canvas/studio-canvas.css).
+  Layout per Atlas's brief (the owner's reference: an NLE edit page): rail, one top bar with Canvas|Timeline and
+  "Working now" agents, Library left, viewer centre, clip inspector right with a pinned "Assemble the film" footer,
+  transport + tools row with a big timecode, track headers with M/S/lock, neon lanes, red playhead, markers,
+  mixer meters, and four simulated agent cursors (labelled as a demo).
+  Open with ?theme=light for the light theme.
+
+  REAL vs PLANNED (docs/FILM_STUDIO.md; rule 5 — nothing here may imply a capability we do not have):
+  - REAL today (P1, migration 0166): films (title, language, aspect, target_seconds, voice, music_asset_id, gains,
+    captions_mode, transition_default), film_scenes (ordered storyboard: title, narration text, planned_seconds,
+    shot_count, transition_in). So V1's ORDER and planned lengths, and C1's caption TEXT (from narration), are real data.
+  - PLANNED: film_takes rows with clips and narration audio (P3 orchestrator), the assembled cut (P4, film_cuts,
+    current_cut_id), quote/hold/capture for assembly (P2: quote_film, start_film, film_segments, the
+    film_assembly_minute price). Until P2 the app shows "Pricing for projects is not live yet" and no number.
+    The footer's quote here is mock; in the product it is ONLY the backend's quote, and the browser writes an intent
+    and stops (rule 3).
+  - Audio tab controls: Level (dB) and Mute map to films' gains today only per film, not per clip -> per-clip level,
+    Fade in / Fade out and "Duck under narration" have NO backend yet (they would be film_timeline.py inputs, P4).
+  - Mixer meters: planned (needs decoded audio in the browser). Agent cursors: planned (MCP agents + Realtime on a
+    studio_layouts / film edit-log table); here they are simulated.
+  - No EQ: dropped on purpose (we do not show things that do not work).
+-->
+<style>
+:root {
+  --font: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --rail-w: 76px; --lib-w: 280px; --insp-w: 340px; --hdr-w: 196px; --mix-w: 156px;
+  --ground: #050811; --canvas: #070a14; --console: #0a0f1c; --raise: #0f1626; --key: #121b2e; --key-hi: #19243b;
+  --rule: rgb(80 140 220 / 0.16); --rule-strong: #4a5d82;
+  --text: #e6eefc; --dim: #8fa3c4; --faint: #7d8bb0;
+  --run: #2f8bff; --run-hi: #57a2ff; --run-glow: rgb(47 139 255 / 0.6);
+  --grad: linear-gradient(135deg, #1a5fd0, #1f6fe5);
+  --sel: #c8ff2e; --sel-soft: rgb(200 255 46 / 0.14);
+  --go: #3dff8a; --tally: #ff4d5e; --play: #ff3b4e;
+  --t-video: #2f8bff; --t-narr: #3dff8a; --t-music: #ffd23f; --t-sfx: #ff4fa3; --t-amb: #33d6ff; --t-cap: #ffd23f;
+  --glass: rgb(8 18 36 / 0.86); --film: #03050b;
+  --wash: radial-gradient(1100px 620px at 15% -15%, rgb(8 26 48 / 0.9), transparent 62%), radial-gradient(1000px 560px at 95% -10%, rgb(4 17 38 / 0.85), transparent 60%);
+  --lift: 0 2px 4px rgb(0 0 0 / 0.5), 0 22px 44px -18px rgb(0 0 0 / 0.9);
+}
+:root[data-theme="light"] {
+  --ground: #e9f0fa; --canvas: #f3f7fd; --console: #ffffff; --raise: #f8fbff; --key: #e8eff9; --key-hi: #dce6f4;
+  --rule: rgb(30 70 140 / 0.14); --rule-strong: #7d8aa6;
+  --text: #0f1b33; --dim: #45526d; --faint: #5b6782;
+  --run: #1f6fe5; --run-hi: #1a5fd0; --run-glow: rgb(31 111 229 / 0.35);
+  --sel: #5a8f00; --sel-soft: rgb(90 143 0 / 0.14);
+  --go: #0a7a3a; --tally: #c8102e; --play: #d1182e;
+  --t-video: #1f6fe5; --t-narr: #0a7a3a; --t-music: #8a6d00; --t-sfx: #c2186f; --t-amb: #0a7fa0; --t-cap: #8a6d00;
+  --glass: rgb(255 255 255 / 0.9);
+  --wash: radial-gradient(1000px 560px at 10% -10%, rgb(31 111 229 / 0.10), transparent 62%);
+  --lift: 0 2px 4px rgb(30 70 140 / 0.07), 0 18px 36px -16px rgb(30 70 140 / 0.3);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font: 14px/1.45 var(--font); color: var(--text); background: var(--wash), var(--ground); overflow: hidden; font-feature-settings: "tnum" 1; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--run-hi); outline-offset: 2px; }
+svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+.app { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); height: 100dvh; }
+.rail { display: flex; flex-direction: column; gap: 4px; padding: 12px 6px; border-right: 1px solid var(--rule); background: color-mix(in srgb, var(--console) 70%, transparent); }
+.logo { display: grid; place-items: center; width: 44px; height: 44px; margin: 0 auto 10px; border-radius: 12px; background: var(--grad); color: #fff; font-weight: 600; font-size: 20px; }
+.rail a { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border-radius: 12px; color: var(--dim); font-size: 13px; text-decoration: none; }
+.rail a[aria-current="page"] { color: var(--text); background: var(--key); }
+.rail a[aria-current="page"]::before { content: ""; position: absolute; left: -6px; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--sel); }
+.rail .sp { flex: 1; }
+
+.main { display: grid; grid-template-rows: 60px minmax(0, 50%) 56px minmax(0, 1fr); min-width: 0; min-height: 0; }
+.bar { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--console) 78%, transparent); min-width: 0; }
+.pswitch { display: flex; flex-direction: column; padding: 4px 10px; border-radius: 12px; }
+.pswitch b { font-size: 16px; } .pswitch span { font-size: 13px; color: var(--dim); }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 99px; font-size: 13px; border: 1px solid var(--rule); background: var(--key); color: var(--dim); white-space: nowrap; }
+.chip.mock::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: linear-gradient(135deg, var(--run), var(--t-amb)); }
+.seg { display: inline-flex; padding: 3px; border-radius: 12px; background: var(--key); border: 1px solid var(--rule); }
+.seg button { border: 0; background: none; padding: 6px 14px; border-radius: 9px; color: var(--dim); font-weight: 500; display: inline-flex; gap: 6px; align-items: center; }
+.seg button[aria-pressed="true"] { background: var(--console); color: var(--text); box-shadow: var(--lift); }
+.grow { flex: 1; min-width: 0; }
+.kbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid var(--rule); background: var(--key); color: var(--text); font-weight: 500; white-space: nowrap; }
+.kbtn.icon { width: 40px; padding: 0; }
+.kbtn.primary { background: var(--grad); color: #fff; border-color: transparent; }
+.kbtn[aria-pressed="true"] { border-color: var(--sel); color: var(--sel); background: var(--sel-soft); }
+kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 1px solid var(--rule-strong); color: var(--dim); }
+.agents { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+.agents .stack { display: inline-flex; }
+.agents .av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #050811; border: 2px solid var(--console); margin-left: -8px; }
+.agents .av:first-child { margin-left: 0; }
+.credits { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid var(--rule); background: var(--key); font-weight: 600; }
+.credits small { color: var(--dim); font-weight: 500; }
+
+/* upper: library | viewer | inspector */
+.upper { display: grid; grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); min-height: 0; border-bottom: 1px solid var(--rule); }
+.lib { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--rule); background: var(--console); }
+.lib .tabs { display: flex; gap: 2px; padding: 8px 8px 0; border-bottom: 1px solid var(--rule); }
+.tabs button { border: 0; background: none; padding: 8px 10px; color: var(--dim); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--run); }
+.lib .tools { display: flex; gap: 6px; padding: 8px; }
+.search { flex: 1; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--rule); background: var(--key); color: var(--faint); font-size: 13px; }
+.lib ul { list-style: none; margin: 0; padding: 4px 8px 8px; overflow: auto; }
+.lib li { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 6px; border-radius: 10px; }
+.lib li:hover { background: var(--key); }
+.lib .th { width: 44px; height: 28px; border-radius: 6px; background: var(--film); position: relative; overflow: hidden; }
+.lib .th::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--c); }
+.lib .nm { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib .kd { font-size: 12px; color: var(--dim); }
+.lib .du { font-size: 12px; color: var(--dim); }
+.lib li.gh { display: block; font-size: 12px; color: var(--faint); padding: 8px 6px 2px; }
+.lib li.gh:hover { background: none; }
+
+.viewer { display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 14px; gap: 10px; min-height: 0; min-width: 0; background: var(--canvas); }
+.screen { position: relative; aspect-ratio: 16 / 9; max-height: 100%; margin: 0 auto; width: auto; height: 100%; border-radius: 12px; overflow: hidden; background: var(--film); box-shadow: var(--lift); }
+.screen .sky { position: absolute; inset: 0; background: radial-gradient(60% 70% at 70% 30%, rgb(47 139 255 / .55), transparent 60%), radial-gradient(50% 60% at 20% 80%, rgb(255 79 163 / .35), transparent 60%), linear-gradient(180deg, #071226, #02050c); }
+.screen .tun { position: absolute; left: 30%; right: 30%; top: 22%; bottom: 10%; border-radius: 50% 50% 0 0; border: 3px solid rgb(51 214 255 / .7); box-shadow: 0 0 40px rgb(51 214 255 / .5), inset 0 0 60px rgb(47 139 255 / .5); }
+.screen .cap { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); padding: 4px 10px; border-radius: 6px; background: rgb(0 0 0 / .6); color: #fff; font-size: 14px; white-space: nowrap; }
+.screen .tc { position: absolute; left: 10px; top: 10px; padding: 2px 8px; border-radius: 6px; background: rgb(0 0 0 / .55); color: #fff; font-size: 12px; }
+.screen .mk { position: absolute; right: 10px; top: 10px; }
+.vmeta { display: flex; justify-content: center; gap: 14px; color: var(--dim); font-size: 13px; }
+
+.insp { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--rule); background: var(--console); }
+.ih { padding: 12px 16px 0; border-bottom: 1px solid var(--rule); }
+.ih .k { font-size: 13px; color: var(--dim); }
+.ih h2 { margin: 2px 0 6px; font-size: 19px; font-weight: 600; }
+.ib { flex: 1; overflow: auto; padding: 10px 16px; display: grid; gap: 8px; align-content: start; }
+.ib .row input[type=range] { height: 18px; margin: 0; }
+.tog { padding: 7px 12px !important; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.row label { color: var(--dim); font-size: 13px; }
+.row output { font-size: 13px; font-weight: 600; }
+.row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--run); }
+.tog { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--rule); background: var(--raise); }
+.tog small { display: block; color: var(--dim); font-size: 12px; }
+.sw { width: 40px; height: 24px; border-radius: 99px; background: var(--key-hi); position: relative; flex: none; border: 1px solid var(--rule); }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--dim); transition: left .2s; }
+.sw.on { background: var(--run); } .sw.on::after { left: 18px; background: #fff; }
+.if { border-top: 1px solid var(--rule); padding: 12px 16px; display: grid; gap: 6px; background: var(--console); }
+.price { display: flex; align-items: stretch; height: 48px; border-radius: 12px; overflow: hidden; background: var(--grad); color: #fff; font-weight: 600; border: 0; }
+.price span { display: flex; align-items: center; padding: 0 16px; }
+.price span:first-child { flex: 1; justify-content: center; }
+.price span:last-child { border-left: 1px solid rgb(255 255 255 / .25); font-weight: 500; }
+.if p { margin: 0; font-size: 12px; color: var(--dim); }
+
+/* tool row */
+.trow { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--rule); background: var(--console); min-width: 0; }
+.tcbig { font: 600 24px/1 var(--font); letter-spacing: .02em; color: var(--text); min-width: 140px; }
+.vsep { width: 1px; height: 26px; background: var(--rule); margin: 0 4px; }
+.tools2 { display: inline-flex; gap: 4px; }
+
+/* lower: headers | lanes | mixer */
+.lower { display: grid; grid-template-columns: var(--hdr-w) minmax(0, 1fr) var(--mix-w); min-height: 0; background: var(--canvas); position: relative; }
+.hdrs { border-right: 1px solid var(--rule); background: var(--console); display: grid; grid-template-rows: 30px repeat(6, 1fr); }
+.hdrs .ruler-gap { border-bottom: 1px solid var(--rule); display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: var(--dim); }
+.th2 { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--rule); min-height: 0; }
+.th2 .id { width: 26px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #050811; background: var(--c); flex: none; }
+.th2 .tn { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms { display: inline-flex; gap: 3px; }
+.ms button { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 1px solid var(--rule); background: var(--key); font-size: 11px; font-weight: 700; color: var(--dim); display: grid; place-items: center; }
+.ms button.on-m { color: #050811; background: var(--tally); border-color: transparent; }
+.ms button.on-s { color: #050811; background: var(--t-music); border-color: transparent; }
+
+.lanes { position: relative; overflow: hidden; display: grid; grid-template-rows: 30px repeat(6, 1fr); min-width: 0; }
+.lanes > .ruler, .lanes > .lane { min-width: 1080px; }
+.ruler { position: relative; border-bottom: 1px solid var(--rule); background: var(--console); }
+.ruler .tk { position: absolute; bottom: 0; width: 1px; height: 6px; background: var(--rule-strong); }
+.ruler .tk.l { height: 10px; }
+.ruler .tl { position: absolute; top: 4px; font-size: 11px; color: var(--dim); transform: translateX(3px); }
+.lane { position: relative; border-bottom: 1px solid var(--rule); background-image: linear-gradient(90deg, rgb(120 170 255 / .05) 1px, transparent 1px); background-size: 80px 100%; }
+.clip { position: absolute; top: 5px; bottom: 5px; border-radius: 7px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--c) 70%, transparent); background: color-mix(in srgb, var(--c) 22%, var(--key)); box-shadow: 0 0 14px -6px var(--c); }
+.clip .lb { position: absolute; left: 6px; top: 3px; z-index: 2; font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; text-shadow: 0 1px 2px rgb(0 0 0 / .6); }
+:root[data-theme="light"] .clip .lb { text-shadow: none; }
+.clip.v .lb { color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / .7) !important; }
+.clip.v { background: linear-gradient(180deg, rgb(47 139 255 / .35), rgb(47 139 255 / .12)), var(--film); }
+.clip.v .thumbs { position: absolute; inset: 18px 0 0; display: flex; gap: 2px; opacity: .85; }
+.clip.v .thumbs i { flex: 1; background: linear-gradient(135deg, #0b2348, #1b4a8f 50%, #071226); }
+.clip.v .thumbs i:nth-child(2n) { background: linear-gradient(135deg, #102b55, #2f8bff 70%, #0a1a33); }
+.clip svg.wave { position: absolute; left: 0; right: 0; bottom: 2px; width: 100%; height: 60%; }
+.clip svg.wave path { fill: var(--c); opacity: .75; }
+.clip.cap { background: transparent; border: 1.5px solid var(--c); box-shadow: none; }
+.clip.cap .lb { top: 50%; transform: translateY(-50%); font-weight: 500; color: var(--c); text-shadow: none; }
+.clip.sel { outline: 2px solid var(--sel); outline-offset: 1px; box-shadow: 0 0 0 5px var(--sel-soft), 0 0 22px -4px var(--sel); }
+.clip.trim::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 4px; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--play); box-shadow: 0 0 12px var(--play); z-index: 6; pointer-events: none; }
+.playhead::before { content: ""; position: absolute; top: 0; left: -6px; width: 14px; height: 12px; border-radius: 3px; background: var(--play); }
+.marker { position: absolute; top: 2px; width: 10px; height: 14px; margin-left: -5px; clip-path: polygon(0 0, 100% 0, 100% 70%, 50% 100%, 0 70%); z-index: 5; }
+
+.mix { border-left: 1px solid var(--rule); background: var(--console); display: grid; grid-template-rows: 30px 1fr; min-height: 0; }
+.mix .mh { display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--rule); }
+.strips { display: grid; grid-template-columns: repeat(5, 1fr) 1.3fr; gap: 6px; padding: 10px 8px 8px; min-height: 0; }
+.strip { display: grid; grid-template-rows: 1fr auto; gap: 6px; justify-items: center; min-height: 0; }
+.meter { position: relative; width: 8px; height: 100%; border-radius: 4px; background: var(--key); overflow: hidden; }
+.meter i { position: absolute; left: 0; right: 0; bottom: 0; height: 40%; background: linear-gradient(0deg, var(--go) 0 60%, var(--t-music) 60% 85%, var(--tally) 85%); animation: lvl 1.1s ease-in-out infinite alternate; }
+.strip:nth-child(2) .meter i { animation-duration: .8s; } .strip:nth-child(3) .meter i { animation-duration: 1.4s; } .strip:nth-child(4) .meter i { animation-duration: .6s; } .strip:nth-child(5) .meter i { animation-duration: 1.7s; }
+@keyframes lvl { from { height: 22%; } to { height: 72%; } }
+.strip.bus .meter { width: 12px; }
+.strip small { font-size: 11px; color: var(--dim); }
+
+/* agent cursors (simulated) */
+.cursor { position: absolute; z-index: 20; pointer-events: none; transition: left 1.6s cubic-bezier(.2,0,0,1), top 1.6s cubic-bezier(.2,0,0,1); }
+.cursor svg { width: 18px; height: 18px; display: block; filter: drop-shadow(0 2px 3px rgb(0 0 0 / .5)); }
+.cursor svg path { fill: var(--c); stroke: #050811; stroke-width: 1.2; }
+.cursor .pill { position: absolute; left: 14px; top: 14px; padding: 3px 9px; border-radius: 8px 8px 8px 2px; background: var(--c); color: #050811; font-size: 12px; font-weight: 600; white-space: nowrap; box-shadow: 0 6px 16px -6px var(--c); }
+.demo { position: absolute; right: 10px; bottom: 8px; z-index: 21; }
+
+/* phone */
+.pbar { display: none; }
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .app { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100dvh; }
+  .rail, .lib, .insp, .mix, .hide-phone { display: none !important; }
+  .main { grid-template-rows: 56px auto auto auto; padding-bottom: 76px; }
+  .bar { padding: 0 8px; gap: 6px; }
+  .pswitch span { display: none; }
+  .upper { grid-template-columns: minmax(0, 1fr); border-bottom: 0; }
+  .viewer { padding: 10px; }
+  .screen { width: 100%; height: auto; }
+  .trow { height: 52px; overflow-x: auto; }
+  .tcbig { font-size: 20px; min-width: 112px; }
+  .lower { grid-template-columns: 112px minmax(0, 1fr); height: 380px; }
+  .th2 .ms { display: none; }
+  .demo { bottom: auto; top: 6px; right: 8px; }
+  .th2 .tn { font-size: 12px; }
+  .lanes { overflow-x: auto; }
+  .pbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 68px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; align-items: center; justify-content: space-between; background: var(--glass); border-top: 1px solid var(--rule); backdrop-filter: blur(14px); z-index: 30; }
+  .pbar .kbtn { height: 44px; }
+  .demo { bottom: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-studio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 2h6l1-2h5"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-canvas" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><path d="M8 6c5 0 5 6 8 6M8 18c5 0 5-6 8-6"/></symbol>
+  <symbol id="i-tl" viewBox="0 0 24 24"><path d="M3 6h10M3 12h16M3 18h7"/><path d="M15 3v18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></symbol>
+  <symbol id="i-start" viewBox="0 0 24 24"><path d="M6 5v14M18 5 9 12l9 7z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></symbol>
+  <symbol id="i-end" viewBox="0 0 24 24"><path d="M18 5v14M6 5l9 7-9 7z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z"/></symbol>
+  <symbol id="i-blade" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></symbol>
+  <symbol id="i-snap" viewBox="0 0 24 24"><path d="M6 3v8a6 6 0 0 0 12 0V3M6 7h4M14 7h4"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-zoom" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></symbol>
+</svg>
+
+<div class="app">
+  <nav class="rail" aria-label="Studio navigation">
+    <div class="logo">N</div>
+    <a href="#"><svg class="i"><use href="#i-home"/></svg>Command</a>
+    <a href="#" aria-current="page"><svg class="i"><use href="#i-studio"/></svg>Studio</a>
+    <a href="#"><svg class="i"><use href="#i-inbox"/></svg>Inbox</a>
+    <a href="#"><svg class="i"><use href="#i-chart"/></svg>Analytics</a>
+    <span class="sp"></span>
+  </nav>
+
+  <div class="main">
+    <header class="bar">
+      <div class="pswitch"><b>Football in 2050</b><span>Project · 8 scenes · 16:9</span></div>
+      <span class="chip mock hide-phone">Prototype · mock data</span>
+      <div class="seg hide-phone" role="group" aria-label="Views">
+        <button><svg class="i"><use href="#i-canvas"/></svg>Canvas</button>
+        <button aria-pressed="true"><svg class="i"><use href="#i-tl"/></svg>Timeline</button>
+      </div>
+      <span class="grow"></span>
+      <span class="agents hide-phone">Working now
+        <span class="stack">
+          <span class="av" style="background:#2f8bff">D</span><span class="av" style="background:#3dff8a">S</span><span class="av" style="background:#ffd23f">M</span><span class="av" style="background:#ff4fa3">C</span>
+        </span>
+      </span>
+      <button class="kbtn hide-phone"><svg class="i"><use href="#i-search"/></svg>Search, add, open <kbd>Ctrl K</kbd></button>
+      <button class="kbtn icon" aria-label="Search" style="display:none" id="phoneSearch"><svg class="i"><use href="#i-search"/></svg></button>
+      <span class="credits">1,180 <small>credits</small></span>
+      <button class="kbtn icon hide-phone" id="themeBtn" aria-label="Theme"><svg class="i"><use href="#i-moon"/></svg></button>
+    </header>
+
+    <section class="upper">
+      <aside class="lib" aria-label="Library">
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true">Library</button><button role="tab">Effects</button><button role="tab">Sound library</button>
+        </div>
+        <div class="tools"><span class="search"><svg class="i"><use href="#i-search"/></svg>Search this project</span><button class="kbtn icon" aria-label="Sort"><svg class="i"><use href="#i-sort"/></svg></button></div>
+        <ul id="libList"></ul>
+      </aside>
+
+      <div class="viewer">
+        <div class="screen" aria-label="Viewer">
+          <div class="sky"></div><div class="tun"></div>
+          <span class="tc">03 · The tunnel</span>
+          <span class="chip mock mk">mock</span>
+          <span class="cap">The stadium hangs in the sky above the city.</span>
+        </div>
+        <div class="vmeta"><span>01:02:14:08</span><span>16:9 · 1080p</span><span>Scene 03 of 08</span></div>
+      </div>
+
+      <aside class="insp" aria-label="Clip inspector">
+        <div class="ih">
+          <div class="k">Scene clip · V1</div>
+          <h2>03 · The tunnel</h2>
+          <div class="tabs" role="tablist"><button role="tab">Video</button><button role="tab" aria-selected="true">Audio</button><button role="tab">Effects</button></div>
+        </div>
+        <div class="ib">
+          <div class="row"><label for="lv">Level</label><output>−3.0 dB</output><input id="lv" type="range" min="-24" max="6" value="-3" /></div>
+          <div class="row"><label for="fi">Fade in</label><output>0.4 s</output><input id="fi" type="range" min="0" max="3" step="0.1" value="0.4" /></div>
+          <div class="row"><label for="fo">Fade out</label><output>0.8 s</output><input id="fo" type="range" min="0" max="3" step="0.1" value="0.8" /></div>
+          <div class="tog"><span>Mute this clip</span><span class="sw" role="switch" aria-checked="false"></span></div>
+          <div class="tog"><span>Duck music under narration<small>Music on A2 drops while A1 speaks</small></span><span class="sw on" role="switch" aria-checked="true"></span></div>
+        </div>
+        <div class="if">
+          <button class="price"><span>Assemble the film</span><span>16 credits</span></button>
+          <p>Quote from the server: 8 min × 2 credits. Held when you start, charged only when the cut is ready.</p>
+        </div>
+      </aside>
+    </section>
+
+    <div class="trow" role="toolbar" aria-label="Transport and tools">
+      <span class="tcbig" id="tc">01:02:14:08</span>
+      <button class="kbtn icon" aria-label="To start"><svg class="i"><use href="#i-start"/></svg></button>
+      <button class="kbtn icon primary" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
+      <button class="kbtn icon" aria-label="Loop" aria-pressed="true"><svg class="i"><use href="#i-loop"/></svg></button>
+      <button class="kbtn icon" aria-label="To end"><svg class="i"><use href="#i-end"/></svg></button>
+      <span class="vsep"></span>
+      <span class="tools2">
+        <button class="kbtn icon" aria-label="Select" aria-pressed="true"><svg class="i"><use href="#i-arrow"/></svg></button>
+        <button class="kbtn icon" aria-label="Blade"><svg class="i"><use href="#i-blade"/></svg></button>
+        <button class="kbtn icon" aria-label="Snap" aria-pressed="true"><svg class="i"><use href="#i-snap"/></svg></button>
+        <button class="kbtn icon" aria-label="Link"><svg class="i"><use href="#i-link"/></svg></button>
+        <button class="kbtn icon" aria-label="Marker"><svg class="i"><use href="#i-flag"/></svg></button>
+        <button class="kbtn icon" aria-label="Zoom"><svg class="i"><use href="#i-zoom"/></svg></button>
+      </span>
+      <span class="grow"></span>
+      <span class="chip hide-phone">8:00 planned · narration sets the clock</span>
+    </div>
+
+    <section class="lower">
+      <div class="hdrs" id="hdrs"><div class="ruler-gap">Tracks</div></div>
+      <div class="lanes" id="lanes"><div class="inner" style="display:contents"></div></div>
+      <aside class="mix" aria-label="Mixer">
+        <div class="mh">Mixer</div>
+        <div class="strips" id="strips"></div>
+      </aside>
+      <span class="chip mock demo">Demo: agents simulated</span>
+    </section>
+  </div>
+</div>
+
+<nav class="pbar" aria-label="Transport">
+  <button class="kbtn icon" aria-label="To start"><svg class="i"><use href="#i-start"/></svg></button>
+  <button class="kbtn icon primary" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
+  <button class="kbtn icon" aria-label="Blade"><svg class="i"><use href="#i-blade"/></svg></button>
+  <span class="grow"></span>
+  <button class="kbtn primary">Assemble · 16 cr</button>
+</nav>
+
+<script>
+const q = new URLSearchParams(location.search);
+if (q.get("theme") === "light") document.documentElement.dataset.theme = "light";
+document.getElementById("themeBtn").onclick = () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === "light" ? "dark" : "light"; };
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// Library
+const LIB = [
+  ["Clips", [["01 · The stadium in the sky", "Clip · take 2", "0:06", "--t-video"], ["02 · Walking into the light", "Clip · take 2", "0:05", "--t-video"], ["03 · The tunnel", "Clip · take 1", "0:07", "--t-video"], ["04 · Kick-off", "Clip · take 1", "0:06", "--t-video"]]],
+  ["Voice lines", [["James · scenes 1–4", "Narration · English", "0:48", "--t-narr"], ["James · scenes 5–8", "Narration · English", "0:41", "--t-narr"]]],
+  ["Music", [["Night drive", "Music · 92 bpm", "3:12", "--t-music"]]],
+  ["Effects", [["Impact", "SFX", "0:01", "--t-sfx"], ["Crowd roar", "Ambience", "0:30", "--t-amb"], ["Whoosh", "SFX", "0:01", "--t-sfx"]]],
+];
+document.getElementById("libList").innerHTML = LIB.map(([g, items]) => `<li class="gh">${g}</li>` + items.map(([n, k, d, c]) => `<li><span class="th" style="--c:var(${c})"></span><span><div class="nm">${n}</div><div class="kd">${k}</div></span><span class="du">${d}</span></li>`).join("")).join("");
+
+// Tracks
+const TRACKS = [
+  { id: "V1", name: "Scenes", c: "--t-video" },
+  { id: "A1", name: "Narration", c: "--t-narr" },
+  { id: "A2", name: "Music", c: "--t-music", solo: true },
+  { id: "A3", name: "Effects", c: "--t-sfx" },
+  { id: "A4", name: "Ambience", c: "--t-amb", mute: true },
+  { id: "C1", name: "Captions", c: "--t-cap" },
+];
+const hdrs = document.getElementById("hdrs");
+hdrs.insertAdjacentHTML("beforeend", TRACKS.map((t) => `<div class="th2"><span class="id" style="--c:var(${t.c})">${t.id}</span><span class="tn">${t.name}</span><span class="ms"><button class="${t.mute ? "on-m" : ""}" aria-label="Mute ${t.name}">M</button><button class="${t.solo ? "on-s" : ""}" aria-label="Solo ${t.name}">S</button><button aria-label="Lock ${t.name}"><svg class="i" style="width:12px;height:12px"><use href="#i-lock"/></svg></button></span></div>`).join(""));
+
+const PX = 11; // px per second
+const wave = (seed) => { let d = "M0 30"; for (let x = 0; x <= 200; x += 4) { const h = 6 + Math.abs(Math.sin(x * 0.13 + seed) * 18 + Math.sin(x * 0.41 + seed * 2) * 6); d += ` L${x} ${30 - h / 2}`; } for (let x = 200; x >= 0; x -= 4) { const h = 6 + Math.abs(Math.sin(x * 0.13 + seed) * 18 + Math.sin(x * 0.41 + seed * 2) * 6); d += ` L${x} ${30 + h / 2}`; } return `<svg class="wave" viewBox="0 0 200 60" preserveAspectRatio="none"><path d="${d}Z"/></svg>`; };
+const CLIPS = {
+  V1: [[0, 6, "01 Stadium"], [6, 5, "02 Light"], [11, 7, "03 Tunnel", "sel"], [18, 6, "04 Kick-off"], [24, 6, "05 Goal"], [30, 5, "06 Crowd"], [35, 7, "07 Replay"], [42, 6, "08 Night"]],
+  A1: [[0.5, 23, "James · 1–4", "w"], [25, 21, "James · 5–8", "w"]],
+  A2: [[0, 48, "Night drive", "w"]],
+  A3: [[11.2, 1.4, "Impact"], [23.6, 1.2, "Whoosh"], [35, 1.4, "Impact"]],
+  A4: [[18, 14, "Crowd roar", "w"]],
+  C1: [[0.5, 5, "The year is 2050."], [6, 5, "Football left the ground."], [11.5, 6, "The stadium hangs in the sky…"], [18.5, 5, "Kick-off."], [25, 6, "Line 5"], [31.5, 6, "They roar as one."]],
+};
+const lanes = document.getElementById("lanes");
+let html = '<div class="ruler" id="ruler"></div>';
+for (const t of TRACKS) {
+  html += `<div class="lane" data-t="${t.id}">` + (CLIPS[t.id] || []).map(([s, d, lb, f], i) => `<div class="clip ${t.id === "V1" ? "v" : t.id === "C1" ? "cap" : ""} ${f === "sel" ? "sel" : ""}" data-c="${t.id}-${i}" style="--c:var(${t.c});left:${s * PX * 2}px;width:${d * PX * 2 - 3}px"><span class="lb">${lb}</span>${t.id === "V1" ? '<span class="thumbs"><i></i><i></i><i></i><i></i></span>' : f === "w" ? wave(i + s) : ""}</div>`).join("") + "</div>";
+}
+lanes.innerHTML = html + '<div class="playhead" id="ph" style="left:300px"></div>';
+const ruler = document.getElementById("ruler");
+let r = "";
+for (let s = 0; s <= 60; s++) { const x = s * PX * 2; r += `<span class="tk ${s % 5 === 0 ? "l" : ""}" style="left:${x}px"></span>`; if (s % 5 === 0) r += `<span class="tl" style="left:${x}px">00:${String(s).padStart(2, "0")}</span>`; }
+r += `<span class="marker" style="left:${11 * PX * 2}px;background:var(--sel)" title="Approved: 03"></span><span class="marker" style="left:${35 * PX * 2}px;background:var(--t-sfx)" title="Note: replay pacing"></span>`;
+ruler.innerHTML = r;
+
+// Mixer
+document.getElementById("strips").innerHTML = ["A1", "A2", "A3", "A4", "C1"].map((id) => `<div class="strip"><span class="meter"><i></i></span><small>${id}</small></div>`).join("") + `<div class="strip bus"><span class="meter"><i></i></span><small>Main</small></div>`;
+
+// Playhead + timecode
+const ph = document.getElementById("ph"), tc = document.getElementById("tc");
+let t0 = performance.now();
+function tick(now) {
+  const sec = ((now - t0) / 1000 * 0.6 + 13.5) % 48;
+  ph.style.left = sec * PX * 2 + "px";
+  const f = Math.floor((sec % 1) * 24), s = Math.floor(sec);
+  tc.textContent = `01:02:${String(s).padStart(2, "0")}:${String(f).padStart(2, "0")}`;
+  requestAnimationFrame(tick);
+}
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) requestAnimationFrame(tick);
+
+// Simulated agents: each walks a short script of real-looking edits. Demo only.
+const AGENTS = [
+  { name: "Director · trimming 03", c: "#2f8bff", lane: "V1", steps: [[13.5, 0.55], [17.6, 0.55], [17.2, 0.5]], act: (on) => document.querySelector('[data-c="V1-2"]').classList.toggle("trim", on) },
+  { name: "Sound · placing Impact", c: "#3dff8a", lane: "A3", steps: [[8, 0.5], [11.4, 0.5], [23.8, 0.5]] },
+  { name: "Mix · ducking music", c: "#ffd23f", lane: "A2", steps: [[26, 0.35], [31, 0.6], [28, 0.45]] },
+  { name: "Captions · line 5", c: "#ff4fa3", lane: "C1", steps: [[25.5, 0.5], [27.5, 0.5], [26, 0.5]] },
+];
+const lanesBox = lanes.getBoundingClientRect();
+const cursors = AGENTS.map((a) => {
+  const el = document.createElement("div");
+  el.className = "cursor"; el.style.setProperty("--c", a.c);
+  el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M3 2l18 9-7.5 2L10 21z"/></svg><span class="pill">${a.name}</span>`;
+  lanes.appendChild(el);
+  return el;
+});
+function place(i, k) {
+  const a = AGENTS[i], lane = lanes.querySelector(`[data-t="${a.lane}"]`), [s, y] = a.steps[k % a.steps.length];
+  cursors[i].style.left = s * PX * 2 + "px";
+  cursors[i].style.top = lane.offsetTop + lane.offsetHeight * y + "px";
+  a.act?.(k % 3 === 1);
+}
+AGENTS.forEach((_, i) => place(i, 0));
+let k = 0;
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) setInterval(() => { k++; AGENTS.forEach((_, i) => place(i, k + i)); }, 1900);
+</script>
+</body>
+</html>
