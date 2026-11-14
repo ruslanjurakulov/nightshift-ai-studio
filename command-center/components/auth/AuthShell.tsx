@@ -101,16 +101,6 @@ export function AuthShell({
           </div>
         </div>
 
-        {/* On a phone the stage is a band above the form: the same drawing, the brand over it, the brief and the approval playing on it. */}
-        <div className="nx-auth-band lg:hidden" data-photo={photo} {...placeBox(m)}>
-          <PlaceFill media={m} s={t.site} alt="" eager early labels={m.kind === "stock"} sizes="(max-width: 959px) 100vw, 1px" />
-          {moving && <ClipPause label={t.site.fx.pause} />}
-          {m.kind === "ai" && <AiBadge g={t.site.gallery} className="nx-ai-credit nx-result-ai" />}
-          <Link href="/" className="st-brand" aria-label={t.brand.name}>
-            <Wordmark />
-          </Link>
-          <FlowCard stage={t.site.stage} compact />
-        </div>
         <div className="st-auth-form">
           <h1 className="st-h1-page">{title}</h1>
           {subtitle && <p className="st-body mt-4">{subtitle}</p>}
@@ -124,6 +114,20 @@ export function AuthShell({
               </li>
             ))}
           </ul>
+        </div>
+
+        {/* On a phone the stage is a band UNDER the form: the same drawing, the brand over it, the brief and the approval
+            playing on it. It used to sit above the form, and at 220-310px tall (the brief wraps longer in ru/uz) it
+            pushed "Continue with Google" and the e-mail field below the fold of a 390x844 phone: the form comes first.
+            Off the first screen now, so its picture loads lazily and does not compete with the form. */}
+        <div className="nx-auth-band mt-4 lg:hidden" data-photo={photo} {...placeBox(m)}>
+          <PlaceFill media={m} s={t.site} alt="" labels={m.kind === "stock"} sizes="(max-width: 959px) 100vw, 1px" />
+          {moving && <ClipPause label={t.site.fx.pause} />}
+          {m.kind === "ai" && <AiBadge g={t.site.gallery} className="nx-ai-credit nx-result-ai" />}
+          <Link href="/" className="st-brand" aria-label={t.brand.name}>
+            <Wordmark />
+          </Link>
+          <FlowCard stage={t.site.stage} compact />
         </div>
 
         <LegalFooter />
@@ -148,10 +152,29 @@ export function AuthField({
   );
 }
 
-/** The form's one action: the lit key, full width. */
-export function AuthSubmit({ busy, children, disabled }: { busy?: boolean; disabled?: boolean; children: React.ReactNode }) {
+/**
+ * The form's action, full width: the lit key, or the quiet key when something above the form is the page's primary
+ * choice ("Continue with Google" on /login and /signup), so a page never shows two primary keys.
+ */
+export function AuthSubmit({
+  busy,
+  children,
+  disabled,
+  tone,
+}: {
+  busy?: boolean;
+  disabled?: boolean;
+  tone?: "quiet";
+  children: React.ReactNode;
+}) {
   return (
-    <button type="submit" disabled={busy || disabled} className="st-key mt-3 disabled:cursor-not-allowed disabled:opacity-55" data-block="true">
+    <button
+      type="submit"
+      disabled={busy || disabled}
+      className="st-key mt-3 disabled:cursor-not-allowed disabled:opacity-55"
+      data-block="true"
+      data-tone={tone}
+    >
       {children}
     </button>
   );

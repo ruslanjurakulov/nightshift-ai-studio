@@ -2,8 +2,13 @@
    section without touching this. The drawing and the frame's badge are components/effects/effects.css.
 
    It sits right after the explore grid (#samples) and reads as the same dark screen in both themes: the site's tokens are
-   re-bound inside it exactly as #samples re-binds them (site-next.css), and the cards are glass, one step lighter than the
-   ground, with the explore grid's columns so portrait, square and wide frames mix. */
+   re-bound inside it exactly as #samples re-binds them (site-next.css), and the cards are one step lighter than the ground.
+
+   Portrait, square and wide frames mix in a masonry made of CSS grid rows, not CSS columns (lib/effects/masonry.ts says why
+   and how). The server picks each card's column so the columns end evenly, keeping the first row in page order and paying for
+   every card a reader would meet out of order, so the reading and Tab order (page order) stays close to the order the eye
+   takes down the page (today: one pair of cards swapped at three columns, none at two). One column below 640 px, two to
+   1023 px, three from 1024 px. */
 .nx-section#effects {
   background: #0b0b10; color: var(--nx-stage-text);
   --ns-text: var(--nx-stage-text); --ns-text-dim: var(--nx-stage-dim);
@@ -12,35 +17,57 @@
 }
 .nx-section#effects .nx-label { border-color: rgba(255, 255, 255, 0.16); color: var(--nx-stage-text); }
 
-.efx-grid { display: grid; gap: 20px; margin: 36px 0 0; padding: 0; list-style: none; grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 640px) {
-  .efx-grid { display: block; columns: 2; column-gap: 20px; }
+/* The column width the rows are measured against is the wrap's (100cqi is the list's own width: it fills the wrap). */
+.nx-section#effects > .nx-wrap { container-type: inline-size; }
+.efx-grid { display: grid; gap: 20px; margin: 36px 0 0; padding: 0; list-style: none; grid-template-columns: minmax(0, 1fr); align-items: start; }
+/* Without container units (an old browser) the cards stay in a plain grid, top-aligned: gaps under the shorter ones, never
+   one card over another. */
+@supports (width: 1cqi) {
+  @media (min-width: 640px) {
+    .efx-grid {
+      --efx-cols: 2;
+      grid-template-columns: repeat(var(--efx-cols), minmax(0, 1fr)); row-gap: 0; align-items: stretch;
+      /* dense: a card given a column (--efx-c2/--efx-c3) goes straight under the card above it in that column; the default
+         (sparse) flow would never place it higher than the card placed before it, in any column, and leave a hole. */
+      grid-auto-flow: row dense;
+      /* A row is (column width + MASONRY_REF) / MASONRY_UNITS (lib/effects/masonry.ts: 256 px, 64; tests/effects-masonry.test.tsx
+         holds the two files to the same numbers). minmax(…, auto): a card that needs more than its rows makes them grow
+         instead of spilling over the card below. */
+      grid-auto-rows: minmax(calc(((100cqi - (var(--efx-cols) - 1) * 20px) / var(--efx-cols) + 256px) / 64), auto);
+    }
+    /* The 20 px under each card is inside its rows (MASONRY_REF counts it). */
+    .efx-card { grid-column: var(--efx-c2, auto); grid-row-end: span var(--efx-n2); margin-bottom: 20px; }
+  }
+  @media (min-width: 1024px) {
+    .efx-grid { --efx-cols: 3; }
+    .efx-card { grid-column: var(--efx-c3, auto); grid-row-end: span var(--efx-n3); }
+  }
 }
-@media (min-width: 1100px) { .efx-grid { columns: 3; } }
-@media (min-width: 1440px) { .efx-grid { columns: 4; } }
 
+/* No backdrop blur: the ground behind the cards is one solid colour, so the blur showed nothing, and in Safari it made each
+   card a composited layer, the kind it drew in the wrong place inside the old CSS columns. */
 .efx-card {
-  display: flex; flex-direction: column; min-width: 0; overflow: hidden; break-inside: avoid;
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden;
   border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.12);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025));
   box-shadow: 0 24px 64px -32px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%);
 }
-@media (min-width: 640px) { .efx-card { margin: 0 0 20px; } }
 @media (prefers-reduced-motion: no-preference) {
   .efx-card { transition: transform var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease); }
   .efx-card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.28); }
   html[data-motion="paused"] .efx-card { transition: none; transform: none; }
 }
 
-.efx-frame { border-radius: 0; background: #12151c; }
+/* The picture keeps its real shape however tall the card's rows make the card (flex: none); any spare height goes to the text
+   block, with the key held at its foot. */
+.efx-frame { flex: none; border-radius: 0; background: #12151c; }
 .efx-frame > img { z-index: 0; }
 .efx-frame .fx-badge { z-index: 2; }
-.efx-body { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 18px 20px 20px; min-width: 0; }
+.efx-body { display: flex; flex: 1 1 auto; flex-direction: column; align-items: flex-start; gap: 6px; padding: 18px 20px 20px; min-width: 0; }
 .efx-kind { margin: 0; font-size: 14px; color: var(--ns-text-dim); overflow-wrap: anywhere; }
 .efx-name { margin: 0; font-family: var(--font-display); font-size: 20px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
 .efx-line { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ns-text); overflow-wrap: anywhere; text-wrap: pretty; }
-.efx-needs { margin: 0; font-size: 14px; color: var(--ns-text-dim); overflow-wrap: anywhere; }
-.efx-use { margin-top: 10px; min-height: 48px; padding: 0 20px; font-size: 16px; }
+.efx-needs { margin: 0 0 10px; font-size: 14px; color: var(--ns-text-dim); overflow-wrap: anywhere; }
+.efx-use { margin-top: auto; min-height: 48px; padding: 0 20px; font-size: 16px; }
 .efx-use:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
 .nx-section#effects .nx-show-note { color: var(--ns-text-dim); }

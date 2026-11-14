@@ -1604,14 +1604,39 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
 .nx-facts-n { font-family: var(--font-display); font-size: clamp(36px, 6vw, 60px); font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--ns-text); }
 .nx-facts-l { font-size: 15px; line-height: 1.4; color: var(--ns-text-dim); }
 
-/* The model tiles: a small still of the model's sample beside its name and a link down to the sample. */
-.nx-models-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; margin: 36px 0 0; padding: 0; list-style: none; }
-.nx-model-media { position: relative; flex: 0 0 76px; width: 76px; height: 104px; overflow: hidden; border-radius: 12px; background: #12151c; }
+/* Each tile leads with its sample: a large picture on top, the .nx-ai-badge label on its corner, the name and one line under it.
+   The tile had no rule of its own on main (#726 dropped it when the still moved into .nx-model-media, and a stale
+   `.nx-model-pic` pinned the still at 76 px), so it was a plain block: a 76 px still, the label hanging past its edge, the
+   words under it and the rest of a 294 px cell empty.
+   Rows: --nx-mcols across from 1024 px and --nx-mcols-md from 640 px (Landing.tsx modelTileColumns: no tile left alone under a
+   full row; a short last row is centred). On a phone the tiles are one row that scrolls sideways and stops on each tile, so
+   nine models are one screen tall, not nine. */
+.nx-models-grid {
+  --nx-mc: var(--nx-mcols-md, 3);
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin: 36px 0 0; padding: 0; list-style: none;
+}
+.nx-models-grid > .nx-model { flex: 0 0 calc((100% - (var(--nx-mc) - 1) * 16px) / var(--nx-mc)); }
+@media (min-width: 1024px) { .nx-models-grid { --nx-mc: var(--nx-mcols, 3); gap: 20px; } .nx-models-grid > .nx-model { flex-basis: calc((100% - (var(--nx-mc) - 1) * 20px) / var(--nx-mc)); } }
+@media (max-width: 639.98px) {
+  .nx-models-grid {
+    flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory; scroll-padding-inline: var(--st-gutter); scrollbar-width: thin;
+    /* Edge to edge: the row starts at the text's left edge and runs off the screen's right one, which says "there is more". */
+    margin-inline: calc(-1 * var(--st-gutter)); padding: 0 var(--st-gutter) 24px;
+  }
+  .nx-models-grid > .nx-model { flex: 0 0 min(72%, 280px); scroll-snap-align: start; }
+}
+.nx-model { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
+.nx-model-media { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; background: #12151c; }
 .nx-model-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
 .nx-model-media .nx-clip { inset: 0; width: 100%; height: 100%; }
-.nx-model-pic { flex: 0 0 76px; width: 76px; height: 104px; object-fit: cover; border-radius: 12px; background: #12151c; }
-.nx-model-body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.nx-model-name { margin: 8px 0 0; font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
+.nx-model .nx-ai-badge { position: absolute; z-index: 2; top: 10px; left: 10px; max-width: calc(100% - 20px); }
+/* The count and, when it applies, "not in the Studio yet": each on its own short line (no separator dot left dangling at a wrap). */
+.nx-model-meta { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
+.nx-model-meta > span { display: block; font-size: inherit; }
+.nx-model-body { display: flex; flex: 1 1 auto; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding: 14px 16px 6px; }
+.nx-model-see { margin-top: auto; }
+.nx-model-name { margin: 0; font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
 .nx-model-count { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .nx-model-see { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--ns-text); text-decoration: underline; text-underline-offset: 4px; }
 .nx-model-see svg { width: 16px; height: 16px; }
