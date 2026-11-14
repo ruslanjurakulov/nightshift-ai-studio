@@ -1,10 +1,9 @@
 import { Clapperboard, ImageIcon, Maximize, Mic, Palette, Scissors, ScissorsLineDashed, SlidersHorizontal, WandSparkles, type LucideIcon } from "lucide-react";
-import { fmt, type Dictionary } from "@/lib/i18n";
-import { SHOWCASE_ENTRIES, modelLeftOut, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
+import type { Dictionary } from "@/lib/i18n";
+import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { TOOL_SAMPLES, toolSource } from "@/lib/site/tool-samples";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
-import { AiCredit } from "@/components/site/PlaceFill";
 import { WallControls } from "@/components/landing/WallControls";
 
 /** The tools that cost no credits (the editor and the style library), as everywhere else on the site. */
@@ -47,16 +46,18 @@ function SamplePic({ s, alt, anchor = false }: { s: Sample; alt: string; anchor?
 /**
  * What Nightshift can make, as a wall of tiles, one per tool (lib/site/tool-samples.ts says what each shows). A tool with a real
  * output shows it: a picture the Image tool made, a clip the Video tool made, and for Animate the still and the clip made from
- * it, side by side. Each such tile is that sample's box (the only kind of element that may name a model), labelled
- * AI-generated with its model (no maker's credit on the public site: it is shown in the Studio), and it says when the model is not in
- * the Studio yet. A tool no customer can use today says "Not available yet" (the Studio's own words for it, lib/i18n/availability),
- * beside our team's sample when it has one, or its icon: never a drawn result. A tool with no line in lib/site/tool-samples.ts is not drawn at all, because
+ * it, side by side. Each such tile is that sample's box, labelled with one small line, "AI-generated · made by our team", and no
+ * model name: the owner has not decided whether the public site names models, and the wall does not need them (no maker's credit
+ * either: it is shown in the Studio). A tool no customer can use today says "Not available yet" once (the Studio's own words for it,
+ * lib/i18n/availability), and nothing else about it: a second "this model is not in the Studio" on the same tile repeated it
+ * (owner, 2026-11-14). Beside the words, our team's sample when it has one, or its icon: never a drawn result. A tool with no line in lib/site/tool-samples.ts is not drawn at all, because
  * nothing says whether it can be used (CLAUDE.md #5: an unknown is never shown as available). Tools with an output come first.
  * Each sample on the wall carries the id the model tiles link to. The Editor is a plain line under the wall. A Server Component.
  */
 export function CapabilityWall({ t }: { t: Dictionary }) {
   const st = t.site.studio;
   const g = t.site.gallery;
+  const w = t.site.wall;
   const tiles = st.tools
     .flatMap((tool) => {
       const def = TOOL_SAMPLES[tool.id];
@@ -73,39 +74,31 @@ export function CapabilityWall({ t }: { t: Dictionary }) {
       <h3 id="tools-title" className="nx-h3">
         {t.site.toolStrip.title}
       </h3>
-      <p className="nx-wall-label">{t.site.wall.label}</p>
+      <p className="nx-wall-label">{w.label}</p>
       <ul id="tools-grid" className="nx-wall-grid" aria-labelledby="tools-title">
-        {tiles.map(({ tool, Icon, def, out, from }) => {
-          const leftOut = out ? modelLeftOut(out.e) : null;
-          return (
-            <li
-              key={tool.id}
-              className="nx-wall-tile"
-              data-tool={tool.id}
-              {...(out ? { id: `sample-${out.e.jobId}`, "data-showcase-entry": out.e.jobId, "data-model": out.e.modelId } : {})}
-              data-in-studio={def.inStudio ? "true" : "false"}
-            >
-              <span className="nx-wall-frame" data-tool={tool.id} data-split={from ? "true" : undefined}>
-                {from && <SamplePic s={from} alt={fmt(g.altSource, { model: from.e.modelName })} anchor />}
-                {out ? <SamplePic s={out} alt={fmt(out.e.kind === "video" ? g.altClip : g.altImage, { model: out.e.modelName })} /> : <Icon className="nx-wall-icon" aria-hidden strokeWidth={1.5} />}
-              </span>
-              <b className="nx-wall-name">{tool.title}</b>
-              <span className="nx-wall-body">{tool.body}</span>
-              {!def.inStudio && <small className="nx-wall-notyet">{t.availability.notYet}</small>}
-              {/* A price line only on a tool that can be used: "No credits" beside "Not available yet" would read as on offer. */}
-              {def.inStudio && FREE.has(tool.id) && <small className="nx-wall-price">{st.free}</small>}
-              {out && <AiCredit entry={out.e} g={g} className="nx-ai-credit nx-wall-credit" />}
-              {from && (
-                <small className="nx-wall-from">
-                  {g.source} {from.e.modelName}
-                </small>
-              )}
-              {leftOut && <small className="nx-wall-model-note">{leftOut === "shut_down" ? g.gone : g.notInStudio}</small>}
-            </li>
-          );
-        })}
+        {tiles.map(({ tool, Icon, def, out, from }) => (
+          <li
+            key={tool.id}
+            className="nx-wall-tile"
+            data-tool={tool.id}
+            {...(out ? { id: `sample-${out.e.jobId}`, "data-showcase-entry": out.e.jobId, "data-model": out.e.modelId } : {})}
+            data-in-studio={def.inStudio ? "true" : "false"}
+          >
+            <span className="nx-wall-frame" data-tool={tool.id} data-split={from ? "true" : undefined}>
+              {from && <SamplePic s={from} alt={w.altFrom} anchor />}
+              {out ? <SamplePic s={out} alt={out.e.kind === "video" ? g.bgClip : g.bgImage} /> : <Icon className="nx-wall-icon" aria-hidden strokeWidth={1.5} />}
+            </span>
+            <b className="nx-wall-name">{tool.title}</b>
+            <span className="nx-wall-body">{tool.body}</span>
+            {!def.inStudio && <small className="nx-wall-notyet">{t.availability.notYet}</small>}
+            {/* A price line only on a tool that can be used: "No credits" beside "Not available yet" would read as on offer. */}
+            {def.inStudio && FREE.has(tool.id) && <small className="nx-wall-price">{st.free}</small>}
+            {out && <small className="nx-wall-credit">{`${g.badge} · ${w.byTeam}`}</small>}
+            {from && <small className="nx-wall-from">{w.from}</small>}
+          </li>
+        ))}
       </ul>
-      <WallControls more={t.site.wall.more} less={t.site.wall.less} />
+      <WallControls more={w.more} less={w.less} />
       {editor && (
         <p className="nx-wall-editor">
           <SlidersHorizontal aria-hidden />
@@ -114,7 +107,7 @@ export function CapabilityWall({ t }: { t: Dictionary }) {
           <small>{st.free}</small>
         </p>
       )}
-      <p className="nx-wall-note">{t.site.wall.note}</p>
+      <p className="nx-wall-note">{w.note}</p>
     </div>
   );
 }

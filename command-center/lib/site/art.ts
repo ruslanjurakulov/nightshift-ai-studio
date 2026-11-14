@@ -13,7 +13,12 @@ export const HERO_ART = "hero-night";
 /** The same picture cut to a portrait (the mic, the plants, the curtain) for the phone panel below 1024 px, so a phone never fetches the wide file. */
 export const HERO_ART_SM = "hero-night-sm";
 
-/** The sample thumbnail behind the Silk Road example on the landing's plan demo. */
+/**
+ * The Silk Road example's picture (the Registan at sunset), and the only picture the public site may put beside that topic: the
+ * plan demo's sample thumbnail, the phone of the landing's third step, the Approvals card's thumbnail, the /pricing chat card's
+ * frame and the publish desk's frame on /solutions. A showcase sample made from another prompt beside this topic said the result
+ * need not match the prompt (owner, 2026-11-14); tests/site-art.test.tsx pins every place.
+ */
 export const THUMB_ART = "thumb-silkroad";
 
 /**

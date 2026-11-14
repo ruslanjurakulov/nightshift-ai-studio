@@ -26,6 +26,7 @@ import { coercePlanCatalog, creditEquivalents, planMatrix, type GenerationRates 
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 import { slotMedia } from "@/components/site/samples";
+import { THUMB_ART } from "@/lib/site/art";
 import { stockInUse } from "@/components/site/stock-in-use";
 
 afterEach(cleanup);
@@ -93,19 +94,20 @@ describe("public landing page", () => {
     // whatever the owner has merged.
     // The model tiles' small stills are their samples' posters, each inside that sample's box (checked below).
     const all = outsideGallery(container.querySelectorAll("img"));
-    const tiles = all.filter((i) => i.closest("#models, #tools, .nx-step-live"));
-    const imgs = all.filter((i) => !i.closest("#models, #tools, .nx-step-live"));
+    const tiles = all.filter((i) => i.closest("#models, #tools"));
+    const imgs = all.filter((i) => !i.closest("#models, #tools"));
     // The three slots (the first screen, the Studio showcase and the closing panel: a stock still with a data-sample, or one of
-    // our samples with a data-sample-job inside its own box), the drawn approval screen's thumbnail (a sample, in its box), and the
-    // AI-generated pictures (each with a data-art-id): the sample thumbnail.
+    // our samples with a data-sample-job inside its own box), and the Silk Road example's own picture (a data-art-id) in the three
+    // places beside that topic: the plan demo's thumbnail, the third step's phone and the drawn approval screen's thumbnail.
     // Round 10: no clay pictures for the steps and the tools (live pieces and real outputs instead, each in its sample's box).
-    expect(imgs.length).toBe(5);
+    expect(imgs.length).toBe(6);
+    expect(imgs.filter((i) => i.getAttribute("data-art-id") === THUMB_ART)).toHaveLength(3);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id") ?? img.getAttribute("data-sample-job")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
       if (img.hasAttribute("data-sample-job")) expect(img.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(img.getAttribute("data-sample-job"));
     }
-    expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(4);
+    expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(3);
     // Every stock picture shown is one the footer credits (components/site/stock-in-use.ts).
     // (An Effects card's frame carries its sample's job id in data-sample, never a stock id: tests/effects-ui.test.tsx.)
     for (const img of outsideGallery(container.querySelectorAll("[data-sample]"))) expect(stockInUse() as string[]).toContain(img.getAttribute("data-sample"));
@@ -157,7 +159,7 @@ describe("public landing page", () => {
       expect([...section.querySelectorAll("a")]).toEqual([cta]);
       expect([...section.querySelectorAll("button")].every((b) => b.classList.contains("nx-clip-pause"))).toBe(true);
       const img = section.querySelector("img")!;
-      stills.add(img.getAttribute("data-sample") ?? img.getAttribute("data-sample-job")!);
+      stills.add(img.getAttribute("data-sample") ?? img.getAttribute("data-sample-job") ?? img.getAttribute("data-art-id")!);
     }
     // The Studio: its slot's picture, described and labelled for what it is (stock, or one of our samples with its badge only),
     // and a stock picture's note under it; a sample has no footnote.
@@ -584,11 +586,16 @@ describe("the pricing page, product first (round 3)", () => {
     const kids = [...hero.children].map((c) => c.className);
     expect(kids).toEqual(["nx-pr-copy", "nx-pr-calc", "nx-pr-actions"]);
     expect(container.querySelectorAll("figure.nx-chat")).toHaveLength(1);
-    // The card's picture is the "pricing.card" slot's: our sample once its id is set, the stock lanterns before.
-    const pm = slotMedia("pricing.card");
-    const pic = container.querySelector("figure.nx-chat img")!;
-    expect(pm.kind === "ai" ? pic.getAttribute("data-sample-job") : pic.getAttribute("data-sample")).toBe(pm.kind === "ai" ? pm.entry.jobId : "floating");
-    expect(placeLabelProblems(container.querySelector("figure.nx-chat .nx-result-art")!, pm, dictionaries.en.site)).toEqual([]);
+    // The card asks for the Silk Road video, so its picture is that example's own (THUMB_ART), labelled AI-generated: never a
+    // sample made from another prompt (it was a chocolate pour, owner 2026-11-14), and never a stock picture with no note.
+    const chat = container.querySelector("figure.nx-chat")!;
+    expect(chat.querySelector(".nx-bubble")?.textContent).toContain(dictionaries.en.site.caps.items[0].bubble);
+    const pic = chat.querySelector(".nx-result-art img")!;
+    expect(pic.getAttribute("data-art-id")).toBe(THUMB_ART);
+    expect(pic.getAttribute("alt")).toBe(dictionaries.en.site.art.alts[THUMB_ART]);
+    expect(chat.querySelector("[data-showcase-entry], [data-sample-job], [data-sample], video")).toBeNull();
+    expect(chat.querySelector(".nx-result-art .nx-result-badge[data-kind='ai']")?.textContent).toBe(dictionaries.en.site.gallery.badge);
+    expect(chat.querySelector("figcaption")).toBeNull();
     expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();
   });
 });

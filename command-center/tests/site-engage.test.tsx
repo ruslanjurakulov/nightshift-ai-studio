@@ -350,7 +350,7 @@ describe("the stock-picture disclosure is printed, not only labelled", () => {
     for (const c of container.querySelectorAll("[aria-roledescription='carousel']")) expect(c.closest("section#watch[data-sample-section]"), "carousel").toBeTruthy();
     // The first screen, the Studio showcase, the approval screen's thumbnail and the closing panel: four different pictures (a
     // stock still or a sample each).
-    const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job"));
+    const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job") ?? i.getAttribute("data-art-id"));
     expect(used).toHaveLength(4);
     expect(new Set(used).size).toBe(4);
     // A sample in one of those places is not shown again in the gallery.

@@ -460,6 +460,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-result-art { position: relative; overflow: hidden; border-radius: 20px; background: #12151c; aspect-ratio: 16 / 9; }
 .nx-result-art[data-ratio="audio"] { aspect-ratio: 16 / 7; }
 .nx-result-art .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* The Silk Road example's picture in a chat card's frame (/pricing): a 16:9 picture in a 16:10 or 16:9 frame, covered. */
+.nx-result-art img[data-art-id="thumb-silkroad"] { object-fit: cover; }
 .nx-result-badge {
   position: absolute;
   left: 12px;
@@ -1705,26 +1707,37 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(110px +
 .nx-wall-out .nx-clip { inset: 0; width: 100%; height: 100%; }
 .nx-wall-notyet { justify-self: start; margin-top: 4px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); font-size: 13px; color: var(--ns-text-dim); }
 .nx-wall-credit { margin-top: 4px; font-size: 13px; color: var(--ns-text-dim); }
-.nx-wall-from, .nx-wall-model-note { font-size: 13px; line-height: 1.4; color: var(--ns-text-dim); }
+.nx-wall-from { font-size: 13px; line-height: 1.4; color: var(--ns-text-dim); }
 
 /* ── The live steps of "How it works" (components/landing/Landing.tsx StepLive): one fixed height each, so nothing shifts. ── */
-/* The live piece spans the step's row on a phone (the numeral and the words keep their two columns under it); from 860 px the three
-   stand side by side at one height, so the numerals line up. */
-.nx-step-live { grid-column: 1 / -1; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; margin-bottom: 14px; }
-@media (min-width: 860px) { .nx-step-live { min-height: 196px; } }
+/* Each live piece stands on a stage of its own, the same box for all three. From 860 px the three stand side by side and their
+   stages are one fixed height, so the numerals under them start on one line. Before, only a min-height was shared: the typed ask
+   and the Generate key sat low in it while the phone (taller than both) stood above them, and read as pushed up and out of line
+   (owner, 2026-11-14). On a phone the steps are stacked, so a stage is as tall as what is on it. */
+.nx-step-live { grid-column: 1 / -1; display: flex; flex-direction: column; justify-content: center; gap: 10px; margin-bottom: 14px; padding: 16px; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
+@media (min-width: 860px) { .nx-step-live { height: 264px; margin-bottom: 18px; padding: 20px; } }
 /* With a live piece on top, a phone's step is one column: the piece, the numeral, the title, the words. */
 .nx-strip-step:has(.nx-step-live) { grid-template-columns: minmax(0, 1fr); }
 .nx-strip-step:has(.nx-step-live) > * { grid-column: 1; grid-row: auto; }
-.nx-step-input { display: block; min-height: 72px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--ns-rule); background: var(--ns-ground); font-size: 15px; line-height: 1.45; color: var(--ns-text); }
+.nx-step-input { display: block; min-height: 72px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 15px; line-height: 1.45; color: var(--ns-text); }
 .nx-step-key { align-self: flex-start; display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 14px; background: var(--st-lit-bg); color: var(--st-lit-fg); font-family: var(--font-display); font-size: 16px; font-weight: 600; }
 .nx-step-price { font-size: 14px; color: var(--ns-text-dim); }
 .nx-step-price[data-known="true"] { color: var(--ns-text); font-weight: 500; }
-.nx-step-live[data-step="approve"] { flex-direction: row; align-items: flex-end; justify-content: flex-start; gap: 14px; }
-.nx-step-phone { position: relative; flex: 0 0 104px; width: 104px; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 18px; border: 3px solid #1b1b22; background: #0b0b10; box-shadow: 0 12px 30px -18px rgba(0, 0, 0, 0.6); }
-.nx-step-shot { display: block; width: 100%; height: 100%; object-fit: cover; }
-.nx-step-phone .nx-clip { inset: 0; width: 100%; height: 100%; }
+/* The phone fills its stage's height (a fixed 216 px on a phone, where the stage has no height of its own), centred, its labels on it. */
+.nx-step-live[data-step="approve"] { flex-direction: row; align-items: stretch; justify-content: center; gap: 14px; padding-block: 12px; }
+.nx-step-phone { position: relative; flex: none; height: 216px; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 20px; border: 3px solid #1b1b22; background: #0b0b10; box-shadow: 0 12px 30px -18px rgba(0, 0, 0, 0.6); }
+@media (min-width: 860px) { .nx-step-phone { height: 100%; } }
+/* The finished video of step 1's ask: the Silk Road example's own 16:9 picture (lib/site/art.ts THUMB_ART), cut to the phone's 9:16.
+   A 9:16 cut of a 16:9 frame is 32% of its width; 86% across puts that window on the right madrasa's portal and its minaret (the
+   picture's x 565 to 869 of 960), not on the empty square in the middle. The drift (.nx-drift-pic: reduced motion and the pause
+   switch keep it still) pushes in towards the minaret, so the slow zoom never uncovers the plaza's empty left. */
+.nx-step-shot { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 86% 50%; }
+.nx-step-phone .nx-step-shot { transform-origin: 70% 35%; }
 .nx-step-private { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 2; padding: 3px 6px; border-radius: 8px; background: rgba(0, 0, 0, 0.8); font-size: 13px; line-height: 1.25; color: #fff; text-align: center; }
-.nx-step-credit { flex-direction: column; align-items: flex-start; font-size: 13px; color: var(--ns-text-dim); }
+.nx-step-credit { position: absolute; top: 6px; left: 6px; right: 6px; z-index: 2; justify-content: center; }
+.nx-step-credit .nx-ai-badge { padding: 2px 8px; font-size: 13px; line-height: 1.25; text-align: center; }
+/* The third step's way to the whole approval story (who may switch publishing on, which cut, for how long). */
+.nx-strip-more { justify-self: start; margin-top: 6px; }
 
 /* ── The Approvals band's drawn approval screen (components/landing/ApprovalCard.tsx) ──
    A dark stage of its own instead of a picture: on a phone the headline goes under it (nothing covers the screen it draws); from
@@ -1733,7 +1746,13 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(110px +
 .nx-show-card[data-art="drawn"] .nx-show-head { grid-area: 2 / 1; padding: 22px 22px 0; background: none; }
 .nx-show-card[data-art="drawn"] .nx-show-rest { grid-area: 3 / 1; }
 @media (min-width: 860px) {
-  .nx-show-card[data-art="drawn"] .nx-show-pic { justify-items: end; padding: 40px 56px; }
+  /* The drawn screen is as tall as it is, not as tall as a photograph's band. The band's 560 px floor is for a picture that fills
+     the card; here the screen (about 420 px) and the words sat centred in it with an empty strip of stage above and below, and
+     scrolled to "How it works" that strip was all that showed under the header: a blank rounded box (owner, 2026-11-14). So the
+     words and the screen are two columns in the flow, the card is the taller of the two, and the stage colour is the card's. */
+  .nx-show-card[data-art="drawn"] { display: grid; grid-template-columns: 46% minmax(0, 1fr); align-items: center; min-height: 0; background: radial-gradient(120% 90% at 80% 20%, #2a2463 0%, #141327 46%, #0b0a12 100%); }
+  .nx-show-card[data-art="drawn"] .nx-show-text { grid-area: 1 / 1; width: auto; padding-block: 44px; }
+  .nx-show-card[data-art="drawn"] .nx-show-pic { position: relative; inset: auto; z-index: auto; grid-area: 1 / 2; justify-items: end; padding: 36px 56px 36px 0; background: none; }
   .nx-show-card[data-art="drawn"] .nx-show-pic::after { display: none; }
   .nx-show-card[data-art="drawn"] .nx-show-head { padding: 0; }
 }
