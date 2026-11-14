@@ -1,10 +1,14 @@
 """Voice to video (migration 0171) on the worker: the adapter of our own engine, the registry entry, the seam and the worker.
 
-The render and the transcription are replaced by fakes here (a real render is opt-in, test_the_real_engine below); nothing
-touches a network or spends anything. What must hold:
+The render is replaced by a fake and the transcription's HTTP layer by a fake session (a real render is opt-in,
+test_the_real_engine below); nothing touches a network or spends anything. What must hold:
 
-* "configured" means the engine is installed on THIS machine (npx, video-engine/node_modules, Whisper and its model, the sound
-  effects), never a key; anything missing fails the job before anything runs, naming the fix, and the hold is released;
+* "configured" means the engine is installed on THIS machine (npx, video-engine/node_modules, the sound effects, Inter) and
+  the ElevenLabs key is in its env; anything missing fails the job before anything runs, naming the fix (the key by its
+  NAME, never Whisper), and the hold is released;
+* the words come from ElevenLabs Scribe and from nothing else: no local Whisper fallback, each vendor refusal named by the
+  vendor's own word with its fix, a stop or the time limit failing the job at once, an empty transcript the adapter's own
+  "no words" refusal, and the key in no message and no log line;
 * the person's recording and look are what is rendered: no planner model, no look filled in here, no music, nothing else;
 * every refusal is a named failure (no words, too long, unreadable, the render failing or timing out) and never a video of
   something else; the operator's log gets Remotion's tail, the job row never does (it names this machine's paths);
@@ -35,11 +39,15 @@ from modules import model_registry as reg
 from modules import voice_explainer as ve
 from modules.capabilities import build_adapter
 from modules.capabilities import voice_video as vv
+from modules.capabilities.audio import scribe_form
 from modules.capabilities.base import (
+    E_AUTH,
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
     E_NOT_CONFIGURED,
     E_NOT_FOUND,
+    E_QUOTA,
+    E_RATE_LIMITED,
     E_UNAVAILABLE,
     EXPLAINER_LOOKS,
     MEDIA_INPUT,
@@ -50,6 +58,7 @@ from modules.capabilities.base import (
     PollResult,
     SUCCEEDED,
 )
+from tests.test_capabilities import FakeResp
 from tests.test_creative_media_inputs import FakeStore, SourceQueue, put_asset
 from tests.test_creative_worker import JOB, ORG, FakeCredits, job
 
@@ -60,36 +69,75 @@ MP4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2" + b"\x00" * 1024
 WORDS = [{"word": "Salom.", "start": 0.1, "end": 0.6}, {"word": "Bu", "start": 0.9, "end": 1.1},
          {"word": "narx", "start": 1.2, "end": 1.6}, {"word": "10", "start": 1.7, "end": 2.0},
          {"word": "dollar.", "start": 2.1, "end": 2.6}]
+#: Shaped like an ElevenLabs key, so a leak would be seen whatever form it takes in a message or a log line.
+KEY = "sk_0123456789abcdef0123456789abcdef0123456789abcdef"
+ENV = {vv.KEY_ENV: KEY}
+
+
+def scribe_body(words, language="uzb"):
+    """What Scribe answers: each word, then the vendor's own spacing entry; an audio event at the end."""
+    entries = []
+    for w in words:
+        entries.append({"text": w["word"], "start": w["start"], "end": w["end"], "type": "word", "logprob": -0.1})
+        entries.append({"text": " ", "start": w["end"], "end": w["end"], "type": "spacing"})
+    entries.append({"text": "(music)", "start": 2.7, "end": 2.9, "type": "audio_event"})
+    return {"language_code": language, "language_probability": 0.97, "text": "x", "words": entries}
+
+
+def refusal(status, code, message="no", type_=None):
+    return FakeResp(status, {"detail": {"type": type_ or code, "code": code, "message": message}})
+
+
+class ScribeSession:
+    """The transcription's HTTP layer: records each call (and the bytes uploaded) and answers with the engine's words, or
+    ``engine.answer`` (a response or an exception), after ``engine.block`` is set when one is given."""
+
+    def __init__(self, engine):
+        self.engine = engine
+        self.calls = []
+        self.uploaded = []
+
+    def request(self, method, url, **kw):
+        self.calls.append((method, url, kw))
+        files = kw.get("files") or {}
+        if "file" in files:
+            self.uploaded.append(files["file"][1].read())
+        if self.engine.block is not None:
+            self.engine.block.wait(30)
+        answer = self.engine.answer
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer if answer is not None else FakeResp(200, scribe_body(self.engine.words))
 
 
 class Engine:
-    """A machine with the engine installed: a fake video-engine, a Whisper model file, the effects."""
+    """A machine with the engine installed: a fake video-engine, the effects, and a fake Scribe behind the HTTP layer."""
 
     def __init__(self, root: Path):
         self.engine = root / "video-engine"
         (self.engine / "node_modules" / "remotion").mkdir(parents=True)
         (self.engine / "node_modules" / ".remotion").mkdir()
-        self.whisper = root / "whisper"
-        self.whisper.mkdir()
-        (self.whisper / vv.WHISPER_FILE).write_bytes(b"model")
         self.sfx = root / "sfx"
         self.sfx.mkdir()
         for n in ve.SFX_NEEDED:
             (self.sfx / f"{n}.wav").write_bytes(b"RIFF")
         self.rendered = []
-        self.transcribed = []
+        self.sessions = []
         self.words = WORDS
+        self.answer = None
+        self.block = None
         self.render_error = None
         self.decoded = []
 
-    def decode(self, src, dst):
-        # Stands in for ffmpeg (the real one is TheDecoder, below): the "WAV" is the recording's bytes.
-        self.decoded.append((Path(src), Path(dst)))
-        shutil.copyfile(src, dst)
+    @property
+    def transcribed(self):
+        """Every call made to the transcription, by every adapter this engine built."""
+        return [c for s in self.sessions for c in s.calls]
 
-    def transcribe(self, audio, work_dir, root):
-        self.transcribed.append((Path(audio), Path(work_dir), Path(root)))
-        return list(self.words)
+    def decode(self, src, dst, **shape):
+        # Stands in for ffmpeg (the real one is TheDecoder, below): the "WAV" is the recording's bytes.
+        self.decoded.append((Path(src), Path(dst), shape))
+        shutil.copyfile(src, dst)
 
     def render(self, props, out, *, files, engine_dir, browser, timeout_s, tmp_dir, on_spawn=None):
         self.rendered.append({"props": props, "out": Path(out), "files": dict(files), "engine_dir": engine_dir,
@@ -99,11 +147,12 @@ class Engine:
         Path(out).write_bytes(MP4)
         return Path(out)
 
-    def adapter(self, env=None, **over):
-        kw = dict(env=env or {}, engine_dir=self.engine, sfx_dir=self.sfx, whisper_dirs=(self.whisper,),
-                  transcribe=self.transcribe, render=self.render, has_npx=lambda: True, whisper_installed=lambda: True,
-                  which=lambda name: f"/usr/bin/{name}", font_family=lambda: "Inter", decode=self.decode,
-                  stop=threading.Event())
+    def adapter(self, env=None, key=True, **over):
+        session = ScribeSession(self)
+        self.sessions.append(session)
+        kw = dict(env={**(ENV if key else {}), **(env or {})}, session=session, engine_dir=self.engine, sfx_dir=self.sfx,
+                  render=self.render, has_npx=lambda: True, which=lambda name: f"/usr/bin/{name}",
+                  font_family=lambda: "Inter", decode=self.decode, stop=threading.Event())
         kw.update(over)
         return vv.VoiceVideoAdapter(**kw)
 
@@ -128,20 +177,40 @@ class Tmp(unittest.TestCase):
 
 
 class Configured(Tmp):
-    def test_ready_means_the_engine_is_installed_never_a_key(self):
+    def test_ready_means_the_engine_is_installed_and_the_elevenlabs_key_is_set(self):
         a = self.e.adapter()
         self.assertEqual(a.missing(), [])
         self.assertTrue(a.configured())
-        # Keys change nothing either way: there is no key to have.
-        self.assertTrue(self.e.adapter(env={"OPENAI_API_KEY": "sk-whatever-1234567890"}).configured())
-        self.assertEqual(vv.VoiceVideoAdapter.key_env, ())
+        # The key every ElevenLabs adapter reads, no new secret name; another vendor's key is not it.
+        self.assertEqual(vv.VoiceVideoAdapter.key_env, ("ELEVENLABS_API_KEY",))
+        bare = self.e.adapter(key=False, env={"OPENAI_API_KEY": "sk-whatever-1234567890"})
+        self.assertFalse(bare.configured())
+        (msg,) = bare.missing()
+        self.assertIn("ELEVENLABS_API_KEY is not set", msg)
+
+    def test_missing_names_the_key_never_whisper_and_whisper_is_not_needed(self):
+        # Rule 4: Whisper is not a requirement, so it cannot be a quiet substitute either. With no whisper module at all
+        # (an import would fail) the machine is ready; without the key, the key is what is named.
+        with mock.patch.dict(sys.modules, {"whisper": None}):
+            self.assertEqual(self.e.adapter().missing(), [])
+            missing = self.e.adapter(key=False).missing()
+        self.assertTrue(missing)
+        self.assertFalse(any("whisper" in m.lower() for m in missing), missing)
+        for gone in ("WHISPER_FILE", "SHARED_WHISPER_DIR", "whisper_transcribe", "whisper_root", "whisper_importable"):
+            self.assertFalse(hasattr(vv, gone), gone)
+
+    def test_the_key_is_never_in_what_is_missing_or_said_when_it_is_refused(self):
+        a = self.e.adapter(has_npx=lambda: False)
+        self.assertNotIn(KEY, " ".join(a.missing()))
+        with self.assertRaises(AdapterError) as cm:
+            a.submit(self.req(), vv.RULES_ENGINE)
+        self.assertNotIn(KEY, str(cm.exception))
 
     def test_each_missing_part_is_named_with_its_fix(self):
         cases = {
             "npx": dict(has_npx=lambda: False),
             "npm ci": dict(engine_dir=self.root / "nowhere"),
-            "pip install": dict(whisper_installed=lambda: False),
-            "bakes it in": dict(whisper_dirs=(self.root / "empty",)),
+            "ELEVENLABS_API_KEY is not set": dict(key=False),
             "generate_assets.py": dict(sfx_dir=self.root / "nosfx"),
             "ffmpeg is not on PATH": dict(which=lambda n: None if n == "ffmpeg" else f"/usr/bin/{n}"),
             "ffprobe is not on PATH": dict(which=lambda n: None if n == "ffprobe" else f"/usr/bin/{n}"),
@@ -165,13 +234,6 @@ class Configured(Tmp):
         self.assertEqual(self.e.adapter(font_family=lambda: "Inter,Inter Display").missing(), [])
         self.assertTrue(self.e.adapter(font_family=lambda: "Interstate").missing())
 
-    def test_whisper_present_as_a_module_without_a_spec_does_not_break_the_check(self):
-        # find_spec raises ValueError for a sys.modules entry with no __spec__ (what a test double leaves behind).
-        stub = type(sys)("whisper")
-        stub.__spec__ = None
-        with mock.patch.dict(sys.modules, {"whisper": stub}):
-            self.assertTrue(vv.whisper_importable())
-
     def test_not_ready_fails_before_anything_runs(self):
         a = self.e.adapter(has_npx=lambda: False)
         with self.assertRaises(AdapterError) as cm:
@@ -181,11 +243,17 @@ class Configured(Tmp):
         self.assertEqual((self.e.transcribed, self.e.rendered), ([], []))
         self.seconds.assert_not_called()
 
-    def test_the_shared_whisper_copy_is_found_when_the_users_cache_is_empty(self):
-        # The creative worker runs as another user with HOME on a tmpfs: Whisper's default cache is empty there.
-        self.assertEqual(vv.whisper_root((self.root / "empty", self.e.whisper)), self.e.whisper)
-        self.assertIsNone(vv.whisper_root((self.root / "empty",)))
-        self.assertIn(vv.SHARED_WHISPER_DIR, vv.VoiceVideoAdapter().whisper_dirs)
+    def test_no_key_fails_before_anything_runs_and_nothing_is_sent(self):
+        with self.assertRaises(AdapterError) as cm:
+            self.e.adapter(key=False).submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_NOT_CONFIGURED, True))
+        self.assertIn("ELEVENLABS_API_KEY", cm.exception.message)
+        self.assertEqual((self.e.decoded, self.e.transcribed, self.e.rendered), ([], [], []))
+
+    def test_the_engine_build_pins_the_scribe_model_the_captions_job_sends(self):
+        # A new Scribe model is a new engine id (and so a new probe), never a quiet swap under the old proof.
+        self.assertEqual((vv.RULES_ENGINE, vv.SCRIBE_MODEL), ("voice-explainer-rules-2", "scribe_v2"))
+        self.assertEqual(reg.load()["elevenlabs-scribe-v2"].vendor_model, vv.SCRIBE_MODEL)
 
 
 class Submit(Tmp):
@@ -199,7 +267,10 @@ class Submit(Tmp):
         work = self.input / "voice-video"
         self.assertEqual((props["narration"], props["music"], props["captions"]), ("narration.wav", "", True))
         self.assertEqual(r["files"]["narration.wav"], work / "narration.wav")
-        self.assertEqual(self.e.decoded, [(self.rec, work / "narration.wav")])
+        # The narration is rendered at its own rate; only a 16 kHz mono copy of it is sent to be transcribed.
+        self.assertEqual(self.e.decoded, [(self.rec, work / "narration.wav", {}),
+                                          (work / "narration.wav", work / "speech.wav", {"rate": 16000, "channels": 1})])
+        self.assertFalse((work / "speech.wav").exists(), "the copy that was sent is gone once the words are back")
         self.assertEqual(sorted(k for k in r["files"] if k.startswith("sfx/")), ["sfx/deep_boom.wav", "sfx/whoosh.wav"])
         # The spoken number became a counter exactly as said; every scene comes from the words, not a model.
         # (The short greeting joins the next sentence: no scene flashes past.)
@@ -209,8 +280,17 @@ class Submit(Tmp):
         self.assertTrue(r["tmp_dir"].is_relative_to(self.input))
         self.assertEqual(r["timeout_s"], vv.RENDER_TIMEOUT_FLOOR_S + vv.RENDER_TIMEOUT_PER_SECOND * 3.0)
         self.assertIsNone(r["browser"])
-        (transcribed,) = self.e.transcribed
-        self.assertEqual((transcribed[0], transcribed[2]), (work / "narration.wav", self.e.whisper))
+        # One documented Scribe call: the captions job's form and model, the key in its header only, no language named
+        # (0176's params carry none: the vendor detects it), the worker's own file name, a limit from the recording.
+        ((method, url, kw),) = self.e.transcribed
+        self.assertEqual((method, url), ("POST", "https://api.elevenlabs.io/v1/speech-to-text"))
+        self.assertEqual(kw["headers"]["xi-api-key"], KEY)
+        self.assertNotIn(KEY, url)
+        self.assertEqual(kw["data"], scribe_form(vv.SCRIBE_MODEL))
+        self.assertNotIn("language_code", kw["data"])
+        self.assertEqual((kw["files"]["file"][0], kw["files"]["file"][2]), ("speech.wav", "audio/wav"))
+        self.assertEqual(kw["timeout"], vv.scribe_timeout(3.0))
+        self.assertIs(kw["allow_redirects"], False, "a redirect would carry the key to a host nobody checked")
         self.seconds.assert_called_once_with(work / "narration.wav")
         # The file is handed over by its path, never read into memory.
         self.assertIsNone(task.task_id)
@@ -293,7 +373,7 @@ class Submit(Tmp):
                 self.e.adapter().submit(self.req(source_seconds=priced), vv.RULES_ENGINE)
             self.assertEqual(cm.exception.code, E_BAD_REQUEST, priced)
             self.assertIn("the length it was priced on", cm.exception.message)
-            self.assertEqual(len(self.e.transcribed), n, "refused before Whisper runs")
+            self.assertEqual(len(self.e.transcribed), n, "refused before anything is sent to be transcribed")
 
     def test_no_words_heard_is_a_refusal_never_a_silent_or_empty_video(self):
         self.e.words = []
@@ -311,11 +391,12 @@ class Submit(Tmp):
         self.assertEqual(self.e.rendered, [])
 
     def test_a_transcription_that_crashes_is_the_engines_failure_not_no_words(self):
-        a = self.e.adapter(transcribe=mock.Mock(side_effect=RuntimeError("torch exploded")))
+        a = self.e.adapter(transcribe=mock.Mock(side_effect=RuntimeError("socket exploded")))
         with self.assertRaises(AdapterError) as cm:
             a.submit(self.req(), vv.RULES_ENGINE)
         self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
         self.assertNotIn("no words", cm.exception.message)
+        self.assertNotIn("socket exploded", cm.exception.message)
 
     def test_a_render_failure_keeps_the_machines_paths_out_of_the_job_row(self):
         self.e.render_error = ve.RenderFailed(f"Remotion failed (exit 1): Error at {self.root}/secret/path.tsx")
@@ -354,6 +435,216 @@ class Submit(Tmp):
         self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_UNAVAILABLE, True))
         self.assertIn("nothing was charged", cm.exception.message)
         self.assertEqual(len(self.e.rendered), 1)
+
+
+class Scribe(Tmp):
+    """The transcription: ElevenLabs speech-to-text, read by its own words, with no local fallback (CLAUDE.md rules 4, 6)."""
+
+    def fail(self, **over):
+        with self.assertRaises(AdapterError) as cm:
+            self.e.adapter(**over).submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual(self.e.rendered, [], "nothing is rendered from a failed transcription")
+        self.assertFalse((self.input / "voice-video").exists(), "a failed transcription leaves nothing behind")
+        self.assertFalse(vv._RENDER_LOCK.locked())
+        return cm.exception
+
+    def test_only_words_become_words_and_spacing_and_audio_events_are_dropped(self):
+        self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+        words = self.e.rendered[0]["props"]["words"]
+        self.assertEqual([w["text"] for w in words], [w["word"] for w in WORDS])
+        self.assertNotIn("(music)", [w["text"] for w in words])
+        self.assertNotIn(" ", [w["text"] for w in words])
+
+    def test_the_vendors_words_are_cleaned_as_the_captions_track_is(self):
+        # Words are text from outside: control and bidi marks out, times forward, never a word before the one before it.
+        self.e.words = [{"word": "Sa‮lom.", "start": 0.1, "end": 0.6}, {"word": "dunyo\u0007", "start": 0.4, "end": 1.0}]
+        self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+        words = self.e.rendered[0]["props"]["words"]
+        self.assertEqual([w["text"] for w in words], ["Salom.", "dunyo"])
+        self.assertGreaterEqual(words[1]["start_s"], words[0]["end_s"])
+
+    def test_a_word_without_its_times_is_left_out_never_put_at_zero(self):
+        self.e.words = [{"word": "Salom.", "start": 0.1, "end": 0.6}, {"word": "lost", "start": None, "end": None},
+                        {"word": "Bu", "start": 0.9, "end": None}, {"word": "narx.", "start": 1.2, "end": 1.6}]
+        with self.assertLogs(vv.logger, level=logging.WARNING) as logs:
+            self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual([w["text"] for w in self.e.rendered[0]["props"]["words"]], ["Salom.", "narx."])
+        self.assertIn("2 of 4 words came back without their times", "\n".join(logs.output))
+        self.assertNotIn("lost", "\n".join(logs.output), "the person's words are not logged")
+
+    def test_words_that_all_lack_their_times_are_the_vendors_fault_never_no_speech(self):
+        self.e.words = [{"word": "Salom", "start": None, "end": None}, {"word": "dunyo", "start": "x", "end": True}]
+        e = self.fail()
+        self.assertEqual(e.code, E_BAD_RESPONSE)
+        self.assertIn("without their times", e.message)
+        self.assertNotIn("no words were heard", e.message)
+
+    def test_an_empty_transcript_is_the_adapters_own_no_speech_refusal(self):
+        for body in ({"language_code": "uzb", "text": "", "words": []},
+                     {"language_code": "uzb", "text": "", "words": [{"text": " ", "start": 0, "end": 1, "type": "spacing"},
+                                                                   {"text": "(silence)", "start": 0, "end": 3,
+                                                                    "type": "audio_event"}]}):
+            self.e.answer = FakeResp(200, body)
+            e = self.fail()
+            self.assertEqual((e.code, e.not_accepted), (E_BAD_REQUEST, True), body)
+            self.assertIn("no words were heard", e.message)
+            self.assertIn("nothing was charged", e.message)
+
+    def test_an_answer_that_is_not_a_transcript_is_a_bad_response(self):
+        for answer in (FakeResp(200, "<html>"), FakeResp(200, {"transcripts": [{"words": []}]}), FakeResp(200, [])):
+            self.e.answer = answer
+            self.assertEqual(self.fail().code, E_BAD_RESPONSE)
+
+    def test_each_vendor_word_becomes_its_code_and_names_its_fix(self):
+        # (status, detail.code) -> our code, words of the fix, whether the refusal proves nothing was taken.
+        cases = [
+            (401, "invalid_api_key", E_AUTH, "set a valid ELEVENLABS_API_KEY", True),
+            (401, "missing_api_key", E_AUTH, "set a valid ELEVENLABS_API_KEY", True),
+            (401, "quota_exceeded", E_QUOTA, "top up ElevenLabs", True),          # the legacy shape: 401, not 402
+            (402, "insufficient_credits", E_QUOTA, "top up ElevenLabs", True),
+            (402, "payment_required", E_QUOTA, "top up ElevenLabs", True),
+            (429, "rate_limit_exceeded", E_RATE_LIMITED, "try again in a few minutes", True),
+            (429, "concurrent_limit_exceeded", E_RATE_LIMITED, "try again in a few minutes", True),
+            (429, "system_busy", E_UNAVAILABLE, "try again later", False),
+            (400, "invalid_audio_format", E_BAD_REQUEST, "export it again", False),
+            (400, "request_too_large", E_BAD_REQUEST, "export it again", False),
+            (503, "service_unavailable", E_UNAVAILABLE, "try again later", False),
+        ]
+        for status, word, code, fix, refused in cases:
+            with self.subTest(word=word):
+                self.e.answer = refusal(status, word, message=f"echo {KEY}")
+                e = self.fail()
+                self.assertEqual((e.code, e.http_status, e.not_accepted), (code, status, refused))
+                self.assertIn(fix, e.message)
+                self.assertIn(f"HTTP {status}, {word}", e.message)
+                self.assertIn("nothing was charged", e.message)
+                self.assertNotIn(KEY, e.message)
+                self.assertNotIn("echo", e.message, "the vendor's text is never quoted")
+        self.assertTrue(AdapterError(E_RATE_LIMITED).retryable and AdapterError(E_UNAVAILABLE).retryable)
+        self.assertFalse(AdapterError(E_AUTH).retryable or AdapterError(E_QUOTA).retryable)
+
+    def test_the_legacy_shape_and_a_body_without_a_word_still_get_a_code(self):
+        self.e.answer = FakeResp(401, {"detail": {"status": "quota_exceeded", "message": "out of characters"}})
+        self.assertEqual(self.fail().code, E_QUOTA)
+        self.e.answer = FakeResp(401, "Unauthorized")
+        self.assertEqual(self.fail().code, E_AUTH)
+        self.e.answer = FakeResp(302, "", headers={"location": "https://elsewhere.example/"})
+        self.assertEqual(self.fail().code, E_UNAVAILABLE)
+
+    def test_a_failing_transcription_never_falls_back_to_local_whisper(self):
+        whisper = mock.MagicMock()
+        for answer in (refusal(402, "insufficient_credits"), refusal(429, "system_busy"), FakeResp(500, "boom"),
+                       vv_requests().exceptions.ConnectionError("down")):
+            self.e.answer = answer
+            with mock.patch.dict(sys.modules, {"whisper": whisper}):
+                self.fail()
+        whisper.load_model.assert_not_called()
+        self.assertEqual(len(self.e.transcribed), 4, "one call each, never retried inside the paid job")
+
+    def test_a_request_that_times_out_says_try_later(self):
+        self.e.answer = vv_requests().exceptions.ReadTimeout("read timed out")
+        e = self.fail()
+        self.assertEqual((e.code, e.not_accepted), (E_UNAVAILABLE, False))   # the vendor may have taken it
+        self.assertIn("ReadTimeout", e.message)
+        self.assertIn("try again later", e.message)
+
+    def test_the_time_limit_grows_with_the_recording_and_is_capped(self):
+        self.assertEqual(vv.scribe_timeout(0), vv.SCRIBE_TIMEOUT_FLOOR_S)
+        self.assertEqual(vv.scribe_timeout(120), 60 + 0.5 * 120)
+        self.assertEqual(vv.scribe_timeout(600), 360)
+        self.assertEqual(vv.scribe_timeout(10_000), vv.SCRIBE_TIMEOUT_MAX_S)
+
+    def test_a_transcription_that_hangs_past_its_limit_is_given_up_at_once(self):
+        self.e.block = threading.Event()
+        self.addCleanup(self.e.block.set)
+        with mock.patch.object(vv, "scribe_timeout", return_value=0.2), mock.patch.object(vv, "SCRIBE_GRACE_S", 0.1):
+            t0 = time.monotonic()
+            e = self.fail()
+        self.assertLess(time.monotonic() - t0, 5)
+        self.assertEqual((e.code, e.not_accepted), (E_UNAVAILABLE, False))
+        self.assertIn("try again later", e.message)
+
+    def test_a_stop_during_the_transcription_fails_the_job_at_once(self):
+        stop = threading.Event()
+        self.e.block = threading.Event()
+        self.addCleanup(self.e.block.set)
+        sent = lambda: bool(self.e.transcribed)
+
+        def stop_once_sent():
+            deadline = time.monotonic() + 10
+            while not sent() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            stop.set()
+
+        threading.Thread(target=stop_once_sent, daemon=True).start()
+        t0 = time.monotonic()
+        with self.assertLogs(vv.logger, level=logging.WARNING):
+            e = self.fail(stop=stop)
+        self.assertLess(time.monotonic() - t0, 5, "never the request's own limit, never Docker's grace")
+        self.assertEqual((e.code, e.not_accepted), (E_UNAVAILABLE, False))
+        self.assertIn("stopped while the recording was being transcribed", e.message)
+        self.assertIn("nothing was charged", e.message)
+
+    def test_a_stop_after_the_decode_sends_nothing(self):
+        stop = threading.Event()
+
+        def decode(src, dst, **shape):
+            self.e.decode(src, dst, **shape)
+            if shape:
+                stop.set()   # the stop lands while the copy for transcription is made
+
+        e = self.fail(stop=stop, decode=decode)
+        self.assertEqual((e.code, e.not_accepted), (E_UNAVAILABLE, True))
+        self.assertEqual(self.e.transcribed, [])
+
+    def test_a_copy_for_transcription_that_fails_is_the_machines_fault(self):
+        def decode(src, dst, **shape):
+            if shape:
+                raise AdapterError(E_BAD_REQUEST, "the recording could not be decoded as sound", not_accepted=True)
+            self.e.decode(src, dst)
+
+        e = self.fail(decode=decode)
+        self.assertEqual(e.code, E_BAD_RESPONSE)
+        self.assertNotIn("upload", e.message)
+
+    def test_the_key_is_in_no_log_line_of_a_whole_job_or_of_a_failure(self):
+        with self.assertLogs(level=logging.DEBUG) as logs:
+            logging.getLogger().debug("start")
+            self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+            self.e.answer = refusal(401, "invalid_api_key", message=f"bad key {KEY}")
+            with self.assertRaises(AdapterError):
+                self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+        joined = "\n".join(logs.output)
+        self.assertNotIn(KEY, joined)
+        self.assertNotIn(KEY[:12], joined)
+
+
+def vv_requests():
+    import requests  # noqa: PLC0415
+
+    return requests
+
+
+class SharedScribeHelpers(unittest.TestCase):
+    """modules/capabilities/audio.py: the form and the vendor's words, shared with the captions job (0072)."""
+
+    def test_the_form_is_the_captions_jobs(self):
+        self.assertEqual(scribe_form("scribe_v2"), {"model_id": "scribe_v2", "timestamps_granularity": "word",
+                                                    "diarize": "false", "tag_audio_events": "false"})
+        self.assertEqual(scribe_form("scribe_v2", "uz")["language_code"], "uz")
+
+    def test_the_vendors_word_is_read_and_its_message_never(self):
+        from modules.capabilities.audio import elevenlabs_error_code, elevenlabs_error_word
+
+        self.assertEqual(elevenlabs_error_word(json.dumps({"detail": {"type": "payment_required", "code": "insufficient_credits"}})),
+                         "insufficient_credits")
+        self.assertEqual(elevenlabs_error_word(json.dumps({"detail": {"status": "quota_exceeded"}})), "quota_exceeded")
+        self.assertEqual(elevenlabs_error_word(json.dumps({"detail": {"type": "rate_limit_exceeded", "code": "Not A Word!"}})),
+                         "rate_limit_exceeded")
+        for text in ("", "not json", json.dumps({"detail": "quota exceeded"}), json.dumps([1]), json.dumps({"detail": {}})):
+            self.assertIsNone(elevenlabs_error_word(text), text)
+        self.assertIsNone(elevenlabs_error_code(400, json.dumps({"detail": {"code": "something_new"}})))
+        self.assertEqual(elevenlabs_error_code(429, json.dumps({"detail": {"code": "system_busy"}})), E_UNAVAILABLE)
 
 
 class Stop(Tmp):
@@ -424,7 +715,7 @@ class Stop(Tmp):
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs the real ffmpeg and ffprobe (the worker image has them)")
 class TheDecoder(unittest.TestCase):
     """The real ffmpeg on real files: a browser's streamed WebM (no duration in its header), a damaged file, and the whole
-    adapter on that WebM with only Whisper and Remotion stood in."""
+    adapter on that WebM with only Scribe's HTTP layer and Remotion stood in."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -462,14 +753,33 @@ class TheDecoder(unittest.TestCase):
         self.assertNotIn("upload", cm.exception.message)
 
     def test_the_adapter_renders_a_streamed_webm_and_checks_it_against_the_priced_length(self):
+        import io  # noqa: PLC0415
+        import wave  # noqa: PLC0415
+
         e = Engine(self.root / "machine")
-        a = e.adapter(decode=vv.decode_to_wav)   # the real ffmpeg and ffprobe; Whisper and Remotion stood in
+        rates = []
+        real_render = e.render
+
+        def render(props, out, **kw):
+            with wave.open(str(kw["files"]["narration.wav"])) as w:
+                rates.append(w.getframerate())
+            return real_render(props, out, **kw)
+
+        e.render = render
+        a = e.adapter(decode=vv.decode_to_wav)   # the real ffmpeg and ffprobe; Scribe's HTTP layer and Remotion stood in
         e.words = [{"word": "Salom.", "start": 0.2, "end": 1.0}, {"word": "Dunyo.", "start": 1.4, "end": 2.4}]
         task = a.submit(CapabilityRequest(capability=VOICE_EXPLAINER, look="dusk", input_media=(str(self.webm),),
                                           source_seconds=5.0), vv.RULES_ENGINE)
         (r,) = e.rendered
         self.assertAlmostEqual(r["props"]["duration_s"], 5.0, delta=0.1)
         self.assertEqual(r["props"]["narration"], "narration.wav")
+        # What went to ElevenLabs is a real 16 kHz mono 16-bit WAV of the whole recording (5 s = 160 kB, not the narration's
+        # own 48 kHz), and the narration that is rendered keeps its own rate.
+        (uploaded,) = a.session.uploaded
+        with wave.open(io.BytesIO(uploaded)) as w:
+            self.assertEqual((w.getnchannels(), w.getframerate(), w.getsampwidth()), (1, 16000, 2))
+            self.assertAlmostEqual(w.getnframes() / 16000, 5.0, delta=0.1)
+        self.assertEqual(rates, [48000])
         self.assertEqual(task.outputs[0].path.read_bytes(), MP4)
         with self.assertRaises(AdapterError) as cm:
             e.adapter(decode=vv.decode_to_wav).submit(
@@ -514,11 +824,19 @@ class Registry(unittest.TestCase):
     def test_it_ships_dark_and_is_our_own_engine(self):
         e = reg.load()[MODEL]
         self.assertEqual((e.provider, e.adapter, e.vendor_model), ("nightshift", "video.voice_explainer", vv.RULES_ENGINE))
+        # Its transcription is an ElevenLabs Service inside a product we sell: gated on the plan like every ElevenLabs entry,
+        # so the database refuses beta / ga until the owner has confirmed a Scale (or higher) plan and cleared it.
+        self.assertEqual(e.terms_gate, "plan_required:scale")
+        self.assertTrue(any("§2.B" in n for n in e.raw["terms_notes"]))
+        self.assertIn("speech-to-text", e.raw["api_documented"]["evidence"])
+        self.assertIn(vv.SCRIBE_MODEL, e.raw["api_documented"]["evidence"])
         self.assertEqual(e.capabilities, (VOICE_EXPLAINER,))
         self.assertEqual(e.explainer_looks, EXPLAINER_LOOKS)
         self.assertEqual(e.max_source_seconds, 600)
         self.assertEqual(e.doc_source, "own_engine")
-        # No price of ours in the file (the owner sets credit_prices), no vendor price at all, nothing confirmed.
+        # No price of ours in the file (the owner sets credit_prices), and no single vendor price per second: Scribe's is
+        # only part of the cost (it is in the note), and an operator preview quoted at it would be priced at the vendor
+        # share alone (0139). Nothing confirmed.
         self.assertIsNone(e.raw["pricing"]["provider_usd_per_unit"])
         self.assertFalse(e.raw["pricing"]["confirmed"])
         self.assertNotIn("operator_preview", e.raw)
@@ -552,8 +870,8 @@ class Registry(unittest.TestCase):
             out = pm.run_probe(e, env={}, voice_id="A" * 20, workdir=Path(tmp))
         self.assertEqual((out.ok, out.code), (False, "not_configured"))
         self.assertIn("install Node 22", out.message)
-        self.assertIn("engine=", pm.describe(e, {}, "A" * 20))
-        self.assertIn("one paid call, then a local render", pm.describe(e, {}, "A" * 20))
+        self.assertIn("engine+key=NO", pm.describe(e, {}, "A" * 20))
+        self.assertIn("two paid calls (the speech, then its transcription), then a local render", pm.describe(e, {}, "A" * 20))
 
     def test_the_rules_an_entry_must_keep(self):
         doc = json.loads(reg.REGISTRY_PATH.read_text())
@@ -900,8 +1218,8 @@ class Sweep(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("NIGHTSHIFT_VOICE_VIDEO_E2E"), "opt-in: a real render (needs npm ci in video-engine/ and a browser)")
 class TheRealEngine(unittest.TestCase):
-    """NIGHTSHIFT_VOICE_VIDEO_E2E=<narration.mp3>[:<words.json>] — the real Remotion render through the adapter. Whisper is used
-    unless a word track is given (a container without torch passes the narration's own track)."""
+    """NIGHTSHIFT_VOICE_VIDEO_E2E=<narration.mp3>[:<words.json>] — the real Remotion render through the adapter. ElevenLabs Scribe
+    is called (ONE PAID CALL, ELEVENLABS_API_KEY from the env) unless a word track is given."""
 
     def test_a_real_render(self):
         spec = os.environ["NIGHTSHIFT_VOICE_VIDEO_E2E"]
@@ -909,17 +1227,17 @@ class TheRealEngine(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             over = {}
             if words:
-                # The narration's own word track stands in for Whisper (said so in the report): everything else is real.
+                # The narration's own word track stands in for Scribe (said so in the report): everything else is real. The key
+                # check still runs, so a placeholder value is enough for it; nothing is sent.
                 track = json.loads(Path(words).read_text(encoding="utf-8"))
-                model = Path(tmp) / "whisper"
-                model.mkdir()
-                (model / vv.WHISPER_FILE).write_bytes(b"stand-in")
-                over = {"transcribe": lambda *_a: track.get("words", track) if isinstance(track, dict) else track,
-                        "whisper_installed": lambda: True, "whisper_dirs": (model,)}
+                over = {"transcribe": lambda *_a: track.get("words", track) if isinstance(track, dict) else track}
+                env = {**os.environ, vv.KEY_ENV: os.environ.get(vv.KEY_ENV) or "unused-placeholder"}
+            else:
+                env = os.environ
             src = Path(tmp) / "job" / "input" / ("source" + Path(audio).suffix)
             src.parent.mkdir(parents=True)
             shutil.copyfile(audio, src)
-            a = vv.VoiceVideoAdapter(env=os.environ, **over)
+            a = vv.VoiceVideoAdapter(env=env, **over)
             self.assertEqual(a.missing(), [])
             task = a.submit(CapabilityRequest(capability=VOICE_EXPLAINER, look="dusk", input_media=(str(src),)), vv.RULES_ENGINE)
             (f,) = a.fetch(PollResult(SUCCEEDED, task.outputs), Path(tmp) / "out")

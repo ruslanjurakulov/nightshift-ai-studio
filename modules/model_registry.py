@@ -531,15 +531,17 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if any(k not in EXPLAINER_LOOKS for k in (m.get("explainer_looks") or ())):
             errors.append(_err(mid, "explainer_looks must be looks the database accepts"))
         if VOICE_EXPLAINER in caps:
-            # Our own renderer draws it (no vendor): one capability per entry, so its probe proves exactly what is sold, and
-            # 0171 prices the recording's measured seconds against a stated longest input the engine can hold in one render.
+            # Our own renderer draws it (its one vendor call is the transcription): one capability per entry, so its probe
+            # proves exactly what is sold, and 0176 prices the recording's measured seconds against a stated longest input
+            # the engine can hold in one render.
             if caps != [VOICE_EXPLAINER]:
                 errors.append(_err(mid, "a voice video model lists only voice_explainer"))
             longest = m["limits"].get("max_source_seconds")
             if not longest or longest > 600:
                 errors.append(_err(mid, "voice_explainer needs limits.max_source_seconds of at most 600 (one render holds the whole video)"))
         if (m["api_documented"]["source"] == "own_engine") != (VOICE_EXPLAINER in caps):
-            # own_engine says "no vendor is called": true only of the capability our own renderer serves.
+            # own_engine says "our own renderer makes it" (any vendor call on the way is in evidence): true only of the capability
+            # that renderer serves.
             errors.append(_err(mid, "api_documented.source own_engine is for our own renderer (voice_explainer) and only for it"))
         if VIDEO_MUSIC in caps and not m["limits"].get("max_source_seconds"):
             # The vendor bills the video's seconds: without a documented longest input a length it refuses would be sold.

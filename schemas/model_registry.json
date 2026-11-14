@@ -6601,7 +6601,7 @@
       "display_name": "Nightshift Voice Video",
       "provider": "nightshift",
       "adapter": "video.voice_explainer",
-      "vendor_model": "voice-explainer-rules-1",
+      "vendor_model": "voice-explainer-rules-2",
       "capabilities": [
         "voice_explainer"
       ],
@@ -6625,8 +6625,8 @@
         "url": "https://www.remotion.dev/docs/cli/render",
         "checked_at": "2026-11-14",
         "source": "own_engine",
-        "evidence": "No vendor is called: modules/voice_explainer.py renders the VoiceExplainer composition (video-engine/src/explainer) with `npx remotion render` on the creative worker; the words come from local Whisper (docs/VOICE_EXPLAINER.md).",
-        "note": "Rules planner only (deterministic, no model call). 1080x1920, 30 fps, word-timed captions, a whoosh on every cut; the person's narration is the soundtrack."
+        "evidence": "modules/voice_explainer.py renders the VoiceExplainer composition (video-engine/src/explainer) with `npx remotion render` on the creative worker; the words come from ONE ElevenLabs call, POST v1/speech-to-text (model_id scribe_v2, timestamps_granularity word), as for elevenlabs-scribe-v2 (docs/VOICE_EXPLAINER.md).",
+        "note": "Rules planner only (deterministic, no model call). 1080x1920, 30 fps, word-timed captions, a whoosh on every cut; the person's narration is the soundtrack. vendor_model rules-2 = this engine with scribe_v2 (rules-1 was local Whisper base)."
       },
       "pricing": {
         "unit": "second",
@@ -6634,12 +6634,15 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
-        "note": "No vendor bill: the cost is the worker's own CPU, about 3.4 s of render per second of narration on 4 cores (docs/VOICE_EXPLAINER.md, Capacity). The owner sets the credit price: docs/sql/price_0171_voice_explainer.sql, applied after the probe."
+        "note": "No single vendor price: the worker's CPU (~3.4 s of render per second, docs/VOICE_EXPLAINER.md) plus ElevenLabs Scribe at $0.20 an audio hour = $0.0000556/s (as elevenlabs-scribe-v2). The owner sets the credit price after the probe: docs/sql/price_0176_voice_explainer.sql."
       },
       "credit_unit": "model_nightshift_voice_explainer_second",
       "entitlement": null,
-      "terms_gate": null,
-      "terms_notes": [],
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025') §2.B: the transcription is an ElevenLabs Service inside a product we sell; Free, Starter, Creator and Pro customers may not do that. Needs Scale or higher.",
+        "The owner confirms the plan and clears this gate (docs/VOICE_EXPLAINER.md, Opening it). api_exposure stays any: an API customer gets a rendered video, not Scribe; whether §2.B(a) still asks for web_only is the owner's call."
+      ],
       "attribution": null,
       "api_exposure": "any",
       "limits": {

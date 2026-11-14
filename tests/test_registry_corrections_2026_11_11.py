@@ -39,9 +39,10 @@ STILL_ANY = {
     "openai-gpt-image-2.5-sunburst": "same",
     "luma-ray-3.2": "Luma's terms were not re-read on 2026-11-11",
     "seedance-1.5-pro": "past its shutdown (2026-11-11): not sold at all",
-    # Added after the review (0171): our own engine calls no vendor, so no vendor's terms limit where it is resold; the MCP Studio
-    # tools offer it like the web Studio does.
-    "nightshift-voice-explainer": "our own engine (voice_explainer, 0171): no vendor terms",
+    # Added after the review (0176): our own engine; the MCP Studio tools offer it like the web Studio does. Its transcription is
+    # ElevenLabs Scribe (terms-gated plan_required:scale like every ElevenLabs entry); an API customer receives a rendered video,
+    # never Scribe itself, and whether OEM Terms §2.B(a) still asks for web_only is the owner's decision (its terms_notes).
+    "nightshift-voice-explainer": "our own engine (voice_explainer, 0176), its transcription terms-gated; web_only is an owner decision",
 }
 
 #: Entries whose terms_gate changed from null on 2026-11-11 (each takes the model off sale).

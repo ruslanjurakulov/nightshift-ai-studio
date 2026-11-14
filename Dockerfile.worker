@@ -65,12 +65,10 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
  && pip install -c constraints.txt -r requirements.txt
 # Whisper's "base" model is fetched at build time, not in the middle of the first
 # run (after the script and the voice are already paid for). Downloaded into a
-# shared cache here, before COPY . . so a code change does not repeat it, and
-# linked from the run user's cache below. It stays in /opt, readable by every
-# user: the creative worker runs as uid 1000 with HOME on a tmpfs, and the voice
-# video (modules/capabilities/voice_video.py SHARED_WHISPER_DIR) reads this copy
-# rather than download the model in the middle of a paid job. The check fails
-# the build if the download or the load does not work.
+# scratch cache here, before COPY . . so a code change does not repeat it, and
+# moved into the run user's cache below. The check fails the build if the
+# download or the load does not work. (The Studio's voice video does not use it:
+# its words come from ElevenLabs speech-to-text, modules/capabilities/voice_video.py.)
 RUN XDG_CACHE_HOME=/opt/whisper-cache python -c "import whisper; whisper.load_model('base'); print('whisper base cached')" \
  && chmod -R a+rX /opt/whisper-cache
 # requirements.txt includes pillow-heif (HEIC photos in the media library, 0044):
@@ -117,7 +115,7 @@ RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_sec
     fi \
  && useradd --create-home --uid 10001 nightshift \
  && mkdir -p /home/nightshift/.cache \
- && ln -s /opt/whisper-cache/whisper /home/nightshift/.cache/whisper \
+ && mv /opt/whisper-cache/whisper /home/nightshift/.cache/whisper \
  && chown -R nightshift:nightshift /home/nightshift/.cache \
  && python tools/generate_assets.py \
  && mkdir -p output history logs assets downloads \

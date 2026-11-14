@@ -100,7 +100,7 @@
           "properties": {
             "url": {"$ref": "#/$defs/https_url"},
             "checked_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
-            "source": {"description": "Where the call is documented: the vendor's SDK, its docs (searched), a third party, or own_engine: no vendor at all, the platform's own renderer in this repository (url: the framework it runs on).", "enum": ["vendor_sdk", "vendor_docs_search", "third_party", "own_engine"]},
+            "source": {"description": "Where the call is documented: the vendor's SDK, its docs (searched), a third party, or own_engine: the platform's own renderer in this repository (url: the framework it runs on; a vendor call it makes on the way, such as the voice video's transcription, is named in evidence).", "enum": ["vendor_sdk", "vendor_docs_search", "third_party", "own_engine"]},
             "evidence": {"type": "string", "minLength": 10, "maxLength": 400},
             "note": {"type": "string", "maxLength": 300}
           }
