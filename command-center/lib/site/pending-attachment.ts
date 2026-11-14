@@ -8,8 +8,8 @@
  * is priced or started by any of that: the person still presses Generate and sees the price (CLAUDE.md #3).
  *
  * The record is bound to the link that was made for it: a random nonce is kept with it and carried as `attach=<nonce>`, and the
- * Studio takes the record only when the two match. It is removed on sign-in (unless that sign-in carries its link), on sign-out,
- * when it is taken, and by a sweep once its hour is over, on the landing and on every app page.
+ * Studio takes the record only when the two match. It is removed on sign-in (unless that sign-in carries its link), on sign-out
+ * (even without its localStorage mark), when it is taken, and by a sweep once its hour is over, on the landing and on every app page.
  *
  * The record can be gone by the time the Studio looks (another browser, another device, cleared storage, past the hour, private
  * mode): the Studio then says so in words rather than opening a form that looks as if the file were there (CLAUDE.md #5).
@@ -230,10 +230,17 @@ export async function takePending(store: PendingStore | null, nonce: string, now
   return { state: "ready", file, kind: record.kind };
 }
 
-/** Remove the kept file whatever it is (sign-out, a sign-in that does not carry its link). Never throws. */
-export async function discardPending(store: PendingStore | null = indexedDbStore(), mark: Mark | null = marks()): Promise<void> {
+/**
+ * Remove the kept file whatever it is (a sign-in that does not carry its link). Never throws. Without the mark it does not open
+ * IndexedDB (a sign-in in a browser that never kept a file), unless `evenWithoutMark`: see discardPendingAtSignOut.
+ */
+export async function discardPending(
+  store: PendingStore | null = indexedDbStore(),
+  mark: Mark | null = marks(),
+  opts: { evenWithoutMark?: boolean } = {},
+): Promise<void> {
   try {
-    if (mark && !mark.getItem(PENDING_MARK)) return;
+    if (!opts.evenWithoutMark && mark && !mark.getItem(PENDING_MARK)) return;
   } catch {
     // Unreadable mark: look anyway.
   }
@@ -247,6 +254,15 @@ export async function discardPending(store: PendingStore | null = indexedDbStore
   } catch {
     // As above.
   }
+}
+
+/**
+ * Sign-out: the record goes even when the mark does not say one is kept. The mark is a separate write that can fail (storage full,
+ * a private mode that refuses localStorage) or be cleared on its own, and a record left behind would sit in a browser the next
+ * person signs in to.
+ */
+export function discardPendingAtSignOut(store: PendingStore | null = indexedDbStore(), mark: Mark | null = marks()): Promise<void> {
+  return discardPending(store, mark, { evenWithoutMark: true });
 }
 
 /** Whether a destination after sign-in is the Studio link made for a kept file (then the sign-in keeps it). */

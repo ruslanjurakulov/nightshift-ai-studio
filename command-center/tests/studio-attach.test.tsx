@@ -124,6 +124,8 @@ const composer = () => screen.getByTestId("composer");
 const box = () => composer().querySelector("textarea") as HTMLTextAreaElement;
 const chooseMode = (name: string) => fireEvent.click(within(screen.getByRole("radiogroup", { name: th.modesLabel })).getByRole("radio", { name: new RegExp(`^${name}`) }));
 const attachVia = (f: File) => {
+  // As a person does: [+] first (it takes focus out of the words), then the picker's answer.
+  fireEvent.click(screen.getByTestId("composer-attach"));
   const input = screen.getByTestId("composer-file") as HTMLInputElement;
   Object.defineProperty(input, "files", { configurable: true, value: [f] });
   fireEvent.change(input);
@@ -157,6 +159,20 @@ describe("the tool an attachment opens", () => {
       expect(needsVideo(c)).toBe(true);
       expect(Object.values(DESK_TOOLS).some((d) => d.includes(c))).toBe(true);
     }
+  });
+
+  // Re-review nit: Enhance whose upscale nobody sells opened a dead upscale form while its cut-out was on sale.
+  it("on a desk, prefers that desk's tool for the file that a model is sold for; with none on sale, its first tool for it", () => {
+    const sells = (...capabilities: string[]): StudioModel[] => [{ id: "m", displayName: "M", capabilities, beta: false }];
+    expect(toolForAttachment("image", sells("remove_bg"), "enhance")).toBe("remove_bg");
+    expect(toolForAttachment("image", sells("relight", "erase"), "enhance")).toBe("relight");
+    expect(toolForAttachment("video", sells("video_reframe"), "enhance")).toBe("video_reframe");
+    expect(toolForAttachment("image", sells("describe"), "image")).toBe("describe");
+    // Nothing of the desk's on sale: its first tool for the file, whose form says it is not on sale (never another desk's tool).
+    expect(toolForAttachment("image", [], "enhance")).toBe("upscale");
+    expect(toolForAttachment("image", sells("t2i"), "image")).toBe("edit");
+    expect(toolForAttachment("video", sells("t2v"), "enhance")).toBe("video_upscale");
+    expect(toolForAttachment("image", sells("upscale"), "video")).toBe("i2v");
   });
 
   it("carries the words a tool takes, cut to its own limit, and none to a tool that takes none", () => {
@@ -208,6 +224,29 @@ describe("the trip into the library", () => {
     expect(await go({ signal: ctl.signal })).toEqual({ ok: false, error: "still_checking" });
     expect(asked).toBe(2);
   });
+
+  // Re-review nit: the signal stopped only the polling; a page left mid-transfer kept sending the file.
+  it("hands its signal to the ticket request and the PUT, so an abort stops the transfer itself", async () => {
+    const ctl = new AbortController();
+    const seen: Array<[string, AbortSignal | undefined, RequestCredentials | undefined]> = [];
+    const put = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      seen.push([`${init?.method ?? "GET"} ${url}`, init?.signal ?? undefined, init?.credentials]);
+      if (init?.method !== "PUT") return put(url, init);
+      // A transfer that runs until it is aborted, the way fetch rejects then.
+      return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    });
+    const r = go({ signal: ctl.signal });
+    await waitFor(() => expect(seen.map((s) => s[0])).toContain(`PUT /api/media/uploads/${TICKET}`));
+    ctl.abort();
+    expect((await r).ok).toBe(false);
+    expect(seen.find((s) => s[0] === "POST /api/media/uploads")?.[1]).toBe(ctl.signal);
+    expect(seen.find((s) => s[0].startsWith("PUT "))?.[1]).toBe(ctl.signal);
+    // Same-origin cookies as before: the request still sets no credentials mode of its own.
+    expect(seen.every((s) => s[2] === undefined)).toBe(true);
+    // Nothing was asked about an upload that never finished sending.
+    expect(seen.some((s) => s[0] === `GET /api/media/uploads/${TICKET}`)).toBe(false);
+  });
 });
 
 describe("the Studio composer's [+]", () => {
@@ -244,8 +283,9 @@ describe("the Studio composer's [+]", () => {
     expect(creates()).toEqual([]);
   });
 
-  // Lens M2: the words typed while the file uploads are the ones the box gets.
-  it("an upload that ends carries the words as typed meanwhile, not the ones it started with", async () => {
+  // Lens M2: the words typed while the file uploads are the ones the box gets. Re-review L2: typing meanwhile is touching the box,
+  // so it is not swapped; "Use it in the box" then carries the words as typed, not the ones the upload started with.
+  it("words typed while it uploads keep the box as it is; Use it in the box carries them as typed meanwhile", async () => {
     const d = deferred();
     hold = d.p;
     render(home());
@@ -254,9 +294,65 @@ describe("the Studio composer's [+]", () => {
     attachVia(pic());
     await waitFor(() => expect(screen.getByTestId("composer-uploading")).toBeTruthy());
     fireEvent.change(box(), { target: { value: "the fox walks into the light" } });
+    const before = composer();
     await act(async () => d.open());
+    await waitFor(() => expect(screen.getByTestId("composer-attach-ready")).toBeTruthy());
+    expect(composer()).toBe(before);
+    expect(composer().getAttribute("data-capability")).toBe("t2v");
+    fireEvent.click(screen.getByTestId("composer-attach-use"));
     await waitFor(() => expect(composer().getAttribute("data-capability")).toBe("i2v"));
     expect(box().value).toBe("the fox walks into the light");
+  });
+
+  // Re-review L2: the switch is a fresh mount, so a length (or a model, a shape) picked during the upload was thrown away.
+  it("a setting changed while it uploads is kept: the box is not remounted, the file is offered instead", async () => {
+    const d = deferred();
+    hold = d.p;
+    render(home());
+    chooseMode(th.modes.video);
+    attachVia(pic());
+    await waitFor(() => expect(screen.getByTestId("composer-uploading")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("composer-settings-key"));
+    const ten = within(screen.getByRole("group", { name: t.gen.durationLabel })).getAllByRole("button")[1];
+    fireEvent.click(ten);
+    const before = composer();
+    await act(async () => d.open());
+    await waitFor(() => expect(screen.getByTestId("composer-attach-ready")).toBeTruthy());
+    expect(composer()).toBe(before);
+    expect(composer().getAttribute("data-capability")).toBe("t2v");
+    expect(ten.getAttribute("aria-pressed")).toBe("true");
+    expect(within(screen.getByRole("group", { name: t.gen.durationLabel })).getAllByRole("button")[1]).toBe(ten);
+    expect(creates()).toEqual([]);
+  });
+
+  // Re-review L2: the remount autofocused a new box, which takes focus out of the words and breaks an IME composition.
+  it("the words box holding focus when it ends is not remounted; focus stays where it was", async () => {
+    const d = deferred();
+    hold = d.p;
+    render(home());
+    chooseMode(th.modes.video);
+    attachVia(pic());
+    await waitFor(() => expect(screen.getByTestId("composer-uploading")).toBeTruthy());
+    const words = box();
+    act(() => words.focus());
+    expect(document.activeElement).toBe(words);
+    await act(async () => d.open());
+    await waitFor(() => expect(screen.getByTestId("composer-attach-ready")).toBeTruthy());
+    expect(box()).toBe(words);
+    expect(document.activeElement).toBe(words);
+    expect(composer().getAttribute("data-capability")).toBe("t2v");
+  });
+
+  it("an untouched box, not focused, is still switched for the file (the automatic switch is kept for that case)", async () => {
+    const d = deferred();
+    hold = d.p;
+    render(home());
+    chooseMode(th.modes.video);
+    attachVia(pic());
+    await waitFor(() => expect(screen.getByTestId("composer-uploading")).toBeTruthy());
+    await act(async () => d.open());
+    await waitFor(() => expect(composer().getAttribute("data-capability")).toBe("i2v"));
+    expect(screen.queryByTestId("composer-attach-ready")).toBeNull();
   });
 
   // Lens M2: a choice the person made while it uploaded is never overridden; the file is offered instead.
@@ -317,6 +413,22 @@ describe("the Studio composer's [+]", () => {
     expect(asked).toBeLessThanOrEqual(at + 1);
   });
 
+  it("leaving the page mid-transfer aborts the PUT itself", async () => {
+    let putSignal: AbortSignal | null = null;
+    const base = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method !== "PUT") return base(url, init);
+      putSignal = init.signal ?? null;
+      return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    });
+    const view = render(home());
+    attachVia(pic());
+    await waitFor(() => expect(putSignal).not.toBeNull());
+    expect(putSignal!.aborted).toBe(false);
+    view.unmount();
+    expect(putSignal!.aborted).toBe(true);
+  });
+
   it("refuses a file that is not a picture or a video before anything is sent", () => {
     render(home());
     attachVia(new File(["x"], "a.mp3", { type: "audio/mpeg" }));
@@ -343,7 +455,7 @@ describe("the home page's kept file, after sign-up", () => {
     const nonce = keep();
     render(home({ pending: { nonce, words: "make the fox run" } }));
     await waitFor(() => expect(screen.getByTestId("composer-pending-confirm")).toBeTruthy());
-    expect(screen.getByTestId("composer-pending-confirm").textContent).toContain(th.attachFlow.confirmTitle.replace("{name}", "fox.jpg"));
+    expect(screen.getByTestId("composer-pending-confirm").textContent).toContain(th.attachFlow.confirmImage);
     expect(uploads()).toEqual([]);
     // Taken out of the browser at once (one transaction), whatever the answer.
     expect(kept.record).toBeNull();
@@ -355,6 +467,41 @@ describe("the home page's kept file, after sign-up", () => {
     const ticket = JSON.parse(String(fetchMock.mock.calls.find(([u, i]) => u === "/api/media/uploads" && i?.method === "POST")![1].body));
     expect(ticket.filename).toBe("fox.jpg");
     expect(creates()).toEqual([]);
+  });
+
+  // Re-review L1: on a shared browser, whoever signs in next saw the first visitor's picture (or video frame) and its file name.
+  it("shows neither the file's picture nor its name before Use, only its kind in words; both appear from Use on", async () => {
+    const made = vi.fn(() => "blob:local/1");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: made, revokeObjectURL: vi.fn() }));
+    const d = deferred();
+    hold = d.p;
+    const nonce = keep({ name: "passport-scan.jpg" });
+    render(home({ pending: { nonce, words: "" } }));
+    await waitFor(() => expect(screen.getByTestId("composer-pending-confirm")).toBeTruthy());
+    const card = screen.getByTestId("composer-pending-confirm");
+    expect(card.querySelector("img, video")).toBeNull();
+    expect(card.textContent).toContain(th.attachFlow.confirmImage);
+    expect(card.textContent).not.toContain("passport");
+    expect(screen.getByTestId("composer-attach-live").textContent).toBe(th.attachFlow.confirmImage);
+    expect(document.body.textContent).not.toContain("passport");
+    expect(document.querySelector('img[src^="blob:"], video[src^="blob:"]')).toBeNull();
+    // The file is never even turned into an address a picture could be drawn from.
+    expect(made).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("composer-pending-use"));
+    await waitFor(() => expect(screen.getByTestId("composer-uploading")).toBeTruthy());
+    expect(screen.getByTestId("composer-uploading").querySelector("img")?.getAttribute("src")).toBe("blob:local/1");
+    expect(screen.getByTestId("composer-uploading").textContent).toContain("passport-scan.jpg");
+    await act(async () => d.open());
+  });
+
+  it("a video kept on the home page is asked about as a video, with no frame of it drawn", async () => {
+    const nonce = keep({ name: "beach.mov", type: "video/quicktime", kind: "video", blob: new Blob([new Uint8Array(8)], { type: "video/quicktime" }) });
+    render(home({ pending: { nonce, words: "" } }));
+    await waitFor(() => expect(screen.getByTestId("composer-pending-confirm")).toBeTruthy());
+    const card = screen.getByTestId("composer-pending-confirm");
+    expect(card.textContent).toContain(th.attachFlow.confirmVideo);
+    expect(card.textContent).not.toContain("beach");
+    expect(card.querySelector("img, video")).toBeNull();
   });
 
   it("Discard uploads nothing and says so", async () => {
@@ -404,7 +551,10 @@ describe("the home page's kept file, after sign-up", () => {
       expect(f.switchedImage).toContain("{tool}");
       expect(f.switchedVideo).toContain("{tool}");
       expect(f.uploading).toContain("{name}");
-      expect(f.confirmTitle).toContain("{name}");
+      // Before Use nothing names the file: the question has no {name} to fill.
+      expect(f.confirmImage).not.toContain("{");
+      expect(f.confirmVideo).not.toContain("{");
+      expect(f.confirmImage).not.toBe(f.confirmVideo);
       expect(f.ready).toContain("{name}");
     }
   });
