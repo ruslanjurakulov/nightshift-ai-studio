@@ -79,6 +79,7 @@ export const studioCanvasUz: StudioCanvasDictionary = {
     no_output: "Avval bu tugunga biror narsa ulang: uning chiqishi hali nomaʼlum",
   },
   inspector: {
+    busy: "Hozir yaratilmoqda. Vazifa tugagach, forma yana ochiladi; ungacha boshqa hech narsa sarflanmaydi.",
     promptLabel: "Soʻzlar",
     promptHint: "Rasm, Video yoki Ovoz tuguniga ulansa, bu soʻzlar uning shaklini toʻldiradi. Bepul: bu matn.",
     wireHint: "Mos chiqishdan shu tugun kirishiga ulanish torting.",
@@ -126,6 +127,7 @@ export const studioCanvasUz: StudioCanvasDictionary = {
     close: "Yopish",
   },
   palette: {
+    keys: { up: "↑", down: "↓", enter: "Enter", esc: "Esc" },
     keyMove: "oʻtish",
     keyChoose: "tanlash",
     keyClose: "yopish",

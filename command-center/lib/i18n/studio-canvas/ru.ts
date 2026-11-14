@@ -79,6 +79,7 @@ export const studioCanvasRu: StudioCanvasDictionary = {
     no_output: "Сначала подайте что-нибудь на вход этого узла: его выход пока неизвестен",
   },
   inspector: {
+    busy: "Сейчас создаётся. Форма откроется снова, когда задача закончится; до тех пор ничего больше не тратится.",
     promptLabel: "Слова",
     promptHint: "Подключённые к узлу «Изображение», «Видео» или «Голос», эти слова заполнят его форму. Бесплатно: это текст.",
     wireHint: "Протяните связь от подходящего выхода к входу этого узла.",
@@ -126,6 +127,7 @@ export const studioCanvasRu: StudioCanvasDictionary = {
     close: "Закрыть",
   },
   palette: {
+    keys: { up: "↑", down: "↓", enter: "Enter", esc: "Esc" },
     keyMove: "перейти",
     keyChoose: "выбрать",
     keyClose: "закрыть",

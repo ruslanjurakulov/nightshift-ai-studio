@@ -88,6 +88,7 @@ export const studioCanvasEn = {
     no_output: "Wire something into this node first: its output is not known yet",
   },
   inspector: {
+    busy: "Making this now. The form opens again when the job ends; nothing more is spent until then.",
     promptLabel: "Words",
     promptHint: "Wired into an Image, Video or Voice node, these words fill its form. Free: they are text.",
     wireHint: "Drag a wire from a matching output onto this node's input.",
@@ -135,6 +136,7 @@ export const studioCanvasEn = {
     close: "Close",
   },
   palette: {
+    keys: { up: "↑", down: "↓", enter: "Enter", esc: "Esc" },
     keyMove: "move",
     keyChoose: "choose",
     keyClose: "close",

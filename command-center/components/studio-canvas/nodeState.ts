@@ -9,7 +9,11 @@ import { deskOpen, toolOpen, type ToolAvailability } from "@/lib/tool-availabili
 import type { LibraryPreview } from "@/components/studio/useLibraryImages";
 
 /** A node's job as last read: not read yet, read, or unreadable (network, RLS, gone). */
-export type JobReading = { state: "loading" } | { state: "ok"; job: StudioJob } | { state: "unknown" };
+/**
+ * A node's job as last read: not read yet, read, or unreadable (network, RLS, gone). `stale`: the last read failed, so this is the
+ * reading before it; it is still polled (with backoff), and a failed poll never ends polling or turns "working" into "unknown".
+ */
+export type JobReading = { state: "loading" } | { state: "ok"; job: StudioJob; stale?: boolean } | { state: "unknown" };
 
 export type NodeStatus =
   | "closed" // nothing on sale for this tool

@@ -257,7 +257,7 @@ export function StyleLibrary({
           onAdd={() => void add(open)}
           onUse={() => void use(open)}
           onClose={() => setOpenId(null)}
-          manageHref={path("/studio")}
+          manageHref={path("/studio/look")}
         />
       )}
     </div>

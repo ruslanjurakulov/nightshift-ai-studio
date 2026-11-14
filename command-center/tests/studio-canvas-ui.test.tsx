@@ -50,6 +50,8 @@ const JOB_DONE = "1a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 const JOB_FAIL = "2a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 const JOB_GONE = "5a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 const JOB_NEW = "6a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
+const JOB_SEQ = "7a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
+let seqReads = 0;
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
@@ -57,6 +59,7 @@ import { ShellProvider } from "@/components/shell/ShellContext";
 import { StudioCanvas } from "@/components/studio-canvas/StudioCanvas";
 import { UNKNOWN_TOOLS, type ToolAvailability } from "@/lib/tool-availability";
 import { layoutKey } from "@/lib/studio/canvas";
+import { refreshCredits } from "@/lib/credits-live";
 
 const en = dictionaries.en;
 const c = en.studioCanvas;
@@ -129,6 +132,12 @@ function mockFetch() {
     if (url.includes(JOB_DONE)) return new Response(JSON.stringify({ job: job(JOB_DONE, "completed", { result_asset_ids: [OUT] }) }), { status: 200 });
     if (url.includes(JOB_FAIL)) return new Response(JSON.stringify({ job: job(JOB_FAIL, "failed", { error_code: "provider_timeout" }) }), { status: 200 });
     if (url.includes(JOB_NEW)) return new Response(JSON.stringify({ job: job(JOB_NEW, "running") }), { status: 200 });
+    if (url.includes(JOB_SEQ)) {
+      seqReads += 1;
+      if (seqReads === 1) return new Response(JSON.stringify({ job: job(JOB_SEQ, "running") }), { status: 200 });
+      if (seqReads === 2) return new Response("bad gateway", { status: 502 });
+      return new Response(JSON.stringify({ job: job(JOB_SEQ, "completed", { result_asset_ids: [OUT] }) }), { status: 200 });
+    }
     return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
   }) as typeof fetch;
 }
@@ -153,6 +162,7 @@ const node = (id: string, kind: string, x = 0, extra: Record<string, unknown> = 
 
 beforeEach(() => {
   narrow = false;
+  seqReads = 0;
   window.localStorage.clear();
   panel.props = [];
   window.matchMedia = ((q: string) => ({ matches: narrow && q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {} })) as never;
@@ -385,6 +395,81 @@ describe("the board's hand", () => {
     await screen.findByTestId("canvas-board");
     openNode("img");
     await waitFor(() => expect(document.querySelector('[data-wire="p->img"]')!.getAttribute("class")).toContain("is-hl"));
+  });
+});
+
+describe("review fixes", () => {
+  it("the board's keys stay on the board: Backspace and arrows on an inspector button do nothing to the node", async () => {
+    store({ nodes: [node("a", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("a");
+    const close = await screen.findByRole("button", { name: c.inspector.close });
+    close.focus();
+    fireEvent.keyDown(close, { key: "ArrowRight" });
+    fireEvent.keyDown(close, { key: "Backspace" });
+    expect(document.querySelector('[data-node-id="a"]')).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].x).toBe(0);
+    expect(screen.getByTestId("canvas-inspector")).toBeTruthy();
+  });
+
+  it("Delete and ⌘Z in the prompt's words box edit the words, not the canvas", async () => {
+    store({ nodes: [node("p", "prompt", 0, { draft: "a fox" })], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("p");
+    const words = await screen.findByTestId("prompt-words");
+    words.focus();
+    fireEvent.keyDown(words, { key: "Delete" });
+    fireEvent.keyDown(words, { key: "z", ctrlKey: true });
+    expect(document.querySelector('[data-node-id="p"]')).toBeTruthy();
+  });
+
+  it("one failed read does not end the watch: running, then a 502, then completed lands on the node and refreshes credits and the library", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      store({ nodes: [node("v", "image", 0, { jobId: JOB_SEQ })], wires: [] });
+      mount();
+      await waitFor(() => expect(document.querySelector('[data-node-id="v"]')!.getAttribute("data-status")).toBe("working"));
+      const mediaReads = () => (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([u]) => String(u).startsWith("/api/media")).length;
+      const before = mediaReads();
+      // The 502: the node keeps its last good reading (still working), not "unknown".
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+      await waitFor(() => expect(seqReads).toBe(2));
+      expect(document.querySelector('[data-node-id="v"]')!.getAttribute("data-status")).toBe("working");
+      // Polling goes on (after a backoff) and the finished job lands.
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await waitFor(() => expect(document.querySelector('[data-node-id="v"]')!.getAttribute("data-status")).toBe("done"));
+      expect(refreshCredits).toHaveBeenCalled();
+      await waitFor(() => expect(mediaReads()).toBeGreaterThan(before));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a starter that needs a tool with nothing on sale is shown with its reason and builds nothing", async () => {
+    mount({ tools: { state: "known", sold: ["t2i"] } });
+    const clip = await screen.findByTestId("recipe-photoClip");
+    expect(clip.getAttribute("aria-disabled")).toBe("true");
+    expect(clip.textContent).toContain(c.palette.closedWhy);
+    fireEvent.click(clip);
+    expect(document.querySelectorAll("[data-node-id]")).toHaveLength(0);
+  });
+
+  it("Retry on a failed card refills the form from that job even when the inspector was closed", async () => {
+    store({ nodes: [node("a", "image", 0, { jobId: JOB_FAIL })], wires: [] });
+    mount();
+    await waitFor(() => expect(document.querySelector('[data-node-id="a"]')!.getAttribute("data-status")).toBe("failed"));
+    const before = panel.props.length;
+    fireEvent.click(screen.getByTestId("retry-a"));
+    await screen.findByTestId("canvas-inspector");
+    // A second form mount: the retry's seed (the first is the inspector's own).
+    await waitFor(() => expect(panel.props.length).toBeGreaterThan(before + 1));
   });
 });
 
