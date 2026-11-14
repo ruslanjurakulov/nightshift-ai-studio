@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 LOOKS = ("dusk", "midnight", "golden", "neon", "paper")
 #: Mirrors the closed catalogue in video-engine/src/explainer/types.ts.
 VISUAL_KINDS = ("none", "card", "stat", "progress", "characters", "emoji", "checklist", "chat")
-POSES = ("stand", "wave", "point", "think", "cheer", "sad", "sit")
+POSES = ("stand", "wave", "point", "think", "cheer", "sad", "sit", "walk")
 SETTINGS = ("street", "room", "office", "stage")
 PROPS = ("none", "laptop", "phone", "coin", "chart", "book")
 MOODS = ("worried", "happy", "shocked", "thinking", "angry", "calm")
@@ -400,7 +400,8 @@ Return a JSON array with exactly {len(sentences)} objects, in order, each:
     {{"kind":"none"}}
 }}
 All lengths are characters. A longer text, another value, or a missing field refuses the whole plan.
-Use only numbers and facts the sentence itself says. Vary the visuals; a story beat gets characters, a price or list gets a card."""
+Use only numbers and facts the sentence itself says. Vary the visuals; a story beat gets characters, a price or list gets a card.
+People act: "walk" walks in from the side, and two people with a phone, coin or book hand it from the first to the second."""
 
 
 def plan_model(sentences: Sequence[Sentence], gen: Callable[[str, Optional[str]], str], *, language: str = "") -> List[dict]:
@@ -466,7 +467,7 @@ def sound_cues(scenes: Sequence[Scene], sfx_dir: Optional[Path]) -> tuple:
 
 def build_props(*, look: str, duration_s: float, words: Sequence[Word], scenes: Sequence[Scene], narration: str,
                 music: str = "", music_volume: float = 0.08, sfx: Sequence[Mapping] = (), captions: bool = True,
-                width: int = 1080, height: int = 1920, fps: int = 30) -> dict:
+                media_card: bool = True, width: int = 1080, height: int = 1920, fps: int = 30) -> dict:
     """The VoiceExplainer props, exactly (video-engine/src/explainer/types.ts)."""
     if look not in LOOKS:
         raise ExplainerError(f"look {look!r} is not one of {', '.join(LOOKS)}")
@@ -479,6 +480,7 @@ def build_props(*, look: str, duration_s: float, words: Sequence[Word], scenes: 
         "words": [{"text": w.text, "start_s": round(w.start_s, 3), "end_s": round(w.end_s, 3)} for w in words],
         "scenes": [s.to_dict() for s in scenes],
         "captions": bool(captions),
+        "media_card": bool(media_card),
     }
 
 

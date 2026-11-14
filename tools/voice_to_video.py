@@ -88,6 +88,7 @@ def main(argv=None) -> int:
     ap.add_argument("--music", help="a music bed (mp3/wav); default: none")
     ap.add_argument("--sfx-dir", default=str(ROOT / "assets" / "sfx"), help="where whoosh/deep_boom are; 'none' for no effects")
     ap.add_argument("--no-captions", action="store_true")
+    ap.add_argument("--no-media-card", action="store_true", help="draw character scenes without the video-card frame")
     ap.add_argument("--width", type=int, default=1080)
     ap.add_argument("--height", type=int, default=1920)
     ap.add_argument("--fps", type=int, default=30)
@@ -150,7 +151,7 @@ def main(argv=None) -> int:
             files[music] = Path(args.music)
         props = ve.build_props(look=args.look, duration_s=duration, words=words, scenes=scenes,
                                narration=f"narration{audio.suffix.lower()}", music=music, sfx=cues,
-                               captions=not args.no_captions, width=args.width, height=args.height, fps=args.fps)
+                               captions=not args.no_captions, media_card=not args.no_media_card, width=args.width, height=args.height, fps=args.fps)
         if args.dump_props:
             Path(args.dump_props).write_text(json.dumps(props, ensure_ascii=False, indent=2), encoding="utf-8")
         logger.info("%d words, %d scenes, %.1f s, look %s — rendering…", len(words), len(scenes), duration, args.look)

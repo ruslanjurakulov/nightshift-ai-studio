@@ -13,7 +13,8 @@ What would break without these:
 * a counter showing "10" for "10 000 so'm" (a figure the narration never said);
 * a word track longer than the recording reaching Remotion, which then stops after everything was paid for;
 * the cheap checks (effects, plan file) running after the transcription and the paid planner call;
-* a render that keeps running after its timeout, or a public file name that escapes the render's folder.
+* a render that keeps running after its timeout, or a public file name that escapes the render's folder;
+* a pose drawn by the renderer (walk) that the validator refuses, or the reverse.
 """
 
 from __future__ import annotations
@@ -337,6 +338,21 @@ class CliOrder(unittest.TestCase):
     def test_impossible_frame_settings_are_refused_not_replaced(self):
         self.assertEqual(self.run_cli("--sfx-dir", "none", "--fps", "0")[0], 2)
         self.assertEqual(self.run_cli("--sfx-dir", "none", "--width", "1081")[0], 2)
+
+
+class WalkPose(unittest.TestCase):
+    def test_walk_is_in_the_closed_catalogue_on_both_sides_and_offered_to_the_planner(self):
+        self.assertIn("walk", ve.POSES)
+        self.assertIn('"walk"', TS_TYPES.split("export type Pose =", 1)[1].split(";", 1)[0])
+        self.assertEqual(ve.validate_visual({"kind": "characters", "setting": "street", "prop": "phone",
+                                             "cast": [{"pose": "walk", "color": 1}, {"pose": "sit", "color": 0}]})["cast"][0]["pose"], "walk")
+        self.assertIn("walk", ve.planner_prompt(ve.split_sentences(words("Bir ikki uch to'rt."))))
+
+    def test_the_media_card_is_on_by_default_and_can_be_turned_off(self):
+        ss = ve.split_sentences(words("Bir ikki uch to'rt."))
+        scenes = ve.build_scenes(ss, ve.plan_rules(ss), 2.0)
+        self.assertTrue(ve.build_props(look="dusk", duration_s=2.0, words=[], scenes=scenes, narration="")["media_card"])
+        self.assertFalse(ve.build_props(look="dusk", duration_s=2.0, words=[], scenes=scenes, narration="", media_card=False)["media_card"])
 
 
 if __name__ == "__main__":
