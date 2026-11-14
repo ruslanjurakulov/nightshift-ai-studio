@@ -2,6 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SANS, alpha, mix, type Look } from "./looks";
 import { WALK_S, clamp01, easeInOutCubic, easeOutBack, easeOutCubic, eyeOpenness, handover, hash01, mouthOpenness, pushIn, ramp, seedOf, speakerIndex } from "./motion";
+import { Grain } from "./Film";
 import { ART_W, DRIFT, GROUND, Layer, SceneFx, SettingLayer, VIEW_H } from "./Scenery";
 import type { CastMember, Pose, Prop, Setting, Word } from "./types";
 
@@ -553,6 +554,7 @@ export const CharacterScene: React.FC<{
           {confetti}
         </Layer>
       </div>
+      <Grain look={look} frame={frame} />
       {/* a soft vignette pulls the eye to the middle */}
       <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse 75% 70% at 50% 55%, transparent 55%, ${alpha("#000000", 0.45)} 100%)` }} />
     </div>

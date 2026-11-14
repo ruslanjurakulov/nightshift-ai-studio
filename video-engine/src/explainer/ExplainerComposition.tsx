@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Audio, Sequence, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { CharacterScene } from "./Characters";
-import { Backdrop, FilmOverlay } from "./Film";
+import { Backdrop } from "./Film";
 import { SANS, SERIF, alpha, lookFor, mix, type Look } from "./looks";
 import { accentLineAt, accentSpokenAt, clamp01, easeOutBack, exitProgress, mouthOpenness, ramp } from "./motion";
 import { headlineParts, sceneFrames, sceneWords, wordsForLine } from "./text";
@@ -55,7 +55,7 @@ const Headline: React.FC<{ text: string; look: Look; width: number; words: Word[
               display: "inline-block",
               color: p.accent ? look.accent : look.text,
               opacity: e,
-              transform: `translateY(${((1 - e) * 42).toFixed(1)}px) scale(${(1 + 0.1 * pop).toFixed(3)})`,
+              transform: `translateY(${((1 - e) * 42).toFixed(1)}px) scale(${(1 + 0.08 * pop).toFixed(3)})`,
               filter: blur((1 - e) * 10),
               textShadow: p.accent && pop > 0 ? `0 0 ${Math.round(40 * pop)}px ${alpha(look.accent, 0.6 * pop)}` : undefined,
             }}
@@ -83,19 +83,19 @@ const CaptionLine: React.FC<{ words: Word[]; look: Look; sceneStart: number }> =
         const q = clamp01((t - w.start_s) / 0.22);
         const pop = said && q < 1 ? Math.sin(Math.PI * q) : 0;
         return (
-          <React.Fragment key={i}>
-            {i ? " " : ""}
-            <span
-              style={{
-                display: "inline-block",
-                color: now ? look.accent : said ? look.text : look.muted,
-                opacity: said ? 1 : 0.5,
-                transform: `translateY(${(-6 * pop).toFixed(1)}px) scale(${(1 + 0.08 * pop).toFixed(3)})`,
-              }}
-            >
-              {w.text}
-            </span>
-          </React.Fragment>
+          // Words are spaced by margins, not space characters: a word lifted by its pop must not swallow the gap.
+          <span
+            key={i}
+            style={{
+              display: "inline-block",
+              margin: "0 0.14em",
+              color: now ? look.accent : said ? look.text : look.muted,
+              opacity: said ? 1 : 0.5,
+              transform: `translateY(${(-6 * pop).toFixed(1)}px) scale(${(1 + 0.05 * pop).toFixed(3)})`,
+            }}
+          >
+            {w.text}
+          </span>
         );
       })}
     </div>
@@ -253,7 +253,6 @@ const SceneView: React.FC<{ scene: ExplainerScene; look: Look; words: Word[]; ca
 };
 
 export const ExplainerComposition: React.FC<ExplainerProps> = (props) => {
-  const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const look = lookFor(props.look);
   return (
@@ -274,7 +273,6 @@ export const ExplainerComposition: React.FC<ExplainerProps> = (props) => {
           </Sequence>
         );
       })}
-      <FilmOverlay look={look} frame={frame} />
     </AbsoluteFill>
   );
 };
