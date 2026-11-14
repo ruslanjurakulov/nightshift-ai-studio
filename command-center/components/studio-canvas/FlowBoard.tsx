@@ -301,7 +301,7 @@ function BoardInner({
                 zoomable
                 ariaLabel={c.map}
                 nodeBorderRadius={2}
-                nodeColor={(n) => (n.id === selected ? "var(--amber)" : n.data.status === "working" ? "#a67bff" : "var(--rule-strong)")}
+                nodeColor={(n) => (n.id === selected ? "var(--amber)" : n.data.status === "working" ? "var(--run)" : "var(--rule-strong)")}
                 maskColor="rgb(0 0 0 / 0.28)"
                 maskStrokeColor="var(--text)"
                 maskStrokeWidth={1.5}

@@ -240,7 +240,7 @@ main:has([data-studio-canvas]) {
 .cv-opt[aria-current="page"] svg { color: var(--amber-ink); }
 .cv-opt-on { font-weight: 600; font-size: 14px; }
 .cv-opt-os { font-size: 13px; color: var(--dim); }
-.cv-opt-why { font-size: 13px; color: var(--faint); }
+.cv-opt-why { font-size: 13px; color: var(--dim); }
 
 /* ── status strip: a row, never over the canvas ──────────────────────────────── */
 .cv-strip {
@@ -262,7 +262,7 @@ main:has([data-studio-canvas]) {
 .cv-lamp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-lamp { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--lamp-off); }
 .cv-lamp.is-ok { background: var(--go); box-shadow: 0 0 8px color-mix(in srgb, var(--go) 60%, transparent); }
-.cv-lamp.is-run { background: #a67bff; box-shadow: 0 0 10px #8c5aff; }
+.cv-lamp.is-run { background: var(--run); box-shadow: 0 0 10px var(--run-glow); }
 .cv-lamp.is-live { animation: cv-breathe 1.6s ease-in-out infinite alternate; }
 .cv-lamp.is-fail { background: var(--tally); }
 .cv-lamp.is-warn { background: transparent; border: 2px solid var(--amber); }
@@ -417,12 +417,12 @@ main:has([data-studio-canvas]) {
 }
 .cv-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cv-art-glyph { width: 30px; height: 30px; stroke-width: 1.5; }
-.cv-art.is-working { background: linear-gradient(135deg, #1b1238, #0d0a1c 55%, #20123a); }
+.cv-art.is-working { background: var(--art-working); }
 .cv-art.is-working::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, transparent 20%, rgb(166 123 255 / 0.28) 45%, rgb(94 231 255 / 0.18) 55%, transparent 80%);
+  background: linear-gradient(100deg, transparent 20%, var(--shimmer) 45%, rgb(51 214 255 / 0.18) 55%, transparent 80%);
   background-size: 220% 100%;
   animation: cv-shimmer 1.6s linear infinite;
 }
@@ -481,7 +481,7 @@ main:has([data-studio-canvas]) {
 .cv-mini-h button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--dim); }
 .cv-mini-h button:hover { color: var(--text); background: var(--key); }
 .cv-mn { fill: var(--rule-strong); opacity: 0.55; }
-.cv-mn.is-run { fill: #a67bff; opacity: 0.9; }
+.cv-mn.is-run { fill: var(--run); opacity: 0.9; }
 .cv-mn.is-sel { fill: var(--amber); opacity: 1; }
 .cv-mv { fill: none; stroke: var(--text); stroke-width: 1.5; }
 
