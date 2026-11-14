@@ -51,6 +51,7 @@ type CardData = {
   closed: boolean;
   actor: RemoteActor | null;
   onRetry: () => void;
+  onOpen: () => void;
 };
 type WireData = { type: PortType; live: boolean; hl: boolean };
 type CardNode = Node<CardData, "card">;
@@ -84,6 +85,8 @@ export type BoardProps = {
   onWire: (from: string, to: string) => boolean;
   onDrop: (a: DroppedAsset, at: { x: number; y: number }, onto?: string) => void;
   mapOpen: boolean;
+  /** The inspector is open: the focused cards sit where the map would. */
+  mapHidden?: boolean;
   onToggleMap: () => void;
   /** Who else is on which node right now. Empty today; the layer for agents' cursors. */
   actors?: ReadonlyMap<string, RemoteActor>;
@@ -123,6 +126,7 @@ function BoardInner({
   onWire,
   onDrop,
   mapOpen,
+  mapHidden = false,
   onToggleMap,
   actors,
   children,
@@ -159,10 +163,11 @@ function BoardInner({
             closed: isClosed(n),
             actor: actors?.get(n.id) ?? null,
             onRetry: () => onRetry(n.id),
+            onOpen: () => onOpen(n.id),
           },
         };
       }),
-    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, lod],
+    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod],
   );
 
   const edges = useMemo<WireEdge[]>(() => {
@@ -282,7 +287,7 @@ function BoardInner({
         proOptions={{ hideAttribution: true }}
         className="cv-flowboard"
       >
-        {canvas.nodes.length > 0 && (
+        {canvas.nodes.length > 0 && !mapHidden && (
           <Panel position="bottom-right" className={mapOpen ? "cv-mini" : "cv-mini is-min"}>
             <div className="cv-mini-h">
               <span>{c.map}</span>
@@ -344,6 +349,7 @@ function NodeCard({
   jobs,
   previews,
   onRetry,
+  onOpen,
 }: CardData & { selected: boolean; dragging: boolean }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -373,13 +379,20 @@ function NodeCard({
       role="group"
       tabIndex={0}
       aria-label={`${name}: ${line}`}
+      onKeyDown={(e) => {
+        // The keyboard's click: Enter or Space on a focused card opens it.
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       {actor && (
         <span className="cv-actor" aria-label={actor.label}>
           {actor.label}
         </span>
       )}
-      <span className="cv-lodl" aria-hidden>
+      <span className="cv-lodl" aria-hidden title={name}>
         <span className={`cv-lamp is-${LAMP[status]}`} />
         {name}
       </span>

@@ -856,6 +856,15 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   box-shadow: var(--lift-3);
   backdrop-filter: blur(14px);
 }
+.cv-flow-dock::after {
+  content: "";
+  position: absolute;
+  left: -13px;
+  right: -13px;
+  top: calc(100% + 1px);
+  height: 96px;
+  background: var(--ground);
+}
 .cv-flow-dock .cv-kbtn { height: 44px; }
 .cv-flow-dock .cv-kbtn.is-icon { width: 44px; }
 .cv-flow-dock [data-testid="dock-quote"] { margin-left: auto; }
@@ -935,17 +944,16 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   right: 10px;
   bottom: 10px;
   z-index: 2;
-  display: -webkit-box;
+  display: block;
   overflow: hidden;
   color: var(--text);
   font-size: calc(16px * var(--inv));
   font-weight: 600;
-  line-height: 1.12;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .cv-stage.is-lod .cv-lodl .cv-lamp { display: inline-block; width: calc(10px * var(--inv)); height: calc(10px * var(--inv)); margin-right: calc(6px * var(--inv)); vertical-align: middle; }
-.cv-stage.is-lod .cv-node:has(.cv-art) .cv-lodl { text-shadow: 0 1px 3px rgb(0 0 0 / 0.8); color: #fff; }
 
 /* The composer inside the inspector: flat fields (no card in a card), and its price key pinned to the inspector's
    bottom edge at every width, the prototype's footer (.if): the backend quote, Generate, the hold or shortfall line. */

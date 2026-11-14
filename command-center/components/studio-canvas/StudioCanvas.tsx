@@ -702,6 +702,7 @@ export function StudioCanvas({
           onWire={wire}
           onDrop={dropAsset}
           mapOpen={mapOpen}
+          mapHidden={inspecting && !!sel}
           onToggleMap={() => setMapOpen((m) => !m)}
         >
           {firstRun}

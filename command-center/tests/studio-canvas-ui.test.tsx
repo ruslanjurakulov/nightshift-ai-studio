@@ -325,6 +325,16 @@ describe("the board's hand", () => {
     await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].x).toBe(0));
   });
 
+  it("Enter on a focused card opens it, as a click does (the keyboard's way in)", async () => {
+    store({ nodes: [node("a", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    const card = document.querySelector('[data-node-id="a"]') as HTMLElement;
+    card.focus();
+    fireEvent.keyDown(card, { key: "Enter" });
+    expect(await screen.findByTestId("canvas-inspector")).toBeTruthy();
+  });
+
   it("a wire can be selected and deleted with Delete, and ⌘Z puts it back", async () => {
     store({ nodes: [node("img", "image"), node("clip", "animate", 400)], wires: [{ id: "w1", from: "img", to: "clip" }] });
     mount();
