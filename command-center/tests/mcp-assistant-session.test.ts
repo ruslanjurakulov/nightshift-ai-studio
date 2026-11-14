@@ -327,6 +327,8 @@ const toolCall = (name: string, args: unknown, id: number | string = 7) => ({ js
 const KEY_TOOLS = [
   "list_channels", "create_video", "get_job_status", "list_videos", "get_video",
   "list_connected_accounts", "publish_video", "request_download", "get_download", "get_balance",
+  // The Studio tools (0162): an API key only, never a connected app (the OAuth sets below never list them).
+  "list_models", "quote_generation", "create_generation", "get_generation",
 ];
 const READ_TOOLS = ["list_channels", "get_job_status", "list_videos", "get_video", "list_connected_accounts", "get_balance"];
 
@@ -426,7 +428,7 @@ function checkSchemas(tools: ListedTool[]) {
 }
 
 describe("tools/list: exactly the documented tools for each door and permission", () => {
-  it("API key: all ten tools, in order, each with a description and a JSON schema that compiles", async () => {
+  it("API key: all fourteen tools, in order, each with a description and a JSON schema that compiles", async () => {
     const tools = await listTools(KEY);
     expect(tools.map((t) => t.name)).toEqual(KEY_TOOLS);
     checkSchemas(tools);

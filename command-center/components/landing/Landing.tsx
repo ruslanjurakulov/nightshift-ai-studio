@@ -246,6 +246,17 @@ function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; 
 }
 
 /**
+ * How many tiles a row holds from 1024 px, so the last row is never one tile alone under a full row (nine models left the
+ * ninth by itself at four across): three or four, whichever fills the last row more, a full one best. Fewer than four: one row.
+ * A last row that is still short is centred by the stylesheet.
+ */
+export function modelTileColumns(n: number): number {
+  if (n <= 3) return Math.max(n, 1);
+  const fill = (c: number) => (n % c === 0 ? 1 : (n % c) / c);
+  return fill(4) > fill(3) ? 4 : 3;
+}
+
+/**
  * The models behind the samples: one tile per model, each inside the box of that model's first sample on the page (the only kind
  * of element that may name a model), with its AI-generated label, how many of the page's samples it made, whether the Studio offers
  * it (an operator preview says it does not yet), and a link down to its sample. No price: the site has no public per-model price
@@ -261,6 +272,9 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
     else byModel.set(it.e.modelId, { ...it, n: 1 });
   }
   if (byModel.size === 0) return null;
+  const cols = modelTileColumns(byModel.size);
+  // From 640 to 1023 px four columns would be too narrow for a name: two instead (still no tile alone when four fit evenly).
+  const grid = { "--nx-mcols": cols, "--nx-mcols-md": cols === 4 ? 2 : cols } as React.CSSProperties;
   return (
     <section id="models" aria-labelledby="models-title" className="nx-section nx-models" data-tone="raised">
       <div className="nx-wrap">
@@ -269,7 +283,7 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
           {c.title}
         </h2>
         <p className="nx-sub">{c.lead}</p>
-        <ul className="nx-models-grid">
+        <ul className="nx-models-grid" style={grid}>
           {[...byModel.values()].map(({ e, f, n }) => {
             const leftOut = modelLeftOut(e);
             return (
@@ -281,10 +295,14 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
                   {e.kind === "video" && f.clip && <ShowcaseClip jobId={e.jobId} together />}
                 </div>
                 <div className="nx-model-body">
+                  {/* Drawn over the top corner of the picture (site-next.css), still read before the name. */}
                   <span className="nx-ai-badge">{g.badge}</span>
                   <h3 className="nx-model-name">{e.modelName}</h3>
-                  <p className="nx-model-count">{fmt(c.count, { n: String(n) })}</p>
-                  {leftOut && <p className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</p>}
+                  {/* Under the name: how many samples, then whether the Studio offers it. */}
+                  <p className="nx-model-meta">
+                    <span className="nx-model-count">{fmt(c.count, { n: String(n) })}</span>
+                    {leftOut && <span className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</span>}
+                  </p>
                   <a href={`#sample-${e.jobId}`} className="nx-model-see">
                     {c.see}
                     <ArrowRight aria-hidden />

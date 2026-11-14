@@ -193,6 +193,10 @@ export const devEn = {
     paid: { title: "Every plan", body: "Connecting with a sign-in works on every plan, Free included. It spends your workspace’s credits (welcome credits, top-up packs and plan credits all count), and when there are not enough the assistant is told so before anything starts. API keys and the REST API are separate: they are paid from a prepaid API balance.", link: "Plans and credits" },
     apiKeyInstead: "Use an API key instead",
     apiKeyInsteadBody: "For a client that cannot sign in, or for a script. Create the key in Developers → API keys.",
+    ready: {
+      badge: "Ready to connect",
+      body: "Nightshift’s server follows {app}’s published requirements for custom servers. Follow the steps above.",
+    },
     soon: {
       badge: "Coming soon",
       use: "Works today with an API key:",
@@ -330,8 +334,8 @@ export const devEn = {
     },
     tools: {
       slug: "What your assistant can do",
-      title: "Ten tools. Reading is free.",
-      lead: "Only the two that spend money say so. Prices come from the live price list on the API reference.",
+      title: "Videos and Studio generations. Reading is free.",
+      lead: "Only the tools that spend say so. A video and a download are paid from the API balance, a Studio generation from your workspace’s credits, and every generation is quoted before it starts. The four Studio tools work with an API key that has the Studio permissions.",
       table: "Tools",
       cols: { tool: "Tool", what: "What it does", cost: "Cost" },
       free: "Free",
@@ -346,10 +350,15 @@ export const devEn = {
         { id: "request_download", what: "Order a 720p or 1080p MP4" },
         { id: "get_download", what: "A download’s status and link" },
         { id: "get_balance", what: "Your API balance, this month’s spend and tier" },
+        { id: "list_models", what: "The Studio models your workspace can use, with their shapes, lengths and resolutions" },
+        { id: "quote_generation", what: "The price in credits of one picture, clip or voice-over, before anything starts" },
+        { id: "create_generation", what: "Make it, never above the price you agreed to" },
+        { id: "get_generation", what: "Its status and, when it is ready, a link to each file" },
       ],
       paid: {
         create_video: "You are charged when the video is made; a failed run costs nothing.",
         request_download: "Charged when the file is ready; a failed download costs nothing.",
+        create_generation: "Credits are set aside at the quoted price and charged when it is made; a failed generation costs nothing.",
       },
     },
     land: {
@@ -444,7 +453,7 @@ export const devEn = {
         items: [
           { q: "What is Nightshift MCP?", a: "A server your AI assistant connects to. Through it the assistant can list your channels, make videos, follow each job and publish, with the same publish check and approvals as the app." },
           { q: "What can my assistant do?", a: "It can list your channels and videos, start a video, follow its job, check your balance, publish a finished video to your connected accounts and, with an API key, order an HD download. The full list of tools is further down this page." },
-          { q: "Which assistants work with it?", a: "ChatGPT, Claude, Gemini, Grok, Cursor and VS Code with GitHub Copilot. Pick yours in the connect card at the top; each one has its own steps." },
+          { q: "Which assistants work with it?", a: "{available} connect today. For another assistant, pick it in the connect card at the top: its tab has the steps for it." },
           { q: "How do I connect one?", a: "Pick your assistant in the connect card at the top. Where a sign-in is available it takes the server address and a sign-in; every other assistant takes an API key you create in Developers." },
           { q: "What does it cost?", a: "Connecting with a sign-in works on every plan, Free included, and spends the same credits as a video made in the app. An API key spends your prepaid API balance. When a video is queued its price is set aside; it is charged only when the video succeeds, and a failed run costs nothing." },
           { q: "Can it publish without asking me?", a: "No. Publishing passes the same publish check and approvals as the app, and YouTube uploads stay private until you decide." },
@@ -542,7 +551,7 @@ export const devEn = {
         { id: "download-and-publish", what: "Download an MP4 and cross-post it; YouTube uploads stay private" },
         { id: "troubleshoot-errors", what: "Read an error and know what to do next" },
         { id: "batch-videos", what: "Make several videos with a count cap, a spend ceiling and a stop at the first problem" },
-        { id: "use-the-mcp-tools", what: "Use the ten MCP tools, and choose between MCP and the CLI" },
+        { id: "use-the-mcp-tools", what: "Use the MCP tools, and choose between MCP and the CLI" },
       ],
     },
     more: { api: "API reference", cli: "Command line", mcp: "Connect an assistant" },

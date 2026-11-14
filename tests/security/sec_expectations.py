@@ -306,8 +306,11 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "api_create_video": API,
     "api_creative_create": API,
     "api_creative_get": API,
+    # 0162: the MCP Studio tools' model list and a generation's result files; anon with a key hash, behind api_begin.
+    "api_creative_job_files": API,
     "api_creative_job_json": SERVICE,
     "api_creative_model_ok": SERVICE,
+    "api_creative_models": API,
     "api_creative_month_credits": SERVICE,
     "api_creative_quote": API,
     "api_creative_refusal": SERVICE,
@@ -691,3 +694,8 @@ sec_model_probe_seconds_0151.extend(TABLES, FUNCTIONS)
 import sec_dodo_history_0157  # noqa: E402
 
 sec_dodo_history_0157.extend(TABLES, FUNCTIONS)
+
+# Migration 0161 (ChatGPT keeps the client it registered: the collector spares a ChatGPT-only client 30 days, 3 a person): tests/security/sec_mcp_chatgpt_client_0161.py
+import sec_mcp_chatgpt_client_0161  # noqa: E402
+
+sec_mcp_chatgpt_client_0161.extend(TABLES, FUNCTIONS)

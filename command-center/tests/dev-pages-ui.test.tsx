@@ -317,7 +317,10 @@ describe("the MCP page", () => {
     }
     // With the sign-in off the four chat apps cannot connect yet, so the line names only what does.
     expect(d.querySelector(".sr-only")?.textContent).toBe("Works with: Cursor, VS Code (GitHub Copilot)");
-    expect(doc(mcp({ oauthLive: true })).querySelector(".sr-only")?.textContent).toBe("Works with: ChatGPT, Claude, Gemini, Grok, Cursor, VS Code (GitHub Copilot)");
+    // With it on, ChatGPT and Claude meet their vendors' published rules but nobody has connected the products yet (rule 5,
+    // lib/dev/mcp-availability.ts): they get their own "Ready to connect" line, and Gemini and Grok are named on neither.
+    const live = [...doc(mcp({ oauthLive: true })).querySelectorAll(".st-mcphero .sr-only")].map((p) => p.textContent);
+    expect(live.slice(0, 2)).toEqual(["Works with: Cursor, VS Code (GitHub Copilot)", "Ready to connect: ChatGPT, Claude"]);
   });
 
   describe("interaction", () => {
@@ -403,11 +406,11 @@ describe("the MCP page", () => {
     });
   });
 
-  it("lists the ten tools, free ones marked free and the two that spend money saying how they are charged", () => {
+  it("lists the fourteen tools, free ones marked free and the three that spend money saying how they are charged", () => {
     const d = doc(mcp());
     const rows = [...d.querySelectorAll("table tbody tr")];
-    expect(rows).toHaveLength(10);
-    expect(rows.filter((r) => /Free$/.test(r.textContent ?? ""))).toHaveLength(8);
+    expect(rows).toHaveLength(14);
+    expect(rows.filter((r) => /Free$/.test(r.textContent ?? ""))).toHaveLength(11);
   });
 
   it("links the CLI and Skills pages only while they are switched on", () => {

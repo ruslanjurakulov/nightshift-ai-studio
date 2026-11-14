@@ -10,8 +10,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
+  API_CREATIVE_CAPABILITIES,
+  IDEMPOTENCY_KEY_RE,
+  createCreative,
   createVideo,
   getBalance,
+  getCreativeJobFiles,
+  listCreativeModels,
+  quoteCreative,
   getDownload,
   getJob,
   getVideo,
@@ -23,6 +29,7 @@ import {
   type ApiCaller,
 } from "@/lib/api/operations";
 import { apiError, toWire, type ApiResult } from "@/lib/api/http";
+import { MODEL_ID_RE } from "@/lib/models-admin";
 import { missingScope, OAUTH_TOOL_SCOPES, oauthRefusalText } from "@/lib/api/mcp-oauth";
 
 export const MCP_SERVER_INFO = { name: "nightshift", version: "1.0.0" } as const;
@@ -38,7 +45,7 @@ export function toToolResult(result: ApiResult, requestId: string): CallToolResu
 
 const idempotency = z
   .string()
-  .regex(/^[A-Za-z0-9_:.-]{1,255}$/)
+  .regex(IDEMPOTENCY_KEY_RE)
   .optional()
   .describe("Optional. Reuse the same value when retrying so the action happens once (24 hours).");
 
@@ -54,7 +61,15 @@ export const TOOL_NAMES = [
   "request_download",
   "get_download",
   "get_balance",
+  // The Studio's generations (0062's creative API, 0162's list and files): API keys only, never a connected app.
+  "list_models",
+  "quote_generation",
+  "create_generation",
+  "get_generation",
 ] as const;
+
+/** The Studio tools: offered to an API key with the creative scopes, never over OAuth (lib/api/mcp-oauth.ts does not list them). */
+export const STUDIO_TOOL_NAMES = ["list_models", "quote_generation", "create_generation", "get_generation"] as const;
 
 /** An AI app connected with OAuth (migration 0093): what it was allowed, and where its links point. */
 export interface OauthMode {
@@ -66,7 +81,10 @@ const KEY_INSTRUCTIONS =
   "Nightshift makes faceless YouTube videos. Start with list_channels, then create_video (it costs money from the " +
   "organization's prepaid API balance, priced per minute of requested length with a minimum per video, from " +
   "the live price list at /docs/api#pricing — say so before calling it). Poll get_job_status until the job succeeds, then list_videos to find the video. publish_video " +
-  "cross-posts a finished video that passed review; YouTube uploads are private.";
+  "cross-posts a finished video that passed review; YouTube uploads are private. " +
+  "For a single picture, clip or voice-over from the Studio's models: list_models, then quote_generation (free), tell the person " +
+  "the price in credits, and only then create_generation with that price as max_credits and a fresh idempotency_key. Generations " +
+  "are paid in the organization's CREDITS, not the API balance; poll get_generation until it is completed for its file links.";
 
 /**
  * The instructions of a connection, from the tools its grant is offered. One
@@ -109,6 +127,50 @@ function oauthInstructions(has: (tool: string) => boolean): string {
       "this connection's limit); you cannot change any of those yourself.",
   );
   return s.join(" ");
+}
+
+/**
+ * What to do about a Studio tool's refusal, by its code (CLAUDE.md #6: name the remedy, not the symptom). The refusals that need
+ * opposite answers are kept apart: no credits (the person tops up) is not a model that is not offered (pick another from
+ * list_models), and neither is a setting the model does not take (change the request). Only words the caller can act on; the
+ * database's own code and message stay as they are.
+ */
+export const STUDIO_REMEDIES: Readonly<Record<string, string>> = {
+  insufficient_credits: "The organization does not have enough credits. The person can add credits or choose a plan in the app (Credits); nothing was held.",
+  key_credit_limit_reached: "This API key's own monthly credit limit is reached. An owner or admin can raise it in the Developer console; nothing was held.",
+  price_changed: "The price is now above max_credits. Call quote_generation again, tell the person the new price, and create with it only if they agree.",
+  route_changed: "The automatic model choice changed. Call quote_generation again and confirm the new choice with the person.",
+  model_not_sellable: "That model is not offered to this organization through the API. Call list_models and pick one it lists.",
+  entitlement_required: "That model needs a purchase or a plan this organization does not have. Pick another model from list_models.",
+  unpriced: "That model, or that setting of it, has no price yet, so it cannot be sold. Pick another model or setting from list_models.",
+  model_temporarily_off: "That model is switched off for now. Pick another model from list_models, or try again later.",
+  no_model_available: "No model can make this right now. Try again later, or change the request.",
+  capability_not_supported: "That capability cannot be generated here. Call list_models to see what can.",
+  invalid_params: "A setting is missing or not accepted by this model. Check list_models for what the model takes, then quote again.",
+  max_credits_required: "Send max_credits: the price from quote_generation that the person agreed to.",
+  idempotency_key_reused: "That idempotency_key was already used for a different generation. Use a fresh one for a new generation.",
+  idempotency_in_progress:
+    "The same generation is still being started. Call create_generation again in a few seconds with the SAME idempotency_key, never a new one.",
+  insufficient_scope: "This API key lacks the permission for this tool. An owner or admin can create a key with the Studio permissions (creative) in the Developer console.",
+  run_limit_reached: "All of the plan's parallel runs are busy. Wait a minute for one to finish, then try again.",
+  api_not_activated: "The API is not activated for this organization. An owner or admin can activate it in the Developer console.",
+};
+
+/**
+ * create_generation's own remedies, where its answer differs from a read's: when the database did not answer, whether a
+ * generation was started is unknown, so the only safe retry is the same request with the same idempotency_key (it can never
+ * start twice); a fresh key could pay twice.
+ */
+export const CREATE_REMEDIES: Readonly<Record<string, string>> = {
+  upstream_error: "Whether it started is not known. Call create_generation again with the SAME idempotency_key, never a new one: it starts at most once.",
+  internal_error: "Whether it started is not known. Call create_generation again with the SAME idempotency_key, never a new one: it starts at most once.",
+};
+
+/** A Studio tool's result: the API's answer, plus `remedy` on a refusal the caller can act on. */
+function withRemedy(result: ApiResult, own: Readonly<Record<string, string>> = {}): ApiResult {
+  if (result.ok) return result;
+  const remedy = Object.hasOwn(own, result.code) ? own[result.code] : Object.hasOwn(STUDIO_REMEDIES, result.code) ? STUDIO_REMEDIES[result.code] : null;
+  return remedy === null ? result : { ...result, details: { ...(result.details ?? {}), remedy } };
 }
 
 /** A log line's name for a thrown value: the class name when it is a plain identifier, never the message. */
@@ -362,6 +424,79 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
       annotations: { readOnlyHint: true },
     },
     async () => done(await getBalance(caller)),
+  );
+
+  // ── The Studio's generations (API keys only) ─────────────────────────────
+  // Each is one call to an existing database door: 0162's model list and files, 0062's quote and create. The price, the hold, the
+  // capture and the refund stay in those functions (create_creative_job); nothing here computes or moves a credit. A connected app
+  // is never offered them: they are not in OAUTH_TOOL_SCOPES, so `offered` is false and `register` skips them.
+  const capability = z.enum(API_CREATIVE_CAPABILITIES).describe("What to make: t2i (a picture from words), edit, t2v (a clip from words), i2v (a clip from a picture), tts, sfx, and so on.");
+  const generation = {
+    capability,
+    model: z.string().regex(MODEL_ID_RE).describe("A model id from list_models."),
+    params: z
+      .record(z.string(), z.unknown())
+      .describe("The model's settings, e.g. { \"prompt\": \"…\", \"aspect_ratio\": \"16:9\", \"duration_s\": 5 }. list_models names what each model takes."),
+  };
+
+  register(
+    "list_models",
+    {
+      title: "List Studio models",
+      description:
+        "The models this organization can generate with right now, each with what it makes and the shapes, durations and " +
+        "resolutions it takes. No prices: quote_generation gives the price of one exact request.",
+      inputSchema: z.object({ capability: capability.optional() }).strict(),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ capability: cap }) => done(withRemedy(await listCreativeModels(caller, cap ?? null))),
+  );
+
+  register(
+    "quote_generation",
+    {
+      title: "Quote a generation",
+      description:
+        "The price in credits of one picture, clip or voice-over with these exact settings. Free: nothing is held or charged. " +
+        "Tell the person this price before calling create_generation.",
+      inputSchema: z.object(generation).strict(),
+      annotations: { readOnlyHint: true },
+    },
+    async (body) => done(withRemedy(await quoteCreative(caller, body))),
+  );
+
+  register(
+    "create_generation",
+    {
+      title: "Create a generation",
+      description:
+        "Start one picture, clip or voice-over. It costs CREDITS from the organization (not the API balance): the price is set " +
+        "aside now, charged when it succeeds and returned if it fails. max_credits is the most the person agreed to pay (use the " +
+        "quote): a higher price is refused, never charged, and the key's own monthly credit limit also applies. idempotency_key " +
+        "is required: send the same one on a retry so it can never start twice. Returns the generation's id for get_generation.",
+      inputSchema: z
+        .object({
+          ...generation,
+          max_credits: z.number().min(0).describe("The most credits the person agreed to pay for this generation: the quoted price."),
+          idempotency_key: z.string().regex(IDEMPOTENCY_KEY_RE).describe("Required. A fresh value per generation; reuse it only to retry the same one."),
+        })
+        .strict(),
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ idempotency_key, ...body }) => done(withRemedy(await createCreative(caller, body, idempotency_key), CREATE_REMEDIES)),
+  );
+
+  register(
+    "get_generation",
+    {
+      title: "Get a generation",
+      description:
+        "A generation this key started: its status (queued, running, completed, failed), what was held and charged, and once it " +
+        "completed a link to each file: a path on this server (prefix it with the origin of the MCP address you connected to), which expires after a few minutes (ask again for a fresh one).",
+      inputSchema: z.object({ generation_id: z.string().uuid() }).strict(),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ generation_id }) => done(withRemedy(await getCreativeJobFiles(caller, generation_id))),
   );
 
   return server;

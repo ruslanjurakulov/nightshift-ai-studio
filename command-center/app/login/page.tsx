@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { GoogleButton } from "@/components/auth/GoogleButton";
+import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
 import { safeLoginReturn } from "@/lib/safe-redirect";
 import { clearAllDrafts } from "@/lib/create-draft";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
@@ -24,6 +25,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [linkError, setLinkError] = useState<CallbackError | null>(null);
+  // With Google offered, it is the first and primary way in and the e-mail submit is the quiet key under it.
+  const google = useGoogleEnabled();
 
   // Whoever arrives here — signed out, session expired, or switching accounts — leaves no create draft behind in this tab.
   useEffect(() => {
@@ -110,7 +113,7 @@ export default function LoginPage() {
             <AuthAlert tone="warn">{linkError === "link_expired" ? t.signup.linkExpired : t.signup.linkInvalid}</AuthAlert>
           )}
           {error && <AuthAlert tone="fail">{error}</AuthAlert>}
-          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured}>
+          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured} tone={google ? "quiet" : undefined}>
             {busy ? t.auth.signingIn : t.auth.signIn}
           </AuthSubmit>
         </fieldset>

@@ -1,8 +1,11 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { EFFECTS, publicEffectHref, type Effect } from "@/lib/effects/catalog";
+import { masonryColumns, masonrySpan } from "@/lib/effects/masonry";
 import { EffectFrame } from "@/components/effects/EffectFrame";
+import { effectFrameRatio } from "@/components/effects/effect-sample";
 import "@/components/effects/effects.css";
 import "@/components/site/effects-gallery.css";
 
@@ -25,6 +28,12 @@ export function EffectsGallery({ t, effects = EFFECTS }: { t: Dictionary; effect
   const s = fx.site;
   // Only the two words the client frame shows: the whole dictionary would ride along in the page payload once per card.
   const label = { noSample: fx.noSample, sample: fx.sample };
+  // The grid rows each card takes at two and at three columns, from its frame's real shape, and the column each goes in so the
+  // columns end evenly (lib/effects/masonry.ts). Both only size and place: every card is in the list, in page order.
+  const n2 = effects.map((e) => masonrySpan(effectFrameRatio(e), 2));
+  const n3 = effects.map((e) => masonrySpan(effectFrameRatio(e), 3));
+  const c2 = masonryColumns(n2, 2);
+  const c3 = masonryColumns(n3, 3);
   return (
     <section id="effects" aria-labelledby="effects-title" className="nx-section efx">
       <div className="nx-wrap">
@@ -34,10 +43,16 @@ export function EffectsGallery({ t, effects = EFFECTS }: { t: Dictionary; effect
         </h2>
         <p className="nx-sub">{s.lead}</p>
         <ul className="efx-grid" aria-label={s.listLabel}>
-          {effects.map((e) => {
+          {effects.map((e, i) => {
             const copy = fx.items[e.id];
+            const rows = {
+              "--efx-n2": n2[i],
+              "--efx-n3": n3[i],
+              ...(c2 && { "--efx-c2": c2[i] }),
+              ...(c3 && { "--efx-c3": c3[i] }),
+            } as CSSProperties;
             return (
-              <li key={e.id} className="efx-card" data-effect={e.id}>
+              <li key={e.id} className="efx-card" data-effect={e.id} style={rows}>
                 <EffectFrame effect={e} label={label} className="fx-frame efx-frame" />
                 <div className="efx-body">
                   <p className="efx-kind">

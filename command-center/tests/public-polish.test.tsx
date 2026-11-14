@@ -169,16 +169,22 @@ describe("the sign-in and sign-up frame", () => {
     expect(within(main).getByRole("heading", { level: 1 }).textContent).toBe("T");
   });
 
-  it("loads its pictures eagerly, because one of them is the first screen", () => {
+  // The wide screen's stage is its first screen, so its picture is eager. On a phone the stage band sits UNDER the form
+  // (the form and "Continue with Google" come first), so the band's picture is lazy and does not compete with the form.
+  it("loads the wide stage's picture eagerly and the phone band's (below the form) lazily", () => {
     h.locale = "en";
     const { container } = render(
       <AuthShell title="T">
         <span />
       </AuthShell>,
     );
-    const pics = [...container.querySelectorAll("img")];
-    expect(pics.length).toBeGreaterThan(0);
-    for (const img of pics) expect(img.getAttribute("loading")).toBe("eager");
+    const asidePics = [...container.querySelectorAll("aside.st-auth-aside img")];
+    expect(asidePics.length).toBeGreaterThan(0);
+    for (const img of asidePics) expect(img.getAttribute("loading")).toBe("eager");
+    const band = container.querySelector(".nx-auth-band") as HTMLElement;
+    const form = container.querySelector(".st-auth-form") as HTMLElement;
+    expect(form.compareDocumentPosition(band) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const img of band.querySelectorAll("img")) expect(img.getAttribute("loading")).toBe("lazy");
   });
 });
 

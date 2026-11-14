@@ -19,7 +19,7 @@ Nightshift's own connect page (`/mcp`) lists the six assistants it supports, eac
 
 (that is Cursor's `mcp.json`; VS Code's `.vscode/mcp.json` uses `servers`, `"type": "http"` and a password input for the key). Other clients that speak the MCP authorization flow can add the same URL and sign in. Exact configs, and the one-click "Add to" links, are in `docs/MCP.md`. The key never goes in the chat.
 
-## The ten tools
+## The tools
 
 | Tool | Does | Costs |
 | :-- | :-- | :-- |
@@ -33,13 +33,18 @@ Nightshift's own connect page (`/mcp`) lists the six assistants it supports, eac
 | `request_download` | order a 720p or 1080p MP4 | charged when ready |
 | `get_download` | download status and `file_url` | free |
 | `get_balance` | USD balance, holds, month spend, tier | free |
+| `list_models` | the Studio models this organization can use (`capability`), with their shapes, durations and resolutions; no prices | free |
+| `quote_generation` | the price in credits of one exact generation (`capability`, `model`, `params`); nothing is held | free |
+| `create_generation` | start it (`capability`, `model`, `params`, `max_credits`, `idempotency_key`, both required) | the organization's credits: held at the quote, charged on success, never above `max_credits` |
+| `get_generation` | a generation this key started: status, charge and an expiring link to each file (`generation_id`) | free |
 
-There are no tools for `quote`, `generate` or `generations`. Those are CLI and REST only.
+The four Studio tools need an API key with the creative scopes, and they are not offered to a connection made by signing in.
 
 ## Rules (same as the CLI)
 
 - Before `create_video` or `request_download`, tell the person it spends money and get their go-ahead. State the held or quoted amount from the answer (`price_cents`).
-- **Always pass `idempotency_key`** to `create_video`, `publish_video` and `request_download`, one per intent, and reuse it on any retry.
+- Before `create_generation`, call `quote_generation`, tell the person the price in credits, and pass that price as `max_credits` only once they agree. A `price_changed` refusal means quote again and ask again, never raise `max_credits` on your own.
+- **Always pass `idempotency_key`** to `create_video`, `publish_video`, `request_download` and `create_generation` (where it is required), one per intent, and reuse it on any retry.
 - There is no wait option. Poll `get_job_status` or `get_download` no faster than every 10 to 15 seconds. A video job is finished at `succeeded`, `failed` or `cancelled`.
 - A job is not linked to its video: after `succeeded`, call `list_videos` with the `channel_id`.
 - A refused call returns a tool error whose text is the API's error envelope. Read `code`, `message` and `request_id`; see `troubleshoot-errors`.
@@ -47,4 +52,4 @@ There are no tools for `quote`, `generate` or `generations`. Those are CLI and R
 
 ## MCP or CLI?
 
-Prefer the **CLI** when you have a shell: `--wait` does the polling, exit codes separate auth, billing and rate limits, `download save` writes the MP4 to disk, and it is the only way to `quote` and `generate`. Prefer **MCP** when you have no shell (a chat app, an IDE agent) or the person wants Nightshift available as native tools. Use REST (`/docs/api`, OpenAPI at `/docs/api/openapi.json`) from your own code.
+Prefer the **CLI** when you have a shell: `--wait` does the polling, exit codes separate auth, billing and rate limits, and `download save` writes the MP4 to disk. Prefer **MCP** when you have no shell (a chat app, an IDE agent) or the person wants Nightshift available as native tools. Use REST (`/docs/api`, OpenAPI at `/docs/api/openapi.json`) from your own code.
