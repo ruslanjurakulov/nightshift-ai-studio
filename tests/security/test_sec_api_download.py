@@ -4,7 +4,7 @@ Found in the security lab: the function audited its own work as `video.download`
 (audit_action_allowed) never had, and app_audit_log_stamp refuses an unknown action for the anon role every API call
 runs as. The function's own `exception when others` turned that into `500 internal_error` and undid the block, so every
 new paid, redownload or exempt download through the API failed and charged nothing; only the "reused" answer (which
-writes no audit row) worked. Migration 0169 makes the function audit the name the Command Center's own download route
+writes no audit row) worked. Migration 0170 makes the function audit the name the Command Center's own download route
 writes for the same act, `video.download_request` (command-center/app/api/downloads/route.ts), and leaves the audit
 list exactly as it was.
 
@@ -25,11 +25,11 @@ from sec_db import ANON, MIGRATIONS, REPO
 
 from sec_scenario import DEFAULT_ORG
 
-MIGRATION = MIGRATIONS / "0169_api_download_audit.sql"
-ROLLBACK = REPO / "docs" / "sql" / "rollback_0169_api_download_audit.sql"
+MIGRATION = MIGRATIONS / "0170_api_download_audit.sql"
+ROLLBACK = REPO / "docs" / "sql" / "rollback_0170_api_download_audit.sql"
 SIGNATURE = "public.api_request_download(text, text, text, text, text, text)"
 BODY_0147 = "055003f8a2fb5390bbd1b5f7820e6e2e"
-BODY_0169 = "45fbea9ff56a77c0144993c43a4451da"
+BODY_0170 = "b59ca71d0e0379e217e47a6987c9ed0c"
 
 
 @contextmanager
@@ -245,10 +245,10 @@ def _sql(path):
     return "\n".join(ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
-def test_the_live_body_is_0169s_and_its_grants_are_0147s(conn, sc):
+def test_the_live_body_is_0170s_and_its_grants_are_0147s(conn, sc):
     with _txn(conn):
         _owner(conn)
-        assert _body_md5(conn) == BODY_0169
+        assert _body_md5(conn) == BODY_0170
         grants = {r: _one(conn, "select has_function_privilege(%s, %s, 'execute')", [r, SIGNATURE])[0]
                   for r in ("anon", "authenticated", "service_role")}
         assert grants == {"anon": True, "authenticated": False, "service_role": False}, grants
@@ -267,18 +267,18 @@ def test_the_files_verify_query_reads_true_in_every_column(conn, sc):
     assert len(row) == 4 and all(v is True for v in row.values()), row
 
 
-def test_replaying_0169_changes_nothing_and_the_download_still_works(conn, sc):
+def test_replaying_0170_changes_nothing_and_the_download_still_works(conn, sc):
     a = sc.alice
     with _txn(conn):
         _owner(conn)
         conn.execute(_sql(MIGRATION))
         conn.execute(_sql(MIGRATION))
-        assert _body_md5(conn) == BODY_0169
+        assert _body_md5(conn) == BODY_0170
         res = _download(conn, a.api_key_hash, a.video, "720p")
         assert res["status"] == 201, res
 
 
-def test_the_rollback_puts_0147s_body_back_and_0169_applies_again(conn, sc):
+def test_the_rollback_puts_0147s_body_back_and_0170_applies_again(conn, sc):
     a = sc.alice
     with _txn(conn):
         _owner(conn)
@@ -291,7 +291,7 @@ def test_the_rollback_puts_0147s_body_back_and_0169_applies_again(conn, sc):
         assert _account(conn, a.org) == acc0
         assert _one(conn, "select has_function_privilege('anon', %s, 'execute')", [SIGNATURE])[0] is True
         conn.execute(_sql(MIGRATION))
-        assert _body_md5(conn) == BODY_0169
+        assert _body_md5(conn) == BODY_0170
         assert _download(conn, a.api_key_hash, a.video, "720p")["status"] == 201
 
 
@@ -301,7 +301,7 @@ def test_the_drift_guard_and_the_rollback_refuse_a_body_they_were_not_written_on
         conn.execute("create or replace function public.api_request_download(p_key_hash text, p_video_id text, p_quality text, "
                      "p_idem_key text default null, p_fingerprint text default null, p_request_id text default null) returns jsonb "
                      "language plpgsql volatile security definer set search_path = public, pg_temp as $f$ begin return '{}'::jsonb; end $f$")
-        for path, words in ((MIGRATION, "neither the one it was written on nor 0169"), (ROLLBACK, "is not 0169's body")):
+        for path, words in ((MIGRATION, "neither the one it was written on nor 0170"), (ROLLBACK, "is not 0170's body")):
             try:
                 with conn.transaction():
                     conn.execute(_sql(path))

@@ -1552,9 +1552,9 @@ public read answers `{"visible": false}` and nothing else. The one command, the 
   `command-center/tests/friend-invites-routes.test.ts` (the join's retry), `command-center/tests/paddle-webhook.test.ts` (the
   discount mark), `command-center/tests/login-invite.test.ts` (a kept cookie retried after a password sign-in).
 
-## An HD download through the public API audits a name the audit list has (0169)
+## An HD download through the public API audits a name the audit list has (0170)
 
-0169 (`0169_api_download_audit.sql`) is a **fix, live on apply**: from the moment it is applied, an API key's download request
+0170 (`0170_api_download_audit.sql`) is a **fix, live on apply**: from the moment it is applied, an API key's download request
 (`api_request_download`, behind `POST /api/v1/videos/{id}/downloads`) can create a paid, redownload or exempt download again.
 
 - **The failure.** `api_request_download` (0031, rebuilt by 0042 and 0147) audited itself as `video.download`. Since 0087,
@@ -1567,13 +1567,13 @@ public read answers `{"visible": false}` and nothing else. The one command, the 
   download route writes for the same act (`command-center/app/api/downloads/route.ts`). The row still carries `via=api` and
   the key's id. The audit list is not changed (nothing is widened); no reader expects `video.download` (the audit page
   prints the action as stored). Every other line, price, hold, refusal and grant is 0147's.
-- **md5.** `api_request_download` before `055003f8a2fb5390bbd1b5f7820e6e2e` (0147), after `45fbea9ff56a77c0144993c43a4451da`
+- **md5.** `api_request_download` before `055003f8a2fb5390bbd1b5f7820e6e2e` (0147), after `b59ca71d0e0379e217e47a6987c9ed0c`
   (drift guard, end state, Verify, rollback).
-- **Number.** 0169, provisional (0166 to 0168 are held by open pull requests); it is changed at merge if another branch takes it.
-  Needs 0031, 0042, 0087 and 0147; names nothing of 0148 to 0168. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
-- **Replay.** `create or replace`, then revoke and grant: a replay changes nothing. Re-running 0147 after 0169 is refused by
-  0147's drift guard: apply the rollback first, re-run 0147, then 0169 again.
-- **Undo.** `docs/sql/rollback_0169_api_download_audit.sql` (owner-applied): refuses unless the body is 0169's, puts 0147's back
+- **Number.** 0170, provisional (0169 is held by an open pull request, #750); it is changed at merge if another branch takes it.
+  Needs 0031, 0042, 0087 and 0147; names nothing of 0148 to 0169. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Replay.** `create or replace`, then revoke and grant: a replay changes nothing. Re-running 0147 after 0170 is refused by
+  0147's drift guard: apply the rollback first, re-run 0147, then 0170 again.
+- **Undo.** `docs/sql/rollback_0170_api_download_audit.sql` (owner-applied): refuses unless the body is 0170's, puts 0147's back
   byte for byte with its grant (anon only). It brings the failure back.
 - **Tests.** `tests/security/test_sec_api_download.py` (a real PostgreSQL: a paid download with its hold, ledger and audit row,
   the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list

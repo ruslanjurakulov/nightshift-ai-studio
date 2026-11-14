@@ -1114,7 +1114,7 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
 // ── the API-key door's own refusal sentences (they are the database's, passed through) ─
 
 /** Every message `code` is raised with in the LATEST body of each function that raises it: what production answers.
- *  Per function, not per file: 0169 restated api_request_download alone, so the last file that raises a code need not
+ *  Per function, not per file: 0170 restated api_request_download alone, so the last file that raises a code need not
  *  hold every function that does. */
 function lastMigrationMessages(code: string): string[] {
   const dir = path.resolve(process.cwd(), "..", "supabase", "migrations");

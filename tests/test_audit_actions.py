@@ -69,7 +69,7 @@ class AuditActions(unittest.TestCase):
 
     def test_every_action_a_live_api_function_audits_through_api_audit_is_in_the_list(self):
         # api_request_download audited 'video.download' from 0031 on; 0087's list never had it, so from 0087 every new API
-        # download answered 500 and charged nothing (0169). Only each function's LATEST body runs, so only that one is read.
+        # download answered 500 and charged nothing (0170). Only each function's LATEST body runs, so only that one is read.
         latest: dict[str, str] = {}
         for path in sorted((REPO / "supabase" / "migrations").glob("*.sql")):
             text = path.read_text(encoding="utf-8")
