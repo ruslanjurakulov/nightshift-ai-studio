@@ -433,6 +433,31 @@ export function StudioHome({
         />
       </div>
     ) : null;
+  // The attachment's upload and its one line live INSIDE the box, in its flow: drawn after the box they sat on the page's own text
+  // where the pinned phone box overlaps it (studio-attached-390, the first screenshots of this change).
+  const attachNote: ReactNode =
+    attach.phase === "uploading" ? (
+      <div className="sh-attach" role="status" data-testid="composer-uploading">
+        <span className="sh-attach-thumb" aria-hidden>
+          {attach.kind === "image" ? (
+            // The person's own file from this device, shown while it uploads: never optimised or sent anywhere else.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={attach.url} alt="" />
+          ) : (
+            <>
+              <video src={`${attach.url}#t=0.1`} muted playsInline preload="metadata" />
+              <Film className="sh-attach-mark" />
+            </>
+          )}
+        </span>
+        <span className="sh-attach-line">{fmt(th.attachFlow.uploading, { name: attach.name })}</span>
+      </div>
+    ) : attach.phase === "said" ? (
+      <p className="sh-attach-said" data-tone={attach.tone} role={attach.tone === "error" ? "alert" : "status"} data-testid="composer-attach-line">
+        {attach.line}
+      </p>
+    ) : null;
+  let noteInBox = false;
   let box: ReactNode = null;
   if (planning && assistant) {
     box = null;
@@ -448,6 +473,7 @@ export function StudioHome({
       />
     );
   } else if (orgId && desk) {
+    noteInBox = true;
     box = (
       <GeneratePanel
         key={`${mode}:${prefill.nonce}`}
@@ -465,15 +491,18 @@ export function StudioHome({
         composerExtra={planToggle}
         onAttachFile={desk === "voice" ? undefined : (file) => void attachFile(file, draft)}
         attachBusy={attach.phase === "uploading"}
+        attachNote={attachNote}
         onCreated={() => setRefreshKey((k) => k + 1)}
       />
     );
   } else {
     // No organization to bill: nothing can be made here, but a plan can still be drafted and priced.
+    noteInBox = true;
     box = (
       <div className="studio-field flex flex-wrap items-center justify-between gap-3 p-4">
         <p className="text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>
         {planToggle}
+        {attachNote && <div className="w-full">{attachNote}</div>}
       </div>
     );
   }
@@ -537,28 +566,8 @@ export function StudioHome({
       <div ref={composerRef} id="prompt" className="sh-composer scroll-mt-24" data-sticky="mobile" data-testid="studio-composer" aria-label={th.composerLabel} role="group">
         {planner}
         {box}
-        {attach.phase === "uploading" && (
-          <div className="sh-attach" role="status" data-testid="composer-uploading">
-            <span className="sh-attach-thumb" aria-hidden>
-              {attach.kind === "image" ? (
-                // The person's own file from this device, shown while it uploads: never optimised or sent anywhere else.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={attach.url} alt="" />
-              ) : (
-                <>
-                  <video src={`${attach.url}#t=0.1`} muted playsInline preload="metadata" />
-                  <Film className="sh-attach-mark" />
-                </>
-              )}
-            </span>
-            <span className="sh-attach-line">{fmt(th.attachFlow.uploading, { name: attach.name })}</span>
-          </div>
-        )}
-        {attach.phase === "said" && (
-          <p className="sh-attach-said" data-tone={attach.tone} role={attach.tone === "error" ? "alert" : "status"} data-testid="composer-attach-line">
-            {attach.line}
-          </p>
-        )}
+        {/* Only where the box is not the composer panel (the YouTube video, the Plan): there is no panel to put it in. */}
+        {!noteInBox && attachNote}
       </div>
 
       <section ref={examplesRef} className="sh-section" aria-labelledby="sh-examples-title" tabIndex={-1}>

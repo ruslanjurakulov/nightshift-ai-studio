@@ -88,6 +88,9 @@
 .sh-attach-line { min-width: 0; overflow-wrap: anywhere; }
 .sh-attach-said { margin: 8px 0 0; padding-inline: 4px; font-size: 13px; line-height: 1.45; color: var(--color-muted); }
 .sh-attach-said[data-tone="error"] { color: var(--color-fail); }
+/* Inside the composer panel, under the send row: the box's own padding places it, no margin of its own. */
+.sc-attach-note { display: block; }
+.sc-attach-note .sh-attach, .sc-attach-note .sh-attach-said { margin-top: 0; padding-inline: 0; }
 .sc-composer {
   display: flex;
   flex-direction: column;

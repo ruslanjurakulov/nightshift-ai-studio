@@ -151,6 +151,8 @@ describe("the Studio composer's [+]", () => {
     fireEvent.change(input);
     await waitFor(() => expect(screen.getByTestId("composer").getAttribute("data-capability")).toBe("i2v"));
     expect(screen.getByTestId("composer-attach-line").textContent).toBe(th.attachFlow.switchedImage.replace("{tool}", t.desk.tools.i2v));
+    // Inside the panel, in its flow: drawn after it, the line lay over the page's own text under the pinned phone box.
+    expect(screen.getByTestId("composer").contains(screen.getByTestId("composer-attach-line"))).toBe(true);
     expect((screen.getByTestId("composer").querySelector("textarea") as HTMLTextAreaElement).value).toBe("the fox wakes up");
     expect(calls()).toContain("POST /api/media/uploads");
     expect(creates()).toEqual([]);

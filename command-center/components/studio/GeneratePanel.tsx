@@ -145,6 +145,7 @@ export function GeneratePanel({
   autoFocusPrompt,
   onAttachFile,
   attachBusy = false,
+  attachNote = null,
 }: {
   /**
    * Composer only: [+] takes a picture or a video from the device (the system picker, ATTACH_ACCEPT) and hands it to the page, which
@@ -154,6 +155,11 @@ export function GeneratePanel({
   onAttachFile?: (file: File) => void;
   /** A file handed over is still on its way into the library: [+] waits. */
   attachBusy?: boolean;
+  /**
+   * Composer only: the page's line about that file (uploading, the tool it switched to, or why it did not attach), drawn inside the
+   * box under the send row, so it is part of the box and never lies over the page under a pinned box.
+   */
+  attachNote?: ReactNode;
   /** Whether the words box takes focus when it mounts (default: when the form came filled). A mode picked by keyboard keeps focus on its chip. */
   autoFocusPrompt?: boolean;
   /**
@@ -1867,6 +1873,7 @@ export function GeneratePanel({
           />
           )}
         </div>
+        {attachNote && <div className="sc-foot sc-attach-note">{attachNote}</div>}
         <div className="sc-foot">
           {status}
           <span id="sc-enter-hint" className="sc-hint">
