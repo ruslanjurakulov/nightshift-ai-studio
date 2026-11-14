@@ -112,9 +112,10 @@ There is no health signal with a TTL. **Missing.**
   - The quote id is `fq-<version>-<md5>`, and any edit bumps the version, so an older quote goes stale (`0171:49-53`). **This is the binding pattern the planner reuses** (§5.4).
 - **`start_film(film, quote_id, idem)`** (`0171:1256`) re-prices, then holds `fm-<segment>` once (`0171:1370-1376`).
 - **Child jobs carry `payer='film'` and have no hold of their own.** `finish_creative_job` captures only for `payer='credits'`, so a film job never settles twice (`0171:14, 454-469`). **This is the mechanism a plan-level hold needs** (§6.2).
-- **Assembly is not on sale.**
-  - No `film_assembly_minute` price is seeded (`0171:42-45`), so every film quote is `unpriced` (`docs/FILM_STUDIO.md:330`).
-  - No worker exists: the claim, begin, settle and expire functions exist for the service role only (`0171:1469-1908`), and nothing calls them (FILM_STUDIO P3, `:331`).
+- **Assembly cannot run yet, because there is no worker. Price is not the blocker.**
+  - 0171 deliberately seeds no `film_assembly_minute` row (`0171:42-45`), and on a fresh database every film quote is `unpriced` (`docs/FILM_STUDIO.md:330`).
+  - **In production the row exists.** The coordinator added it by hand with the owner's approval on 2026-11-14. That is a fact about the live database, not about this repository, so this doc records no figure. The consequence is that the validator must **read the live `credit_prices` row at quote time** through `quote_film` / `creative_price` (`0171:825-835`, `0159:358-359`), and never assume that a price is present or absent. On a database without the row (CI, a fresh lab, staging), assembly correctly reads `unpriced`.
+  - **No worker exists. This is the real blocker:** the claim, begin, settle and expire functions exist for the service role only (`0171:1469-1908`), and nothing calls them (FILM_STUDIO P3, `:331`).
   - `modules/film_timeline.py` builds a cut document, but nothing calls it (FILM_STUDIO.md:306-322).
   - The assembly timing on the media-worker has not been measured (`docs/FILM_ASSEMBLY_MEASUREMENT.md:266-280`).
 
@@ -217,7 +218,7 @@ This breaks the planner requirement that execution is server-only. The planner e
 
 - No live provider-health signal (§1.3).
 - No DAG executor that runs without a browser (§1.6).
-- No assembly backend on sale (§1.5).
+- No assembly worker (Film P3); its price exists in production (§1.5).
 - No LLM call from the Command Center, and no Anthropic integration (§1.9).
 - No schema validation of LLM JSON (§1.9).
 - No metering or limit on LLM calls (§1.9).
@@ -241,7 +242,7 @@ This breaks the planner requirement that execution is server-only. The planner e
 2. **A model that is not `sellable_models` never appears.** A model that is on sale but **unhealthy** does appear, with `health.state != "ok"`. It cannot be chosen silently; see §2.3.
 3. **The catalog contains no prices.** Pricing rules are described (`pricing.basis`), never as numbers the AI could echo. Each quote is computed later by the DB.
 4. Each response carries `catalog_version`, the sha256 of its canonical JSON. The plan stores the version it was validated against.
-5. **Non-model tools** (assembly, captions burn-in, text overlay) appear only when their backend is live. Live means three things: a price row exists, a claimable worker exists, and its switch is on. Today **none qualifies** (§1.5). They appear with `enabled:false` and a `blocked_reason`, so templates can explain themselves (§3).
+5. **Non-model tools** (assembly, captions burn-in, text overlay) appear only when their backend is live. Live means three things, each read at request time and never assumed: a live price row exists, a claimable worker exists, and its switch is on. Today **none qualifies**: assembly is priced in production, but its worker (Film P3) is not built and `film_studio_settings` is off (§1.5). They appear with `enabled:false` and a `blocked_reason`, so templates can explain themselves (§3).
 
 ### 2.2 JSON schema (draft 2020-12)
 
@@ -395,7 +396,7 @@ Its status in the table below is what that function would return **today**, goin
 | K1 | t2i | `create_creative_job`, priced via `creative_price` | available when a 9:16 t2i is on sale |
 | S1-S3 | i2v | same | available when an i2v with a matching duration is on sale |
 | V | tts | same | available (tts is priced per character, `0126:665-678`) |
-| A | **assemble + captions + end card** | none: no price, no worker (§1.5) | **BLOCKED (`unpriced`, `no_worker`)** |
+| A | **assemble + captions + end card** | `film_assembly_minute` is priced in production (the credit_prices row exists, read live); **the Film P3 worker is not built** (§1.5) | **BLOCKED (`no_worker`)**; on a database without the price row, also `unpriced` |
 
 **T1 today: BLOCKED.** Without assembly the output would be four loose files, not "a finished ad", so the validator refuses the whole template.
 
@@ -411,7 +412,7 @@ Option for the owner: a **"T1-parts"** variant whose declared output is "3 clips
 - Slots: `topic` (required, from the text), `language`, `script` (ai_fill, edited, ≤ N chars), `scene_count` 3-6, `models`.
 - K, C and V are live through creative jobs. **A is BLOCKED**, exactly as in T1.
 - The channel pipeline (E4) already makes narrated Shorts, but it is a whole run of the daily-video workflow, not a per-node backend. It is **not** a step a plan can call. **T2 today: BLOCKED.**
-- Unblocking T1 and T2 is one job: put Film Studio's assembly on sale (a price row, the P3 worker, the switch) and expose it as the internal tool `assemble`.
+- Unblocking T1 and T2 is one job: ship the Film P3 worker (it drives takes and segments and owns the settle path), turn the film switch on, and expose assembly as the internal tool `assemble`. The price row already exists in production.
   - T2 *is* a film: a film with scenes and narration.
   - Its executor path could be **`start_film` itself** rather than a new assembler (§6.6).
 
@@ -765,7 +766,7 @@ The approve panel renders, from i18n in all three languages and never from model
 
 ### 6.5 Proposed additive migration(s) (no files, no numbers)
 
-> The coordinator assigns the number(s) (0178+ is likely; please confirm).
+> **0178 is reserved for Planner P1 only.** It holds the minimum P1 needs: `studio_plans` (versions), `studio_plan_nodes`, `studio_plan_quotes`, the switch, and `provider_health` read-only, since P1's catalog reads it. 0173–0177 are taken by queued PRs. Later phases (approvals, `payer='plan'`, planner limits and calls, retry budget, events) get numbers when they are built. The file is not written yet.
 
 - **`studio_plans`**: id, org_id, created_by, template_id, template_version, version, doc (jsonb, ≤ 64 kB), status (`draft`, `quoted`, `approved`, `running`, `paused_failed`, `paused_provider`, `settling`, `completed`, `partial`, `failed`, `cancelled`), catalog_version, timestamps. RLS: members read their org's plans; writes go through functions only.
 - **`studio_plan_nodes`**: plan_id, version, key, capability, model_id, params, deps text[], quoted_credits, charged_credits, status (`waiting`, `ready`, `waiting_provider`, `blocked_cap`, `blocked_price_changed`, `running`, `reconciling`, `completed`, `failed`, `failed_final`, `skipped`, `cancelled`), attempts, internal_retries, creative_job_id (current), error_code, result_asset_ids.
@@ -872,17 +873,18 @@ Each phase follows the CLAUDE.md pipeline (Scout where a provider is involved, t
 ### P1 — catalog, templates, validator, plan quote (no LLM)
 
 - **Builds:**
-  - the migration: `studio_plans`, `_nodes`, `_quotes`, `provider_health` (read only), and the switch;
+  - migration **0178** (reserved): `studio_plans`, `_nodes`, `_quotes`, `provider_health` (read only), and the switch;
   - `planner_catalog`, `template_feasibility`, `plan_save` and `plan_quote`;
   - the gate module;
-  - the template picker form (T1, T2 and T3, with T1 and T2 shown "Not available yet — assembly is not on sale");
+  - the template picker form (T1, T2 and T3, with T1 and T2 shown "Not available yet — video assembly is not running yet");
   - i18n for en, ru and uz.
 - **Tests:**
   - the catalog never lists a non-sellable model;
   - validator rules V1-V10, one test each;
   - an unpriced node gives a NULL total;
   - the hash is stable under key reordering and changes when any listed input changes;
-  - blocked templates cannot be quoted.
+  - blocked templates cannot be quoted;
+  - the assembly line reads the live `credit_prices` row: with the row it is priced; without it (the lab's fresh database) it is `unpriced`, and the total is NULL.
 - **Security:** a direct `rpc` call with a forged doc (§5.6 items 2 and 8).
 - **Owner acceptance:**
   1. Open Studio → Plans, pick "Animate a picture", choose a photo, a duration and an aspect.
@@ -946,7 +948,7 @@ Each phase follows the CLAUDE.md pipeline (Scout where a provider is involved, t
   2. Open it on the canvas and see the same nodes and price.
   3. Have an MCP client read `plan_status`, and see the same approval hash and live states.
 
-**What unblocks T1 and T2 is not a planner phase.** It is Film Studio P3 (the worker), plus an owner-set `film_assembly_minute` price, plus the switch on. Until then the planner ships honestly with T3 only.
+**What unblocks T1 and T2 is not a planner phase.** It is Film Studio P3 (the worker that drives takes and segments, plus the settle path), plus the film switch on. The `film_assembly_minute` price already exists in production. Until then the planner ships honestly with T3 only.
 
 ---
 
@@ -960,7 +962,7 @@ Each phase follows the CLAUDE.md pipeline (Scout where a provider is involved, t
 4. **Internal retry budget numbers** (§6.3; the policy itself is decided): per node (proposed 2), per plan (proposed ≤ 100% of the quote at vendor cost), per org per 24 h (proposed 10), and a global daily cap.
 5. **Failed-job cap scope:** should the per-org 24 h cap also cover plain creative jobs (E1)?
 6. **"T1-parts"** (§3.1): offer a "clips + voice, no assembly" product-ad variant now, or wait for assembly?
-7. **The assembly price.** `film_assembly_minute` is unpriced (0171). T1 and T2 stay blocked until you set it and Film P3 ships.
+7. **Film P3 priority.** The assembly price is set in production. T1 and T2 stay blocked until the Film P3 worker ships and the film switch is on.
 8. **Who may approve.** Owner and admin only (proposed), or any member with spending rights?
 9. **Two holds for a T2 that is a film** (§6.6): accept it (it needs a concurrency of 2) or always assemble inside the plan's single hold?
 10. **MCP approve scope.** API keys only in P4 (proposed), or OAuth too (this changes the consent screen)?
@@ -987,3 +989,4 @@ Each phase follows the CLAUDE.md pipeline (Scout where a provider is involved, t
 7. The claims in PR #790's body about its own QA. They come from the PR description; I did not re-run them.
 8. Whether Gemini script and fact-check stages are inside `spend_guard`'s guarded stages. Unconfirmed, and in any case not relevant to the planner, which has its own meter.
 9. The Gemini planning-call cost in §4.5 is an **estimate** from verified per-token prices and assumed token counts. The real number comes from `planner_calls` once P2 runs.
+10. That a `film_assembly_minute` row exists in production. This comes from the coordinator's report of a manual insert approved by the owner. It cannot be seen from the repository, and this session did not query production. The design does not depend on it either way: the validator reads the row live (§1.5).
