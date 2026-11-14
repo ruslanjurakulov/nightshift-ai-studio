@@ -73,8 +73,12 @@ VIDEO_MUSIC = "video_music"  # video → music that follows it; the output is th
 #: input_images) + words that say who becomes whom → the same scene with those people replaced. Sold through 0137's own tables,
 #: never through creative_jobs, so the registry entries that list it are registry-only.
 VIDEO_CHARACTER_SWAP = "video_character_swap"
+#: Voice to video (0170, docs/VOICE_EXPLAINER.md): a person's own narration (one library audio file) → a 9:16 motion-graphics
+#: explainer drawn by our own engine (modules/voice_explainer.py, Remotion). No vendor is called; CapabilityRequest.look names
+#: one of EXPLAINER_LOOKS.
+VOICE_EXPLAINER = "voice_explainer"
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
-                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP)
+                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP, VOICE_EXPLAINER)
 #: Capabilities the DATABASE does not list yet. Migration 0100's ``model_registry_capabilities_check`` and
 #: ``model_probe_runs_capability_check`` are closed lists, and ``sync_model_registry`` is one statement: a single row with
 #: a capability outside them would fail the sync of EVERY model. So an entry that lists one of these is REGISTRY-ONLY: it
@@ -89,7 +93,7 @@ OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audi
              VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text",
              EXPAND: "image", RELIGHT: "image", ERASE: "image",
              VIDEO_EDIT: "video", VIDEO_REFRAME: "video", VIDEO_REMOVE_BG: "video",
-             MUSIC: "audio", VIDEO_MUSIC: "audio", VIDEO_CHARACTER_SWAP: "video"}
+             MUSIC: "audio", VIDEO_MUSIC: "audio", VIDEO_CHARACTER_SWAP: "video", VOICE_EXPLAINER: "video"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
 #: A character swap takes pictures too (the characters), beside its video.
 IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE, *PICTURE_OPS, VIDEO_CHARACTER_SWAP})
@@ -99,6 +103,9 @@ RELIGHT_LOOKS = ("soft", "warm", "cool", "golden_hour", "dramatic", "studio")
 #: The shapes an expand can extend a picture to (0099's allow-list; a model
 #: lists the ones it was proven for in ``aspect_ratios_by_capability.expand``).
 EXPAND_ASPECTS = ("16:9", "9:16", "1:1", "4:3", "3:4")
+#: The looks a voice video is drawn in (0170's allow-list; modules/voice_explainer.LOOKS and the engine's looks.ts, which
+#: tests pin to this tuple). A model lists the ones it was proven for in ``explainer_looks``.
+EXPLAINER_LOOKS = ("dusk", "midnight", "golden", "neon", "paper")
 #: Capabilities whose output is text kept on the job row, never a file in the
 #: library (0055's CHECK refuses assets on such a job).
 TEXT_OUTPUT = frozenset({DESCRIBE, CAPTIONS})
@@ -116,7 +123,8 @@ VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
 #: Captions (0072) start from one too: the recording is the whole input.
-MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS})
+#: A voice video (0170) starts from one too: the person's own narration (audio only, the database checks).
+MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS, VOICE_EXPLAINER})
 #: Capabilities whose input is a video file (0052) — also carried in
 #: CapabilityRequest.input_media, never as a picture, never with speech rules.
 VIDEO_INPUT = frozenset({VIDEO_UPSCALE, *VIDEO_OPS, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
@@ -128,7 +136,7 @@ FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: expand and relight (0099) are asked by a shape / a look: their words are optional.
 #: A soundtrack for a video (video_music) is scored to the picture; words only steer it.
 PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS,
-                             EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG, VIDEO_MUSIC})
+                             EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG, VIDEO_MUSIC, VOICE_EXPLAINER})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -315,6 +323,8 @@ class CapabilityRequest:
     spoken_language: Optional[str] = None
     #: The light a ``relight`` is asked for by name (0099): one of RELIGHT_LOOKS,
     #: which the entry's ``relight_looks`` must list. None = the prompt names it.
+    #: For a ``voice_explainer`` (0170) the look the video is drawn in: one of
+    #: EXPLAINER_LOOKS, which the entry's ``explainer_looks`` must list (required).
     look: Optional[str] = None
 
 

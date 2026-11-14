@@ -39,6 +39,7 @@ from modules.capabilities.base import (
     ERASE,
     EXPAND,
     EXPAND_ASPECTS,
+    EXPLAINER_LOOKS,
     FILE_INPUT,
     I2V,
     IMAGE_INPUT,
@@ -60,6 +61,7 @@ from modules.capabilities.base import (
     VIDEO_REFRAME,
     VIDEO_REMOVE_BG,
     VIDEO_UPSCALE,
+    VOICE_EXPLAINER,
     CapabilityRequest,
 )
 
@@ -245,6 +247,8 @@ class ModelEntry:
     end_frame: bool
     #: The lights a relight is sold for (0099); empty unless it lists relight.
     relight_looks: Tuple[str, ...]
+    #: The looks a voice video is drawn in (0170); empty unless it lists voice_explainer.
+    explainer_looks: Tuple[str, ...]
     #: The longest source a file tool takes, in seconds (limits.max_source_seconds).
     max_source_seconds: Optional[int]
     audio_out: bool
@@ -367,7 +371,10 @@ class ModelEntry:
             out.append(f"{cap} keeps the video's own shape: an aspect ratio does not apply")
         if cap == RELIGHT and request.look is not None and request.look not in self.relight_looks:
             out.append(f"{self.id} does not relight with the {request.look} look")
-        if cap != RELIGHT and request.look is not None:
+        # A voice video (0170) is always drawn in a look, and only in one the model was proven for: never a default here.
+        if cap == VOICE_EXPLAINER and request.look not in self.explainer_looks:
+            out.append(f"{self.id} does not draw the {request.look or '(no look)'} look")
+        if cap not in (RELIGHT, VOICE_EXPLAINER) and request.look is not None:
             out.append(f"a look does not apply to {cap}")
         return out
 
@@ -408,7 +415,7 @@ class ModelEntry:
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), quality=p.get("quality"),
                                  duration_s=p.get("duration_s"),
-                                 voice_id=None if cap in (DUB, CAPTIONS) else voice_id, input_images=tuple(images),
+                                 voice_id=None if cap in (DUB, CAPTIONS, VOICE_EXPLAINER) else voice_id, input_images=tuple(images),
                                  scale=p.get("factor"), input_media=tuple(media),
                                  target_language=p.get("target_language"), end_image=end,
                                  upscale_target=p.get("upscale_target"))
@@ -430,6 +437,7 @@ def _entry(m: Mapping) -> ModelEntry:
         upscale_targets=tuple(m.get("upscale_targets") or ()),
         end_frame=bool(m.get("end_frame")),
         relight_looks=tuple(m.get("relight_looks") or ()),
+        explainer_looks=tuple(m.get("explainer_looks") or ()),
         max_source_seconds=m["limits"].get("max_source_seconds"),
         audio_out=bool(m["audio_out"]), is_async=bool(m["async"]),
         api_documented_url=m["api_documented"]["url"], doc_source=m["api_documented"]["source"],
@@ -517,6 +525,22 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "captions are a web tool: api_exposure must be web_only"))
         if any(c in VIDEO_INPUT for c in caps) and any(c not in VIDEO_INPUT for c in caps):
             errors.append(_err(mid, "a video tool model lists only video tools"))
+        if (VOICE_EXPLAINER in caps) != bool(m.get("explainer_looks")):
+            # 0170 sells a voice video only in a look the model lists.
+            errors.append(_err(mid, "explainer_looks is required with voice_explainer and only with it"))
+        if any(k not in EXPLAINER_LOOKS for k in (m.get("explainer_looks") or ())):
+            errors.append(_err(mid, "explainer_looks must be looks the database accepts"))
+        if VOICE_EXPLAINER in caps:
+            # Our own renderer draws it (no vendor): one capability per entry, so its probe proves exactly what is sold, and
+            # 0170 prices the recording's measured seconds against a stated longest input the engine can hold in one render.
+            if caps != [VOICE_EXPLAINER]:
+                errors.append(_err(mid, "a voice video model lists only voice_explainer"))
+            longest = m["limits"].get("max_source_seconds")
+            if not longest or longest > 600:
+                errors.append(_err(mid, "voice_explainer needs limits.max_source_seconds of at most 600 (one render holds the whole video)"))
+        if (m["api_documented"]["source"] == "own_engine") != (VOICE_EXPLAINER in caps):
+            # own_engine says "no vendor is called": true only of the capability our own renderer serves.
+            errors.append(_err(mid, "api_documented.source own_engine is for our own renderer (voice_explainer) and only for it"))
         if VIDEO_MUSIC in caps and not m["limits"].get("max_source_seconds"):
             # The vendor bills the video's seconds: without a documented longest input a length it refuses would be sold.
             errors.append(_err(mid, "video_music needs limits.max_source_seconds"))

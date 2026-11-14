@@ -15,8 +15,9 @@ Two planners fill the scenes, and the caller picks one; neither stands in for th
   the rules planner (CLAUDE.md rule 4).
 
 This module spends nothing and talks to no provider by itself: transcription and the
-model are passed in (tools/voice_to_video.py wires them). It is not a run kind yet: no
-credit hold, no queue job, no upload. That is the next slice (docs/VOICE_EXPLAINER.md).
+model are passed in. Two callers wire it: tools/voice_to_video.py (the operator's command)
+and modules/capabilities/voice_video.py (the Studio's paid creative job, migration 0170,
+rules planner only; docs/VOICE_EXPLAINER.md).
 """
 
 from __future__ import annotations
@@ -73,6 +74,14 @@ class ExplainerError(ValueError):
 
 class PlanRejected(ExplainerError):
     """The model's plan does not fit the catalogue. Never replaced by the rules planner."""
+
+
+class RenderFailed(ExplainerError):
+    """Remotion ran and did not produce the video. Not the recording's fault: a paid caller words it as the engine's."""
+
+
+class RenderTimeout(RenderFailed):
+    """The render ran out of time and was stopped (a busy or too small machine, not a bad recording)."""
 
 
 @dataclass(frozen=True)
@@ -496,10 +505,15 @@ def audio_seconds(path: Path) -> float:
 
 
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
-           browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1) -> Path:
+           browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
+           tmp_dir: Optional[Path] = None) -> Path:
     """Render the props with Remotion. ``files`` maps each public path the props name
     (narration, music, effects) to the file on disk; they are copied into a private
-    public dir for this render only. Raises ExplainerError with Remotion's last lines."""
+    public dir for this render only. Raises RenderFailed (RenderTimeout) with Remotion's last lines.
+
+    ``tmp_dir``: where this render's scratch goes (the public dir, the props, and Remotion's own TMPDIR) instead of the
+    system's. The creative worker's /tmp is a tmpfs, so a ten-minute render's audio and bundle there would count against the
+    container's memory limit; it passes the job's own folder on the media volume."""
     if not (engine_dir / "node_modules").exists():
         raise ExplainerError(f"the Remotion engine is not installed: run `npm ci` in {engine_dir}")
     if shutil.which("npx") is None:
@@ -508,7 +522,11 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # A file left from an earlier run must not pass as this run's output.
     out_path.unlink(missing_ok=True)
-    with tempfile.TemporaryDirectory(prefix="explainer-") as tmp:
+    env = _render_env()
+    if tmp_dir is not None:
+        Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+        env["TMPDIR"] = str(Path(tmp_dir).resolve())
+    with tempfile.TemporaryDirectory(prefix="explainer-", dir=str(tmp_dir) if tmp_dir is not None else None) as tmp:
         pub = (Path(tmp) / "public").resolve()
         pub.mkdir()
         for name, src in files.items():
@@ -527,16 +545,16 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
         # Its own process group: on a timeout the whole tree goes (npx, node, the headless Chrome), not just npx, so
         # nothing keeps writing out_path after the caller was told the render failed.
         proc = subprocess.Popen(cmd, cwd=engine_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                env=_render_env(), start_new_session=True)
+                                env=env, start_new_session=True)
         try:
             stdout, stderr = proc.communicate(timeout=timeout_s)
         except subprocess.TimeoutExpired:
             _kill_group(proc)
             out_path.unlink(missing_ok=True)
-            raise ExplainerError(f"the render took longer than {timeout_s:.0f} s and was stopped") from None
+            raise RenderTimeout(f"the render took longer than {timeout_s:.0f} s and was stopped") from None
         if proc.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
             tail = "\n".join((stderr or stdout or "").strip().splitlines()[-8:])
-            raise ExplainerError(f"Remotion failed (exit {proc.returncode}): {tail}")
+            raise RenderFailed(f"Remotion failed (exit {proc.returncode}): {tail}")
     return out_path
 
 

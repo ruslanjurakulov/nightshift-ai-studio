@@ -218,13 +218,16 @@ ADAPTERS_ENV = "NIGHTSHIFT_CREATIVE_ADAPTERS"
 #: image (0046) or, for the voice tools, a recording (0050).
 SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg", "voice_change", "dub", "video_upscale",
                                  "describe", "captions", "expand", "relight", "erase",
-                                 "video_edit", "video_reframe", "video_remove_bg"})
+                                 "video_edit", "video_reframe", "video_remove_bg", "voice_explainer"})
 #: Of those, the ones whose input is a file copied whole: a recording (audio
 #: or video, 0050) or a video (0052).
 MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub", "video_upscale", "captions",
-                                       "video_edit", "video_reframe", "video_remove_bg"})
+                                       "video_edit", "video_reframe", "video_remove_bg", "voice_explainer"})
 #: Of those, the ones that take a VIDEO and nothing else (0052).
 VIDEO_SOURCE_CAPABILITIES = frozenset({"video_upscale", "video_edit", "video_reframe", "video_remove_bg"})
+#: Of those, the ones that take an AUDIO recording and nothing else (0170: a voice video is drawn over the person's own
+#: narration; a video's soundtrack is not one).
+AUDIO_SOURCE_CAPABILITIES = frozenset({"voice_explainer"})
 #: Of those, the ones whose output is a new version of the input.
 VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg", "video_upscale", "expand", "relight", "erase",
                                   "video_edit", "video_reframe", "video_remove_bg"})
@@ -233,7 +236,9 @@ OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg":
                "expand": "image", "relight": "image", "erase": "image",
                "video_edit": "video", "video_reframe": "video", "video_remove_bg": "video",
                "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio",
-               "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text", "captions": "text"}
+               "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text", "captions": "text",
+               # 0170: our own engine draws the video over the recording (modules/capabilities/voice_video.py).
+               "voice_explainer": "video"}
 #: Capabilities whose result is text on the job row, never a library asset (0055).
 TEXT_CAPABILITIES = frozenset({"describe"})
 #: Capabilities whose result is a caption track in its own table (0072), never a library asset.
@@ -948,6 +953,9 @@ class CreativeWorker:
         if request.capability in VIDEO_SOURCE_CAPABILITIES and (
                 info.get("kind") != "video" or not str(info.get("mime") or "").startswith("video/")):
             raise _Refused("source_unavailable", "the source must be a video")
+        if request.capability in AUDIO_SOURCE_CAPABILITIES and (
+                info.get("kind") != "audio" or not str(info.get("mime") or "").startswith("audio/")):
+            raise _Refused("source_unavailable", "the source must be an audio recording")
         try:
             return ml.copy_source(self.media_root, aid, str(info.get("mime") or ""),
                                   list(info.get("variants") or ()), self.out_dir / request.job_id / "input",

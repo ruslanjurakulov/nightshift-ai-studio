@@ -293,7 +293,10 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
     task = None
     try:
         if not adapter.configured():
-            raise AdapterError(E_NOT_CONFIGURED, f"no key for {entry.adapter} on this machine")
+            # Our own engine (the voice video, 0170) has no key: it says what this machine lacks to render instead.
+            missing = getattr(adapter, "missing", None)
+            raise AdapterError(E_NOT_CONFIGURED, "; ".join(missing()) if callable(missing) and missing()
+                               else f"no key for {entry.adapter} on this machine")
         if entry.raw["probe"].get("input_video") == "generated":
             video = str(probe_video(workdir / "probe_video.mp4"))
             request = entry.probe_request(voice_id=voice_id, generated_image=image,
@@ -386,7 +389,8 @@ def shutdown_left_out(entries: Iterable, ids: Sequence[str], capability: Optiona
 def describe(entry, env: Mapping[str, str], voice_id: Optional[str]) -> str:
     adapter = build_adapter(entry.adapter, env=env)
     req = entry.probe_request(voice_id=voice_id, generated_image="<generated frame>")
-    parts = [f"{entry.id:32} {entry.adapter:22} key={'yes' if adapter.configured() else 'NO'}",
+    ready = "engine" if entry.raw["api_documented"]["source"] == "own_engine" else "key"
+    parts = [f"{entry.id:32} {entry.adapter:22} {ready}={'yes' if adapter.configured() else 'NO'}",
              f"{req.capability} {entry.vendor_model_for(req.capability)}"]
     for k in ("aspect_ratio", "resolution", "image_size", "quality", "duration_s", "target_language", "upscale_target",
               "look"):
@@ -394,7 +398,9 @@ def describe(entry, env: Mapping[str, str], voice_id: Optional[str]) -> str:
         if v is not None:
             parts.append(f"{k}={v}")
     if req.capability in MEDIA_INPUT:
-        parts.append(f"(from speech made by {SPEECH_MODEL}: two paid calls)")
+        # The voice video's own call is a render on this machine, not a vendor's: the speech is its only paid call.
+        paid = "one paid call, then a local render" if entry.raw["api_documented"]["source"] == "own_engine" else "two paid calls"
+        parts.append(f"(from speech made by {SPEECH_MODEL}: {paid})")
     if req.end_image:
         parts.append("(ends on a second drawn frame)")
     if entry.raw["probe"].get("input_video") == "generated":

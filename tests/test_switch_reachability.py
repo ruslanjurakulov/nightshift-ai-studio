@@ -62,9 +62,10 @@ INTENTIONALLY_UNREACHABLE = {
     "CHRONOS_OPENAI_IMAGE_QUALITY": "quality tier of one image provider; CHRONOS_IMAGE_MODEL is the deployable choice",
     "CHRONOS_IDEOGRAM_SPEED": "speed tier of one image provider; CHRONOS_IMAGE_MODEL is the deployable choice",
     "CHRONOS_TOPIC_VECTORS": "a local embeddings file for the originality engine's offline mode",
-    "CHRONOS_REMOTION_BROWSER": "a Chromium path inside the worker image; the image has no Node or Chromium yet, add it with the "
-                                "Dockerfile step that installs them",
-    "CHRONOS_REMOTION_TIMEOUT": "seconds per Remotion scene (default 600); only meaningful once the image can run Remotion",
+    "CHRONOS_REMOTION_BROWSER": "an optional Chromium override for a developer's machine; the worker image ships Remotion's own "
+                                "headless shell (Dockerfile.worker: npx remotion browser ensure), which needs no setting",
+    "CHRONOS_REMOTION_TIMEOUT": "seconds per Remotion scene of the pipeline's renderer (default 600), which stays off unless "
+                                "CHRONOS_REMOTION=1; the Studio's voice video times its render from the recording's length",
     # -- owner decisions still pending (never enable from a test) ------------------
     # NIGHTSHIFT_CHARACTER_STUDIO itself is reachable (deploy/.env.web.example, empty: the web page stays a 404). The worker that also
     # reads it is not deployed: no service runs tools/character_swap_worker.py until the release steps of docs/CHARACTER_STUDIO.md.
