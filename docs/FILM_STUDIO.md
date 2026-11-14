@@ -5,7 +5,7 @@ each shot starts from the previous shot's last frame. The shots are assembled in
 subtitles. The video then goes to a channel as a **private** upload, behind the existing publish gate and approval
 (`modules/publish_gate.py`, migration 0112). Film Studio never adds a publish path. CLAUDE.md rules 2 and 3 apply unchanged.
 
-The work ships in phases, one draft PR each. Only **P1** exists so far: drafts, with no spend, no worker and no UI.
+The work ships in phases, one draft PR each. **P1** (the data) and **P5/P6 for drafts** (the routes and the screens, below) exist so far: drafts, with no spend and no worker.
 
 ## The data model (migration 0166)
 
@@ -121,6 +121,25 @@ Tests:
 
 Rollback: `docs/sql/rollback_0166_films_core.sql`. It refuses while films exist, unless its override line is set.
 
+## In the Command Center (P5, P6 for drafts)
+
+A person sees this as **Studio → Projects** ("Проекты", "Loyihalar"; one item is a "project"). The Studio's own name is not written in
+the Projects strings: it is read from the app's `nav.hub` key. Code, tables and functions keep the internal name `films`.
+
+| Piece | Where |
+| :-- | :-- |
+| The switch | `NIGHTSHIFT_FILM_STUDIO` on the Command Center's server, default off. `off`: the pages and `/api/films/**` are a 404 and nothing lists the section. `admins`: only a platform owner/admin sees it. `on`: every member. |
+| Pages | `/{channel}/create/projects` (the list and "New project") and `/{channel}/create/projects/{id}` (the canvas), under the Studio's own address |
+| Entry points | The Studio's desk bar, the customer sidebar's Create group and the Studio overview's list, each only while the switch lists it for the viewer |
+| Routes | `GET/POST /api/films`, `GET/PATCH /api/films/{id}`, `POST /api/films/{id}/archive`. Each is the member's own session (anon key + cookie) calling 0166's functions; the service key is never used. Same origin, a body cap, and a route rate limit per person (`films.create` 60, `films.save` 480, `films.archive` 120 an hour) in front of the database's own `db.film.*` limits. The database writes the audit row (`film_events`). |
+| Shared shapes | `command-center/lib/films.ts`: the read model, the refusals as closed words, what a save sends, the checks before a save, and the browser's calls |
+| Data and state | `components/films/useFilmProject.ts`: the draft, autosave (4 s after the last edit, at least 20 s apart, so at most 180 saves an hour against the database's 240), the version conflict, undo and redo (50 steps), split, merge, insert, delete and reorder, and a pending-edit buffer in the browser so a refresh or a closed tab loses nothing. It knows nothing about how the board is drawn, so a node canvas can replace the scene grid. |
+| Strings | `command-center/lib/i18n/film-studio/{en,ru,uz}.ts` |
+
+What is not available yet, and says so on the screen: writing the storyboard with AI (P3), and Start with a price (P2). Start is
+drawn disabled with "Pricing for projects is not live yet"; no number, price or quote is shown. Sound, shooting, assembly and the
+handoff are dim stations on the track. Nothing on these screens spends, starts or publishes.
+
 ## The phases
 
 | PR | Content | Migration | State |
@@ -130,8 +149,8 @@ Rollback: `docs/sql/rollback_0166_films_core.sql`. It refuses while films exist,
 | P2 | Money. `quote_film`, `start_film` and `film_segments` (one hold per run, settle and release). Also: the money columns on `film_takes`, `creative_jobs.film_take_id` with `payer='film'`, the `film_assembly_minute` price row, `org_film_settings`, and the service functions of the state machine | 0167 | |
 | P3 | The orchestrator. `tools/film_worker.py` and `modules/film_orchestrator.py` handle the lease, trickle enqueue and retry policy. Last-frame extraction goes through `ffmpeg_limits`. The plan step uses Gemini. | (0167) | |
 | P4 | Assembly on the media-worker: `modules/film_timeline.py`, `film_cuts`, `films.current_cut_id` | 0168 | |
-| P5 | `/api/films/**` routes, `lib/films.ts`, rate buckets, geo checks, audit | - | |
-| P6 | The canvas UI with every state, at mobile width, in en/ru/uz | - | |
+| P5 | `/api/films/**` routes, `lib/films.ts`, rate buckets, geo checks, audit | - | drafts done (no geo check yet: drafts pick no model) |
+| P6 | The canvas UI with every state, at mobile width, in en/ru/uz | - | drafts done; Start stays off until P2 |
 | P7 | Re-shoot: angle, light and motion; choosing a take version; re-assembly | 0169 | |
 | P8 | Handoff to the channel. This adds the `film` and `film_voice` render-job kinds, `send_film_to_channel` and `main.py --film`. The payment guard is md5-pinned. The upload stays private. | 0170 | |
 | P9 | The autopilot `scene_mode = ai_video` setting, locked to admins. Storyboard review is forced. `films.storyboard_id` is added. | 0171 | |
