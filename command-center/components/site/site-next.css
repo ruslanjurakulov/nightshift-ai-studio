@@ -1645,6 +1645,23 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
 .nx-facts-n { font-family: var(--font-display); font-size: clamp(36px, 6vw, 60px); font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--ns-text); }
 .nx-facts-l { font-size: 15px; line-height: 1.4; color: var(--ns-text-dim); }
 
+/* "Live from our pipeline" (components/site/LiveStats.tsx): the database's counts, only once the owner turns them on. Smaller
+   than the facts above it: the facts are what the page holds, these are what the pipeline did. The label is read first (dt
+   before dd) and the number is drawn above it. */
+.nx-live { padding-block: 24px 28px; background: var(--ns-ground); border-bottom: 1px solid var(--ns-rule); }
+@media (min-width: 1024px) { .nx-live { padding-block: 32px 36px; } }
+.nx-live-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 20px; }
+.nx-live-h { display: inline-flex; align-items: center; gap: 10px; margin: 0; font-size: 16px; font-weight: 600; color: var(--ns-text); }
+.nx-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ns-go); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ns-go) 22%, transparent); }
+.nx-live-asof { margin: 0; font-size: 14px; color: var(--ns-text-dim); font-variant-numeric: tabular-nums; }
+.nx-live-lead { margin: 8px 0 0; max-width: 60em; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
+.nx-live-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px 28px; margin: 20px 0 0; }
+.nx-live-list > div { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 6px; min-width: 0; }
+.nx-live-l { font-size: 14px; line-height: 1.4; color: var(--ns-text-dim); }
+.nx-live-n { margin: 0; font-family: var(--font-display); font-size: clamp(28px, 4.4vw, 40px); font-weight: 600; line-height: 1.05; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--ns-text); overflow-wrap: anywhere; }
+.nx-live-n.nx-live-time { font-size: clamp(18px, 2.2vw, 22px); letter-spacing: 0; line-height: 1.3; }
+.nx-live-none { font-family: inherit; font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--ns-text-dim); }
+
 /* Each tile leads with its sample: a large picture on top, the .nx-ai-badge label on its corner, the name and one line under it.
    The tile had no rule of its own on main (#726 dropped it when the still moved into .nx-model-media, and a stale
    `.nx-model-pic` pinned the still at 76 px), so it was a plain block: a 76 px still, the label hanging past its edge, the

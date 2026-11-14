@@ -3,6 +3,7 @@ import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
 import { trustUz } from "../trust/uz";
 import { siteAutopilotUz } from "../site-autopilot/uz";
+import { publicStatsUz } from "../public-stats/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -543,6 +544,7 @@ export const siteUz: SiteDictionary = {
   trust: trustUz,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotUz,
+  liveStats: publicStatsUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",
