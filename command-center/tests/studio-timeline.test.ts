@@ -14,6 +14,8 @@ import {
   coerceTimelineFilm,
   keyAction,
   layoutTimeline,
+  chosenShots,
+  segmentAt,
   reorder,
   sceneAt,
   shortcutAllowed,
@@ -25,22 +27,54 @@ import {
 const CLIP = "c1000000-0000-4000-8000-0000000000c1";
 const NARR = "c2000000-0000-4000-8000-0000000000c2";
 const MUSIC = "c3000000-0000-4000-8000-0000000000c3";
+const CLIP2 = "c4000000-0000-4000-8000-0000000000c4";
 const take = (over: Record<string, unknown>) => ({
   id: crypto.randomUUID(), scene_id: S1, version: 1, shot_index: 1, kind: "clip", status: "completed", duration_s: 5.5, result_asset_id: CLIP, ...over,
 });
 
 describe("lanes from film_json", () => {
-  it("a scene without a chosen, finished take is a draft block at its PLANNED length; a shot scene is its measured length", () => {
+  it("a scene without a chosen, finished take is a draft at its PLANNED length; a shot scene is measured only by the library's duration", () => {
     const raw = filmJson({}, [
       sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: [take({})] }),
       sceneJson(S2, 1, { planned_seconds: 6, takes: [take({ scene_id: S2, status: "running", result_asset_id: null })] }),
     ]);
     const film = coerceTimelineFilm(raw)!;
-    const { clips, duration } = layoutTimeline(film);
+    // No asset duration yet: the shot scene keeps its planned 8 s and is NOT measured, whatever film_takes.duration_s (5.5) asked for.
+    const before = layoutTimeline(film).clips.filter((c) => c.track === "V1");
+    expect(before[0]).toMatchObject({ draft: false, length: 8, measured: false, assetId: CLIP });
+    // The library recorded 5.2 s for the file: that, not the requested 5.5 s, is the measured length.
+    const { clips, duration } = layoutTimeline(film, new Map([[CLIP, 5.2]]));
     const v1 = clips.filter((c) => c.track === "V1");
-    expect(v1[0]).toMatchObject({ draft: false, length: 5.5, measured: true, assetId: CLIP, start: 0 });
-    expect(v1[1]).toMatchObject({ draft: true, length: 6, measured: false, assetId: null, start: 5.5 });
-    expect(duration).toBe(11.5);
+    expect(v1[0]).toMatchObject({ draft: false, length: 5.2, measured: true, assetId: CLIP, start: 0 });
+    expect(v1[1]).toMatchObject({ draft: true, length: 6, measured: false, assetId: null, start: 5.2 });
+    expect(duration).toBeCloseTo(11.2);
+  });
+
+  it("H1: a 2-shot scene with only shot 1 finished is a draft, exactly as the assembly worker would refuse it", () => {
+    const two = filmJson({}, [sceneJson(S1, 0, { current_version: 1, shot_count: 2, takes: [take({})] })]);
+    expect(layoutTimeline(coerceTimelineFilm(two)!).clips.find((c) => c.track === "V1")?.draft).toBe(true);
+    const both = filmJson({}, [
+      sceneJson(S1, 0, { current_version: 1, shot_count: 2, takes: [take({}), take({ kind: "extend", shot_index: 2, result_asset_id: CLIP2 })] }),
+    ]);
+    const v1 = layoutTimeline(coerceTimelineFilm(both)!, new Map([[CLIP, 4], [CLIP2, 3]])).clips.find((c) => c.track === "V1")!;
+    expect(v1).toMatchObject({ draft: false, length: 7, measured: true, assetIds: [CLIP, CLIP2] });
+    expect(v1.segments).toEqual([{ assetId: CLIP, start: 0, length: 4 }, { assetId: CLIP2, start: 4, length: 3 }]);
+    expect(segmentAt(v1, 5)).toEqual({ assetId: CLIP2, offset: 1, measured: true });
+  });
+
+  it("H1: of two completed attempts of a shot, the preview uses the higher attempt (the worker's done[-1])", () => {
+    const raw = filmJson({}, [
+      sceneJson(S1, 0, { current_version: 1, takes: [take({ attempt: 2, result_asset_id: CLIP2 }), take({ attempt: 1, result_asset_id: CLIP })] }),
+    ]);
+    const film = coerceTimelineFilm(raw)!;
+    expect(chosenShots(film.view.scenes[0], film.sceneTakes.get(S1)!)?.map((t) => t.resultAssetId)).toEqual([CLIP2]);
+    expect(layoutTimeline(film).clips.find((c) => c.track === "V1")?.assetId).toBe(CLIP2);
+  });
+
+  it("H1: an unmeasured shot scene plays its first shot from the scene's start and never claims a measured offset", () => {
+    const raw = filmJson({}, [sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: [take({})] })]);
+    const v1 = layoutTimeline(coerceTimelineFilm(raw)!).clips.find((c) => c.track === "V1")!;
+    expect(segmentAt(v1, 3)).toEqual({ assetId: CLIP, offset: 3, measured: false });
   });
 
   it("a completed take of a version that is not the chosen one does not make the scene shot", () => {
@@ -54,8 +88,8 @@ describe("lanes from film_json", () => {
     expect(bare.filter((c) => ["A1", "A2", "A3", "A4"].includes(c.track))).toEqual([]);
 
     const raw = { ...filmJson({ music_asset_id: MUSIC }, [sceneJson(S1, 0)]), music_missing: false, takes: [take({ scene_id: null, kind: "narration", shot_index: 0, result_asset_id: NARR, duration_s: 7 })] };
-    const full = layoutTimeline(coerceTimelineFilm(raw)!).clips;
-    expect(full.find((c) => c.track === "A1")).toMatchObject({ assetId: NARR, length: 7 });
+    const full = layoutTimeline(coerceTimelineFilm(raw)!, new Map([[NARR, 7]])).clips;
+    expect(full.find((c) => c.track === "A1")).toMatchObject({ assetId: NARR, length: 7, measured: true });
     expect(full.find((c) => c.track === "A2")).toMatchObject({ assetId: MUSIC });
     expect(full.filter((c) => c.track === "A3" || c.track === "A4")).toEqual([]);
 
@@ -139,15 +173,14 @@ describe("the money: quote_film and start_film answers", () => {
 });
 
 describe("keyboard", () => {
-  it("never inside an input, a text area, something editable, or the inspector", () => {
+  it("only on the page or the timeline's own surfaces; never in a field, on a button, a tab, a slider, a dialog or the inspector", () => {
     document.body.innerHTML = `<input id="i"><textarea id="t"></textarea><div contenteditable="true"><span id="ce">x</span></div>
-      <section id="insp"><button id="b">Level</button></section><div id="lane"></div>`;
+      <section id="insp"><div id="inside">x</div></section>
+      <div data-tl-surface=""><div id="lane"></div><button id="btn">Play</button><div role="slider" id="ruler"></div><div role="tab" id="tab"></div></div>
+      <div role="dialog"><div id="dlg" data-tl-surface=""></div></div><div id="elsewhere"></div>`;
     const $ = (id: string) => document.getElementById(id);
     const insp = $("insp");
-    expect(shortcutAllowed($("i"), insp)).toBe(false);
-    expect(shortcutAllowed($("t"), insp)).toBe(false);
-    expect(shortcutAllowed($("ce"), insp)).toBe(false);
-    expect(shortcutAllowed($("b"), insp)).toBe(false);
+    for (const id of ["i", "t", "ce", "inside", "btn", "ruler", "tab", "dlg", "elsewhere"]) expect([id, shortcutAllowed($(id), insp)]).toEqual([id, false]);
     expect(shortcutAllowed($("lane"), insp)).toBe(true);
     expect(shortcutAllowed(document.body, insp)).toBe(true);
   });
@@ -165,22 +198,52 @@ describe("keyboard", () => {
 });
 
 describe("polling", () => {
-  it("survives a failed read: the next read is scheduled after a rejection and after a throw, until stopped", async () => {
+  it("survives a failed read and backs off; a good read resets the wait; stop ends it", async () => {
     vi.useFakeTimers();
     try {
       let n = 0;
       const read = vi.fn(async () => {
         n += 1;
         if (n === 1) throw new Error("network");
-        if (n === 2) return Promise.reject(new Error("502"));
-        return "ok";
+        if (n === 2) return "error" as const;
+        return "ok" as const;
       });
       const poll = startPolling(read, 1000);
-      for (let i = 0; i < 4; i++) await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000); // read 1 throws → next in 2000
+      expect(read).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(read).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1); // read 2 errors → next in 4000
+      expect(read).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(4000); // read 3 ok → back to 1000
+      expect(read).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(1000);
       expect(read).toHaveBeenCalledTimes(4);
       poll.stop();
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(60_000);
       expect(read).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a stop verdict (project gone, session ended) ends the loop; pause reads nothing until resume, which reads at once", async () => {
+    vi.useFakeTimers();
+    try {
+      const stopper = vi.fn(async () => "stop" as const);
+      startPolling(stopper, 1000);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(stopper).toHaveBeenCalledTimes(1);
+
+      const read = vi.fn(async () => "ok" as const);
+      const poll = startPolling(read, 1000);
+      poll.pause();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(read).not.toHaveBeenCalled();
+      poll.resume();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(read).toHaveBeenCalledTimes(1);
+      poll.stop();
     } finally {
       vi.useRealTimers();
     }

@@ -2,11 +2,22 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArrowDownUp, Flag, Link2, Lock, Magnet, MousePointer2, Pause, Play, Repeat, Scissors, Search, SkipBack, SkipForward, ZoomIn } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import { ArrowDownUp, ChevronLeft, ChevronRight, Flag, Link2, Lock, Magnet, MousePointer2, Pause, Play, Repeat, Scissors, Search, SkipBack, SkipForward, ZoomIn } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
+import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { useChannelPath } from "@/lib/channels-client";
-import { BAR_SLOT_ID, ProjectBar } from "@/components/studio-canvas/StudioCanvas";
+import { BAR_SLOT_ID, ProjectBar, TIMELINE_FILM_KEY } from "@/components/studio-canvas/StudioCanvas";
 import { clock, scenesPatch, sceneToDraft, filmErrorFromResponse, type FilmScene } from "@/lib/films";
 import {
   FPS,
@@ -14,11 +25,13 @@ import {
   TRACK_BACKEND,
   chosenClip,
   chosenKeyframe,
+  chosenShots,
   keyAction,
   layoutTimeline,
   narrationTake,
   reorder,
   sceneAt,
+  segmentAt,
   shortcutAllowed,
   timecode,
   type TimelineActor,
@@ -26,7 +39,7 @@ import {
   type TimelineFilm,
   type TrackId,
 } from "@/lib/studio/timeline";
-import { useFilmList, useMediaUrls, usePeaks, useTimelineFilm, type MediaUrls } from "./useTimelineData";
+import { useFilmList, useMediaUrls, usePeaks, useTimelineFilm, type MediaUrls, type Peaks } from "./useTimelineData";
 import { AssemblePanel } from "./AssemblePanel";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-timeline.css";
@@ -42,29 +55,64 @@ const TRACK_TONE: Record<TrackId, string> = {
 };
 /** Tracks whose sound the preview can play; A3/A4 have no backend, so their meters stay at rest. */
 const METERED: readonly (TrackId | "main")[] = ["V1", "A1", "A2", "A3", "A4", "main"];
+/** Tracks the preview really plays: only these have Mute/Solo. Only V1 has something to lock (dragging scenes). */
+const AUDIBLE: readonly TrackId[] = ["V1", "A1", "A2"];
+const NARROW = "(max-width: 760px)";
+const NOTICE_MS = 3200;
+
+function useMedia(query: string): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    const f = () => setOn(mq.matches);
+    f();
+    mq.addEventListener?.("change", f);
+    return () => mq.removeEventListener?.("change", f);
+  }, [query]);
+  return on;
+}
+
+function remember(filmId: string) {
+  try {
+    window.localStorage.setItem(TIMELINE_FILM_KEY, filmId);
+  } catch {
+    // Storage blocked: the toggle simply opens the project picker.
+  }
+}
 
 /**
  * Nightshift Studio's Timeline (prototype docs/studio/prototype/studio-timeline-prototype.html): one project as an edit page.
- * Everything drawn is read: the scenes in their saved order (film_json), each as long as its chosen clip measured or, when it has none,
- * a dashed draft at its planned length; narration and music only when a file exists; effects and ambience empty because nothing stores
- * them. The browser edits only what a database function guards (scene order and the project's music levels through save_film), and
- * assembling is the server's quote → the person's confirmation → start_film. No demo cursors, no sample clips, no client price.
+ * Everything drawn is read: the scenes in their saved order (film_json); a scene whose every shot of the chosen version finished is as
+ * long as the library measured its files, otherwise it is a dashed draft at its planned length; narration and music only when a file
+ * exists; effects and ambience empty because nothing stores them. The browser edits only what a database function guards (scene order
+ * and the project's music levels through save_film), and assembling is the server's quote → the person's confirmation → start_film.
+ * No demo cursors, no sample clips, no client price.
  */
 export function StudioTimeline({ filmStudio, filmId, actors }: { filmStudio: boolean; filmId: string | null; actors?: ReadonlyMap<string, TimelineActor[]> }) {
   const { t } = useI18n();
   const c = t.studioTimeline;
+  const path = useChannelPath();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setSlot(document.getElementById(BAR_SLOT_ID)), []);
 
   const { load, stale, reload, replace } = useTimelineFilm(filmStudio ? filmId : null);
   const list = useFilmList(filmStudio && !filmId);
+  useEffect(() => {
+    if (filmId && load.state === "ready") remember(filmId);
+  }, [filmId, load.state]);
 
   const film = load.state === "ready" ? load.film : null;
   const title = film?.view.film.title ?? c.timeline;
   const n = film?.view.scenes.length ?? 0;
   const sub = film ? `${n === 1 ? c.sceneCountOne : c.sceneCount.replace("{n}", String(n))} · ${film.view.film.aspect}` : c.label;
-  const bar = <ProjectBar filmStudio={filmStudio} inline={!slot} view="timeline" title={title} sub={sub} />;
+  const bar = <ProjectBar filmStudio={filmStudio} inline={!slot} view="timeline" title={title} sub={sub} filmId={filmId} />;
   const barEl = slot ? createPortal(bar, slot) : bar;
+  const toPicker = (
+    <Link className="cv-kbtn" href={path("/studio?view=timeline")}>
+      {c.pickOpen}
+    </Link>
+  );
 
   let body: ReactNode;
   if (!filmStudio) body = <Empty title={c.closed} body={c.closedBody} testid="timeline-closed" />;
@@ -72,6 +120,7 @@ export function StudioTimeline({ filmStudio, filmId, actors }: { filmStudio: boo
   else if (load.state === "loading") body = <p className="cv-loading" role="status">{c.loading}</p>;
   else if (load.state === "missing") body = <Empty title={c.missing} body={c.missingBody} testid="timeline-missing" />;
   else if (load.state === "expired") body = <Empty title={c.sessionExpired} testid="timeline-expired" />;
+  else if (load.state === "notFound") body = <Empty title={c.notFound} body={c.notFoundBody} testid="timeline-not-found" action={toPicker} />;
   else if (load.state === "error") body = <Empty title={c.readFailed} testid="timeline-error" action={<button type="button" className="cv-kbtn" onClick={() => void reload()}>{c.retry}</button>} />;
   else body = <Editor film={load.film} stale={stale} onSaved={replace} onReload={() => void reload()} actors={actors} />;
 
@@ -125,21 +174,23 @@ function Picker({ load, onRetry }: { load: ReturnType<typeof useFilmList>["load"
 type Mix = Record<TrackId, { m: boolean; s: boolean; lock: boolean }>;
 const MIX0: Mix = { V1: { m: false, s: false, lock: false }, A1: { m: false, s: false, lock: false }, A2: { m: false, s: false, lock: false }, A3: { m: false, s: false, lock: false }, A4: { m: false, s: false, lock: false }, C1: { m: false, s: false, lock: false } };
 
-function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm; stale: boolean; onSaved: (raw: unknown) => void; onReload: () => void; actors?: ReadonlyMap<string, TimelineActor[]> }) {
-  const { t, fmt } = useI18n();
-  const c = t.studioTimeline;
-  const view = film.view;
-  const layout = useMemo(() => layoutTimeline(film), [film]);
-  const { clips, duration } = layout;
+/** What a save to the project is doing: one at a time, so a level and a reorder never race on the same version (Lens M5). */
+type Busy = null | "reorder" | "gain";
 
-  // Every asset the page may show: chosen clips and key frames, the narration and the music.
+function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm; stale: boolean; onSaved: (raw: unknown) => void; onReload: () => void; actors?: ReadonlyMap<string, TimelineActor[]> }) {
+  const { t, fmt, locale } = useI18n();
+  const c = t.studioTimeline;
+  const statusWord = (s: string) => (filmStudioStrings(locale).status as Record<string, string>)[s] ?? s;
+  const view = film.view;
+  const narrow = useMedia(NARROW);
+
+  // Every asset the page may show: every chosen shot and key frame, the narration and the music.
   const assetIds = useMemo(() => {
     const ids: string[] = [];
     for (const s of view.scenes) {
       const takes = film.sceneTakes.get(s.id) ?? [];
-      const clip = chosenClip(s, takes);
+      for (const shot of chosenShots(s, takes) ?? []) if (shot.resultAssetId) ids.push(shot.resultAssetId);
       const key = chosenKeyframe(s, takes);
-      if (clip?.resultAssetId) ids.push(clip.resultAssetId);
       if (key?.resultAssetId) ids.push(key.resultAssetId);
     }
     const narr = narrationTake(film);
@@ -148,14 +199,28 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
     return ids;
   }, [film, view.scenes]);
   const media = useMediaUrls(assetIds);
+  const layout = useMemo(() => layoutTimeline(film, media.durations), [film, media.durations]);
+  const { clips, duration } = layout;
 
   const [selected, setSelected] = useState<string | null>(null);
   const [zoom, setZoom] = useState(2);
   const [mix, setMix] = useState<Mix>(MIX0);
   const [notice, setNotice] = useState<string | null>(null);
+  const timers = useRef(new Set<number>());
+  useEffect(() => {
+    const all = timers.current;
+    return () => {
+      for (const id of all) window.clearTimeout(id);
+      all.clear();
+    };
+  }, []);
   const say = useCallback((s: string) => {
     setNotice(s);
-    window.setTimeout(() => setNotice((n) => (n === s ? null : n)), 3200);
+    const id = window.setTimeout(() => {
+      timers.current.delete(id);
+      setNotice((n) => (n === s ? null : n));
+    }, NOTICE_MS);
+    timers.current.add(id);
   }, []);
   const [marks, setMarks] = useState<{ in: number | null; out: number | null }>({ in: null, out: null });
   const pps = ZOOMS[zoom];
@@ -167,7 +232,7 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
   const vClips = clips.filter((x) => x.track === "V1");
   const curIndex = cur ? vClips.indexOf(cur) : -1;
 
-  // Keyboard: never while typing, never with focus in the inspector (rule learned from the canvas).
+  // Keyboard: only on the page or the timeline's own surfaces, never while typing, on a button or in the inspector.
   const inspectorRef = useRef<HTMLElement>(null);
   const pRef = useRef(p);
   pRef.current = p;
@@ -191,23 +256,47 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const [busy, setBusy] = useState<Busy>(null);
+  const busyRef = useRef<Busy>(null);
+  const claim = (b: Exclude<Busy, null>) => {
+    if (busyRef.current) return false;
+    busyRef.current = b;
+    setBusy(b);
+    return true;
+  };
+  const release = () => {
+    busyRef.current = null;
+    setBusy(null);
+  };
+
+  const patchFilm = useCallback(
+    async (patch: Record<string, unknown>) => {
+      const res = await fetch(`/api/films/${encodeURIComponent(view.film.id)}`, {
+        method: "PATCH",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ version: view.film.version, patch }),
+      });
+      const json: unknown = await res.json().catch(() => null);
+      return { res, json };
+    },
+    [view.film.id, view.film.version],
+  );
+
   // Reorder: save_film with the whole ordered list (0166 checks the editor role and the version; a stale version is refused).
-  const [saving, setSaving] = useState(false);
+  const reorderable = view.editable && !mix.V1.lock && busy === null;
   const moveScene = useCallback(
     async (from: number, to: number) => {
-      if (!view.editable || saving || from === to) return;
+      if (!view.editable) {
+        say(fmt(c.reorderLocked, { status: statusWord(view.film.status) }));
+        return;
+      }
+      if (from === to || to < 0 || to >= view.scenes.length || !claim("reorder")) return;
       const order = reorder(view.scenes, from, to);
       const saved = new Map<string, FilmScene>(view.scenes.map((s) => [s.id, s]));
-      setSaving(true);
       try {
-        const res = await fetch(`/api/films/${encodeURIComponent(view.film.id)}`, {
-          method: "PATCH",
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ version: view.film.version, patch: { scenes: scenesPatch(order.map(sceneToDraft), saved) } }),
-        });
-        const json: unknown = await res.json().catch(() => null);
+        const { res, json } = await patchFilm({ scenes: scenesPatch(order.map(sceneToDraft), saved) });
         if (res.ok) {
           onSaved((json as { film?: unknown } | null)?.film);
           say(c.moved);
@@ -221,37 +310,43 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
       } catch {
         say(c.moveFailed);
       } finally {
-        setSaving(false);
+        release();
       }
     },
-    [view, saving, onSaved, onReload, say, c],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [view, patchFilm, onSaved, onReload, say, c],
   );
 
-  // The project's two real levels (films.music_gain_db, films.duck_db, −40…0 dB), saved through save_film.
+  // The project's two real levels (films.music_gain_db, films.duck_db, −40…0 dB), saved through save_film. One save at a time; a
+  // refused or failed save says so and the slider returns to the saved value (it is driven by `film`, which did not change).
   const saveGain = useCallback(
-    async (key: "music_gain_db" | "duck_db", db: number) => {
-      if (!view.editable) return;
-      const res = await fetch(`/api/films/${encodeURIComponent(view.film.id)}`, {
-        method: "PATCH",
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ version: view.film.version, patch: { [key]: db } }),
-      }).catch(() => null);
-      const json: unknown = res ? await res.json().catch(() => null) : null;
-      if (res?.ok) onSaved((json as { film?: unknown } | null)?.film);
-      else {
-        if (res && filmErrorFromResponse(res.status, json).error === "film_changed") onReload();
-        say(c.moveFailed);
+    async (key: "music_gain_db" | "duck_db", db: number): Promise<boolean> => {
+      if (!view.editable || !claim("gain")) return false;
+      try {
+        const { res, json } = await patchFilm({ [key]: db });
+        if (res.ok) {
+          onSaved((json as { film?: unknown } | null)?.film);
+          return true;
+        }
+        if (filmErrorFromResponse(res.status, json).error === "film_changed") onReload();
+        say(c.levelSaveFailed);
+        return false;
+      } catch {
+        say(c.levelSaveFailed);
+        return false;
+      } finally {
+        release();
       }
     },
-    [view, onSaved, onReload, say, c],
+    [view.editable, patchFilm, onSaved, onReload, say, c],
   );
 
-  const curUrls = cur?.assetId ? media.urls.get(cur.assetId) : undefined;
+  const seg = segmentAt(cur, p.t);
+  const curUrls = seg ? media.urls.get(seg.assetId) : undefined;
   const curScene = cur?.sceneId ? view.scenes.find((s) => s.id === cur.sceneId) : undefined;
   const curThumb = curScene ? thumbOf(curScene, film, media.urls) : null;
   const caption = clips.find((x) => x.track === "C1" && cur && x.sceneId === cur.sceneId)?.label ?? null;
+  const selIndex = sel?.track === "V1" ? vClips.indexOf(sel) : -1;
 
   const transport = (
     <div className="tl-trans" role="group" aria-label={c.viewer}>
@@ -271,6 +366,8 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
   );
 
   const soon = () => say(c.notAvailable);
+  // One Assemble panel: in the inspector's footer on a desk, in the bottom bar on a phone (Lens: it was mounted twice).
+  const assemble = <AssemblePanel compact={narrow} filmId={view.film.id} orgId={view.film.orgId} version={view.film.version} editable={view.editable} status={view.film.status} onStarted={onReload} />;
 
   return (
     <div className="tl-page">
@@ -279,23 +376,23 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
       </p>
       {notice && <p className="cv-toast">{notice}</p>}
       <div className="tl-upper">
-        <LibraryPanel film={film} clips={clips} media={media.urls} selected={selected} onPick={(clip) => { setSelected(clip.id); p.seek(clip.start); }} />
-        <section className="tl-viewer" aria-label={c.viewer}>
+        <LibraryPanel film={film} clips={clips} media={media.urls} selected={selected} onPick={(clip) => { setSelected(clip.id); p.seek(clip.start); }} onThumbError={media.refresh} />
+        <section className="tl-viewer" aria-label={c.viewer} data-tl-surface="">
           <div className="tl-screen" style={{ aspectRatio: view.film.aspect.replace(":", " / ") } as CSSProperties} data-testid="viewer">
-            <video ref={p.videoRef} className="tl-video" playsInline preload="auto" hidden={!curUrls?.play} onError={() => cur?.assetId && media.refresh(cur.assetId)} />
+            <video ref={p.videoRef} className="tl-video" playsInline preload="auto" hidden={!curUrls?.play} onError={() => seg && media.refresh(seg.assetId)} />
             {/* A signed, short-lived link to the project's own file: nothing for next/image to optimise or cache. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {!curUrls?.play && curThumb && <img className="tl-still" src={curThumb} alt="" />}
+            {!curUrls?.play && curThumb && <img className="tl-still" src={curThumb} alt="" onError={() => { const id = thumbAssetOf(curScene, film); if (id) media.refresh(id); }} />}
             {/* A shot scene whose file cannot be shown here is said so; it is never called a draft. */}
             {!curUrls?.play && !curThumb && cur && !cur.draft && (
               <div className="tl-draftscreen is-shot" data-testid="viewer-unavailable">
-                <b>{curUrls?.failed ? c.previewFailed : c.previewLoading}</b>
+                <b>{curUrls?.failed ? c.previewFailed : curUrls?.unavailable ? c.previewUnavailable : c.previewLoading}</b>
               </div>
             )}
             {!curUrls?.play && !curThumb && (!cur || cur.draft) && (
               <div className="tl-draftscreen" data-testid="viewer-draft">
-                <b>{n0(vClips.length) ? c.noScenes : c.draftScreen}</b>
-                {!n0(vClips.length) && <span>{c.draftScreenBody}</span>}
+                <b>{vClips.length === 0 ? c.noScenes : c.draftScreen}</b>
+                {vClips.length > 0 && <span>{c.draftScreenBody}</span>}
               </div>
             )}
             {cur && <span className="tl-sc">{cur.label}</span>}
@@ -308,13 +405,7 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
           </p>
           {transport}
         </section>
-        <Inspector
-          refEl={inspectorRef}
-          film={film}
-          clip={sel}
-          onGain={saveGain}
-          footer={<AssemblePanel filmId={view.film.id} orgId={view.film.orgId} version={view.film.version} editable={view.editable} status={view.film.status} onStarted={onReload} />}
-        />
+        <Inspector refEl={inspectorRef} film={film} clip={sel} onGain={saveGain} busy={busy !== null} statusWord={statusWord} footer={narrow ? null : assemble} />
       </div>
 
       <div className="tl-trow">
@@ -338,6 +429,17 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
           <ToolKey label={c.toolZoom} onClick={() => setZoom((z) => (z + 1) % ZOOMS.length)}>
             <ZoomIn aria-hidden className="size-4" />
           </ToolKey>
+          {/* Reordering without dragging (WCAG 2.5.7), and the only way on a touch screen, where a swipe scrolls. */}
+          {selIndex >= 0 && (
+            <span className="tl-move" role="group" aria-label={c.reorderHint}>
+              <ToolKey label={c.moveEarlier} disabled={!reorderable || selIndex === 0} onClick={() => void moveScene(selIndex, selIndex - 1)} testid="move-earlier">
+                <ChevronLeft aria-hidden className="size-4" />
+              </ToolKey>
+              <ToolKey label={c.moveLater} disabled={!reorderable || selIndex === vClips.length - 1} onClick={() => void moveScene(selIndex, selIndex + 1)} testid="move-later">
+                <ChevronRight aria-hidden className="size-4" />
+              </ToolKey>
+            </span>
+          )}
         </div>
         <span className="tl-chip" data-testid="planned-chip">{fmt(c.plannedChip, { t: clock(layout.planned) })}</span>
       </div>
@@ -345,19 +447,23 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
       <div className="tl-lower">
         <div className="tl-hdrs" role="rowgroup" aria-label={c.tracks}>
           <div className="tl-hgap">{c.tracks}</div>
-          {TRACKS.map((id) => (
-            <div key={id} className="tl-th" style={{ "--c": TRACK_TONE[id] } as CSSProperties}>
-              <span className="tl-id">{id}</span>
-              <span className="tl-tn">{c.track[id]}</span>
-              <span className="tl-ms">
-                <button type="button" className={mix[id].m ? "on-m" : ""} aria-pressed={mix[id].m} aria-label={fmt(c.muteTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], m: !m[id].m } }))}>M</button>
-                <button type="button" className={mix[id].s ? "on-s" : ""} aria-pressed={mix[id].s} aria-label={fmt(c.soloTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], s: !m[id].s } }))}>S</button>
-                <button type="button" className={mix[id].lock ? "on-l" : ""} aria-pressed={mix[id].lock} aria-label={fmt(c.lockTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], lock: !m[id].lock } }))}>
-                  <Lock aria-hidden className="size-3" />
-                </button>
-              </span>
-            </div>
-          ))}
+          {TRACKS.map((id) => {
+            const audible = AUDIBLE.includes(id);
+            const soonLabel = (s: string) => `${s} · ${c.notAvailable}`;
+            return (
+              <div key={id} className="tl-th" style={{ "--c": TRACK_TONE[id] } as CSSProperties}>
+                <span className="tl-id">{id}</span>
+                <span className="tl-tn">{c.track[id]}</span>
+                <span className="tl-ms">
+                  <button type="button" className={mix[id].m ? "on-m" : ""} aria-pressed={mix[id].m} disabled={!audible} title={audible ? undefined : soonLabel(c.notAvailable)} aria-label={audible ? fmt(c.muteTrack, { t: c.track[id] }) : soonLabel(fmt(c.muteTrack, { t: c.track[id] }))} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], m: !m[id].m } }))}>M</button>
+                  <button type="button" className={mix[id].s ? "on-s" : ""} aria-pressed={mix[id].s} disabled={!audible} title={audible ? undefined : soonLabel(c.notAvailable)} aria-label={audible ? fmt(c.soloTrack, { t: c.track[id] }) : soonLabel(fmt(c.soloTrack, { t: c.track[id] }))} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], s: !m[id].s } }))}>S</button>
+                  <button type="button" className={mix[id].lock ? "on-l" : ""} aria-pressed={mix[id].lock} disabled={id !== "V1"} aria-label={id === "V1" ? fmt(c.lockTrack, { t: c.track[id] }) : soonLabel(fmt(c.lockTrack, { t: c.track[id] }))} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], lock: !m[id].lock } }))}>
+                    <Lock aria-hidden className="size-3" />
+                  </button>
+                </span>
+              </div>
+            );
+          })}
         </div>
         <Lanes
           clips={clips}
@@ -368,11 +474,11 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
           selected={selected}
           media={media.urls}
           film={film}
-          reorderable={view.editable && !mix.V1.lock && !saving}
+          reorderable={reorderable}
           onSelect={setSelected}
           onSeek={p.seek}
           onMove={(from, to) => void moveScene(from, to)}
-          onLocked={() => say(fmt(c.reorderLocked, { status: view.film.status }))}
+          onLocked={() => say(fmt(c.reorderLocked, { status: statusWord(view.film.status) }))}
           actors={actors}
         />
         <Mixer levels={p.levels} film={film} />
@@ -381,7 +487,7 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
       <div className="tl-phonebar">
         <span />
         {transport}
-        <AssemblePanel compact filmId={view.film.id} orgId={view.film.orgId} version={view.film.version} editable={view.editable} status={view.film.status} onStarted={onReload} />
+        {narrow ? assemble : null}
       </div>
       {stale && <span className="tl-stale" role="status">{c.readFailed}</span>}
     </div>
@@ -399,7 +505,12 @@ function safePlay(el: HTMLMediaElement) {
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
-const n0 = (n: number) => n === 0;
+
+function thumbAssetOf(scene: FilmScene | undefined, film: TimelineFilm): string | null {
+  if (!scene) return null;
+  const takes = film.sceneTakes.get(scene.id) ?? [];
+  return chosenClip(scene, takes)?.resultAssetId ?? chosenKeyframe(scene, takes)?.resultAssetId ?? null;
+}
 
 function thumbOf(scene: FilmScene, film: TimelineFilm, urls: ReadonlyMap<string, MediaUrls>): string | null {
   const takes = film.sceneTakes.get(scene.id) ?? [];
@@ -408,9 +519,9 @@ function thumbOf(scene: FilmScene, film: TimelineFilm, urls: ReadonlyMap<string,
   return (clip?.resultAssetId && urls.get(clip.resultAssetId)?.thumb) || (key?.resultAssetId && urls.get(key.resultAssetId)?.thumb) || null;
 }
 
-function ToolKey({ label, pressed, soon, onClick, children }: { label: string; pressed?: boolean; soon?: boolean; onClick: () => void; children: ReactNode }) {
+function ToolKey({ label, pressed, soon, disabled, onClick, testid, children }: { label: string; pressed?: boolean; soon?: boolean; disabled?: boolean; onClick: () => void; testid?: string; children: ReactNode }) {
   return (
-    <button type="button" className={soon ? "tl-tool is-soon" : "tl-tool"} aria-pressed={pressed} aria-disabled={soon || undefined} title={label} aria-label={label} onClick={onClick}>
+    <button type="button" className={soon ? "tl-tool is-soon" : "tl-tool"} aria-pressed={pressed} aria-disabled={soon || undefined} disabled={disabled} title={label} aria-label={label} onClick={onClick} data-testid={testid}>
       {children}
     </button>
   );
@@ -419,9 +530,10 @@ function ToolKey({ label, pressed, soon, onClick, children }: { label: string; p
 // ── playback ─────────────────────────────────────────────────────────────────
 
 /**
- * The preview clock. While a scene's clip plays, the clip's own currentTime drives the playhead; over a draft block (no picture) real
- * time does. Narration and music play from their own files, kept at the playhead. Meters read the real signal through an AnalyserNode
- * once the person pressed play (an AudioContext needs that gesture), and rest at zero when nothing plays.
+ * The preview clock. Where a scene's shots were measured by the library, the playing shot's own currentTime drives the playhead and
+ * the next shot follows; elsewhere (a draft, or a shot scene whose lengths are not known) real time does, so the clock never jumps at a
+ * block's end. Narration and music play from their own files, kept at the playhead. Meters read the real signal through an
+ * AnalyserNode once the person pressed play (an AudioContext needs that gesture), and rest at zero when nothing plays.
  */
 function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clips: TimelineClip[]; duration: number; film: TimelineFilm; media: ReadonlyMap<string, MediaUrls>; mix: Mix; onMediaError: (id: string) => void }) {
   const [t, setT] = useState(0);
@@ -475,22 +587,21 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
     }
   });
 
-  const cur = sceneAt(clips, t);
-  const curUrl = cur?.assetId ? (media.get(cur.assetId)?.play ?? null) : null;
+  const curSeg = segmentAt(sceneAt(clips, t), t);
+  const curUrl = curSeg ? (media.get(curSeg.assetId)?.play ?? null) : null;
 
   const syncMedia = useCallback(
     (at: number, play: boolean) => {
       const v = videoRef.current;
-      const scene = sceneAt(clips, at);
-      const url = scene?.assetId ? (media.get(scene.assetId)?.play ?? null) : null;
+      const seg = segmentAt(sceneAt(clips, at), at);
+      const url = seg ? (media.get(seg.assetId)?.play ?? null) : null;
       if (v) {
-        if (url) {
+        if (url && seg) {
           const abs = new URL(url, location.href).href;
           if (v.src !== abs) v.src = url;
-          const local = Math.max(0, at - (scene?.start ?? 0));
-          if (Math.abs(v.currentTime - local) > 0.25) {
+          if (Math.abs(v.currentTime - seg.offset) > 0.25) {
             try {
-              v.currentTime = local;
+              v.currentTime = seg.offset;
             } catch {
               // Not seekable yet; the clock goes on by real time until it is.
             }
@@ -581,7 +692,7 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
   const toggle = useCallback(() => (playingRef.current ? pause() : play()), [play, pause]);
 
   // The clock.
-  const sceneKey = useRef<string | null>(null);
+  const segKey = useRef<string | null>(null);
   useEffect(() => {
     if (!playing) {
       setLevels({});
@@ -594,11 +705,14 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
       const dt = (now - last) / 1000;
       last = now;
       const scene = sceneAt(clips, tRef.current);
+      const seg = segmentAt(scene, tRef.current);
       const v = videoRef.current;
       let next = tRef.current + dt;
-      if (scene?.assetId && v && !v.paused && v.readyState >= 2 && v.src) {
-        next = Math.min(scene.start + v.currentTime, scene.start + scene.length);
-        if (v.ended || v.currentTime >= scene.length - 0.02) next = scene.start + scene.length;
+      // Only a MEASURED shot may drive the clock: its file's length is known, so its end is the next shot's start (Lens H1).
+      if (seg?.measured && v && !v.paused && v.readyState >= 2 && v.src) {
+        const segStart = tRef.current - seg.offset;
+        const segLen = scene?.segments?.find((s) => s.assetId === seg.assetId && Math.abs(s.start - segStart) < 0.5)?.length ?? Infinity;
+        next = v.ended || v.currentTime >= segLen - 0.02 ? segStart + segLen : segStart + v.currentTime;
       }
       if (next >= duration) {
         if (loopRef.current) next = 0;
@@ -611,22 +725,23 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
       }
       tRef.current = next;
       setT(next);
-      const nowScene = sceneAt(clips, next);
-      if ((nowScene?.id ?? null) !== sceneKey.current) {
-        sceneKey.current = nowScene?.id ?? null;
+      const nowSeg = segmentAt(sceneAt(clips, next), next);
+      const k = nowSeg ? `${nowSeg.assetId}@${sceneAt(clips, next)?.id}` : null;
+      if (k !== segKey.current) {
+        segKey.current = k;
         syncMedia(next, true);
       }
       const g = graph.current;
       if (g) {
         const out: Record<string, number> = {};
-        for (const [k, node] of Object.entries(g.an)) {
+        for (const [key, node] of Object.entries(g.an)) {
           node.getByteTimeDomainData(buf);
           let sum = 0;
           for (let i = 0; i < buf.length; i++) {
             const x = (buf[i] - 128) / 128;
             sum += x * x;
           }
-          out[k] = Math.min(1, Math.sqrt(sum / buf.length) * 2.2);
+          out[key] = Math.min(1, Math.sqrt(sum / buf.length) * 2.2);
         }
         setLevels(out);
       }
@@ -636,7 +751,7 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
     return () => cancelAnimationFrame(raf);
   }, [playing, clips, duration, pause, syncMedia]);
 
-  // A newly signed link for the scene under the playhead: load it at the playhead.
+  // A newly signed link for the shot under the playhead: load it at the playhead.
   useEffect(() => {
     syncMedia(tRef.current, playingRef.current);
   }, [curUrl, narrUrl, musicUrl, syncMedia]);
@@ -655,7 +770,7 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
 
 // ── library ──────────────────────────────────────────────────────────────────
 
-function LibraryPanel({ film, clips, media, selected, onPick }: { film: TimelineFilm; clips: TimelineClip[]; media: ReadonlyMap<string, MediaUrls>; selected: string | null; onPick: (c: TimelineClip) => void }) {
+function LibraryPanel({ film, clips, media, selected, onPick, onThumbError }: { film: TimelineFilm; clips: TimelineClip[]; media: ReadonlyMap<string, MediaUrls>; selected: string | null; onPick: (c: TimelineClip) => void; onThumbError: (assetId: string) => void }) {
   const { t, fmt } = useI18n();
   const c = t.studioTimeline;
   const [tab, setTab] = useState<"library" | "effects" | "sound">("library");
@@ -696,18 +811,19 @@ function LibraryPanel({ film, clips, media, selected, onPick }: { film: Timeline
               const s = x.sceneId ? scenes.get(x.sceneId) : undefined;
               const thumb = s ? thumbOf(s, film, media) : null;
               const take = s ? chosenClip(s, film.sceneTakes.get(s.id) ?? []) : null;
+              const len = x.measured ? clock(x.length) : fmt(c.plannedLength, { t: clock(x.length) });
               return (
                 <li key={x.id}>
                   <button type="button" className="tl-libitem" aria-current={selected === x.id || undefined} onClick={() => onPick(x)} style={{ "--c": "var(--t-video)" } as CSSProperties}>
                     <span className={x.draft ? "tl-lth is-draft" : "tl-lth"}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      {thumb && <img src={thumb} alt="" />}
+                      {thumb && <img src={thumb} alt="" onError={() => { const id = thumbAssetOf(s, film); if (id) onThumbError(id); }} />}
                     </span>
                     <span className="tl-lnm">
                       <b>{x.label}</b>
                       <small>{x.draft ? fmt(c.draftKind, { s: clock(x.length) }) : fmt(c.clipKind, { v: take?.version ?? "" })}</small>
                     </span>
-                    <span className="tl-ldu">{clock(x.length)}</span>
+                    <span className="tl-ldu">{len}</span>
                   </button>
                 </li>
               );
@@ -734,7 +850,7 @@ function LibraryPanel({ film, clips, media, selected, onPick }: { film: Timeline
                 </button>
               </li>
             ) : (
-              <li className="tl-libnone">{film.musicMissing ? c.musicMissing : c.noMusic}</li>
+              <li className="tl-libnone">{film.musicMissing ? c.musicMissing : film.musicAssetId ? c.noScenes : c.noMusic}</li>
             )}
             <li className="tl-gh">{c.groupEffects}</li>
             <li className="tl-libnone">{c.effectsSoon}</li>
@@ -752,8 +868,24 @@ function LibraryPanel({ film, clips, media, selected, onPick }: { film: Timeline
 
 // ── inspector ────────────────────────────────────────────────────────────────
 
-function Inspector({ refEl, film, clip, onGain, footer }: { refEl: React.RefObject<HTMLElement | null>; film: TimelineFilm; clip: TimelineClip | null; onGain: (k: "music_gain_db" | "duck_db", db: number) => void; footer: ReactNode }) {
-  const { t, fmt } = useI18n();
+function Inspector({
+  refEl,
+  film,
+  clip,
+  onGain,
+  busy,
+  statusWord,
+  footer,
+}: {
+  refEl: React.RefObject<HTMLElement | null>;
+  film: TimelineFilm;
+  clip: TimelineClip | null;
+  onGain: (k: "music_gain_db" | "duck_db", db: number) => Promise<boolean>;
+  busy: boolean;
+  statusWord: (s: string) => string;
+  footer: ReactNode;
+}) {
+  const { t, fmt, locale } = useI18n();
   const c = t.studioTimeline;
   const [tab, setTab] = useState<"video" | "audio" | "effects">("audio");
   const scene = clip?.sceneId ? film.view.scenes.find((s) => s.id === clip.sceneId) : undefined;
@@ -761,6 +893,7 @@ function Inspector({ refEl, film, clip, onGain, footer }: { refEl: React.RefObje
   const music = clip?.track === "A2";
   const editable = film.view.editable;
   const db = (v: number | null) => (v === null ? c.notSet : fmt(c.db, { n: v.toFixed(1) }));
+  const sceneStatus = scene ? ((filmStudioStrings(locale).sceneStatus as Record<string, string>)[scene.status] ?? scene.status) : c.unknown;
 
   return (
     <section className="tl-insp" aria-label={c.inspector} ref={refEl} data-testid="inspector">
@@ -781,45 +914,66 @@ function Inspector({ refEl, film, clip, onGain, footer }: { refEl: React.RefObje
             <dt>{c.planned}</dt>
             <dd>{scene ? clock(scene.plannedSeconds) : "—"}</dd>
             <dt>{c.measured}</dt>
-            <dd>{clip?.measured ? clock(clip.length) : c.unknown}</dd>
+            <dd data-testid="inspector-measured">{clip?.measured ? clock(clip.length) : c.unknown}</dd>
             <dt>{c.take}</dt>
             <dd>{take ? `v${take.version}` : c.noTake}</dd>
             <dt>{c.status}</dt>
-            <dd>{scene?.status ?? c.unknown}</dd>
+            <dd>{sceneStatus}</dd>
           </dl>
         )}
         {tab === "audio" && (
           <>
             {music ? (
-              <Slider label={c.level} value={film.musicGainDb} shown={db(film.musicGainDb)} disabled={!editable} onCommit={(v) => onGain("music_gain_db", v)} testid="music-level" />
+              <LevelSlider label={c.level} value={film.musicGainDb} db={db} disabled={!editable || busy} onCommit={(v) => onGain("music_gain_db", v)} testid="music-level" />
             ) : (
-              <Slider label={c.level} value={null} shown={c.notAvailable} disabled testid="clip-level" />
+              <OffRow label={c.level} note={c.notAvailable} />
             )}
-            <Slider label={c.fadeIn} value={null} shown={c.notAvailable} disabled />
-            <Slider label={c.fadeOut} value={null} shown={c.notAvailable} disabled />
+            <OffRow label={c.fadeIn} note={c.notAvailable} />
+            <OffRow label={c.fadeOut} note={c.notAvailable} />
             <Toggle label={c.mute} note={c.notAvailable} />
             {music ? (
-              <Slider label={c.duck} value={film.duckDb} shown={db(film.duckDb)} disabled={!editable} onCommit={(v) => onGain("duck_db", v)} testid="duck-level" />
+              <LevelSlider label={c.duck} value={film.duckDb} db={db} disabled={!editable || busy} onCommit={(v) => onGain("duck_db", v)} testid="duck-level" />
             ) : (
               <Toggle label={c.duck} note={c.notAvailable} />
             )}
             {!music && <p className="tl-insp-note">{c.perClipNote}</p>}
+            {music && !editable && <p className="tl-insp-note">{fmt(c.notEditable, { status: statusWord(film.view.film.status) })}</p>}
           </>
         )}
         {tab === "effects" && <p className="tl-insp-note">{c.effectsNote}</p>}
       </div>
-      <div className="tl-if">{footer}</div>
+      {footer && <div className="tl-if">{footer}</div>}
     </section>
   );
 }
 
-function Slider({ label, value, shown, disabled, onCommit, testid }: { label: string; value: number | null; shown: string; disabled?: boolean; onCommit?: (v: number) => void; testid?: string }) {
+export const LEVEL_DEBOUNCE_MS = 400;
+
+/**
+ * A level saved to the project: the thumb follows the hand, and one save is sent a moment after it stops (never one per step). If the
+ * save is refused the thumb goes back to the saved value, so the screen never shows a level the project does not have.
+ */
+function LevelSlider({ label, value, db, disabled, onCommit, testid }: { label: string; value: number | null; db: (v: number | null) => string; disabled: boolean; onCommit: (v: number) => Promise<boolean>; testid: string }) {
   const [v, setV] = useState<number | null>(value);
+  const timer = useRef<number | null>(null);
   useEffect(() => setV(value), [value]);
+  useEffect(() => () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+  }, []);
+  const schedule = (next: number) => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      if (next === value) return;
+      void onCommit(next).then((ok) => {
+        if (!ok) setV(value);
+      });
+    }, LEVEL_DEBOUNCE_MS);
+  };
   return (
     <label className={disabled ? "tl-row is-off" : "tl-row"} data-testid={testid}>
       <span>{label}</span>
-      <output>{shown}</output>
+      <output>{db(v)}</output>
       <input
         type="range"
         min={-40}
@@ -827,12 +981,24 @@ function Slider({ label, value, shown, disabled, onCommit, testid }: { label: st
         step={0.5}
         value={v ?? -40}
         disabled={disabled}
-        aria-valuetext={shown}
-        onChange={(e) => setV(Number(e.target.value))}
-        onPointerUp={() => v !== null && v !== value && onCommit?.(v)}
-        onKeyUp={() => v !== null && v !== value && onCommit?.(v)}
+        aria-valuetext={db(v)}
+        onChange={(e) => {
+          const next = Number(e.target.value);
+          setV(next);
+          schedule(next);
+        }}
       />
     </label>
+  );
+}
+
+function OffRow({ label, note }: { label: string; note: string }) {
+  return (
+    <div className="tl-row is-off" aria-disabled="true">
+      <span>{label}</span>
+      <output>{note}</output>
+      <input type="range" min={-40} max={0} value={-40} disabled aria-label={`${label} · ${note}`} readOnly />
+    </div>
   );
 }
 
@@ -881,7 +1047,7 @@ function Lanes({
   onLocked: () => void;
   actors?: ReadonlyMap<string, TimelineActor[]>;
 }) {
-  const { t: tr } = useI18n();
+  const { t: tr, fmt } = useI18n();
   const c = tr.studioTimeline;
   const width = Math.max(duration * pps + 120, 600);
   const scroller = useRef<HTMLDivElement>(null);
@@ -899,8 +1065,19 @@ function Lanes({
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     onSeek(timeAt(e.clientX));
   };
+  const rulerKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 5 : 1;
+    if (e.key === "ArrowLeft") onSeek(t - step);
+    else if (e.key === "ArrowRight") onSeek(t + step);
+    else if (e.key === "Home") onSeek(0);
+    else if (e.key === "End") onSeek(duration);
+    else return;
+    e.preventDefault();
+  };
 
-  // V1 drag to reorder: a press that moves more than 4 px is a drag; on release the block lands before the block whose middle it passed.
+  // V1 drag to reorder, with a mouse or a pen only: on a touch screen a swipe scrolls the timeline (Lens H3), and the Move earlier /
+  // Move later keys reorder instead. A press that moves more than 4 px is a drag; on release the block lands before the block whose
+  // middle it passed.
   const [drag, setDrag] = useState<{ id: string; from: number; x0: number; dx: number } | null>(null);
   const v1 = clips.filter((x) => x.track === "V1");
   const dropIndex = (d: { from: number; dx: number }) => {
@@ -913,22 +1090,36 @@ function Lanes({
     return Math.min(Math.max(0, to), v1.length - 1);
   };
 
-  const narrUrl = (() => {
-    const a = clips.find((x) => x.track === "A1");
-    return a?.assetId ? (media.get(a.assetId)?.play ?? null) : null;
-  })();
-  const musicUrl = (() => {
-    const a = clips.find((x) => x.track === "A2");
-    return a?.assetId ? (media.get(a.assetId)?.play ?? null) : null;
-  })();
-  const narrPeaks = usePeaks(narrUrl);
-  const musicPeaks = usePeaks(musicUrl);
+  const a1 = clips.find((x) => x.track === "A1");
+  const a2 = clips.find((x) => x.track === "A2");
+  const urlOf = (id: string | null | undefined) => (id ? (media.get(id)?.play ?? null) : null);
+  const durOf = (id: string | null | undefined) => (id ? (media.get(id)?.durationS ?? null) : null);
+  const narrPeaks = usePeaks(a1?.assetId ?? null, urlOf(a1?.assetId), durOf(a1?.assetId));
+  const musicPeaks = usePeaks(a2?.assetId ?? null, urlOf(a2?.assetId), durOf(a2?.assetId));
   const scenes = new Map(film.view.scenes.map((s) => [s.id, s]));
+  const emptyText = (id: Exclude<TrackId, "V1">) => {
+    if (id === "A2" && film.musicMissing) return c.musicMissing;
+    if (id === "A2" && film.musicAssetId && v1.length === 0) return c.noScenes;
+    return c.laneEmpty[id];
+  };
 
   return (
-    <div className="tl-lanes" ref={scroller} data-testid="lanes">
+    <div className="tl-lanes" ref={scroller} data-testid="lanes" data-tl-surface="">
       <div className="tl-lanes-in" style={{ width }}>
-        <div className="tl-ruler" onPointerDown={scrub} onPointerMove={(e) => e.buttons === 1 && onSeek(timeAt(e.clientX))} role="slider" aria-label={c.ruler} aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(t)} aria-valuetext={timecode(t)} tabIndex={-1}>
+        <div
+          className="tl-ruler"
+          onPointerDown={scrub}
+          onPointerMove={(e) => e.buttons === 1 && onSeek(timeAt(e.clientX))}
+          onKeyDown={rulerKey}
+          role="slider"
+          aria-label={c.ruler}
+          aria-valuemin={0}
+          aria-valuemax={Math.round(duration)}
+          aria-valuenow={Math.round(t)}
+          aria-valuetext={timecode(t)}
+          tabIndex={0}
+          data-testid="ruler"
+        >
           {ticks.map((s) => (
             <span key={s} className="tl-tick" style={{ left: 8 + s * pps }}>
               <i>{clock(s)}</i>
@@ -939,7 +1130,8 @@ function Lanes({
         </div>
         {TRACKS.map((id) => {
           const lane = clips.filter((x) => x.track === id);
-          const empty = lane.length === 0 && id !== "V1" ? c.laneEmpty[id as Exclude<TrackId, "V1">] : null;
+          const empty = lane.length === 0 && id !== "V1" ? emptyText(id as Exclude<TrackId, "V1">) : null;
+          const peaks = id === "A1" ? narrPeaks : id === "A2" ? musicPeaks : null;
           return (
             <div key={id} className="tl-lane" data-track={id} data-testid={`lane-${id}`} data-backend={TRACK_BACKEND[id]} style={{ "--c": TRACK_TONE[id] } as CSSProperties}>
               {empty && (
@@ -970,12 +1162,20 @@ function Lanes({
                     aria-label={x.draft ? `${x.label} · ${c.draftBlock}` : x.label || c.track[id]}
                     data-testid={`clip-${x.id}`}
                     data-draft={x.draft ? "" : undefined}
+                    data-measured={x.measured ? "" : undefined}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") onSelect(x.id);
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect(x.id);
+                      } else if (id === "V1" && e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+                        e.preventDefault();
+                        if (!reorderable) onLocked();
+                        else onMove(i, e.key === "ArrowLeft" ? i - 1 : i + 1);
+                      }
                     }}
                     onPointerDown={(e) => {
                       onSelect(x.id);
-                      if (id === "V1") {
+                      if (id === "V1" && e.pointerType !== "touch") {
                         (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
                         setDrag({ id: x.id, from: i, x0: e.clientX, dx: 0 });
                       }
@@ -998,9 +1198,10 @@ function Lanes({
                     onPointerCancel={() => setDrag(null)}
                   >
                     {id === "V1" && !x.draft && <span className="tl-thumbs" style={thumb ? ({ backgroundImage: `url("${thumb}")` } as CSSProperties) : undefined} />}
-                    {(id === "A1" || id === "A2") && <Wave peaks={id === "A1" ? narrPeaks : musicPeaks} />}
+                    {peaks?.state === "ready" && <Wave peaks={peaks.peaks} />}
                     <span className="tl-lb">{x.label || c.track[id]}</span>
-                    {x.draft && <span className="tl-dur">{clock(x.length)}</span>}
+                    {id === "V1" && <span className="tl-dur">{x.measured ? clock(x.length) : fmt(c.plannedLength, { t: clock(x.length) })}</span>}
+                    {peaks?.state === "skipped" && <span className="tl-dur">{c.waveSkipped}</span>}
                     {who.map((a) => (
                       <span key={a.id} className="tl-actor" style={{ background: a.color }}>
                         {a.doing ? `${a.name} · ${a.doing}` : a.name}
@@ -1019,8 +1220,8 @@ function Lanes({
 }
 
 /** The decoded file's own peaks, mirrored; nothing at all until they are known. */
-function Wave({ peaks }: { peaks: number[] | null }) {
-  if (!peaks || peaks.length === 0) return null;
+function Wave({ peaks }: { peaks: number[] }) {
+  if (peaks.length < 2) return null;
   const n = peaks.length;
   const top = peaks.map((p, i) => `${(i / (n - 1)) * 100},${50 - p * 48}`).join(" L");
   const bottom = [...peaks].reverse().map((p, i) => `${((n - 1 - i) / (n - 1)) * 100},${50 + p * 48}`).join(" L");
@@ -1030,6 +1231,8 @@ function Wave({ peaks }: { peaks: number[] | null }) {
     </svg>
   );
 }
+
+export type { Peaks };
 
 // ── mixer ────────────────────────────────────────────────────────────────────
 

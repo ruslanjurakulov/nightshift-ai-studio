@@ -48,15 +48,15 @@
 /* upper: library | viewer | inspector */
 .tl-upper { display: grid; grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); min-height: 0; border-bottom: 1px solid var(--rule); }
 .tl-tabs { display: flex; gap: 2px; }
-.tl-tabs button { border: 0; background: none; padding: 8px 10px; color: var(--dim); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; }
+.tl-tabs button { min-height: 40px; border: 0; background: none; padding: 8px 10px; color: var(--dim); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; }
 .tl-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--run); }
 
 .tl-lib { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--rule); background: var(--console); }
 .tl-lib > .tl-tabs { padding: 8px 8px 0; border-bottom: 1px solid var(--rule); }
 .tl-libtools { display: flex; gap: 6px; padding: 8px; }
-.tl-search { flex: 1; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--rule); background: var(--key); color: var(--faint); min-width: 0; }
+.tl-search { flex: 1; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--rule); background: var(--key); color: var(--faint); min-width: 0; }
 .tl-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; outline: none; }
-.tl-sq { width: 36px; height: 36px; padding: 0; }
+.tl-sq { width: 40px; height: 40px; padding: 0; }
 .tl-liblist { list-style: none; margin: 0; padding: 4px 8px 8px; overflow: auto; min-height: 0; }
 .tl-gh { font-size: 12px; color: var(--faint); padding: 8px 6px 2px; }
 .tl-libnone { font-size: 12px; color: var(--dim); padding: 4px 6px 6px; }
@@ -130,6 +130,8 @@
 .tl-tool { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; border: 1px solid var(--rule); background: var(--key); color: var(--text); }
 .tl-tool[aria-pressed="true"] { border-color: var(--sel); color: var(--sel); background: var(--sel-soft); }
 .tl-tool.is-soon { color: var(--faint); }
+.tl-tool:disabled { opacity: 0.4; cursor: not-allowed; }
+.tl-move { display: inline-flex; gap: 4px; margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--rule); }
 .tl-chip { justify-self: end; margin-right: 10px; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 99px; font-size: 13px; border: 1px solid var(--rule); background: var(--key); color: var(--dim); white-space: nowrap; }
 
 /* lower: headers | lanes | mixer */
@@ -140,19 +142,25 @@
 .tl-id { width: 26px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #050811; background: var(--c); flex: none; }
 .tl-tn { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-ms { display: inline-flex; gap: 3px; }
-.tl-ms button { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 1px solid var(--rule); background: var(--key); font-size: 11px; font-weight: 700; color: var(--dim); display: grid; place-items: center; }
+.tl-ms button { width: 28px; height: 28px; padding: 0; border-radius: 6px; border: 1px solid var(--rule); background: var(--key); font-size: 11px; font-weight: 700; color: var(--dim); display: grid; place-items: center; }
 .tl-ms button.on-m { color: #050811; background: var(--tally); border-color: transparent; }
 .tl-ms button.on-s { color: #050811; background: var(--t-music); border-color: transparent; }
 .tl-ms button.on-l { color: var(--sel); border-color: var(--sel); }
+.tl-ms button:disabled { opacity: 0.35; cursor: not-allowed; }
+/* The 28px M/S/lock keys get a 40px hit area without growing the header row. */
+.tl-ms button { position: relative; }
+.tl-ms button::after { content: ""; position: absolute; inset: -6px -2px; }
 
 .tl-lanes { position: relative; overflow-x: auto; overflow-y: hidden; min-width: 0; min-height: 0; }
 .tl-lanes-in { position: relative; display: grid; grid-template-rows: 30px repeat(6, minmax(44px, 1fr)); height: 100%; min-width: 100%; }
 .tl-ruler { position: relative; border-bottom: 1px solid var(--rule); background: var(--console); cursor: ew-resize; touch-action: none; }
+.tl-ruler:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .tl-tick { position: absolute; bottom: 0; width: 1px; height: 8px; background: var(--rule-strong); }
 .tl-tick i { position: absolute; bottom: 10px; left: 3px; font-style: normal; font-size: 11px; color: var(--dim); white-space: nowrap; }
 .tl-lane { position: relative; border-bottom: 1px solid var(--rule); background-image: linear-gradient(90deg, rgb(120 170 255 / 0.05) 1px, transparent 1px); background-size: 80px 100%; min-height: 0; }
 .tl-lane-empty { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--faint); white-space: nowrap; pointer-events: none; }
-.tl-clip { position: absolute; top: 5px; bottom: 5px; border-radius: 7px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--c) 70%, transparent); background: color-mix(in srgb, var(--c) 22%, var(--key)); box-shadow: 0 0 14px -6px var(--c); cursor: pointer; touch-action: none; user-select: none; }
+/* pan-x: a finger on any clip scrolls the timeline sideways (Lens H3); reordering on touch is the Move keys, never a swipe. */
+.tl-clip { position: absolute; top: 5px; bottom: 5px; border-radius: 7px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--c) 70%, transparent); background: color-mix(in srgb, var(--c) 22%, var(--key)); box-shadow: 0 0 14px -6px var(--c); cursor: pointer; touch-action: pan-x; user-select: none; }
 .tl-clip.is-v1 { background: linear-gradient(180deg, rgb(47 139 255 / 0.35), rgb(47 139 255 / 0.12)), var(--film); }
 .tl-clip.is-v1.is-draft { background: color-mix(in srgb, var(--c) 7%, transparent); border: 1.5px dashed color-mix(in srgb, var(--c) 75%, transparent); box-shadow: none; }
 .tl-clip.is-c1 { background: transparent; border: 1.5px solid var(--c); box-shadow: none; }
@@ -205,7 +213,8 @@
   .tl-trow { grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 6px 8px; }
   .tl-tc { padding-left: 4px; font-size: 20px; }
   .tl-tools { justify-self: end; overflow-x: auto; max-width: 100%; }
-  .tl-tool { width: 38px; height: 38px; }
+  .tl-tool { width: 40px; height: 40px; }
+  .tl-tools { flex-wrap: nowrap; }
   .tl-chip { display: none; }
   /* The tracks scroll up and down together (headers and lanes in one box); the lanes alone scroll sideways. */
   .tl-lower { grid-template-columns: var(--hdr-w) minmax(0, 1fr); overflow-y: auto; align-items: start; }

@@ -22,15 +22,24 @@ export const TRACK_BACKEND: Record<TrackId, "scenes" | "takes" | "film" | "none"
   C1: "scenes",
 };
 
-/** A finished take's picture, as film_json names it (the columns P1's FilmTake drops). */
+/** A take as film_json names it (the columns P1's FilmTake drops). `requestedS` is the length that was REQUESTED, never a measurement. */
 export interface TakeMedia {
   id: string;
   kind: string;
   status: string;
   version: number;
   shotIndex: number;
-  durationS: number | null;
+  attempt: number;
+  requestedS: number | null;
   resultAssetId: string | null;
+}
+
+/** One file under a V1 block or an audio clip: placed only when the library recorded its length. */
+export interface ClipSegment {
+  assetId: string;
+  /** Seconds from the start of the film. */
+  start: number;
+  length: number;
 }
 
 export interface TimelineClip {
@@ -42,11 +51,18 @@ export interface TimelineClip {
   label: string;
   /** V1: the scene this block is; C1: the scene whose narration it shows. */
   sceneId?: string;
-  /** V1 only: no finished clip take, so it is the plan, not a picture. */
+  /** V1 only: not every shot of the chosen version has a finished take, so it is the plan, not a picture. */
   draft?: boolean;
-  /** The media asset to preview (a finished clip take's result, the film's narration or music file). */
+  /** The first file to preview (shot 1 of a scene, the narration or the music). */
   assetId?: string | null;
-  /** Whether `length` is the take's measured duration (true) or the scene's planned seconds (false). */
+  /** Every shot's file in order (V1). */
+  assetIds?: string[];
+  /** Where each shot sits, only when every shot's length was measured by the library (`measured`). */
+  segments?: ClipSegment[];
+  /**
+   * True only when `length` is the library's recorded duration of the file(s). Otherwise it is the scene's planned seconds and the
+   * screen says "planned": film_takes.duration_s is the length that was asked for, not the length that came back.
+   */
   measured?: boolean;
 }
 
@@ -82,7 +98,8 @@ function coerceTake(raw: unknown): TakeMedia | null {
     status,
     version: num(t.version) ?? 0,
     shotIndex: num(t.shot_index) ?? 0,
-    durationS: d !== null && d > 0 ? d : null,
+    attempt: num(t.attempt) ?? 1,
+    requestedS: d !== null && d > 0 ? d : null,
     resultAssetId: str(t.result_asset_id),
   };
 }
@@ -113,49 +130,82 @@ export function coerceTimelineFilm(raw: unknown): TimelineFilm | null {
 }
 
 /**
- * The scene's chosen picture: the completed clip take of its current version (0166: current_version is the chosen one), else none.
- * A scene never shot has current_version null, and is a draft whatever takes are planned or running.
+ * The scene's chosen shots, exactly as the assembly worker picks them (modules/film_timeline.py `_chosen_shots`): for every shot
+ * 1..shot_count of the current version (shot 1 a `clip`, later shots `extend`s), the completed take with the HIGHEST attempt, which
+ * must have a result file. If any shot has none, the scene is not shot and this is null: the Timeline draws it as a draft, so it never
+ * shows a scene as ready that the worker would refuse.
  */
-export function chosenClip(scene: FilmScene, takes: readonly TakeMedia[]): TakeMedia | null {
+export function chosenShots(scene: FilmScene, takes: readonly TakeMedia[]): TakeMedia[] | null {
   if (scene.currentVersion === null) return null;
-  const done = takes.filter((t) => t.version === scene.currentVersion && t.status === "completed" && t.resultAssetId && (t.kind === "clip" || t.kind === "extend"));
-  done.sort((a, b) => a.shotIndex - b.shotIndex);
-  return done[0] ?? null;
+  const shots: TakeMedia[] = [];
+  for (let idx = 1; idx <= Math.max(1, scene.shotCount); idx++) {
+    const kind = idx === 1 ? "clip" : "extend";
+    const done = takes
+      .filter((t) => t.kind === kind && t.shotIndex === idx && t.version === scene.currentVersion && t.status === "completed")
+      .sort((a, b) => a.attempt - b.attempt);
+    const take = done[done.length - 1];
+    if (!take || !take.resultAssetId) return null;
+    shots.push(take);
+  }
+  return shots;
 }
 
-/** The chosen version's key frame, for a thumbnail when the clip itself is not there. */
+/** The first chosen shot (the scene's preview picture), or null while the scene is a draft. */
+export function chosenClip(scene: FilmScene, takes: readonly TakeMedia[]): TakeMedia | null {
+  return chosenShots(scene, takes)?.[0] ?? null;
+}
+
+/** The chosen version's key frame (highest attempt), for a thumbnail when the clip itself is not there. */
 export function chosenKeyframe(scene: FilmScene, takes: readonly TakeMedia[]): TakeMedia | null {
   if (scene.currentVersion === null) return null;
-  return takes.find((t) => t.version === scene.currentVersion && t.kind === "keyframe" && t.status === "completed" && t.resultAssetId) ?? null;
+  const done = takes
+    .filter((t) => t.version === scene.currentVersion && t.kind === "keyframe" && t.status === "completed" && t.resultAssetId)
+    .sort((a, b) => a.attempt - b.attempt);
+  return done[done.length - 1] ?? null;
 }
 
-/** The newest completed film-level narration take: one file for the whole film (0171's narration line). */
+/** The newest completed film-level narration take (highest version, then attempt): one file for the whole film. */
 export function narrationTake(film: TimelineFilm): TakeMedia | null {
   const done = film.filmTakes.filter((t) => t.kind === "narration" && t.status === "completed" && t.resultAssetId);
-  done.sort((a, b) => b.version - a.version);
+  done.sort((a, b) => b.version - a.version || b.attempt - a.attempt);
   return done[0] ?? null;
 }
 
 export interface TimelineLayout {
   clips: TimelineClip[];
-  /** Seconds: the sum of what V1 lays out (planned where nothing was measured). */
+  /** Seconds: the sum of what V1 lays out (measured where the library knows a file's length, planned elsewhere). */
   duration: number;
   /** The film's planned seconds (film_json's totals): the chip in the tools row. */
   planned: number;
 }
 
+/** A recorded length in seconds for each asset id the library has probed (GET /api/media's `asset.durationS`). */
+export type AssetDurations = ReadonlyMap<string, number>;
+
 /**
- * The lanes. V1 is the scenes in their saved order, each as long as its chosen clip measured, else its planned seconds (a draft).
- * C1 is each scene's narration text over the same span. A1 is the film's narration take when one finished, else nothing. A2 is the
- * film's music file across the film when one is set. A3 and A4 are always empty: no table stores an effect or an ambience clip.
+ * The lanes. V1 is the scenes in their saved order. A shot scene is as long as the library's recorded durations of its shot files add
+ * up to, when every one is known; otherwise it keeps its planned seconds and says so (`measured: false`). A scene not fully shot is a
+ * dashed draft at its planned seconds. C1 is each scene's narration text over the same span. A1 is the film's narration file, A2 its
+ * music, each only when the file exists. A3 and A4 are always empty: no table stores an effect or an ambience clip.
  */
-export function layoutTimeline(film: TimelineFilm): TimelineLayout {
+export function layoutTimeline(film: TimelineFilm, durations: AssetDurations = new Map()): TimelineLayout {
   const clips: TimelineClip[] = [];
   let t = 0;
   film.view.scenes.forEach((scene, i) => {
     const takes = film.sceneTakes.get(scene.id) ?? [];
-    const clip = chosenClip(scene, takes);
-    const length = clip?.durationS ?? scene.plannedSeconds;
+    const shots = chosenShots(scene, takes);
+    const ids = shots ? shots.map((s) => s.resultAssetId as string) : [];
+    const lengths = ids.map((id) => durations.get(id));
+    const measured = ids.length > 0 && lengths.every((d) => typeof d === "number" && d > 0);
+    const length = measured ? (lengths as number[]).reduce((a, b) => a + b, 0) : scene.plannedSeconds;
+    let at = t;
+    const segments = measured
+      ? ids.map((assetId, k) => {
+          const seg = { assetId, start: at, length: lengths[k] as number };
+          at += seg.length;
+          return seg;
+        })
+      : undefined;
     const n = String(i + 1).padStart(2, "0");
     clips.push({
       id: `v1:${scene.id}`,
@@ -164,17 +214,20 @@ export function layoutTimeline(film: TimelineFilm): TimelineLayout {
       length,
       label: scene.title ? `${n} · ${scene.title}` : n,
       sceneId: scene.id,
-      draft: !clip,
-      assetId: clip?.resultAssetId ?? null,
-      measured: Boolean(clip?.durationS),
+      draft: !shots,
+      assetId: ids[0] ?? null,
+      assetIds: ids,
+      segments,
+      measured,
     });
     const words = scene.narration.trim();
-    if (words) clips.push({ id: `c1:${scene.id}`, track: "C1", start: t, length, label: words, sceneId: scene.id, measured: false });
+    if (words) clips.push({ id: `c1:${scene.id}`, track: "C1", start: t, length, label: words, sceneId: scene.id, measured });
     t += length;
   });
   const narr = narrationTake(film);
-  if (narr) {
-    clips.push({ id: `a1:${narr.id}`, track: "A1", start: 0, length: narr.durationS ?? t, label: "", assetId: narr.resultAssetId, measured: Boolean(narr.durationS) });
+  if (narr?.resultAssetId) {
+    const d = durations.get(narr.resultAssetId);
+    clips.push({ id: `a1:${narr.id}`, track: "A1", start: 0, length: d ?? t, label: "", assetId: narr.resultAssetId, measured: d !== undefined });
   }
   if (film.musicAssetId && !film.musicMissing && t > 0) {
     clips.push({ id: `a2:${film.musicAssetId}`, track: "A2", start: 0, length: t, label: "", assetId: film.musicAssetId, measured: false });
@@ -186,6 +239,19 @@ export function layoutTimeline(film: TimelineFilm): TimelineLayout {
 export function sceneAt(clips: readonly TimelineClip[], seconds: number): TimelineClip | null {
   const v = clips.filter((c) => c.track === "V1");
   return v.find((c) => seconds >= c.start && seconds < c.start + c.length) ?? (seconds >= 0 && v.length && seconds === v[v.length - 1].start + v[v.length - 1].length ? v[v.length - 1] : null);
+}
+
+/**
+ * What the viewer plays at a time: the shot file under it and how far into that file, only where the block's shots were measured.
+ * An unmeasured block plays its first shot from the scene's start and the clock runs by real time, so nothing jumps at its end.
+ */
+export function segmentAt(clip: TimelineClip | null, seconds: number): { assetId: string; offset: number; measured: boolean } | null {
+  if (!clip || !clip.assetId) return null;
+  if (clip.measured && clip.segments?.length) {
+    const seg = clip.segments.find((s) => seconds >= s.start && seconds < s.start + s.length) ?? clip.segments[clip.segments.length - 1];
+    return { assetId: seg.assetId, offset: Math.max(0, Math.min(seg.length, seconds - seg.start)), measured: true };
+  }
+  return { assetId: clip.assetId, offset: Math.max(0, seconds - clip.start), measured: false };
 }
 
 export const FPS = 25;
@@ -211,19 +277,24 @@ export function reorder<T>(list: readonly T[], from: number, to: number): T[] {
 
 // ─── keyboard ────────────────────────────────────────────────────────────────
 
+/** Elements that own their keys: a shortcut never takes Space or an arrow from them. */
+const OWNS_KEYS =
+  "input, textarea, select, button, a[href], summary, [contenteditable=''], [contenteditable='true'], [role='textbox'], [role='button'], [role='tab'], [role='slider'], [role='menuitem'], [role='dialog'], [data-no-shortcuts]";
+
 /**
- * May a Timeline shortcut act on this key press? Never while a person types (an input, a text area, a select, anything editable), and
- * never with focus inside the inspector: the canvas once took Space and arrows from a person typing in its composer.
+ * May a Timeline shortcut act on this key press? Only when focus is on the page itself or on the timeline's own surfaces (the viewer,
+ * the lanes; marked `data-tl-surface`), never on something that owns its keys (a button, a link, a tab, a slider, a field, a dialog),
+ * and never inside the inspector: the canvas once took Space and arrows from a person typing in its composer, and Space on a focused
+ * button must press the button, not play the film.
  */
 export function shortcutAllowed(target: EventTarget | null, inspector: Element | null): boolean {
   if (!target || typeof (target as Node).nodeType !== "number") return true;
   const el = target as HTMLElement;
+  if (el === el.ownerDocument?.body || el === el.ownerDocument?.documentElement) return true;
   if (inspector && inspector.contains(el)) return false;
-  const tag = el.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return false;
   if (el.isContentEditable) return false;
-  if (el.closest?.("[contenteditable=''], [contenteditable='true'], [role='textbox'], [data-no-shortcuts]")) return false;
-  return true;
+  if (el.closest?.(OWNS_KEYS)) return false;
+  return Boolean(el.closest?.("[data-tl-surface]"));
 }
 
 export type TimelineKey = "toggle" | "back" | "pause" | "forward" | "prevFrame" | "nextFrame" | "markIn" | "markOut";
@@ -322,32 +393,66 @@ export function assembleLabel(q: FilmQuote | null): { kind: "none" } | { kind: "
 
 // ─── polling ─────────────────────────────────────────────────────────────────
 
+/** What one read tells the poller: carry on, back off (a failed read), or stop for good (the project is gone or the session ended). */
+export type PollVerdict = "ok" | "error" | "stop";
+
+type Timers = { set: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>; clear: (h: ReturnType<typeof setTimeout>) => void };
+
 /**
- * A poller that survives a failed read: the canvas once stopped polling for good after one rejected fetch. Each tick runs `read`;
- * whatever it does (resolve, reject, throw), the next tick is scheduled until `stop()`.
+ * A poller that survives a failed read (the canvas once stopped polling for good after one rejected fetch) without hammering a
+ * server that is failing: each failed or thrown read doubles the wait up to `maxMs`, a good one resets it, and a `stop` verdict ends
+ * the loop. `pause()`/`resume()` let the page stop reading while it is hidden; `resume` reads at once.
  */
-export function startPolling(read: () => Promise<unknown>, everyMs: number, timers: { set: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>; clear: (h: ReturnType<typeof setTimeout>) => void } = {
+export function startPolling(
+  read: () => Promise<PollVerdict | unknown>,
+  everyMs: number,
+  timers: Timers = {
     // Wrapped: a browser's setTimeout called as a method of another object throws "Illegal invocation".
     set: (fn, ms) => setTimeout(fn, ms),
     clear: (h) => clearTimeout(h),
   },
+  maxMs = everyMs * 8,
 ) {
   let stopped = false;
+  let paused = false;
+  let wait = everyMs;
   let handle: ReturnType<typeof setTimeout> | null = null;
-  const tick = async () => {
-    if (stopped) return;
-    try {
-      await read();
-    } catch {
-      // Said by the caller's own state; the loop's job is only to come back.
-    }
-    if (!stopped) handle = timers.set(() => void tick(), everyMs);
+  const schedule = (ms: number) => {
+    if (handle !== null) timers.clear(handle);
+    handle = stopped || paused ? null : timers.set(() => void tick(), ms);
   };
-  handle = timers.set(() => void tick(), everyMs);
+  const tick = async () => {
+    handle = null;
+    if (stopped || paused) return;
+    let verdict: unknown;
+    try {
+      verdict = await read();
+    } catch {
+      verdict = "error";
+    }
+    if (verdict === "stop") stopped = true;
+    wait = verdict === "error" ? Math.min(maxMs, wait * 2) : everyMs;
+    schedule(wait);
+  };
+  schedule(everyMs);
   return {
     stop() {
       stopped = true;
       if (handle !== null) timers.clear(handle);
+      handle = null;
+    },
+    pause() {
+      paused = true;
+      if (handle !== null) timers.clear(handle);
+      handle = null;
+    },
+    resume() {
+      if (stopped || !paused) return;
+      paused = false;
+      void tick();
+    },
+    get stopped() {
+      return stopped;
     },
   };
 }

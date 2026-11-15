@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { useChannelPath } from "@/lib/channels-client";
 import { refreshCredits } from "@/lib/credits-live";
 import { filmErrorFromResponse, newIdempotencyKey, type FilmError } from "@/lib/films";
@@ -43,15 +44,16 @@ export function AssemblePanel({
   compact?: boolean;
   onStarted: () => void;
 }) {
-  const { t, fmt } = useI18n();
+  const { t, fmt, locale } = useI18n();
   const c = t.studioTimeline;
   const path = useChannelPath();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
   const [problem, setProblem] = useState<"quoteFailed" | "notEditableNow" | null>(null);
 
-  // A new version of the project is a new price: whatever was quoted is forgotten.
+  // A new version of the project is a new price: whatever was quoted is forgotten. A start that went through is not: its "Started"
+  // note stays, because starting the project itself bumps the version.
   useEffect(() => {
-    setPhase({ at: "idle" });
+    setPhase((p) => (p.at === "started" ? p : { at: "idle" }));
     setProblem(null);
   }, [version]);
 
@@ -156,11 +158,15 @@ export function AssemblePanel({
   const canStart = Boolean(q && q.startable);
   const insufficient = blocked.includes("insufficient_credits") || (phase.at === "refused" && phase.reason === "insufficient_credits");
 
+  // The background key never starts anything: it asks for a price, then opens the confirmation. Only the dialog's own Confirm
+  // calls start (Lens H2: Enter held on this key once ran quote → confirm → start with no confirmation).
   const press = () => {
     if (phase.at === "quoted" && canStart) setPhase({ at: "confirm", quote: phase.quote });
-    else if (phase.at === "confirm") void start(phase.quote);
-    else if (phase.at === "failed" && quoteRef.current) void start(quoteRef.current);
-    else if (phase.at !== "quoting" && phase.at !== "starting" && phase.at !== "quoted") void quote();
+    else if (phase.at === "failed" && quoteRef.current) setPhase({ at: "confirm", quote: quoteRef.current });
+    else if (phase.at !== "quoting" && phase.at !== "starting" && phase.at !== "quoted" && phase.at !== "confirm") void quote();
+  };
+  const noRepeat = (e: ReactKeyboardEvent) => {
+    if (e.repeat) e.preventDefault();
   };
 
   const disabled =
@@ -168,11 +174,13 @@ export function AssemblePanel({
     phase.at === "quoting" ||
     phase.at === "starting" ||
     phase.at === "started" ||
+    phase.at === "confirm" ||
     (phase.at === "quoted" && !canStart);
 
+  const statusWord = (filmStudioStrings(locale).status as Record<string, string>)[status] ?? status;
   let note: React.ReactNode = null;
-  if (!editable) note = fmt(c.notEditable, { status });
-  else if (problem === "notEditableNow") note = fmt(c.notEditable, { status });
+  if (!editable && phase.at !== "started") note = fmt(c.notEditable, { status: statusWord });
+  else if (problem === "notEditableNow") note = fmt(c.notEditable, { status: statusWord });
   else if (problem) note = c[problem];
   else if (phase.at === "unpriced") note = <><b>{c.noPrice}</b> {c.noPriceBody}</>;
   else if (phase.at === "quoted" && blocked.length) note = blocked.map((b) => c.blocked[b]).join(" ");
@@ -188,7 +196,7 @@ export function AssemblePanel({
 
   return (
     <div className={compact ? "tl-assemble is-compact" : "tl-assemble"} data-testid="assemble">
-      <button type="button" className="tl-price" onClick={press} disabled={disabled} aria-busy={phase.at === "quoting" || phase.at === "starting"} data-testid="assemble-key">
+      <button type="button" className="tl-price" onClick={press} onKeyDown={noRepeat} disabled={disabled} aria-busy={phase.at === "quoting" || phase.at === "starting"} data-testid="assemble-key">
         <span>{compact ? c.assembleShort : c.assemble}</span>
         <span data-testid="assemble-amount">{right}</span>
       </button>
@@ -206,21 +214,63 @@ export function AssemblePanel({
         </p>
       )}
       {phase.at === "confirm" && (
-        <div className="tl-confirm" role="dialog" aria-modal="true" aria-labelledby="tl-confirm-h" data-testid="assemble-confirm">
-          <div className="tl-confirm-card">
-            <h2 id="tl-confirm-h">{c.confirmTitle}</h2>
-            <p>{fmt(c.confirmBody, { n: phase.quote.total ?? 0 })}</p>
-            <div className="tl-confirm-keys">
-              <button type="button" className="cv-kbtn" onClick={() => setPhase({ at: "quoted", quote: phase.quote })}>
-                {c.cancel}
-              </button>
-              <button type="button" className="cv-kbtn is-primary" onClick={() => void start(phase.quote)} data-testid="assemble-confirm-key">
-                {fmt(c.confirm, { n: phase.quote.total ?? 0 })}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={c.confirmTitle}
+          body={fmt(c.confirmBody, { n: String(phase.quote.total) })}
+          cancel={c.cancel}
+          confirm={fmt(c.confirm, { n: String(phase.quote.total) })}
+          onCancel={() => setPhase({ at: "quoted", quote: phase.quote })}
+          onConfirm={() => void start(phase.quote)}
+        />
       )}
+    </div>
+  );
+}
+
+/**
+ * The one place a start is confirmed. Focus moves into it (on Cancel, so a held Enter cannot confirm), Tab stays inside, Escape
+ * cancels, and a repeated key press is ignored: holding a key down never confirms a hold of credits.
+ */
+function ConfirmDialog({ title, body, cancel, confirm, onCancel, onConfirm }: { title: string; body: string; cancel: string; confirm: string; onCancel: () => void; onConfirm: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const first = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const back = document.activeElement as HTMLElement | null;
+    first.current?.focus();
+    return () => back?.focus?.();
+  }, []);
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.repeat) {
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const keys = [...(box.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+    if (keys.length === 0) return;
+    const i = keys.indexOf(document.activeElement as HTMLButtonElement);
+    const next = e.shiftKey ? (i <= 0 ? keys.length - 1 : i - 1) : i === keys.length - 1 ? 0 : i + 1;
+    e.preventDefault();
+    keys[next].focus();
+  };
+  return (
+    <div className="tl-confirm" role="dialog" aria-modal="true" aria-labelledby="tl-confirm-h" data-testid="assemble-confirm" onKeyDown={onKey} ref={box}>
+      <div className="tl-confirm-card">
+        <h2 id="tl-confirm-h">{title}</h2>
+        <p>{body}</p>
+        <div className="tl-confirm-keys">
+          <button type="button" className="cv-kbtn" onClick={onCancel} ref={first} data-testid="assemble-confirm-cancel">
+            {cancel}
+          </button>
+          <button type="button" className="cv-kbtn is-primary" onClick={onConfirm} data-testid="assemble-confirm-key">
+            {confirm}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
