@@ -20,7 +20,7 @@
  * (estimateRunCredits reads no voice); the page says that rather than invent a premium.
  */
 
-import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, estimateRunCredits, roundUpCredits, type PriceMap } from "@/lib/credits";
+import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, estimateRunReservation as estimateRunCredits, roundUpCredits, type PriceMap } from "@/lib/credits";
 import { quoteLike } from "@/lib/plans";
 import { lowestRate, type DiscoveryModel, type DiscoveryState, type PriceUnit } from "@/lib/models-discovery";
 

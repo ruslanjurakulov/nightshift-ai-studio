@@ -94,26 +94,31 @@ class Pricing(unittest.TestCase):
         self.assertTrue(credits.enforcement_enabled({"NIGHTSHIFT_CREDITS_ENFORCE": " TRUE "}))
 
     def test_minimum_is_the_floor_or_the_requested_length(self):
-        self.assertEqual(credits.minimum_reservation(PRICES), 5.0)
+        with self.assertRaisesRegex(CreditRefused, "priced duration"):
+            credits.minimum_reservation(PRICES)
         self.assertEqual(credits.minimum_reservation(PRICES, 180), 75.0)  # 3 min * 20 * 1.25
-        self.assertIsNone(credits.minimum_reservation({}, 180))
+        with self.assertRaisesRegex(CreditRefused, "base price"):
+            credits.minimum_reservation({}, 180)
 
     def test_a_concept_thumbnail_channels_floor_carries_its_four_images(self):
         # 75.00 for the length + 4 x 1.5 x 1.2 = 7.20 for the images: the hold the Command Center makes
         # (withConceptThumbnail). Without it a 75.00 hold ran, metered 82.20, and was capped at 75.00.
         self.assertEqual(credits.minimum_reservation(CONCEPT_PRICES, 180, CONCEPT), 82.2)
-        self.assertEqual(credits.minimum_reservation(CONCEPT_PRICES, None, CONCEPT), 12.2)  # job_minimum + images
+        with self.assertRaisesRegex(CreditRefused, "priced duration"):
+            credits.minimum_reservation(CONCEPT_PRICES, None, CONCEPT)
 
-    def test_the_images_are_held_even_with_no_other_floor(self):
+    def test_images_alone_cannot_fund_an_unpriced_video(self):
         only_images = {"image_generations": Price(1.5, 0.2)}
-        self.assertEqual(credits.minimum_reservation(only_images, 180, CONCEPT), 7.2)
+        with self.assertRaisesRegex(CreditRefused, "base price"):
+            credits.minimum_reservation(only_images, 180, CONCEPT)
 
     def test_a_frame_mode_channels_floor_is_unchanged(self):
         for cfg in (None, {}, {"thumbnail_mode": "frame"}, {"thumbnail_mode": "conceptual"},
                     {"thumbnail_mode": ["concept"]}, {"thumbnail_mode": None}, "concept", ["concept"]):
             with self.subTest(cfg=cfg):
                 self.assertEqual(credits.minimum_reservation(CONCEPT_PRICES, 180, cfg), 75.0)
-                self.assertEqual(credits.minimum_reservation({}, 180, cfg), None)
+                with self.assertRaisesRegex(CreditRefused, "base price"):
+                    credits.minimum_reservation({}, 180, cfg)
 
     def test_concept_is_read_like_the_run_reads_it(self):
         from modules.thumbnail_concept import MODE_CONCEPT, normalize_mode
@@ -234,11 +239,11 @@ class OpenHold(unittest.TestCase):
 
     def test_enforced_run_without_a_hold_is_refused(self):
         with self.assertRaisesRegex(CreditRefused, "no credit reservation"):
-            credits.open_hold(FakeCredits(), job_ref="", channel_id="news", enforce=True)
+            credits.open_hold(FakeCredits(), job_ref="", channel_id="news", duration_s=180, enforce=True)
 
     def test_enforced_run_whose_hold_is_not_open_is_refused(self):
         with self.assertRaisesRegex(CreditRefused, "not open"):
-            credits.open_hold(FakeCredits(hold=None), job_ref="r1", channel_id="news", enforce=True)
+            credits.open_hold(FakeCredits(hold=None), job_ref="r1", channel_id="news", duration_s=180, enforce=True)
 
     def test_token_hold_below_the_requested_length_is_refused_and_released(self):
         c = FakeCredits(hold=10.0)
@@ -248,7 +253,7 @@ class OpenHold(unittest.TestCase):
 
     def test_unreachable_credits_refuse_when_enforced(self):
         with self.assertRaisesRegex(CreditRefused, "unavailable"):
-            credits.open_hold(FakeCredits(down=True), job_ref="r1", channel_id="news", enforce=True)
+            credits.open_hold(FakeCredits(down=True), job_ref="r1", channel_id="news", duration_s=180, enforce=True)
 
     def test_a_concept_channel_hold_without_its_images_is_refused_and_released(self):
         c = FakeCredits(hold=75.0, prices=CONCEPT_PRICES, agent_config=CONCEPT)
@@ -292,7 +297,7 @@ class HeldThumbnailMode(unittest.TestCase):
         self.assertIn("start the run again from the Command Center", why)
 
     def test_what_the_hold_covered_runs(self):
-        for held, concept in (("concept", True), ("concept", False), ("frame", False), (" Concept ", True)):
+        for held, concept in (("concept", True), ("frame", False), (" Concept ", True)):
             with self.subTest(held=held, concept=concept):
                 self.assertIsNone(credits.held_thumbnail_refusal({self.ENV: held}, concept))
 
@@ -602,9 +607,9 @@ class WorkerCredits(unittest.TestCase):
 
     def test_an_api_balance_job_that_exits_0_without_a_video_is_failed_so_the_database_releases(self):
         class ApiCredits(FakeCredits):
-            def api_hold_start(self, ref, job_id):
+            def api_hold_start_priced(self, ref, job_id):
                 self.calls.append(("api_hold_start", ref, job_id))
-                return 12.0
+                return {"amount_cents": 12, "thumbnail_mode": "frame"}
 
         for no_video, status in ((True, "failed"), (False, "succeeded")):
             with self.subTest(no_video=no_video):
@@ -1110,7 +1115,7 @@ class ActionsSettle(unittest.TestCase):
         return base
 
     def test_start_claims_and_hands_the_hold_to_settle(self):
-        self.assertEqual(credits_settle.start(self.env(), FakeCredits()), 0)
+        self.assertEqual(credits_settle.start(self.env(INPUT_DURATION="60"), FakeCredits()), 0)
         written = dict(line.split("=", 1) for line in self.github_env.read_text().splitlines())
         self.assertEqual(written["CREDITS_HOLD"], "40.00")
         self.assertEqual(written["CREDITS_ORG"], CUSTOMER_ORG)

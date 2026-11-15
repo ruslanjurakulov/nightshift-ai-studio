@@ -135,7 +135,8 @@ class Numbering(unittest.TestCase):
         # one trigger on api_ledger) was reviewed the same way: it names none of the three words below.
         # 0170 (api_request_download audits a listed action name: one hunk in 0147's body) was reviewed the same way: it names
         # none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170")
+        # 0178 adds video pricing/claim guards; it names no planning/cap table or request_series_plan.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0178")
         reads_plans = ("0175",)
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed + reads_plans], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:

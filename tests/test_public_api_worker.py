@@ -18,10 +18,10 @@ class FakeApiCredits(FakeCredits):
         super().__init__(**kw)
         self.api_amount = api_amount
 
-    def api_hold_start(self, ref, job_id):
+    def api_hold_start_priced(self, ref, job_id):
         self._check()
         self.calls.append(("api_start", ref, job_id))
-        return self.api_amount
+        return None if self.api_amount is None else {"amount_cents": self.api_amount, "thumbnail_mode": "concept"}
 
 
 HOLD = "ah-3f2b8c1e-8d4a-4b7e-9a51-0c2d6e7f8a90"
@@ -55,6 +55,14 @@ class ApiPaidJobs(unittest.TestCase):
         # Credits are never reserved, captured or released for an API job.
         self.assertEqual(fake.settled(), [])
         self.assertFalse(any(c[0] == "start" for c in fake.calls))
+
+    def test_checked_api_mode_reaches_the_child_and_overrides_worker_environment(self):
+        with (self.repo / "main.py").open("w") as out:
+            out.write("import os\nopen('mode.out','w').write(os.environ.get('NIGHTSHIFT_HELD_THUMBNAIL_MODE','missing'))\n" + FAKE_MAIN)
+        self.env[credits.HELD_THUMBNAIL_MODE_ENV] = "frame"
+        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD, params={"duration": 300}), FakeApiCredits())
+        self.assertEqual(ends, [("succeeded", None)])
+        self.assertEqual((self.repo / "mode.out").read_text(), "concept")
 
     def test_a_hold_that_is_not_open_for_this_job_refuses_without_running(self):
         fake = FakeApiCredits(api_amount=None)
@@ -102,6 +110,16 @@ class ApiPaidJobs(unittest.TestCase):
         self.assertEqual(client.api_hold_start(HOLD, "9"), 180)
         self.assertTrue(calls[0][0].endswith("/rest/v1/rpc/api_hold_start"))
         self.assertEqual(calls[0][1], {"p_ref": HOLD, "p_job_id": 9})
+
+    def test_checked_client_requires_priced_terms_not_a_legacy_scalar(self):
+        from unittest.mock import Mock
+        for terms in (180, None, {}, {"amount_cents": 0, "thumbnail_mode": "concept"},
+                      {"amount_cents": 180, "thumbnail_mode": "automatic"}):
+            with self.subTest(terms=terms), self.assertRaises(credits.CreditRefused):
+                credits.open_api_hold(Mock(api_hold_start_priced=Mock(return_value=terms)), hold_ref=HOLD, job_id=9)
+        client = Mock(api_hold_start_priced=Mock(return_value={"amount_cents": 129, "thumbnail_mode": "concept"}))
+        self.assertEqual(credits.open_api_hold(client, hold_ref=HOLD, job_id=9), "concept")
+        client.api_hold_start_priced.assert_called_once_with(HOLD, 9)
 
 
 if __name__ == "__main__":

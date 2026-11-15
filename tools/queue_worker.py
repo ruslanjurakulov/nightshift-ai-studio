@@ -903,6 +903,7 @@ class Worker:
         # The run's credits, claimed before anything is spent. The ledger is
         # read back from this machine's clock, so the window starts on it too.
         run_started = _now()
+        self._api_thumbnail_mode = None
         try:
             hold = self._open_credit_hold(job, channel_id, clean)
         except credit_rules.CreditRefused as e:
@@ -925,6 +926,8 @@ class Worker:
         run_env = {k: v for k, v in run_env.items() if k != credit_rules.HELD_THUMBNAIL_MODE_ENV}
         if hold is not None and hold.thumbnail_mode:
             run_env[credit_rules.HELD_THUMBNAIL_MODE_ENV] = hold.thumbnail_mode
+        elif self._api_thumbnail_mode:
+            run_env[credit_rules.HELD_THUMBNAIL_MODE_ENV] = self._api_thumbnail_mode
 
         # The settlement happens INSIDE _execute, before the queue row is
         # finished: a kill between the two used to leave a "succeeded" job with
@@ -1303,7 +1306,7 @@ class Worker:
             if credit_rules.frozen_duration(clean) is None:
                 raise credit_rules.CreditRefused("its length was not fixed when it was queued "
                                                  "(no duration) — create it again")
-            credit_rules.open_api_hold(self.credits, hold_ref=api_ref, job_id=job.get("id"))
+            self._api_thumbnail_mode = credit_rules.open_api_hold(self.credits, hold_ref=api_ref, job_id=job.get("id"))
             return None
         # Independent of NIGHTSHIFT_CREDITS_ENFORCE (review finding C2).
         return credit_rules.open_queue_hold(self.credits, job_ref=job.get("credit_ref"),

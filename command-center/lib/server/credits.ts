@@ -5,7 +5,7 @@ import { unitEconomics, type DurationRow, type LedgerRow } from "../unitEconomic
 import {
   chargedPrices,
   coerceAccount,
-  estimateRunCredits,
+  estimateRunReservation,
   frozenRunDurationS,
   isCreditExempt,
   newCreditRef,
@@ -159,7 +159,7 @@ export async function estimateForChannel(
       if (d?.length) ue = unitEconomics(rows, { durations: d as unknown as DurationRow[] });
     }
   }
-  const base = estimateRunCredits({ prices, durationS, videos: ue.videos });
+  const base = estimateRunReservation({ prices, durationS, videos: ue.videos });
   return { ok: true, estimate: withConceptThumbnail(base, ch?.agent_config ?? null, prices) };
 }
 

@@ -723,3 +723,9 @@ sec_referral_0165.extend(TABLES, FUNCTIONS)
 import sec_films_0166  # noqa: E402
 
 sec_films_0166.extend(TABLES, FUNCTIONS)
+
+# 0178 adds internal pricing/guard helpers and a trusted worker claim, never
+# browser-callable authority. SERVICE here means no anon/authenticated execute.
+FUNCTIONS.update({name: SERVICE for name in (
+    "run_thumbnail_mode", "api_concept_video_price", "render_jobs_priced_thumbnail_guard", "api_hold_start_priced",
+)})

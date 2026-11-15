@@ -284,6 +284,17 @@ export function estimateRunCredits(input: {
   return finish(percentile(priced.map((p) => p.credits), 0.9), "history_video", priced.length, null);
 }
 
+/** Paid admission needs a current base tariff; historical estimates remain
+ * available for analytics, but cannot fund an otherwise unpriced generation. */
+export function estimateRunReservation(input: Parameters<typeof estimateRunCredits>[0]): CreditEstimate {
+  const base = input.prices[UNIT_VIDEO_MINUTE];
+  if (!base || !Number.isFinite(base.creditsPerUnit) || base.creditsPerUnit <= 0)
+    return { credits: null, basis: "unknown", sample: 0, floorApplied: false, gap: "no_prices" };
+  if (!input.durationS || !Number.isFinite(input.durationS) || input.durationS <= 0)
+    return { credits: null, basis: "unknown", sample: 0, floorApplied: false, gap: "no_length" };
+  return estimateRunCredits(input);
+}
+
 /** The ledger unit a generated image is recorded under (modules/cost_ledger.py IMAGE_GENERATIONS). */
 export const UNIT_IMAGE_GENERATIONS = "image_generations";
 /** The most images a concept-thumbnail run generates: one per A/B arm, and the worker clamps the arms to 2..4
@@ -295,7 +306,9 @@ export const CONCEPT_THUMBNAIL_MAX_IMAGES = 4;
 export function conceptThumbnailOn(agentConfig: unknown): boolean {
   if (!agentConfig || typeof agentConfig !== "object" || Array.isArray(agentConfig)) return false;
   const mode = (agentConfig as Record<string, unknown>).thumbnail_mode;
-  return typeof mode === "string" && mode.trim().toLowerCase() === "concept";
+  // Python str.strip(), also used by the SQL price helper. JS trim differs on
+  // NEL/information separators and BOM: differing modes mean differing holds.
+  return typeof mode === "string" && mode.replace(/^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g, "").toLowerCase() === "concept";
 }
 
 /**
@@ -435,7 +448,7 @@ export function quoteSeries(input: {
   if (n < 1 || n > SERIES_MAX_EPISODES) throw new RangeError(`a series has 1 to ${SERIES_MAX_EPISODES} episodes`);
   const durations = input.durationsS.map((d) => (typeof d === "number" && Number.isFinite(d) && d > 0 ? d : null));
   const estimates = durations.map((durationS) =>
-    withConceptThumbnail(estimateRunCredits({ prices: input.prices, durationS, videos: input.videos }), input.agentConfig ?? null, input.prices));
+    withConceptThumbnail(estimateRunReservation({ prices: input.prices, durationS, videos: input.videos }), input.agentConfig ?? null, input.prices));
   return aggregateSeriesQuote(durations, estimates);
 }
 
