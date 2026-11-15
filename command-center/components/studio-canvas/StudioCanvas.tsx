@@ -3,21 +3,24 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlignLeft, Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
+import { AlignLeft, Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, RotateCcw, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { useShell } from "@/components/shell/ShellContext";
+import { creditUnit, formatCredits } from "@/lib/credits";
+import { UPSELL_LINKS } from "@/lib/upsell";
 import { ICONS } from "@/components/navigation/navIcons";
-import { useLibraryImages } from "@/components/studio/useLibraryImages";
+import { useLibraryImages, type LibraryPreview } from "@/components/studio/useLibraryImages";
 import { refreshCredits } from "@/lib/credits-live";
 import { coerceJobs, isActiveStatus, type StudioJob } from "@/lib/creative/studio";
 import { studioTilesFor } from "@/lib/navigation";
 import {
   EMPTY_STATE,
   KIND_SPEC,
+  COMPOSER_H,
+  COMPOSER_W,
   NODE_H,
   NODE_W,
-  RECIPES,
   TOOL_KINDS,
   canWire,
   connect,
@@ -28,6 +31,7 @@ import {
   loadLayout,
   newNode,
   nextSpot,
+  outputType,
   recipeState,
   removeNode,
   saveLayout,
@@ -45,9 +49,11 @@ import {
 } from "@/lib/studio/canvas";
 import { LibraryDrawer, type DroppedAsset } from "./LibraryDrawer";
 import { Inspector, type PanelData } from "./Inspector";
+import { InlineComposer, QuickAddMenu, type QuickMenuState } from "./QuickAdd";
+import type { PanelQuote } from "@/components/studio/GeneratePanel";
 import { KIND_ICONS, Lamp, statusLine } from "./parts";
 import { Board } from "./FlowBoard";
-import { LAMP, inputOf, kindOpen, nodeAsset, nodeStatus, type JobReading, type NodeStatus } from "./nodeState";
+import { LAMP, inputOf, jobAsset, kindOpen, nodeAsset, nodeStatus, resultView, type JobReading, type NodeStatus } from "./nodeState";
 import "./studio-canvas.css";
 
 export { KIND_ICONS };
@@ -149,6 +155,38 @@ export function StudioCanvas({
   const [notice, setNotice] = useState<string | null>(null);
   /** The node whose Retry chip was pressed: its inspector refills from the failed job once, then clears this. */
   const [retryFor, setRetryFor] = useState<string | null>(null);
+  const [quick, setQuick] = useState<QuickMenuState | null>(null);
+  /** The card showing its own small composer (made with "+"); the inspector replaces it when opened. */
+  const [composing, setComposing] = useState<string | null>(null);
+  /** The server's quote per node, as its composer last reported it (never a number of ours). */
+  const [quotes, setQuotes] = useState<ReadonlyMap<string, PanelQuote>>(() => new Map());
+  const setQuote = useCallback((id: string, q: PanelQuote | null) => {
+    setQuotes((prev) => {
+      if ((prev.get(id) ?? null) === q) return prev;
+      const next = new Map(prev);
+      if (q === null) next.delete(id);
+      else next.set(id, q);
+      return next;
+    });
+  }, []);
+  /**
+   * Nodes whose job is being created right now (the POST is in flight), with the token of the form that pressed. A node's
+   * status turns busy only once the POST returns its job id; until then a second form for it (the inspector after "More
+   * options", a reopened inspector, a remount on a new input) would offer Generate again and start, and pay for, a second
+   * job, whose id would then replace the first on the card. The token lets only the pressing form go on.
+   */
+  const [creating, setCreating] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const creatingRef = useRef(creating);
+  creatingRef.current = creating;
+  const setPressing = useCallback((id: string, on: boolean, token: string) => {
+    setCreating((prev) => {
+      if (on ? prev.get(id) === token : prev.get(id) !== token) return prev;
+      const next = new Map(prev);
+      if (on) next.set(id, token);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
   const [jobs, setJobs] = useState<Map<string, JobReading>>(() => new Map());
   const library = useLibraryImages(orgId ?? "", { enabled: !!orgId });
   const libraryRef = useRef(library);
@@ -246,6 +284,7 @@ export function StudioCanvas({
       // Decided from what was on screen before this read, not inside the state update (which React may run twice).
       const before = jobsRef.current;
       let finished = false;
+      let newFile = false;
       // Only the ids just read change: two refreshes ending in the same tick (a new job's first read and another's poll) must
       // both land, so the update merges into the latest state rather than replacing it with this refresh's snapshot.
       const next = new Map<string, JobReading>();
@@ -262,6 +301,10 @@ export function StudioCanvas({
         failures.current.delete(id);
         const wasActive = prev?.state === "ok" && (isActiveStatus(prev.job.status) || prev.job.status === "queued");
         if (wasActive && r.state === "ok" && !isActiveStatus(r.job.status) && r.job.status !== "queued") finished = true;
+        // A job first read already finished (it ended while the page was away) put a file the library read may not have.
+        const out = r.state === "ok" && r.job.status === "completed" ? r.job.result_asset_ids[0] : undefined;
+        const knewDone = prev?.state === "ok" && prev.job.status === "completed";
+        if (out && !knewDone && !libraryRef.current.previews.has(out)) newFile = true;
         next.set(id, r);
       }
       setJobs((prev) => {
@@ -270,10 +313,8 @@ export function StudioCanvas({
         return merged;
       });
       // A job that just ended charged or released its hold, and may have put a file in the library.
-      if (finished) {
-        if (orgId) void refreshCredits(orgId);
-        libraryRef.current.reload();
-      }
+      if (finished && orgId) void refreshCredits(orgId);
+      if (finished || newFile) libraryRef.current.reload();
     },
     [readJob, orgId],
   );
@@ -311,9 +352,55 @@ export function StudioCanvas({
 
   // ── derived ────────────────────────────────────────────────────────────────
   const libReady = library.state === "ready";
+  // A result beyond the library's first page (LIBRARY_PAGE, newest first) is read on its own (GET /api/media/{id}), so an
+  // older finished job still shows its picture instead of reading as "can't be shown". null: that read found no file.
+  const [direct, setDirect] = useState<ReadonlyMap<string, LibraryPreview | null>>(() => new Map());
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    if (library.state !== "ready" || !orgId) return;
+    for (const r of jobs.values()) {
+      const id = jobAsset(r);
+      if (!id || library.previews.has(id) || asked.current.has(id)) continue;
+      asked.current.add(id);
+      void (async () => {
+        let found: LibraryPreview | null = null;
+        try {
+          const res = await fetch(`/api/media/${encodeURIComponent(id)}`, { cache: "no-store" });
+          if (res.ok) {
+            const body = (await res.json()) as { asset?: { kind?: string }; urls?: Partial<Record<string, string>> };
+            const kind = body.asset?.kind;
+            if (kind === "image" || kind === "video" || kind === "audio") {
+              const u = body.urls ?? {};
+              found = { kind, thumbUrl: u.thumb ?? null, viewUrl: u.display ?? u.proxy ?? u.original ?? null };
+            }
+          }
+        } catch {
+          /* found stays null: the card says the result cannot be shown, with "Load again" */
+        }
+        setDirect((prev) => new Map(prev).set(id, found));
+      })();
+    }
+  }, [jobs, library.state, library.previews, orgId]);
+  const previews = useMemo(() => {
+    if (direct.size === 0) return library.previews;
+    const m = new Map(library.previews);
+    for (const [id, p] of direct) if (p && !m.has(id)) m.set(id, p);
+    return m;
+  }, [library.previews, direct]);
+  // Still being read: the library itself, or a direct read asked and not answered. A failed or unavailable library is not
+  // "still loading" for ever: its results read as missing, with "Load again".
+  const resultPending = useCallback(
+    (id: string) => library.state === "loading" || (asked.current.has(id) && !direct.has(id)) || (library.state === "ready" && !asked.current.has(id) && !library.previews.has(id)),
+    [library.state, library.previews, direct],
+  );
+  const reloadResults = useCallback(() => {
+    asked.current.clear();
+    setDirect(new Map());
+    libraryRef.current.reload();
+  }, []);
   const statusOf = useCallback(
-    (n: CanvasNode): NodeStatus => nodeStatus(canvas, n, jobs, availability, { ready: libReady, previews: library.previews }),
-    [canvas, jobs, availability, libReady, library.previews],
+    (n: CanvasNode): NodeStatus => nodeStatus(canvas, n, jobs, availability, { ready: libReady, previews }),
+    [canvas, jobs, availability, libReady, previews],
   );
   const nodeName = useCallback(
     (n: CanvasNode): string => {
@@ -350,9 +437,58 @@ export function StudioCanvas({
     return { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 };
   };
   const open = (id: string) => {
+    // The card's own composer is pressing: swapping it for the inspector would be a second form for the same job.
+    if (composing === id && creatingRef.current.has(id)) {
+      setSelected(id);
+      say(c.inspector.busy);
+      return;
+    }
     setSelected(id);
     setSelectedWire(null);
     setInspecting(true);
+    setComposing(null);
+  };
+  /** A job the composer started belongs to its node; it is read back from the database like any other. */
+  const attachJob = (nodeId: string, jobId: string) => {
+    patchNode(nodeId, { jobId });
+    setJobs((prev) => new Map(prev).set(jobId, { state: "loading" }));
+    void refresh([jobId]);
+  };
+  /** Centre a card in the board at 100% (no inspector beside it). */
+  const centreOn = (spot: { x: number; y: number }) => {
+    requestAnimationFrame(() => {
+      const r = boardRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setCanvas((s) => ({ ...s, view: { x: Math.round(r.width / 2 - (spot.x + 230)), y: Math.round(r.height / 2 - (spot.y + 250)), k: 1 } }));
+    });
+  };
+  /** "+" picked a next step: a new card to the right of the source (or where the wire was dropped), wired from it, with its own composer. */
+  const quickAdd = (from: string, kind: ToolKind, at?: { x: number; y: number }) => {
+    const src = canvas.nodes.find((n) => n.id === from);
+    if (!src || !kindOpen(availability, kind)) return;
+    // The new card opens with its composer (COMPOSER_W x COMPOSER_H), so all of that must be clear, not just a card's size;
+    // the source itself may be showing its composer too.
+    const w = kind === "effects" ? NODE_W : COMPOSER_W;
+    const h = kind === "effects" ? NODE_H : COMPOSER_H;
+    let spot = at ?? { x: src.x + (composing === src.id ? COMPOSER_W : NODE_W) + 96, y: src.y };
+    if (!at) {
+      // Down the column until the spot is clear, so the new card never lands on another.
+      const hit = (p: { x: number; y: number }) =>
+        canvas.nodes.find((n) => p.x < n.x + NODE_W + 40 && n.x < p.x + w + 40 && p.y < n.y + NODE_H + 40 && n.y < p.y + h + 40);
+      for (let guard = 0, n = hit(spot); n && guard < 200; guard++, n = hit(spot)) spot = { x: spot.x, y: n.y + NODE_H + 56 };
+    }
+    const id = makeId();
+    edit((s) => connect({ ...s, nodes: [...s.nodes, newNode(kind, spot.x, spot.y, id)] }, from, id, makeId()));
+    setFirstRunDone(true);
+    setSelected(id);
+    setSelectedWire(null);
+    if (narrow) {
+      open(id);
+    } else {
+      setInspecting(false);
+      setComposing(kind === "effects" ? null : id);
+      centreOn(spot);
+    }
   };
   const addNode = (kind: NodeKind, at?: { x: number; y: number }, extra: Partial<CanvasNode> = {}) => {
     if (!kindOpen(availability, kind)) {
@@ -405,10 +541,15 @@ export function StudioCanvas({
     }
     edit((s) => ({ ...next, view: s.view }));
     setFirstRunDone(true);
-    const last = next.nodes[next.nodes.length - 1];
-    if (last) {
-      setSelected(last.id);
-      setInspecting(r !== "photoClip" && !narrow);
+    // The first step that makes something opens with its composer, the idea already in it (from the wired words).
+    const first = next.nodes.find((n) => n.kind !== "prompt" && n.kind !== "asset") ?? next.nodes[0];
+    if (first) {
+      setSelected(first.id);
+      if (narrow) open(first.id);
+      else if (r !== "photoClip") {
+        setInspecting(false);
+        setComposing(first.id);
+      }
     }
     if (r === "photoClip") setDrawer(true);
     requestAnimationFrame(() => fit(next.nodes));
@@ -478,7 +619,15 @@ export function StudioCanvas({
         setPalette((p) => (p ? null : "all"));
         return;
       }
-      if (document.querySelector('[role="dialog"]')) return;
+      // The "+" menu closes on Escape wherever focus is (its own handler stops the key when focus is inside it).
+      if (e.key === "Escape" && document.querySelector("[data-quick-menu]")) {
+        setQuick((q) => {
+          (q?.opener as HTMLElement | null | undefined)?.focus?.();
+          return null;
+        });
+        return;
+      }
+      if (document.querySelector('[role="dialog"], [data-quick-menu]')) return;
       if (e.key === "Escape") {
         if (drawer || inspecting) {
           const wasInspecting = inspecting && selected;
@@ -606,20 +755,19 @@ export function StudioCanvas({
         status={statusOf(sel)}
         closed={!kindOpen(availability, sel.kind)}
         data={data}
-        previews={library.previews}
+        previews={previews}
         nodeName={nodeName}
         retryNow={retryFor === sel.id}
+        onQuote={(n) => setQuote(sel.id, n)}
+        creatingBy={creating.get(sel.id)}
+        onPressing={(on, token) => setPressing(sel.id, on, token)}
         onRetried={() => setRetryFor(null)}
         sheet={narrow}
         onClose={() => setInspecting(false)}
         onDraft={(words) => {
           if (words !== sel.draft) patchNode(sel.id, { draft: words.slice(0, 4000) });
         }}
-        onCreated={(jobId) => {
-          patchNode(sel.id, { jobId });
-          setJobs((prev) => new Map(prev).set(jobId, { state: "loading" }));
-          void refresh([jobId]);
-        }}
+        onCreated={(jobId) => attachJob(sel.id, jobId)}
         onWire={(from) => wire(from, sel.id)}
         onDisconnect={() => edit((s) => disconnect(s, sel.id))}
         onEffect={(effectId) => patchNode(sel.id, { effectId })}
@@ -642,6 +790,22 @@ export function StudioCanvas({
     />
   ) : null;
 
+  const quickFrom = quick ? canvas.nodes.find((n) => n.id === quick.from) ?? null : null;
+  const quickEl =
+    quick && quickFrom
+      ? overlay(
+          <QuickAddMenu
+            state={quick}
+            out={outputType(canvas, quickFrom)}
+            fromName={nodeName(quickFrom)}
+            onClose={() => setQuick(null)}
+            onPick={(k) => {
+              setQuick(null);
+              quickAdd(quickFrom.id, k, quick.at);
+            }}
+          />,
+        )
+      : null;
   const paletteEl = palette ? overlay(
     <CanvasPalette
       mode={palette}
@@ -663,7 +827,30 @@ export function StudioCanvas({
     </div>
   );
   const toast = notice ? <p className="cv-toast">{notice}</p> : null;
-  const quote = <QuoteKey node={sel} onOpen={() => sel && open(sel.id)} />;
+  // Focus the step's Generate (its composer: the card's own, or the inspector's): the dock never presses it.
+  const focusGenerate = (id: string) => {
+    let tries = 0;
+    const go = () => {
+      const box = document.querySelector(`[data-testid="inline-composer-${id}"]`) ?? document.querySelector('[data-testid="canvas-inspector"]');
+      const key = box?.querySelector<HTMLElement>(".ns-price-button");
+      if (key) key.focus();
+      else if (tries++ < 20) requestAnimationFrame(go);
+    };
+    requestAnimationFrame(go);
+  };
+  const quote = (
+    <QuoteKey
+      node={sel}
+      status={sel ? statusOf(sel) : null}
+      quote={sel ? quotes.get(sel.id) ?? null : null}
+      onChoose={() => setPalette("add")}
+      onPrice={() => {
+        if (!sel) return;
+        if (composing !== sel.id) open(sel.id);
+        focusGenerate(sel.id);
+      }}
+    />
+  );
 
   if (!loaded) {
     return (
@@ -689,9 +876,12 @@ export function StudioCanvas({
             statusOf={statusOf}
             nodeName={nodeName}
             jobs={jobs}
-            previews={library.previews}
+            previews={previews}
             selected={selected}
             onOpen={open}
+            onPlus={(from, el) => setQuick({ from, x: 0, y: 0, opener: el, sheet: true })}
+            resultPending={resultPending}
+            onReload={reloadResults}
           />
         )}
         <div className="cv-flow-dock" role="toolbar" aria-label={c.dock.label}>
@@ -720,6 +910,7 @@ export function StudioCanvas({
           ) : null,
         )}
         {paletteEl}
+        {quickEl}
       </div>
     );
   }
@@ -757,7 +948,7 @@ export function StudioCanvas({
           isClosed={(n) => !kindOpen(availability, n.kind)}
           nodeName={nodeName}
           jobs={jobs}
-          previews={library.previews}
+          previews={previews}
           canConnect={(from, to) => {
             const target = canvas.nodes.find((n) => n.id === to);
             return !!target && kindOpen(availability, target.kind) && canWire(canvas, from, to).ok;
@@ -766,6 +957,35 @@ export function StudioCanvas({
           onDrop={dropAsset}
           mapOpen={mapOpen}
           mapHidden={inspecting && !!sel}
+          resultPending={resultPending}
+          onReloadLibrary={reloadResults}
+          composerFor={(n) =>
+            composing === n.id && !!data.orgId && !inspecting && !n.jobId && kindOpen(availability, n.kind) ? (
+              <InlineComposer
+                node={n}
+                state={canvas}
+                jobs={jobs}
+                data={data}
+                onDraft={(words) => {
+                  if (words !== n.draft) patchNode(n.id, { draft: words.slice(0, 4000) });
+                }}
+                onCreated={(jobId) => {
+                  attachJob(n.id, jobId);
+                  // Only this card's composer closes: by the time the POST returns, another card may be composing.
+                  setComposing((cur) => (cur === n.id ? null : cur));
+                }}
+                onMore={() => open(n.id)}
+                onQuote={(q) => setQuote(n.id, q)}
+                creatingBy={creating.get(n.id)}
+                onPressing={(on, token) => setPressing(n.id, on, token)}
+              />
+            ) : null
+          }
+          onPlus={(from, p) => {
+            const r = boardRef.current?.getBoundingClientRect();
+            const w = p.dropped && r ? toCanvas(canvas.view, p.clientX - r.left, p.clientY - r.top) : null;
+            setQuick({ from, x: p.clientX, y: p.clientY, opener: p.el ?? null, at: w ? { x: Math.round(w.x), y: Math.round(w.y - 25) } : undefined });
+          }}
           onToggleMap={() => setMapOpen((m) => !m)}
         >
           {firstRun}
@@ -813,19 +1033,70 @@ export function StudioCanvas({
         {quote}
       </div>
       {paletteEl}
+      {quickEl}
     </div>
   );
 }
 
 /** The deck's price key: the price lives in the selected node's form (its backend quote), so it opens that form. */
-function QuoteKey({ node, onOpen }: { node: CanvasNode | null; onOpen: () => void }) {
-  const { t } = useI18n();
+/**
+ * The deck's main key, by what the person can do next: choose a step (nothing to price), get the price (a step that can run), or
+ * make it for the price the server quoted. It never spends: it opens or focuses that step's composer, whose Generate is the only
+ * press that creates a job (one per quote).
+ */
+function QuoteKey({
+  node,
+  status,
+  quote,
+  onChoose,
+  onPrice,
+}: {
+  node: CanvasNode | null;
+  status: NodeStatus | null;
+  quote: PanelQuote | null;
+  onChoose: () => void;
+  onPrice: () => void;
+}) {
+  const { t, fmt, locale } = useI18n();
   const c = t.studioCanvas;
-  const can = !!node && node.kind !== "asset" && node.kind !== "prompt";
+  const path = useChannelPath();
+  const priceable = !!node && node.kind !== "asset" && node.kind !== "prompt" && (status === "idle" || status === "failed");
+  // Short of credits: Generate would only be refused, so the key goes to the top-ups (a link; nothing is bought here).
+  if (priceable && quote?.state === "short") {
+    return (
+      <Link href={path(UPSELL_LINKS.topups)} className="cv-kbtn is-primary" title={c.quote} data-testid="dock-quote" data-state="topup">
+        {c.dock.topUp}
+      </Link>
+    );
+  }
+  const state = !priceable ? "choose" : quote?.state === "ready" ? "make" : "price";
+  const label =
+    state === "choose"
+      ? c.dock.choose
+      : quote?.state === "ready"
+        ? fmt(c.dock.make, { n: formatCredits(quote.credits, locale), unit: creditUnit(quote.credits, locale, t.shell.creditUnit) })
+        : c.dock.getPrice;
+  // The price cannot form (a locked model, no length, a refused quote): the reason is said beside the key, not left to guess.
+  const why = state === "price" && quote?.state === "blocked" ? quote.why : null;
   return (
-    <button type="button" className="cv-kbtn is-primary" disabled={!can} onClick={onOpen} title={can ? c.quote : c.quoteHint} data-testid="dock-quote">
-      {c.quote}
-    </button>
+    <>
+      {why && (
+        <span className="cv-qwhy" id="cv-dock-why" data-testid="dock-why">
+          {why}
+        </span>
+      )}
+      <button
+        type="button"
+        className="cv-kbtn is-primary"
+        onClick={priceable ? onPrice : onChoose}
+        title={why ?? (priceable ? c.quote : c.quoteHint)}
+        aria-describedby={why ? "cv-dock-why" : undefined}
+        data-testid="dock-quote"
+        data-state={state}
+      >
+        {label}
+      </button>
+    </>
   );
 }
 
@@ -957,7 +1228,7 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
         id: `add:${k}`,
         group: "add" as const,
         label: c.kinds[k].name,
-        sub: closed ? `${c.node.notAvailable} · ${c.palette.closedWhy}` : c.kinds[k].desc,
+        sub: closed ? c.node.notAvailable : c.kinds[k].desc,
         closed,
         run: () => onAdd(k),
         Icon: KIND_ICONS[k],
@@ -1048,6 +1319,7 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
                 role="option"
                 aria-selected={n === active}
                 aria-disabled={i.closed ? "true" : undefined}
+                title={i.closed ? c.palette.closedWhy : undefined}
                 className="cv-pal-o"
                 onMouseEnter={() => setActive(n)}
                 onClick={() => pick(i)}
@@ -1082,67 +1354,78 @@ function CanvasPalette({ mode, filmStudio, onClose, onAdd }: { mode: "all" | "ad
 
 // ── first run ────────────────────────────────────────────────────────────────
 
+type Tile = "image" | "video" | "voice" | "project";
+const TILES: readonly Tile[] = ["image", "video", "voice", "project"];
+/** What each tile lays out: fixed chains, no planning call (a server-side planner comes later). */
+const TILE_RECIPE: Record<Exclude<Tile, "project">, Recipe> = { image: "promptImage", video: "promptVideo", voice: "promptVoice" };
+const TILE_ICON: Record<Tile, LucideIcon> = { image: KIND_ICONS.image, video: KIND_ICONS.video, voice: KIND_ICONS.voice, project: Projector };
+
+/**
+ * The empty canvas: "What shall we make?" with one idea box and four big tiles. Nightshift lays out the chain (the person does
+ * not wire anything), fits it, and opens the first making step with the idea in it. A tile whose tools are not on sale, or
+ * "Finished video" while projects are off, is shown and refused.
+ */
 function FirstRun({ filmStudio, phone, onRecipe, onBlank }: { filmStudio: boolean; phone: boolean; onRecipe: (r: Recipe, words?: string) => void; onBlank: () => void }) {
   const { t } = useI18n();
   const c = t.studioCanvas.firstRun;
   const path = useChannelPath();
   const { tools: availability } = useShell();
   const [words, setWords] = useState("");
-  const blank = phone ? c.blankPhone : c.blank;
-  // A starter needing a tool with nothing on sale is shown with its reason, not built into cards that cannot run.
   const closedIn = (r: Recipe) => recipeState(r, () => "x").nodes.some((n) => !kindOpen(availability, n.kind));
+  const closed = (tile: Tile) => (tile === "project" ? !filmStudio : closedIn(TILE_RECIPE[tile]));
   return (
     <section className="cv-empty" aria-labelledby="cv-empty-title" data-testid="canvas-first-run">
       <div className="cv-ecard">
         <h2 id="cv-empty-title">{c.ask}</h2>
-        <p>{c.lead}</p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (words.trim() && !closedIn("promptVideo")) onRecipe("promptVideo", words.trim());
-          }}
-        >
-          <textarea className="cv-inp cv-ask" value={words} onChange={(e) => setWords(e.target.value.slice(0, 4000))} placeholder={c.askPlaceholder} aria-label={c.ask} data-testid="first-run-words" />
-          <div className="cv-erow">
-            <span className="cv-note">{c.askNote}</span>
-            <button type="submit" className="cv-kbtn is-primary" disabled={!words.trim() || closedIn("promptVideo")} data-testid="first-run-go">
-              {c.askGo}
-            </button>
-          </div>
-        </form>
-        <h3>{c.from}</h3>
-        <ul className="cv-estarts">
-          {RECIPES.map((r) => (
-            <li key={r}>
-              <button
-                type="button"
-                className="cv-estart"
-                aria-disabled={closedIn(r) ? "true" : undefined}
-                onClick={() => {
-                  if (!closedIn(r)) onRecipe(r);
-                }}
-                data-testid={`recipe-${r}`}
-              >
-                <b>{c[r].name}</b>
-                <span>{closedIn(r) ? `${t.studioCanvas.node.notAvailable} · ${t.studioCanvas.palette.closedWhy}` : c[r].desc}</span>
-              </button>
-            </li>
-          ))}
-          <li>
-            <button type="button" className="cv-estart" onClick={onBlank} data-testid="recipe-blank">
-              <b>{blank.name}</b>
-              <span>{blank.desc}</span>
-            </button>
-          </li>
-          {filmStudio && (
-            <li>
-              <Link href={path("/create/projects")} className="cv-estart" data-testid="recipe-projects">
-                <b>{t.studioCanvas.projects}</b>
-                <span>{t.studioCanvas.projectsSub}</span>
-              </Link>
-            </li>
-          )}
+        <textarea
+          className="cv-inp cv-ask"
+          value={words}
+          onChange={(e) => setWords(e.target.value.slice(0, 4000))}
+          placeholder={c.askPlaceholder}
+          aria-label={c.ask}
+          data-testid="first-run-words"
+        />
+        <p className="cv-note">{c.askNote}</p>
+        <ul className="cv-tiles">
+          {TILES.map((tile) => {
+            const Icon = TILE_ICON[tile];
+            const off = closed(tile);
+            const body = (
+              <>
+                <span className="cv-tile-ic" aria-hidden>
+                  <Icon className="size-6" strokeWidth={1.7} />
+                </span>
+                <b>{c.tiles[tile].name}</b>
+                <span>{off ? t.studioCanvas.node.notAvailable : c.tiles[tile].desc}</span>
+              </>
+            );
+            return (
+              <li key={tile}>
+                {tile === "project" && !off ? (
+                  <Link href={path("/create/projects")} className="cv-tile" data-testid="tile-project">
+                    {body}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="cv-tile"
+                    aria-disabled={off ? "true" : undefined}
+                    title={off ? t.studioCanvas.palette.closedWhy : undefined}
+                    onClick={() => {
+                      if (!off && tile !== "project") onRecipe(TILE_RECIPE[tile], words.trim());
+                    }}
+                    data-testid={`tile-${tile}`}
+                  >
+                    {body}
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
+        <button type="button" className="cv-link" onClick={onBlank} data-testid="recipe-blank" title={(phone ? c.blankPhone : c.blank).desc}>
+          {c.blankLink}
+        </button>
       </div>
     </section>
   );
@@ -1158,14 +1441,20 @@ function FlowView({
   previews,
   selected,
   onOpen,
+  onPlus,
+  resultPending,
+  onReload,
 }: {
   canvas: CanvasState;
   statusOf: (n: CanvasNode) => NodeStatus;
   nodeName: (n: CanvasNode) => string;
   jobs: ReadonlyMap<string, JobReading>;
-  previews: ReadonlyMap<string, { thumbUrl: string | null; kind: string }>;
+  previews: ReadonlyMap<string, LibraryPreview>;
   selected: string | null;
   onOpen: (id: string) => void;
+  onPlus: (from: string, el: HTMLElement) => void;
+  resultPending: (assetId: string) => boolean;
+  onReload: () => void;
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -1190,8 +1479,22 @@ function FlowView({
                 const job = reading?.state === "ok" ? reading.job : null;
                 const accepts = KIND_SPEC[n.kind].accepts.map((k) => c.ports[k]).join(" / ");
                 const working = s === "working" || s === "queued";
+                // As on the board: "Made" only beside the real result; a result that cannot be shown says so.
+                const rv = resultView(n, s, jobs, previews, resultPending);
                 return (
-                  <li key={n.id}>
+                  <li key={n.id} className="cv-fli">
+                    {outputType(canvas, n) && (
+                      <button
+                        type="button"
+                        className="cv-plus is-flow"
+                        aria-label={fmt(c.quick.add, { name: nodeName(n) })}
+                        aria-haspopup="menu"
+                        onClick={(e) => onPlus(n.id, e.currentTarget)}
+                        data-testid={`plus-${n.id}`}
+                      >
+                        <Plus aria-hidden className="size-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className={`cv-fcard s-${s}${selected === n.id ? " is-sel" : ""}`}
@@ -1207,6 +1510,12 @@ function FlowView({
                           {thumb ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={thumb} alt="" />
+                          ) : rv === "missing" ? (
+                            <span className="cv-art-note" data-testid={`flow-result-missing-${n.id}`}>
+                              {c.node.resultMissing}
+                            </span>
+                          ) : rv === "loading" ? (
+                            <span className="cv-art-note">{c.node.resultLoading}</span>
                           ) : (
                             <Icon className="cv-art-glyph" />
                           )}
@@ -1218,11 +1527,20 @@ function FlowView({
                         </span>
                         <b>{nodeName(n)}</b>
                       </span>
-                      <Lamp tone={LAMP[s]} live={s === "working"} label={statusLine(t, s, job, accepts)} />
+                      <Lamp
+                        tone={rv === "missing" ? "warn" : rv === "loading" ? "idle" : LAMP[s]}
+                        live={s === "working"}
+                        label={rv === "missing" ? c.node.resultMissing : rv === "loading" ? c.node.resultLoading : statusLine(t, s, job, accepts)}
+                      />
                       {KIND_SPEC[n.kind].accepts.length > 0 && (
                         <span className="cv-fin">{input ? fmt(c.node.from, { name: nodeName(input.from) }) : c.flow.noInputs}</span>
                       )}
                     </button>
+                    {rv === "missing" && (
+                      <button type="button" className="cv-nchip is-flow" onClick={onReload} data-testid={`flow-result-reload-${n.id}`}>
+                        <RotateCcw aria-hidden className="size-3.5" /> {c.node.resultRetry}
+                      </button>
+                    )}
                   </li>
                 );
               })}

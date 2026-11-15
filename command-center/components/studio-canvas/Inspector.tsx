@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ExternalLink, Unplug, X } from "lucide-react";
-import { GeneratePanel } from "@/components/studio/GeneratePanel";
+import { GeneratePanel, type PanelQuote } from "@/components/studio/GeneratePanel";
 import { useI18n } from "@/lib/i18n/context";
 import {
   failureReason,
@@ -94,6 +94,17 @@ export function nodePrefill(
  * the node's own tools (`only`). The composer IS today's GeneratePanel — the same models, the same backend quote, the
  * same hold and the same errors ("Add credits · need N more" included). Nothing here prices or spends on its own.
  */
+/**
+ * A token for one mounted form (one key of it): a new form for the same node, after a close and reopen, a swap from the card's
+ * composer, or a remount on a new input, gets a new token. While a press is in flight only the form holding its token may still
+ * show Generate; every other form for that node says it is busy, so one node never pays for two jobs at once.
+ */
+export function useFormToken(formKey: string): string {
+  const ref = useRef<{ key: string; token: string } | null>(null);
+  if (!ref.current || ref.current.key !== formKey) ref.current = { key: formKey, token: `${formKey}#${Math.random().toString(36).slice(2)}` };
+  return ref.current.token;
+}
+
 export function Inspector({
   node,
   state,
@@ -105,6 +116,9 @@ export function Inspector({
   nodeName,
   retryNow = false,
   onRetried,
+  onQuote,
+  creatingBy,
+  onPressing,
   onClose,
   onDraft,
   onCreated,
@@ -125,6 +139,12 @@ export function Inspector({
   /** The node's Retry chip was pressed: refill the form from the failed job once (also when the inspector opens for it). */
   retryNow?: boolean;
   onRetried?: () => void;
+  /** The composer's server quote for this node (credits, or null), for the dock's key. */
+  onQuote?: (quote: PanelQuote | null) => void;
+  /** The form that is creating this node's job right now (its token), if any: no other form may offer Generate meanwhile. */
+  creatingBy?: string;
+  /** A press of this form's Generate started or ended its POST (with this form's token). */
+  onPressing?: (pressing: boolean, token: string) => void;
   onClose: () => void;
   onDraft: (words: string) => void;
   onCreated: (jobId: string) => void;
@@ -141,6 +161,8 @@ export function Inspector({
   const reading = node.jobId ? jobs.get(node.jobId) : undefined;
   const job = reading?.state === "ok" ? reading.job : null;
   const [seed, setSeed] = useState<{ nonce: number; prefill: StudioPrefill | null }>(() => ({ nonce: 0, prefill: null }));
+  const panelKey = `${node.id}:${node.effectId ?? ""}:${input?.type ?? ""}:${seed.nonce}`;
+  const token = useFormToken(panelKey);
   const [sourceRequest, setSourceRequest] = useState<{ nonce: number; id: string } | null>(null);
   const firstSource = useRef(input?.assetId ?? null);
   const box = useRef<HTMLElement>(null);
@@ -305,14 +327,14 @@ export function Inspector({
             <p className="cv-note is-warn" data-testid="inspector-unavailable">
               <strong>{c.node.notAvailable}.</strong> {c.inspector.unavailable}
             </p>
-          ) : status === "working" || status === "queued" || status === "loading" ? (
+          ) : status === "working" || status === "queued" || status === "loading" || (creatingBy !== undefined && creatingBy !== token) ? (
             // One job per node at a time: a second press would start (and pay for) another and drop this one off the canvas.
             <p className="cv-note" data-testid="inspector-busy">
               {status === "loading" ? c.node.reading : c.inspector.busy}
             </p>
           ) : node.kind === "effects" && !effect ? null : (
             <GeneratePanel
-              key={`${node.id}:${node.effectId ?? ""}:${input?.type ?? ""}:${seed.nonce}`}
+              key={panelKey}
               orgId={data.orgId}
               models={data.models}
               initial={prefill}
@@ -323,6 +345,8 @@ export function Inspector({
               desk={spec.desk}
               only={only}
               onePerQuote
+              onQuote={onQuote}
+              onPressing={(on) => onPressing?.(on, token)}
               unavailable={data.unavailable}
               onDraftChange={onDraft}
               // The inspector opens on its inputs and the node's last result; the words box does not grab focus and scroll them away.

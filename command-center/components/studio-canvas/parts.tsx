@@ -39,7 +39,9 @@ export function statusLine(t: ReturnType<typeof useI18n>["t"], status: NodeStatu
     case "needs":
       return c.node.needsInput.replace("{kinds}", accepts);
     case "idle":
-      return c.node.notStarted;
+      return c.node.readyToMake;
+    case "done":
+      return c.node.made;
     case "loading":
       return c.node.reading;
     case "unknown":

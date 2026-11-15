@@ -117,3 +117,25 @@ export const LAMP: Record<NodeStatus, "ok" | "run" | "fail" | "warn" | "idle"> =
   words: "ok",
   empty: "idle",
 };
+
+/**
+ * What a finished node's result picture is, for the card and the phone's flow alike: shown (its file is in view), loading (the
+ * library, or a direct read of that file, is still answering), or missing (the read ended and the file is not there, or the
+ * library could not be read). "Made" is only ever said beside a picture in view (CLAUDE.md rule 5); a voice result has no picture,
+ * so it is null like every unfinished node.
+ */
+export type ResultView = "shown" | "loading" | "missing";
+export function resultView(
+  node: CanvasNode,
+  status: NodeStatus,
+  jobs: ReadonlyMap<string, JobReading>,
+  previews: ReadonlyMap<string, Pick<LibraryPreview, "thumbUrl"> & { kind: string }>,
+  pending: (assetId: string) => boolean,
+): ResultView | null {
+  if (status !== "done" || node.kind === "voice") return null;
+  const asset = nodeAsset(node, jobs);
+  const p = asset ? previews.get(asset) : undefined;
+  if (p?.kind === "audio") return null;
+  if (p?.thumbUrl) return "shown";
+  return asset && !p && pending(asset) ? "loading" : "missing";
+}

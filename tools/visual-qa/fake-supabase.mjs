@@ -313,10 +313,12 @@ const JOBS = (state) => {
 
 // The Studio canvas's own jobs, read one at a time by id (GET /api/creative/jobs/{id}): a finished picture, a clip that failed
 // with its reason, and a clip being made. Answered for any app state, by id only, so no other screen's job list changes.
+// The pictures have thumb/display variants, so a done image shows its real result once tools/visual-qa/studio-canvas.mjs
+// --media has drawn the files (the app serves them from NIGHTSHIFT_MEDIA_DIR, signed with MEDIA_URL_SECRET).
 const CANVAS_ASSETS = [
-  { id: "0c000000-0000-4000-8000-0000000000a1", kind: "image", mime: "image/jpeg", bytes: 220000, width: 1280, height: 720, duration_s: null, source: "generated", original_name: "Fox at dawn", variants: {}, version: 1, created_at: "2026-11-14T08:00:00Z", folder_id: null },
-  { id: "0c000000-0000-4000-8000-0000000000a2", kind: "image", mime: "image/jpeg", bytes: 180000, width: 1080, height: 1080, duration_s: null, source: "upload", original_name: "Samarkand gate", variants: {}, version: 1, created_at: "2026-11-13T08:00:00Z", folder_id: null },
-  { id: "0c000000-0000-4000-8000-0000000000a3", kind: "image", mime: "image/png", bytes: 90000, width: 1024, height: 1024, duration_s: null, source: "upload", original_name: "Logo", variants: {}, version: 1, created_at: "2026-11-12T08:00:00Z", folder_id: null },
+  { id: "0c000000-0000-4000-8000-0000000000a1", kind: "image", mime: "image/jpeg", bytes: 220000, width: 1280, height: 720, duration_s: null, source: "generated", original_name: "Fox at dawn", variants: ["thumb", "display"], version: 1, created_at: "2026-11-14T08:00:00Z", folder_id: null },
+  { id: "0c000000-0000-4000-8000-0000000000a2", kind: "image", mime: "image/jpeg", bytes: 180000, width: 1080, height: 1080, duration_s: null, source: "upload", original_name: "Samarkand gate", variants: ["thumb", "display"], version: 1, created_at: "2026-11-13T08:00:00Z", folder_id: null },
+  { id: "0c000000-0000-4000-8000-0000000000a3", kind: "image", mime: "image/png", bytes: 90000, width: 1024, height: 1024, duration_s: null, source: "upload", original_name: "Logo", variants: ["thumb", "display"], version: 1, created_at: "2026-11-12T08:00:00Z", folder_id: null },
   { id: "0c000000-0000-4000-8000-0000000000a4", kind: "audio", mime: "audio/mpeg", bytes: 400000, width: null, height: null, duration_s: 31, source: "generated", original_name: "Narration take 1", variants: {}, version: 1, created_at: "2026-11-11T08:00:00Z", folder_id: null },
 ];
 const CANVAS_JOBS = () => {

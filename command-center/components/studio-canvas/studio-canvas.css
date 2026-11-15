@@ -545,8 +545,8 @@ main:has([data-studio-canvas]) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 3px 10px;
+  min-height: 40px; /* a touch target (Load again, Retry), not just a label */
+  padding: 3px 12px;
   border: 1px solid var(--rule);
   border-radius: 9px;
   color: var(--text);
@@ -653,6 +653,10 @@ main:has([data-studio-canvas]) {
 .cv-zoom output { width: 56px; text-align: center; font-size: 14px; font-weight: 600; }
 .cv-vsep { width: 1px; height: 26px; margin: 0 4px; background: var(--rule); }
 .cv-qnote { color: var(--dim); font-size: 13px; white-space: nowrap; }
+/* Why the price cannot form (a locked model, no length, a refused quote), beside the key that would get it. */
+.cv-qwhy { max-width: 320px; overflow: hidden; color: var(--caution); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.cv-link:disabled { opacity: 0.5; cursor: not-allowed; text-decoration: none; }
+.cv-nchip.is-flow { margin-top: 6px; }
 @media (max-width: 1180px) {
   .cv-root { --insp-w: 360px; --drawer-w: 260px; }
   .cv-qnote { display: none; }
@@ -727,7 +731,7 @@ main:has([data-studio-canvas]) {
   font-size: 13px;
 }
 .cv-link,
-.cv-text-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; color: var(--violet-ink); font-size: 13px; font-weight: 500; }
+.cv-text-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; color: var(--violet-ink); font-size: 13px; font-weight: 500; }
 .cv-link:hover,
 .cv-text-btn:hover { text-decoration: underline; }
 .cv-note { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.45; }
@@ -1126,3 +1130,95 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+/* ── quick add: "+" by a card's output, its menu, and the card's own composer ── */
+.cv-plus {
+  position: absolute;
+  top: 5px;
+  right: -56px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--glass);
+  box-shadow: var(--lift-1);
+  opacity: 0;
+  transform: scale(min(var(--inv, 1), 1.5));
+  transition: opacity var(--d-state) var(--ease);
+}
+.cv-plus:hover { color: #fff; border-color: transparent; background: var(--grad); box-shadow: 0 0 16px -2px var(--run-glow); }
+.cv-node:hover .cv-plus,
+.cv-node:focus-within .cv-plus,
+.cv-node.is-sel .cv-plus,
+.cv-plus:focus-visible { opacity: 1; }
+/* No hover on touch: the "+" is always there. */
+@media (hover: none) { .cv-plus { opacity: 1; } }
+.cv-stage.is-lod .cv-plus { display: none; }
+.cv-fli { position: relative; }
+.cv-plus.is-flow { top: 8px; right: 8px; width: 40px; height: 40px; opacity: 1; transform: none; }
+
+.cv-scrim.is-quick { z-index: 70; background: transparent; }
+.cv-quick {
+  position: fixed;
+  z-index: 75;
+  width: 300px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  color: var(--text);
+  background: var(--console);
+  box-shadow: var(--lift-3);
+}
+.cv-quick .cv-pal-o:focus-visible { outline: none; background: var(--key); box-shadow: inset 3px 0 0 var(--amber); }
+.cv-quick .cv-pal-o[aria-disabled="true"] { cursor: not-allowed; }
+.cv-quick .cv-pal-o[aria-disabled="true"] .cv-opt-on,
+.cv-quick .cv-pal-o[aria-disabled="true"] svg { color: var(--faint); }
+.cv-quick.is-sheet { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 70dvh; padding: 18px 8px calc(10px + env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; }
+.cv-quick.is-sheet::before { content: ""; position: absolute; top: 7px; left: 50%; width: 40px; height: 5px; margin-left: -20px; border-radius: 5px; background: var(--rule-strong); }
+.cv-scrim.is-quick:has(+ .cv-quick.is-sheet) { background: var(--scrim); }
+
+/* The card's composer: the Studio's composer, flat inside the card. */
+.cv-ncomp { display: grid; gap: 6px; min-width: 0; overflow: hidden; cursor: auto; }
+.cv-ncomp > * { min-width: 0; }
+.cv-ncomp .studio-surface { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.cv-ncomp .studio-dock,
+.cv-ncomp .studio-dock[data-at-top="true"] { position: static; margin: 0; padding: 0; border: 0; background: none; backdrop-filter: none; }
+.cv-ncomp .cv-link { justify-self: start; }
+.cv-node:has(.cv-ncomp) { cursor: default; }
+
+/* ── first run: four tiles, Nightshift lays out the steps ─────────────────── */
+.cv-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 4px 0 0; padding: 0; list-style: none; }
+.cv-tile {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  color: var(--text);
+  background: var(--node-bg);
+  box-shadow: var(--lift-1);
+  text-align: left;
+  text-decoration: none;
+  transition: border-color var(--d-state) var(--ease), box-shadow var(--d-state) var(--ease);
+}
+.cv-tile b { font-size: 16px; font-weight: 600; }
+.cv-tile > span:last-child { color: var(--dim); font-size: 13px; line-height: 1.35; }
+.cv-tile-ic { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; color: var(--violet-ink); background: var(--violet-soft); }
+.cv-tile:hover:not([aria-disabled="true"]) { border-color: var(--run); box-shadow: 0 0 0 1px var(--run), 0 10px 30px -12px var(--run-glow); }
+.cv-tile[aria-disabled="true"] { cursor: not-allowed; opacity: 0.7; }
+.cv-tile[aria-disabled="true"] .cv-tile-ic { color: var(--faint); background: var(--key); }
+.cv-ecard > .cv-link { justify-self: start; }
+@media (max-width: 760px) { .cv-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cv-tile { min-height: 118px; } }
+
+/* A result that cannot be shown says so on the art, not an empty frame. */
+.cv-art-note { padding: 0 12px; color: var(--dim); font-size: 13px; text-align: center; }

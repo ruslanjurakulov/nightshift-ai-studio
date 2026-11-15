@@ -36,6 +36,10 @@ export const studioCanvasEn = {
   quoteHint: "Select a node to see its price",
   // The dock.
   dock: {
+    choose: "Choose a step",
+    getPrice: "Get price",
+    make: "Make · {n} {unit}",
+    topUp: "Top up credits",
     label: "Canvas tools",
     add: "Add node",
     library: "Library",
@@ -48,8 +52,6 @@ export const studioCanvasEn = {
     zoom: "Zoom {n}%",
   },
   map: "Map",
-  mapShow: "Show map",
-  mapHide: "Hide map",
   // The node kinds: every one is a real Studio tool.
   kinds: {
     prompt: { name: "Prompt", desc: "Words that feed a picture, a clip or a voice" },
@@ -63,11 +65,15 @@ export const studioCanvasEn = {
   },
   ports: { text: "Words", image: "Picture", video: "Clip", audio: "Recording", in: "Input: {kinds}", out: "Output: {kind}", letters: { text: "T", image: "I", video: "V", audio: "A" } },
   node: {
+    readyToMake: "Ready to make",
+    made: "Made",
+    resultMissing: "Result can't be shown",
+    resultLoading: "Loading the result…",
+    resultRetry: "Load again",
     words: "Words ready",
     noWords: "No words yet",
     reading: "Reading…",
     notAvailable: "Not available yet",
-    notStarted: "Not started",
     needsInput: "Needs {kinds}",
     unknown: "Status unknown",
     noFile: "File not in the library",
@@ -75,7 +81,6 @@ export const studioCanvasEn = {
     open: "Open",
     retry: "Retry",
     remove: "Remove",
-    result: "Result",
   },
   wire: {
     closed: "That tool is not available yet, so nothing can be wired into it",
@@ -110,6 +115,13 @@ export const studioCanvasEn = {
     resultTitle: "Last result",
     openResult: "Open in a new tab",
     retryHint: "Retry fills the form again from that job. It is priced again before it starts.",
+  },
+  quick: {
+    add: "Add a next step after {name}",
+    title: "Next after {name}",
+    none: "Nothing takes this card's output yet.",
+    more: "More options",
+    composer: "Make it here",
   },
   drawer: {
     title: "Library",
@@ -149,10 +161,16 @@ export const studioCanvasEn = {
     hint: "Adding a node is free. Nothing spends until you confirm a price in its form.",
   },
   firstRun: {
-    ask: "What do you want to make?",
-    askPlaceholder: "A fox crossing a snowy ridge at dawn",
-    askNote: "Starts words → picture → clip on the canvas. Nothing is priced until you open a node.",
-    askGo: "Lay it out",
+    tiles: {
+      image: { name: "Image", desc: "Your idea as a picture" },
+      video: { name: "Video", desc: "A picture, then a moving clip" },
+      voice: { name: "Voice", desc: "Your words, spoken" },
+      project: { name: "Finished video", desc: "A whole video, scene by scene" },
+    },
+    blankLink: "Or start from a blank canvas",
+    ask: "What shall we make?",
+    askPlaceholder: "Describe your idea…",
+    askNote: "Pick what to make: Nightshift lays out the steps and opens the first one with your idea in it. Nothing is spent until you press Generate on a card.",
     blankPhone: { name: "Blank canvas", desc: "Tap Add to place a node, or add a file from the Library" },
     title: "Start on the canvas",
     lead: "Every tool is a node. Wire a picture into a clip and the clip uses it. Adding and wiring nodes is free: a node spends only after you confirm its price.",

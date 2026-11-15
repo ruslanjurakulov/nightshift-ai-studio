@@ -28,7 +28,7 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
 vi.mock("@/lib/credits-live", () => ({ refreshCredits: vi.fn() }));
 // The composer is today's GeneratePanel; here a stub records what the canvas hands it (it has its own tests).
-const panel = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
+const panel = vi.hoisted(() => ({ props: [] as Record<string, unknown>[], generateClicks: 0 }));
 vi.mock("@/components/studio/GeneratePanel", () => ({
   GeneratePanel: (p: Record<string, unknown>) => {
     panel.props.push(p);
@@ -37,6 +37,10 @@ vi.mock("@/components/studio/GeneratePanel", () => ({
       <div data-testid="generate-panel" data-cap={initial?.capability ?? ""} data-source={initial?.sourceId ?? ""} data-desk={String(p.desk ?? "")}>
         <button type="button" onClick={() => (p.onCreated as (j: { id: string }) => void)({ id: JOB_NEW })}>
           press
+        </button>
+        {/* Where the real form's Generate sits: a test can see that it was focused, and that nothing pressed it. */}
+        <button type="button" className="ns-price-button" onClick={() => (panel.generateClicks += 1)}>
+          generate
         </button>
       </div>
     );
@@ -51,14 +55,19 @@ const JOB_FAIL = "2a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 const JOB_GONE = "5a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 const JOB_NEW = "6a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 const JOB_SEQ = "7a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
+const JOB_LOST = "8a2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
+const LOST = "9f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
+const JOB_FAR = "ba2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
+const FAR = "bf2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 let seqReads = 0;
+let libraryFails = false;
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { ShellProvider } from "@/components/shell/ShellContext";
 import { StudioCanvas } from "@/components/studio-canvas/StudioCanvas";
 import { UNKNOWN_TOOLS, type ToolAvailability } from "@/lib/tool-availability";
-import { layoutKey } from "@/lib/studio/canvas";
+import { COMPOSER_W, layoutKey } from "@/lib/studio/canvas";
 import { refreshCredits } from "@/lib/credits-live";
 
 const en = dictionaries.en;
@@ -121,6 +130,10 @@ function mockFetch() {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     for (const [id, gate] of gates ?? []) if (url.includes(id)) await gate;
+    if (url === `/api/media/${FAR}`) {
+      return new Response(JSON.stringify({ asset: { id: FAR, kind: "image" }, urls: { thumb: "https://x.test/far.jpg", display: "https://x.test/far-d.jpg" } }), { status: 200 });
+    }
+    if (url.startsWith("/api/media") && libraryFails) return new Response(JSON.stringify({ error: "failed" }), { status: 500 });
     if (url.startsWith("/api/media")) {
       return new Response(
         JSON.stringify({
@@ -134,6 +147,8 @@ function mockFetch() {
     }
     if (url.includes(JOB_DONE)) return new Response(JSON.stringify({ job: job(JOB_DONE, "completed", { result_asset_ids: [OUT] }) }), { status: 200 });
     if (url.includes(JOB_FAIL)) return new Response(JSON.stringify({ job: job(JOB_FAIL, "failed", { error_code: "provider_timeout" }) }), { status: 200 });
+    if (url.includes(JOB_FAR)) return new Response(JSON.stringify({ job: job(JOB_FAR, "completed", { result_asset_ids: [FAR] }) }), { status: 200 });
+    if (url.includes(JOB_LOST)) return new Response(JSON.stringify({ job: job(JOB_LOST, "completed", { result_asset_ids: [LOST] }) }), { status: 200 });
     if (url.includes(JOB_NEW)) return new Response(JSON.stringify({ job: job(JOB_NEW, "running") }), { status: 200 });
     if (url.includes(JOB_SEQ)) {
       seqReads += 1;
@@ -166,6 +181,8 @@ const node = (id: string, kind: string, x = 0, extra: Record<string, unknown> = 
 beforeEach(() => {
   narrow = false;
   seqReads = 0;
+  libraryFails = false;
+  panel.generateClicks = 0;
   gates = null;
   window.localStorage.clear();
   panel.props = [];
@@ -175,20 +192,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("first run", () => {
-  it("offers three starter recipes and a blank canvas, and lists Projects only while its switch is on", async () => {
+  it("asks what we make: four tiles and one idea box; Finished video leads to projects only while its switch is on", async () => {
     mount();
     const first = await screen.findByTestId("canvas-first-run");
-    for (const r of ["photoClip", "promptVideo", "promptVoice", "blank"]) expect(within(first).getByTestId(`recipe-${r}`)).toBeTruthy();
-    expect(within(first).queryByTestId("recipe-projects")).toBeNull();
+    expect(within(first).getByRole("heading").textContent).toBe(c.firstRun.ask);
+    for (const k of ["image", "video", "voice", "project"]) expect(within(first).getByTestId(`tile-${k}`)).toBeTruthy();
+    expect(within(first).getByTestId("tile-project").getAttribute("aria-disabled")).toBe("true");
+    expect(within(first).getByTestId("tile-project").textContent).toContain(c.node.notAvailable);
     expect(screen.getByTestId("canvas-status").textContent).toContain(c.statusEmpty);
     cleanup();
     mount({ filmStudio: true });
-    expect((await screen.findByTestId("recipe-projects")).getAttribute("href")).toBe("/chronos/create/projects");
+    expect((await screen.findByTestId("tile-project")).getAttribute("href")).toBe("/chronos/create/projects");
   });
 
-  it("'Prompt → image → video' lays out Prompt → Image → Image → Video, and starts nothing", async () => {
+  it("the Video tile lays out Prompt → Image → Image → Video, and starts nothing", async () => {
     mount();
-    fireEvent.click(await screen.findByTestId("recipe-promptVideo"));
+    fireEvent.click(await screen.findByTestId("tile-video"));
     const nodes = document.querySelectorAll("[data-node-id]");
     expect([...nodes].map((n) => n.getAttribute("data-kind"))).toEqual(["prompt", "image", "animate"]);
     expect(document.querySelectorAll("[data-wire]")).toHaveLength(2);
@@ -196,13 +215,27 @@ describe("first run", () => {
     expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([u]) => String(u).startsWith("/api/creative"))).toBe(false);
   });
 
-  it("'Photo → animated clip' shows the clip's missing picture on the node and opens the Library", async () => {
+  it("the Image tile builds words → picture and opens the picture's own composer with the idea already in it", async () => {
     mount();
-    fireEvent.click(await screen.findByTestId("recipe-photoClip"));
-    const clip = document.querySelector('[data-kind="animate"]')!;
-    expect(clip.getAttribute("data-status")).toBe("needs");
-    expect(clip.textContent).toContain("Needs Picture");
-    expect(await screen.findByTestId("canvas-library")).toBeTruthy();
+    fireEvent.change(await screen.findByTestId("first-run-words"), { target: { value: "a fox on a ridge" } });
+    fireEvent.click(screen.getByTestId("tile-image"));
+    const kinds = [...document.querySelectorAll("[data-node-id]")].map((n) => n.getAttribute("data-kind"));
+    expect(kinds).toEqual(["prompt", "image"]);
+    expect(document.querySelectorAll("[data-wire]")).toHaveLength(1);
+    await waitFor(() => expect(document.querySelector('[data-testid^="inline-composer-"]')).toBeTruthy());
+    const props = panel.props[panel.props.length - 1];
+    expect((props.initial as { prompt?: string } | null)?.prompt).toBe("a fox on a ridge");
+    expect(props.layout).toBe("composer");
+  });
+
+  it("a tile whose tools are not on sale is shown \"Not available yet\" and builds nothing", async () => {
+    mount({ tools: { state: "known", sold: ["t2i"] } });
+    const video = await screen.findByTestId("tile-video");
+    expect(video.getAttribute("aria-disabled")).toBe("true");
+    expect(video.textContent).toContain(c.node.notAvailable);
+    expect(video.textContent).not.toContain(c.palette.closedWhy);
+    fireEvent.click(video);
+    expect(document.querySelectorAll("[data-node-id]")).toHaveLength(0);
   });
 });
 
@@ -300,7 +333,7 @@ describe("honest states", () => {
     });
     try {
       mount();
-      fireEvent.click(await screen.findByTestId("recipe-promptVoice"));
+      fireEvent.click(await screen.findByTestId("tile-voice"));
       expect(document.querySelectorAll("[data-node-id]")).toHaveLength(2);
       expect(await screen.findByText(c.notSaved)).toBeTruthy();
     } finally {
@@ -308,11 +341,14 @@ describe("honest states", () => {
     }
   });
 
-  it("the dock's Quote key opens the selected node's form, and does nothing to price on its own", async () => {
+  it("the dock's key opens the selected node's form (or the add menu with nothing selected), and does nothing to price on its own", async () => {
     store({ nodes: [node("a", "image")], wires: [] });
     mount();
     const quote = await screen.findByTestId("dock-quote");
-    expect(quote.hasAttribute("disabled")).toBe(true);
+    expect(quote.getAttribute("data-state")).toBe("choose");
+    fireEvent.click(quote);
+    expect(await screen.findByTestId("canvas-palette")).toBeTruthy();
+    fireEvent.keyDown(screen.getByTestId("canvas-palette"), { key: "Escape" });
     openNode("a");
     fireEvent.click(screen.getByRole("button", { name: c.inspector.close }));
     expect(screen.queryByTestId("generate-panel")).toBeNull();
@@ -402,6 +438,85 @@ describe("the board's hand", () => {
   });
 });
 
+describe("quick add: \"+\" by a card's output", () => {
+  it("lists only the next steps that take this output, and a step with nothing on sale is there but disabled", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    const menu = await screen.findByTestId("quick-menu");
+    // An Image puts out a picture: words-in tools (Image, Video, Voice) are not offered at all.
+    for (const k of ["image", "video", "voice", "prompt"]) expect(within(menu).queryByTestId(`quick-${k}`)).toBeNull();
+    // Image → Video takes a picture but nothing sells it here: listed with its reason, and refused.
+    const clip = within(menu).getByTestId("quick-animate");
+    expect(clip.getAttribute("aria-disabled")).toBe("true");
+    expect(clip.textContent).toContain(c.node.notAvailable);
+    expect(clip.textContent).not.toContain(c.palette.closedWhy);
+    expect(clip.getAttribute("title")).toBe(c.palette.closedWhy);
+    fireEvent.click(clip);
+    expect(document.querySelectorAll("[data-node-id]")).toHaveLength(1);
+  });
+
+  it("picking a step makes a new card wired from this one, carrying the Studio's own composer (no price of its own)", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes).toHaveLength(2));
+    const saved = JSON.parse(window.localStorage.getItem(KEY)!);
+    const added = saved.nodes.find((n: { id: string }) => n.id !== "img");
+    expect(added.kind).toBe("animate");
+    expect(saved.wires).toEqual([expect.objectContaining({ from: "img", to: added.id })]);
+    // The card's composer is the Studio's composer (its quote, hold and create), locked to this card's tool.
+    const composer = await screen.findByTestId(`inline-composer-${added.id}`);
+    const props = panel.props[panel.props.length - 1];
+    expect(props.layout).toBe("composer");
+    expect(props.only).toEqual(["i2v"]);
+    // The card itself prints no price: only the server's quote, inside the composer, ever does.
+    const card = document.querySelector(`[data-node-id="${added.id}"]`)!;
+    expect(card.textContent!.replace(composer.textContent ?? "", "")).not.toMatch(/\d+\s*(credits|cr)\b/i);
+    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
+    // A press in it attaches the job it started to this card, read back like any other.
+    fireEvent.click(within(composer).getByRole("button", { name: "press" }));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes.find((n: { id: string }) => n.id === added.id).jobId).toBe(JOB_NEW));
+  });
+
+  it("\"More options\" opens the inspector for that card, in place of the small composer", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    const id = await waitFor(() => {
+      const el = document.querySelector('[data-testid^="inline-more-"]');
+      if (!el) throw new Error("no composer yet");
+      return el as HTMLElement;
+    });
+    fireEvent.click(id);
+    expect(await screen.findByTestId("canvas-inspector")).toBeTruthy();
+    expect(document.querySelector('[data-testid^="inline-composer-"]')).toBeNull();
+  });
+
+  it("the menu is the keyboard's: arrows move, Escape closes it and focus goes back to the \"+\"", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    const plus = screen.getByTestId("plus-img");
+    plus.focus();
+    fireEvent.click(plus);
+    const menu = await screen.findByTestId("quick-menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(document.activeElement).toBe(within(menu).getByTestId("quick-animate"));
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement).not.toBe(within(menu).getByTestId("quick-animate"));
+    expect(items).toContain(document.activeElement);
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByTestId("quick-menu")).toBeNull();
+    expect(document.activeElement).toBe(plus);
+  });
+});
+
 describe("review fixes", () => {
   it("the board's keys stay on the board: Backspace and arrows on an inspector button do nothing to the node", async () => {
     store({ nodes: [node("a", "image")], wires: [] });
@@ -476,12 +591,12 @@ describe("review fixes", () => {
     await waitFor(() => expect(document.querySelector('[data-node-id="b"]')!.getAttribute("data-status")).toBe("working"));
   });
 
-  it("a starter that needs a tool with nothing on sale is shown with its reason and builds nothing", async () => {
+  it("a voice tile with no voice on sale is refused (the reason is its tooltip)", async () => {
     mount({ tools: { state: "known", sold: ["t2i"] } });
-    const clip = await screen.findByTestId("recipe-photoClip");
-    expect(clip.getAttribute("aria-disabled")).toBe("true");
-    expect(clip.textContent).toContain(c.palette.closedWhy);
-    fireEvent.click(clip);
+    const voice = await screen.findByTestId("tile-voice");
+    expect(voice.getAttribute("aria-disabled")).toBe("true");
+    expect(voice.getAttribute("title")).toBe(c.palette.closedWhy);
+    fireEvent.click(voice);
     expect(document.querySelectorAll("[data-node-id]")).toHaveLength(0);
   });
 
@@ -497,6 +612,54 @@ describe("review fixes", () => {
   });
 });
 
+describe("made, and the dock's key", () => {
+  it("\"Made\" shows the real result picture from the job's output", async () => {
+    store({ nodes: [node("img", "image", 0, { jobId: JOB_DONE })], wires: [] });
+    mount();
+    await waitFor(() => expect(document.querySelector('[data-node-id="img"]')!.getAttribute("data-status")).toBe("done"));
+    const card = document.querySelector('[data-node-id="img"]')!;
+    await waitFor(() => expect(card.querySelector("img")?.getAttribute("src")).toBe("https://x.test/made.jpg"));
+    expect(card.textContent).toContain(c.node.made);
+  });
+
+  it("a finished job whose picture cannot be shown says so (never an empty frame next to \"Made\"), and can load it again", async () => {
+    store({ nodes: [node("img", "image", 0, { jobId: JOB_LOST })], wires: [] });
+    mount();
+    await waitFor(() => expect(document.querySelector('[data-node-id="img"]')!.getAttribute("data-status")).toBe("done"));
+    const missing = await screen.findByTestId("result-missing-img");
+    expect(missing.textContent).toBe(c.node.resultMissing);
+    const card = document.querySelector('[data-node-id="img"]')!;
+    expect(card.querySelector("img")).toBeNull();
+    expect(card.textContent).not.toContain(c.node.made);
+    const reads = () => (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([u]) => String(u).startsWith("/api/media")).length;
+    const before = reads();
+    fireEvent.click(screen.getByTestId("result-reload-img"));
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
+  });
+
+  it("the dock's key reads by context (choose, get price, make for the server's quote) and never creates a job", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    const key = () => screen.getByTestId("dock-quote");
+    expect(key().textContent).toBe(c.dock.choose);
+    openNode("img");
+    await screen.findByTestId("canvas-inspector");
+    expect(key().textContent).toBe(c.dock.getPrice);
+    // The composer reports the server's quote; only then does the key show a number.
+    const props = panel.props[panel.props.length - 1];
+    act(() => (props.onQuote as (q: unknown) => void)({ state: "ready", credits: 24 }));
+    await waitFor(() => expect(key().textContent).toBe("Make · 24 credits"));
+    fireEvent.click(key());
+    // It focuses the form's Generate, and never presses it.
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.className).toContain("ns-price-button"));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(panel.generateClicks).toBe(0);
+    const posts = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([u, init]) => String(u).startsWith("/api/creative/jobs") && (init as RequestInit | undefined)?.method === "POST");
+    expect(posts).toHaveLength(0);
+  });
+});
+
 describe("keys and the palette", () => {
   it("a tool with nothing on sale is listed disabled with its reason, and cannot be added", async () => {
     mount({ tools: { state: "known", sold: ["t2i"] } });
@@ -508,7 +671,9 @@ describe("keys and the palette", () => {
     const pal = await screen.findByTestId("canvas-palette");
     const video = within(pal).getByTestId("add:video");
     expect(video.getAttribute("aria-disabled")).toBe("true");
-    expect(video.textContent).toContain(c.palette.closedWhy);
+    expect(video.textContent).toContain(c.node.notAvailable);
+    expect(video.textContent).not.toContain(c.palette.closedWhy);
+    expect(video.getAttribute("title")).toBe(c.palette.closedWhy);
     fireEvent.click(video);
     expect(document.querySelector('[data-kind="video"]')).toBeNull();
     fireEvent.click(within(pal).getByTestId("add:image"));
@@ -555,5 +720,225 @@ describe("the phone", () => {
     expect(screen.getByTestId("flow-node-animate").textContent).toContain("from Image");
     fireEvent.click(screen.getByTestId("flow-node-animate"));
     expect((await screen.findByTestId("canvas-inspector")).className).toContain("is-sheet");
+  });
+});
+
+describe("one paid job per node (Lens H1)", () => {
+  /** A card made with "+": its own composer, whose form is the last GeneratePanel mounted. */
+  async function composerCard() {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    const box = await waitFor(() => {
+      const el = document.querySelector('[data-testid^="inline-composer-"]');
+      if (!el) throw new Error("no composer yet");
+      return el as HTMLElement;
+    });
+    return { box, id: box.getAttribute("data-testid")!.replace("inline-composer-", ""), props: panel.props[panel.props.length - 1] };
+  }
+
+  it("while the card's composer is creating, \"More options\" and the card's title open no second form", async () => {
+    const { id, props } = await composerCard();
+    act(() => (props.onPressing as (on: boolean) => void)(true));
+    const more = screen.getByTestId(`inline-more-${id}`) as HTMLButtonElement;
+    expect(more.disabled).toBe(true);
+    fireEvent.click(more);
+    openNode(id);
+    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
+    // Still exactly one form for the card: the one whose press is in flight.
+    expect(screen.getAllByTestId("generate-panel")).toHaveLength(1);
+    // The POST came back: its job lands on the card and the card is busy, so no form offers Generate again.
+    act(() => {
+      (props.onCreated as (j: { id: string }) => void)({ id: JOB_NEW });
+      (props.onPressing as (on: boolean) => void)(false);
+    });
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes.find((n: { id: string }) => n.id === id).jobId).toBe(JOB_NEW));
+    openNode(id);
+    expect(await screen.findByTestId("inspector-busy")).toBeTruthy();
+    expect(screen.queryByTestId("generate-panel")).toBeNull();
+  });
+
+  it("closing and reopening the inspector during its own create shows it busy, never a fresh Generate", async () => {
+    store({ nodes: [node("img", "image", 0, { draft: "a fox" })], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    await screen.findByTestId("generate-panel");
+    const pressing = panel.props[panel.props.length - 1];
+    act(() => (pressing.onPressing as (on: boolean) => void)(true));
+    fireEvent.click(screen.getByRole("button", { name: c.inspector.close }));
+    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
+    const mounted = panel.props.length;
+    openNode("img");
+    expect(await screen.findByTestId("inspector-busy")).toBeTruthy();
+    expect(screen.queryByTestId("generate-panel")).toBeNull();
+    // No second form was ever mounted, so no second job could be created or attached.
+    expect(panel.props.length).toBe(mounted);
+    // The first press ends: its job is the node's, and the node stays busy while it is made.
+    act(() => {
+      (pressing.onCreated as (j: { id: string }) => void)({ id: JOB_NEW });
+      (pressing.onPressing as (on: boolean) => void)(false);
+    });
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].jobId).toBe(JOB_NEW));
+    expect(screen.queryByTestId("generate-panel")).toBeNull();
+  });
+
+  it("a card's job landing closes only that card's composer, not the one now open on another card", async () => {
+    const first = await composerCard();
+    // A second card is added (and composing) while the first card's POST is still out.
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    const second = await waitFor(() => {
+      const el = [...document.querySelectorAll('[data-testid^="inline-composer-"]')].find((e) => !e.getAttribute("data-testid")!.endsWith(first.id));
+      if (!el) throw new Error("no second composer yet");
+      return el.getAttribute("data-testid")!;
+    });
+    act(() => (first.props.onCreated as (j: { id: string }) => void)({ id: JOB_NEW }));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes.find((n: { id: string }) => n.id === first.id).jobId).toBe(JOB_NEW));
+    expect(screen.getByTestId(second)).toBeTruthy();
+  });
+
+  it("a press that ends without a job frees the node: the form offers Generate again", async () => {
+    store({ nodes: [node("img", "image", 0, { draft: "a fox" })], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    await screen.findByTestId("generate-panel");
+    const pressing = panel.props[panel.props.length - 1];
+    act(() => (pressing.onPressing as (on: boolean) => void)(true));
+    fireEvent.click(screen.getByRole("button", { name: c.inspector.close }));
+    act(() => (pressing.onPressing as (on: boolean) => void)(false));
+    openNode("img");
+    expect(await screen.findByTestId("generate-panel")).toBeTruthy();
+  });
+});
+
+describe("Lens mediums", () => {
+  it("a library that cannot be read shows the result as missing with \"Load again\", never \"Loading\" for ever", async () => {
+    libraryFails = true;
+    store({ nodes: [node("img", "image", 0, { jobId: JOB_DONE })], wires: [] });
+    mount();
+    expect(await screen.findByTestId("result-missing-img")).toBeTruthy();
+    expect(document.querySelector('[data-node-id="img"]')!.textContent).not.toContain(c.node.resultLoading);
+    expect(screen.getByTestId("result-reload-img")).toBeTruthy();
+  });
+
+  it("a result beyond the library's first page is read on its own and shown", async () => {
+    store({ nodes: [node("img", "image", 0, { jobId: JOB_FAR })], wires: [] });
+    mount();
+    const card = await waitFor(() => document.querySelector('[data-node-id="img"]')!);
+    await waitFor(() => expect(card.querySelector("img")?.getAttribute("src")).toBe("https://x.test/far.jpg"));
+    expect(card.textContent).toContain(c.node.made);
+  });
+
+  it("the phone's flow never says \"Made\" over a result it cannot show", async () => {
+    narrow = true;
+    store({ nodes: [node("img", "image", 0, { jobId: JOB_LOST })], wires: [] });
+    mount();
+    expect(await screen.findByTestId("flow-result-missing-img")).toBeTruthy();
+    expect(screen.getByTestId("flow-node-image").textContent).not.toContain(c.node.made);
+    expect(screen.getByTestId("flow-result-reload-img")).toBeTruthy();
+  });
+
+  it("a \"+\" menu with nothing that can be added still takes focus, and Escape closes it", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i"] } });
+    await screen.findByTestId("canvas-board");
+    const plus = screen.getByTestId("plus-img");
+    plus.focus();
+    fireEvent.click(plus);
+    const menu = await screen.findByTestId("quick-menu");
+    expect(within(menu).getAllByRole("menuitem").every((i) => i.getAttribute("aria-disabled") === "true")).toBe(true);
+    expect(menu.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByTestId("quick-menu")).toBeNull();
+    // And from outside it too: the board's own key handler closes an open menu.
+    fireEvent.click(plus);
+    await screen.findByTestId("quick-menu");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByTestId("quick-menu")).toBeNull();
+  });
+
+  it("short of credits, the dock offers the top-ups (a link) instead of a Make that would be refused", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    await screen.findByTestId("generate-panel");
+    const props = panel.props[panel.props.length - 1];
+    act(() => (props.onQuote as (q: unknown) => void)({ state: "short", credits: 400 }));
+    const key = await waitFor(() => {
+      const el = screen.getByTestId("dock-quote");
+      if (el.getAttribute("data-state") !== "topup") throw new Error("not yet");
+      return el;
+    });
+    expect(key.textContent).toBe(c.dock.topUp);
+    expect(key.getAttribute("href")).toBe("/chronos/credits#topups");
+    expect(panel.generateClicks).toBe(0);
+  });
+
+  it("when the price cannot form, \"Get price\" says why beside it", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    await screen.findByTestId("generate-panel");
+    const props = panel.props[panel.props.length - 1];
+    act(() => (props.onQuote as (q: unknown) => void)({ state: "blocked", why: "This model needs a plan." }));
+    expect((await screen.findByTestId("dock-why")).textContent).toBe("This model needs a plan.");
+    expect(screen.getByTestId("dock-quote").getAttribute("data-state")).toBe("price");
+  });
+
+  it("\"Make\" names the credits in the reader's own plural (ru)", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    render(
+      <I18nProvider locale="ru">
+        <ShellProvider operator={false} tools={UNKNOWN_TOOLS}>
+          <StudioCanvas data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null }} userId="u1" channel="chronos" filmStudio={false} />
+        </ShellProvider>
+      </I18nProvider>,
+    );
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    await screen.findByTestId("generate-panel");
+    const props = panel.props[panel.props.length - 1];
+    act(() => (props.onQuote as (q: unknown) => void)({ state: "ready", credits: 2 }));
+    await waitFor(() => expect(screen.getByTestId("dock-quote").textContent).toBe("Создать · 2 кредита"));
+    act(() => (props.onQuote as (q: unknown) => void)({ state: "ready", credits: 5 }));
+    await waitFor(() => expect(screen.getByTestId("dock-quote").textContent).toBe("Создать · 5 кредитов"));
+  });
+
+  it("the Video tile lays the clip out past the picture's open composer, not under it", async () => {
+    mount();
+    fireEvent.click(await screen.findByTestId("tile-video"));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes).toHaveLength(3));
+    const nodes = JSON.parse(window.localStorage.getItem(KEY)!).nodes as { kind: string; x: number }[];
+    const image = nodes.find((n) => n.kind === "image")!;
+    const clip = nodes.find((n) => n.kind === "animate")!;
+    expect(clip.x - image.x).toBeGreaterThanOrEqual(COMPOSER_W);
+  });
+
+  it("keys typed in a card's composer stay in it: Backspace, N and arrows leave the board alone", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    const box = await waitFor(() => {
+      const el = document.querySelector('[data-testid^="inline-composer-"]');
+      if (!el) throw new Error("no composer yet");
+      return el as HTMLElement;
+    });
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes).toHaveLength(2));
+    const before = JSON.parse(window.localStorage.getItem(KEY)!);
+    const inside = within(box).getByRole("button", { name: "generate" });
+    inside.focus();
+    for (const key of ["Backspace", "Delete", "n", "ArrowRight", "ArrowDown"]) fireEvent.keyDown(inside, { key });
+    await new Promise((r) => setTimeout(r, 300));
+    const after = JSON.parse(window.localStorage.getItem(KEY)!);
+    expect(after.nodes).toEqual(before.nodes);
+    expect(screen.queryByTestId("canvas-palette")).toBeNull();
   });
 });

@@ -30,10 +30,10 @@ import "@xyflow/react/dist/base.css";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { failureReason, type StudioJob } from "@/lib/creative/studio";
-import { KIND_SPEC, NODE_H, NODE_W, ZOOM_MAX, ZOOM_MIN, outputType, toCanvas, type CanvasNode, type CanvasState, type PortType, type Viewport } from "@/lib/studio/canvas";
+import { COMPOSER_W, KIND_SPEC, NODE_H, NODE_W, ZOOM_MAX, ZOOM_MIN, outputType, toCanvas, type CanvasNode, type CanvasState, type PortType, type Viewport } from "@/lib/studio/canvas";
 import { ASSET_MIME, readDrop, type DroppedAsset } from "./LibraryDrawer";
 import { KIND_ICONS, Lamp, statusLine } from "./parts";
-import { LAMP, inputOf, nodeAsset, type JobReading, type NodeStatus } from "./nodeState";
+import { LAMP, inputOf, nodeAsset, resultView, type JobReading, type NodeStatus } from "./nodeState";
 
 /** Someone other than this person working on a node (an AI agent through MCP, later): a cursor, a label, a colour. */
 export type RemoteActor = { id: string; label: string; colour: string };
@@ -52,11 +52,20 @@ type CardData = {
   actor: RemoteActor | null;
   onRetry: () => void;
   onOpen: () => void;
+  /** The card's own small composer (QuickAdd's InlineComposer), or null. */
+  composer: ReactNode;
+  /** The "+" by the output: opens the next-step menu. Null on a card with no output. */
+  onPlus: ((el: HTMLElement) => void) | null;
+  /** The library has been read: a missing result picture is then really missing, not still loading. */
+  /** A result file still being read (the library, or a direct read of a file beyond its first page). */
+  resultPending: (assetId: string) => boolean;
+  onReloadLibrary: () => void;
 };
 type WireData = { type: PortType; live: boolean; hl: boolean };
 type CardNode = Node<CardData, "card">;
 type WireEdge = Edge<WireData, "wire">;
 
+/** A card carrying its own composer is wider: the composer needs a line for its words and its keys. */
 /** The zoom below which cards switch to their one-line overview read. */
 const LOD_BELOW = 0.87;
 /** A press that moves less than this is a click (it opens the inspector); more is a drag (it only moves the node). */
@@ -88,6 +97,12 @@ export type BoardProps = {
   /** The inspector is open: the focused cards sit where the map would. */
   mapHidden?: boolean;
   onToggleMap: () => void;
+  resultPending?: (assetId: string) => boolean;
+  onReloadLibrary?: () => void;
+  /** The small composer a card carries (a card made with "+"), or null. */
+  composerFor?: (n: CanvasNode) => ReactNode;
+  /** "+" pressed on a card, or a wire from it dropped on empty board: open the next-step menu there. */
+  onPlus?: (from: string, at: { el?: HTMLElement | null; clientX: number; clientY: number; dropped: boolean }) => void;
   /** Who else is on which node right now. Empty today; the layer for agents' cursors. */
   actors?: ReadonlyMap<string, RemoteActor>;
   children: ReactNode;
@@ -128,6 +143,10 @@ function BoardInner({
   mapOpen,
   mapHidden = false,
   onToggleMap,
+  composerFor,
+  onPlus,
+  resultPending = () => true,
+  onReloadLibrary,
   actors,
   children,
 }: BoardProps) {
@@ -164,10 +183,20 @@ function BoardInner({
             actor: actors?.get(n.id) ?? null,
             onRetry: () => onRetry(n.id),
             onOpen: () => onOpen(n.id),
+            composer: composerFor?.(n) ?? null,
+            resultPending,
+            onReloadLibrary: () => onReloadLibrary?.(),
+            onPlus:
+              onPlus && outputType(canvas, n)
+                ? (el: HTMLElement) => {
+                    const r = el.getBoundingClientRect();
+                    onPlus(n.id, { el, clientX: r.right + 8, clientY: r.top, dropped: false });
+                  }
+                : null,
           },
         };
       }),
-    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod],
+    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod, composerFor, onPlus, resultPending, onReloadLibrary],
   );
 
   const edges = useMemo<WireEdge[]>(() => {
@@ -255,12 +284,22 @@ function BoardInner({
         onEdgesChange={onEdgesChange}
         onNodeDragStart={() => record()}
         onNodeClick={(e, n) => {
-          if ((e.target as Element).closest("button, a, input, select, textarea")) return;
+          // A press inside the card's own composer is the composer's, not "open the inspector".
+          if ((e.target as Element).closest("button, a, input, select, textarea, .cv-ncomp")) return;
           onOpen(n.id);
         }}
         onEdgeClick={(_, ed) => onSelectWire(ed.id)}
         onPaneClick={() => onSelect(null)}
         isValidConnection={(conn) => !!conn.source && !!conn.target && canConnect(conn.source, conn.target)}
+        onConnectEnd={(event, conn) => {
+          // A wire dropped on empty board: offer what could come next, right there.
+          // Only from an output: a wire dragged out of an input asks for what feeds it, not what comes after.
+          if (conn.isValid || !conn.fromNode || !onPlus || conn.fromHandle?.type !== "source") return;
+          const target = (event as MouseEvent).target as Element | null;
+          if (!target?.closest(".react-flow__pane")) return;
+          const p = "changedTouches" in event ? event.changedTouches[0] : (event as MouseEvent);
+          onPlus(conn.fromNode.id, { clientX: p.clientX, clientY: p.clientY, dropped: true });
+        }}
         onConnect={(conn: Connection) => {
           if (conn.source && conn.target) onWire(conn.source, conn.target);
         }}
@@ -350,6 +389,10 @@ function NodeCard({
   previews,
   onRetry,
   onOpen,
+  composer,
+  onPlus,
+  resultPending,
+  onReloadLibrary,
 }: CardData & { selected: boolean; dragging: boolean }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -365,6 +408,9 @@ function NodeCard({
   const input = inputOf(canvas, node, jobs);
   const words = node.kind === "prompt" ? node.draft : node.draft || input?.text || "";
   const working = status === "working" || status === "queued";
+  // "Made" only with the real result in view (rule 5): a picture or clip result that cannot be shown says so, with a way to
+  // load it again; while the library is still being read it says that instead. A voice result has no picture to show.
+  const resultState = resultView(node, status, jobs, previews, resultPending);
   const showArt = !!thumb || working || (node.kind === "asset" && status !== "missing") || status === "done";
   const cls = ["cv-node", `k-${node.kind}`, `s-${status}`, selected && "is-sel", dragging && "is-dragging", dropTarget && "is-drop", actor && "is-remote"]
     .filter(Boolean)
@@ -375,7 +421,7 @@ function NodeCard({
       data-node-id={node.id}
       data-kind={node.kind}
       data-status={status}
-      style={{ width: NODE_W, ...(actor ? ({ "--actor": actor.colour } as CSSProperties) : null) }}
+      style={{ width: composer ? COMPOSER_W : NODE_W, ...(actor ? ({ "--actor": actor.colour } as CSSProperties) : null) }}
       role="group"
       tabIndex={0}
       aria-label={`${name}: ${line}`}
@@ -418,20 +464,42 @@ function NodeCard({
           <span className="cv-nt-n">{name}</span>
         </span>
       </div>
+      {composer ? (
+        <div className="cv-nb">
+          {composer}
+          <Lamp tone={LAMP[status]} live={status === "working"} label={line} />
+          {sourceName && <span className="cv-nsub">{fmt(c.node.from, { name: sourceName })}</span>}
+        </div>
+      ) : (
       <div className="cv-nb">
         {showArt && (
           <div className={`cv-art${working ? " is-working" : ""}${status === "failed" ? " is-failed" : ""}`} aria-hidden>
             {thumb ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={thumb} alt="" draggable={false} />
+            ) : resultState === "missing" ? (
+              <span className="cv-art-note" data-testid={`result-missing-${node.id}`}>
+                {c.node.resultMissing}
+              </span>
+            ) : resultState === "loading" ? (
+              <span className="cv-art-note">{c.node.resultLoading}</span>
             ) : (
               <Icon className="cv-art-glyph" />
             )}
           </div>
         )}
+        {resultState === "missing" && (
+          <button type="button" className="cv-nchip nodrag" onClick={onReloadLibrary} data-testid={`result-reload-${node.id}`}>
+            <RotateCcw aria-hidden className="size-3.5" /> {c.node.resultRetry}
+          </button>
+        )}
         {/* The words it makes from, clamped. With none, nothing: the lamp below already says so, once. */}
         {node.kind !== "asset" && words && <p className="cv-clamp">{words}</p>}
-        <Lamp tone={LAMP[status]} live={status === "working"} label={status === "failed" ? t.gen.status.failed : line} />
+        <Lamp
+          tone={resultState === "missing" ? "warn" : resultState === "loading" ? "idle" : LAMP[status]}
+          live={status === "working"}
+          label={status === "failed" ? t.gen.status.failed : resultState === "missing" ? c.node.resultMissing : resultState === "loading" ? c.node.resultLoading : line}
+        />
         {sourceName && <span className="cv-nsub">{fmt(c.node.from, { name: sourceName })}</span>}
         {status === "failed" && job && (
           <div className="cv-nfail">
@@ -442,6 +510,23 @@ function NodeCard({
           </div>
         )}
       </div>
+      )}
+      {onPlus && (
+        <button
+          type="button"
+          className="cv-plus nodrag"
+          aria-label={fmt(c.quick.add, { name })}
+          title={fmt(c.quick.add, { name })}
+          aria-haspopup="menu"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlus(e.currentTarget);
+          }}
+          data-testid={`plus-${node.id}`}
+        >
+          <Plus aria-hidden className="size-4" />
+        </button>
+      )}
       {out && (
         <Handle
           type="source"

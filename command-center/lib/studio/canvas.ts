@@ -271,10 +271,16 @@ export function wirePath(a: Pick<CanvasNode, "x" | "y">, b: Pick<CanvasNode, "x"
 
 // ── starter recipes (free: they lay out nodes and wires, nothing else) ────────────
 
-export const RECIPES = ["photoClip", "promptVideo", "promptVoice"] as const;
+export const RECIPES = ["photoClip", "promptVideo", "promptVoice", "promptImage"] as const;
 export type Recipe = (typeof RECIPES)[number];
 
 const STEP = NODE_W + GAP_X;
+/**
+ * A card carrying its own small composer is this big (components/studio-canvas/FlowBoard): the next card is laid out past it,
+ * not under it, and a new card with a composer lands only where all of it is clear.
+ */
+export const COMPOSER_W = 460;
+export const COMPOSER_H = 520;
 
 /** Real chains, as the prototype's starters: words → picture → clip, a library picture → clip, words → voice. */
 export function recipeState(recipe: Recipe, makeId: () => string, words = ""): CanvasState {
@@ -284,9 +290,14 @@ export function recipeState(recipe: Recipe, makeId: () => string, words = ""): C
     return { ...EMPTY_STATE, nodes: [clip] };
   }
   const prompt = newNode("prompt", 0, 0, makeId(), { draft: words });
+  if (recipe === "promptImage") {
+    const image = newNode("image", STEP, 0, makeId());
+    return { ...EMPTY_STATE, nodes: [prompt, image], wires: [{ id: makeId(), from: prompt.id, to: image.id }] };
+  }
   if (recipe === "promptVideo") {
     const image = newNode("image", STEP, 0, makeId());
-    const clip = newNode("animate", STEP * 2, 0, makeId());
+    // The picture opens with its composer (the first step that makes something): the clip sits past that, not under it.
+    const clip = newNode("animate", STEP + COMPOSER_W + GAP_X, 0, makeId());
     return {
       ...EMPTY_STATE,
       nodes: [prompt, image, clip],
