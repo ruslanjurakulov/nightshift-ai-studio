@@ -8,6 +8,8 @@ import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
+import { studioHubUz } from "./studio-hub/uz";
+import { studioCanvasUz } from "./studio-canvas/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -56,6 +58,8 @@ export const uz: Dictionary = {
   effects: effectsUz,
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
+  studioHub: studioHubUz,
+  studioCanvas: studioCanvasUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
@@ -127,7 +131,8 @@ export const uz: Dictionary = {
     margin: "Marja",
     customers: "Mijozlar",
     billing: "Toʻlovlar",
-    studio: "Brend koʻrinishi",
+    studio: "Nightshift Studio",
+    brandLook: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",
     inbox: "Kiruvchi xabarlar",

@@ -8,6 +8,8 @@ import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { studioHubRu } from "./studio-hub/ru";
+import { studioCanvasRu } from "./studio-canvas/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -56,6 +58,8 @@ export const ru: Dictionary = {
   effects: effectsRu,
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
+  studioHub: studioHubRu,
+  studioCanvas: studioCanvasRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
@@ -127,7 +131,8 @@ export const ru: Dictionary = {
     margin: "Маржа",
     customers: "Клиенты",
     billing: "Оплата",
-    studio: "Облик бренда",
+    studio: "Nightshift Studio",
+    brandLook: "Облик бренда",
     library: "Медиатека",
     styles: "Стили",
     inbox: "Входящие",

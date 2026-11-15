@@ -7,6 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { ALL_SECTIONS, HOME } from "@/lib/navigation";
 import { PageNav } from "@/components/navigation/PageNav";
 import { SectionTabs } from "@/components/navigation/SectionTabs";
+import { StudioMovedNotice } from "@/components/studio-hub/StudioMovedNotice";
 import { useShell } from "@/components/shell/ShellContext";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { navigate } from "@/lib/editor-nav";
@@ -64,6 +65,17 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [isHome, home, router, operator]);
 
+  // Nightshift Studio is a workspace, not a panel: it fills the window beside the rail, for everyone, with no card, scrim or ✕
+  // around it (the canvas has its own bar). Its list views (?shelf=) draw their own inset.
+  if (pathname === path("/studio")) {
+    return (
+      <>
+        <StudioMovedNotice />
+        {children}
+      </>
+    );
+  }
+
   // The customer's frame: the page itself on the canvas, beside the sidebar —
   // no scrim, no ✕, no card around the whole screen. The sidebar says where
   // you are; the back arrow and trail appear once you are inside a section.
@@ -76,6 +88,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
         <SectionTabs />
+        <StudioMovedNotice />
         {children}
       </PageTransition>
     );
@@ -119,6 +132,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <SectionTabs />
+          <StudioMovedNotice />
           {children}
         </div>
       </PageTransition>

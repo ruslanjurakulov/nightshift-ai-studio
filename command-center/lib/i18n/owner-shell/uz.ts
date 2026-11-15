@@ -5,6 +5,7 @@ export const ownerShellUz: OwnerShellDictionary = {
   tabsLabel: "Egasi navigatsiyasi",
   tabHome: "Asosiy",
   tabVideos: "Videolar",
+  tabStudio: "Studio",
   tabBilling: "Toʻlovlar",
   tabAlerts: "Signallar",
   tabMore: "Yana",
