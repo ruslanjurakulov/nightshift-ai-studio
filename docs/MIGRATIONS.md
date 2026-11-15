@@ -1778,3 +1778,42 @@ two holds below are made without them.
   the hashes, the grants), `tests/security/test_sec_concept_thumbnail_holds.py` (a real PostgreSQL: the reading and the price equal the
   worker's to the cent, privileges, replay, rollback, drift), the `0175` tests of `tests/security/test_sec_series_tables.py` and
   `tests/security/test_sec_mcp_oauth.py` (the quote, the hold, the refusal).
+
+## 0178 — API concept-thumbnail funding and valid-base admission (unmerged follow-up)
+
+`0178_api_concept_thumbnail_holds.sql` follows PR 750's 0175; see
+[the billing contract](CONCEPT_THUMBNAIL_BILLING.md). The older 0175 source-base
+notes above are historical, not evidence of current production migration state.
+0176/0177 are allocated to separate open work; this file does not implement it.
+
+- **Scope:** API holds gain frozen thumbnail mode metadata. API creation, site
+  and API base price helpers, OAuth creation, direct queue admission and checked
+  hold claims require complete pricing. Existing financial ledgers, settlement
+  and purchase/refund/grant-reversal recovery functions are unchanged.
+- **Independent tariff:** `api_prices.concept_thumbnail_image` is retail USD
+  cents per concept image. No row/value is seeded. Missing/nonfinite price
+  refuses concept API creation before reserving; explicit zero is a valid image
+  tariff. There is no guessed conversion from site credits. Both payers require
+  a positive finite video per-minute base; a minimum/image price alone cannot
+  fund the base. Existing limits include the full payer-specific hold.
+- **Guarded apply:** apply as one transaction after verifying current source
+  bodies against the file's before/after guards. End-state checks assert exact
+  replaced bodies and helper grants. New worker claims need the new function;
+  pause paid admissions and coordinate replacement of old workers before new
+  API concept work is admitted. This source change authorizes no production action.
+- **Pending jobs:** unbound/underfunded API holds and old concept holds without
+  frozen terms are refused before spending. Existing failure settlement releases
+  them. Claims cannot revive expired site three-hour/24-hour or API 24-hour holds;
+  expiry goes through existing account-locked recovery functions.
+- **Historical replays:** remove 0178 first when deliberately testing older
+  function bodies in the disposable lab; restore the ordered chain afterward.
+  An older migration replay is not an operational rollback plan.
+- **Undo:** `docs/sql/rollback_0178_api_concept_thumbnail_holds.sql` is guarded,
+  owner-only and manual. Pause **all paid admissions** and stop affected workers
+  first. It restores known earlier billing gaps, retains frozen mode metadata
+  and does not change financial rows or prices. Never run it automatically on
+  an application rollback. Resumption requires a separately reviewed safe state.
+- **Evidence:** `tests/security/test_sec_api_concept_pricing.py` covers separate
+  currencies, missing/zero/NaN rates, scope, frozen terms, direct inserts,
+  idempotency, expiry/refund collection and replay/rollback. Python/TypeScript
+  suites cover the worker preflight and identical whitespace normalization.

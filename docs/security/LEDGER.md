@@ -6,6 +6,8 @@ A row is never deleted. It moves to `fixed` or `wontfix` with a reason.
 
 **Status:** `open` = hole exists; `fixed` = merged fix and regression test;
 `wontfix` = accepted risk, reason in root cause.
+A branch remediation remains `open` until its reviewed fix is merged; branch
+implementation and test evidence do not establish production remediation.
 **Severity:** critical > high > medium > low > info (rubric in README).
 
 ## Summary
@@ -13,8 +15,8 @@ A row is never deleted. It moves to `fixed` or `wontfix` with a reason.
 | Severity | Open | Fixed | Wontfix |
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
-| high | 3 | 16 | 0 |
-| medium | 5 | 29 | 1 |
+| high | 5 | 16 | 0 |
+| medium | 7 | 29 | 1 |
 | low | 22 | 70 | 2 |
 | info | 36 | 22 | 12 |
 
@@ -322,3 +324,17 @@ Recorded so these are not re-reported.
   (2) Fixture gap: the lab scenario seeds no `video_minute` or `job_minimum` prices, so Run-now and
   storyboard floor checks do nothing in the lab. `test_sec_creative_credits` and
   `test_sec_web_api_hardening` cover them separately. Seed those prices in a future scenario pass.
+
+## PR 750 follow-up — branch remediation, not production closure
+
+Audited at `ae4050ac7bd048064574261cae41a61bce31670b`; remediation branch
+`codex/p0-750-billing`. No production database or provider was contacted. New
+migration 0178, existing ledgers and disposable synthetic fixtures only. These
+entries remain open in the summary until their remediation is reviewed and merged.
+
+| ID | Severity | Area | Title | Status | Repro | Root cause | Fix PR | Regression test |
+|---|---|---|---|---|---|---|---|---|
+| BR-750-01 | high | Concept thumbnails / API balance | API-balance videos bypassed the site-credit concept-image floor and carried no checked thumbnail mode; an API key could run a concept channel without the image add-on's API reservation or missing-price refusal. This was an acknowledged residual of 750, not a regression introduced by its first patch. | open (branch remediation implemented; pending merge; deployment unverified) | Source audit at ae4050ac and disposable PostgreSQL / mocked worker regressions. | The API payer returned before the site-credit floor and mode marker; API pricing used duration only. | Implemented on codex/p0-750-billing (unmerged); migration 0178. No production change. | 0178 uses a separately configured `api_prices.concept_thumbnail_image` cents tariff (no rate seeded), frozen API hold terms, direct queue checks and a checked claim. The worker forwards trusted mode to the pipeline. `test_sec_api_concept_pricing.py::test_api_reserves_separate_cents_once_and_settles_only_api_balance`, `test_missing_or_nonfinite_api_addon_never_holds_or_queues`, `test_frame_to_concept_change_cannot_reuse_old_api_price`; `test_public_api_worker.py::ApiPaidJobs.test_checked_api_mode_reaches_the_child_and_overrides_worker_environment`. |
+| BR-750-02 | high | Video base pricing / direct queue | A missing video base price could leave only the minimum/image floor, allowing a directly reserved/queued video to spend while its overall base remained unpriced and capture was capped. | open (branch remediation implemented; pending merge; deployment unverified) | Source audit at ae4050ac and disposable PostgreSQL / mocked worker regressions. | The floor coalesced missing base prices instead of requiring a positive per-minute tariff. | Implemented on codex/p0-750-billing (unmerged); migration 0178. No production change. | Positive finite base required by SQL, Python and paid UI reservation readers; history remains analytics evidence, not funding authority. Direct queue insertion checks the same complete floor. `test_sec_api_concept_pricing.py::test_unpriced_base_blocks_site_and_api_before_money_moves`, `test_direct_credit_job_cannot_use_a_base_only_hold`; `test_credits.py::Pricing.test_images_alone_cannot_fund_an_unpriced_video`; `concept-pricing-parity.test.ts` invalid/missing-base cases. |
+| BR-750-03 | medium | Cross-runtime pricing normalization | JavaScript trim disagreed with Python/SQL on NEL and information separators (and BOM), so the UI could omit the add-on for a stored mode the worker recognized as concept, then the new floor rejected an honest hold. | open (branch remediation implemented; pending merge; deployment unverified) | Source audit at ae4050ac and disposable PostgreSQL / mocked worker regressions. | JavaScript trim and Python str.strip remove different Unicode characters. | Implemented on codex/p0-750-billing (unmerged); migration 0178. No production change. | Explicit Python whitespace set in TypeScript; SQL/Python/TS fixtures cover all strip characters plus BOM/zero-width/180E counterexamples. `test_sec_api_concept_pricing.py::test_sql_normalization_matches_python_without_dropping_bom` and `concept-pricing-parity.test.ts`. |
+| BR-750-04 | medium | Worker hold claim / expiry | Legacy claim functions checked only `open`, so a delayed worker could revive an unstarted hold after its expiry, or use a started hold past its deadline before a sweep. | open (branch remediation implemented; pending merge; deployment unverified) | Source audit at ae4050ac and disposable PostgreSQL / mocked worker regressions. | Checking open status alone did not enforce the existing unstarted/started expiry windows. | Implemented on codex/p0-750-billing (unmerged); migration 0178. No production change. | Checked claim invokes existing account-locked expiry/release functions, preserving refund recovery. `test_api_claim_expires_24_hour_holds_instead_of_reviving_them`, `test_site_claim_respects_three_hour_unstarted_and_24_hour_started_expiry`, `test_claim_expiry_collects_pending_api_refund_once`, `test_site_claim_expiry_collects_pending_purchase_refund_once` in `test_sec_api_concept_pricing.py`. |

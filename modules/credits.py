@@ -206,9 +206,8 @@ def concept_thumbnail_on(agent_config) -> bool:
 
 def minimum_reservation(prices: Mapping[str, Price], duration_s=None,
                         agent_config: Optional[Mapping] = None) -> Optional[float]:
-    """The smallest hold a run may carry: the ``job_minimum`` floor, and — when
-    the run asks for a length and minutes are priced — that length's price.
-    None when neither is known (nothing to check against).
+    """The smallest complete hold: the job minimum or the priced duration,
+    whichever is greater. Missing/invalid duration or base pricing is refused.
 
     A concept-thumbnail channel (``agent_config``) also buys up to
     CONCEPT_THUMBNAIL_MAX_IMAGES generated images, on the worker's own keys, on
@@ -218,12 +217,16 @@ def minimum_reservation(prices: Mapping[str, Price], duration_s=None,
     the images would be paid by the platform. When ``image_generations`` has no
     price there is no honest floor (the Command Center cannot make a hold either),
     so this raises CreditRefused naming the fix, rather than leaving them out."""
+    minute = prices.get(UNIT_VIDEO_MINUTE)
+    if minute is None or not math.isfinite(minute.credits_per_unit) or minute.credits_per_unit <= 0:
+        raise CreditRefused("video_minute has no valid positive base price — configure video pricing before starting a paid run")
     floors: List[float] = []
     if UNIT_JOB_MINIMUM in prices:
         floors.append(prices[UNIT_JOB_MINIMUM].credits_per_unit)
     d = _num(duration_s)
-    if d is not None and d > 0 and UNIT_VIDEO_MINUTE in prices:
-        floors.append(prices[UNIT_VIDEO_MINUTE].charge(d / 60.0))
+    if d is None or d <= 0:
+        raise CreditRefused("a paid run needs its priced duration — choose a length and start it again")
+    floors.append(prices[UNIT_VIDEO_MINUTE].charge(d / 60.0))
     base = round_up(max(floors)) if floors else None
     if not concept_thumbnail_on(agent_config):
         return base
@@ -398,23 +401,28 @@ class CreditsRest:
         and bound to exactly this job, else None."""
         return _num(self._rpc("api_hold_start", {"p_ref": hold_ref, "p_job_id": int(job_id)}))
 
+    def api_hold_start_priced(self, hold_ref: str, job_id):
+        return self._rpc("api_hold_start_priced", {"p_ref": hold_ref, "p_job_id": int(job_id)})
 
-def open_api_hold(client, *, hold_ref: str, job_id) -> None:
+
+def open_api_hold(client, *, hold_ref: str, job_id) -> str:
     """A job created through the public API (migration 0031) is paid from the
     organization's API balance, not credits: the database holds it at create
     and settles it itself when the job ends (a trigger on render_jobs). The
-    runner's part is to refuse the job unless that hold is open and bound to
-    this very job — a browser can insert render_jobs rows, so the column on
-    its own proves nothing. Raises CreditRefused; returns nothing to settle."""
+    runner's part is to refuse the job unless the checked claim validates its
+    pricing, expiry and binding. Returns the frozen mode, never a site-credit
+    Hold to settle; a browser-supplied payer column alone proves nothing."""
     if client is None:
         raise CreditRefused("this job is paid from the API balance, but this worker has no "
                             "credits client to check the hold")
     try:
-        amount = client.api_hold_start(hold_ref, job_id)
+        terms = client.api_hold_start_priced(hold_ref, job_id)
     except CreditsUnavailable as e:
         raise CreditRefused(f"the API balance is unavailable ({e})") from None
-    if amount is None:
-        raise CreditRefused("its API balance hold is not open (expired, settled, or not this job's)")
+    amount = _num(terms.get("amount_cents")) if isinstance(terms, Mapping) else None
+    if amount is None or amount <= 0 or terms.get("thumbnail_mode") not in ("frame", "concept"):
+        raise CreditRefused("its API balance hold is not open or does not cover the current priced thumbnail terms — create it again")
+    return terms["thumbnail_mode"]
 
 
 # ── the two ends of a paid run ──────────────────────────────────────────────
@@ -447,11 +455,13 @@ class HeldTermsRefused(RuntimeError):
 
 def held_thumbnail_refusal(env: Mapping[str, str], run_mode_is_concept: bool) -> Optional[str]:
     """Why the run must stop before spending, or None. Only a run whose hold
-    was checked carries the variable (the operator's exempt runs do not); a
-    hold checked for frame thumbnails never pays for concept images."""
+    was checked carries the variable (the operator's exempt runs do not);
+    mode changes in either direction require a new run/quote."""
     held = str(env.get(HELD_THUMBNAIL_MODE_ENV, "") or "").strip().lower()
-    if not held or held == HELD_CONCEPT or not run_mode_is_concept:
+    if not held or held == (HELD_CONCEPT if run_mode_is_concept else HELD_FRAME):
         return None
+    if held == HELD_CONCEPT:
+        return "thumbnail mode changed after this run's credits were checked — nothing was spent; start the run again from the Command Center"
     return ("concept thumbnails were turned on after this run's credits were checked, and its hold does not "
             f"cover the up to {CONCEPT_THUMBNAIL_MAX_IMAGES} generated images — nothing was spent; start the run "
             "again from the Command Center")

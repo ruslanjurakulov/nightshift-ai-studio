@@ -262,6 +262,10 @@ def _seed_render_job(conn: psycopg.Connection, t: Tenant) -> None:
     first, then the job carrying it and its length. After the plans are seeded:
     this is the tenant's second open hold, and 0034's Free plan allows one."""
     k, org, uid = t.key, t.org, t.actor.uid
+    # 0178 refuses an unpriced base. This is a synthetic fixture tariff, not a
+    # production seed: five minutes stay below the fixture's 60-credit hold.
+    with as_superuser(conn) as s:
+        s.rows("insert into public.credit_prices(unit,credits_per_unit,margin) values ('video_minute',2,0) on conflict(unit) do nothing returning 1")
     with acting(conn, SERVICE, commit=True) as s:
         s.value("select public.reserve_credits(%s, %s, 60)", [org, f"rj-seed-{k}"])
     with as_superuser(conn) as s:

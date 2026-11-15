@@ -1236,6 +1236,8 @@ def test_the_dangerous_functions_pin_their_search_path(db):
 
 
 def test_replaying_the_migration_twice_changes_nothing(db):
+    rollback_0178 = sec_db.REPO / "docs/sql/rollback_0178_api_concept_thumbnail_holds.sql"
+    sec_db.apply_files(db.dsn, [rollback_0178])
     path = sec_db.MIGRATIONS / "0093_mcp_oauth.sql"
     c = connect(db, UA)
     before = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
@@ -1271,6 +1273,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         sec_db.apply_files(db.dsn, [sec_db.MIGRATION_0175])
         assert db.su("select position('concept_thumbnail_credits' in pg_get_functiondef("
                      "'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure)) > 0")[0][0] is True
+    sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0178_api_concept_thumbnail_holds.sql"])
 
 
 # ── Lens-386A: PKCE is checked by the database, a limit of 0 is read-only for the operator too,

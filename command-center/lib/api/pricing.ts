@@ -11,7 +11,7 @@
  */
 
 import { derivePlan, type LedgerPurchaseRow } from "@/lib/account";
-import { isCreditExempt } from "@/lib/credits";
+import { conceptThumbnailOn, isCreditExempt } from "@/lib/credits";
 import { formatUsdAmount } from "@/lib/number-format";
 
 /** The API terms an admin accepts on activation (shown with a link to /terms). */
@@ -62,11 +62,17 @@ export function parseApiPrices(rows: unknown): ApiPriceMap {
 }
 
 /** What one video of `seconds` costs, in cents; null when unpriced. */
-export function videoPriceCents(seconds: number | null | undefined, prices: ApiPriceMap): number | null {
+export function videoPriceCents(seconds: number | null | undefined, prices: ApiPriceMap, agentConfig?: unknown): number | null {
   const perMinute = prices.video_minute;
-  if (perMinute === undefined || !seconds || !Number.isFinite(seconds) || seconds <= 0) return null;
+  if (!Number.isFinite(perMinute) || perMinute <= 0 || !seconds || !Number.isFinite(seconds) || seconds <= 0) return null;
   const raw = Math.ceil(round6((seconds * perMinute) / 60));
-  return Math.max(raw, Math.ceil(prices.job_minimum ?? 0));
+  const minimum = prices.job_minimum ?? 0;
+  if (!Number.isFinite(minimum) || minimum < 0) return null;
+  const base = Math.max(raw, Math.ceil(minimum));
+  if (!conceptThumbnailOn(agentConfig)) return base;
+  const image = prices.concept_thumbnail_image;
+  if (!Number.isFinite(image) || image < 0) return null;
+  return base + Math.ceil(round6(4 * image));
 }
 
 /** An HD download through the API: the site's credit price x cents per credit. */

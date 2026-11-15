@@ -50,6 +50,9 @@ def set_config(su, agent_config):
 @pytest.fixture()
 def su(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        # This file verifies the historical 0175 contract, including rollback;
+        # the live 0178 layer has its own tests and refuses older body replays.
+        sec_db.take_off_0178(s)
         s.rows("insert into public.channels (channel_id, name, niche, status, org_id) values (%s, %s, 'tech', 'PAUSED', %s) returning 1",
                [CHANNEL, CHANNEL, sc.alice.org])
         yield s

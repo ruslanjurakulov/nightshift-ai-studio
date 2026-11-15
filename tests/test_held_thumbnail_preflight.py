@@ -30,8 +30,21 @@ def ctx(mode: str):
 
 class HeldThumbnailPreflight(unittest.TestCase):
     def setUp(self):
-        import main  # noqa: PLC0415 — heavy; only this class needs it
+        # This suite exercises pricing before any STT call. Never load a speech
+        # model or require its tensor runtime to test the preflight fence.
+        missing = "whisper" not in sys.modules
+        if missing:
+            sys.modules["whisper"] = mock.Mock()
+        try:
+            import main  # noqa: PLC0415 — heavy; only this class needs it
+        finally:
+            if missing:
+                sys.modules.pop("whisper", None)
         self.main = main
+
+    def test_api_concept_charge_never_silently_becomes_a_frame_run(self):
+        with mock.patch.object(self.main.events, "emit"), self.assertRaises(credits.HeldTermsRefused):
+            self.main._preflight_held_thumbnail(ctx("frame"), "news", env={ENV: "concept"})
 
     def test_concept_switched_on_after_a_frame_hold_stops_the_run_and_records_why(self):
         with mock.patch.object(self.main.events, "emit") as emit:
@@ -44,7 +57,7 @@ class HeldThumbnailPreflight(unittest.TestCase):
         self.assertEqual(kw["metadata"]["stage"], "preflight")
 
     def test_the_mode_the_hold_covered_runs_and_records_nothing(self):
-        cases = (("concept", {ENV: "concept"}), ("frame", {ENV: "frame"}), ("frame", {ENV: "concept"}),
+        cases = (("concept", {ENV: "concept"}), ("frame", {ENV: "frame"}),
                  ("concept", {}))                     # no hold was checked: the operator's own runs
         for mode, env in cases:
             with self.subTest(mode=mode, env=env), mock.patch.object(self.main.events, "emit") as emit:

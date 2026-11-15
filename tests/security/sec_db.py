@@ -94,17 +94,37 @@ def take_off_0175(session) -> None:
     """0175 replaces quote_series_episode() and start_series_episode() on 0120's bodies and oauth_create_video() on 0094's: a replay of
     0120 would silently put 0120's back, and 0120's rollback expects its own. Taken off with its own rollback when it is there; put back
     with put_back_0175. Every test that reaches 0120's bodies comes through take_off_0122, which calls this first."""
+    take_off_0178(session)
     if _has_0175(session):
         text = ROLLBACK_0175.read_text(encoding="utf-8")
+        session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def take_off_0178(session) -> None:
+    """Historical migration tests must remove the newer pricing layer first."""
+    if session.conn.execute("select to_regprocedure('public.api_hold_start_priced(text,bigint)') is not null").fetchone()[0]:
+        text = (REPO / "docs/sql/rollback_0178_api_concept_thumbnail_holds.sql").read_text(encoding="utf-8")
         session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0175(session) -> None:
     """0175 again, once 0120's and 0094's bodies are live and it is not on already."""
     if _has_0175(session):
+        put_back_0178(session)
         return
     if all(_live_md5(session, sig) == h for sig, h in _BEFORE_0175.items()):
         session.conn.execute(MIGRATION_0175.read_text(encoding="utf-8"))
+        put_back_0178(session)
+
+
+def put_back_0178(session) -> None:
+    """Restore the complete newer layer after an intentional historical replay.
+
+    Its production drift guards remain authoritative; never patch a body or
+    skip a guard just to make a historical test fit.
+    """
+    if not session.conn.execute("select to_regprocedure('public.api_hold_start_priced(text,bigint)') is not null").fetchone()[0]:
+        session.conn.execute((MIGRATIONS / "0178_api_concept_thumbnail_holds.sql").read_text(encoding="utf-8"))
 
 
 def take_off_0122(session) -> None:
