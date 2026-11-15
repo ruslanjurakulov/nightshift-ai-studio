@@ -1,5 +1,8 @@
 import React from "react";
 import { Composition, type CalculateMetadataFunction } from "remotion";
+import { ExplainerComposition } from "./explainer/ExplainerComposition";
+import { explainerFrames } from "./explainer/text";
+import type { ExplainerProps } from "./explainer/types";
 import { SceneComposition } from "./SceneComposition";
 import { DEFAULT_STYLE } from "./style";
 import { sceneDurationInFrames } from "./timing";
@@ -55,7 +58,49 @@ const defaultProps: SceneProps = {
   transition: "hard_cut",
 };
 
+/** A whole narrated 9:16 video in one render (modules/voice_explainer.py builds the props). */
+const explainerMetadata: CalculateMetadataFunction<ExplainerProps> = ({ props }) => {
+  const fps = typeof props.fps === "number" && props.fps > 0 ? props.fps : DEFAULTS.fps;
+  return {
+    fps,
+    width: evenDim(props.width, 1080),
+    height: evenDim(props.height, 1920),
+    // From the narration's length; throws on scenes a render would draw wrongly.
+    durationInFrames: explainerFrames({ ...props, fps }),
+  };
+};
+
+const explainerDefaults: ExplainerProps = {
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  duration_s: 4,
+  look: "dusk",
+  narration: "",
+  music: "",
+  music_volume: 0.1,
+  sfx: [],
+  words: [],
+  scenes: [
+    { id: "e000", start_s: 0, end_s: 4, kicker: "Studio preview", headline: "Voice to *video*", accent: "every sentence drawn.", visual: { kind: "emoji", mood: "happy" } },
+  ],
+  captions: true,
+  media_card: true,
+  sound_only: false,
+};
+
 export const RemotionRoot: React.FC = () => (
+  <>
+  <Composition
+    id="VoiceExplainer"
+    component={ExplainerComposition}
+    durationInFrames={120}
+    fps={30}
+    width={1080}
+    height={1920}
+    defaultProps={explainerDefaults}
+    calculateMetadata={explainerMetadata}
+  />
   <Composition
     id="Scene"
     component={SceneComposition}
@@ -66,4 +111,5 @@ export const RemotionRoot: React.FC = () => (
     defaultProps={defaultProps}
     calculateMetadata={calculateMetadata}
   />
+  </>
 );
