@@ -74,6 +74,21 @@ class TheExitCodeIsChosenByWhatIsMissing(unittest.TestCase):
         self.assertEqual((ch.CREDENTIALS_MISSING_EXIT, ch.RECONNECT_REQUIRED_EXIT), (84, 85))
         self.assertFalse({ch.CREDENTIALS_MISSING_EXIT, ch.RECONNECT_REQUIRED_EXIT} & taken)
 
+    def test_no_youtube_token_at_all_is_not_the_reconnect_exit(self):
+        # Exit 85 says YouTube "no longer accepts" the connection: a channel with no token stored was never refused.
+        self.assertEqual(CredentialsMissing("x", names=["youtube_token"]).exit_code, 84)
+        self.assertEqual(CredentialsMissing("x", names=["youtube_token", "youtube_token_live"]).exit_code, 84)
+
+    def test_a_later_foo_missing_log_line_does_not_mask_the_real_exception(self):
+        from modules import render_error
+        tail = ["Traceback (most recent call last):", '  File "main.py", line 1, in <module>',
+                "modules.audio_mixer.VoiceUnavailable: ElevenLabs refused the voice",
+                "ConfigMissing: using defaults"]
+        self.assertEqual(render_error.classify("main.py exited with code 1", tail), render_error.classify("main.py exited with code 1", tail[:3]))
+        self.assertNotEqual(render_error.classify("main.py exited with code 1", tail), render_error.UNKNOWN)
+        # The one class that does end in Missing is still read.
+        self.assertEqual(render_error.classify("main.py exited with code 1", ["modules.credential_health.CredentialsMissing: x"]), render_error.CREDENTIALS_MISSING)
+
     def test_a_dead_youtube_token_alone_is_the_reconnect_exit(self):
         self.assertEqual(CredentialsMissing("x", names=["youtube_token_live"]).exit_code, 85)
 

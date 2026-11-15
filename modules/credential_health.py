@@ -42,6 +42,9 @@ RECONNECT_REQUIRED_EXIT = 85
 
 #: The checks that are this channel's YouTube connection, not a platform key.
 YOUTUBE_CHECKS = frozenset({"youtube_token", "youtube_token_live"})
+#: The one check whose failure means Google refused a token the channel HAD: exit 85's sentence says YouTube "no longer
+#: accepts" the connection. ``youtube_token`` (no token stored at all) is not that, so it stays on exit 84.
+RECONNECT_CHECKS = frozenset({"youtube_token_live"})
 
 
 class CredentialsMissing(RuntimeError):
@@ -59,7 +62,7 @@ class CredentialsMissing(RuntimeError):
         """:data:`RECONNECT_REQUIRED_EXIT` when every blocking check is the YouTube connection, else
         :data:`CREDENTIALS_MISSING_EXIT`. A run missing Gemini AND holding a dead token is the operator's first:
         reconnecting alone would not let it run."""
-        if self.names and all(n in YOUTUBE_CHECKS for n in self.names):
+        if self.names and all(n in RECONNECT_CHECKS for n in self.names):
             return RECONNECT_REQUIRED_EXIT
         return CREDENTIALS_MISSING_EXIT
 

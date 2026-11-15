@@ -98,7 +98,11 @@ _BY_CLASS = {
 
 #: A traceback's last line: `pkg.mod.ClassName: message`, or a bare `ClassName` (no message). A log line that merely
 #: mentions a class (`INFO falling back after VoiceUnavailable: nope`) does not start like this.
-_EXC_LINE = re.compile(r"^(?:[A-Za-z_]\w*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout|Disk|Missing))\b(?::[ \t]?(.*))?$")
+# `Missing` is matched only as the one class that ends in it (CredentialsMissing): any `…Missing:` would let a later log
+# line such as `ConfigMissing: using defaults` stand in for the traceback's real last line.
+_EXC_LINE = re.compile(
+    r"^(?:[A-Za-z_]\w*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout|Disk)|CredentialsMissing)\b(?::[ \t]?(.*))?$"
+)
 # A vendor's own "out of quota" answer. The 429 is anchored to an HTTP-looking phrase, never a bare number.
 _QUOTA_TEXT = re.compile(
     r"RESOURCE_EXHAUSTED|insufficient[_ ]quota|quota[_ ]exceeded|\bquota\b|too many requests"

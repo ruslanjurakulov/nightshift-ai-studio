@@ -266,6 +266,12 @@ can reach any function described here that moves the USD balance.
 
 ## `youtube_connected`: what the API knows, not what it hopes
 
+> **Change note (2026-11-14, breaking for clients that test truthiness).** `youtube_connected` on `/channels` and
+> `connected` on the YouTube rows of `/accounts` were booleans; they are now `true`, `false` or the string `"unknown"`.
+> A string is truthy, so a client that reads `if (c.youtube_connected)` would show an unchecked connection as
+> connected: compare with `=== true`. The CLI (`nightshift channels`, `nightshift accounts`) prints
+> `unknown (not checked)` for it. Other platforms' `connected` stays a boolean.
+
 `publish_channel_connected()` answers whether a YouTube token row or secret **exists**, not whether Google still
 accepts it. On 2026-11-14 `/channels` said `true` for a channel whose refresh token Google had revoked, and the
 video asked for stopped at the credential preflight. So the API (`lib/api/operations.ts`, `honestYoutubeConnected`)
