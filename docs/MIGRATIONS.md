@@ -1916,3 +1916,56 @@ needs a platform owner or admin to make the grant and the reversal, hence low.
   the quote, the catalog and not the API or MCP, Runway seeded verified and ungated yet left hidden, unpriced, unlisted and refused,
   gated models refused and un-openable, the operator exempt and not a preview, availability alone sells to nobody, the drift guards,
   replay, rollback and re-apply).
+
+## Rights acknowledgement: a recorded "I take responsibility" before restricted models (0174)
+
+0174 (`0174_rights_acknowledgement.sql`) puts an explicit, recorded acknowledgement in front of a model whose provider (or the law)
+makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.md`). It opens no model and changes no availability.
+
+- **Evidence.** Runway's Terms §4.2 (registry `terms_notes`): no photograph of another person without their permission; the i2v
+  upload needs a photo-consent confirmation. Our Terms §6.2. Nothing in the job start path knew a model needs a confirmation, so the
+  only way to keep such a model honest was to keep it hidden.
+- **Tables.** `rights_acknowledgement_kinds` (three kinds, each with its current text version). `rights_acknowledgements`
+  (append-only: no API role writes it, a trigger refuses UPDATE / DELETE / TRUNCATE even for the owner; members read their
+  organization's rows): who, which organization, kind, text version, **the language the words were read in** (`locale`, en / ru /
+  uz, from the first row), the input asset and its sha256.
+- **The requirement.** `model_registry.requires_acknowledgement text[]` (default empty; `{likeness_photo}` on `runway-gen4.5` and
+  `runway-gen4-turbo`). A model requires the union of the column and `spec.requires_acknowledgement`. The column **only grows**:
+  `model_registry_requirement_guard` (BEFORE INSERT OR UPDATE, not SECURITY DEFINER) copies every known kind the spec names into it,
+  so a sync that later drops the spec list keeps the column, and refuses an UPDATE that removes a kind for every role but the
+  table's owner (the service key has a table-level UPDATE since 0035). A spec value of any other shape, or an unknown kind, fails
+  closed (a kind nobody can acknowledge).
+- **The calls.** `acknowledge_rights(kind, text_version, subject, locale)`: the only write path; refuses an unknown kind or
+  language, a stale version (NS409), another organization's file (as a missing one), and more than **60 new rows a person an hour**
+  (NS429 `acknowledgement_limit`; a replay is answered first and counts nothing). `rights_acknowledgement_status(org, model,
+  subjects)`.
+- **The gates.** `create_creative_job` (0075 + two hunks): after the price (a model refused anyway never asks) and before the
+  ceiling, the hold and the job row, `acknowledgement_required` (NS400 / HTTP 428) for an input (`source_asset_id`, `end_asset_id`)
+  this person has not acknowledged in this organization at the current version. `workflow_quote_steps` and `start_workflow_run`
+  (0073 + one hunk each): a workflow step whose model requires an acknowledgement and takes a media input is refused at the quote
+  and at the start, before any hold (an earlier step's output cannot be acknowledged in advance, and a later step may run in another
+  member's session). `api_creative_refusal` (0124 + one hunk): the API answers 428 `acknowledgement_required`, "confirm in the
+  Studio". Covered: every `creative_jobs` row (the Studio, the API and MCP, region edit, workflow steps). Not covered here: the Film
+  Studio's path (0171, open), handled in a follow-up.
+- **md5.** `create_creative_job` 4c74918fd9d938c8fe4f5a3d26a09d84 → 88107b00b0a8c143606ed17f5898c98d; `workflow_quote_steps` 48250650e93a951c6b64cad1e73e8a24 → 8f9f42da9844571a18a285d87bcffc84;
+  `start_workflow_run` c60ad7a487f7f11bf080ef92629c436e → 8b3c4b4afbc19e6f336c09b4692ad7ed; `api_creative_refusal` 2253296a9c1ac2e5de3c25a2a726398e → e6ec45d0d912389a05eb2d40261c2c2a (drift guard, end
+  state, Verify, rollback). The new functions are pinned in the drift guard too (absent, or 0174's own).
+- **Number.** 0174; 0171 to 0173 are held by open pull requests. It names nothing of them, but it auto-applies on merge, so it merges
+  after them. Needs 0018, 0035, 0036, 0038, 0073, 0075 and 0124. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Replay.** 0174 replays onto itself and changes nothing. **The earlier files do not protect it**: 0075's guard is a `position()`
+  check that 0174's body also passes, and 0073 has no guard, so re-running 0075 or 0073 over 0174 SILENTLY restores the old body
+  and removes the gate (measured: `tests/security/test_sec_rights_acknowledgement.py`). Re-running 0075 also puts its own
+  `api_creative_refusal` over 0124's, after which 0174 refuses to go back on by itself. Undo 0174 first (its rollback), and after
+  any manual replay run 0174's Verify query: its `job_gate` column reads false when the gate is gone. 0124's drift guard does
+  refuse 0174's `api_creative_refusal`, so the lab takes 0174 off (`sec_db.take_off_0174`) before replaying 0124 and puts it back
+  after; `sec_db.ON_0124` leaves it out of every sequence that leaves 0124 out.
+- **Undo.** `docs/sql/rollback_0174_rights_acknowledgement.sql` (owner-applied): refuses unless all four bodies are 0174's, puts
+  the earlier four back byte for byte with their grants, drops the five 0174 functions and the requirement guard's trigger, and
+  **keeps the record** (the tables with their rows and append-only triggers, the column). Apply it only while no model that
+  requires a kind is on sale.
+- **Tests.** `tests/security/test_sec_rights_acknowledgement.py` (a real PostgreSQL: refusal without, success with, one file each,
+  another person's and another organization's do not count, an old version does not count, refusal before any hold, the language
+  recorded, the hourly cap, the service key cannot lower the requirement, a sync that drops the spec keeps the column, a wrong
+  shape fails closed, workflows refused before any hold, the API's answer, replay, rollback keeping the record, and the 0075
+  replay hazard), the lab's isolation suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py`
+  (each body is the earlier one plus inserted 0174 blocks only; pins), `command-center/tests/rights-acknowledgement*.test.ts(x)`.

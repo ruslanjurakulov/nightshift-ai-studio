@@ -478,6 +478,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     import sec_films_0171
     sec_films_0171.seed(conn, sc)
 
+    # Rights acknowledgement (0174): tests/security/sec_rights_acknowledgement_0174.py — one likeness_photo acknowledgement per tenant.
+    import sec_rights_acknowledgement_0174
+    sec_rights_acknowledgement_0174.seed(conn, sc)
+
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
     with as_superuser(conn, commit=False) as s:

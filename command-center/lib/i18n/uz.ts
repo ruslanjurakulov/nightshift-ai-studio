@@ -6,6 +6,7 @@ import { aiLabelUz } from "./ai-label/uz";
 import { madeForKidsUz } from "./made-for-kids/uz";
 import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
+import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { studioHubUz } from "./studio-hub/uz";
@@ -3167,6 +3168,7 @@ export const uz: Dictionary = {
   madeForKids: madeForKidsUz,
   channelRisk: channelRiskUz,
   customVoice: customVoiceUz,
+  rightsAck: rightsAckUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",
@@ -3729,6 +3731,7 @@ export const uz: Dictionary = {
       unpriced: "Bu modelning hali narxi yoʻq, shuning uchun uni ishlatib boʻlmaydi.",
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
       source_unavailable: "Bu rasmdan foydalanib boʻlmaydi: u tashkilotingiz mediatekasida yoʻq, oʻchirilgan yoki PNG, JPEG yoki WebP emas.",
+      acknowledgement_required: "Avval bu rasmga huquqingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
       style_unavailable: "Bu uslub toʻplamidan foydalanib boʻlmaydi: u tashkilotingizda yoʻq yoki oʻchirilgan. Boshqa uslubni yoki «Uslubsiz»ni tanlang.",
       mode_not_supported: "Faqat siz tanlagan model ishlatiladi; modelni avtomatik tanlash hali mavjud emas.",
       route_changed: "Narx koʻrsatilgandan keyin avtomatik tanlov oʻzgardi. Yangi model va narxni tekshirib, qayta tasdiqlang.",
@@ -5278,6 +5281,7 @@ export const uz: Dictionary = {
       totalTitle: "Umumiy narx",
       totalValue: "{n} kredit",
       noTotal: "Narx yoʻq",
+      ackStepsWhy: "{steps}-qadam kirish fayliga huquqingizni tasdiqlashni soʻraydigan modeldan foydalanadi, jarayon esa buni soʻray olmaydi. Bu qadamni Studiyada bajaring. Hech narsa boshlanmaydi.",
       noTotalWhy: "Ishga tushirish oʻchirilgan: qadamning narxi yoʻq — {steps}. Hech narsa taxmin qilinmaydi va hech narsa boshlanmaydi.",
       stepLine: "{n}-qadam · {tool}",
       stepPrice: "{n} kredit",

@@ -6,6 +6,7 @@ import { aiLabelRu } from "./ai-label/ru";
 import { madeForKidsRu } from "./made-for-kids/ru";
 import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
+import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { studioHubRu } from "./studio-hub/ru";
@@ -3167,6 +3168,7 @@ export const ru: Dictionary = {
   madeForKids: madeForKidsRu,
   channelRisk: channelRiskRu,
   customVoice: customVoiceRu,
+  rightsAck: rightsAckRu,
   accountSecurity: {
     cancel: "Отмена",
     title: "Аккаунт и безопасность",
@@ -3729,6 +3731,7 @@ export const ru: Dictionary = {
       unpriced: "У этой модели ещё нет цены, поэтому её нельзя использовать.",
       capability_not_supported: "Такой вид генерации пока недоступен.",
       source_unavailable: "Это изображение нельзя использовать: его нет в медиатеке вашей организации, оно удалено или это не PNG, JPEG или WebP.",
+      acknowledgement_required: "Сначала подтвердите свои права на эту картинку. Ничего не запущено и не списано.",
       style_unavailable: "Этот набор стиля нельзя использовать: его нет в вашей организации или он удалён. Выберите другой стиль или «Без стиля».",
       mode_not_supported: "Используется только выбранная вами модель; автоматический выбор модели пока недоступен.",
       route_changed: "Автоматический выбор изменился после показа цены. Проверьте новую модель и цену и подтвердите ещё раз.",
@@ -5278,6 +5281,7 @@ export const ru: Dictionary = {
       totalTitle: "Общая цена",
       totalValue: "{n} кредитов",
       noTotal: "Цены нет",
+      ackStepsWhy: "Шаг {steps} использует модель, которая просит подтвердить права на входной файл, а процесс не может это спросить. Сделайте этот шаг в Студии. Ничего не запускается.",
       noTotalWhy: "Запуск отключён: у шага нет цены — {steps}. Ничего не угадывается и ничего не запускается.",
       stepLine: "Шаг {n} · {tool}",
       stepPrice: "{n} кредитов",

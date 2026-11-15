@@ -2791,8 +2791,12 @@
         "Runway Enterprise Terms (runway.com/enterprise-terms, 'Last updated June 1, 2026', read 2026-11-13) §5.2: Runway may not use Customer Content as training data. The alternative to the §4.4 training licence is that contract (the owner's choice).",
         "Same Terms of Use (read 2026-11-13) §2.2: users must be 13 or older, and under 18 only with a parent's or guardian's permission. Our user terms must carry the same age rule before a sale.",
         "Same Terms of Use (read 2026-11-13) §4.2: no photograph of another person without that person's permission. Before a sale the i2v upload needs a photo-consent confirmation in the UI.",
+        "0174: requires_acknowledgement likeness_photo. The Studio asks for the photo-consent confirmation and the database refuses a job without it (docs/RIGHTS_ACKNOWLEDGEMENT.md).",
         "Same Terms of Use (read 2026-11-13) §18.12: no export to US-embargoed countries. The terms name no list, so blocked_countries is not set; decide the list before a sale.",
         "Same Terms of Use (read 2026-11-13) §1: 'Powered by Runway' linking runway.com is still required. The Studio shows attribution beside the model in the composer and on each job card."
+      ],
+      "requires_acknowledgement": [
+        "likeness_photo"
       ],
       "attribution": {
         "text": "Powered by Runway",
@@ -2868,8 +2872,12 @@
         "Runway Enterprise Terms (runway.com/enterprise-terms, 'Last updated June 1, 2026', read 2026-11-13) §5.2: Runway may not use Customer Content as training data. The alternative to the §4.4 training licence is that contract (the owner's choice).",
         "Same Terms of Use (read 2026-11-13) §2.2: users must be 13 or older, and under 18 only with a parent's or guardian's permission. Our user terms must carry the same age rule before a sale.",
         "Same Terms of Use (read 2026-11-13) §4.2: no photograph of another person without that person's permission. Before a sale the i2v upload needs a photo-consent confirmation in the UI.",
+        "0174: requires_acknowledgement likeness_photo. The Studio asks for the photo-consent confirmation and the database refuses a job without it (docs/RIGHTS_ACKNOWLEDGEMENT.md).",
         "Same Terms of Use (read 2026-11-13) §18.12: no export to US-embargoed countries. The terms name no list, so blocked_countries is not set; decide the list before a sale.",
         "Same Terms of Use (read 2026-11-13) §1: 'Powered by Runway' linking runway.com is still required. The Studio shows attribution beside the model in the composer and on each job card."
+      ],
+      "requires_acknowledgement": [
+        "likeness_photo"
       ],
       "attribution": {
         "text": "Powered by Runway",
