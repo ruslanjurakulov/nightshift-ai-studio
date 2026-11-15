@@ -19,18 +19,23 @@ object is missing (`... is null`) must name something that
 Guards written `is not null` are optional features and are not checked. Objects in
 schemas other than public (storage., auth.) come from the platform.
 The process rule is in docs/MIGRATIONS.md: never edit an applied migration.
-Full history and an origin/main (or local main) ref are required. Git failures
-are errors, not permission to skip the check. For squash/rebase histories with
-no merge boundary, the earliest main first-parent addition is conservative:
+Full history and an origin/main (or local main) ref are required. When both refs
+exist, use their first-parent descendant or fail if their mainlines diverge.
+GitHub PR events, when present, bind the baseline to their main-base commit.
+Git failures are errors, not permission to skip the check. For squash/rebase
+histories with no merge boundary, the earliest main first-parent addition is conservative:
 Git alone cannot reconstruct which intermediate commits were deployed together.
 """
 
+import json
+import os
 import re
 import subprocess
 import tempfile
 import unittest
 from functools import lru_cache
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 MIGRATIONS = ROOT / "supabase" / "migrations"
@@ -157,16 +162,49 @@ def integrated_form(root, main_tip, head_tip, rel):
     return git_read(root, "show", f"{head_tip}:{rel}")
 
 
-def git_first_form(name, root=ROOT, main_ref=None):
+@lru_cache(maxsize=None)
+def first_parent_chain(root, tip):
+    return frozenset(git_read(root, "rev-list", "--first-parent", tip).split())
+
+
+def ci_main_base(root):
+    # The PR event binds CI to a known base commit even if both fetched refs
+    # are stale. Temporary DAG fixtures do not inherit the enclosing PR event.
+    if Path(root).resolve() != ROOT.resolve() or os.environ.get("GITHUB_BASE_REF") != "main":
+        return None
+    if os.environ.get("GITHUB_EVENT_NAME") not in ("pull_request", "pull_request_target"):
+        return None
+    try:
+        event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+        sha = event["pull_request"]["base"]["sha"]
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("invalid base commit")
+        return sha
+    except (KeyError, OSError, ValueError, TypeError) as exc:
+        raise RuntimeError("Cannot verify the GitHub PR main-base commit") from exc
+
+
+def git_first_form(name, root=ROOT, main_ref=None, ci_base_sha=None):
     if git_read(root, "rev-parse", "--is-shallow-repository").strip() != "false":
         raise RuntimeError("Migration history requires fetch-depth: 0; shallow history cannot prove first integration")
     if main_ref is None:
         refs = set(git_read(root, "for-each-ref", "--format=%(refname)",
                             "refs/remotes/origin/main", "refs/heads/main").split())
-        main_ref = next((r for r in ("refs/remotes/origin/main", "refs/heads/main") if r in refs), None)
-        if main_ref is None:
+        refs &= {"refs/remotes/origin/main", "refs/heads/main"}
+        if not refs:
             raise RuntimeError("Migration history requires origin/main or main; no baseline is verified")
-    main_tip = git_read(root, "rev-parse", "--verify", f"{main_ref}^{{commit}}").strip()
+        tips = [git_read(root, "rev-parse", "--verify", f"{r}^{{commit}}").strip() for r in sorted(refs)]
+        main_tip = tips[0]
+        for tip in tips[1:]:
+            if main_tip in first_parent_chain(str(root), tip):
+                main_tip = tip
+            elif tip not in first_parent_chain(str(root), main_tip):
+                raise RuntimeError("Local main and origin/main diverge; refresh and verify the integration baseline")
+    else:
+        main_tip = git_read(root, "rev-parse", "--verify", f"{main_ref}^{{commit}}").strip()
+    ci_base_sha = ci_base_sha or ci_main_base(root)
+    if ci_base_sha is not None and ci_base_sha not in first_parent_chain(str(root), main_tip):
+        raise RuntimeError("Main history does not include the CI base on its first-parent chain; refresh main")
     head_tip = git_read(root, "rev-parse", "--verify", "HEAD^{commit}").strip()
     return integrated_form(str(root), main_tip, head_tip, f"supabase/migrations/{name}")
 
@@ -282,6 +320,79 @@ class GitIntegrationHistory(unittest.TestCase):
         self.git("branch", "-D", "main")
         self.write(LATER)
         self.assertEqual(self.first(), FIRST)
+
+    def test_stale_remote_cannot_hide_a_real_edit_after_local_main_integration(self):
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.git("switch", "-c", "feature")
+        self.write(FIRST)
+        self.git("switch", "main")
+        self.git("merge", "--no-ff", "feature", "-m", "first integration")
+        self.git("switch", "-c", "dependent")
+        self.write(LATER)
+        self.assertEqual(self.first(), FIRST)
+        self.assertEqual(len(self.problems()), 1)
+
+    def test_stale_local_main_uses_the_newer_remote_main(self):
+        bootstrap = self.git("rev-parse", "HEAD").strip()
+        self.write(FIRST)
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.git("switch", "-c", "dependent")
+        self.git("update-ref", "refs/heads/main", bootstrap)
+        self.write(LATER)
+        self.assertEqual(self.first(), FIRST)
+
+    def test_divergent_main_refs_fail_instead_of_guessing(self):
+        self.git("switch", "-c", "remote-history")
+        self.write(FIRST)
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.git("switch", "main")
+        self.write(LATER)
+        with self.assertRaisesRegex(RuntimeError, "diverge"):
+            self.first()
+
+    def test_main_prefixed_branches_are_not_integration_refs(self):
+        self.git("switch", "-c", "main-experiment")
+        self.write(FIRST)
+        self.git("switch", "main")
+        self.write(LATER)
+        self.assertEqual(self.first(), LATER)
+
+    def test_refs_related_only_by_second_parent_are_ambiguous(self):
+        self.git("switch", "-c", "remote-history")
+        self.write(FIRST)
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.git("switch", "main")
+        self.git("commit", "--allow-empty", "-m", "different main line")
+        self.git("merge", "--no-ff", "remote-history", "-m", "merge divergent history")
+        with self.assertRaisesRegex(RuntimeError, "diverge"):
+            self.first()
+
+    def test_ci_base_rejects_stale_refs_and_accepts_a_verified_descendant(self):
+        bootstrap = self.git("rev-parse", "HEAD").strip()
+        self.write(FIRST)
+        base = self.git("rev-parse", "HEAD").strip()
+        self.git("switch", "-c", "dependent")
+        self.git("update-ref", "refs/heads/main", bootstrap)
+        self.write(LATER)
+        with self.assertRaisesRegex(RuntimeError, "CI base"):
+            git_first_form(self.name, self.root, ci_base_sha=base)
+        self.git("update-ref", "refs/remotes/origin/main", base)
+        self.assertEqual(git_first_form(self.name, self.root, ci_base_sha=base), FIRST)
+
+    def test_ci_event_reads_only_a_valid_base_commit_and_fails_on_missing_or_malformed_data(self):
+        event_path = self.root / "event.json"
+        sha = self.git("rev-parse", "HEAD").strip()
+        event_path.write_text(json.dumps({"pull_request": {"base": {"sha": sha}}}))
+        env = {"GITHUB_BASE_REF": "main", "GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(event_path)}
+        with patch.dict(os.environ, env), patch(f"{__name__}.ROOT", self.root):
+            self.assertEqual(ci_main_base(self.root), sha)
+            for value in ("{malformed", "{}", '{"pull_request":{"base":{"sha":"not-a-commit"}}}'):
+                event_path.write_text(value)
+                with self.assertRaisesRegex(RuntimeError, "GitHub PR"):
+                    ci_main_base(self.root)
+            event_path.unlink()
+            with self.assertRaisesRegex(RuntimeError, "GitHub PR"):
+                ci_main_base(self.root)
 
     def test_missing_main_fails_loudly(self):
         self.reviewed_feature()
