@@ -12,13 +12,13 @@
 --     the adapter, vendor model and capabilities this file was written for (and no spec.vendor_model_by_capability: one capability
 --     calling another vendor model would be sold at this file's figure), a vendor figure in spec.pricing for every priced variant, no
 --     blocked_countries (0142), not past an announced shutdown (0125), not `disabled` (the owner's off), api_exposure web_only.
---   ideogram-3            image.ideogram        flat                      US$0.03 / image (Turbo)
---   ideogram-4            image.ideogram_v4     flat                      US$0.03 / image (Turbo, 1K)
---   ideogram-4.5          image.ideogram_v4_5   by quality low/medium/high US$0.03 / 0.06 / 0.10 per image
---   minimax-h3            video.minimax_h3      by resolution 768p / 2k    US$0.08 / 0.13 per second
---   minimax-h3-highspeed  video.minimax_h3      by resolution 480p / 768p  US$0.04 / 0.06 per second
---   minimax-h3-lite       video.minimax_h3      by resolution 480p / 768p  US$0.025 / 0.04 per second
---   minimax-h3-max        video.minimax_h3      by resolution 480p / 768p  US$0.05 / 0.08 per second
+--   ideogram-3            image.ideogram        flat
+--   ideogram-4            image.ideogram_v4     flat
+--   ideogram-4.5          image.ideogram_v4_5   by quality low/medium/high
+--   minimax-h3            video.minimax_h3      by resolution 768p / 2k
+--   minimax-h3-highspeed  video.minimax_h3      by resolution 480p / 768p
+--   minimax-h3-lite       video.minimax_h3      by resolution 480p / 768p
+--   minimax-h3-max        video.minimax_h3      by resolution 480p / 768p
 --   Every figure is the registry's own (schemas/model_registry.json spec.pricing, `confirmed: false`: list prices the owner read on the
 --   vendor's page, not yet matched against a vendor bill). The drift guard compares each one with the number written here, so a
 --   registry figure that moved since this file was written stops the apply instead of selling at a price derived from the old one.
@@ -30,14 +30,12 @@
 --   2026-11-14). No gate is loosened or skipped for that: this file simply does not name them, so they stay hidden, unpriced, with the
 --   plan-tier entitlement the registry gives them, until a file of their own opens them.
 --
--- THE PRICE POLICY (docs/sql/prices_2026_10_01.sql and prices_defaults_2026_10_03.sql, the convention every quote reads)
---   credits_per_unit = the vendor's cost in US cents (1 credit = 1 cent of cost); the customer pays credits_per_unit x (1 + margin);
---   margin 1.5 for image and video (2.0 is voice). So every unit THIS FILE WRITES sells at 2.5x its vendor figure, rounded UP to the cent
---   per job (creative_price: credits_round_up), and floored at job_minimum: 1 credit spent buys at most US$0.004 of vendor cost.
---   What that leaves depends on what the credit was bought at: about US$0.01 a credit retail (docs/BILLING_PLANS.md) is 2.5x before
---   fees; a bulk pack at US$0.008 and the Studio plan at US$0.0072 a credit are about 2x and 1.8x before fees, not 2.5x everywhere.
---   An existing row is kept (see THE DRIFT GUARD ON PRICES): on the live database ideogram-3 already has credits_per_unit 6, margin 1.5,
---   so ideogram-3 keeps its existing live row, 6 x 2.5 = 15 credits an image; the owner may lower it to 3 via a docs/sql script.
+-- THE PRICE POLICY
+--   Priced from credit_prices; see the owner's private pricing notes. Each unit's rate is the registry's vendor figure and its markup is
+--   this file's constant (c_margin, the convention of docs/sql/prices_2026_10_01.sql); the quote rounds UP per job (creative_price:
+--   credits_round_up) and is floored at job_minimum, so no unit this file writes sells below its vendor figure.
+--   An existing row is kept (see THE DRIFT GUARD ON PRICES): on the live database ideogram-3 already has a row, and it keeps it; the
+--   owner may change it via a docs/sql script.
 --   A model priced by variant is charged ONLY by the variant's own row (creative_price: model_<id>_<unit>_<resolution|tier>, 0060 /
 --   0070), and a variant without a row is `unpriced`, never another variant's rate. Its base row (the model's credit_unit) is what
 --   sellable_models joins to list the model at all, and is the DEFAULT variant's price (768p; Ideogram 4.5's medium), the same figure
@@ -60,9 +58,10 @@
 --   the rollback, to be restored when tiers are enforced.
 --
 -- WHAT THE FREE SIGN-UP CREDITS CAN COST (stated, not capped here)
---   A new account gets 100 welcome credits once per mailbox (0027 / 0042: welcome_credit_claims). Every unit here sells at 2.5x or more
---   (ideogram-3 at 5x), so 100 credits buy at most US$0.40 of vendor cost per account (less after per-job rounding up). An invite reward (0092, off by default) adds 100
---   credits per 5 joined accounts, at most US$0.08 more per account. A FAILED or refused job returns its whole hold (finish_creative_job),
+--   A new account gets 100 welcome credits once per mailbox (0027 / 0042: welcome_credit_claims), and an invite reward (0092, off by
+--   default) adds 100 credits per 5 joined accounts. Every unit here sells above its vendor figure, so those credits never buy more
+--   vendor cost than they are worth; the exposure per account is priced from credit_prices; see the owner's private pricing notes.
+--   A FAILED or refused job returns its whole hold (finish_creative_job),
 --   so if a vendor bills a failed or moderated task (MiniMax's pricing page does not say; not verified for Ideogram either),
 --   the same 100 credits can be used again and that vendor money is not bounded by the 100 credits. The PR proposes caps; none is applied.
 --
@@ -72,7 +71,7 @@
 --
 -- THE DRIFT GUARD ON PRICES. A credit_prices row that already exists for one of these units is never overwritten (the convention of every
 -- price file: a price the owner set wins). Identical rows are left alone; a row that sells at or above this file's price is kept with a
--- NOTICE; a row that sells BELOW this file's price stops the apply (the exposure figures above would not hold). An empty registry (a fresh
+-- NOTICE; a row that sells BELOW this file's price stops the apply (the exposure stated above would not hold). An empty registry (a fresh
 -- deployment, the security lab's build) writes nothing at all; a synced registry without one of the seven stops the apply.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: seven rows, every column true, and no row in the
@@ -312,7 +311,7 @@ begin
   for p in select * from jsonb_array_elements(prices) loop
     select * into cp from public.credit_prices where unit = p ->> 'unit';
     if not found or cp.credits_per_unit * (1 + cp.margin) < (p ->> 'usd')::numeric * 100 * (1 + c_margin) then
-      raise exception '0173 end state: % does not sell at 2.5x its vendor figure', p ->> 'unit';
+      raise exception '0173 end state: % does not sell at the price this file requires for its vendor figure', p ->> 'unit';
     end if;
   end loop;
   for m in select * from jsonb_array_elements(models) loop

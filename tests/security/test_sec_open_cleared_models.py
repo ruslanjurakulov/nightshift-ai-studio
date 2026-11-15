@@ -1,4 +1,4 @@
-"""The seven cleared models go on sale at 2.5x their vendor figure, and nothing else does (migration 0173).
+"""The seven cleared models go on sale above their vendor figure, and nothing else does (migration 0173).
 
 0173 writes credit_prices rows for every unit a quote of Ideogram 3 / 4 / 4.5 and MiniMax H3 / Highspeed / Lite / Max can read, and puts
 those seven on sale (beta, entitlement NULL). Runway gen4.5 and gen4_turbo pass the same gates but wait, by name, for the likeness-consent
@@ -6,7 +6,7 @@ step (Runway's terms want a photo-consent confirmation on an i2v upload). These 
 schemas/model_registry.json as the live database holds them before 0173 (hidden, verified by a probe, a plan-tier entitlement), apply the
 real file, and run the real quote and create on a real Postgres:
 
-* every variant of every opened model is quoted to a customer at exactly 2.5x its registry vendor figure per unit, its own variant's row,
+* every variant of every opened model is quoted to a customer at exactly the file's price for its registry vendor figure per unit, its own variant's row,
   never below the vendor's cost; naming no variant is the default variant;
 * the Studio's catalog lists the seven, the API and MCP never do;
 * the two Runway models stay hidden, unpriced, unlisted and refused, with the tier they had;
@@ -136,7 +136,7 @@ def _qty(model):
     return 1 if REGISTRY[model]["output"] == "image" else SECONDS
 
 
-# ── every variant sells at 2.5x its vendor figure, never below it ─────────────────────────────────────────────────────
+# ── every variant sells at the file's price, never below its vendor figure ─────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("price", PRICES, ids=[p["unit"] for p in PRICES])
 def test_every_variant_is_quoted_to_a_customer_at_two_and_a_half_times_its_vendor_figure(conn, sc, price):

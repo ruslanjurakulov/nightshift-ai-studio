@@ -1,4 +1,4 @@
-"""supabase/migrations/0173_open_cleared_models.sql — the seven cleared, verified, priced models go on sale (beta) at 2.5x their vendor figure.
+"""supabase/migrations/0173_open_cleared_models.sql — the seven cleared, verified, priced models go on sale (beta) above their vendor figure.
 
 SQL does not run in this suite (tests/security/test_sec_open_cleared_models.py runs the file, the quotes and the rollback on a real
 Postgres). These pin, from the files alone, what would cost money or break the owner's legal gate if it changed by accident:
@@ -176,12 +176,13 @@ class EntitlementAndRollback(unittest.TestCase):
 
 class Exposure(unittest.TestCase):
     def test_the_free_credits_the_exposure_is_computed_from_are_still_100(self):
-        # The PR and the header say: 100 welcome credits buy at most US$0.40 of vendor cost at 2.5x. A change to the grant changes that.
+        # The exposure the owner's private pricing notes compute rests on 100 welcome credits. A change to the grant changes that.
         latest = [p for p in sorted(MIG.glob("*.sql")) if "create or replace function public.grant_welcome_credits()" in p.read_text(encoding="utf-8")][-1]
         self.assertIn("welcome_credits constant numeric := 100;", latest.read_text(encoding="utf-8"), latest.name)
         worst = Decimal(100) / (1 + MARGIN) / 100
         self.assertEqual(worst, Decimal("0.4"))
-        self.assertIn("at most US$0.40 of vendor cost per account", TEXT)
+        # The figure itself is not in the public file (priced from credit_prices; see the owner's private pricing notes).
+        self.assertIn("see the owner's private pricing notes", TEXT)
 
 
 class TheLab(unittest.TestCase):

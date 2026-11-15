@@ -7,7 +7,7 @@ import { num, relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import type { VideoWithMetrics } from "@/app/(app)/[channel]/videos/page";
+import type { VideoWithMetrics } from "@/components/studio-hub/VideosShelf";
 
 const PRIVACY_FILTERS = ["all", "public", "unlisted", "private"] as const;
 type PrivacyFilter = (typeof PRIVACY_FILTERS)[number];

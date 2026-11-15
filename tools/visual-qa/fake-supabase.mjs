@@ -113,6 +113,8 @@ const STATES = {
   videos: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
   running: { plan: "creator", granted: 2000, spent: 1240, held: 240, extra: 500, bonus: 100, on: true },
   low: { plan: "creator", granted: 2000, spent: 1980, held: 0, extra: 0, bonus: 0, on: true },
+  // The Studio canvas (tools/visual-qa/studio-canvas.mjs): the account of `videos`, with a library and three canvas jobs.
+  canvas: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
   extraoff: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 0, on: false },
   unpriced: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 100, on: true },
   // The platform owner's view (FAKE_ADMIN is implied): two organizations, two channels, events, workers, alerts, balances.
@@ -247,7 +249,7 @@ function filmJson(state) {
   };
 }
 
-const APP_STATES = new Set(["owner", "new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool"]);
+const APP_STATES = new Set(["owner", "new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool", "canvas"]);
 // Made-up held @usernames: the check says "taken" for these and "free" for anything else well formed.
 const TAKEN_HANDLES = new Set(["taken.name", "maria.k", "alice.lab", "night.owl"]);
 const handleRow = (state) =>
@@ -291,6 +293,28 @@ const JOBS = (state) => {
   const out = [done(1, "t2v", "A fox crossing a snowy ridge at dawn", 86_400_000), done(2, "t2v", "Rain on a neon street, slow push in", 2 * 86_400_000)];
   if (state === "running") out.unshift({ ...base, id: "00000000-0000-4000-8000-00000000d0aa", capability: "t2v", status: "running", finished_at: null, charged_credits: null, params: { prompt: "A paper boat on a flooded street, cinematic", aspect: "16:9", duration: 5 }, created_at: iso(-90_000), updated_at: iso(-30_000) });
   return out;
+};
+
+// The Studio canvas's own jobs, read one at a time by id (GET /api/creative/jobs/{id}): a finished picture, a clip that failed
+// with its reason, and a clip being made. Answered for any app state, by id only, so no other screen's job list changes.
+// The pictures have thumb/display variants, so a done image shows its real result once tools/visual-qa/studio-canvas.mjs
+// --media has drawn the files (the app serves them from NIGHTSHIFT_MEDIA_DIR, signed with MEDIA_URL_SECRET).
+const CANVAS_ASSETS = [
+  { id: "0c000000-0000-4000-8000-0000000000a1", kind: "image", mime: "image/jpeg", bytes: 220000, width: 1280, height: 720, duration_s: null, source: "generated", original_name: "Fox at dawn", variants: ["thumb", "display"], version: 1, created_at: "2026-11-14T08:00:00Z", folder_id: null },
+  { id: "0c000000-0000-4000-8000-0000000000a2", kind: "image", mime: "image/jpeg", bytes: 180000, width: 1080, height: 1080, duration_s: null, source: "upload", original_name: "Samarkand gate", variants: ["thumb", "display"], version: 1, created_at: "2026-11-13T08:00:00Z", folder_id: null },
+  { id: "0c000000-0000-4000-8000-0000000000a3", kind: "image", mime: "image/png", bytes: 90000, width: 1024, height: 1024, duration_s: null, source: "upload", original_name: "Logo", variants: ["thumb", "display"], version: 1, created_at: "2026-11-12T08:00:00Z", folder_id: null },
+  { id: "0c000000-0000-4000-8000-0000000000a4", kind: "audio", mime: "audio/mpeg", bytes: 400000, width: null, height: null, duration_s: 31, source: "generated", original_name: "Narration take 1", variants: {}, version: 1, created_at: "2026-11-11T08:00:00Z", folder_id: null },
+];
+const CANVAS_JOBS = () => {
+  const base = {
+    org_id: ORG.id, kind: "image", mode: "exact", requested_model: "qa-clip-fast", routed_model: null, fallback_from: null, fallback_reason: null,
+    payer: "org", quoted_credits: 40, error: null, result: {}, expires_at: null, params: { prompt: "A fox crossing a snowy ridge at dawn", aspect: "16:9", duration: 5 },
+  };
+  return [
+    { ...base, id: "0c000000-0000-4000-8000-0000000000c1", capability: "t2i", status: "completed", charged_credits: 8, error_code: null, result_asset_ids: [CANVAS_ASSETS[0].id], created_at: iso(-3_600_000), finished_at: iso(-3_500_000) },
+    { ...base, id: "0c000000-0000-4000-8000-0000000000c2", capability: "i2v", status: "failed", charged_credits: 0, error_code: "provider_timeout", result_asset_ids: [], created_at: iso(-1_800_000), finished_at: iso(-1_700_000), params: { ...base.params, source_asset_id: CANVAS_ASSETS[0].id } },
+    { ...base, id: "0c000000-0000-4000-8000-0000000000c3", capability: "t2v", status: "running", charged_credits: null, error_code: null, result_asset_ids: [], created_at: iso(-90_000), started_at: iso(-80_000), finished_at: null },
+  ];
 };
 
 // ── the platform owner's world (state "owner") ─────────────────────────────
@@ -532,7 +556,11 @@ export function startFakeSupabase(port = 54399) {
           rows = state === "new" ? [] : VIDEOS.filter((v) => (held ? !v.published_at && !v.privacy : uploaded ? v.published_at || v.privacy : true));
         }
         if (table[1] === "storyboards") rows = state === "videos" && url.searchParams.get("status") === "eq.ready" ? [STORYBOARD] : [];
-        if (table[1] === "creative_jobs") rows = JOBS(state);
+        if (table[1] === "creative_jobs") {
+          const one = url.searchParams.get("id");
+          rows = one?.startsWith("eq.") ? [...CANVAS_JOBS(), ...JOBS(state)].filter((j) => j.id === one.slice(3)) : JOBS(state);
+        }
+        if (table[1] === "media_assets" && (state === "canvas" || state === "low")) rows = CANVAS_ASSETS;
         if (table[1] === "user_handles") rows = handleRow(state);
         if (table[1] === "model_registry") rows = state === "new" ? [] : MODELS;
       }

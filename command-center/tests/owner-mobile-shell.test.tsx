@@ -78,20 +78,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the owner's phone navigation is visible, not a drawer", () => {
-  it("shows five tabs with no menu to open: Home, Videos, Billing, Alerts, More", () => {
+  it("shows five tabs with no menu to open: Home, Studio, Billing, Alerts, More", () => {
     render(withI18n(<SideNav operator />));
     const nav = screen.getByRole("navigation", { name: en.ownerShell.tabsLabel });
     const links = within(nav).getAllByRole("link");
     expect(links.map((a) => a.textContent)).toEqual([
       en.ownerShell.tabHome,
-      en.ownerShell.tabVideos,
+      en.ownerShell.tabStudio,
       en.ownerShell.tabBilling,
       en.ownerShell.tabAlerts,
       en.ownerShell.tabMore,
     ]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "/chronos/command-center",
-      "/chronos/videos",
+      "/chronos/studio",
       "/chronos/billing",
       "/chronos/alerts",
       "/chronos/sections",
@@ -117,11 +117,15 @@ describe("the owner's phone navigation is visible, not a drawer", () => {
 
   it("operatorTabCurrent maps sections to tabs", () => {
     expect(operatorTabCurrent("/command-center")).toBe("home");
-    expect(operatorTabCurrent("/videos/abc123")).toBe("videos");
+    // Every creative screen (a video's page too) lights Studio, where the videos now are.
+    expect(operatorTabCurrent("/videos/abc123")).toBe("studio");
+    expect(operatorTabCurrent("/studio")).toBe("studio");
+    expect(operatorTabCurrent("/create")).toBe("studio");
     expect(operatorTabCurrent("/billing")).toBe("billing");
     expect(operatorTabCurrent("/alerts")).toBe("alerts");
     expect(operatorTabCurrent("/sections")).toBe("more");
-    expect(operatorTabCurrent("/pipeline")).toBe("more");
+    expect(operatorTabCurrent("/pipeline")).toBe("studio");
+    expect(operatorTabCurrent("/agents")).toBe("more");
   });
 
   it("a customer never gets the owner's bar", () => {
@@ -131,10 +135,10 @@ describe("the owner's phone navigation is visible, not a drawer", () => {
     expect(document.querySelector('a[href$="/billing"], a[href$="/alerts"], a[href$="/sections"]')).toBeNull();
   });
 
-  it("Billing, Alerts and More are operator screens a customer is bounced from (Home and Videos are shared)", () => {
+  it("Billing, Alerts and More are operator screens a customer is bounced from (Home and Studio are shared)", () => {
     for (const tab of OPERATOR_TABS) {
       const section = tab.href.slice(1);
-      if (tab.key === "home" || tab.key === "videos") {
+      if (tab.key === "home" || tab.key === "studio") {
         expect(sectionAllowed(section, false), tab.href).toBe(true);
         continue;
       }
