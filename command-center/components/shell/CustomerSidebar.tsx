@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem } from "@/lib/navigation";
-import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
 import { Wordmark } from "@/components/site/Wordmark";
 import type { AccountPlan } from "@/lib/account";
@@ -32,7 +31,7 @@ function useSection(): string {
 /**
  * A customer's desktop sidebar, full height on the left: the wordmark, Home,
  * Nightshift Studio, the Inbox and Channels, and at the foot Plans & credits,
- * Settings and the user card (which opens the account panel). Below `lg` it is
+ * Settings. The shared account menu lives in the header at every width. Below `lg` it is
  * not rendered — the phone has the bottom bar.
  *
  * The current row is lit by one plate that slides along the rail to the row
@@ -42,15 +41,13 @@ function useSection(): string {
  * Presentation only: every destination is a customer section, and the layout
  * and RLS decide what anyone may open.
  */
-export function CustomerSidebar({
-  email,
-  avatarV = null,
-  plan,
-}: {
+export function CustomerSidebar(_props: {
   email: string | null;
   avatarV?: number | null;
   plan: AccountPlan | null;
 }) {
+  // Keep the layout's props contract; account identity now lives in the shared header.
+  void _props;
   const { t } = useI18n();
   const path = useChannelPath();
   const { collapsed, toggle } = useSidebar();
@@ -114,9 +111,6 @@ export function CustomerSidebar({
 
         <div className="flex shrink-0 flex-col gap-0.5 border-t border-[var(--shell-border)] px-3 pb-3 pt-2">
           <FooterRows items={footer} collapsed={collapsed} />
-          <div className="pt-2">
-            <AccountMenu email={email} avatarV={avatarV} variant="card" plan={plan} />
-          </div>
         </div>
       </MAside>
     </SharedLayout>

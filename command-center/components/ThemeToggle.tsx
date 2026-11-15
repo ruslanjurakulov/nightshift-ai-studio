@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Moon, Sun } from "lucide-react";
 import { applyTheme, resolvedTheme, type Theme } from "@/lib/theme";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 
@@ -9,7 +10,7 @@ import { usePublicI18n } from "@/lib/i18n/public-context";
  * no-flash script; this control reads the resolved value after mount (so no
  * hydration mismatch) and flips it, persisting the choice.
  */
-export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {}) {
+export function ThemeToggle({ showLabel = false, choices = false }: { showLabel?: boolean; choices?: boolean } = {}) {
   const { t } = usePublicI18n();
   const [theme, setTheme] = useState<Theme | null>(null);
 
@@ -28,14 +29,43 @@ export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {})
     };
   }, []);
 
-  function toggle() {
-    const next: Theme = (theme ?? resolvedTheme()) === "dark" ? "light" : "dark";
+  function choose(next: Theme) {
     applyTheme(next);
     setTheme(next);
   }
 
+  function toggle() {
+    choose((theme ?? resolvedTheme()) === "dark" ? "light" : "dark");
+  }
+
   const isDark = theme === "dark";
   const label = `${t.common.theme}: ${isDark ? t.common.dark : t.common.light}`;
+
+  // The account menu offers both choices; other consumers keep the existing toggle.
+  if (choices) {
+    return (
+      <div role="group" aria-label={t.common.theme} className="ns-theme-choices inline-flex self-start items-center gap-1">
+        {(["light", "dark"] as const).map((value) => {
+          const Icon = value === "light" ? Sun : Moon;
+          const name = value === "light" ? t.common.light : t.common.dark;
+          return (
+            <button
+              key={value}
+              type="button"
+              disabled={theme === null}
+              aria-label={name}
+              title={name}
+              aria-pressed={theme === value}
+              onClick={() => choose(value)}
+              className="ns-theme-choice btn-sky is-quiet pill inline-flex size-11 items-center justify-center p-0"
+            >
+              <Icon aria-hidden className="size-4" strokeWidth={1.75} />
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <button

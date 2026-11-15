@@ -1,6 +1,10 @@
 # Premium UI and shared Studio: approval package
 
-Status: **Phases A–C complete for review; Phase D implementation is not authorized.**
+Status of this planning snapshot: **Phases A–C complete for review.**
+The owner subsequently authorized D1 only; its implementation and acceptance
+evidence are tracked separately in [D1 review](D1_REVIEW.md). Statements below
+about unchanged application files and unrun application checks describe the
+original A–C documentation change, not the later D1 feature branch.
 Audit date: 2026-11-15 UTC / 2026-11-16 Asia/Tashkent. Frozen source: main
 `f985b3afd371c0677357670da436ef2074fdb036`, reconfirmed against remote main.
 

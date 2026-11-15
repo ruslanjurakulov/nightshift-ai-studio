@@ -6,9 +6,6 @@ import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { Wordmark } from "@/components/site/Wordmark";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
-import { LanguageSelector } from "@/components/LanguageSelector";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { NotificationsCenter } from "@/components/NotificationsCenter";
 import { NotificationBell } from "@/components/shell/NotificationBell";
@@ -27,9 +24,8 @@ import type { ChannelRow } from "@/lib/types";
 
 /**
  * The top bar: the wordmark on the left, the controls on the right. For a
- * customer the account is not here: it is the bottom bar's last tab on a phone
- * and the sidebar's user card from `lg`; the operator's bar keeps its account
- * button as its last control. Route navigation lives in the left rail (SideNav) — grouped and
+ * customer and the operator, the same N account menu stays last at every width.
+ * Account preferences live inside that menu. Route navigation lives in the left rail (SideNav) — grouped and
  * icon-led, with only the daily-loop destinations surfaced at the top so the
  * shell reads as a product, not a wall of admin links.
  */
@@ -56,14 +52,12 @@ export function Header({
   credits?: CreditAccount | null;
   /** When the layout read `credits` on the server (ISO): the live store keeps a fresher reading of its own over an older page. */
   creditsReadAt?: string | null;
-  /** The signed-in email, for the operator bar's account button; the panel
-   *  reads the rest itself when it opens. */
+  /** The signed-in email; the account panel reads the rest when it opens. */
   email?: string | null;
   /** The photo's version (avatar_v), or null for none. */
   avatarV?: number | null;
   /** The platform operator keeps the console's bar; a customer gets the
-   *  creative app's (wordmark, credit pill, bell; the account is the sidebar
-   *  card or the bottom bar's last tab). */
+   *  creative app's wordmark, credit pill, bell and shared account menu. */
   operator?: boolean;
   /** The organization's plan, read server-side, for the credit menu. */
   plan?: AccountPlan | null;
@@ -79,7 +73,7 @@ export function Header({
   // slot), so the page has ONE bar, not the app's plus the canvas's. Every other route keeps its bar unchanged.
   if (pathname === path("/studio")) {
     return (
-      <header className="cv-appbar" data-studio-bar="">
+      <header data-premium-header="" className="cv-appbar" data-studio-bar="">
         <div id="studio-bar-slot" className="cv-appbar-slot" />
         <div className="cv-appbar-tools">
           {/* Nobody is stranded here: the workspace and channel pickers at every width (one combined picker on a phone), and
@@ -91,14 +85,7 @@ export function Header({
           </span>
           {operator ? <CreditBalanceChip account={account} /> : <CreditMenu account={account} plan={plan} stale={stale} />}
           {operator ? <NotificationsCenter scope={scope} /> : <NotificationBell orgId={currentOrgId} channels={channels} />}
-          <span className="hidden sm:contents">
-            <LanguageSelector />
-            <ThemeToggle />
-            <span className="hidden lg:contents">
-              <ViewModeToggle compact />
-            </span>
-            <AccountMenu email={email} avatarV={avatarV} />
-          </span>
+          <AccountMenu email={email} avatarV={avatarV} plan={plan} />
         </div>
       </header>
     );
@@ -110,17 +97,14 @@ export function Header({
 
   if (!operator) {
     return (
-      <header className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6">
+      <header data-premium-header="" className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6">
         <div className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
-          {/* The wordmark lives in the sidebar from `lg` up. The N is 30px high from 375px wide, 28px from
-              351 to 374, 26px from 331 to 350 and 22px below (lettering 14.6, 13.7, 12.7 and 10.7px): the
-              widest that leaves the credit key (up to 12,345) and the bell on this row with room to spare
-              (measured in tools/visual-qa/account-tab.mjs). The account is not on this bar any more, so
-              the lockup got back the width the round button took. */}
+          {/* The full brand stays in the desktop sidebar; the compact phone lockup leaves
+              room for credits, notifications and the persistent account trigger. */}
           <Link
             href={path("/create")}
             aria-label={t.brand.name}
-            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:30px] max-[374px]:[--wm-h:28px] max-[350px]:[--wm-h:26px] max-[330px]:[--wm-h:22px] lg:hidden"
+            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:26px] max-[430px]:[--wm-h:24px] max-[374px]:[--wm-h:22px] max-[350px]:[--wm-h:20px] max-[330px]:[--wm-h:18px] lg:hidden"
           >
             <Wordmark />
           </Link>
@@ -150,16 +134,7 @@ export function Header({
             {/* The customer's own, database-backed inbox (migration 0064); the
                 operator's bar below keeps the event-derived feed. */}
             <NotificationBell orgId={currentOrgId} channels={channels} />
-            <span className="hidden sm:contents">
-              <LanguageSelector />
-              <ThemeToggle />
-              <span className="hidden md:contents">
-                <ViewModeToggle showLabel compact />
-              </span>
-            </span>
-            {/* No account button here: on a phone and tablet the account is the
-                bottom bar's last tab (the initial, then Settings → Account), and
-                from `lg` up it is the sidebar's user card. */}
+            <AccountMenu email={email} avatarV={avatarV} plan={plan} />
           </div>
         </div>
       </header>
@@ -167,7 +142,7 @@ export function Header({
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_78%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-2 backdrop-blur-md sm:py-5">
+    <header data-premium-header="" className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_78%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-2 backdrop-blur-md sm:py-5">
       {/* One row on a phone, as the customer's bar is: the mark, ONE workspace picker (organization above
           channel, full names in its sheet), the bell and the account. Navigation is the bottom bar
           (SideNav), not a second row. From `sm` the bar is the desktop one, wrapping as it always did. */}
@@ -213,14 +188,7 @@ export function Header({
           </span>
           <UtcClock />
           <NotificationsCenter scope={scope} />
-          <span className="hidden sm:contents">
-            <LanguageSelector />
-            <ThemeToggle />
-            <span className="hidden md:contents">
-              <ViewModeToggle showLabel compact />
-            </span>
-          </span>
-          <AccountMenu email={email} avatarV={avatarV} />
+          <AccountMenu email={email} avatarV={avatarV} plan={plan} />
         </div>
       </div>
     </header>

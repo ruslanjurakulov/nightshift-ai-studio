@@ -65,11 +65,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("the account is not in the customer's top bar", () => {
-  it("has no account button: the phone's account is the bottom bar's Settings tab", () => {
+describe("the shared account menu stays in the top bar", () => {
+  it("keeps a customer account button in addition to the existing Settings destination", () => {
     render(wrap(<Header operator={false} credits={null} email={EMAIL} />));
-    expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
-    expect(screen.queryByTitle(EMAIL)).toBeNull();
+    const trigger = screen.getByRole("button", { name: en.account.open });
+    expect(trigger.classList.contains("ns-account-trigger")).toBe(true);
+    expect(trigger.querySelector("svg[data-wordmark]")).not.toBeNull();
   });
 
   it("is still the operator's last control on the console bar", () => {

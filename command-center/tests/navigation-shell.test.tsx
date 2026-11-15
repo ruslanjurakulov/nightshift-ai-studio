@@ -151,7 +151,7 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Home, Nightshift Studio, the Inbox and Channels, and the account foot: no wall of tools", () => {
+  it("shows customer destinations and Settings without a duplicate account trigger", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
@@ -164,9 +164,7 @@ describe("customer sidebar (rendered)", () => {
     const aside = nav.closest("aside") as HTMLElement;
     expect(within(aside).getByRole("link", { name: en.shell.plansCredits }).getAttribute("href")).toBe("/chronos/credits");
     expect(within(aside).getByRole("link", { name: en.nav.settings }).getAttribute("href")).toBe("/chronos/organization");
-    const card = screen.getByRole("button", { name: en.account.open });
-    expect(card.textContent).toContain("me@example.com");
-    expect(card.textContent).toContain("Creator");
+    expect(within(aside).queryByRole("button", { name: en.account.open })).toBeNull();
   });
 
   it("lights Studio on a creative screen, whatever the query names", () => {
@@ -177,10 +175,11 @@ describe("customer sidebar (rendered)", () => {
     expect(within(nav).getByRole("link", { name: en.nav.home }).getAttribute("aria-current")).toBeNull();
   });
 
-  it("leaves an unknown plan off the user card rather than calling it Free", () => {
+  it("leaves account identity and an unknown plan to the shared header menu", () => {
     render(withI18n(<SideNav email="me@example.com" plan={{ kind: "unknown" }} />));
-    const card = screen.getByRole("button", { name: en.account.open });
-    expect(card.textContent).toBe("Mme@example.com");
+    expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
+    expect(screen.queryByText("me@example.com")).toBeNull();
+    expect(screen.queryByText(en.account.planFree)).toBeNull();
   });
 
   it("is not what an operator gets: no tool rows, no user card, the console rail instead", () => {
