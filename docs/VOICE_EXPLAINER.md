@@ -250,8 +250,8 @@ The entry ships **hidden**: no `credit_prices` row, no probe, no availability.
 3. **Measure one 600 s render's peak memory as uid 1000 in the built image**, with the deploy's own limits (`mem_limit`, the
    tmpfs), before anything is sold. For example, with a ten-minute narration on the media volume:
    `docker compose --profile worker run --rm creative-worker sh -c 'NIGHTSHIFT_VOICE_VIDEO_E2E=/app/media/<narration>.mp3 python -m unittest tests.test_voice_video_adapter.TheRealEngine; cat /sys/fs/cgroup/memory.peak'`
-   (`docker stats` beside it works where `memory.peak` is missing). This makes ONE PAID Scribe call (about $0.033 for ten
-   minutes) with the worker's key; `NIGHTSHIFT_VOICE_VIDEO_E2E=<narration>.mp3:<words>.json` passes a word track instead and
+   (`docker stats` beside it works where `memory.peak` is missing). This makes ONE PAID Scribe call (for ten
+   minutes of audio) with the worker's key; `NIGHTSHIFT_VOICE_VIDEO_E2E=<narration>.mp3:<words>.json` passes a word track instead and
    calls nothing. Whisper no longer runs in this process, so the peak is the render's alone.
 
    One render plus three vendor jobs must fit in
@@ -281,10 +281,9 @@ The entry ships **hidden**: no `credit_prices` row, no probe, no availability.
    `docker compose --profile worker run --rm creative-worker python tools/probe_models.py --model nightshift-voice-explainer --voice-id <a voice of the account>`
    (two small paid calls: the probe speaks its words with ElevenLabs Flash, then Scribe transcribes them; then a local render).
 9. **Apply the price**: `docs/sql/price_0176_voice_explainer.sql` in the SQL editor (owner decision 2026-11-14:
-   `credits_per_unit` 0.05 per second of recording, the fully-loaded unit cost, margin 7.0, so 0.4 credits a second, 24 a
-   minute; the derivation is in its header). It refuses while the model is unprobed, and refuses 0 or NULL: a zero row
-   would make every voice video free, because `job_minimum` floors only a price above 0. The price covers Scribe's $0.20 an
-   audio hour (about 0.33 credits a minute against 24 charged).
+   0.4 credits a second, 24 a minute; priced from credit_prices; see the owner's private pricing notes, which include the Scribe transcription. Fill in its two NULL
+   figures from those notes first). It refuses while the model is unprobed, and refuses 0 or NULL: a zero row would make
+   every voice video free, because `job_minimum` floors only a price above 0.
 10. **Set its availability** (Models page).
 
 ### Measuring the transcription (`tools/stt_compare.py`)

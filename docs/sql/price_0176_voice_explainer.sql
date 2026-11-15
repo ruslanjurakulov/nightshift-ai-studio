@@ -5,30 +5,20 @@
 -- while the registry row is missing or has no passing probe, so a price can never be the first thing that makes it look ready.
 -- It does not open the model: availability is set afterwards, on the Models page.
 --
--- THE PRICE (owner decision, 2026-11-14). credits_per_unit 0.05 per second of recording, margin 7.0:
---   0.05 x (1 + 7.0) = 0.4 credits per second = 24 credits per minute of recording
---   ≈ $0.24 a minute at retail ($0.01 per credit), ≈ $0.17 at the Studio plan's $0.0072 per credit.
+-- THE PRICE (owner decision, 2026-11-14). Customers pay 0.4 credits per second of recording (24 credits per minute). The two
+-- numbers that make it (credits_per_unit and margin) are priced from credit_prices; see the owner's private pricing notes. They are NOT in this file: fill in the two
+-- constants below from those notes before running it. As shipped, both are NULL and the file refuses to run (see NEVER 0, NEVER NULL).
 -- The quantity is the recording's length as the DATABASE measured it (creative_source_seconds), never a client's number, and
 -- job_minimum still floors a short one. A ten-minute recording (the longest 0176 takes) is 240 credits.
 --
--- THE DERIVATION. The cost is this server's own work plus ONE vendor call: the transcription (ElevenLabs Speech to Text,
--- Scribe scribe_v2, owner decision 2026-11-14; docs/VOICE_EXPLAINER.md, "What the worker does").
---   * Scribe: $0.20 per audio hour (elevenlabs.io/pricing/api, read 2026-11-11 for elevenlabs-scribe-v2) = $0.0033 a minute
---     = 0.33 credits a minute = 0.0056 credits a second, about 11% of the 0.05 fully-loaded unit below and under 1.5% of the
---     0.4 a second charged. The unit covers it; the numbers below stay as they were. UNVERIFIED: whether speech-to-text draws
---     from the same ElevenLabs credit pool as the channels' narration (docs/VOICE_EXPLAINER.md, "Opening it", step 5c).
---   * Measured render: 3.4x real time on 4 cores; memory ~+2.2 GB at 30 s and ~+3.8 GB at
---     121 s of recording, both measured BEFORE the engine rendered in chunks (docs/VOICE_EXPLAINER.md, "Capacity").
---   * The server: a Hetzner AX42, about $60 a month.
---   * Variable cost ≈ $0.007 per minute of recording: CPU (it included local Whisper, which no longer runs here), storage of
---     the result, and a 20% reserve for renders that are retried; plus Scribe's $0.0033, about $0.010 a minute in all.
---   * credits_per_unit 0.05 (3 cents of cost per minute) is the FULLY-LOADED unit cost, not the variable one: it also carries a
---     share of the server spread over ~500 minutes of recording a month, payment fees (~5%), refunds, and a reserve for a
---     future Remotion Company License. (The whole server over 500 minutes alone would be 12 cents a minute: 0.05 assumes the
---     voice video carries a share of it, not all of it. Revisit when the monthly minutes are measured.)
---   * Remotion: the owner is a one-person company, so Remotion's Free License applies ("for individuals and companies of up
---     to 3 people", remotion.dev/docs/license/pricing, read 2026-11-14): $0 today. Re-check when the company has more than
---     3 people, or on Remotion 5.0 (the licence terms may change).
+-- The cost behind the price is this server's own work plus ONE vendor call: the transcription (ElevenLabs Speech to Text,
+-- Scribe scribe_v2, owner decision 2026-11-14; docs/VOICE_EXPLAINER.md, "What the worker does"). UNVERIFIED: whether
+-- speech-to-text draws from the same ElevenLabs credit pool as the channels' narration (docs/VOICE_EXPLAINER.md, "Opening it",
+-- step 5c).
+--
+-- Remotion: the owner is a one-person company, so Remotion's Free License applies ("for individuals and companies of up to 3
+-- people", remotion.dev/docs/license/pricing, read 2026-11-14). Re-check when the company has more than 3 people, or on Remotion
+-- 5.0 (the licence terms may change).
 --
 -- NEVER 0, NEVER NULL. creative_price floors a job at job_minimum only when the unit's price is above 0: a zero row would make
 -- every voice video free. This file refuses to write 0, a negative or a NULL rate, and a margin outside 0..10 (the table's
@@ -40,13 +30,14 @@ begin;
 
 do $$
 declare
-  -- The two numbers. Change them here and nowhere else; the checks below run on whatever is written.
+  -- The two numbers. Set them here and nowhere else; the checks below run on whatever is written.
   v_unit constant text := 'model_nightshift_voice_explainer_second';
-  v_credits_per_unit constant numeric := 0.05;
-  v_margin constant numeric := 7.0;
+  -- Both from the owner's private pricing notes (not in the repository). NULL refuses to run: a missing figure never writes a price.
+  v_credits_per_unit constant numeric := null;
+  v_margin constant numeric := null;
   v_note constant text :=
-    '0176 voice video, owner 2026-11-14: fully-loaded cost 0.05/s (CPU, Scribe transcription $0.20/h, storage, retries, '
-    'server share, fees, refunds, licence reserve), margin 7.0 = 0.4 credits/s (24/min). docs/sql/price_0176_voice_explainer.sql';
+    '0176 voice video, owner 2026-11-14: 0.4 credits/s (24/min), priced from the owner''s pricing notes. '
+    'docs/sql/price_0176_voice_explainer.sql';
   m record;
 begin
   if v_credits_per_unit is null or v_credits_per_unit <= 0 then
@@ -77,7 +68,7 @@ begin
     set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin, note = excluded.note, updated_at = now();
 end $$;
 
--- Verify (expected: one row, 0.05000000 | 7.0000 | 0.4).
+-- Verify (expected: one row whose credits_per_second is 0.4).
 select unit, credits_per_unit, margin, credits_per_unit * (1 + margin) as credits_per_second
   from public.credit_prices where unit = 'model_nightshift_voice_explainer_second';
 

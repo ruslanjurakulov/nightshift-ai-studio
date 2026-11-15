@@ -386,8 +386,9 @@ class AppliedSafely(unittest.TestCase):
         self.assertIn("CREATIVE_WORKER_CONCURRENCY", steps)
         self.assertIn("price_0176_voice_explainer.sql", docs)
         price = (ROOT / "docs" / "sql" / "price_0176_voice_explainer.sql").read_text(encoding="utf-8")
-        # The owner's numbers, and the refusals that keep a zero from ever making the jobs free.
-        for needle in ("v_credits_per_unit constant numeric := 0.05;", "v_margin constant numeric := 7.0;",
+        # The owner's numbers are not in the repository (the owner's private pricing notes): shipped as NULL, which the file
+        # refuses, so it never runs half-filled. And the refusals that keep a zero from ever making the jobs free.
+        for needle in ("v_credits_per_unit constant numeric := null;", "v_margin constant numeric := null;",
                        "if v_credits_per_unit is null or v_credits_per_unit <= 0 then", "m.verified_at is null",
                        "on conflict (unit) do update"):
             self.assertIn(needle, price)
