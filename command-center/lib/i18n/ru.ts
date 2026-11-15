@@ -8,6 +8,9 @@ import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { studioHubRu } from "./studio-hub/ru";
+import { studioCanvasRu } from "./studio-canvas/ru";
+import { studioTimelineRu } from "./studio-timeline/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -56,6 +59,9 @@ export const ru: Dictionary = {
   effects: effectsRu,
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
+  studioHub: studioHubRu,
+  studioCanvas: studioCanvasRu,
+  studioTimeline: studioTimelineRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
@@ -127,7 +133,8 @@ export const ru: Dictionary = {
     margin: "Маржа",
     customers: "Клиенты",
     billing: "Оплата",
-    studio: "Облик бренда",
+    studio: "Nightshift Studio",
+    brandLook: "Облик бренда",
     library: "Медиатека",
     styles: "Стили",
     inbox: "Входящие",
@@ -958,6 +965,12 @@ export const ru: Dictionary = {
     videoModel: "Модель видео (изображение→видео)",
     imageModel: "Модель изображений",
     voiceModel: "Модель голоса (ElevenLabs)",
+    voiceModelDeprecated: "устарела",
+    voiceModelNoLanguage: "не говорит на языке: {language}",
+    voiceModelNotOnQueue: "пока недоступна для запусков",
+    voiceModelDefaultMayNot: "может не говорить на языке: {language}; выберите Eleven v3",
+    voiceModelDropped: "Выбор {model} сброшен: эта модель не говорит на языке: {language}. Выберите Eleven v3.",
+    voiceModelHint: "Модели, которые не говорят на языке этого видео, отключены (список моделей ElevenLabs, проверен {date}).",
     voicePick: "Голос",
     voiceChannel: "Голос канала",
     voiceCustom: "Свой ID голоса…",
@@ -994,8 +1007,11 @@ export const ru: Dictionary = {
       media: "Не удалось собрать видеоряд и картинки для этого видео, поэтому оно не создано.",
       render: "Не удалось собрать видео.",
       timeout: "Видео создавалось слишком долго и было остановлено.",
-      held: "Проверка точности остановила сценарий, поэтому видео не создано и ничего не списано. Попробуйте другую тему или другую формулировку.",
+      held: "Проверка фактов отметила утверждения в сценарии, поэтому запуск остановлен до проверки человеком и видео не создано. Ничего не списано. Откройте его на странице «Видео», чтобы увидеть, какие утверждения отмечены.",
       switched_off: "Один из сервисов, участвующих в создании видео, временно недоступен, поэтому создание видео не началось. Ничего не списано. Попробуйте позже.",
+      channel_reconnect_required: "YouTube больше не принимает подключение этого канала, поэтому создание видео не началось. Ничего не списано. Переподключите YouTube для этого канала на странице «Каналы» и попробуйте снова.",
+      credentials_missing: "Один из сервисов, нужных для этого видео, у нас ещё не настроен, поэтому создание видео не началось. Ничего не списано. Попробуйте позже.",
+      spend_ceiling: "Этот канал достиг своего месячного лимита расходов, поэтому создание видео не началось. Ничего не списано. Запуск снова возможен в следующем месяце или после повышения лимита.",
       unknown: "Что-то пошло не так, и видео не создано.",
     },
     creditsReturned: "Ваши кредиты возвращены.",

@@ -8,6 +8,9 @@ import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
+import { studioHubUz } from "./studio-hub/uz";
+import { studioCanvasUz } from "./studio-canvas/uz";
+import { studioTimelineUz } from "./studio-timeline/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -56,6 +59,9 @@ export const uz: Dictionary = {
   effects: effectsUz,
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
+  studioHub: studioHubUz,
+  studioCanvas: studioCanvasUz,
+  studioTimeline: studioTimelineUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
@@ -127,7 +133,8 @@ export const uz: Dictionary = {
     margin: "Marja",
     customers: "Mijozlar",
     billing: "Toʻlovlar",
-    studio: "Brend koʻrinishi",
+    studio: "Nightshift Studio",
+    brandLook: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",
     inbox: "Kiruvchi xabarlar",
@@ -958,6 +965,12 @@ export const uz: Dictionary = {
     videoModel: "Video modeli (rasm→video)",
     imageModel: "Rasm modeli",
     voiceModel: "Ovoz modeli (ElevenLabs)",
+    voiceModelDeprecated: "eskirgan",
+    voiceModelNoLanguage: "{language} tilida gapirmaydi",
+    voiceModelNotOnQueue: "hozircha ishga tushirish uchun mavjud emas",
+    voiceModelDefaultMayNot: "{language} tilida gapirmasligi mumkin; Eleven v3 ni tanlang",
+    voiceModelDropped: "{model} tanlovi bekor qilindi: u {language} tilida gapirmaydi. Eleven v3 ni tanlang.",
+    voiceModelHint: "Bu video tilida gapira olmaydigan modellar oʻchirilgan (ElevenLabs modellar roʻyxati, {date} da tekshirilgan).",
     voicePick: "Ovoz",
     voiceChannel: "Kanalning ovozi",
     voiceCustom: "Oʻz ovoz ID’im…",
@@ -994,8 +1007,11 @@ export const uz: Dictionary = {
       media: "Bu video uchun tasvirlar va suratlarni yigʻib boʻlmadi, shuning uchun video yaratilmadi.",
       render: "Videoni yigʻib boʻlmadi.",
       timeout: "Video juda uzoq yaratildi va toʻxtatildi.",
-      held: "Aniqlik tekshiruvi ssenariyni toʻxtatdi, shuning uchun video yaratilmadi va hech narsa yechilmadi. Boshqa mavzu yoki boshqa soʻzlar bilan urinib koʻring.",
+      held: "Faktlarni tekshirish ssenariydagi daʼvolarni belgiladi, shuning uchun ishga tushirish inson tekshiruvigacha toʻxtatildi va video yaratilmadi. Hech narsa yechilmadi. Qaysi daʼvolar belgilanganini koʻrish uchun uni Videolar sahifasida oching.",
       switched_off: "Video yaratishda qatnashadigan xizmatlardan biri vaqtincha mavjud emas, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Keyinroq urinib koʻring.",
+      channel_reconnect_required: "YouTube bu kanalning ulanishini endi qabul qilmayapti, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Kanallar sahifasida bu kanal uchun YouTubeni qayta ulang va yana urinib koʻring.",
+      credentials_missing: "Bu video uchun kerakli xizmatlardan biri bizda hali sozlanmagan, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Keyinroq urinib koʻring.",
+      spend_ceiling: "Bu kanal oylik xarajat chegarasiga yetdi, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Keyingi oyda yoki chegara oshirilgandan keyin yana ishga tushirish mumkin.",
       unknown: "Nimadir xato ketdi va video yaratilmadi.",
     },
     creditsReturned: "Kreditlaringiz qaytarildi.",

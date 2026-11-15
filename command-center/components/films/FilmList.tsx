@@ -30,7 +30,7 @@ export type FilmListInitial = { state: "ok"; films: FilmListItem[] } | { state: 
 
 /** The lamp of a project's status: violet only while the machine works, amber never (no person's mark on a list row). */
 function lampOf(status: FilmListItem["status"]): string | undefined {
-  if (status === "planning" || status === "running" || status === "draining" || status === "assembling") return "work";
+  if (status === "planning" || status === "queued" || status === "running" || status === "draining" || status === "assembling") return "work";
   if (status === "ready") return "ready";
   if (status === "failed") return "failed";
   if (status === "paused") return "warn";

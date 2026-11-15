@@ -245,7 +245,7 @@ export default async function ChannelsPage({
                     failed={dnaChars.failed}
                     canEdit={canEditDna}
                     standardVoice={channel.agent_config?.tts_provider === "edge"}
-                    studioHref={path("/studio")}
+                    studioHref={path("/studio/look")}
                   />
                 }
               />

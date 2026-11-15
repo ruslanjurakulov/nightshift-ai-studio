@@ -14,6 +14,8 @@ export const FILM_STATUSES = [
   "draft",
   "planning",
   "planned",
+  // 0171: the hold is taken and the project waits for the worker to pick it up.
+  "queued",
   "running",
   "draining",
   "paused",
@@ -340,6 +342,35 @@ export function coerceFilmList(raw: unknown): FilmListItem[] {
   });
 }
 
+/**
+ * GET /api/films's rows as the browser reads them. The route already read the database rows into FilmListItem (camelCase), so
+ * reading them again with coerceFilmList (snake_case) dropped every one: the archived tab showed nothing. Checked, never trusted.
+ */
+export function coerceFilmListItems(raw: unknown): FilmListItem[] {
+  return list(raw, (x) => {
+    if (!x || typeof x !== "object") return null;
+    const r = x as Record<string, unknown>;
+    const id = parseFilmId(r.id);
+    const status = oneOf(FILM_STATUSES, r.status);
+    const language = oneOf(FILM_LANGUAGES, r.language);
+    const aspect = oneOf(FILM_ASPECTS, r.aspect);
+    const targetSeconds = int(r.targetSeconds);
+    if (!id || !status || !language || !aspect || targetSeconds === null) return null;
+    return {
+      id,
+      channelId: str(r.channelId),
+      title: str(r.title) ?? "",
+      sourceKind: str(r.sourceKind) ?? "topic",
+      language,
+      aspect,
+      targetSeconds,
+      status,
+      updatedAt: str(r.updatedAt),
+      archivedAt: str(r.archivedAt),
+    };
+  });
+}
+
 // ─── refusals ────────────────────────────────────────────────────────────────
 
 /** Every refusal the screens can show. Each has a sentence in lib/i18n/film-studio/{en,ru,uz}.ts `errors` (a test checks). */
@@ -353,6 +384,8 @@ export const FILM_ERRORS = [
   "model_not_offered",
   "model_not_available",
   "asset_not_usable",
+  // 0171's start_film: a reference picture or character was deleted after the quote.
+  "reference_missing",
   "film_changed",
   "film_not_editable",
   "idempotency_conflict",
@@ -377,6 +410,7 @@ const NS400_WORDS: readonly FilmError[] = [
   "model_not_offered",
   "model_not_available",
   "asset_not_usable",
+  "reference_missing",
 ];
 const NS409_WORDS: readonly FilmError[] = ["film_changed", "film_not_editable", "idempotency_conflict", "scene_has_takes"];
 
@@ -718,7 +752,7 @@ export function filmsApi(f?: Fetch) {
     list: (archived = false) =>
       call(go, "GET", `/api/films${archived ? "?archived=1" : ""}`, undefined, (j) => {
         const films = (j as { films?: unknown } | null)?.films;
-        return Array.isArray(films) ? coerceFilmList(films) : null;
+        return Array.isArray(films) ? coerceFilmListItems(films) : null;
       }),
     create: (input: CreateFilmInput) => call(go, "POST", "/api/films", input, viewOf),
     get: (id: string) => call(go, "GET", `/api/films/${encodeURIComponent(id)}`, undefined, viewOf),

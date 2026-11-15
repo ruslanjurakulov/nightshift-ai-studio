@@ -864,6 +864,15 @@ jobs:
           if [ "$rc" -eq 83 ]; then
             echo "::error title=Custom voice could not be verified::The custom-voice ownership check could not be completed (the log above says why: Supabase unreachable or a refused key) and NIGHTSHIFT_VOICE_GATE_STRICT is on. Nothing was spent and no other voice was substituted. Check SUPABASE_URL and SUPABASE_SERVICE_KEY, then run again."
           fi
+          # Exit 84 / 85: the credential preflight stopped the run before anything was spent (modules/credential_health.py).
+          # 85 is the case where the only problem is the channel's YouTube token, which Google refused (expired or revoked);
+          # 84 is any other required key. Red like 80-83; the log above names the key and the fix; the hold is released.
+          if [ "$rc" -eq 85 ]; then
+            echo "::error title=Reconnect YouTube::Google refused this channel's YouTube token (expired or revoked). Nothing was spent. Press Reconnect on this channel's card on the Command Center's Channels page, then run again. A Google OAuth app left in 'Testing' expires tokens after 7 days."
+          fi
+          if [ "$rc" -eq 84 ]; then
+            echo "::error title=Credential missing::A credential this run needs is not configured (the log above names it and the fix). Nothing was spent. Set it, then run again."
+          fi
           exit "$rc"
 
       # Settle the hold claimed above: on success, charge what the run's cost

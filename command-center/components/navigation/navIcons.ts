@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot, SwatchBook,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House,
   type LucideIcon,
 } from "lucide-react";
 import type { NavKey } from "@/lib/navigation";
@@ -16,13 +16,16 @@ import type { NavKey } from "@/lib/navigation";
 export const ICONS: Record<NavKey, LucideIcon> = {
   // The record key, not a sparkle: making something is a REC press (IDENTITY.md §Iconography).
   hub: CircleDot,
+  home: House,
   settings: Settings,
   design: SwatchBook,
   command: LayoutDashboard,
   create: CircleDot,
   videos: Film,
   inbox: Inbox,
-  studio: Palette,
+  // Nightshift Studio is where things are made: it takes the hub's record key.
+  studio: CircleDot,
+  brandLook: Palette,
   styles: Brush,
   ads: Target,
   characterStudio: Drama,

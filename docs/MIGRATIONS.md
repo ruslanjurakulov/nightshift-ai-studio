@@ -1697,9 +1697,8 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   ACCESS EXCLUSIVE on `api_ledger` (reads wait too) until commit; `lock_timeout` 5s.
 - **md5.** `api_refund_topup` before `a9d2287173b12b704808e7b3747b05e0` (0031), after `74ea95ec27564e57b7b989a906a15842`;
   `api_refund_recover` `785ca1a1df7d72192bd98dbfd9122a37` (drift guard, end state, rollback).
-- **Not changed here.** `owner_reverse_grant` (0107, site credits) has the same "available only" rule (BR-0107-01, low, open, a failing
-  test in `tests/security/test_sec_breach_owner_reverse_hold.py`); its collection belongs next to 0167's trigger on
-  `credit_transactions` so that the two never both collect one release.
+- **Not changed here.** `owner_reverse_grant` (0107, site credits) has the same "available only" rule (BR-0107-01, low); fixed by 0172,
+  whose collection sits next to 0167's trigger on `credit_transactions` so that the two never both collect one release.
 - **Number.** 0168 (provisional; 0163 to 0167 are held by other open branches). Needs 0031; names nothing of 0032 to 0167. The
   numbering tests of 0127, 0131 and 0133 list it as reviewed.
 - **Undo.** `docs/sql/rollback_0168_api_refund_hold_recovery.sql` (owner-applied): refuses bodies that are not 0168's, drops the
@@ -1737,3 +1736,183 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
+
+## Film Studio P2: the price of a film, one hold, and the settle path (0171)
+
+0171 (`0171_films_money.sql`) lets a film be priced and started, and gives P3's worker the calls that settle it. Nothing in it calls a
+provider or creates a creative or render job, and no credit function body is replaced. The plan is in `docs/FILM_STUDIO.md`,
+"Money (P2)".
+
+- **Adds.**
+  - `film_studio_settings`: the switch, OFF, set only by `set_film_studio_enabled` (owner_guard or the SQL editor; audited).
+  - `film_quotes`: the stored quotes, 30 minutes each.
+  - `film_segments`: one funding hold of a film, its assembly line with the captions, and the worker's lease.
+  - `org_film_settings`: a per-film cap, none by default, and how many films run at once, 1 by default.
+  - The money columns and the provider task id of `film_takes`.
+  - `creative_jobs.film_take_id` with `payer = 'film'`, set exactly together and never with a hold of its own.
+  - `'queued'` in `films_status_check`.
+- **The browser's calls.**
+  - `quote_film(film, version)`: editors and above.
+  - `start_film(film, quote_id, idempotency_key)`: owners and admins; in the exempt organization a platform owner or admin.
+  - Both are rate-limited in the database: 120 quotes and 10 starts a person an hour (`db.film.*`).
+  - A start refused after it is counted is answered as `{ok: false, reason, code, detail}`, so it still counts (BR-0171-01).
+- **The price.**
+  - Key frames and clip shots are priced by `creative_price` (0159). A clip is priced against a library picture as a stand-in, the
+    50 newest only, following 0073's rule.
+  - Narration is the tts rate times every character, never less than its minimum once per 4,000-character call.
+  - Assembly with captions is `film_assembly_minute` times the planned minutes. **No price row is seeded.**
+  - Any line that cannot be priced makes the total and the quote id NULL and names the reason. A character counts as all of its
+    pictures against the reference limit.
+- **The hold.** One per segment: `reserve_credits(org, 'fm-<segment id>', total)`. Capture is once, at settle, never above the hold.
+  0034 is unchanged, and the quote reports the run slot the film takes and for how long.
+- **Charges (the Studio's rule).**
+  - A take that delivers is charged its line. A clip delivers when its file's recorded length (`media_assets.duration_s`, written at
+    registration) is at least 90% of the confirmed seconds; otherwise it counts as failed.
+  - Each take gets one automatic retry within its line, charged once, on success.
+  - A take that delivers nothing is 0, whatever the vendor did (a moderated or failed task, a partial narration, a lost worker); the
+    platform absorbs the vendor's charge, and the basis records it.
+  - The assembly is charged by its registered file's recorded length.
+  - A result is kept only when accepted: a rejected or lost take's files are soft-deleted in the same transaction.
+- **Safety.**
+  - A segment that charged nothing and made nothing returns its film to `draft`, and its never-begun takes are removed.
+  - No take begins once the hold is gone, or while a 0167 refund recovery waits on it.
+  - The claim and the sweep isolate each segment in its own subtransaction, and a skipped one leaves a `segment_skipped` event.
+  - A segment's leases are capped (3), and after that what it left in flight is ended as `worker_lost`.
+  - Past the deadline plus 2 hours (22 h, inside 0020's 24) the sweep ends what is in flight and settles while the hold is open.
+- **Replaced constraints.** `films_status_check` (0166's plus `'queued'`) and `creative_jobs_payer_check` (0036's plus `'film'`).
+  The drift guard compares the exact set of quoted words with the earlier file's and 0171's. Replaying 0166 or 0036 after 0171 would
+  put the narrower check back: replay 0171 after it (the lab's `sec_db.take_off_0171` / `put_back_0171`).
+- **Locks while applying.** ACCESS EXCLUSIVE on `creative_jobs`, `films` and `film_takes` until commit, and one scan for each new
+  check. `lock_timeout` is 5 s, so the file fails rather than queueing behind the creative worker. Apply it as one transaction.
+- **md5.** The replay guard and the rollback pin every function body the file creates; the end state pins the money ones.
+- **Number.** Provisionally 0171 (0169 is another open pull request; 0170 is the API download audit). It needs 0020, 0034, 0036,
+  0052, 0094, 0107, 0159, 0166 and 0167. The numbering tests of 0127, 0131 and 0133 list it as reviewed. 0166's header says "0167"
+  for this phase: that was the plan's number, and a merged file is never edited.
+- **Undo.** `docs/sql/rollback_0171_films_money.sql` (owner-applied). It refuses in any of these cases:
+  - a segment is live;
+  - a `payer = 'film'` job exists;
+  - a body is not 0171's, or a later function reads `film_segments`;
+  - any segment exists and its override line is not set.
+
+  The credit ledger keeps every movement either way.
+- **Tests.**
+  - `tests/test_films_money_migration.py`: the text, the grants, the hashes, the constraints, the rollback.
+  - `tests/security/test_sec_films_money.py`: a real PostgreSQL.
+  - `tests/security/test_sec_breach_films_money.py`: Breach, BR-0171-01 and the refused attacks.
+  - `tests/security/sec_films_0171.py`: the shared lab's contract and seed.
+
+## An owner's grant reversal that met a hold collects when the hold is released (0172)
+
+0172 (`0172_grant_reversal_hold_recovery.sql`) closes BR-0107-01 (low): a grant reversed while part of it was on hold was reversed only
+in part, for good. `owner_reverse_grant` (0107, never redefined) takes back at most the part of the grant's lot that is neither held
+nor unavailable and records the rest as a shortfall under the one-per-grant external id `owner-reverse:<grant id>`, so a retry answers
+duplicate. A hold is not spending: when the run never starts, fails or is cancelled, the hold is released and the workspace keeps those
+credits. In the lab: 100 granted, a run holding all but 30, the reversal takes 30, the hold is released, the workspace kept 70. It
+needs a platform owner or admin to make the grant and the reversal, hence low.
+
+- **Design.** 0167's for refunds, carried over to reversals. The held part of the shortfall stays open and is collected when those
+  holds are RELEASED (expired, failed, cancelled, the unused part of a capture); a CAPTURED hold is real spending and the shortfall
+  stands. No run is interrupted.
+- **`credit_grant_reversal_recoveries`.** One row per reversal whose shortfall met holds on the grant's own lot: the grant's ledger
+  row (primary key), the reversal's ledger row, the grant's lot, the organization, `holds` (the jobs that had credits of that lot in
+  `credit_hold_lots` at that moment), `owed` = least(shortfall, the lot's held credits, what those holds had of it), `collected` and
+  `lapsed` (0 <= collected + lapsed <= owed, only go up; a guard trigger refuses any other change, a delete or a truncate). RLS on,
+  no policy, select for the service role only.
+- **`credit_grant_reversal_recover()`.** AFTER INSERT trigger `credit_transactions_recover_reversals` on `credit_transactions`, for
+  `release` rows of a hold. By name it fires after the lot trigger and after 0167's `credit_transactions_recover_refunds`. It spends
+  only the grant's own lot, and per release at most least(still owed, what THIS release gave back to that lot less what was spent from
+  the lot since the release row (0167's collector, which may have taken some of it for a refund), what is free in the lot, what is
+  available), so the two collectors never both collect one release's credits and a purchase made later is never eaten. Only holds
+  on the lot when the reversal was recorded pay. The grant's own credits that expired on the hold count as `lapsed`, with no ledger
+  row. The collection is an `adjust` row (no external id, a note naming the grant and the hold) written with `created_by` NULL: a
+  release can run inside the member's own `reserve_credits` (the lazy expiry), and `credit_log` would have stamped their id on it.
+- **`owner_reverse_grant`.** 0107's body, line for line, plus lines marked `-- 0172`: the recovery row, `on_hold` in the answer, in a
+  duplicate's and in the audit entry (three of 0107's lines are replaced whole by marked lines that keep their text), and its own
+  `adjust` row now spends the grant's own lot first (0107's "lot attribution" limit). Same signature, refusals, idempotency and grants.
+  A grant that is ALL on hold still answers `nothing_to_reverse` and records nothing: nothing was made final, so the owner reverses it
+  once the hold has settled.
+- **`credit_transactions_apply_lots`.** 0167's body plus marked lines: an `adjust` row may name its first lot by id
+  (`nightshift.reverse_lot`, this organization's lots only); unset, it is 0167's behaviour exactly.
+- **Known residual.** When a refund (0167) and a reversal met the SAME hold, 0167's collector goes first and spends the release's lots
+  in spend order, the grant's lot included; the reversal then collects only what is left of its lot in that release. Nothing is
+  collected twice, but in that case the refund may take the grant's credits instead of its own pack's, and the workspace keeps up to
+  the reversal's held part (pinned in `test_a_refund_and_a_reversal_that_met_one_hold_together_take_no_more_than_it_gave_back`). The
+  fix would be in 0167's lot order; firing this collector first instead was rejected, because 0167's per-release cap does not see
+  what this one took and could then collect one release twice.
+- **The Command Center.** The reverse dialog words the shortfall as on hold or spent from `on_hold`, and says it does not know which
+  when the answer has no `on_hold` (0172 not applied), rather than "spent" (rule 5).
+- **Locks.** One new table; CREATE TRIGGER takes SHARE ROW EXCLUSIVE on `credit_transactions`, a re-run's DROP TRIGGER takes ACCESS
+  EXCLUSIVE until commit; `lock_timeout` 5s.
+- **md5.** `owner_reverse_grant` before `4c701e7930d213f6f1ba84485c366a36` (0107), after `de3893bbaba50d48edfa694baf39533f`;
+  `credit_transactions_apply_lots` before `6098f97a7630bed24807bb7c5ef6eefe` (0167), after `aec752383dd2c5cf3621ee273a677fe0`;
+  `credit_grant_reversal_recover` `e58362bc86d0b47c042f0bc8a2e15319` (drift guard, end state, rollback).
+- **Number.** 0172 (0171 is held by an open branch that touches neither function). Needs 0020, 0034, 0107, 0165 and 0167. A replay of
+  0167 after 0172 refuses (its guard and end state know only two collectors' worth of the ledger): take 0172 off first; the lab's
+  `sec_db.take_off_0167` / `put_back_0167` do it through `take_off_0172` / `put_back_0172`. The numbering tests of 0127, 0131 and
+  0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0172_grant_reversal_hold_recovery.sql` (owner-applied): refuses bodies that are not 0172's, drops the
+  trigger and its function, puts 0107's `owner_reverse_grant` and 0167's lot trigger back verbatim. The table stays as the record.
+- **Tests.** `tests/test_grant_reversal_hold_recovery_migration.py` (the text, the hashes, the rollback, the numbering, the ledger
+  row), `tests/security/test_sec_breach_owner_reverse_hold.py` (the finding, now passing) and
+  `tests/security/test_sec_grant_reversal_hold_recovery.py` (a partial hold from the grant's own lot, an expired lot, two holds with
+  a later purchase, capture, a later hold, replay of the reversal / release / expiry / migration, the record's guard, the collection
+  inside the member's own reserve written as the platform's, one release met by a refund and a reversal, credits restored into the
+  lot not paid twice, concurrency with `reserve_credits` in both orders; a real PostgreSQL).
+
+## The seven cleared models on sale (0173)
+
+0173 (`0173_open_cleared_models.sql`) is **live on apply** and moves money: it writes 18 `credit_prices` rows and sets
+`model_registry.availability = 'beta'` and `entitlement = NULL` for seven models. It replaces no function, policy, grant or constraint.
+
+- **What opens.** Ideogram 3, 4 and 4.5; MiniMax H3, H3 Highspeed, H3 Lite and H3 Max: every registry entry with no `terms_gate`, a
+  successful probe of its current call, a vendor figure for every priced variant, no shutdown date passed, no `blocked_countries`, and
+  `api_exposure` `web_only` (so the API and MCP never list them), less the two below. The 68 terms-gated entries stay hidden; 0035's
+  CHECK would refuse the file if it tried otherwise.
+- **Not opened, by name: Runway gen4.5 and gen4_turbo.** They pass every gate above, but they wait for the likeness-consent step:
+  Runway's terms want a photo-consent confirmation on an i2v upload, and the Studio has none yet (the owner's decision, 2026-11-14).
+  No gate is loosened for that; the file simply does not name them. They stay hidden and unpriced, and `schemas/model_registry.json`
+  keeps their plan tiers (`models_video:ultra`, `models_video:premium`) exactly as on main. A file of their own opens them, after the
+  consent step and the export-embargo country decision.
+- **Prices.** Priced from credit_prices; see the owner's private pricing notes. The repository's convention (`docs/sql/prices_2026_10_01.sql`,
+  `prices_defaults_2026_10_03.sql`) applies: no unit sells below its registry vendor figure, rounded up per job. A model priced by variant has a row per
+  variant (`model_<id>_<unit>_<768p|2k|480p|low|medium|high>`), which is all a quote of it reads; its base row (what `sellable_models`
+  joins to list it) is the default variant's figure. The figures are the registry's own list prices (`confirmed: false`); the file
+  compares each with the registry before it writes, and refuses if one moved.
+- **ideogram-3 keeps its existing live row** (0173 never overwrites a row); the owner may change it via a docs/sql script. The other
+  rows already live for these units (four, counted when the file still named nine models) sell at or above this file's price, so the
+  never-below guard does not stop the apply.
+- **Each probe proved one call only.** MiniMax H3 and H3 Highspeed i2v at 768p, H3 Lite and H3 Max i2v at 480p, Ideogram 3 and 4
+  t2i, Ideogram 4.5 t2i at low. Not proven so far, yet sold at their own figures: every MiniMax t2v call, MiniMax H3 2k, H3 Highspeed 480p, H3 Lite 768p, H3 Max 768p, and Ideogram 4.5 medium and high.
+- **Entitlement: the diagnosis.** `creative_price` refuses every entitlement except `any` (NULL) and `paid`, for every organization
+  whatever its plan; 0034's `model_tier_allowed()` and its plan tiers are seeded but never called (`entitlement_keys` marks
+  `models_*` `planned`). Availability alone would sell to nobody, and would take the models from the operator (0139's preview passes
+  only a `hidden` model; a beta model's quote asks the entitlement even in the exempt organization). So the seven get NULL, here and in
+  `schemas/model_registry.json`; the tiers they had are in the rollback. Enforcing tiers is its own change (creative_price, the
+  entitlement keys and both Studio gates together), and with no plan purchasable yet it would open only the two `basic` models.
+- **Free credits.** 100 welcome credits per mailbox (0042); every unit sells above its vendor figure (the exposure: Priced from credit_prices; see the owner's private pricing notes.). A failed or refused job returns its
+  whole hold, so vendor money spent on a failed task (whether MiniMax bills one is not stated; not verified for Ideogram) is
+  not bounded by those 100 credits. No cap is applied by this file.
+- **Drift guards.** Each of the seven must be present, the same adapter / vendor model / credit unit / capabilities / variant set /
+  default as written, with no `spec.vendor_model_by_capability` (a capability calling another vendor model would sell at this figure),
+  verified, ungated, not disabled, not shut down, web only, and carry either its old tier or NULL. A price row that already exists is
+  never overwritten: kept when it sells at or above this file's price (with a NOTICE), refused when below. An empty registry (a fresh
+  deployment, the lab's build) writes nothing. The end state is asserted in the same block: every unit at or above its required price, the seven beta with NULL
+  entitlement, listed by `sellable_models('web')` and not by `'api'` or `'mcp'`, nothing terms-gated on sale.
+- **Not checked by SQL (owner).** The Privacy Policy now names Ideogram and MiniMax as Studio processors and says MiniMax may use
+  inputs and outputs to improve its models (the registry's "before a sale" note); Runway is not named, since it is not opened. Still
+  open: MiniMax's Uzbekistan billing.
+- **Number.** 0173, first written as 0160, then 0163: renumbered each time so the files merged meanwhile land first, since the
+  Supabase integration applies a file on merge only when its number is above the latest applied one, and this file waits for the
+  owner's decision. Live and main end at 0170; 0171 and 0172 belong to open branches. None of 0158 to 0170 writes `model_registry` or
+  `credit_prices` or replaces `sellable_models`, `model_is_available` or `model_past_shutdown`; 0159's `creative_price` refuses a clip
+  length the model does not list, and the seven list theirs. Once it applies, 0166's Film Studio drafts can pick the seven (a draft
+  spends nothing). The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0173_open_cleared_models.sql` (owner-applied): the seven back to `hidden` with their tiers, and only the
+  price rows 0173 wrote (note `0173:`) whose rate and margin nobody changed are deleted. The operator's preview works again as before.
+- **Tests.** `tests/test_open_cleared_models_migration.py` (the seven are exactly the openable entries less Runway, Runway absent and
+  still tiered, no gated id in the file, every price is the registry figure at the file's markup, every variant priced, base rows at the
+  default, the file's entitlement NULL, the rollback's tiers and rates, rows only, the 100 welcome credits, the Privacy Policy row) and
+  `tests/security/test_sec_open_cleared_models.py` (every variant quoted to a customer at the file's price and never below its vendor figure, a customer held at
+  the quote, the catalog and not the API or MCP, Runway seeded verified and ungated yet left hidden, unpriced, unlisted and refused,
+  gated models refused and un-openable, the operator exempt and not a preview, availability alone sells to nobody, the drift guards,
+  replay, rollback and re-apply).

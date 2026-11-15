@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NO_NAV_FEATURES, navGroupsFor, navShown, sectionAllowed, tabsFor } from "../lib/navigation";
+import { NO_NAV_FEATURES, navGroupsFor, navShown, sectionAllowed, studioTilesFor, tabsFor } from "../lib/navigation";
 import { isSection } from "../lib/channels";
 import { ICONS } from "../components/navigation/navIcons";
 
@@ -14,12 +14,14 @@ const ON = { adsFactory: false, characterStudio: true };
 const keys = (operator: boolean, features = NO_NAV_FEATURES) => navGroupsFor(operator, features).flatMap((g) => g.items.map((i) => i.key));
 
 describe("navigation", () => {
-  it("lists Character Studio only while its switch is on, and never by default", () => {
+  it("lists Character Studio (a Studio home tile, never a rail entry) only while its switch is on, and never by default", () => {
     expect(keys(true)).not.toContain("characterStudio");
-    expect(keys(true, ON)).toContain("characterStudio");
-    expect(keys(true, ON).filter((k) => k !== "characterStudio")).toEqual(keys(true));
-    expect(tabsFor("create")?.items.map((i) => i.key)).not.toContain("characterStudio");
-    expect(tabsFor("create", ON)?.items.map((i) => i.key)).toContain("characterStudio");
+    expect(keys(true, ON)).not.toContain("characterStudio");
+    const tiles = (features = NO_NAV_FEATURES) => studioTilesFor(true, features).map((x) => x.key);
+    expect(tiles()).not.toContain("characterStudio");
+    expect(tiles(ON)).toContain("characterStudio");
+    expect(tiles(ON).filter((k) => k !== "characterStudio")).toEqual(tiles());
+    expect(tabsFor("character-studio", ON)?.rail).toBe("studio");
     expect(navShown("characterStudio")).toBe(false);
     expect(navShown("characterStudio", ON)).toBe(true);
   });

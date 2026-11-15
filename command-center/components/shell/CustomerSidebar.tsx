@@ -2,15 +2,11 @@
 
 import Link from "next/link";
 import { Suspense, useState } from "react";
-import { PanelLeft, Projector } from "lucide-react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { PanelLeft } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { CUSTOMER_SIDEBAR, STUDIO_PROJECTS, sidebarCurrent, type NavItem } from "@/lib/navigation";
-import { filmStudioStrings } from "@/lib/i18n/film-studio";
-import { DESKS, deskFromQuery, deskHref, type Desk } from "@/lib/creative/desks";
-import { runPrefillFromQuery } from "@/lib/home";
-import { DESK_ICONS } from "@/components/studio/deskIcons";
+import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem } from "@/lib/navigation";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
 import { Wordmark } from "@/components/site/Wordmark";
@@ -18,9 +14,6 @@ import type { AccountPlan } from "@/lib/account";
 import { aside as MAside, nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 import { useSidebar } from "@/components/shell/SidebarState";
-import { useShell } from "@/components/shell/ShellContext";
-import { deskOpen } from "@/lib/tool-availability";
-import "@/components/studio/availability.css";
 
 /** One lit plate for the whole sidebar: it slides from the row you left to the row you opened. */
 const PLATE = "sidebar-current";
@@ -37,8 +30,8 @@ function useSection(): string {
 }
 
 /**
- * A customer's desktop sidebar, full height on the left: the wordmark, Studio,
- * the tools as direct links, their work, and at the foot Plans & credits,
+ * A customer's desktop sidebar, full height on the left: the wordmark, Home,
+ * Nightshift Studio, the Inbox and Channels, and at the foot Plans & credits,
  * Settings and the user card (which opens the account panel). Below `lg` it is
  * not rendered — the phone has the bottom bar.
  *
@@ -130,26 +123,19 @@ export function CustomerSidebar({
   );
 }
 
-/** The rows that need the query string (the desk rows), behind Suspense. */
+/** The rows that need the section (which one is lit). */
 function CurrentRows({ collapsed }: { collapsed: boolean }) {
   const section = useSection();
-  const q = useSearchParams();
-  const tool = q.get("tool");
-  // On /create the row is the desk the page opens (lib/creative/desks), from the same query it reads.
-  // Studio → Projects lives under /create but is not a desk: its own row is the current one there.
-  const onProjects = section === STUDIO_PROJECTS || section.startsWith(STUDIO_PROJECTS + "/");
-  const onCreate = !onProjects && (section === "/create" || section.startsWith("/create/"));
-  // The same validated read the page makes (lib/home), so a junk ?lang= never lights the YouTube desk.
-  const hasRunPrefill = onCreate && !!runPrefillFromQuery({ topic: q.get("topic") ?? undefined, length: q.get("length") ?? undefined, lang: q.get("lang") ?? undefined, format: q.get("format") ?? undefined });
-  const desk = onCreate ? deskFromQuery({ desk: q.get("desk"), tool, hasRunPrefill }) : null;
-  const current = onProjects ? "studio:projects" : desk ? `desk:${desk}` : sidebarCurrent(section, tool);
-  return <SidebarRows current={current} collapsed={collapsed} />;
+  return <SidebarRows current={sidebarCurrent(section)} collapsed={collapsed} />;
 }
 
+/**
+ * Home, then Nightshift Studio, the Inbox and Channels. The Studio's desks and tools used to be rows
+ * of their own here (and the creative screens a group of their own); they are tiles on Studio home
+ * now, so the sidebar is a few places, not a wall of tools (docs/studio/STUDIO_IA.md §4).
+ */
 function SidebarRows({ current, collapsed }: { current: string | null; collapsed: boolean }) {
-  const { t, fmt, locale } = useI18n();
-  const { tools, features } = useShell();
-  const projectsName = filmStudioStrings(locale).section;
+  const { t } = useI18n();
   const path = useChannelPath();
   const { home, work } = CUSTOMER_SIDEBAR;
   const HomeIcon = ICONS[home.key];
@@ -157,75 +143,12 @@ function SidebarRows({ current, collapsed }: { current: string | null; collapsed
     <>
       <ul className="flex flex-col gap-0.5 pt-1">
         <li>
-          <Link href={path(home.href)} aria-current={current === "hub" ? "page" : undefined} className={rowClass(current === "hub")} data-tip={collapsed ? t.nav[home.key] : undefined}>
-            {current === "hub" && <Plate id={PLATE} />}
+          <Link href={path(home.href)} aria-current={current === "home" ? "page" : undefined} className={rowClass(current === "home")} data-tip={collapsed ? t.nav[home.key] : undefined}>
+            {current === "home" && <Plate id={PLATE} />}
             <HomeIcon aria-hidden className="shell-icon size-[18px]" strokeWidth={1.9} />
             <span className={collapsed ? "sr-only" : "truncate"}>{t.nav[home.key]}</span>
           </Link>
         </li>
-      </ul>
-
-      <h2 className="shell-group">{t.shell.gCreate}</h2>
-      {/* The Studio's desks (lib/creative/desks), each laid out around one job; the tools live inside them. */}
-      <ul className="flex flex-col gap-0.5">
-        {DESKS.map((d: Desk) => {
-          const Icon = DESK_ICONS[d];
-          const on = current === `desk:${d}`;
-          const closed = !deskOpen(tools, d);
-          const name = t.desk.names[d];
-          // A desk with nothing on sale is said to be so, and is not a link: it would open a form with nothing to pick. The
-          // current one (opened by a typed or old link) stays a link, so the row still says where you are.
-          if (closed && !on) {
-            const label = fmt(t.availability.rowLabel, { name });
-            return (
-              <li key={d}>
-                <span className="shell-link" data-unavailable="true" data-tip={collapsed ? label : undefined} data-testid={`sidebar-desk-${d}`}>
-                  <span aria-hidden className="shell-tile">
-                    <Icon className="size-3.5" strokeWidth={2} />
-                  </span>
-                  <span className={collapsed ? "sr-only" : "flex min-w-0 flex-col"}>
-                    <span className="truncate">{name}</span>
-                    <span className="shell-soon truncate">{t.availability.notYet}</span>
-                  </span>
-                </span>
-              </li>
-            );
-          }
-          return (
-            <li key={d}>
-              <Link href={path(deskHref(d))} aria-current={on ? "page" : undefined} className={rowClass(on)} data-tip={collapsed ? (closed ? fmt(t.availability.rowLabel, { name }) : name) : undefined} data-testid={`sidebar-desk-${d}`}>
-                {on && <Plate id={PLATE} />}
-                <span aria-hidden className="shell-tile">
-                  <Icon className="size-3.5" strokeWidth={2} />
-                </span>
-                {closed ? (
-                  <span className={collapsed ? "sr-only" : "flex min-w-0 flex-col"}>
-                    <span className="truncate">{name}</span>
-                    <span className="shell-soon truncate">{t.availability.notYet}</span>
-                  </span>
-                ) : (
-                  <span className={collapsed ? "sr-only" : "truncate"}>{name}</span>
-                )}
-              </Link>
-            </li>
-          );
-        })}
-        {/* Studio → Projects, beside the desks (NIGHTSHIFT_FILM_STUDIO, resolved per viewer by the layout). */}
-        {features.filmStudio === true && (
-          <li>
-            <Link href={path(STUDIO_PROJECTS)} aria-current={current === "studio:projects" ? "page" : undefined} className={rowClass(current === "studio:projects")} data-tip={collapsed ? projectsName : undefined} data-testid="sidebar-studio-projects">
-              {current === "studio:projects" && <Plate id={PLATE} />}
-              <span aria-hidden className="shell-tile">
-                <Projector className="size-3.5" strokeWidth={2} />
-              </span>
-              <span className={collapsed ? "sr-only" : "truncate"}>{projectsName}</span>
-            </Link>
-          </li>
-        )}
-      </ul>
-
-      <h2 className="shell-group">{t.shell.gWork}</h2>
-      <ul className="flex flex-col gap-0.5">
         {work.map((item) => (
           <Row key={item.key} item={item} current={current} collapsed={collapsed} />
         ))}
@@ -244,8 +167,7 @@ function FooterRows({ items, collapsed }: { items: readonly NavItem[]; collapsed
 
 function FooterCurrent({ items, collapsed }: { items: readonly NavItem[]; collapsed: boolean }) {
   const section = useSection();
-  const tool = useSearchParams().get("tool");
-  return <FooterList items={items} current={sidebarCurrent(section, tool)} collapsed={collapsed} />;
+  return <FooterList items={items} current={sidebarCurrent(section)} collapsed={collapsed} />;
 }
 
 function FooterList({ items, current, collapsed }: { items: readonly NavItem[]; current: string | null; collapsed: boolean }) {
