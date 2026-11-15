@@ -21,6 +21,7 @@ What would break without these:
 
 from __future__ import annotations
 
+import io
 import json
 import math
 import re
@@ -215,6 +216,20 @@ class Cli(unittest.TestCase):
             rc = voice_to_video.main(["--audio", str(Path(d) / "none.mp3"), "--out", str(Path(d) / "o.mp4")])
         self.assertEqual(rc, 2)
 
+    def test_without_ffprobe_the_cli_says_so_before_reading_the_recording(self):
+        # audio_seconds() reads the length with ffprobe: without it the error would blame the recording ("is it an audio
+        # file?"), so the tool names ffprobe first and reads nothing.
+        from unittest import mock
+        with TemporaryDirectory() as d:
+            audio = Path(d) / "a.mp3"
+            audio.write_bytes(b"x")
+            with mock.patch("shutil.which", side_effect=lambda n: None if n == "ffprobe" else f"/usr/bin/{n}"), \
+                    mock.patch.object(ve, "audio_seconds", side_effect=AssertionError("read without ffprobe")), \
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                rc = voice_to_video.main(["--audio", str(audio), "--out", str(Path(d) / "o.mp4")])
+        self.assertEqual(rc, 2)
+        self.assertIn("ffprobe is not on PATH", err.getvalue())
+
     def test_the_model_planner_without_a_key_names_the_fix(self):
         import os
         from unittest import mock
@@ -280,6 +295,42 @@ class ReviewFindings(unittest.TestCase):
                 with self.subTest(name=bad), mock.patch("shutil.which", return_value="/usr/bin/npx"), \
                         self.assertRaisesRegex(ve.ExplainerError, "refusing the public file name"):
                     ve.render({}, Path(d) / "o.mp4", files={bad: src}, engine_dir=engine)
+
+    def test_the_render_budget_grows_with_the_recording(self):
+        # One budget covers the whole render; 1800 s could not finish a 600 s recording (about 2700 s, measured on #769).
+        self.assertEqual(ve.render_timeout_s(30), 1800.0)
+        self.assertGreaterEqual(ve.render_timeout_s(ve.MAX_SECONDS), 2700.0)
+        from unittest import mock
+        with TemporaryDirectory() as d:
+            engine = Path(d) / "engine"
+            (engine / "node_modules").mkdir(parents=True)
+            seen = []
+
+            def run(cmd, cwd, deadline, timeout_s, what, on_spawn):
+                seen.append(timeout_s)
+                raise ve.ExplainerError("stop here")
+
+            with mock.patch("shutil.which", return_value="/usr/bin/npx"), mock.patch.object(ve, "_run", side_effect=run), \
+                    self.assertRaises(ve.ExplainerError):
+                ve.render({"duration_s": ve.MAX_SECONDS}, Path(d) / "o.mp4", files={}, engine_dir=engine)
+            self.assertEqual(seen, [ve.render_timeout_s(ve.MAX_SECONDS)])
+
+    def test_a_stop_in_the_middle_of_a_render_leaves_no_partial_output(self):
+        # A KeyboardInterrupt (or SIGTERM's SystemExit) is not an ExplainerError: the half-written mp4 must still go.
+        from unittest import mock
+        with TemporaryDirectory() as d:
+            engine = Path(d) / "engine"
+            (engine / "node_modules").mkdir(parents=True)
+            out = Path(d) / "o.mp4"
+
+            def run(cmd, cwd, deadline, timeout_s, what, on_spawn):
+                out.write_bytes(b"half a video")
+                raise KeyboardInterrupt
+
+            with mock.patch("shutil.which", return_value="/usr/bin/npx"), mock.patch.object(ve, "_run", side_effect=run), \
+                    self.assertRaises(KeyboardInterrupt):
+                ve.render({}, out, files={}, engine_dir=engine)
+            self.assertFalse(out.exists())
 
     def test_a_render_timeout_kills_the_whole_group_and_leaves_no_output(self):
         import subprocess

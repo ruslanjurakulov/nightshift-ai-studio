@@ -539,8 +539,20 @@ def plan_chunks(scenes: Sequence[Mapping], duration_s: float, fps: int, *, targe
     return chunks
 
 
+#: One budget covers the whole render (bundle, every chunk, the sound pass, the join). 1800 s was enough for a short video
+#: but not for MAX_SECONDS: a 121 s recording took 540 s (#769, measured), so 600 s needs about 2700 s. The budget grows
+#: with the recording, eight seconds per second, never under 1800 s.
+RENDER_TIMEOUT_MIN_S = 1800.0
+RENDER_TIMEOUT_PER_S = 8.0
+
+
+def render_timeout_s(duration_s: float) -> float:
+    """The whole render's budget for a recording of ``duration_s`` seconds."""
+    return max(RENDER_TIMEOUT_MIN_S, float(duration_s or 0) * RENDER_TIMEOUT_PER_S)
+
+
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
-           browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
+           browser: Optional[str] = None, timeout_s: Optional[float] = None, concurrency: int = 1,
            chunk_s: float = CHUNK_S, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
     """Render the props with Remotion. ``files`` maps each public path the props name
     (narration, music, effects) to the file on disk; they are copied into a private
@@ -571,6 +583,8 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # A file left from an earlier run must not pass as this run's output.
     out_path.unlink(missing_ok=True)
+    if timeout_s is None:
+        timeout_s = render_timeout_s(props.get("duration_s") or 0)
     deadline = _now() + timeout_s
     with tempfile.TemporaryDirectory(prefix="explainer-") as tmp:
         pub = (Path(tmp) / "public").resolve()
@@ -622,7 +636,9 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
                 got = _frame_count(out_path)
                 if got != want:
                     raise ExplainerError(f"the joined video has {got} frames, the composition has {want}: not delivered")
-        except ExplainerError:
+        except BaseException:
+            # Any end that is not a delivered video leaves no file behind: a refusal, a stop (SIGTERM, Ctrl-C) or a bug in
+            # the middle of a join must not leave a partial mp4 that a later step could take for this run's output.
             out_path.unlink(missing_ok=True)
             raise
     return out_path
