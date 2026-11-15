@@ -129,6 +129,11 @@ export function PricingView({
   // it, and never the test-mode words: the badge text is handed only to the operator's page.
   const salesClosed = testMode && !operator;
   const testBadge = testMode && operator ? p.sandbox : null;
+  // Decided here, on the server: a client component's props are in the page source, so a visitor's page carries neither
+  // a test-mode flag nor the test checkout's config. With sales closed the cards get no checkout (paddle null) and show
+  // the display prices; only the operator's page gets the config, to try the test checkout.
+  const cardPaddle = salesClosed ? null : pricing.paddle;
+  const cardPlans = plans && salesClosed ? { ...plans, paddle: null } : plans;
   const faqItems = dodo
     ? p.faq.map((f) => (f.id === "card" ? { ...f, a: p.dodo.faqCard } : f.id === "refund" ? { ...f, a: p.dodo.faqRefund } : f))
     : p.faq;
@@ -229,10 +234,10 @@ export function PricingView({
                 <p className="st-lead mt-5">{t.plans.matrixLead}</p>
               </div>
               <PlanMatrix
-                matrix={plans}
+                matrix={cardPlans ?? plans}
                 perMinute={rates?.perMinute ?? null}
                 rates={generationRates}
-                testMode={dodoTest}
+                closed={salesClosed}
                 testBadge={testBadge}
                 signedIn={signedIn}
                 subscribeHref={`${credits}#plans`}
@@ -324,10 +329,9 @@ export function PricingView({
               <div className="flex flex-col gap-4">
                 <PackCards
                   packs={pricing.packs}
-                  paddle={pricing.paddle}
+                  paddle={cardPaddle}
                   perMinute={rates?.perMinute ?? null}
                   rates={generationRates}
-                  testMode={dodoTest}
                   testBadge={testBadge}
                 />
                 <p className="st-small">

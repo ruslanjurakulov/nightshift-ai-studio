@@ -21,14 +21,11 @@ export function PackCards({
   paddle,
   perMinute,
   rates = null,
-  testMode = false,
   testBadge = null,
 }: {
   packs: PricingPack[];
   paddle: Pricing["paddle"];
   perMinute: number | null;
-  /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): treated exactly as Paddle's sandbox. */
-  testMode?: boolean;
   /** The test-payments badge, handed in by the server for a platform admin only. A visitor never gets the words, so a
    *  test-mode page shows them nothing about it (PricingView says "purchases open soon" where Buy would be). */
   testBadge?: string | null;
@@ -68,7 +65,7 @@ export function PackCards({
 
   return (
     <div className="flex flex-col gap-3">
-      {(environment === "sandbox" || testMode) && testBadge && (
+      {testBadge && (
         <span className="st-tag self-start" style={{ color: "var(--ns-caution)", borderColor: "currentColor" }}>
           {testBadge}
         </span>

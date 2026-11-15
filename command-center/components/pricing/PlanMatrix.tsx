@@ -46,7 +46,7 @@ export function PlanMatrix({
   rates = null,
   signedIn,
   subscribeHref,
-  testMode = false,
+  closed = false,
   testBadge = null,
   outputs,
 }: {
@@ -55,8 +55,9 @@ export function PlanMatrix({
    *  takes the place of the "≈ N images · M videos" line, which counted the cheapest model alone. */
   outputs?: Record<string, React.ReactNode>;
   perMinute: number | null;
-  /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): treated exactly as Paddle's sandbox. */
-  testMode?: boolean;
+  /** Sales are closed for this viewer (payments in test mode, and not the operator), decided on the server: no Subscribe key,
+   *  "purchases open soon". A test-mode flag never reaches a visitor's page source. */
+  closed?: boolean;
   /** The test-payments badge, handed in by the server for a platform admin only. Without it a test-mode card offers no
    *  Subscribe key (it would open a test checkout) and says purchases open soon; the default is that closed state. */
   testBadge?: string | null;
@@ -96,13 +97,10 @@ export function PlanMatrix({
   }, [environment, clientToken, priceKey]);
 
   const rowLabel = (key: string) => (p.row as Record<string, string>)[key] ?? key;
-  const testing = environment === "sandbox" || testMode;
-  // Test payments are for the operator to try the checkout; anyone else is told sales are not open yet.
-  const closed = testing && !testBadge;
 
   return (
     <div className="flex flex-col gap-3">
-      {testing && testBadge && (
+      {testBadge && (
         <span className="st-tag self-start" style={{ color: "var(--ns-caution)", borderColor: "currentColor" }}>
           {testBadge}
         </span>

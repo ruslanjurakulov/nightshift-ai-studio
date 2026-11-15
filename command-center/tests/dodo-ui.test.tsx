@@ -105,6 +105,13 @@ describe("/pricing", () => {
     expect(container.textContent).not.toContain(t.pricing.purchasesSoon);
   });
 
+  it("with Dodo live, for a visitor: the Buy key is offered and nothing says purchases open soon", () => {
+    const { container } = renderPricing(dodoPricing(liveView));
+    expect(container.textContent).not.toContain(t.pricing.sandbox);
+    expect(container.textContent).not.toContain(t.pricing.purchasesSoon);
+    expect(screen.getByRole("link", { name: t.pricing.buySignedOut }).getAttribute("href")).toBe("/login");
+  });
+
   it("with Dodo selected but nothing on sale: still names Dodo, never Paddle", () => {
     const { container } = renderPricing(dodoPricing(null, "test"));
     expect(container.textContent).not.toMatch(/Paddle/);
