@@ -11,19 +11,25 @@ object is missing (`... is null`) must name something that
 
   1. the same file creates BEFORE the guard, or
   2. an earlier-numbered migration (or schema.sql / bootstrap.sql) creates, and,
-     where git history is available, that migration already created it in the
-     form in which it first reached main (the commit that added the file). An
-     object that arrived there by a later in-place edit is not a safe prerequisite:
+     that migration already created it in the form in which it first reached
+     main (including pre-merge review fixes). An object that arrived there by a
+     later in-place edit is not a safe prerequisite:
      the production database was built from the first form.
 
 Guards written `is not null` are optional features and are not checked. Objects in
 schemas other than public (storage., auth.) come from the platform.
 The process rule is in docs/MIGRATIONS.md: never edit an applied migration.
+Full history and an origin/main (or local main) ref are required. Git failures
+are errors, not permission to skip the check. For squash/rebase histories with
+no merge boundary, the earliest main first-parent addition is conservative:
+Git alone cannot reconstruct which intermediate commits were deployed together.
 """
 
 import re
 import subprocess
+import tempfile
 import unittest
+from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -104,7 +110,8 @@ def needs(sql):
 
 def find_problems(migrations, base, first_form):
     """migrations: {filename: sql}, base: [sql] applied before all of them (schema.sql, bootstrap.sql),
-    first_form(filename) -> the file as first merged, or None when history is unavailable."""
+    first_form(filename) -> first integrated form, or current form for an unmerged file.
+    History lookup failures must raise rather than silently disable this guard."""
     names = sorted(migrations)
     problems = []
     for name in names:
@@ -120,23 +127,48 @@ def find_problems(migrations, base, first_form):
                 problems.append(f"{name}: guard needs {text!r}, which no earlier migration and not this file (before the guard) creates")
                 continue
             first = first_form(earlier[0])
-            if first is not None and key not in created(first):
+            if first is None:
+                raise RuntimeError(f"Cannot verify first integration of {earlier[0]}; history is required")
+            if key not in created(first):
                 problems.append(f"{name}: guard needs {text!r}, which {earlier[0]} only gained by an edit after it was first merged "
                                 f"- a database built from that first form lacks it; create it in {name} itself (or a new migration)")
     return problems
 
 
-def git_first_form(name):
-    rel = f"supabase/migrations/{name}"
+def git_read(root, *args):
     try:
-        shas = subprocess.run(["git", "log", "--diff-filter=A", "--format=%H", "--", rel], cwd=ROOT, capture_output=True,
-                              text=True, timeout=60, check=True).stdout.split()
-        if not shas:
-            return None
-        return subprocess.run(["git", "show", f"{shas[-1]}:{rel}"], cwd=ROOT, capture_output=True, text=True,
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True,
                               timeout=60, check=True).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError("Cannot verify migration history; provide a complete checkout and main ref") from exc
+
+
+@lru_cache(maxsize=None)
+def integrated_form(root, main_tip, head_tip, rel):
+    # First-parent follows what main actually received, not the oldest draft
+    # reachable through a merge's second parent. Squash and rebase integrations
+    # remain ordinary first-parent additions.
+    additions = git_read(root, "log", "--first-parent", "--diff-filter=A", "--format=%H",
+                         main_tip, "--", rel).split()
+    if additions:
+        return git_read(root, "show", f"{additions[-1]}:{rel}")
+    # Absence on complete main is a new, unapplied prerequisite. Its reviewed
+    # HEAD form will be integrated together with its dependent migration.
+    return git_read(root, "show", f"{head_tip}:{rel}")
+
+
+def git_first_form(name, root=ROOT, main_ref=None):
+    if git_read(root, "rev-parse", "--is-shallow-repository").strip() != "false":
+        raise RuntimeError("Migration history requires fetch-depth: 0; shallow history cannot prove first integration")
+    if main_ref is None:
+        refs = set(git_read(root, "for-each-ref", "--format=%(refname)",
+                            "refs/remotes/origin/main", "refs/heads/main").split())
+        main_ref = next((r for r in ("refs/remotes/origin/main", "refs/heads/main") if r in refs), None)
+        if main_ref is None:
+            raise RuntimeError("Migration history requires origin/main or main; no baseline is verified")
+    main_tip = git_read(root, "rev-parse", "--verify", f"{main_ref}^{{commit}}").strip()
+    head_tip = git_read(root, "rev-parse", "--verify", "HEAD^{commit}").strip()
+    return integrated_form(str(root), main_tip, head_tip, f"supabase/migrations/{name}")
 
 
 def repo_migrations():
@@ -151,6 +183,124 @@ def repo_base():
 FIRST = "create table public.notifications (id int);\ncreate function public.notification_emit(a uuid, b text) returns int as $$ select 1 $$;\n"
 LATER = FIRST + "create or replace function public.notification_emit_org_role(a uuid, b text, c text) returns int as $$ select 1 $$;\n"
 GUARD = "do $$ begin if to_regprocedure('public.notification_emit_org_role(uuid, text, text)') is null then raise exception 'x'; end if; end $$;\n"
+
+
+class GitIntegrationHistory(unittest.TestCase):
+    """Actual temporary Git DAGs distinguish review edits from applied-file edits."""
+
+    name = "0064_n.sql"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git("init", "-b", "main")
+        self.git("commit", "--allow-empty", "-m", "bootstrap")
+
+    def git(self, *args):
+        return git_read(self.root, "-c", "user.name=History Fixture", "-c",
+                        "user.email=history@example.invalid", *args)
+
+    def write(self, text):
+        p = self.root / "supabase" / "migrations" / self.name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+        self.git("add", str(p.relative_to(self.root)))
+        self.git("commit", "-m", "migration revision")
+
+    def first(self):
+        return git_first_form(self.name, self.root)
+
+    def problems(self):
+        return find_problems({self.name: LATER, "0103_x.sql": GUARD}, [], lambda _: self.first())
+
+    def reviewed_feature(self):
+        self.git("switch", "-c", "feature")
+        self.write(FIRST)
+        self.write(LATER)
+
+    def test_premerge_review_edits_are_in_the_first_main_form(self):
+        self.reviewed_feature()
+        self.git("switch", "main")
+        self.git("merge", "--no-ff", "feature", "-m", "reviewed integration")
+        self.assertEqual(self.first(), LATER)
+        self.assertEqual(self.problems(), [])
+
+    def test_postintegration_edit_still_fails_like_the_0064_incident(self):
+        self.git("switch", "-c", "feature")
+        self.write(FIRST)
+        self.git("switch", "main")
+        self.git("merge", "--no-ff", "feature", "-m", "first integration")
+        self.write(LATER)
+        self.assertEqual(self.first(), FIRST)
+        self.assertIn("after it was first merged", self.problems()[0])
+
+    def test_stacked_branch_uses_main_integration_not_its_own_draft_ancestor(self):
+        self.reviewed_feature()
+        self.git("switch", "-c", "stacked")
+        self.git("commit", "--allow-empty", "-m", "dependent feature")
+        self.git("switch", "main")
+        self.git("merge", "--no-ff", "feature", "-m", "first integration")
+        self.git("switch", "stacked")
+        self.assertEqual(self.first(), LATER)
+        self.assertEqual(self.problems(), [])
+
+    def test_squash_integration_uses_reviewed_blob(self):
+        self.reviewed_feature()
+        self.git("switch", "main")
+        self.git("merge", "--squash", "feature")
+        self.git("commit", "-m", "squash reviewed migration")
+        self.assertEqual(self.first(), LATER)
+
+    def test_linear_main_commits_preserve_later_edit_detection(self):
+        self.write(FIRST)
+        self.write(LATER)
+        self.assertEqual(self.first(), FIRST)
+        self.assertEqual(len(self.problems()), 1)
+
+    def test_single_commit_rebase_integration_uses_the_rebased_blob(self):
+        self.git("switch", "-c", "feature")
+        self.write(LATER)
+        self.git("switch", "main")
+        self.git("commit", "--allow-empty", "-m", "advance main")
+        self.git("switch", "feature")
+        self.git("rebase", "main")
+        self.git("switch", "main")
+        self.git("merge", "--ff-only", "feature")
+        self.assertEqual(self.first(), LATER)
+        self.assertEqual(self.problems(), [])
+
+    def test_unmerged_prerequisite_uses_current_committed_form(self):
+        self.reviewed_feature()
+        self.assertEqual(self.first(), LATER)
+        self.assertEqual(self.problems(), [])
+
+    def test_remote_main_is_used_on_a_detached_ci_checkout(self):
+        self.write(FIRST)
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.git("switch", "--detach")
+        self.git("branch", "-D", "main")
+        self.write(LATER)
+        self.assertEqual(self.first(), FIRST)
+
+    def test_missing_main_fails_loudly(self):
+        self.reviewed_feature()
+        self.git("branch", "-D", "main")
+        with self.assertRaisesRegex(RuntimeError, "no baseline"):
+            self.first()
+
+    def test_unknown_ref_and_missing_blob_do_not_disable_the_guard(self):
+        with self.assertRaises(RuntimeError):
+            git_first_form(self.name, self.root, "refs/heads/not-a-branch")
+        with self.assertRaises(RuntimeError):
+            self.first()
+
+    def test_shallow_history_fails_loudly(self):
+        self.write(FIRST)
+        with tempfile.TemporaryDirectory() as dst:
+            self.git("clone", "--depth=1", self.root.as_uri(), dst)
+            with self.assertRaisesRegex(RuntimeError, "shallow"):
+                git_first_form(self.name, Path(dst))
 
 
 class MigrationPrerequisites(unittest.TestCase):
@@ -170,6 +320,10 @@ class MigrationPrerequisites(unittest.TestCase):
 
     def test_a_prerequisite_present_in_the_first_form_passes(self):
         self.assertEqual(find_problems({"0064_n.sql": LATER, "0103_x.sql": GUARD}, [], lambda n: LATER), [])
+
+    def test_unknown_history_cannot_pass_a_real_prerequisite(self):
+        with self.assertRaisesRegex(RuntimeError, "history is required"):
+            find_problems({"0064_n.sql": LATER, "0103_x.sql": GUARD}, [], lambda n: None)
 
     def test_a_prerequisite_created_by_the_file_itself_before_its_guard_passes(self):
         own = "create or replace function public.notification_emit_org_role(a uuid, b text, c text) returns int as $$ select 1 $$;\n"
