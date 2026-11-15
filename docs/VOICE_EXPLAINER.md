@@ -235,8 +235,7 @@ The entry ships **hidden**: no `credit_prices` row, no probe, no availability.
    `docker compose --profile worker run --rm creative-worker python tools/probe_models.py --model nightshift-voice-explainer --voice-id <a voice of the account>`
    (the probe speaks its words with ElevenLabs Flash first: one small paid TTS call, as for every voice tool's probe).
 7. **Apply the price**: `docs/sql/price_0176_voice_explainer.sql` in the SQL editor (owner decision 2026-11-14:
-   `credits_per_unit` 0.05 per second of recording, the fully-loaded unit cost, margin 7.0, so 0.4 credits a second, 24 a
-   minute; the derivation is in its header). It refuses while the model is unprobed, and refuses 0 or NULL: a zero row
+   0.4 credits a second, 24 a minute; priced from credit_prices; see the owner's private pricing notes. Fill in its two NULL figures from those notes first). It refuses while the model is unprobed, and refuses 0 or NULL: a zero row
    would make every voice video free, because `job_minimum` floors only a price above 0.
 8. **Set its availability** (Models page).
 

@@ -650,7 +650,16 @@ REAL_UNIT = "model_nightshift_voice_explainer_second"
 def test_the_price_file_waits_for_the_probe_then_charges_0_4_a_second_and_never_writes_zero(db):
     name, d = _scratch(db.admin, sec_db.build_sequence(), "price")
     try:
-        text = PRICE_FILE.read_text(encoding="utf-8")
+        shipped = PRICE_FILE.read_text(encoding="utf-8")
+        # As shipped the two figures are NULL (they live in the owner's private pricing notes): the file refuses before anything.
+        with pytest.raises(psycopg.Error) as e:
+            d.su(shipped)
+        assert "price_0176 refuses credits_per_unit" in str(e.value)
+        # The lab fills in stand-in figures that make the same customer price, 0.4 credits a second; they are not the owner's.
+        C, M = "0.1", "3.0"
+        text = shipped.replace("v_credits_per_unit constant numeric := null;", f"v_credits_per_unit constant numeric := {C};").replace(
+            "v_margin constant numeric := null;", f"v_margin constant numeric := {M};")
+        assert text != shipped
         price = lambda: d.su("select credits_per_unit, margin from public.credit_prices where unit = %s", [REAL_UNIT])
         # No row yet: a price must never be the first thing that makes the model look ready.
         with pytest.raises(psycopg.Error) as e:
@@ -666,7 +675,7 @@ def test_the_price_file_waits_for_the_probe_then_charges_0_4_a_second_and_never_
              "null, null, 10, 100, 'security-lab')", [REAL])
         d.su(text)
         d.su(text)   # a replay writes the same row
-        assert [(float(c), float(m)) for c, m in price()] == [(0.05, 7.0)]
+        assert [(float(c), float(m)) for c, m in price()] == [(float(C), float(M))]
         # The rate a person is quoted: 0.4 credits per measured second (30 s = 12 credits, 12.2 s = 13 s = 5.2 credits).
         d.su("update public.model_registry set availability = 'beta' where id = %s", [REAL])
         d.su("insert into auth.users (id, email) values (%s, 'p171@x.io')", [UA])
@@ -679,14 +688,14 @@ def test_the_price_file_waits_for_the_probe_then_charges_0_4_a_second_and_never_
             assert float(q["credits"]) == credits, (seconds, q)
         # A zero, a negative or a NULL rate would make every voice video free (job_minimum floors only a price above 0).
         for bad in ("0", "0.0", "-0.05", "null"):
-            edited = text.replace("v_credits_per_unit constant numeric := 0.05;", f"v_credits_per_unit constant numeric := {bad};")
+            edited = text.replace(f"v_credits_per_unit constant numeric := {C};", f"v_credits_per_unit constant numeric := {bad};")
             assert edited != text
             with pytest.raises(psycopg.Error) as e:
                 d.su(edited)
             assert "price_0176 refuses credits_per_unit" in str(e.value), bad
-            assert [(float(c), float(m)) for c, m in price()] == [(0.05, 7.0)]
+            assert [(float(c), float(m)) for c, m in price()] == [(float(C), float(M))]
         for bad in ("null", "-1", "10.5"):
-            edited = text.replace("v_margin constant numeric := 7.0;", f"v_margin constant numeric := {bad};")
+            edited = text.replace(f"v_margin constant numeric := {M};", f"v_margin constant numeric := {bad};")
             with pytest.raises(psycopg.Error) as e:
                 d.su(edited)
             assert "price_0176 refuses margin" in str(e.value), bad

@@ -1776,9 +1776,8 @@ capability CHECKs.
   The numbering pins of 0127, 0131 and 0133 list it as reviewed. An open branch that replaces one of these functions and merges first makes this file's guard refuse: rebase the hunks.
 - **Before it sells anything.** Sync the registry (`tools/probe_models.py --sync`), probe `nightshift-voice-explainer` ON THE WORKER
   (the engine lives there), apply its credit price, then set its availability (docs/VOICE_EXPLAINER.md, "Opening it", a checklist).
-- **The price.** `docs/sql/price_0176_voice_explainer.sql` (owner-applied, owner decision 2026-11-14): `credits_per_unit` 0.05 per
-  second of recording (the fully-loaded unit cost; the derivation is in its header), margin 7.0, so 0.4 credits a second (24 a
-  minute). It refuses while the model row is missing or unprobed, and refuses to write 0, a negative or a NULL rate (a zero row makes
+- **The price.** `docs/sql/price_0176_voice_explainer.sql` (owner-applied, owner decision 2026-11-14): 0.4 credits a second of
+  recording (24 a minute), priced from credit_prices; see the owner's private pricing notes; the file ships with its two figures NULL, to be filled from those notes. It refuses while the model row is missing or unprobed, and refuses to write 0, a negative or a NULL rate (a zero row makes
   every voice video free: `job_minimum` floors only a price above 0). `tests/security/test_sec_voice_video.py` applies it.
 - **Tests.** `tests/test_voice_video_migration.py`, `tests/security/test_sec_voice_video.py` (prices, refusals before any hold,
   another organization's recording, the worker's side, every earlier capability answered as before on a corpus, the API list, grants,
