@@ -4301,6 +4301,8 @@ export const en = {
     priceAtCheckout: "Price shown at checkout",
     minutes: "≈ {m} min of finished video at the current per-minute rate",
     sandbox: "Sandbox · test payments only",
+    /** In place of Buy and Subscribe while payments are in test mode, for anyone but the platform admin. */
+    purchasesSoon: "Purchases open soon",
     taxNote: "The final price, including any tax that applies where you live, is shown in Paddle's checkout before you pay.",
     buySignedOut: "Sign in to buy",
     buySignedIn: "Buy credits",
