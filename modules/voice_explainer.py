@@ -498,8 +498,9 @@ def build_props(*, look: str, duration_s: float, words: Sequence[Word], scenes: 
 def audio_seconds(path: Path) -> float:
     """The recording's length from ffprobe. Unreadable is a refusal, never 'some length'."""
     try:
-        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-                             capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+        out = subprocess.run(["ffprobe", "-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration",
+                              "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, timeout=60, check=True, env=tool_env()).stdout.strip()
     except (OSError, subprocess.SubprocessError) as e:
         raise ExplainerError(f"cannot read {path} with ffprobe ({type(e).__name__}): is it an audio file?") from None
     d = _num(out)
@@ -546,6 +547,17 @@ def plan_chunks(scenes: Sequence[Mapping], duration_s: float, fps: int, *, targe
             first = cut
     chunks.append((first, total - 1))
     return chunks
+
+
+#: The whole render's budget (bundle, chunks, sound, join), scaled with the recording: the paid adapter
+#: (modules/capabilities/voice_video.py) and tools/voice_to_video.py use the same one, so a length the Studio sells is a
+#: length the tool can render too (a flat 1800 s could not finish 600 s, measured on #769).
+RENDER_TIMEOUT_FLOOR_S = 600
+RENDER_TIMEOUT_PER_SECOND = 6
+
+
+def render_timeout_s(duration_s: float) -> float:
+    return RENDER_TIMEOUT_FLOOR_S + RENDER_TIMEOUT_PER_SECOND * float(duration_s or 0)
 
 
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
@@ -703,6 +715,12 @@ _RENDER_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "NODE_OPTIONS", 
 
 def _render_env() -> dict:
     return {k: v for k, v in os.environ.items() if k in _RENDER_ENV_KEYS}
+
+
+def tool_env() -> dict:
+    """The environment for ffmpeg / ffprobe on a recording: the same trimmed one the render gets, so no provider key or
+    service key ever reaches a process that reads a member's file (Breach M-1)."""
+    return _render_env()
 
 
 def _kill_group(proc) -> None:

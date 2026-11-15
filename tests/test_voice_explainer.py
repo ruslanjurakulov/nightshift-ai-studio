@@ -210,6 +210,15 @@ class TwinWithTypeScript(unittest.TestCase):
 
 
 class Cli(unittest.TestCase):
+    def test_the_tool_renders_with_the_same_length_scaled_budget_as_the_paid_adapter(self):
+        # Breach L-3: a flat 1800 s could not finish a 600 s recording; the tool and the Studio share one budget.
+        from modules.capabilities import voice_video as vv
+        self.assertGreaterEqual(ve.render_timeout_s(ve.MAX_SECONDS), 2700)
+        self.assertEqual(vv.RENDER_TIMEOUT_FLOOR_S + vv.RENDER_TIMEOUT_PER_SECOND * 100, ve.render_timeout_s(100))
+        src = (ROOT / "tools" / "voice_to_video.py").read_text(encoding="utf-8")
+        self.assertIn("timeout_s=ve.render_timeout_s(duration)", src)
+
+
     def test_a_missing_recording_or_too_long_one_is_refused_before_anything_runs(self):
         with TemporaryDirectory() as d:
             rc = voice_to_video.main(["--audio", str(Path(d) / "none.mp3"), "--out", str(Path(d) / "o.mp4")])

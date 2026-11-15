@@ -734,6 +734,17 @@ class CreativeWorker:
                 # Every free thread would otherwise claim this same oldest job again at once.
                 self.sleep(BUSY_PAUSE_SECONDS)
             return outcome
+        # The hold is started (and checked) now, not when the slot frees hours later: a started hold does not run out
+        # while the job waits, and one that is already closed fails the job at once with its own reason instead of
+        # after the wait.
+        try:
+            self._check_hold(job)
+        except _Refused as r:
+            self._fail(job_id, r.code, r.message)
+            return f"failed:{r.code}"
+        except CreativeUnavailable as e:
+            logger.warning("job %s: %s; left for the stale sweep", job_id, e)
+            return "left"
         beat = _Heartbeat(self.queue, job_id, self.worker_id, self.heartbeat_seconds)
         beat.__enter__()
         self._parked.append((job, beat))
@@ -1174,26 +1185,30 @@ class CreativeWorker:
         ref = job.get("credit_ref")
         if credit_rules.is_exempt(org) or quoted <= 0:
             return
+        # A serial job (the voice video) can wait hours for the render slot, far past an unstarted hold's 3-hour life, and
+        # its work is a paid transcription plus our own render. With enforcement off a vendor job risks minutes; this one
+        # would be a free video, so its hold is checked whatever NIGHTSHIFT_CREDITS_ENFORCE says.
+        strict = self.enforce or is_serial(job)
         if not ref:
-            if self.enforce:
+            if strict:
                 raise _Refused("no_credit_hold", "the job has no credit hold")
             return
         if self.credits is None:
-            if self.enforce:
+            if strict:
                 raise _Refused("credits_unavailable", "this worker cannot check credit holds")
             return
         try:
             amount = self.credits.start(str(ref), org)
         except credit_rules.CreditsUnavailable as e:
-            if self.enforce:
+            if strict:
                 raise _Refused("credits_unavailable", f"credits are unavailable ({e})") from None
             logger.warning("job %s: credits unavailable (%s); enforcement is off", job.get("id"), e)
             return
         if amount is None:
-            if self.enforce:
+            if strict:
                 raise _Refused("hold_not_open", "the credit hold is not open (expired or settled)")
             return
-        if self.enforce and float(amount) + 1e-9 < quoted:
+        if strict and float(amount) + 1e-9 < quoted:
             raise _Refused("hold_below_quote", "the credit hold is smaller than the quote")
 
     def _poll(self, job: Mapping[str, Any], request: GenerationRequest,

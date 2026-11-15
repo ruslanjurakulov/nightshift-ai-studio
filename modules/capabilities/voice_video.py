@@ -61,6 +61,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Mapping, Optional, Sequence
 
+from modules import ffmpeg_limits
+from modules import media_library as ml
 from modules import voice_explainer as ve
 from modules.capabilities.base import (
     E_BAD_REQUEST,
@@ -97,8 +99,8 @@ SFX_DIR = Path(__file__).resolve().parents[2] / "assets" / "sfx"
 BROWSER_ENV = "CHRONOS_REMOTION_BROWSER"
 #: Seconds a render may take: a floor for the bundle and the browser's start, plus a multiple of the recording. The
 #: measured rate is ~3.4 s of render per second of narration on 4 cores (docs/VOICE_EXPLAINER.md, "Capacity").
-RENDER_TIMEOUT_FLOOR_S = 600
-RENDER_TIMEOUT_PER_SECOND = 6
+RENDER_TIMEOUT_FLOOR_S = ve.RENDER_TIMEOUT_FLOOR_S
+RENDER_TIMEOUT_PER_SECOND = ve.RENDER_TIMEOUT_PER_SECOND
 #: The decoded copy every later step reads (the render's public name too).
 NARRATION_FILE = "narration.wav"
 #: Seconds the decode may take: ten minutes of any codec decode in seconds on one core; more is a stuck machine.
@@ -158,12 +160,34 @@ def installed_family(name: str = FONT_FAMILY) -> Optional[str]:
     return out.stdout.strip() if out.returncode == 0 else None
 
 
+#: The member's recording is copied by the worker as ``source`` + the suffix of its sniffed type
+#: (media_library.copy_source, MEDIA_SOURCE_SUFFIX): the suffix names that type, and the type names the demuxer.
+_SUFFIX_DEMUXER = {suffix: ml.DEMUXER[mime] for mime, suffix in ml.MEDIA_SOURCE_SUFFIX.items() if mime in ml.DEMUXER}
+
+
 def decode_to_wav(src: Path, dst: Path) -> None:
     """The recording's first audio stream as a PCM WAV at ``dst`` (its own rate and channels). Raises AdapterError, named:
-    no ffmpeg is the operator's fix, a file that does not decode is the person's."""
-    cmd = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(src), "-map", "0:a:0", "-vn", "-c:a", "pcm_s16le", str(dst)]
+    no ffmpeg is the operator's fix, a file that does not decode is the person's.
+
+    A member's file is decoded under the library's own rule for "every ffmpeg that decodes member media" (Breach M-1): the
+    demuxer forced to the sniffed type (no probing, so a playlist or concat script cannot pass for audio), only the
+    ``file`` protocol (the file cannot make ffmpeg open other files or URLs), the address-space and thread limits, an
+    output no longer than the longest recording sold plus the length tolerance twice (a header that understates the
+    length cannot fill the disk), and an environment without the worker's keys."""
+    demuxer = _SUFFIX_DEMUXER.get(src.suffix.lower())
+    if demuxer is None:
+        raise AdapterError(E_BAD_REQUEST, "the recording's type is not one a voice video decodes; nothing was charged: "
+                                          "export it again as MP3, M4A or WAV and upload that", not_accepted=True)
+    if shutil.which("ffmpeg") is None:
+        raise AdapterError(E_NOT_CONFIGURED, "ffmpeg is not on PATH on this worker (the worker image installs it); nothing "
+                                             "was charged", not_accepted=True)
+    cap = ve.MAX_SECONDS + 2 * LENGTH_TOLERANCE_S
+    cmd = ffmpeg_limits.limited_argv([
+        "ffmpeg", "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file", "-f", demuxer,
+        *ffmpeg_limits.decode_thread_options(), "-i", str(src), "-t", f"{cap:.3f}",
+        "-map", "0:a:0", "-vn", "-c:a", "pcm_s16le", str(dst)])
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=DECODE_TIMEOUT_S)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=DECODE_TIMEOUT_S, env=ve.tool_env())
     except FileNotFoundError:
         raise AdapterError(E_NOT_CONFIGURED, "ffmpeg is not on PATH on this worker (the worker image installs it); nothing "
                                              "was charged", not_accepted=True) from None
@@ -343,8 +367,13 @@ class VoiceVideoAdapter(HttpAdapter):
             # The decode just wrote this file: not measuring it is this machine's fault, not the recording's.
             raise AdapterError(E_BAD_RESPONSE, "the worker decoded the recording but could not measure it; nothing was "
                                                "charged", not_accepted=True) from None
+        # The length the job was PRICED on (its frozen quote, creative_jobs.quantity), not a later reading of the library:
+        # a job without one was not priced by the second and is not rendered.
         priced = request.source_seconds
-        if priced is not None and abs(duration - float(priced)) > LENGTH_TOLERANCE_S:
+        if priced is None:
+            raise AdapterError(E_NOT_CONFIGURED, "the job carries no priced length, so the recording cannot be checked against "
+                                                 "what was sold; nothing was charged", not_accepted=True)
+        if abs(duration - float(priced)) > LENGTH_TOLERANCE_S:
             # The job was priced on the library's length: a file of another length is not the recording that was sold.
             raise AdapterError(E_BAD_REQUEST, f"the recording decodes to {duration:.1f} s but the library measured "
                                               f"{float(priced):.1f} s, the length it was priced on; nothing was charged: "
@@ -374,7 +403,7 @@ class VoiceVideoAdapter(HttpAdapter):
         except ve.ExplainerError as e:
             raise AdapterError(E_BAD_REQUEST, f"the recording cannot be made into a video: {e}"[:500], not_accepted=True) from None
         out = work / "voice_video.mp4"
-        timeout = RENDER_TIMEOUT_FLOOR_S + RENDER_TIMEOUT_PER_SECOND * duration
+        timeout = ve.render_timeout_s(duration)
         self._check_stop("before this video was rendered")
         logger.info("voice video: %d words, %d scenes, %.1f s, look %s: rendering", len(words), len(scenes), duration, look)
         try:
