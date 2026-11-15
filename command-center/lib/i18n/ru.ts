@@ -277,6 +277,7 @@ export const ru: Dictionary = {
     scrollCode: "Пример кода (прокручивается вбок)",
   },
   account: {
+    personalStudio: "Личная студия",
     open: "Открыть меню аккаунта",
     title: "Ваш аккаунт",
     signedInAs: "Вы вошли как",

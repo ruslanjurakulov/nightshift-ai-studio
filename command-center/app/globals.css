@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./premium-shell.css";
 
 /* ── Nightshift — "Master control, 03:00" ───────────────────────────────────
    The identity (docs/design/IDENTITY.md): a broadcast master-control room in

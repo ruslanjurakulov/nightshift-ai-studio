@@ -293,6 +293,7 @@ export const en = {
     scrollCode: "Code example (scrolls sideways)",
   },
   account: {
+    personalStudio: "Personal Studio",
     open: "Open account menu",
     title: "Your account",
     signedInAs: "Signed in as",

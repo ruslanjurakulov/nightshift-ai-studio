@@ -11,6 +11,7 @@ import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import { useShell } from "@/components/shell/ShellContext";
 import { type AccountPlan } from "@/lib/account";
 import { Avatar } from "@/components/account/Avatar";
+import { Wordmark } from "@/components/site/Wordmark";
 import { nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 
@@ -157,7 +158,7 @@ function StudioRail({ operator }: { operator: boolean }) {
   return (
     <nav aria-label={r.label} className={operator ? "cv-rail is-operator" : "cv-rail"} data-studio-rail="">
       <Link href={path(items[0].href)} className="cv-rail-logo" aria-label={t.brand.name} title={t.brand.name}>
-        N
+        <Wordmark mark height={24} />
       </Link>
       {items.map(({ href, key, label }) => {
         const Icon = ICONS[key];

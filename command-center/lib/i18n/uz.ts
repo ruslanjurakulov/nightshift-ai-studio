@@ -277,6 +277,7 @@ export const uz: Dictionary = {
     scrollCode: "Kod namunasi (yon tomonga suriladi)",
   },
   account: {
+    personalStudio: "Shaxsiy studiya",
     open: "Hisob menyusini ochish",
     title: "Hisobingiz",
     signedInAs: "Kirgan hisob",

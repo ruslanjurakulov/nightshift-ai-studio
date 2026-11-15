@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Activity, Coins, Gift, LogOut, Settings, X } from "lucide-react";
+import { Activity, Clapperboard, Coins, Gift, LogOut, Settings, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -11,13 +11,13 @@ import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
 import { planName, type AccountPlan } from "@/lib/account";
 import { Avatar } from "@/components/account/Avatar";
+import { Wordmark } from "@/components/site/Wordmark";
 import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSignOut } from "@/components/account/AccountParts";
 
 /**
- * The account panel and the button that opens it: the sidebar's user card
- * (customers, from `lg`) and the operator's round avatar in the top bar. A
- * customer's phone has no button: its bottom bar's last tab is Settings, whose
- * Account section (AccountSection) shows the same facts and controls.
+ * The shared account panel: the top-right brand N opens it at every width.
+ * Profile identity and photo remain inside the panel and in Settings.
+ * The card variant remains compatible with existing consumers.
  *
  * The panel: who is signed in,
  * their plan and credits, the publishing accounts connected to the workspace,
@@ -156,9 +156,9 @@ export function AccountMenu({
         aria-controls={open ? panelId : undefined}
         aria-label={t.account.open}
         title={shownEmail ?? undefined}
-        className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center p-0"
+        className="ns-account-trigger btn-sky is-quiet pill inline-flex size-11 shrink-0 items-center justify-center p-0"
       >
-        <Avatar email={shownEmail} version={avatarV} size={32} />
+        <Wordmark mark height={22} />
       </button>
       )}
 
@@ -167,12 +167,13 @@ export function AccountMenu({
           ref={panelRef}
           id={panelId}
           role="dialog"
+          data-premium-account=""
           aria-modal="false"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : "right-0 top-full mt-3 max-h-[calc(100dvh-110px)]"} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
+          className={`ns-account-panel ${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : "right-0 top-full mt-3 max-h-[calc(100dvh-110px)]"} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
         >
-          <header className="flex items-start gap-3">
+          <div className="flex items-start gap-3">
             <Avatar email={shownEmail} version={avatarV} size={40} ring />
             <div className="min-w-0 flex-1">
               <h2 id={titleId} className="text-xs text-[var(--color-muted)]">
@@ -191,7 +192,7 @@ export function AccountMenu({
             >
               <X aria-hidden className="size-4" />
             </button>
-          </header>
+          </div>
 
           {state === "failed" && (
             <p role="status" className="text-xs text-[var(--color-warn)]">
@@ -240,9 +241,9 @@ export function AccountMenu({
             <ConnectedAccountsList data={data} state={state} onNavigate={() => close(false)} />
           </section>
 
-          {/* Language and theme live here on a phone; the header bar has room for
-              them from `sm` up. */}
-          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:hidden">
+          {/* One preference surface at every width keeps the header compact without
+              hiding locale or the independent Mobile/Desktop layout preference. */}
+          <div className="ns-account-preferences flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
             <div role="group" aria-label={t.common.language} className="flex gap-1.5">
               {LOCALES.map((l) => (
                 <button
@@ -258,11 +259,16 @@ export function AccountMenu({
                 </button>
               ))}
             </div>
-            <ThemeToggle showLabel />
+            <ThemeToggle choices />
             <ViewModeToggle showLabel />
           </div>
 
-          <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">
+          <nav aria-label={t.account.title} className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">
+            {/* Owner Command awaits a separately verified owner capability (D2). */}
+            <Link href={path("/studio")} onClick={() => close(false)} className="side-link">
+              <Clapperboard aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+              <span>{t.account.personalStudio}</span>
+            </Link>
             <Link href={path("/usage")} onClick={() => close(false)} className="side-link">
               <Activity aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.account.usage}</span>

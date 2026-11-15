@@ -174,21 +174,40 @@ describe("the account menu", () => {
     expect(screen.getByRole("button", { name: en.account.open }).querySelector("img")).toBeNull();
   });
 
-  it("the operator's bar button shows the photo", () => {
+  it("the operator's single header N opens the panel with the versioned private photo", async () => {
     render(wrap(<Header operator credits={null} email={EMAIL} avatarV={V} />));
     const button = screen.getByRole("button", { name: en.account.open });
-    expect(button.querySelector("img")?.getAttribute("src")).toBe(PHOTO);
+    expect(screen.getAllByRole("button", { name: en.account.open })).toHaveLength(1);
+    expect(button.querySelector('[data-wordmark="mark"]')).not.toBeNull();
+    expect(button.querySelector("img")).toBeNull();
+    fireEvent.click(button);
+    const panel = await screen.findByRole("dialog");
+    expect(panel.querySelector("img")?.getAttribute("src")).toBe(PHOTO);
+    expect(panel.querySelector("img")?.getAttribute("alt")).toBe("");
   });
 
-  it("the customer's top bar still has no account button, with or without a photo", () => {
-    render(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={V} />));
-    expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
+  it("the customer's header N preserves the photo version as it changes or is removed", async () => {
+    const { rerender } = render(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={V} />));
+    expect(screen.getAllByRole("button", { name: en.account.open })).toHaveLength(1);
+    const button = screen.getByRole("button", { name: en.account.open });
+    expect(button.querySelector('[data-wordmark="mark"]')).not.toBeNull();
+    expect(button.querySelector("img")).toBeNull();
+    fireEvent.click(button);
+    const panel = await screen.findByRole("dialog");
+    expect(panel.querySelector("img")?.getAttribute("src")).toBe(PHOTO);
+    rerender(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={V + 5} />));
+    expect(panel.querySelector("img")?.getAttribute("src")).toBe(`/api/avatar?v=${V + 5}`);
+    rerender(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={null} />));
+    expect(panel.querySelector("img")).toBeNull();
+    expect(panel.querySelector("[data-avatar]")?.textContent).toBe("A");
+    expect(screen.getAllByRole("button", { name: en.account.open })).toHaveLength(1);
   });
 
-  it("the sidebar (from lg) hands the card the same version", () => {
+  it("the sidebar has no duplicate account trigger while Settings retains the versioned photo", () => {
     render(wrap(<SideNav email={EMAIL} avatarV={V} plan={null} />));
-    const card = document.querySelector("[data-shell-usercard]") as HTMLElement;
-    expect(card.querySelector("img")?.getAttribute("src")).toBe(PHOTO);
+    expect(document.querySelector("[data-shell-usercard]")).toBeNull();
+    expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
+    expect(settingsTab().querySelector("img")?.getAttribute("src")).toBe(PHOTO);
   });
 });
 
