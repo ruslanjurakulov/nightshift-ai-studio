@@ -14,6 +14,7 @@
  */
 
 import { extraOffFields } from "@/lib/credits";
+import { parseFailedJobLimit } from "@/lib/creative/failed-job-limit";
 
 export type DbError = { code?: string; message?: string; details?: string | null; hint?: string | null };
 export type DbAnswer = { data: unknown; error: DbError | null };
@@ -258,6 +259,8 @@ export const CREATIVE_ERRORS = [
   "unpriced",
   "capability_not_supported",
   "source_unavailable",
+  // 0174: the model requires a rights acknowledgement for an input, and this person has not given it at the current text version.
+  "acknowledgement_required",
   "style_unavailable",
   "mode_not_supported",
   // 0075: the automatic choice changed since the quote; nothing fits these settings.
@@ -265,6 +268,8 @@ export const CREATIVE_ERRORS = [
   "no_model_available",
   "insufficient_credits",
   "run_limit_reached",
+  // 0177: too many failed or refused generations in this organization in 24 hours; nothing was held.
+  "failed_job_limit",
   "forbidden",
   "not_found",
   "not_cancellable",
@@ -322,6 +327,8 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   // 0046: the picture is not this organization's, was deleted, or is not a
   // usable image. Another organization's id reads exactly like a missing one.
   source_unavailable: { status: 422, code: "source_unavailable" },
+  // 0174: nothing was priced or held; the detail names kind=… version=… subject=…, which the Studio's dialog asks about.
+  acknowledgement_required: { status: 428, code: "acknowledgement_required" },
   // 0048: the style kit is not this organization's or no longer exists —
   // another organization's kit reads exactly like a missing one.
   style_unavailable: { status: 422, code: "style_unavailable" },
@@ -358,6 +365,17 @@ export function mapCreativeError(error: DbError): CreativeResult {
       });
     }
     case "NS429": {
+      // 0177: 5 failed or refused jobs in 24 hours. The detail (failed=… limit=… retry_at=…) is passed on for the sentence;
+      // the numbers are null, never 0, when it cannot be read.
+      if (word === "failed_job_limit") {
+        const p = parseFailedJobLimit(error.details);
+        return fail(429, "failed_job_limit", {
+          failed: p ? p.failed : null,
+          limit: p ? p.limit : null,
+          retry_at: p ? p.retryAt : null,
+          ...(detail ? { detail } : {}),
+        });
+      }
       // 0034: the plan's parallel runs are all holding credits.
       const m = /active=(\d+)\s+limit=(\d+)/.exec(error.details ?? "");
       return fail(429, "run_limit_reached", { active: m ? Number(m[1]) : null, limit: m ? Number(m[2]) : null });

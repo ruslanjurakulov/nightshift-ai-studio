@@ -321,8 +321,11 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: Migrations that call 0124's model_is_available() and refuse to apply without it (0151, the Studio's probe seed; 0162, the MCP
 #: Studio tools' API functions, whose guard names it): a sequence that leaves 0124 out leaves these out too, and puts them back
 #: after it, in this order. 0164 (the site's live counters) does not need 0124; it is listed so that a sequence which leaves 0124
-#: out and puts it back still ends on the newest file, as build_sequence() does.
-ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql")
+#: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
+#: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too; 0177 (the failed-job
+#: cap) replaces 0174's bodies and its guard refuses any other, so it follows 0174 out and back.
+ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
+           "0174_rights_acknowledgement.sql", "0177_failed_job_cap.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -606,6 +609,65 @@ def put_back_0171(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0171(conn):
         conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
+
+
+MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"
+ROLLBACK_0174 = REPO / "docs" / "sql" / "rollback_0174_rights_acknowledgement.sql"
+
+
+def has_0174(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.acknowledge_rights(text, text, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0174(conn_or_session) -> None:
+    """0174 replaces create_creative_job() (0075's body), workflow_quote_steps() and start_workflow_run() (0073's) and
+    api_creative_refusal() (0124's). 0124's drift guard refuses any body but its own, so a test that replays 0124 takes 0174 off
+    first. 0075 and 0073 do NOT refuse: 0075's guard is a position() check that 0174's body also passes, and 0073 has none, so
+    replaying either over 0174 silently puts the old body back and removes the gate. A test that replays them takes 0174 off first
+    too, and puts it back after. The rollback brings the four earlier bodies back and drops 0174's functions and its requirement
+    guard, while rights_acknowledgements (the record, with its append-only triggers), rights_acknowledgement_kinds and
+    model_registry.requires_acknowledgement stay. put_back_0174 applies 0174 again; it picks the kept tables up as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    # 0177 sits on 0174's bodies, and 0174's rollback refuses any body but 0174's: 0177 comes off first.
+    take_off_0177(conn)
+    if has_0174(conn):
+        text = ROLLBACK_0174.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0174(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0174(conn):
+        conn.execute(MIGRATION_0174.read_text(encoding="utf-8"))
+    put_back_0177(conn)  # and 0177 on 0174's bodies again
+
+
+MIGRATION_0177 = MIGRATIONS / "0177_failed_job_cap.sql"
+ROLLBACK_0177 = REPO / "docs" / "sql" / "rollback_0177_failed_job_cap.sql"
+
+
+def has_0177(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.creative_failed_job_gate(uuid)') is not null").fetchone()[0])
+
+
+def take_off_0177(conn_or_session) -> None:
+    """0177 replaces create_creative_job(), start_workflow_run() and api_creative_refusal() (0174's bodies) and
+    workflow_advance_locked() (0083's). Its rollback brings the four earlier bodies back and drops creative_failed_job_codes(),
+    creative_failed_job_gate() and the failed-window index; 0177 writes no row. take_off_0174 calls this first, because 0174's
+    rollback refuses a body that is not 0174's. 0083 has no guard: a test that replays it takes 0177 off first and puts it back
+    after, or the step's wait reads run_limit_reached again."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0177(conn):
+        text = ROLLBACK_0177.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0177(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0177(conn) and has_0174(conn):
+        conn.execute(MIGRATION_0177.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

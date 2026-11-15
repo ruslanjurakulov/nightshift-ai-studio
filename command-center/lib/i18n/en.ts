@@ -6,6 +6,7 @@ import { aiLabelEn } from "./ai-label/en";
 import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
+import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { studioHubEn } from "./studio-hub/en";
@@ -3180,6 +3181,7 @@ export const en = {
   madeForKids: madeForKidsEn,
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
+  rightsAck: rightsAckEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",
@@ -3742,16 +3744,23 @@ export const en = {
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",
       source_unavailable: "This picture cannot be used: it is not in your organization's library, was deleted, or is not a PNG, JPEG or WebP image.",
+      acknowledgement_required: "This model needs you to confirm your rights to the picture first. Nothing was started or charged.",
       style_unavailable: "This style kit cannot be used: it is not in your organization or was deleted. Pick another style, or None.",
       mode_not_supported: "Only the model you pick is used; automatic model choice is not available yet.",
       route_changed: "The automatic choice changed since the price was shown. Check the new pick and its price, then confirm again.",
       no_model_available: "No available model can make this with these settings. Change a setting, or pick a model yourself.",
       insufficient_credits: "Not enough credits. Add credits or choose a shorter or cheaper generation.",
       run_limit_reached: "Your plan's parallel generations are all running. Wait for one to finish, or upgrade the plan.",
+      failed_job_limit: "Too many generations in your organization failed or were refused in the last 24 hours, so new ones are paused for now. Nothing was held or charged. Change the prompt or the input file, or contact support.",
       forbidden: "You don't have access to this workspace.",
       not_found: "This generation does not exist or belongs to another organization.",
       not_cancellable: "The provider is already working on this generation, so it can no longer be cancelled.",
       failed: "Something went wrong. Try again.",
+    },
+    // 0177: the count, the limit and when the window frees (UTC), read from the detail of the refusal; without it no number.
+    failedJobLimit: {
+      counted: "{n} generations in your organization failed or were refused in the last 24 hours (the limit is {limit}), so new ones are paused until {date} {time} UTC. Nothing was held or charged. Change the prompt or the input file: a refusal usually means the provider's safety filter turned it down. If this looks wrong, contact support.",
+      unknown: "Too many generations in your organization failed or were refused in the last 24 hours, so new ones are paused for now. Nothing was held or charged. Change the prompt or the input file, or contact support.",
     },
   },
   gen: {
@@ -5293,6 +5302,7 @@ export const en = {
       totalTitle: "Total price",
       totalValue: "{n} credits",
       noTotal: "No price",
+      ackStepsWhy: "Step {steps} uses a model that asks you to confirm your rights to its input file, which a workflow cannot ask. Make that step in the Studio. Nothing is started.",
       noTotalWhy: "Run now is off because a step has no price yet: {steps}. Nothing is guessed and nothing is started.",
       stepLine: "Step {n} · {tool}",
       stepPrice: "{n} credits",
@@ -5337,6 +5347,7 @@ export const en = {
       failedBecause: "This step stopped: {why}",
       newRun: "Run it again",
       waitingSlot: "Step {n} is waiting to start: everything your plan can run at once is busy. It starts by itself once that finishes, while this page is open.",
+      waitingFailedJobs: "Step {n} is waiting to start: too many generations in your organization failed or were refused in the last 24 hours. It starts by itself once the oldest of them is a day old, while this page is open.",
       waitingCredits: "Step {n} is waiting for credits: fewer are available than its price. Add credits and it starts by itself, while this page is open.",
       waitingUntil: "If it still cannot start by {when}, the run stops there and nothing more is charged.",
       waitingUntilUnknown: "If it still cannot start within a day of the price being confirmed, the run stops there and nothing more is charged.",
@@ -5352,10 +5363,12 @@ export const en = {
       queued: "In the queue",
     },
     waitReasons: {
+      failed_job_limit: "too many generations in your organization failed or were refused in the last 24 hours",
       run_limit_reached: "everything your plan can run at once is busy",
       insufficient_credits: "there are not enough credits for it right now",
     },
     stepErrors: {
+      failed_job_limit: "too many generations in your organization had failed or been refused in the last 24 hours",
       insufficient_credits: "there were not enough credits when this step was due",
       price_changed: "its price went above the price you confirmed",
       confirmation_expired: "the price was confirmed more than a day ago",

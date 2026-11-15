@@ -921,6 +921,15 @@ def fail_with(db, code, model="img-a1", n=1, tag="al"):
     return ids
 
 
+def out_of_the_failed_job_window(db, ids):
+    """Moves these failed jobs out of 0177's 24-hour failed-job window (and the alert's), the way this module ages jobs."""
+    db.su("alter table public.creative_jobs disable trigger user")
+    try:
+        db.su("update public.creative_jobs set finished_at = now() - interval '25 hours' where id = any(%s::uuid[])", [ids])
+    finally:
+        db.su("alter table public.creative_jobs enable trigger user")
+
+
 def alerts(db):
     return db.su("select provider, kind, status, failures, window_minutes from public.model_availability_alerts order by id")
 
@@ -952,7 +961,10 @@ def test_alert_other_failures_do_not_count_a_bad_key_needs_the_opposite_remedy(d
     enforce(db)
     db.su("update public.model_availability_settings set auto_suggest = true")
     for code in ("auth", "rate_limited", "unavailable", "policy", "bad_request", "timeout", "not_configured"):
-        fail_with(db, code, "img-a1", 3)
+        ids = fail_with(db, code, "img-a1", 3)
+        # 0177 counts policy and bad_request against the organization (5 in 24 hours stop its new jobs). This module shares one
+        # organization, and what is tested here is the provider alert, not that cap: these leave the cap's window at once.
+        out_of_the_failed_job_window(db, ids)
     assert alerts(db) == []
 
 
@@ -1027,6 +1039,9 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
     # 0125 sits on 0124's bodies; 0124's drift guard refuses any other text, so take 0125 off for the replay and put it back.
     # 0139 sits on 0125's creative_price, and 0125's rollback refuses any other body: it comes off first and goes back last.
     # 0149 sits on 0139's the same way, 0153 on 0149's and 0155 on 0153's: off before it, back after it.
+    # 0174 sits on 0124's api_creative_refusal, and 0124's drift guard refuses any other body: off before everything else.
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0174(c)
     db.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
     db.su(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
     db.su(sec_db.rollback_0155_body())
@@ -1046,6 +1061,8 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
         db.su(sec_db.MIGRATION_0155.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))  # and 0159 back on it
+        with psycopg.connect(db.dsn, autocommit=True) as c:
+            sec_db.put_back_0174(c)  # and 0174 last, on 0124's api_creative_refusal again
     assert db.su("select enforced from public.model_availability_settings") == [(True,)], "the seed row is on conflict do nothing"
     assert db.su("select enabled, reason, note from public.model_availability where target = 'img-z2'") == [(False, "other", "kept")]
 

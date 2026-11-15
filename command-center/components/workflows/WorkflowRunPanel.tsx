@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Play } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { failedJobLimitText } from "@/lib/creative/failed-job-limit";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
 import { SourcePicker } from "@/components/studio/SourcePicker";
@@ -117,13 +118,17 @@ export function WorkflowRunPanel({
         void requote(values);
         return;
       }
-      setError(workflowErrorMessage(t, out.error));
+      // 0177: the organization's failed or refused generations reached the limit: the count and when it frees, from the detail.
+      const detail = (out.body as { detail?: unknown } | undefined)?.detail;
+      setError(out.error === "failed_job_limit" ? failedJobLimitText(t, detail) : workflowErrorMessage(t, out.error));
       return;
     }
     router.push(path(`/workflows/runs/${out.value.id}`));
   }
 
   const unpricedList = quote ? quote.unpriced_steps.map((i) => i + 1).join(", ") : "";
+  // 0174: steps refused because their model asks for a rights acknowledgement, which only the Studio can ask: the remedy, not "no price".
+  const ackList = quote ? quote.steps.filter((s) => s.reason === "acknowledgement_required").map((s) => s.step_index + 1).join(", ") : "";
 
   return (
     <div className="flex flex-col gap-8">
@@ -205,7 +210,7 @@ export function WorkflowRunPanel({
             ) : null}
             {block === "unpriced" ? (
               <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
-                {fmt(r.noTotalWhy, { steps: unpricedList })}
+                {ackList ? fmt(r.ackStepsWhy, { steps: ackList }) : fmt(r.noTotalWhy, { steps: unpricedList })}
               </p>
             ) : null}
             {block === "insufficient" && total !== null ? (

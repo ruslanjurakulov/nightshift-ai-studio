@@ -6,6 +6,7 @@ import { aiLabelUz } from "./ai-label/uz";
 import { madeForKidsUz } from "./made-for-kids/uz";
 import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
+import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { studioHubUz } from "./studio-hub/uz";
@@ -3162,6 +3163,7 @@ export const uz: Dictionary = {
   madeForKids: madeForKidsUz,
   channelRisk: channelRiskUz,
   customVoice: customVoiceUz,
+  rightsAck: rightsAckUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",
@@ -3724,16 +3726,23 @@ export const uz: Dictionary = {
       unpriced: "Bu modelning hali narxi yoʻq, shuning uchun uni ishlatib boʻlmaydi.",
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
       source_unavailable: "Bu rasmdan foydalanib boʻlmaydi: u tashkilotingiz mediatekasida yoʻq, oʻchirilgan yoki PNG, JPEG yoki WebP emas.",
+      acknowledgement_required: "Avval bu rasmga huquqingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
       style_unavailable: "Bu uslub toʻplamidan foydalanib boʻlmaydi: u tashkilotingizda yoʻq yoki oʻchirilgan. Boshqa uslubni yoki «Uslubsiz»ni tanlang.",
       mode_not_supported: "Faqat siz tanlagan model ishlatiladi; modelni avtomatik tanlash hali mavjud emas.",
       route_changed: "Narx koʻrsatilgandan keyin avtomatik tanlov oʻzgardi. Yangi model va narxni tekshirib, qayta tasdiqlang.",
       no_model_available: "Bu sozlamalar bilan buni hech bir mavjud model qila olmaydi. Sozlamani oʻzgartiring yoki modelni oʻzingiz tanlang.",
       insufficient_credits: "Kredit yetarli emas. Kredit qoʻshing yoki qisqaroq yoki arzonroq generatsiyani tanlang.",
       run_limit_reached: "Tarifingizdagi barcha parallel generatsiyalar band. Bittasi tugashini kuting yoki tarifni oshiring.",
+      failed_job_limit: "Soʻnggi 24 soatda tashkilotingizda juda koʻp generatsiya xato bilan tugadi yoki rad etildi, shuning uchun yangilari hozircha toʻxtatildi. Hech narsa band qilinmadi va yechilmadi. Promptni yoki manba faylni oʻzgartiring yoki qoʻllab-quvvatlash xizmatiga yozing.",
       forbidden: "Sizda bu ish maydoniga ruxsat yoʻq.",
       not_found: "Bu generatsiya mavjud emas yoki boshqa tashkilotga tegishli.",
       not_cancellable: "Provayder bu generatsiya ustida ishlayapti, endi uni bekor qilib boʻlmaydi.",
       failed: "Nimadir xato ketdi. Qayta urinib koʻring.",
+    },
+    // 0177: the count, the limit and when the window frees (UTC), read from the detail of the refusal; without it no number.
+    failedJobLimit: {
+      counted: "Soʻnggi 24 soatda tashkilotingizda {n} ta generatsiya xato bilan tugadi yoki rad etildi (chegara — {limit}), shuning uchun yangilari {date} {time} UTC gacha toʻxtatildi. Hech narsa band qilinmadi va yechilmadi. Promptni yoki manba faylni oʻzgartiring: rad etish odatda provayderning xavfsizlik filtri uni oʻtkazmaganini bildiradi. Agar bu xato boʻlsa, qoʻllab-quvvatlash xizmatiga yozing.",
+      unknown: "Soʻnggi 24 soatda tashkilotingizda juda koʻp generatsiya xato bilan tugadi yoki rad etildi, shuning uchun yangilari hozircha toʻxtatildi. Hech narsa band qilinmadi va yechilmadi. Promptni yoki manba faylni oʻzgartiring yoki qoʻllab-quvvatlash xizmatiga yozing.",
     },
   },
   gen: {
@@ -5273,6 +5282,7 @@ export const uz: Dictionary = {
       totalTitle: "Umumiy narx",
       totalValue: "{n} kredit",
       noTotal: "Narx yoʻq",
+      ackStepsWhy: "{steps}-qadam kirish fayliga huquqingizni tasdiqlashni soʻraydigan modeldan foydalanadi, jarayon esa buni soʻray olmaydi. Bu qadamni Studiyada bajaring. Hech narsa boshlanmaydi.",
       noTotalWhy: "Ishga tushirish oʻchirilgan: qadamning narxi yoʻq — {steps}. Hech narsa taxmin qilinmaydi va hech narsa boshlanmaydi.",
       stepLine: "{n}-qadam · {tool}",
       stepPrice: "{n} kredit",
@@ -5317,6 +5327,7 @@ export const uz: Dictionary = {
       failedBecause: "Qadam toʻxtadi: {why}",
       newRun: "Qayta ishga tushirish",
       waitingSlot: "{n}-qadam boshlanishini kutmoqda: tarifingiz bir vaqtda ishga tushira oladigan hamma narsa band. U tugagach, bu sahifa ochiq tursa, qadam oʻzi boshlanadi.",
+      waitingFailedJobs: "{n}-qadam boshlanishini kutmoqda: soʻnggi 24 soatda tashkilotingizda juda koʻp generatsiya xato bilan tugadi yoki rad etildi. Ularning eng eskisiga bir kun toʻlgach, bu sahifa ochiq tursa, qadam oʻzi boshlanadi.",
       waitingCredits: "{n}-qadam kredit kutmoqda: mavjud kredit uning narxidan kam. Kredit qoʻshing — bu sahifa ochiq tursa, qadam oʻzi boshlanadi.",
       waitingUntil: "Agar u {when} gacha ham boshlana olmasa, ishga tushirish shu yerda toʻxtaydi va boshqa hech narsa yechilmaydi.",
       waitingUntilUnknown: "Agar u narx tasdiqlanganidan keyin bir kun ichida boshlana olmasa, ishga tushirish shu yerda toʻxtaydi va boshqa hech narsa yechilmaydi.",
@@ -5332,10 +5343,12 @@ export const uz: Dictionary = {
       queued: "Navbatda",
     },
     waitReasons: {
+      failed_job_limit: "soʻnggi 24 soatda tashkilotdagi juda koʻp generatsiya xato bilan tugadi yoki rad etildi",
       run_limit_reached: "tarifingiz bir vaqtda ishga tushira oladigan hamma narsa band",
       insufficient_credits: "hozir u uchun kredit yetarli emas",
     },
     stepErrors: {
+      failed_job_limit: "soʻnggi 24 soatda tashkilotdagi juda koʻp generatsiya xato bilan tugagan yoki rad etilgan edi",
       insufficient_credits: "bu qadam navbati kelganda kredit yetarli emas edi",
       price_changed: "narxi siz tasdiqlagan narxdan oshib ketdi",
       confirmation_expired: "narx bir kundan koʻproq oldin tasdiqlangan",

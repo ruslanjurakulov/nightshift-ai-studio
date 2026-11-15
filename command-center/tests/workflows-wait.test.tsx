@@ -75,7 +75,8 @@ function show(data: unknown, canAct = false, locale: "en" | "ru" | "uz" = "en") 
 
 describe("a step that waits (BR-L-011)", () => {
   it("is a pending step with a reason that passes, and only while the run is running", () => {
-    expect(WAIT_CODES).toEqual(["run_limit_reached", "insufficient_credits"]);
+    // 0177 adds the failed-job limit: it passes too (the 24-hour window moves), so the step waits under its own word.
+    expect(WAIT_CODES).toEqual(["run_limit_reached", "insufficient_credits", "failed_job_limit"]);
     expect(stepWaitCode({ status: "pending", error_code: "run_limit_reached" })).toBe("run_limit_reached");
     expect(stepWaitCode({ status: "pending", error_code: "insufficient_credits" })).toBe("insufficient_credits");
     // A refusal that does not pass is a failed step, never "waiting".
