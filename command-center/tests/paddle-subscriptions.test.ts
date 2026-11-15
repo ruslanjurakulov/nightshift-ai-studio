@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createRestStore,
   creditsForShare,
@@ -585,10 +585,10 @@ describe("discounts", () => {
 });
 
 describe("plans in sandbox (PADDLE_WEBHOOK_ENV=sandbox)", () => {
-  function deliverSandbox(store: FakeStore, body: string, testOrgs: ReadonlySet<string>) {
+  function deliverSandbox(store: FakeStore, body: string, testOrgs: ReadonlySet<string>, mode: "sandbox" | "production" | "unknown" = "sandbox") {
     return handlePaddleWebhook(
       { method: "POST", rawBody: body, signature: sign(body) },
-      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "sandbox", testOrgs },
+      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode, testOrgs },
     );
   }
 
@@ -599,6 +599,39 @@ describe("plans in sandbox (PADDLE_WEBHOOK_ENV=sandbox)", () => {
     expect(store.subs.size).toBe(0);
     expect(store.grants).toEqual([]);
     expect(store.events.get("evt_txn1")?.detail).toMatch(/PADDLE_TEST_ORG_IDS/);
+  });
+
+  it("rejected subscription state and period payment remain terminal after mode/list corrections", async () => {
+    const store = new FakeStore();
+    const state = vi.spyOn(store, "upsertSubscription");
+    const grant = vi.spyOn(store, "grantSubscriptionCredits");
+    for (const body of [subEvent("subscription.created"), planPaid()]) {
+      expect((await deliverSandbox(store, body, new Set())).body).toMatchObject({ status: "rejected" });
+      for (const mode of ["sandbox", "production", "production"] as const)
+        expect((await deliverSandbox(store, body, new Set([ORG]), mode)).body).toEqual({ ok: true, duplicate: true, status: "rejected" });
+    }
+    expect(state).not.toHaveBeenCalled();
+    expect(grant).not.toHaveBeenCalled();
+    expect(store.subs.size).toBe(0);
+    expect(store.periods.size).toBe(0);
+    expect(store.grants).toEqual([]);
+    expect([...store.events.values()].map((e) => e.status)).toEqual(["rejected", "rejected"]);
+  });
+
+  it("unknown subscription state and payment recover once each without a duplicate period grant", async () => {
+    const store = new FakeStore();
+    const state = vi.spyOn(store, "upsertSubscription");
+    const grant = vi.spyOn(store, "grantSubscriptionCredits");
+    for (const body of [subEvent("subscription.created"), planPaid()]) {
+      expect((await deliverSandbox(store, body, new Set(), "unknown")).status).toBe(503);
+      expect((await deliverSandbox(store, body, new Set(), "production")).body).toMatchObject({ status: "processed" });
+      expect((await deliverSandbox(store, body, new Set(), "production")).body).toMatchObject({ duplicate: true });
+    }
+    expect(state).toHaveBeenCalledTimes(1);
+    expect(grant).toHaveBeenCalledTimes(1);
+    expect(store.grants).toEqual(["creator:2000"]);
+    expect(store.subs.get(SUB)?.status).toBe("active");
+    expect(store.periods.size).toBe(1);
   });
 
   it("an allow-listed test workspace gets its plan and its credits", async () => {

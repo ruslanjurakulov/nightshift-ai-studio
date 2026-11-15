@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CREDIT_PACKS as WEBHOOK_PACKS,
   StoreError,
@@ -578,6 +578,48 @@ describe("sandbox mode (PADDLE_WEBHOOK_ENV)", () => {
     // The owner sets PADDLE_WEBHOOK_ENV=production and redeploys: Paddle's retry of the same event credits, once.
     expect((await deliverIn(store, completed(), "production")).body).toMatchObject({ status: "processed" });
     expect([...store.credited.values()]).toEqual([{ org: ORG, credits: 1000 }]);
+  });
+
+  it("a terminal sandbox rejection stays rejected after a mode/list correction and repeated signed replay", async () => {
+    const store = new FakeStore();
+    const grant = vi.spyOn(store, "addPurchasedCredits");
+    const body = completed();
+    expect((await deliverIn(store, body, "sandbox")).body).toMatchObject({ status: "rejected" });
+    const original = { ...store.events.get("evt_01purchase")! };
+    for (const mode of ["sandbox", "production", "production"] as const) {
+      const result = await deliverIn(store, body, mode, new Set([ORG]));
+      expect(result).toEqual({ status: 200, body: { ok: true, duplicate: true, status: "rejected" } });
+    }
+    expect(grant).not.toHaveBeenCalled();
+    expect(store.credited.size).toBe(0);
+    expect(store.events.get("evt_01purchase")).toEqual(original);
+  });
+
+  it("unknown-mode recovery calls the pack grant only once across repeated production deliveries", async () => {
+    const store = new FakeStore();
+    const grant = vi.spyOn(store, "addPurchasedCredits");
+    const body = completed();
+    expect((await deliverIn(store, body, "unknown")).status).toBe(503);
+    expect(grant).not.toHaveBeenCalled();
+    expect((await deliverIn(store, body, "production")).body).toMatchObject({ status: "processed" });
+    expect((await deliverIn(store, body, "production")).body).toMatchObject({ duplicate: true, status: "processed" });
+    expect(grant).toHaveBeenCalledTimes(1);
+    expect([...store.credited.values()]).toEqual([{ org: ORG, credits: 1000 }]);
+  });
+
+  it("an invalid signature cannot recover an unknown-mode failed event or mutate its audit state", async () => {
+    const store = new FakeStore();
+    const body = completed();
+    await deliverIn(store, body, "unknown");
+    const original = { ...store.events.get("evt_01purchase")! };
+    const grant = vi.spyOn(store, "addPurchasedCredits");
+    const result = await handlePaddleWebhook(
+      { method: "POST", rawBody: body, signature: sign(body + "tampered") },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, mode: "production", testOrgs: new Set() },
+    );
+    expect(result.status).toBe(401);
+    expect(grant).not.toHaveBeenCalled();
+    expect(store.events.get("evt_01purchase")).toEqual(original);
   });
 
   it("taking credits back is never gated: a refund lands in sandbox mode for a credited test workspace", async () => {
