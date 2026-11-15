@@ -501,6 +501,9 @@ def test_the_insert_policy_itself_refuses_a_browser_link_to_a_regeneration(conn,
         with acting(conn, sc.bob.actor) as s:
             rid = press(s, vid).rows[0][0]["id"]
         su.run("alter table public.render_jobs disable trigger render_jobs_payment_guard")
+        # This test isolates RLS, so remove both independent funding guards in
+        # the rolled-back world. Their normal enforcement is tested separately.
+        su.run("alter table public.render_jobs disable trigger zz_render_jobs_priced_thumbnail_guard")
         with acting(conn, sc.bob.actor) as s:
             linked = s.run("insert into public.render_jobs (channel_id, kind, params, requested_by, "
                            "scene_regeneration_id) values (%s, 'daily', '{}'::jsonb, auth.uid(), %s)",
@@ -509,6 +512,7 @@ def test_the_insert_policy_itself_refuses_a_browser_link_to_a_regeneration(conn,
             plain = s.run("insert into public.render_jobs (channel_id, kind, params, requested_by) "
                           "values (%s, 'daily', '{}'::jsonb, auth.uid())", [sc.bob.channel])
         su.run("alter table public.render_jobs enable trigger render_jobs_payment_guard")
+        su.run("alter table public.render_jobs enable trigger zz_render_jobs_priced_thumbnail_guard")
     assert not linked.ok and linked.sqlstate == "42501", linked
     assert "row-level security" in str(linked.error), linked
     assert plain.ok, plain

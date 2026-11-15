@@ -110,9 +110,21 @@ def take_off_0178(session) -> None:
 def put_back_0175(session) -> None:
     """0175 again, once 0120's and 0094's bodies are live and it is not on already."""
     if _has_0175(session):
+        put_back_0178(session)
         return
     if all(_live_md5(session, sig) == h for sig, h in _BEFORE_0175.items()):
         session.conn.execute(MIGRATION_0175.read_text(encoding="utf-8"))
+        put_back_0178(session)
+
+
+def put_back_0178(session) -> None:
+    """Restore the complete newer layer after an intentional historical replay.
+
+    Its production drift guards remain authoritative; never patch a body or
+    skip a guard just to make a historical test fit.
+    """
+    if not session.conn.execute("select to_regprocedure('public.api_hold_start_priced(text,bigint)') is not null").fetchone()[0]:
+        session.conn.execute((MIGRATIONS / "0178_api_concept_thumbnail_holds.sql").read_text(encoding="utf-8"))
 
 
 def take_off_0122(session) -> None:

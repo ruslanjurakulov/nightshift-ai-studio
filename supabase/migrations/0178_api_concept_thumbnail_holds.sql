@@ -400,6 +400,11 @@ create or replace function public.render_jobs_priced_thumbnail_guard() returns t
   language plpgsql security definer set search_path = public, pg_temp as $$
 declare ch public.channels; need numeric; held numeric; mode text; h public.api_holds;
 begin
+  -- RLS forbids a browser from attaching the API payer. Reject that shape
+  -- before reading price/hold details; the anon API entry point owns this path.
+  if coalesce(auth.role(),'') = 'authenticated' and new.api_hold_ref is not null then
+    raise exception 'render job refused: a browser cannot attach an API hold' using errcode = '42501';
+  end if;
   if new.kind = 'series_plan' or new.scene_regeneration_id is not null then return new; end if;
   select * into ch from public.channels where channel_id = new.channel_id for share;
   if ch.channel_id is null or public.credits_exempt(ch.org_id) then return new; end if;
@@ -494,6 +499,7 @@ revoke all on function public.run_thumbnail_mode(jsonb), public.series_episode_p
  public.api_hold_start_priced(text,bigint), public.api_hold_start(text,bigint) from public, anon, authenticated, service_role;
 grant execute on function public.api_hold_start_priced(text,bigint), public.api_hold_start(text,bigint) to service_role;
 -- api_create_video retains its existing anon-only entry grant; helpers are internal.
+
 
 
 -- 0178 end-state: exact replaced bodies and helper grants.
