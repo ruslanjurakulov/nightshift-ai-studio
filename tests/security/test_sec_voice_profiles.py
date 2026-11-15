@@ -85,8 +85,15 @@ def world(conn, sc):
         w.chan_a2 = "chan-a2"
         su.rows("insert into public.channels (channel_id, name, niche, status, org_id) "
                 "values (%s, 'Second', 'tech', 'PAUSED', %s) returning 1", [w.chan_a2, w.org_a])
-        # The payment guard (0041) wants a credit hold for a customer's run; this file is about the voice rule.
-        su.conn.execute("alter table public.render_jobs disable trigger render_jobs_payment_guard")
+        # Voice controls must be exercised behind the real payment guards too.
+        # Synthetic tariffs and released scenario holds give these independent
+        # insert attempts valid funding without consuming fixture run slots.
+        su.rows("insert into public.credit_prices (unit, credits_per_unit, margin) "
+                "values ('video_minute', 2, 0), ('job_minimum', 1, 0) "
+                "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = 0 returning 1")
+        for (ref,) in su.rows("select job_id from public.credit_reservations "
+                              "where org_id in (%s, %s) and status = 'open'", [w.org_a, w.org_b]):
+            su.value("select public.release_credits(%s)", [ref])
         yield w
 
 
@@ -162,8 +169,23 @@ def make_approved(s, who, org, **kw):
 
 def run_job(s, channel, params=None, *, by=None, kind="daily"):
     become(s, None)
-    return s.run("insert into public.render_jobs (channel_id, kind, params, requested_by) values (%s, %s, %s::jsonb, %s) returning id",
-                 [channel, kind, json.dumps(params or {}), by.uid if by else None])
+    payload = {"duration": 300, **(params or {})}
+    org = s.value("select org_id from public.channels where channel_id = %s", [channel])
+    ref = None
+    if not s.value("select public.credits_exempt(%s)", [org]):
+        price = s.value("select public.series_episode_price(%s, %s)", [payload["duration"], channel])
+        assert price is not None and price > 0, "voice fixture needs a priced run"
+        ref = "rj-voice-" + uuid.uuid4().hex
+        s.value("select public.reserve_credits(%s, %s, %s)", [org, ref, price])
+    try:
+        return s.run("insert into public.render_jobs (channel_id, kind, params, requested_by, credit_ref) "
+                     "values (%s, %s, %s::jsonb, %s, %s) returning id",
+                     [channel, kind, json.dumps(payload), by.uid if by else None, ref])
+    finally:
+        # Each test inspects the insertion verdict, not worker settlement. Free
+        # only this attempt's hold so the next voice control has a run slot.
+        if ref is not None:
+            s.value("select public.release_credits(%s)", [ref])
 
 
 def set_cfg(s, who, channel, patch):
@@ -894,9 +916,7 @@ def test_run_a_repair_does_not_need_the_voice(conn, sc, world):
     s.conn.execute("update public.channels set agent_config = agent_config || %s::jsonb where channel_id = %s",
                    [json.dumps({"elevenlabs_voice_id": voice}), world.chan_a])
     s.conn.execute("alter table public.channels enable trigger channels_config_guard")
-    become(s, None)
-    out = s.run("insert into public.render_jobs (channel_id, kind, params, requested_by) values (%s, 'repair', %s::jsonb, %s) returning id",
-                [world.chan_a, json.dumps({"repair_scenes": "s1", "topic": "t"}), world.ed.uid])
+    out = run_job(s, world.chan_a, {"repair_scenes": "s1", "topic": "t"}, by=world.ed, kind="repair")
     assert out.ok, out
     assert blocked(run_job(s, world.chan_a, {}, by=world.ed)), "a daily run still is"
 
