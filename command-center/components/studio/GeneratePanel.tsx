@@ -17,6 +17,8 @@ import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
+import { RightsAcknowledgementDialog, type RightsAckState } from "@/components/studio/RightsAcknowledgementDialog";
+import { inputSubjects, parseRefusalDetail, parseStatus, type MissingAcknowledgement, type RightsSubjectKey } from "@/lib/rights-acknowledgement";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
 import "@/components/create/flow.css";
 import { PriceButton } from "@/components/ui/PriceButton";
@@ -337,6 +339,10 @@ export function GeneratePanel({
   const changeRef = useRef<HTMLButtonElement>(null);
   const generateRef = useRef<HTMLButtonElement>(null);
   const [upsell, setUpsell] = useState<{ refusal: Refusal; open: boolean } | null>(null);
+  // 0174: the rights acknowledgement step (null = closed), and the press it holds: the model and the quote the person pressed
+  // with, and which input each subject is. The job starts with exactly these once every input is acknowledged.
+  const [rightsAck, setRightsAck] = useState<RightsAckState | null>(null);
+  const ackPress = useRef<{ model: string; pressed: QuoteState; params: Record<string, unknown>; subjects: { key: RightsSubjectKey; id: string }[] } | null>(null);
   const tabRefs = useRef<Partial<Record<StudioCapability, HTMLButtonElement | null>>>({});
   const filePicker = useRef<HTMLInputElement>(null);
 
@@ -620,12 +626,37 @@ export function GeneratePanel({
   const pressingRef = useRef(onPressing);
   pressingRef.current = onPressing;
 
+  /**
+   * 0174: the database refused the job because this person has not acknowledged an input of this model (nothing was held).
+   * Ask it which of this press's inputs are still missing, so one dialog covers them all; if that question fails, ask about
+   * the one the refusal named, which the database itself asked for.
+   */
+  async function askRights(model: string, subjects: { key: RightsSubjectKey; id: string }[], refused: MissingAcknowledgement) {
+    const subjectKeys = Object.fromEntries(subjects.map((s) => [s.id, s.key]));
+    setRightsAck({ phase: "checking" });
+    let missing: MissingAcknowledgement[] = [refused];
+    try {
+      const q = new URLSearchParams({ org_id: orgId, model, subjects: subjects.map((s) => s.id).join(",") });
+      const res = await fetch(`/api/creative/acknowledgements?${q.toString()}`, { cache: "no-store" });
+      const status = res.ok ? parseStatus(await res.json().catch(() => null)) : null;
+      if (status && status.missing.some((m) => m.kind === refused.kind && m.subject === refused.subject)) missing = status.missing;
+    } catch {
+      // The refusal's own pair stands.
+    }
+    setRightsAck({ phase: "ask", missing, subjectKeys });
+  }
+
   async function generate() {
-    if (quote.status !== "ready" || submitting || !ready || quoteSpent || pressing.current) return;
+    if (quote.status !== "ready" || submitting || !ready || quoteSpent || pressing.current || rightsAck) return;
     // Auto sends back the model its quote named; otherwise the picked model.
     const pressModel = routed ? quote.routed?.model : effectiveModel;
     if (!pressModel) return;
-    const pressed = quote;
+    await startJob(pressModel, quote, params);
+  }
+
+  /** The job itself, for the model, the quote and the settings the person pressed with (the ones the dialog asked about). */
+  async function startJob(pressModel: string, pressed: QuoteState, pressParams: Record<string, unknown>) {
+    if (pressed.status !== "ready" || pressing.current) return;
     pressing.current = true;
     pressingRef.current?.(true);
     setSubmitting(true);
@@ -639,10 +670,10 @@ export function GeneratePanel({
           capability,
           model: pressModel,
           ...(routed ? { mode: "auto" } : {}),
-          params,
+          params: pressParams,
           idempotency_key: newIdempotencyKey(),
           // The price the person saw on the button: the ceiling, never more.
-          max_credits: quote.credits,
+          max_credits: pressed.credits,
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: unknown; detail?: unknown; job?: { id?: unknown } };
@@ -655,6 +686,15 @@ export function GeneratePanel({
       } else {
         const code = asCreativeError(body.error);
         const detail = typeof body.detail === "string" ? body.detail : undefined;
+        // 0174: the model needs this person to take responsibility for an input first. The database refused before pricing or
+        // holding anything; the dialog asks, records, and this same press (model, price, settings) is sent again.
+        const refused = code === "acknowledgement_required" ? parseRefusalDetail(detail) : null;
+        if (refused) {
+          const subjects = inputSubjects(pressParams);
+          ackPress.current = { model: pressModel, pressed, params: pressParams, subjects };
+          void askRights(pressModel, subjects, refused);
+          return;
+        }
         setNotice({ kind: "error", code, ...(detail ? { detail } : {}) });
         if (code === "price_changed" || code === "route_changed") setRequote((n) => n + 1);
         // The balance this page knew was not the database's: read it again.
@@ -1683,6 +1723,22 @@ export function GeneratePanel({
           }}
           onClose={() => setSheetOpen(false)}
           returnTo={changeRef}
+        />
+      )}
+
+      {rightsAck && (
+        <RightsAcknowledgementDialog
+          state={rightsAck}
+          onAcknowledged={() => {
+            const p = ackPress.current;
+            setRightsAck(null);
+            ackPress.current = null;
+            if (p) void startJob(p.model, p.pressed, p.params);
+          }}
+          onClose={() => {
+            setRightsAck(null);
+            ackPress.current = null;
+          }}
         />
       )}
 

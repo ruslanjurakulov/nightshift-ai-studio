@@ -725,3 +725,9 @@ sec_films_0166.extend(TABLES, FUNCTIONS)
 import sec_films_0171  # noqa: E402
 
 sec_films_0171.extend(TABLES, FUNCTIONS)
+
+# Migration 0174 (rights acknowledgement: an append-only record of who took responsibility for which input, and the job start path
+# refusing a model that requires one without it): tests/security/sec_rights_acknowledgement_0174.py
+import sec_rights_acknowledgement_0174  # noqa: E402
+
+sec_rights_acknowledgement_0174.extend(TABLES, FUNCTIONS)
