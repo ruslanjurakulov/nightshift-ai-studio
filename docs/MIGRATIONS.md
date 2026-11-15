@@ -1911,9 +1911,9 @@ makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.
   replay hazard), the lab's isolation suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py`
   (each body is the earlier one plus inserted 0174 blocks only; pins), `command-center/tests/rights-acknowledgement*.test.ts(x)`.
 
-## The failed-job cap: at most 5 failed or refused creative jobs in 24 hours (0175)
+## The failed-job cap: at most 5 failed or refused creative jobs in 24 hours (0177)
 
-0175 (`0175_failed_job_cap.sql`) refuses a new creative job in an organization whose creative jobs failed or were refused 5 times
+0177 (`0177_failed_job_cap.sql`) refuses a new creative job in an organization whose creative jobs failed or were refused 5 times
 in the last 24 hours, before anything is held, until the window frees. The owner's decision of 2026-11-14.
 
 - **Evidence.** A failed or refused job releases its whole hold (0036), so the customer pays nothing for it, while some refusals
@@ -1945,19 +1945,19 @@ in the last 24 hours, before anything is held, until the window frees. The owner
   none is allowed once 5 are recorded however many race. A job still running is not yet a failure: counted failures in 24 hours
   are at most 4 + the jobs that were accepted and unfinished when the last create was allowed (for jobs that hold credits, the
   plan's parallel-run limit). Measured in the lab.
-- **md5.** `create_creative_job` 88107b00b0a8c143606ed17f5898c98d → 1ddd39a69de4153e36d02aa372ed5e60; `start_workflow_run`
-  8b3c4b4afbc19e6f336c09b4692ad7ed → 3a7d8eb57e48badff9ab7e321e6c52f6; `workflow_advance_locked` 2d63f9fb091efa71d8ae466cba0b42db
-  → b46b5f42927697ebbb8176f8ce527c6d; `api_creative_refusal` e6ec45d0d912389a05eb2d40261c2c2a → a5db9f56ba2e83c285beaace621217d8
+- **md5.** `create_creative_job` 88107b00b0a8c143606ed17f5898c98d → 959e88d70d9f64a389c145ac9b9648a8; `start_workflow_run`
+  8b3c4b4afbc19e6f336c09b4692ad7ed → ac0085f999928487f3f24399f78c9234; `workflow_advance_locked` 2d63f9fb091efa71d8ae466cba0b42db
+  → 4e4495597f219ff9b1fe24d45a3f8193; `api_creative_refusal` e6ec45d0d912389a05eb2d40261c2c2a → 62c50fde21d472630c931b694952a6da
   (drift guard, end state, Verify, rollback). `workflow_quote_steps` is not replaced (a quote holds nothing).
-- **Number.** 0175, built on 0174's bodies: it merges after 0174 (#780), which merges after 0171 to 0173. Needs 0020, 0036, 0083 and
+- **Number.** 0177, built on 0174's bodies: it merges after 0174 (#780), which merges after 0171 to 0173, and after 0176 (#771). First written as 0175; renumbered to 0177 because 0176 lands first (the owner's decision, 2026-11-15), and Supabase applies a file on merge only when its number is above the latest applied one. Needs 0020, 0036, 0083 and
   0174. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
-- **Replay.** 0175 replays onto itself. 0174's guard refuses 0175's bodies (loud); 0083 has no guard, so re-running it over 0175
-  silently brings back a step wait that reads `run_limit_reached`. Undo 0175 first, then run its Verify query. The lab chains it:
-  `sec_db.take_off_0174` takes 0175 off first and `put_back_0174` puts it back after; `sec_db.ON_0124` lists it after 0174.
-- **Undo.** `docs/sql/rollback_0175_failed_job_cap.sql` (owner-applied): refuses unless all four bodies are 0175's, puts the
-  earlier four back byte for byte with their grants, drops the two functions and the index. 0175 writes no row.
+- **Replay.** 0177 replays onto itself. 0174's guard refuses 0177's bodies (loud); 0083 has no guard, so re-running it over 0177
+  silently brings back a step wait that reads `run_limit_reached`. Undo 0177 first, then run its Verify query. The lab chains it:
+  `sec_db.take_off_0174` takes 0177 off first and `put_back_0174` puts it back after; `sec_db.ON_0124` lists it after 0174.
+- **Undo.** `docs/sql/rollback_0177_failed_job_cap.sql` (owner-applied): refuses unless all four bodies are 0177's, puts the
+  earlier four back byte for byte with their grants, drops the two functions and the index. 0177 writes no row.
 - **Tests.** `tests/security/test_sec_failed_job_cap.py` (4 allowed, 5 refused with nothing held, `retry_at`, every excluded and
   every counted code, the 24-hour edge, another organization, the operator's organization, the replay, the API path, the
-  workflow start, replay and wait, and both races), `sec_failed_job_cap_0175.py` (the catalog and the scenario),
-  `tests/test_failed_job_cap_migration.py` (each body is the earlier one plus one marked 0175 block; pins),
+  workflow start, replay and wait, and both races), `sec_failed_job_cap_0177.py` (the catalog and the scenario),
+  `tests/test_failed_job_cap_migration.py` (each body is the earlier one plus one marked 0177 block; pins),
   `command-center/tests/failed-job-limit.test.ts`.

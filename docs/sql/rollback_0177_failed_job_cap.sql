@@ -1,17 +1,17 @@
--- rollback_0175_failed_job_cap.sql — takes migration 0175 (at most 5 failed or refused creative jobs per organization per
+-- rollback_0177_failed_job_cap.sql — takes migration 0177 (at most 5 failed or refused creative jobs per organization per
 -- rolling 24 hours) out of the job start path.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT COMES BACK: 0174's create_creative_job, start_workflow_run and api_creative_refusal, and 0083's workflow_advance_locked,
---   none of which counts failures. Applying this re-opens the unbounded loop 0175 closed (a refused job releases its hold, so a
---   customer pays nothing for it while a vendor may bill us): apply it only to undo a broken 0175, and apply 0175 again after.
--- WHAT IS LOST: creative_failed_job_codes(), creative_failed_job_gate() and the index creative_jobs_failed_window_idx. 0175
+--   none of which counts failures. Applying this re-opens the unbounded loop 0177 closed (a refused job releases its hold, so a
+--   customer pays nothing for it while a vendor may bill us): apply it only to undo a broken 0177, and apply 0177 again after.
+-- WHAT IS LOST: creative_failed_job_codes(), creative_failed_job_gate() and the index creative_jobs_failed_window_idx. 0177
 --   writes no row, so nothing else is undone.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the four bodies is not 0175's (a later change would be undone).
+--   0. REFUSES (changes nothing) if any of the four bodies is not 0177's (a later change would be undone).
 --   1. Puts the four earlier bodies back, verbatim, with their grants.
---   2. Drops the two 0175 functions and the index.
+--   2. Drops the two 0177 functions and the index.
 --   3. Asserts the end state.
 
 begin;
@@ -23,13 +23,13 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '1ddd39a69de4153e36d02aa372ed5e60'),
-      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '3a7d8eb57e48badff9ab7e321e6c52f6'),
-      ('public.workflow_advance_locked(uuid, boolean)', 'b46b5f42927697ebbb8176f8ce527c6d'),
-      ('public.api_creative_refusal(text, text, text)', 'a5db9f56ba2e83c285beaace621217d8')) v(sig, want) loop
+      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '959e88d70d9f64a389c145ac9b9648a8'),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', 'ac0085f999928487f3f24399f78c9234'),
+      ('public.workflow_advance_locked(uuid, boolean)', '4e4495597f219ff9b1fe24d45a3f8193'),
+      ('public.api_creative_refusal(text, text, text)', '62c50fde21d472630c931b694952a6da')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
-      raise exception 'rollback 0175: % is not 0175''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
+      raise exception 'rollback 0177: % is not 0177''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
     end if;
   end loop;
 end $$;
@@ -633,7 +633,7 @@ begin
       ('public.workflow_advance_locked(uuid, boolean)', '2d63f9fb091efa71d8ae466cba0b42db'),
       ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
-      raise exception 'rollback 0175 end state: % is not its earlier body', r.sig;
+      raise exception 'rollback 0177 end state: % is not its earlier body', r.sig;
     end if;
   end loop;
   if not has_function_privilege('authenticated', 'public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', 'EXECUTE')
@@ -641,12 +641,12 @@ begin
      or not has_function_privilege('authenticated', 'public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.workflow_advance_locked(uuid, boolean)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.api_creative_refusal(text, text, text)', 'EXECUTE') then
-    raise exception 'rollback 0175 end state: the grants are not the earlier ones';
+    raise exception 'rollback 0177 end state: the grants are not the earlier ones';
   end if;
   if to_regprocedure('public.creative_failed_job_gate(uuid)') is not null
      or to_regprocedure('public.creative_failed_job_codes()') is not null
      or to_regclass('public.creative_jobs_failed_window_idx') is not null then
-    raise exception 'rollback 0175 end state: a 0175 function or the index is still there';
+    raise exception 'rollback 0177 end state: a 0177 function or the index is still there';
   end if;
 end $$;
 

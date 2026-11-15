@@ -2,7 +2,7 @@ import type { Dictionary } from "@/lib/i18n";
 import { fmt } from "@/lib/i18n/core";
 
 /**
- * 0175: an organization whose creative jobs failed or were refused 5 times in the last 24 hours starts no new one until the window
+ * 0177: an organization whose creative jobs failed or were refused 5 times in the last 24 hours starts no new one until the window
  * frees. The database's detail is exactly `failed=<n> limit=<l> retry_at=<YYYY-MM-DDTHH:MM:SSZ>` (creative_failed_job_gate):
  * retry_at is when the count drops below the limit, in UTC.
  */

@@ -325,7 +325,7 @@ export function canCarryRun(
 
 /**
  * Why a step that has not started is waiting (0083, BR-L-011): everything the
- * plan may run at once is busy, or the balance is short for it, or (0175) the
+ * plan may run at once is busy, or the balance is short for it, or (0177) the
  * organization's failed or refused generations of the last 24 hours reached the
  * limit. All pass, so the run stays running, holds nothing for the step, and
  * starts it on a later advance; a day after the price was confirmed it stops instead.

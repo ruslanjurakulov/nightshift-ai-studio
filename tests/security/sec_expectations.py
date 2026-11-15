@@ -732,8 +732,8 @@ import sec_rights_acknowledgement_0174  # noqa: E402
 
 sec_rights_acknowledgement_0174.extend(TABLES, FUNCTIONS)
 
-# Migration 0175 (the failed-job cap: create_creative_job and start_workflow_run refuse a new creative job after 5 failed or
-# refused ones in 24 hours): tests/security/sec_failed_job_cap_0175.py
-import sec_failed_job_cap_0175  # noqa: E402
+# Migration 0177 (the failed-job cap: create_creative_job and start_workflow_run refuse a new creative job after 5 failed or
+# refused ones in 24 hours): tests/security/sec_failed_job_cap_0177.py
+import sec_failed_job_cap_0177  # noqa: E402
 
-sec_failed_job_cap_0175.extend(TABLES, FUNCTIONS)
+sec_failed_job_cap_0177.extend(TABLES, FUNCTIONS)

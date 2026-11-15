@@ -268,7 +268,7 @@ export const CREATIVE_ERRORS = [
   "no_model_available",
   "insufficient_credits",
   "run_limit_reached",
-  // 0175: too many failed or refused generations in this organization in 24 hours; nothing was held.
+  // 0177: too many failed or refused generations in this organization in 24 hours; nothing was held.
   "failed_job_limit",
   "forbidden",
   "not_found",
@@ -365,7 +365,7 @@ export function mapCreativeError(error: DbError): CreativeResult {
       });
     }
     case "NS429": {
-      // 0175: 5 failed or refused jobs in 24 hours. The detail (failed=… limit=… retry_at=…) is passed on for the sentence;
+      // 0177: 5 failed or refused jobs in 24 hours. The detail (failed=… limit=… retry_at=…) is passed on for the sentence;
       // the numbers are null, never 0, when it cannot be read.
       if (word === "failed_job_limit") {
         const p = parseFailedJobLimit(error.details);

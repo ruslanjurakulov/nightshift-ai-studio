@@ -1608,7 +1608,7 @@ export function GeneratePanel({
         </span>
       ) : errorCode ? (
         <span className="text-[var(--color-fail)]">
-          {/* 0175: how many failed, the limit and when it frees, from the database's detail (no number without it). */}
+          {/* 0177: how many failed, the limit and when it frees, from the database's detail (no number without it). */}
           {errorCode === "failed_job_limit" ? failedJobLimitText(t, errorDetail) : apiErrorMessage(t, errorCode)}
           {errorAction(errorCode) === "credits" && (
             <>

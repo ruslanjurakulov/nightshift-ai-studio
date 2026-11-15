@@ -1,4 +1,4 @@
--- 0175_failed_job_cap.sql — an organization whose creative jobs failed or were refused 5 times in a rolling 24 hours starts no
+-- 0177_failed_job_cap.sql — an organization whose creative jobs failed or were refused 5 times in a rolling 24 hours starts no
 -- new one until the oldest of those leaves the window. Refused before anything is held, with the remedy.
 --
 -- EVIDENCE:
@@ -65,10 +65,10 @@
 --
 -- REPLAY. This file replays onto itself (drift guards accept its own bodies; create index if not exists). The EARLIER files do
 --   NOT protect it: 0174's guard accepts 0174's bodies only, so re-running 0174 after this file fails loudly, but 0083 has no
---   guard and re-running it SILENTLY puts back a workflow_advance_locked that calls the refusal run_limit_reached. Undo 0175
---   (its rollback) before re-running 0174 or 0083, then apply 0175 again, and run the Verify query below.
+--   guard and re-running it SILENTLY puts back a workflow_advance_locked that calls the refusal run_limit_reached. Undo 0177
+--   (its rollback) before re-running 0174 or 0083, then apply 0177 again, and run the Verify query below.
 --
--- NUMBER. 0175: 0171, 0172 and 0173 are held by open pull requests and 0174 (#780) replaces create_creative_job; this file is
+-- NUMBER. 0177: 0171, 0172 and 0173 are held by open pull requests and 0174 (#780) replaces create_creative_job; this file is
 --   built on 0174's bodies and auto-applies to the live database on merge, so it merges AFTER 0174. Needs 0020, 0036, 0083, 0174.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
@@ -77,8 +77,8 @@
 --                    'public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)'::regprocedure,
 --                    'public.workflow_advance_locked(uuid, boolean)'::regprocedure,
 --                    'public.api_creative_refusal(text, text, text)'::regprocedure);
---   expected BEFORE the four md5s under REPLACES; AFTER 1ddd39a69de4153e36d02aa372ed5e60, 3a7d8eb57e48badff9ab7e321e6c52f6, b46b5f42927697ebbb8176f8ce527c6d, a5db9f56ba2e83c285beaace621217d8 (this file).
--- Undo: docs/sql/rollback_0175_failed_job_cap.sql (owner-applied). It puts the four earlier bodies back and drops the two new
+--   expected BEFORE the four md5s under REPLACES; AFTER 959e88d70d9f64a389c145ac9b9648a8, ac0085f999928487f3f24399f78c9234, 4e4495597f219ff9b1fe24d45a3f8193, 62c50fde21d472630c931b694952a6da (this file).
+-- Undo: docs/sql/rollback_0177_failed_job_cap.sql (owner-applied). It puts the four earlier bodies back and drops the two new
 --   functions and the index. No row is written by this file, so there is nothing else to undo.
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
@@ -90,23 +90,23 @@ declare
   h text;
 begin
   if to_regprocedure('public.credits_exempt(uuid)') is null or to_regprocedure('public.credit_account_lock(uuid)') is null then
-    raise exception '0175 needs the credits: apply 0020_credits.sql first';
+    raise exception '0177 needs the credits: apply 0020_credits.sql first';
   end if;
   if to_regprocedure('public.creative_refuse(text, text, text)') is null or to_regclass('public.creative_jobs') is null then
-    raise exception '0175 needs the creative jobs: apply 0036_creative_jobs.sql first';
+    raise exception '0177 needs the creative jobs: apply 0036_creative_jobs.sql first';
   end if;
   if to_regprocedure('public.acknowledge_rights(text, text, text, text)') is null then
-    raise exception '0175 is built on 0174''s create_creative_job: apply 0174_rights_acknowledgement.sql first';
+    raise exception '0177 is built on 0174''s create_creative_job: apply 0174_rights_acknowledgement.sql first';
   end if;
   -- The four bodies this file replaces: the earlier one, or this file's own (a replay).
   for r in select * from (values
-      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d', '1ddd39a69de4153e36d02aa372ed5e60', '0174'),
-      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '8b3c4b4afbc19e6f336c09b4692ad7ed', '3a7d8eb57e48badff9ab7e321e6c52f6', '0174'),
-      ('public.workflow_advance_locked(uuid, boolean)', '2d63f9fb091efa71d8ae466cba0b42db', 'b46b5f42927697ebbb8176f8ce527c6d', '0083'),
-      ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a', 'a5db9f56ba2e83c285beaace621217d8', '0174')) v(sig, was, now_, src) loop
+      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d', '959e88d70d9f64a389c145ac9b9648a8', '0174'),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '8b3c4b4afbc19e6f336c09b4692ad7ed', 'ac0085f999928487f3f24399f78c9234', '0174'),
+      ('public.workflow_advance_locked(uuid, boolean)', '2d63f9fb091efa71d8ae466cba0b42db', '4e4495597f219ff9b1fe24d45a3f8193', '0083'),
+      ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a', '62c50fde21d472630c931b694952a6da', '0174')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
-      raise exception '0175 found % with a body that is neither %''s nor 0175''s (md5 %): read the live body first', r.sig, r.src, h;
+      raise exception '0177 found % with a body that is neither %''s nor 0177''s (md5 %): read the live body first', r.sig, r.src, h;
     end if;
   end loop;
   -- The functions this file creates: absent, or this file's own bodies (a replay).
@@ -115,14 +115,14 @@ begin
       ('public.creative_failed_job_gate(uuid)', 'db8553de657fe2ee8c801879fe8b8735')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
-      raise exception '0175 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
+      raise exception '0177 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
     end if;
   end loop;
   -- The index this file creates: absent, or this file's own columns.
   if to_regclass('public.creative_jobs_failed_window_idx') is not null
      and pg_get_indexdef(to_regclass('public.creative_jobs_failed_window_idx'))
          <> 'CREATE INDEX creative_jobs_failed_window_idx ON public.creative_jobs USING btree (org_id, status, finished_at)' then
-    raise exception '0175 found an index creative_jobs_failed_window_idx that is not this file''s: read it first';
+    raise exception '0177 found an index creative_jobs_failed_window_idx that is not this file''s: read it first';
   end if;
 end $$;
 
@@ -260,7 +260,7 @@ begin
     end if;
   end if;
 
-  -- 0175: an organization with 5 failed or refused jobs in the last 24 hours (creative_failed_job_gate) starts no new one.
+  -- 0177: an organization with 5 failed or refused jobs in the last 24 hours (creative_failed_job_gate) starts no new one.
   -- Here: after the replay (a job already made is answered, never refused), under the account lock (concurrent creates
   -- queue behind it and each counts what the one before it committed), and before the price, the ceiling, the hold and
   -- the job row: nothing is held. The operator's credits-exempt organization is not counted.
@@ -436,7 +436,7 @@ begin
     return public.workflow_run_json(prior.id) || jsonb_build_object('replay', true);
   end if;
 
-  -- 0175: the same gate as create_creative_job, before the run row and before anything is held. A replay of a run already
+  -- 0177: the same gate as create_creative_job, before the run row and before anything is held. A replay of a run already
   -- started was answered above.
   perform public.creative_failed_job_gate(w.org_id);
 
@@ -672,7 +672,7 @@ begin
         wait_ := sqlstate in ('NS429', 'NS402');
         why_code := case
           when sqlstate = 'NS402' then 'insufficient_credits'
-          -- 0175: the failed-job limit is NS429 too, and it passes too (the window moves); the step waits under its own word.
+          -- 0177: the failed-job limit is NS429 too, and it passes too (the window moves); the step waits under its own word.
           when sqlstate = 'NS429' and sqlerrm = 'failed_job_limit' then 'failed_job_limit'
           when sqlstate = 'NS429' then 'run_limit_reached'
           when sqlstate = '42501' then 'forbidden'
@@ -743,7 +743,7 @@ begin
         case when m is null then '{}'::jsonb
              else jsonb_build_object('available_credits', m[1]::numeric, 'needed_credits', m[2]::numeric) end);
     when 'NS429' then
-      -- 0175: too many failed or refused generations in 24 hours. The detail names the count, the limit and the moment the
+      -- 0177: too many failed or refused generations in 24 hours. The detail names the count, the limit and the moment the
       -- count drops below the limit (UTC); without it the answer says so and names no number.
       if word = 'failed_job_limit' then
         m := regexp_match(coalesce(p_detail, ''),
@@ -812,14 +812,14 @@ declare
   r record;
 begin
   for r in select * from (values
-      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '1ddd39a69de4153e36d02aa372ed5e60'),
-      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '3a7d8eb57e48badff9ab7e321e6c52f6'),
-      ('public.workflow_advance_locked(uuid, boolean)', 'b46b5f42927697ebbb8176f8ce527c6d'),
-      ('public.api_creative_refusal(text, text, text)', 'a5db9f56ba2e83c285beaace621217d8'),
+      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '959e88d70d9f64a389c145ac9b9648a8'),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', 'ac0085f999928487f3f24399f78c9234'),
+      ('public.workflow_advance_locked(uuid, boolean)', '4e4495597f219ff9b1fe24d45a3f8193'),
+      ('public.api_creative_refusal(text, text, text)', '62c50fde21d472630c931b694952a6da'),
       ('public.creative_failed_job_codes()', '2abde1f23d4729dec2ee73935f0c1c6c'),
       ('public.creative_failed_job_gate(uuid)', 'db8553de657fe2ee8c801879fe8b8735')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
-      raise exception '0175 end state: % is not 0175''s body', r.sig;
+      raise exception '0177 end state: % is not 0177''s body', r.sig;
     end if;
   end loop;
   -- The two doors a member calls stay SECURITY DEFINER with the pinned search_path, executable by signed-in users only.
@@ -833,7 +833,7 @@ begin
        or has_function_privilege('anon', r.sig, 'EXECUTE')
        or has_function_privilege('service_role', r.sig, 'EXECUTE')
        or has_function_privilege('authenticated', r.sig, 'EXECUTE') is distinct from r.member then
-      raise exception '0175 end state: % is not a SECURITY DEFINER with the pinned search_path and the intended grants', r.sig;
+      raise exception '0177 end state: % is not a SECURITY DEFINER with the pinned search_path and the intended grants', r.sig;
     end if;
   end loop;
   -- Internal: no API role calls these; the gate is not a way to read another organization's failures.
@@ -841,28 +841,28 @@ begin
                                       'public.creative_failed_job_gate(uuid)']) sig,
                          unnest(array['anon', 'authenticated', 'service_role']) role_ loop
     if has_function_privilege(r.role_, r.sig, 'EXECUTE') then
-      raise exception '0175 end state: % may call %', r.role_, r.sig;
+      raise exception '0177 end state: % may call %', r.role_, r.sig;
     end if;
   end loop;
   if pg_get_indexdef(to_regclass('public.creative_jobs_failed_window_idx'))
      is distinct from 'CREATE INDEX creative_jobs_failed_window_idx ON public.creative_jobs USING btree (org_id, status, finished_at)' then
-    raise exception '0175 end state: the failed-window index is missing or not this file''s';
+    raise exception '0177 end state: the failed-window index is missing or not this file''s';
   end if;
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Verify (run after applying, AND after any manual replay of 0083 or 0174; every column should read true). A false gate column
--- means an older file was re-run over this one and the cap is gone: apply 0175 again (see REPLAY above).
+-- means an older file was re-run over this one and the cap is gone: apply 0177 again (see REPLAY above).
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure) = '1ddd39a69de4153e36d02aa372ed5e60' as job_gate,
+--     where oid = 'public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure) = '959e88d70d9f64a389c145ac9b9648a8' as job_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.start_workflow_run(uuid,uuid,integer,jsonb,numeric)'::regprocedure) = '3a7d8eb57e48badff9ab7e321e6c52f6'         as workflow_start_gate,
+--     where oid = 'public.start_workflow_run(uuid,uuid,integer,jsonb,numeric)'::regprocedure) = 'ac0085f999928487f3f24399f78c9234'         as workflow_start_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.workflow_advance_locked(uuid,boolean)'::regprocedure) = 'b46b5f42927697ebbb8176f8ce527c6d'                        as workflow_wait_word,
+--     where oid = 'public.workflow_advance_locked(uuid,boolean)'::regprocedure) = '4e4495597f219ff9b1fe24d45a3f8193'                        as workflow_wait_word,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.api_creative_refusal(text,text,text)'::regprocedure) = 'a5db9f56ba2e83c285beaace621217d8'                         as api_answer,
+--     where oid = 'public.api_creative_refusal(text,text,text)'::regprocedure) = '62c50fde21d472630c931b694952a6da'                         as api_answer,
 --   public.creative_failed_job_codes() = array['policy','bad_request','invalid_params','source_unavailable','source_too_large','provider_error'] as counted_codes,
 --   to_regclass('public.creative_jobs_failed_window_idx') is not null                                                as window_index,
 --   not has_function_privilege('authenticated', 'public.creative_failed_job_gate(uuid)', 'EXECUTE')

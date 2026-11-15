@@ -118,7 +118,7 @@ export function WorkflowRunPanel({
         void requote(values);
         return;
       }
-      // 0175: the organization's failed or refused generations reached the limit: the count and when it frees, from the detail.
+      // 0177: the organization's failed or refused generations reached the limit: the count and when it frees, from the detail.
       const detail = (out.body as { detail?: unknown } | undefined)?.detail;
       setError(out.error === "failed_job_limit" ? failedJobLimitText(t, detail) : workflowErrorMessage(t, out.error));
       return;

@@ -9,13 +9,13 @@ import { WAIT_CODES, stepWaitCode, workflowErrorMessage } from "@/lib/workflows"
 import { openApiSpec } from "@/lib/api/openapi";
 import { STUDIO_REMEDIES } from "@/lib/api/mcp";
 
-// The failed-job cap (migration 0175). What would break, and which test says so: the refusal read as "your plan's runs are
+// The failed-job cap (migration 0177). What would break, and which test says so: the refusal read as "your plan's runs are
 // busy" (the remedy would be wrong: upgrading changes nothing); a count or a time shown when the database's detail could not be
 // read (CLAUDE.md rule 5: never a number for an unknown); the app and the database disagreeing on the detail's shape; a sentence
 // missing in a language; a waiting workflow step shown as waiting for credits; the public API or MCP not naming the code.
 
 const ROOT = join(__dirname, "..", "..");
-const SQL = readFileSync(join(ROOT, "supabase/migrations/0175_failed_job_cap.sql"), "utf8");
+const SQL = readFileSync(join(ROOT, "supabase/migrations/0177_failed_job_cap.sql"), "utf8");
 const DETAIL = "failed=6 limit=5 retry_at=2026-11-15T18:42:07Z";
 
 describe("the database's detail", () => {

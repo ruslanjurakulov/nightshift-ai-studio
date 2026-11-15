@@ -1,7 +1,7 @@
-"""The failed-job cap (0175), attacked in a real database.
+"""The failed-job cap (0177), attacked in a real database.
 
 A creative job that fails or is refused releases its whole hold, so the customer pays nothing for it, while a vendor may have
-billed us for the call (a picture generated and then refused as unsafe, a task that failed late). 0175: an organization with 5
+billed us for the call (a picture generated and then refused as unsafe, a task that failed late). 0177: an organization with 5
 counted failures in the last 24 hours starts no new creative job; create_creative_job and start_workflow_run refuse NS429
 failed_job_limit before anything is held, naming when the window frees.
 
@@ -356,7 +356,7 @@ def test_a_race_at_the_limit_starts_nothing(db):
 
 
 def test_a_race_below_the_limit_overshoots_by_at_most_the_jobs_in_flight(db):
-    """THE BOUND (header of 0175): creates queue on the account lock and each counts the failures committed before it; a job in
+    """THE BOUND (header of 0177): creates queue on the account lock and each counts the failures committed before it; a job in
     flight is not a failure yet. With 4 counted failures, N concurrent presses all start, and if all N then fail the window holds
     4 + N; the next press is refused. N is the jobs accepted and unfinished, which the plan's parallel-run limit bounds for jobs
     that hold credits."""
