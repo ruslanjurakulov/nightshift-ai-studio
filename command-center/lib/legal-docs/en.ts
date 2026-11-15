@@ -133,6 +133,7 @@ export const en: LegalTexts = {
                 ["ElevenLabs; Microsoft Edge text-to-speech", "Narration (voice), whichever the channel is set to", "Script text"],
                 ["Pexels, Pixabay", "Stock footage and photos", "Search terms derived from the script"],
                 ["Optional media generators, only if the operator enables them: Google Veo, Google Gemini image, OpenAI (GPT Image), Black Forest Labs (FLUX), Ideogram, fal.ai, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Generated images and video clips", "Prompts derived from the script"],
+                ["Image and video models you choose in the Studio: Ideogram, MiniMax", "Making the image or video clip you ask for", "Your prompt, and the picture you give as a first or last frame (Ideogram receives the prompt only). MiniMax may use what it receives and what it generates to improve its own services and models, under its own terms"],
                 ["vidIQ (optional)", "Keyword and title research", "Topic keywords and draft titles"],
                 ["Telegram (only if you connect a chat)", "Delivering the short notifications you choose to the Telegram chat you connect: one sentence and a link back to the app", "Your Telegram chat id and the sentence and link of each message; never a script, a prompt, a file name or a video title"],
                 ["Telegram, Slack (optional)", "Notifications to the operator", "Run status, video titles and links"],

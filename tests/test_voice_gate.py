@@ -901,7 +901,7 @@ class TheExitCode(unittest.TestCase):
         for rc in (82, 83):
             header = f"main.py exited with code {rc}: x"
             self.assertEqual(render_error.classify(header, ["ERROR Voice gate: whatever"]), "voice", rc)
-        for header in ("main.py exited with code 820: x", "main.py exited with code 8: x", "main.py exited with code 84: x"):
+        for header in ("main.py exited with code 820: x", "main.py exited with code 8: x", "main.py exited with code 86: x"):
             self.assertEqual(render_error.classify(header, []), "unknown", header)
 
 

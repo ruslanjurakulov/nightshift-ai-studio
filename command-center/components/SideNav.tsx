@@ -6,7 +6,7 @@ import { Ellipsis } from "lucide-react";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
+import { ALL_SECTIONS, CUSTOMER_RAIL, HOME, OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import { useShell } from "@/components/shell/ShellContext";
 import { type AccountPlan } from "@/lib/account";
@@ -17,15 +17,15 @@ import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 /**
  * The app's primary navigation, as a left rail — icon + label, grouped.
  *
- * The order is deliberate: the five destinations of the daily loop (make a
- * video, watch it, shape the look, follow the pipeline, read the numbers) sit
+ * The order is deliberate: the daily loop (the Command Center, Nightshift
+ * Studio — every creative tool behind one entry — the Inbox and Analytics) sits
  * at the top with no group heading, the way a product surfaces its main tabs.
  * Everything else is grouped and calm below, so the rail reads as a product's
  * navigation rather than a wall of admin links. Every route is still one click
  * away, and Cmd-K still reaches them all by name.
  *
  * On wide screens it is a sticky rail. Below `lg` the operator gets a bottom
- * tab bar (OperatorBottomBar: Home, Videos, Billing, Alerts and More, where
+ * tab bar (OperatorBottomBar: Home, Studio, Billing, Alerts and More, where
  * More is a visible page listing every section) — never a hamburger or a drawer
  * hiding the main navigation.
  *
@@ -103,8 +103,16 @@ export function SideNav({
   avatarV?: number | null;
   plan?: AccountPlan | null;
 }) {
+  const pathname = usePathname();
+  const path = useChannelPath();
+  // On Nightshift Studio the sidebar steps back to a 76px icon rail, so the canvas gets the width (one workspace).
+  const studio = pathname === path("/studio");
   return (
     <>
+      {studio ? (
+        <StudioRail operator={operator} />
+      ) : (
+      <>
       {/* Desktop rail. z-30 keeps it above a section panel's scrim (z-0) so the
           nav stays bright and clickable while a panel is open — clicking a
           section jumps straight there instead of the scrim closing to home. */}
@@ -114,6 +122,8 @@ export function SideNav({
         </aside>
       ) : (
         <CustomerSidebar email={email} avatarV={avatarV} plan={plan} />
+      )}
+      </>
       )}
 
       {/* A customer's phone: the five destinations as a bottom tab bar, Studio in
@@ -126,8 +136,52 @@ export function SideNav({
   );
 }
 
-/** Bottom order: Videos, Channels, Studio (centre), Credits, Settings. */
-const BOTTOM_ORDER: readonly NavKey[] = ["videos", "channels", "hub", "credits", "settings"];
+/**
+ * The Studio's rail (the prototype's): the daily destinations as icon + short label, 76px wide, the current one marked
+ * with the amber bar. The operator's ends in Admin (the page listing every section); a customer's is their five
+ * destinations. From `lg` up; below that the bottom tab bar is the rail.
+ */
+function StudioRail({ operator }: { operator: boolean }) {
+  const { t } = useI18n();
+  const path = useChannelPath();
+  const isActive = useIsActive();
+  const r = t.studioCanvas.rail;
+  const items: { href: string; key: NavKey; label: string }[] = operator
+    ? [
+        { href: HOME, key: "command", label: r.command },
+        { href: "/studio", key: "studio", label: r.studio },
+        { href: "/inbox", key: "inbox", label: r.inbox },
+        { href: "/analytics", key: "analytics", label: r.analytics },
+      ]
+    : CUSTOMER_RAIL.map((i) => ({ href: i.href, key: i.key, label: i.key in r ? r[i.key as keyof typeof r] : t.nav[i.key] }));
+  return (
+    <nav aria-label={r.label} className={operator ? "cv-rail is-operator" : "cv-rail"} data-studio-rail="">
+      <Link href={path(items[0].href)} className="cv-rail-logo" aria-label={t.brand.name} title={t.brand.name}>
+        N
+      </Link>
+      {items.map(({ href, key, label }) => {
+        const Icon = ICONS[key];
+        const active = isActive(href, key);
+        return (
+          <Link key={href} href={path(href)} aria-current={active ? "page" : undefined} title={t.nav[key]}>
+            <Icon aria-hidden className="size-5" strokeWidth={1.8} />
+            <span className="cv-rail-label">{label}</span>
+          </Link>
+        );
+      })}
+      <span className="cv-rail-sp" />
+      {operator && (
+        <Link href={path(ALL_SECTIONS)} title={t.nav.allSections}>
+          <Ellipsis aria-hidden className="size-5" strokeWidth={1.8} />
+          <span className="cv-rail-label">{r.admin}</span>
+        </Link>
+      )}
+    </nav>
+  );
+}
+
+/** Bottom order: Home, Channels, Studio (centre), Credits, Settings. Videos are a shelf of Studio now. */
+const BOTTOM_ORDER: readonly NavKey[] = ["home", "channels", "studio", "credits", "settings"];
 
 /**
  * The Settings tab is the account, as a profile tab is on Instagram: the
@@ -163,7 +217,7 @@ function BottomBar({ email, avatarV }: { email: string | null; avatarV: number |
           {ordered.map(({ href, key }) => {
             const active = isActive(href, key);
             const Icon = ICONS[key];
-            const centre = key === "hub";
+            const centre = key === "studio";
             return (
               <li key={key} className="flex justify-center">
                 <Link href={path(href)} aria-current={active ? "page" : undefined} className="ns-tab">
@@ -196,7 +250,7 @@ function BottomBar({ email, avatarV }: { email: string | null; avatarV: number |
 
 /**
  * The platform owner's phone bar: five visible tabs, no drawer. Home first (money, failures and what waits
- * for them at a glance), then Videos, Billing and Alerts, and More: a tab to the page listing every section
+ * for them at a glance), then Studio (the videos and every creative tool), Billing and Alerts, and More: a tab to the page listing every section
  * (app/(app)/[channel]/sections), so no screen is hidden behind a button. Hidden from `lg`, where the rail
  * shows the whole list. The same bar chrome, tabs and sliding plate as the customer's (BottomBar).
  */
@@ -207,7 +261,7 @@ function OperatorBottomBar() {
   const current = operatorTabCurrent("/" + pathname.split("/").slice(2).join("/"));
   const label: Record<OperatorTab["key"], string> = {
     home: t.ownerShell.tabHome,
-    videos: t.ownerShell.tabVideos,
+    studio: t.ownerShell.tabStudio,
     billing: t.ownerShell.tabBilling,
     alerts: t.ownerShell.tabAlerts,
     more: t.ownerShell.tabMore,

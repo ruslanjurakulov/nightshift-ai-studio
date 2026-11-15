@@ -243,7 +243,7 @@ export function WelcomeFlow({
                   <p className="g5-note mt-2">{t.signup.requestContact}</p>
                 ))}
             </Item>
-            <Item n={firstChannelStep + 2} title={t.signup.stepStyle} body={t.signup.stepStyleBody} href={at("/studio")} />
+            <Item n={firstChannelStep + 2} title={t.signup.stepStyle} body={t.signup.stepStyleBody} href={at("/studio/look")} />
             {showCredits && <Item n={firstChannelStep + 3} title={t.signup.stepCredits} body={t.signup.stepCreditsBody} href={at("/credits")} />}
             <Item n={firstChannelStep + (showCredits ? 4 : 3)} title={t.signup.stepCreate} body={hasChannel ? t.signup.stepCreateBody : `${t.signup.stepCreateBody} ${t.signup.stepCreateNeedsChannel}`} href={at("/create")} />
           </ol>

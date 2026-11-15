@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CUSTOMER_SECTIONS, NO_NAV_FEATURES, SECTION_TABS, navGroupsFor, navShown, sectionAllowed, tabsFor } from "../lib/navigation";
+import { CUSTOMER_SECTIONS, NO_NAV_FEATURES, STUDIO_HOUSED_KEYS, navGroupsFor, navShown, sectionAllowed, studioTilesFor, tabsFor } from "../lib/navigation";
 import { isSection } from "../lib/channels";
 import { ICONS } from "../components/navigation/navIcons";
 
@@ -15,19 +15,22 @@ const ON = { adsFactory: true, characterStudio: false };
 const keys = (operator: boolean, features = NO_NAV_FEATURES) => navGroupsFor(operator, features).flatMap((g) => g.items.map((i) => i.key));
 
 describe("navigation", () => {
-  it("lists Ads for the operator only while the switch is on, and never by default", () => {
+  it("is never a rail entry: it lives in Nightshift Studio, whichever way the switch is", () => {
+    expect(STUDIO_HOUSED_KEYS).toContain("ads");
     expect(keys(true)).not.toContain("ads");
-    expect(keys(true, { adsFactory: false, characterStudio: false })).not.toContain("ads");
-    expect(keys(true, ON)).toContain("ads");
-    expect(keys(true, ON).filter((k) => k !== "ads")).toEqual(keys(true));
+    expect(keys(true, ON)).not.toContain("ads");
+    expect(keys(true, ON)).toEqual(keys(true));
   });
 
-  it("lists Ads as a Studio tab only while the switch is on; the other tabs are untouched", () => {
-    expect(tabsFor("create")?.items.map((i) => i.key)).not.toContain("ads");
-    expect(tabsFor("create", ON)?.items.map((i) => i.key)).toContain("ads");
-    expect(tabsFor("create", ON)?.items.filter((i) => i.key !== "ads")).toEqual(tabsFor("create")?.items);
-    expect(SECTION_TABS.hub.some((i) => i.key === "ads")).toBe(true);
-    expect(tabsFor("ads", ON)?.rail).toBe("hub");
+  it("is a Studio home tile only while the switch is on; the other tiles are untouched", () => {
+    const tiles = (operator: boolean, features = NO_NAV_FEATURES) => studioTilesFor(operator, features).map((x) => x.key);
+    for (const operator of [true, false]) {
+      expect(tiles(operator)).not.toContain("ads");
+      expect(tiles(operator, ON)).toContain("ads");
+      expect(tiles(operator, ON).filter((k) => k !== "ads")).toEqual(tiles(operator));
+    }
+    // Its page keeps the Studio entry lit.
+    expect(tabsFor("ads", ON)?.rail).toBe("studio");
   });
 
   it("the customer rail stays the five destinations either way", () => {

@@ -325,8 +325,10 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: Migrations that call 0124's model_is_available() and refuse to apply without it (0151, the Studio's probe seed; 0162, the MCP
 #: Studio tools' API functions, whose guard names it): a sequence that leaves 0124 out leaves these out too, and puts them back
 #: after it, in this order. 0164 (the site's live counters) does not need 0124; it is listed so that a sequence which leaves 0124
-#: out and puts it back still ends on the newest file, as build_sequence() does.
-ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql")
+#: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
+#: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
+ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
+           "0174_rights_acknowledgement.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -570,6 +572,7 @@ def take_off_0167(conn_or_session) -> None:
     either rollback, on a database that has 0167 takes 0167 off first with its own rollback (it puts 0034's refund body and 0165's lot
     trigger back; the recoveries table stays), and puts it back with put_back_0167 where the chain goes on."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0172(conn)  # 0172 sits on 0167's lot trigger, and 0167's rollback refuses any other body
     if has_0167(conn):
         text = ROLLBACK_0167.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -579,6 +582,99 @@ def put_back_0167(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0167(conn):
         conn.execute(MIGRATION_0167.read_text(encoding="utf-8"))
+    put_back_0172(conn)
+
+
+MIGRATION_0172 = MIGRATIONS / "0172_grant_reversal_hold_recovery.sql"
+ROLLBACK_0172 = REPO / "docs" / "sql" / "rollback_0172_grant_reversal_hold_recovery.sql"
+
+
+def has_0172(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.credit_grant_reversal_recover()') is not null").fetchone()[0])
+
+
+def take_off_0172(conn_or_session) -> None:
+    """0172 replaces credit_transactions_apply_lots() on 0167's body (which 0167's replay and rollback pin) and owner_reverse_grant() on
+    0107's, and its collector trigger makes 0167's end state (exactly two AFTER INSERT triggers on the ledger) false. A test that replays
+    0167 or applies its rollback takes 0172 off first with its own rollback (the recoveries table stays), and puts it back with
+    put_back_0172 where the chain goes on. take_off_0167 / put_back_0167 do both."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0172(conn):
+        text = ROLLBACK_0172.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0172(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0172(conn) and has_0167(conn):
+        conn.execute(MIGRATION_0172.read_text(encoding="utf-8"))
+
+
+MIGRATION_0171 = MIGRATIONS / "0171_films_money.sql"
+ROLLBACK_0171 = REPO / "docs" / "sql" / "rollback_0171_films_money.sql"
+_OVERRIDE_0171 = "-- set local nightshift.rollback_0171_discard_segments = 'on';"
+
+
+def has_0171(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return conn.execute("select to_regclass('public.film_segments') is not null").fetchone()[0]
+
+
+def rollback_0171_body(override: bool = False) -> str:
+    """rollback_0171 without its own begin/commit (the caller's transaction holds it), with the override line set when asked."""
+    out = []
+    for ln in ROLLBACK_0171.read_text(encoding="utf-8").splitlines():
+        if ln.strip() in ("begin;", "commit;"):
+            continue
+        if override and ln.strip() == _OVERRIDE_0171:
+            ln = "set local nightshift.rollback_0171_discard_segments = 'on';"
+        out.append(ln)
+    return "\n".join(out)
+
+
+def take_off_0171(conn_or_session) -> None:
+    """0171 replaces 0166's films_status_check (adds 'queued'), and 0166's rollback refuses while film_segments exists, so a test that
+    replays or rolls back 0166 takes 0171 off first with its own rollback (override on: the lab's segments are not kept) and puts it
+    back with put_back_0171 where the chain goes on."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0171(conn):
+        conn.execute(rollback_0171_body(override=True))
+
+
+def put_back_0171(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0171(conn):
+        conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
+
+
+MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"
+ROLLBACK_0174 = REPO / "docs" / "sql" / "rollback_0174_rights_acknowledgement.sql"
+
+
+def has_0174(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.acknowledge_rights(text, text, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0174(conn_or_session) -> None:
+    """0174 replaces create_creative_job() (0075's body), workflow_quote_steps() and start_workflow_run() (0073's) and
+    api_creative_refusal() (0124's). 0124's drift guard refuses any body but its own, so a test that replays 0124 takes 0174 off
+    first. 0075 and 0073 do NOT refuse: 0075's guard is a position() check that 0174's body also passes, and 0073 has none, so
+    replaying either over 0174 silently puts the old body back and removes the gate. A test that replays them takes 0174 off first
+    too, and puts it back after. The rollback brings the four earlier bodies back and drops 0174's functions and its requirement
+    guard, while rights_acknowledgements (the record, with its append-only triggers), rights_acknowledgement_kinds and
+    model_registry.requires_acknowledgement stay. put_back_0174 applies 0174 again; it picks the kept tables up as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0174(conn):
+        text = ROLLBACK_0174.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0174(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0174(conn):
+        conn.execute(MIGRATION_0174.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

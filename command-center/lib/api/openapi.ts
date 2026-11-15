@@ -8,6 +8,7 @@
 import { API_TIERS, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/api/pricing";
 import { API_SCOPES, KEY_RPM_MAX, LEGACY_SCOPES } from "@/lib/api/scopes";
 import { CREATIVE_CAPABILITIES, PARAM_KEYS } from "@/lib/creative/operations";
+import { JOB_ERROR_CODES } from "@/lib/runBackend";
 
 const ERROR_CODES = [
   "invalid_api_key",
@@ -35,6 +36,8 @@ const ERROR_CODES = [
   "mode_not_supported",
   "route_changed",
   "no_model_available",
+  // 0174: the model needs a person to confirm their rights to the input in the Studio first; there is no API call for it.
+  "acknowledgement_required",
   "registry_missing",
   "forbidden",
   "invalid_body",
@@ -217,8 +220,12 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             error: { type: ["string", "null"], description: "One plain sentence saying why a job failed; never a log." },
             error_code: {
               type: ["string", "null"],
-              enum: ["credits", "voice", "provider_quota", "media", "render", "timeout", "unknown", null],
-              description: "Why a job failed, as a stable code.",
+              enum: [...JOB_ERROR_CODES, null],
+              description:
+                "Why a job failed, as a stable code. channel_reconnect_required: YouTube refused the channel's connection before " +
+                "anything was spent; reconnect YouTube for this channel on the Channels page. credentials_missing: a service key the " +
+                "run needs is not set up. spend_ceiling: the channel's monthly spending ceiling stopped the run. None of these is " +
+                "charged. A failed job always has status failed; the code says why.",
             },
             charge: {
               type: ["object", "null"],

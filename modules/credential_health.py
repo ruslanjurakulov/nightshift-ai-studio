@@ -30,9 +30,41 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+#: main.py's exit code when the credential preflight stopped the run (any required key other than the YouTube token).
+#: Before this the run died with a traceback and exit 1, which the queue worker can only call ``unknown``, so a
+#: customer read "Something went wrong" for a run that knew exactly what was wrong (CLAUDE.md rule 6). 75 and 78-83 are
+#: taken (docs/GEMINI_QUOTA.md).
+CREDENTIALS_MISSING_EXIT = 84
+#: The same stop when the ONLY blocking credentials are the channel's YouTube token: Google refused it (expired or
+#: revoked) at the free pre-run check. Its own code because its remedy is the customer's own (reconnect the channel),
+#: while a missing Gemini or Pexels key is the operator's to fix; one code would have to pick one sentence for both.
+RECONNECT_REQUIRED_EXIT = 85
+
+#: The checks that are this channel's YouTube connection, not a platform key.
+YOUTUBE_CHECKS = frozenset({"youtube_token", "youtube_token_live"})
+#: The one check whose failure means Google refused a token the channel HAD: exit 85's sentence says YouTube "no longer
+#: accepts" the connection. ``youtube_token`` (no token stored at all) is not that, so it stays on exit 84.
+RECONNECT_CHECKS = frozenset({"youtube_token_live"})
+
+
 class CredentialsMissing(RuntimeError):
     """A key the run cannot do without is not configured. Raised by main.py at
-    the top of the run, before anything is spent (CLAUDE.md rule 6)."""
+    the top of the run, before anything is spent (CLAUDE.md rule 6).
+
+    ``names`` are the blocking checks' names (never a value): they decide the exit code."""
+
+    def __init__(self, message: str = "", names=()):
+        super().__init__(message)
+        self.names = tuple(str(n) for n in names)
+
+    @property
+    def exit_code(self) -> int:
+        """:data:`RECONNECT_REQUIRED_EXIT` when every blocking check is the YouTube connection, else
+        :data:`CREDENTIALS_MISSING_EXIT`. A run missing Gemini AND holding a dead token is the operator's first:
+        reconnecting alone would not let it run."""
+        if self.names and all(n in RECONNECT_CHECKS for n in self.names):
+            return RECONNECT_REQUIRED_EXIT
+        return CREDENTIALS_MISSING_EXIT
 
 
 OK = "ok"
