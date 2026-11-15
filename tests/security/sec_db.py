@@ -535,6 +535,7 @@ def take_off_0167(conn_or_session) -> None:
     either rollback, on a database that has 0167 takes 0167 off first with its own rollback (it puts 0034's refund body and 0165's lot
     trigger back; the recoveries table stays), and puts it back with put_back_0167 where the chain goes on."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0172(conn)  # 0172 sits on 0167's lot trigger, and 0167's rollback refuses any other body
     if has_0167(conn):
         text = ROLLBACK_0167.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -544,6 +545,70 @@ def put_back_0167(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0167(conn):
         conn.execute(MIGRATION_0167.read_text(encoding="utf-8"))
+    put_back_0172(conn)
+
+
+MIGRATION_0172 = MIGRATIONS / "0172_grant_reversal_hold_recovery.sql"
+ROLLBACK_0172 = REPO / "docs" / "sql" / "rollback_0172_grant_reversal_hold_recovery.sql"
+
+
+def has_0172(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.credit_grant_reversal_recover()') is not null").fetchone()[0])
+
+
+def take_off_0172(conn_or_session) -> None:
+    """0172 replaces credit_transactions_apply_lots() on 0167's body (which 0167's replay and rollback pin) and owner_reverse_grant() on
+    0107's, and its collector trigger makes 0167's end state (exactly two AFTER INSERT triggers on the ledger) false. A test that replays
+    0167 or applies its rollback takes 0172 off first with its own rollback (the recoveries table stays), and puts it back with
+    put_back_0172 where the chain goes on. take_off_0167 / put_back_0167 do both."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0172(conn):
+        text = ROLLBACK_0172.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0172(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0172(conn) and has_0167(conn):
+        conn.execute(MIGRATION_0172.read_text(encoding="utf-8"))
+
+
+MIGRATION_0171 = MIGRATIONS / "0171_films_money.sql"
+ROLLBACK_0171 = REPO / "docs" / "sql" / "rollback_0171_films_money.sql"
+_OVERRIDE_0171 = "-- set local nightshift.rollback_0171_discard_segments = 'on';"
+
+
+def has_0171(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return conn.execute("select to_regclass('public.film_segments') is not null").fetchone()[0]
+
+
+def rollback_0171_body(override: bool = False) -> str:
+    """rollback_0171 without its own begin/commit (the caller's transaction holds it), with the override line set when asked."""
+    out = []
+    for ln in ROLLBACK_0171.read_text(encoding="utf-8").splitlines():
+        if ln.strip() in ("begin;", "commit;"):
+            continue
+        if override and ln.strip() == _OVERRIDE_0171:
+            ln = "set local nightshift.rollback_0171_discard_segments = 'on';"
+        out.append(ln)
+    return "\n".join(out)
+
+
+def take_off_0171(conn_or_session) -> None:
+    """0171 replaces 0166's films_status_check (adds 'queued'), and 0166's rollback refuses while film_segments exists, so a test that
+    replays or rolls back 0166 takes 0171 off first with its own rollback (override on: the lab's segments are not kept) and puts it
+    back with put_back_0171 where the chain goes on."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0171(conn):
+        conn.execute(rollback_0171_body(override=True))
+
+
+def put_back_0171(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0171(conn):
+        conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
 
 
 MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"

@@ -72,12 +72,14 @@ describe("breadcrumbs", () => {
 
   it("keeps a detail page's links on the same channel and decodes its segment", () => {
     const crumbs = breadcrumbs("/chronos/videos/a%20b");
-    expect(crumbs[2]).toEqual({ kind: "section", key: "videos", href: "/chronos/videos" });
-    expect(crumbs[3]).toEqual({ kind: "detail", segment: "a b", parent: "videos", href: "/chronos/videos/a%20b" });
+    // A video sits under Nightshift Studio, where the videos are a shelf: Studio › Videos › the video.
+    expect(crumbs[2]).toEqual({ kind: "section", key: "studio", href: "/chronos/studio" });
+    expect(crumbs[3]).toEqual({ kind: "section", key: "videos", href: "/chronos/videos" });
+    expect(crumbs[4]).toEqual({ kind: "detail", segment: "a b", parent: "videos", href: "/chronos/videos/a%20b" });
   });
 
   it("survives a malformed escape instead of throwing during render", () => {
-    expect(breadcrumbs("/c/videos/%E0%A4%A")[3]).toMatchObject({ segment: "%E0%A4%A" });
+    expect(breadcrumbs("/c/videos/%E0%A4%A")[4]).toMatchObject({ segment: "%E0%A4%A" });
   });
 
   it("falls back to a detail crumb for a route the sidebar does not list", () => {

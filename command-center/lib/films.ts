@@ -14,6 +14,8 @@ export const FILM_STATUSES = [
   "draft",
   "planning",
   "planned",
+  // 0171: the hold is taken and the project waits for the worker to pick it up.
+  "queued",
   "running",
   "draining",
   "paused",

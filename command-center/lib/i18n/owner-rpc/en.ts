@@ -87,12 +87,16 @@ export const ownerRpcEn = {
     reverseCancel: "Cancel",
     reverseTitle: "Take back {credits} credits from “{org}”?",
     reverseBody:
-      "Only credits that are still unspent are taken back; the rest is recorded as a shortfall. A grant can be reversed once.",
+      "Free credits are taken back now; credits a run holds are taken back if the run releases them, not if it spends them; credits already spent stay as a shortfall. A grant can be reversed once.",
     reverseConfirm: "Take back credits",
     dGrant: "Grant",
     dGivenAt: "Given",
     reverseDone: "Took back {reversed} credits.",
     reverseShort: "Took back {reversed} of {granted} credits. {shortfall} had already been spent and stays as a shortfall.",
+    reverseShortHeld:
+      "Took back {reversed} of {granted} credits. {held} are held by a run: they are taken back if the run releases them, not if it spends them. {spent} had already been spent.",
+    reverseShortUnknown:
+      "Took back {reversed} of {granted} credits. {shortfall} could not be taken back now: spent, or held by a run — the server did not say which.",
     reverseDuplicate: "That grant had already been reversed: nothing was taken twice.",
   },
 

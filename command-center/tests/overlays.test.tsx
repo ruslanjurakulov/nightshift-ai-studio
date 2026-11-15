@@ -54,7 +54,8 @@ describe("mobile navigation", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     const bar = screen.getByRole("navigation", { name: dictionaries.en.ownerShell.tabsLabel });
     const labels = Array.from(bar.querySelectorAll("a")).map((a) => a.textContent);
-    expect(labels).toEqual(["Home", "Videos", "Billing", "Alerts", "More"]);
+    // Videos are a shelf of Nightshift Studio now, so Studio takes their tab.
+    expect(labels).toEqual(["Home", "Studio", "Billing", "Alerts", "More"]);
   });
 
   it("gives a customer a bottom tab bar with Studio in the centre and no drawer", () => {
@@ -62,7 +63,9 @@ describe("mobile navigation", () => {
     expect(screen.queryByRole("button", { name: "Menu" })).toBeNull();
     const bar = screen.getAllByRole("navigation", { name: "Menu" }).at(-1)!;
     const labels = Array.from(bar.querySelectorAll("a")).map((a) => a.textContent);
-    expect(labels).toEqual(["Videos", "Channels", "Studio", "Credits", "Settings"]);
+    // Home takes the place Videos had (Videos are a Studio shelf), and the centre Studio key opens Studio home.
+    expect(labels).toEqual(["Home", "Channels", "Studio", "Credits", "Settings"]);
+    expect(Array.from(bar.querySelectorAll("a")).map((a) => a.getAttribute("href")?.split("/").slice(2).join("/"))).toEqual(["home", "channels", "studio", "credits", "organization"]);
   });
 
   it("names the hub Nightshift Studio everywhere but the phone's tab, whose short form is that same brand in every language", () => {
@@ -70,7 +73,9 @@ describe("mobile navigation", () => {
     // translated "Студия" or "Studiya", so the tab still means the place the sidebar and the breadcrumbs call Nightshift Studio.
     for (const code of ["en", "ru", "uz"] as const) {
       expect(dictionaries[code].nav.hub).toBe("Nightshift Studio");
+      expect(dictionaries[code].nav.studio).toBe("Nightshift Studio");
       expect(dictionaries[code].shell.hubTab).toBe("Studio");
+      expect(dictionaries[code].ownerShell.tabStudio).toBe("Studio");
     }
   });
 });

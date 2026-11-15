@@ -348,9 +348,33 @@ describe("OwnerRecentGrants", () => {
     fireEvent.click(key);
     expect(h.fetch).toHaveBeenCalledTimes(1);
     expect(sent()).toEqual({ url: "/api/owner/credits/reverse", body: { transactionId: 31, reason: "given twice by mistake" } });
-    await act(async () => done(jsonRes({ ok: true, duplicate: false, granted: 500, reversed: 320, shortfall: 180, balance: 20 })));
+    await act(async () => done(jsonRes({ ok: true, duplicate: false, granted: 500, reversed: 320, shortfall: 180, on_hold: 0, balance: 20 })));
     expect(screen.getByText("Took back 320 of 500 credits. 180 had already been spent and stays as a shortfall.")).toBeTruthy();
     expect(h.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  async function reverseAnswering(answer: Record<string, unknown>) {
+    h.fetch.mockResolvedValue(jsonRes(answer));
+    show();
+    await tap(screen.getByRole("button", { name: /^Reverse the grant of 500 credits$/ }));
+    change(screen.getByPlaceholderText(o.grant.reasonPh), "given twice by mistake");
+    await tap(screen.getByRole("button", { name: o.grant.reverseReview }));
+    await tap(within(sheet()).getByRole("button", { name: o.grant.reverseConfirm }));
+  }
+
+  it("a shortfall a run holds is said to be on hold, taken back on release, never called spent (0172)", async () => {
+    await reverseAnswering({ ok: true, duplicate: false, granted: 500, reversed: 320, shortfall: 180, on_hold: 130, balance: 20 });
+    expect(screen.getByText(
+      "Took back 320 of 500 credits. 130 are held by a run: they are taken back if the run releases them, not if it spends them. 50 had already been spent.",
+    )).toBeTruthy();
+  });
+
+  it("an answer without on_hold (0172 not applied) says it does not know, rather than spent (rule 5)", async () => {
+    await reverseAnswering({ ok: true, duplicate: false, granted: 500, reversed: 320, shortfall: 180, balance: 20 });
+    expect(screen.getByText(
+      "Took back 320 of 500 credits. 180 could not be taken back now: spent, or held by a run — the server did not say which.",
+    )).toBeTruthy();
+    expect(screen.queryByText(/had already been spent/)).toBeNull();
   });
 
   it("a refusal (too old, nothing left, already reversed) shows in the sheet", async () => {

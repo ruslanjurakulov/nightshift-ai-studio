@@ -9,6 +9,8 @@ import { customVoiceRu } from "./custom-voice/ru";
 import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { studioHubRu } from "./studio-hub/ru";
+import { studioCanvasRu } from "./studio-canvas/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -57,6 +59,8 @@ export const ru: Dictionary = {
   effects: effectsRu,
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
+  studioHub: studioHubRu,
+  studioCanvas: studioCanvasRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
@@ -128,7 +132,8 @@ export const ru: Dictionary = {
     margin: "Маржа",
     customers: "Клиенты",
     billing: "Оплата",
-    studio: "Облик бренда",
+    studio: "Nightshift Studio",
+    brandLook: "Облик бренда",
     library: "Медиатека",
     styles: "Стили",
     inbox: "Входящие",
@@ -959,6 +964,12 @@ export const ru: Dictionary = {
     videoModel: "Модель видео (изображение→видео)",
     imageModel: "Модель изображений",
     voiceModel: "Модель голоса (ElevenLabs)",
+    voiceModelDeprecated: "устарела",
+    voiceModelNoLanguage: "не говорит на языке: {language}",
+    voiceModelNotOnQueue: "пока недоступна для запусков",
+    voiceModelDefaultMayNot: "может не говорить на языке: {language}; выберите Eleven v3",
+    voiceModelDropped: "Выбор {model} сброшен: эта модель не говорит на языке: {language}. Выберите Eleven v3.",
+    voiceModelHint: "Модели, которые не говорят на языке этого видео, отключены (список моделей ElevenLabs, проверен {date}).",
     voicePick: "Голос",
     voiceChannel: "Голос канала",
     voiceCustom: "Свой ID голоса…",

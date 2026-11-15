@@ -9,6 +9,8 @@ import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { studioHubEn } from "./studio-hub/en";
+import { studioCanvasEn } from "./studio-canvas/en";
 import { ownerSafetyEn } from "./owner-safety/en";
 import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
@@ -66,6 +68,8 @@ export const en = {
   effects: effectsEn,
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
+  studioHub: studioHubEn,
+  studioCanvas: studioCanvasEn,
   ownerSafety: ownerSafetyEn,
   confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,
@@ -139,7 +143,9 @@ export const en = {
     margin: "Margin",
     customers: "Customers",
     billing: "Billing",
-    studio: "Brand look",
+    studio: "Nightshift Studio",
+    // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
+    brandLook: "Brand look",
     library: "Library",
     styles: "Styles",
     inbox: "Inbox",
@@ -975,6 +981,12 @@ export const en = {
     videoModel: "Video model (image→video)",
     imageModel: "Image model",
     voiceModel: "Voice model (ElevenLabs)",
+    voiceModelDeprecated: "deprecated",
+    voiceModelNoLanguage: "does not speak {language}",
+    voiceModelNotOnQueue: "not offered for runs yet",
+    voiceModelDefaultMayNot: "may not speak {language}; pick Eleven v3",
+    voiceModelDropped: "{model} was cleared: it does not speak {language}. Pick Eleven v3.",
+    voiceModelHint: "Models that cannot speak this video's language are switched off (ElevenLabs model list, read {date}).",
     voicePick: "Voice",
     voiceChannel: "Channel's voice",
     voiceCustom: "Custom voice id…",

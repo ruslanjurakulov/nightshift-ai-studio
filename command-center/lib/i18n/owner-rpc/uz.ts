@@ -82,12 +82,16 @@ export const ownerRpcUz: OwnerRpcDictionary = {
     reverseCancel: "Bekor qilish",
     reverseTitle: "«{org}» hisobidan {credits} kredit qaytarib olinsinmi?",
     reverseBody:
-      "Faqat hali sarflanmagan kreditlar qaytarib olinadi; qolgani kamomad sifatida yoziladi. Berilgan kreditni bir marta qaytarish mumkin.",
+      "Boʻsh kreditlar darhol qaytarib olinadi; ishga tushirish band qilgan kreditlar, agar u ularni boʻshatsa, qaytarib olinadi, sarflasa — yoʻq; allaqachon sarflangani kamomad boʻlib qoladi. Berilgan kreditni bir marta qaytarish mumkin.",
     reverseConfirm: "Kreditlarni qaytarib olish",
     dGrant: "Berilgan kredit",
     dGivenAt: "Berilgan vaqt",
     reverseDone: "{reversed} kredit qaytarib olindi.",
     reverseShort: "{granted} kreditdan {reversed} qaytarib olindi. {shortfall} allaqachon sarflangan va kamomad boʻlib qoladi.",
+    reverseShortHeld:
+      "{granted} kreditdan {reversed} qaytarib olindi. {held} ishga tushirish tomonidan band qilingan: u ularni boʻshatsa, qaytarib olinadi, sarflasa — yoʻq. {spent} allaqachon sarflangan.",
+    reverseShortUnknown:
+      "{granted} kreditdan {reversed} qaytarib olindi. {shortfall} hozir qaytarib olinmadi: sarflangan yoki ishga tushirish band qilgan — server qaysi biri ekanini aytmadi.",
     reverseDuplicate: "Bu kredit allaqachon qaytarilgan: ikki marta hech narsa olinmadi.",
   },
 

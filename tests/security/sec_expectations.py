@@ -132,6 +132,8 @@ TABLES: Dict[str, Kind] = {
     "credit_refunds": Service(),
     # 0167 (BR-0034-01): the held part of a refund's shortfall, collected when the hold is released; the service key reads it.
     "credit_refund_recoveries": Service(),
+    # 0172 (BR-0107-01): the held part of an owner's grant reversal shortfall, collected when the hold is released; the service key reads it.
+    "credit_grant_reversal_recoveries": Service(),
     # 0084 (BR-G-001): the base rates, margins and notes are the operator's;
     # members read the rates as charged through credit_rates().
     "credit_prices": Platform(),
@@ -718,6 +720,11 @@ sec_referral_0165.extend(TABLES, FUNCTIONS)
 import sec_films_0166  # noqa: E402
 
 sec_films_0166.extend(TABLES, FUNCTIONS)
+
+# Migration 0171 (Film Studio P2: quote_film / start_film, one credit hold per film segment, the worker's settle functions): tests/security/sec_films_0171.py
+import sec_films_0171  # noqa: E402
+
+sec_films_0171.extend(TABLES, FUNCTIONS)
 
 # Migration 0174 (rights acknowledgement: an append-only record of who took responsibility for which input, and the job start path
 # refusing a model that requires one without it): tests/security/sec_rights_acknowledgement_0174.py
