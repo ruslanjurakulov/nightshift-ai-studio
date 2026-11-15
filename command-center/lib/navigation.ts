@@ -11,11 +11,10 @@
 
 import type { Dictionary } from "@/lib/i18n";
 
-export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "allSections" | "gManage" | "gIntel" | "gSystem" | "menu" | "sections" | "home">;
+export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "allSections" | "gManage" | "gIntel" | "gSystem" | "menu" | "sections">;
 /**
  * A screen's name in breadcrumbs, tabs and the tab title. Wider than NavKey:
- * Home is a tab of the hub and never a rail entry of its own, so it has no
- * rail icon (SideNav's ICONS is keyed by NavKey alone).
+ * All sections is the operator's phone page and never a rail entry of its own.
  */
 export type SectionKey = NavKey | "home" | "allSections";
 export type NavGroupLabel = keyof Pick<Dictionary["nav"], "gManage" | "gIntel" | "gSystem">;
@@ -37,8 +36,8 @@ export const HOME = "/command-center";
 
 /**
  * A customer's first screen after sign-in ("Bosh sahifa"): what to post next,
- * the quick tools, their channels and what they made. A tab of the hub, not a
- * rail entry — the hub's rail entry opens it.
+ * the quick tools, their channels and what they made. The customer rail's first
+ * entry (Nightshift Studio is its own entry beside it).
  */
 export const CUSTOMER_HOME = "/home";
 
@@ -51,29 +50,38 @@ export function landingSection(operator: boolean): string {
 }
 
 /**
- * The primary navigation, in rail order. The first group has no heading: those
- * are the daily loop (make a video, watch it, shape the look, follow the
- * pipeline, read the numbers). SideNav attaches the icons.
+ * The primary navigation, in rail order. The first group has no heading: the
+ * daily loop is four entries (the Command Center, Nightshift Studio, the Inbox,
+ * Analytics). Every creative tool lives under the one Studio entry
+ * (docs/studio/STUDIO_IA.md §4): the owner's complaint was eight sections that
+ * felt unrelated. SideNav attaches the icons.
+ *
+ * The creative screens are still listed here, after Analytics, so breadcrumbs,
+ * tab titles, the palette and the customer/operator gate still know them by
+ * name; STUDIO_HOUSED_KEYS keeps them out of the rail itself.
  */
 export const NAV_GROUPS: NavGroup[] = [
   {
     items: [
       { href: HOME, key: "command" },
-      { href: "/create", key: "create" },
-      { href: "/videos", key: "videos" },
+      { href: "/studio", key: "studio" },
       // Comments on the channel's videos, with drafted replies a person approves (migration 0081).
       { href: "/inbox", key: "inbox" },
-      { href: "/studio", key: "studio" },
+      { href: "/analytics", key: "analytics" },
+      // Housed in Nightshift Studio (hidden from the rail, reached from Studio home's tiles):
+      { href: "/create", key: "create" },
+      { href: "/videos", key: "videos" },
+      // Brand look: it was /studio, and is one click from Studio home (the Channel look chip).
+      { href: "/studio/look", key: "brandLook" },
       { href: "/styles", key: "styles" },
-      // Brand kits, campaigns and ad concepts (migration 0131). Listed only while NIGHTSHIFT_ADS_FACTORY is on: see FEATURE_GATED below.
+      // Brand kits, campaigns and ad concepts (migration 0131). Shown only while NIGHTSHIFT_ADS_FACTORY is on: see FEATURE_GATED below.
       { href: "/ads", key: "ads" },
-      // Character Studio (migration 0137). Listed only while NIGHTSHIFT_CHARACTER_STUDIO is on: see FEATURE_GATED below.
+      // Character Studio (migration 0137). Shown only while NIGHTSHIFT_CHARACTER_STUDIO is on: see FEATURE_GATED below.
       { href: "/character-studio", key: "characterStudio" },
       { href: "/library", key: "library" },
       { href: "/editor", key: "editor" },
       { href: "/workflows", key: "workflows" },
       { href: "/pipeline", key: "pipeline" },
-      { href: "/analytics", key: "analytics" },
     ],
   },
   {
@@ -207,6 +215,7 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "videos",
   "inbox",
   "studio",
+  "brandLook",
   "styles",
   "library",
   "editor",
@@ -230,57 +239,113 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
  * them by URL, and the breadcrumbs still name them), they just no longer sit
  * in a customer-shaped app's navigation.
  */
-export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members"];
+/**
+ * The creative screens that live under the one Nightshift Studio entry. They keep their pages and
+ * URLs (lib/studioRoutes.ts says where each will move once the canvas exists); the rail lists
+ * Studio instead of them, and Studio's entry is lit on every one of them.
+ */
+export const STUDIO_HOUSED_KEYS: readonly NavKey[] = [
+  "create",
+  "videos",
+  "brandLook",
+  "styles",
+  "ads",
+  "characterStudio",
+  "library",
+  "editor",
+  "workflows",
+  "pipeline",
+];
+
+export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members", ...STUDIO_HOUSED_KEYS];
 
 /**
- * A customer's rail: five destinations, nothing else. Studio is where things
- * are made (create, library, look, series); Settings holds the workspace
- * (Account and security; Developers is reached from it). Each of the two opens
- * its first screen, and SECTION_TABS lays Studio's other screens out as tabs —
- * a short rail with the tools behind it, never a wall of tools.
+ * A customer's rail: five destinations, nothing else. Home is the first screen
+ * after sign-in; Nightshift Studio is where things are made (every creative
+ * tool, the videos and the projects, behind one entry); Settings holds the
+ * workspace (Account and security; Developers is reached from it). No tab bar:
+ * Studio home lays its tools out as tiles — a short rail with the tools behind
+ * it, never a wall of tools.
  */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
-  { href: CUSTOMER_HOME, key: "hub" },
-  { href: "/videos", key: "videos" },
+  { href: CUSTOMER_HOME, key: "home" },
+  { href: "/studio", key: "studio" },
   { href: "/channels", key: "channels" },
   { href: "/credits", key: "credits" },
   { href: "/organization", key: "settings" },
 ];
 
-export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionItem[]>> = {
-  hub: [
-    { href: CUSTOMER_HOME, key: "home" },
-    { href: "/create", key: "create" },
-    { href: "/library", key: "library" },
-    { href: "/editor", key: "editor" },
-    { href: "/workflows", key: "workflows" },
-    { href: "/studio", key: "studio" },
-    { href: "/styles", key: "styles" },
-    { href: "/series", key: "series" },
-    // Brand kits, campaigns and ad concepts (migration 0131); a tab only while NIGHTSHIFT_ADS_FACTORY is on.
-    { href: "/ads", key: "ads" },
-    // Character Studio (migration 0137); a tab only while NIGHTSHIFT_CHARACTER_STUDIO is on.
-    { href: "/character-studio", key: "characterStudio" },
-    // Comments on the channel's videos, with replies a person approves (migration 0081).
-    { href: "/inbox", key: "inbox" },
-    // The catalog of models a customer may use (sellable_models()), by task.
-    { href: "/models", key: "models" },
-  ],
-  // Settings has no tab bar: it is one plain page (Account and security)
-  // with Developers (API keys) as its own entry. There is no team to lay out.
+/**
+ * Tab bars under a rail entry. Neither has one any more: Studio's tools are tiles on Studio home
+ * (the SECTION_TABS.hub strip of eleven tabs is gone), and Settings is one plain page with
+ * Developers (API keys) as its own entry. The groups stay, empty, because they still decide
+ * which rail entry is lit (tabsFor).
+ */
+export const SECTION_TABS: Readonly<Record<RailGroup, readonly SectionItem[]>> = {
+  studio: [],
   settings: [],
 };
 
+export type RailGroup = "studio" | "settings";
+
+/** The housed screens as section paths ("/create"), plus the screens Studio home opens that have no rail key. */
+export const STUDIO_SCREENS: readonly string[] = [
+  "/studio",
+  ...NAV_ITEMS.filter((i) => STUDIO_HOUSED_KEYS.includes(i.key)).map((i) => i.href),
+  // The Presets gallery is opened from Studio and Home; it keeps Studio lit.
+  "/presets",
+];
+
 /**
- * Screens that belong to a rail entry without being tabs of it: Settings owns
- * its page and Developers, so the bottom bar and the sidebar keep Settings lit
- * on both.
+ * Screens that belong to a rail entry without being tabs of it: Studio owns every creative screen,
+ * Settings owns its page and Developers, so the bottom bar and the sidebar keep the right entry lit.
  */
-const RAIL_SCREENS: Readonly<Record<"hub" | "settings", readonly string[]>> = {
-  // The Presets gallery is opened from Studio and Home; it keeps Studio lit without being a tab.
-  hub: ["/presets"],
+const RAIL_SCREENS: Readonly<Record<RailGroup, readonly string[]>> = {
+  studio: STUDIO_SCREENS,
   settings: ["/organization", "/developers"],
 };
+
+/**
+ * Studio home's tiles: every housed tool, then the customer's channel screens that used to be tabs
+ * of the hub (Inbox, Series, Models), so none of them lost its way in. The key "presets" names the one
+ * screen with no rail key. Filtered by navShown (switches) and sectionAllowed (operator-only).
+ */
+export type StudioTileKey =
+  | Extract<NavKey, "create" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models">
+  | "presets";
+
+export interface StudioTile {
+  href: string;
+  key: StudioTileKey;
+  group: "make" | "channel";
+}
+
+export const STUDIO_TILES: readonly StudioTile[] = [
+  { href: "/create", key: "create", group: "make" },
+  { href: "/library", key: "library", group: "make" },
+  { href: "/editor", key: "editor", group: "make" },
+  { href: "/workflows", key: "workflows", group: "make" },
+  { href: "/styles", key: "styles", group: "make" },
+  { href: "/presets", key: "presets", group: "make" },
+  { href: "/studio/look", key: "brandLook", group: "make" },
+  { href: "/pipeline", key: "pipeline", group: "make" },
+  { href: "/ads", key: "ads", group: "make" },
+  { href: "/character-studio", key: "characterStudio", group: "make" },
+  { href: "/inbox", key: "inbox", group: "channel" },
+  { href: "/series", key: "series", group: "channel" },
+  { href: "/models", key: "models", group: "channel" },
+];
+
+/** The tiles a viewer sees: a switched-off section and an operator-only one (for a customer) are left out. */
+export function studioTilesFor(operator: boolean, features: NavFeatures = NO_NAV_FEATURES): StudioTile[] {
+  return STUDIO_TILES.filter((tile) => {
+    if (tile.key !== "presets" && !navShown(tile.key, features)) return false;
+    if (!sectionAllowed(tile.href.slice(1), operator)) return false;
+    // The operator's rail already lists Inbox, Series and Models; the tiles are for the customer, whose rail does not.
+    if (tile.group === "channel" && operator) return false;
+    return true;
+  });
+}
 
 /**
  * The Studio's tools, in the order the customer sidebar lists them: the
@@ -318,14 +383,14 @@ export interface CustomerSidebar {
 }
 
 export const CUSTOMER_SIDEBAR: CustomerSidebar = {
-  // Studio opens Home, the first tab of its group; the tools below go straight to /create.
-  home: { href: CUSTOMER_HOME, key: "hub" },
+  home: { href: CUSTOMER_HOME, key: "home" },
+  // Kept as data for the canvas's Add node menu (STUDIO_IA.md §4); the sidebar no longer lists them, Studio home's
+  // Create tile and its desk chips do. Every link still works (tests/studio-routes.test.ts).
   tools: STUDIO_TOOLS.map((tool) => ({ tool, href: toolHref(tool) })),
   work: [
-    { href: "/styles", key: "styles" },
-    { href: "/library", key: "library" },
-    { href: "/editor", key: "editor" },
-    { href: "/videos", key: "videos" },
+    { href: "/studio", key: "studio" },
+    // The Inbox stays outside the Studio (STUDIO_IA.md §9.4) and was a hub tab: it keeps a row of its own here.
+    { href: "/inbox", key: "inbox" },
     { href: "/channels", key: "channels" },
   ],
   footer: [
@@ -337,23 +402,21 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
 
 /**
  * Which sidebar row is the current place, from the section path (no channel,
- * e.g. "/create") and the `tool` query value. A tool row wins on /create when
- * the URL names one; Studio owns the rest of its tab group except Library
- * and the Editor, which have their own rows; Settings owns its page.
+ * e.g. "/create"). Home owns /home; Studio owns every creative screen and the
+ * channel screens its tiles open (Series, Models); Settings owns its page.
+ * The query no longer matters: the tools are not rows of their own any more.
  */
-export function sidebarCurrent(section: string, tool: string | null): string | null {
+export function sidebarCurrent(section: string): string | null {
   const first = "/" + (section.split("/").filter(Boolean)[0] ?? "");
-  if (first === "/create" && tool && (STUDIO_TOOLS as readonly string[]).includes(tool)) return `tool:${tool}`;
-  if (first === "/library") return "library";
-  // Styles is a Studio tab, but it also has its own row (the way to browse looks).
-  if (first === "/styles") return "styles";
-  if (first === "/editor") return "editor";
+  if (first === CUSTOMER_HOME) return "home";
   // Developers has its own row; Settings is the workspace page alone.
   if (first === "/developers") return "developers";
   // Usage is part of the credits story (plan allowance, extra credits): its row is Credits.
   if (first === "/usage") return "credits";
+  // Series and Models were hub tabs; their way in is now a Studio home tile.
+  if (first === "/series" || first === "/models") return "studio";
   const group = tabsFor(first.slice(1))?.rail;
-  if (group === "hub") return "hub";
+  if (group === "studio") return "studio";
   if (group === "settings") return "settings";
   for (const item of [...CUSTOMER_SIDEBAR.work, ...CUSTOMER_SIDEBAR.footer]) {
     if (first === item.href) return item.key;
@@ -365,9 +428,10 @@ export function sidebarCurrent(section: string, tool: string | null): string | n
 export function tabsFor(
   section: string,
   features: NavFeatures = NO_NAV_FEATURES,
-): { rail: "hub" | "settings"; items: readonly SectionItem[] } | null {
-  const href = "/" + section;
-  for (const rail of ["hub", "settings"] as const) {
+): { rail: RailGroup; items: readonly SectionItem[] } | null {
+  // Only the first segment decides: /studio/look and /videos/<id> belong where /studio and /videos do.
+  const href = "/" + (section.split("/").filter(Boolean)[0] ?? "");
+  for (const rail of ["studio", "settings"] as const) {
     if (SECTION_TABS[rail].some((i) => i.href === href) || RAIL_SCREENS[rail].includes(href)) {
       return { rail, items: SECTION_TABS[rail].filter((i) => navShown(i.key, features)) };
     }
@@ -378,32 +442,34 @@ export function tabsFor(
 /** One key of the operator's phone tab bar; `more` is the page of every section. */
 export interface OperatorTab {
   href: string;
-  key: "home" | "videos" | "billing" | "alerts" | "more";
+  key: "home" | "studio" | "billing" | "alerts" | "more";
   /** The icon: a rail key, or the sections page's own. */
   icon: NavKey | "sections";
 }
 
 /**
  * The platform owner's bottom bar on a phone, in thumb order: the Command Center (money, failures, what waits
- * for them at a glance), the videos, billing, alerts, and More, a visible tab to the page listing every other
+ * for them at a glance), Nightshift Studio (where the videos now are), billing, alerts, and More, a visible tab to the page listing every other
  * section. Visible navigation, never a drawer behind a button. Operator-only: SideNav draws it for the
  * operator alone, and every route here is an operator screen the layout redirects a customer away from.
  */
 export const OPERATOR_TABS: readonly OperatorTab[] = [
   { href: HOME, key: "home", icon: "command" },
-  { href: "/videos", key: "videos", icon: "videos" },
+  { href: "/studio", key: "studio", icon: "studio" },
   { href: "/billing", key: "billing", icon: "billing" },
   { href: "/alerts", key: "alerts", icon: "alerts" },
   { href: ALL_SECTIONS, key: "more", icon: "sections" },
 ];
 
 /**
- * Which operator tab is the current place, from the section path ("/billing"). Home, Videos, Billing and
- * Alerts light for their own screens (Videos also for a video's page); every other screen belongs to More.
+ * Which operator tab is the current place, from the section path ("/billing"). Home, Studio, Billing and
+ * Alerts light for their own screens (Studio for every creative screen, a video's page too); every other
+ * screen belongs to More.
  */
 export function operatorTabCurrent(section: string): OperatorTab["key"] {
   const first = "/" + (section.split("/").filter(Boolean)[0] ?? "");
   if (first === HOME || first === "/") return "home";
+  if (STUDIO_SCREENS.includes(first)) return "studio";
   const own = OPERATOR_TABS.find((t) => t.key !== "more" && t.href === first);
   return own ? own.key : "more";
 }
@@ -475,6 +541,8 @@ export function breadcrumbs(pathname: string): Crumb[] {
   const sectionHref = "/" + segments[0];
   if (sectionHref === HOME) return crumbs;
   const item = SECTION_ITEMS.find((i) => i.href === sectionHref);
+  // A housed creative screen sits under Nightshift Studio, and says so: Studio › Styles.
+  if (sectionHref !== "/studio" && STUDIO_SCREENS.includes(sectionHref)) crumbs.push({ kind: "section", key: "studio", href: at("/studio") });
   if (item) crumbs.push({ kind: "section", key: item.key, href: at(item.href) });
   else crumbs.push({ kind: "detail", segment: segments[0], parent: null, href: at(sectionHref) });
 
@@ -503,7 +571,11 @@ export function parentPath(pathname: string): string | null {
   const { slug, segments } = splitPath(pathname);
   if (!slug) return null;
   if (segments.length === 0) return `/${slug}${HOME}`;
-  if (segments.length === 1) return "/" + segments[0] === HOME ? null : `/${slug}${HOME}`;
+  if (segments.length === 1) {
+    if ("/" + segments[0] === HOME) return null;
+    // A housed creative screen's way up is Studio home, the place that lists it.
+    return segments[0] !== "studio" && STUDIO_SCREENS.includes("/" + segments[0]) ? `/${slug}/studio` : `/${slug}${HOME}`;
+  }
   return `/${slug}/${segments.slice(0, -1).join("/")}`;
 }
 

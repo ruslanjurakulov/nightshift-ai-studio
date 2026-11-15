@@ -418,7 +418,9 @@ def test_replays_of_the_refund_the_release_the_expiry_and_the_migration_collect_
 
         # The migration again, with a recovery row open: it finds its own bodies and changes nothing.
         text = MIGRATION.read_text(encoding="utf-8")
+        sec_db.take_off_0172(s)  # 0172 sits on 0167's lot trigger, and 0167's guard knows only its own and 0165's
         s.conn.execute(text.replace("set local lock_timeout = '5s';", ""))
+        sec_db.put_back_0172(s)
         assert _recovery(s, rid) == (1000, 0, [job])
 
         assert _ok(_call(s, SERVICE, "select public.release_credits(%s)", [job])) == 1100

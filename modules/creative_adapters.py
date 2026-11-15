@@ -135,6 +135,9 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         resolution=_str(p.get("resolution")),
         duration_s=_int(p.get("duration_s")),
         voice_id=_str(p.get("voice_id")),
+        # tts: the language the text is in, when the job names one. No SQL path stores one yet
+        # (the creative quote does not take it); the film studio will, and is refused here then.
+        text_language=_str(p.get("language")) if request.capability == "tts" else None,
         scale=_int(p.get("factor")),
         # An opaque per-organization id for the vendors that ask for one.
         end_user=hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32],

@@ -109,23 +109,12 @@ describe("SectionTabs", () => {
     </I18nProvider>
   );
 
-  it("is wired to the shared indicator, and slides from the tab you left after the route remounts it", () => {
-    pathname = "/chronos/home";
-    const first = render(tabs());
-    const nav = screen.getByRole("navigation", { name: en.nav.sections });
-    const track = nav.querySelector("ul.ns-tabs-track") as HTMLElement;
-    expect(track).not.toBeNull();
-    expect(track.hasAttribute("data-indicator")).toBe(true);
-    const homeL = track.style.getPropertyValue("--ns-ind-l");
-    expect(homeL).toBe("2px");
-    first.unmount();
-    pathname = "/chronos/library";
-    render(tabs());
-    const again = screen.getByRole("navigation", { name: en.nav.sections }).querySelector("ul.ns-tabs-track") as HTMLElement;
-    const current = again.querySelector('a[aria-current="page"]') as HTMLElement;
-    const index = Array.from(again.children).indexOf(current.parentElement as Element);
-    expect(index).toBeGreaterThan(0);
-    expect(again.style.getPropertyValue("--ns-ind-l")).toBe(`${2 + index * 104}px`);
-    expect(again.getAttribute("data-ind-dir")).toBe("fwd");
+  it("draws no strip on the screens that used to be the hub's tabs: they are Studio home tiles now", () => {
+    for (const p of ["/chronos/home", "/chronos/library", "/chronos/create", "/chronos/studio", "/chronos/styles"]) {
+      pathname = p;
+      const r = render(tabs());
+      expect(screen.queryByRole("navigation", { name: en.nav.sections }), p).toBeNull();
+      r.unmount();
+    }
   });
 });

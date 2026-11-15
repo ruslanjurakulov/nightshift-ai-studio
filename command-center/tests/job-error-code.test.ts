@@ -85,12 +85,15 @@ describe("what a customer is sent", () => {
 
 describe("the sentences", () => {
   const VENDORS = /eleven|gemini|google|pexels|kling|veo\b|minimax|leonardo|openai|seedance|higgsfield|runway|luma|supabase|youtube|\.env|api key|secret/i;
+  const VENDORS_BUT_YOUTUBE = /eleven|gemini|google|pexels|kling|veo\b|minimax|leonardo|openai|seedance|higgsfield|runway|luma|supabase|\.env|api key|secret|token/i;
   for (const [name, d] of [["en", en], ["ru", ru], ["uz", uz]] as const) {
     it(`${name}: one non-empty sentence per code, no vendor, no operator remedy`, () => {
       for (const code of JOB_ERROR_CODES) {
         const s = d.create.jobError[code];
         expect(s, code).toBeTruthy();
-        expect(s, code).not.toMatch(VENDORS);
+        // The one exception: the customer's own YouTube connection is the thing to reconnect, and the sentence must say
+        // so (CLAUDE.md rule 6). Every other vendor, and every other code, stays unnamed.
+        expect(s, code).not.toMatch(code === "channel_reconnect_required" ? VENDORS_BUT_YOUTUBE : VENDORS);
       }
       expect(Object.keys(d.create.jobError).sort()).toEqual([...JOB_ERROR_CODES].sort());
       expect(d.create.creditsReturned).toBeTruthy();

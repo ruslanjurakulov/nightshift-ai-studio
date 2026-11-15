@@ -16,6 +16,7 @@
 --   2. docs/sql/prices_2026_10_01.sql
 --   3. docs/sql/prices_corrections_2026_10_01.sql
 --   4. docs/sql/prices_defaults_2026_10_03.sql      <- this file
+--   5. docs/sql/prices_scribe_2026_11_14.sql        (corrects this file's Scribe v2 row)
 -- It is safe to run before 2 and 3 as well: it only inserts units they do not
 -- seed, and `on conflict (unit) do nothing` keeps any row that already exists.
 --

@@ -361,7 +361,7 @@ describe("list pages: a failed read shows the error state, not the empty text", 
     ["time-machine", "../app/(app)/[channel]/time-machine/page", []],
     ["intelligence", "../app/(app)/[channel]/intelligence/page", []],
     ["intelligence-map", "../app/(app)/[channel]/intelligence-map/page", []],
-    ["studio", "../app/(app)/[channel]/studio/page", [en.studio.autopilotNone]],
+    ["studio/look (Brand look)", "../app/(app)/[channel]/studio/look/page", [en.studio.autopilotNone]],
     ["series", "../app/(app)/[channel]/series/page", [en.series.empty]],
   ];
   for (const [name, path, emptyTexts] of cases) {
@@ -381,7 +381,7 @@ describe("list pages: a failed read shows the error state, not the empty text", 
     const logs = await render(async () => (await import("../app/(app)/[channel]/logs/page")).default());
     expect(has(logs, en.logs.empty)).toBe(true);
     expect(logs).not.toContain("data-read-error");
-    const studio = await render(async () => (await import("../app/(app)/[channel]/studio/page")).default());
+    const studio = await render(async () => (await import("../app/(app)/[channel]/studio/look/page")).default());
     expect(has(studio, en.studio.autopilotNone)).toBe(true);
     expect(studio).not.toContain("data-read-error");
     const series = await render(async () => (await import("../app/(app)/[channel]/series/page")).default());
@@ -390,8 +390,8 @@ describe("list pages: a failed read shows the error state, not the empty text", 
   });
 });
 
-describe("videos: the KPIs are unknown when the library could not be read", () => {
-  const load = async () => (await import("../app/(app)/[channel]/videos/page")).default();
+describe("videos (Studio's Videos shelf): the KPIs are unknown when the library could not be read", () => {
+  const load = async () => (await import("@/components/studio-hub/VideosShelf")).VideosShelf();
 
   it("failed", async () => {
     const html = await render(load);

@@ -243,7 +243,7 @@ describe("GeneratePanel Style chips", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
     const group = await styleGroup();
     expect(within(group).getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByRole("link", { name: t.gen.styleMake }).getAttribute("href")).toBe("/chronos/studio");
+    expect(screen.getByRole("link", { name: t.gen.styleMake }).getAttribute("href")).toBe("/chronos/studio/look");
   });
 
   it("offers the Style Library beside the chips — with kits and without — and a link changes nothing", async () => {
