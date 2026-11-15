@@ -437,7 +437,7 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     base_dsn = sec_db.create_database(admin, base)
     try:
         # (0120 replaces 0111's guard and refuses to do so on a database that never had it: the base for "before 0111" stops short of it too)
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_", "0122_", "0127_", "0145_", "0175_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_", "0122_", "0127_", "0145_", "0175_", "0178_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0]) for s in CHANGED}
@@ -663,8 +663,11 @@ def test_the_sweep_first_then_a_late_capture_charges_nothing_and_leaves_no_negat
 
 def test_a_started_hold_is_not_released_by_the_three_hour_rule(db):
     ref = f"rj-started-{uuid.uuid4().hex[:8]}"
-    _scratch_hold(db, ref)
-    db.su("select public.start_credit_reservation(%s, %s)", [ref, ORG_B])
+    # Start inside the unstarted window, then age creation only. An already
+    # expired unstarted hold is deliberately no longer revived by 0178.
+    _scratch_hold(db, ref, age="1 hour")
+    assert db.su("select public.start_credit_reservation(%s, %s)", [ref, ORG_B])[0][0] == 50
+    db.su("update public.credit_reservations set created_at=now()-interval '4 hours' where job_id=%s", [ref])
     assert db.su("select public.expire_credit_reservations(%s)", [ORG_B])[0][0] == 0
     assert db.su("select status from public.credit_reservations where job_id = %s", [ref])[0][0] == "open"
     db.su("select public.release_credits(%s)", [ref])

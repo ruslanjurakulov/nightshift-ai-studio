@@ -1110,7 +1110,7 @@ class ActionsSettle(unittest.TestCase):
 
     def env(self, **kw):
         base = {"CREDIT_REF": "gh-123", "CHANNEL_ID": "news", "REQUESTED_CHANNEL": "news",
-                "INPUT_DURATION": "", "GITHUB_ENV": str(self.github_env)}
+                "INPUT_DURATION": "60", "GITHUB_ENV": str(self.github_env)}
         base.update(kw)
         return base
 
@@ -1127,6 +1127,12 @@ class ActionsSettle(unittest.TestCase):
         self.assertEqual(credits_settle.start(self.env(INPUT_DURATION="180"), c), 0)
         written = dict(line.split("=", 1) for line in self.github_env.read_text().splitlines())
         self.assertEqual(written[credits.HELD_THUMBNAIL_MODE_ENV], "concept")
+
+    def test_an_actions_hold_without_a_priced_duration_is_refused_and_released(self):
+        fake = FakeCredits()
+        self.assertEqual(credits_settle.start(self.env(INPUT_DURATION=""), fake), 1)
+        self.assertEqual(fake.settled(), [("release", "gh-123")])
+        self.assertEqual(self.github_env.read_text(), "")
 
     def test_start_never_writes_an_organization_id_that_is_not_a_uuid(self):
         # GITHUB_ENV is line-oriented: a line break in a database value would

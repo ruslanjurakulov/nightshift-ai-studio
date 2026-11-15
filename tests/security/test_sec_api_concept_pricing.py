@@ -145,8 +145,12 @@ def test_unpriced_base_blocks_site_and_api_before_money_moves(world,rate):
     assert conn.execute("select public.series_episode_price(60,%s)",[a.channel]).fetchone()[0] is None
     denied=create(conn,a)
     assert not denied['ok'] and denied['error']['code']=='pricing_unavailable',denied
-
-
+    conn.execute("select public.release_credits(job_id) from public.credit_reservations where org_id=%s and status='open'", [a.org])
+    ref='rj-unpriced-'+uuid.uuid4().hex
+    with acting(conn,a.actor) as s:
+        assert s.run("select public.reserve_credits(%s,%s,30)",[a.org,ref]).ok
+        out=s.run("insert into public.render_jobs(channel_id,kind,params,requested_by,credit_ref) values(%s,'daily','{\"duration\":60}',%s,%s)",[a.channel,a.actor.uid,ref])
+    assert not out.ok and out.sqlstate=='22023',out
 
 def test_direct_credit_job_cannot_use_a_base_only_hold(world):
     conn,a=world
