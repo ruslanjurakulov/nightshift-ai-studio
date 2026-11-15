@@ -109,14 +109,17 @@ const SANDBOX_ONLY =
 const ENV_UNKNOWN =
   "PADDLE_WEBHOOK_ENV is not set to sandbox or production — nothing granted yet; waiting for Paddle's retry";
 
-type GrantGate = (orgId: string) => { httpStatus: number; status: "rejected" | "failed"; detail: string } | null;
+type GrantGate = ((orgId: string) => { httpStatus: number; status: "rejected" | "failed"; detail: string } | null) & {
+  /** PADDLE_WEBHOOK_ENV was set (sandbox or production); false while it is unset and grants wait for Paddle's retry. */
+  envKnown: boolean;
+};
 
 function grantGate(env: PaddleWebhookEnv, testOrgs: ReadonlySet<string>): GrantGate {
-  return (orgId) => {
+  return Object.assign((orgId: string) => {
     if (env === "production") return null;
-    if (env === "sandbox") return testOrgs.has(orgId.toLowerCase()) ? null : { httpStatus: 200, status: "rejected", detail: SANDBOX_ONLY };
-    return { httpStatus: 503, status: "failed", detail: ENV_UNKNOWN };
-  };
+    if (env === "sandbox") return testOrgs.has(orgId.toLowerCase()) ? null : { httpStatus: 200, status: "rejected" as const, detail: SANDBOX_ONLY };
+    return { httpStatus: 503, status: "failed" as const, detail: ENV_UNKNOWN };
+  }, { envKnown: env !== "unknown" });
 }
 
 /** The webhook's env var for a pack's Paddle price id, e.g. PADDLE_PRICE_STARTER. */
@@ -1241,7 +1244,11 @@ async function execute(
         };
       }
       // A sandbox subscription must not put a real plan (its limits, its run slots) on a customer's workspace either.
-      const held = gate(orgId);
+      // Only a state that grants (active, trialing) waits while PADDLE_WEBHOOK_ENV is unset: a cancellation, pause or
+      // past_due takes something away, so holding it at 503 would keep a plan a customer stopped paying for. In
+      // sandbox a non-listed workspace is still refused whatever the state (a sandbox subscription is not theirs).
+      const grants = decision.status === "active" || decision.status === "trialing";
+      const held = grants || gate.envKnown ? gate(orgId) : null;
       if (held) return { httpStatus: held.httpStatus, row: { status: held.status, detail: held.detail, orgId } };
       try {
         const res = await store.upsertSubscription({

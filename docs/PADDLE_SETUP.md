@@ -197,7 +197,12 @@ noto'g'ri Paddle'ni ochmasligi uchun).
 > `PADDLE_WEBHOOK_ENV` qo'yilmagan (yoki noto'g'ri yozilgan) funksiya hech kimga
 > hech narsa bermaydi va Paddle'ga **503** qaytaradi — shunda Paddle o'sha
 > event'ni keyinroq qayta yuboradi va siz qiymatni qo'ygach u kreditlanadi.
-> Refund va chargeback har doim o'tadi.
+> Refund va chargeback har doim o'tadi. Obunaning bekor qilinishi, pauzasi va
+> `past_due` holati ham kutmaydi — darhol yoziladi (faqat beradigan holatlar,
+> `active` va `trialing`, 503 bilan kutadi).
+> Paddle o'z qayta urinishlarini tugatib qo'ygan bo'lsa ham event yo'qolmaydi:
+> uni Paddle dashboard'idagi notification'lar (webhook yetkazishlari) ro'yxatidan
+> qo'lda qayta yuborish (replay) mumkin.
 
 Supabase CLI kerak (<https://supabase.com/docs/guides/cli>). `<REF>` — Supabase
 loyihangiz id'si (Settings → General → Reference ID).

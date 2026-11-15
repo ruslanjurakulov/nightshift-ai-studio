@@ -610,3 +610,31 @@ describe("plans in sandbox (PADDLE_WEBHOOK_ENV=sandbox)", () => {
     expect(store.subs.size).toBe(1);
   });
 });
+
+describe("plans while PADDLE_WEBHOOK_ENV is unset", () => {
+  function deliverUnset(store: FakeStore, body: string) {
+    return handlePaddleWebhook(
+      { method: "POST", rawBody: body, signature: sign(body) },
+      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "unknown", testOrgs: new Set() },
+    );
+  }
+
+  it("a state that grants (active, trialing) waits for Paddle's retry (503), and nothing is recorded", async () => {
+    const store = new FakeStore();
+    for (const status of ["active", "trialing"]) {
+      const r = await deliverUnset(store, subEvent("subscription.updated", { status }, `evt_${status}`));
+      expect(r.status).toBe(503);
+    }
+    expect(store.subs.size).toBe(0);
+  });
+
+  it("a cancellation, pause or past_due is recorded at once: holding it would keep a plan nobody pays for", async () => {
+    for (const status of ["canceled", "paused", "past_due"]) {
+      const store = new FakeStore();
+      const r = await deliverUnset(store, subEvent("subscription.updated", { status }, `evt_${status}`));
+      expect(r.status, status).toBe(200);
+      expect(r.body, status).toMatchObject({ status: "processed" });
+      expect(store.subs.get(SUB)?.status, status).toBe(status);
+    }
+  });
+});
