@@ -313,8 +313,10 @@ main:has([data-studio-canvas]) {
 }
 .cv-chip-link:hover { color: var(--text); background: var(--key-hi); }
 .cv-seg { display: inline-flex; padding: 3px; border: 1px solid var(--rule); border-radius: 12px; background: var(--key); }
-.cv-seg button {
+.cv-seg button,
+.cv-seg a {
   display: inline-flex;
+  text-decoration: none;
   align-items: center;
   gap: 6px;
   min-height: 32px;
@@ -326,6 +328,7 @@ main:has([data-studio-canvas]) {
   font-size: 14px;
   font-weight: 500;
 }
+.cv-seg a[aria-current="page"],
 .cv-seg button[aria-pressed="true"] { color: var(--text); background: var(--console); box-shadow: var(--lift-1); }
 .cv-seg button[aria-disabled="true"] { color: var(--faint); cursor: not-allowed; }
 .cv-seg button:disabled { color: var(--faint); cursor: not-allowed; }

@@ -3,6 +3,8 @@ import { ArrowLeft, Palette } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { NotConfigured } from "@/components/NotConfigured";
 import { StudioCanvas } from "@/components/studio-canvas/StudioCanvas";
+import { StudioTimeline } from "@/components/studio-timeline/StudioTimeline";
+import { parseFilmId } from "@/lib/films";
 import { VideosShelf } from "@/components/studio-hub/VideosShelf";
 import { ProjectsShelf } from "@/components/studio-hub/ProjectsShelf";
 import { isSupabaseConfigured } from "@/lib/config";
@@ -46,6 +48,12 @@ export default async function StudioPage({
   const sp = await searchParams;
   if (sp.shelf !== undefined) return await ShelfView({ shelf: shelfFromQuery(sp.shelf) });
   if (!isSupabaseConfigured) return <NotConfigured />;
+  if (sp.view === "timeline") {
+    // The Timeline reads one project through /api/films (RLS, film_json) in the browser; the server only says whether the section is
+    // open for this viewer, so a switched-off workspace sees "not open yet" and no project is read at all.
+    const filmStudio = await filmStudioOpen();
+    return <StudioTimeline filmStudio={filmStudio} filmId={parseFilmId(sp.film) ?? null} />;
+  }
 
   const { selection, channels } = await getChannelContext();
   const scopedChannel = isScoped(selection) ? channels.find((c) => c.channel_id === selection) : undefined;

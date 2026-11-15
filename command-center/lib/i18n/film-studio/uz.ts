@@ -301,6 +301,7 @@ export const filmStudioUz: FilmStudioDictionary = {
     model_not_offered: "Bu model loyihalar uchun taklif qilinmaydi.",
     model_not_available: "Bu model hozir sotuvda emas. Boshqasini tanlang.",
     asset_not_usable: "Tanlangan rasm endi bu ish maydoni kutubxonasida yoʻq. Boshqasini tanlang.",
+    reference_missing: "Narx hisoblangandan keyin namuna rasm yoki personaj oʻchirildi. Boshqasini tanlang yoki uni olib tashlang, soʻng narxni qayta soʻrang.",
     film_changed: "Siz loyihani ochganingizdan keyin uni boshqa kimdir oʻzgartirdi. Hech narsa ustidan yozilmadi.",
     film_not_editable: "Bu loyihani endi oʻzgartirib boʻlmaydi.",
     idempotency_conflict: "Bu soʻrov boshqa loyiha uchun ishlatilgan. Formani yoping va qaytadan boshlang.",
