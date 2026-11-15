@@ -36,7 +36,7 @@ import sec_db
 MIGRATION = sec_db.MIGRATIONS / "0147_mcp_free_tier.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
 # Later migrations that replace a function of 0147, with their undo: oauth_gc (0161, tests/security/test_sec_mcp_chatgpt_client.py)
-# and api_request_download (0170, tests/security/test_sec_api_download.py).
+# and api_request_download (0170, tests/security/test_sec_api_download.py). The 0178 pricing layer is removed first by sec_db's helper.
 LATER = [(sec_db.MIGRATIONS / "0161_mcp_chatgpt_client.sql", sec_db.REPO / "docs" / "sql" / "rollback_0161_mcp_chatgpt_client.sql"),
          (sec_db.MIGRATIONS / "0170_api_download_audit.sql", sec_db.REPO / "docs" / "sql" / "rollback_0170_api_download_audit.sql")]
 ORG_PAID = "aaaaaaaa-0000-0000-0000-000000000147"
@@ -106,6 +106,8 @@ def db():
     d = Db(sec_db.build(admin, name))
     # This lab replays and rolls back 0147, whose drift guard refuses a body it was not written on; so a later migration that
     # replaces one of 0147's functions is undone first (with its own rollback) and attacked in its own lab.
+    with psycopg.connect(d.dsn) as c:
+        sec_db.take_off_0178(sec_db.Session(c))
     for later, undo in LATER:
         if later.exists():
             d.apply(undo)
@@ -126,6 +128,8 @@ def db():
     d.su("insert into public.api_keys (org_id, name, key_hash, created_by, scopes, monthly_limit_cents) values (%s, 'k', %s, %s, %s, 100)",
          [ORG_PAID, sha(KEY), U_PAID, ["account:read", "videos:read", "videos:write"]])
     try:
+        # Keep this disposable lab on the historical bodies throughout its replay/snapshot tests. It is dropped below;
+        # reapplying 0178 between these tests would hide which older migration owns the body under attack.
         yield d
     finally:
         if not os.environ.get("NIGHTSHIFT_SECURITY_KEEP"):
