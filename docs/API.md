@@ -133,8 +133,8 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
 | :-- | :-- | :-- |
 | GET | `/me` | organization, tier, limits |
 | GET | `/balance` | balance, hold, month spend (cents) |
-| GET | `/channels` | channels (ids for POST /videos) |
-| GET | `/accounts` | publish targets |
+| GET | `/channels` | channels (ids for POST /videos); `youtube_connected` is `true`, `false` or `"unknown"` with `youtube_checked_at` (see below) |
+| GET | `/accounts` | publish targets; a YouTube entry's `connected` is `true`, `false` or `"unknown"` with `checked_at` |
 | POST | `/videos` | make a video |
 | GET | `/videos` | list videos |
 | GET | `/videos/{id}` | one video + its publish requests |
@@ -142,7 +142,7 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
 | POST | `/videos/{id}/downloads` | order a 720p / 1080p download |
 | GET | `/downloads/{id}` | download status |
 | GET | `/downloads/{id}/file` | the MP4 |
-| GET | `/jobs/{id}` | job status + charge; a failed job carries `error_code` (credits, voice, provider_quota, media, render, timeout, unknown) and one plain `error` sentence, never the worker log |
+| GET | `/jobs/{id}` | job status + charge; a failed job carries `error_code` (credits, voice, provider_quota, media, render, timeout, held, switched_off, channel_reconnect_required, credentials_missing, spend_ceiling, unknown) and one plain `error` sentence, never the worker log; `channel_reconnect_required` means Google refused the channel's YouTube connection before anything was spent: reconnect YouTube for this channel on the Channels page; `held` means the fact-check held the script for a person's review (the held run is on the Videos page). A failed job keeps `status: failed` whatever its code |
 | POST | `/creative/quote` | the price of one generation, in credits |
 | POST | `/creative/jobs` | start a generation (hold the quote) |
 | GET | `/creative/jobs/{id}` | a generation this key started |
@@ -263,3 +263,28 @@ connected with OAuth, without a key, on any plan (Free included since
 migration 0147), spending the workspace's site credits instead of this prepaid
 USD balance. Nothing connected that way
 can reach any function described here that moves the USD balance.
+
+## `youtube_connected`: what the API knows, not what it hopes
+
+> **Change note (2026-11-14, breaking for clients that test truthiness).** `youtube_connected` on `/channels` and
+> `connected` on the YouTube rows of `/accounts` were booleans; they are now `true`, `false` or the string `"unknown"`.
+> A string is truthy, so a client that reads `if (c.youtube_connected)` would show an unchecked connection as
+> connected: compare with `=== true`. The CLI (`nightshift channels`, `nightshift accounts`) prints
+> `unknown (not checked)` for it. Other platforms' `connected` stays a boolean.
+
+`publish_channel_connected()` answers whether a YouTube token row or secret **exists**, not whether Google still
+accepts it. On 2026-11-14 `/channels` said `true` for a channel whose refresh token Google had revoked, and the
+video asked for stopped at the credential preflight. So the API (`lib/api/operations.ts`, `honestYoutubeConnected`)
+sends:
+
+| Value | Meaning |
+| :-- | :-- |
+| `false` | no YouTube connection for this channel |
+| `"unknown"` | a connection exists; nothing recorded says whether Google accepts it (today: every connected channel) |
+| `true` | the bot's last pre-run check found the token live, and that check is newer than the connection |
+| `false` + `youtube_checked_at` | the bot's last pre-run check found the token dead (expired or revoked): reconnect YouTube for this channel on the Channels page |
+
+The bot records each verdict in a `credential.health` event (`youtube_token_live`), which the Channels page already
+reads. The API cannot see it until the database sends it as `youtube_token_check: {status: "live"|"dead"|"unknown",
+checked_at, connected_at}` on each channel and YouTube account row; until that follow-up migration, a connected channel
+reads `"unknown"`. No list call asks Google: it would spend a Google request per channel per poll.
