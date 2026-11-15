@@ -240,3 +240,8 @@ def test_site_claim_expiry_collects_pending_purchase_refund_once(conn):
             assert _ok(_call(s,SERVICE,"select public.start_credit_reservation(%s,%s)",[ref,org])) is None
         assert s.value("select collected from public.credit_refund_recoveries where refund_id=%s",[rid])==300
         assert _balanced(s,org)==100
+
+
+@pytest.mark.parametrize('role', ['anon','authenticated','service_role'])
+def test_trigger_guard_is_not_a_callable_tool(conn,role):
+    assert not conn.execute("select has_function_privilege(%s,'public.render_jobs_priced_thumbnail_guard()','EXECUTE')",[role]).fetchone()[0]
