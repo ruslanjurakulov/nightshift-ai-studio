@@ -331,11 +331,17 @@ ELEVENLABS_RUN_VOICE_ID = _run_voice if re.fullmatch(r"[A-Za-z0-9]{20}", _run_vo
 # "narrator" is an explicit choice to read those lines in the narrator's voice.
 ELEVENLABS_SECONDARY_VOICE_ID = os.getenv("ELEVENLABS_SECONDARY_VOICE_ID", "").strip()
 # ElevenLabs model. eleven_multilingual_v2 stays the default (polished,
-# consistent narration); eleven_v3 is the most expressive, eleven_flash_v2_5 /
-# eleven_turbo_v2_5 are cheaper and faster. A value outside the list falls back
-# to the default rather than failing a paid run on a typo.
-ELEVENLABS_MODELS = ("eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5")
-ELEVENLABS_MODEL_ID = (os.getenv("ELEVENLABS_MODEL_ID", "").strip() or "eleven_multilingual_v2")
+# consistent narration); eleven_v4 and eleven_v3 are the most expressive, and the
+# only ones of these that speak Uzbek (modules/tts_languages.py: an Uzbek channel
+# on another model stops at preflight). eleven_flash_v2_5 is cheaper and faster;
+# eleven_turbo_v2_5 is deprecated and equivalent to Flash v2.5. eleven_v4 is
+# accepted here (the ELEVENLABS_MODEL_ID repository variable) but not yet on the
+# run queue or the workflow's choice list, which need a migration first. A value
+# outside the list falls back to the default rather than failing a paid run on a
+# typo. ELEVENLABS_MODEL_ID_REQUESTED keeps what was asked, so a refusal can say so.
+ELEVENLABS_MODELS = ("eleven_v4", "eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5")
+ELEVENLABS_MODEL_ID_REQUESTED = os.getenv("ELEVENLABS_MODEL_ID", "").strip()
+ELEVENLABS_MODEL_ID = ELEVENLABS_MODEL_ID_REQUESTED or "eleven_multilingual_v2"
 if ELEVENLABS_MODEL_ID not in ELEVENLABS_MODELS:
     ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
 EDGE_TTS_VOICE = (os.getenv("EDGE_TTS_VOICE") or "en-US-ChristopherNeural")
