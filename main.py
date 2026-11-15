@@ -946,7 +946,8 @@ def run(
     if health is not None and health.blocking:
         raise CredentialsMissing(
             "Run stopped before spending anything: required credential(s) not configured — "
-            + "; ".join(f"{c.name}: {c.detail or 'missing'}" for c in health.blocking))
+            + "; ".join(f"{c.name}: {c.detail or 'missing'}" for c in health.blocking),
+            names=[c.name for c in health.blocking])
     # Disk — a full volume kills the render after the script and the voice are paid for.
     # Checked here, right after the credentials and before the first spend (CLAUDE.md #6).
     _preflight_disk(channel_id)
@@ -2371,6 +2372,13 @@ if __name__ == "__main__":
             # hold and say why (.github/workflows/daily_video.yml, tools/queue_worker.py).
             logger.error("Voice gate: %s", refusal)
             sys.exit(refusal.exit_code)
+        except CredentialsMissing as stop:
+            # The preflight stopped the run before anything was spent; the message names each blocking key and its
+            # remedy (our own words, never a value). One line, no traceback, and a distinct code (84, or 85 when the
+            # only problem is the channel's YouTube token) so the runners release the hold and the customer is told the
+            # fix instead of "Something went wrong" (tools/queue_worker.py, modules/render_error.py).
+            logger.error("Credential preflight stopped the run: %s", stop)
+            sys.exit(stop.exit_code)
         except SeriesNotRunnable as refusal:
             # A series was named and cannot run (unknown, not ACTIVE, another channel's). Nothing was spent;
             # the message says which and the fix. One line, no traceback, and a distinct code so the Actions

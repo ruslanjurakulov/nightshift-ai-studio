@@ -5,6 +5,14 @@ import { readAllStdin, readHidden } from "../secret.js";
 import { rows, show, usd } from "../format.js";
 import { checkKey, getClient, resolveBaseUrl } from "./shared.js";
 
+/**
+ * A connection as the API reports it: true, false or "unknown" (no recorded check of the token yet). Only `true` is
+ * "connected": a string is truthy, and "unknown" printed as connected is the lie the API's tri-state exists to stop.
+ */
+export function connection(value) {
+  return value === true ? "connected" : value === false ? "not connected" : "unknown (not checked)";
+}
+
 export const accountCommands = [
   {
     path: "login",
@@ -133,7 +141,7 @@ export const accountCommands = [
           : list
               .map(
                 (c) =>
-                  `${c.id}  ${show(c.name, "")}  ${c.active ? "active" : "NOT active (cannot make videos)"}  youtube:${c.youtube_connected ? "connected" : "not connected"}  target length: ${
+                  `${c.id}  ${show(c.name, "")}  ${c.active ? "active" : "NOT active (cannot make videos)"}  youtube:${connection(c.youtube_connected)}  target length: ${
                     c.target_duration_seconds == null ? "not set" : c.target_duration_seconds + "s"
                   }`,
               )
@@ -156,7 +164,7 @@ export const accountCommands = [
         list.length === 0
           ? "No publish targets.\n"
           : list
-              .map((a) => `${a.platform}  ${a.platform === "youtube" ? "--youtube " + a.channel_id : "--account " + a.account_id}  ${show(a.name, "")}  ${a.connected ? "connected" : "not connected"}`)
+              .map((a) => `${a.platform}  ${a.platform === "youtube" ? "--youtube " + a.channel_id : "--account " + a.account_id}  ${show(a.name, "")}  ${connection(a.connected)}`)
               .join("\n") + "\n",
       );
     },

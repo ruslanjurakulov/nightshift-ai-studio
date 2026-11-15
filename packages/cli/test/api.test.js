@@ -9,7 +9,13 @@ test("whoami, balance, channels: success in human and JSON form", async () => {
   const api = await fakeApi({
     "GET /me": ME,
     "GET /balance": BALANCE,
-    "GET /channels": { channels: [{ id: "tides", name: "Tides", active: true, youtube_connected: true, target_duration_seconds: 90 }] },
+    // youtube_connected is true | false | "unknown" (no recorded check of the token yet): a string is truthy, so only true
+    // may read "connected".
+    "GET /channels": { channels: [
+      { id: "tides", name: "Tides", active: true, youtube_connected: true, target_duration_seconds: 90 },
+      { id: "waves", name: "Waves", active: true, youtube_connected: "unknown", target_duration_seconds: null },
+      { id: "reef", name: "Reef", active: true, youtube_connected: false, target_duration_seconds: null },
+    ] },
   });
   try {
     let r = await run(["whoami"], { api });
@@ -25,6 +31,10 @@ test("whoami, balance, channels: success in human and JSON form", async () => {
     assert.equal(r.stderr, "");
     r = await run(["channels"], { api });
     assert.match(r.stdout, /tides\s+Tides\s+active/);
+    assert.match(r.stdout, /tides .*youtube:connected /);
+    assert.match(r.stdout, /waves .*youtube:unknown \(not checked\)/);
+    assert.doesNotMatch(r.stdout, /waves .*youtube:connected/);
+    assert.match(r.stdout, /reef .*youtube:not connected/);
     // the key went out as a Bearer header, once per request
     assert.ok(api.seen.every((s) => s.headers.authorization === `Bearer ${TEST_KEY}`));
   } finally {
@@ -318,7 +328,7 @@ test("download save: not ready is an honest 409, and no partial file is left", a
 test("publish: sends targets, shows reasons, never claims a public post", async () => {
   const api = await fakeApi({
     "POST /videos/v1/publish": { requests: [{ id: 1, platform: "youtube", account_id: null, target_channel_id: "tides", status: "pending", reason: "waiting for approval" }], errors: [{ account_id: "0b1c2d3e-0000-4000-8000-000000000000", error: "forbidden" }] },
-    "GET /accounts": { accounts: [{ platform: "youtube", channel_id: "tides", name: "Tides", connected: true }, { platform: "tiktok", account_id: "0b1c2d3e-0000-4000-8000-000000000000", name: "t", connected: true }] },
+    "GET /accounts": { accounts: [{ platform: "youtube", channel_id: "tides", name: "Tides", connected: true }, { platform: "youtube", channel_id: "waves", name: "Waves", connected: "unknown" }, { platform: "tiktok", account_id: "0b1c2d3e-0000-4000-8000-000000000000", name: "t", connected: true }] },
   });
   try {
     let r = await run(["publish", "v1", "--youtube", "tides", "--account", "0b1c2d3e-0000-4000-8000-000000000000"], { api });
@@ -331,6 +341,9 @@ test("publish: sends targets, shows reasons, never claims a public post", async 
     r = await run(["accounts"], { api });
     assert.match(r.stdout, /youtube\s+--youtube tides/);
     assert.match(r.stdout, /tiktok\s+--account 0b1c2d3e/);
+    // A YouTube account whose token was never checked is not "connected".
+    assert.match(r.stdout, /--youtube waves\s+Waves\s+unknown \(not checked\)/);
+    assert.match(r.stdout, /--youtube tides\s+Tides\s+connected/);
   } finally {
     await api.close();
   }

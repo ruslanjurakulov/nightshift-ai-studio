@@ -43,6 +43,12 @@ export function toToolResult(result: ApiResult, requestId: string): CallToolResu
   return { content: [{ type: "text", text }] };
 }
 
+/** What `youtube_connected` means, for the assistant: "unknown" must not be read as ready. */
+const YOUTUBE_CONNECTED_NOTE =
+  "youtube_connected is true, false or \"unknown\": unknown means a connection exists but nothing has confirmed Google still " +
+  "accepts it (youtube_checked_at says when it last was). If a job fails with error_code channel_reconnect_required, the person " +
+  "reconnects YouTube for that channel on the Channels page.";
+
 const idempotency = z
   .string()
   .regex(IDEMPOTENCY_KEY_RE)
@@ -258,8 +264,11 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     {
       title: "List channels",
       description: offered("create_video")
-        ? "The organization's channels. Use a channel's id with create_video; only active channels can make videos."
-        : "The organization's channels, each with whether it is active.",
+        ? "The organization's channels. Use a channel's id with create_video; only active channels can make videos. " +
+          YOUTUBE_CONNECTED_NOTE
+        : "The organization's channels, each with whether it is active. " + YOUTUBE_CONNECTED_NOTE,
+      // youtube_connected is true | false | "unknown" (lib/api/operations.ts honestYoutubeConnected): an assistant that read
+      // `true` from a token row told the person the channel was ready while Google had revoked it.
       annotations: { readOnlyHint: true },
     },
     async () => done(await listChannels(caller)),
@@ -344,7 +353,9 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     "list_connected_accounts",
     {
       title: "List publish targets",
-      description: "Where a video can be cross-posted: the organization's YouTube channels (channel_id) and connected Instagram / TikTok accounts (account_id).",
+      description:
+        "Where a video can be cross-posted: the organization's YouTube channels (channel_id) and connected Instagram / TikTok accounts (account_id). " +
+        "A YouTube entry's connected is true, false or \"unknown\" (a connection exists but nothing has confirmed Google still accepts it), with checked_at.",
       annotations: { readOnlyHint: true },
     },
     async () => done(await listAccounts(caller)),

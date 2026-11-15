@@ -158,7 +158,8 @@ curl ${BASE}/channels \\
       "name": "My channel",
       "niche": "history",
       "active": true,
-      "youtube_connected": true,
+      "youtube_connected": "unknown",
+      "youtube_checked_at": null,
       "target_duration_seconds": 180
     }
   ]
