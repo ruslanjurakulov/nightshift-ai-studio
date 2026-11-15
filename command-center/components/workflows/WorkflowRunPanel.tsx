@@ -124,6 +124,8 @@ export function WorkflowRunPanel({
   }
 
   const unpricedList = quote ? quote.unpriced_steps.map((i) => i + 1).join(", ") : "";
+  // 0174: steps refused because their model asks for a rights acknowledgement, which only the Studio can ask: the remedy, not "no price".
+  const ackList = quote ? quote.steps.filter((s) => s.reason === "acknowledgement_required").map((s) => s.step_index + 1).join(", ") : "";
 
   return (
     <div className="flex flex-col gap-8">
@@ -205,7 +207,7 @@ export function WorkflowRunPanel({
             ) : null}
             {block === "unpriced" ? (
               <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
-                {fmt(r.noTotalWhy, { steps: unpricedList })}
+                {ackList ? fmt(r.ackStepsWhy, { steps: ackList }) : fmt(r.noTotalWhy, { steps: unpricedList })}
               </p>
             ) : null}
             {block === "insufficient" && total !== null ? (

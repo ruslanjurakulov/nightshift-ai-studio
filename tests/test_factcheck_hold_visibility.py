@@ -246,8 +246,9 @@ class TheCustomerIsToldTheScriptWasHeld(unittest.TestCase):
         self.assertEqual(render_error.classify(self.HEADER, ["INFO whatever the log said"]), "held")
 
     def test_no_other_exit_code_and_no_log_line_reads_as_held(self):
+        # 78 is the spend ceiling's own code now (it read unknown before), and still never `held`.
         self.assertEqual(render_error.classify("main.py exited with code 78: the channel's spend ceiling", []),
-                         render_error.UNKNOWN)
+                         render_error.SPEND_CEILING)
         self.assertEqual(render_error.classify("main.py exited with code 1", ["fact-check held the script"]),
                          render_error.UNKNOWN)
         self.assertEqual(render_error.classify("main.py exited with code 790: x", []), render_error.UNKNOWN)

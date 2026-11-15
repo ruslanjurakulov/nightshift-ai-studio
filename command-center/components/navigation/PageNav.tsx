@@ -24,6 +24,8 @@ function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => 
       // A section the sidebar does not list names itself by its URL; anything
       // below a section (a video's id) is a detail page, and an id is not a name.
       if (crumb.parent === null && crumb.segment === "presets") return t.presets.title;
+      // Brand look moved under Nightshift Studio: /studio/look.
+      if (crumb.parent === "studio" && crumb.segment === "look") return t.nav.brandLook;
       return crumb.parent === null ? crumb.segment.replace(/-/g, " ") : t.navigation.details;
   }
 }
