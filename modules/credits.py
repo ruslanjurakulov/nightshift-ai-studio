@@ -226,7 +226,7 @@ def minimum_reservation(prices: Mapping[str, Price], duration_s=None,
     d = _num(duration_s)
     if d is None or d <= 0:
         raise CreditRefused("a paid run needs its priced duration — choose a length and start it again")
-    floors.append(minute.charge(d / 60.0))
+    floors.append(prices[UNIT_VIDEO_MINUTE].charge(d / 60.0))
     base = round_up(max(floors)) if floors else None
     if not concept_thumbnail_on(agent_config):
         return base
