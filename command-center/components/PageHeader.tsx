@@ -3,7 +3,7 @@ import {
   Film, Workflow, BarChart3, Palette, ListVideo, Users, UserCircle, KeyRound,
   Bot, ListChecks, Hash, Ruler, GitBranch, GraduationCap, Database, Gauge,
   RefreshCw, Lightbulb, Brain, History, Plug, TriangleAlert, ScrollText,
-  Sparkles, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, type LucideIcon,
+  Sparkles, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, CircleDot, type LucideIcon,
 } from "lucide-react";
 
 /**
@@ -17,7 +17,7 @@ import {
  * boundary. Pass `actions` for a right-aligned control (a button, a pill).
  */
 export type PageIcon =
-  | "videos" | "pipeline" | "analytics" | "studio" | "series" | "channels"
+  | "videos" | "pipeline" | "analytics" | "studio" | "brandLook" | "series" | "channels"
   | "accounts" | "portfolio" | "providers" | "agents" | "jobs" | "topics" | "measurement"
   | "decisions" | "learning" | "memory" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
@@ -29,7 +29,9 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   inbox: Inbox,
   pipeline: Workflow,
   analytics: BarChart3,
-  studio: Palette,
+  // Nightshift Studio takes the record key the rail draws for it; Brand look keeps the palette.
+  studio: CircleDot,
+  brandLook: Palette,
   library: Images,
   styles: Brush,
   ads: Target,

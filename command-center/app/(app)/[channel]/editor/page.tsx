@@ -1,56 +1,21 @@
-import { isSupabaseConfigured } from "@/lib/config";
-import { NotConfigured } from "@/components/NotConfigured";
-import { PageHeader } from "@/components/PageHeader";
-import { Note } from "@/components/g3/Section";
-import { EditorHome } from "@/components/editor/EditorHome";
-import { getOrgContext } from "@/lib/orgs-server";
-import { getDictionary } from "@/lib/i18n/server";
-import { loadEditorProjects, loadEditorVideos } from "@/lib/server/editor";
+import { redirect } from "next/navigation";
+import { getChannelPath } from "@/lib/channels-path-server";
+import { redirectTarget } from "@/lib/studioRoutes";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * The video editor's projects (migration 0054), read as the signed-in user:
- * RLS shows the open organization's projects and videos and nothing else.
- * Editing and exporting are free; an export ends in the library and is never
- * published from here. Without the migration the page says so.
+ * The editor's project list moved into Nightshift Studio: it is the Studio home's Projects shelf
+ * now (docs/studio/STUDIO_IA.md §5, `?shelf=projects&kind=edit`). A project itself still opens at
+ * /editor/{id}. A server-side shim (307 for one release), so the query is carried over. The shelf
+ * reads what this page read, as the signed-in user under RLS.
  */
-export default async function EditorPage() {
-  if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
-  const org = await getOrgContext();
-  const header = (
-    <PageHeader
-      icon="editor"
-      title={t.editor.title}
-      subtitle={t.editor.subtitle}
-    />
-  );
-  const note = (text: string) => (
-    <div className="rhythm ns-open">
-      {header}
-      <Note>{text}</Note>
-    </div>
-  );
-  if (!org.supported) return note(t.org.notMigrated);
-  if (!org.current) return note(t.editor.noOrg);
-
-  const [projects, videos] = await Promise.all([
-    loadEditorProjects(org.current.id),
-    loadEditorVideos(org.current.id),
-  ]);
-  if (projects.state === "not_available") return note(t.editor.notEnabled);
-  if (projects.state !== "ok") return note(t.editor.readFailed);
-
-  return (
-    <div className="rhythm ns-open">
-      {header}
-      <EditorHome
-        orgId={org.current.id}
-        projects={projects.value}
-        videos={videos.state === "ok" ? videos.value : null}
-      />
-    </div>
-  );
+export default async function EditorMoved({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const path = await getChannelPath();
+  redirect(path(redirectTarget("/editor", await searchParams, "editor")));
 }

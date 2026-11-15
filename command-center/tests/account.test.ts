@@ -13,6 +13,7 @@ import {
   RAIL_HIDDEN_KEYS,
   isOperatorOnlySection,
   landingSection,
+  studioTilesFor,
   navGroupsFor,
   navShown,
   sectionAllowed,
@@ -35,13 +36,17 @@ const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.item
 
 describe("nav filtering by role", () => {
   it("gives a customer exactly five destinations, in rail order", () => {
-    expect(keys(false)).toEqual(["hub", "videos", "channels", "credits", "settings"]);
+    expect(keys(false)).toEqual(["home", "studio", "channels", "credits", "settings"]);
   });
 
   it("puts every customer screen behind a rail entry or its tabs", () => {
     const reachable = new Set<string>([
       ...CUSTOMER_RAIL.map((i) => i.key),
-      ...SECTION_TABS.hub.map((i) => i.key),
+      // Every creative screen and the old hub tabs are a tile on Studio home now (no tab bar).
+      // (switched sections counted with their switch on: off, their page is a 404 and they are listed nowhere).
+      ...studioTilesFor(false, { adsFactory: true, characterStudio: true }).map((i) => i.key),
+      // The Videos shelf is part of Studio home itself.
+      "videos",
       // Settings is one page (the workspace) and Developers has its own sidebar row.
       ...CUSTOMER_SIDEBAR.footer.map((i) => i.key),
       "organization",
@@ -52,11 +57,13 @@ describe("nav filtering by role", () => {
     expect(CUSTOMER_RAIL.find((i) => i.key === "settings")?.href).toBe("/organization");
     expect(SECTION_TABS.settings).toEqual([]); // no tab bar, no team screens behind it
     for (const k of CUSTOMER_NAV_KEYS) if (k !== "command") expect(reachable.has(k)).toBe(true);
-    expect(tabsFor("library")?.rail).toBe("hub");
+    expect(tabsFor("library")?.rail).toBe("studio");
+    expect(SECTION_TABS.studio).toEqual([]); // the hub's strip of tabs is gone: tiles, not tabs
     expect(tabsFor("developers")?.rail).toBe("settings");
-    expect(tabsFor("videos")).toBeNull();
-    // Tabs never open an operator-only screen.
-    for (const g of Object.values(SECTION_TABS)) for (const i of g) expect(isOperatorOnlySection(i.href.slice(1))).toBe(false);
+    expect(tabsFor("videos")?.rail).toBe("studio");
+    expect(tabsFor("inbox")).toBeNull();
+    // A customer's tiles never open an operator-only screen.
+    for (const i of studioTilesFor(false)) expect(isOperatorOnlySection(i.href.slice(1)), i.href).toBe(false);
   });
 
   it("keeps the operator's console for a platform admin, minus All Accounts and Team", () => {
@@ -206,11 +213,11 @@ describe("appRedirect", () => {
     expect(isSection("home")).toBe(true);
   });
 
-  it("opens Home from the hub's rail entry, as the hub's first tab, without changing the operator's rail", () => {
-    expect(CUSTOMER_RAIL.find((i) => i.key === "hub")?.href).toBe("/home");
-    expect(SECTION_TABS.hub[0]).toEqual({ href: "/home", key: "home" });
-    expect(tabsFor("home")?.rail).toBe("hub");
-    expect(keys(true)).not.toContain("home" as never);
+  it("opens Home from the customer rail's first entry, with Studio beside it, without changing the operator's rail", () => {
+    expect(CUSTOMER_RAIL[0]).toEqual({ href: "/home", key: "home" });
+    expect(CUSTOMER_RAIL[1]).toEqual({ href: "/studio", key: "studio" });
+    expect(tabsFor("home")).toBeNull();
+    expect(keys(true)).not.toContain("home");
   });
 
   it("still rewrites a channel id to its name, for everyone", () => {

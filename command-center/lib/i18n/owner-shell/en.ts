@@ -9,6 +9,8 @@ export const ownerShellEn = {
   tabsLabel: "Owner navigation",
   tabHome: "Home",
   tabVideos: "Videos",
+  // Nightshift Studio, short: a brand, not translated, and five tabs share a 320px phone.
+  tabStudio: "Studio",
   tabBilling: "Billing",
   tabAlerts: "Alerts",
   tabMore: "More",

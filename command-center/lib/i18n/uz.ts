@@ -9,6 +9,8 @@ import { customVoiceUz } from "./custom-voice/uz";
 import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
+import { studioHubUz } from "./studio-hub/uz";
+import { studioCanvasUz } from "./studio-canvas/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -57,6 +59,8 @@ export const uz: Dictionary = {
   effects: effectsUz,
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
+  studioHub: studioHubUz,
+  studioCanvas: studioCanvasUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
@@ -128,7 +132,8 @@ export const uz: Dictionary = {
     margin: "Marja",
     customers: "Mijozlar",
     billing: "Toʻlovlar",
-    studio: "Brend koʻrinishi",
+    studio: "Nightshift Studio",
+    brandLook: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",
     inbox: "Kiruvchi xabarlar",
@@ -959,6 +964,12 @@ export const uz: Dictionary = {
     videoModel: "Video modeli (rasm→video)",
     imageModel: "Rasm modeli",
     voiceModel: "Ovoz modeli (ElevenLabs)",
+    voiceModelDeprecated: "eskirgan",
+    voiceModelNoLanguage: "{language} tilida gapirmaydi",
+    voiceModelNotOnQueue: "hozircha ishga tushirish uchun mavjud emas",
+    voiceModelDefaultMayNot: "{language} tilida gapirmasligi mumkin; Eleven v3 ni tanlang",
+    voiceModelDropped: "{model} tanlovi bekor qilindi: u {language} tilida gapirmaydi. Eleven v3 ni tanlang.",
+    voiceModelHint: "Bu video tilida gapira olmaydigan modellar oʻchirilgan (ElevenLabs modellar roʻyxati, {date} da tekshirilgan).",
     voicePick: "Ovoz",
     voiceChannel: "Kanalning ovozi",
     voiceCustom: "Oʻz ovoz ID’im…",

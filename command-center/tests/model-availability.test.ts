@@ -102,7 +102,7 @@ vi.mock("@/lib/server/audit", () => ({ logAudit: async () => undefined }));
 
 const route = await import("../app/api/models/availability/route");
 const { MODEL_ID_RE, availabilityBlocker, coerceAdminModels, latestProbes, parseAvailabilityRequest } = await import("../lib/models-admin");
-const { CUSTOMER_SECTIONS, isOperatorOnlySection, navGroupsFor, sectionAllowed, tabsFor } = await import("../lib/navigation");
+const { CUSTOMER_SECTIONS, isOperatorOnlySection, navGroupsFor, sectionAllowed, sidebarCurrent, studioTilesFor } = await import("../lib/navigation");
 const { appRedirect, isSection } = await import("../lib/channels");
 
 function customerAdmin() {
@@ -299,11 +299,13 @@ describe("Models section navigation", () => {
   // The catalog is for everyone who signs in (a customer reads sellable_models(),
   // the operator the whole registry); the availability switches stay the
   // operator's — the route's requireOperator and 0035's RLS decide that, not the rail.
-  it("is in the operator's rail, and a Studio tab (not a rail entry) for a customer", () => {
+  it("is in the operator's rail, and a Studio home tile (not a rail entry) for a customer", () => {
     expect(keys(true)).toContain("models");
     expect(keys(false)).not.toContain("models");
     expect(CUSTOMER_SECTIONS).toContain("models");
-    expect(tabsFor("models")?.rail).toBe("hub");
+    expect(studioTilesFor(false).map((x) => x.href)).toContain("/models");
+    // Its sidebar row is Studio, the place whose tile opens it.
+    expect(sidebarCurrent("/models")).toBe("studio");
   });
 
   it("is a customer section: sectionAllowed lets both in", () => {
