@@ -3974,6 +3974,7 @@ export const uz: Dictionary = {
     makeSimilarHint: "Bu matnni rasm formasiga rasmning shakli bilan qoʻyadi. Biror narsa yaratilishidan oldin narxini koʻrasiz.",
     describedPicture: "Tasvirlangan rasm",
     emptyTitle: "Generatsiyalaringiz shu yerda chiqadi",
+    reloadFeed: "Generatsiyalarni qayta yuklash",
     feedLoading: "Generatsiyalaringiz yuklanmoqda…",
     working: "Ishlanmoqda — oʻzi yangilanadi",
     reasons: {

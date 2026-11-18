@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
@@ -121,6 +121,91 @@ describe("JobFeed", () => {
     render(withI18n(<JobFeed orgId={ORG} />));
     await screen.findByText(t.gen.unavailable);
   });
+
+  it("retries a failed first feed read explicitly without creating a job", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const jobsUrl = `/api/creative/jobs?org_id=${ORG}`;
+    const running = row({ id: "first-read-running", status: "running", charged_credits: null });
+    const privateReadUrl = "https://example.invalid/synthetic-read?marker=fixture-only";
+    const unexpected: string[] = [];
+    let reads = 0;
+    let finishRead!: (response: Response) => void;
+    const retryRead = new Promise<Response>((resolve) => { finishRead = resolve; });
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === jobsUrl && (init?.method ?? "GET") === "GET") {
+        reads += 1;
+        if (reads === 1) return Promise.reject(new Error(`Synthetic transient read error: ${privateReadUrl}`));
+        // A read-only retry could recover this same job; no render needs creating.
+        return reads === 2 ? retryRead : json({ jobs: [running] });
+      }
+      unexpected.push(`${init?.method ?? "GET"} ${url}`);
+      return Promise.reject(new Error("Unexpected request in first-read observation"));
+    });
+    const onRetry = vi.fn();
+    render(withI18n(<JobFeed orgId={ORG} onRetry={onRetry} />));
+    await screen.findByText(t.gen.loadFailed);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(reads).toBe(1);
+    expect(screen.getByText(t.gen.loadFailed)).toBeTruthy();
+    const retry = screen.getByRole("button", { name: "Reload generations" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(reads).toBe(2));
+    expect((screen.getByRole("button", { name: t.gen.feedLoading }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(retry);
+    expect(reads).toBe(2);
+    await act(async () => { finishRead(await json({ jobs: [running] })); });
+    await waitFor(() => expect(document.querySelector('[data-status="running"]')).not.toBeNull());
+    expect(screen.queryByText(t.gen.loadFailed)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload generations" })).toBeNull();
+    // Once the same running job is known, only the existing five-second poll resumes.
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_100); });
+    expect(reads).toBe(3);
+    expect(document.querySelector('[data-status="running"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain(privateReadUrl);
+    expect(document.body.textContent).not.toContain("fixture-only");
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET") !== "GET")).toHaveLength(0);
+    expect(unexpected).toEqual([]);
+  });
+  it("shows failed readback after cancellation acknowledgement and stops polling", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const credits = await import("@/lib/credits-live");
+    const refresh = vi.spyOn(credits, "refreshCredits").mockResolvedValue(undefined);
+    const jobsUrl = `/api/creative/jobs?org_id=${ORG}`;
+    const queued = row({ id: "failed-after-cancel", status: "queued", charged_credits: null });
+    let acknowledged = false;
+    const unexpected: string[] = [];
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === jobsUrl && !init?.method)
+        return json({ jobs: [{ ...queued, status: acknowledged ? "failed" : "queued", error_code: acknowledged ? "policy" : null }] });
+      if (url === `/api/creative/jobs/${queued.id}` && init?.method === "POST") {
+        acknowledged = true;
+        // The acknowledgement must not override the terminal state from the following read.
+        return json({ job: { ...queued, status: "cancelled" }, already: false });
+      }
+      unexpected.push(`${init?.method ?? "GET"} ${url}`);
+      return Promise.reject(new Error("Unexpected request in failed-after-cancel fixture"));
+    });
+    try {
+      const { container } = render(withI18n(<JobFeed orgId={ORG} />));
+      fireEvent.click(await screen.findByRole("button", { name: t.gen.cancel }));
+      await screen.findByText(new RegExp(t.gen.reasons.policy.slice(0, 20)));
+      expect(container.querySelector('[data-status="failed"]')).not.toBeNull();
+      expect(container.querySelector('[data-status="cancelled"]')).toBeNull();
+      expect(screen.queryByText(t.gen.status.cancelled)).toBeNull();
+      expect(screen.queryByRole("button", { name: t.gen.cancel })).toBeNull();
+      const reads = () => fetchMock.mock.calls.filter(([url, init]) => url === jobsUrl && !init?.method).length;
+      expect(reads()).toBe(2);
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+      expect(reads()).toBe(2);
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+      expect(unexpected).toEqual([]);
+    } finally {
+      refresh.mockRestore();
+    }
+  });
+
+
 });
 
 describe("GeneratePanel", () => {

@@ -181,6 +181,8 @@ export function JobFeed({
   // The server's clock minus this browser's, from the feed's own answers: the rows' times are the database's.
   const [skew, setSkew] = useState(0);
   const seq = useRef(0);
+  const readRetryPending = useRef(false);
+  const [retryingRead, setRetryingRead] = useState(false);
   const capabilityKey = capabilities ? capabilities.join(",") : "";
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
@@ -872,7 +874,22 @@ export function JobFeed({
         <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.gen.unavailable}</p>
       ) : (
         <>
-          {state === "failed" && <p className="text-xs text-[var(--color-warn)]">{t.gen.loadFailed}</p>}
+          {state === "failed" && (
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-[var(--color-warn)]">{t.gen.loadFailed}</p>
+              <button type="button" className={chip} disabled={retryingRead} aria-busy={retryingRead}
+                onClick={async () => {
+                  // A read failure must recover the existing jobs, never prefill a new generation.
+                  if (readRetryPending.current) return;
+                  readRetryPending.current = true;
+                  setRetryingRead(true);
+                  try { await load(); }
+                  finally { readRetryPending.current = false; setRetryingRead(false); }
+                }}>
+                {retryingRead ? t.gen.feedLoading : t.gen.reloadFeed}
+              </button>
+            </div>
+          )}
           {loading &&
             (variant === "takes" || variant === "log" ? (
               <div className="flex flex-col gap-2" aria-busy="true" aria-label={t.gen.feedLoading}>
