@@ -286,6 +286,8 @@ describe("Assemble", () => {
     await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startFailed.other));
     mode = "refuse";
     fireEvent.click(key());
+    expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(1);
+    fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
     await waitFor(() => expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(2));
     const starts = calls.filter((x) => x.url.endsWith("/start"));
     expect(starts[1].body?.idem).toBe(starts[0].body?.idem);
