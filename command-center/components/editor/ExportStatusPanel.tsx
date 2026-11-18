@@ -14,6 +14,7 @@ import {
   tookSeconds,
 } from "@/lib/editorExportStatus";
 import type { PollHalt } from "./useExportPoll";
+import { ExistingExportFile } from "./ExistingExportFile";
 
 /** A second-by-second clock, only while an export runs and only after mount (the server cannot know the time). */
 function useNow(on: boolean): number | null {
@@ -314,6 +315,7 @@ export function ExportStatusPanel({
           <Link href={path("/library")} className={libraryLink}>
             {te.viewInLibrary}
           </Link>
+          {latest.assetId ? <ExistingExportFile key={latest.assetId} assetId={latest.assetId} /> : null}
         </div>
       ) : null}
 

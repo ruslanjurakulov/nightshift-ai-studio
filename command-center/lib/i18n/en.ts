@@ -3998,6 +3998,7 @@ export const en = {
     makeSimilarHint: "Puts this text into the image form, with the picture's shape. You see the price before anything is made.",
     describedPicture: "The described picture",
     emptyTitle: "Your generations appear here",
+    videoCancellationUnknown: "Cancellation recorded in Nightshift. Provider cancellation is not confirmed by this job record.",
     reloadFeed: "Reload generations",
     feedLoading: "Loading your generations…",
     working: "Working — this updates by itself",

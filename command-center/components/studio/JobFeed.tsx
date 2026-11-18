@@ -109,7 +109,12 @@ export function elapsedSeconds(iso: string, now: number): number | null {
  * On a desk (`capabilities`) only that desk's tools are listed, in the desk's
  * own layout (`variant`); the reads, the polling and every action are the same.
  */
-export function JobFeed({
+export function JobFeed(props: Parameters<typeof ScopedJobFeed>[0]) {
+  // A different feed must not display the previous organization's or desk's cached jobs.
+  return <ScopedJobFeed key={JSON.stringify([props.orgId, props.capabilities ?? []])} {...props} />;
+}
+
+function ScopedJobFeed({
   orgId,
   models = [],
   refreshKey = 0,
@@ -250,6 +255,7 @@ export function JobFeed({
 
   useEffect(() => {
     void load();
+    return () => { seq.current += 1; };
   }, [load, refreshKey]);
 
   const active = state !== "unavailable" && (jobs ?? []).some((j) => isActiveStatus(j.status));
@@ -620,6 +626,9 @@ export function JobFeed({
     const reasonInFrame = outputKind(job.capability) !== "text";
     return (
       <>
+        {job.status === "cancelled" && (job.capability === "t2v" || job.capability === "i2v") && (
+          <p className="text-xs text-[var(--color-muted)]" role="status">{t.gen.videoCancellationUnknown}</p>
+        )}
         {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
           <p className="text-sm leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
             → {t.gen.languages[job.params.target_language]}
@@ -857,7 +866,7 @@ export function JobFeed({
   const rest = featured ? shown.filter((j) => j.id !== featured.id) : shown;
 
   return (
-    <section className="@container flex min-w-0 flex-col gap-3" aria-labelledby="gen-feed-title" data-variant={variant}>
+    <section className="@container flex min-w-0 flex-col gap-3" aria-labelledby="gen-feed-title" aria-busy={loading} data-variant={variant}>
       <div className="flex items-baseline justify-between gap-3">
         <h2 id="gen-feed-title" className="ns-eyebrow">
           {heading}
@@ -873,7 +882,7 @@ export function JobFeed({
       </div>
 
       {state === "unavailable" ? (
-        <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.gen.unavailable}</p>
+        <p className="studio-field p-4 text-sm text-[var(--color-muted)]" role="status">{t.gen.unavailable}</p>
       ) : (
         <>
           {state === "failed" && (
