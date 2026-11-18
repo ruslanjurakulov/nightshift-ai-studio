@@ -1,5 +1,6 @@
 import { Note } from "@/components/g3/Section";
 import { FilmList, type FilmListInitial } from "@/components/films/FilmList";
+import { FilmShelfReadNotice } from "./FilmShelfReadNotice";
 import "@/components/films/films.css";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -34,7 +35,7 @@ export async function FilmProjectsShelf() {
   if (!supabase) return (
     <section aria-labelledby="studio-film-projects" className="rhythm" data-studio-shelf="films">
       {heading}
-      <div role="status"><Note>{s.list.loadFailed}</Note></div>
+      <FilmShelfReadNotice message={s.list.loadFailed} retryLabel={s.retry} />
     </section>
   );
   const [read, ctx] = await Promise.all([listFilms(supabase, org.current.id, false), getChannelContext()]);

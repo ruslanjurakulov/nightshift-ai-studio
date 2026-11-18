@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   client: {} as object | null,
   read: { ok: true, films: [] } as { ok: true; films: unknown[] } | { ok: false; error: "failed" | "not_available" },
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/server/films", () => ({ filmStudioOpen: vi.fn(async () => h.enabled), listFilms: vi.fn(async () => h.read) }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => h.client) }));
 vi.mock("@/lib/orgs-server", () => ({ getOrgContext: vi.fn(async () => ({ supported: h.supported, current: h.current })) }));
@@ -36,7 +37,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });
 
 describe("Film shelf client initialization notice", () => {
-  it.each(["en", "ru", "uz"] as const)("keeps a named noninteractive shelf with its existing %s read-failure copy", async (locale) => {
+  it.each(["en", "ru", "uz"] as const)("keeps a named shelf with its existing %s read-failure copy and route-only recovery", async (locale) => {
     h.locale = locale;
     h.client = null;
     render(await FilmProjectsShelf());
@@ -44,7 +45,8 @@ describe("Film shelf client initialization notice", () => {
     const region = screen.getByRole("region", { name: s.tagline });
     expect(region.getAttribute("data-studio-shelf")).toBe("films");
     expect(screen.getByRole("status").textContent).toBe(s.list.loadFailed);
-    expect(screen.queryByRole("button")).toBeNull();
+    expect((screen.getByRole("button", { name: s.retry }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("status").querySelector("button, a")).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByTestId("existing-film-list")).toBeNull();
     expect(listFilms).not.toHaveBeenCalled();

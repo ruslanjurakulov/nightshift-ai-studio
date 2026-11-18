@@ -4476,6 +4476,7 @@ export const en = {
     confirmAckHint: "Tick the box to continue.",
   },
   media: {
+    comparison: {"action": "Compare images", "title": "Compare saved images", "left": "First image", "right": "Second image", "unnamed": "Unnamed image", "unavailable": "Preview unavailable", "dismiss": "Close comparison", "version": "Version {n}"},
     title: "Library",
     subtitle: "Images, video, audio and captions of {org}: uploaded here or made by Nightshift.",
     notEnabled: "The media library is not enabled on this deployment yet (migration 0038 has not been applied).",

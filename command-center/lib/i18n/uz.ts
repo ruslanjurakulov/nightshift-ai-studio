@@ -4455,6 +4455,7 @@ export const uz: Dictionary = {
     confirmAckHint: "Davom etish uchun katakchani belgilang.",
   },
   media: {
+    comparison: {"action": "Rasmlarni taqqoslash", "title": "Saqlangan rasmlarni taqqoslash", "left": "Birinchi rasm", "right": "Ikkinchi rasm", "unnamed": "Nomsiz rasm", "unavailable": "Oldindan koʻrish mavjud emas", "dismiss": "Taqqoslashni yopish", "version": "Versiya {n}"},
     title: "Mediateka",
     subtitle: "{org} tashkilotining rasmlari, videolari, audiolari va subtitrlari: shu yerda yuklangan yoki Nightshift yaratgan.",
     notEnabled: "Bu joylashuvda mediateka hali yoqilmagan (0038 migratsiyasi qoʻllanmagan).",
