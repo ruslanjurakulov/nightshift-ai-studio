@@ -23,7 +23,7 @@ export const studioCanvasUz: StudioCanvasDictionary = {
   statusNeeds: "{n} ta kirish kutmoqda",
   statusUnknown: "{n} ta holati nomaʼlum",
   statusClosed: "{n} ta hozircha mavjud emas",
-  notSaved: "Joylashuv bu brauzerda saqlanmadi. Sahifadan chiqsangiz, saqlanmagan o‘zgarishlar yo‘qolishi mumkin.",
+  notSaved: "Joylashuv bu brauzerda saqlanmadi. Sahifadan chiqsangiz, saqlanmagan oʻzgarishlar yoʻqolishi mumkin.",
   nothingSpends: "Narxsiz hech narsa sarflanmaydi",
   quote: "Narx",
   quoteHint: "Narxini koʻrish uchun tugunni tanlang",
