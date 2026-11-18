@@ -6,6 +6,7 @@
 export const studioTimelineEn = {
   label: "Nightshift Studio timeline",
   timeline: "Timeline",
+  scrubPosition: "Hours {h}, minutes {m}, seconds {s}, frames {f}",
   // Honest states.
   closed: "Projects are not open yet",
   closedBody: "Scene-by-scene projects are switched off for this workspace. The timeline opens with them; nothing here is a sample.",

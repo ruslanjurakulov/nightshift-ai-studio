@@ -151,6 +151,7 @@ import { SoundPreview, previewVolume } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
 import { CaptionPreview } from "./CaptionPreview";
+import { CaptionReviewHints } from "./CaptionReviewHints";
 import { isCaptionStyleId, perWordCueIds } from "@/lib/captionStyleTable";
 import {
   fitOf,
@@ -1808,6 +1809,7 @@ export function TimelineEditor({
               ? ` ${t.captions.animated.previewNote}`
               : ""}
           </p>
+          <CaptionReviewHints cues={captionsOf(model)?.cues ?? []} pictureEnd={picture} />
           {/* The header panel's note about free export and nothing being published, here below the picture on a phone so the controls above start higher. */}
           <p className="m-0 text-center text-xs text-[var(--color-muted)] sm:hidden">
             {te.freeNote} {te.publishNote}

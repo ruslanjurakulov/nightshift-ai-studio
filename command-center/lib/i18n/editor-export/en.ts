@@ -19,6 +19,7 @@ export const editorExportEn = {
   openVideo: "Open video",
   newTab: "(opens in a new tab)",
   noLink: "The video is in your library. Its preview link is not ready yet.",
+  expiredLinkHint: "If the video link has expired, get a fresh link. This does not export again.",
   getLink: "Get the link",
   retry: "Try again",
   retryNeedsSave: "Save your changes to try again.",

@@ -16,6 +16,7 @@ export const editorExportUz: ExportPanelDictionary = {
   openVideo: "Videoni ochish",
   newTab: "(yangi oynada ochiladi)",
   noLink: "Video mediatekada turibdi. Koʻrish havolasi hali tayyor emas.",
+  expiredLinkHint: "Video havolasi eskirgan boʻlsa, yangisini oling. Bu eksportni qayta boshlamaydi.",
   getLink: "Havolani olish",
   retry: "Qayta urinish",
   retryNeedsSave: "Qayta urinish uchun oʻzgarishlarni saqlang.",

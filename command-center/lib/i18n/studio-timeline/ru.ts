@@ -4,6 +4,7 @@ import type { StudioTimelineDictionary } from "./en";
 export const studioTimelineRu: StudioTimelineDictionary = {
   label: "Таймлайн Nightshift Studio",
   timeline: "Таймлайн",
+  scrubPosition: "Часы: {h}, минуты: {m}, секунды: {s}, кадры: {f}",
   closed: "Проекты пока не открыты",
   closedBody: "Проекты по сценам выключены для этого пространства. Таймлайн откроется вместе с ними; здесь нет образцов.",
   missing: "Эта часть Nightshift Studio ещё не установлена на сервере",

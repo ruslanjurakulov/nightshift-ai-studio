@@ -4,6 +4,7 @@ import type { StudioTimelineDictionary } from "./en";
 export const studioTimelineUz: StudioTimelineDictionary = {
   label: "Nightshift Studio taymlayni",
   timeline: "Taymlayn",
+  scrubPosition: "Soat: {h}, daqiqa: {m}, soniya: {s}, kadr: {f}",
   closed: "Loyihalar hali ochilmagan",
   closedBody: "Sahnama-sahna loyihalar bu ish maydoni uchun oʻchirilgan. Taymlayn ular bilan birga ochiladi; bu yerda namunalar yoʻq.",
   missing: "Nightshift Studio’ning bu qismi serverga hali oʻrnatilmagan",

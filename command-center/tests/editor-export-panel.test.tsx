@@ -18,6 +18,8 @@ vi.mock("next/navigation", () => ({
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { en } from "@/lib/i18n/en";
+import { ru } from "@/lib/i18n/ru";
+import { uz } from "@/lib/i18n/uz";
 import { fmt } from "@/lib/i18n";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { useExportPoll } from "@/components/editor/useExportPoll";
@@ -402,5 +404,76 @@ describe("poll answers arrive out of order", () => {
     expect(screen.getByRole("status", { hidden: true }).textContent).toBe("rendering");
     await act(async () => { waiting[0](snapshot("queued")); await vi.advanceTimersByTimeAsync(10); });
     expect(screen.getByRole("status", { hidden: true }).textContent).toBe("rendering");
+  });
+});
+
+// Synthetic read-only recovery: no navigation, real signed URL or export request.
+describe.each([["en", en], ["ru", ru], ["uz", uz]] as const)("finished export link recovery in %s", (locale, dictionary) => {
+  it("keeps the result on failure, locks repeated presses, and refreshes the same job without exporting", async () => {
+    const words = dictionary.editor;
+    const stale = "/synthetic-stale-video";
+    const fresh = "/synthetic-fresh-video";
+    let reply: ((response: Response) => void) | undefined;
+    let fail = true;
+    routes.push((url, init) => {
+      if (!url.endsWith(PID) || (init?.method ?? "GET") !== "GET") return undefined;
+      if (fail) return new Promise<Response>((resolve) => { reply = resolve; });
+      return json({ rev: 1, exports: [row("done", { assetId: B })], assets: { [B]: { ...RESULT, viewUrl: fresh } } });
+    });
+    render(<I18nProvider locale={locale}><TimelineEditor projectId={PID} title="Synthetic" rev={1} doc={newDocForAsset(ASSET)!}
+      exports={[ex({ status: "done", assetId: B })]} assets={{ [A]: ASSET, [B]: { ...RESULT, viewUrl: stale } }} videos={[ASSET]} /></I18nProvider>);
+    const open = () => screen.getByRole("link", { name: new RegExp(words.exportPanel.openVideo) });
+    const refresh = screen.getByRole("button", { name: words.exportPanel.getLink });
+    refresh.focus();
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+    expect(gets()).toHaveLength(1);
+    expect(refresh).toHaveProperty("disabled", true);
+    expect(open().getAttribute("href")).toBe(stale);
+    await act(async () => { reply!(new Response(JSON.stringify({ error: "unrecognized", detail: "https://synthetic.invalid/?signature=RAW_FIXTURE" }), { status: 502 })); });
+    expect(live().textContent).toContain(words.errors.failed);
+    expect(document.body.textContent).not.toContain("RAW_FIXTURE");
+    expect(open().getAttribute("href")).toBe(stale);
+    expect(document.activeElement).toBe(refresh);
+    expect(refresh).toHaveProperty("disabled", false);
+    fail = false;
+    fireEvent.click(refresh);
+    await tick(10);
+    expect(gets()).toHaveLength(2);
+    expect(open().getAttribute("href")).toBe(fresh);
+    expect(live().textContent).not.toContain(words.errors.failed);
+    expect(panel().getAttribute("data-export-state")).toBe("done");
+    expect(document.activeElement).toBe(refresh);
+    expect(posts()).toHaveLength(0);
+    expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") === "GET")).toBe(true);
+  });
+});
+
+describe("finished export recovery focus and refusal", () => {
+  it.each([[401, "signedOut"], [404, "notFound"]] as const)("stops at HTTP %i and recovers focus without losing the result", async (status, word) => {
+    routes.push((url) => url.endsWith(PID) ? json({ error: status === 401 ? "unauthorized" : "not_found" }, status) : undefined);
+    render(<I18nProvider locale="en"><TimelineEditor projectId={PID} title="Synthetic" rev={1} doc={newDocForAsset(ASSET)!}
+      exports={[ex({ status: "done", assetId: B })]} assets={{ [A]: ASSET, [B]: RESULT }} videos={[ASSET]} /></I18nProvider>);
+    const refresh = screen.getByRole("button", { name: ep.getLink });
+    refresh.focus(); fireEvent.click(refresh); await tick(10);
+    expect(live().textContent).toContain(ep[word]);
+    expect(screen.queryByRole("button", { name: ep.getLink })).toBeNull();
+    expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe(RESULT.viewUrl);
+    expect(document.activeElement).toBe(panel());
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("does not take focus back from another mounted control while a read is pending", async () => {
+    let reply: ((response: Response) => void) | undefined;
+    routes.push((url) => url.endsWith(PID) ? new Promise<Response>((resolve) => { reply = resolve; }) : undefined);
+    render(<I18nProvider locale="en"><TimelineEditor projectId={PID} title="Synthetic" rev={1} doc={newDocForAsset(ASSET)!}
+      exports={[ex({ status: "done", assetId: B })]} assets={{ [A]: ASSET, [B]: RESULT }} videos={[ASSET]} /></I18nProvider>);
+    const refresh = screen.getByRole("button", { name: ep.getLink });
+    refresh.focus(); fireEvent.click(refresh);
+    const library = screen.getByRole("link", { name: te.viewInLibrary }); library.focus();
+    await act(async () => { reply!(new Response(JSON.stringify({ error: "failed" }), { status: 502 })); });
+    expect(live().textContent).toContain(te.errors.failed);
+    expect(document.activeElement).toBe(library);
+    expect(posts()).toHaveLength(0);
   });
 });

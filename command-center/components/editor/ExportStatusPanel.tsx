@@ -75,7 +75,8 @@ export function ExportStatusPanel({
   checking: boolean;
   /** Starts the export again; answers the refusal word, or null when it started. */
   onRetry: () => Promise<EditorError | null> | void;
-  onCheckNow: () => void | Promise<void>;
+  /** Read the existing project snapshot; a failure leaves the finished result in place. */
+  onCheckNow: () => void | Promise<EditorError | null | void>;
   /** The draft banner is showing and its "Restore changes" is the one primary
    *  action on the screen: "Try again" steps back to a quiet button. */
   quietRetry?: boolean;
@@ -92,6 +93,10 @@ export function ExportStatusPanel({
   const retrying = useRef(false);
   const section = useRef<HTMLElement>(null);
   const retryBtn = useRef<HTMLButtonElement>(null);
+  const linkBtn = useRef<HTMLButtonElement>(null);
+  const readingLink = useRef(false);
+  const restoreLinkFocus = useRef(false);
+  const [linkRead, setLinkRead] = useState<{ id: string; error: EditorError | null } | null>(null);
   const [refused, setRefused] = useState<{ id: string; error: EditorError } | null>(null);
 
   const running = latest.status === "queued" || latest.status === "rendering";
@@ -158,6 +163,32 @@ export function ExportStatusPanel({
     if (refusedWord) retryBtn.current?.focus();
   }, [refusedWord]);
 
+  async function refreshLink() {
+    // One read of the existing project endpoint; never another export.
+    if (readingLink.current || checking || halt) return;
+    readingLink.current = true;
+    restoreLinkFocus.current = document.activeElement === linkBtn.current;
+    setLinkRead(null);
+    let error: EditorError | null = null;
+    try {
+      error = (await onCheckNow()) ?? null;
+    } catch {
+      error = "network";
+    } finally {
+      readingLink.current = false;
+      setLinkRead({ id: latest.id, error });
+    }
+  }
+  const linkError = linkRead?.id === latest.id ? linkRead.error : null;
+  useEffect(() => {
+    if (checking || !linkRead || !restoreLinkFocus.current) return;
+    restoreLinkFocus.current = false;
+    // A person who moved elsewhere during the read keeps their keyboard position.
+    if (document.activeElement !== document.body && document.activeElement !== linkBtn.current) return;
+    if (linkBtn.current && !linkBtn.current.disabled) linkBtn.current.focus();
+    else section.current?.focus();
+  }, [checking, linkRead]);
+
   return (
     <section
       ref={section}
@@ -199,13 +230,18 @@ export function ExportStatusPanel({
             {notice}
           </p>
         ) : null}
-        {running && halt ? (
+        {(running || latest.status === "done") && halt ? (
           <p className="m-0 break-words text-sm text-[var(--color-fail)]">
             {halt === "unauthorized" ? ep.signedOut : ep.notFound}
           </p>
         ) : running && failing ? (
           <p className="m-0 break-words text-xs text-[var(--color-warn)]">
             {ep.checkFailed}
+          </p>
+        ) : null}
+        {latest.status === "done" && !halt && linkError ? (
+          <p className="m-0 break-words text-sm text-[var(--color-fail)]">
+            {te.errors[linkError]}
           </p>
         ) : null}
         {refusedWord ? (
@@ -257,20 +293,24 @@ export function ExportStatusPanel({
               <span className="sr-only"> {ep.newTab}</span>
             </a>
           ) : (
-            <>
-              <p className="m-0 min-w-0 break-words text-xs text-[var(--color-muted)]">
-                {ep.noLink}
-              </p>
-              <button
-                type="button"
-                onClick={() => void onCheckNow()}
-                disabled={checking}
-                className="btn-quiet min-h-11 text-sm"
-              >
-                {checking ? ep.checking : ep.getLink}
-              </button>
-            </>
+            <p className="m-0 min-w-0 break-words text-xs text-[var(--color-muted)]">
+              {ep.noLink}
+            </p>
           )}
+          {video?.viewUrl && !halt ? (
+            <p className="m-0 basis-full text-xs text-[var(--color-muted)]">{ep.expiredLinkHint}</p>
+          ) : null}
+          {!halt ? (
+            <button
+              ref={linkBtn}
+              type="button"
+              onClick={() => void refreshLink()}
+              disabled={checking}
+              className="btn-quiet min-h-11 text-sm"
+            >
+              {checking ? ep.checking : ep.getLink}
+            </button>
+          ) : null}
           <Link href={path("/library")} className={libraryLink}>
             {te.viewInLibrary}
           </Link>
