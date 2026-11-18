@@ -9,8 +9,9 @@ import { STUDIO_VOICES, type StudioModel } from "@/lib/creative/studio";
 vi.mock("next/navigation", () => ({ usePathname: () => "/alpha/create", useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/alpha${p}` }));
 vi.mock("@/lib/credits-live", () => ({ useLiveCredits: () => null, refreshCredits: vi.fn() }));
+const styleState = vi.hoisted(() => ({ state: "ready" as "ready" | "unavailable" }));
 vi.mock("@/components/studio/useStyleKits", () => ({
-  useStyleKits: () => ({ state: "ready", kits: [{ id: "22222222-2222-4222-8222-222222222222", name: "Channel look" }], reload: vi.fn() }),
+  useStyleKits: () => ({ state: styleState.state, kits: [{ id: "22222222-2222-4222-8222-222222222222", name: "Channel look" }], reload: vi.fn() }),
 }));
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -29,6 +30,7 @@ const summary = () => screen.getByTestId("gen-review");
 const value = (label: string) => within(summary()).getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
 
 beforeEach(() => {
+  styleState.state = "ready";
   quoteAnswer = () => json({ quote: { credits: 7.5, routed_model: "video-b" } });
   fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/creative/quote") return quoteAnswer();
@@ -51,6 +53,19 @@ it("reviews effective snapped duration and inherited look beside the panel Gener
   expect(value(dictionaries.en.gen.review.credits)).toContain("7.5");
   expect(within(summary()).queryByText(dictionaries.en.gen.review.voice, { selector: "dt" })).toBeNull();
   expect(within(summary()).queryByRole("button")).toBeNull();
+  expect(jobs()).toHaveLength(0);
+});
+
+it.each(["panel", "composer"] as const)("omits unavailable style kits from the %s summary and priced params", async (layout) => {
+  styleState.state = "unavailable";
+  render(<I18nProvider locale="en"><GeneratePanel orgId={ORG} models={MODELS} layout={layout} defaultStyleKitId={LOOK}
+    initial={{ capability: "t2v", prompt: "A scene", model: "video-a", duration: 5, aspect: "16:9" }} /></I18nProvider>);
+  await waitFor(() => expect(summary().dataset.state).toBe("ready"));
+  expect(screen.queryByText(dictionaries.en.gen.styleLabel)).toBeNull();
+  expect(screen.queryByRole("group", { name: dictionaries.en.gen.styleLabel })).toBeNull();
+  const quote = fetcher.mock.calls.filter(([url]) => url === "/api/creative/quote").at(-1);
+  expect(quote).toBeTruthy();
+  expect(JSON.parse(String(quote![1]?.body)).params).not.toHaveProperty("style_kit_id");
   expect(jobs()).toHaveLength(0);
 });
 

@@ -1695,7 +1695,7 @@ export function GeneratePanel({
     [t.gen.modelLabel, reviewModel],
     ...(typeof params.duration_s === "number" ? [[review.duration, fmt(t.gen.seconds, { n: params.duration_s })] as [string, ReactNode]] : []),
     ...(reviewVoice ? [[review.voice, reviewVoice] as [string, ReactNode]] : []),
-    ...(takesStyle(capability) ? [[t.gen.styleLabel, reviewLook] as [string, ReactNode]] : []),
+    ...(takesStyle(capability) && styles.state !== "unavailable" ? [[t.gen.styleLabel, reviewLook] as [string, ReactNode]] : []),
     [review.credits, reviewState === "ready" && quote.status === "ready"
       ? `${formatCredits(quote.credits, locale)} ${creditUnit(quote.credits, locale, t.shell.creditUnit)}`
       : review[reviewState === "ready" ? "updating" : reviewState]],
