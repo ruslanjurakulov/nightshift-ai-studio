@@ -504,6 +504,8 @@ export function GeneratePanel({
           signal: ctrl.signal,
         });
         const body = (await res.json().catch(() => ({}))) as { quote?: Record<string, unknown>; error?: unknown; detail?: unknown };
+        // An obsolete response can finish decoding after the next quote arrived.
+        if (ctrl.signal.aborted) return;
         const credits = body.quote?.credits;
         const pick = routed ? routedPick(body.quote, modelNames) : null;
         if (res.ok && typeof credits === "number" && Number.isFinite(credits) && (!routed || pick))
