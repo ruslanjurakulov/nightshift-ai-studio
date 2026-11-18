@@ -984,7 +984,7 @@ export function GeneratePanel({
         idPrefix="gen-tab"
         controls="gen-tabpanel"
         size="lg"
-        className="w-full [&>button]:flex-1 [&>button]:justify-center"
+        className="w-full flex-wrap [&>button]:flex-1 [&>button]:justify-center"
         value={MAKE_KINDS.includes(capability) ? capability : null}
         onChange={pick}
         options={MAKE_KINDS.map((c) => {
@@ -1668,8 +1668,55 @@ export function GeneratePanel({
     </Link>
   );
 
+  // Review the same effective params the existing Generate press sends. No
+  // preview value becomes a quote or a separate approval authority.
+  const review = t.gen.review;
+  const reviewState = pickedOff || locked || noLength || (!routed && !effectiveModel) || quote.status === "error"
+    ? "unavailable"
+    : quoteSpent
+      ? "stale"
+      : !ready
+        ? "incomplete"
+        : quote.status === "ready"
+          ? "ready"
+          : "updating";
+  const reviewModel = routed
+    ? quote.status === "ready" && !quoteSpent && quote.routed
+      ? quote.routed.name
+      : review.awaitingModel
+    : current?.displayName ?? review.unavailable;
+  const reviewVoice = typeof params.voice_id === "string"
+    ? params.voice_id ? STUDIO_VOICES.find((v) => v.id === params.voice_id)?.name ?? review.customVoice : review.notSelected
+    : capability === "tts" ? review.modelVoice : null;
+  const reviewLook = typeof params.style_kit_id === "string"
+    ? styles.kits.find((k) => k.id === params.style_kit_id)?.name ?? review.lookNotApplied
+    : styleKitId && effectiveStyle === null ? review.lookNotApplied : t.gen.styleNone;
+  const reviewRows: Array<[string, ReactNode]> = [
+    [t.gen.modelLabel, reviewModel],
+    ...(typeof params.duration_s === "number" ? [[review.duration, fmt(t.gen.seconds, { n: params.duration_s })] as [string, ReactNode]] : []),
+    ...(reviewVoice ? [[review.voice, reviewVoice] as [string, ReactNode]] : []),
+    ...(takesStyle(capability) ? [[t.gen.styleLabel, reviewLook] as [string, ReactNode]] : []),
+    [review.credits, reviewState === "ready" && quote.status === "ready"
+      ? `${formatCredits(quote.credits, locale)} ${creditUnit(quote.credits, locale, t.shell.creditUnit)}`
+      : review[reviewState === "ready" ? "updating" : reviewState]],
+  ];
+  const reviewBlock = (
+    <section aria-label={review.title} data-testid="gen-review" data-state={reviewState} className="min-w-0 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-xs">
+      <p className="mb-2 font-medium">{review.title}</p>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+        {reviewRows.map(([label, value]) => (
+          <Fragment key={label}>
+            <dt className="text-[var(--color-muted)]">{label}</dt>
+            <dd className="min-w-0 text-right [overflow-wrap:anywhere]">{value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </section>
+  );
+
   const dockBlock = (
     <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock" data-at-top={dockAtTop ? "true" : undefined}>
+      {reviewBlock}
       {/* The price key (components/ui/PriceButton): the action and the
           database's quote as two legends; its name is the same sentence.
           Short of credits, the same key opens the top-ups and says how many are missing. */}
@@ -2026,6 +2073,7 @@ export function GeneratePanel({
           />
           )}
         </div>
+        {reviewBlock}
         {attachNote && <div className="sc-foot sc-attach-note">{attachNote}</div>}
         <div className="sc-foot">
           {status}

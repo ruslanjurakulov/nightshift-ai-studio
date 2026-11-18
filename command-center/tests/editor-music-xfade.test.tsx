@@ -293,6 +293,136 @@ const putBody = () => {
 };
 
 describe("the editor page", () => {
+  it.each(["Escape", "Close"])("current main audio picker returns focus after %s", (action) => {
+    mount(twoClipDoc());
+    const add = screen.getByRole("button", { name: te.addSound });
+    fireEvent.click(add);
+    const picker = screen.getByRole("region", { name: te.addSoundTitle });
+    const close = within(picker).getByRole("button", { name: te.close });
+    close.focus();
+    if (action === "Escape") fireEvent.keyDown(close, { key: "Escape" });
+    else fireEvent.click(close);
+    expect(screen.queryByRole("region", { name: te.addSoundTitle }) === null).toBe(true);
+    expect(document.activeElement === add).toBe(true);
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+  });
+
+  it.each([0, 1])("persistent audio control: inspector removal of sound %s preserves focus on the surviving row", (removeIndex) => {
+    const d = twoClipDoc();
+    d.tracks.push(
+      { id: "voice", kind: "A", role: "speech", clips: [{ id: "synthetic-voice", asset_id: MU,
+        start_s: 0, in_s: 0, out_s: 3 }] },
+      { id: "music", kind: "A", role: "music", clips: [{ id: "synthetic-music", asset_id: MU,
+        start_s: 4, in_s: 5, out_s: 8 }] },
+    );
+    const fixture = { ...SONG, name: "synthetic.wav" };
+    render(withI18n(<TimelineEditor projectId={PID} title="Synthetic persistent focus" rev={1} doc={d} exports={[]}
+      assets={{ [A]: VIDEO, [B]: VIDEO2, [MU]: fixture }} videos={[VIDEO, VIDEO2]} soundFiles={[fixture]} />));
+    const rows = within(screen.getByRole("list", { name: te.soundsTrack })).getAllByRole("button");
+    const removed = rows[removeIndex], remaining = rows[1 - removeIndex];
+    fireEvent.click(removed);
+    expect(removed.getAttribute("aria-pressed")).toBe("true");
+    const remove = screen.getByRole("button", { name: te.deleteSound });
+    // Focusing a different row does not select it. This control survives removal.
+    remaining.focus();
+    expect(document.activeElement === remaining).toBe(true);
+    expect(remaining.getAttribute("aria-pressed")).toBe("false");
+    // jsdom click dispatch does not move focus; exercise that explicit condition.
+    fireEvent.click(remove);
+    expect(removed.isConnected).toBe(false);
+    expect(remaining.isConnected).toBe(true);
+    expect(within(screen.getByRole("list", { name: te.soundsTrack })).getAllByRole("button")).toHaveLength(1);
+    expect(document.activeElement === remaining,
+      `Focus after removal: ${document.activeElement?.textContent?.trim()}`).toBe(true);
+  });
+
+  it.each([0, 1].flatMap((removeIndex) => ["Delete", "Backspace", "remove action"].map((action) =>
+    [removeIndex, action] as const)))("multi-row: removing sound %s via %s preserves the other row and reaches Add sound", (removeIndex, action) => {
+    const d = twoClipDoc();
+    d.tracks.push(
+      { id: "voice", kind: "A", role: "speech", clips: [{ id: "synthetic-voice", asset_id: MU,
+        start_s: 0, in_s: 0, out_s: 3 }] },
+      { id: "music", kind: "A", role: "music", clips: [{ id: "synthetic-music", asset_id: MU,
+        start_s: 4, in_s: 5, out_s: 8 }] },
+    );
+    const fixture = { ...SONG, name: "synthetic.wav" };
+    render(withI18n(<TimelineEditor projectId={PID} title="Synthetic multi-row" rev={1} doc={d} exports={[]}
+      assets={{ [A]: VIDEO, [B]: VIDEO2, [MU]: fixture }} videos={[VIDEO, VIDEO2]} soundFiles={[fixture]} />));
+    const lane = screen.getByRole("list", { name: te.soundsTrack });
+    const rows = within(lane).getAllByRole("button");
+    const removed = rows[removeIndex], remaining = rows[1 - removeIndex];
+    const remainingName = remaining.getAttribute("aria-label");
+    removed.focus();
+    fireEvent.click(removed);
+    expect(removed.getAttribute("aria-pressed")).toBe("true");
+    if (action === "remove action") {
+      const remove = screen.getByRole("button", { name: te.deleteSound });
+      remove.focus();
+      fireEvent.click(remove);
+    } else fireEvent.keyDown(removed, { key: action });
+    const after = within(screen.getByRole("list", { name: te.soundsTrack })).getAllByRole("button");
+    expect(after).toHaveLength(1);
+    expect(after[0] === remaining).toBe(true);
+    expect(remaining.getAttribute("aria-label")).toBe(remainingName);
+    expect(remaining.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("heading", { name: te.soundHeading })).toBeNull();
+    const add = screen.getByRole("button", { name: te.addSound }) as HTMLButtonElement;
+    expect(document.activeElement === add).toBe(true);
+    expect(add.disabled).toBe(false);
+    expect(add.tabIndex).toBe(0);
+    // jsdom has no native Enter-to-click default. Verify the key is not consumed,
+    // then exercise the native button's click activation separately.
+    expect(fireEvent.keyDown(add, { key: "Enter" })).toBe(true);
+    fireEvent.click(add);
+    const picker = screen.getByRole("region", { name: te.addSoundTitle });
+    expect(within(picker).getByRole("button", { name: /synthetic\.wav/ })).toBeTruthy();
+    fireEvent.click(add);
+    remaining.focus();
+    fireEvent.click(remaining);
+    expect(remaining.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("heading", { name: te.soundHeading })).toBeTruthy();
+  });
+
+  it.each(["music", "speech"] as const)("names a synthetic %s row and its sound controls", (role) => {
+    const d = twoClipDoc();
+    d.tracks.push({ id: "audio", kind: "A", role, clips: [{ id: "synthetic", asset_id: MU,
+      start_s: 1, in_s: 0, out_s: 3 }] });
+    const fixture = { ...SONG, name: "synthetic.wav" };
+    render(withI18n(<TimelineEditor projectId={PID} title="Synthetic" rev={1} doc={d} exports={[]}
+      assets={{ [A]: VIDEO, [B]: VIDEO2, [MU]: fixture }} videos={[VIDEO, VIDEO2]} soundFiles={[fixture]} />));
+    const label = fmt(te.soundClipLabel, { name: "synthetic.wav", from: "0:01.0", to: "0:04.0" }) +
+      (role === "speech" ? `, ${te.roleSpeechShort}` : "");
+    const row = within(screen.getByRole("list", { name: te.soundsTrack })).getByRole("button", { name: label });
+    row.focus();
+    expect(document.activeElement).toBe(row);
+    fireEvent.click(row);
+    expect(row.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("slider", { name: new RegExp(te.soundVolume) })).toBeTruthy();
+    expect(screen.getByRole("spinbutton", { name: te.soundFadeIn })).toBeTruthy();
+    expect(screen.getByRole("spinbutton", { name: te.soundFadeOut })).toBeTruthy();
+    expect(screen.getByRole("button", { name: te.deleteSound })).toBeTruthy();
+  });
+
+  it.each(["Delete", "Backspace", "remove action"])("restores focus after %s removes a synthetic voice row", (action) => {
+    const d = twoClipDoc();
+    d.tracks.push({ id: "voice", kind: "A", role: "speech", clips: [{ id: "synthetic", asset_id: MU,
+      start_s: 0, in_s: 0, out_s: 3 }] });
+    mount(d);
+    const row = within(screen.getByRole("list", { name: te.soundsTrack })).getByRole("button");
+    fireEvent.click(row);
+    if (action === "remove action") {
+      const remove = screen.getByRole("button", { name: te.deleteSound });
+      remove.focus();
+      fireEvent.click(remove);
+    } else {
+      row.focus();
+      fireEvent.keyDown(row, { key: action });
+    }
+    expect(screen.queryByRole("list", { name: te.soundsTrack })).toBeNull();
+    expect(document.activeElement === screen.getByRole("button", { name: te.addSound })).toBe(true);
+  });
+
+
   it("adds music from the library's audio, changes it from the keyboard, and saves it on an A track", async () => {
     mount(twoClipDoc());
     fireEvent.click(screen.getByRole("button", { name: te.addSound }));

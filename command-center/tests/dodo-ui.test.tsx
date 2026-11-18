@@ -225,7 +225,7 @@ describe("Credits: subscribing through Dodo", () => {
 });
 
 describe("back from Dodo's checkout", () => {
-  it("shows 'payment received' for the pack panel only, and takes Dodo's query (with the e-mail) out of the address bar", async () => {
+  it("shows confirming copy for the pack panel only, and takes Dodo's query (with the e-mail) out of the address bar", async () => {
     vi.resetModules();
     window.history.replaceState(null, "", "/my-channel/credits?dodo=return&item=pack&payment_id=pay_x&status=succeeded&email=buyer%40example.com#topups");
     const { DodoBuyCredits: Fresh } = await import("@/components/credits/DodoBuyCredits");
@@ -237,7 +237,7 @@ describe("back from Dodo's checkout", () => {
         </FreshProvider>,
       );
     });
-    expect(screen.getByText(t.creditsPage.packPaid)).toBeTruthy();
+    expect(screen.getByText(t.creditsPage.checkoutConfirming)).toBeTruthy();
     expect(window.location.search).toBe("");
     expect(window.location.href).not.toContain("buyer");
     expect(window.location.pathname + window.location.hash).toBe("/my-channel/credits#topups");
@@ -256,6 +256,6 @@ describe("back from Dodo's checkout", () => {
       );
     });
     expect(screen.getByText(t.creditsPage.cancelled)).toBeTruthy();
-    expect(screen.queryByText(t.creditsPage.packPaid)).toBeNull();
+    expect(screen.queryByText(t.creditsPage.checkoutConfirming)).toBeNull();
   });
 });
