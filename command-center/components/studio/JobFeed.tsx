@@ -212,9 +212,11 @@ export function JobFeed({
       const only = capabilityKey ? `&capability=${encodeURIComponent(capabilityKey)}` : "";
       const res = await fetch(`/api/creative/jobs?org_id=${encodeURIComponent(orgId)}${only}`, { cache: "no-store" });
       const receivedAt = Date.now();
-      const body = (await res.json().catch(() => ({}))) as { jobs?: unknown; error?: unknown };
+      const body = (await res.json()) as { jobs?: unknown; error?: unknown };
       if (mine !== seq.current) return;
       if (res.ok) {
+        // A partial server response is a failed read, not evidence that cached jobs disappeared.
+        if (!Array.isArray(body?.jobs)) throw new Error("Feed response could not be read");
         const list = coerceJobs(body.jobs);
         setJobs(list);
         const working = new Set(list.filter((j) => isActiveStatus(j.status)).map((j) => j.id));
@@ -232,7 +234,7 @@ export function JobFeed({
         setState("ok");
         onLoadedRef.current?.(list);
       } else {
-        setState(body.error === "creative_unavailable" ? "unavailable" : "failed");
+        setState(body?.error === "creative_unavailable" ? "unavailable" : "failed");
         setJobs((j) => j ?? []);
       }
     } catch {

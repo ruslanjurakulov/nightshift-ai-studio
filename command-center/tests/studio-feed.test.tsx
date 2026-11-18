@@ -167,6 +167,67 @@ describe("JobFeed", () => {
     expect(fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET") !== "GET")).toHaveLength(0);
     expect(unexpected).toEqual([]);
   });
+  it("keeps a running job after a transient response decoding failure and reloads the same feed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const jobsUrl = `/api/creative/jobs?org_id=${ORG}`;
+    const running = row({ id: "decode-running", status: "running", charged_credits: null });
+    const unexpected: string[] = [];
+    let reads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === jobsUrl && (init?.method ?? "GET") === "GET") {
+        reads += 1;
+        if (reads === 2) {
+          const interrupted = new Response(null, { status: 200 });
+          vi.spyOn(interrupted, "json").mockRejectedValueOnce(new SyntaxError("Synthetic incomplete server response"));
+          return Promise.resolve(interrupted);
+        }
+        return json({ jobs: [running] });
+      }
+      unexpected.push(`${init?.method ?? "GET"} ${url}`);
+      return Promise.reject(new Error("Unexpected request in decoding-failure fixture"));
+    });
+    const onRetry = vi.fn();
+    const { container } = render(withI18n(<JobFeed orgId={ORG} onRetry={onRetry} />));
+    await waitFor(() => expect(container.querySelector('[data-status="running"]')).not.toBeNull());
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_100); });
+    await screen.findByText(t.gen.loadFailed);
+    expect(reads).toBe(2);
+    expect(container.querySelector('[data-status="running"]')).not.toBeNull();
+    expect(screen.queryByText(t.gen.emptyTitle)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: t.gen.reloadFeed }));
+    await waitFor(() => expect(screen.queryByText(t.gen.loadFailed)).toBeNull());
+    expect(reads).toBe(3);
+    expect(container.querySelector('[data-status="running"]')).not.toBeNull();
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET") !== "GET")).toHaveLength(0);
+    expect(unexpected).toEqual([]);
+  });
+
+  it("accepts a valid empty feed when reloading after an ordinary server read failure", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const jobsUrl = `/api/creative/jobs?org_id=${ORG}`;
+    const unexpected: string[] = [];
+    let reads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === jobsUrl && (init?.method ?? "GET") === "GET") {
+        reads += 1;
+        return reads === 1 ? json({ error: "failed" }, 503) : json({ jobs: [] });
+      }
+      unexpected.push(`${init?.method ?? "GET"} ${url}`);
+      return Promise.reject(new Error("Unexpected request in empty-feed recovery fixture"));
+    });
+    render(withI18n(<JobFeed orgId={ORG} />));
+    await screen.findByText(t.gen.loadFailed);
+    fireEvent.click(screen.getByRole("button", { name: t.gen.reloadFeed }));
+    await screen.findByText(t.gen.emptyTitle);
+    expect(screen.queryByText(t.gen.loadFailed)).toBeNull();
+    expect(screen.queryByRole("button", { name: t.gen.reloadFeed })).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(reads).toBe(2);
+    expect(fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET") !== "GET")).toHaveLength(0);
+    expect(unexpected).toEqual([]);
+  });
+
   it("shows failed readback after cancellation acknowledgement and stops polling", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const credits = await import("@/lib/credits-live");
