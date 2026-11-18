@@ -64,11 +64,13 @@ function Host({
   models = [],
   locale = "en",
   pictureEnd = 60,
+  projectTitle = "My talk",
 }: {
   model?: EditorModel;
   models?: CaptionModelOption[];
   locale?: "en" | "ru" | "uz";
   pictureEnd?: number;
+  projectTitle?: string;
 }) {
   const [model, setModel] = useState(initial);
   seen = model;
@@ -76,7 +78,7 @@ function Host({
     <I18nProvider locale={locale}>
       <CaptionsPanel
         orgId={ORG}
-        projectTitle="My talk"
+        projectTitle={projectTitle}
         model={model}
         assets={{ [A]: asset }}
         models={models}
@@ -104,6 +106,47 @@ afterEach(() => {
 const en = dictionaries.en;
 const ta = en.captions.animated;
 const radio = (name: string) => screen.getByRole("radio", { name: new RegExp(`^${name}`) }) as HTMLButtonElement;
+
+describe("empty project title download presentation", () => {
+  it.each([
+    ["en", "", "captions.und.srt"],
+    ["ru", "   ", "subtitry.und.srt"],
+    ["uz", "\t\n ", "subtitrlar.und.srt"],
+  ] as const)("%s keeps a named manual SRT download and explains burned-in captions with a blank title", async (locale, projectTitle, filename) => {
+    const d = dictionaries[locale].captions;
+    const original = withCues();
+    const before = JSON.stringify(toDoc(original));
+    const blobs: Blob[] = [];
+    const names: string[] = [];
+    vi.stubGlobal("URL", class extends URL {
+      static createObjectURL(blob: Blob) { blobs.push(blob); return "blob:synthetic-406"; }
+      static revokeObjectURL() {}
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+    render(<Host model={original} locale={locale} projectTitle={projectTitle} />);
+    expect(screen.getByText(d.burnedNote)).toBeTruthy();
+    expect(screen.getByText(d.downloadNote)).toBeTruthy();
+    const download = screen.getByRole("button", { name: d.downloadSrt });
+    expect(download).toHaveProperty("disabled", false);
+    fireEvent.click(download);
+    expect(names).toEqual([filename]);
+    expect(blobs).toHaveLength(1);
+    expect(blobs[0].type).toBe("application/x-subrip;charset=utf-8");
+    const body = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(blobs[0]);
+    });
+    expect(body).toContain("Hello there");
+    expect(body).toContain("Second");
+    expect(JSON.stringify(toDoc(seen))).toBe(before);
+    expect(groups).toHaveLength(0);
+    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toHaveLength(0);
+  });
+});
 
 describe("the style picker", () => {
   it("is there with no transcription set up, and offers plain plus the ten styles", () => {

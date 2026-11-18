@@ -45,7 +45,7 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
         </div>
         <div className="g4-small g4-muted">{fmt(t.agents.recentEvents, { n: agent.eventCount })}</div>
       </div>
-      <StatusLamp tone={agent.tone} label={statusLabel} live={agent.status === "RUNNING"} />
+      <StatusLamp tone={agent.tone} label={fmt(t.agents.recordedStatus, { status: statusLabel })} live={agent.status === "RUNNING"} />
 
       <div className="g4-agent-task">
         <div className="g4-small g4-muted">{t.agents.currentTask}</div>
