@@ -262,8 +262,8 @@ def main() -> None:
     # tile, far inside every safe zone).
     (LOGO_DIR / "nightshift-app-icon.svg").write_text(tile_svg(True))
     (LOGO_DIR / "nightshift-maskable.svg").write_text(tile_svg(False))
-    # Browser-tab composition: a bigger mark so it survives 16 px.
-    (APP_DIR / "icon.svg").write_text(app_icon(512, 0.72, True))
+    # Give the mark 10 px of width and 3 px of space on either side in a 16 px tab.
+    (APP_DIR / "icon.svg").write_text(app_icon(512, 0.625, True))
     write_art_ts()
     print("wrote", [p.name for p in sorted(LOGO_DIR.glob("*.svg"))], "+ app/icon.svg + brandMarkArt.ts")
 
