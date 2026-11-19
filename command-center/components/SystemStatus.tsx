@@ -33,16 +33,19 @@ const STATE_KEY: Record<Subsystem["state"], keyof Dictionary["ops"]> = {
  * warning/error — the whole board never turns red for one failure. Realtime
  * reflects the live connection state.
  */
-export function SystemStatus({
-  initial,
-  dbOk,
-  scope,
-}: {
+interface SystemStatusProps {
   initial: SystemEventRow[];
   dbOk: boolean;
   /** The page's channel scope — live events outside it are dropped. */
   scope: ChannelScope;
-}) {
+}
+
+export function SystemStatus(props: SystemStatusProps) {
+  // A different selected view must not inherit this panel's prior event seed or connection state.
+  return <ScopedSystemStatus key={JSON.stringify(props.scope)} {...props} />;
+}
+
+function ScopedSystemStatus({ initial, dbOk, scope }: SystemStatusProps) {
   const { t, locale } = useI18n();
   const { events, connected } = useRealtimeEvents(initial, "chronos_status", scope);
   const subs = useMemo(() => subsystemHealth(events, dbOk, connected ?? true), [events, dbOk, connected]);
