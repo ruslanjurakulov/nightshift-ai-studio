@@ -31,7 +31,8 @@ export const metadata: Metadata = {
   // An explicit `icons` object also replaces Next's auto-generated links, so app/apple-icon.png is not linked on its
   // own: `apple` must be listed, or iOS "Add to Home Screen" finds no apple-touch-icon and draws a letter tile.
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/favicon.ico", sizes: "32x32" }],
+    // The SVG is cached as immutable. Bump its URL when the artwork changes.
+    icon: [{ url: "/icon.svg?v=2", type: "image/svg+xml" }, { url: "/favicon.ico", sizes: "32x32" }],
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
