@@ -23,6 +23,14 @@ export function exportSignature(exports: readonly EditorExport[]): string {
   return exports.map((e) => `${e.id}:${e.status}:${e.assetId ?? ""}`).join("|");
 }
 
+/** UI wording only: a finished render does not yet offer a usable file link. */
+export function exportDisplayStatus(
+  status: EditorExport["status"],
+  hasViewUrl: boolean,
+): EditorExport["status"] | "link_pending" {
+  return status === "done" && !hasViewUrl ? "link_pending" : status;
+}
+
 const ms = (iso: string | null): number | null => {
   if (!iso) return null;
   const t = Date.parse(iso);
