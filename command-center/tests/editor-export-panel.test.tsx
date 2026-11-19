@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 const router = { push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() };
 vi.mock("next/navigation", () => ({
@@ -21,6 +21,8 @@ import { en } from "@/lib/i18n/en";
 import { fmt } from "@/lib/i18n";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { useExportPoll } from "@/components/editor/useExportPoll";
+import type { ProjectSnapshot } from "@/components/editor/editorApi";
+import { ExportStatusPanel } from "@/components/editor/ExportStatusPanel";
 import { newDocForAsset, type EditorAsset, type EditorExport } from "@/lib/editor";
 
 const te = en.editor;
@@ -262,12 +264,22 @@ describe("export status", () => {
 
   it("done without a preview link says so and can fetch one", async () => {
     mount([ex({ status: "done", assetId: B, finishedAt: new Date(T0 + 5000).toISOString() })]);
+    expect(panel().getAttribute("data-export-state")).toBe("done");
+    expect(live().textContent).toContain(ep.linkPending);
+    expect(live().textContent).toContain(ep.linkPendingLine);
+    expect(live().textContent).not.toContain(te.exportStatus.done);
+    expect(live().textContent).not.toContain(ep.doneLine);
+    expect(screen.queryByRole("link", { name: new RegExp(ep.openVideo) })).toBeNull();
     expect(screen.getByText(ep.noLink)).toBeTruthy();
     state.exports = [row("done", { assetId: B })];
     state.assets = { [B]: RESULT };
     fireEvent.click(screen.getByRole("button", { name: ep.getLink }));
     await tick(10);
     expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe("/v/b");
+    expect(live().textContent).toContain(te.exportStatus.done);
+    expect(live().textContent).toContain(ep.doneLine);
+    expect(live().textContent).not.toContain(ep.linkPendingLine);
+    expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") === "GET")).toBe(true);
   });
 
   it("older exports get their own 'Earlier exports' section only when there are older ones", () => {
@@ -372,6 +384,44 @@ function Probe({ active }: { active: boolean }) {
 const snapshot = (status: string) => new Response(JSON.stringify({ id: PID, rev: 1, doc: newDocForAsset(ASSET), exports: [row(status)], assets: {} }), { status: 200 });
 
 describe("poll answers arrive out of order", () => {
+  it("does not apply Job A's delayed preview read to Job B after a project switch", async () => {
+    const projectB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const jobA = ex({ id: "job-a", status: "done", assetId: A });
+    const jobB = ex({ id: "job-b", status: "done", assetId: B });
+    let finishA!: (response: Response) => void;
+    const pendingA = new Promise<Response>((resolve) => { finishA = resolve; });
+    const unexpected: string[] = [];
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === `/api/editor/projects/${PID}` && (init?.method ?? "GET") === "GET") return pendingA;
+      unexpected.push(`${init?.method ?? "GET"} ${url}`);
+      return json({ error: "failed" }, 502);
+    });
+    function SwitchedPanel({ projectId, job }: { projectId: string; job: EditorExport }) {
+      const [latest, setLatest] = useState(job);
+      const [assets, setAssets] = useState<Record<string, EditorAsset>>({ [B]: RESULT });
+      useEffect(() => { setLatest(job); }, [job]);
+      const poll = useExportPoll({ projectId, active: false, onSnapshot: (snapshot) => {
+        setLatest(snapshot.exports[0]);
+        setAssets((previous) => ({ ...previous, ...snapshot.assets }));
+      } });
+      return <ExportStatusPanel latest={latest} assets={assets} currentRev={1} dirty={false} busy={false}
+        failing={poll.failing} halt={poll.halt} checking={poll.checking}
+        onRetry={() => { throw new Error("No render permitted in stale-read fixture"); }} onCheckNow={poll.checkNow} />;
+    }
+    const { rerender } = render(<I18nProvider locale="en"><SwitchedPanel projectId={PID} job={jobA} /></I18nProvider>);
+    fireEvent.click(screen.getByRole("button", { name: ep.getLink }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    rerender(<I18nProvider locale="en"><SwitchedPanel projectId={projectB} job={jobB} /></I18nProvider>);
+    expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe("/v/b");
+    await act(async () => {
+      finishA(await json({ id: PID, rev: 1, doc: newDocForAsset(ASSET), exports: [row("done", { id: jobA.id, assetId: A })], assets: { [A]: ASSET } }));
+    });
+    expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe("/v/b");
+    expect(panel().querySelector('a[href="/v/a"]')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(unexpected).toEqual([]);
+  });
+
   it("a slow Check now (asked first) does not overwrite the newer one", async () => {
     const waiting: ((r: Response) => void)[] = [];
     fetchMock.mockImplementation(((url: string, init?: RequestInit) => {
@@ -402,5 +452,77 @@ describe("poll answers arrive out of order", () => {
     expect(screen.getByRole("status", { hidden: true }).textContent).toBe("rendering");
     await act(async () => { waiting[0](snapshot("queued")); await vi.advanceTimersByTimeAsync(10); });
     expect(screen.getByRole("status", { hidden: true }).textContent).toBe("rendering");
+  });
+});
+
+/** Manual reads have a project lifetime even when no export is being polled. */
+function ScopedReadProbe({ projectId, active = false, onSnapshot }: { projectId: string; active?: boolean; onSnapshot?: (s: ProjectSnapshot) => void }) {
+  const [seen, setSeen] = useState("none");
+  const p = useExportPoll({ projectId, active, onSnapshot: s => { onSnapshot?.(s); setSeen(s.exports[0].id); } });
+  return <div>
+    <button onClick={() => void p.checkNow()}>read scope</button>
+    <output data-testid="scope-seen">{seen}</output>
+    <output data-testid="scope-checking">{p.checking ? "checking" : "idle"}</output>
+    <output data-testid="scope-halt">{p.halt ?? "none"}</output>
+  </div>;
+}
+const scopeAnswer = (projectId: string, job: string) => json({ id: projectId, rev: 1,
+  doc: newDocForAsset(ASSET), exports: [row("done", { id: job, assetId: B })], assets: { [B]: RESULT } });
+
+describe("manual export read scope lifetime", () => {
+  it("an in-flight automatic poll cannot apply after the project scope is left", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementation(() => new Promise<Response>(resolve => { finish = resolve; }));
+    const { rerender } = render(<ScopedReadProbe projectId={PID} active />);
+    await tick(4100);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    rerender(<ScopedReadProbe projectId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" />);
+    await act(async () => { finish(await scopeAnswer(PID, "old-poll-a")); });
+    expect(screen.getByTestId("scope-seen").textContent).toBe("none");
+    expect(screen.getByTestId("scope-checking").textContent).toBe("idle");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("revisiting A creates a new read scope and old A cannot clear its pending read", async () => {
+    const waiting: ((response: Response) => void)[] = [];
+    fetchMock.mockImplementation(() => new Promise<Response>(resolve => waiting.push(resolve)));
+    const { rerender } = render(<ScopedReadProbe projectId={PID} />);
+    fireEvent.click(screen.getByText("read scope"));
+    expect(screen.getByTestId("scope-checking").textContent).toBe("checking");
+    rerender(<ScopedReadProbe projectId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" />);
+    expect(screen.getByTestId("scope-checking").textContent).toBe("idle");
+    rerender(<ScopedReadProbe projectId={PID} />);
+    fireEvent.click(screen.getByText("read scope"));
+    expect(waiting).toHaveLength(2);
+    await act(async () => { waiting[0](await scopeAnswer(PID, "old-a")); });
+    expect(screen.getByTestId("scope-seen").textContent).toBe("none");
+    expect(screen.getByTestId("scope-checking").textContent).toBe("checking");
+    await act(async () => { waiting[1](await scopeAnswer(PID, "current-a")); });
+    expect(screen.getByTestId("scope-seen").textContent).toBe("current-a");
+    expect(screen.getByTestId("scope-checking").textContent).toBe("idle");
+    expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") === "GET")).toBe(true);
+  });
+
+  it("an old project's failed read cannot halt or mark the new project as checking", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementation(() => new Promise<Response>(resolve => { finish = resolve; }));
+    const { rerender } = render(<ScopedReadProbe projectId={PID} />);
+    fireEvent.click(screen.getByText("read scope"));
+    rerender(<ScopedReadProbe projectId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" />);
+    await act(async () => { finish(await json({ error: "not_found" }, 404)); });
+    expect(screen.getByTestId("scope-halt").textContent).toBe("none");
+    expect(screen.getByTestId("scope-checking").textContent).toBe("idle");
+    expect(screen.getByTestId("scope-seen").textContent).toBe("none");
+  });
+
+  it("a pending manual read cannot apply its snapshot after unmount", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementation(() => new Promise<Response>(resolve => { finish = resolve; }));
+    const onSnapshot = vi.fn();
+    const { unmount } = render(<ScopedReadProbe projectId={PID} onSnapshot={onSnapshot} />);
+    fireEvent.click(screen.getByText("read scope"));
+    unmount();
+    await act(async () => { finish(await scopeAnswer(PID, "unmounted-a")); });
+    expect(onSnapshot).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
