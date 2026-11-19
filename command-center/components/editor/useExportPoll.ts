@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { exportSignature, pollDelay } from "@/lib/editorExportStatus";
 import { fetchProject, type ProjectSnapshot } from "./editorApi";
 
@@ -19,7 +19,8 @@ export type PollHalt = "unauthorized" | "not_found";
  * project gone) stops it too and is reported at once as `halt`, so the page
  * can say so instead of sitting on "rendering". It does not ask while the tab
  * is hidden and asks at once when the tab comes back. Answers are applied in
- * the order they were ASKED: a slow older answer never overwrites a newer one.
+ * the order they were ASKED within the current project scope: a slow older
+ * answer never overwrites a newer one or survives leaving that scope.
  * Read-only: no write, no render, nothing charged.
  */
 export function useExportPoll({
@@ -35,23 +36,30 @@ export function useExportPoll({
   const [halt, setHalt] = useState<PollHalt | null>(null);
   const [checking, setChecking] = useState(false);
   const latest = useRef(onSnapshot);
-  const alive = useRef(true);
+  const scope = useRef<{ projectId: string } | null>(null);
   /** Counts every read asked, by the poll or by checkNow; only the newest answer is applied. */
   const asked = useRef(0);
   /** Check-now reads still waiting for an answer (the button reads "Checking…" while any is). */
   const pending = useRef(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     latest.current = onSnapshot;
   });
-  useEffect(() => {
-    alive.current = true;
+  useLayoutEffect(() => {
+    // A fresh identity also distinguishes A -> B -> A, not just different IDs.
+    const current = { projectId };
+    scope.current = current;
+    pending.current = 0;
+    setChecking(false);
+    setFailures(0);
+    setHalt(null);
     return () => {
-      alive.current = false;
+      scope.current = null;
     };
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
-    if (!active) return;
+    const current = scope.current;
+    if (!active || !current || current.projectId !== projectId) return;
     let stopped = false;
     let busy = false;
     let step = 0;
@@ -62,7 +70,7 @@ export function useExportPoll({
       timer = setTimeout(() => void tick(), pollDelay(step));
     };
     const tick = async () => {
-      if (stopped || busy) return;
+      if (stopped || scope.current !== current || busy) return;
       if (typeof document !== "undefined" && document.hidden) {
         schedule();
         return;
@@ -71,7 +79,7 @@ export function useExportPoll({
       const mine = ++asked.current;
       const out = await fetchProject(projectId);
       busy = false;
-      if (stopped) return;
+      if (stopped || scope.current !== current) return;
       if (mine !== asked.current) {
         // A newer read (Check now) was asked meanwhile and has the say.
         schedule();
@@ -96,7 +104,7 @@ export function useExportPoll({
       schedule();
     };
     const onVisible = () => {
-      if (document.hidden || stopped || busy) return;
+      if (document.hidden || stopped || scope.current !== current || busy) return;
       clearTimeout(timer);
       step = 0;
       void tick();
@@ -108,19 +116,25 @@ export function useExportPoll({
       stopped = true;
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
-      setFailures(0);
-      setHalt(null);
+      if (scope.current === current) {
+        setFailures(0);
+        setHalt(null);
+      }
     };
   }, [active, projectId]);
 
   /** One read now (the "Check now" / "Get the link" buttons), whether or not a poll is running. */
   const checkNow = useCallback(async () => {
+    const current = scope.current;
+    if (!current || current.projectId !== projectId) return;
     pending.current += 1;
     setChecking(true);
     const mine = ++asked.current;
     const out = await fetchProject(projectId);
+    // Ignore the whole old completion, including its pending-count decrement:
+    // the new scope may already have its own Check now waiting.
+    if (scope.current !== current) return;
     pending.current -= 1;
-    if (!alive.current) return;
     setChecking(pending.current > 0);
     if (mine !== asked.current) return; // a newer read answered (or will answer) instead
     if (out.ok) {

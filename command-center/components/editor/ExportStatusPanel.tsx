@@ -9,6 +9,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import type { EditorAsset, EditorError, EditorExport } from "@/lib/editor";
 import {
   elapsedSeconds,
+  exportDisplayStatus,
   formatClock,
   retryPlan,
   tookSeconds,
@@ -100,6 +101,7 @@ export function ExportStatusPanel({
     running && now !== null ? elapsedSeconds(latest.createdAt, now) : null;
   const took = !running ? tookSeconds(latest) : null;
   const video = latest.assetId ? assets[latest.assetId] : undefined;
+  const displayStatus = exportDisplayStatus(latest.status, Boolean(video?.viewUrl));
 
   const Icon =
     latest.status === "done"
@@ -110,7 +112,7 @@ export function ExportStatusPanel({
           ? Loader2
           : Clock;
   const tone =
-    latest.status === "done"
+    displayStatus === "done"
       ? "text-[var(--color-ok)]"
       : latest.status === "failed"
         ? "text-[var(--color-fail)]"
@@ -121,7 +123,7 @@ export function ExportStatusPanel({
       : latest.status === "rendering"
         ? ep.renderingLine
         : latest.status === "done"
-          ? ep.doneLine
+          ? displayStatus === "link_pending" ? ep.linkPendingLine : ep.doneLine
           : ep.failedLine;
 
   const plan = latest.status === "failed" ? retryPlan(latest, currentRev) : null;
@@ -183,7 +185,7 @@ export function ExportStatusPanel({
           />
           <span className="min-w-0 break-words">
             <span className={`font-semibold ${tone}`}>
-              {te.exportStatus[latest.status]}
+              {displayStatus === "link_pending" ? ep.linkPending : te.exportStatus[displayStatus]}
             </span>
             {" · "}
             <span>{line}</span>
