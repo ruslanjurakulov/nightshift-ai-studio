@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Loader2, RotateCw, Search, TriangleAlert } from "lucide-react";
+import { Loader2, Lock, RotateCw, Search, TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import { VOICE_ID_RE } from "@/lib/creative/operations";
@@ -28,10 +28,19 @@ import type { VoiceTraits } from "@/lib/elevenlabsVoices";
  * empty account) the panel's own list of ElevenLabs premade voices (`builtIn`) is shown under the reason, so a
  * person can still choose — and is told that this is the standard list, not the account's. Nothing is picked on
  * the person's behalf in any state.
+ *
+ * The account's plan decides the library voices: on ElevenLabs' free plan they are shown, marked "needs a paid plan",
+ * and cannot be picked (the API refuses them with 402 paid_plan_required); when the plan could not be read they stay
+ * pickable, marked "may need a paid plan" (rule 5: unknown is neither yes nor no). Premade voices are always pickable.
  */
 
 type Failure = "not_configured" | "unreachable" | "key_rejected" | "rate_limited" | "signed_out" | "no_workspace" | "failed";
-type State = { kind: "loading" } | { kind: "failed"; why: Failure } | { kind: "ok"; voices: CatalogVoice[]; truncated: boolean };
+/** The account's plan as the server read it (lib/elevenlabsVoices.ts readAccountPlan); anything else is "unknown". */
+type Plan = "free" | "paid" | "unknown";
+type State =
+  | { kind: "loading" }
+  | { kind: "failed"; why: Failure }
+  | { kind: "ok"; voices: CatalogVoice[]; truncated: boolean; plan: Plan };
 
 const PAGE = 40;
 const FAILURE_COPY = {
@@ -112,11 +121,12 @@ export function VoiceCatalog({
     (async () => {
       try {
         const res = await fetch("/api/creative/voices", { cache: "no-store" });
-        const body = (await res.json().catch(() => ({}))) as { voices?: unknown; truncated?: unknown; error?: unknown };
+        const body = (await res.json().catch(() => ({}))) as { voices?: unknown; truncated?: unknown; plan?: unknown; error?: unknown };
         if (!live) return;
         const voices = res.ok ? coerceVoices(body.voices) : null;
         if (!voices) return setState({ kind: "failed", why: failureOf(res.status, body.error) });
-        setState({ kind: "ok", voices: sortVoices(voices), truncated: body.truncated === true });
+        const plan: Plan = body.plan === "free" || body.plan === "paid" ? body.plan : "unknown";
+        setState({ kind: "ok", voices: sortVoices(voices), truncated: body.truncated === true, plan });
       } catch {
         if (live) setState({ kind: "failed", why: "failed" });
       }
@@ -169,16 +179,28 @@ export function VoiceCatalog({
 
   const all = state.voices;
   const pickedMissing = Boolean(value) && !state.truncated && !all.some((v) => v.voiceId === value);
-  const pickedShown = shown.some((v) => v.voiceId === value);
+  // On the free plan ElevenLabs refuses a library voice through the API (402 paid_plan_required): it is shown, so the
+  // person sees why it is missing, but it cannot be picked. An unknown plan blocks nothing and says it does not know.
+  const blocked = (v: CatalogVoice) => v.library && state.plan === "free";
+  const pickedBlocked = all.some((v) => v.voiceId === value && blocked(v));
+  const pickedShown = shown.some((v) => v.voiceId === value && !blocked(v));
+  const firstOpen = shown.findIndex((v) => !blocked(v));
 
   function onRowKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
     const n = shown.length;
+    const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
     let to = -1;
-    if (e.key === "ArrowDown" || e.key === "ArrowRight") to = (i + 1) % n;
-    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") to = (i - 1 + n) % n;
-    else if (e.key === "Home") to = 0;
-    else if (e.key === "End") to = n - 1;
-    if (to < 0) return;
+    if (step) {
+      for (let k = 1; k <= n; k++) {
+        const j = (i + step * k + n * k) % n;
+        if (!blocked(shown[j])) {
+          to = j;
+          break;
+        }
+      }
+    } else if (e.key === "Home") to = firstOpen;
+    else if (e.key === "End") to = n - 1 - [...shown].reverse().findIndex((v) => !blocked(v));
+    if (to < 0 || to >= n || blocked(shown[to])) return;
     e.preventDefault();
     onPick(shown[to].voiceId);
     rowRefs.current[to]?.focus();
@@ -226,6 +248,13 @@ export function VoiceCatalog({
       </div>
 
       {state.truncated && <p className="text-xs text-[var(--color-muted)]">{c.truncated}</p>}
+      {state.plan === "free" && <p className="text-xs text-[var(--color-muted)]">{c.planFree}</p>}
+      {state.plan === "unknown" && <p className="text-xs text-[var(--color-muted)]">{c.planUnknown}</p>}
+      {pickedBlocked && (
+        <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
+          {c.pickedNeedsPaid}
+        </p>
+      )}
       {pickedMissing && (
         <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
           {c.pickedMissing}
@@ -249,12 +278,13 @@ export function VoiceCatalog({
           data-testid="voice-catalog-list"
         >
           {shown.map((v, i) => {
-            const on = v.voiceId === value;
-            const stop = on || (!pickedShown && i === 0);
+            const off = blocked(v);
+            const on = v.voiceId === value && !off;
+            const stop = on || (!pickedShown && i === firstOpen);
             const traits = VOICE_FACETS.map((f) => v.traits[f as keyof VoiceTraits]).filter((x): x is string => Boolean(x));
             const category = (c.categories as Record<string, string>)[v.category] ?? (v.category ? traitText(v.category) : "");
             return (
-              <div key={v.voiceId} data-checked={on} className="desk-cast-row flex flex-wrap items-center gap-2">
+              <div key={v.voiceId} data-checked={on} data-blocked={off || undefined} className={`desk-cast-row flex flex-wrap items-center gap-2${off ? " opacity-60" : ""}`}>
                 <button
                   ref={(el) => {
                     rowRefs.current[i] = el;
@@ -262,8 +292,9 @@ export function VoiceCatalog({
                   type="button"
                   role="radio"
                   aria-checked={on}
+                  disabled={off}
                   tabIndex={stop ? 0 : -1}
-                  onClick={() => onPick(v.voiceId)}
+                  onClick={() => !off && onPick(v.voiceId)}
                   onKeyDown={(e) => onRowKey(e, i)}
                   className="flex min-w-0 flex-1 items-start gap-2 text-left"
                 >
@@ -283,6 +314,12 @@ export function VoiceCatalog({
                       <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-[var(--color-warn,#b45309)]">
                         <TriangleAlert aria-hidden className="size-3" />
                         {c.library}
+                      </span>
+                    )}
+                    {v.library && state.plan !== "paid" && (
+                      <span className="inline-flex items-center gap-1 text-xs text-[var(--color-warn,#b45309)]">
+                        <Lock aria-hidden className="size-3" />
+                        {state.plan === "free" ? c.libraryNeedsPaid : c.libraryMayNeedPaid}
                       </span>
                     )}
                   </span>

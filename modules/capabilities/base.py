@@ -147,12 +147,16 @@ E_POLICY = "policy"                   # vendor safety refusal         → user c
 E_NOT_FOUND = "not_found"             # model / task id unknown       → registry entry is stale
 E_UNAVAILABLE = "unavailable"         # vendor 5xx, outage, network   → retry later, same task
 E_BAD_RESPONSE = "bad_response"       # 2xx we do not understand      → adapter needs a fix
+#: The vendor account's PLAN does not allow this (a library voice on a free ElevenLabs plan): not an empty balance —
+#: topping up the same plan changes nothing — and not a wrong key. The person picks what the plan allows, or the
+#: operator changes the plan. Never retried, never failed over. Migration 0183 lets the probe log record it.
+E_PLAN_REQUIRED = "plan_required"
 #: The vendor refused an option the adapter sends through one of its tools (a 400 naming ``param: "tools"``): the
 #: request is a bad request for THIS model, but the fix is the adapter's or the option's, not the prompt's. Never retried
 #: without the tool (that would quietly deliver something other than what was asked). Migration 0143.
 E_VENDOR_TOOL_UNSUPPORTED = "vendor_tool_unsupported"
 ERROR_CODES = (E_NOT_CONFIGURED, E_AUTH, E_QUOTA, E_RATE_LIMITED, E_BAD_REQUEST, E_POLICY,
-               E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, E_VENDOR_TOOL_UNSUPPORTED)
+               E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, E_VENDOR_TOOL_UNSUPPORTED, E_PLAN_REQUIRED)
 #: Codes worth retrying later with the SAME task / request. Never auth, quota,
 #: policy or a bad request — retrying those only spends or fails again.
 RETRYABLE = frozenset({E_RATE_LIMITED, E_UNAVAILABLE})
@@ -167,7 +171,7 @@ _QUOTA_WORDS = ("insufficient", "balance", "quota", "credit", "billing", "exceed
 #: an unknown model, slow down. Never a 5xx (a 502 / 504 from a gateway can
 #: stand in front of a vendor that already accepted and is billing the task).
 REFUSED_OUTRIGHT = frozenset({401, 402, 403, 404, 429})
-_REFUSED_CODES = frozenset({E_AUTH, E_QUOTA, E_RATE_LIMITED, E_NOT_FOUND})
+_REFUSED_CODES = frozenset({E_AUTH, E_QUOTA, E_RATE_LIMITED, E_NOT_FOUND, E_PLAN_REQUIRED})
 
 
 class AdapterError(Exception):

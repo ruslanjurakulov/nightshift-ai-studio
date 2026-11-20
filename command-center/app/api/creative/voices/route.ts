@@ -14,11 +14,16 @@ export const dynamic = "force-dynamic";
  * so the list a member picks from is that account's list: a voice picked here is one the worker can actually use,
  * which a hard-coded list of ids cannot promise. A person picks; nobody types an id (CLAUDE.md ceiling).
  *
- * Any signed-in member of a workspace may read it. The key is the server's own ELEVENLABS_API_KEY, sent to
- * ElevenLabs and nowhere else: never in a response, a log or an error. Without it the answer is
+ * Any signed-in member of a workspace may read it. The key is ELEVENLABS_VOICES_KEY (deploy/.env.web.example): a key
+ * of the same account restricted to reading voices, so the web server never holds one that can speak or spend. It is
+ * sent to ElevenLabs and nowhere else: never in a response, a log or an error. Without it the answer is
  * `voices_not_configured` (503), not an empty list: "no key here" and "the account has no voices" need
  * different fixes. ElevenLabs refusing the key is `elevenlabs_key_rejected` without ElevenLabs' reason, which
  * describes the platform account (its balance) and is the operator's business, not a member's.
+ *
+ * `plan` is the account's plan as GET /v1/user/subscription names it: "free", "paid" or "unknown" (the read failed or the
+ * key may not read it). On the free plan ElevenLabs refuses library voices through the API (402 paid_plan_required), so
+ * the picker does not offer them; on "unknown" it says it does not know.
  *
  * Only a read that would reach ElevenLabs counts against the member's rate limit (lib/server/studio-voices.ts
  * keeps a fresh read for a few minutes). Read-only: nothing is priced, held or spent.
@@ -28,11 +33,11 @@ export async function GET() {
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   if (!session.defaultOrg) return NextResponse.json({ error: "org_required" }, { status: 403 });
 
-  const apiKey = (process.env.ELEVENLABS_API_KEY ?? "").trim();
+  const apiKey = (process.env.ELEVENLABS_VOICES_KEY ?? "").trim();
   if (!apiKey) return NextResponse.json({ error: "voices_not_configured" }, { status: 503 });
 
   const fresh = cachedStudioVoices();
-  if (fresh) return NextResponse.json({ voices: fresh.voices, truncated: fresh.truncated });
+  if (fresh) return NextResponse.json({ voices: fresh.voices, truncated: fresh.truncated, plan: fresh.plan });
 
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -47,5 +52,5 @@ export async function GET() {
     const error = result.error === "key_rejected" ? "elevenlabs_key_rejected" : result.error;
     return NextResponse.json({ error }, { status: 502 });
   }
-  return NextResponse.json({ voices: result.voices, truncated: result.truncated });
+  return NextResponse.json({ voices: result.voices, truncated: result.truncated, plan: result.plan });
 }

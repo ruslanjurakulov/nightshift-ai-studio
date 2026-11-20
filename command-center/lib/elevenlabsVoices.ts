@@ -165,3 +165,33 @@ export async function listAllVoices(
   // Hit the page cap: return what was read, and say it is not the whole list.
   return { ok: true, voices: out, truncated: true };
 }
+
+export const ELEVENLABS_SUBSCRIPTION_URL = "https://api.elevenlabs.io/v1/user/subscription";
+
+/**
+ * What the account's plan lets the API do with a library voice. ElevenLabs refuses library voices through the API on
+ * the free plan (HTTP 402 paid_plan_required), so the picker must know the plan before it offers one.
+ *   free     `tier` is "free"
+ *   paid     `tier` names any other plan
+ *   unknown  the read failed, was refused (a key without the user-read permission), or named no tier: never read as
+ *            either of the other two (rule 5).
+ */
+export type AccountPlan = "free" | "paid" | "unknown";
+
+/** `GET /v1/user/subscription`, field `tier`. Same key handling as the voice list: sent to ElevenLabs only, never logged. */
+export async function readAccountPlan(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<AccountPlan> {
+  let res: Response;
+  try {
+    res = await fetchImpl(ELEVENLABS_SUBSCRIPTION_URL, { headers: { "xi-api-key": apiKey }, cache: "no-store" });
+  } catch {
+    return "unknown";
+  }
+  if (!res.ok) return "unknown";
+  try {
+    const tier = ((await res.json()) as { tier?: unknown }).tier;
+    if (typeof tier !== "string" || !tier.trim()) return "unknown";
+    return tier.trim().toLowerCase() === "free" ? "free" : "paid";
+  } catch {
+    return "unknown";
+  }
+}

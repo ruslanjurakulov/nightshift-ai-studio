@@ -111,6 +111,59 @@ describe("voice order and filters (pure)", () => {
   });
 });
 
+describe("the account's plan and library voices", () => {
+  const library = () => screen.getByRole("radio", { name: /Aria Shared/ });
+
+  it("free plan: a library voice is marked as needing a paid plan and cannot be picked; premade voices can", async () => {
+    voicesAnswer = () => json({ voices: ACCOUNT, truncated: false, plan: "free" });
+    openSpeech();
+    expect(await screen.findByText(c.planFree)).toBeTruthy();
+    expect(library().textContent).toContain(c.libraryNeedsPaid);
+    expect((library() as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(library());
+    expect(library().getAttribute("aria-checked")).toBe("false");
+    // Arrow keys step over it: from the voice before it, ArrowDown wraps to the first voice.
+    const clone = screen.getByRole("radio", { name: /Bob Clone/ });
+    fireEvent.keyDown(clone, { key: "ArrowDown" });
+    expect(screen.getByRole("radio", { name: /Dan Premade/ }).getAttribute("aria-checked")).toBe("true");
+    await new Promise((r) => setTimeout(r, 700));
+    expect(quotes.some((q) => (q.params as Record<string, unknown>)?.voice_id === SHARED.voiceId)).toBe(false);
+    fireEvent.click(screen.getByRole("radio", { name: /Dan Premade/ }));
+    expect(screen.getByRole("radio", { name: /Dan Premade/ }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("free plan: a library voice picked earlier is called out, not sent", async () => {
+    voicesAnswer = () => json({ voices: ACCOUNT, truncated: false, plan: "free" });
+    render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} initial={{ capability: "tts", model: "elevenlabs-v3", prompt: "Salom", aspect: "16:9", duration: 5, voiceId: SHARED.voiceId }} />));
+    expect(await screen.findByText(c.pickedNeedsPaid)).toBeTruthy();
+  });
+
+  it("paid plan: a library voice can be picked and carries no plan mark", async () => {
+    voicesAnswer = () => json({ voices: ACCOUNT, truncated: false, plan: "paid" });
+    openSpeech();
+    await waitFor(() => expect(catalog().getAttribute("data-state")).toBe("ok"));
+    expect(library().textContent).not.toContain(c.libraryNeedsPaid);
+    expect(library().textContent).not.toContain(c.libraryMayNeedPaid);
+    expect(screen.queryByText(c.planFree)).toBeNull();
+    expect(screen.queryByText(c.planUnknown)).toBeNull();
+    fireEvent.click(library());
+    expect(library().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("unknown plan (or none sent): says so, marks library voices 'may need', and blocks nothing", async () => {
+    for (const plan of ["unknown", undefined]) {
+      voicesAnswer = () => json({ voices: ACCOUNT, truncated: false, ...(plan ? { plan } : {}) });
+      openSpeech();
+      expect(await screen.findByText(c.planUnknown)).toBeTruthy();
+      expect(library().textContent).toContain(c.libraryMayNeedPaid);
+      expect((library() as HTMLButtonElement).disabled).toBe(false);
+      // Premade voices are never marked.
+      expect(screen.getByRole("radio", { name: /Dan Premade/ }).textContent).not.toContain(c.libraryMayNeedPaid);
+      cleanup();
+    }
+  });
+});
+
 describe("the speech voice picker", () => {
   it("while loading, says so and offers the standard voices; nothing is picked for the person", async () => {
     let release!: (r: Response) => void;

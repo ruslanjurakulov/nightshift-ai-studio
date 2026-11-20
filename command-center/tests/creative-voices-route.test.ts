@@ -41,15 +41,17 @@ const { resetStudioVoicesCache } = await import("../lib/server/studio-voices");
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const upstream = vi.fn();
+let subscription: () => Promise<Response>;
 
 beforeEach(() => {
   h.session = "member";
   h.rate = "ok";
   h.takes = 0;
-  process.env.ELEVENLABS_API_KEY = KEY;
+  process.env.ELEVENLABS_VOICES_KEY = KEY;
   resetStudioVoicesCache();
   upstream.mockReset();
-  upstream.mockResolvedValue(
+  subscription = async () => json({ tier: "creator", character_count: 1 });
+  const voiceList = () =>
     json({
       voices: [
         { voice_id: "pNInz6obpgDQGcFmaJgB", name: "Adam", category: "premade", preview_url: "https://cdn.test/a.mp3", labels: { gender: "male", age: "middle_aged", accent: "american", use_case: "narration" } },
@@ -58,13 +60,13 @@ beforeEach(() => {
       ],
       has_more: false,
       next_page_token: null,
-    }),
-  );
+    });
+  upstream.mockImplementation(async (url: string) => (url.includes("/v1/user/subscription") ? subscription() : voiceList()));
   vi.stubGlobal("fetch", upstream);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete process.env.ELEVENLABS_API_KEY;
+  delete process.env.ELEVENLABS_VOICES_KEY;
 });
 
 describe("GET /api/creative/voices", () => {
@@ -79,7 +81,7 @@ describe("GET /api/creative/voices", () => {
   });
 
   it("says the key is not configured, never an empty list", async () => {
-    delete process.env.ELEVENLABS_API_KEY;
+    delete process.env.ELEVENLABS_VOICES_KEY;
     const res = await GET();
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "voices_not_configured" });
@@ -102,15 +104,14 @@ describe("GET /api/creative/voices", () => {
     });
     // A voice another account owns is marked; an http sample is not passed to the browser.
     expect(body.voices[1]).toMatchObject({ library: true, previewUrl: "", traits: { description: "Warm storyteller" } });
-    const [url, init] = upstream.mock.calls[0] as [string, RequestInit];
-    expect(url.startsWith("https://api.elevenlabs.io/v2/voices")).toBe(true);
-    expect((init.headers as Record<string, string>)["xi-api-key"]).toBe(KEY);
+    const listCall = upstream.mock.calls.find(([u]) => String(u).startsWith("https://api.elevenlabs.io/v2/voices")) as [string, RequestInit];
+    expect((listCall[1].headers as Record<string, string>)["xi-api-key"]).toBe(KEY);
   });
 
   it("serves a fresh read from the shared cache without another call or rate token", async () => {
     await GET();
     await GET();
-    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(upstream).toHaveBeenCalledTimes(2); // the list and the plan, once
     expect(h.takes).toBe(1);
   });
 
@@ -121,13 +122,36 @@ describe("GET /api/creative/voices", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
+  it("reads the plan with the same key: free, paid, and unknown when the read fails or names no tier", async () => {
+    const cases: Array<[() => Promise<Response>, string]> = [
+      [async () => json({ tier: "free" }), "free"],
+      [async () => json({ tier: "creator" }), "paid"],
+      [async () => json({ detail: { code: "insufficient_permissions" } }, 401), "unknown"],
+      [async () => json({ character_count: 3 }), "unknown"],
+      [async () => Promise.reject(new TypeError("fetch failed")), "unknown"],
+    ];
+    for (const [answer, plan] of cases) {
+      resetStudioVoicesCache();
+      subscription = answer;
+      const res = await GET();
+      expect(res.status).toBe(200);
+      expect((await res.json()).plan).toBe(plan);
+    }
+    const planCall = upstream.mock.calls.find(([u]) => String(u) === "https://api.elevenlabs.io/v1/user/subscription") as [string, RequestInit];
+    expect((planCall[1].headers as Record<string, string>)["xi-api-key"]).toBe(KEY);
+  });
+
   it("names a refused key without ElevenLabs' reason, and an outage as unreachable", async () => {
-    upstream.mockResolvedValueOnce(json({ detail: { status: "quota_exceeded" } }, 401));
+    upstream.mockImplementation(async (url: string) =>
+      url.includes("/v1/user/subscription") ? json({ tier: "free" }) : json({ detail: { status: "quota_exceeded" } }, 401),
+    );
     let res = await GET();
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "elevenlabs_key_rejected" });
 
-    upstream.mockRejectedValueOnce(new TypeError("fetch failed"));
+    upstream.mockImplementation(async () => {
+      throw new TypeError("fetch failed");
+    });
     res = await GET();
     expect(await res.json()).toEqual({ error: "elevenlabs_unreachable" });
   });

@@ -55,8 +55,9 @@ def newest() -> str:
 
 class Check(unittest.TestCase):
     def test_the_newest_check_lists_exactly_the_adapter_codes_and_the_probe_tools_timeout(self):
-        self.assertEqual(newest(), "0143_probe_error_vendor_tool.sql")
-        self.assertEqual(words(TEXT), set(ERROR_CODES) | {"timeout"})
+        # 0183 widened the check again (plan_required); the newest file is the one that must match the adapters.
+        newest_text = (MIG / newest()).read_text(encoding="utf-8")
+        self.assertEqual(words(newest_text), set(ERROR_CODES) | {"timeout"})
         self.assertIn(E_VENDOR_TOOL_UNSUPPORTED, words(TEXT))
 
     def test_it_only_adds_the_word_to_0035s_rule(self):

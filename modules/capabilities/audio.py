@@ -31,6 +31,7 @@ from modules.capabilities.base import (
     E_AUTH,
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
+    E_PLAN_REQUIRED,
     E_POLICY,
     E_QUOTA,
     E_RATE_LIMITED,
@@ -67,12 +68,19 @@ _EL_AUTH = frozenset({
     "forbidden", "insufficient_permissions", "workspace_access_denied",
     "detected_unusual_activity",  # legacy: the free tier blocked for the account, not a request problem
 })
-_EL_QUOTA = frozenset({"insufficient_credits", "quota_exceeded", "subscription_required"})
+_EL_QUOTA = frozenset({"insufficient_credits", "quota_exceeded"})
+#: The plan, not the balance: ElevenLabs answers a free account asking for a library voice with
+#: 402 ``paid_plan_required`` — the status of an empty balance, the opposite fix (topping up a free plan does not
+#: unlock library voices). Matched on the code: a 402 without one stays quota. The same words as the pipeline's
+#: own table (modules/audio_mixer.ELEVENLABS_ERROR_REMEDIES).
+_EL_PLAN = frozenset({"paid_plan_required", "subscription_required", "feature_not_available", "voice_access_denied"})
+PLAN_MESSAGE = ("the ElevenLabs plan does not allow this voice through the API: "
+                "pick a premade voice or upgrade the plan")
 _EL_RATE = frozenset({"rate_limit_exceeded", "concurrent_limit_exceeded", "system_busy",
                       "too_many_concurrent_requests"})
 #: The voice in the request is not one this account can speak in. The fix is the person's (pick another voice),
 #: never ours: no other voice is ever tried in its place (rule 4).
-_EL_VOICE = frozenset({"voice_not_found", "invalid_voice_id", "voice_access_denied"})
+_EL_VOICE = frozenset({"voice_not_found", "invalid_voice_id"})
 
 
 def elevenlabs_error_code(text: str) -> str:
@@ -104,6 +112,8 @@ class _ElevenLabs(HttpAdapter):
         self.last_vendor_code = code
         if code in _EL_AUTH:
             return E_AUTH
+        if code in _EL_PLAN:
+            return E_PLAN_REQUIRED
         if code in _EL_QUOTA:
             return E_QUOTA
         if code in _EL_RATE:
@@ -112,9 +122,20 @@ class _ElevenLabs(HttpAdapter):
             return E_BAD_REQUEST
         return None
 
+    def _call(self, *args, **kwargs):
+        self.last_vendor_code = ""
+        try:
+            return super()._call(*args, **kwargs)
+        except AdapterError as e:
+            if e.code != E_PLAN_REQUIRED:
+                raise
+            # The remedy, not ElevenLabs' sentence: the person can act on "pick a premade voice".
+            raise AdapterError(E_PLAN_REQUIRED, PLAN_MESSAGE, http_status=e.http_status,
+                               not_accepted=e.not_accepted) from None
+
     def _voice_refused(self, err: AdapterError, voice_id: str) -> AdapterError:
         """``err`` again, unless ElevenLabs said the voice is unknown or not allowed: then a refusal that names the
-        voice and says what to do. Only a 404 proves the call was refused outright (nothing billed); a 400 / 403
+        voice and says what to do. Only a 404 proves the call was refused outright (nothing billed); a 400
         keeps the base rule, which does not trust those."""
         code = getattr(self, "last_vendor_code", "")
         if code not in _EL_VOICE and not (err.http_status == 404 and code == ""):
@@ -163,7 +184,6 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
         reason = tts_languages.refusal(vendor_model, request.text_language)
         if reason:
             raise AdapterError(E_BAD_REQUEST, reason)
-        self.last_vendor_code = ""
         try:
             out = self._audio(f"{self.base_url}/v1/text-to-speech/{request.voice_id}",
                               {"text": request.prompt, "model_id": vendor_model})

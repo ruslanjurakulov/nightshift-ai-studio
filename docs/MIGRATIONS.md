@@ -1995,3 +1995,22 @@ its reads. Read-only over existing tables, plus one log of its own.
 - **Without it.** The hub says it needs 0182 and shows no figure; exports are refused.
 - Lab: `tests/security/sec_owner_analytics_0182.py`, `tests/security/test_sec_owner_analytics.py`. Rollback:
   `docs/sql/rollback_0182_owner_analytics.sql`.
+
+## The probe log names a refused plan (0183)
+
+0183 (`0183_probe_error_plan_required.sql`) is **live on apply**: it replaces ONE check constraint, `model_probe_runs_error_code_check`
+(0035 / 0143), with the same rule plus one word, `plan_required`. No table, column, row, function or grant changes.
+
+- **Why.** A real ElevenLabs call on 2026-11-20 was answered HTTP 402 `paid_plan_required`: a library voice on a free plan. 402 is also
+  ElevenLabs' status for an empty balance, which needs the opposite fix, so the adapter now reads ElevenLabs' own code and raises
+  `E_PLAN_REQUIRED` (`modules/capabilities/base.py` `ERROR_CODES`); `record_model_probe` inserts the code as given, so without 0183 such a
+  probe could not be recorded. Job rows (0036) already take any `^[a-z0-9_]{1,64}$` word; the Studio shows it as its own reason, not
+  "busy". The router's failover (0075 / 0088) does not list it: a plan refusal is never failed over.
+- **Safe to apply.** The new rule accepts every row the old one did. Apply as ONE transaction (`set local lock_timeout`); the last block
+  compares the whole constraint, as Postgres prints it back, to the expected rule.
+- **Undo.** `docs/sql/rollback_0183_probe_error_plan_required.sql` (owner-applied): refuses while the log holds a `plan_required` row, then
+  puts 0143's words back and checks the printed rule the same way.
+- **Numbering.** 0183, after 0182; 0175-0181 are left to the work that reserved them. The numbering tests of 0127, 0131 and 0133 list it as
+  reviewed (it names nothing they pin).
+- **Tests.** `tests/test_probe_error_plan_required_migration.py`; `tests/test_probe_error_vendor_tool_migration.py` now pins the newest
+  check, not 0143, to `ERROR_CODES`.

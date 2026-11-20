@@ -4013,6 +4013,7 @@ export const en = {
     reasons: {
       policy: "The safety check refused this request. Change the description and try again.",
       bad_request: "These settings were not accepted. Change them and try again.",
+      plan: "The provider's plan does not allow this. For speech, pick a premade voice and try again.",
       busy: "The service was busy or too slow. Try again in a few minutes.",
       service: "Something went wrong on our side. Try again, or pick another model.",
       credits: "Credits could not be checked for this generation, so it did not run.",

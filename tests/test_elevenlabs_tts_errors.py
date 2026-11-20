@@ -18,6 +18,7 @@ from modules.capabilities.audio import elevenlabs_error_code
 from modules.capabilities.base import (
     E_AUTH,
     E_BAD_REQUEST,
+    E_PLAN_REQUIRED,
     E_QUOTA,
     E_RATE_LIMITED,
     E_UNAVAILABLE,
@@ -74,6 +75,26 @@ class TtsRefusalMappingTests(unittest.TestCase):
         self.assertTrue(err.not_accepted)
         self.assertCode(FakeResp(402, detail("insufficient_credits")), E_QUOTA)
 
+    def test_a_library_voice_on_a_free_plan_is_the_plan_not_the_balance(self):
+        # The answer a real call met on 2026-11-20: 402, like an empty balance, with the opposite fix.
+        body = {"detail": {"type": "payment_required", "code": "paid_plan_required",
+                           "message": "Free users cannot use library voices via the API..."}}
+        err = self.assertCode(FakeResp(402, body), E_PLAN_REQUIRED)
+        self.assertEqual(err.message, "the ElevenLabs plan does not allow this voice through the API: "
+                                      "pick a premade voice or upgrade the plan")
+        self.assertTrue(err.not_accepted)
+        self.assertFalse(err.retryable)
+        # Matched on the code, not the status: a 402 that says insufficient_credits, or names no code, stays quota.
+        self.assertCode(FakeResp(402, detail("insufficient_credits")), E_QUOTA)
+        self.assertCode(FakeResp(402, ""), E_QUOTA)
+        # The same code on another status is still the plan.
+        self.assertCode(FakeResp(403, detail("paid_plan_required")), E_PLAN_REQUIRED)
+
+    def test_a_plan_refusal_asks_for_no_other_voice(self):
+        err, session = tts(FakeResp(402, detail("paid_plan_required")))
+        self.assertEqual(err.code, E_PLAN_REQUIRED)
+        self.assertEqual(len(session.calls), 1)
+
     def test_429_is_quota_or_slow_down_by_its_code(self):
         self.assertCode(FakeResp(429, detail("quota_exceeded")), E_QUOTA)
         # "exceeded your" is a quota word to the generic reader; ElevenLabs' code says it is concurrency.
@@ -111,12 +132,12 @@ class UnknownVoiceTests(unittest.TestCase):
             self.assertEqual(err.code, E_BAD_REQUEST)
             self.assertIn("pick another voice", err.message)
 
-    def test_an_invalid_or_forbidden_voice_is_refused_the_same_way(self):
-        for status, code in ((400, "invalid_voice_id"), (403, "voice_access_denied")):
+    def test_an_invalid_voice_id_is_refused_the_same_way(self):
+        for status, code in ((400, "invalid_voice_id"),):
             err, _ = tts(FakeResp(status, detail(code)))
             self.assertEqual(err.code, E_BAD_REQUEST)
             self.assertIn(VOICE, err.message)
-            # Only a 404 is trusted as "not billed"; a 400 / 403 keeps the base rule.
+            # Only a 404 is trusted as "not billed"; a 400 keeps the base rule.
             self.assertFalse(err.not_accepted)
 
     def test_no_fallback_voice_is_ever_asked_for(self):

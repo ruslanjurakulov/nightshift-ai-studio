@@ -3995,6 +3995,7 @@ export const uz: Dictionary = {
     reasons: {
       policy: "Xavfsizlik tekshiruvi bu soʻrovni rad etdi. Tavsifni oʻzgartirib, qayta urinib koʻring.",
       bad_request: "Bu sozlamalar qabul qilinmadi. Ularni oʻzgartirib, qayta urinib koʻring.",
+      plan: "Provayder tarifi bunga ruxsat bermaydi. Ovoz berish uchun standart ovozni tanlab, qayta urinib koʻring.",
       busy: "Xizmat band yoki juda sekin edi. Bir necha daqiqadan soʻng qayta urinib koʻring.",
       service: "Bizning tomonimizda nimadir xato ketdi. Qayta urinib koʻring yoki boshqa modelni tanlang.",
       credits: "Bu generatsiya uchun kreditlarni tekshirib boʻlmadi, shuning uchun u ishga tushmadi.",
