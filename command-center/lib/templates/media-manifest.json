@@ -1,4 +1,8 @@
 {
+  "animated-family-story": {
+    "preview": true,
+    "poster": true
+  },
   "before-after-reveal": {
     "preview": true,
     "poster": true
@@ -19,6 +23,18 @@
     "preview": true,
     "poster": true
   },
+  "giant-hand-makeover": {
+    "preview": true,
+    "poster": true
+  },
+  "holiday-sale-ad": {
+    "preview": true,
+    "poster": true
+  },
+  "object-morph": {
+    "preview": true,
+    "poster": true
+  },
   "podcast-clip": {
     "preview": true,
     "poster": true
@@ -35,7 +51,23 @@
     "preview": false,
     "poster": true
   },
+  "sale-story-poster": {
+    "preview": false,
+    "poster": true
+  },
+  "scale-shock": {
+    "preview": true,
+    "poster": true
+  },
   "travel-montage": {
+    "preview": true,
+    "poster": true
+  },
+  "treasure-strike": {
+    "preview": true,
+    "poster": true
+  },
+  "water-revival": {
     "preview": true,
     "poster": true
   }
