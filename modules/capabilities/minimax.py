@@ -176,9 +176,10 @@ class MiniMaxH3Adapter(SafeResultMixin, HttpAdapter):
         if dur not in spec["durations"]:
             out.append(f"duration {dur if dur is not None else '(none)'} s is not offered by {vendor_model}: the "
                        f"price is per second, so it is never defaulted")
-        if request.capability in self.prompt_required_capabilities and not (request.prompt or "").strip():
+        words = re.sub("[\u200b-\u200d\u2060\ufeff]", "", request.prompt or "").strip()
+        if request.capability in self.prompt_required_capabilities and not words:
             out.append("MiniMax H3 needs words for every mode, image-to-video included")
-        elif _utf16_len(request.prompt.strip()) > self.MAX_PROMPT_UNITS:
+        elif words and _utf16_len(words) > self.MAX_PROMPT_UNITS:
             out.append(f"the prompt is longer than {self.MAX_PROMPT_UNITS} characters")
         if request.aspect_ratio is not None and request.aspect_ratio not in self.RATIOS:
             out.append(f"aspect ratio {request.aspect_ratio} is not offered by {vendor_model}")

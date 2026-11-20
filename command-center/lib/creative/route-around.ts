@@ -105,7 +105,8 @@ export async function missingWords(
   params: Record<string, unknown>,
 ): Promise<CreativeResult | null> {
   if (!model) return null;
-  if (typeof params.prompt === "string" && params.prompt.trim() !== "") return null;
+  // Invisible characters (zero-width spaces, BOM) are not words: trim() leaves them, so they are removed first.
+  if (typeof params.prompt === "string" && params.prompt.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim() !== "") return null;
   const sellable = await sellableFor(db, capability);
   const m = sellable?.find((x) => x.id === model);
   if (!m || !m.wordsRequired.includes(capability)) return null;

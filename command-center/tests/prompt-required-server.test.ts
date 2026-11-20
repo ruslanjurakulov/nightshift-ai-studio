@@ -25,8 +25,9 @@ describe("missingWords", () => {
     expect(await missingWords(d, "i2v", "minimax-h3", { prompt: "slow push-in" })).toBeNull();
     expect((d as unknown as { rpc: ReturnType<typeof vi.fn> }).rpc).not.toHaveBeenCalled();
     expect(await missingWords(db([H3, OTHER]), "i2v", "kling", {})).toBeNull();
-    // Whitespace is not words.
+    // Whitespace, and invisible characters, are not words.
     expect((await missingWords(db([H3]), "i2v", "minimax-h3", { prompt: "   " }))?.status).toBe(422);
+    expect((await missingWords(db([H3]), "i2v", "minimax-h3", { prompt: "\u200B\uFEFF " }))?.status).toBe(422);
   });
 
   it("does not guess when the model list cannot be read (the adapter still refuses, and nothing is charged)", async () => {
