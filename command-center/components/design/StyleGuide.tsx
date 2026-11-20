@@ -12,6 +12,7 @@ import { Panel } from "@/components/ui/Panel";
 import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { StepCard, StepList } from "@/components/ui/StepCard";
+import { Button, IconButton, Toggle } from "@/components/ds/Button";
 
 /** The colour roles shown as swatches, in the order IDENTITY.md §2 lists them. */
 export const SWATCHES = [
@@ -83,6 +84,7 @@ function Specimen({ theme }: { theme: "dark" | "light" }) {
       <Sheet />
       <Steps />
       <Ruler />
+      <DsControls />
     </section>
   );
 }
@@ -317,6 +319,62 @@ function Prices() {
         <div className="flex flex-wrap gap-2">
           <PriceButton size="md" label={t.gen.describe} credits={2} unit={unit(2)} locale={locale} />
         </div>
+      </div>
+    </Block>
+  );
+}
+
+/** The --ds-* keys and controls (app/tokens.css) in every state, so a reviewer can tab through them. */
+function DsControls() {
+  const { t } = useI18n();
+  const d = t.design.ds;
+  const [on, setOn] = useState(true);
+  const [type, setType] = useState<"text" | "image" | "video" | "audio">("video");
+  const gear = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </svg>
+  );
+  return (
+    <Block title={d.title}>
+      <div className="flex flex-col gap-4 rounded-[var(--ds-r-panel)] bg-[var(--ds-bg)] p-4 text-[var(--ds-text)]" data-testid="ds-controls">
+        <p className="ds-display text-[28px]">{d.display}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary">{d.primary}</Button>
+          <Button variant="secondary">{d.secondary}</Button>
+          <Button variant="quiet">{d.quiet}</Button>
+          <Button variant="danger">{d.danger}</Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" disabled>
+            {d.disabled}
+          </Button>
+          <Button variant="primary" loading busyLabel={d.busy}>
+            {d.primary}
+          </Button>
+          <Button variant="secondary" size="sm">
+            {d.secondary}
+          </Button>
+          <IconButton label={d.icon} icon={gear} />
+          <IconButton label={d.icon} icon={gear} variant="secondary" tooltipSide="bottom" />
+        </div>
+        <label className="block max-w-sm">
+          <span className="ds-label">{d.field}</span>
+          <input className="ds-input" placeholder={d.fieldPh} maxLength={100} />
+          <span className="ds-hint block">{d.fieldHint}</span>
+        </label>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={d.video}>
+          {(["text", "image", "video", "audio"] as const).map((k) => (
+            <button key={k} type="button" className="ds-chip" data-type={k} aria-pressed={type === k} onClick={() => setType(k)}>
+              {d[k]}
+            </button>
+          ))}
+          <button type="button" className="ds-chip" disabled>
+            {d.disabled}
+          </button>
+        </div>
+        <Toggle checked={on} onChange={setOn} label={d.toggle} description={d.toggleHint} />
       </div>
     </Block>
   );

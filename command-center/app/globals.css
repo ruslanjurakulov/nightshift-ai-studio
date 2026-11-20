@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The --ds-* design tokens and the button / input / chip / toggle system (docs/design/TOKENS.md). */
+@import "./tokens.css";
 
 /* ── Nightshift — "Master control, 03:00" ───────────────────────────────────
    The identity (docs/design/IDENTITY.md): a broadcast master-control room in

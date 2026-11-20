@@ -1,6 +1,6 @@
 import { preload } from "react-dom";
 import type { Locale } from "@/lib/i18n/core";
-import { CRITICAL_FONT_PATHS } from "@/lib/public-paths";
+import { CRITICAL_FONT_PATHS, DISPLAY_FONT_PATHS } from "@/lib/public-paths";
 
 /**
  * Every page preloads the Latin file of the one typeface (app/fonts.css), and a
@@ -15,3 +15,12 @@ export function preloadFonts(locale: Locale) {
 
 /** The public shells' original name for the same call; kept so they need no edit. */
 export const preloadSiteFonts = preloadFonts;
+
+/**
+ * The display face (Unbounded, app/fonts.css), preloaded the same way — but only by a page whose first screen
+ * sets a display heading (the landing hero). Call it next to preloadFonts in that page; never from the root
+ * layout, or every app screen would download a face it does not show.
+ */
+export function preloadDisplayFont(locale: Locale) {
+  for (const href of DISPLAY_FONT_PATHS[locale]) preload(href, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
+}

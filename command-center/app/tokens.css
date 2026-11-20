@@ -1,0 +1,571 @@
+/* ── Nightshift design tokens (`--ds-*`) ─────────────────────────────────────
+   The one token file for the owner-approved navy/neon look, first drawn for
+   the Studio canvas (components/studio-canvas/studio-canvas.css): a navy
+   canvas, electric blue for the machine working, neon lime for a person's
+   mark, one neon per media type. New work reads these; docs/design/TOKENS.md
+   has the roles, the contrast figures and the migration note for the other
+   streams.
+
+   Why a second family next to --ns-*: the --ns-* identity (app/globals.css)
+   is what every existing screen paints with, and its theme tests count its
+   declarations. --ds-* is additive — nothing that renders today changes
+   colour by this file alone — so a screen moves over when someone edits it,
+   one reviewable PR at a time.
+
+   Dark is the primary theme. The app already has a light one (the proof
+   sheet), so --ds-* follows the very same theme selectors as globals.css: an
+   explicit [data-theme] wins, otherwise the system's preference. A page that
+   is light keeps light controls; nothing on it turns navy by surprise.
+
+   Every text pair below is >= 4.5:1 on all four grounds (bg, surface 1–3);
+   every control edge and the focus ring are >= 3:1 (WCAG 1.4.11, 2.4.7).
+   The focus ring is lime, not blue: the primary key is blue, and a blue ring
+   would read as "this is the primary" rather than "you are here" (the same
+   reasoning as the app's amber ring in globals.css).
+   ------------------------------------------------------------------------- */
+
+/* Tailwind names for the same tokens: bg-ds-surface-1, text-ds-muted,
+   border-ds-border, rounded-ds-key, shadow-ds-glow, ease-ds-out, font-brand…
+   `inline` so a utility resolves the variable where it is used, and a
+   [data-theme-scope] box inside a page still gets its own theme. */
+@theme inline {
+  --color-ds-bg: var(--ds-bg);
+  --color-ds-surface-1: var(--ds-surface-1);
+  --color-ds-surface-2: var(--ds-surface-2);
+  --color-ds-surface-3: var(--ds-surface-3);
+  --color-ds-border: var(--ds-border);
+  --color-ds-border-strong: var(--ds-border-strong);
+  --color-ds-text: var(--ds-text);
+  --color-ds-text-2: var(--ds-text-2);
+  --color-ds-muted: var(--ds-muted);
+  --color-ds-accent: var(--ds-accent);
+  --color-ds-accent-hover: var(--ds-accent-hover);
+  --color-ds-accent-solid: var(--ds-accent-solid);
+  --color-ds-on-accent: var(--ds-on-accent);
+  --color-ds-select: var(--ds-select);
+  --color-ds-success: var(--ds-success);
+  --color-ds-warning: var(--ds-warning);
+  --color-ds-danger: var(--ds-danger);
+  --color-ds-focus: var(--ds-focus);
+  --color-ds-type-text: var(--ds-type-text);
+  --color-ds-type-image: var(--ds-type-image);
+  --color-ds-type-video: var(--ds-type-video);
+  --color-ds-type-audio: var(--ds-type-audio);
+
+  --radius-ds-chip: var(--ds-r-chip);
+  --radius-ds-key: var(--ds-r-key);
+  --radius-ds-panel: var(--ds-r-panel);
+  --radius-ds-sheet: var(--ds-r-sheet);
+
+  --shadow-ds-1: var(--ds-elev-1);
+  --shadow-ds-2: var(--ds-elev-2);
+  --shadow-ds-3: var(--ds-elev-3);
+  --shadow-ds-glow: var(--ds-glow-accent);
+  --shadow-ds-glow-select: var(--ds-glow-select);
+
+  --ease-ds-out: var(--ds-ease-out);
+  --ease-ds-press: var(--ds-ease-press);
+
+  /* Display headings only. Body, labels and buttons stay Onest (font-sans). */
+  --font-brand: "Unbounded", "Unbounded Fallback", var(--font-sans);
+}
+
+/* Theme-independent: space, shape, motion, layers. */
+:root {
+  /* Space — a 4px base. Tailwind's own spacing (p-1 = 4px …) is the same
+     scale, so utilities and these agree. */
+  --ds-space-0: 0;
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-8: 32px;
+  --ds-space-10: 40px;
+  --ds-space-12: 48px;
+  --ds-space-16: 64px;
+  --ds-space-24: 96px;
+
+  /* Radius by role: a chip or media frame 8, a key or field 12, a card 16, a sheet 20, a pill fully round. */
+  --ds-r-xs: 4px;
+  --ds-r-chip: 8px;
+  --ds-r-key: 12px;
+  --ds-r-panel: 16px;
+  --ds-r-sheet: 20px;
+  --ds-r-pill: 999px;
+
+  /* Controls: 44px is a thumb (WCAG 2.5.8 asks 24; a phone asks 44). */
+  --ds-control-sm: 36px;
+  --ds-control-md: 44px;
+  --ds-control-lg: 52px;
+
+  /* Motion. A press is felt (120 ms), a panel is seen arriving (200 ms), a
+     page change is followed (300 ms). Reduced motion zeroes all three below. */
+  --ds-dur-press: 120ms;
+  --ds-dur-panel: 200ms;
+  --ds-dur-page: 300ms;
+  --ds-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ds-ease-press: cubic-bezier(0.3, 0, 0.5, 1);
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-press-scale: 0.97;
+
+  /* Layers, lowest to highest. A new floating thing takes a role, not a number. */
+  --ds-z-base: 0;
+  --ds-z-raised: 10;
+  --ds-z-sticky: 100;
+  --ds-z-header: 200;
+  --ds-z-dropdown: 300;
+  --ds-z-overlay: 400;
+  --ds-z-modal: 500;
+  --ds-z-toast: 600;
+  --ds-z-tooltip: 700;
+
+  --ds-font-display: "Unbounded", "Unbounded Fallback", var(--font-sans);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ds-dur-press: 0ms;
+    --ds-dur-panel: 0ms;
+    --ds-dur-page: 0ms;
+    --ds-press-scale: 1;
+  }
+}
+
+/* Light — kept because the app has one. */
+:root,
+:root[data-theme="light"],
+[data-theme-scope="light"] {
+  --ds-bg: #f5f7fc;
+  --ds-surface-1: #ffffff;
+  --ds-surface-2: #eef2f9;
+  --ds-surface-3: #e3e9f4;
+  --ds-border: #d6deeb;
+  --ds-border-strong: #7d8aa3;
+  --ds-text: #0a1222;
+  --ds-text-2: #33425e;
+  --ds-muted: #536079;
+  --ds-accent: #1a5fd0;
+  --ds-accent-hover: #1550b3;
+  --ds-accent-solid: #1a5fd0;
+  --ds-accent-solid-hover: #1550b3;
+  --ds-on-accent: #ffffff;
+  --ds-accent-soft: rgb(26 95 208 / 0.1);
+  --ds-select: #406a00;
+  --ds-select-soft: rgb(64 106 0 / 0.12);
+  --ds-on-select: #ffffff;
+  --ds-success: #0a7346;
+  --ds-warning: #7e6100;
+  --ds-danger: #c0263a;
+  --ds-danger-solid: #c0263a;
+  --ds-danger-solid-hover: #a51f31;
+  --ds-on-danger: #ffffff;
+  --ds-danger-soft: rgb(192 38 58 / 0.1);
+  --ds-focus: #406a00;
+  --ds-hover: rgb(10 18 34 / 0.05);
+  --ds-scrim: rgb(10 18 34 / 0.45);
+  --ds-type-text: #765600;
+  --ds-type-image: #00677f;
+  --ds-type-video: #b0105f;
+  --ds-type-audio: #076b36;
+  --ds-elev-1: 0 1px 2px rgb(10 18 34 / 0.06);
+  --ds-elev-2: 0 1px 2px rgb(10 18 34 / 0.06), 0 8px 24px -10px rgb(10 18 34 / 0.18);
+  --ds-elev-3: 0 2px 4px rgb(10 18 34 / 0.06), 0 24px 56px -20px rgb(10 18 34 / 0.28);
+  /* On paper the "glow" is a soft blue lift, not light. */
+  --ds-glow-accent: 0 6px 20px -6px rgb(26 95 208 / 0.45);
+  --ds-glow-select: 0 0 0 3px rgb(64 106 0 / 0.18);
+}
+
+/* Dark — the primary theme. The two dark blocks are deliberately identical:
+   a token declared only under the media query would fall back to light when a
+   viewer picks dark by hand. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ds-bg: #070a14;
+    --ds-surface-1: #0a0f1c;
+    --ds-surface-2: #0f1626;
+    --ds-surface-3: #19243b;
+    --ds-border: rgb(80 140 220 / 0.18);
+    --ds-border-strong: #56698f;
+    --ds-text: #e6eefc;
+    --ds-text-2: #a9b8d4;
+    --ds-muted: #8a9bbd;
+    --ds-accent: #2f8bff;
+    --ds-accent-hover: #57a2ff;
+    --ds-accent-solid: #1a5fd0;
+    --ds-accent-solid-hover: #1f6fe5;
+    --ds-on-accent: #ffffff;
+    --ds-accent-soft: rgb(47 139 255 / 0.16);
+    --ds-select: #c8ff2e;
+    --ds-select-soft: rgb(200 255 46 / 0.14);
+    --ds-on-select: #0a1200;
+    --ds-success: #3dff8a;
+    --ds-warning: #ffd23f;
+    --ds-danger: #ff5c6c;
+    --ds-danger-solid: #ff5c6c;
+    --ds-danger-solid-hover: #ff7582;
+    --ds-on-danger: #1a0306;
+    --ds-danger-soft: rgb(255 92 108 / 0.14);
+    --ds-focus: #c8ff2e;
+    --ds-hover: rgb(230 238 252 / 0.06);
+    --ds-scrim: rgb(2 5 12 / 0.72);
+    --ds-type-text: #ffd23f;
+    --ds-type-image: #33d6ff;
+    --ds-type-video: #ff4fa3;
+    --ds-type-audio: #3dff8a;
+    --ds-elev-1: 0 1px 2px rgb(0 0 0 / 0.45);
+    --ds-elev-2: 0 1px 2px rgb(0 0 0 / 0.45), 0 8px 20px -10px rgb(0 0 0 / 0.75);
+    --ds-elev-3: 0 0 0 1px rgb(80 140 220 / 0.08), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+    --ds-glow-accent: 0 0 0 1px rgb(87 162 255 / 0.35), 0 8px 28px -6px rgb(47 139 255 / 0.6);
+    --ds-glow-select: 0 0 0 1px rgb(200 255 46 / 0.5), 0 0 18px -2px rgb(200 255 46 / 0.45);
+  }
+}
+:root[data-theme="dark"],
+[data-theme-scope="dark"] {
+  --ds-bg: #070a14;
+  --ds-surface-1: #0a0f1c;
+  --ds-surface-2: #0f1626;
+  --ds-surface-3: #19243b;
+  --ds-border: rgb(80 140 220 / 0.18);
+  --ds-border-strong: #56698f;
+  --ds-text: #e6eefc;
+  --ds-text-2: #a9b8d4;
+  --ds-muted: #8a9bbd;
+  --ds-accent: #2f8bff;
+  --ds-accent-hover: #57a2ff;
+  --ds-accent-solid: #1a5fd0;
+  --ds-accent-solid-hover: #1f6fe5;
+  --ds-on-accent: #ffffff;
+  --ds-accent-soft: rgb(47 139 255 / 0.16);
+  --ds-select: #c8ff2e;
+  --ds-select-soft: rgb(200 255 46 / 0.14);
+  --ds-on-select: #0a1200;
+  --ds-success: #3dff8a;
+  --ds-warning: #ffd23f;
+  --ds-danger: #ff5c6c;
+  --ds-danger-solid: #ff5c6c;
+  --ds-danger-solid-hover: #ff7582;
+  --ds-on-danger: #1a0306;
+  --ds-danger-soft: rgb(255 92 108 / 0.14);
+  --ds-focus: #c8ff2e;
+  --ds-hover: rgb(230 238 252 / 0.06);
+  --ds-scrim: rgb(2 5 12 / 0.72);
+  --ds-type-text: #ffd23f;
+  --ds-type-image: #33d6ff;
+  --ds-type-video: #ff4fa3;
+  --ds-type-audio: #3dff8a;
+  --ds-elev-1: 0 1px 2px rgb(0 0 0 / 0.45);
+  --ds-elev-2: 0 1px 2px rgb(0 0 0 / 0.45), 0 8px 20px -10px rgb(0 0 0 / 0.75);
+  --ds-elev-3: 0 0 0 1px rgb(80 140 220 / 0.08), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+  --ds-glow-accent: 0 0 0 1px rgb(87 162 255 / 0.35), 0 8px 28px -6px rgb(47 139 255 / 0.6);
+  --ds-glow-select: 0 0 0 1px rgb(200 255 46 / 0.5), 0 0 18px -2px rgb(200 255 46 / 0.45);
+}
+
+/* ── Type helpers ────────────────────────────────────────────────────────── */
+
+/* A display heading: the hero, a section title. Never body copy or a label. */
+.ds-display {
+  font-family: var(--ds-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  text-wrap: balance;
+  font-variant-numeric: tabular-nums;
+}
+/* Any number that changes or lines up: credits, prices, durations, counts. */
+.ds-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────
+   <button class="ds-btn ds-btn--primary"> … or components/ds/Button.tsx.
+   Variants: --primary (one per view), --secondary, --quiet, --danger; shape
+   --icon; size --sm / --lg. States: hover, :active (press .97 over 120 ms),
+   :focus-visible (a 3px lime ring, 2px off the key), :disabled / [aria-disabled],
+   [aria-busy="true"] (spinner + the label kept for the reader). */
+.ds-btn {
+  --_bg: transparent;
+  --_bg-hover: var(--ds-hover);
+  --_fg: var(--ds-text);
+  --_edge: transparent;
+  --_shadow: none;
+  --_shadow-hover: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-control-md);
+  padding: 0 var(--ds-space-5);
+  border: 1px solid var(--_edge);
+  border-radius: var(--ds-r-key);
+  background: var(--_bg);
+  color: var(--_fg);
+  box-shadow: var(--_shadow);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--ds-dur-press) var(--ds-ease-press),
+    background-color var(--ds-dur-panel) var(--ds-ease-out),
+    border-color var(--ds-dur-panel) var(--ds-ease-out),
+    box-shadow var(--ds-dur-panel) var(--ds-ease-out),
+    color var(--ds-dur-panel) var(--ds-ease-out);
+}
+.ds-btn > svg { width: 20px; height: 20px; flex: none; }
+@media (hover: hover) {
+  .ds-btn:hover:where(:not(:disabled, [aria-disabled="true"], [aria-busy="true"])) {
+    background: var(--_bg-hover);
+    box-shadow: var(--_shadow-hover);
+  }
+}
+.ds-btn:active:where(:not(:disabled, [aria-disabled="true"], [aria-busy="true"])) {
+  transform: scale(var(--ds-press-scale));
+}
+.ds-btn:focus-visible {
+  outline: 3px solid var(--ds-focus);
+  outline-offset: 2px;
+  /* The global :focus-visible (globals.css) rounds every ring to 0.35rem; a key keeps its own corners. */
+  border-radius: var(--ds-r-key);
+}
+.ds-btn:disabled,
+.ds-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+.ds-btn[aria-busy="true"] { cursor: progress; }
+
+.ds-btn--primary {
+  --_bg: var(--ds-accent-solid);
+  --_bg-hover: var(--ds-accent-solid-hover);
+  --_fg: var(--ds-on-accent);
+  --_edge: var(--ds-accent-solid);
+  --_shadow-hover: var(--ds-glow-accent);
+}
+.ds-btn--secondary {
+  --_bg: var(--ds-surface-2);
+  --_bg-hover: var(--ds-surface-3);
+  --_fg: var(--ds-text);
+  --_edge: var(--ds-border-strong);
+}
+.ds-btn--quiet {
+  --_bg: transparent;
+  --_bg-hover: var(--ds-hover);
+  --_fg: var(--ds-text-2);
+  font-weight: 500;
+}
+@media (hover: hover) {
+  .ds-btn--quiet:hover:where(:not(:disabled, [aria-disabled="true"])) { color: var(--ds-text); }
+}
+.ds-btn--danger {
+  --_bg: var(--ds-danger-solid);
+  --_bg-hover: var(--ds-danger-solid-hover);
+  --_fg: var(--ds-on-danger);
+  --_edge: var(--ds-danger-solid);
+}
+.ds-btn--sm { min-height: var(--ds-control-sm); padding: 0 var(--ds-space-4); font-size: 0.875rem; }
+.ds-btn--lg { min-height: var(--ds-control-lg); padding: 0 var(--ds-space-6); font-size: 1rem; }
+.ds-btn--block { display: flex; width: 100%; }
+.ds-btn--icon { width: var(--ds-control-md); padding: 0; }
+.ds-btn--icon.ds-btn--sm { width: var(--ds-control-sm); }
+.ds-btn--icon.ds-btn--lg { width: var(--ds-control-lg); }
+/* A finger on a phone gets 44 even from a small key. */
+@media (pointer: coarse) {
+  .ds-btn--sm { min-height: var(--ds-control-md); }
+  .ds-btn--icon.ds-btn--sm { width: var(--ds-control-md); }
+}
+
+/* Busy: the spinner takes the icon's place; the label stays, so the key keeps its width (no shift). */
+.ds-spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: ds-spin 0.7s linear infinite;
+}
+@keyframes ds-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  /* No spin: a still, half-open ring still reads as "working" next to the busy label. */
+  .ds-spinner { animation: none; border-right-color: transparent; opacity: 0.8; }
+  .ds-btn { transition: none; }
+  .ds-btn:active { transform: none; }
+}
+
+/* ── Tooltip (icon buttons) ────────────────────────────────────────────────
+   Shown on hover and on keyboard focus, dismissed with Escape, hoverable
+   (WCAG 1.4.13). The button's accessible name is its aria-label; the tip is
+   the same words for sighted users, so it is aria-hidden, never read twice. */
+.ds-tip-anchor { position: relative; display: inline-flex; }
+.ds-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: var(--ds-z-tooltip);
+  transform: translate(-50%, 4px);
+  padding: 6px 10px;
+  border-radius: var(--ds-r-chip);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface-3);
+  color: var(--ds-text);
+  box-shadow: var(--ds-elev-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--ds-dur-press) var(--ds-ease-out), transform var(--ds-dur-press) var(--ds-ease-out);
+}
+.ds-tip[data-side="bottom"] { bottom: auto; top: calc(100% + 8px); transform: translate(-50%, -4px); }
+.ds-tip[data-open="true"] { opacity: 1; transform: translate(-50%, 0); }
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+.ds-input {
+  display: block;
+  width: 100%;
+  min-height: var(--ds-control-md);
+  padding: 0 var(--ds-space-4);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-r-key);
+  background: var(--ds-surface-1);
+  color: var(--ds-text);
+  font-family: var(--font-sans);
+  font-size: 1rem; /* 16px: iOS does not zoom a field this size. */
+  line-height: 1.4;
+  transition: border-color var(--ds-dur-panel) var(--ds-ease-out), box-shadow var(--ds-dur-panel) var(--ds-ease-out);
+}
+textarea.ds-input { padding: var(--ds-space-3) var(--ds-space-4); min-height: 96px; resize: vertical; }
+.ds-input::placeholder { color: var(--ds-muted); opacity: 1; }
+@media (hover: hover) {
+  .ds-input:hover:where(:not(:disabled, :focus)) { border-color: var(--ds-text-2); }
+}
+.ds-input:focus-visible {
+  outline: 3px solid var(--ds-focus);
+  outline-offset: 1px;
+  border-radius: var(--ds-r-key);
+  border-color: var(--ds-focus);
+}
+.ds-input:disabled { cursor: not-allowed; opacity: 0.55; }
+.ds-input[aria-invalid="true"] { border-color: var(--ds-danger); }
+.ds-input[aria-invalid="true"]:focus-visible { outline-color: var(--ds-danger); }
+.ds-label { display: block; margin-bottom: var(--ds-space-2); color: var(--ds-text); font-size: 0.875rem; font-weight: 500; }
+.ds-hint { margin-top: var(--ds-space-2); color: var(--ds-muted); font-size: 0.8125rem; }
+.ds-error { margin-top: var(--ds-space-2); color: var(--ds-danger); font-size: 0.8125rem; font-weight: 500; }
+
+/* ── Chips ───────────────────────────────────────────────────────────────────
+   A filter or a choice: <button class="ds-chip" aria-pressed="true">. The
+   lime ring is "a person picked this" — the same lime as the Studio's
+   selection. data-type="text|image|video|audio" adds the type's dot. */
+.ds-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ds-control-sm);
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-pill);
+  background: var(--ds-surface-2);
+  color: var(--ds-text-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    transform var(--ds-dur-press) var(--ds-ease-press),
+    background-color var(--ds-dur-panel) var(--ds-ease-out),
+    border-color var(--ds-dur-panel) var(--ds-ease-out),
+    color var(--ds-dur-panel) var(--ds-ease-out);
+}
+@media (pointer: coarse) { .ds-chip { min-height: var(--ds-control-md); } }
+@media (hover: hover) {
+  .ds-chip:hover:where(:not(:disabled, [aria-disabled="true"])) { border-color: var(--ds-border-strong); color: var(--ds-text); }
+}
+.ds-chip:active:where(:not(:disabled, [aria-disabled="true"])) { transform: scale(var(--ds-press-scale)); }
+.ds-chip:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-pill); }
+.ds-chip[aria-pressed="true"],
+.ds-chip[aria-checked="true"],
+.ds-chip[aria-selected="true"] {
+  border-color: var(--ds-select);
+  background: var(--ds-select-soft);
+  color: var(--ds-text);
+  box-shadow: var(--ds-glow-select);
+}
+.ds-chip:disabled,
+.ds-chip[aria-disabled="true"] { cursor: not-allowed; opacity: 0.5; }
+.ds-chip[data-type]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--_type, var(--ds-muted));
+}
+.ds-chip[data-type="text"] { --_type: var(--ds-type-text); }
+.ds-chip[data-type="image"] { --_type: var(--ds-type-image); }
+.ds-chip[data-type="video"] { --_type: var(--ds-type-video); }
+.ds-chip[data-type="audio"] { --_type: var(--ds-type-audio); }
+
+/* ── Toggle (switch) ─────────────────────────────────────────────────────────
+   <button role="switch" aria-checked="true|false" class="ds-toggle"> with
+   its visible label beside it. On is the accent; the knob moves 200 ms. The
+   off track's edge is border-strong (>= 3:1), so "off" is still a control. */
+.ds-toggle {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-r-pill);
+  background: var(--ds-surface-3);
+  cursor: pointer;
+  transition: background-color var(--ds-dur-panel) var(--ds-ease-out), border-color var(--ds-dur-panel) var(--ds-ease-out);
+}
+.ds-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ds-text-2);
+  box-shadow: var(--ds-elev-1);
+  transition: transform var(--ds-dur-panel) var(--ds-ease-out), background-color var(--ds-dur-panel) var(--ds-ease-out);
+}
+.ds-toggle[aria-checked="true"] { background: var(--ds-accent-solid); border-color: var(--ds-accent-solid); }
+.ds-toggle[aria-checked="true"]::after { transform: translateX(18px); background: var(--ds-on-accent); }
+.ds-toggle:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-pill); }
+.ds-toggle:disabled,
+.ds-toggle[aria-disabled="true"] { cursor: not-allowed; opacity: 0.5; }
+/* A switch is small; on a touch screen its hit area grows to 44 without changing how it looks. */
+@media (pointer: coarse) {
+  .ds-toggle::before { content: ""; position: absolute; inset: -10px -2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-chip, .ds-toggle, .ds-toggle::after, .ds-input, .ds-tip { transition: none; }
+  .ds-chip:active { transform: none; }
+}
+
+/* Text only a screen reader hears (the busy label, an icon key's name when no aria-label fits). */
+.ds-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
