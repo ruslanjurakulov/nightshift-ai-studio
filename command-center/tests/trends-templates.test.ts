@@ -149,6 +149,36 @@ describe("migration 0181's seed", () => {
   });
 });
 
+describe("migration 0191's seed (the viral set)", () => {
+  const sql = readFileSync(join(__dirname, "../../supabase/migrations/0191_viral_templates.sql"), "utf8");
+  const seeded = [...sql.matchAll(/'(minimax-h3[a-z-]*|ideogram-[0-9.]+|[a-z0-9.-]+)', '(9:16|16:9|1:1)'/g)].map((m) => m[1]);
+  const categories = [...sql.matchAll(/^\s+'([a-z]+)', '(video|image)',$/gm)].map((m) => m[1]);
+
+  it("uses only the models on sale when it was written", () => {
+    const onSale = ["minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max", "ideogram-3", "ideogram-4", "ideogram-4.5"];
+    expect(seeded.length).toBe(8);
+    for (const m of seeded) expect(onSale).toContain(m);
+  });
+
+  it("widens the category CHECK without dropping a category 0181's rows already use", () => {
+    expect(sql).toContain("check (category in ('business', 'story', 'lifestyle', 'text', 'viral'))");
+  });
+
+  it("seeds only categories the gallery can draw a chip for, in every language", async () => {
+    const { TEMPLATE_CATEGORIES } = await import("@/lib/templates/trends");
+    const { trendsEn } = await import("@/lib/i18n/trends/en");
+    expect(categories.length).toBe(8);
+    for (const c of categories) {
+      expect(TEMPLATE_CATEGORIES as readonly string[]).toContain(c);
+      expect((trendsEn.categories as Record<string, string>)[c], c).toBeTruthy();
+    }
+  });
+
+  it("never overwrites an owner's edit on re-apply", () => {
+    expect(sql).toMatch(/on conflict \(slug\) do nothing;\s*$/);
+  });
+});
+
 describe("the slug", () => {
   it("can never be a Studio starter id, which shares ?template=", async () => {
     const { SLUG_RE } = await import("@/lib/templates/trends");
