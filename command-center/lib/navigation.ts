@@ -95,6 +95,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/providers", key: "providers" },
       { href: "/models", key: "models" },
       { href: "/margin", key: "margin" },
+      // Revenue, people, usage and retention for the platform owner (migration 0182). Owner-only: not in CUSTOMER_NAV_KEYS, and every read refuses an admin too.
+      { href: "/owner-analytics", key: "ownerAnalytics" },
       // People, workspaces and the credits each spent and bought (migration 0138). Operator-only: not in CUSTOMER_NAV_KEYS.
       { href: "/customers", key: "customers" },
       { href: "/billing", key: "billing" },

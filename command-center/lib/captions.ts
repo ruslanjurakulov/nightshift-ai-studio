@@ -672,7 +672,8 @@ function plain(text: string): string {
 export function buildSrt(cues: readonly Cue[]): string {
   return (
     sorted(cues)
-      .map((c, i) => `${i + 1}\n${srtTime(c.start_s)} --> ${srtTime(c.end_s)}\n${plain(c.text)}\n`)
+      // "-->" in a cue's text would read as a second timing line to ffmpeg and most players: a forged cue (BREACH S2-1).
+      .map((c, i) => `${i + 1}\n${srtTime(c.start_s)} --> ${srtTime(c.end_s)}\n${plain(c.text).replace(/-->/g, "- ->")}\n`)
       .join("\n")
   );
 }

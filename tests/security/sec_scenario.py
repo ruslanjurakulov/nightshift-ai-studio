@@ -482,6 +482,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     import sec_rights_acknowledgement_0174
     sec_rights_acknowledgement_0174.seed(conn, sc)
 
+    # Owner analytics (0182): tests/security/sec_owner_analytics_0182.py — one export record, made by the owner.
+    import sec_owner_analytics_0182
+    sec_owner_analytics_0182.seed(conn, sc)
+
     # Trend templates (0181): tests/security/sec_creative_templates_0181.py — one published template and one draft.
     import sec_creative_templates_0181
     sec_creative_templates_0181.seed(conn, sc)

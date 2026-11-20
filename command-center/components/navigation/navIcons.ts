@@ -42,6 +42,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   providers: KeyRound,
   models: Cpu,
   margin: TrendingUp,
+  ownerAnalytics: PieChart,
   customers: Contact,
   billing: Wallet,
   credits: Coins,
