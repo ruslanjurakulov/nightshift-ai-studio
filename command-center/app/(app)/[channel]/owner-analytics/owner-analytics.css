@@ -163,3 +163,4 @@
 .oa-sliders { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .oa-slider-head { display: flex; justify-content: space-between; gap: 8px; }
 .oa-slider input[type="range"] { min-height: 32px; }
+.oa-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 0.875rem; }
