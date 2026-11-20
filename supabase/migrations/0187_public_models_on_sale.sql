@@ -19,12 +19,22 @@
 --   (image, video, voice); an empty answer means "nothing on sale" and the strip is not drawn. If this file is not applied the
 --   function is missing, the read fails, and the landing draws no strip (it never falls back to a guessed list).
 --
+-- WHAT ELSE BECOMES PUBLIC (decided, not accidental):
+--   * A model sold only on some plans (model_registry.entitlement set) is listed like any other: it IS on sale. The landing calls the
+--     list "Models in the Studio today", and /pricing says which plan includes what.
+--   * When the owner switches a model off (0124) or its shutdown day comes (0125), it leaves this list as it leaves sellable_models:
+--     a visitor who compares the list over time can see that it changed. Nothing about why is exposed.
+--   * A model with no capability codes would not be listed (none is sold that way; it could not be used).
+--
 -- VERIFY (after apply):
 --   select * from public.public_models_on_sale();                                   -- names + capabilities only
 --   select (select count(*) from public.public_models_on_sale())
 --        = (select count(distinct display_name) from public.sellable_models(null, 'web'));   -- true
 --   set role anon; select count(*) from public.public_models_on_sale(); reset role;  -- works signed out
 --   set role anon; select * from public.sellable_models(null, 'web'); reset role;    -- still 42501
+
+-- A public read must never queue behind a long lock on apply.
+set local lock_timeout = '5s';
 
 do $$
 begin
