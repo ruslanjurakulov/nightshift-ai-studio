@@ -480,7 +480,9 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
                 if args.brief:
                     code = res.code if res.code in BRIEF_CODES else "other"
                     extra = f" credits={res.credits:g}" if res.ok and res.credits is not None else ""
-                    logger.info(f"ok {e.id}{extra}" if res.ok else f"failed {e.id} {code}")
+                    # A fixed remedy for the one code whose fix is outside the code and the key (CLAUDE.md #6); never vendor text.
+                    hint = " (the vendor API balance is empty: top it up; the key is fine)" if code == E_QUOTA else ""
+                    logger.info(f"ok {e.id}{extra}" if res.ok else f"failed {e.id} {code}{hint}")
                     failures += 0 if res.ok else 1
                 elif res.ok:
                     logger.info(f"OK   {e.id}: {res.output_bytes} bytes in {res.latency_ms} ms" + (f" - {res.note}" if res.note else ""))

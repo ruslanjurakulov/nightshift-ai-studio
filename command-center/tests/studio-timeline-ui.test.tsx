@@ -5,7 +5,7 @@
  * filled with fake clips; a number on the Assemble key before the server quoted one; a double press that starts (and holds) twice;
  * "not enough credits" without the way to add them; and Space playing the film while a person types in the Library search.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { studioTimelineEn as c } from "../lib/i18n/studio-timeline/en";
@@ -493,5 +493,74 @@ describe("media links (Lens N2)", () => {
     await waitFor(() => expect(result.current.urls.get(ID)?.failed).toBe(true));
     expect(calls.length - before).toBe(2);
     expect(MEDIA_RETRY_WINDOW_MS).toBeLessThan(10 * 60_000);
+  });
+});
+
+/**
+ * The page in the gap between React committing it and React running its passive effects (useEffect). RTL's render and findBy usually
+ * close that gap, but on a loaded CI runner the scheduler yields after the commit (its 5 ms slice is spent), the commit's
+ * MutationObserver microtask resolves findBy first, and the test presses a key or clicks a page whose effects have not run (#824:
+ * "Asking the server…" never came, aria-pressed stayed "false"). A person can press in that gap too. Here the gap is forced: the
+ * scheduler's clock jumps 50 ms on every read until the page is on screen, so it always yields after the commit, and `then` runs in
+ * the commit's own microtask, before any passive effect.
+ */
+async function atFirstCommit(ready: (host: HTMLElement) => Element | null, then: (el: Element) => void) {
+  const { createRoot } = await import("react-dom/client");
+  const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  const wasAct = env.IS_REACT_ACT_ENVIRONMENT;
+  env.IS_REACT_ACT_ENVIRONMENT = false;
+  let fake = performance.now();
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => (fake += 50));
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  // Registered before anything can throw or hang: RTL's cleanup does not know this root, so a failure must not leave it (and its
+  // window keydown listener) mounted, or the act environment off, for the tests after it.
+  onTestFinished(() => {
+    root.unmount();
+    host.remove();
+    env.IS_REACT_ACT_ENVIRONMENT = wasAct;
+  });
+  await new Promise<void>((resolve) => {
+    const mo = new MutationObserver(() => {
+      const el = ready(host);
+      if (!el) return;
+      mo.disconnect();
+      clock.mockRestore();
+      then(el);
+      resolve();
+    });
+    mo.observe(host, { childList: true, subtree: true });
+    root.render(<StudioTimeline filmStudio filmId={FILM} />);
+  });
+  // Let the passive effects and the updates the press queued run, as they would on the next task.
+  await new Promise((r) => setTimeout(r, 30));
+  return host;
+}
+
+describe("the first frame (CI flakes on #824)", () => {
+  it("a press of Assemble the moment the page is on screen asks for the price, and the answer is kept", async () => {
+    let release!: (a: Answer) => void;
+    answer = (url) => (url.endsWith("/quote") ? new Promise<Answer>((r) => (release = r)) : { status: 200, body: { film: film() } });
+    const host = await atFirstCommit(
+      (h) => h.querySelector('[data-testid="assemble-key"]'),
+      (key) => (key as HTMLButtonElement).click(),
+    );
+    const amount = () => host.querySelector('[data-testid="assemble-amount"]')?.textContent ?? "";
+      // Without the fix the panel's mount effect ran after the press, counted the press's quote as one for an older version and
+      // put the key back to "Get the price": the request was sent (and counted by quote_film's rate limit), its answer dropped.
+    expect(amount()).toBe(c.quoting);
+    expect(calls.filter((x) => x.url.endsWith("/quote"))).toHaveLength(1);
+    release({ status: 200, body: { quote: priced } });
+    await waitFor(() => expect(amount()).toBe("16 credits"));
+  });
+
+  it("Space the moment the page is on screen plays: the shortcut is listening before the page can be seen", async () => {
+    const host = await atFirstCommit(
+      (h) => h.querySelector('[data-testid="lanes"]'),
+      () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true })),
+    );
+    const play = host.querySelector('[data-testid="play"]') as HTMLElement;
+    // Without the fix the window listener was added by a passive effect that had not run yet, so the key went nowhere.
+    expect(play.getAttribute("aria-pressed")).toBe("true");
   });
 });

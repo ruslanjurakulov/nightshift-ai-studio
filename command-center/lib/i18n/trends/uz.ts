@@ -6,7 +6,7 @@ export const trendsUz: TrendsDictionary = {
   subtitle: "Qisqa video va postlar uchun tayyor formatlar. Birini tanlang, «Yaratish» u bilan ochiladi. Faqat {qavs} ichidagi soʻzlarni almashtirasiz.",
   note: "Bu sahifada hech narsa yechilmaydi va ishga tushmaydi. «Yaratish» narxni koʻrsatadi va tasdiqlashni soʻraydi.",
   filterLabel: "Toifa",
-  categories: { all: "Hammasi", business: "Biznes", story: "Hikoyalar", lifestyle: "Turmush tarzi", text: "Matn va iqtiboslar" },
+  categories: { all: "Hammasi", viral: "Trend effektlar", business: "Biznes", story: "Hikoyalar", lifestyle: "Turmush tarzi", text: "Matn va iqtiboslar" },
   kind: { video: "Video", image: "Rasm" },
   seconds: "{n} s",
   use: "Shablonni ishlatish",

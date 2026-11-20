@@ -117,6 +117,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
     run_slots_full: "Tarifdagi barcha parallel ishga tushirishlar band. Hech narsa band qilinmadi.",
     limit_reached: "Ish maydonining boshqa loyihasi ishlayapti. Hech narsa band qilinmadi.",
     cap_exceeded: "Loyiha ish maydoni ruxsatidan qimmat. Hech narsa band qilinmadi.",
+    acknowledgement_required: "Bu loyihaning modeli rasmlardan biriga (yuklangan kadr, namuna, personaj yoki uslub toʻplami) huquqingizni tasdiqlashni soʻraydi. Buni Studiyada bir marta tasdiqlang (shu rasm bilan soʻraydigan modelda yarating) yoki boshqa model tanlang. Hech narsa band qilinmadi.",
     other: "Server loyihani boshlamadi. Hech narsa band qilinmadi.",
   },
   startNoAnswer: "Serverdan javob kelmadi. Boshlash amalga oshgan boʻlishi mumkin: qayta bosish xuddi shu boshlashni takrorlaydi va ikki marta yechmaydi.",
