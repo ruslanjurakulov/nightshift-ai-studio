@@ -141,15 +141,9 @@ export function WelcomeFlow({
             </p>
           )}
           <div className="g5-actions" style={{ justifyContent: "flex-end" }}>
-            {busy ? (
-              <Button type="submit" variant="primary" loading busyLabel={t.signup.wsCreating}>
-                {t.signup.wsCreating}
-              </Button>
-            ) : (
-              <Button type="submit" variant="primary" disabled={validateOrgName(name) === null}>
-                {t.signup.wsCreate}
-              </Button>
-            )}
+            <Button type="submit" variant="primary" loading={busy} busyLabel={t.signup.wsCreating} disabled={validateOrgName(name) === null}>
+              {t.signup.wsCreate}
+            </Button>
           </div>
         </form>
       )}

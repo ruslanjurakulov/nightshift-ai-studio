@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useId, useState } from "react";
+import { forwardRef, useEffect, useId, useState } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 /**
@@ -27,16 +27,17 @@ export function buttonClass({
   return parts.join(" ");
 }
 
-type BaseProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-busy"> & {
+type BaseProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-busy" | "aria-disabled"> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   block?: boolean;
 };
 
-type BusyProps =
-  | { loading?: false; busyLabel?: string }
+type BusyProps = {
   /** While loading, a reader hears `busyLabel` ("Saving…"); the visible label stays so the key keeps its width. */
-  | { loading: true; busyLabel: string };
+  loading?: boolean;
+  busyLabel?: string;
+};
 
 export type ButtonProps = BaseProps & BusyProps & { leading?: ReactNode; trailing?: ReactNode };
 
@@ -51,6 +52,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   const busy = loading === true;
   return (
     <button
+      {...rest}
       ref={ref}
       type={type}
       className={buttonClass({ variant, size, block, className })}
@@ -64,12 +66,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         }
         onClick?.(event);
       }}
-      {...rest}
     >
       {busy ? <span className="ds-spinner" aria-hidden="true" /> : leading}
       <span>{children}</span>
       {!busy && trailing}
-      {busy && <span className="ds-sr-only" role="status">{busyLabel}</span>}
+      {/* Always mounted, filled only while busy: a live region inserted with its text already in it is often not announced. */}
+      <span className="ds-sr-only" role="status">
+        {busy ? busyLabel : ""}
+      </span>
     </button>
   );
 });
@@ -88,25 +92,27 @@ export type IconButtonProps = Omit<ButtonProps, "children" | "leading" | "traili
  * aria-hidden (the label is already the accessible name; a reader should not hear it twice).
  */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, icon, tooltip = true, tooltipSide = "top", variant = "quiet", size = "md", loading = false, busyLabel, className, onKeyDown, onFocus, onBlur, onMouseEnter, onMouseLeave, onClick, type = "button", disabled, ...rest },
+  { label, icon, tooltip = true, tooltipSide = "top", variant = "quiet", size = "md", loading = false, busyLabel, className, onFocus, onBlur, onClick, type = "button", disabled, ...rest },
   ref,
 ) {
-  const tipId = useId();
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const open = tooltip && !dismissed && (hovered || focused);
   const busy = loading === true;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") setDismissed(true);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  }, [open]);
 
   const button = (
     <button
+      {...rest}
       ref={ref}
       type={type}
       aria-label={label}
@@ -121,37 +127,39 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         }
         onClick?.(event);
       }}
-      onKeyDown={onKeyDown}
       onFocus={(event) => {
         // Only a keyboard focus opens the tip: a tap or click focuses the key too, and a tip that then stays open
         // under the finger covers what the key just did.
-        if (tooltip && event.currentTarget.matches(":focus-visible")) setOpen(true);
+        if (event.currentTarget.matches(":focus-visible")) setFocused(true);
         onFocus?.(event);
       }}
       onBlur={(event) => {
-        close();
+        setFocused(false);
+        setDismissed(false);
         onBlur?.(event);
       }}
-      onMouseEnter={(event) => {
-        if (tooltip) setOpen(true);
-        onMouseEnter?.(event);
-      }}
-      onMouseLeave={(event) => {
-        close();
-        onMouseLeave?.(event);
-      }}
-      {...rest}
     >
       {busy ? <span className="ds-spinner" aria-hidden="true" /> : icon}
-      {busy && <span className="ds-sr-only" role="status">{busyLabel}</span>}
+      <span className="ds-sr-only" role="status">
+        {busy ? busyLabel : ""}
+      </span>
     </button>
   );
 
   if (!tooltip) return button;
+  // Hover is tracked on the anchor, which holds the tip too: moving the pointer from the key onto the tip keeps it
+  // open (WCAG 1.4.13, hoverable), and leaving with the pointer does not close a tip that keyboard focus opened.
   return (
-    <span className="ds-tip-anchor">
+    <span
+      className="ds-tip-anchor"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setDismissed(false);
+      }}
+    >
       {button}
-      <span id={tipId} className="ds-tip" data-side={tooltipSide} data-open={open ? "true" : "false"} aria-hidden="true">
+      <span className="ds-tip" data-side={tooltipSide} data-open={open ? "true" : "false"} aria-hidden="true">
         {label}
       </span>
     </span>
@@ -177,6 +185,7 @@ export function Toggle({
   const autoId = useId();
   const toggleId = id ?? autoId;
   const descId = `${toggleId}-desc`;
+  const labelId = `${toggleId}-label`;
   return (
     <span className="inline-flex items-start gap-3">
       <button
@@ -184,13 +193,14 @@ export function Toggle({
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-labelledby={labelId}
         aria-describedby={description ? descId : undefined}
         className="ds-toggle mt-0.5"
         disabled={disabled}
         onClick={() => onChange(!checked)}
       />
       <span className="flex flex-col">
-        <label htmlFor={toggleId} className="cursor-pointer text-sm font-medium text-[var(--ds-text)]">
+        <label id={labelId} htmlFor={toggleId} className="cursor-pointer text-sm font-medium text-[var(--ds-text)]">
           {label}
         </label>
         {description && (
