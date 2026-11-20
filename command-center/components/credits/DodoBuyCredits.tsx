@@ -105,9 +105,9 @@ export function DodoBuyCredits({
 
   const ac = t.addCredits;
   const message: Partial<Record<Phase, { text: string; ok?: boolean }>> = {
-    paid: { text: cp.packPaid, ok: true },
+    paid: { text: cp.checkoutConfirming },
     arrived: { text: cp.packArrived, ok: true },
-    slow: { text: cp.packSlow },
+    slow: { text: cp.checkoutUnconfirmed },
     cancelled: { text: cp.cancelled },
     error: { text: cp.loadFailed },
     too_many: { text: ac.tooMany },
@@ -208,7 +208,7 @@ export function DodoBuyCredits({
       {msg && (
         <p
           className="text-sm"
-          style={{ color: msg.ok ? "var(--color-ok)" : phase === "slow" || phase === "cancelled" ? "var(--color-muted)" : "var(--color-fail)" }}
+          style={{ color: msg.ok ? "var(--color-ok)" : phase === "paid" || phase === "slow" || phase === "cancelled" ? "var(--color-muted)" : "var(--color-fail)" }}
           data-buy-message={phase}
           aria-live="polite"
         >

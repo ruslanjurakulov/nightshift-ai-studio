@@ -220,9 +220,9 @@ export function PlanPanel({
   const statusText = sub ? p.status[sub.status] : null;
   const dateLine = planDateLine(p, sub, locale);
   const message: Partial<Record<Phase, { text: string; ok?: boolean }>> = {
-    paid: { text: cp.planPaid, ok: true },
+    paid: { text: cp.checkoutConfirming },
     arrived: { text: cp.planArrived, ok: true },
-    slow: { text: cp.planSlow },
+    slow: { text: cp.checkoutUnconfirmed },
     cancelled: { text: cp.cancelled },
     error: { text: cp.checkoutError },
     load_failed: { text: cp.loadFailed },

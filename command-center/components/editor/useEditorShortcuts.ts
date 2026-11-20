@@ -53,6 +53,8 @@ export function useEditorShortcuts(p: {
   onOverlayRemoved?: () => void;
   /** Called after Delete removed a shape: focus belongs on "Add shape", not <body>. */
   onShapeRemoved?: () => void;
+  /** Recover focus only when the removed sound's focused control disappears. */
+  onSoundRemoved?: () => void;
   view: TimelineView;
   /** The editor's clip clipboard (Ctrl+C / Ctrl+V / Ctrl+D on a selected clip). */
   clipboard?: VideoClip | null;
@@ -159,6 +161,7 @@ export function useEditorShortcuts(p: {
           if (next === s.model) return;
           if (sel.kind === "overlay") s.onOverlayRemoved?.();
           if (sel.kind === "shape") s.onShapeRemoved?.();
+          if (sel.kind === "sound") s.onSoundRemoved?.();
           s.apply(next);
           break;
         }

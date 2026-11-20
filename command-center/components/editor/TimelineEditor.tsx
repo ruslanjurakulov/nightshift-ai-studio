@@ -433,6 +433,9 @@ export function TimelineEditor({
   const [assets, setAssets] = useState(initialAssets);
   const [adding, setAdding] = useState(false);
   const [addingSound, setAddingSound] = useState(false);
+  const soundFocus = useRef<Element | null>(null);
+  const addSoundButton = useRef<HTMLButtonElement>(null);
+  const soundPicker = useRef<HTMLElement>(null);
   /** The voice-over panel. Opening it asks for nothing: the microphone is asked for only when Record is pressed. */
   const [recordingVoice, setRecordingVoice] = useState(false);
   const [addingOverlay, setAddingOverlay] = useState(false);
@@ -625,6 +628,16 @@ export function TimelineEditor({
     target?.focus();
   }, [model, selected]);
 
+  // Keep surviving controls focused; recover only the focus target removed with a sound.
+  useEffect(() => {
+    const before = soundFocus.current;
+    soundFocus.current = null;
+    if (!before || before.isConnected) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement)
+      addSoundButton.current?.focus();
+  }, [model]);
+
   // A run of small changes to one control (a slider, the arrow keys) is ONE undo step.
   const burst = useRef<{ key: string; at: number; out: EditorModel } | null>(
     null,
@@ -810,7 +823,7 @@ export function TimelineEditor({
 
   // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
   const view = useTimelineView({ total, playhead });
-  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; }, clipboard, setClipboard, onClipInserted: (id) => setSelected({ kind: "clip", id }), onCore: (a) => onCore(a) });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; }, onSoundRemoved: () => { soundFocus.current = document.activeElement; }, clipboard, setClipboard, onClipInserted: (id) => setSelected({ kind: "clip", id }), onCore: (a) => onCore(a) });
   const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
 
   async function refreshLinks() {
@@ -1280,13 +1293,19 @@ export function TimelineEditor({
     setAdding(false);
   }
 
+  function closeSoundPicker() {
+    const restore = soundPicker.current?.contains(document.activeElement);
+    setAddingSound(false);
+    if (restore) addSoundButton.current?.focus();
+  }
+
   function onAddSound(a: EditorAsset) {
     const out = addSound(model, a, playhead < picture ? playhead : 0);
     if (!out) return;
     setAssets((x) => ({ ...x, [a.id]: a }));
     apply(out.model);
     setSelected({ kind: "sound", id: out.id });
-    setAddingSound(false);
+    closeSoundPicker();
   }
 
   /** A registered voice-over take, placed like any sound (where the playhead was when "Add" was pressed). */
@@ -1937,6 +1956,7 @@ export function TimelineEditor({
             <button
               type="button"
               onClick={() => setAddingSound((a) => !a)}
+              ref={addSoundButton}
               aria-expanded={addingSound}
               disabled={!canAddSound(model)}
               className={quietBtn}
@@ -2068,7 +2088,14 @@ export function TimelineEditor({
           ) : null}
           {addingSound ? (
             <section
+              ref={soundPicker}
               aria-label={te.addSoundTitle}
+              onKeyDown={(e) => {
+                if (e.key !== "Escape") return;
+                e.preventDefault();
+                e.stopPropagation();
+                closeSoundPicker();
+              }}
               className="panel flex flex-col gap-2 p-4 sm:p-5"
             >
               <div className="flex items-center justify-between gap-2">
@@ -2077,7 +2104,7 @@ export function TimelineEditor({
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setAddingSound(false)}
+                  onClick={closeSoundPicker}
                   className={quietBtn}
                 >
                   {te.close}
@@ -2315,7 +2342,10 @@ export function TimelineEditor({
                   />
                 </>
               }
-              onDelete={() => apply(removeSound(model, sound.id))}
+              onDelete={() => {
+                soundFocus.current = document.activeElement;
+                apply(removeSound(model, sound.id));
+              }}
             />
           ) : clip ? (
             <>
