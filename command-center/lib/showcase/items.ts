@@ -6,8 +6,11 @@
 export type ShowcaseItem = {
   slug: string;
   kind: "video" | "image";
-  /** The registry id of the model that made it; the page shows the model's display name. */
-  modelId: string;
+  /**
+   * The registry ids of the models that made it, in the order they worked; the page shows their display names. More than one
+   * when a piece took more than one step (a picture, then a clip from it): crediting only the last one would hide the first.
+   */
+  modelIds: readonly string[];
   aspect: "16:9" | "9:16" | "1:1";
   title: { en: string; ru: string; uz: string };
 };
@@ -16,23 +19,23 @@ export const SHOWCASE_ITEMS: readonly ShowcaseItem[] = [
   // Two steps in Studio: an Ideogram 4.5 picture of the two characters, then MiniMax H3 image-to-video with the dialogue written
   // into the prompt. The model speaks the lines itself; the captions are burned in from a transcript of its own audio, because
   // the landing plays clips muted.
-  { slug: "language-duo", kind: "video", modelId: "minimax-h3", aspect: "9:16",
+  { slug: "language-duo", kind: "video", modelIds: ["ideogram-4.5", "minimax-h3"], aspect: "9:16",
     title: { en: "One picture, two characters, real dialogue", ru: "Одна картинка, два героя, живой диалог", uz: "Bitta rasm, ikki personaj, jonli dialog" } },
-  { slug: "registan-dusk", kind: "video", modelId: "minimax-h3-max", aspect: "16:9",
+  { slug: "registan-dusk", kind: "video", modelIds: ["minimax-h3-max"], aspect: "16:9",
     title: { en: "Registan at blue hour", ru: "Регистан в синий час", uz: "Registon, kechki moviy soat" } },
-  { slug: "perfume-splash", kind: "video", modelId: "minimax-h3", aspect: "9:16",
+  { slug: "perfume-splash", kind: "video", modelIds: ["minimax-h3"], aspect: "9:16",
     title: { en: "Perfume, golden splash", ru: "Парфюм и золотой всплеск", uz: "Atir va oltin sachrash" } },
-  { slug: "neon-city-rain", kind: "video", modelId: "minimax-h3", aspect: "16:9",
+  { slug: "neon-city-rain", kind: "video", modelIds: ["minimax-h3"], aspect: "16:9",
     title: { en: "Neon city in the rain", ru: "Неоновый город под дождём", uz: "Yomg'irdagi neon shahar" } },
-  { slug: "desert-silk", kind: "video", modelId: "minimax-h3", aspect: "9:16",
+  { slug: "desert-silk", kind: "video", modelIds: ["minimax-h3"], aspect: "9:16",
     title: { en: "Silk over the dunes", ru: "Шёлк над дюнами", uz: "Barxanlar uzra shoyi" } },
-  { slug: "coffee-pour", kind: "video", modelId: "minimax-h3", aspect: "16:9",
+  { slug: "coffee-pour", kind: "video", modelIds: ["minimax-h3"], aspect: "16:9",
     title: { en: "Morning pour", ru: "Утренний кофе", uz: "Ertalabki qahva" } },
-  { slug: "sneaker-orbit", kind: "video", modelId: "minimax-h3-highspeed", aspect: "9:16",
+  { slug: "sneaker-orbit", kind: "video", modelIds: ["minimax-h3-highspeed"], aspect: "9:16",
     title: { en: "Sneaker drop", ru: "Кроссовки в движении", uz: "Krossovka reklamasi" } },
-  { slug: "ikat-poster", kind: "image", modelId: "ideogram-4.5", aspect: "9:16",
+  { slug: "ikat-poster", kind: "image", modelIds: ["ideogram-4.5"], aspect: "9:16",
     title: { en: "Made in Tashkent", ru: "Сделано в Ташкенте", uz: "Toshkentda yaratilgan" } },
-  { slug: "isometric-studio", kind: "image", modelId: "ideogram-4.5", aspect: "1:1",
+  { slug: "isometric-studio", kind: "image", modelIds: ["ideogram-4.5"], aspect: "1:1",
     title: { en: "A studio on an island", ru: "Студия на острове", uz: "Oroldagi studiya" } },
 ];
 

@@ -20,7 +20,9 @@ export const homeEn = {
     primary: "Start creating",
     secondary: "See how it works",
     reelLabel: "Made in Nightshift Studio",
-    reelNote: "Every piece here was made in our own Studio, with the model that made it named under it.",
+    reelNote: "Every piece here was made in our own Studio, with the models that made it named under it.",
+    /** Joins the last two model names in a credit: "Ideogram 4.5 and MiniMax H3". */
+    and: "and",
     /** {model}: the registry display name of the model that made the piece (lib/creative/model-names.ts). */
     credit: "Made with {model} in Nightshift Studio",
     ai: "AI-generated",

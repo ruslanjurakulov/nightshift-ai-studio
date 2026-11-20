@@ -132,8 +132,12 @@
   /* Nine pieces in three shapes: one row at one height, each card as wide as its own shape, scrolled sideways at every width
      (2,900 px of pictures at desktop height never fits a screen). The height is the one number; widths follow from it. */
   .hm-reel-row {
+    /* vh first: a browser without svh drops the second line and keeps a height, rather than a zero-width card. */
+    --hm-reel-h: min(56vh, 340px);
     --hm-reel-h: min(56svh, 340px);
-    --hm-reel-pad: var(--hm-gutter);
+    /* Starts where the page's column does at every width, and still runs out to the screen's edge. A percentage, not 100vw,
+       so a desktop scrollbar does not shift it. */
+    --hm-reel-pad: max(var(--hm-gutter), calc((100% - var(--hm-max)) / 2));
     display: flex;
     gap: var(--ds-space-3);
     margin-top: var(--ds-space-6);
@@ -147,10 +151,6 @@
     scrollbar-width: thin;
   }
   @media (min-width: 1024px) { .hm-reel-row { --hm-reel-h: 380px; } }
-  @media (min-width: 1440px) {
-    /* The row starts where the page's column does, and still runs out to the screen's edge. */
-    .hm-reel-row { --hm-reel-pad: max(var(--hm-gutter), calc((100vw - var(--hm-max)) / 2)); }
-  }
   .hm-reel-row:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
   .hm-reel-card { flex: 0 0 auto; scroll-snap-align: start; }
   .hm-reel-card figure { margin: 0; }

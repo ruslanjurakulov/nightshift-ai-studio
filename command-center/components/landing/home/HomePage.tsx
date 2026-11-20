@@ -140,20 +140,21 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
         </h2>
         <p className="hm-muted">{h.reelNote}</p>
       </div>
-      {/* A row wider than the screen scrolls: focusable, so a keyboard can scroll it too. */}
-      <ul className="hm-reel-row" aria-labelledby="hm-reel-title" tabIndex={0}>
+      {/* A row wider than the screen scrolls: focusable, so a keyboard can scroll it too. data-scroll-region: still not a control,
+          so a tap on a clip in it is the page's pause (lib/site/motion.ts motionTap). */}
+      <ul className="hm-reel-row" aria-labelledby="hm-reel-title" tabIndex={0} data-scroll-region="">
         {pieces.map((p) => {
           const size = PIECE_SIZE[p.aspect];
           return (
             <li key={p.slug} className="hm-reel-card" data-aspect={p.aspect} data-piece={p.slug}>
               <figure>
-                <div className="hm-reel-pic" data-clip="sample">
+                <div className="hm-reel-pic" data-clip={p.kind === "video" ? "sample" : undefined}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={showcasePoster(p.slug)}
                     width={size.width}
                     height={size.height}
-                    alt={`${p.title[locale]}. ${h.ai}.`}
+                    alt={h.ai}
                     loading="lazy"
                     decoding="async"
                     className="hm-reel-still"
@@ -166,7 +167,7 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
                 </div>
                 <figcaption className="hm-reel-cap">
                   <span className="hm-reel-title">{p.title[locale]}</span>
-                  <span className="hm-reel-credit">{h.credit.replace("{model}", p.model)}</span>
+                  <span className="hm-reel-credit">{credit(h, p.models)}</span>
                 </figcaption>
               </figure>
             </li>
@@ -175,6 +176,12 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
       </ul>
     </section>
   );
+}
+
+/** "Made with A in Nightshift Studio", or "Made with A and B …" for a piece two models made (the dictionary's `and`). */
+function credit(h: Dictionary["landingHome"]["hero"], models: string[]): string {
+  const names = models.length > 1 ? `${models.slice(0, -1).join(", ")} ${h.and} ${models[models.length - 1]}` : models[0];
+  return h.credit.replace("{model}", names);
 }
 
 const STEP_ICONS = { idea: Lightbulb, create: Sparkles, export: Download } as const;

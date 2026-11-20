@@ -59,7 +59,8 @@ describe("the landing's pictures are our own Studio's", () => {
     const root = process.cwd();
     expect(existsSync(path.join(root, "public/showcase", `${slug}.webp`)), "poster").toBe(true);
     if (it.kind === "video") expect(existsSync(path.join(root, "public/showcase", `${slug}.mp4`)), "clip").toBe(true);
-    expect(REGISTRY_NAMES[it.modelId], `${it.modelId} is not a registry id`).toBeTruthy();
+    expect(it.modelIds.length).toBeGreaterThan(0);
+    for (const id of it.modelIds) expect(REGISTRY_NAMES[id], `${id} is not a registry id`).toBeTruthy();
   });
 
   it("the reel is every Studio piece, in the list's order, language-duo first", () => {
@@ -86,13 +87,24 @@ describe("the landing's pictures are our own Studio's", () => {
       const it = SHOWCASE_ITEMS[i];
       expect(card.dataset.piece).toBe(it.slug);
       expect(within(card).getByText(h.ai)).toBeTruthy();
-      expect(card.querySelector(".hm-reel-credit")?.textContent).toBe(h.credit.replace("{model}", REGISTRY_NAMES[it.modelId]));
+      const credit = card.querySelector(".hm-reel-credit")?.textContent ?? "";
+      for (const id of it.modelIds) expect(credit).toContain(REGISTRY_NAMES[id]);
+      expect(credit.startsWith(h.credit.split("{model}")[0])).toBe(true);
       expect(card.querySelector(".hm-reel-title")?.textContent).toBe(it.title[code]);
       const img = card.querySelector("img") as HTMLImageElement;
       expect(img.getAttribute("src")).toBe(`/showcase/${it.slug}.webp`);
       expect(img.getAttribute("loading")).toBe("lazy");
-      expect(img.getAttribute("alt")).toContain(h.ai);
+      // The figcaption carries the title; the picture says only what the eye gets from the badge, so nothing is read twice.
+      expect(img.getAttribute("alt")).toBe(h.ai);
+      expect(card.querySelector("[data-clip]") !== null).toBe(it.kind === "video");
     });
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: a piece two models made credits both, joined in the visitor's language", (code) => {
+    page(code);
+    const h = dictionaries[code].landingHome.hero;
+    const duo = document.querySelector('[data-piece="language-duo"] .hm-reel-credit')?.textContent;
+    expect(duo).toBe(h.credit.replace("{model}", `Ideogram 4.5 ${h.and} MiniMax H3`));
   });
 
   it.each(LOCALES.map((l) => l.code))("%s: the credit line names its model exactly once", (code) => {

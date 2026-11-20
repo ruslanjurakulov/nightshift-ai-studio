@@ -23,10 +23,10 @@ export function reelItem(jobId: string): ReelItem | null {
   return { e, f };
 }
 
-/** A reel piece and the display name of the model that made it, for its "Made with … in Nightshift Studio" line. */
-export type StudioPiece = ShowcaseItem & { model: string };
+/** A reel piece and the display names of the models that made it, for its "Made with … in Nightshift Studio" line. */
+export type StudioPiece = ShowcaseItem & { models: string[] };
 
-/** Pixel size of each piece's poster (public/showcase/<slug>.webp), so its box has its shape before anything loads. */
+/** The shape of each piece's box (the posters are a few pixels off these; the box's aspect-ratio and object-fit cover decide). */
 export const PIECE_SIZE: Readonly<Record<ShowcaseItem["aspect"], { width: number; height: number }>> = {
   "16:9": { width: 1280, height: 720 },
   "9:16": { width: 720, height: 1280 },
@@ -34,12 +34,13 @@ export const PIECE_SIZE: Readonly<Record<ShowcaseItem["aspect"], { width: number
 };
 
 /**
- * The reel, in lib/showcase/items.ts's order (language-duo first). A piece whose model the registry does not name is left out
- * rather than credited to a raw id or to nobody: the credit is the point of the line, and the test fails on such a piece.
+ * The reel, in lib/showcase/items.ts's order (language-duo first). A piece with a model the registry does not name is left out
+ * rather than credited to a raw id or to fewer models than made it: the credit is the point of the line, and the test fails on
+ * such a piece.
  */
 export function studioPieces(): StudioPiece[] {
   return SHOWCASE_ITEMS.flatMap((it) => {
-    const model = REGISTRY_NAMES[it.modelId];
-    return model ? [{ ...it, model }] : [];
+    const models = it.modelIds.map((id) => REGISTRY_NAMES[id]);
+    return it.modelIds.length > 0 && models.every(Boolean) ? [{ ...it, models }] : [];
   });
 }
