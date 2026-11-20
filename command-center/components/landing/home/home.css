@@ -242,6 +242,17 @@
     color: var(--ds-text-2);
     font-size: 0.8125rem;
   }
+  /* 0192: an adults-only model is listed, and says so in words, not only in colour. */
+  .hm-adult {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border: 1px solid var(--ds-warning);
+    border-radius: var(--ds-r-pill);
+    color: var(--ds-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
   .hm-kind::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--_k, var(--ds-muted)); }
   .hm-kind[data-kind="video"] { --_k: var(--ds-type-video); }
   .hm-kind[data-kind="image"] { --_k: var(--ds-type-image); }

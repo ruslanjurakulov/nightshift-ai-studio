@@ -6,7 +6,8 @@ Wired in at the bottom of sec_expectations.py, like the other per-migration file
 
 One new function, no table:
 
-  public_models_on_sale  anon and authenticated: display_name and capability codes of what sellable_models(null, 'web') lists, and
+  public_models_on_sale  anon and authenticated: display_name, capability codes and 0192's adults-only mark of what
+                         sellable_models(null, 'web') lists, and
                          nothing else (no id, provider, price, unit, margin or spec). test_sec_public_models.py proves it, and that
                          sellable_models itself stays closed to anon.
 """

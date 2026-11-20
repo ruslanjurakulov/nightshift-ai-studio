@@ -29,6 +29,7 @@ export const homeUz: HomeDictionary = {
     lead: "Hozir foydalanish mumkin boʻlgan modellar, Studio’ning oʻzidan olinadi: model qoʻshilsa yoki olib tashlansa, roʻyxat ham oʻzgaradi.",
     kinds: { video: "Video", image: "Rasm", voice: "Ovoz" },
     listLabel: "Sotuvdagi modellar",
+    adultOnly: "Kattalar uchun (18+)",
   },
   mcp: {
     tag: "MCP",

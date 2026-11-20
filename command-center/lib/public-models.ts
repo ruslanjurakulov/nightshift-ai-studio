@@ -3,12 +3,16 @@
  *
  * A model's capability codes become the words a visitor knows: image, video or voice. A code we do not know is left out of
  * the words, never guessed; a model left with no known kind is still listed by name.
+ *
+ * adultOnly is 0192's mark (the maker's terms are 18+): such a model stays listed and says so. A row whose mark is not a real
+ * boolean is dropped rather than shown unmarked: "not known to be for adults only" must never read as "not for adults only".
  */
 export type ModelKind = "image" | "video" | "voice";
 
 export interface PublicModel {
   name: string;
   kinds: ModelKind[];
+  adultOnly: boolean;
 }
 
 const KIND_OF: Record<string, ModelKind> = {
@@ -39,12 +43,12 @@ export function parsePublicModels(raw: unknown): PublicModel[] | null {
   const seen = new Set<string>();
   for (const row of raw) {
     if (!row || typeof row !== "object") continue;
-    const { display_name: name, capabilities } = row as { display_name?: unknown; capabilities?: unknown };
-    if (typeof name !== "string" || name.trim() === "" || seen.has(name)) continue;
+    const { display_name: name, capabilities, adult_only: adult } = row as { display_name?: unknown; capabilities?: unknown; adult_only?: unknown };
+    if (typeof name !== "string" || name.trim() === "" || seen.has(name) || typeof adult !== "boolean") continue;
     seen.add(name);
     const kinds = new Set<ModelKind>();
     if (Array.isArray(capabilities)) for (const c of capabilities) if (typeof c === "string" && KIND_OF[c]) kinds.add(KIND_OF[c]);
-    out.push({ name: name.trim(), kinds: ORDER.filter((k) => kinds.has(k)) });
+    out.push({ name: name.trim(), kinds: ORDER.filter((k) => kinds.has(k)), adultOnly: adult });
   }
   return out;
 }

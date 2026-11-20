@@ -12,8 +12,12 @@
 --
 -- CHANGE (additive; no table, policy or existing function is touched):
 --   public_models_on_sale()  security definer, stable. Returns one row per model that sellable_models(null, 'web') lists — the very
---     same function, so the two cannot disagree — with ONLY: the registry's display_name and its capability codes, ordered by
---     display name. No id, provider, price, credit unit, margin, spec or availability tier. Executable by anon and authenticated.
+--     same function, so the two cannot disagree — with ONLY: the registry's display_name, its capability codes and adult_only,
+--     ordered by display name. No id, provider, price, credit unit, margin, spec or availability tier. Executable by anon and
+--     authenticated.
+--   adult_only: 0192 keeps a model whose vendor terms are 18+ on sale (listed, never hidden) and marks it in sellable_models'
+--     public spec as requires_adult; the app must say "for adults only". The landing therefore gets the same mark, read from
+--     the same answer, so a signed-out visitor never sees an adults-only model listed without it.
 --
 -- WHAT A READER SEES: e.g. ("Ideogram 3", {t2i,edit}), ("MiniMax H3", {t2v,i2v}). The app maps capability codes to its own words
 --   (image, video, voice); an empty answer means "nothing on sale" and the strip is not drawn. If this file is not applied the
@@ -25,9 +29,12 @@
 --   * When the owner switches a model off (0124) or its shutdown day comes (0125), it leaves this list as it leaves sellable_models:
 --     a visitor who compares the list over time can see that it changed. Nothing about why is exposed.
 --   * A model with no capability codes would not be listed (none is sold that way; it could not be used).
+--   * Which models are for adults only (0192's mark). It is a property of the model's vendor terms, not of any person.
 --
 -- VERIFY (after apply):
---   select * from public.public_models_on_sale();                                   -- names + capabilities only
+--   select * from public.public_models_on_sale();                                   -- names, capabilities, adult_only only
+--   select bool_or(adult_only) = bool_or(coalesce((spec ->> 'requires_adult')::boolean, false))
+--     from public.public_models_on_sale(), public.sellable_models(null, 'web');      -- the 18+ mark is sellable_models'
 --   select (select count(*) from public.public_models_on_sale())
 --        = (select count(distinct display_name) from public.sellable_models(null, 'web'));   -- true
 --   set role anon; select count(*) from public.public_models_on_sale(); reset role;  -- works signed out
@@ -45,11 +52,13 @@ end
 $$;
 
 create or replace function public.public_models_on_sale()
-  returns table (display_name text, capabilities text[])
+  returns table (display_name text, capabilities text[], adult_only boolean)
   language sql stable security definer set search_path = public, pg_temp as $$
   -- Two registry rows can share a display name (one model sold under two ids); a visitor sees the name once, with every
-  -- capability either row is sold for.
-  select x.display_name, array_agg(distinct cap order by cap)
+  -- capability either row is sold for; it is for adults only if either row is (0192's requires_adult, as sellable_models
+  -- publishes it: present and true only for such a model).
+  select x.display_name, array_agg(distinct cap order by cap),
+         bool_or(coalesce((x.spec ->> 'requires_adult')::boolean, false))
     from public.sellable_models(null, 'web') x
     cross join lateral unnest(x.capabilities) as cap
    group by x.display_name
@@ -57,7 +66,7 @@ create or replace function public.public_models_on_sale()
 $$;
 
 comment on function public.public_models_on_sale() is
-  'The display names (and capability codes) of the models sellable_models(null, ''web'') lists today. No price, id, provider or spec. Public: the landing page reads it signed out (0193).';
+  'The display names, capability codes and adults-only mark (0192) of the models sellable_models(null, ''web'') lists today. No price, id, provider or spec. Public: the landing page reads it signed out (0193).';
 
 revoke all on function public.public_models_on_sale() from public;
 grant execute on function public.public_models_on_sale() to anon, authenticated;

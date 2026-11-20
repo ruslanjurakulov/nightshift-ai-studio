@@ -43,6 +43,8 @@ export const homeEn = {
     lead: "The models you can use right now, read from the Studio itself: when one is added or retired, this list changes with it.",
     kinds: { video: "Video", image: "Image", voice: "Voice" },
     listLabel: "Models on sale",
+    /** 0192: the maker's terms are 18+; the app's own words for it (t.studio.lock.adult_only). */
+    adultOnly: "For adults (18+)",
   },
   mcp: {
     tag: "MCP",

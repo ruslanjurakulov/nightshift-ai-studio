@@ -170,9 +170,18 @@ describe("the model strip is the database's list or nothing", () => {
   });
 
   it("names exactly the models it was given", () => {
-    page("en", { models: [{ name: "Model A", kinds: ["video"] }, { name: "Model B", kinds: ["image", "voice"] }] });
+    page("en", { models: [{ name: "Model A", kinds: ["video"], adultOnly: false }, { name: "Model B", kinds: ["image", "voice"], adultOnly: false }] });
     const list = screen.getByRole("list", { name: dictionaries.en.landingHome.models.listLabel });
     expect(within(list).getAllByRole("listitem").map((li) => li.querySelector(".hm-model-name")?.textContent)).toEqual(["Model A", "Model B"]);
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: an adults-only model (0192) stays listed and says so in words; the others do not", (code) => {
+    const m = dictionaries[code].landingHome.models;
+    page(code, { models: [{ name: "Grown Model", kinds: ["video"], adultOnly: true }, { name: "Open Model", kinds: ["image"], adultOnly: false }] });
+    const items = within(screen.getByRole("list", { name: m.listLabel })).getAllByRole("listitem");
+    expect(items[0].querySelector("[data-adult-only]")?.textContent).toBe(m.adultOnly);
+    expect(m.adultOnly).toContain("18+");
+    expect(items[1].querySelector("[data-adult-only]")).toBeNull();
   });
 
   it("parses the 0193 answer: names once, codes to words, unknown codes dropped, junk refused", () => {
@@ -180,16 +189,19 @@ describe("the model strip is the database's list or nothing", () => {
     expect(parsePublicModels({})).toBeNull();
     expect(
       parsePublicModels([
-        { display_name: "MiniMax H3", capabilities: ["t2v", "i2v"] },
-        { display_name: "Ideogram 3", capabilities: ["t2i", "edit", "describe"] },
-        { display_name: "MiniMax H3", capabilities: ["t2v"] },
-        { display_name: "", capabilities: ["t2i"] },
-        { capabilities: ["t2i"] },
+        { display_name: "MiniMax H3", capabilities: ["t2v", "i2v"], adult_only: false },
+        { display_name: "Ideogram 3", capabilities: ["t2i", "edit", "describe"], adult_only: true },
+        { display_name: "MiniMax H3", capabilities: ["t2v"], adult_only: false },
+        { display_name: "", capabilities: ["t2i"], adult_only: false },
+        { capabilities: ["t2i"], adult_only: false },
+        // No adults-only mark (an older answer, or a broken one): dropped, never shown as if it were not for adults only.
+        { display_name: "Unmarked", capabilities: ["t2i"] },
+        { display_name: "Half-marked", capabilities: ["t2i"], adult_only: "true" },
         "x",
       ]),
     ).toEqual([
-      { name: "MiniMax H3", kinds: ["video"] },
-      { name: "Ideogram 3", kinds: ["image"] },
+      { name: "MiniMax H3", kinds: ["video"], adultOnly: false },
+      { name: "Ideogram 3", kinds: ["image"], adultOnly: true },
     ]);
   });
 });

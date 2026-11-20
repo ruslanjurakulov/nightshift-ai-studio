@@ -232,6 +232,11 @@ function Models({ h, models }: { h: Dictionary["landingHome"]; models: PublicMod
           {models.map((m) => (
             <li key={m.name} className="hm-model">
               <span className="hm-model-name">{m.name}</span>
+              {m.adultOnly && (
+                <span className="hm-adult" data-adult-only="">
+                  {h.models.adultOnly}
+                </span>
+              )}
               {m.kinds.length > 0 && (
                 <span className="hm-model-kinds">
                   {m.kinds.map((k) => (
