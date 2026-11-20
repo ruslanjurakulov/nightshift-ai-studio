@@ -120,7 +120,8 @@ class ClassifyHttpTests(unittest.TestCase):
         self.assertEqual(classify_http(400, '{"code":"not_enough_credits","message":"Not enough credits"}'), E_QUOTA)
         self.assertEqual(classify_http(400, '{"error":{"type":"insufficient_balance"}}'), E_QUOTA)
         self.assertEqual(classify_http(422, "Insufficient credits on your account"), E_QUOTA)
-        self.assertTrue(refused_outright(400, E_QUOTA))          # no task exists, so a failover is safe
+        # The remedy changes, the billing rule does not: only REFUSED_OUTRIGHT statuses prove nothing was taken (no failover).
+        self.assertFalse(refused_outright(400, E_QUOTA))
         # The narrow list: a parameter that merely names credits or a balance is still the input's fault.
         self.assertEqual(classify_http(400, "credits must be an integer"), E_BAD_REQUEST)
         self.assertEqual(classify_http(400, "unknown field: balance"), E_BAD_REQUEST)
