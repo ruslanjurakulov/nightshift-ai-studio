@@ -54,12 +54,14 @@
     letter-spacing: 0.02em;
   }
   .hm-hero-title {
-    max-width: 16ch;
+    /* In em, never ch: ch is the width of "0", which differs between the fallback and Unbounded, so a ch box wrapped the
+       fallback to three lines and the real face to two, and the swap moved the whole hero (CLS 0.04). */
+    max-width: 15em;
     font-size: clamp(2.1rem, 1.2rem + 4.4vw, 4.6rem);
     color: var(--ds-text);
   }
   .hm-hero-lead {
-    max-width: 44ch;
+    max-width: 24em;
     margin-top: var(--ds-space-5);
     color: var(--ds-text-2);
     font-size: clamp(1rem, 0.95rem + 0.35vw, 1.25rem);
@@ -101,10 +103,10 @@
   .hm-section { padding-block: 72px; }
   @media (min-width: 1024px) { .hm-section { padding-block: 112px; } }
   .hm-section + .hm-section { border-top: 1px solid var(--ds-border); }
-  .hm-h2 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 3rem); color: var(--ds-text); max-width: 22ch; }
+  .hm-h2 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 3rem); color: var(--ds-text); max-width: 14em; }
   .hm-h2-sm { font-size: 1.25rem; font-weight: 600; color: var(--ds-text); }
   .hm-h3 { margin-top: var(--ds-space-2); font-size: 1.125rem; font-weight: 600; color: var(--ds-text); }
-  .hm-lead { max-width: 60ch; margin-top: var(--ds-space-4); color: var(--ds-text-2); font-size: 1.0625rem; line-height: 1.6; }
+  .hm-lead { max-width: 34em; margin-top: var(--ds-space-4); color: var(--ds-text-2); font-size: 1.0625rem; line-height: 1.6; }
   .hm-muted { margin-top: var(--ds-space-2); color: var(--ds-muted); line-height: 1.55; }
   .hm-link {
     display: inline-flex;
