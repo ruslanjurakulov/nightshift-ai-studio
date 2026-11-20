@@ -93,7 +93,7 @@ export function ConsentForm({
         headers: { "content-type": "application/json" },
         credentials: "same-origin",
         cache: "no-store",
-        body: JSON.stringify({ request: secret, decision, limit: decision === "allow" ? parsed : null, studio: decision === "allow" && offerStudio && studio }),
+        body: JSON.stringify({ request: secret, decision, limit: decision === "allow" ? parsed : null, ...(offerStudio ? { studio: decision === "allow" && studio } : {}) }),
       });
       const type = res.headers.get("content-type") ?? "";
       if (!type.includes("application/json")) {

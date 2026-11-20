@@ -45,7 +45,7 @@ PAGE = REPO / "command-center" / "app" / "oauth" / "authorize" / "page.tsx"
 def test_studio_spending_is_an_unticked_choice_that_the_decision_removes_unless_ticked():
     form, page, route = FORM.read_text(), PAGE.read_text(), ROUTE_DECISION.read_text()
     assert "const [studio, setStudio] = useState(false);" in form, "the Studio choice must start unticked"
-    assert 'type="checkbox"' in form and "offerStudio && studio" in form
+    assert 'type="checkbox"' in form and "...(offerStudio ? { studio: decision === \"allow\" && studio } : {})" in form
     # The page does not list studio:create among what the app can do; it offers it only as the checkbox.
     assert 'view.scopes.filter((s) => s !== "studio:create")' in page and 'offerStudio={view.scopes.includes("studio:create")}' in page
     # The route removes it unless the body says exactly true, and fails closed.
