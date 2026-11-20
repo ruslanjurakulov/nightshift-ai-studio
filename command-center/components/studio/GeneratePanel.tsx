@@ -20,6 +20,7 @@ import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
 import { RightsAcknowledgementDialog, type RightsAckState } from "@/components/studio/RightsAcknowledgementDialog";
 import { inputSubjects, parseRefusalDetail, parseStatus, type MissingAcknowledgement, type RightsSubjectKey } from "@/lib/rights-acknowledgement";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
+import { VoiceCatalog } from "@/components/studio/VoiceCatalog";
 import "@/components/create/flow.css";
 import { PriceButton } from "@/components/ui/PriceButton";
 import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
@@ -1333,7 +1334,7 @@ export function GeneratePanel({
     pickVoice(STUDIO_VOICES[to].id);
     castRefs.current[to]?.focus();
   }
-  const voiceBlock =
+  const builtInVoices =
     capability === "voice_change" || capability === "tts" ? (
       arrange === "voice" ? (
         // The booth's cast: every voice as a row, one picked (the same ids the select offers).
@@ -1391,6 +1392,14 @@ export function GeneratePanel({
         </div>
       )
     ) : null;
+  // Speech picks from the account's own voices, by character; the standard list above stays as what is offered
+  // while that list is loading or cannot be read. The voice changer keeps the standard list.
+  const voiceBlock =
+    capability === "tts" ? (
+      <VoiceCatalog value={voiceId} onPick={pickVoice} label={t.gen.ttsVoiceLabel} builtIn={builtInVoices} />
+    ) : (
+      builtInVoices
+    );
 
   const dubLangBlock =
     capability === "dub" ? (

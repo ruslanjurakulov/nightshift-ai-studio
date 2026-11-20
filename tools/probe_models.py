@@ -66,6 +66,7 @@ from modules.capabilities.base import (  # noqa: E402
     E_RATE_LIMITED,
     E_UNAVAILABLE,
     E_VENDOR_TOOL_UNSUPPORTED,
+    E_PLAN_REQUIRED,
     FAILED,
     MEDIA_INPUT,
     SUCCEEDED,
@@ -109,7 +110,7 @@ class ScrubFilter(logging.Filter):
 #: tool's own. Anything else reads "other" — vendor text never reaches a public log.
 BRIEF_CODES = frozenset({
     E_NOT_CONFIGURED, E_AUTH, E_QUOTA, E_RATE_LIMITED, E_BAD_REQUEST, E_POLICY,
-    E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, E_VENDOR_TOOL_UNSUPPORTED, "timeout"})
+    E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, E_VENDOR_TOOL_UNSUPPORTED, E_PLAN_REQUIRED, "timeout"})
 
 
 def setup_logging(env: Mapping[str, str], stream=None, *, brief: bool = False) -> ScrubFilter:

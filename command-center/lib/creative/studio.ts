@@ -1288,6 +1288,8 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   bad_request: "bad_request",
   // The vendor refused an option sent through its tool (the aspect ratio): the person changes the settings (0143).
   vendor_tool_unsupported: "bad_request",
+  // The vendor account's plan refuses the voice (a library voice on a free ElevenLabs plan, 0190): pick another, it is not "busy".
+  plan_required: "plan",
   rate_limited: "busy",
   unavailable: "busy",
   provider_timeout: "busy",
