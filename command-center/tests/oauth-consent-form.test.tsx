@@ -75,7 +75,7 @@ describe("the consent form never decides by itself", () => {
   });
 });
 
-describe("Studio spending is the person's own, unticked choice (0176)", () => {
+describe("Studio spending is the person's own, unticked choice (0191)", () => {
   it("no checkbox and no studio field when the app did not ask for it", async () => {
     const { fetchMock } = setup(false);
     expect(screen.queryByRole("checkbox")).toBeNull();

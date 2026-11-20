@@ -57,7 +57,7 @@ function mediaLink(assetId: string, variant: "original" | "thumb" | "proxy", mim
  * token's hash, a database call that reaches only the allow-listed functions
  * (lib/api/mcp-oauth.ts), and no downloads (they are API-key only).
  *
- * Its file links (0176 get_creative_job) are the same signed, expiring library paths, made absolute on this deployment's own
+ * Its file links (0191 get_creative_job) are the same signed, expiring library paths, made absolute on this deployment's own
  * origin (never the request's Host): an assistant opens a URL, it has no origin to prefix a path with. Only ever called with an
  * asset the database returned for a completed generation THIS connection started (oauth_creative_get).
  */

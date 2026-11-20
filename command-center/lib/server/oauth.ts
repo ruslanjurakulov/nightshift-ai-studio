@@ -109,9 +109,9 @@ export async function decideAuthorization(args: {
 }
 
 /**
- * 0176: take studio:create off a pending request the person did not tick it on (the consent page offers it unticked). Only
+ * 0191: take studio:create off a pending request the person did not tick it on (the consent page offers it unticked). Only
  * removes, only that one permission, only on the signed-in person's own live request (the database checks all three).
- * "absent" = this database has no 0176, so the request cannot hold the permission and there is nothing to remove.
+ * "absent" = this database has no 0191, so the request cannot hold the permission and there is nothing to remove.
  */
 export async function dropStudioScope(secretHash: string): Promise<"ok" | "absent" | "unavailable"> {
   const supabase = await createClient();

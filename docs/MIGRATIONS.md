@@ -1801,38 +1801,6 @@ provider or creates a creative or render job, and no credit function body is rep
   - `tests/security/test_sec_breach_films_money.py`: Breach, BR-0171-01 and the refused attacks.
   - `tests/security/sec_films_0171.py`: the shared lab's contract and seed.
 
-## The Studio for a connected assistant (0176)
-
-0176 (`0176_mcp_oauth_creative.sql`) lets an AI assistant the person connected with OAuth (0093) quote and start Studio generations,
-charged to the workspace's credits exactly as in the Studio, with every model off until its vendor's terms allow it (the first on: Recraft V4.1 / Flash). The consent page offers Studio
-spending as its own unticked choice; a connection gets it only when the person ticks it.
-
-- **A new permission, `studio:create`.** Shown on the consent screen on its own line. Not folded into `videos:create`: a person who
-  allowed "make videos" agreed to nothing else, so no existing connection gains generation. `oauth_scopes_supported()` lists it and
-  `oauth_grants_scopes_check` accepts 1-4 of the four (the one constraint change; every existing row passes it).
-- **A per-model switch, off.** `spec.mcp_oauth_exposure` (the registry file's `mcp_oauth_exposure`): only JSON `true` turns a model on;
-  separate from `api_exposure` (a developer's own code). `oauth_creative_model_state(capability, model)` is the one judgement the
-  list, the quote and the create share: on sale in the Studio (`sellable_models(cap, 'web')`), one of the API's capabilities (never
-  captions), switched on, no `blocked_countries`, no rights acknowledgement (0174's file list or column, read without naming the
-  column, so it applies with or without 0174). `tests/test_mcp_oauth_creative_migration.py` lists the models that may be on (Recraft V4.1 / Flash, written permission of 2026-11-17/18).
-- **Records.** `oauth_creative_quotes` (one connection's price for one exact generation, 15 minutes, used once), `oauth_creative_jobs`
-  (which connection started which generation from which quote, under which key, holding what), `oauth_creative_rate_counters` (30
-  quotes and 10 creates a minute per connection, on top of 120 requests). RLS on, no policy, no API role.
-- **Five doors** (anon, a token hash), each opening with `oauth_ctx` directly so an API key's hash is unknown to them:
-  `oauth_creative_models`, `oauth_media_list`, `oauth_creative_quote`, `oauth_creative_create(token, quote_id, idem_key)`,
-  `oauth_creative_get`. Create takes nothing but the quote and the key: it refuses another connection's quote (404, same as unknown),
-  a used one, an expired one and a price that is not exactly the quote (`price_changed`), checks the connection's monthly limit under
-  the credit account's lock, then calls `create_creative_job` (not replaced) with the quote as `max_credits`, and refuses (undoing the
-  hold) if the job holds anything else. It writes an `api_requests` row and an `app_audit_log` `creative.generate` row (via `mcp_oauth`).
-- **Replaces** 0093's `oauth_scopes_supported` (`b1cdcf01…` → `3ef7e315…`), `oauth_endpoint_scope` (`ade9dedd…` → `4bc3b07f…`, five
-  endpoints added, still no `else`) and `oauth_grant_month_credits` (`6329f5ed…` → `79d0c859…`, generations' holds counted).
-- **Without it.** The five MCP tools answer 503 `api_unavailable` naming 0176; nothing else changes.
-- **Number.** 0176 (0172-0175 are held by open pull requests). Needs 0038, 0062, 0075, 0093, 0124, 0125, 0147.
-- **Undo.** `docs/sql/rollback_0176_mcp_oauth_creative.sql` (owner-applied): refuses while a connection holds `studio:create`, drops
-  the doors, puts 0093's three bodies and check back, keeps the record tables.
-- **Tests.** `tests/test_mcp_oauth_creative_migration.py`, `tests/security/test_sec_mcp_oauth_creative.py` (a real PostgreSQL),
-  `command-center/tests/mcp-oauth-creative.test.ts` (the MCP layer).
-
 ## An owner's grant reversal that met a hold collects when the hold is released (0172)
 
 0172 (`0172_grant_reversal_hold_recovery.sql`) closes BR-0107-01 (low): a grant reversed while part of it was on hold was reversed only
@@ -2144,3 +2112,37 @@ confirmation (email of 2026-11-17/18), which covers the web studio and our MCP c
 - **Not changed.** Who may see a job or a video, every price, hold and publish rule.
 - **Undo.** `docs/sql/rollback_0189_job_video_and_list_order.sql` (owner-applied): the three earlier bodies back verbatim; the
   `result_slug` column and its values stay.
+
+## The Studio for a connected assistant (0191)
+
+0191 (`0191_mcp_oauth_creative.sql`) lets an AI assistant the person connected with OAuth (0093) quote and start Studio generations,
+charged to the workspace's credits exactly as in the Studio, with every model off until its vendor's terms allow it (the first on: Recraft V4.1 / Flash). The consent page offers Studio
+spending as its own unticked choice; a connection gets it only when the person ticks it.
+
+- **A new permission, `studio:create`.** Shown on the consent screen on its own line. Not folded into `videos:create`: a person who
+  allowed "make videos" agreed to nothing else, so no existing connection gains generation. `oauth_scopes_supported()` lists it and
+  `oauth_grants_scopes_check` accepts 1-4 of the four (the one constraint change; every existing row passes it).
+- **A per-model switch, off.** `spec.mcp_oauth_exposure` (the registry file's `mcp_oauth_exposure`): only JSON `true` turns a model on;
+  separate from `api_exposure` (a developer's own code). `oauth_creative_model_state(capability, model)` is the one judgement the
+  list, the quote and the create share: on sale in the Studio (`sellable_models(cap, 'web')`), one of the API's capabilities (never
+  captions), switched on, no `blocked_countries`, no rights acknowledgement (0174's file list or column, read without naming the
+  column, so it applies with or without 0174). `tests/test_mcp_oauth_creative_migration.py` lists the models that may be on (Recraft V4.1 / Flash, written permission of 2026-11-17/18).
+- **Records.** `oauth_creative_quotes` (one connection's price for one exact generation, 15 minutes, used once), `oauth_creative_jobs`
+  (which connection started which generation from which quote, under which key, holding what), `oauth_creative_rate_counters` (30
+  quotes and 10 creates a minute per connection, on top of 120 requests). RLS on, no policy, no API role.
+- **Five doors** (anon, a token hash), each opening with `oauth_ctx` directly so an API key's hash is unknown to them:
+  `oauth_creative_models`, `oauth_media_list`, `oauth_creative_quote`, `oauth_creative_create(token, quote_id, idem_key)`,
+  `oauth_creative_get`. Create takes nothing but the quote and the key: it refuses another connection's quote (404, same as unknown),
+  a used one, an expired one and a price that is not exactly the quote (`price_changed`), checks the connection's monthly limit under
+  the credit account's lock, then calls `create_creative_job` (not replaced) with the quote as `max_credits`, and refuses (undoing the
+  hold) if the job holds anything else. It writes an `api_requests` row and an `app_audit_log` `creative.generate` row (via `mcp_oauth`).
+- **Replaces** 0093's `oauth_scopes_supported` (`b1cdcf01…` → `3ef7e315…`), `oauth_endpoint_scope` (`ade9dedd…` → `4bc3b07f…`, five
+  endpoints added, still no `else`) and `oauth_grant_month_credits` (`6329f5ed…` → `79d0c859…`, generations' holds counted).
+- **Without it.** The five MCP tools answer 503 `api_unavailable` naming 0191; nothing else changes.
+- **Number.** 0191 (0172-0175 are held by open pull requests). Needs 0038, 0062, 0075, 0093, 0124, 0125, 0147.
+- **Undo.** `docs/sql/rollback_0191_mcp_oauth_creative.sql` (owner-applied): refuses while a connection holds `studio:create`, drops
+  the doors, puts 0093's three bodies and check back, keeps the record tables.
+- **Tests.** `tests/test_mcp_oauth_creative_migration.py`, `tests/security/test_sec_mcp_oauth_creative.py` (a real PostgreSQL),
+  `command-center/tests/mcp-oauth-creative.test.ts` (the MCP layer).
+- **Order.** Applied after 0188: the `mcp` surface it asks `sellable_models` about is 0188's. Before 0188 it fails
+  closed (0125's body opens `mcp` only to `any` models), so Recraft is simply not offered.

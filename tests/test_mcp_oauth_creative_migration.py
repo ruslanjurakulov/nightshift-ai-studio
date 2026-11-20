@@ -1,4 +1,4 @@
-"""supabase/migrations/0176_mcp_oauth_creative.sql — the Studio's generations for an AI assistant connected with OAuth.
+"""supabase/migrations/0191_mcp_oauth_creative.sql — the Studio's generations for an AI assistant connected with OAuth.
 
 SQL does not run in this suite (tests/security/test_sec_mcp_oauth_creative.py does that, against a real Postgres); these pin what
 must never change by accident: every model is OFF for assistants unless the registry file says so for that model (only the reviewed ones
@@ -16,9 +16,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-SQL = (MIG / "0176_mcp_oauth_creative.sql").read_text(encoding="utf-8")
+SQL = (MIG / "0191_mcp_oauth_creative.sql").read_text(encoding="utf-8")
 SQL_0093 = (MIG / "0093_mcp_oauth.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0176_mcp_oauth_creative.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0191_mcp_oauth_creative.sql").read_text(encoding="utf-8")
 MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
 REGISTRY = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))
 OPERATIONS_TS = (ROOT / "command-center" / "lib" / "api" / "operations.ts").read_text(encoding="utf-8")
@@ -43,8 +43,8 @@ DOORS = {
 }
 REPLACED = {
     "oauth_scopes_supported": ("b1cdcf014109e5902d0e6d9f05767186", "3ef7e3154b00584e7625225d20dfa705"),
-    "oauth_endpoint_scope": ("ade9dedd7a1058b4938e9df7e8bd1b87", "4bc3b07f8a926be2ca055a9404d1e3d3"),
-    "oauth_grant_month_credits": ("6329f5ed73f203e67e31e885238fa1ab", "79d0c8598db85481dcb63b906cdd576d"),
+    "oauth_endpoint_scope": ("ade9dedd7a1058b4938e9df7e8bd1b87", "39be9da597b74684494d55e8547e3eae"),
+    "oauth_grant_month_credits": ("6329f5ed73f203e67e31e885238fa1ab", "6d345abdb50d6c85a4c1276c6e255a14"),
 }
 
 
@@ -168,8 +168,8 @@ class TheDoors(unittest.TestCase):
 
     def test_the_consent_default_is_still_0093s_three_and_the_rollback_restores_0147s_body(self):
         new = body("oauth_begin_authorization")
-        self.assertIn("-- 0176", new)
-        rb = (ROOT / "docs" / "sql" / "rollback_0176_mcp_oauth_creative.sql").read_text(encoding="utf-8")
+        self.assertIn("-- 0191", new)
+        rb = (ROOT / "docs" / "sql" / "rollback_0191_mcp_oauth_creative.sql").read_text(encoding="utf-8")
         m147 = (ROOT / "supabase" / "migrations" / "0147_mcp_free_tier.sql").read_text(encoding="utf-8")
         pick = lambda text: re.search(r"^create or replace function public\.oauth_begin_authorization\(.*?^\$\$;$", text, re.S | re.M).group(0)
         self.assertEqual(pick(rb), pick(m147))
@@ -217,9 +217,9 @@ class HouseStyle(unittest.TestCase):
         self.assertIn("set local lock_timeout", CODE)
 
     def test_the_number_is_unique_and_documented(self):
-        self.assertEqual(len(list(MIG.glob("0176_*.sql"))), 1)
-        self.assertIn("(0176)", MIGRATIONS_DOC)
-        self.assertIn("0176_mcp_oauth_creative.sql", MIGRATIONS_DOC)
+        self.assertEqual(len(list(MIG.glob("0191_*.sql"))), 1)
+        self.assertIn("(0191)", MIGRATIONS_DOC)
+        self.assertIn("0191_mcp_oauth_creative.sql", MIGRATIONS_DOC)
 
     def test_create_creative_job_is_not_replaced(self):
         # 0174 (PR #780) replaces it; this file must only call it.

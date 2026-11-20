@@ -16,7 +16,7 @@ import { OAuthNotice } from "@/components/oauth/OAuthShell";
  */
 
 export interface ConsentText {
-  /** 0176: the opt-in line for studio:create (shown only when the app asked for it). */
+  /** 0191: the opt-in line for studio:create (shown only when the app asked for it). */
   studioOptIn?: string;
   limitLabel: string;
   limitHint: string;
@@ -67,7 +67,7 @@ export function ConsentForm({
   locale: string;
   defaultLimit: number;
   maxLimit: number;
-  /** The app asked for studio:create: offer it as a separate, unticked choice (Lens/Breach on 0176). */
+  /** The app asked for studio:create: offer it as a separate, unticked choice (Lens/Breach on 0191). */
   offerStudio?: boolean;
   text: ConsentText;
 }) {

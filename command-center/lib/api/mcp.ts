@@ -221,7 +221,7 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
   const done = oauth
     ? (r: ApiResult): CallToolResult => (r.ok ? toToolResult(r, caller.requestId) : refusal(oauthRefusalText(r, oauth.origin)))
     : (r: ApiResult) => toToolResult(r, caller.requestId);
-  // A connected app's Studio tool (0176): its refusal reads for a generation, and create's "not known whether it started" names the
+  // A connected app's Studio tool (0191): its refusal reads for a generation, and create's "not known whether it started" names the
   // only safe retry (the same quote and key).
   const studioDone = (kind: "create" | "other") => (r: ApiResult): CallToolResult =>
     r.ok ? toToolResult(r, caller.requestId) : refusal(oauthRefusalText(r, oauth?.origin ?? "", { studio: kind }));
@@ -532,7 +532,7 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     async ({ generation_id }) => done(withRemedy(await getCreativeJobFiles(caller, generation_id))),
   );
 
-  // ── The Studio for a connected assistant (OAuth only, 0176) ───────────────
+  // ── The Studio for a connected assistant (OAuth only, 0191) ───────────────
   // A connection's own doors (oauth_creative_*), never an API key's: a key keeps the four tools above. The price is the database's
   // quote; create takes nothing but the quote's id and an idempotency key, so what runs is exactly what the person was shown, and
   // the hold, capture and refund are the Studio's own (create_creative_job). Every model is off here until its terms allow it.

@@ -1,4 +1,4 @@
--- 0176_mcp_oauth_creative.sql — the Studio's generations for an AI assistant the person connected with OAuth (0093): a quote the
+-- 0191_mcp_oauth_creative.sql — the Studio's generations for an AI assistant the person connected with OAuth (0093): a quote the
 -- database keeps, a create that spends exactly that quote, and a per-model switch that is off unless a reviewed registry change
 -- turns it on (the first: Recraft V4.1 / Flash, on the vendor's written permission).
 --
@@ -56,7 +56,7 @@
 -- NOT CHANGED: create_creative_job (0075; 0174 replaces it), creative_price (0159), sellable_models (0125), api_creative_* (0062,
 --   0075, 0124, 0162), oauth_ctx and oauth_check (0147), every price, hold, capture and refund rule, every other table.
 --
--- NUMBER. 0176. 0171 is on main; 0172-0175 are held by open pull requests (0174 is #780, 0175 the failed-job cap after it); migrations apply to the live database in ascending
+-- NUMBER. 0191. 0171 is on main; 0172-0175 are held by open pull requests (0174 is #780, 0175 the failed-job cap after it); migrations apply to the live database in ascending
 --   order on merge. Needs 0036, 0038, 0062, 0075, 0093, 0124, 0125 and 0147; names nothing of 0148-0170 but the functions above.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
@@ -64,8 +64,8 @@
 --    where p.oid in ('public.oauth_scopes_supported()'::regprocedure, 'public.oauth_endpoint_scope(text)'::regprocedure,
 --                    'public.oauth_grant_month_credits(uuid)'::regprocedure);
 --   expected BEFORE b1cdcf014109e5902d0e6d9f05767186, ade9dedd7a1058b4938e9df7e8bd1b87, 6329f5ed73f203e67e31e885238fa1ab (0093),
---   AFTER 3ef7e3154b00584e7625225d20dfa705, 4bc3b07f8a926be2ca055a9404d1e3d3, 79d0c8598db85481dcb63b906cdd576d (this file).
--- Undo: docs/sql/rollback_0176_mcp_oauth_creative.sql (owner-applied; it keeps the record tables).
+--   AFTER 3ef7e3154b00584e7625225d20dfa705, 39be9da597b74684494d55e8547e3eae, 6d345abdb50d6c85a4c1276c6e255a14 (this file).
+-- Undo: docs/sql/rollback_0191_mcp_oauth_creative.sql (owner-applied; it keeps the record tables).
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
@@ -75,45 +75,45 @@ declare
   h text;
 begin
   if to_regprocedure('public.oauth_ctx(text, text, text)') is null or to_regclass('public.oauth_grants') is null then
-    raise exception '0176 needs 0093_mcp_oauth.sql: apply it first';
+    raise exception '0191 needs 0093_mcp_oauth.sql: apply it first';
   end if;
   if to_regprocedure('public.oauth_check_credit_take(uuid, text)') is null then
-    raise exception '0176 needs 0147_mcp_free_tier.sql: apply it first';
+    raise exception '0191 needs 0147_mcp_free_tier.sql: apply it first';
   end if;
   if to_regprocedure('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)') is null
      or to_regprocedure('public.creative_route_quote(uuid, text, text, jsonb, text)') is null then
-    raise exception '0176 needs 0075_model_router.sql: apply it first';
+    raise exception '0191 needs 0075_model_router.sql: apply it first';
   end if;
   if to_regprocedure('public.api_creative_refusal(text, text, text)') is null or to_regclass('public.api_creative_jobs') is null then
-    raise exception '0176 needs 0062_api_creative.sql: apply it first';
+    raise exception '0191 needs 0062_api_creative.sql: apply it first';
   end if;
   if to_regprocedure('public.model_is_available(text)') is null then
-    raise exception '0176 needs 0124_model_switch.sql: apply it first';
+    raise exception '0191 needs 0124_model_switch.sql: apply it first';
   end if;
   if to_regprocedure('public.model_past_shutdown(jsonb)') is null then
-    raise exception '0176 needs 0125_model_shutdown.sql: apply it first';
+    raise exception '0191 needs 0125_model_shutdown.sql: apply it first';
   end if;
   if to_regclass('public.media_assets') is null then
-    raise exception '0176 needs 0038_media_assets.sql: apply it first';
+    raise exception '0191 needs 0038_media_assets.sql: apply it first';
   end if;
   if not public.audit_action_allowed('creative.generate') then
-    raise exception '0176 needs creative.generate in audit_action_allowed (0087 onwards): read the live list first';
+    raise exception '0191 needs creative.generate in audit_action_allowed (0087 onwards): read the live list first';
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_scopes_supported()');
   if h is null or h <> all (array['b1cdcf014109e5902d0e6d9f05767186', '3ef7e3154b00584e7625225d20dfa705']) then
-    raise exception '0176 found public.oauth_scopes_supported() with a body that is neither 0093''s nor 0176''s (md5 %): read the live body first', h;
+    raise exception '0191 found public.oauth_scopes_supported() with a body that is neither 0093''s nor 0191''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)');
-  if h is null or h <> all (array['1d77b561efdb9347dc9465e66fa87e8c', '5c12979d1937b35b5ca8fc353087d4f8']) then
-    raise exception '0176 found public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) with a body that is neither 0147''s nor 0176''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['1d77b561efdb9347dc9465e66fa87e8c', 'c385018bae2e55e8c7d4d67013618146']) then
+    raise exception '0191 found public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) with a body that is neither 0147''s nor 0191''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_endpoint_scope(text)');
-  if h is null or h <> all (array['ade9dedd7a1058b4938e9df7e8bd1b87', '4bc3b07f8a926be2ca055a9404d1e3d3']) then
-    raise exception '0176 found public.oauth_endpoint_scope(text) with a body that is neither 0093''s nor 0176''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['ade9dedd7a1058b4938e9df7e8bd1b87', '39be9da597b74684494d55e8547e3eae']) then
+    raise exception '0191 found public.oauth_endpoint_scope(text) with a body that is neither 0093''s nor 0191''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_grant_month_credits(uuid)');
-  if h is null or h <> all (array['6329f5ed73f203e67e31e885238fa1ab', '79d0c8598db85481dcb63b906cdd576d']) then
-    raise exception '0176 found public.oauth_grant_month_credits(uuid) with a body that is neither 0093''s nor 0176''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['6329f5ed73f203e67e31e885238fa1ab', '6d345abdb50d6c85a4c1276c6e255a14']) then
+    raise exception '0191 found public.oauth_grant_month_credits(uuid) with a body that is neither 0093''s nor 0191''s (md5 %): read the live body first', h;
   end if;
 end $$;
 
@@ -177,7 +177,7 @@ begin
   v_scopes := array(select s from unnest(public.oauth_scopes_supported()) s
                      where p_scope is not null and s = any (string_to_array(btrim(p_scope), ' ')));
   if cardinality(v_scopes) = 0 then
-    -- 0176: everything but studio:create. Spending on Studio generations is its own consent, so a client gets it only by
+    -- 0191: everything but studio:create. Spending on Studio generations is its own consent, so a client gets it only by
     -- asking for it by name; one that asks for nothing (or only words this server does not know) gets 0093's three.
     v_scopes := array(select s from unnest(public.oauth_scopes_supported()) s where s <> 'studio:create');
   end if;
@@ -207,7 +207,7 @@ begin
 end
 $$;
 
--- The consent page offers studio:create as its own, unticked choice (Lens and Breach on 0176: the MCP server's 401 challenge names
+-- The consent page offers studio:create as its own, unticked choice (Lens and Breach on 0191: the MCP server's 401 challenge names
 -- every permission it supports, so every client asks for this one, and a person who wanted videos only would have had to grant
 -- Studio spending too). Unless the person ticks it, the decision route calls this first. It only REMOVES, only this permission,
 -- only from the signed-in person's own live request, and never empties it: it can narrow a connection, never widen one.
@@ -249,7 +249,7 @@ create or replace function public.oauth_endpoint_scope(p_endpoint text) returns 
            when 'oauth.balance' then 'videos:read'
            when 'oauth.videos.create' then 'videos:create'
            when 'videos.publish' then 'videos:publish'
-           -- 0176: the Studio's generations for a connected assistant.
+           -- 0191: the Studio's generations for a connected assistant.
            when 'oauth.creative.models' then 'studio:create'
            when 'oauth.media.list' then 'studio:create'
            when 'oauth.creative.quote' then 'studio:create'
@@ -311,15 +311,15 @@ revoke all on table public.oauth_creative_jobs from public, anon, authenticated,
 revoke all on table public.oauth_creative_rate_counters from public, anon, authenticated, service_role;
 
 comment on table public.oauth_creative_quotes is
-  '0176: a price creative_price gave one OAuth connection for one exact generation, usable once, for 15 minutes.';
+  '0191: a price creative_price gave one OAuth connection for one exact generation, usable once, for 15 minutes.';
 comment on table public.oauth_creative_jobs is
-  '0176: a Studio generation an OAuth connection started: which quote, which idempotency key, which hold.';
+  '0191: a Studio generation an OAuth connection started: which quote, which idempotency key, which hold.';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. The connection's monthly spend counts its generations
 -- ───────────────────────────────────────────────────────────────────────────
 
--- 0093's sum, plus the holds of this connection's Studio generations (0176). A released hold used none, as before.
+-- 0093's sum, plus the holds of this connection's Studio generations (0191). A released hold used none, as before.
 create or replace function public.oauth_grant_month_credits(p_grant uuid) returns numeric
   language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(sum(case cr.status
@@ -329,7 +329,7 @@ create or replace function public.oauth_grant_month_credits(p_grant uuid) return
     from (select r.credit_ref from public.oauth_runs r
            where r.grant_id = p_grant and r.created_at >= public.oauth_month_start()
           union all
-          -- 0176: a Studio generation this connection started.
+          -- 0191: a Studio generation this connection started.
           select c.credit_ref from public.oauth_creative_jobs c
            where c.grant_id = p_grant and c.created_at >= public.oauth_month_start()) x
     join public.credit_reservations cr on cr.job_id = x.credit_ref
@@ -394,7 +394,7 @@ begin
     return 'temporarily_off';
   end if;
   -- Everything else the Studio requires to sell it: verified, probed, priced, not past its shutdown, no terms gate.
-  -- The 'mcp' surface (0180): a vendor's web-only model is never offered here, whatever the switch says; 'web_mcp' and 'any' are.
+  -- The 'mcp' surface (0188): a vendor's web-only model is never offered here, whatever the switch says; 'web_mcp' and 'any' are.
   if not exists (select 1 from public.sellable_models(cap, 'mcp') s where s.id = r.id) then
     return 'not_offered';
   end if;
@@ -540,7 +540,7 @@ begin
     select coalesce(jsonb_agg(x.j order by x.created_at desc, x.id), '[]'::jsonb) into v_list
       from (select m.id, m.created_at,
                    jsonb_build_object('asset_id', m.id, 'kind', m.kind, 'mime', m.mime, 'width', m.width, 'height', m.height,
-                                      -- No file name (Breach on 0176): any member may upload and name a file, and the name would reach
+                                      -- No file name (Breach on 0191): any member may upload and name a file, and the name would reach
                                       -- the admin's assistant as tool output, verbatim. The id, type and size are enough to use it.
                                       'duration_s', m.duration_s, 'source', m.source,
                                       'created_at', m.created_at) as j
@@ -904,13 +904,13 @@ begin
     if not has_function_privilege('anon', fn, 'EXECUTE')
        or has_function_privilege('authenticated', fn, 'EXECUTE')
        or has_function_privilege('service_role', fn, 'EXECUTE') then
-      raise exception '0176 end state: % has the wrong grants', fn;
+      raise exception '0191 end state: % has the wrong grants', fn;
     end if;
     if exists (select 1 from pg_proc p where p.oid = fn
                 and (not p.prosecdef or p.proacl is null
                      or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-      raise exception '0176 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', fn;
+      raise exception '0191 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', fn;
     end if;
   end loop;
   foreach fn in array array['public.oauth_creative_model_state(text, text)'::regprocedure,
@@ -921,20 +921,20 @@ begin
                             'public.oauth_scopes_supported()'::regprocedure] loop
     if has_function_privilege('anon', fn, 'EXECUTE') or has_function_privilege('authenticated', fn, 'EXECUTE')
        or has_function_privilege('service_role', fn, 'EXECUTE') then
-      raise exception '0176 end state: % may be called by an API role', fn;
+      raise exception '0191 end state: % may be called by an API role', fn;
     end if;
   end loop;
   if has_table_privilege('anon', 'public.oauth_creative_quotes', 'SELECT')
      or has_table_privilege('authenticated', 'public.oauth_creative_jobs', 'SELECT')
      or has_table_privilege('authenticated', 'public.oauth_creative_quotes', 'INSERT')
      or has_table_privilege('service_role', 'public.oauth_creative_jobs', 'UPDATE') then
-    raise exception '0176 end state: an API role can reach a record table';
+    raise exception '0191 end state: an API role can reach a record table';
   end if;
   if public.oauth_endpoint_scope('creative.quote') is not null or public.oauth_endpoint_scope('creative.create') is not null then
-    raise exception '0176 end state: the API key''s creative endpoints reached the token allow-list';
+    raise exception '0191 end state: the API key''s creative endpoints reached the token allow-list';
   end if;
   if not ('studio:create' = any (public.oauth_scopes_supported())) then
-    raise exception '0176 end state: studio:create is not a supported permission';
+    raise exception '0191 end state: studio:create is not a supported permission';
   end if;
 end $$;
 

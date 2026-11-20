@@ -56,7 +56,7 @@ export async function POST(request: Request): Promise<Response> {
   const limit = typeof body.limit === "number" && Number.isFinite(body.limit) ? body.limit : null;
 
   const secretHash = await hashSecret(body.request);
-  // 0176: spending on Studio generations is granted only when the person ticked it. Anything but an explicit true takes the
+  // 0191: spending on Studio generations is granted only when the person ticked it. Anything but an explicit true takes the
   // permission off the request first; if that cannot be done, nothing is granted (fail closed, never a wider connection).
   if (allow && body.studio !== true) {
     const dropped = await dropStudioScope(secretHash);

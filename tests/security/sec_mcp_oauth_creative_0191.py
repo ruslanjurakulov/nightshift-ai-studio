@@ -1,11 +1,11 @@
-"""Security-lab contract for migration 0176 (the Studio's generations for a connected assistant).
+"""Security-lab contract for migration 0191 (the Studio's generations for a connected assistant).
 
 Kept in its own module, like sec_mcp_oauth_0093. Two hooks wire it in:
 
   * sec_expectations.py, at the bottom:
-        import sec_mcp_oauth_creative_0176; sec_mcp_oauth_creative_0176.extend(TABLES, FUNCTIONS)
+        import sec_mcp_oauth_creative_0191; sec_mcp_oauth_creative_0191.extend(TABLES, FUNCTIONS)
   * sec_scenario.py, after the OAuth seed:
-        import sec_mcp_oauth_creative_0176; sec_mcp_oauth_creative_0176.seed(conn, sc)
+        import sec_mcp_oauth_creative_0191; sec_mcp_oauth_creative_0191.seed(conn, sc)
 
 Every new table is Service(): no API role reads or writes a row; the five doors (anon, a token hash) are the only way in. The named
 attacks are in test_sec_mcp_oauth_creative.py, in a scratch database of its own.
@@ -43,7 +43,7 @@ def extend(tables: dict, functions: dict) -> None:
 
 
 def seed(conn, sc) -> None:
-    """One row in each 0176 table, on the connection 0093's seed made for Alice: a quote, the generation it paid for, and a rate
+    """One row in each 0191 table, on the connection 0093's seed made for Alice: a quote, the generation it paid for, and a rate
     counter, so the isolation tests have something to attack."""
     import json
 

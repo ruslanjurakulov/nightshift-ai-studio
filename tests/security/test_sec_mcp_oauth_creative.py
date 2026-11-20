@@ -1,6 +1,6 @@
-"""The Studio for a connected assistant (0176), attacked in a real database.
+"""The Studio for a connected assistant (0191), attacked in a real database.
 
-The MCP tools quote_creative / create_creative / get_creative_job / list_creative_models / list_media call 0176's five doors with the
+The MCP tools quote_creative / create_creative / get_creative_job / list_creative_models / list_media call 0191's five doors with the
 anon key and the access token's hash, the way PostgREST does. These prove:
 
 * every model is off for assistants unless its registry spec says JSON true (a string "true" is off), independently of api_exposure
@@ -28,8 +28,8 @@ import pytest
 
 import sec_db
 
-MIGRATION = sec_db.MIGRATIONS / "0176_mcp_oauth_creative.sql"
-ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0176_mcp_oauth_creative.sql"
+MIGRATION = sec_db.MIGRATIONS / "0191_mcp_oauth_creative.sql"
+ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0191_mcp_oauth_creative.sql"
 ORG_A = "aaaaaaaa-0000-0000-0000-000000000176"
 ORG_B = "bbbbbbbb-0000-0000-0000-000000000176"
 UA = str(uuid.UUID(int=0xA175))
@@ -45,7 +45,7 @@ PROMPT = {"prompt": "a lighthouse at dawn"}
 MODELS = [
     # On for assistants and never for API keys: the vendor's web + connector permission (0188's web_mcp) and the switch.
     ("img-on", ["t2i", "edit"], {"api_exposure": "web_mcp", "mcp_oauth_exposure": True}),
-    # The switch on a model whose vendor said web only: the 'mcp' surface refuses it (Lens on 0176).
+    # The switch on a model whose vendor said web only: the 'mcp' surface refuses it (Lens on 0191).
     ("img-webonly", ["t2i"], {"api_exposure": "web_only", "mcp_oauth_exposure": True}),
     ("img-off", ["t2i"], {}),
     ("img-api", ["t2i"], {"api_exposure": "any"}),
@@ -436,7 +436,7 @@ def test_replay_then_rollback_refuses_while_a_connection_holds_the_permission_th
         with pytest.raises(psycopg.errors.CheckViolation):
             d.su("insert into public.oauth_grants (user_id, org_id, client_id, scopes, resource, monthly_limit_credits) "
                  "select %s, %s, client_id, array['studio:create'], %s, 1 from public.oauth_clients limit 1", [UA, ORG_A, RESOURCE])
-        # And 0176 goes on again after its own rollback.
+        # And 0191 goes on again after its own rollback.
         sec_db.apply_files(d.dsn, [MIGRATION])
         assert d.su("select public.oauth_endpoint_scope('oauth.creative.create')")[0][0] == "studio:create"
         assert job
@@ -452,7 +452,7 @@ def test_a_vendors_web_only_model_is_never_offered_to_an_assistant_whatever_the_
 
 
 def test_the_media_list_names_no_file(db):
-    # Breach on 0176: a member's file name reached the admin's assistant verbatim (an instruction channel).
+    # Breach on 0191: a member's file name reached the admin's assistant verbatim (an instruction channel).
     tok, _g = connection(db, UA, ORG_A)
     out = db.act("anon", None, "select public.oauth_media_list(%s, null, 50, null)", [tok])[0][0]
     assert out["ok"] is True, out

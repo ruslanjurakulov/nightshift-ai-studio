@@ -418,7 +418,7 @@ describe("the consent decision cannot be forged", () => {
     expect(ok.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("takes studio:create off unless the person ticked it, and grants nothing if that cannot be done (0176)", async () => {
+  it("takes studio:create off unless the person ticked it, and grants nothing if that cannot be done (0191)", async () => {
     const headers = { "content-type": "application/json", origin: ORIGIN };
     h.dropped = [];
     h.dropAnswer = "ok";

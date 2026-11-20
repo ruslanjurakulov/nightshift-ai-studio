@@ -1,4 +1,4 @@
--- rollback_0176_mcp_oauth_creative.sql — takes migration 0176 (the Studio's generations for a connected assistant) out again.
+-- rollback_0191_mcp_oauth_creative.sql — takes migration 0191 (the Studio's generations for a connected assistant) out again.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT IS KEPT: the record. oauth_creative_quotes and oauth_creative_jobs (which connection started which generation, from which
@@ -6,14 +6,14 @@
 -- value; drop it by hand if you want). A generation already started finishes, is captured or refunded by the worker as usual.
 --
 -- WHAT IS LOST: the five doors. After this, a connected app's quote_creative / create_creative / get_creative_job /
--- list_creative_models / list_media answer 503 api_unavailable naming migration 0176, and nothing new can be started. The
+-- list_creative_models / list_media answer 503 api_unavailable naming migration 0191, and nothing new can be started. The
 -- connection's monthly spend goes back to counting videos only (0093), which is safe because no new generation can be started.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if a replaced function is not 0176's body (a later change would be undone), or if any connection
+--   0. REFUSES (changes nothing) if a replaced function is not 0191's body (a later change would be undone), or if any connection
 --      holds the studio:create permission: 0093's check cannot hold such a row, and taking a permission away from a person's
 --      connection is their decision. Disconnect those connections first (Developers → Connected apps), then run this again.
---   1. Drops the five doors and 0176's helpers.
+--   1. Drops the five doors and 0191's helpers.
 --   2. Puts back 0093's oauth_scopes_supported, oauth_endpoint_scope and oauth_grant_month_credits, byte for byte, and 0093's check.
 --   3. Asserts the end state.
 
@@ -26,23 +26,23 @@ declare
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_scopes_supported()');
   if h is distinct from '3ef7e3154b00584e7625225d20dfa705' then
-    raise exception 'rollback 0176: public.oauth_scopes_supported() is not 0176''s body (md5 %): read the live body first', h;
+    raise exception 'rollback 0191: public.oauth_scopes_supported() is not 0191''s body (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_endpoint_scope(text)');
-  if h is distinct from '4bc3b07f8a926be2ca055a9404d1e3d3' then
-    raise exception 'rollback 0176: public.oauth_endpoint_scope(text) is not 0176''s body (md5 %): read the live body first', h;
+  if h is distinct from '39be9da597b74684494d55e8547e3eae' then
+    raise exception 'rollback 0191: public.oauth_endpoint_scope(text) is not 0191''s body (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_grant_month_credits(uuid)');
-  if h is distinct from '79d0c8598db85481dcb63b906cdd576d' then
-    raise exception 'rollback 0176: public.oauth_grant_month_credits(uuid) is not 0176''s body (md5 %): read the live body first', h;
+  if h is distinct from '6d345abdb50d6c85a4c1276c6e255a14' then
+    raise exception 'rollback 0191: public.oauth_grant_month_credits(uuid) is not 0191''s body (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)');
-  if h is distinct from '5c12979d1937b35b5ca8fc353087d4f8' then
-    raise exception 'rollback 0176: public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) is not 0176''s body (md5 %): read the live body first', h;
+  if h is distinct from 'c385018bae2e55e8c7d4d67013618146' then
+    raise exception 'rollback 0191: public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) is not 0191''s body (md5 %): read the live body first', h;
   end if;
   if exists (select 1 from public.oauth_grants g where 'studio:create' = any (g.scopes)) then
-    raise exception 'rollback 0176: % connection(s) hold the studio:create permission; disconnect them first (Developers → Connected apps)',
+    raise exception 'rollback 0191: % connection(s) hold the studio:create permission; disconnect them first (Developers → Connected apps)',
       (select count(*) from public.oauth_grants g where 'studio:create' = any (g.scopes));
   end if;
 end $$;
@@ -189,19 +189,19 @@ begin
   if to_regprocedure('public.oauth_creative_create(text, uuid, text, text)') is not null
      or to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is not null
      or to_regprocedure('public.oauth_creative_model_state(text, text)') is not null then
-    raise exception 'rollback 0176 end state: a 0176 function is still there';
+    raise exception 'rollback 0191 end state: a 0191 function is still there';
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_endpoint_scope(text)');
   if h is distinct from 'ade9dedd7a1058b4938e9df7e8bd1b87' then
-    raise exception 'rollback 0176 end state: oauth_endpoint_scope is not 0093''s body (md5 %)', h;
+    raise exception 'rollback 0191 end state: oauth_endpoint_scope is not 0093''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_grant_month_credits(uuid)');
   if h is distinct from '6329f5ed73f203e67e31e885238fa1ab' then
-    raise exception 'rollback 0176 end state: oauth_grant_month_credits is not 0093''s body (md5 %)', h;
+    raise exception 'rollback 0191 end state: oauth_grant_month_credits is not 0093''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_scopes_supported()');
   if h is distinct from 'b1cdcf014109e5902d0e6d9f05767186' then
-    raise exception 'rollback 0176 end state: oauth_scopes_supported is not 0093''s body (md5 %)', h;
+    raise exception 'rollback 0191 end state: oauth_scopes_supported is not 0093''s body (md5 %)', h;
   end if;
 end $$;
 

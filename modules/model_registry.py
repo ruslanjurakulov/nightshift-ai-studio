@@ -643,7 +643,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "mcp_oauth_exposure is true or false"))
         if m.get("mcp_oauth_exposure") is True:
             # A connected assistant's request has no visitor address to check a country against, and a rights acknowledgement is the
-            # person's own act in the Studio (0174); migration 0176 refuses both for an assistant, so the file must not promise them.
+            # person's own act in the Studio (0174); migration 0191 refuses both for an assistant, so the file must not promise them.
             if m.get("blocked_countries"):
                 errors.append(_err(mid, "mcp_oauth_exposure cannot be combined with blocked_countries"))
             if m.get("requires_acknowledgement"):
@@ -651,7 +651,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             if CAPTIONS in caps:
                 errors.append(_err(mid, "captions are a web tool: mcp_oauth_exposure cannot be true"))
             # The vendor's permission for our connector is api_exposure web_mcp (0188), or any; web_only means the vendor did not
-            # give it, and 0176's gate (sellable_models 'mcp') would refuse the model anyway: the file must not promise it.
+            # give it, and 0191's gate (sellable_models 'mcp') would refuse the model anyway: the file must not promise it.
             if m["api_exposure"] not in ("web_mcp", "any"):
                 errors.append(_err(mid, "mcp_oauth_exposure needs api_exposure web_mcp (or any): web_only is the vendor's no"))
         ent = m["entitlement"]

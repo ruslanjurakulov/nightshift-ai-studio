@@ -562,7 +562,7 @@ export async function getCreativeJobFiles(caller: ApiCaller, jobId: string): Pro
 
 /**
  * A generation's answer with a signed link per result file (the database lists files only for a completed job of THIS caller:
- * 0162 for a key, 0176 for a connection). Shared by get_generation and get_creative_job so the two can never sign differently.
+ * 0162 for a key, 0191 for a connection). Shared by get_generation and get_creative_job so the two can never sign differently.
  */
 function withFileLinks(caller: ApiCaller, result: ApiResult): ApiResult {
   if (!result.ok || !result.data || typeof result.data !== "object") return result;
@@ -595,7 +595,7 @@ function withFileLinks(caller: ApiCaller, result: ApiResult): ApiResult {
   return { ...result, data: { ...d, files, ...(note ? { files_note: note } : {}) } };
 }
 
-// ── the Studio for a connected assistant (OAuth, migration 0176) ──────────
+// ── the Studio for a connected assistant (OAuth, migration 0191) ──────────
 //
 // Four doors of a connection's own: oauth_creative_models / _quote / _create / _get and oauth_media_list. They take the access
 // token's hash (oauthRpc renames p_key_hash to p_token_hash) and open with oauth_ctx, so an API key's hash is unknown to them. The
@@ -612,7 +612,7 @@ export async function oauthQuoteCreative(caller: ApiCaller, body: unknown): Prom
   const r = parsed.request;
   if (!(API_CREATIVE_CAPABILITIES as readonly string[]).includes(r.capability))
     return bad("capability_not_supported", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
-  return call(caller, "oauth_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0176");
+  return call(caller, "oauth_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0191");
 }
 
 /** create_creative: start the generation a quote priced, at exactly that price, once per idempotency key. */
@@ -622,7 +622,7 @@ export async function oauthCreateCreative(caller: ApiCaller, quoteId: string, id
   const badKey = checkIdempotencyKey(idempotencyKey.trim());
   if (badKey) return badKey;
   if (!UUID_RE.test(quoteId)) return apiError(404, "quote_not_found", "No quote with that id for this connection. Quote again (quote_creative).");
-  return call(caller, "oauth_creative_create", { p_quote_id: quoteId.toLowerCase(), p_idem_key: idempotencyKey.trim() }, "0176");
+  return call(caller, "oauth_creative_create", { p_quote_id: quoteId.toLowerCase(), p_idem_key: idempotencyKey.trim() }, "0191");
 }
 
 /** list_creative_models: the models this connection's workspace can generate with through an assistant now. No prices. */
@@ -630,7 +630,7 @@ export async function oauthListCreativeModels(caller: ApiCaller, capability?: st
   const cap = capability == null ? null : capability.trim().toLowerCase();
   if (cap !== null && !(API_CREATIVE_CAPABILITIES as readonly string[]).includes(cap))
     return bad("invalid_params", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
-  const result = await call(caller, "oauth_creative_models", { p_capability: cap }, "0176");
+  const result = await call(caller, "oauth_creative_models", { p_capability: cap }, "0191");
   if (!result.ok || !result.data || typeof result.data !== "object") return result;
   const d = result.data as Record<string, unknown>;
   // CLAUDE.md #5: an empty list is a fact about what is offered to assistants, not "the Studio has no models".
@@ -655,11 +655,11 @@ export async function oauthListMedia(caller: ApiCaller, kind?: string | null, li
   if (k !== null && !(MEDIA_KINDS as readonly string[]).includes(k)) return bad("invalid_params", "kind must be image, video or audio.");
   const lim = limit == null ? null : intParam(limit, 1, 100);
   if (lim === "bad") return bad("invalid_params", "limit must be a whole number from 1 to 100.");
-  return call(caller, "oauth_media_list", { p_kind: k, p_limit: lim }, "0176");
+  return call(caller, "oauth_media_list", { p_kind: k, p_limit: lim }, "0191");
 }
 
 /** get_creative_job: a generation this connection started, with short-lived links to its files once it completed. */
 export async function oauthGetCreativeJob(caller: ApiCaller, jobId: string): Promise<ApiResult> {
   if (!UUID_RE.test(jobId)) return apiError(404, "job_not_found", "No generation with that id for this connection.");
-  return withFileLinks(caller, await call(caller, "oauth_creative_get", { p_job_id: jobId.toLowerCase() }, "0176"));
+  return withFileLinks(caller, await call(caller, "oauth_creative_get", { p_job_id: jobId.toLowerCase() }, "0191"));
 }

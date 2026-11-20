@@ -1,6 +1,6 @@
-"""Breach on 0176: every MCP client is told to ask for studio:create, so "only by asking for it by name" never holds.
+"""Breach on 0191: every MCP client is told to ask for studio:create, so "only by asking for it by name" never holds.
 
-0176's oauth_begin_authorization keeps studio:create out of the default on purpose: "Spending on Studio generations is its own
+0191's oauth_begin_authorization keeps studio:create out of the default on purpose: "Spending on Studio generations is its own
 consent, so a client gets it only by asking for it by name; one that asks for nothing gets 0093's three."
 
 But the MCP route's 401 challenge (app/api/mcp/route.ts challenge() -> wwwAuthenticate(..., OAUTH_SCOPES)) now reads
