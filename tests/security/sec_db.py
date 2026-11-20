@@ -315,6 +315,9 @@ ON_0149 = (MIGRATION_0153.name, *ON_0153)
 #: Migrations written on 0139's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0139 out
 #: leaves these out too, in this order.
 ON_0139 = (MIGRATION_0149.name, *ON_0149)
+#: 0188 (Recraft web_mcp) replaces 0125's sellable_models and 0124's api_creative_model_ok and refuses any other body: it does not sit
+#: on 0139, but every sequence that leaves 0139 out leaves 0125's sitters out, so it is added here, last.
+ON_0139 = (*ON_0139, "0188_recraft_web_mcp.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -324,7 +327,7 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
-           "0174_rights_acknowledgement.sql")
+           "0174_rights_acknowledgement.sql", "0187_rights_acknowledgement_inputs.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -350,6 +353,7 @@ def take_off_0139(session) -> None:
     first with its own rollback, and puts it back with put_back_0139 where the chain goes on. 0149 sits on 0139's creative_price(), and
     0139's rollback refuses any other body, so 0149 comes off first when it is there (and 0153, which sits on 0149's, before it, and
     0155, which sits on 0153's, before that, and 0156 on 0155's before that, and 0159 on 0156's before that)."""
+    take_off_0188(session)
     if has_0149(session) or has_0153(session) or has_0155(session) or has_0156(session) or has_0159(session):
         take_off_0149(session)
     session.conn.execute(rollback_0139_body())
@@ -358,6 +362,7 @@ def take_off_0139(session) -> None:
 def put_back_0139(session) -> None:
     session.conn.execute(MIGRATION_0139.read_text(encoding="utf-8"))
     put_back_0149(session)
+    put_back_0188(session)
 
 
 #: md5 of 0149's creative_price body (white space folded), the way its drift guard reads it.
@@ -600,6 +605,7 @@ def take_off_0171(conn_or_session) -> None:
     replays or rolls back 0166 takes 0171 off first with its own rollback (override on: the lab's segments are not kept) and puts it
     back with put_back_0171 where the chain goes on."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0187(conn)
     if has_0171(conn):
         conn.execute(rollback_0171_body(override=True))
 
@@ -608,6 +614,7 @@ def put_back_0171(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0171(conn):
         conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
+    put_back_0187(conn)
 
 
 MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"
@@ -628,6 +635,7 @@ def take_off_0174(conn_or_session) -> None:
     guard, while rights_acknowledgements (the record, with its append-only triggers), rights_acknowledgement_kinds and
     model_registry.requires_acknowledgement stay. put_back_0174 applies 0174 again; it picks the kept tables up as its own."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0187(conn)
     if has_0174(conn):
         text = ROLLBACK_0174.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -637,6 +645,76 @@ def put_back_0174(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0174(conn):
         conn.execute(MIGRATION_0174.read_text(encoding="utf-8"))
+    put_back_0187(conn)
+
+
+MIGRATION_0187 = MIGRATIONS / "0187_rights_acknowledgement_inputs.sql"
+ROLLBACK_0187 = REPO / "docs" / "sql" / "rollback_0187_rights_acknowledgement_inputs.sql"
+
+
+def has_0187(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.film_acknowledgement_missing(public.films, uuid)') is not null").fetchone()[0])
+
+
+def take_off_0187(conn_or_session) -> None:
+    """0187 replaces rights_acknowledgement_missing() (0174's body), reroute_creative_job() (0088's) and start_film() (0171's). 0174's
+    and 0171's drift guards and rollbacks refuse any body but their own, so a test that replays or rolls back 0174 or 0171 takes 0187
+    off first (take_off_0174 and take_off_0171 do it), and put_back_0174 / put_back_0171 put it back once both are on again."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0187(conn):
+        text = ROLLBACK_0187.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0187(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0187(conn) and has_0174(conn) and has_0171(conn):
+        conn.execute(MIGRATION_0187.read_text(encoding="utf-8"))
+
+
+MIGRATION_0189 = MIGRATIONS / "0189_job_video_and_list_order.sql"
+ROLLBACK_0189 = REPO / "docs" / "sql" / "rollback_0189_job_video_and_list_order.sql"
+
+
+def has_0189(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.render_job_video_id(public.render_jobs)') is not null").fetchone()[0])
+
+
+def take_off_0189(conn_or_session) -> None:
+    """0189 replaces api_get_job() and oauth_get_job() (0111's bodies) and api_list_videos() (0042's). 0111's replay and rollback
+    refuse any other body, so a test that replays or rolls back 0111 takes 0189 off first (inside its own transaction)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0189(conn):
+        text = ROLLBACK_0189.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+MIGRATION_0188 = MIGRATIONS / "0188_recraft_web_mcp.sql"
+ROLLBACK_0188 = REPO / "docs" / "sql" / "rollback_0188_recraft_web_mcp.sql"
+
+
+def has_0188(conn_or_session) -> bool:
+    """0188 leaves no function of its own: its sellable_models body names 'web_mcp'."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select position('web_mcp' in prosrc) > 0 from pg_proc "
+                             "where oid = to_regprocedure('public.sellable_models(text, text)')").fetchone()[0] or False)
+
+
+def take_off_0188(conn_or_session) -> None:
+    """0188 replaces sellable_models() (0125's body) and api_creative_model_ok() (0124's); 0125's and 0124's replays and rollbacks
+    refuse any other body, so a test that replays them takes 0188 off first (take_off_0139 does it, as 0125's other sitters)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0188(conn):
+        text = ROLLBACK_0188.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0188(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0188(conn):
+        conn.execute(MIGRATION_0188.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

@@ -214,10 +214,10 @@ class AFakeRunThroughTheRealWorker(unittest.TestCase):
                            grace_seconds=60, kill_after_seconds=2, out=io.StringIO(), credits=self.credits)
         original = w._execute
 
-        def spy(job, argv, run_env, channel_row, settle=None, video_check=None):
-            # Record how the hold is settled: charge=False is a release.
+        def spy(job, argv, run_env, channel_row, settle=None, video_check=None, on_success=None):
+            # Record how the hold is settled: charge=False is a release. on_success (0189: the run's slug) passes through.
             return original(job, argv, run_env, channel_row,
-                            settle=lambda charge: settled.append(charge), video_check=video_check)
+                            settle=lambda charge: settled.append(charge), video_check=video_check, on_success=on_success)
 
         w._execute = spy
         w.run_forever(once=True)
