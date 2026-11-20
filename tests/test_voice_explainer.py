@@ -298,23 +298,11 @@ class ReviewFindings(unittest.TestCase):
 
     def test_the_render_budget_grows_with_the_recording(self):
         # One budget covers the whole render; 1800 s could not finish a 600 s recording (about 2700 s, measured on #769).
-        # The same budget the paid adapter uses (#771): a floor for the bundle and the browser, plus six seconds per second.
+        # The same budget as the paid adapter (#771): a floor for the bundle and the browser, plus six seconds per second.
         self.assertEqual(ve.render_timeout_s(30), ve.RENDER_TIMEOUT_FLOOR_S + ve.RENDER_TIMEOUT_PER_SECOND * 30)
         self.assertGreaterEqual(ve.render_timeout_s(ve.MAX_SECONDS), 2700.0)
-        from unittest import mock
-        with TemporaryDirectory() as d:
-            engine = Path(d) / "engine"
-            (engine / "node_modules").mkdir(parents=True)
-            seen = []
-
-            def run(cmd, cwd, deadline, timeout_s, what, on_spawn):
-                seen.append(timeout_s)
-                raise ve.ExplainerError("stop here")
-
-            with mock.patch("shutil.which", return_value="/usr/bin/npx"), mock.patch.object(ve, "_run", side_effect=run), \
-                    self.assertRaises(ve.ExplainerError):
-                ve.render({"duration_s": ve.MAX_SECONDS}, Path(d) / "o.mp4", files={}, engine_dir=engine)
-            self.assertEqual(seen, [ve.render_timeout_s(ve.MAX_SECONDS)])
+        # The tool hands it to render() (the paid adapter passes its own the same way).
+        self.assertIn("timeout_s=ve.render_timeout_s(duration)", (ROOT / "tools" / "voice_to_video.py").read_text(encoding="utf-8"))
 
     def test_a_stop_in_the_middle_of_a_render_leaves_no_partial_output(self):
         # A KeyboardInterrupt (or SIGTERM's SystemExit) is not an ExplainerError: the half-written mp4 must still go.

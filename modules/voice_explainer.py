@@ -551,7 +551,7 @@ def render_timeout_s(duration_s: float) -> float:
 
 
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
-           browser: Optional[str] = None, timeout_s: Optional[float] = None, concurrency: int = 1,
+           browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
            chunk_s: float = CHUNK_S, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
     """Render the props with Remotion. ``files`` maps each public path the props name
     (narration, music, effects) to the file on disk; they are copied into a private
@@ -582,8 +582,6 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # A file left from an earlier run must not pass as this run's output.
     out_path.unlink(missing_ok=True)
-    if timeout_s is None:
-        timeout_s = render_timeout_s(props.get("duration_s") or 0)
     deadline = _now() + timeout_s
     with tempfile.TemporaryDirectory(prefix="explainer-") as tmp:
         pub = (Path(tmp) / "public").resolve()

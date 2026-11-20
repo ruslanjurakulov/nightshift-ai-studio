@@ -161,7 +161,8 @@ def main(argv=None) -> int:
         if args.dump_props:
             Path(args.dump_props).write_text(json.dumps(props, ensure_ascii=False, indent=2), encoding="utf-8")
         logger.info("%d words, %d scenes, %.1f s, look %s — rendering…", len(words), len(scenes), duration, args.look)
-        out = ve.render(props, Path(args.out), files=files, browser=args.browser or None)
+        out = ve.render(props, Path(args.out), files=files, browser=args.browser or None,
+                        timeout_s=ve.render_timeout_s(duration))
         logger.info("wrote %s", out)
         return 0
     except ve.PlanRejected as e:
