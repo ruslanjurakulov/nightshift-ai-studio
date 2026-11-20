@@ -140,6 +140,12 @@ export function Forecast({
               <span className="oa-badge" data-tone={measured ? undefined : "warn"}>
                 {measured ? `${d.measured} · ${basisText(s.measured!)}` : d.assumption}
               </span>
+              {value === null && (
+                // An unset slider sits at its minimum, where a click or Home changes nothing: this sets that value on purpose.
+                <button type="button" className="oa-chip" onClick={() => setV((o) => ({ ...o, [s.key]: s.min }))}>
+                  {fill(d.useValue, { value: fmt(s.kind, s.min) })}
+                </button>
+              )}
             </label>
           );
         })}
@@ -176,7 +182,7 @@ export function Forecast({
               <th scope="col" className="oa-num">{d.users}</th>
               <th scope="col" className="oa-num">{d.payers}</th>
               <th scope="col" className="oa-num">{d.mrr}</th>
-              <th scope="col" className="oa-num">{d.tabCosts}</th>
+              <th scope="col" className="oa-num">{d.forecastCosts}</th>
               <th scope="col" className="oa-num">{d.profit}</th>
               <th scope="col" className="oa-num">{d.cash}</th>
             </tr>

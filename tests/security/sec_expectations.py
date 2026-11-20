@@ -754,3 +754,8 @@ sec_creative_templates_0183.extend(TABLES, FUNCTIONS)
 import sec_owner_costs_0184  # noqa: E402
 
 sec_owner_costs_0184.extend(TABLES, FUNCTIONS)
+
+# Migration 0185 (frozen exchange rates for the owner's income register): tests/security/sec_owner_fx_0185.py
+import sec_owner_fx_0185  # noqa: E402
+
+sec_owner_fx_0185.extend(TABLES, FUNCTIONS)

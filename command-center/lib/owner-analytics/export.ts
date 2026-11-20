@@ -24,7 +24,8 @@ export interface Table {
   preamble?: string[];
 }
 
-const FORMULA_START = /^[=+\-@\t\r]/;
+// A leading newline too: no spreadsheet runs "\n=HYPERLINK(…)" today, but nothing is lost by neutralising it.
+const FORMULA_START = /^[=+\-@\t\r\n]/;
 
 /** Text that a spreadsheet will not run. Numbers are left alone: -5 is a number, not a formula. */
 export function neutralize(v: string): string {

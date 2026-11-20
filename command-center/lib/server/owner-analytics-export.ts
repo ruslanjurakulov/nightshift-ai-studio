@@ -17,10 +17,11 @@ import {
   signupsTable,
 } from "@/lib/owner-analytics/kpis";
 import { applyScope, summarize } from "@/lib/owner-analytics/money";
-import { readCostEntries, readJobs, readPeople, readSpend, type ReadFailure } from "./owner-analytics";
+import { readCostEntries, readFxRates, readJobs, readPeople, readSpend, type ReadFailure } from "./owner-analytics";
 import { monthlyResults, summarizeSpend } from "@/lib/owner-analytics/costs";
 import { costEntriesTable, monthlyTable, spendModelsTable, spendProvidersTable } from "@/lib/owner-analytics/cost-tables";
 import { tashkentDayStartUtc } from "@/lib/owner-analytics/period";
+import { monthlyTotals, quarterlyTotals, registerRows, registerTable, totalsTable } from "@/lib/owner-analytics/tax";
 import { readActivityFor, readCohortActivity, readMoneyFor } from "./owner-analytics-data";
 import { readRunway } from "./owner-runway";
 import { providerRunways } from "@/lib/owner-analytics/runway";
@@ -44,6 +45,10 @@ export const EXPORTABLE = [
   "costs.models",
   "costs.monthly",
   "costs.entries",
+  "tax.register",
+  "tax.monthly",
+  "tax.quarterly",
+  "report.full",
   "runway.providers",
   "runway.models",
 ] as const;
@@ -90,6 +95,30 @@ export async function buildExport(
     const rows = providerRunways(data);
     return done(what === "runway.providers" ? runwayProvidersTable(d, rows, nowMs, present) : runwayModelsTable(d, rows, nowMs, present));
   }
+  if (what.startsWith("tax.")) {
+    const money = await readMoneyFor(sel);
+    if (!money.ok) return money;
+    const fx = await readFxRates(p.startDay, p.endDay);
+    // Without 0185 the register is still a register, in each payment's own currency: every UZS cell reads "no rate stored",
+    // and the file says why. A rates read that FAILED is not that: the file would say "no rate stored" of rates that exist.
+    if (!fx.ok && fx.reason !== "missing") return fx;
+    const rates = fx.ok ? fx.data : [];
+    const rows = registerRows(applyScope(money.data, inc), rates, p);
+    const table =
+      what === "tax.register"
+        ? registerTable(d, rows, p, present)
+        : totalsTable(d, what === "tax.monthly" ? monthlyTotals(rows) : quarterlyTotals(rows), what === "tax.monthly" ? d.monthlyTotals : d.quarterlyTotals, p, present);
+    // A cut read of money or rates is said in the file itself: a row whose rate was not read would otherwise say "no rate stored".
+    if (money.truncated || (fx.ok && fx.truncated)) table.preamble = [...(table.preamble ?? []), d.truncated];
+    if (!fx.ok) table.preamble = [...(table.preamble ?? []), d.fxNotEnabled];
+    return done(table);
+  }
+  if (what === "report.full") {
+    // The full report is several tables; this single-table builder answers with its first. buildReport() gives all of them.
+    const all = await buildReport(sel, t, present);
+    if (!all.ok) return all;
+    return done(all.tables[0]);
+  }
   if (what.startsWith("costs.")) {
     const fromMonth = `${p.startDay.slice(0, 7)}-01`;
     const toMonth = `${p.endDay.slice(0, 7)}-01`;
@@ -123,4 +152,26 @@ export async function buildExport(
   const cohort = await readCohortActivity(sel);
   if (!cohort.read.ok) return cohort.read;
   return done(cohortTable(d, people, applyScope(cohort.read.data, inc), cohort.fromMonth, p, present));
+}
+
+/**
+ * The full report: the overview, revenue by source and item, the signup funnel and, when 0184 is applied, the month-by-month
+ * result. Each table is the one the page renders. A part that cannot be read is left out and said so in the notes — the report
+ * does not stop for it, and does not fill it with zeros.
+ */
+export async function buildReport(
+  sel: PeriodSelection,
+  t: Dictionary,
+  present: boolean,
+): Promise<{ ok: true; tables: Table[]; missing: string[] } | { ok: false; reason: ReadFailure }> {
+  const parts: Exportable[] = ["overview.kpis", "revenue.kinds", "revenue.items", "users.funnel", "costs.monthly"];
+  const tables: Table[] = [];
+  const missing: string[] = [];
+  for (const what of parts) {
+    const r = await buildExport(what, sel, t, present);
+    if (r.ok) tables.push(r.table);
+    else if (what === "overview.kpis") return r; // without the headline figures there is no report
+    else missing.push(what);
+  }
+  return { ok: true, tables, missing };
 }

@@ -2034,3 +2034,33 @@ short-form formats that open Create prefilled. Additive: one table, its updated_
   provider's balance. Counts only, no amount and no customer.
 - **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
 - Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.
+
+- Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.
+
+## Owner analytics: frozen exchange rates for the income register (0185)
+
+0185 (`0185_owner_fx_rates.sql`) stores the exchange rates the owner freezes for the hub's Tax register. No rate is in the file,
+and nothing fetches one.
+
+- **Table.** `owner_fx_rates`: one rate per day and currency (UZS per unit, numeric(18,4)), the source the owner names, who
+  entered it and when. RLS on, no policy, closed to every API role.
+- **Functions.** `owner_analytics_fx_set(day, currency, uzs, source)` (setting it again replaces it), `owner_analytics_fx_delete`,
+  `owner_analytics_fx_rates(from, to)` (at most 1100 days). Writes go through 0183's `owner_costs_write_guard()` (owner, 0107's
+  second factor, the shared rate limit). Granted to `authenticated` only.
+- **Without it** the register lists payments in their own currency and every UZS cell reads "no rate stored".
+- **Requires** 0182 and 0184. Lab: `tests/security/sec_owner_fx_0185.py`, `test_sec_owner_fx.py`, `test_sec_breach_owner_fx.py`.
+- **Rollback:** `docs/sql/rollback_0185_owner_fx_rates.sql`. It drops the table and its functions: every frozen rate is lost
+  (files already exported keep the rate they were made with).
+
+## Trend templates, second set: the "viral" category (0186)
+
+0186 (`0186_viral_templates.sql`) widens `creative_templates.category` to include `'viral'` and seeds ten more formats: seven
+"Trending effects" (treasure strike, object morph, giant-hand makeover, scale shock, water revival, language-duo podcast and its
+cover), a holiday sale ad and a sale story poster (business), and a 3D family moment (story). Additive: the CHECK is dropped and
+re-added with every old value kept; no table, function or grant changes.
+
+- **Why these.** Chosen from an outlier search on 2026-11-20 (AI-made Reels/TikTok posts far above their own account's median)
+  and a language-duo series the owner collected. Formats only: nothing from those posts is copied, and no view count is shown.
+- **Seed rules as 0183.** A row lands only if its model is in `model_registry`; `on conflict (slug) do nothing`, so re-applying
+  never undoes an owner's edit. Media are static files under `public/templates/<slug>/`, listed in the manifest.
+- Rollback: `docs/sql/rollback_0186_viral_templates.sql` (deletes the ten seed rows, restores the four-value CHECK).
