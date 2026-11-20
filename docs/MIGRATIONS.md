@@ -1969,3 +1969,19 @@ makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.
   shape fails closed, workflows refused before any hold, the API's answer, replay, rollback keeping the record, and the 0075
   replay hazard), the lab's isolation suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py`
   (each body is the earlier one plus inserted 0174 blocks only; pins), `command-center/tests/rights-acknowledgement*.test.ts(x)`.
+
+## OpenAI GPT Image on sale once verified and priced (0188)
+
+0188 (`0188_open_openai_image.sql`) is **live on apply** and writes no price. It sets `availability = beta` (entitlement NULL) for each
+of `openai-gpt-image-2`, `-2.5-flare`, `-2.5-sunburst`, `-2.6-flare`, `-2.6-sunburst` only when ALL hold: the adapter, vendor model
+and unit it was written for, exactly `t2i` + `edit`, a successful probe (`verified_at`), no terms gate, `web_only`, not past shutdown,
+not disabled, no blocked countries, and a `credit_prices` row for the base unit and each quality (`_low`, `_medium`, `_high`). A model
+that fails one is left as it is, with a NOTICE naming the fix. Order: probe (Actions -> Probe models), the owner's price rows, then
+0188. Rollback: `docs/sql/rollback_0188_open_openai_image.sql`.
+
+## Describe on Claude Sonnet 5.5 and GPT-6 Luna (0190)
+
+0190 (`0190_open_llm_describe.sql`) is the same shape for the two `describe` models (`anthropic-claude-sonnet-5-5`,
+`openai-gpt-6-luna`; adapters in `modules/capabilities/describe_llm.py`): beta only when verified, priced, terms-clear and `web_only`.
+No price is written. Keys: GitHub secrets `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, shipped to the worker by `deploy_web.yml`.
+Rollback: `docs/sql/rollback_0190_open_llm_describe.sql`.

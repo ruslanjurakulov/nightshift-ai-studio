@@ -23,7 +23,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Callable, Mapping, Optional
 
-from modules.capabilities.base import scrub
+import logging
+
+from modules.capabilities.base import env_secrets, scrub
+
+logger = logging.getLogger(__name__)
 
 #: The providers a caller may name. ``gemini`` is the planner's existing path (series_planner.gemini_generate) and is listed so a
 #: caller can validate one closed set; this module builds only the two below.
@@ -89,14 +93,14 @@ def key_env(provider: str) -> str:
     return _KEY_ENV[provider]
 
 
-def _vendor_text(resp, secret: str) -> str:
+def _vendor_text(resp, secret: str, env: Mapping[str, str]) -> str:
     try:
         body = resp.json()
         err = body.get("error") if isinstance(body, dict) else None
         msg = err.get("message") if isinstance(err, dict) else None
     except ValueError:
         msg = None
-    return scrub(str(msg or ""), [secret])[:_MAX_VENDOR_TEXT]
+    return scrub(str(msg or ""), [secret, *env_secrets(env)])[:_MAX_VENDOR_TEXT]
 
 
 def _error_field(resp, name: str) -> Optional[str]:
@@ -145,13 +149,15 @@ def _anthropic_request(prompt: str, model: str, system: Optional[str], safety_id
 def _anthropic_text(data: Mapping) -> str:
     if data.get("stop_reason") == "refusal":
         raise TextProviderError(E_REFUSED, "anthropic")
+    if data.get("stop_reason") == "max_tokens":
+        raise TextProviderError(E_BAD_RESPONSE, "anthropic", "cut off at max_tokens")
     # thinking blocks (adaptive by default on Sonnet 5.5) are skipped; only text blocks are the answer
     texts = [b.get("text") for b in data.get("content") or [] if isinstance(b, dict) and b.get("type") == "text"]
     return "".join(t for t in texts if isinstance(t, str))
 
 
 def _openai_request(prompt: str, model: str, system: Optional[str], safety_id: Optional[str]) -> dict:
-    body = {"model": model, "input": prompt, "max_output_tokens": MAX_OUTPUT_TOKENS}
+    body = {"model": model, "input": prompt, "max_output_tokens": MAX_OUTPUT_TOKENS, "store": False}
     if system:
         body["instructions"] = system
     if safety_id:
@@ -160,6 +166,8 @@ def _openai_request(prompt: str, model: str, system: Optional[str], safety_id: O
 
 
 def _openai_text(data: Mapping) -> str:
+    if data.get("status") == "incomplete":
+        raise TextProviderError(E_BAD_RESPONSE, "openai", "the answer is incomplete")
     texts = []
     for item in data.get("output") or []:
         if not isinstance(item, dict) or item.get("type") != "message":
@@ -205,7 +213,7 @@ def call(provider: str, prompt: str, *, system: Optional[str] = None, safety_id:
         raise TextProviderError(E_BAD_REQUEST, provider, type(exc).__name__) from None
     if not 200 <= resp.status_code < 300:
         raise TextProviderError(classify(provider, resp), provider,
-                                f"HTTP {resp.status_code} {_vendor_text(resp, key)}".strip())
+                                f"HTTP {resp.status_code} {_vendor_text(resp, key, env)}".strip())
     try:
         data = resp.json()
     except ValueError:
@@ -231,7 +239,7 @@ def generate_for(provider: str, *, env: Optional[Mapping[str, str]] = None, sess
         if on_usage is not None:
             try:
                 on_usage(result)
-            except Exception:  # noqa: BLE001 - a ledger gap must not change the answer
-                pass
+            except Exception as exc:  # noqa: BLE001 - a ledger gap must not change the answer, but it must be seen
+                logger.warning("text provider %s: the usage record failed (%s)", provider, type(exc).__name__)
         return result.text
     return generate

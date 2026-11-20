@@ -34,7 +34,8 @@ from tests.test_creative_media_inputs import PNG, SRC, FakeSession
 from tests.test_creative_worker import JOB, ORG
 
 MIGRATIONS = Path(__file__).resolve().parent.parent / "supabase" / "migrations"
-OPENAI = ("openai-gpt-image-2", "openai-gpt-image-2.5-flare", "openai-gpt-image-2.5-sunburst")
+OPENAI = ("openai-gpt-image-2", "openai-gpt-image-2.5-flare", "openai-gpt-image-2.5-sunburst", "openai-gpt-image-2.6-sunburst",
+          "openai-gpt-image-2.6-flare")
 IMG = {"data": [{"b64_json": base64.b64encode(PNG).decode()}]}
 
 

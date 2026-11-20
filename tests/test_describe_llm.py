@@ -99,6 +99,9 @@ class Claude(Base):
                          E_UNAVAILABLE)
         self.assertEqual(self.code("image.anthropic_describe", CLAUDE, FakeResp(200, claude_answer(stop="refusal")), m), E_POLICY)
         self.assertEqual(self.code("image.anthropic_describe", CLAUDE, FakeResp(200, claude_answer()), m), E_BAD_RESPONSE)
+        # Cut off mid-sentence: never a finished (and charged) description.
+        self.assertEqual(self.code("image.anthropic_describe", CLAUDE,
+                                   FakeResp(200, claude_answer("A cat on a", stop="max_tokens")), m), E_BAD_RESPONSE)
 
 
 class Gpt(Base):
@@ -115,6 +118,7 @@ class Gpt(Base):
         self.assertEqual(image["image_url"], "data:image/png;base64," + base64.b64encode(PNG).decode())
         self.assertEqual(ask["type"], "input_text")
         self.assertEqual(body["safety_identifier"], "u_1a2b3c")
+        self.assertIs(body["store"], False)          # the customer's picture is not kept at the vendor
         self.assertEqual(task.outputs[0].data, b"A red apple.")
 
     def test_a_spent_balance_and_a_rate_limit_are_different_failures(self):
@@ -125,6 +129,10 @@ class Gpt(Base):
         self.assertEqual(self.code("image.openai_describe", GPT, FakeResp(401, {"error": {"message": OKEY}}), m), E_AUTH)
         refusal = {"output": [{"type": "message", "content": [{"type": "refusal", "refusal": "no"}]}]}
         self.assertEqual(self.code("image.openai_describe", GPT, FakeResp(200, refusal), m), E_POLICY)
+        cut = dict(gpt_answer("A red"), status="incomplete", incomplete_details={"reason": "max_output_tokens"})
+        self.assertEqual(self.code("image.openai_describe", GPT, FakeResp(200, cut), m), E_BAD_RESPONSE)
+        filtered = dict(gpt_answer(), status="incomplete", incomplete_details={"reason": "content_filter"})
+        self.assertEqual(self.code("image.openai_describe", GPT, FakeResp(200, filtered), m), E_POLICY)
 
     def test_an_email_is_never_sent_as_the_safety_identifier(self):
         a = self.adapter("image.openai_describe", [("POST", "/v1/responses", FakeResp(200, gpt_answer("x y z")))])

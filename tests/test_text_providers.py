@@ -85,6 +85,7 @@ class TextProviderTests(unittest.TestCase):
         self.assertEqual(url, "https://api.openai.com/v1/responses")
         self.assertEqual(kw["headers"]["Authorization"], f"Bearer {KEY}")
         self.assertEqual(kw["json"]["safety_identifier"], "org_1")
+        self.assertIs(kw["json"]["store"], False)
         self.assertEqual(got.text, "hi")
 
     def test_a_bad_key_and_a_spent_balance_are_different_failures(self):
@@ -109,6 +110,9 @@ class TextProviderTests(unittest.TestCase):
         self.assertEqual(self.fails("openai", Resp(200, {"output": [{"type": "message", "content": [
             {"type": "refusal", "refusal": "no"}]}]})), tp.E_REFUSED)
         self.assertEqual(self.fails("openai", Resp(200, None)), tp.E_BAD_RESPONSE)
+        self.assertEqual(self.fails("anthropic", Resp(200, {"stop_reason": "max_tokens",
+                                                            "content": [{"type": "text", "text": "half"}]})), tp.E_BAD_RESPONSE)
+        self.assertEqual(self.fails("openai", Resp(200, dict(openai_ok()._body, status="incomplete"))), tp.E_BAD_RESPONSE)
 
     def test_a_failed_call_never_tries_another_provider(self):
         s = Session(Resp(500, {}), openai_ok())

@@ -55,6 +55,8 @@ class _LlmDescribe(GeminiDescribeAdapter):
 
     base_url_env = ""
     timeout = 90
+    #: Room for the reasoning these models spend before the answer; the kept text is still cut to the describe limit.
+    MAX_OUTPUT_TOKENS = 8192
 
     def _picture(self, request: CapabilityRequest) -> str:
         self.require_key()
@@ -107,6 +109,9 @@ class AnthropicDescribeAdapter(_LlmDescribe):
             raise AdapterError(E_BAD_RESPONSE, "describe: not a JSON object")
         if data.get("stop_reason") == "refusal":
             raise AdapterError(E_POLICY, "no description: the model declined")
+        if data.get("stop_reason") == "max_tokens":
+            # Cut off mid-sentence (thinking counts against max_tokens): half a prompt is not a description, and is never charged.
+            raise AdapterError(E_BAD_RESPONSE, "the description was cut off before it ended")
         texts = [b["text"] for b in data.get("content") or []
                  if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
         return self._done(vendor_model, texts)
@@ -134,6 +139,8 @@ class OpenAIDescribeAdapter(_LlmDescribe):
             "model": vendor_model,
             "instructions": DESCRIBE_SYSTEM,
             "max_output_tokens": self.MAX_OUTPUT_TOKENS,
+            # The Responses API keeps responses by default; a customer's picture has no reason to stay at the vendor.
+            "store": False,
             "input": [{"role": "user", "content": [
                 {"type": "input_image", "image_url": f"data:{image_mime(path)};base64,{image_b64(path)}"},
                 {"type": "input_text", "text": self.ask(request.output_language)},
@@ -144,6 +151,12 @@ class OpenAIDescribeAdapter(_LlmDescribe):
         data = self.post(f"{self.base_url}/responses", body, what="describe")
         if not isinstance(data, dict):
             raise AdapterError(E_BAD_RESPONSE, "describe: not a JSON object")
+        if data.get("status") == "incomplete":
+            # incomplete_details.reason max_output_tokens (or content_filter): never a finished description.
+            reason = (data.get("incomplete_details") or {}).get("reason") if isinstance(data.get("incomplete_details"), dict) else None
+            if reason == "content_filter":
+                raise AdapterError(E_POLICY, "no description: the vendor's filter stopped it")
+            raise AdapterError(E_BAD_RESPONSE, "the description was cut off before it ended")
         texts: List[str] = []
         for item in data.get("output") or []:
             if not isinstance(item, dict) or item.get("type") != "message":
