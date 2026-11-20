@@ -141,7 +141,7 @@ function Reel({ t }: { t: Dictionary }) {
       <ul className="hm-reel-row" aria-labelledby="hm-reel-title">
         {items.map(({ e, f }) => (
           <li key={e.jobId} className="hm-reel-card">
-            <div className="hm-reel-pic" data-clip="sample" style={{ aspectRatio: `${e.width} / ${e.height}` }}>
+            <div className="hm-reel-pic" data-clip="sample">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={f.posterSm}
