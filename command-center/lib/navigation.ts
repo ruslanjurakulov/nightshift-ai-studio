@@ -263,19 +263,16 @@ export const STUDIO_HOUSED_KEYS: readonly NavKey[] = [
 export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members", ...STUDIO_HOUSED_KEYS];
 
 /**
- * A customer's rail: six destinations, nothing else. Home is the first screen
+ * A customer's rail: five destinations, nothing else. Home is the first screen
  * after sign-in; Nightshift Studio is where things are made (every creative
  * tool, the videos and the projects, behind one entry); Settings holds the
- * workspace (Account and security; Developers is reached from it); Trends (0181)
- * holds the ready formats that open Create prefilled. No tab bar:
+ * workspace (Account and security; Developers is reached from it). No tab bar:
  * Studio home lays its tools out as tiles — a short rail with the tools behind
  * it, never a wall of tools.
  */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
   { href: CUSTOMER_HOME, key: "home" },
   { href: "/studio", key: "studio" },
-  // Trends (0181): the formats people post now, one click from Create.
-  { href: "/trends", key: "trends" },
   { href: "/channels", key: "channels" },
   { href: "/credits", key: "credits" },
   { href: "/organization", key: "settings" },
@@ -317,7 +314,7 @@ const RAIL_SCREENS: Readonly<Record<RailGroup, readonly string[]>> = {
  * screen with no rail key. Filtered by navShown (switches) and sectionAllowed (operator-only).
  */
 export type StudioTileKey =
-  | Extract<NavKey, "create" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models">
+  | Extract<NavKey, "create" | "trends" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models">
   | "presets";
 
 export interface StudioTile {
@@ -333,6 +330,8 @@ export const STUDIO_TILES: readonly StudioTile[] = [
   { href: "/workflows", key: "workflows", group: "make" },
   { href: "/styles", key: "styles", group: "make" },
   { href: "/presets", key: "presets", group: "make" },
+  // Trends (0181): ready formats that open Create prefilled.
+  { href: "/trends", key: "trends", group: "make" },
   { href: "/studio/look", key: "brandLook", group: "make" },
   { href: "/pipeline", key: "pipeline", group: "make" },
   { href: "/ads", key: "ads", group: "make" },
@@ -395,7 +394,6 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
   tools: STUDIO_TOOLS.map((tool) => ({ tool, href: toolHref(tool) })),
   work: [
     { href: "/studio", key: "studio" },
-    { href: "/trends", key: "trends" },
     // The Inbox stays outside the Studio (STUDIO_IA.md §9.4) and was a hub tab: it keeps a row of its own here.
     { href: "/inbox", key: "inbox" },
     { href: "/channels", key: "channels" },
@@ -481,7 +479,7 @@ export function operatorTabCurrent(section: string): OperatorTab["key"] {
   return own ? own.key : "more";
 }
 
-/** The rail for a viewer: the six customer destinations, or the operator's console. */
+/** The rail for a viewer: the five customer destinations, or the operator's console. */
 export function navGroupsFor(operator: boolean, features: NavFeatures = NO_NAV_FEATURES): NavGroup[] {
   if (!operator) return [{ items: [...CUSTOMER_RAIL] }];
   const keep = (item: NavItem) => !RAIL_HIDDEN_KEYS.includes(item.key) && navShown(item.key, features);

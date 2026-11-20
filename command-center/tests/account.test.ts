@@ -35,8 +35,8 @@ const { youtubeAccounts } = await import("@/lib/connectedAccounts");
 const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.items.map((i) => i.key));
 
 describe("nav filtering by role", () => {
-  it("gives a customer exactly six destinations, in rail order", () => {
-    expect(keys(false)).toEqual(["home", "studio", "trends", "channels", "credits", "settings"]);
+  it("gives a customer exactly five destinations, in rail order", () => {
+    expect(keys(false)).toEqual(["home", "studio", "channels", "credits", "settings"]);
   });
 
   it("puts every customer screen behind a rail entry or its tabs", () => {

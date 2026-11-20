@@ -9,7 +9,7 @@ import {
   templateMediaUrl,
   toDto,
 } from "@/lib/templates/trends";
-import { CUSTOMER_RAIL, CUSTOMER_SECTIONS, CUSTOMER_SIDEBAR } from "@/lib/navigation";
+import { CUSTOMER_SECTIONS } from "@/lib/navigation";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
@@ -105,9 +105,8 @@ describe("the list query", () => {
 });
 
 describe("the Trends entry", () => {
-  it("is on the customer rail and sidebar and a customer may open it", () => {
-    expect(CUSTOMER_RAIL.some((i) => i.key === "trends")).toBe(true);
-    expect(CUSTOMER_SIDEBAR.work.some((i) => i.key === "trends")).toBe(true);
+  // The rail and sidebar entries arrive with the Create stream's new rail (#816); here a customer may open the page.
+  it("is a section a customer may open", () => {
     expect(CUSTOMER_SECTIONS).toContain("trends");
   });
 

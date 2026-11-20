@@ -151,12 +151,12 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Home, Nightshift Studio, Trends, the Inbox and Channels, and the account foot: no wall of tools", () => {
+  it("shows Home, Nightshift Studio, the Inbox and Channels, and the account foot: no wall of tools", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.studio, en.nav.trends, en.nav.inbox, en.nav.channels]);
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/chronos/home", "/chronos/studio", "/chronos/trends", "/chronos/inbox", "/chronos/channels"]);
+    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.studio, en.nav.inbox, en.nav.channels]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/chronos/home", "/chronos/studio", "/chronos/inbox", "/chronos/channels"]);
     // The desks and the per-screen rows are nodes on the Studio canvas now (components/studio-canvas).
     expect(within(nav).queryByRole("heading", { name: en.shell.gCreate })).toBeNull();
     for (const d of DESKS) expect(within(nav).queryByRole("link", { name: en.desk.names[d] })).toBeNull();

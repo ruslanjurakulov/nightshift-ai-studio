@@ -1,4 +1,3 @@
-import { TrendsStrip } from "@/components/trends/TrendsStrip";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { createClient, getUser } from "@/lib/supabase/server";
@@ -135,10 +134,6 @@ export default async function HomePage() {
         allPrivate={connected.length > 0 && connected.every((c) => !c.autoPublish)}
         assistant={{ models, canRun: atLeast(role, "admin"), runConfigured: isRunNowConfigured }}
       />
-      {/* Trends (0181): the first six templates, from the same /api/templates read as the gallery. */}
-      <div className="mx-auto mt-8 w-full max-w-6xl px-4 sm:px-6">
-        <TrendsStrip />
-      </div>
     </>
   );
 }
