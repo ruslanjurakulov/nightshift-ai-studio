@@ -71,6 +71,8 @@
 .oa-badge[data-tone="warn"] { color: #ffd23f; border-color: rgba(255, 210, 63, 0.35); }
 
 .oa-card { background: var(--oa-surface); border: 1px solid var(--oa-rule); border-radius: 14px; padding: 14px; min-width: 0; display: grid; gap: 10px; }
+/* A card is a grid: without this a child with an unwrappable table header widens the card past a phone screen. */
+.oa-card > * { min-width: 0; }
 .oa-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .oa-cols { display: grid; gap: 16px; }
 @media (min-width: 1024px) { .oa-cols { grid-template-columns: 1fr 1fr; } }

@@ -1,6 +1,7 @@
 import { CardHead, HubFrame, HubState, hubContext } from "@/components/owner-analytics/HubFrame";
 import { DataTable } from "@/components/owner-analytics/DataTable";
 import { RunwayVolume } from "@/components/owner-analytics/RunwayVolume";
+import { RetryButton } from "@/components/owner-analytics/Controls";
 import { readRunway } from "@/lib/server/owner-runway";
 import { providerRunways } from "@/lib/owner-analytics/runway";
 import { runwayModelsTable, runwayProvidersTable } from "@/lib/owner-analytics/runway-tables";
@@ -27,30 +28,39 @@ export default async function OwnerAnalyticsRunway({ searchParams }: { searchPar
   const money$ = (n: number) => usd(n, locale);
   const days = (n: number) => num(n, locale, 1);
   const n$ = (n: number) => int(n, locale);
-  const empty = rows.filter((r) => r.status === "empty").length;
-  const low = rows.filter((r) => r.status === "low").length;
+  const empty = rows.filter((r) => r.status === "empty").map((r) => r.name);
+  const low = rows.filter((r) => r.status === "low").map((r) => r.name);
   const anyRead = !(data.topupsUnread && data.balancesUnread && data.studioUnread && data.probesUnread && data.pipelineUnread);
   if (!anyRead) return <HubState state="error" ctx={ctx} />;
 
   return (
     <HubFrame ctx={ctx} section="runway">
       <p className="oa-note">{fill(d.runwayAsOf, { when: tashkentDateTime(new Date(nowMs).toISOString()) })} · {d.runwayMethod}</p>
-      {empty > 0 && (
+      <p className="oa-note">{d.runwayFromNow}</p>
+      {empty.length > 0 && (
         <p className="oa-note" data-tone="warn" role="status">
-          {fill(d.runwayEmptyNote, { n: n$(empty) })}
+          {fill(d.runwayEmptyNote, { names: empty.join(", ") })}
         </p>
       )}
-      {low > 0 && (
+      {low.length > 0 && (
         <p className="oa-note" data-tone="warn" role="status">
-          {fill(d.runwayLowNote, { n: n$(low) })}
+          {fill(d.runwayLowNote, { names: low.join(", ") })}
         </p>
       )}
       {(data.topupsUnread || data.balancesUnread || data.studioUnread || data.probesUnread || data.pipelineUnread || data.settings === null) && (
-        <p className="oa-note" data-tone="warn">{d.readFailed}</p>
+        <div className="oa-note" data-tone="warn" role="status">
+          {d.runwayPartialRead} <RetryButton label={d.retry} />
+        </div>
       )}
-      {data.activity.missing && <p className="oa-note" data-tone="warn">{d.runwayNotEnabled}</p>}
+      {data.activity.missing && (
+        <p className="oa-note" data-tone="warn" role="status">
+          {d.runwayNotEnabled}
+        </p>
+      )}
       {(data.activityUnread || data.registry === null) && !data.activity.missing && (
-        <p className="oa-note" data-tone="warn">{d.runwayEmptyUnchecked}</p>
+        <p className="oa-note" data-tone="warn" role="status">
+          {d.runwayEmptyUncheckedNote}
+        </p>
       )}
       {data.lastSyncMs !== null && <p className="oa-note">{fill(d.runwayPipelineAsOf, { when: tashkentDateTime(new Date(data.lastSyncMs).toISOString()) })}</p>}
       {data.horizonCapped && <p className="oa-note" data-tone="warn">{d.runwayHorizon}</p>}
@@ -79,7 +89,7 @@ export default async function OwnerAnalyticsRunway({ searchParams }: { searchPar
           table={runwayModelsTable(d, rows, nowMs, ctx.present)}
           id="oa-runway-models"
           unknownText={d.unknown}
-          emptyText={d.noData}
+          emptyText={d.runwayNoModels}
           format={[undefined, undefined, n$, n$, (n) => num(n, locale, 2), undefined, n$, money$, undefined, undefined, undefined]}
         />
       </section>
