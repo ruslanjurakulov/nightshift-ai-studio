@@ -23,7 +23,11 @@ export interface VolumeRow {
 export function RunwayVolume({ rows }: { rows: VolumeRow[] }) {
   const { t, locale } = useI18n();
   const d = t.ownerAnalytics;
-  const [share, setShare] = useState(100);
+  // Kept as typed: a cleared field is "no value yet", not 0 % (which would read "not at this pace" everywhere).
+  const [text, setText] = useState("100");
+  const parsed = text.trim() === "" ? null : Number(text);
+  const valid = parsed !== null && Number.isFinite(parsed) && parsed >= 0 && parsed <= 1000;
+  const share = valid ? parsed : null;
   const id = useId();
   return (
     <div>
@@ -35,13 +39,20 @@ export function RunwayVolume({ rows }: { rows: VolumeRow[] }) {
             type="number"
             min={0}
             max={1000}
-            step={10}
-            value={share}
-            onChange={(e) => setShare(Math.max(0, Math.min(1000, Number(e.target.value) || 0)))}
+            step={1}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
             inputMode="numeric"
+            aria-invalid={!valid || undefined}
           />
         </label>
       </div>
+      {!valid && (
+        <p className="oa-note" data-tone="warn" role="status">
+          {d.runwayVolumeInvalid}
+        </p>
+      )}
+      <p className="oa-note">{d.runwayVolumeNote}</p>
       <div className="oa-table-wrap">
         <table>
           <thead>
@@ -54,7 +65,7 @@ export function RunwayVolume({ rows }: { rows: VolumeRow[] }) {
           </thead>
           <tbody>
             {rows.map((r) => {
-              const v = r.empty ? null : runsOutAt(r.left, r.perDay7d, share / 100);
+              const v = r.empty || share === null ? null : runsOutAt(r.left, r.perDay7d, share / 100);
               return (
                 <tr key={r.id}>
                   <th scope="row">{r.name}</th>

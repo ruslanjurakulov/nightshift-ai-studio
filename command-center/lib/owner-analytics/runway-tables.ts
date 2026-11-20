@@ -13,6 +13,22 @@ type D = Dictionary["ownerAnalytics"];
 const r2 = (n: number | null) => (n === null ? null : Math.round(n * 100) / 100);
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
+/** The machine's words for a unit and an outcome, in the reader's language; an unlisted one is shown as stored. */
+export function unitText(d: D, unit: string): string {
+  const u: Record<string, string> = {
+    credits: d.unitCredits, usd: d.usd, tokens: d.unitTokens, second: d.unitSeconds, seconds: d.unitSeconds, image: d.unitImages,
+    images: d.unitImages, character: d.unitCharacters, characters: d.unitCharacters, tts_characters: d.unitCharacters, request: d.unitRequests,
+  };
+  return u[unit.toLowerCase()] ?? unit;
+}
+export function outcomeText(d: D, s: string): string {
+  const o: Record<string, string> = {
+    completed: d.outcomeCompleted, failed: d.outcomeFailed, cancelled: d.outcomeCancelled, expired: d.outcomeExpired,
+    probe_ok: d.outcomeProbeOk, probe_failed: d.outcomeProbeFailed,
+  };
+  return o[s] ?? s;
+}
+
 export const statusText = (d: D, s: RunwayStatus) =>
   s === "empty" ? d.runwayEmpty : s === "low" ? d.runwayLow : s === "ok" ? d.runwayOk : d.unknown;
 
@@ -24,7 +40,7 @@ export function daysText(d: D, v: number | "never" | null): string | number | nu
 export function leftBasis(d: D, r: ProviderRunway): string {
   const rem = r.ledger.remaining;
   if (rem.kind === "reported") {
-    const reading = `${Math.round(rem.amount * 100) / 100} ${rem.unit}`;
+    const reading = `${(Math.round(rem.amount * 100) / 100).toLocaleString("en-US")} ${unitText(d, rem.unit)}`;
     return `${fill(d.runwayReported, { when: tashkentDateTime(rem.checkedAt) })}: ${reading}${r.nativeRunway ? ` · ${d.runwayNativeNote}` : ""}`;
   }
   if (rem.kind === "estimate") {
@@ -37,7 +53,7 @@ export function leftBasis(d: D, r: ProviderRunway): string {
     : why === "negative"
       ? d.runwayNegative
       : why === "unread"
-        ? d.readFailed
+        ? d.runwayUnread
         : d.runwayUsedUnknown;
 }
 
@@ -93,7 +109,13 @@ export function runwayProvidersTable(d: D, rows: ProviderRunway[], asOf: number,
       r2(r.burn7d),
       // An empty provider has run out already, whatever an estimate of what is left says.
       r.status === "empty" ? d.runwayEmpty : daysText(d, r.runsOut),
-      r.status === "empty" ? d.runwayEmpty : r.runsOutRange ? `${daysText(d, r.runsOutRange[0])} – ${daysText(d, r.runsOutRange[1])}` : null,
+      r.status === "empty"
+        ? d.runwayEmpty
+        : r.runsOutRange
+          ? r.runsOutRange[0] === r.runsOutRange[1]
+            ? daysText(d, r.runsOutRange[0])
+            : `${daysText(d, r.runsOutRange[0])} – ${daysText(d, r.runsOutRange[1])}`
+          : null,
       notes(d, r),
     ]),
   };
@@ -123,12 +145,12 @@ export function runwayModelsTable(d: D, rows: ProviderRunway[], asOf: number, pr
         m.jobs1d,
         m.jobs7d,
         m.units7d === null ? null : r2(m.units7d),
-        m.unit === null ? "" : m.unitsFloor ? `${m.unit} (${d.runwayAtLeast})` : m.unit,
+        m.unit === null ? "" : m.unitsFloor ? `${unitText(d, m.unit)} (${d.runwayAtLeast})` : unitText(d, m.unit),
         m.probes7d,
         r2(m.usd7d),
         m.usd7dPriced > 0 || m.usd7d === null ? (m.usd7dEstimate ? d.runwayIsEstimate : d.runwayBilled) : "",
         m.lastAt ? tashkentDateTime(m.lastAt) : null,
-        m.lastStatus === null ? null : m.lastErrorCode ? `${m.lastStatus}: ${m.lastErrorCode}` : m.lastStatus,
+        m.lastStatus === null ? null : m.lastErrorCode ? `${outcomeText(d, m.lastStatus)}: ${m.lastErrorCode}` : outcomeText(d, m.lastStatus),
       ]),
     ),
   };

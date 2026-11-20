@@ -33,13 +33,18 @@ export function DataTable({
     if (typeof v === "number") return format?.[i] ? format[i]!(v) : String(v);
     return v;
   };
+  // A header sits over its cells: right-aligned only over a column whose known cells are numbers.
+  const numericCol = table.columns.map((_, i) => {
+    const known = rows.map((r) => r[i]).filter((v) => v !== null && v !== "");
+    return known.length > 0 && known.every((v) => typeof v === "number");
+  });
   return (
     <div className="oa-table-wrap">
       <table id={id}>
         <thead>
           <tr>
             {table.columns.map((c, i) => (
-              <th key={i} scope="col" className={i > 0 ? "oa-num" : undefined}>
+              <th key={i} scope="col" className={i > 0 && numericCol[i] ? "oa-num" : undefined}>
                 {c}
               </th>
             ))}
