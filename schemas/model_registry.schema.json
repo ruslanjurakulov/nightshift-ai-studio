@@ -185,6 +185,7 @@
         },
         "quality_tier": {"type": "integer", "minimum": 1, "maximum": 5},
         "speed_tier": {"type": "integer", "minimum": 1, "maximum": 5},
+        "requires_adult": {"type": "boolean", "description": "The vendor's terms are 18+ (e.g. the Gemini API terms): sold only to an account with an adult attestation (requires_adult, migration placeholder 0199). Absent = false."},
         "probe": {
           "type": "object",
           "required": ["capability", "prompt"],
