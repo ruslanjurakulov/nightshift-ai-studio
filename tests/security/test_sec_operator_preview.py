@@ -116,7 +116,7 @@ def test_the_operator_in_the_exempt_organization_is_quoted_at_vendor_cost_and_to
         _make_preview(conn)
         state, q = _quote(conn, sc.operator, DEFAULT_ORG, PREVIEW)
         assert state == "ok", q
-        # 0.01 USD per image x 100 credits per USD, no margin, rounded up to the cent, floored at job_minimum like every quote.
+        # The registry's per-image USD x 100 credits per USD, no margin, rounded up to the cent, floored at job_minimum like every quote.
         assert q["preview"] is True and q["exempt"] is True and q["model"] == PREVIEW, q
         assert float(q["credits_per_unit"]) == 1.0 and q["unit"] == _unit(PREVIEW), q
         assert float(q["credits"]) == max(1.0, _minimum(conn)), q

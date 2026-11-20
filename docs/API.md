@@ -28,8 +28,8 @@ Migration: `supabase/migrations/0031_public_api.sql` (needs 0017–0030).
 
 The math. The site sells a finished video minute for about 60 credits, and a
 credit is about $0.01 retail (Starter: 1,000 credits for $10), so **~$0.60 per
-minute retail** against **~$0.20 per minute of cost**. The API charges **2×
-site retail: $1.20 per minute** (6× cost), with a $0.60 floor per video so a
+minute retail**. The API charges **2× site retail: $1.20 per minute**, with a
+$0.60 floor per video so a
 30-second Short still covers a run's fixed work. An HD download is priced by
 0030's own credit formula (`download_720p_minute` / `download_1080p_minute` /
 `download_minimum`) and converted at $0.01 per credit × 1.5 — e.g. a 3:15 video

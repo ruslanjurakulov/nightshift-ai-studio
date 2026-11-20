@@ -62,7 +62,7 @@ IDS = ("vidu-q3-pro", "vidu-q3-turbo", "vidu-q3-pro-fast", "vidu-q4-preview")
 VENDOR = {"vidu-q3-pro": "viduq3-pro", "vidu-q3-turbo": "viduq3-turbo", "vidu-q3-pro-fast": "viduq3-pro-fast",
           "vidu-q4-preview": "viduq4-preview"}
 T2V_PATH, I2V_PATH, END_PATH = "/ent/v2/text2video", "/ent/v2/img2video", "/ent/v2/start-end2video"
-#: credits per second on the pricing page (read 2026-10-25) -> dollars at the estimate's $0.005 per credit.
+#: credits per second on the pricing page (read 2026-10-25) -> dollars at the estimate's assumed USD per credit.
 CREDITS = {
     "vidu-q3-pro": {"540p": 9, "720p": 20, "1080p": 24},
     "vidu-q3-turbo": {"540p": 7, "720p": 12, "1080p": 13},
