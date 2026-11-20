@@ -49,12 +49,16 @@ export default async function OwnerAnalyticsRunway({ searchParams }: { searchPar
         <p className="oa-note" data-tone="warn">{d.readFailed}</p>
       )}
       {data.activity.missing && <p className="oa-note" data-tone="warn">{d.runwayNotEnabled}</p>}
+      {(data.activityUnread || data.registry === null) && !data.activity.missing && (
+        <p className="oa-note" data-tone="warn">{d.runwayEmptyUnchecked}</p>
+      )}
+      {data.lastSyncMs !== null && <p className="oa-note">{fill(d.runwayPipelineAsOf, { when: tashkentDateTime(new Date(data.lastSyncMs).toISOString()) })}</p>}
       {data.horizonCapped && <p className="oa-note" data-tone="warn">{d.runwayHorizon}</p>}
 
       <section className="oa-card">
         <CardHead title={d.runwayProviders} what="runway.providers" ctx={ctx} />
         <DataTable
-          table={runwayProvidersTable(d, rows, nowMs)}
+          table={runwayProvidersTable(d, rows, nowMs, ctx.present)}
           id="oa-runway-providers"
           unknownText={d.unknown}
           emptyText={d.runwayNoProviders}
@@ -65,18 +69,18 @@ export default async function OwnerAnalyticsRunway({ searchParams }: { searchPar
       {rows.length > 0 && (
         <section className="oa-card">
           <h2>{d.runwayAtVolume}</h2>
-          <RunwayVolume rows={rows.map((r) => ({ id: r.id, name: r.name, leftUsd: r.leftUsd, burn7d: r.burn7d }))} />
+          <RunwayVolume rows={rows.map((r) => ({ id: r.id, name: r.name, left: r.left, perDay7d: r.perDay7d, empty: r.status === "empty" }))} />
         </section>
       )}
 
       <section className="oa-card">
         <CardHead title={d.runwayModels} what="runway.models" ctx={ctx} note={d.runwayModelsNote} />
         <DataTable
-          table={runwayModelsTable(d, rows, nowMs)}
+          table={runwayModelsTable(d, rows, nowMs, ctx.present)}
           id="oa-runway-models"
           unknownText={d.unknown}
           emptyText={d.noData}
-          format={[undefined, undefined, n$, n$, (n) => num(n, locale, 2), undefined, n$, money$, undefined, undefined]}
+          format={[undefined, undefined, n$, n$, (n) => num(n, locale, 2), undefined, n$, money$, undefined, undefined, undefined]}
         />
       </section>
     </HubFrame>

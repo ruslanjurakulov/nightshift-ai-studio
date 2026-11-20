@@ -149,9 +149,29 @@ def test_model_activity_counts_every_workspace_and_says_how_the_newest_job_ended
     assert out.ok, out
     row = [r for r in out.rows if r[0] == "m-oclab"]
     assert len(row) == 1, out.rows
-    model, unit, jobs, completed, failed, quota, *_rest, last_status, last_error = row[0]
+    model, unit, jobs, completed, failed, quota, units, counted, first_at, last_at, last_status, last_error, ok_at, quota_at = row[0]
     assert (jobs, completed, failed, quota) == (4, 3, 1, 1), row
     assert (last_status, last_error) == ("failed", "quota"), row
+    assert quota_at is not None and ok_at is not None and quota_at >= ok_at, row
+
+
+def test_a_quota_refusal_hidden_by_routing_still_reaches_the_model_that_refused(conn, sc):
+    """A routed job whose first model refused for want of balance runs on the next one (0088): the job row names the second
+    model as completed, and only the platform-only route row says the first refused with 'quota'. The runway must see it."""
+    q = "select * from public.owner_analytics_model_activity(now() - interval '1 day', now() + interval '1 minute')"
+    with world(conn, sc):
+        with as_superuser(conn, commit=False) as su:
+            job = su.value("insert into public.creative_jobs (org_id, capability, requested_model, routed_model, params, status, "
+                           "quoted_credits, created_at) values (%s, 't2i', 'm-oclab', 'm-oclab-b', '{}', 'completed', 1, "
+                           "now() + interval '2 seconds') returning id", [sc.alice.org])
+            su.rows("insert into public.creative_job_routes (job_id, candidates, tried, reasons) values "
+                    "(%s, '[]', '[\"m-oclab-a\", \"m-oclab-b\"]', '[\"quota\"]') on conflict (job_id) do update "
+                    "set tried = excluded.tried, reasons = excluded.reasons returning 1", [job])
+            out = _call(conn, sc.operator, q)
+    assert out.ok, out
+    by = {r[0]: r for r in out.rows}
+    assert "m-oclab-a" in by and by["m-oclab-a"][13] is not None, out.rows  # last_quota_at for the model that refused
+    assert by["m-oclab-b"][12] is not None and by["m-oclab-b"][13] is None, out.rows  # the model that ran completed
 
 
 def test_model_activity_refuses_an_unbounded_window(conn, sc):

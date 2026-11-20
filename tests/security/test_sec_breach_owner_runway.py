@@ -77,7 +77,7 @@ def test_the_owner_gets_counts_per_model_and_nothing_that_names_a_customer(conn,
     assert out.ok, out
     names = [c[0] for c in cols]
     assert names == ["model", "unit", "jobs", "completed", "failed", "quota_failed", "units", "units_counted",
-                     "first_at", "last_at", "last_status", "last_error_code"], names
+                     "first_at", "last_at", "last_status", "last_error_code", "last_ok_at", "last_quota_at"], names
     row = [r for r in out.rows if r[0] == "m-rwlab"]
     assert len(row) == 1 and row[0][2] == 2, out.rows
     flat = repr(out.rows)

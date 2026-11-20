@@ -14,7 +14,8 @@ const studio = (daysAgo: number, usd: number | null) => ({
 });
 const act = (over: Partial<ModelActivity> = {}): ModelActivity => ({
   model: "lab-video", unit: "second", jobs: 7, completed: 7, failed: 0, quotaFailed: 0, units: 35, unitsCounted: 7,
-  firstAt: iso(NOW - 7 * DAY), lastAt: iso(NOW - 3600_000), lastStatus: "completed", lastErrorCode: null, ...over,
+  firstAt: iso(NOW - 7 * DAY), lastAt: iso(NOW - 3600_000), lastStatus: "completed", lastErrorCode: null,
+  lastOkAt: iso(NOW - 3600_000), lastQuotaAt: null, ...over,
 });
 function data(over: Partial<RunwayData> = {}): RunwayData {
   return {
@@ -23,9 +24,11 @@ function data(over: Partial<RunwayData> = {}): RunwayData {
     balances: [], balancesUnread: false, settings: [],
     // One pipeline row for another vendor: the ledger was read and holds rows, so minimax's pipeline share is a measured 0.
     pipelineRows: [{ unit: "tts_characters", quantity: 10, stage: "tts", recorded_at: iso(NOW - DAY) }], pipelineUnread: false, pipelineFromMs: NOW - 90 * DAY,
+    lastSyncMs: NOW - 3600_000,
     studioRows: [1, 2, 3, 4, 5, 6, 6.5].map((n) => studio(n - 0.5, 5)), studioUnread: false, studioFromMs: NOW - 90 * DAY,
     probeRows: [], probesUnread: false, probesFromMs: NOW - 90 * DAY,
     registry,
+    activityUnread: false,
     activity: { all: [act()], d7: [act()], d1: [act({ jobs: 1 })], missing: false },
     ...over,
   };
@@ -45,7 +48,7 @@ describe("provider runway", () => {
   });
 
   it("is EMPTY when the newest job was refused for want of balance, whatever the estimate says", () => {
-    const r = minimax(data({ activity: { all: [act({ lastStatus: "failed", lastErrorCode: "quota" })], d7: [act()], d1: [act()], missing: false } }));
+    const r = minimax(data({ activity: { all: [act({ lastStatus: "failed", lastErrorCode: "quota", lastQuotaAt: iso(NOW - 60_000) })], d7: [act()], d1: [act()], missing: false } }));
     expect(r.status).toBe("empty");
     expect(r.quotaAt).not.toBeNull();
   });
@@ -78,6 +81,39 @@ describe("provider runway", () => {
     x.studioRows = [...x.studioRows, studio(30, 5)];
     expect(minimax(x).beforeTrackingUnknown).toBe(true);
     expect(minimax(data()).beforeTrackingUnknown).toBe(false);
+  });
+
+  it("sees a refusal that routing hid: the model that refused has only a quota time, and it is newer than any completion", () => {
+    const refusedOnly = act({ model: "lab-video", jobs: 0, completed: 0, lastAt: null, lastStatus: null, lastOkAt: iso(NOW - 5 * DAY), lastQuotaAt: iso(NOW - 600_000) });
+    expect(minimax(data({ activity: { all: [refusedOnly], d7: [], d1: [], missing: false } })).status).toBe("empty");
+    // A completion after the refusal means the balance was topped up again: not empty.
+    const later = act({ lastOkAt: iso(NOW - 60_000), lastQuotaAt: iso(NOW - 600_000) });
+    expect(minimax(data({ activity: { all: [later], d7: [later], d1: [later], missing: false } })).status).not.toBe("empty");
+  });
+
+  it("never says ok when the empty check could not run", () => {
+    const r = minimax(data({ activityUnread: true, activity: { all: null, d7: null, d1: null, missing: false } }));
+    expect(r.status).toBe("unknown");
+    expect(r.emptyUnchecked).toBe(true);
+  });
+
+  it("counts an ElevenLabs reading in credits against the pipeline's characters, as Billing does", () => {
+    const tts = Array.from({ length: 7 }, (_, i) => ({ unit: "tts_characters", quantity: 1000, stage: "tts", recorded_at: iso(NOW - (i + 0.5) * DAY) }));
+    const x = data({
+      topups: [],
+      pipelineRows: tts,
+      balances: [{ provider: "elevenlabs", metric: "credits", remaining: 50000, total: null, unit: "credits", tier: null, resets_at: null, source: "api", checked_at: iso(NOW - 3600_000) }],
+    });
+    const r = providerRunways(x).find((p) => p.id === "elevenlabs")!;
+    expect(r.nativeRunway).toBe(true);
+    expect(r.leftNative).toEqual({ amount: 50000, unit: "credits" });
+    expect(r.runsOut).toBeCloseTo(50);
+  });
+
+  it("does not read a window the nightly mirror has not written as a measured $0", () => {
+    const r = minimax(data({ lastSyncMs: NOW - 2 * DAY }));
+    expect(r.usd24h).toBeNull();
+    expect(r.pipelineStale).toBe(true);
   });
 
   it("re-runs the runway at an expected volume", () => {

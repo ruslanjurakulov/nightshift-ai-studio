@@ -275,4 +275,10 @@ export const ownerAnalyticsRu: OwnerAnalyticsDictionary = {
   runwayNotEnabled: "Число задач по моделям требует миграции 0183; расходы и балансы показаны без него.",
   runwayNoProviders: "Ни у одного платного провайдера ещё нет пополнения, баланса или задачи.",
   runwayHorizon: "Пополнение старше 180 дней: зависящие от него балансы неизвестны.",
+  runwayNativeNote: "считается в единицах провайдера по расходу пайплайна, как на Billing",
+  runwayPipelineStale: "расходы пайплайна за это окно ещё не перенесены",
+  runwayEmptyUnchecked: "не удалось проверить, отказывает ли провайдер из-за нехватки баланса",
+  runwayPipelineAsOf: "Расходы пайплайна на момент последнего ночного переноса: {when}.",
+  runwaySpendBasis: "Расход —",
+  runwayBilled: "счёт поставщика",
 };

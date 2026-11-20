@@ -14,8 +14,10 @@ import { runsOutAt } from "@/lib/owner-analytics/runway";
 export interface VolumeRow {
   id: string;
   name: string;
-  leftUsd: number | null;
-  burn7d: number | null;
+  /** Left and the 7-day pace in one unit (USD, or the provider's own unit). */
+  left: number | null;
+  perDay7d: number | null;
+  empty: boolean;
 }
 
 export function RunwayVolume({ rows }: { rows: VolumeRow[] }) {
@@ -52,11 +54,11 @@ export function RunwayVolume({ rows }: { rows: VolumeRow[] }) {
           </thead>
           <tbody>
             {rows.map((r) => {
-              const v = runsOutAt(r.leftUsd, r.burn7d, share / 100);
+              const v = r.empty ? null : runsOutAt(r.left, r.perDay7d, share / 100);
               return (
                 <tr key={r.id}>
                   <th scope="row">{r.name}</th>
-                  <td className="oa-num">{v === null ? <span className="oa-dim">{d.unknown}</span> : v === "never" ? d.runwayNeverAtPace : num(v, locale, 1)}</td>
+                  <td className="oa-num">{r.empty ? d.runwayEmpty : v === null ? <span className="oa-dim">{d.unknown}</span> : v === "never" ? d.runwayNeverAtPace : num(v, locale, 1)}</td>
                 </tr>
               );
             })}
