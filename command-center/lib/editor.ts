@@ -3050,6 +3050,9 @@ export interface EditorAsset {
   height: number | null;
   viewUrl: string | null;
   thumbUrl: string | null;
+  /** A separate preview copy exists (a video's proxy). `viewUrl` cannot say it: with no proxy it points at the original.
+   *  Absent in an older answer, where `viewUrl` is all there is. */
+  preview?: boolean;
 }
 
 /** The frame for a first video: its own orientation, at the editor's rate. */

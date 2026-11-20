@@ -21,7 +21,7 @@ Each entry has `terms_gate: terms_review_required`, so `sellable_models()` (migr
 - end-user duties (age, verification, acceptable-use flow-down), AI-content labelling, attribution;
 - whether the owner's country and account may use the Imagine API ("model access might vary ... geographical location", pricing page).
 
-Only secondary text exists: a search listing shows the Enterprise Terms of Service were last updated 2026-05-12, and snippets of EARLIER versions say the customer owns Output and may not present it as human-made. That is not the current text and it is silent on resale. The documentation that could be read says: inputs and outputs are stored 30 days for abuse audit and not used for training without permission (`docs.x.ai/developers/faq/security`); a request deemed to violate the usage guidelines is still charged, plus a $0.05 fee when caught before generation in the Responses API (`docs.x.ai/developers/pricing`).
+Only secondary text exists: a search listing shows the Enterprise Terms of Service were last updated 2026-05-12, and snippets of EARLIER versions say the customer owns Output and may not present it as human-made. That is not the current text and it is silent on resale. The documentation that could be read says: inputs and outputs are stored 30 days for abuse audit and not used for training without permission (`docs.x.ai/developers/faq/security`); a request deemed to violate the usage guidelines is still charged, plus a fee when caught before generation in the Responses API (`docs.x.ai/developers/pricing`).
 
 A person must read the Enterprise Terms (and the Data Processing Addendum, which the FAQ points to) before the gate is cleared. Not legal advice.
 
@@ -39,11 +39,11 @@ Sources (all `docs.x.ai`, as markdown): `/developers/model-capabilities/video/{g
 
 ## Prices (all ESTIMATES, `confirmed: false`)
 
-`docs.x.ai/developers/models` and `/developers/pricing`, 2026-10-24: 1.5 $0.080/s, 1.5 Lite $0.020/s, image 2.0 $0.04 per image. The overview page says "From $0.08 / sec" and "both duration and resolution affect the total cost" but prints one figure per model, so it is taken as the 480p base and 720p / 1080p are left unpriced. Image: the migration page says `low` is $0.01 cheaper than the retired image-quality model ($0.05), so `low` = $0.04; `medium` and 2K have no stated price. Rate limits are per team and tiered; model pages show 6 requests/s (image) and 10 requests/s (video).
+`docs.x.ai/developers/models` and `/developers/pricing`, 2026-10-24: 1.5 and 1.5 Lite per second, image 2.0 per image (the figures are on the vendor pricing page; the prices themselves live in the model registry, not in prose). The overview page says "From" one figure per second and "both duration and resolution affect the total cost" but prints one figure per model, so it is taken as the 480p base and 720p / 1080p are left unpriced. Image: the migration page prices `low` against the retired image-quality model, which gives the `low` figure; `medium` and 2K have no stated price. Rate limits are per team and tiered; model pages show 6 requests/s (image) and 10 requests/s (video).
 
 ## To enable one (owner)
 
 1. Read the xAI Enterprise Terms and decide whether a credits-based creative platform is allowed; if needed, ask xAI sales (`sales@x.ai`, named in the docs FAQ) in writing.
 2. Create a team API key in the xAI console, set the `XAI_API_KEY` repository secret (never in chat), set a spend cap.
-3. `python tools/probe_models.py --dry-run --model grok-imagine-video-1.5-lite`, then the real probe (`--all`, and the probe workflow with an empty model input, skips every gated model including these three: name it with `--model` to probe it) (about $0.04 for Lite, $0.16 for 1.5, $0.04 for the image).
+3. `python tools/probe_models.py --dry-run --model grok-imagine-video-1.5-lite`, then the real probe (`--all`, and the probe workflow with an empty model input, skips every gated model including these three: name it with `--model` to probe it) (each at the registry's price for the probe's length and size).
 4. Re-check the prices on the vendor's pages, set `confirmed: true`, add the `credit_prices` rows, clear `terms_gate` in a reviewed change. The video entries pin `default_resolution` 480p (the vendor default and the price base); the database only prices a video by resolution when that is set, and the adapter refuses a job that names none.

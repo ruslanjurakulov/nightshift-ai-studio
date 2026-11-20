@@ -25,7 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
  * a session that the middleware sends here is, by the same rule, one this page
  * shows the form to.
  *
- * - Signed out: /login.
+ * - Signed out: /login, carrying only a validated internal continuation.
  * - `NIGHTSHIFT_ADMIN_MFA=off` (break-glass): no code is asked anywhere.
  * - Already aal2, or no verified factor (so no code exists): on to `next`.
  * - Otherwise the code form. If the state cannot be read the form is shown too:
@@ -33,10 +33,11 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function VerifyPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next: rawNext } = await searchParams;
-  const next = safeLoginReturn(rawNext ?? null, "/command-center");
+  const continuation = safeLoginReturn(rawNext ?? null, "");
+  const next = continuation || "/command-center";
   if (!isSupabaseConfigured) redirect("/login");
   const user = await getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(continuation ? `/login?next=${encodeURIComponent(continuation)}` : "/login");
   if (adminMfaMode() === "off") redirect(next);
   const state = await readMfaState(user);
   if (state && (!state.hasVerifiedFactor || normalizeAal(state.aal) === "aal2")) redirect(next);
