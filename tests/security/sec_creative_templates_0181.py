@@ -19,15 +19,12 @@ DRAFT_SLUG = "lab-draft"
 
 
 def extend(tables: dict, functions: dict) -> None:
-    from sec_expectations import USER, Public
+    from sec_expectations import Public
 
     tables.update({
         # Published rows: anon and signed in read them; nobody but the service key writes (no insert/update/delete grant).
+        # Media are static app files (lib/templates/media-manifest.json): 0181 adds no bucket and no function.
         "creative_templates": Public(anon=True),
-    })
-    functions.update({
-        # Signed in reaches it; owner_guard refuses everyone but a platform owner/admin (42501). Not anon, not the service key.
-        "set_creative_template_media": USER,
     })
 
 

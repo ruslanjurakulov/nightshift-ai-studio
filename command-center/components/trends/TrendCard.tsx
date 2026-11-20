@@ -57,7 +57,7 @@ export function TrendCard({ template, reduced, canHover }: { template: TemplateD
     <article className="tr-card" data-template={template.slug} data-kind={template.kind} data-model-status={template.model_status} {...hoverHandlers}>
       <div className="tr-media" data-aspect={template.aspect}>
         {template.poster_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a public bucket object; next/image would need a remote pattern for it.
+          // eslint-disable-next-line @next/next/no-img-element -- a static poster under /public/templates, already sized; nothing for next/image to do.
           <img src={template.poster_url} alt="" loading="lazy" decoding="async" className="tr-poster" />
         ) : (
           <div className="tr-placeholder" aria-hidden>

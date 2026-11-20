@@ -31,7 +31,7 @@ vi.mock("@/lib/supabase/server", () => ({
     rpc: async (_fn: string, args: { p_capability: string }) => s.sellable[args.p_capability] ?? { data: [], error: null },
   }),
 }));
-vi.mock("@/lib/config", () => ({ SUPABASE_URL: "https://proj.supabase.co" }));
+vi.mock("@/lib/templates/media-manifest.json", () => ({ default: { "food-reveal": { preview: true, poster: false } } }));
 
 const { loadTemplates, statusCode } = await import("@/lib/templates/server");
 
@@ -47,8 +47,6 @@ const row = {
   duration_s: 5,
   quality: "768p",
   director: {},
-  preview_asset_path: "food-reveal/preview.mp4",
-  poster_path: null,
   sort: 1,
 };
 
@@ -98,9 +96,8 @@ describe("loadTemplates", () => {
     s.sellable = { t2v: { data: [sold("minimax-h3", "t2v")], error: null }, t2i: { data: [], error: null } };
     const out = await loadTemplates({ locale: "en" });
     expect(out.templates[0]).toMatchObject({ model_available: true, model_status: "available" });
-    expect(out.templates[0].preview_url).toBe(
-      "https://proj.supabase.co/storage/v1/object/public/template-media/food-reveal/preview.mp4",
-    );
+    expect(out.templates[0].preview_url).toBe("/templates/food-reveal/preview.mp4");
+    expect(out.templates[0].poster_url).toBeUndefined();
   });
 
   it("is a measured unavailable when the registry answered without it", async () => {

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -26,13 +26,12 @@ const row = (over: Record<string, unknown> = {}) => ({
   duration_s: 5,
   quality: "768p",
   director: { camera: "pull back" },
-  preview_asset_path: null,
-  poster_path: null,
   sort: 80,
   ...over,
 });
 
-const SB = "https://proj.supabase.co";
+const NONE = {};
+const BOTH = { "food-reveal": { preview: true, poster: true } };
 
 describe("trend template rows", () => {
   it("drops a row missing a translation instead of drawing a blank card", () => {
@@ -44,19 +43,13 @@ describe("trend template rows", () => {
     expect(coerceTemplateRows([row({ kind: "image", duration_s: 5 })])).toEqual([]);
   });
 
-  it("never turns a media path that leaves our bucket into a URL", () => {
-    for (const p of ["https://evil.example/x.mp4", "../x.mp4", "a/../../x.mp4", "/x.mp4", "x.html"]) {
-      const [r] = coerceTemplateRows([row({ preview_asset_path: p })]);
-      expect(r.previewPath, p).toBeNull();
-      expect(toDto(r, "en", null, SB).preview_url, p).toBeUndefined();
-    }
-  });
-
-  it("builds a public URL in the template bucket only", () => {
-    expect(templateMediaUrl(SB, "food-reveal/preview.mp4")).toBe(
-      "https://proj.supabase.co/storage/v1/object/public/template-media/food-reveal/preview.mp4",
-    );
-    expect(templateMediaUrl("", "food-reveal/preview.mp4")).toBeNull();
+  it("names a media file only when the manifest says it ships, and only under /templates", () => {
+    const [r] = coerceTemplateRows([row()]);
+    expect(toDto(r, "en", null, NONE).preview_url).toBeUndefined();
+    const dto = toDto(r, "en", null, BOTH);
+    expect(dto.preview_url).toBe("/templates/food-reveal/preview.mp4");
+    expect(dto.poster_url).toBe("/templates/food-reveal/poster.webp");
+    expect(templateMediaUrl(BOTH, "../etc", "preview")).toBeNull();
   });
 
   it("lists each placeholder once, in order", () => {
@@ -72,21 +65,21 @@ describe("trend template rows", () => {
 describe("model availability", () => {
   const [r] = coerceTemplateRows([row()]);
   it("is true only when the registry sells that model for the template's tool", () => {
-    const dto = toDto(r, "ru", { t2v: new Set(["minimax-h3"]), t2i: new Set() }, SB);
+    const dto = toDto(r, "ru", { t2v: new Set(["minimax-h3"]), t2i: new Set() }, NONE);
     expect(dto.model_available).toBe(true);
     expect(dto.model_status).toBe("available");
     expect(dto.title).toBe("Подача блюда");
   });
 
   it("is a measured false when the model is not on sale — and no other model is named", () => {
-    const dto = toDto(r, "en", { t2v: new Set(["minimax-h3-lite"]), t2i: new Set(["minimax-h3"]) }, SB);
+    const dto = toDto(r, "en", { t2v: new Set(["minimax-h3-lite"]), t2i: new Set(["minimax-h3"]) }, NONE);
     expect(dto.model_available).toBe(false);
     expect(dto.model_status).toBe("unavailable");
     expect(dto.model_id).toBe("minimax-h3");
   });
 
   it("reads unknown, never available, when the registry could not answer", () => {
-    const dto = toDto(r, "uz", null, SB);
+    const dto = toDto(r, "uz", null, NONE);
     expect(dto.model_available).toBe(false);
     expect(dto.model_status).toBe("unknown");
   });
@@ -123,6 +116,22 @@ describe("the Trends entry", () => {
     expect(keys(ru.trends)).toEqual(keys(en.trends));
     expect(keys(uz.trends)).toEqual(keys(en.trends));
     expect(uz.nav.trends).toBe("Trendlar");
+  });
+});
+
+describe("the media manifest", () => {
+  const manifest = JSON.parse(readFileSync(join(__dirname, "../lib/templates/media-manifest.json"), "utf8")) as Record<
+    string,
+    { preview?: boolean; poster?: boolean }
+  >;
+  it("claims a file only when the file is committed under public/templates", () => {
+    for (const [slug, m] of Object.entries(manifest)) {
+      for (const [key, file] of [["preview", "preview.mp4"], ["poster", "poster.webp"]] as const) {
+        const there = existsSync(join(__dirname, "../public/templates", slug, file));
+        if (m[key]) expect(there, `${slug}/${file} is in the manifest but not in public/`).toBe(true);
+        else expect(there, `${slug}/${file} ships but the manifest hides it`).toBe(false);
+      }
+    }
   });
 });
 

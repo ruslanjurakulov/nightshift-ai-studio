@@ -5,20 +5,16 @@
 -- Picking one fills the Create screen and stops there; the price is the quote route's, the spend is the job start's, exactly as
 -- for anything typed by hand (CLAUDE.md rule 3: nothing in a browser spends).
 --
--- WHAT IT ADDS (one table, one storage bucket, one owner function, the seed; it replaces nothing and alters no existing table)
---   creative_templates               one row per template. Anyone (anon and signed in) reads the PUBLISHED rows; nobody but the
---                                    service key and the function below writes. model_id references model_registry: a template
---                                    names the model it was written for, and whether that model is on sale RIGHT NOW is never
---                                    stored here — /api/templates asks sellable_models() per request, and never names a
---                                    substitute (rule 4).
---   template-media (bucket)          public read, writes by the service key only (no storage policy grants an API role a write).
---                                    preview_asset_path / poster_path are paths inside it. Until Studio has made a template's
---                                    preview, both are NULL and the card draws its designed poster state: no stock or
---                                    third-party picture is ever used in its place.
---   set_creative_template_media()    a platform owner/admin (owner_guard, 0107: second factor, rate limit) or the SQL editor sets a
---                                    template's preview, poster and published switch, and one security_events row records a
---                                    change. A NULL path keeps the stored one ('' clears it), so unpublishing never loses the
---                                    media; a call that changes nothing writes nothing.
+-- WHAT IT ADDS (one table and the seed; it replaces nothing and alters no existing table)
+--   creative_templates               one row per template. Anyone (anon and signed in) reads the PUBLISHED rows; only the service
+--                                    key (and the SQL editor) writes. model_id references model_registry: a template names the
+--                                    model it was written for, and whether that model is on sale RIGHT NOW is never stored here —
+--                                    /api/templates asks sellable_models() per request, and never names a substitute (rule 4).
+--
+-- MEDIA. A template's preview clip and poster are static files shipped with the app (command-center/public/templates/<slug>/),
+-- listed in a committed manifest (command-center/lib/templates/media-manifest.json). Nothing about media is stored here: no
+-- bucket, no upload path, no write a browser could reach. Until Studio has made a template's preview the card draws its designed
+-- poster state; no stock or third-party picture is ever used in its place.
 --
 -- HONEST DEGRADATION. Without this migration /api/templates answers 503 "not_enabled" and the Trends page says so; it never
 -- renders an empty gallery that reads as "there are no templates".
@@ -47,8 +43,6 @@ create table if not exists public.creative_templates (
   duration_s          integer,
   quality             text,
   director            jsonb not null default '{}'::jsonb,
-  preview_asset_path  text,
-  poster_path         text,
   sort                integer not null default 100,
   published           boolean not null default false,
   created_at          timestamptz not null default now(),
@@ -56,7 +50,7 @@ create table if not exists public.creative_templates (
 );
 
 comment on table public.creative_templates is
-  'Trend templates (0181): ready formats for the Trends gallery. Anyone reads a published row; only the service key and set_creative_template_media() write. Whether model_id is on sale is asked of sellable_models() per request, never stored here.';
+  'Trend templates (0181): ready formats for the Trends gallery. Anyone reads a published row; only the service key writes. Media are static app files (lib/templates/media-manifest.json). Whether model_id is on sale is asked of sellable_models() per request, never stored here.';
 
 -- A slug is a URL segment (/api/templates/<slug>, ?template=<slug>): lower-case words joined by hyphens, at least two words.
 -- The hyphen is required on purpose: the Studio's own starter ids share ?template= and are written with underscores
@@ -110,14 +104,6 @@ alter table public.creative_templates drop constraint if exists creative_templat
 alter table public.creative_templates add constraint creative_templates_director_check
   check (jsonb_typeof(director) = 'object' and pg_column_size(director) <= 4096);
 
--- A path inside the template-media bucket: no scheme, no host, no "..", so the API can only ever build a URL to our own bucket.
-alter table public.creative_templates drop constraint if exists creative_templates_media_path_check;
-alter table public.creative_templates add constraint creative_templates_media_path_check
-  check ((preview_asset_path is null or (preview_asset_path ~ '^[a-z0-9][a-z0-9_/-]{0,150}\.(mp4|webm)$'
-                                          and position('..' in preview_asset_path) = 0 and position('//' in preview_asset_path) = 0))
-     and (poster_path is null or (poster_path ~ '^[a-z0-9][a-z0-9_/-]{0,150}\.(webp|jpg|jpeg|png)$'
-                                   and position('..' in poster_path) = 0 and position('//' in poster_path) = 0)));
-
 alter table public.creative_templates drop constraint if exists creative_templates_sort_check;
 alter table public.creative_templates add constraint creative_templates_sort_check
   check (sort between 0 and 100000);
@@ -156,87 +142,7 @@ create policy creative_templates_read on public.creative_templates
   for select to anon, authenticated using (published);
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 3. The media bucket: public read (the gallery is marketing), no API-role write
--- ───────────────────────────────────────────────────────────────────────────
-
--- 50 MB is the free tier's per-object ceiling (CLAUDE.md "Known ceilings"); a card's preview is a few seconds.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('template-media', 'template-media', true, 52428800,
-        array['video/mp4', 'video/webm', 'image/webp', 'image/jpeg', 'image/png'])
--- do nothing: re-applying this file must not undo a setting the owner later changed on the bucket.
-on conflict (id) do nothing;
-
--- No insert / update / delete policy on storage.objects for this bucket: the service key (which bypasses RLS) uploads, nobody
--- else. A public bucket is served by URL without a select policy, so none is added either.
-
--- ───────────────────────────────────────────────────────────────────────────
--- 4. The owner's one write: a template's preview, poster and published switch
--- ───────────────────────────────────────────────────────────────────────────
-
-create or replace function public.set_creative_template_media(
-  p_slug text,
-  p_published boolean,
-  p_preview_asset_path text default null,
-  p_poster_path text default null
-) returns jsonb
-  language plpgsql volatile security definer set search_path = public, pg_temp as $$
-declare
-  invoker text := case when coalesce(current_setting('role', true), 'none') = 'none' then session_user::text
-                       else current_setting('role', true) end;
-  -- The SQL editor, as an ALLOW-list (as 0164 reads it): no API claims, not an API role, a member of postgres.
-  editor  boolean := coalesce(nullif(current_setting('request.jwt.claims', true), ''), '') = ''
-                     and invoker not in ('anon', 'authenticated', 'service_role', 'authenticator')
-                     and pg_has_role(invoker::name, 'postgres', 'member');
-  g       jsonb;
-  old     public.creative_templates%rowtype;
-  -- NULL keeps what is stored, '' clears it: "unpublish" alone must not wipe a preview Studio made.
-  v_prev  text;
-  v_post  text;
-begin
-  if not editor then
-    -- Signed in and a platform owner/admin, else 42501 before anything is read; then the second factor and a rate limit.
-    g := public.owner_guard('creative_templates', 30);
-    if g is not null then
-      return g;
-    end if;
-  end if;
-  if p_slug is null or p_published is null then
-    raise exception 'set_creative_template_media takes a slug and true or false' using errcode = '22023';
-  end if;
-  select * into old from public.creative_templates t where t.slug = p_slug for update;
-  if not found then
-    return jsonb_build_object('ok', false, 'error', 'not_found');
-  end if;
-  v_prev := case when p_preview_asset_path is null then old.preview_asset_path else nullif(p_preview_asset_path, '') end;
-  v_post := case when p_poster_path is null then old.poster_path else nullif(p_poster_path, '') end;
-  if old.published = p_published and old.preview_asset_path is not distinct from v_prev
-     and old.poster_path is not distinct from v_post then
-    -- A retry or a double press: nothing to change, nothing to audit (as 0164's switch).
-    return jsonb_build_object('ok', true, 'slug', p_slug, 'published', p_published, 'changed', false);
-  end if;
-  -- The table's path CHECK refuses a bad path (23514); it is not caught, so the caller sees the refusal.
-  update public.creative_templates
-     set published = p_published, preview_asset_path = v_prev, poster_path = v_post
-   where id = old.id;
-  -- Not swallowed: a change that cannot be audited rolls back with it.
-  perform public.security_event_log('creative_template.media', 'notice', p_slug,
-    jsonb_build_object(
-      'published', jsonb_build_object('from', old.published, 'to', p_published),
-      'preview', jsonb_build_object('from', old.preview_asset_path, 'to', v_prev),
-      'poster', jsonb_build_object('from', old.poster_path, 'to', v_post),
-      'via', case when editor then 'sql_editor' else 'admin' end));
-  return jsonb_build_object('ok', true, 'slug', p_slug, 'published', p_published, 'changed', true);
-end
-$$;
-
-comment on function public.set_creative_template_media(text, boolean, text, text) is
-  'Set a trend template''s preview, poster and published switch (0181). A platform owner/admin (owner_guard: second factor, 30 calls per 10 minutes) or the SQL editor; everyone else 42501. A NULL path keeps the stored one, an empty string clears it. A change writes one security_events row (creative_template.media); a call that changes nothing writes none.';
-
-revoke all on function public.set_creative_template_media(text, boolean, text, text) from public, anon, authenticated, service_role;
-grant execute on function public.set_creative_template_media(text, boolean, text, text) to authenticated;
-
--- ───────────────────────────────────────────────────────────────────────────
--- 5. The seed: ten formats, each written for a model on sale at the time of writing
+-- 3. The seed: ten formats, each written for a model on sale at the time of writing
 -- ───────────────────────────────────────────────────────────────────────────
 -- Formats and structures only: no brand, no person, no copied script. Prompts are English in every language on purpose (the
 -- models follow English best); titles and descriptions are translated. {placeholders} are what the person fills in.

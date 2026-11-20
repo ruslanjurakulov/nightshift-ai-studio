@@ -1,9 +1,11 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { SUPABASE_URL } from "@/lib/config";
 import { readSellableModels } from "@/lib/creative/registry";
 import type { Locale } from "@/lib/i18n/core";
-import { coerceTemplateRows, toDto, type TemplateCategory, type TemplateDto } from "@/lib/templates/trends";
+import { coerceTemplateRows, toDto, type MediaManifest, type TemplateCategory, type TemplateDto } from "@/lib/templates/trends";
+import mediaManifest from "@/lib/templates/media-manifest.json";
+
+const MANIFEST: MediaManifest = mediaManifest;
 
 /**
  * The trend templates (0181), read under the caller's own session (anon or signed in) — RLS hands out published rows only, and
@@ -34,7 +36,7 @@ export async function loadTemplates(opts: {
     let q = supabase
       .from("creative_templates")
       .select(
-        "slug,title,description,category,kind,prompt_template,model_id,aspect,duration_s,quality,director,preview_asset_path,poster_path,sort",
+        "slug,title,description,category,kind,prompt_template,model_id,aspect,duration_s,quality,director,sort",
       )
       // RLS already limits an API role to published rows; asked again so a policy edit cannot show a draft.
       .eq("published", true)
@@ -58,7 +60,7 @@ export async function loadTemplates(opts: {
         sellable = { t2v: new Set(video.models.map((m) => m.id)), t2i: new Set(image.models.map((m) => m.id)) };
       }
     }
-    return { status: "ok", templates: rows.map((r) => toDto(r, opts.locale, sellable, SUPABASE_URL)) };
+    return { status: "ok", templates: rows.map((r) => toDto(r, opts.locale, sellable, MANIFEST)) };
   } catch {
     return { status: "error", templates: [] };
   }

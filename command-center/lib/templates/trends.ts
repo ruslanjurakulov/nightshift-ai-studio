@@ -21,8 +21,12 @@ export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
 export const TEMPLATE_ASPECTS = ["16:9", "9:16", "1:1"] as const;
 export type TemplateAspect = (typeof TEMPLATE_ASPECTS)[number];
 
-/** The public bucket 0181 creates; a stored path is always inside it. */
-export const TEMPLATE_MEDIA_BUCKET = "template-media";
+/**
+ * Which of a template's media files ship with the app (command-center/public/templates/<slug>/preview.mp4 and poster.webp).
+ * A committed manifest, not a filesystem check per request: tests/trends-templates.test.ts holds it and the files in step.
+ */
+export type MediaManifest = Readonly<Record<string, { preview?: boolean; poster?: boolean }>>;
+export const TEMPLATE_MEDIA_DIR = "/templates";
 
 /** Home shows this many; the gallery asks for all of them. */
 export const HOME_TEMPLATE_LIMIT = 6;
@@ -30,9 +34,6 @@ export const MAX_TEMPLATE_LIMIT = 50;
 
 /** Mirrors 0181's slug CHECK: at least one hyphen, so it is never a Studio starter id (those use underscores). */
 export const SLUG_RE = /^(?=.{3,48}$)[a-z0-9]+(-[a-z0-9]+)+$/;
-// Mirrors 0181's creative_templates_media_path_check: no scheme, no host, no "..", so a URL can only point at our bucket.
-const VIDEO_PATH_RE = /^[a-z0-9][a-z0-9_/-]{0,150}\.(mp4|webm)$/;
-const IMAGE_PATH_RE = /^[a-z0-9][a-z0-9_/-]{0,150}\.(webp|jpg|jpeg|png)$/;
 const PLACEHOLDER_RE = /\{([a-z][a-z0-9_]{0,31})\}/g;
 
 export type ModelStatus = "available" | "unavailable" | "unknown";
@@ -52,8 +53,6 @@ export interface TemplateRow {
   durationS: number | null;
   quality: string | null;
   director: Record<string, unknown> | null;
-  previewPath: string | null;
-  posterPath: string | null;
   sort: number;
 }
 
@@ -92,8 +91,8 @@ function l10n(v: unknown): L10n | null {
 }
 
 /**
- * Rows as typed templates. A malformed row is dropped, never shown half-filled: a missing translation would be a blank card,
- * a bad media path a link off our bucket (the CHECKs refuse both; this is the second lock in case one is edited).
+ * Rows as typed templates. A malformed row is dropped, never shown half-filled: a missing translation would be a blank card
+ * (the CHECKs refuse it; this is the second lock in case one is edited).
  */
 export function coerceTemplateRows(rows: unknown): TemplateRow[] {
   if (!Array.isArray(rows)) return [];
@@ -110,12 +109,6 @@ export function coerceTemplateRows(rows: unknown): TemplateRow[] {
     const duration = r.duration_s;
     if (r.kind === "video" && !(duration === 5 || duration === 10)) continue;
     if (r.kind === "image" && duration !== null && duration !== undefined) continue;
-    const preview = typeof r.preview_asset_path === "string" && VIDEO_PATH_RE.test(r.preview_asset_path) && !r.preview_asset_path.includes("//")
-      ? r.preview_asset_path
-      : null;
-    const poster = typeof r.poster_path === "string" && IMAGE_PATH_RE.test(r.poster_path) && !r.poster_path.includes("//")
-      ? r.poster_path
-      : null;
     out.push({
       slug: r.slug,
       title,
@@ -128,8 +121,6 @@ export function coerceTemplateRows(rows: unknown): TemplateRow[] {
       durationS: r.kind === "video" ? (duration as number) : null,
       quality: typeof r.quality === "string" && r.quality ? r.quality : null,
       director: isObj(r.director) && Object.keys(r.director).length > 0 ? r.director : null,
-      previewPath: preview,
-      posterPath: poster,
       sort: typeof r.sort === "number" ? r.sort : 100,
     });
   }
@@ -142,11 +133,10 @@ export function placeholdersOf(prompt: string): string[] {
   return seen;
 }
 
-/** A public object URL in the template bucket; null without a configured Supabase URL (no guessed host). */
-export function templateMediaUrl(supabaseUrl: string, path: string | null): string | null {
-  if (!path || !/^https?:\/\//.test(supabaseUrl)) return null;
-  const base = supabaseUrl.replace(/\/+$/, "");
-  return `${base}/storage/v1/object/public/${TEMPLATE_MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
+/** The app's own path for a template's media file, only when the manifest says the file ships. */
+export function templateMediaUrl(manifest: MediaManifest, slug: string, file: "preview" | "poster"): string | null {
+  if (!SLUG_RE.test(slug) || manifest[slug]?.[file] !== true) return null;
+  return `${TEMPLATE_MEDIA_DIR}/${slug}/${file === "preview" ? "preview.mp4" : "poster.webp"}`;
 }
 
 /**
@@ -165,7 +155,7 @@ export function toDto(
   row: TemplateRow,
   locale: Locale,
   sellable: { t2v: ReadonlySet<string>; t2i: ReadonlySet<string> } | null,
-  supabaseUrl: string,
+  manifest: MediaManifest,
 ): TemplateDto {
   const status: ModelStatus = sellable === null ? "unknown" : sellable[capabilityFor(row.kind)].has(row.modelId) ? "available" : "unavailable";
   const dto: TemplateDto = {
@@ -184,8 +174,8 @@ export function toDto(
     quality: row.quality,
   };
   if (row.director) dto.director = row.director;
-  const preview = templateMediaUrl(supabaseUrl, row.previewPath);
-  const poster = templateMediaUrl(supabaseUrl, row.posterPath);
+  const preview = templateMediaUrl(manifest, row.slug, "preview");
+  const poster = templateMediaUrl(manifest, row.slug, "poster");
   if (preview) dto.preview_url = preview;
   if (poster) dto.poster_url = poster;
   return dto;
