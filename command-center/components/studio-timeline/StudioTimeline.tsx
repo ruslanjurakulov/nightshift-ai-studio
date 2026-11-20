@@ -237,8 +237,8 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
   const inspectorRef = useRef<HTMLElement>(null);
   const pRef = useRef(p);
   pRef.current = p;
-  // Attached during the commit, not in a passive effect: React runs those in a later task, and a key pressed the moment the
-  // timeline appeared went to no listener and was lost.
+  // Added in the commit that draws the page (a layout effect), so a key pressed the moment it is on screen is heard: as a passive
+  // effect it could be added after that press (the CI flakes on #824).
   useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!shortcutAllowed(e.target, inspectorRef.current)) return;

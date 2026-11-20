@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { useChannelPath } from "@/lib/channels-client";
@@ -85,15 +85,18 @@ export function AssemblePanel({
   // A new version of the project is a new price: whatever was quoted is forgotten. Not while a confirmed start is waiting for
   // its answer: the panel stays "starting" with that start's key, so a second start can never be sent under a new key while
   // the first may still go through (Breach BR-803-02).
-  useEffect(() => {
-    // Only a real change of version. The effect also runs on mount, after the commit: a press can land before it (React runs
-    // passive effects in a later task), and bumping the sequence then dropped that press's own quote as stale.
+  // A layout effect, so it runs in the commit that puts the version on screen: as a passive effect it ran after a press made in
+  // the first frame, counted that press's quote as one for an older version and put the key back to "Get the price", with the
+  // request already sent (the CI flakes on #824).
+  useLayoutEffect(() => {
+    // Defence in depth (#835): the mount run, and any re-run with the same version, is a no-op whatever the effect timing, so
+    // a quote already sent for this version is never counted as stale.
     if (versionRef.current === version) return;
     versionRef.current = version;
     quoteSeq.current += 1;
     if (starter.busy) return;
     // A start that went through keeps its "Started" note: starting the project itself bumps the version.
-    setPhase((p) => (p.at === "started" ? p : { at: "idle" }));
+    setPhase((p) => (p.at === "started" || p.at === "idle" ? p : { at: "idle" }));
     setProblem(null);
   }, [version, starter]);
 
