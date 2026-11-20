@@ -18,7 +18,13 @@ vi.mock("@/components/studio/GeneratePanel", () => ({
     return <div data-testid="panel" />;
   },
 }));
-vi.mock("@/components/studio/JobFeed", () => ({ JobFeed: () => <div data-testid="feed" /> }));
+const feed = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }));
+vi.mock("@/components/studio/JobFeed", () => ({
+  JobFeed: (p: Record<string, unknown>) => {
+    feed.props = p;
+    return <div data-testid="feed" />;
+  },
+}));
 vi.mock("@/components/studio/Availability", () => ({ DeskAvailabilityNote: () => null }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/chronos/create",
@@ -113,5 +119,38 @@ describe("the Create screen", () => {
     fireEvent.click(screen.getByRole("button", { name: en.customerApp.create.director.presets.camera.wide }));
     fireEvent.click(screen.getByRole("button", { name: en.customerApp.create.director.apply }));
     expect(last().appendRequest).toMatchObject({ text: "wide establishing shot" });
+  });
+
+  it("Turn into video opens the Video form on i2v with the picture in it (the remounted form gets it in its start)", async () => {
+    const models = [...MODELS, M("kling-i2v", ["i2v"])];
+    render(wrap(<CreateScreen orgId="o1" models={models} initialKind="image" />));
+    const animate = feed.props?.onAnimate as ((id: string) => void) | undefined;
+    expect(animate).toBeTypeOf("function");
+    await act(async () => animate!("22222222-2222-4222-8222-222222222222"));
+    expect(last().desk).toBe("video");
+    expect(last().initial).toMatchObject({ capability: "i2v", sourceId: "22222222-2222-4222-8222-222222222222" });
+  });
+
+  it("offers Turn into video only when an image-to-video model is on sale", () => {
+    render(wrap(<CreateScreen orgId="o1" models={MODELS} initialKind="image" />));
+    expect(feed.props?.onAnimate).toBeUndefined();
+  });
+
+  it("carries the typed words to the next kind instead of dropping them", async () => {
+    render(wrap(<CreateScreen orgId="o1" models={MODELS} />));
+    await act(async () => (last().onDraftChange as (w: string) => void)("a red kite over the sea"));
+    fireEvent.click(screen.getByRole("tab", { name: en.customerApp.kinds.image }));
+    expect(last().initial).toMatchObject({ capability: "t2i", prompt: "a red kite over the sea" });
+  });
+
+  it("announces a finished job as ready and a failed one as returned, never the other way round", async () => {
+    const { ToastProvider } = await import("@/components/feedback/ToastProvider");
+    render(<I18nProvider locale="en"><ToastProvider><CreateScreen orgId="o1" models={MODELS} /></ToastProvider></I18nProvider>);
+    const job = (id: string, status: string) => ({ id, status, capability: "t2v" });
+    const loaded = () => feed.props?.onLoaded as (jobs: unknown[]) => void;
+    await act(async () => loaded()([job("a", "running"), job("b", "running")]));
+    await act(async () => loaded()([job("a", "completed"), job("b", "failed")]));
+    expect(screen.getByText(en.customerApp.create.done.replace("{what}", en.gen.kinds.t2v))).toBeTruthy();
+    expect(screen.getAllByText(en.customerApp.create.failed)).toHaveLength(1);
   });
 });

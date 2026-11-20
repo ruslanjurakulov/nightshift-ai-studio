@@ -46,15 +46,26 @@ export interface TrendTemplate {
   aspect: string | null;
   duration_s: number | null;
   quality: string | null;
+  /** S3 sends the director as an object ({camera, lighting, mood, pacing}); its words, joined, become prompt guidance. */
   director: string | null;
-  /** Optional extras S3 may add; read only when well-formed. */
-  thumbnail_url: string | null;
+  /** The {names} in the prompt the person is to replace with their own words (S3's `placeholders`). */
+  placeholders: string[];
 }
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
 
 const str = (v: unknown, max: number): string | null =>
   typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : null;
+
+/** The director's words: a string as it is, or an object's string values in its own order (S3 stores it as jsonb). */
+function directorWords(v: unknown): string | null {
+  if (typeof v === "string") return str(v, 400);
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const words = Object.values(v as Record<string, unknown>)
+    .filter((x): x is string => typeof x === "string" && x.trim() !== "")
+    .map((x) => x.trim());
+  return words.length ? words.join(", ").slice(0, 400) : null;
+}
 
 /** One template from the API, or null when it is not one (never a half-filled guess). */
 export function parseTemplate(raw: unknown): TrendTemplate | null {
@@ -66,7 +77,9 @@ export function parseTemplate(raw: unknown): TrendTemplate | null {
   const model = str(r.model_id, 120);
   if (!slug || !title || !prompt || !model || !isCreateKind(r.kind)) return null;
   const duration = typeof r.duration_s === "number" && Number.isFinite(r.duration_s) && r.duration_s > 0 ? r.duration_s : null;
-  const thumb = typeof r.thumbnail_url === "string" && /^https:\/\//.test(r.thumbnail_url) ? r.thumbnail_url : null;
+  const placeholders = Array.isArray(r.placeholders)
+    ? r.placeholders.filter((p): p is string => typeof p === "string" && /^[a-z0-9_]{1,40}$/i.test(p)).slice(0, 12)
+    : [];
   return {
     slug,
     kind: r.kind,
@@ -76,8 +89,8 @@ export function parseTemplate(raw: unknown): TrendTemplate | null {
     aspect: str(r.aspect, 12),
     duration_s: duration,
     quality: str(r.quality, 24),
-    director: str(r.director, 400),
-    thumbnail_url: thumb,
+    director: directorWords(r.director),
+    placeholders,
   };
 }
 

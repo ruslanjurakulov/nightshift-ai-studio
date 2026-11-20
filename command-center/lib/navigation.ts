@@ -65,13 +65,13 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: HOME, key: "command" },
       { href: "/studio", key: "studio" },
+      // Trend templates (migration 0181): ready formats that open Create prefilled. A customer rail entry of its own.
+      { href: "/trends", key: "trends" },
       // Comments on the channel's videos, with drafted replies a person approves (migration 0081).
       { href: "/inbox", key: "inbox" },
       { href: "/analytics", key: "analytics" },
       // Housed in Nightshift Studio (hidden from the rail, reached from Studio home's tiles):
       { href: "/create", key: "create" },
-      // The customer rail's Trends (the trend templates). Not in the operator's rail (RAIL_HIDDEN_KEYS); reachable by URL and ⌘K.
-      { href: "/trends", key: "trends" },
       { href: "/videos", key: "videos" },
       // Brand look: it was /studio, and is one click from Studio home (the Channel look chip).
       { href: "/studio/look", key: "brandLook" },

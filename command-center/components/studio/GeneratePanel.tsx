@@ -158,6 +158,7 @@ export function GeneratePanel({
   onQuote,
   onPressing,
   appendRequest = null,
+  onAppended,
   verb = null,
 }: {
   /**
@@ -186,6 +187,8 @@ export function GeneratePanel({
    * quote asks again for the new words as for any typing, and nothing is sent until the priced press.
    */
   appendRequest?: { nonce: number; text: string } | null;
+  /** Told whether an append request's words went in (false: they would have passed the tool's limit, so nothing changed). */
+  onAppended?: (ok: boolean) => void;
   /** The action's own word on the price key ("Create" on the Create screen): `word`, and `priced` with {n} for its name. */
   verb?: { word: string; priced: string } | null;
   /**
@@ -538,17 +541,21 @@ export function GeneratePanel({
   // "Use as picture": applied once per request, never on the mount that a
   // template or Try again caused (that request was already used or cleared).
   const appliedAppend = useRef(appendRequest?.nonce ?? 0);
+  const onAppendedRef = useRef(onAppended);
+  onAppendedRef.current = onAppended;
   useEffect(() => {
     if (!appendRequest || appendRequest.nonce === appliedAppend.current) return;
     appliedAppend.current = appendRequest.nonce;
     const add = appendRequest.text.trim();
     if (!add) return;
-    // Never past the tool's own limit: words that do not fit are not added (the Director says it is guidance, not a setting).
-    setPrompt((p) => {
-      const next = p.trim() ? `${p.trimEnd()}, ${add}` : add;
-      return next.length <= wordsMax(capability) ? next : p;
-    });
-  }, [appendRequest, capability]);
+    // Never past the tool's own limit: words that do not fit are not added, and the page is told so (never "added").
+    const next = prompt.trim() ? `${prompt.trimEnd()}, ${add}` : add;
+    const fits = next.length <= wordsMax(capability);
+    if (fits) setPrompt(next);
+    onAppendedRef.current?.(fits);
+    // Only a new request applies: the words typed since are read, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appendRequest]);
 
   const appliedSource = useRef(sourceRequest?.nonce ?? 0);
   useEffect(() => {
@@ -1699,7 +1706,7 @@ export function GeneratePanel({
   const keyName =
     verb && capability !== "describe"
       ? quote.status === "ready"
-        ? fmt(verb.priced, { n: formatCredits(quote.credits, locale) })
+        ? fmt(verb.priced, { n: formatCredits(quote.credits, locale), unit: creditUnit(quote.credits, locale, t.shell.creditUnit) })
         : quote.status === "quoting"
           ? t.gen.quoting
           : verb.word

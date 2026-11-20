@@ -10,19 +10,30 @@ import { DIRECTOR_PRESETS, directorGroupsFor, directorText, type CreateKind, typ
  * guidance — "Add to prompt" appends the presets' words to the prompt (where the person sees and can edit them), and
  * nothing else changes. No setting, model or price is touched; the quote follows the new words as for any typing.
  */
-export function Director({ kind, onApply }: { kind: CreateKind; onApply: (text: string) => void }) {
+export function Director({
+  kind,
+  onApply,
+  note: panelNote = null,
+}: {
+  kind: CreateKind;
+  onApply: (text: string) => void;
+  /** What the composer said about the last words handed to it: added, or not (they would not fit). Null until then. */
+  note?: string | null;
+}) {
   const { t } = useI18n();
   const d = t.customerApp.create.director;
   const groups = directorGroupsFor(kind);
   const [open, setOpen] = useState(false);
   const [manual, setManual] = useState(false);
   const [picks, setPicks] = useState<DirectorPicks>({});
-  const [note, setNote] = useState<string | null>(null);
+  // Only this panel's own hint (pick a preset first); whether words went in is the composer's to say (panelNote).
+  const [hint, setHint] = useState<string | null>(null);
+  const note = hint ?? panelNote;
   const bodyId = useId();
   if (groups.length === 0) return null;
 
   const pick = (g: DirectorGroup, key: string) => {
-    setNote(null);
+    setHint(null);
     setPicks((p) => ({ ...p, [g]: p[g] === key ? undefined : key }));
   };
   const text = directorText(Object.fromEntries(groups.map((g) => [g, picks[g]])) as DirectorPicks);
@@ -37,9 +48,25 @@ export function Director({ kind, onApply }: { kind: CreateKind; onApply: (text: 
       </button>
       {open && (
         <div id={bodyId} className="cs-director-body">
-          <div role="radiogroup" aria-label={d.title} className="cs-seg">
+          <div role="radiogroup" aria-label={d.modeLabel} className="cs-seg">
             {[false, true].map((m) => (
-              <button key={String(m)} type="button" role="radio" aria-checked={manual === m} onClick={() => setManual(m)} className="cs-seg-btn">
+              <button
+                key={String(m)}
+                type="button"
+                role="radio"
+                id={`${bodyId}-${m ? "manual" : "auto"}`}
+                aria-checked={manual === m}
+                tabIndex={manual === m ? 0 : -1}
+                onClick={() => setManual(m)}
+                onKeyDown={(e) => {
+                  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+                  e.preventDefault();
+                  const next = e.key === "Home" ? false : e.key === "End" ? true : !manual;
+                  setManual(next);
+                  document.getElementById(`${bodyId}-${next ? "manual" : "auto"}`)?.focus();
+                }}
+                className="cs-seg-btn"
+              >
                 {m ? d.manual : d.auto}
               </button>
             ))}
@@ -70,9 +97,9 @@ export function Director({ kind, onApply }: { kind: CreateKind; onApply: (text: 
                   type="button"
                   className="btn-sky is-quiet pill h-10 px-3.5 text-sm"
                   onClick={() => {
-                    if (!text) return setNote(d.none);
+                    if (!text) return setHint(d.none);
+                    setHint(null);
                     onApply(text);
-                    setNote(d.added);
                   }}
                 >
                   {d.apply}

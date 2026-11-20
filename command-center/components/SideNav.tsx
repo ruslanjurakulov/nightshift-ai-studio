@@ -41,8 +41,11 @@ export function useIsActive() {
   const pathname = usePathname();
   const section = "/" + pathname.split("/").slice(2).join("/");
   const group = tabsFor(pathname.split("/")[2] ?? "")?.rail;
-  return (href: string, key?: NavKey) =>
-    section === href || section.startsWith(href + "/") || (key !== undefined && key === group);
+  return (href: string, key?: NavKey) => {
+    // A rail entry can carry a query (Projects is /studio?shelf=projects): the section path has none, so match its path.
+    const bare = href.split("?")[0];
+    return section === bare || section.startsWith(bare + "/") || (key !== undefined && key === group);
+  };
 }
 
 function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () => void }) {

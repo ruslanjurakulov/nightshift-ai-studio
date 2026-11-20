@@ -121,7 +121,6 @@ export const en = {
     menu: "Menu",
     command: "Command Center",
     create: "Create",
-    trends: "Trends",
     projects: "Projects",
     videos: "Videos",
     pipeline: "Pipeline",
@@ -150,6 +149,7 @@ export const en = {
     customers: "Customers",
     billing: "Billing",
     studio: "Nightshift Studio",
+    trends: "Trends",
     // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
     brandLook: "Brand look",
     library: "Library",

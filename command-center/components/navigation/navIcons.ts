@@ -22,12 +22,13 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   command: LayoutDashboard,
   // The customer rail's Create (the sprint IA): sparkles, as Krea and Higgsfield mark the make-something screen.
   create: Sparkles,
-  trends: Flame,
   projects: FolderOpen,
   videos: Film,
   inbox: Inbox,
   // Nightshift Studio is where things are made: it takes the hub's record key.
   studio: CircleDot,
+  // Trends (0181): what is hot right now.
+  trends: Flame,
   brandLook: Palette,
   styles: Brush,
   ads: Target,

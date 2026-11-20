@@ -43,8 +43,13 @@ describe("the S3 template contract", () => {
     expect(parseTemplate({ ...TPL, prompt: 42 })).toBeNull();
     // A list that is not a list is "couldn't read", not "no templates".
     expect(parseTemplateList({ nope: true })).toBeNull();
-    // A thumbnail is only ever an https URL (no javascript:, no data:).
-    expect(parseTemplate({ ...TPL, thumbnail_url: "javascript:alert(1)" })?.thumbnail_url).toBeNull();
+  });
+
+  it("reads S3's director object as prompt guidance and its placeholders as names only", () => {
+    const t = parseTemplate({ ...TPL, director: { camera: "slow push-in", lighting: "warm practicals", n: 3 }, placeholders: ["product", "x y"] })!;
+    expect(t.director).toBe("slow push-in, warm practicals");
+    expect(t.placeholders).toEqual(["product"]);
+    expect(parseTemplate({ ...TPL, director: {} })?.director).toBeNull();
   });
 });
 

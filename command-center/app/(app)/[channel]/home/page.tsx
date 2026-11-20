@@ -2,7 +2,12 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { getOrgContext } from "@/lib/orgs-server";
 import { loadEditorProjects } from "@/lib/server/editor";
-import { HomeCreate, type HomeProjectsReading } from "@/components/customer/HomeCreate";
+import { HomeCreate, type HomeProjectsReading, type HomeWaiting } from "@/components/customer/HomeCreate";
+import { getChannelContext } from "@/lib/channels-server";
+import { orgWide } from "@/lib/channels";
+import { createClient } from "@/lib/supabase/server";
+import { heldOnly } from "@/lib/heldVideos";
+import { listWaitingStoryboards } from "@/lib/server/storyboards";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,5 +36,21 @@ export default async function HomePage() {
           ? { state: "not_available" }
           : { state: "failed" };
   }
-  return <HomeCreate orgId={orgId} projects={projects} />;
+  // What waits for this person's decision (rule 3: the human approval step stays one tap from Home): videos held for review
+  // and storyboards waiting for approval, across the organization's channels, as the member (RLS). A failed read is null
+  // ("couldn't read"), never 0.
+  let waiting: HomeWaiting = { videos: null, storyboards: null };
+  const { channels, scope } = await getChannelContext();
+  const ids = channels.map((c) => c.channel_id);
+  const supabase = ids.length > 0 ? await createClient() : null;
+  if (supabase) {
+    const [held, boards] = await Promise.all([
+      heldOnly(supabase.from("videos").select("channel_id").in("channel_id", ids)).limit(500),
+      listWaitingStoryboards(supabase, orgWide(scope)),
+    ]);
+    waiting = { videos: held.error ? null : (held.data?.length ?? 0), storyboards: boards === null ? null : boards.length };
+  } else if (ids.length === 0) {
+    waiting = { videos: 0, storyboards: 0 };
+  }
+  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} />;
 }

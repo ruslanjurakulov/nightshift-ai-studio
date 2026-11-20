@@ -174,7 +174,7 @@ export function AccountMenu({
           aria-modal="false"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : "right-0 top-full mt-3 max-h-[calc(100dvh-110px)]"} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
+          className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : `right-0 top-full mt-3 ${operatorFrame ? "max-h-[calc(100dvh-110px)]" : "max-h-[calc(100dvh-200px)]"}`} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
         >
           <header className="flex items-start gap-3">
             <Avatar email={shownEmail} version={avatarV} size={40} ring />

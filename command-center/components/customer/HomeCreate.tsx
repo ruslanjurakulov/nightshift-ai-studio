@@ -1,61 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, AudioLines, Clapperboard, Flame, Image as ImageIcon, Lightbulb, Loader2, Upload } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { coerceJobs, isActiveStatus } from "@/lib/creative/studio";
-import { CREATE_KINDS, createHref, parseTemplateList, type CreateKind, type TrendTemplate } from "@/lib/customer/create";
+import { CREATE_KINDS, createHref, type CreateKind } from "@/lib/customer/create";
 import { PROJECTS, TRENDS } from "@/lib/navigation";
 import "@/components/customer/customer.css";
 
 const KIND_ICON = { video: Clapperboard, image: ImageIcon, audio: AudioLines } as const;
-const HOME_TEMPLATES = 6;
 
 export type HomeProject = { id: string; title: string; updatedAt: string | null };
+/** Held videos and storyboards waiting for this person's decision; null = the read failed (never shown as 0). */
+export type HomeWaiting = { videos: number | null; storyboards: number | null };
 export type HomeProjectsReading = { state: "ok"; projects: HomeProject[] } | { state: "not_available" } | { state: "failed" };
-
-type TemplatesReading =
-  | { state: "loading" }
-  | { state: "ok"; templates: TrendTemplate[] }
-  | { state: "not_yet" }
-  | { state: "failed" };
-
-/**
- * Trend templates from stream S3's API. Shared by Home (the top six) and Trends (all). A 404 that is not the API's own
- * JSON means the route is not deployed yet: that is "coming soon", never "no templates" and never an error.
- */
-export function useTrendTemplates(): { reading: TemplatesReading; retry: () => void } {
-  const [reading, setReading] = useState<TemplatesReading>({ state: "loading" });
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const ctl = new AbortController();
-    setReading({ state: "loading" });
-    (async () => {
-      try {
-        const res = await fetch("/api/templates", { signal: ctl.signal, cache: "no-store" });
-        const json = (res.headers.get("content-type") ?? "").includes("application/json");
-        if (res.status === 404 && !json) return setReading({ state: "not_yet" });
-        if (!res.ok || !json) return setReading({ state: "failed" });
-        const list = parseTemplateList(await res.json());
-        setReading(list ? { state: "ok", templates: list } : { state: "failed" });
-      } catch {
-        if (!ctl.signal.aborted) setReading({ state: "failed" });
-      }
-    })();
-    return () => ctl.abort();
-  }, [attempt]);
-  return { reading, retry: useCallback(() => setAttempt((a) => a + 1), []) };
-}
 
 /**
  * Home: "What shall we create?" — the prompt box with its kind tabs, the top trend templates, what to continue and,
  * for a new account, three ways to start. Nothing here prices or spends: Continue opens Create with the words, where
  * the server prices them and only the Create press starts a paid job.
  */
-export function HomeCreate({ orgId, projects }: { orgId: string | null; projects: HomeProjectsReading }) {
+export function HomeCreate({
+  orgId,
+  projects,
+  waiting = { videos: 0, storyboards: 0 },
+  trends = null,
+}: {
+  orgId: string | null;
+  projects: HomeProjectsReading;
+  waiting?: HomeWaiting;
+  /**
+   * The trend templates' strip, owned by stream S3 (components/trends/TrendsStrip: its own heading, states and cards, from
+   * GET /api/templates). One strip, never a second copy here: until it is passed in, Home says the templates are coming.
+   */
+  trends?: ReactNode;
+}) {
   const { t } = useI18n();
   const h = t.customerApp.home;
   const router = useRouter();
@@ -64,7 +46,6 @@ export function HomeCreate({ orgId, projects }: { orgId: string | null; projects
   const [words, setWords] = useState("");
   const promptId = useId();
   const hintId = useId();
-  const { reading, retry } = useTrendTemplates();
   const working = useWorkingCount(orgId);
 
   const go = () => router.push(path(createHref(kind, words)));
@@ -82,26 +63,36 @@ export function HomeCreate({ orgId, projects }: { orgId: string | null; projects
             go();
           }}
         >
-          <div role="tablist" aria-label={t.customerApp.kinds.label} className="cs-tabs">
+          {/* A choice of what to make, not tabs: every option sets the same box (its placeholder and where Continue goes). */}
+          <div role="radiogroup" aria-label={t.customerApp.kinds.label} className="cs-tabs">
             {CREATE_KINDS.map((k) => {
               const Icon = KIND_ICON[k];
               return (
                 <button
                   key={k}
                   type="button"
-                  role="tab"
-                  id={`hc-tab-${k}`}
-                  aria-selected={k === kind}
-                  aria-controls={promptId}
+                  role="radio"
+                  id={`hc-kind-${k}`}
+                  aria-checked={k === kind}
                   tabIndex={k === kind ? 0 : -1}
                   onClick={() => setKind(k)}
                   onKeyDown={(e) => {
-                    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-                    if (!step) return;
+                    const i = CREATE_KINDS.indexOf(kind);
+                    const last = CREATE_KINDS.length - 1;
+                    const at =
+                      e.key === "ArrowRight" || e.key === "ArrowDown"
+                        ? (i + 1) % CREATE_KINDS.length
+                        : e.key === "ArrowLeft" || e.key === "ArrowUp"
+                          ? (i + last) % CREATE_KINDS.length
+                          : e.key === "Home"
+                            ? 0
+                            : e.key === "End"
+                              ? last
+                              : -1;
+                    if (at < 0) return;
                     e.preventDefault();
-                    const next = CREATE_KINDS[(CREATE_KINDS.indexOf(kind) + step + CREATE_KINDS.length) % CREATE_KINDS.length];
-                    setKind(next);
-                    document.getElementById(`hc-tab-${next}`)?.focus();
+                    setKind(CREATE_KINDS[at]);
+                    document.getElementById(`hc-kind-${CREATE_KINDS[at]}`)?.focus();
                   }}
                   className="cs-tab"
                   data-kind={k}
@@ -141,6 +132,8 @@ export function HomeCreate({ orgId, projects }: { orgId: string | null; projects
         </form>
       </section>
 
+      <WaitingForYou waiting={waiting} />
+
       {firstRun && (
         <section aria-labelledby="hc-first" className="hc-section">
           <h2 id="hc-first" className="hc-h2">{h.firstTitle}</h2>
@@ -152,15 +145,20 @@ export function HomeCreate({ orgId, projects }: { orgId: string | null; projects
         </section>
       )}
 
-      <section aria-labelledby="hc-trends" className="hc-section">
-        <div className="hc-section-head">
-          <h2 id="hc-trends" className="hc-h2">{h.trendsTitle}</h2>
-          <Link href={path(TRENDS)} className="tap-link text-sm text-[var(--color-primary)]">
-            {h.trendsAll}
-          </Link>
-        </div>
-        <TemplateGrid reading={reading} retry={retry} limit={HOME_TEMPLATES} />
-      </section>
+      {trends ?? (
+        <section aria-labelledby="hc-trends" className="hc-section">
+          <div className="hc-section-head">
+            <h2 id="hc-trends" className="hc-h2">{h.trendsTitle}</h2>
+            <Link href={path(TRENDS)} className="tap-link text-sm text-[var(--color-primary)]">
+              {h.trendsAll}
+            </Link>
+          </div>
+          <div className="hc-placeholder" data-testid="templates-soon">
+            <span className="font-medium text-[var(--color-fg)]">{h.trendsSoonTitle}</span>
+            <span className="hc-meta">{h.trendsSoonBody}</span>
+          </div>
+        </section>
+      )}
 
       <section aria-labelledby="hc-continue" className="hc-section">
         <h2 id="hc-continue" className="hc-h2">{h.continueTitle}</h2>
@@ -177,56 +175,6 @@ function Tile({ href, icon, title, body }: { href: string; icon: React.ReactNode
       <span className="font-medium">{title}</span>
       <span className="hc-meta">{body}</span>
     </Link>
-  );
-}
-
-/** Every state of the template list: skeletons, "coming soon", an error with retry, empty, and the cards. */
-export function TemplateGrid({ reading, retry, limit }: { reading: TemplatesReading; retry: () => void; limit?: number }) {
-  const { t, fmt } = useI18n();
-  const h = t.customerApp.home;
-  const path = useChannelPath();
-  if (reading.state === "loading")
-    return (
-      <div className="hc-grid" aria-busy="true" aria-label={h.trendsTitle}>
-        {Array.from({ length: limit ?? 6 }, (_, i) => (
-          <div key={i} className="hc-skeleton" />
-        ))}
-      </div>
-    );
-  if (reading.state === "not_yet")
-    return (
-      <div className="hc-placeholder" data-testid="templates-soon">
-        <span className="font-medium text-[var(--color-fg)]">{h.trendsSoonTitle}</span>
-        <span className="hc-meta">{h.trendsSoonBody}</span>
-      </div>
-    );
-  if (reading.state === "failed")
-    return (
-      <div role="alert" className="hc-placeholder" data-testid="templates-failed">
-        <span className="text-[var(--color-fg)]">{h.trendsFailed}</span>
-        <button type="button" onClick={retry} className="btn-sky is-quiet pill h-10 self-start px-3.5 text-sm">
-          {h.retry}
-        </button>
-      </div>
-    );
-  const list = limit ? reading.templates.slice(0, limit) : reading.templates;
-  if (list.length === 0) return <p className="hc-meta m-0">{h.trendsEmpty}</p>;
-  return (
-    <ul className="hc-grid m-0 list-none p-0">
-      {list.map((tpl) => (
-        <li key={tpl.slug} className="flex">
-          <Link href={path(createHref(tpl.kind, "", tpl.slug))} className="hc-card w-full" data-kind={tpl.kind}>
-            <span aria-hidden className="hc-card-art" style={tpl.thumbnail_url ? { backgroundImage: `url("${tpl.thumbnail_url}")` } : undefined} />
-            <span className="font-medium">{tpl.title}</span>
-            <span className="hc-meta">
-              {t.customerApp.kinds[tpl.kind]}
-              {tpl.aspect ? ` · ${tpl.aspect}` : ""}
-              {tpl.duration_s ? ` · ${fmt(t.customerApp.trends.durationS, { n: tpl.duration_s })}` : ""}
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -278,6 +226,8 @@ function ContinueRow({ projects, working }: { projects: HomeProjectsReading; wor
         </a>,
       );
   if (projects.state === "failed" && items.length === 0) return <p role="alert" className="hc-meta m-0">{h.continueFailed}</p>;
+  // Not readable here (no organization, or the editor migration not applied): unknown, never "nothing to continue".
+  if (projects.state === "not_available" && items.length === 0) return <p className="hc-meta m-0">{h.continueUnknown}</p>;
   if (items.length === 0)
     return (
       <p className="hc-meta m-0">
@@ -288,4 +238,39 @@ function ContinueRow({ projects, working }: { projects: HomeProjectsReading; wor
       </p>
     );
   return <div className="hc-row">{items}</div>;
+}
+
+/** One line above everything else when a decision waits: held videos and storyboards, each linking to where it is decided. */
+function WaitingForYou({ waiting }: { waiting: HomeWaiting }) {
+  const { t, fmt } = useI18n();
+  const h = t.customerApp.home;
+  const path = useChannelPath();
+  const unread = waiting.videos === null || waiting.storyboards === null;
+  const items: React.ReactNode[] = [];
+  if (waiting.videos && waiting.videos > 0)
+    items.push(
+      <Link key="v" href={path("/videos")} className="hc-card" data-testid="waiting-videos">
+        <span className="font-medium">{fmt(h.waitingVideos, { n: waiting.videos })}</span>
+        <span className="hc-meta">{h.waitingVideosBody}</span>
+      </Link>,
+    );
+  if (waiting.storyboards && waiting.storyboards > 0)
+    items.push(
+      <Link key="s" href={path("/videos")} className="hc-card" data-testid="waiting-storyboards">
+        <span className="font-medium">{fmt(h.waitingBoards, { n: waiting.storyboards })}</span>
+        <span className="hc-meta">{h.waitingBoardsBody}</span>
+      </Link>,
+    );
+  if (items.length === 0 && !unread) return null;
+  return (
+    <section aria-labelledby="hc-waiting" className="hc-section" data-testid="home-waiting">
+      <h2 id="hc-waiting" className="hc-h2">{h.waitingTitle}</h2>
+      {items.length > 0 && <div className="hc-row">{items}</div>}
+      {unread && (
+        <p role="status" className="hc-meta m-0">
+          {h.waitingUnknown}
+        </p>
+      )}
+    </section>
+  );
 }

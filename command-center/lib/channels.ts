@@ -60,8 +60,6 @@ export const SECTIONS = [
   // All sections: the operator's phone page behind the bottom bar's More tab (lib/navigation ALL_SECTIONS).
   "sections",
   "create",
-  // Trends: the trend templates, each opening Create prefilled (the customer rail's third entry).
-  "trends",
   "videos",
   "inbox",
   "studio",
@@ -72,6 +70,8 @@ export const SECTIONS = [
   "character-studio",
   // Presets & looks: the gallery of ready starting points, opened from Studio and Home.
   "presets",
+  // Trends (0181): ready formats that open Create prefilled.
+  "trends",
   "library",
   "editor",
   "workflows",

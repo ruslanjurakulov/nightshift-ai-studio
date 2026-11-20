@@ -5,12 +5,12 @@ import { Clapperboard, Image as ImageIcon, Loader2, AudioLines, Sparkles, X } fr
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { formatCredits } from "@/lib/credits";
+import { creditUnit, formatCredits } from "@/lib/credits";
 import { GeneratePanel, type PanelQuote } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { DeskAvailabilityNote } from "@/components/studio/Availability";
-import { isActiveStatus, kindLabel, type StudioJob, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
+import { isActiveStatus, isUnsuccessful, kindLabel, type StudioJob, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
 import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
 import { DESK_TOOLS } from "@/lib/creative/desks";
@@ -29,12 +29,20 @@ import { Director } from "@/components/customer/Director";
 import "@/components/studio/desk.css";
 import "@/components/customer/customer.css";
 
+/** To the composer, without the smooth scroll under reduced motion. */
+function toComposer(el: HTMLElement | null) {
+  const still = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  el?.scrollIntoView?.({ behavior: still ? "auto" : "smooth", block: "start" });
+}
+
 const KIND_ICON = { video: Clapperboard, image: ImageIcon, audio: AudioLines } as const;
 
 type TemplateState =
   | { state: "none" }
   | { state: "loading" }
   | { state: "ready"; tpl: TrendTemplate }
+  // It arrived after the person had started typing: their words are not replaced; the banner offers to fill from it.
+  | { state: "waiting"; tpl: TrendTemplate; model: string }
   | { state: "model_unavailable"; tpl: TrendTemplate; reason: "not_offered" | "locked" | "switched_off" }
   | { state: "missing" }
   | { state: "not_yet" }
@@ -75,7 +83,7 @@ export function CreateScreen({
   templateSlug?: string | null;
   bottomBar?: boolean;
 }) {
-  const { t, fmt, locale } = useI18n();
+  const { t, fmt } = useI18n();
   const c = t.customerApp.create;
   const toast = useToast();
   const path = useChannelPath();
@@ -92,14 +100,22 @@ export function CreateScreen({
   const [quote, setQuote] = useState<PanelQuote | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [tpl, setTpl] = useState<TemplateState>(templateSlug ? { state: "loading" } : { state: "none" });
+  const [directorNote, setDirectorNote] = useState<string | null>(null);
+  const [tplAttempt, setTplAttempt] = useState(0);
+  // The words as typed, so a kind switch carries them to the new kind's form instead of throwing them away.
+  const draft = useRef(initialPrompt);
+  const edited = useRef(false);
   const top = useRef<HTMLDivElement>(null);
+  const shape = dna?.aspect ?? "16:9";
 
   const fill = useCallback((value: StudioPrefill, nextKind?: CreateKind) => {
     if (nextKind) setKind(nextKind);
+    draft.current = value.prompt;
+    setDirectorNote(null);
     setSourceRequest(null);
     setQuote(null);
     setPrefill((p) => ({ nonce: p.nonce + 1, value }));
-    top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    toComposer(top.current);
   }, []);
 
   // The template deep link: read once, fill the form, never press Create. A model that is not on sale here is NOT
@@ -109,6 +125,7 @@ export function CreateScreen({
   useEffect(() => {
     if (!templateSlug) return;
     const ctl = new AbortController();
+    setTpl({ state: "loading" });
     (async () => {
       try {
         const res = await fetch(`/api/templates/${encodeURIComponent(templateSlug)}`, { signal: ctl.signal, cache: "no-store" });
@@ -119,7 +136,9 @@ export function CreateScreen({
         const one = parseTemplateOne(await res.json());
         if (!one) return setTpl({ state: "failed" });
         const pick = templateModel(one, modelsRef.current, unavailable);
-        if (pick.state === "ready") {
+        if (pick.state === "ready" && edited.current) {
+          setTpl({ state: "waiting", tpl: one, model: pick.model.id });
+        } else if (pick.state === "ready") {
           setTpl({ state: "ready", tpl: one });
           fill(templatePrefill(one, pick.model.id), one.kind);
         } else {
@@ -133,29 +152,32 @@ export function CreateScreen({
     return () => ctl.abort();
     // `unavailable` is the server's list for this request; reading it once with the template is the point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateSlug, fill]);
+  }, [templateSlug, fill, tplAttempt]);
 
   const switchKind = (k: CreateKind) => {
     if (k === kind) return;
     setKind(k);
     setQuote(null);
     setSourceRequest(null);
-    setPrefill((p) => ({ nonce: p.nonce + 1, value: null }));
+    setDirectorNote(null);
+    // A template filled the old kind's form; after a switch its banner would describe a form that is no longer there.
+    if (tpl.state === "ready") setTpl({ state: "none" });
+    const words = draft.current.trim();
+    setPrefill((p) => ({
+      nonce: p.nonce + 1,
+      value: words ? { capability: KIND_TOOL[k], model: "", prompt: words, aspect: shape, duration: 5 } : null,
+    }));
   };
 
   const i2vOnSale = useMemo(() => models.some((m) => m.capabilities.includes("i2v") && !m.lock && !unavailable.includes(m.id)), [models, unavailable]);
 
-  // "Turn into video": the picture becomes the Video form's source (its i2v tool); the press there is priced as any other.
-  const animate = (assetId: string) => {
-    setKind("video");
-    setQuote(null);
-    setPrefill((p) => ({ nonce: p.nonce + 1, value: null }));
-    setSourceRequest({ nonce: Date.now(), id: assetId });
-    top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-  };
+  // "Turn into video": a fresh Video form on its i2v tool with the picture as its source, carried in the form's own start
+  // (a source request would be skipped by the remounted form). The press there is priced as any other.
+  const animate = (assetId: string) =>
+    fill({ capability: "i2v", model: "", prompt: "", aspect: shape, duration: 5, sourceId: assetId }, "video");
   const useAsSource = (assetId: string) => {
     setSourceRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, id: assetId }));
-    top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    toComposer(top.current);
   };
 
   // Toasts when a job this tab saw working ends. The first read only learns what is working (a page opened on finished
@@ -169,8 +191,9 @@ export function CreateScreen({
       if (!before) return;
       for (const j of jobs) {
         if (!before.has(j.id) || now.has(j.id)) continue;
-        if (j.status === "succeeded") toast.success(fmt(c.done, { what: kindLabel(t, j.capability) }));
-        else toast.error(c.failed);
+        // creative_jobs end as completed | failed | cancelled | expired (0036); only an unsuccessful end returned its hold.
+        if (j.status === "completed") toast.success(fmt(c.done, { what: kindLabel(t, j.capability) }));
+        else if (isUnsuccessful(j.status)) toast.error(c.failed);
       }
     },
     [toast, fmt, c.done, c.failed, t],
@@ -209,10 +232,11 @@ export function CreateScreen({
               onClick={() => switchKind(k)}
               onKeyDown={(e) => {
                 const i = CREATE_KINDS.indexOf(kind);
-                const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-                if (!step) return;
+                const last = CREATE_KINDS.length - 1;
+                const at = e.key === "ArrowRight" ? (i + 1) % CREATE_KINDS.length : e.key === "ArrowLeft" ? (i + last) % CREATE_KINDS.length : e.key === "Home" ? 0 : e.key === "End" ? last : -1;
+                if (at < 0) return;
                 e.preventDefault();
-                const next = CREATE_KINDS[(i + step + CREATE_KINDS.length) % CREATE_KINDS.length];
+                const next = CREATE_KINDS[at];
                 switchKind(next);
                 document.getElementById(`cs-tab-${next}`)?.focus();
               }}
@@ -236,6 +260,12 @@ export function CreateScreen({
           fill(templatePrefill(tpl.tpl, m.id), tpl.tpl.kind);
         }}
         onDismiss={() => setTpl({ state: "none" })}
+        onRetry={() => setTplAttempt((a) => a + 1)}
+        onApply={() => {
+          if (tpl.state !== "waiting") return;
+          setTpl({ state: "ready", tpl: tpl.tpl });
+          fill(templatePrefill(tpl.tpl, tpl.model), tpl.tpl.kind);
+        }}
       />
 
       <div id="cs-panel" role="tabpanel" aria-labelledby={`cs-tab-${kind}`} className="flex flex-col gap-4">
@@ -256,11 +286,21 @@ export function CreateScreen({
               desk={desk}
               unavailable={unavailable}
               onQuote={setQuote}
+              onDraftChange={(w) => (draft.current = w)}
+              onEdit={() => (edited.current = true)}
+              onAppended={(ok) => setDirectorNote(ok ? c.director.added : c.director.tooLong)}
               onePerQuote
               verb={{ word: c.createWord, priced: c.createPriced }}
               onCreated={() => setRefreshKey((k) => k + 1)}
             />
-            <Director kind={kind} onApply={(text) => setAppendRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, text }))} />
+            <Director
+              kind={kind}
+              note={directorNote}
+              onApply={(text) => {
+                setDirectorNote(null);
+                setAppendRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, text }));
+              }}
+            />
           </div>
           <div className="cs-results flex min-w-0 flex-col gap-6" data-testid="gen-canvas">
             <JobFeed
@@ -281,9 +321,6 @@ export function CreateScreen({
           </div>
         </div>
       </div>
-      <span className="sr-only" aria-live="polite">
-        {quote?.state === "ready" ? fmt(c.pricePill, { n: formatCredits(quote.credits, locale) }) : ""}
-      </span>
     </div>
   );
 }
@@ -297,8 +334,12 @@ function PricePill({ quote }: { quote: PanelQuote | null }) {
   let hint: string | null = c.priceUnknownHint;
   if (quote?.state === "ready" || quote?.state === "short") {
     tone = quote.state;
-    text = fmt(quote.state === "ready" ? c.pricePill : c.priceShort, { n: formatCredits(quote.credits, locale) });
-    hint = null;
+    text = fmt(quote.state === "ready" ? c.pricePill : c.priceShort, {
+      n: formatCredits(quote.credits, locale),
+      unit: creditUnit(quote.credits, locale, t.shell.creditUnit),
+    });
+    // Short: the composer's key already opens the top-ups; the pill says what that key will do.
+    hint = quote.state === "short" ? c.priceShortHint : null;
   } else if (quote?.state === "blocked") {
     hint = quote.why;
   }
@@ -320,12 +361,16 @@ function TemplateBanner({
   unavailable,
   onPick,
   onDismiss,
+  onRetry,
+  onApply,
 }: {
   state: TemplateState;
   models: StudioModel[];
   unavailable: readonly string[];
   onPick: (m: StudioModel) => void;
   onDismiss: () => void;
+  onRetry: () => void;
+  onApply: () => void;
 }) {
   const { t, fmt } = useI18n();
   const c = t.customerApp.create.template;
@@ -344,7 +389,24 @@ function TemplateBanner({
   if (state.state === "ready")
     return (
       <div role="status" className="cs-banner" data-tone="ok" data-testid="template-ready">
-        <span className="flex-1">{fmt(c.ready, { title: state.tpl.title })}</span>
+        <span className="flex flex-1 flex-col gap-1">
+          <span>{fmt(c.ready, { title: state.tpl.title })}</span>
+          {state.tpl.placeholders.length > 0 && (
+            <span className="text-xs text-[var(--color-muted)]">
+              {fmt(c.placeholders, { names: state.tpl.placeholders.map((p) => `{${p}}`).join(", ") })}
+            </span>
+          )}
+        </span>
+        {close}
+      </div>
+    );
+  if (state.state === "waiting")
+    return (
+      <div role="status" className="cs-banner" data-tone="info" data-testid="template-waiting">
+        <span className="flex-1">{fmt(c.waiting, { title: state.tpl.title })}</span>
+        <button type="button" onClick={onApply} className="btn-sky is-quiet pill h-10 shrink-0 px-3.5 text-sm">
+          {c.apply}
+        </button>
         {close}
       </div>
     );
@@ -377,6 +439,11 @@ function TemplateBanner({
   return (
     <div role="alert" className="cs-banner" data-tone="warn" data-testid={`template-${state.state}`}>
       <span className="flex-1">{text}</span>
+      {state.state === "failed" && (
+        <button type="button" onClick={onRetry} className="btn-sky is-quiet pill h-10 shrink-0 px-3.5 text-sm">
+          {t.customerApp.home.retry}
+        </button>
+      )}
       {close}
     </div>
   );

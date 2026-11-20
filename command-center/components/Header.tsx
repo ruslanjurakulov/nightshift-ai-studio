@@ -158,10 +158,13 @@ export function Header({
               <LanguageSelector />
             </span>
             {/* "+ New project": the projects shelf, where a project is started. A link: nothing is made or spent by it. */}
-            <Link href={path(PROJECTS)} className="btn-sky pill hidden h-10 items-center gap-1.5 px-3.5 text-sm font-medium md:inline-flex" data-testid="topbar-new-project">
-              <Plus aria-hidden className="size-4" strokeWidth={2.25} />
-              {t.customerApp.shell.newProject}
-            </Link>
+            {/* A span, not `hidden` on the key: .btn-sky sets its own display, which beats the utility. */}
+            <span className="hidden md:contents">
+              <Link href={path(PROJECTS)} className="btn-sky pill h-10 items-center gap-1.5 px-3.5 text-sm font-medium" data-testid="topbar-new-project">
+                <Plus aria-hidden className="size-4" strokeWidth={2.25} />
+                {t.customerApp.shell.newProject}
+              </Link>
+            </span>
             {/* Below `lg` there is no sidebar card: the account (and Owner mode, for the owner) is this round button. */}
             <span className="lg:hidden">
               <AccountMenu email={email} avatarV={avatarV} />
