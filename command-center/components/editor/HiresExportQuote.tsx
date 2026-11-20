@@ -1,5 +1,6 @@
 "use client";
 
+import { creditUnit } from "@/lib/credits";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -64,7 +65,9 @@ export function HiresExportQuote({
   /** The quote call (tests pass their own). */
   load?: (id: string, rev: number, frame: QuotableFrame) => Promise<EditorResult<ExportQuote>>;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  // A number of credits with its word in the reader's language: "1 credit", "5 credits", "2 кредита".
+  const cr = (n: number) => `${credits(n)} ${creditUnit(n, locale, t.shell.creditUnit)}`;
   const hx = t.editor.exportHires;
   const id = useId();
   const key = `${rev}|${frames.join(",")}`;
@@ -153,7 +156,7 @@ export function HiresExportQuote({
       else if (why === "insufficient_credits")
         lines.push({
           key: f,
-          text: fmt(hx.short, { name: name(f), hold: credits(q.hold ?? 0), available: credits(q.available ?? 0) }),
+          text: fmt(hx.short, { name: name(f), hold: cr(q.hold ?? 0), available: cr(q.available ?? 0) }),
           tone: "warn",
         });
       else if (q.exempt) lines.push({ key: f, text: fmt(hx.exemptLine, { name: name(f) }), tone: "plain" });
@@ -163,9 +166,9 @@ export function HiresExportQuote({
           text: fmt(hx.line, {
             name: name(f),
             minutes: q.minutes,
-            perMinute: credits(q.creditsPerMinute ?? 0),
-            credits: credits(q.credits ?? 0),
-            hold: credits(q.hold ?? 0),
+            perMinute: cr(q.creditsPerMinute ?? 0),
+            credits: cr(q.credits ?? 0),
+            hold: cr(q.hold ?? 0),
           }),
           tone: "plain",
         });
@@ -194,7 +197,7 @@ export function HiresExportQuote({
         ))}
         {all && !blocked && firstOk && !firstOk.exempt && firstOk.available !== null ? (
           <p className="m-0 text-xs text-[var(--color-muted)]">
-            {fmt(hx.available, { available: credits(firstOk.available) })}
+            {fmt(hx.available, { available: cr(firstOk.available) })}
           </p>
         ) : null}
       </div>
@@ -207,7 +210,7 @@ export function HiresExportQuote({
         <>
           {held > 0 ? (
             <p id={`${id}-total`} className="m-0 text-xs text-[var(--color-muted)]">
-              {fmt(hx.total, { credits: credits(total), hold: credits(held) })}
+              {fmt(hx.total, { credits: cr(total), hold: cr(held) })}
             </p>
           ) : null}
           <label className="flex min-h-11 items-center gap-2">
@@ -217,7 +220,7 @@ export function HiresExportQuote({
               onChange={(e) => setAgreed(e.target.checked ? signature : null)}
               aria-describedby={held > 0 ? `${id}-total` : undefined}
             />
-            <span>{fmt(hx.confirm, { credits: credits(total) })}</span>
+            <span>{fmt(hx.confirm, { credits: cr(total) })}</span>
           </label>
         </>
       ) : null}

@@ -117,19 +117,20 @@ in "The switch and the roll-out". **The 1080p price and the 1440p / 4K prices ar
 to NULL on its own (one row, three columns). The reasoning the 1440p and 4K prices came from (1 credit up to 1080p is the owner's
 round number for the cheapest tier):
 
-* **Server cost.** The owner's figure (2026-11-11): the server costs **$69 a month**.
-  $69 / (30 × 86 400 s) = **$0.0000266 per second of the whole server**. Charging the whole server for every second the export
+* **Server cost.** The owner's figure (2026-11-11) for the monthly server rent, divided by the seconds in 30 days, gives a cost
+  per second of the whole server (the figure itself is not kept in this repository). Charging the whole server for every second the export
   worker spends is conservative: the export worker is one process on an 8-core box that also serves the site and the other workers.
 * **Credit value.** About **$0.01 per credit** retail (`docs/API.md`: Starter is 1,000 credits for $10).
 * **Worker seconds per output minute** (the dearest measured render of the tier above, on a 4-core box; the AX42 has 8 cores of a
   newer generation, so this overstates its time): 1440p 5.34 × 60 = **320 s**, 4K (30 fps) 9.82 × 60 = **589 s**.
 
-| Tier | Worker s per output min | Server cost per output min | In credits ($0.01) | × 3 (the site's margin on a finished minute: ~60 credits retail for ~$0.20 of cost) | Approved price per started minute | A video at the cap |
-| :-- | --: | --: | --: | --: | --: | :-- |
-| 1440p | 320 | $0.0085 | 0.85 | 2.56 | **3 credits** | 5:00 → 15 credits ($0.15) |
-| 4K (≤ 30 fps) | 589 | $0.0157 | 1.57 | 4.70 | **5 credits** | 3:00 → 15 credits ($0.15) |
+| Tier | Worker s per output min | Approved price per started minute | A video at the cap |
+| :-- | --: | --: | :-- |
+| 1440p | 320 | **3 credits** | 5:00 → 15 credits ($0.15) |
+| 4K (≤ 30 fps) | 589 | **5 credits** | 3:00 → 15 credits ($0.15) |
 
-Each price is the × 3 column rounded up to a whole credit, so both stay in proportion to render time (589 / 320 = 1.84; 5 / 3 =
+Each price is the server cost of those worker seconds, in credits, times the site's usual margin on a finished minute, rounded up
+to a whole credit (the cost and margin figures are not kept in this repository), so both stay in proportion to render time (589 / 320 = 1.84; 5 / 3 =
 1.67, the rounding), and a video at either cap costs the same 15 credits.
 For comparison: a 1080p HD download is 1.25 credits a minute (`credit_prices.download_1080p_minute`). The platform's `job_minimum`
 (30 credits on the live price list) raises only the HOLD: a 1-minute 4K export at 5 credits a minute holds 30 while it renders and

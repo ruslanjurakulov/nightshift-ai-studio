@@ -220,9 +220,9 @@ def never_sent(exc: BaseException) -> bool:
 
 
 def refused_outright(status: int, code: str) -> bool:
-    """A vendor answer that proves the call was refused, not taken. A 400 that says the balance is empty proves it too: no
-    task exists to bill."""
-    return (status in REFUSED_OUTRIGHT and code in _REFUSED_CODES) or (status == 400 and code == E_QUOTA)
+    """A vendor answer that proves the call was refused, not taken. Only the statuses in REFUSED_OUTRIGHT: a 400 that reads as
+    an empty balance gets the right remedy (quota) but does not, by its text alone, prove no task exists (BR-L-019)."""
+    return status in REFUSED_OUTRIGHT and code in _REFUSED_CODES
 
 
 def classify_http(status: int, text: str = "") -> str:

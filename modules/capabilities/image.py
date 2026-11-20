@@ -359,7 +359,7 @@ class IdeogramAdapter(HttpAdapter):
 
 #: Ideogram 4.0's ``resolution`` for each shape we offer: only exact ratios from the 1K half of the vendor's own closed list
 #: (OpenAPI ``ResolutionV4``, "The 1K and 2K resolutions supported for Ideogram 4.0 image generation", read 2026-11-13:
-#: docs/research/ideogram-shapes-2026-11-13.md). 1K, because the owner's price reading for 4.0 (Turbo US$0.03) names no size and
+#: docs/research/ideogram-shapes-2026-11-13.md). 1K, because the owner's price reading for 4.0 (Turbo) names no size and
 #: the docs do not say whether 2K bills the same: a 2K picture could cost more than it was quoted at. A ratio the list has no
 #: exact size for (21:9 among them) is not offered, never rounded to a neighbour.
 IDEOGRAM_V4_RESOLUTIONS = {

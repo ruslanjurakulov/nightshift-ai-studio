@@ -195,11 +195,20 @@ main:has([data-studio-canvas]) {
 .cv-grow { flex: 1; min-width: 0; }
 .cv-loading { margin: auto; color: var(--dim); }
 
+/* The DB-IP credit (app/(app)/layout.tsx, after every signed-in page; CC BY 4.0 asks for the link) on the full-height canvas: a
+   small muted line, right-aligned just under it, instead of a bare line at the page's foot under the canvas toolbar. */
+main:has([data-studio-canvas]) > .app-geo-credit { display: flex; justify-content: flex-end; margin-top: 6px; padding: 0 14px 8px; }
+main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-height: 1.4; }
+
 /* ── the Studio's one bar (in the app's header) and its rail ─────────────────── */
 .cv-appbar {
   position: sticky;
   top: 0;
-  z-index: 30;
+  /* One above the rail (30). Both are sticky, so each is its own stacking context, and the switcher's menu (.cv-pop, z 50)
+     only outranks things inside the bar. In the owner's frame the rail comes after the bar in the page and starts under it,
+     so at a tie the rail painted over the menu as it dropped across the rail's column: the menu's first 50 px were hidden
+     ("nvas", "neline"). The bar and the rail never overlap otherwise, so this changes nothing else. */
+  z-index: 31;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -319,7 +328,7 @@ main:has([data-studio-canvas]) {
   text-decoration: none;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 40px;
   padding: 0 12px;
   border: 0;
   border-radius: 9px;

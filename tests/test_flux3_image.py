@@ -60,7 +60,7 @@ KEY = "bfl-test-NOT-A-REAL-KEY-0123456789abcdef"
 F3, KLEIN = "flux-3-image", "flux-3-image-klein"
 IDS = (F3, KLEIN)
 # Recraft V4.1 / Flash left this list when their terms gate was cleared on Recraft's written permission (2026-11-17/18,
-# migration 0180): a model on sale is probed by --all like every other.
+# migration 0188): a model on sale is probed by --all like every other.
 PROBE_IDS = IDS
 
 

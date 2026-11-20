@@ -61,21 +61,21 @@ describe("the sidebar's collapse toggle", () => {
     expect(open.getAttribute("aria-expanded")).toBe("false");
     expect(aside.getAttribute("data-collapsed")).toBe("true");
     // Labels stay reachable: the rail's links keep their names, and say them as tooltips.
-    expect(screen.getByRole("link", { name: "Channels" }).getAttribute("data-tip")).toBe("Channels");
+    expect(screen.getByRole("link", { name: "Trends" }).getAttribute("data-tip")).toBe("Trends");
 
     fireEvent.click(open);
     expect(toggle("Collapse sidebar").getAttribute("aria-expanded")).toBe("true");
     expect(aside.getAttribute("data-collapsed")).toBe("false");
-    expect(screen.getByRole("link", { name: "Channels" }).getAttribute("data-tip")).toBeNull();
+    expect(screen.getByRole("link", { name: "Trends" }).getAttribute("data-tip")).toBeNull();
   });
 
   it("on the rail, a row's name shows beside it on hover and on keyboard focus, and goes away after", () => {
     const { container } = sidebar("en", true);
     const aside = container.querySelector("aside")!;
-    const row = screen.getByRole("link", { name: "Channels" });
+    const row = screen.getByRole("link", { name: "Trends" });
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
     fireEvent.mouseOver(row);
-    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Channels");
+    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Trends");
     fireEvent.mouseLeave(aside);
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
 
@@ -85,7 +85,7 @@ describe("the sidebar's collapse toggle", () => {
       return sel === ":focus-visible" ? true : real.call(this, sel);
     });
     fireEvent.focus(row);
-    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Channels");
+    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Trends");
     fireEvent.blur(row);
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
   });
@@ -108,7 +108,7 @@ describe("the sidebar's collapse toggle", () => {
 
   it("an open sidebar shows no tooltip (the names are written out)", () => {
     sidebar();
-    fireEvent.mouseOver(screen.getByRole("link", { name: "Channels" }));
+    fireEvent.mouseOver(screen.getByRole("link", { name: "Trends" }));
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
   });
 

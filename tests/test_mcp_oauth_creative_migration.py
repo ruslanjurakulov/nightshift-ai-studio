@@ -29,7 +29,7 @@ CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 #: Adding an id here is that review's change, never a default.
 REVIEWED_FOR_ASSISTANTS: dict = {
     # Recraft support's written confirmation (email of 2026-11-17/18): our own signed-in users, in the web studio and through our MCP
-    # connector, on our credits; not the public developer API (api_exposure web_mcp, migration 0180, keeps /api/v1 off).
+    # connector, on our credits; not the public developer API (api_exposure web_mcp, migration 0188, keeps /api/v1 off).
     "recraft-v4.1": "2026-11-17/18",
     "recraft-v4.1-flash": "2026-11-17/18",
 }
@@ -101,7 +101,7 @@ class EveryModelIsOff(unittest.TestCase):
         self.assertIn("r.spec ? 'blocked_countries'", state)
         self.assertIn("'acknowledgement_required'", state)
         self.assertIn("to_jsonb(r) -> 'requires_acknowledgement'", state)  # 0174's column, read without naming it
-        self.assertIn("sellable_models(cap, 'mcp')", state)       # 0180's surface: a vendor's web-only model never
+        self.assertIn("sellable_models(cap, 'mcp')", state)       # 0188's surface: a vendor's web-only model never
         self.assertIn("'captions' = any (r.capabilities)", state)
 
     def test_the_capabilities_are_the_apis(self):

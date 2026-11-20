@@ -43,7 +43,7 @@ PROMPT = {"prompt": "a lighthouse at dawn"}
 
 # (id, capabilities, extra spec)
 MODELS = [
-    # On for assistants and never for API keys: the vendor's web + connector permission (0180's web_mcp) and the switch.
+    # On for assistants and never for API keys: the vendor's web + connector permission (0188's web_mcp) and the switch.
     ("img-on", ["t2i", "edit"], {"api_exposure": "web_mcp", "mcp_oauth_exposure": True}),
     # The switch on a model whose vendor said web only: the 'mcp' surface refuses it (Lens on 0176).
     ("img-webonly", ["t2i"], {"api_exposure": "web_only", "mcp_oauth_exposure": True}),

@@ -23,7 +23,7 @@ export const studioCanvasRu: StudioCanvasDictionary = {
   statusNeeds: "ждут входа: {n}",
   statusUnknown: "статус неизвестен: {n}",
   statusClosed: "пока недоступно: {n}",
-  notSaved: "Раскладка не сохраняется в этом браузере",
+  notSaved: "Макет не сохранён в этом браузере. При выходе несохранённые изменения могут быть потеряны.",
   nothingSpends: "Без цены ничего не тратится",
   quote: "Цена",
   quoteHint: "Выберите узел, чтобы увидеть его цену",

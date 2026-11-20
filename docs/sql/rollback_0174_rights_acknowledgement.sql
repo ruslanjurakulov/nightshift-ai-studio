@@ -24,10 +24,10 @@ declare
   r record;
   h text;
 begin
-  -- 0179 calls rights_acknowledgement_missing and rights_acknowledgement_required from reroute_creative_job, start_film,
+  -- 0187 calls rights_acknowledgement_missing and rights_acknowledgement_required from reroute_creative_job, start_film,
   -- workflow_quote_steps and creative_job_style: dropping them under it would break every film start and failover.
   if to_regprocedure('public.rights_acknowledgement_subjects(uuid, jsonb)') is not null then
-    raise exception 'rollback 0174: 0179 is applied on top of it; apply docs/sql/rollback_0179_rights_acknowledgement_inputs.sql first';
+    raise exception 'rollback 0174: 0187 is applied on top of it; apply docs/sql/rollback_0187_rights_acknowledgement_inputs.sql first';
   end if;
   for r in select * from (values
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d'),

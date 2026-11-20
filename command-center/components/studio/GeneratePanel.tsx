@@ -157,6 +157,9 @@ export function GeneratePanel({
   onePerQuote = false,
   onQuote,
   onPressing,
+  appendRequest = null,
+  onAppended,
+  verb = null,
 }: {
   /**
    * The tools this form may offer, narrower than its desk's (the Studio canvas: an Image → Video node is i2v only, so no tab
@@ -179,6 +182,15 @@ export function GeneratePanel({
    * pressing too. Unlike onSubmittingChange, an unmount never reports false while the POST is still in flight.
    */
   onPressing?: (pressing: boolean) => void;
+  /**
+   * Words to add to the end of the prompt, once per nonce (the Create screen's Director presets). Only the words change: the
+   * quote asks again for the new words as for any typing, and nothing is sent until the priced press.
+   */
+  appendRequest?: { nonce: number; text: string } | null;
+  /** Told whether an append request's words went in (false: they would have passed the tool's limit, so nothing changed). */
+  onAppended?: (ok: boolean) => void;
+  /** The action's own word on the price key ("Create" on the Create screen): `word`, and `priced` with {n} for its name. */
+  verb?: { word: string; priced: string } | null;
   /**
    * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
    * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
@@ -469,7 +481,7 @@ export function GeneratePanel({
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
-  const ready = canQuote(form);
+  const ready = canQuote(form, current);
 
   // The phone's sticky Generate dock would cover the length chips on the first view;
   // it rests in the flow until the page is scrolled, then sticks above the tab bar.
@@ -504,6 +516,8 @@ export function GeneratePanel({
           signal: ctrl.signal,
         });
         const body = (await res.json().catch(() => ({}))) as { quote?: Record<string, unknown>; error?: unknown; detail?: unknown };
+        // An obsolete response can finish decoding after the next quote arrived.
+        if (ctrl.signal.aborted) return;
         const credits = body.quote?.credits;
         const pick = routed ? routedPick(body.quote, modelNames) : null;
         if (res.ok && typeof credits === "number" && Number.isFinite(credits) && (!routed || pick))
@@ -526,6 +540,23 @@ export function GeneratePanel({
 
   // "Use as picture": applied once per request, never on the mount that a
   // template or Try again caused (that request was already used or cleared).
+  const appliedAppend = useRef(appendRequest?.nonce ?? 0);
+  const onAppendedRef = useRef(onAppended);
+  onAppendedRef.current = onAppended;
+  useEffect(() => {
+    if (!appendRequest || appendRequest.nonce === appliedAppend.current) return;
+    appliedAppend.current = appendRequest.nonce;
+    const add = appendRequest.text.trim();
+    if (!add) return;
+    // Never past the tool's own limit: words that do not fit are not added, and the page is told so (never "added").
+    const next = prompt.trim() ? `${prompt.trimEnd()}, ${add}` : add;
+    const fits = next.length <= wordsMax(capability);
+    if (fits) setPrompt(next);
+    onAppendedRef.current?.(fits);
+    // Only a new request applies: the words typed since are read, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appendRequest]);
+
   const appliedSource = useRef(sourceRequest?.nonce ?? 0);
   useEffect(() => {
     if (!sourceRequest || sourceRequest.nonce === appliedSource.current) return;
@@ -730,8 +761,8 @@ export function GeneratePanel({
   const sourced = needsSource(capability);
   const recorded = needsRecording(capability);
   const filmed = needsVideo(capability);
-  const words = promptRule(capability);
-  const blocked = blockedReason(form, !!effectiveModel);
+  const words = promptRule(capability, current);
+  const blocked = blockedReason(form, !!effectiveModel, current);
   // An AI edit tool nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
   const blockedText = pickedOff
     ? t.modelSwitch.studio.offBody
@@ -739,6 +770,9 @@ export function GeneratePanel({
       ? fmt(t.gen.noLength, { model: current.displayName })
       : blocked === "no_model" && isAiEdit(capability)
       ? t.gen.notAvailableYet
+      : blocked === "need_words" && current && promptRule(capability) === "optional"
+      ? // Optional for the kind, required by this model (registry inputs.prompt_required): say which model and what it needs.
+        fmt(t.gen.blocked.need_motion_words, { model: current.displayName })
       : blocked
         ? t.gen.blocked[blocked]
         : null;
@@ -1668,6 +1702,16 @@ export function GeneratePanel({
     </Link>
   );
 
+  // The price key's name: the tool's own sentence, or the page's verb ("Create · 12 credits") once the server priced it.
+  const keyName =
+    verb && capability !== "describe"
+      ? quote.status === "ready"
+        ? fmt(verb.priced, { n: formatCredits(quote.credits, locale), unit: creditUnit(quote.credits, locale, t.shell.creditUnit) })
+        : quote.status === "quoting"
+          ? t.gen.quoting
+          : verb.word
+      : generateLabel(t, quote, locale, capability);
+
   const dockBlock = (
     <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock" data-at-top={dockAtTop ? "true" : undefined}>
       {/* The price key (components/ui/PriceButton): the action and the
@@ -1682,7 +1726,7 @@ export function GeneratePanel({
         onClick={generate}
         aria-busy={submitting || quote.status === "quoting"}
         aria-describedby="gen-status"
-        aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+        aria-label={submitting ? t.gen.starting : keyName}
         label={
           submitting
             ? t.gen.starting
@@ -1690,7 +1734,7 @@ export function GeneratePanel({
               ? t.gen.quoting
               : capability === "describe"
                 ? t.gen.describe
-                : t.gen.generate
+                : (verb?.word ?? t.gen.generate)
         }
         credits={!submitting && quote.status === "ready" ? quote.credits : null}
         unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}
@@ -1856,7 +1900,7 @@ export function GeneratePanel({
         ? t.gen.quoting
         : capability === "describe"
           ? t.gen.describe
-          : t.gen.generate;
+          : (verb?.word ?? t.gen.generate);
 
     return (
       <section className="studio-surface sc-composer" aria-labelledby="gen-title" data-testid="composer" data-capability={capability}>
@@ -2015,7 +2059,7 @@ export function GeneratePanel({
             onClick={generate}
             aria-busy={submitting || quote.status === "quoting"}
             aria-describedby="gen-status"
-            aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+            aria-label={submitting ? t.gen.starting : keyName}
             label={<span className="sc-send-word">{sendLabel}</span>}
             credits={!submitting && quote.status === "ready" ? quote.credits : null}
             unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}

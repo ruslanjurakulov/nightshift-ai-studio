@@ -93,7 +93,7 @@ SPEND, as for every adapter.
 
 **Price and limits**
 
-- "a flat $0.01 per generated image", with built-in search included.
+- a flat price per generated image, with built-in search included (the figure is on the vendor pricing page, read on the date above; the price itself lives in the model registry, not in prose).
 - "images that fail to generate, or that are removed by safety filtering before they're returned, aren't counted".
 - `n` images are billed `n` times. So every picture in an answer is handed back, never only the first.
 - Rate limit: 150 requests per minute per team.
@@ -179,10 +179,10 @@ carries `"operator_preview": true`:
   signed-in requests elsewhere (a workflow step or a creative job naming the model) are accepted too, in the exempt
   organization only; a step that runs without the operator's sign-in is refused.
 - **Money.** The exempt organization holds and pays nothing. With no `credit_prices` row the job is recorded at the
-  vendor's cost ($0.01 an image, an estimate from the vendor's page). The vendor bills the owner's key for every
+  vendor's cost (per image, an estimate from the vendor's page). The vendor bills the owner's key for every
   picture.
 - **Before the first picture.** The entry must be synced and verified by one real probe: Actions, then "Probe
-  models", naming `grounded-image-1.0` (one paid call, about $0.01). `--all` skips it because its terms gate is still set (not cleared).
+  models", naming `grounded-image-1.0` (one paid call, one image). `--all` skips it because its terms gate is still set (not cleared).
   Until a probe has succeeded the preview is refused like any unverified model.
 - **What stays closed.** `availability` is `hidden`, the terms gate is still set and there is no credit price: no
   customer can see, quote or run the model. The gate's conditions in `terms_notes` are unchanged.
@@ -208,7 +208,7 @@ carries `"operator_preview": true`:
      longer names an aspect ratio, so it sends no `tools` (migration 0143 lets the probe log store the new code).
    - **Second probe, 2026-11-12 20:40Z** (run 43302357299, this branch): the cheapest valid call, with no tool:
      `{"model": "muse-image-1.0", "store": false, "input": "a red apple on a white table"}`. Result: `ok
-     grounded-image-1.0`, one image, $0.01. The endpoint, the key, `store: false` and the `image_generation_call` answer
+     grounded-image-1.0`, one image. The endpoint, the key, `store: false` and the `image_generation_call` answer
      are confirmed. Only the tool is in question.
    - **So no shape is offered.** Until a probe proves the tool, the registry entry lists no `aspect_ratios`. The Studio
      then offers no shape for this model and sends none (`fixedShape` in `command-center/lib/creative/studio.ts`), and

@@ -135,7 +135,7 @@ class PikaVideoAdapter(SafeResultMixin, HttpAdapter):
     #: The docs cap an uploaded image at 20 MB; a local one is sent as raw bytes.
     MAX_IMAGE_BYTES = 20 * 1024 * 1024
     #: vendor model -> what it serves. Durations: Pika 2.5 text-to-video is 5 s only; image-to-video takes 5 or 10 s but the
-    #: catalogue prices 1080p at $0.09 per second for a 5 s clip and $0.06 for the generic tier, so only 5 s is offered (the price
+    #: catalogue prices 1080p per second for a 5 s clip and at a different generic-tier rate otherwise, so only 5 s is offered (the price
     #: is then exact, not a guess between two). Pikaframes is ONE transition between two pictures, 1 to 5 s (the page says 1-10
     #: but "Multiple transitions are limited to 5 seconds each", and the cap for two pictures is not stated: the lower one).
     SPECS = {

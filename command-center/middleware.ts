@@ -373,7 +373,9 @@ export const config = {
   // (tests/middleware-matcher.test.ts fails until it is); until then it is
   // gated, never the other way round. The public site's icon.svg and its
   // self-hosted font files (FONT_FILES in next.config.ts) are named the same way.
+  // Trend-template media (0183): one slug segment (lower-case words joined by hyphens, never a dot) and exactly
+  // preview.mp4 or poster.webp. Marketing previews, public by design; anything else under /templates stays gated.
   matcher: [
-    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|manifest\\.webmanifest$|pwa-192\\.png$|pwa-512\\.png$|pwa-maskable-192\\.png$|pwa-maskable-512\\.png$|fonts/onest-latin-v1\\.woff2$|fonts/onest-latin-ext-v1\\.woff2$|fonts/onest-cyrillic-v1\\.woff2$|fonts/onest-cyrillic-ext-v1\\.woff2$|api/media/uploads/[^/]+$).*)",
+    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|manifest\\.webmanifest$|pwa-192\\.png$|pwa-512\\.png$|pwa-maskable-192\\.png$|pwa-maskable-512\\.png$|fonts/onest-latin-v1\\.woff2$|fonts/onest-latin-ext-v1\\.woff2$|fonts/onest-cyrillic-v1\\.woff2$|fonts/onest-cyrillic-ext-v1\\.woff2$|fonts/unbounded-latin-v1\\.woff2$|fonts/unbounded-latin-ext-v1\\.woff2$|fonts/unbounded-cyrillic-v1\\.woff2$|fonts/unbounded-cyrillic-ext-v1\\.woff2$|templates/[a-z0-9]+(?:-[a-z0-9]+)+/preview\\.mp4$|templates/[a-z0-9]+(?:-[a-z0-9]+)+/poster\\.webp$|api/media/uploads/[^/]+$).*)",
   ],
 };

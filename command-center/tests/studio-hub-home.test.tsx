@@ -102,7 +102,9 @@ describe("Studio's list views", () => {
 describe("the 'moved' notice", () => {
   it("knows which screens moved, and stays off a video's or a project's own page", () => {
     expect(movedSectionFor("/chronos/styles", null)).toBe("styles");
-    expect(movedSectionFor("/chronos/create", null)).toBe("create");
+    // Create and Library are rail entries again (the sprint IA): they did not "move" anywhere a customer would look for them.
+    expect(movedSectionFor("/chronos/create", null)).toBeNull();
+    expect(movedSectionFor("/chronos/library", null)).toBeNull();
     expect(movedSectionFor("/chronos/studio/look", null)).toBe("look");
     expect(movedSectionFor("/chronos/studio", "videos")).toBe("videos");
     expect(movedSectionFor("/chronos/studio", "<script>")).toBeNull();

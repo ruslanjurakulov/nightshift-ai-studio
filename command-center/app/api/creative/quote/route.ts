@@ -4,7 +4,7 @@ import { creativeSession } from "@/lib/server/creative";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 import { blockedModelsHere, geoRefusal } from "@/lib/server/geo";
-import { quoteAround } from "@/lib/creative/route-around";
+import { missingWords, quoteAround } from "@/lib/creative/route-around";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +38,10 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (!parsed.ok) return NextResponse.json(parsed.result.body, { status: parsed.result.status });
   const named = parsed.input.mode === "exact" && parsed.input.model ? geoRefusal(parsed.input.model, request.headers) : null;
   if (named) return NextResponse.json(named.body, { status: named.status });
+  if (parsed.input.mode === "exact") {
+    const words = await missingWords(session.db, parsed.input.capability, parsed.input.model, parsed.input.params);
+    if (words) return NextResponse.json(words.body, { status: words.status });
+  }
   let out = await quote(session.db, parsed.input);
   if (out.status === 200 && parsed.input.mode !== "exact") {
     // The database picked without knowing the country. A pick this country forbids is not shown as a price: the same choice
@@ -48,6 +52,13 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
       const blocked = blockedModelsHere(request.headers);
       out = blocked ? await quoteAround(session.db, parsed.input, blocked) : { status: 451, body: { error: "country_blocked" } };
     }
+  }
+  if (out.status === 200 && parsed.input.mode !== "exact") {
+    // The automatic choice picked a model that needs words that were not sent: no price for a job that would be refused.
+    const q = out.body.quote as { routed_model?: unknown; model?: unknown } | undefined;
+    const picked = typeof q?.routed_model === "string" ? q.routed_model : typeof q?.model === "string" ? q.model : "";
+    const words = await missingWords(session.db, parsed.input.capability, picked, parsed.input.params);
+    if (words) return NextResponse.json(words.body, { status: words.status });
   }
   return NextResponse.json(out.body, { status: out.status });
 });

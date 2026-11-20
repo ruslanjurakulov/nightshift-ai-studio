@@ -2,7 +2,7 @@
 
 Status: research only, 2026-11-14 (Scout). A follow-up to `docs/research/ELEVENLABS_STUDIO.md`, asked
 for by the coordinating session on the owner's behalf: the owner is testing and cannot pay ElevenLabs
-Scale ($299/mo) yet, and the ElevenLabs OEM terms §2.B(f) block every customer-facing ElevenLabs use
+Scale yet, and the ElevenLabs OEM terms §2.B(f) block every customer-facing ElevenLabs use
 below Scale. No product code is changed, no key was used, no paid call was made. Every figure cites
 its official source (§10) with the date read, or says **unverified**. No model of either provider has
 been called through an adapter of ours (none exists), so every one of them is **not verified**.
@@ -20,13 +20,13 @@ mumkin emas.
 
 1. **Azure: o'zbekcha 2 ta ovoz bor.** Bular `uz-UZ-MadinaNeural` (ayol) va `uz-UZ-SardorNeural`
    (erkak) [A1]. Ularda uslub (style) ham, rol ham yo'q. Fonema, lug'at (lexicon) va viseme ham
-   qo'llab-quvvatlanmaydi [A1]. Narxi 1M belgiga **$15** [A2]. 10 daqiqalik hikoya taxminan
-   **$0.14–0.15**, bizda **~41–45 kredit** turadi (ElevenLabs'da 216–240 kredit).
+   qo'llab-quvvatlanmaydi [A1]. Narxi 1M belgi hisobida [A2] (raqam sotuvchining narx sahifasida).
+   10 daqiqalik hikoya bizda **~41–45 kredit** turadi (ElevenLabs'da 216–240 kredit).
 2. **Azure'ning bepul (F0) tarifidagi ovozni tijoratda ishlatib bo'lmaydi.** Tijoriy foydalanish
    huquqi faqat **pullik** tarifda beriladi [A5]. F0 faqat ichki tinglash sinovi uchun yaraydi.
 3. **Gemini 3.8 Flash TTS "Northern Uzbek"ni qo'llab-quvvatlaydi** [G1]. Bitta so'rovda **2 ta
    so'zlovchi** bo'lishi mumkin [G1]. Narx ovoz davomiyligiga bog'liq: 1 soniya = 25 token [G2].
-   10 daqiqa taxminan **$0.14** (2027-yil 1-yanvardan **$0.27**) [G2]. Gemini **so'z vaqtlarini
+   10 daqiqa narxi 2027-yil 1-yanvardan **ikki baravar** oshadi [G2]. Gemini **so'z vaqtlarini
    (timestamps) qaytarmaydi**, shuning uchun subtitr uchun alohida STT kerak.
 4. **Gemini'ning bepul tarifi ma'lumotni o'qitish uchun ishlatadi.** U yerda yuborilgan matnlarni
    inson ham o'qishi mumkin [G3]. Pullik tarifda bunday emas [G3]. **Muhim:** repodagi hozirgi Gemini
@@ -36,9 +36,9 @@ mumkin emas.
    taklifi Uzbekistan uchun USD'da ochiq [A9]. Google Cloud'ning Uzbekistan'dagi to'lov tafsilotlari
    **tekshirilmadi**.
 6. **O'zbekcha STT:**
-   - Azure `uz-UZ` (real-time $1/soat, batch $0.18/soat) [A1][A2];
-   - Google `chirp`, `chirp_2`, `chirp_3` (`uz-UZ`, $0.016/daqiqa) [G6][G7];
-   - ElevenLabs Scribe $0.20/soat.
+   - Azure `uz-UZ` (real-time va batch, soatiga narxlanadi) [A1][A2];
+   - Google `chirp`, `chirp_2`, `chirp_3` (`uz-UZ`, daqiqasiga narxlanadi) [G6][G7];
+   - ElevenLabs Scribe (soatiga narxlanadi).
 7. **Uchta qahramon:**
    - Azure'da o'zbekcha faqat 2 ovoz bor, demak 3 ta farqli o'zbekcha ovoz chiqmaydi.
    - Gemini'da 3-qahramon alohida so'rov bilan qilinadi.
@@ -75,7 +75,7 @@ mumkin emas.
 | Pronunciation control | SSML; **custom lexicon and phonemes not supported for uz-UZ** [A1] | prompt and style only | pronunciation dictionaries (≤ 3 per request) |
 | Request stitching / continuity | none: each request is independent | none documented; "rely on the voice reference for stability" [G1] | `previous_request_ids` on v4 |
 | Custom voice / cloning | Professional and Personal voice are **Limited Access**: "Only customers managed by Microsoft, meaning those who are working directly with Microsoft account teams, are eligible" [A7]. uz-UZ is not a personal-voice target [A1] | Voice design and voice replication on 3.8 models [G1]. Replication needs a consent clip in a listed language, and **Uzbek is not on the consent-phrase list** [G5]. Stored voices: 200 per project, 1-year TTL [G1] | IVC Starter+, PVC Creator+ |
-| Dubbing / translation | Video Translation: uz-UZ as standard voice source and target [A1]; $5/h input, $15/h output video [A2] | none in TTS; translate the script with Gemini text, then TTS | Dubbing v1/v2 |
+| Dubbing / translation | Video Translation: uz-UZ as standard voice source and target [A1]; priced per hour of input and of output video [A2] | none in TTS; translate the script with Gemini text, then TTS | Dubbing v1/v2 |
 | Uzbek STT | **Yes**: real-time, monolingual post-stream refinement, batch, fast transcription; custom speech with plain text [A1] | Google Cloud STT V2: `uz-UZ` on `chirp`, `chirp_2`, `chirp_3`, with automatic punctuation; **no diarization** for uz-UZ [G6] | Scribe, "Good" 10–20% WER |
 | Output formats | many, e.g. `riff-24khz-16bit-mono-pcm`, `audio-48khz-192kbitrate-mono-mp3`, `ogg-48khz-16bit-mono-opus` [A8] | WAV (unary default) or raw `audio/l16`, 24 kHz mono 16-bit; also mu-law/A-law; `sample_rate` 24000/16000/8000 [G1] | MP3/PCM/WAV/Opus up to 48 kHz |
 
@@ -190,51 +190,59 @@ Region note for Google STT: uz-UZ `chirp_3` is listed in `us` and `eu`; `chirp`/
 **Azure** (azure.microsoft.com/en-us/pricing/details/speech, region shown "Central US", USD, read
 2026-11-14 [A2]):
 
-| Item | Price |
+The figures are on the vendor pricing page (read 2026-11-14); the price itself lives in the DB price
+table / model registry, not in prose. What the page prices:
+
+| Item | Billed |
 | :-- | :-- |
-| TTS Neural / Neural HD Flash, real-time and batch | **$15 per 1M characters** |
+| TTS Neural / Neural HD Flash, real-time and batch | per 1M characters |
 | Free tier (F0) | 0.5M characters per month (neural); 5 audio hours STT |
-| Commitment tiers, TTS Neural | $960 for 80M chars (overage $12/1M); $3,900 for 400M ($9.75); $15,000 for 2,000M ($7.50) |
-| Professional custom voice | $24 per 1M chars ($48 HD); training $52/compute hour, up to $936; hosting $4.04/model/hour (Limited Access) |
-| STT real-time | $1 per hour |
-| STT batch | $0.18 per hour |
-| Video translation | $5/h input; $15/h output (standard voice) |
+| Commitment tiers, TTS Neural | prepaid character blocks with an overage rate per 1M |
+| Professional custom voice | per 1M chars (HD dearer); training per compute hour, capped; hosting per model per hour (Limited Access) |
+| STT real-time | per hour |
+| STT batch | per hour, cheaper than real-time |
+| Video translation | per hour of input and of output (standard voice) |
 | Billing unit | "speech synthesis usage is billed per character" |
 
 **Gemini TTS** (ai.google.dev/gemini-api/docs/pricing, read 2026-11-14 [G2]); `gemini-3.8-flash-tts`,
 per 1M tokens:
 
-| Tab | Free tier | Paid: text input | Paid: audio output |
-| :-- | :-- | :-- | :-- |
-| Standard | free of charge; "Used to improve our products: Yes" | $0.50 through 2026-12-31, then **$1.00** | $9.00 through 2026-12-31, then **$18.00** |
-| Batch | not available | $0.25 → $0.50 | $4.50 → $9.00 |
-| Flex | not available | $0.25 → $0.50 | $4.50 → $9.00 |
-| Priority | not available | $0.90 → $1.80 | $16.20 → $32.40 |
+| Tab | Free tier | Paid: text input and audio output |
+| :-- | :-- | :-- |
+| Standard | free of charge; "Used to improve our products: Yes" | priced; **doubles** after 2026-12-31 |
+| Batch | not available | half of Standard; doubles after 2026-12-31 |
+| Flex | not available | as Batch |
+| Priority | not available | dearer than Standard; doubles after 2026-12-31 |
+
+The figures are on the vendor pricing page (read 2026-11-14), not in this document.
 
 Footnote: "Audio tokens correspond to 25 tokens per second of audio" [G2]. (The token guide's
 "32 tokens per second" is for audio **input** to understanding models [G10], not TTS output.)
 
 **Google Cloud STT V2** (cloud.google.com/speech-to-text/pricing, read 2026-11-14 [G7]):
 
-| Item | Price |
+| Item | Billed |
 | :-- | :-- |
-| Recognition, Standard (includes `chirp`) | **$0.016 per minute** for 0–500,000 minutes a month |
+| Recognition, Standard (includes `chirp`) | per minute, for 0–500,000 minutes a month |
 | Recognition with data logging | first 60 minutes per month free |
-| Dynamic batch recognition, Standard | **$0.003 per minute** |
+| Dynamic batch recognition, Standard | per minute, cheaper than Standard |
+
+The figures are on the vendor pricing page (read 2026-11-14), not in this document.
 
 ### 4.2 Our credit price
 
-The convention is `credits_per_unit` = vendor cost in US cents, × (1 + margin), with margin 2.0 for
-voice, i.e. ×3 (`docs/sql/prices_defaults_2026_10_03.sql`).
+The convention is the one in `docs/sql/prices_defaults_2026_10_03.sql` (vendor cost converted to
+credits, times the voice margin); the vendor cost and the margin live in the DB price table, not in
+prose. The proposed charged prices:
 
-| Unit (proposed name) | Vendor cost | `credits_per_unit` | Charged |
-| :-- | :-- | --: | --: |
-| `model_azure_tts_neural_character` | $0.000015/char | 0.0015 | **0.0045 cr/char** |
-| `model_gemini_3_8_flash_tts_audio_second` (to 2026-12-31) | 25 × $9/1M = $0.000225/s | 0.0225 | **0.0675 cr/s** |
-| same, from 2027-01-01 | $0.00045/s | 0.045 | **0.135 cr/s** |
-| `model_gemini_3_8_flash_tts_input_token` (to 2026-12-31) | $0.0000005 | 0.00005 | 0.00015 cr/token |
-| `model_azure_stt_uz_second` (batch) | $0.18/h = $0.00005/s | 0.005 | 0.015 cr/s |
-| `model_google_stt_chirp_second` | $0.016/min = $0.000267/s | 0.0267 | 0.08 cr/s |
+| Unit (proposed name) | Charged |
+| :-- | --: |
+| `model_azure_tts_neural_character` | **0.0045 cr/char** |
+| `model_gemini_3_8_flash_tts_audio_second` (to 2026-12-31) | **0.0675 cr/s** |
+| same, from 2027-01-01 | **0.135 cr/s** |
+| `model_gemini_3_8_flash_tts_input_token` (to 2026-12-31) | 0.00015 cr/token |
+| `model_azure_stt_uz_second` (batch) | 0.015 cr/s |
+| `model_google_stt_chirp_second` | 0.08 cr/s |
 
 Gemini bills by **output audio duration**, which is not known before the call. The quote must hold
 an upper bound and capture the actual usage reported by the response; the backend computes both, and
@@ -249,8 +257,7 @@ about 1,000-character dialogue scene.
 
 | | Azure Neural | Gemini 3.8 Flash TTS (to 2026-12-31) | Gemini (from 2027-01-01) | ElevenLabs v4 |
 | :-- | --: | --: | --: | --: |
-| Formula | chars × $15/1M | 600 s × 25 tok/s × $9/1M + text tokens × $0.50/1M | ×2 | chars × $0.08/1K |
-| Vendor cost | $0.135–$0.150 | $0.135 + ≤ $0.005* = **≈ $0.14** | **≈ $0.28** | $0.72–$0.80 |
+| Billed by | characters | 600 s × 25 tok/s of audio output + text tokens* | ×2 | characters |
 | Our charge | **41–45 cr** | 40.5 + ≤ 1.5 = **≈ 42 cr** | **≈ 84 cr** | 216–240 cr |
 | Captions | Azure STT batch 600 s: 9 cr, or `WordBoundary` (free, if it works for uz) | must transcribe: Azure batch 9 cr, or Google 48 cr | same | free (alignment) |
 
@@ -261,7 +268,7 @@ deliberate upper bound; Uzbek tokenisation is **not measured**).
 
 | | Azure (2 Uzbek voices + 1 pitched) | Gemini (2 in one request + 1 per turn) | ElevenLabs Text to Dialogue |
 | :-- | --: | --: | --: |
-| Vendor cost | ~1,100 billable chars incl. `<prosody>` markup × $15/1M ≈ **$0.017** | 60 s × 25 × $9/1M ≈ **$0.0135** + text | $0.08 |
+| Billed by | ~1,100 billable chars incl. `<prosody>` markup | 60 s × 25 tok/s of audio output + text | characters |
 | Our charge | **≈ 5 cr** | **≈ 4–5 cr** | 24 cr |
 | Distinct Uzbek voices | 2 | 3 (quality not measured) | 3 |
 | Turns aware of each other | no | yes for the 2 in one request | yes |
@@ -418,7 +425,7 @@ of quota".
 Nothing here measures how Uzbek **sounds**. The language lists are the vendors' claims. Until the
 owner listens, every Uzbek voice is "not verified".
 
-**The probe (P1), at most about $0.05 in total:**
+**The probe (P1), a few cents in total at the vendor pricing pages' rates:**
 
 1. One fixed Uzbek paragraph, about 600 characters (≈ 40 s). It should contain:
    - oʻ, gʻ and the ʼ letter (U+02BB / U+02BC);
@@ -447,10 +454,10 @@ owner listens, every Uzbek voice is "not verified".
 | Uzbek TTS | v3, v4 (vendor claim) | 2 voices, no styles | 3.8 Flash and Flash-Lite, many voices |
 | Dialogue | Text to Dialogue, ≤ 10 voices, turns aware of each other | per-turn SSML; 2 Uzbek voices | 2 speakers per request; more per turn |
 | Timestamps | character alignment with every call | `WordBoundary` (uz to be probed) | none |
-| 10-minute narration, our charge | 216–240 cr ($0.72–0.80 cost) | 41–45 cr ($0.14–0.15) | ≈ 42 cr ($0.14); ≈ 84 cr from 2027 |
-| Minimum plan for customer use | **Scale, $299/mo** (OEM §2.B(f)) | none (S0, paid tier) | none (billing account) |
+| 10-minute narration, our charge | 216–240 cr | 41–45 cr | ≈ 42 cr; ≈ 84 cr from 2027 |
+| Minimum plan for customer use | **Scale** (OEM §2.B(f)) | none (S0, paid tier) | none (billing account) |
 | Data use | trains unless opted out; Enterprise not | no training; prebuilt TTS not logged | paid: no training; free: training and human review |
-| Uzbek STT | Scribe $0.20/h | $0.18/h batch | Google Cloud `chirp*` $0.96/h ($0.18/h dynamic batch) |
+| Uzbek STT | Scribe (per hour) | batch (per hour) | Google Cloud `chirp*` (per minute; dynamic batch cheaper) |
 | Custom voice for users | IVC on paid plans | Limited Access only | replication, no Uzbek consent phrase |
 | Main risk | cost floor; Default voices expire 2026-12-31 | only 2 Uzbek voices; no expressiveness | new model; no timestamps; price doubles 2027-01-01; under-18 clause |
 

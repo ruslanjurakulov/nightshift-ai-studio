@@ -1,0 +1,74 @@
+import type { Cell, Table } from "@/lib/owner-analytics/export";
+
+/**
+ * A table from the same Table object the export writes, so screen and file agree. A null cell reads `unknownText`, never 0.
+ * Row ids (`{id}-{first cell}`) are the drill-down targets of the chart above the table.
+ */
+export function DataTable({
+  table,
+  id,
+  unknownText,
+  format,
+  limit,
+  showingText,
+  emptyText,
+  nullText,
+}: {
+  table: Table;
+  id: string;
+  unknownText: string;
+  /** Per column: how to print a number in it. Columns without one print the number as is. */
+  format?: Array<((n: number) => string) | undefined>;
+  limit?: number;
+  showingText?: (n: number, total: number) => string;
+  /** Said in place of rows when there are none: an empty table with only its header says nothing. */
+  emptyText?: string;
+  /** Per column: a more precise word than unknownText for an empty cell there ("not entered"). */
+  nullText?: Array<string | undefined>;
+}) {
+  const rows = limit ? table.rows.slice(0, limit) : table.rows;
+  if (rows.length === 0 && emptyText) return <p className="oa-empty">{emptyText}</p>;
+  const cell = (v: Cell, i: number) => {
+    if (v === null) return <span className="oa-dim">{nullText?.[i] ?? unknownText}</span>;
+    if (typeof v === "number") return format?.[i] ? format[i]!(v) : String(v);
+    return v;
+  };
+  // A header sits over its cells: right-aligned only over a column whose known cells are numbers.
+  const numericCol = table.columns.map((_, i) => {
+    const known = rows.map((r) => r[i]).filter((v) => v !== null && v !== "");
+    return known.length > 0 && known.every((v) => typeof v === "number");
+  });
+  return (
+    <div className="oa-table-wrap">
+      <table id={id}>
+        <thead>
+          <tr>
+            {table.columns.map((c, i) => (
+              <th key={i} scope="col" className={i > 0 && numericCol[i] ? "oa-num" : undefined}>
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => (
+            <tr key={ri} id={`${id}-${String(r[0])}`}>
+              {r.map((v, i) =>
+                i === 0 ? (
+                  <th key={i} scope="row">
+                    {cell(v, i)}
+                  </th>
+                ) : (
+                  <td key={i} className={typeof v === "number" || v === null ? "oa-num" : undefined}>
+                    {cell(v, i)}
+                  </td>
+                ),
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {limit && table.rows.length > limit && showingText && <p className="oa-note">{showingText(limit, table.rows.length)}</p>}
+    </div>
+  );
+}

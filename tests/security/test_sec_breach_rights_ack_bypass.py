@@ -33,7 +33,7 @@ MODELS = [
     ("vid-needs-ack", ["i2v"], {"speed_tier": 0}, ["likeness_photo"], "model_vid_needs_ack_second", 2),
     # A picture model that takes reference pictures and requires a likeness acknowledgement.
     ("img-refs-ack", ["t2i"], {"inputs": {"image_refs_max": 4}}, ["likeness_photo"], "model_img_refs_ack_image", 1),
-    # A picture model that requires nothing: a workflow's first step (0179's workflow test).
+    # A picture model that requires nothing: a workflow's first step (0187's workflow test).
     ("img-plain", ["t2i"], {}, None, "model_img_plain_image", 1),
 ]
 PRICES = ", ".join(f"('{u}', {c}, 0)" for _m, _c, _s, _col, u, c in MODELS) + ", ('job_minimum', 1, 0)"
@@ -188,7 +188,7 @@ def test_an_at_character_in_the_prompt_is_an_input_the_gate_asks_about(db):
     pytest.fail(f"a job of a model that requires likeness_photo was created with an unacknowledged @character picture: {out['job']['id']}")
 
 
-# ── 0179's follow-ups (Lens): a workflow step and the worker's own read ─────
+# ── 0187's follow-ups (Lens): a workflow step and the worker's own read ─────
 
 def ack(db, subject):
     db.act("authenticated", UA, "select public.acknowledge_rights('likeness_photo', %s, %s, 'en')", [V1, subject])

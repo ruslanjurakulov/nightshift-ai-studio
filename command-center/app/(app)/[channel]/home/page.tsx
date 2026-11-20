@@ -1,139 +1,58 @@
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { createClient, getUser } from "@/lib/supabase/server";
-import { getChannelContext } from "@/lib/channels-server";
-import { channelSlug, isScoped, orgWide } from "@/lib/channels";
-import { listWaitingStoryboards } from "@/lib/server/storyboards";
 import { getOrgContext } from "@/lib/orgs-server";
-import { heldOnly, uploadedOnly } from "@/lib/heldVideos";
-import { buildHomeChannels, countByChannel, lastVideoByChannel, recentVideos, runnableChannels, type HomeVideo } from "@/lib/home";
-import { HomeHub } from "@/components/home/HomeHub";
-import { loadStudioModels } from "@/lib/server/creative";
-import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
-import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
-import { readConnectedAccounts } from "@/lib/connectedAccounts";
-import { channelDnaForCreate } from "@/lib/server/channel-dna";
-import { CreateStudio } from "@/components/create/CreateStudio";
-import { atLeast } from "@/lib/auth/roles";
+import { loadEditorProjects } from "@/lib/server/editor";
+import { HomeCreate, type HomeProjectsReading, type HomeWaiting } from "@/components/customer/HomeCreate";
+import { getChannelContext } from "@/lib/channels-server";
+import { orgWide } from "@/lib/channels";
+import { createClient } from "@/lib/supabase/server";
+import { heldOnly } from "@/lib/heldVideos";
+import { listWaitingStoryboards } from "@/lib/server/storyboards";
+import { TrendsStrip } from "@/components/trends/TrendsStrip";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Home ("Bosh sahifa") — where a customer lands after sign-in
- * (lib/navigation landingSection). Reads only: the organization's channels
- * (already resolved for the layout), the newest uploaded video and the
- * held-for-review count per channel (two bounded `videos` reads under the
- * viewer's RLS). Nothing here writes, prices or starts anything.
+ * Home ("Nima yaratamiz?") — where a customer lands after sign-in (lib/navigation landingSection): the prompt box with
+ * its Video | Image | Audio tabs, the top trend templates (stream S3's GET /api/templates, a designed placeholder until
+ * it is deployed), what to continue, and for a new account three ways to start.
  *
- * The first card is the same guided create flow the Create page shows, for the
- * channel in view (or the first one that is connected): it prices before it asks
- * and asks once before it starts, exactly as there.
- *
- * The Assistant's plan needs the models the Studio offers and whether the
- * viewer may start a run — both reads; its prices are asked only once a plan
- * is made, and nothing starts before its one confirm.
+ * Reads only the organization's editor projects, as the signed-in member (RLS); a missing table or a failed read says
+ * so instead of an empty list that reads as "none yet". Nothing here writes, prices or starts anything: the box opens
+ * Create with the words, and only Create's priced press spends. The channel's autopilot run stays on Create's YouTube
+ * desk (/create?desk=youtube), and the channels themselves under the avatar menu.
  */
 export default async function HomePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { channels, selection, scope } = await getChannelContext();
   const org = await getOrgContext();
   const orgId = org.supported && org.current ? org.current.id : null;
-
+  let projects: HomeProjectsReading = { state: "not_available" };
+  if (orgId) {
+    const list = await loadEditorProjects(orgId);
+    projects =
+      list.state === "ok"
+        ? { state: "ok", projects: list.value.map((p) => ({ id: p.id, title: p.title, updatedAt: p.updatedAt })) }
+        : list.state === "not_available"
+          ? { state: "not_available" }
+          : { state: "failed" };
+  }
+  // What waits for this person's decision (rule 3: the human approval step stays one tap from Home): videos held for review
+  // and storyboards waiting for approval, across the organization's channels, as the member (RLS). A failed read is null
+  // ("couldn't read"), never 0.
+  let waiting: HomeWaiting = { videos: null, storyboards: null };
+  const { channels, scope } = await getChannelContext();
   const ids = channels.map((c) => c.channel_id);
-  let lastVideos = new Map<string, { title: string; at: string | null }>();
-  // null = the read failed: the cards say "couldn't read", never 0.
-  let waiting: Map<string, number> | null = new Map();
-  // null = not read or failed: the section says nothing rather than "no videos".
-  let rows: unknown = null;
-  // Storyboards waiting for approval (0057), the same rows /videos lists. null = the read failed: the
-  // card then counts nothing from them rather than guessing.
-  let boards: Awaited<ReturnType<typeof listWaitingStoryboards>> = null;
   const supabase = ids.length > 0 ? await createClient() : null;
   if (supabase) {
-    const [uploaded, held, newest, waitingBoards] = await Promise.all([
-      uploadedOnly(supabase.from("videos").select("channel_id,title,topic,published_at").in("channel_id", ids))
-        .order("published_at", { ascending: false, nullsFirst: false })
-        .limit(200),
+    const [held, boards] = await Promise.all([
       heldOnly(supabase.from("videos").select("channel_id").in("channel_id", ids)).limit(500),
-      supabase
-        .from("videos")
-        .select("video_id,channel_id,title,topic,published_at,privacy")
-        .in("channel_id", ids)
-        .order("published_at", { ascending: false, nullsFirst: true })
-        .limit(40),
-      // The whole organization, like the held count beside it: Home ignores the channel switcher.
       listWaitingStoryboards(supabase, orgWide(scope)),
     ]);
-    boards = waitingBoards;
-    if (!newest.error) rows = newest.data;
-    if (!uploaded.error) lastVideos = lastVideoByChannel(uploaded.data);
-    waiting = held.error ? null : countByChannel(held.data);
-  } else if (ids.length > 0) {
-    waiting = null;
+    waiting = { videos: held.error ? null : (held.data?.length ?? 0), storyboards: boards === null ? null : boards.length };
+  } else if (ids.length === 0) {
+    waiting = { videos: 0, storyboards: 0 };
   }
-
-  const homeChannels = buildHomeChannels({
-    channels,
-    slugOf: (c) => channelSlug(c, channels),
-    lastVideos,
-    waiting,
-  });
-  const [models, role] = await Promise.all([orgId ? loadStudioModels() : Promise.resolve([]), resolveCurrentOrgRole()]);
-  const scoped = isScoped(selection) ? channels.find((c) => c.channel_id === selection) : undefined;
-  const connected = homeChannels.filter((c) => c.standing !== "draft");
-  const slugById = new Map(channels.map((c) => [c.channel_id, channelSlug(c, channels)] as const));
-  const videos: HomeVideo[] | null = rows === null ? null : recentVideos(rows, (id) => slugById.get(id) ?? null);
-
-  // The guided create flow, for the channel in view or the first connected one.
-  const runnable = runnableChannels(channels);
-  const makeFor = (scoped && runnable.some((c) => c.channel_id === scoped.channel_id) ? scoped : undefined) ?? runnable[0];
-  let run: React.ReactNode = undefined;
-  if (makeFor) {
-    const [dna, operator, accounts, user] = await Promise.all([
-      channelDnaForCreate(makeFor),
-      isOperator(),
-      readConnectedAccounts().catch(() => []),
-      // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
-      getUser(),
-    ]);
-    run = (
-      <CreateStudio
-        channelId={makeFor.channel_id}
-        githubConfigured={isRunNowConfigured}
-        backend={runBackend}
-        agentConfig={makeFor.agent_config ?? null}
-        canRun={atLeast(role, "admin")}
-        operator={operator}
-        targets={accounts.map(({ platform, id, name, connected: on }) => ({ platform, id, name, connected: on }))}
-        dna={dna.run}
-        userId={user?.id ?? ""}
-        orgId={orgId}
-      />
-    );
-  }
-
-  // The assistant's models are filtered by the request's country once a model has a country list; the DB-IP credit for that is
-  // drawn once by the (app) layout for every page (docs/GEO_BLOCK.md).
-  return (
-    <>
-      <HomeHub
-        channels={homeChannels}
-        currentSlug={makeFor ? channelSlug(makeFor, channels) : scoped ? channelSlug(scoped, channels) : null}
-        run={run}
-        videos={videos}
-        storyboards={
-          boards === null
-            ? null
-            : boards.flatMap((b) => {
-                const slug = slugById.get(b.channelId);
-                return slug ? [{ channelSlug: slug }] : [];
-              })
-        }
-        orgId={orgId}
-        allPrivate={connected.length > 0 && connected.every((c) => !c.autoPublish)}
-        assistant={{ models, canRun: atLeast(role, "admin"), runConfigured: isRunNowConfigured }}
-      />
-    </>
-  );
+  // Trends (0183): stream S3's strip of the first six templates, in Home's slot (one strip, never a second copy).
+  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} trends={<TrendsStrip />} />;
 }

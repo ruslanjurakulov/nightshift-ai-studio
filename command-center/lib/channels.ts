@@ -70,6 +70,8 @@ export const SECTIONS = [
   "character-studio",
   // Presets & looks: the gallery of ready starting points, opened from Studio and Home.
   "presets",
+  // Trends (0181): ready formats that open Create prefilled.
+  "trends",
   "library",
   "editor",
   "workflows",
@@ -81,6 +83,8 @@ export const SECTIONS = [
   "providers",
   "models",
   "margin",
+  // The platform owner's analytics hub (migration 0182): a section name, so no channel may take it as a slug.
+  "owner-analytics",
   // The operator's Customers page (migration 0138): a section name, so no channel may take it as a slug.
   "customers",
   "billing",

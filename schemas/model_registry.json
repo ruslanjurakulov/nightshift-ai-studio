@@ -62,7 +62,7 @@
             "high": null
           }
         },
-        "note": "billed per token ($30 per 1M image output tokens per a search extract; another extract said $15); no per-image figure"
+        "note": "billed per token (rate per 1M image output tokens from search extracts, which disagreed; see the vendor pricing page); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_image",
       "entitlement": "models_image:premium",
@@ -135,7 +135,7 @@
             "high": null
           }
         },
-        "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
+        "note": "billed per token (rate per 1M image output tokens from a search extract; see the vendor pricing page); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_flare_image",
       "entitlement": "models_image:premium",
@@ -208,7 +208,7 @@
             "high": null
           }
         },
-        "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
+        "note": "billed per token (rate per 1M image output tokens from a search extract; see the vendor pricing page); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_sunburst_image",
       "entitlement": "models_image:ultra",
@@ -787,7 +787,7 @@
         "source_url": "https://elevenlabs.io/pricing/api",
         "as_of": "2026-11-11",
         "confirmed": false,
-        "note": "elevenlabs.io/pricing/api read 2026-11-11: Scribe v2 '$0.20 Price per hour', the same on every plan row = $0.0000556/s (rounded up). Keyterm prompting (+$0.050/h) and transcript editing (+$0.070/h) are extra; this adapter sends neither."
+        "note": "elevenlabs.io/pricing/api read 2026-11-11: Scribe v2 '$0.20 Price per hour', the same on every plan row, converted to a per-second figure (rounded up). Keyterm prompting and transcript editing are priced extra; this adapter sends neither."
       },
       "credit_unit": "model_elevenlabs_scribe_v2_second",
       "entitlement": null,
@@ -1112,7 +1112,7 @@
             "2K": 0.1
           }
         },
-        "note": "ESTIMATE from the structured price list on bfl.ai/pricing (credits at $0.01): 768sq $0.041, 1k $0.048, 1.5k $0.07, 2k $0.10, 4k $0.607 per image. Only 1k and 2k are offered (768sq and 1.5k have no name in the size list; 4k is dear). The submit answer carries the credits charged."
+        "note": "ESTIMATE from the structured price list on bfl.ai/pricing (768sq, 1k, 1.5k, 2k and 4k priced per image; offered sizes' figures in the variants). Only 1k and 2k are offered (768sq and 1.5k have no name in the size list; 4k is dear). The submit answer carries the credits charged."
       },
       "credit_unit": "model_flux_3_image_image",
       "entitlement": "models_image:premium",
@@ -1196,7 +1196,7 @@
             "2K": 0.014
           }
         },
-        "note": "ESTIMATE from the structured price list on bfl.ai/pricing (credits at $0.01): 768sq $0.008, 1k $0.009, 1.5k $0.011, 2k $0.014, 4k $0.036 per image. Only 1k and 2k are offered (768sq and 1.5k have no name in the size list; 4k is dear). The submit answer carries the credits charged."
+        "note": "ESTIMATE from the structured price list on bfl.ai/pricing (768sq, 1k, 1.5k, 2k and 4k priced per image; offered sizes' figures in the variants). Only 1k and 2k are offered (768sq and 1.5k have no name in the size list; 4k is dear). The submit answer carries the credits charged."
       },
       "credit_unit": "model_flux_3_image_klein_image",
       "entitlement": "models_image:basic",
@@ -1267,18 +1267,18 @@
         "source_url": "https://www.recraft.ai/docs/api-reference/pricing",
         "as_of": "2026-10-25",
         "confirmed": false,
-        "note": "ESTIMATE: list price of one raster 1K image on prepaid API units. Vector ($0.08 on V4.1) and Pro 2K ($0.21) are priced apart and not offered. The answer's 'credits' field is the units charged. Whether a failed or refused request is billed is not stated."
+        "note": "ESTIMATE: list price of one raster 1K image on prepaid API units. Vector (on V4.1) and Pro 2K are priced apart and not offered. The answer's 'credits' field is the units charged. Whether a failed or refused request is billed is not stated."
       },
       "credit_unit": "model_recraft_v4_1_image",
       "entitlement": "models_image:basic",
       "terms_gate": null,
       "terms_notes": [
-        "Recraft support, written (email 2026-11-17/18): our signed-in users, in the web studio and our MCP connector, on our credits; NOT the public API (/api/v1). Hence web_mcp (0180). Conditions: fresh call per generation, watermarks/metadata kept, equal user terms, key server-side, likeness consent.",
+        "Recraft support, written (email 2026-11-17/18): our signed-in users, in the web studio and our MCP connector, on our credits; NOT the public API (/api/v1). Hence web_mcp (0188). Conditions: fresh call per generation, watermarks/metadata kept, equal user terms, key server-side, likeness consent.",
         "Recraft Developer Terms (effective 2026-10-20, recraft.ai/legal/developer-terms, read 2026-10-25) 3.1: a non-sublicensable licence to operate applications that integrate the API; 3.5: end users must be bound to an agreement and acceptable-use policy at least as protective as these terms.",
         "3.7 No Substitution: a service where third parties submit prompts and 'receive Assets generated by earlier API calls in place of a new API call' is barred. Every Nightshift generation must be a fresh call: never serve a cached or shared Recraft output for another customer's prompt.",
         "3.2(x) bars using the API or Assets to 'develop goods or services that compete with Recraft or the Services'; a general image-generation product may be read as that, hence terms_review_required. 1.4: a written reseller or platform agreement with Recraft prevails over these terms.",
         "6.2: you own the Assets, but they 'may not be used to train any artificial intelligence model' (a breach ends the licence): pass that to users. 6.4: never remove Recraft's watermarks or metadata. 2.1: the developer must be 18+. No attribution duty found.",
-        "NOT verified: Uzbekistan billing; the consumer Terms of Service. The API has no per-end-user id, so abuse cannot be traced to one user. Limits: 100 images/min and 5 requests/s per user. API units ($1 = 1,000) are prepaid and non-refundable."
+        "NOT verified: Uzbekistan billing; the consumer Terms of Service. The API has no per-end-user id, so abuse cannot be traced to one user. Limits: 100 images/min and 5 requests/s per user. API units are prepaid and non-refundable."
       ],
       "attribution": null,
       "api_exposure": "web_mcp",
@@ -1342,18 +1342,18 @@
         "source_url": "https://www.recraft.ai/docs/api-reference/pricing",
         "as_of": "2026-10-25",
         "confirmed": false,
-        "note": "ESTIMATE: list price of one raster 1K image on prepaid API units. Vector ($0.08 on V4.1) and Pro 2K ($0.21) are priced apart and not offered. The answer's 'credits' field is the units charged. Whether a failed or refused request is billed is not stated."
+        "note": "ESTIMATE: list price of one raster 1K image on prepaid API units. Vector (on V4.1) and Pro 2K are priced apart and not offered. The answer's 'credits' field is the units charged. Whether a failed or refused request is billed is not stated."
       },
       "credit_unit": "model_recraft_v4_1_flash_image",
       "entitlement": "models_image:basic",
       "terms_gate": null,
       "terms_notes": [
-        "Recraft support, written (email 2026-11-17/18): our signed-in users, in the web studio and our MCP connector, on our credits; NOT the public API (/api/v1). Hence web_mcp (0180). Conditions: fresh call per generation, watermarks/metadata kept, equal user terms, key server-side, likeness consent.",
+        "Recraft support, written (email 2026-11-17/18): our signed-in users, in the web studio and our MCP connector, on our credits; NOT the public API (/api/v1). Hence web_mcp (0188). Conditions: fresh call per generation, watermarks/metadata kept, equal user terms, key server-side, likeness consent.",
         "Recraft Developer Terms (effective 2026-10-20, recraft.ai/legal/developer-terms, read 2026-10-25) 3.1: a non-sublicensable licence to operate applications that integrate the API; 3.5: end users must be bound to an agreement and acceptable-use policy at least as protective as these terms.",
         "3.7 No Substitution: a service where third parties submit prompts and 'receive Assets generated by earlier API calls in place of a new API call' is barred. Every Nightshift generation must be a fresh call: never serve a cached or shared Recraft output for another customer's prompt.",
         "3.2(x) bars using the API or Assets to 'develop goods or services that compete with Recraft or the Services'; a general image-generation product may be read as that, hence terms_review_required. 1.4: a written reseller or platform agreement with Recraft prevails over these terms.",
         "6.2: you own the Assets, but they 'may not be used to train any artificial intelligence model' (a breach ends the licence): pass that to users. 6.4: never remove Recraft's watermarks or metadata. 2.1: the developer must be 18+. No attribution duty found.",
-        "NOT verified: Uzbekistan billing; the consumer Terms of Service. The API has no per-end-user id, so abuse cannot be traced to one user. Limits: 100 images/min and 5 requests/s per user. API units ($1 = 1,000) are prepaid and non-refundable."
+        "NOT verified: Uzbekistan billing; the consumer Terms of Service. The API has no per-end-user id, so abuse cannot be traced to one user. Limits: 100 images/min and 5 requests/s per user. API units are prepaid and non-refundable."
       ],
       "attribution": null,
       "api_exposure": "web_mcp",
@@ -1410,7 +1410,7 @@
         "source_url": "https://ideogram.ai/pricing/?pricing_tab=api",
         "as_of": "2026-11-13",
         "confirmed": false,
-        "note": "ESTIMATE: Ideogram 3.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed TURBO), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
+        "note": "ESTIMATE: Ideogram 3.0 Turbo API list price per image (the adapter sends rendering_speed TURBO), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
       },
       "credit_unit": "model_ideogram_3_image",
       "entitlement": null,
@@ -1484,7 +1484,7 @@
         "source_url": "https://ideogram.ai/pricing/?pricing_tab=api",
         "as_of": "2026-11-13",
         "confirmed": false,
-        "note": "ESTIMATE: Ideogram 4.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed turbo at a 1K resolution), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
+        "note": "ESTIMATE: Ideogram 4.0 Turbo API list price per image (the adapter sends rendering_speed turbo at a 1K resolution), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
       },
       "credit_unit": "model_ideogram_4_image",
       "entitlement": null,
@@ -1571,7 +1571,7 @@
             "high": 0.1
           }
         },
-        "note": "ESTIMATE: Ideogram 4.5 Generate API list price per image, Low/Medium/High 1K/2K US$0.03/0.06/0.10, read by the owner in a browser on 2026-11-13 (the page draws its table with a script a plain fetch is refused). Flat figure = medium, the default tier."
+        "note": "ESTIMATE: Ideogram 4.5 Generate API list price per image for Low/Medium/High at 1K/2K (figures in the variants), read by the owner in a browser on 2026-11-13 (the page draws its table with a script a plain fetch is refused). Flat figure = medium, the default tier."
       },
       "credit_unit": "model_ideogram_4_5_image",
       "entitlement": null,
@@ -1701,7 +1701,7 @@
         "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
         "as_of": "2026-10-24",
         "confirmed": false,
-        "note": "ESTIMATE: vendor list $0.045 per image up to 2.61 MP (1K and 1.5K cost the same); above that $0.09. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
+        "note": "ESTIMATE: vendor list per image up to 2.61 MP (1K and 1.5K cost the same); above that it is dearer. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
       },
       "credit_unit": "model_seedream_5_0_pro_image",
       "entitlement": "models_image:premium",
@@ -1771,7 +1771,7 @@
         "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
         "as_of": "2026-10-24",
         "confirmed": false,
-        "note": "ESTIMATE: vendor list $0.018 per image; the page states no size tiers for Flash. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
+        "note": "ESTIMATE: vendor list per image; the page states no size tiers for Flash. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
       },
       "credit_unit": "model_seedream_5_0_flash_image",
       "entitlement": "models_image:basic",
@@ -1841,7 +1841,7 @@
         "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
         "as_of": "2026-10-24",
         "confirmed": false,
-        "note": "ESTIMATE: vendor list $0.04 per image; the page states no size tiers for 4.5. Only 2K (the vendor default) is sent. Vendor claim, unverified: failed images are not billed."
+        "note": "ESTIMATE: vendor list per image; the page states no size tiers for 4.5. Only 2K (the vendor default) is sent. Vendor claim, unverified: failed images are not billed."
       },
       "credit_unit": "model_seedream_4_5_image",
       "entitlement": "models_image:premium",
@@ -2170,7 +2170,7 @@
         "source_url": "https://kling.ai/document-api/pricing/base/video",
         "as_of": "2026-11-11",
         "confirmed": false,
-        "note": "kling.ai/document-api/pricing/base/video read 2026-11-11: 'Kling 2.6 | No Native Audio' '0.3 Units ($0.042) /s' at 720P ($0.07/s 1080P); native audio is 1080P only. The adapter always sends mode std (720p)."
+        "note": "kling.ai/document-api/pricing/base/video read 2026-11-11: 'Kling 2.6 | No Native Audio' '0.3 Units ($0.042) /s' at 720P (1080P is dearer); native audio is 1080P only. The adapter always sends mode std (720p)."
       },
       "credit_unit": "model_kling_v2_6_second",
       "entitlement": "models_video:premium",
@@ -2242,7 +2242,7 @@
             "audio": 0.126
           }
         },
-        "note": "720p (std mode): no audio $0.084/s, with audio $0.126/s; read 2026-10-01. The adapter sends sound on/off."
+        "note": "720p (std mode): priced separately without and with audio (see the vendor pricing page); read 2026-10-01. The adapter sends sound on/off."
       },
       "credit_unit": "model_kling_v3_second",
       "entitlement": "models_video:ultra",
@@ -2306,7 +2306,7 @@
         "source_url": "https://platform.minimax.io/docs/pricing/overview",
         "as_of": "2026-11-11",
         "confirmed": false,
-        "note": "Billed per CLIP (MiniMax pricing, Legacy Models, read 2026-11-11): '$0.28 per 768P, 6s video', '$0.56 per 768P, 10s video', '$0.49 per 1080P, 6s video'; no 1080P 10 s price. No one per-second figure fits ($0.047-0.082/s), so none is claimed."
+        "note": "Billed per CLIP (MiniMax pricing, Legacy Models, read 2026-11-11): '$0.28 per 768P, 6s video', '$0.56 per 768P, 10s video', '$0.49 per 1080P, 6s video'; no 1080P 10 s price. No one per-second figure fits, so none is claimed."
       },
       "credit_unit": "model_minimax_hailuo_2_3_second",
       "entitlement": "models_video:premium",
@@ -2351,7 +2351,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
@@ -2450,7 +2451,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
@@ -2549,7 +2551,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
@@ -2648,7 +2651,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
@@ -2940,7 +2944,7 @@
         "source_url": "https://docs.dev.runwayml.com/guides/pricing",
         "as_of": "2026-10-01",
         "confirmed": false,
-        "note": "billed per OUTPUT FRAME: $0.007 (720p, 1k), $0.009 (2k), $0.012 (4k); the per-second figures assume the 60 fps ceiling the adapter enforces (a 30 fps source costs half)",
+        "note": "billed per OUTPUT FRAME, one rate for 720p and 1k and dearer ones for 2k and 4k (see the vendor pricing page); the per-second figures assume the 60 fps ceiling the adapter enforces (a 30 fps source costs half)",
         "variants": {
           "by": "upscale_target",
           "prices": {
@@ -3281,7 +3285,7 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
-        "note": "$2.50 per 1M tokens, tokens = W×H×fps×seconds/1024 (search extract); no per-second figure"
+        "note": "billed per 1M tokens, tokens = W×H×fps×seconds/1024 (search extract); no per-second figure"
       },
       "credit_unit": "model_seedance_1_0_pro_second",
       "entitlement": "models_video:premium",
@@ -3373,7 +3377,7 @@
             "1080p_audio": 0.116
           }
         },
-        "note": "BytePlus list read 2026-10-01: 720p with audio $0.26 per 5 s, silent $0.026/s, 1080p with audio $0.116/s. null = no price read, so not sold."
+        "note": "BytePlus list read 2026-10-01: 720p with audio, 720p silent and 1080p with audio are priced (figures in the variants). null = no price read, so not sold."
       },
       "credit_unit": "model_seedance_1_5_pro_second",
       "entitlement": "models_video:premium",
@@ -3456,7 +3460,7 @@
             "1080p": 0.374
           }
         },
-        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. 4K ($0.78/s) is not offered here. Vendor claim, unverified: failed generations are not billed."
+        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. 4K is not offered here. Vendor claim, unverified: failed generations are not billed."
       },
       "credit_unit": "model_seedance_2_0_second",
       "entitlement": "models_video:premium",
@@ -3634,7 +3638,7 @@
             "1080p": 0.15
           }
         },
-        "note": "Alibaba international list read 2026-10-01: 720P $0.10/s, 1080P $0.15/s."
+        "note": "Alibaba international list read 2026-10-01: 720P and 1080P (figures in the variants)."
       },
       "credit_unit": "model_wan_2_7_second",
       "entitlement": "models_video:premium",
@@ -3711,7 +3715,7 @@
             "1080p": 0.2
           }
         },
-        "note": "Values: vendor blog 2026-09-30. 2026-10-25 pricing page: list $0.05/0.10/0.20 per s (480P/720P/1080P) tagged 'Limited-time 30% off' (the charged price is unclear); wan3.0-video-prime $0.068/0.14/0.28; input video is billed too."
+        "note": "Values: vendor blog 2026-09-30. 2026-10-25 pricing page: a per-second list for 480P/720P/1080P tagged 'Limited-time 30% off' (the charged price is unclear), and a dearer one for wan3.0-video-prime; input video is billed too."
       },
       "credit_unit": "model_wan_3_0_second",
       "entitlement": "models_video:ultra",
@@ -4069,7 +4073,7 @@
         "source_url": "https://bfl.ai/pricing",
         "as_of": "2026-11-11",
         "confirmed": false,
-        "note": "bfl.ai/pricing read 2026-11-11, FLUX 3 Video: 'Text / Image → Video, HD$0.15/s', 'FHD$0.24/s' (720p is HD, 1080p FHD). t2v default is hd (api.bfl.ai/openapi.json). No default_resolution, so a quote uses the base row at any resolution. Was $0.17 (search extract).",
+        "note": "bfl.ai/pricing read 2026-11-11, FLUX 3 Video: 'Text / Image → Video, HD$0.15/s', 'FHD$0.24/s' (720p is HD, 1080p FHD). t2v default is hd (api.bfl.ai/openapi.json). No default_resolution, so a quote uses the base row at any resolution. Replaces an earlier search-extract figure.",
         "variants": {
           "by": "resolution",
           "prices": {
@@ -4163,7 +4167,7 @@
             "1080p": null
           }
         },
-        "note": "ESTIMATE. xAI lists $0.080/s ('From $0.08' on the overview) and says duration AND resolution change the price but prints one figure; 480p (the default) is taken as that base, 720p and 1080p are unpriced. No separate audio price is stated."
+        "note": "ESTIMATE. xAI lists one per-second figure ('From' on the overview) and says duration AND resolution change the price but prints one figure; 480p (the default) is taken as that base, 720p and 1080p are unpriced. No separate audio price is stated."
       },
       "credit_unit": "model_grok_imagine_video_1_5_second",
       "entitlement": "models_video:premium",
@@ -4171,7 +4175,7 @@
       "terms_notes": [
         "xAI terms NOT read: x.ai/legal/* (Enterprise Terms of Service, Data Processing Addendum, usage policy) answered HTTP 403 to every automated fetch on 2026-10-24, so no clause on resale, commercial use or end-user duties was verified.",
         "Only secondary text seen: a search listing says the Enterprise Terms were updated 2026-05-12 and that earlier versions give the customer ownership of Output and bar presenting Output as human-made. Not checked against the current text, and silent on resale.",
-        "docs.x.ai (read): API inputs and outputs are kept 30 days for abuse audit and not used for training without permission. Pricing page: a generation deemed to violate the usage guidelines is still charged; the Responses API adds a $0.05 fee when caught before generation.",
+        "docs.x.ai (read): API inputs and outputs are kept 30 days for abuse audit and not used for training without permission. Pricing page: a generation deemed to violate the usage guidelines is still charged; the Responses API adds a fee when caught before generation.",
         "Pricing page: model access 'might vary' with geographical location and account limits. Whether the owner's country and account may use Imagine was not checked. Imagine rate limits are per team and tiered (docs.x.ai/developers/rate-limits).",
         "Gate stays open until a person has read the xAI Enterprise Terms and decided whether a credits-based creative platform is allowed. No credit price may be added before that."
       ],
@@ -4254,7 +4258,7 @@
             "1080p": null
           }
         },
-        "note": "ESTIMATE. xAI lists $0.020/s ('From $0.02') and says duration AND resolution change the price but prints one figure; 480p (the default) is taken as that base, 720p and 1080p are unpriced. 1080p is upscaled from 720p."
+        "note": "ESTIMATE. xAI lists one per-second figure ('From' on the overview) and says duration AND resolution change the price but prints one figure; 480p (the default) is taken as that base, 720p and 1080p are unpriced. 1080p is upscaled from 720p."
       },
       "credit_unit": "model_grok_imagine_video_1_5_lite_second",
       "entitlement": "models_video:basic",
@@ -4262,7 +4266,7 @@
       "terms_notes": [
         "xAI terms NOT read: x.ai/legal/* (Enterprise Terms of Service, Data Processing Addendum, usage policy) answered HTTP 403 to every automated fetch on 2026-10-24, so no clause on resale, commercial use or end-user duties was verified.",
         "Only secondary text seen: a search listing says the Enterprise Terms were updated 2026-05-12 and that earlier versions give the customer ownership of Output and bar presenting Output as human-made. Not checked against the current text, and silent on resale.",
-        "docs.x.ai (read): API inputs and outputs are kept 30 days for abuse audit and not used for training without permission. Pricing page: a generation deemed to violate the usage guidelines is still charged; the Responses API adds a $0.05 fee when caught before generation.",
+        "docs.x.ai (read): API inputs and outputs are kept 30 days for abuse audit and not used for training without permission. Pricing page: a generation deemed to violate the usage guidelines is still charged; the Responses API adds a fee when caught before generation.",
         "Pricing page: model access 'might vary' with geographical location and account limits. Whether the owner's country and account may use Imagine was not checked. Imagine rate limits are per team and tiered (docs.x.ai/developers/rate-limits).",
         "Gate stays open until a person has read the xAI Enterprise Terms and decided whether a credits-based creative platform is allowed. No credit price may be added before that."
       ],
@@ -4336,7 +4340,7 @@
             "medium": null
           }
         },
-        "note": "ESTIMATE. Pricing page: $0.04 per image. The migration page says low is $0.01 cheaper than the retired image-quality model ($0.05), i.e. $0.04. Medium and 2K are priced on no page; only low at 1K is priced here."
+        "note": "ESTIMATE. Pricing page: one per-image figure, which the migration page's comparison with the retired image-quality model puts at the low tier. Medium and 2K are priced on no page; only low at 1K is priced here."
       },
       "credit_unit": "model_grok_imagine_image_2_0_image",
       "entitlement": "models_image:basic",
@@ -4344,7 +4348,7 @@
       "terms_notes": [
         "xAI terms NOT read: x.ai/legal/* (Enterprise Terms of Service, Data Processing Addendum, usage policy) answered HTTP 403 to every automated fetch on 2026-10-24, so no clause on resale, commercial use or end-user duties was verified.",
         "Only secondary text seen: a search listing says the Enterprise Terms were updated 2026-05-12 and that earlier versions give the customer ownership of Output and bar presenting Output as human-made. Not checked against the current text, and silent on resale.",
-        "docs.x.ai (read): API inputs and outputs are kept 30 days for abuse audit and not used for training without permission. Pricing page: a generation deemed to violate the usage guidelines is still charged; the Responses API adds a $0.05 fee when caught before generation.",
+        "docs.x.ai (read): API inputs and outputs are kept 30 days for abuse audit and not used for training without permission. Pricing page: a generation deemed to violate the usage guidelines is still charged; the Responses API adds a fee when caught before generation.",
         "Pricing page: model access 'might vary' with geographical location and account limits. Whether the owner's country and account may use Imagine was not checked. Imagine rate limits are per team and tiered (docs.x.ai/developers/rate-limits).",
         "Gate stays open until a person has read the xAI Enterprise Terms and decided whether a credits-based creative platform is allowed. No credit price may be added before that."
       ],
@@ -4396,7 +4400,7 @@
         "source_url": "https://dev.meta.ai/docs/pricing-rate-limits",
         "as_of": "2026-11-12",
         "confirmed": false,
-        "note": "ESTIMATE from the vendor's page: a flat $0.01 per generated image, search included; failed or safety-filtered images not billed; n images billed n times. No credit price: not on sale."
+        "note": "ESTIMATE from the vendor's page: a flat price per generated image, search included; failed or safety-filtered images not billed; n images billed n times. No credit price: not on sale."
       },
       "operator_preview": true,
       "credit_unit": "model_grounded_image_1_0_image",
@@ -4588,7 +4592,7 @@
         "source_url": "https://elevenlabs.io/pricing/api",
         "as_of": "2026-09-30",
         "confirmed": false,
-        "note": "$0.08 per 1K characters (search extract)"
+        "note": "priced per 1K characters (search extract; see the vendor pricing page)"
       },
       "credit_unit": "model_elevenlabs_multilingual_v2_character",
       "entitlement": "models_audio:basic",
@@ -4641,7 +4645,7 @@
         "source_url": "https://elevenlabs.io/pricing/api",
         "as_of": "2026-09-30",
         "confirmed": false,
-        "note": "$0.04 per 1K characters (search extract)"
+        "note": "priced per 1K characters (search extract; see the vendor pricing page)"
       },
       "credit_unit": "model_elevenlabs_flash_v2_5_character",
       "entitlement": "models_audio:basic",
@@ -4704,7 +4708,7 @@
         "source_url": "https://elevenlabs.io/pricing/api",
         "as_of": "2026-09-30",
         "confirmed": false,
-        "note": "$0.12 per minute (search extract)"
+        "note": "priced per minute (search extract; see the vendor pricing page)"
       },
       "credit_unit": "model_elevenlabs_sfx_second",
       "entitlement": "models_audio:basic",
@@ -4759,7 +4763,7 @@
         "source_url": "https://elevenlabs.io/pricing/api",
         "as_of": "2026-10-01",
         "confirmed": false,
-        "note": "$0.12 per minute of processed audio (pricing page extract); the docs also state 1,000 characters per minute on plans"
+        "note": "priced per minute of processed audio (pricing page extract); the docs also state 1,000 characters per minute on plans"
       },
       "credit_unit": "model_elevenlabs_voice_changer_second",
       "entitlement": "models_audio:basic",
@@ -4819,7 +4823,7 @@
         "source_url": "https://elevenlabs.io/pricing/api",
         "as_of": "2026-10-01",
         "confirmed": false,
-        "note": "$2.20 per minute of source per language (pricing page extract); the project charges one language at creation"
+        "note": "priced per minute of source per language (pricing page extract); the project charges one language at creation"
       },
       "credit_unit": "model_elevenlabs_dubbing_v2_second",
       "entitlement": "models_audio:basic",
@@ -4880,7 +4884,7 @@
         "source_url": "https://elevenlabs.io/pricing/api",
         "as_of": "2026-10-01",
         "confirmed": false,
-        "note": "$0.50 per minute without watermark (pricing page extract); whether a project-API v1 dub is watermarked is not documented"
+        "note": "priced per minute, the no-watermark rate (pricing page extract); whether a project-API v1 dub is watermarked is not documented"
       },
       "credit_unit": "model_elevenlabs_dubbing_v1_second",
       "entitlement": "models_audio:basic",
@@ -4943,7 +4947,7 @@
         "checked_at": "2026-10-25",
         "source": "vendor_docs_search",
         "evidence": "Krea docs read in full 2026-10-25 (not search extracts): Krea 3 overview, job lifecycle, API keys and billing, text-to-image tutorial.",
-        "note": "thinking_mode is always sent fast (high +$0.02, ultra +$0.20 per image: not offered). resolution required. Bounding-box 'regions' are documented but UNVERIFIED here and never sent. Prompt cap 2000 is ours (docs state none). 2K is supported by the adapter but not offered."
+        "note": "thinking_mode is always sent fast (high and ultra cost extra per image: not offered). resolution required. Bounding-box 'regions' are documented but UNVERIFIED here and never sent. Prompt cap 2000 is ours (docs state none). 2K is supported by the adapter but not offered."
       },
       "pricing": {
         "unit": "image",
@@ -5606,7 +5610,7 @@
             "4k": null
           }
         },
-        "note": "ESTIMATE. 5,792 output tokens per s of 720p x $17.50 per 1M = $0.1014/s. Excludes input tokens ($1.50/1M). From 2026-12-03 Google routes every 1.1 call to gemini-omni-1.2-flash, 'billed at gemini-omni-1.2-flash rates' ($12/1M video, ~$0.07/s 720p; read 2026-11-11). Sale ends then."
+        "note": "ESTIMATE. 5,792 output tokens per s of 720p x the per-1M video output rate. Excludes input tokens. From 2026-12-03 Google routes every 1.1 call to gemini-omni-1.2-flash, 'billed at gemini-omni-1.2-flash rates' ($12/1M video; read 2026-11-11). Sale ends then."
       },
       "credit_unit": "model_gemini_omni_1_1_flash_second",
       "entitlement": "models_video:premium",
@@ -5698,7 +5702,7 @@
             "4K": 0.113
           }
         },
-        "note": "ESTIMATE. Image output $30/1M tokens: 1120 (1K), 1680 (2K), 3780 (4K) tokens. Excludes input tokens ($1.50/1M) and thinking tokens ($7.50/1M, billed; level fixed at 'medium', Google's default). Grounding not used."
+        "note": "ESTIMATE. Image output billed per 1M tokens: 1120 (1K), 1680 (2K), 3780 (4K) tokens. Excludes input tokens and thinking tokens (billed; level fixed at 'medium', Google's default). Grounding not used."
       },
       "credit_unit": "model_gemini_nano_banana_2_1_image",
       "entitlement": "models_image:premium",
@@ -5797,7 +5801,7 @@
             "1080p": 0.12
           }
         },
-        "note": "ESTIMATE. Credits per second from the pricing page x $0.005: the USD per credit is on no page read (RMB 0.03125 per credit, about $0.0043 at an assumed 7.2 RMB/USD, rounded up). Vidu claims failed tasks use no credits: unverified."
+        "note": "ESTIMATE. Credits per second from the pricing page x an assumed USD per credit: the USD per credit is on no page read (the docs price a credit in RMB; converted at an assumed exchange rate, rounded up). Vidu claims failed tasks use no credits: unverified."
       },
       "credit_unit": "model_vidu_q3_pro_second",
       "entitlement": "models_video:premium",
@@ -5899,7 +5903,7 @@
             "1080p": 0.065
           }
         },
-        "note": "ESTIMATE. Credits per second from the pricing page x $0.005: the USD per credit is on no page read (RMB 0.03125 per credit, about $0.0043 at an assumed 7.2 RMB/USD, rounded up). Vidu claims failed tasks use no credits: unverified."
+        "note": "ESTIMATE. Credits per second from the pricing page x an assumed USD per credit: the USD per credit is on no page read (the docs price a credit in RMB; converted at an assumed exchange rate, rounded up). Vidu claims failed tasks use no credits: unverified."
       },
       "credit_unit": "model_vidu_q3_turbo_second",
       "entitlement": "models_video:basic",
@@ -5991,7 +5995,7 @@
             "1080p": 0.075
           }
         },
-        "note": "ESTIMATE. Credits per second from the pricing page x $0.005: the USD per credit is on no page read (RMB 0.03125 per credit, about $0.0043 at an assumed 7.2 RMB/USD, rounded up). Vidu claims failed tasks use no credits: unverified."
+        "note": "ESTIMATE. Credits per second from the pricing page x an assumed USD per credit: the USD per credit is on no page read (the docs price a credit in RMB; converted at an assumed exchange rate, rounded up). Vidu claims failed tasks use no credits: unverified."
       },
       "credit_unit": "model_vidu_q3_pro_fast_second",
       "entitlement": "models_video:basic",
@@ -6086,7 +6090,7 @@
             "4k": 0.39
           }
         },
-        "note": "ESTIMATE. Credits per second from the pricing page x $0.005: the USD per credit is on no page read (RMB 0.03125 per credit, about $0.0043 at an assumed 7.2 RMB/USD, rounded up). Vidu claims failed tasks use no credits: unverified."
+        "note": "ESTIMATE. Credits per second from the pricing page x an assumed USD per credit: the USD per credit is on no page read (the docs price a credit in RMB; converted at an assumed exchange rate, rounded up). Vidu claims failed tasks use no credits: unverified."
       },
       "credit_unit": "model_vidu_q4_preview_second",
       "entitlement": "models_video:premium",
@@ -6327,7 +6331,7 @@
         "source_url": "https://platform.sonilo.com/pricing",
         "as_of": "2026-11-10",
         "confirmed": false,
-        "note": "ESTIMATE. Pricing page: $0.135 / min ($0.00225 / sec), 'Per-second metering'; llms-full.txt: a 10-second billing floor. The account's discount_factor multiplies it. What a failed task costs is not stated (one vendor example shows refunded: true; unverified)."
+        "note": "ESTIMATE. Pricing page: a per-minute card with 'Per-second metering'; llms-full.txt: a 10-second billing floor. The account's discount_factor multiplies it. What a failed task costs is not stated (one vendor example shows refunded: true; unverified)."
       },
       "credit_unit": "model_sonilo_music_second",
       "entitlement": "models_audio:basic",
@@ -6344,7 +6348,7 @@
         "YOUTUBE: 'A Content ID claim is still possible. Sonilo says it does not register generated tracks with Content ID'. Licence certificates are for web plans; 'For API output, retain its generation record'. Outputs carry 'an inaudible provenance watermark'.",
         "ToS 2: 'at least 13 years old'; 3.1: under 18 'only with permission from a parent or legal guardian'. 18 / 19: California law, AAA arbitration, class-action waiver, claims within one year. 16.2: liability capped at six months' fees or USD $100.",
         "ATTRIBUTION: none is required for API output in the pages read (the 'Music by Sonilo' credit is the Free web tier's rule). Whether a free TRIAL API call counts as Free-tier, non-commercial output is not stated.",
-        "NOT read / not found: any separate API terms or acceptable-use policy (404 at the URLs tried), an enterprise agreement, a country list. Sign-up and the Stripe prepaid top-up (from $20) from Uzbekistan not verified.",
+        "NOT read / not found: any separate API terms or acceptable-use policy (404 at the URLs tried), an enterprise agreement, a country list. Sign-up and the Stripe prepaid top-up from Uzbekistan not verified.",
         "Gate stays open until a person has Sonilo's written answer on the compete clause and on resale for credits, and has settled the training and no-delete exposure of customers' prompts and videos. No credit price may be added before that."
       ],
       "attribution": null,
@@ -6392,7 +6396,7 @@
         "source_url": "https://platform.sonilo.com/pricing",
         "as_of": "2026-11-10",
         "confirmed": false,
-        "note": "ESTIMATE. Pricing page: $0.54 / min ($0.009 / sec), 'Per-second metering'; llms-full.txt: a 10-second billing floor. The account's discount_factor multiplies it. What a failed task costs is not stated (one vendor example shows refunded: true; unverified)."
+        "note": "ESTIMATE. Pricing page: a per-minute card with 'Per-second metering'; llms-full.txt: a 10-second billing floor. The account's discount_factor multiplies it. What a failed task costs is not stated (one vendor example shows refunded: true; unverified)."
       },
       "credit_unit": "model_sonilo_video_music_second",
       "entitlement": "models_audio:basic",
@@ -6409,7 +6413,7 @@
         "YOUTUBE: 'A Content ID claim is still possible. Sonilo says it does not register generated tracks with Content ID'. Licence certificates are for web plans; 'For API output, retain its generation record'. Outputs carry 'an inaudible provenance watermark'.",
         "ToS 2: 'at least 13 years old'; 3.1: under 18 'only with permission from a parent or legal guardian'. 18 / 19: California law, AAA arbitration, class-action waiver, claims within one year. 16.2: liability capped at six months' fees or USD $100.",
         "ATTRIBUTION: none is required for API output in the pages read (the 'Music by Sonilo' credit is the Free web tier's rule). Whether a free TRIAL API call counts as Free-tier, non-commercial output is not stated.",
-        "NOT read / not found: any separate API terms or acceptable-use policy (404 at the URLs tried), an enterprise agreement, a country list. Sign-up and the Stripe prepaid top-up (from $20) from Uzbekistan not verified.",
+        "NOT read / not found: any separate API terms or acceptable-use policy (404 at the URLs tried), an enterprise agreement, a country list. Sign-up and the Stripe prepaid top-up from Uzbekistan not verified.",
         "A customer's VIDEO is uploaded to Sonilo as a file (never as a link) and stays there: used for training by default, under a perpetual licence, with no delete route. The customer must be told and must agree before this is sold.",
         "Gate stays open until a person has Sonilo's written answer on the compete clause and on resale for credits, and has settled the training and no-delete exposure of customers' prompts and videos. No credit price may be added before that."
       ],
@@ -6490,7 +6494,7 @@
             "1080p": 0.282
           }
         },
-        "note": "Per second of the clip, read 2026-11-11: with a video input no longer than the output, unit price x output seconds x 2. A 10 s edit: $1.88 at 720p, $2.82 at 1080p (1 unit = $0.157 on 4.0 rows)."
+        "note": "Per second of the clip, read 2026-11-11: with a video input no longer than the output, unit price x output seconds x 2 (see the vendor pricing page for the unit price)."
       },
       "credit_unit": "model_kling_4_0_omni_edit_second",
       "entitlement": "models_video:ultra",
@@ -6580,7 +6584,7 @@
             "1080p": 0.68
           }
         },
-        "note": "ESTIMATE per clip second, 'Input with video' rates: tokens = (in + out) s x W x H x fps / 1024 at $6.40 (720p) / $7.00 (1080p) per 1M, 24 fps. 10 s: $2.76 at 720p, $6.80 at 1080p. Minimum-token table not read."
+        "note": "ESTIMATE per clip second, 'Input with video' rates: tokens = (in + out) s x W x H x fps / 1024 at a per-1M rate for 720p and a dearer one for 1080p, 24 fps. Minimum-token table not read."
       },
       "credit_unit": "model_seedance_2_5_edit_second",
       "entitlement": "models_video:ultra",
