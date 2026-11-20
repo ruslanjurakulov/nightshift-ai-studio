@@ -13,6 +13,11 @@ export type ShowcaseItem = {
 };
 
 export const SHOWCASE_ITEMS: readonly ShowcaseItem[] = [
+  // Two steps in Studio: an Ideogram 4.5 picture of the two characters, then MiniMax H3 image-to-video with the dialogue written
+  // into the prompt. The model speaks the lines itself; the captions are burned in from a transcript of its own audio, because
+  // the landing plays clips muted.
+  { slug: "language-duo", kind: "video", modelId: "minimax-h3", aspect: "9:16",
+    title: { en: "One picture, two characters, real dialogue", ru: "Одна картинка, два героя, живой диалог", uz: "Bitta rasm, ikki personaj, jonli dialog" } },
   { slug: "registan-dusk", kind: "video", modelId: "minimax-h3-max", aspect: "16:9",
     title: { en: "Registan at blue hour", ru: "Регистан в синий час", uz: "Registon, kechki moviy soat" } },
   { slug: "perfume-splash", kind: "video", modelId: "minimax-h3", aspect: "9:16",
