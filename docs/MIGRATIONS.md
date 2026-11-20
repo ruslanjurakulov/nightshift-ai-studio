@@ -2065,9 +2065,9 @@ re-added with every old value kept; no table, function or grant changes.
   never undoes an owner's edit. Media are static files under `public/templates/<slug>/`, listed in the manifest.
 - Rollback: `docs/sql/rollback_0186_viral_templates.sql` (deletes the ten seed rows, restores the four-value CHECK).
 
-## Rights acknowledgement asks about every file a job sends (0179)
+## Rights acknowledgement asks about every file a job sends (0187)
 
-`0179_rights_acknowledgement_inputs.sql` closes the four latent paths Breach found past 0174 (tests/security/test_sec_breach_rights_ack_bypass.py,
+`0187_rights_acknowledgement_inputs.sql` closes the four latent paths Breach found past 0174 (tests/security/test_sec_breach_rights_ack_bypass.py,
 test_sec_breach_rights_ack_films.py): an auto-mode failover onto a model that requires an acknowledgement, a style kit's reference
 pictures, an @character's pictures, and a film clip's uploaded first frame.
 
@@ -2082,13 +2082,13 @@ pictures, an @character's pictures, and a film clip's uploaded first frame.
 - **Not changed.** Which models require an acknowledgement, every availability and price, quote_film (a quote holds nothing).
   Latent today: no model on sale requires one.
 - **Replay.** Replays onto itself. Re-running 0174 after it fails loudly; re-running 0088, 0171 or 0048 after it silently restores the old
-  body: apply 0179 again and run its Verify query.
-- **Undo.** `docs/sql/rollback_0179_rights_acknowledgement_inputs.sql` (owner-applied): the five earlier bodies back verbatim, the
-  three new functions dropped. Roll 0179 back BEFORE 0174: rollback_0174 now refuses while 0179 is on.
+  body: apply 0187 again and run its Verify query.
+- **Undo.** `docs/sql/rollback_0187_rights_acknowledgement_inputs.sql` (owner-applied): the five earlier bodies back verbatim, the
+  three new functions dropped. Roll 0187 back BEFORE 0174: rollback_0174 now refuses while 0187 is on.
 
-## Recraft: the web and our MCP connector, never the public API (0180)
+## Recraft: the web and our MCP connector, never the public API (0188)
 
-`0180_recraft_web_mcp.sql` adds a third registry exposure, `web_mcp`. A model with it is sold on the web and to the `mcp` surface (our own
+`0188_recraft_web_mcp.sql` adds a third registry exposure, `web_mcp`. A model with it is sold on the web and to the `mcp` surface (our own
 signed-in connector), never to `api` (the public developer API). Recraft V4.1 and V4.1 Flash carry it after Recraft support's written
 confirmation (email of 2026-11-17/18), which covers the web studio and our MCP connector but not /api/v1.
 
@@ -2096,9 +2096,9 @@ confirmation (email of 2026-11-17/18), which covers the web studio and our MCP c
   closed). `api_creative_model_ok` (0124's body): the "temporarily off" word is for `any` models only.
 - **Beta is guarded.** Both Recraft rows go hidden → beta only where the verified probe is a passed run of the vendor model the registry
   names now (Flash is `recraftv4_1_flash_v2`). Without one nothing changes: dispatch `.github/workflows/probe_models.yml` with the model
-  id, then apply 0180 again. A sale still needs the owner's `credit_prices` rows.
+  id, then apply 0188 again. A sale still needs the owner's `credit_prices` rows.
 - **Not yet reachable over MCP.** No MCP tool asks for the `mcp` surface until the connector's creative tools land (a separate PR).
-- **Undo.** `docs/sql/rollback_0180_recraft_web_mcp.sql`: refuses while a model is `web_mcp` (it would reopen the API).
+- **Undo.** `docs/sql/rollback_0188_recraft_web_mcp.sql`: refuses while a model is `web_mcp` (it would reopen the API).
 
 ## get_job_status names the video; list_videos lists newest first (0189)
 

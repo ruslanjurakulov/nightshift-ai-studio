@@ -102,7 +102,7 @@ export interface PublicSpec {
   unit: "image" | "second" | "character" | "request";
   /** Vendor-required credit line (Runway, Ideogram) — the UI must show it. */
   attribution: Attribution | null;
-  /** 0180: web_mcp = the web and our own MCP connector, never the public API. An unknown value reads as web_only (fail closed). */
+  /** 0188: web_mcp = the web and our own MCP connector, never the public API. An unknown value reads as web_only (fail closed). */
   apiExposure: "any" | "web_only" | "web_mcp";
   maxPromptChars: number;
   maxConcurrentPerOrg: number;

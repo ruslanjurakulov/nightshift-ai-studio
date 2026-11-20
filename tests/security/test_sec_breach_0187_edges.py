@@ -1,6 +1,6 @@
-"""Breach on 0179: edge cases of "every file a job sends is asked about" that a mismatch between the gate and the worker would open.
+"""Breach on 0187: edge cases of "every file a job sends is asked about" that a mismatch between the gate and the worker would open.
 
-Each of these was tried as a way past rights_acknowledgement_subjects / reroute_creative_job / creative_job_style and HELD on 0179;
+Each of these was tried as a way past rights_acknowledgement_subjects / reroute_creative_job / creative_job_style and HELD on 0187;
 they are pinned so a later rewrite of either side (the SQL @name reader, modules/creative_style.MENTION_RE, the reroute requester)
 cannot quietly reopen one:
 

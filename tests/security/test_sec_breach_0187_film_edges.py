@@ -1,6 +1,6 @@
-"""Breach on 0179: the Film Studio's other ways of handing a person's picture to a model that requires a rights acknowledgement.
+"""Breach on 0187: the Film Studio's other ways of handing a person's picture to a model that requires a rights acknowledgement.
 
-Tried against film_acknowledgement_missing and HELD on 0179; pinned so a rewrite of it (or of film_price's line plan) cannot quietly
+Tried against film_acknowledgement_missing and HELD on 0187; pinned so a rewrite of it (or of film_price's line plan) cannot quietly
 drop one:
 
   * a scene's OWN clip model (film_scenes.clip_model) overriding a film-level model that requires nothing;
@@ -36,7 +36,7 @@ def db():
         if os.environ.get("NIGHTSHIFT_SECURITY_REQUIRED"):
             pytest.fail(f"{sec_db.DSN_ENV} is not set", pytrace=False)
         pytest.skip(f"{sec_db.DSN_ENV} is not set — the security lab needs a scratch Postgres")
-    name = f"ns_breach_0179_film_{uuid.uuid4().hex[:8]}"
+    name = f"ns_breach_0187_film_{uuid.uuid4().hex[:8]}"
     d = Db(sec_db.build(admin, name))
     rows = [{"id": m, "display_name": m, "provider": prov, "adapter": a, "capabilities": caps, "credit_unit": unit,
              "entitlement": "any", "spec": {"vendor_model": "acme-" + m, "output": a.split(".")[0], **spec}}

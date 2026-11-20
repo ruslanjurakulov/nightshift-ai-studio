@@ -1,4 +1,4 @@
-"""Migration 0180: a 'web_mcp' model is sold on the web and to our own MCP connector, never through the public API; Recraft goes to
+"""Migration 0188: a 'web_mcp' model is sold on the web and to our own MCP connector, never through the public API; Recraft goes to
 beta only once a passed probe of the vendor model the registry names NOW is recorded.
 
 Attacks pinned: the public API (sellable_models 'api', api_creative_model_ok) selling a web_mcp model; an unknown exposure value
@@ -13,12 +13,12 @@ import pytest
 
 import sec_db
 
-M = sec_db.MIGRATIONS / "0180_recraft_web_mcp.sql"
+M = sec_db.MIGRATIONS / "0188_recraft_web_mcp.sql"
 MODELS = [  # (id, api_exposure, vendor model)
     ("img-any", "any", "acme-any"),
     ("img-web", "web_only", "acme-web"),
     ("img-mcp", "web_mcp", "acme-mcp"),
-    ("img-odd", "partners_only", "acme-odd"),          # a value 0180 does not know: web only
+    ("img-odd", "partners_only", "acme-odd"),          # a value 0188 does not know: web only
     ("recraft-v4.1", "web_mcp", "recraftv4_1"),
     ("recraft-v4.1-flash", "web_mcp", "recraftv4_1_flash_v2"),
 ]
@@ -31,7 +31,7 @@ def db():
         if os.environ.get("NIGHTSHIFT_SECURITY_REQUIRED"):
             pytest.fail(f"{sec_db.DSN_ENV} is not set", pytrace=False)
         pytest.skip(f"{sec_db.DSN_ENV} is not set")
-    name = f"ns_recraft_0180_{uuid.uuid4().hex[:8]}"
+    name = f"ns_recraft_0188_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.build(admin, name)
     import psycopg
 

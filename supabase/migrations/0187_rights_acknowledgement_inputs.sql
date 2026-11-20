@@ -1,4 +1,4 @@
--- 0179_rights_acknowledgement_inputs.sql — the rights acknowledgement (0174) asks about every file a job SENDS, on the model it
+-- 0187_rights_acknowledgement_inputs.sql — the rights acknowledgement (0174) asks about every file a job SENDS, on the model it
 -- RUNS: failover, style kit pictures, @character pictures and the Film Studio.
 --
 -- EVIDENCE (tests/security/test_sec_breach_rights_ack_bypass.py and test_sec_breach_rights_ack_films.py, Breach on #780; each
@@ -43,14 +43,14 @@
 --   workflow_quote_steps' answer).
 --   The gate is latent today: no model on sale requires an acknowledgement.
 --
--- NUMBER. 0179 (assigned by Atlas; 0175 to 0178 are held elsewhere). Needs 0047, 0048, 0088, 0171 and 0174. It names nothing of
+-- NUMBER. 0187 (assigned by Atlas; 0175 to 0178 are held elsewhere). Needs 0047, 0048, 0088, 0171 and 0174. It names nothing of
 --   0175 to 0178.
 --
 -- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space):
 --   rights_acknowledgement_missing and workflow_quote_steps (0174), reroute_creative_job (0088), start_film (0171),
 --   creative_job_style (0048).
 -- REPLAY. This file replays onto itself. Re-running 0174 after it FAILS LOUDLY (0174's guard refuses this file's
---   rights_acknowledgement_missing). Re-running 0088 or 0171 after it SILENTLY puts the old body back: apply 0179 again, then
+--   rights_acknowledgement_missing). Re-running 0088 or 0171 after it SILENTLY puts the old body back: apply 0187 again, then
 --   run the Verify query at the end of this file.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
@@ -62,8 +62,8 @@
 --                    'public.creative_job_style(uuid, text)'::regprocedure);
 --   expected BEFORE 426ea90d162535b0ee6f10e752e5fe26 (0174), 55d07640bb22798e2a74bb661ac4f8d0 (0088), 63510a6d9c456e66f658353bab592d38 (0171), 8f9f42da9844571a18a285d87bcffc84 (0174),
 --     75dec758272fcad658e1712fdc7f708e (0048);
---   AFTER e7baea73e6c790ed3e8d01b797aa3732, 9dfc81eb3e77555ee9e04c53b22c84e9, 0cfb804e3e5d415957df0106b65ef75b, 67c328c45c253481c2f41718aca0fcc7, a7395eb11514a2c8b0db2c08e991fffc (this file).
--- Undo: docs/sql/rollback_0179_rights_acknowledgement_inputs.sql (owner-applied): the five earlier bodies back, the three new
+--   AFTER e7baea73e6c790ed3e8d01b797aa3732, 88ddf301ce242fafe8a8051d16ceab9e, 5468183a8f24a48f708efcbbf9d2d22c, f77e276ac50f195c746064a5633e36db, 6d8def7530c6aff386ac691eeb616115 (this file).
+-- Undo: docs/sql/rollback_0187_rights_acknowledgement_inputs.sql (owner-applied): the five earlier bodies back, the three new
 --   functions dropped. No table or row is touched by this file or its rollback.
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
@@ -76,23 +76,23 @@ declare
 begin
   if to_regprocedure('public.rights_acknowledgement_required(text)') is null
      or to_regclass('public.rights_acknowledgements') is null then
-    raise exception '0179 needs the rights acknowledgement: apply 0174_rights_acknowledgement.sql first';
+    raise exception '0187 needs the rights acknowledgement: apply 0174_rights_acknowledgement.sql first';
   end if;
   if to_regclass('public.style_kit_references') is null or to_regclass('public.character_references') is null then
-    raise exception '0179 needs the style kits and characters: apply 0047_style_kits_characters.sql first';
+    raise exception '0187 needs the style kits and characters: apply 0047_style_kits_characters.sql first';
   end if;
   if to_regclass('public.film_refs') is null or to_regprocedure('public.start_film(uuid, text, text)') is null then
-    raise exception '0179 needs the Film Studio: apply 0166_films_core.sql and 0171_films_money.sql first';
+    raise exception '0187 needs the Film Studio: apply 0166_films_core.sql and 0171_films_money.sql first';
   end if;
   for r in select * from (values
       ('public.rights_acknowledgement_missing(uuid, uuid, text, jsonb)', '426ea90d162535b0ee6f10e752e5fe26', 'e7baea73e6c790ed3e8d01b797aa3732', '0174'),
-      ('public.reroute_creative_job(uuid, text, text)', '55d07640bb22798e2a74bb661ac4f8d0', '9dfc81eb3e77555ee9e04c53b22c84e9', '0088'),
-      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38', '0cfb804e3e5d415957df0106b65ef75b', '0171'),
-      ('public.workflow_quote_steps(public.workflows, jsonb)', '8f9f42da9844571a18a285d87bcffc84', '67c328c45c253481c2f41718aca0fcc7', '0174'),
-      ('public.creative_job_style(uuid, text)', '75dec758272fcad658e1712fdc7f708e', 'a7395eb11514a2c8b0db2c08e991fffc', '0048')) v(sig, was, now_, src) loop
+      ('public.reroute_creative_job(uuid, text, text)', '55d07640bb22798e2a74bb661ac4f8d0', '88ddf301ce242fafe8a8051d16ceab9e', '0088'),
+      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38', '5468183a8f24a48f708efcbbf9d2d22c', '0171'),
+      ('public.workflow_quote_steps(public.workflows, jsonb)', '8f9f42da9844571a18a285d87bcffc84', 'f77e276ac50f195c746064a5633e36db', '0174'),
+      ('public.creative_job_style(uuid, text)', '75dec758272fcad658e1712fdc7f708e', '6d8def7530c6aff386ac691eeb616115', '0048')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
-      raise exception '0179 found % with a body that is neither %''s nor 0179''s (md5 %): read the live body first', r.sig, r.src, h;
+      raise exception '0187 found % with a body that is neither %''s nor 0187''s (md5 %): read the live body first', r.sig, r.src, h;
     end if;
   end loop;
   for r in select * from (values
@@ -101,7 +101,7 @@ begin
       ('public.film_acknowledgement_missing(public.films, uuid)', '557f17de613be61b95da87fa34d5556f')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
-      raise exception '0179 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
+      raise exception '0187 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
     end if;
   end loop;
 end $$;
@@ -321,7 +321,7 @@ begin
     continue when j.mode = 'quality' and cq <> q0;
     continue when j.mode = 'auto' and cq < q0;
     continue when not exists (select 1 from public.sellable_models(j.capability, surf) s where s.id = m);
-    -- 0179: a failover never sends an input to a model that would have refused it at create_creative_job: a candidate that
+    -- 0187: a failover never sends an input to a model that would have refused it at create_creative_job: a candidate that
     -- requires a rights acknowledgement the job's requester has not given for every input (rights_acknowledgement_missing:
     -- the source and end files, the style kit's and the mentioned @characters' pictures) is skipped. A job with no requester
     -- has nobody who could have acknowledged, so every such candidate is skipped (fail closed).
@@ -485,7 +485,7 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'price_changed', 'code', 'NS409',
                               'detail', format('the price is now %s credits; quote it again', total));
   end if;
-  -- 0179: a film sends the person's own files to its models too (a clip's uploaded first or last frame; a key frame's
+  -- 0187: a film sends the person's own files to its models too (a clip's uploaded first or last frame; a key frame's
   -- reference pictures, @characters and style kit). A model that requires a rights acknowledgement refuses here, after the
   -- price (a line refused anyway never asks) and before the hold and every take, unless THIS person (the one starting the
   -- film, who pays for it) acknowledged each such file at the CURRENT text version. The takes' jobs are written later by the
@@ -597,7 +597,7 @@ begin
          and (st.v -> 'params') ?| array['source_asset_id', 'end_asset_id'] then
         raise exception 'acknowledgement_required' using errcode = 'NS400';
       end if;
-      -- 0179: the same for a step whose params name no file but still send the person's pictures (a style kit, an @character in
+      -- 0187: the same for a step whose params name no file but still send the person's pictures (a style kit, an @character in
       -- its prompt): refused here, before any hold, and not at that step's own create_creative_job after earlier steps were paid
       -- for, in whichever member's session advances the run.
       if cardinality(public.rights_acknowledgement_required(st.v ->> 'model')) > 0
@@ -656,7 +656,7 @@ begin
      or j.submit_started_at is not null then
     return jsonb_build_object('ok', false, 'problem', 'the job is not this worker''s to start');
   end if;
-  -- 0179: the kit's and the characters' pictures are read here, when the job runs, and may have changed since
+  -- 0187: the kit's and the characters' pictures are read here, when the job runs, and may have changed since
   -- create_creative_job asked about them (a picture added to a character while the job waited). Asked again, for the model
   -- that runs and the person who asked for the job: nothing unacknowledged is handed out, and the worker fails the job
   -- before any paid call (its hold is released).
@@ -760,7 +760,7 @@ begin
        or has_function_privilege('anon', r.sig, 'EXECUTE')
        or has_function_privilege('authenticated', r.sig, 'EXECUTE') is distinct from r.member
        or has_function_privilege('service_role', r.sig, 'EXECUTE') is distinct from r.service then
-      raise exception '0179 end state: % is not a SECURITY DEFINER with the pinned search_path and the intended grants', r.sig;
+      raise exception '0187 end state: % is not a SECURITY DEFINER with the pinned search_path and the intended grants', r.sig;
     end if;
   end loop;
 end $$;
@@ -772,10 +772,10 @@ end $$;
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.rights_acknowledgement_missing(uuid,uuid,text,jsonb)'::regprocedure) = 'e7baea73e6c790ed3e8d01b797aa3732' as every_input,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.reroute_creative_job(uuid,text,text)'::regprocedure) = '9dfc81eb3e77555ee9e04c53b22c84e9'                  as failover_asks,
+--     where oid = 'public.reroute_creative_job(uuid,text,text)'::regprocedure) = '88ddf301ce242fafe8a8051d16ceab9e'                  as failover_asks,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.start_film(uuid,text,text)'::regprocedure) = '0cfb804e3e5d415957df0106b65ef75b'                              as film_asks,
+--     where oid = 'public.start_film(uuid,text,text)'::regprocedure) = '5468183a8f24a48f708efcbbf9d2d22c'                              as film_asks,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.workflow_quote_steps(public.workflows,jsonb)'::regprocedure) = '67c328c45c253481c2f41718aca0fcc7'               as workflow_asks,
+--     where oid = 'public.workflow_quote_steps(public.workflows,jsonb)'::regprocedure) = 'f77e276ac50f195c746064a5633e36db'               as workflow_asks,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.creative_job_style(uuid,text)'::regprocedure) = 'a7395eb11514a2c8b0db2c08e991fffc'                              as worker_asks;
+--     where oid = 'public.creative_job_style(uuid,text)'::regprocedure) = '6d8def7530c6aff386ac691eeb616115'                              as worker_asks;

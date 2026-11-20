@@ -1,9 +1,9 @@
-"""Migration 0179 (the rights acknowledgement asks about every file a job sends, on the model it runs), pinned as text.
+"""Migration 0187 (the rights acknowledgement asks about every file a job sends, on the model it runs), pinned as text.
 
 What would break, and which test says so:
 
 * a replaced body drifting from the one it was built on (a failover or a film start silently altered): reroute_creative_job and
-  start_film are the earlier bodies plus one inserted, marked 0179 block each, and nothing deleted or changed;
+  start_film are the earlier bodies plus one inserted, marked 0187 block each, and nothing deleted or changed;
 * failover asking after it has already moved the job, or a film asking after the hold (rule 6: before anything is held);
 * the gate reading fewer inputs again (style kit pictures, @character pictures), or the @name rule drifting from the one the
   worker uses (modules/creative_style.py MENTION_RE), so a mention the worker sends is one the gate never asks about;
@@ -24,18 +24,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-M0179 = (MIG / "0179_rights_acknowledgement_inputs.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0179_rights_acknowledgement_inputs.sql").read_text(encoding="utf-8")
+M0187 = (MIG / "0187_rights_acknowledgement_inputs.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0187_rights_acknowledgement_inputs.sql").read_text(encoding="utf-8")
 STYLE = (ROOT / "modules" / "creative_style.py").read_text(encoding="utf-8")
 MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
 
 # name -> (the file it was built on, md5 before, md5 after)
 REPLACED = {
     "rights_acknowledgement_missing": ("0174_rights_acknowledgement.sql", "426ea90d162535b0ee6f10e752e5fe26", "e7baea73e6c790ed3e8d01b797aa3732"),
-    "reroute_creative_job": ("0088_router_failover_reason.sql", "55d07640bb22798e2a74bb661ac4f8d0", "9dfc81eb3e77555ee9e04c53b22c84e9"),
-    "start_film": ("0171_films_money.sql", "63510a6d9c456e66f658353bab592d38", "0cfb804e3e5d415957df0106b65ef75b"),
-    "workflow_quote_steps": ("0174_rights_acknowledgement.sql", "8f9f42da9844571a18a285d87bcffc84", "67c328c45c253481c2f41718aca0fcc7"),
-    "creative_job_style": ("0048_creative_style_inputs.sql", "75dec758272fcad658e1712fdc7f708e", "a7395eb11514a2c8b0db2c08e991fffc"),
+    "reroute_creative_job": ("0088_router_failover_reason.sql", "55d07640bb22798e2a74bb661ac4f8d0", "88ddf301ce242fafe8a8051d16ceab9e"),
+    "start_film": ("0171_films_money.sql", "63510a6d9c456e66f658353bab592d38", "5468183a8f24a48f708efcbbf9d2d22c"),
+    "workflow_quote_steps": ("0174_rights_acknowledgement.sql", "8f9f42da9844571a18a285d87bcffc84", "f77e276ac50f195c746064a5633e36db"),
+    "creative_job_style": ("0048_creative_style_inputs.sql", "75dec758272fcad658e1712fdc7f708e", "6d8def7530c6aff386ac691eeb616115"),
 }
 NEW = {
     "rights_acknowledgement_subjects": "8de7e1ebe43848d31f556a0f7e4047a9",
@@ -60,7 +60,7 @@ def code(sql: str) -> str:
     return "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
 
 
-def latest(name: str, before: str = "0179") -> tuple[str, str]:
+def latest(name: str, before: str = "0187") -> tuple[str, str]:
     out = None
     for p in sorted(MIG.glob("*.sql")):
         if p.name[:4] >= before:
@@ -72,37 +72,37 @@ def latest(name: str, before: str = "0179") -> tuple[str, str]:
     return out
 
 
-class Migration0179(unittest.TestCase):
-    def test_the_earlier_body_is_the_latest_one_before_0179(self):
+class Migration0187(unittest.TestCase):
+    def test_the_earlier_body_is_the_latest_one_before_0187(self):
         for name, (src, _was, _now) in REPLACED.items():
             self.assertEqual(latest(name)[0], src, name)
 
     def test_the_md5_pins_describe_the_bodies(self):
         for name, (src, was, now) in REPLACED.items():
             self.assertEqual(pg_md5(latest(name)[1]), was, name)
-            self.assertEqual(pg_md5(definition(M0179, name)), now, name)
-            self.assertIn(f"'{was}', '{now}'", M0179, name)
+            self.assertEqual(pg_md5(definition(M0187, name)), now, name)
+            self.assertIn(f"'{was}', '{now}'", M0187, name)
         for name, want in NEW.items():
-            self.assertEqual(pg_md5(definition(M0179, name)), want, name)
-            self.assertIn(f"'{want}'", M0179, name)
+            self.assertEqual(pg_md5(definition(M0187, name)), want, name)
+            self.assertIn(f"'{want}'", M0187, name)
 
     def test_failover_and_film_start_are_the_earlier_bodies_plus_one_marked_block(self):
         for name in ("reroute_creative_job", "start_film", "workflow_quote_steps", "creative_job_style"):
             old = latest(name)[1].splitlines()
-            new = definition(M0179, name).splitlines()
+            new = definition(M0187, name).splitlines()
             ops = [op for op in difflib.SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes() if op[0] != "equal"]
             self.assertEqual([op[0] for op in ops], ["insert"], name)
             # difflib may align the block one line off (a repeated "end if;"): the inserted lines must hold the marker.
-            self.assertIn("-- 0179:", "\n".join(new[ops[0][3]:ops[0][4]]), name)
+            self.assertIn("-- 0187:", "\n".join(new[ops[0][3]:ops[0][4]]), name)
 
     def test_failover_asks_before_it_moves_the_job(self):
-        body = code(definition(M0179, "reroute_creative_job"))
+        body = code(definition(M0187, "reroute_creative_job"))
         ask = body.index("rights_acknowledgement_missing(j.org_id, j.requested_by, m, j.params) is not null")
         self.assertLess(body.index("sellable_models(j.capability, surf)"), ask)
         self.assertLess(ask, body.index("update public.creative_jobs"))
 
     def test_a_film_asks_after_the_price_and_before_the_hold_and_the_takes(self):
-        body = code(definition(M0179, "start_film"))
+        body = code(definition(M0187, "start_film"))
         ask = body.index("film_acknowledgement_missing(f, uid)")
         self.assertLess(body.index("q := public.film_price(f)"), ask)
         for later in ("reserve_credits(org, ref, total)", "insert into public.film_segments", "insert into public.film_takes"):
@@ -112,29 +112,29 @@ class Migration0179(unittest.TestCase):
         self.assertIn("format('kind=%s version=%s subject=%s'", body)
 
     def test_every_input_the_worker_sends_is_a_subject(self):
-        subj = code(definition(M0179, "rights_acknowledgement_subjects"))
+        subj = code(definition(M0187, "rights_acknowledgement_subjects"))
         for part in ("'source_asset_id'", "'end_asset_id'", "'style_kit_id'", "public.style_kit_references",
                      "public.character_references", "limit 16"):
             self.assertIn(part, subj, part)
-        self.assertIn("rights_acknowledgement_subjects(p_org, p_params)", code(definition(M0179, "rights_acknowledgement_missing")))
+        self.assertIn("rights_acknowledgement_subjects(p_org, p_params)", code(definition(M0187, "rights_acknowledgement_missing")))
 
     def test_the_worker_asks_again_before_it_hands_out_pictures(self):
-        body = code(definition(M0179, "creative_job_style"))
+        body = code(definition(M0187, "creative_job_style"))
         ask = body.index("rights_acknowledgement_missing(j.org_id, j.requested_by, coalesce(j.routed_model, j.requested_model), j.params)")
         self.assertLess(ask, body.index("from public.style_kit_references r"))
 
     def test_a_workflow_asks_about_kit_and_character_pictures_too(self):
-        body = code(definition(M0179, "workflow_quote_steps"))
+        body = code(definition(M0187, "workflow_quote_steps"))
         self.assertIn("rights_acknowledgement_subjects(p_wf.org_id, params)", body)
         self.assertLess(body.index("rights_acknowledgement_subjects(p_wf.org_id, params)"), body.index("q := public.creative_price("))
 
     def test_a_film_reads_the_visual_prompt_for_characters(self):
-        self.assertEqual(code(definition(M0179, "film_acknowledgement_missing")).count(
+        self.assertEqual(code(definition(M0187, "film_acknowledgement_missing")).count(
             "rights_acknowledgement_subjects(p_film.org_id, jsonb_build_object('prompt', s.visual_prompt))"), 2)
 
-    def test_rollback_0174_refuses_while_0179_is_on(self):
+    def test_rollback_0174_refuses_while_0187_is_on(self):
         rb = (ROOT / "docs" / "sql" / "rollback_0174_rights_acknowledgement.sql").read_text(encoding="utf-8")
-        self.assertIn("apply docs/sql/rollback_0179_rights_acknowledgement_inputs.sql first", rb)
+        self.assertIn("apply docs/sql/rollback_0187_rights_acknowledgement_inputs.sql first", rb)
 
     def test_the_film_refusal_names_its_remedy_in_every_language(self):
         ts = (ROOT / "command-center" / "lib" / "studio" / "timeline.ts").read_text(encoding="utf-8")
@@ -145,17 +145,17 @@ class Migration0179(unittest.TestCase):
 
     def test_the_mention_rule_is_the_workers(self):
         py = re.search(r'MENTION_RE = re\.compile\(r"(.+?)"\)', STYLE).group(1)
-        self.assertIn(f"'{py}'", definition(M0179, "rights_acknowledgement_subjects"))
+        self.assertIn(f"'{py}'", definition(M0187, "rights_acknowledgement_subjects"))
 
     def test_the_helpers_are_internal(self):
         for name in NEW:
-            self.assertIn(f"revoke all on function public.{name}(", M0179)
-            self.assertNotRegex(M0179, rf"grant execute on function public\.{name}\(")
-        self.assertIn("grant execute on function public.reroute_creative_job(uuid, text, text) to service_role;", M0179)
-        self.assertIn("grant execute on function public.start_film(uuid, text, text) to authenticated;", M0179)
+            self.assertIn(f"revoke all on function public.{name}(", M0187)
+            self.assertNotRegex(M0187, rf"grant execute on function public\.{name}\(")
+        self.assertIn("grant execute on function public.reroute_creative_job(uuid, text, text) to service_role;", M0187)
+        self.assertIn("grant execute on function public.start_film(uuid, text, text) to authenticated;", M0187)
 
     def test_no_model_availability_or_requirement_is_changed(self):
-        sql = code(M0179).lower()
+        sql = code(M0187).lower()
         self.assertNotIn("update public.model_registry", sql)
         self.assertNotIn("credit_prices", sql)
 
@@ -166,7 +166,7 @@ class Migration0179(unittest.TestCase):
             self.assertIn(f"drop function if exists public.{name}(", ROLLBACK)
 
     def test_the_migration_is_documented(self):
-        self.assertIn("0179_rights_acknowledgement_inputs.sql", MIGRATIONS_DOC)
+        self.assertIn("0187_rights_acknowledgement_inputs.sql", MIGRATIONS_DOC)
 
 
 if __name__ == "__main__":

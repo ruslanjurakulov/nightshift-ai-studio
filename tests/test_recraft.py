@@ -109,7 +109,7 @@ class RegistryEntryTests(unittest.TestCase):
 
     def test_the_terms_question_was_decided_in_writing_web_and_mcp_never_the_public_api(self):
         # Recraft support's written confirmation (2026-11-17/18) opened the gate for our own web studio and MCP connector only:
-        # api_exposure web_mcp keeps both off /api/v1 (migration 0180's sellable_models), and the earlier reading stays quoted.
+        # api_exposure web_mcp keeps both off /api/v1 (migration 0188's sellable_models), and the earlier reading stays quoted.
         for mid in IDS:
             e = self.r[mid]
             self.assertIsNone(e.terms_gate, mid)

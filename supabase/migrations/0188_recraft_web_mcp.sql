@@ -1,21 +1,57 @@
--- rollback_0180_recraft_web_mcp.sql — 0125's sellable_models and 0124's api_creative_model_ok back, verbatim. OWNER-APPLY.
--- A 'web_mcp' model then reads as open to the API again (everything that is not 'web_only' was): apply this only after the registry
--- no longer names 'web_mcp' (set Recraft back to 'web_only'), or the public API would sell it. Availability is not changed here.
-begin;
+-- 0188_recraft_web_mcp.sql — Recraft V4.1 and V4.1 Flash: sold on the web and through our own MCP connector, never through the
+-- public developer API; and beta only once a real probe of the exact vendor model has passed.
+--
+-- EVIDENCE:
+--   * Written confirmation from Recraft support, email of 2026-11-17/18 (relayed by the owner): our own signed-in users may use the
+--     models in the web studio and through our limited MCP connector, paying with our credits; NOT through the public developer API
+--     (/api/v1), which needs a reseller agreement. Conditions: a fresh API call for every generation (modules/capabilities/recraft.py
+--     caches nothing), Recraft's watermarks and provenance metadata kept (vendor files are stored byte for byte,
+--     docs/AI_DISCLOSURE.md), end-user terms at least as protective, the key never leaves our servers (RECRAFT_API_TOKEN is a worker
+--     secret), consent before processing a real person's likeness (both models take no input image: inputs.image_refs_max 0).
+--     Developer Terms §1.4 (effective 2026-10-20, re-read 2026-11-20): a written agreement with Recraft prevails over them.
+--   * Recraft's docs (read 2026-11-20) name the Flash model `recraftv4_1_flash_v2` ("V4.1 Flash V2"); the registry sent
+--     `recraftv4_1_flash`, which no current page names. schemas/model_registry.json is corrected in the same pull request.
+--
+-- DIAGNOSIS: the registry had two exposures, 'any' (web, api, mcp) and 'web_only' (web). A permission for the web and our connector but
+--   not the public API had no value, and sellable_models treated 'mcp' exactly like 'api'.
+--
+-- CHANGE (additive; two function bodies replaced, one marked hunk each; one guarded row update):
+--   sellable_models (0125's body): 'web_mcp' is sold to 'web' and 'mcp', never to 'api'. Only 'any' opens 'api'; any other value opens
+--     the web alone (before: everything that was not 'web_only' was open to the API).
+--   api_creative_model_ok (0124's body): the "temporarily off" word is for 'any' models only.
+--   recraft-v4.1 and recraft-v4.1-flash -> availability 'beta' ONLY where the model's verified probe is a successful run of the
+--     vendor model the registry names now (model_probe_runs.vendor_model = spec.vendor_model). With no such probe nothing changes;
+--     apply this file again after tools/probe_models.py (.github/workflows/probe_models.yml) has recorded one. It never lowers an
+--     availability, and it opens nothing by itself: a sale still needs the price rows (credit_prices, set by the owner), a clear
+--     terms_gate (the registry file) and the owner's switch, exactly as sellable_models already requires.
+-- NOT CHANGED: every other model's sale (the registry holds only 'any' and 'web_only'), every price, hold and gate. Recraft stays
+--   refused on /api/v1 (api_creative_model_ok asks sellable_models for 'api'). No MCP tool asks for the 'mcp' surface yet: the
+--   connector's creative tools are a separate pull request, and until they land Recraft is a web-only model in practice.
+--
+-- NUMBER. 0188, assigned by Atlas (renumbered at merge). Needs 0035, 0124 and 0125.
+-- REPLAY. Replays onto itself (this is how the beta step is taken after a probe). Re-running 0124 or 0125 after it silently restores
+--   the old bodies: apply 0188 again.
+-- WHAT TO VERIFY BEFORE YOU APPLY: md5(regexp_replace(prosrc, '\s+', ' ', 'g')) of sellable_models(text, text) is ea8add748052456a6ef8898b4c87d610 (0125)
+--   or 0ab9e7da07b4347010a887c5118d5150 (this file); of api_creative_model_ok(text, text) 80ab200d384f44306987c88629f103af (0124) or cbe9f5d42dcdcfddb604d4a30c2f80ae.
+-- Undo: docs/sql/rollback_0188_recraft_web_mcp.sql (owner-applied): both bodies back; it does not change availability.
+
 set local lock_timeout = '5s';
+
 do $$
 declare
+  r record;
   h text;
 begin
-  if exists (select 1 from public.model_registry where spec ->> 'api_exposure' = 'web_mcp') then
-    raise exception 'rollback 0180: a model is still web_mcp; set it to web_only in the registry and sync first';
-  end if;
-  select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) into h from pg_proc where oid = 'public.sellable_models(text, text)'::regprocedure;
-  if h is distinct from 'b7ec750de4aea6c412cb73d55cfe9c99' then raise exception 'rollback 0180: sellable_models is not 0180''s body (md5 %)', h; end if;
-  select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) into h from pg_proc where oid = 'public.api_creative_model_ok(text, text)'::regprocedure;
-  if h is distinct from '38ce3440be2e9107ca877a9bede14dc8' then raise exception 'rollback 0180: api_creative_model_ok is not 0180''s body (md5 %)', h; end if;
+  for r in select * from (values
+      ('public.sellable_models(text, text)', 'ea8add748052456a6ef8898b4c87d610', '0ab9e7da07b4347010a887c5118d5150', '0125'),
+      ('public.api_creative_model_ok(text, text)', '80ab200d384f44306987c88629f103af', 'cbe9f5d42dcdcfddb604d4a30c2f80ae', '0124')) v(sig, was, now_, src) loop
+    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+    if h is null or h <> all (array[r.was, r.now_]) then
+      raise exception '0188 found % with a body that is neither %''s nor 0188''s (md5 %): read the live body first', r.sig, r.src, h;
+    end if;
+  end loop;
 end $$;
--- sellable_models: 0125's body, verbatim.
+
 create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
   returns table (
     id text, display_name text, provider text, capabilities text[], availability text,
@@ -93,13 +129,16 @@ begin
                            on vp.unit = m.credit_unit || '_' || regexp_replace(lower(vk.variant), '[^a-z0-9]', '_', 'g')
                         where vp.credits_per_unit > 0))
        and (p_capability is null or p_capability = any (m.capabilities))
-       and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') <> 'web_only')
+       -- 0188: 'web_mcp' is sold on the web and to the 'mcp' surface (our own signed-in connector), never to 'api' (the public
+       -- developer API: a vendor's written permission can stop short of it). Only 'any' opens 'api'; a value this file does not
+       -- know opens nothing but the web (fail closed).
+       and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') = 'any'
+            or (p_surface = 'mcp' and m.spec ->> 'api_exposure' = 'web_mcp'))
        and (p_surface = 'web' or not ('captions' = any (m.capabilities)))
      order by m.provider, m.id;
 end
 $$;
 
--- api_creative_model_ok: 0124's body, verbatim.
 create or replace function public.api_creative_model_ok(p_capability text, p_model text) returns boolean
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 begin
@@ -109,7 +148,8 @@ begin
      and exists (select 1 from public.model_registry r
                   where r.id = p_model and p_capability = any (r.capabilities)
                     and r.availability in ('beta', 'ga') and r.verified_at is not null
-                    and coalesce(r.spec ->> 'api_exposure', 'any') <> 'web_only'
+                    -- 0188: only a model the API would otherwise sell ('any') gets the "temporarily off" word here.
+                    and coalesce(r.spec ->> 'api_exposure', 'any') = 'any'
                     and p_capability <> 'captions') then
     perform public.creative_refuse('model_temporarily_off', format('%s is temporarily unavailable', p_model));
   end if;
@@ -120,4 +160,24 @@ $$;
 revoke all on function public.sellable_models(text, text) from public, anon;
 grant execute on function public.sellable_models(text, text) to authenticated, service_role;
 revoke all on function public.api_creative_model_ok(text, text) from public, anon, authenticated, service_role;
-commit;
+
+-- Beta only on a passed probe of the vendor model named now (see CHANGE). Hidden -> beta only; nothing is lowered.
+update public.model_registry m
+   set availability = 'beta'
+ where m.id in ('recraft-v4.1', 'recraft-v4.1-flash')
+   and m.availability = 'hidden'
+   and m.verified_at is not null
+   and exists (select 1 from public.model_probe_runs r
+                where r.id = m.verified_probe_id and r.ok and r.model_id = m.id
+                  and r.vendor_model = m.spec ->> 'vendor_model');
+
+do $$
+begin
+  if exists (select 1 from public.model_registry where id in ('recraft-v4.1', 'recraft-v4.1-flash') and availability = 'hidden') then
+    raise notice '0188: a Recraft model is still hidden: no passed probe of its current vendor model is recorded yet; run the probe, then apply 0188 again';
+  end if;
+end $$;
+
+-- Verify: select id, availability, spec ->> 'vendor_model', spec ->> 'api_exposure',
+--   exists (select 1 from public.sellable_models('t2i', 'api') s where s.id = m.id) as on_api   -- must be false
+--   from public.model_registry m where id like 'recraft-%';

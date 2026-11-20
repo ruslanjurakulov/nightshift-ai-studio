@@ -1,15 +1,15 @@
--- rollback_0179_rights_acknowledgement_inputs.sql — takes migration 0179 out: the rights acknowledgement (0174) again asks only
+-- rollback_0187_rights_acknowledgement_inputs.sql — takes migration 0187 out: the rights acknowledgement (0174) again asks only
 -- about params.source_asset_id and params.end_asset_id of the model a job is created for.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT COMES BACK: 0174's rights_acknowledgement_missing and workflow_quote_steps, 0088's reroute_creative_job, 0171's start_film and
 --   0048's creative_job_style, verbatim, with their
---   grants. The four holes 0179 closed (failover, style kit pictures, @character pictures, films) are open again: apply this only
+--   grants. The four holes 0187 closed (failover, style kit pictures, @character pictures, films) are open again: apply this only
 --   while no model on sale requires an acknowledgement (today only runway-gen4.5 and runway-gen4-turbo do, and neither is sold).
 -- WHAT IS LOST: rights_acknowledgement_subjects, rights_acknowledgement_missing_among and film_acknowledgement_missing.
--- WHAT IS KEPT: every table and row (0179 changed none).
+-- WHAT IS KEPT: every table and row (0187 changed none).
 --
--- REFUSES (changes nothing) if any of the five bodies is not 0179's: a later change would be undone.
+-- REFUSES (changes nothing) if any of the five bodies is not 0187's: a later change would be undone.
 
 begin;
 set local lock_timeout = '5s';
@@ -21,13 +21,13 @@ declare
 begin
   for r in select * from (values
       ('public.rights_acknowledgement_missing(uuid, uuid, text, jsonb)', 'e7baea73e6c790ed3e8d01b797aa3732'),
-      ('public.reroute_creative_job(uuid, text, text)', '9dfc81eb3e77555ee9e04c53b22c84e9'),
-      ('public.start_film(uuid, text, text)', '0cfb804e3e5d415957df0106b65ef75b'),
-      ('public.workflow_quote_steps(public.workflows, jsonb)', '67c328c45c253481c2f41718aca0fcc7'),
-      ('public.creative_job_style(uuid, text)', 'a7395eb11514a2c8b0db2c08e991fffc')) v(sig, want) loop
+      ('public.reroute_creative_job(uuid, text, text)', '88ddf301ce242fafe8a8051d16ceab9e'),
+      ('public.start_film(uuid, text, text)', '5468183a8f24a48f708efcbbf9d2d22c'),
+      ('public.workflow_quote_steps(public.workflows, jsonb)', 'f77e276ac50f195c746064a5633e36db'),
+      ('public.creative_job_style(uuid, text)', '6d8def7530c6aff386ac691eeb616115')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
-      raise exception 'rollback 0179: % is not 0179''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
+      raise exception 'rollback 0187: % is not 0187''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
     end if;
   end loop;
 end $$;
@@ -516,13 +516,13 @@ begin
       ('public.creative_job_style(uuid, text)', '75dec758272fcad658e1712fdc7f708e')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
-      raise exception 'rollback 0179 end state: % is not the earlier body (md5 %)', r.sig, h;
+      raise exception 'rollback 0187 end state: % is not the earlier body (md5 %)', r.sig, h;
     end if;
   end loop;
   if to_regprocedure('public.rights_acknowledgement_subjects(uuid, jsonb)') is not null
      or to_regprocedure('public.rights_acknowledgement_missing_among(uuid, uuid, text, text[])') is not null
      or to_regprocedure('public.film_acknowledgement_missing(public.films, uuid)') is not null then
-    raise exception 'rollback 0179 end state: a 0179 function is still there';
+    raise exception 'rollback 0187 end state: a 0187 function is still there';
   end if;
 end $$;
 

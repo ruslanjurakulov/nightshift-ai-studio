@@ -81,7 +81,7 @@ def test_a_film_never_starts_a_clip_of_an_unacknowledged_upload_on_a_model_that_
 
 
 def test_a_film_asks_about_the_characters_its_visual_prompt_mentions(db):
-    # 0179 (Lens on #S5): the key frame's and the clip's params carry the scene's visual prompt, and the worker reads @names from it.
+    # 0187 (Lens on #S5): the key frame's and the clip's params carry the scene's visual prompt, and the worker reads @names from it.
     o = db.new_org(credits=500)
     db.one("authenticated", o.editor, "select public.save_character(%s, null, 'keeper', 'character', 'the keeper', %s::uuid[])",
            [o.org, [o.image]])
