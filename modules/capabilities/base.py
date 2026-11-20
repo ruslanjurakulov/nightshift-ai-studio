@@ -149,7 +149,7 @@ E_UNAVAILABLE = "unavailable"         # vendor 5xx, outage, network   → retry 
 E_BAD_RESPONSE = "bad_response"       # 2xx we do not understand      → adapter needs a fix
 #: The vendor account's PLAN does not allow this (a library voice on a free ElevenLabs plan): not an empty balance —
 #: topping up the same plan changes nothing — and not a wrong key. The person picks what the plan allows, or the
-#: operator changes the plan. Never retried, never failed over. Migration 0185 lets the probe log record it.
+#: operator changes the plan. Never retried, never failed over. Migration 0199 lets the probe log record it.
 E_PLAN_REQUIRED = "plan_required"
 #: The vendor refused an option the adapter sends through one of its tools (a 400 naming ``param: "tools"``): the
 #: request is a bad request for THIS model, but the fix is the adapter's or the option's, not the prompt's. Never retried

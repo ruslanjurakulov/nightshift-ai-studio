@@ -22,6 +22,7 @@ import {
   providerSpendSince,
   type BalanceRow,
   type BilledProvider,
+  REFUSED_BEFORE_WORK,
   type BillingSettingsRow,
   type CostRowLite,
   type LedgerInputs,
@@ -293,7 +294,7 @@ function modelsOf(p: BilledProvider, x: RunwayData): ModelRunway[] {
     if (credits === null) r.usd7dEstimate = true;
     if (usd === null) {
       // A refused key made nothing and billed nothing; any other failure may have billed: unknown, never free.
-      if (!(pr.ok === false && ["auth", "quota", "rate_limited", "not_configured"].includes(String(pr.error_code)))) r.usd7d = null;
+      if (!(pr.ok === false && REFUSED_BEFORE_WORK.has(String(pr.error_code)))) r.usd7d = null;
     } else {
       r.usd7dPriced += usd;
       if (r.usd7d !== null) r.usd7d += usd;
@@ -310,8 +311,8 @@ function spentBeforeTracking(p: BilledProvider, x: RunwayData, firstTopupDay: nu
   if (x.studioRows.some((r) => billingIdFor(r.provider, r.vendor_model) === p.id && Date.parse(r.recorded_at) < firstTopupDay)) return true;
   const mine = new Set((x.registry ?? []).filter((m) => m.billingId === p.id).map((m) => m.id));
   // A probe the vendor refused before any work (a bad key, no balance) billed nothing.
-  const refused = new Set(["auth", "quota", "rate_limited", "not_configured"]);
-  return x.probeRows.some((r) => mine.has(r.model_id) && Date.parse(r.created_at) < firstTopupDay && !(r.ok === false && refused.has(String(r.error_code))));
+  // One list with billing.ts: a copy here missed plan_required (Lens), so a plan refusal read as spending.
+  return x.probeRows.some((r) => mine.has(r.model_id) && Date.parse(r.created_at) < firstTopupDay && !(r.ok === false && REFUSED_BEFORE_WORK.has(String(r.error_code))));
 }
 
 export function providerRunways(x: RunwayData): ProviderRunway[] {

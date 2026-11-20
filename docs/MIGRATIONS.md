@@ -2034,21 +2034,38 @@ short-form formats that open Create prefilled. Additive: one table, its updated_
   provider's balance. Counts only, no amount and no customer.
 - **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
 - Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.
-## The probe log names a refused plan (0185)
 
-0185 (`0185_probe_error_plan_required.sql`) is **live on apply**: it replaces ONE check constraint, `model_probe_runs_error_code_check`
+- Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.
+
+## Owner analytics: frozen exchange rates for the income register (0185)
+
+0185 (`0185_owner_fx_rates.sql`) stores the exchange rates the owner freezes for the hub's Tax register. No rate is in the file,
+and nothing fetches one.
+
+- **Table.** `owner_fx_rates`: one rate per day and currency (UZS per unit, numeric(18,4)), the source the owner names, who
+  entered it and when. RLS on, no policy, closed to every API role.
+- **Functions.** `owner_analytics_fx_set(day, currency, uzs, source)` (setting it again replaces it), `owner_analytics_fx_delete`,
+  `owner_analytics_fx_rates(from, to)` (at most 1100 days). Writes go through 0183's `owner_costs_write_guard()` (owner, 0107's
+  second factor, the shared rate limit). Granted to `authenticated` only.
+- **Without it** the register lists payments in their own currency and every UZS cell reads "no rate stored".
+- **Requires** 0182 and 0184. Lab: `tests/security/sec_owner_fx_0185.py`, `test_sec_owner_fx.py`, `test_sec_breach_owner_fx.py`.
+- **Rollback:** `docs/sql/rollback_0185_owner_fx_rates.sql`. It drops the table and its functions: every frozen rate is lost
+  (files already exported keep the rate they were made with).
+## The probe log names a refused plan (0199)
+
+0199 (`0199_probe_error_plan_required.sql`) is **live on apply**: it replaces ONE check constraint, `model_probe_runs_error_code_check`
 (0035 / 0143), with the same rule plus one word, `plan_required`. No table, column, row, function or grant changes.
 
 - **Why.** A real ElevenLabs call on 2026-11-20 was answered HTTP 402 `paid_plan_required`: a library voice on a free plan. 402 is also
   ElevenLabs' status for an empty balance, which needs the opposite fix, so the adapter now reads ElevenLabs' own code and raises
-  `E_PLAN_REQUIRED` (`modules/capabilities/base.py` `ERROR_CODES`); `record_model_probe` inserts the code as given, so without 0185 such a
+  `E_PLAN_REQUIRED` (`modules/capabilities/base.py` `ERROR_CODES`); `record_model_probe` inserts the code as given, so without 0199 such a
   probe could not be recorded. Job rows (0036) already take any `^[a-z0-9_]{1,64}$` word; the Studio shows it as its own reason, not
   "busy". The router's failover (0075 / 0088) does not list it: a plan refusal is never failed over.
 - **Safe to apply.** The new rule accepts every row the old one did. Apply as ONE transaction (`set local lock_timeout`); the last block
   compares the whole constraint, as Postgres prints it back, to the expected rule.
-- **Undo.** `docs/sql/rollback_0185_probe_error_plan_required.sql` (owner-applied): refuses while the log holds a `plan_required` row, then
+- **Undo.** `docs/sql/rollback_0199_probe_error_plan_required.sql` (owner-applied): refuses while the log holds a `plan_required` row, then
   puts 0143's words back and checks the printed rule the same way.
-- **Numbering.** 0185, after 0182; 0175-0181 are left to the work that reserved them. The numbering tests of 0127, 0131 and 0133 list it as
+- **Numbering.** 0199, after 0182; 0175-0181 are left to the work that reserved them. The numbering tests of 0127, 0131 and 0133 list it as
   reviewed (it names nothing they pin).
 - **Tests.** `tests/test_probe_error_plan_required_migration.py`; `tests/test_probe_error_vendor_tool_migration.py` now pins the newest
   check, not 0143, to `ERROR_CODES`.
