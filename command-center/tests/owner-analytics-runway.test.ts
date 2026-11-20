@@ -83,6 +83,12 @@ describe("provider runway", () => {
     expect(minimax(data()).beforeTrackingUnknown).toBe(false);
   });
 
+  it("never says ok without 0183's job counts: a refusal for want of balance cannot be seen", () => {
+    const r = minimax(data({ activity: { all: null, d7: null, d1: null, missing: true } }));
+    expect(r.status).toBe("unknown");
+    expect(r.emptyUnchecked).toBe(true);
+  });
+
   it("sees a refusal that routing hid: the model that refused has only a quota time, and it is newer than any completion", () => {
     const refusedOnly = act({ model: "lab-video", jobs: 0, completed: 0, lastAt: null, lastStatus: null, lastOkAt: iso(NOW - 5 * DAY), lastQuotaAt: iso(NOW - 600_000) });
     expect(minimax(data({ activity: { all: [refusedOnly], d7: [], d1: [], missing: false } })).status).toBe("empty");

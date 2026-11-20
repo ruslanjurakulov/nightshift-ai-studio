@@ -365,7 +365,8 @@ export function providerRunways(x: RunwayData): ProviderRunway[] {
     const quotaAt = lastQuota !== null && (lastOk === null || Date.parse(lastQuota) > Date.parse(lastOk)) ? lastQuota : null;
     const autoRecharge = st?.auto_recharge_on_provider ?? false;
     const lowDays = st?.low_balance_days ?? LOW_RUNWAY_DAYS;
-    const emptyUnchecked = x.activityUnread || x.registry === null;
+    // Without 0183's job counts, unread counts or an unread registry, a refusal for want of balance cannot be seen.
+    const emptyUnchecked = x.activityUnread || x.activity.missing || x.registry === null;
     const status: RunwayStatus = quotaAt
       ? "empty"
       : runsOut === null
