@@ -14,6 +14,9 @@ import {
   coerceTimelineFilm,
   keyAction,
   layoutTimeline,
+  chosenShots,
+  segmentAt,
+  CHAIN_SKIP_S,
   reorder,
   sceneAt,
   shortcutAllowed,
@@ -25,22 +28,93 @@ import {
 const CLIP = "c1000000-0000-4000-8000-0000000000c1";
 const NARR = "c2000000-0000-4000-8000-0000000000c2";
 const MUSIC = "c3000000-0000-4000-8000-0000000000c3";
+const CLIP2 = "c4000000-0000-4000-8000-0000000000c4";
+const CLIP3 = "c5000000-0000-4000-8000-0000000000c5";
 const take = (over: Record<string, unknown>) => ({
   id: crypto.randomUUID(), scene_id: S1, version: 1, shot_index: 1, kind: "clip", status: "completed", duration_s: 5.5, result_asset_id: CLIP, ...over,
 });
 
 describe("lanes from film_json", () => {
-  it("a scene without a chosen, finished take is a draft block at its PLANNED length; a shot scene is its measured length", () => {
+  it("every scene is its PLANNED length (the worker trims to it); a shot scene is measured only once the library knows its files", () => {
     const raw = filmJson({}, [
       sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: [take({})] }),
       sceneJson(S2, 1, { planned_seconds: 6, takes: [take({ scene_id: S2, status: "running", result_asset_id: null })] }),
     ]);
     const film = coerceTimelineFilm(raw)!;
-    const { clips, duration } = layoutTimeline(film);
+    // No asset duration yet: shot, but not measured, whatever film_takes.duration_s (5.5) asked for.
+    const before = layoutTimeline(film).clips.filter((c) => c.track === "V1");
+    expect(before[0]).toMatchObject({ draft: false, length: 8, measured: false, short: false, assetId: CLIP });
+    const { clips, duration } = layoutTimeline(film, new Map([[CLIP, 12]]));
     const v1 = clips.filter((c) => c.track === "V1");
-    expect(v1[0]).toMatchObject({ draft: false, length: 5.5, measured: true, assetId: CLIP, start: 0 });
-    expect(v1[1]).toMatchObject({ draft: true, length: 6, measured: false, assetId: null, start: 5.5 });
-    expect(duration).toBe(11.5);
+    expect(v1[0]).toMatchObject({ draft: false, length: 8, measured: true, short: false, start: 0 });
+    expect(v1[1]).toMatchObject({ draft: true, length: 6, measured: false, start: 8 });
+    expect(duration).toBe(14);
+  });
+
+  it("H1 (Lens round 2): two 8 s scenes with 12 s and 3 s clips: 16 s in all, scene 2 flagged short, the preview follows the trim", () => {
+    const raw = filmJson({}, [
+      sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: [take({ result_asset_id: CLIP })] }),
+      sceneJson(S2, 1, { current_version: 1, planned_seconds: 8, takes: [take({ scene_id: S2, result_asset_id: CLIP2 })] }),
+    ]);
+    const { clips, duration } = layoutTimeline(coerceTimelineFilm(raw)!, new Map([[CLIP, 12], [CLIP2, 3]]));
+    const [a, b] = clips.filter((c) => c.track === "V1");
+    expect(duration).toBe(16);
+    expect(a).toMatchObject({ start: 0, length: 8, measured: true, short: false });
+    expect(a.segments).toEqual([{ assetId: CLIP, start: 0, length: 8, inPoint: 0 }]);
+    expect(b).toMatchObject({ start: 8, length: 8, measured: false, short: true });
+    expect(segmentAt(a, 7.5)).toMatchObject({ assetId: CLIP, offset: 7.5, measured: true });
+  });
+
+  it("H1: a chained shot starts CHAIN_SKIP_S into its file; a scene continued by the next keeps the END of its footage", () => {
+    const raw = filmJson({}, [
+      sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, shot_count: 2, takes: [take({ result_asset_id: CLIP }), take({ kind: "extend", shot_index: 2, result_asset_id: CLIP2 })] }),
+      sceneJson(S2, 1, { current_version: 1, planned_seconds: 4, first_frame: "previous", takes: [take({ scene_id: S2, result_asset_id: CLIP3 })] }),
+    ]);
+    // Scene 1: 5 s + (6 − 0.042) s of footage, 8 s shown, scene 2 continues it → the window ends at the footage's end.
+    const v1 = layoutTimeline(coerceTimelineFilm(raw)!, new Map([[CLIP, 5], [CLIP2, 6], [CLIP3, 4.5]])).clips.filter((c) => c.track === "V1");
+    const total = 5 + (6 - CHAIN_SKIP_S);
+    const x = total - 8;
+    expect(v1[0].segments![0]).toMatchObject({ assetId: CLIP, start: 0, inPoint: x });
+    expect(v1[0].segments![0].length).toBeCloseTo(5 - x);
+    expect(v1[0].segments![1].assetId).toBe(CLIP2);
+    expect(v1[0].segments![1].inPoint).toBeCloseTo(CHAIN_SKIP_S);
+    expect(v1[0].segments![1].length).toBeCloseTo(6 - CHAIN_SKIP_S);
+    // Scene 2 continues the previous one: its only shot is chained too.
+    expect(v1[1].segments![0]).toMatchObject({ assetId: CLIP3, start: 8, inPoint: CHAIN_SKIP_S, length: 4 });
+  });
+
+  it("Lens round 4: a cross-fade out that would land on a sliver of the last shot is refused, as scene_too_short is in the worker", () => {
+    const S3 = "53000000-0000-4000-8000-000000000003";
+    const film = () =>
+      coerceTimelineFilm(filmJson({}, [
+        sceneJson(S1, 0, { current_version: 1, planned_seconds: 5, shot_count: 2, takes: [take({ result_asset_id: CLIP }), take({ kind: "extend", shot_index: 2, result_asset_id: CLIP2 })] }),
+        sceneJson(S3, 1, { current_version: 1, planned_seconds: 4, transition_in: "crossfade", takes: [take({ scene_id: S3, result_asset_id: CLIP3 })] }),
+      ]))!;
+    // 4.5 s + 0.558 s covers the 5 s slot, but the window ends 0.5 s into shot 2: the cross-fade needs a 1 s last piece, and
+    // moving the window 0.5 s later needs 5.5 s of footage. The worker refuses; the Timeline must not draw it ready.
+    const refused = layoutTimeline(film(), new Map([[CLIP, 4.5], [CLIP2, 0.6], [CLIP3, 6]])).clips.filter((c) => c.track === "V1");
+    expect(refused[0]).toMatchObject({ short: true, measured: false });
+    // With 2 s in shot 2 the worker shows the window 0.5 s later, so shot 2 carries a 1 s last piece.
+    const ok = layoutTimeline(film(), new Map([[CLIP, 4.5], [CLIP2, 2], [CLIP3, 6]])).clips.filter((c) => c.track === "V1");
+    expect(ok[0]).toMatchObject({ short: false, measured: true });
+    expect(ok[0].segments).toEqual([
+      { assetId: CLIP, start: 0, length: 4, inPoint: 0.5 },
+      { assetId: CLIP2, start: 4, length: 1, inPoint: CHAIN_SKIP_S },
+    ]);
+  });
+
+  it("Lens round 4: a scene that continues one and is continued by the next cannot lose more than SEAM_TOLERANCE_S (continuity_trim)", () => {
+    const S3 = "53000000-0000-4000-8000-000000000003";
+    const raw = filmJson({}, [
+      sceneJson(S1, 0, { current_version: 1, planned_seconds: 4, takes: [take({ result_asset_id: CLIP })] }),
+      sceneJson(S2, 1, { current_version: 1, planned_seconds: 4, first_frame: "previous", takes: [take({ scene_id: S2, result_asset_id: CLIP2 })] }),
+      sceneJson(S3, 2, { current_version: 1, planned_seconds: 4, first_frame: "previous", takes: [take({ scene_id: S3, result_asset_id: CLIP3 })] }),
+    ]);
+    const lanes = (mid: number) => layoutTimeline(coerceTimelineFilm(raw)!, new Map([[CLIP, 5], [CLIP2, mid], [CLIP3, 5]])).clips.filter((c) => c.track === "V1");
+    // 5 s − 0.042 s leaves 0.958 s too much, and neither end of scene 2 may be trimmed: refused, never drawn ready.
+    expect(lanes(5)[1]).toMatchObject({ trim: true, short: false, measured: false });
+    // 4.1 s − 0.042 s leaves 0.058 s, within the tolerance: accepted.
+    expect(lanes(4.1)[1]).toMatchObject({ trim: false, measured: true });
   });
 
   it("a completed take of a version that is not the chosen one does not make the scene shot", () => {
@@ -54,8 +128,8 @@ describe("lanes from film_json", () => {
     expect(bare.filter((c) => ["A1", "A2", "A3", "A4"].includes(c.track))).toEqual([]);
 
     const raw = { ...filmJson({ music_asset_id: MUSIC }, [sceneJson(S1, 0)]), music_missing: false, takes: [take({ scene_id: null, kind: "narration", shot_index: 0, result_asset_id: NARR, duration_s: 7 })] };
-    const full = layoutTimeline(coerceTimelineFilm(raw)!).clips;
-    expect(full.find((c) => c.track === "A1")).toMatchObject({ assetId: NARR, length: 7 });
+    const full = layoutTimeline(coerceTimelineFilm(raw)!, new Map([[NARR, 7]])).clips;
+    expect(full.find((c) => c.track === "A1")).toMatchObject({ assetId: NARR, length: 7, measured: true });
     expect(full.find((c) => c.track === "A2")).toMatchObject({ assetId: MUSIC });
     expect(full.filter((c) => c.track === "A3" || c.track === "A4")).toEqual([]);
 
@@ -139,15 +213,14 @@ describe("the money: quote_film and start_film answers", () => {
 });
 
 describe("keyboard", () => {
-  it("never inside an input, a text area, something editable, or the inspector", () => {
+  it("only on the page or the timeline's own surfaces; never in a field, on a button, a tab, a slider, a dialog or the inspector", () => {
     document.body.innerHTML = `<input id="i"><textarea id="t"></textarea><div contenteditable="true"><span id="ce">x</span></div>
-      <section id="insp"><button id="b">Level</button></section><div id="lane"></div>`;
+      <section id="insp"><div id="inside">x</div></section>
+      <div data-tl-surface=""><div id="lane"></div><button id="btn">Play</button><div role="slider" id="ruler"></div><div role="tab" id="tab"></div></div>
+      <div role="dialog"><div id="dlg" data-tl-surface=""></div></div><div id="elsewhere"></div>`;
     const $ = (id: string) => document.getElementById(id);
     const insp = $("insp");
-    expect(shortcutAllowed($("i"), insp)).toBe(false);
-    expect(shortcutAllowed($("t"), insp)).toBe(false);
-    expect(shortcutAllowed($("ce"), insp)).toBe(false);
-    expect(shortcutAllowed($("b"), insp)).toBe(false);
+    for (const id of ["i", "t", "ce", "inside", "btn", "ruler", "tab", "dlg", "elsewhere"]) expect([id, shortcutAllowed($(id), insp)]).toEqual([id, false]);
     expect(shortcutAllowed($("lane"), insp)).toBe(true);
     expect(shortcutAllowed(document.body, insp)).toBe(true);
   });
@@ -165,22 +238,52 @@ describe("keyboard", () => {
 });
 
 describe("polling", () => {
-  it("survives a failed read: the next read is scheduled after a rejection and after a throw, until stopped", async () => {
+  it("survives a failed read and backs off; a good read resets the wait; stop ends it", async () => {
     vi.useFakeTimers();
     try {
       let n = 0;
       const read = vi.fn(async () => {
         n += 1;
         if (n === 1) throw new Error("network");
-        if (n === 2) return Promise.reject(new Error("502"));
-        return "ok";
+        if (n === 2) return "error" as const;
+        return "ok" as const;
       });
       const poll = startPolling(read, 1000);
-      for (let i = 0; i < 4; i++) await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000); // read 1 throws → next in 2000
+      expect(read).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(read).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1); // read 2 errors → next in 4000
+      expect(read).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(4000); // read 3 ok → back to 1000
+      expect(read).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(1000);
       expect(read).toHaveBeenCalledTimes(4);
       poll.stop();
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(60_000);
       expect(read).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a stop verdict (project gone, session ended) ends the loop; pause reads nothing until resume, which reads at once", async () => {
+    vi.useFakeTimers();
+    try {
+      const stopper = vi.fn(async () => "stop" as const);
+      startPolling(stopper, 1000);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(stopper).toHaveBeenCalledTimes(1);
+
+      const read = vi.fn(async () => "ok" as const);
+      const poll = startPolling(read, 1000);
+      poll.pause();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(read).not.toHaveBeenCalled();
+      poll.resume();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(read).toHaveBeenCalledTimes(1);
+      poll.stop();
     } finally {
       vi.useRealTimers();
     }
