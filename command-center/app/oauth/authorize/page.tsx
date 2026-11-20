@@ -7,7 +7,6 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n/core";
-import { NotConfigured } from "@/components/NotConfigured";
 import { AppName, withParts } from "@/components/oauth/AppName";
 import { ConsentForm } from "@/components/oauth/ConsentForm";
 import { OAuthNotice, OAuthShell } from "@/components/oauth/OAuthShell";
@@ -40,9 +39,16 @@ type Raw = Record<string, string | string[] | undefined>;
  * /oauth/decision with a single-use secret made here, for this person.
  */
 export default async function AuthorizePage({ searchParams }: { searchParams: Promise<Raw> }) {
-  if (!isSupabaseConfigured) return <NotConfigured />;
-  const raw = await searchParams;
   const { t, locale } = await getDictionary();
+  // Not the app's <NotConfigured />: that is client code on the full dictionary, which this public page would then ship
+  // to every visitor (and which cannot render under the public slice this page is given).
+  if (!isSupabaseConfigured)
+    return (
+      <OAuthShell title={t.notConfigured.title}>
+        <OAuthNotice tone="warn">{t.notConfigured.badge}</OAuthNotice>
+      </OAuthShell>
+    );
+  const raw = await searchParams;
   const o = t.oauth;
 
   const user = await getUser();

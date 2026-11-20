@@ -208,7 +208,9 @@ class PublicSiteStatsMigration(unittest.TestCase):
     def test_the_number_is_unique_documented_and_0163_is_not_taken(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0164"), 1)
-        self.assertNotIn("0163", numbers, "0163 belongs to #736: if it merged, re-read this file against it")
+        # #736 was renumbered from 0163 to 0173 and read against this file then: it writes credit_prices and model_registry rows,
+        # and 0164 reads neither. 0163 stays unused, so a file that takes it is new and has not been read against this one.
+        self.assertNotIn("0163", numbers, "a file at 0163 is new (#736 became 0173): re-read this file against it")
         self.assertIn("## The site's live public counters (0164)", MIGRATIONS_DOC)
         self.assertIn("0164_public_site_stats.sql", (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8"))
 

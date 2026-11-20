@@ -32,7 +32,8 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { ShellProvider } from "@/components/shell/ShellContext";
-import { SideNav } from "@/components/SideNav";
+import { kindOpen, nodeStatus } from "@/components/studio-canvas/nodeState";
+import { newNode } from "@/lib/studio/canvas";
 import { DeskBar } from "@/components/studio/Desks";
 import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
 import { HomeHub } from "@/components/home/HomeHub";
@@ -121,40 +122,22 @@ describe("the availability itself (pure)", () => {
   });
 });
 
-describe("the sidebar", () => {
-  it("marks a desk with nothing on sale 'Not available yet' and does not link it; a desk on sale stays a link", () => {
-    pathname = "/chronos/home";
-    render(wrap(<SideNav email="me@example.com" plan={null} />, PICTURES));
-    const image = screen.getByTestId("sidebar-desk-image");
-    expect(image.tagName).toBe("A");
-    expect(image.getAttribute("href")).toBe("/chronos/create?desk=image");
-    // Effects only fill the Video desk's composer, so they are closed with it.
-    for (const d of ["video", "effects", "enhance", "voice"]) {
-      const row = screen.getByTestId(`sidebar-desk-${d}`);
-      expect(row.tagName, d).not.toBe("A");
-      expect(row.getAttribute("href")).toBeNull();
-      expect(within(row).getByText(t.availability.notYet)).toBeTruthy();
+describe("the Studio canvas's nodes (the desks the sidebar used to list)", () => {
+  const node = (kind: Parameters<typeof newNode>[0]) => newNode(kind, 0, 0, `n-${kind}`);
+  const lib = { ready: true, previews: new Map() };
+
+  it("a tool with nothing on sale is 'Not available yet' on its node, never drawn as ready", () => {
+    // PICTURES sells the picture tools only: clips, voice and the enhance desk are closed (Effects close with the Video desk).
+    for (const k of ["video", "animate", "effects", "enhance", "voice"] as const) {
+      expect(kindOpen(PICTURES, k), k).toBe(false);
+      expect(nodeStatus({ wires: [] }, node(k), new Map(), PICTURES, lib), k).toBe("closed");
     }
-    // What does work is still a link: the overview and the YouTube video.
-    expect(screen.getByTestId("sidebar-desk-overview").tagName).toBe("A");
-    expect(screen.getByTestId("sidebar-desk-youtube").tagName).toBe("A");
+    expect(kindOpen(PICTURES, "image")).toBe(true);
+    expect(nodeStatus({ wires: [] }, node("image"), new Map(), PICTURES, lib)).toBe("idle");
   });
 
-  it("draws every desk as a link while availability is unknown", () => {
-    pathname = "/chronos/home";
-    render(wrap(<SideNav email="me@example.com" plan={null} />));
-    for (const d of ["overview", "video", "image", "enhance", "voice", "youtube"]) expect(screen.getByTestId(`sidebar-desk-${d}`).tagName, d).toBe("A");
-    expect(screen.queryByText(t.availability.notYet)).toBeNull();
-  });
-
-  it("the desk you are on stays a link even when nothing on it is on sale, and says so", () => {
-    pathname = "/chronos/create";
-    search = "desk=voice";
-    render(wrap(<SideNav email="me@example.com" plan={null} />, PICTURES));
-    const voice = screen.getByTestId("sidebar-desk-voice");
-    expect(voice.tagName).toBe("A");
-    expect(voice.getAttribute("aria-current")).toBe("page");
-    expect(within(voice).getByText(t.availability.notYet)).toBeTruthy();
+  it("draws every tool as open while availability is unknown", () => {
+    for (const k of ["image", "video", "animate", "effects", "enhance", "voice"] as const) expect(kindOpen(UNKNOWN_TOOLS, k), k).toBe(true);
   });
 });
 
@@ -355,12 +338,16 @@ describe("the words", () => {
     }
   });
 
-  it("call the Studio Canvas 'Brand look', so 'Studio' no longer means three things", () => {
-    expect(dictionaries.en.nav.studio).toBe("Brand look");
+  it("call the Studio Canvas 'Brand look', and give the brand name 'Nightshift Studio' the studio key", () => {
+    expect(dictionaries.en.nav.brandLook).toBe("Brand look");
     expect(dictionaries.en.studio.title).toBe("Brand look");
-    expect(dictionaries.ru.nav.studio).toBe("Облик бренда");
-    expect(dictionaries.uz.nav.studio).toBe("Brend koʻrinishi");
-    for (const loc of ["en", "ru", "uz"] as const) expect(dictionaries[loc].nav.studio).toBe(dictionaries[loc].studio.title);
+    expect(dictionaries.ru.nav.brandLook).toBe("Облик бренда");
+    expect(dictionaries.uz.nav.brandLook).toBe("Brend koʻrinishi");
+    for (const loc of ["en", "ru", "uz"] as const) {
+      expect(dictionaries[loc].nav.brandLook).toBe(dictionaries[loc].studio.title);
+      // A brand, so it is not translated (docs/studio/STUDIO_IA.md §5).
+      expect(dictionaries[loc].nav.studio).toBe("Nightshift Studio");
+    }
   });
 
   it("count generations, not clips: the strip counts pictures and voice-overs too", () => {

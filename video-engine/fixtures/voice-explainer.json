@@ -1,0 +1,27 @@
+{
+  "width": 1080, "height": 1920, "fps": 30, "duration_s": 15, "look": "dusk",
+  "narration": "", "music": "", "music_volume": 0.1, "sfx": [], "captions": true,
+  "words": [
+    {"text": "Amerika", "start_s": 0.2, "end_s": 0.7}, {"text": "YouTube'ida", "start_s": 0.7, "end_s": 1.3},
+    {"text": "mana", "start_s": 1.3, "end_s": 1.6}, {"text": "shunday", "start_s": 1.6, "end_s": 2.1},
+    {"text": "animatsion", "start_s": 2.1, "end_s": 2.8}, {"text": "videolar.", "start_s": 2.8, "end_s": 3.5},
+    {"text": "Animatorga", "start_s": 4.1, "end_s": 4.8}, {"text": "qildirsangiz", "start_s": 4.8, "end_s": 5.5},
+    {"text": "yuzlab", "start_s": 5.6, "end_s": 6.1}, {"text": "dollar", "start_s": 6.1, "end_s": 6.6}, {"text": "turadi.", "start_s": 6.6, "end_s": 7.3},
+    {"text": "O'zingiz", "start_s": 7.8, "end_s": 8.4}, {"text": "qilsangiz", "start_s": 8.4, "end_s": 9.0},
+    {"text": "haftalab", "start_s": 9.0, "end_s": 9.6}, {"text": "vaqt", "start_s": 9.6, "end_s": 9.9}, {"text": "ketadi.", "start_s": 9.9, "end_s": 10.6},
+    {"text": "Siz", "start_s": 11.2, "end_s": 11.5}, {"text": "faqat", "start_s": 11.5, "end_s": 11.9}, {"text": "ovoz", "start_s": 11.9, "end_s": 12.3},
+    {"text": "berasiz.", "start_s": 12.3, "end_s": 13.1}
+  ],
+  "scenes": [
+    {"id": "e000", "start_s": 0, "end_s": 3.9, "kicker": "Amerika YouTube'ida", "headline": "Mana *shunday*", "accent": "animatsion videolar",
+     "visual": {"kind": "characters", "setting": "street", "prop": "none", "cast": [{"pose": "sit", "color": 0}, {"pose": "wave", "color": 1}]}},
+    {"id": "e001", "start_s": 3.9, "end_s": 7.6, "kicker": "Animatorga qildirsangiz", "headline": "$$ *$*", "accent": "yuzlab dollar.",
+     "visual": {"kind": "card", "title": "Hisob-faktura", "subtitle": "Animatsiya xizmati",
+       "rows": [{"label": "Ssenariy", "value": "$80"}, {"label": "Personaj dizayni", "value": "$150"}, {"label": "Animatsiya", "value": "$400"}, {"label": "Ovoz + montaj", "value": "$120"}],
+       "total": {"label": "Jami", "value": "$750"}}},
+    {"id": "e002", "start_s": 7.6, "end_s": 11.0, "kicker": "O'zingiz qilsangiz", "headline": "*Haftalab*", "accent": "vaqt ketadi.",
+     "visual": {"kind": "progress", "label": "Render...", "percent": 2.5, "note": "Qolgan vaqt: 91 soat"}},
+    {"id": "e003", "start_s": 11.0, "end_s": 15, "kicker": "Siz faqat", "headline": "Ovoz *berasiz*", "accent": "qolganini u chizadi.",
+     "visual": {"kind": "checklist", "items": ["Sahna", "Personaj", "Grafika"]}}
+  ]
+}

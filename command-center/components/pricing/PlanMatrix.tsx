@@ -46,7 +46,8 @@ export function PlanMatrix({
   rates = null,
   signedIn,
   subscribeHref,
-  testMode = false,
+  closed = false,
+  testBadge = null,
   outputs,
 }: {
   matrix: Matrix;
@@ -54,8 +55,12 @@ export function PlanMatrix({
    *  takes the place of the "≈ N images · M videos" line, which counted the cheapest model alone. */
   outputs?: Record<string, React.ReactNode>;
   perMinute: number | null;
-  /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): the same badge as Paddle's sandbox. */
-  testMode?: boolean;
+  /** Sales are closed for this viewer (payments in test mode, and not the operator), decided on the server: no Subscribe key,
+   *  "purchases open soon". A test-mode flag never reaches a visitor's page source. */
+  closed?: boolean;
+  /** The test-payments badge, handed in by the server for a platform admin only. Without it a test-mode card offers no
+   *  Subscribe key (it would open a test checkout) and says purchases open soon; the default is that closed state. */
+  testBadge?: string | null;
   /** Today's generation prices (lib/plans generationRates); null = unknown, no equivalents shown. */
   rates?: GenerationRates | null;
   signedIn: boolean;
@@ -95,9 +100,9 @@ export function PlanMatrix({
 
   return (
     <div className="flex flex-col gap-3">
-      {(environment === "sandbox" || testMode) && (
+      {testBadge && (
         <span className="st-tag self-start" style={{ color: "var(--ns-caution)", borderColor: "currentColor" }}>
-          {t.pricing.sandbox}
+          {testBadge}
         </span>
       )}
       <ul className="st-plans" data-cols={matrix.columns.length >= 4 ? "4" : "3"}>
@@ -176,7 +181,11 @@ export function PlanMatrix({
                   </dl>
                 </div>
               )}
-              {!col.isDefault && col.priceId ? (
+              {!col.isDefault && col.priceId && closed ? (
+                <p className="st-small mt-auto" data-sales="soon">
+                  {t.pricing.purchasesSoon}
+                </p>
+              ) : !col.isDefault && col.priceId ? (
                 <Link href={signedIn ? subscribeHref : "/signup"} className="st-key mt-auto" data-size="sm" data-block="true" data-wrap="true">
                   {signedIn ? p.subscribe : p.subscribeSignedOut}
                 </Link>

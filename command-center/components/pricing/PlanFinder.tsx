@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Minus, Plus } from "lucide-react";
-import { fmt, type Locale } from "@/lib/i18n";
+import { fmt, type Locale } from "@/lib/i18n/core";
 import { formatNumber } from "@/lib/number-format";
 import { creditUnit, formatCredits, type CreditUnitForms, type PriceMap, UNIT_VIDEO_MINUTE } from "@/lib/credits";
 import {

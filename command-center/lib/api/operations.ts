@@ -202,12 +202,76 @@ export function getBalance(caller: ApiCaller): Promise<ApiResult> {
   return call(caller, "api_balance", {});
 }
 
-export function listChannels(caller: ApiCaller): Promise<ApiResult> {
-  return call(caller, "api_list_channels", {});
+/** Whether Google still accepts a channel's YouTube connection, as far as anything recorded says. */
+export type YoutubeConnected = true | false | "unknown";
+
+function isoOrNull(v: unknown): string | null {
+  return typeof v === "string" && v !== "" && Number.isFinite(Date.parse(v)) ? v : null;
 }
 
-export function listAccounts(caller: ApiCaller): Promise<ApiResult> {
-  return call(caller, "api_list_connected_accounts", {});
+/**
+ * api_list_channels / api_list_connected_accounts answer `publish_channel_connected()`: a token row or secret EXISTS.
+ * That is not "Google accepts it": on 2026-11-14 both said `true` for a channel whose refresh token Google had already
+ * revoked (invalid_grant), and the run it was asked for stopped at the credential preflight (CLAUDE.md rule 5: an
+ * unknown shown as known). So `true` alone is not passed on:
+ *
+ * - no token at all (`present` false) is `false`: that much the database knows;
+ * - a token with no recorded check is `"unknown"`, never `true`;
+ * - a recorded check (`check`, the bot's last `youtube_token_live` verdict, as `{status, checked_at, connected_at}`;
+ *   the database does not send it yet, see the follow-up in docs/API.md) counts only when it is newer than the
+ *   connection: a reconnect after a dead verdict is a new token nobody has asked Google about yet.
+ *
+ * Never a live Google call: this runs on every list. Pure.
+ */
+export function honestYoutubeConnected(present: unknown, check: unknown): { connected: YoutubeConnected; checked_at: string | null } {
+  if (present === false) return { connected: false, checked_at: null };
+  if (present !== true) return { connected: "unknown", checked_at: null };
+  const c = obj(check);
+  const checkedAt = isoOrNull(c?.checked_at);
+  if (!c || checkedAt === null) return { connected: "unknown", checked_at: null };
+  const connectedAt = isoOrNull(c.connected_at);
+  const current = connectedAt === null || Date.parse(checkedAt) >= Date.parse(connectedAt);
+  if (current && c.status === "dead") return { connected: false, checked_at: checkedAt };
+  if (current && c.status === "live") return { connected: true, checked_at: checkedAt };
+  return { connected: "unknown", checked_at: current ? checkedAt : null };
+}
+
+/** `youtube_token_check` is the database's input to the verdict above, not part of the answer. */
+function withoutCheck(row: Record<string, unknown>): Record<string, unknown> {
+  const { youtube_token_check: _check, ...rest } = row;
+  void _check;
+  return rest;
+}
+
+function mapList(result: ApiResult, key: string, fix: (row: Record<string, unknown>) => Record<string, unknown>): ApiResult {
+  if (!result.ok) return result;
+  const data = obj(result.data);
+  if (!data || !Array.isArray(data[key])) return result;
+  return { ...result, data: { ...data, [key]: (data[key] as unknown[]).map((r) => (obj(r) ? fix(obj(r)!) : r)) } };
+}
+
+export function honestChannels(result: ApiResult): ApiResult {
+  return mapList(result, "channels", (row) => {
+    const { connected, checked_at } = honestYoutubeConnected(row.youtube_connected, row.youtube_token_check);
+    return { ...withoutCheck(row), youtube_connected: connected, youtube_checked_at: checked_at };
+  });
+}
+
+export function honestAccounts(result: ApiResult): ApiResult {
+  return mapList(result, "accounts", (row) => {
+    // Instagram / TikTok rows carry their own connection status (social_accounts.status); only YouTube's is presence.
+    if (row.platform !== "youtube") return row;
+    const { connected, checked_at } = honestYoutubeConnected(row.connected, row.youtube_token_check);
+    return { ...withoutCheck(row), connected, checked_at };
+  });
+}
+
+export async function listChannels(caller: ApiCaller): Promise<ApiResult> {
+  return honestChannels(await call(caller, "api_list_channels", {}));
+}
+
+export async function listAccounts(caller: ApiCaller): Promise<ApiResult> {
+  return honestAccounts(await call(caller, "api_list_connected_accounts", {}));
 }
 
 function intParam(v: unknown, min: number, max: number): number | null | "bad" {

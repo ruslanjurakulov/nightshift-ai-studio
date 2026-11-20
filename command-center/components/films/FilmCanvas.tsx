@@ -85,6 +85,7 @@ export function CanvasView({
   const [announce, setAnnounce] = useState("");
   const [showProblems, setShowProblems] = useState(false);
   const focusKey = useRef<string | null>(null);
+  const commandsButton = useRef<HTMLButtonElement>(null);
 
   const total = draft.scenes.reduce((s, x) => s + x.plannedSeconds, 0);
   const selIndex = draft.scenes.findIndex((s) => s.key === selected);
@@ -120,12 +121,19 @@ export function CanvasView({
   );
   const remove = useCallback(
     (key: string) => {
+      const active = document.activeElement;
       const r = p.remove(key);
       if (!r) return;
       setSelected(r.next);
       focusKey.current = r.next;
       setSheet(false);
       setAnnounce(fmt(t.canvas.removed, { n: r.index + 1 }));
+      if (!r.next && active) {
+        requestAnimationFrame(() => {
+          // Keep the empty board reachable without overriding a later focus move.
+          if (!active.isConnected && document.activeElement === document.body) commandsButton.current?.focus();
+        });
+      }
     },
     [p, t],
   );
@@ -384,7 +392,7 @@ export function CanvasView({
                   <p className="fs-small tnum">{facts}</p>
                 </div>
                 <div className="fs-row">
-                  <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => setPalette(true)} aria-keyshortcuts="Control+K Meta+K" data-testid="fs-open-palette">
+                  <button ref={commandsButton} type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => setPalette(true)} aria-keyshortcuts="Control+K Meta+K" data-testid="fs-open-palette">
                     <Command aria-hidden className="size-4" />
                     {t.palette.title}
                   </button>

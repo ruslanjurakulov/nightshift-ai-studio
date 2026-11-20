@@ -1,0 +1,36 @@
+import type { StudioHubDictionary } from "./en";
+
+/** Nightshift Studio bosh sahifasi (/{channel}/studio). Manba — ./en.ts. «Nightshift Studio» — brend, tarjima qilinmaydi; sahnalardan video — «loyiha». */
+export const studioHubUz: StudioHubDictionary = {
+  title: "Nightshift Studio",
+  subtitle: "Bu kanal uchun yaratadigan hamma narsangiz — bir joyda. Har bir asbob bugungi sahifasini ochadi.",
+  channelLook: "Kanal koʻrinishi",
+  channelLookHint: "Presetlar, uslub toʻplamlari va personajlar",
+  shelfLabel: "Javon",
+  shelfProjects: "Loyihalar",
+  shelfVideos: "Videolar",
+  projectsLead: "Oʻz videolaringizni montaj qiling. Tahrirlash va eksport bepul; eksport mediatekaga tushadi va hech qachon eʼlon qilinmaydi.",
+  editorProjects: "Muharrirda",
+  toolsTitle: "Asboblar",
+  toolsLead: "Asbob faqat oʻz shaklini toʻldiradi. U yerda narxni tasdiqlamaguningizcha hech narsa boshlanmaydi va hech narsa yechilmaydi.",
+  channelTitle: "Kanalingiz",
+  makeTitle: "Yaratish",
+  tiles: {
+    create: "Rasmlar, kliplar, ovoz va YouTube video ishga tushirish",
+    brandLook: "Kanalning presetlari, uslub toʻplamlari va personajlari",
+    styles: "Badiiy yoʻnalishlarni koʻring va uslub toʻplami sifatida qoʻshing",
+    presets: "Tayyor formatlar, koʻrinishlar, shablonlar va ovozlar",
+    library: "Yuklanganlar va yaratganlaringiz, papkalarda",
+    editor: "Oʻz videolaringizni montaj qiling; eksport mediatekaga tushadi",
+    workflows: "Saqlangan koʻp bosqichli ssenariylar, bitta umumiy narxdan keyin ishga tushadi",
+    pipeline: "Avtopilot ishi, bosqichma-bosqich",
+    ads: "Brend toʻplamlari, kampaniyalar va reklama gʻoyalari",
+    characterStudio: "Oʻz videongizdagi odamlarni almashtirish",
+    series: "Kanalning muntazam ruknlari",
+    models: "Siz foydalana oladigan modellar, vazifa boʻyicha",
+    inbox: "Videolaringizga izohlar va siz tasdiqlaydigan javoblar",
+  },
+  moved: "{name} endi Nightshift Studio ichida.",
+  movedOpen: "Studioni ochish",
+  movedDismiss: "Yopish",
+};
