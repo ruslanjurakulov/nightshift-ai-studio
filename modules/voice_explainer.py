@@ -539,16 +539,15 @@ def plan_chunks(scenes: Sequence[Mapping], duration_s: float, fps: int, *, targe
     return chunks
 
 
-#: One budget covers the whole render (bundle, every chunk, the sound pass, the join). 1800 s was enough for a short video
-#: but not for MAX_SECONDS: a 121 s recording took 540 s (#769, measured), so 600 s needs about 2700 s. The budget grows
-#: with the recording, eight seconds per second, never under 1800 s.
-RENDER_TIMEOUT_MIN_S = 1800.0
-RENDER_TIMEOUT_PER_S = 8.0
+#: The whole render's budget (bundle, chunks, sound, join), scaled with the recording: the paid adapter
+#: (modules/capabilities/voice_video.py) and tools/voice_to_video.py use the same one, so a length the Studio sells is a
+#: length the tool can render too (a flat 1800 s could not finish 600 s, measured on #769).
+RENDER_TIMEOUT_FLOOR_S = 600
+RENDER_TIMEOUT_PER_SECOND = 6
 
 
 def render_timeout_s(duration_s: float) -> float:
-    """The whole render's budget for a recording of ``duration_s`` seconds."""
-    return max(RENDER_TIMEOUT_MIN_S, float(duration_s or 0) * RENDER_TIMEOUT_PER_S)
+    return RENDER_TIMEOUT_FLOOR_S + RENDER_TIMEOUT_PER_SECOND * float(duration_s or 0)
 
 
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,

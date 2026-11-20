@@ -298,7 +298,8 @@ class ReviewFindings(unittest.TestCase):
 
     def test_the_render_budget_grows_with_the_recording(self):
         # One budget covers the whole render; 1800 s could not finish a 600 s recording (about 2700 s, measured on #769).
-        self.assertEqual(ve.render_timeout_s(30), 1800.0)
+        # The same budget the paid adapter uses (#771): a floor for the bundle and the browser, plus six seconds per second.
+        self.assertEqual(ve.render_timeout_s(30), ve.RENDER_TIMEOUT_FLOOR_S + ve.RENDER_TIMEOUT_PER_SECOND * 30)
         self.assertGreaterEqual(ve.render_timeout_s(ve.MAX_SECONDS), 2700.0)
         from unittest import mock
         with TemporaryDirectory() as d:
