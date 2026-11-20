@@ -160,6 +160,13 @@ RETRYABLE = frozenset({E_RATE_LIMITED, E_UNAVAILABLE})
 _POLICY_WORDS = ("policy", "safety", "moderat", "sensitive", "nsfw", "prohibited", "inappropriate")
 _QUOTA_WORDS = ("insufficient", "balance", "quota", "credit", "billing", "exceeded your", "payment",
                 "arrear")
+#: An empty vendor balance some vendors answer with a plain 400 (Recraft: {"code": "not_enough_credits"}, probe run of
+#: 2026-11-20). Narrower than _QUOTA_WORDS on purpose: on a 400, "credit" or "balance" alone can be a parameter's name, and
+#: an input error read as "top up the vendor" would send the operator to the wrong fix (CLAUDE.md #6).
+_EMPTY_BALANCE_PHRASES = ("not_enough_credits", "not enough credits", "insufficient_credits", "insufficient credits",
+                          "insufficient credit", "insufficient_balance", "insufficient balance", "insufficient funds",
+                          "insufficient_quota", "out of credits", "no credits left", "credit balance is too low",
+                          "balance is not enough", "please top up", "payment required", "account is in arrears")
 
 
 #: HTTP answers that PROVE the vendor refused the call outright (it did not
@@ -213,8 +220,9 @@ def never_sent(exc: BaseException) -> bool:
 
 
 def refused_outright(status: int, code: str) -> bool:
-    """A vendor answer that proves the call was refused, not taken."""
-    return status in REFUSED_OUTRIGHT and code in _REFUSED_CODES
+    """A vendor answer that proves the call was refused, not taken. A 400 that says the balance is empty proves it too: no
+    task exists to bill."""
+    return (status in REFUSED_OUTRIGHT and code in _REFUSED_CODES) or (status == 400 and code == E_QUOTA)
 
 
 def classify_http(status: int, text: str = "") -> str:
@@ -231,6 +239,8 @@ def classify_http(status: int, text: str = "") -> str:
     if status == 404:
         return E_NOT_FOUND
     if 400 <= status < 500:
+        if any(p in low for p in _EMPTY_BALANCE_PHRASES):
+            return E_QUOTA
         return E_POLICY if any(w in low for w in _POLICY_WORDS) else E_BAD_REQUEST
     return E_UNAVAILABLE
 

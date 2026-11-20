@@ -314,9 +314,10 @@ ON_0153 = (MIGRATION_0155.name, *ON_0155)
 ON_0149 = (MIGRATION_0153.name, *ON_0153)
 #: Migrations written on 0139's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0139 out
 #: leaves these out too, in this order.
+ON_0139 = (MIGRATION_0149.name, *ON_0149)
 #: 0180 (Recraft web_mcp) replaces 0125's sellable_models and 0124's api_creative_model_ok and refuses any other body: it does not sit
-#: on 0139, but every sequence that leaves 0139 out leaves 0125's sitters out, so it is listed here, last.
-ON_0139 = (MIGRATION_0149.name, *ON_0149, "0180_recraft_web_mcp.sql")
+#: on 0139, but every sequence that leaves 0139 out leaves 0125's sitters out, so it is added here, last.
+ON_0139 = (*ON_0139, "0180_recraft_web_mcp.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
