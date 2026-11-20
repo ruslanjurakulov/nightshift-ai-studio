@@ -131,3 +131,20 @@ describe("AgeGate", () => {
     expect(screen.queryByTestId("age-gate")).toBeNull();
   });
 });
+
+describe("routing around a country block keeps the age refusal", () => {
+  it("names the age, not the country, when every candidate was refused for it", async () => {
+    const { quoteAround } = await import("@/lib/creative/route-around");
+    const rows = [{ id: "a", spec: {} }, { id: "b", spec: {} }];
+    const db = (word: string) =>
+      ({
+        rpc: vi.fn(async (fn: string) =>
+          fn === "sellable_models" ? { data: rows, error: null } : { data: null, error: { code: "NS400", message: word } },
+        ),
+      }) as never;
+    const input = { orgId: "o", capability: "t2i", model: "", params: {}, mode: "auto", idempotencyKey: null, maxCredits: null } as never;
+    expect((await quoteAround(db("adult_only_service"), input, () => false)).body).toMatchObject({ error: "adult_only_service" });
+    expect((await quoteAround(db("adult_attestation_required"), input, () => false)).body).toMatchObject({ error: "adult_attestation_required" });
+    expect((await quoteAround(db("unpriced"), input, () => false)).status).toBe(451);
+  });
+});
