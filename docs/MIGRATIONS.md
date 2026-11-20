@@ -2143,9 +2143,10 @@ spending as its own unticked choice; a connection gets it only when the person t
   `oauth_grants_scopes_check` accepts 1-4 of the four (the one constraint change; every existing row passes it).
 - **A per-model switch, off.** `spec.mcp_oauth_exposure` (the registry file's `mcp_oauth_exposure`): only JSON `true` turns a model on;
   separate from `api_exposure` (a developer's own code). `oauth_creative_model_state(capability, model)` is the one judgement the
-  list, the quote and the create share: on sale in the Studio (`sellable_models(cap, 'web')`), one of the API's capabilities (never
-  captions), switched on, no `blocked_countries`, no rights acknowledgement (0174's file list or column, read without naming the
-  column, so it applies with or without 0174). `tests/test_mcp_oauth_creative_migration.py` lists the models that may be on (Recraft V4.1 / Flash, written permission of 2026-11-17/18).
+  list, the quote and the create share: on sale and allowed for our connector (`sellable_models(cap, 'mcp')`, 0188), one of the
+  API's capabilities (never captions), switched on, no `blocked_countries`, no rights acknowledgement (0174's spec key or column;
+  0187's per-file check runs again inside `create_creative_job`). The list returns only a model's shape (output, sizes, ratios,
+  durations, inputs, prompt length), never its pricing or terms notes. `tests/test_mcp_oauth_creative_migration.py` lists the models that may be on (Recraft V4.1 / Flash, written permission of 2026-11-17/18).
 - **Records.** `oauth_creative_quotes` (one connection's price for one exact generation, 15 minutes, used once), `oauth_creative_jobs`
   (which connection started which generation from which quote, under which key, holding what), `oauth_creative_rate_counters` (30
   quotes and 10 creates a minute per connection, on top of 120 requests). RLS on, no policy, no API role.
@@ -2155,13 +2156,16 @@ spending as its own unticked choice; a connection gets it only when the person t
   a used one, an expired one and a price that is not exactly the quote (`price_changed`), checks the connection's monthly limit under
   the credit account's lock, then calls `create_creative_job` (not replaced) with the quote as `max_credits`, and refuses (undoing the
   hold) if the job holds anything else. It writes an `api_requests` row and an `app_audit_log` `creative.generate` row (via `mcp_oauth`).
-- **Replaces** 0093's `oauth_scopes_supported` (`b1cdcf01…` → `3ef7e315…`), `oauth_endpoint_scope` (`ade9dedd…` → `4bc3b07f…`, five
-  endpoints added, still no `else`) and `oauth_grant_month_credits` (`6329f5ed…` → `79d0c859…`, generations' holds counted).
+- **Replaces** 0093's `oauth_scopes_supported` (`b1cdcf01…` → `3ef7e315…`), `oauth_endpoint_scope` (`ade9dedd…` → `39be9da5…`, five
+  endpoints added, still no `else`) and `oauth_grant_month_credits` (`6329f5ed…` → `6d345abd…`, generations' holds counted), and
+  0147's `oauth_begin_authorization` (`1d77b561…` → `c385018b…`: a client that asks for nothing still gets 0093's three).
+  Adds `oauth_drop_requested_scope`: an unticked Studio choice takes `studio:create` off the request; a request that holds
+  nothing else is refused by name (`studio_only`, the consent page says: tick it or deny). Ends with `notify pgrst`.
 - **Without it.** The five MCP tools answer 503 `api_unavailable` naming 0191; nothing else changes.
-- **Number.** 0191, assigned at merge after 0190. Needs 0038, 0062, 0075, 0093, 0124, 0125, 0147.
+- **Number.** 0191, assigned at merge after 0190. Needs 0038, 0062, 0075, 0093, 0124, 0147, 0174 and 0188.
 - **Undo.** `docs/sql/rollback_0191_mcp_oauth_creative.sql` (owner-applied): refuses while a connection holds `studio:create`, drops
-  the doors, puts 0093's three bodies and check back, keeps the record tables.
+  the doors, puts 0093's three bodies, 0147's begin and the check back, deletes pending requests that hold `studio:create`
+  (minutes-long), keeps the record tables.
 - **Tests.** `tests/test_mcp_oauth_creative_migration.py`, `tests/security/test_sec_mcp_oauth_creative.py` (a real PostgreSQL),
   `command-center/tests/mcp-oauth-creative.test.ts` (the MCP layer).
-- **Order.** Applied after 0188: the `mcp` surface it asks `sellable_models` about is 0188's. Before 0188 it fails
-  closed (0125's body opens `mcp` only to `any` models), so Recraft is simply not offered.
+- **Order.** Applied after 0188, whose `mcp` surface (`web_mcp` or `any` only) is the one it asks `sellable_models` about.

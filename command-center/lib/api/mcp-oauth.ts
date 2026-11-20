@@ -151,7 +151,7 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
       const held = Number(d.held_credits ?? 0);
       return (
         `Not enough credits to start this ${what}. It needs ${credits(d.price_credits)} credits and the workspace has ${credits(d.available_credits)} available` +
-        (held > 0 ? ` (${credits(held)} more are set aside for videos already in progress)` : "") +
+        (held > 0 ? ` (${credits(held)} more are set aside for work already in progress)` : "") +
         `. Nothing was started and nothing was charged.\n` +
         (d.extra_credits_off === true
           ? `Extra credits are turned off for this workspace, so credits bought as top-ups are not used for new ${what}s. ` +

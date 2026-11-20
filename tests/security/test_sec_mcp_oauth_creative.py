@@ -195,6 +195,11 @@ def test_the_list_is_only_the_models_switched_on_for_assistants(db):
     assert sorted(listed) == ["img-later", "img-on"], res
     assert listed["img-on"]["capabilities"] == ["edit", "t2i"]
     assert "credits" not in json.dumps(listed) and "credits_per_unit" not in json.dumps(listed)
+    # Lens on 0191: the spec is the model's shape only; a vendor's price, our terms notes and the vendor id never reach an assistant.
+    db.su("update public.model_registry set spec = spec || %s::jsonb where id = 'img-on'",
+          [json.dumps({"pricing": {"provider_usd_per_unit": 0.04}, "terms_notes": ["private"], "limits": {"max_prompt_chars": 900}})])
+    spec = {m["id"]: m for m in models(db, tok)["data"]["models"]}["img-on"]["spec"]
+    assert spec == {"output": "image", "max_prompt_chars": 900}, spec
     # And the API key's list is untouched by the assistant's switch: the web-only model never reaches a key.
     key = db.act("anon", None, "select public.api_creative_models(%s,null,null)", [API_KEY_HASH])[0][0]
     assert "img-on" not in [m["id"] for m in key["data"]["models"]] and "img-api" in [m["id"] for m in key["data"]["models"]], key

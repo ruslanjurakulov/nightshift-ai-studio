@@ -21,11 +21,11 @@
 --     two differently. Nothing in this file sets it, and tests/test_mcp_oauth_creative_migration.py fails if the registry file turns
 --     any model on, so turning one on is a reviewed registry change with the vendor's terms cited, never a default.
 --     oauth_creative_model_state() is the one judgement, used by the list, the quote and the create alike: the model must be one the
---     Studio sells today (sellable_models(capability, 'web'): verified, probed, priced, switched on, not past its shutdown, no terms
---     gate), with one of the capabilities the API generates (no captions: a web tool), switched on for assistants, with no
+--     Studio sells today and the vendor allows for our connector (sellable_models(capability, 'mcp'), 0188: verified, probed,
+--     priced, switched on, not past its shutdown, no terms gate, api_exposure web_mcp or any), with one of the capabilities the API generates (no captions: a web tool), switched on for assistants, with no
 --     blocked_countries (an assistant's request carries no address to check, 0142), and needing no rights acknowledgement (PR #780,
---     0174: spec.requires_acknowledgement or the model_registry.requires_acknowledgement column, read without naming the column so
---     this file applies with or without 0174). An acknowledgement is refused with its own word: it is the person's act in the
+--     0174: spec.requires_acknowledgement or the model_registry.requires_acknowledgement column; 0187's per-file check runs again
+--     inside create_creative_job). An acknowledgement is refused with its own word: it is the person's act in the
 --     Studio, and no assistant may give it for them.
 --   * oauth_creative_quotes: what one quote priced (capability, model, params, credits, the price's own answer) for ONE connection,
 --     for 15 minutes. The quote is creative_price's, never computed outside the database.
@@ -53,18 +53,20 @@
 --   grants stay as 0093 and 0147 made them. ADDS oauth_drop_requested_scope (authenticated): the consent page's unticked Studio
 --   choice takes studio:create off the pending request; it only removes.
 -- ALTERS: the check on oauth_grants.scopes (oauth_grants_scopes_check), from 1-3 of the three to 1-4 of the four.
--- NOT CHANGED: create_creative_job (0075; 0174 replaces it), creative_price (0159), sellable_models (0125), api_creative_* (0062,
+-- NOT CHANGED: create_creative_job (0075; 0174 replaces it), creative_price (0159), sellable_models (0188's body), api_creative_* (0062,
 --   0075, 0124, 0162), oauth_ctx and oauth_check (0147), every price, hold, capture and refund rule, every other table.
 --
--- NUMBER. 0191. 0171 is on main; 0172-0175 are held by open pull requests (0174 is #780, 0175 the failed-job cap after it); migrations apply to the live database in ascending
---   order on merge. Needs 0036, 0038, 0062, 0075, 0093, 0124, 0125 and 0147; names nothing of 0148-0170 but the functions above.
+-- NUMBER. 0191, assigned at merge after 0190. Needs 0036, 0038, 0062, 0075, 0093, 0124, 0147, 0174 and 0188 (the 'mcp' surface);
+--   names nothing of 0148-0190 but the functions above.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
 --   select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc p
 --    where p.oid in ('public.oauth_scopes_supported()'::regprocedure, 'public.oauth_endpoint_scope(text)'::regprocedure,
---                    'public.oauth_grant_month_credits(uuid)'::regprocedure);
+--                    'public.oauth_grant_month_credits(uuid)'::regprocedure,
+--                    'public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)'::regprocedure);
 --   expected BEFORE b1cdcf014109e5902d0e6d9f05767186, ade9dedd7a1058b4938e9df7e8bd1b87, 6329f5ed73f203e67e31e885238fa1ab (0093),
---   AFTER 3ef7e3154b00584e7625225d20dfa705, 39be9da597b74684494d55e8547e3eae, 6d345abdb50d6c85a4c1276c6e255a14 (this file).
+--   1d77b561efdb9347dc9465e66fa87e8c (0147); AFTER 3ef7e3154b00584e7625225d20dfa705, 39be9da597b74684494d55e8547e3eae,
+--   6d345abdb50d6c85a4c1276c6e255a14, c385018bae2e55e8c7d4d67013618146 (this file).
 -- Undo: docs/sql/rollback_0191_mcp_oauth_creative.sql (owner-applied; it keeps the record tables).
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
@@ -508,7 +510,11 @@ begin
              'capabilities', to_jsonb(array(select c from unnest(s.capabilities) c
                                              where public.oauth_creative_model_state(c, s.id) = 'ok' order by c)),
              'availability', s.availability,
-             'spec', s.spec - 'api_exposure') order by s.id), '[]'::jsonb)
+             'spec', jsonb_strip_nulls(jsonb_build_object(
+                       'output', s.spec -> 'output', 'aspect_ratios', s.spec -> 'aspect_ratios',
+                       'image_sizes', s.spec -> 'image_sizes', 'resolutions', s.spec -> 'resolutions',
+                       'durations_s', s.spec -> 'durations_s', 'inputs', s.spec -> 'inputs', 'audio_out', s.spec -> 'audio_out',
+                       'max_prompt_chars', s.spec #> '{limits,max_prompt_chars}'))) order by s.id), '[]'::jsonb)
       into v_list
       from public.sellable_models(v_cap, 'mcp') s
      where (coalesce(s.entitlement, 'any') = 'any' or (s.entitlement = 'paid' and v_paid))
@@ -958,3 +964,7 @@ end $$;
 --        public.oauth_creative_quote(repeat('0', 64), 't2i', 'x', '{}'::jsonb, null) ->> 'status' = '401' as quote_refuses_unknown_token,
 --        public.oauth_creative_create('not-a-token', gen_random_uuid(), 'k', null) ->> 'status' = '401' as create_refuses_bad_token,
 --        not has_table_privilege('authenticated', 'public.oauth_creative_quotes', 'SELECT') as quotes_private;
+
+-- PostgREST learns the new functions now, not at its next restart (Lens on 0191): until it does, the consent route cannot reach
+-- oauth_drop_requested_scope and reads it as absent.
+notify pgrst, 'reload schema';

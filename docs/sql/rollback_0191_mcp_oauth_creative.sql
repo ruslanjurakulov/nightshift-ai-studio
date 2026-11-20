@@ -47,6 +47,10 @@ begin
   end if;
 end $$;
 
+-- A pending consent request (minutes-long) that holds studio:create would fail 0093's check at decide time with a server error:
+-- it goes, and the person starts the connection again.
+delete from public.oauth_auth_requests where 'studio:create' = any (scopes);
+
 drop function if exists public.oauth_drop_requested_scope(text, text);
 drop function if exists public.oauth_creative_models(text, text, text);
 drop function if exists public.oauth_media_list(text, text, integer, text);

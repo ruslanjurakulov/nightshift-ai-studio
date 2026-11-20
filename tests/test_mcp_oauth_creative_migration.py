@@ -92,6 +92,18 @@ class EveryModelIsOff(unittest.TestCase):
         self.assertLess(route.index('dropped === "studio_only"'), route.index("decideAuthorization("))
         self.assertIn("grant execute on function public.oauth_drop_requested_scope(text, text) to authenticated;", CODE)
 
+    def test_the_model_list_hands_an_assistant_only_a_models_shape(self):
+        # Lens on 0191: `spec - 'api_exposure'` gave a third-party assistant the vendor's price per unit and our terms notes.
+        models = squash(body("oauth_creative_models"))
+        self.assertNotIn("s.spec - 'api_exposure'", models)
+        self.assertIn("'spec', jsonb_strip_nulls(jsonb_build_object(", models)
+        for leak in ("'pricing'", "'terms_notes'", "'vendor_model'", "'api_documented'", "s.spec)"):
+            self.assertNotIn(leak, models, leak)
+
+    def test_postgrest_learns_the_new_functions_on_apply(self):
+        # Without it the consent route reads oauth_drop_requested_scope as absent until a restart.
+        self.assertTrue(SQL.rstrip().endswith("notify pgrst, 'reload schema';"))
+
     def test_the_migration_turns_nothing_on(self):
         self.assertNotRegex(CODE, r"update public\.model_registry|sync_model_registry|insert into public\.model_registry")
         self.assertNotRegex(CODE, r"mcp_oauth_exposure'\s*,\s*'true'|'\{\"mcp_oauth_exposure\": true")
