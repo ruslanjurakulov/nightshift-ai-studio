@@ -8,6 +8,7 @@ import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { libraryUxUz } from "./library-ux/uz";
+import { assetDownloadUz } from "./asset-download/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
@@ -60,6 +61,7 @@ export const uz: Dictionary = {
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
+  assetDownload: assetDownloadUz,
   ownerShell: ownerShellUz,
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
@@ -5400,6 +5402,7 @@ export const uz: Dictionary = {
     noOrg: "Muharrirdan foydalanish uchun tashkilotni oching yoki yarating.",
     readFailed: "Muharrirni hozir oʻqib boʻlmadi. Sahifani yangilab, qayta urinib koʻring.",
     freeNote: "Tahrirlash va eksport bepul: kredit sarflanmaydi.",
+    soldNote: "Tahrirlash bepul. Eksport kredit talab qiladi, narxi eksportdan oldin koʻrsatiladi.",
     publishNote: "Eksport mediatekangizga saqlanadi. Hech narsa nashr qilinmaydi.",
     projects: "Loyihalaringiz",
     noProjects: "Hali loyiha yoʻq. Mediatekadagi videodan boshlang.",

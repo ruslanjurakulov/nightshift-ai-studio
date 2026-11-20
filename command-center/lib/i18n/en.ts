@@ -8,6 +8,7 @@ import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
+import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
@@ -69,6 +70,7 @@ export const en = {
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
   libraryUx: libraryUxEn,
+  assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
@@ -5422,6 +5424,7 @@ export const en = {
     noOrg: "Open or create an organization to use the editor.",
     readFailed: "The editor could not be read just now. Reload the page to try again.",
     freeNote: "Editing and exporting are free: no credits are used.",
+    soldNote: "Editing is free. Exports cost credits, and the price is shown before you export.",
     publishNote: "An export is saved to your library. Nothing is published.",
     projects: "Your projects",
     noProjects: "No projects yet. Start one from a video in your library.",
