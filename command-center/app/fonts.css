@@ -94,14 +94,45 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* Unbounded is wide: at weight 600 our hero lines (en/ru/uz) measure 127–132%
-   of Arial Bold's width, ascent 0.995 em, descent 0.245 em. The fallback is
-   scaled to that, so the swap does not re-wrap the hero (CLS ~0). */
+/* Unbounded is wide, and how wide depends on the script. The fallback is the system's bold sans, scaled per script and per
+   language so a heading wraps to the same lines before and after the swap (no layout shift). Measured, not estimated: each
+   value is the middle of the band in which the landing's hero and section titles break onto the same lines with the fallback
+   as with Unbounded, at 360-1440 px (docs/design/TOKENS.md). Ascent 0.995 em and descent 0.245 em are Unbounded's own,
+   divided by the scale.
+   - Latin, English and the default: 126%.
+   - Latin, Uzbek (its own family, chosen by html[lang="uz"] in app/tokens.css): 130% (oʻ gʻ and the long words wrap later).
+   - Cyrillic: 121% (any language; Russian measured 118-124%). */
 @font-face {
   font-family: "Unbounded Fallback";
+  src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"), local("Roboto Bold"), local("Liberation Sans Bold"), local("Arial");
+  size-adjust: 126%;
+  ascent-override: 79%;
+  descent-override: 19.4%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Unbounded Fallback";
+  src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"), local("Roboto Bold"), local("Liberation Sans Bold"), local("Arial");
+  size-adjust: 121%;
+  ascent-override: 82.2%;
+  descent-override: 20.2%;
+  line-gap-override: 0%;
+  unicode-range: U+0400-052F, U+1C80-1C8A, U+2DE0-2DFF, U+A640-A69F;
+}
+@font-face {
+  font-family: "Unbounded Fallback Uz";
   src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"), local("Roboto Bold"), local("Liberation Sans Bold"), local("Arial");
   size-adjust: 130%;
   ascent-override: 76.5%;
   descent-override: 18.8%;
   line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Unbounded Fallback Uz";
+  src: local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Neue Bold"), local("Roboto Bold"), local("Liberation Sans Bold"), local("Arial");
+  size-adjust: 121%;
+  ascent-override: 82.2%;
+  descent-override: 20.2%;
+  line-gap-override: 0%;
+  unicode-range: U+0400-052F, U+1C80-1C8A, U+2DE0-2DFF, U+A640-A69F;
 }

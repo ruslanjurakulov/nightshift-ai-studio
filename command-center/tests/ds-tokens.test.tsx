@@ -87,7 +87,11 @@ describe("--ds-* colour tokens", () => {
     expect(globals).toMatch(/@import "tailwindcss";\s*(\/\*[^]*?\*\/\s*)?@import "\.\/tokens\.css";/);
     expect(css).toContain("@theme inline");
     expect(css).toContain("--color-ds-accent: var(--ds-accent);");
-    expect(css).toContain('--font-brand: "Unbounded"');
+    expect(css).toContain("--font-brand: var(--ds-font-display);");
+    expect(css).toMatch(/--ds-font-display: "Unbounded", "Unbounded Fallback", var\(--font-sans\);/);
+    // Uzbek wraps later than English at the same scale: it gets its own measured fallback, so the swap moves nothing.
+    expect(css).toMatch(/:root:lang\(uz\) \{ --ds-font-display: "Unbounded", "Unbounded Fallback Uz"/);
+    expect(fontsCss).toMatch(/font-family: "Unbounded Fallback Uz";/);
   });
 });
 

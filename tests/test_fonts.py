@@ -61,7 +61,7 @@ class FontFiles(unittest.TestCase):
     def test_no_third_webfont(self):
         # the wordmark is a vector drawing (components/site/Wordmark.tsx), not a font
         families = set(re.findall(r'font-family: "([^"]+)"', CSS))
-        self.assertEqual(families, {"Onest", "Onest Fallback", "Unbounded", "Unbounded Fallback"})
+        self.assertEqual(families, {"Onest", "Onest Fallback", "Unbounded", "Unbounded Fallback", "Unbounded Fallback Uz"})
 
     def test_licences_are_shipped(self):
         for name in ("OFL-Onest.txt", "OFL-SofiaSans.txt", "OFL-Unbounded.txt"):
