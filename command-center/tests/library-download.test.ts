@@ -30,6 +30,10 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/i18n/server", async () => {
+  const { en } = await import("../lib/i18n/en");
+  return { getDictionary: async () => ({ locale: "en", t: en }), getLocale: async () => "en" };
+});
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => h.user,
   createClient: async () => ({ from: h.from, rpc: h.rpc }),
@@ -166,7 +170,9 @@ describe("original and preview are never the same address", () => {
     expect(downloadRefusal(401, "unauthorized")).toBe("unauthorized");
     expect(downloadRefusal(410, "gone")).toBe("gone");
     expect(downloadRefusal(404, "whatever")).toBe("not_found");
-    expect(downloadRefusal(500, undefined)).toBe("failed");
+    expect(downloadRefusal(500, undefined)).toBe("server");
+    expect(downloadRefusal(0, undefined)).toBe("failed");
+    expect(canRetryDownload("server")).toBe(true);
     expect(canRetryDownload("failed")).toBe(true);
     expect(canRetryDownload("gone")).toBe(false);
   });
@@ -305,6 +311,18 @@ describe("subtitles", () => {
     expect(await (await get(OWN, "captions")).json()).toEqual({ error: "no_captions" });
     h.captionsError = { message: "boom" };
     expect((await get(OWN, "captions")).status).toBe(502);
+  });
+});
+
+describe("a tab the browser opened itself", () => {
+  it("gets a sentence and a way back, not a raw JSON page", async () => {
+    const res = await get(NO_PROXY, "preview", { "sec-fetch-mode": "navigate" });
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
+    const html = await res.text();
+    expect(html).toContain("This file has no preview yet.");
+    expect(html).toContain('href="/all-channels/library"');
+    expect(html).not.toContain('{"error"');
   });
 });
 

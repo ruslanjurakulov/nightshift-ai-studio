@@ -98,13 +98,13 @@ describe("the quote of sizes up to 1080p", () => {
   it("says 1 credit charged and 30 held for each sold size, and the yes carries the charges", async () => {
     const last = quote(["project", "square_1080"], async (_i, _r, f) => ({ ok: true, value: { free: false, quote: SOLD(f) } }));
     await waitFor(() =>
-      expect(screen.getByText(fmt(hx.line, { name: te.exportRatios.own, minutes: 1, perMinute: "1", credits: "1", hold: "30" }))).toBeTruthy(),
+      expect(screen.getByText(fmt(hx.line, { name: te.exportRatios.own, minutes: 1, perMinute: "1 credit", credits: "1 credit", hold: "30 credits" }))).toBeTruthy(),
     );
-    expect(screen.getByText(fmt(hx.line, { name: te.exportPreset.names.square_1080, minutes: 1, perMinute: "1", credits: "1", hold: "30" }))).toBeTruthy();
+    expect(screen.getByText(fmt(hx.line, { name: te.exportPreset.names.square_1080, minutes: 1, perMinute: "1 credit", credits: "1 credit", hold: "30 credits" }))).toBeTruthy();
     expect(screen.getByText(fmt(hx.introSold, { max1440: "5:00", max2160: "3:00" }))).toBeTruthy();
-    expect(screen.getByText(fmt(hx.total, { credits: "2", hold: "60" }))).toBeTruthy();
+    expect(screen.getByText(fmt(hx.total, { credits: "2 credits", hold: "60 credits" }))).toBeTruthy();
     expect(last().ready).toBe(false);
-    await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "2" }) }));
+    await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "2 credits" }) }));
     expect(last()).toEqual({ ready: true, key: "2|project,square_1080", maxCredits: { project: 1, square_1080: 1 } });
   });
 
@@ -130,7 +130,7 @@ describe("the editor once the server says sizes up to 1080p are sold", () => {
     await press(exportButton());
     expect(posts()).toEqual([{ rev: 1 }]);                                        // the free request, as before the price
     await waitFor(() => expect(screen.getAllByText(te.errors.export_needs_quote).length).toBeGreaterThan(0));
-    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "1" }) }));
+    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "1 credit" }) }));
     await waitFor(() => expect(exportButton().disabled).toBe(false));
     await press(exportButton());
     expect(posts()[1]).toEqual({ rev: 1, frames: ["project"], maxCredits: { project: 1 } });

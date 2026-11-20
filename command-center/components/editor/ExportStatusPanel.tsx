@@ -105,8 +105,9 @@ export function ExportStatusPanel({
     running && now !== null ? elapsedSeconds(latest.createdAt, now) : null;
   const took = !running ? tookSeconds(latest) : null;
   const video = latest.assetId ? assets[latest.assetId] : undefined;
-  // The file is reachable once its library row is: the original is served by its own route, the preview link may follow later.
-  const displayStatus = exportDisplayStatus(latest.status, Boolean(video));
+  // A null view link also means this host does not serve media (no volume or signing key), not only a missing proxy:
+  // "link pending" with "Get the link" stays the honest answer then, rather than download buttons that cannot work.
+  const displayStatus = exportDisplayStatus(latest.status, Boolean(video?.viewUrl));
 
   const Icon =
     latest.status === "done"
@@ -252,11 +253,11 @@ export function ExportStatusPanel({
       ) : null}
 
       {latest.status === "done" ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {video && latest.assetId ? (
+        <div className="flex min-w-0 flex-col items-start gap-2">
+          {video?.viewUrl && latest.assetId ? (
             <AssetDownloads
               assetId={latest.assetId}
-              preview={video.viewUrl ? "ready" : "missing"}
+              preview={video.preview === false ? "missing" : "ready"}
               captions={captions}
               width={video.width}
               height={video.height}

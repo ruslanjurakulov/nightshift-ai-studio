@@ -1561,7 +1561,7 @@ export function TimelineEditor({
         <RenderBudgetNotice model={model} />
         <SettleNotice changes={settled} />
         <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">
-          {te.freeNote} {te.publishNote}
+          {soldUpTo1080 ? te.soldNote : te.freeNote} {te.publishNote}
         </p>
         {errorText ? (
           <div
@@ -1812,7 +1812,7 @@ export function TimelineEditor({
           </p>
           {/* The header panel's note about free export and nothing being published, here below the picture on a phone so the controls above start higher. */}
           <p className="m-0 text-center text-xs text-[var(--color-muted)] sm:hidden">
-            {te.freeNote} {te.publishNote}
+            {soldUpTo1080 ? te.soldNote : te.freeNote} {te.publishNote}
           </p>
           <FramePicker
             width={model.width}

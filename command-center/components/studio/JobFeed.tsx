@@ -1,9 +1,9 @@
 "use client";
 
-import { libraryDownloadUrl } from "@/lib/libraryDownload";
+import { downloadRefusal, libraryDownloadUrl, type DownloadRefusal } from "@/lib/libraryDownload";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, Download, ExternalLink, Film, FolderOpen, ImagePlus, Play, ScanText, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, Download, ExternalLink, Film, FolderOpen, ImagePlus, Loader2, Play, ScanText, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
@@ -959,15 +959,25 @@ export function JobFeed({
 function DownloadKey({ assetId, className }: { assetId: string; className: string }) {
   const { t } = useI18n();
   const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  // Why it failed, in the words the library uses (signed out, gone, not served here): "Try again" fits only some of them.
+  const [refusal, setRefusal] = useState<DownloadRefusal | null>(null);
   async function save() {
     if (state === "busy") return;
     const url = libraryDownloadUrl(assetId, "original");
-    if (!url) return setState("failed");
+    const fail = (r: DownloadRefusal) => {
+      setRefusal(r);
+      setState("failed");
+    };
+    if (!url) return fail("not_found");
     setState("busy");
+    setRefusal(null);
     try {
       const res = await fetch(url, { headers: { Range: "bytes=0-0" }, cache: "no-store", credentials: "same-origin" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+        return fail(downloadRefusal(res.status, body.error));
+      }
       await res.body?.cancel().catch(() => {});
-      if (!res.ok) return setState("failed");
       const a = document.createElement("a");
       a.href = url;
       document.body.appendChild(a);
@@ -975,10 +985,15 @@ function DownloadKey({ assetId, className }: { assetId: string; className: strin
       a.remove();
       setState("idle");
     } catch {
-      setState("failed");
+      fail("failed");
     }
   }
-  const label = state === "failed" ? t.studioHome.actions.downloadFailed : t.studioHome.actions.download;
+  const label =
+    state === "failed"
+      ? refusal && refusal !== "failed"
+        ? t.assetDownload.errors[refusal]
+        : t.studioHome.actions.downloadFailed
+      : t.studioHome.actions.download;
   return (
     <button
       type="button"
@@ -990,7 +1005,17 @@ function DownloadKey({ assetId, className }: { assetId: string; className: strin
       data-testid="result-download"
       data-state={state}
     >
-      {state === "failed" ? <TriangleAlert aria-hidden className="size-4" /> : <Download aria-hidden className="size-4" />}
+      {state === "failed" ? (
+        <TriangleAlert aria-hidden className="size-4" />
+      ) : state === "busy" ? (
+        <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" />
+      ) : (
+        <Download aria-hidden className="size-4" />
+      )}
+      {/* The reason is said, not only shown in a tooltip a phone never has. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {state === "failed" ? label : ""}
+      </span>
     </button>
   );
 }

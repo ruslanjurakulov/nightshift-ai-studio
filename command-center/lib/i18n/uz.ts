@@ -5399,6 +5399,7 @@ export const uz: Dictionary = {
     noOrg: "Muharrirdan foydalanish uchun tashkilotni oching yoki yarating.",
     readFailed: "Muharrirni hozir oʻqib boʻlmadi. Sahifani yangilab, qayta urinib koʻring.",
     freeNote: "Tahrirlash va eksport bepul: kredit sarflanmaydi.",
+    soldNote: "Tahrirlash bepul. Eksport kredit talab qiladi, narxi eksportdan oldin koʻrsatiladi.",
     publishNote: "Eksport mediatekangizga saqlanadi. Hech narsa nashr qilinmaydi.",
     projects: "Loyihalaringiz",
     noProjects: "Hali loyiha yoʻq. Mediatekadagi videodan boshlang.",

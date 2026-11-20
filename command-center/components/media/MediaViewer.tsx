@@ -332,7 +332,7 @@ export function MediaViewer({
                   height={asset.height}
                 />
               ) : null}
-              {/* A picture with no lighter copy is shown as itself, as it always was: open it in a tab. */}
+              {/* A picture with no lighter copy, or a sound, is shown as itself, as it always was: open it in a tab. */}
               {asset.viewUrl && previewVariantFor(asset) === null && asset.kind !== "video" && (
                 <a
                   href={asset.viewUrl}

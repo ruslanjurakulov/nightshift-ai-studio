@@ -39,20 +39,23 @@
 | variant | What it returns | Auth |
 | :-- | :-- | :-- |
 | `original` | streams the master (`original`): `Content-Disposition: attachment`, the real `Content-Type` and `Content-Length`, Range supported, `Cache-Control: private, no-store` | session; the asset row is read under RLS first |
-| `preview` | `303` to a freshly signed `/api/media/file/{id}/proxy` link (video), `display` (image) or, for audio, the original audio file, so a `<video>` keeps its range requests. Another variant is never substituted | session; RLS read first |
-| `captions` | `text/plain` SRT built from the export's captions (`editor_exports.doc.captions` of the export that made this asset), as an attachment | session; RLS on both tables |
+| `preview` | `303` to a freshly signed `/api/media/file/{id}/proxy` link (video) or `display` (image), so a `<video>` keeps its range requests. Audio, captions and a picture without a display copy have no preview. Another variant is never substituted | session; RLS read first |
+| `captions` | `application/x-subrip` SRT built from the export's captions (`editor_exports.doc.captions` of the export that made this asset), as an attachment | session; RLS on both tables |
 
 Answers:
 
 | Status | `error` | Meaning |
 | :-- | :-- | :-- |
 | 401 | `unauthorized` | no session |
-| 400 | `bad_request` | not a uuid, or an unknown variant |
+| 400 | `bad_request` | not a uuid, an unknown variant, or a stored type outside the allowed list |
 | 404 | `not_found` | no such asset in any of the caller's organizations. Another tenant's asset gets the same answer, so it cannot be probed |
 | 404 | `no_preview` | this asset has no preview copy (yet). The original is **not** served instead |
-| 404 | `no_captions` | the asset was not made by an export that had captions |
+| 404 | `no_captions` | the newest export that made this asset has no caption cues, or no export made it |
+| 416 | | a Range outside the file |
+| 502 | `read_failed` | the export row could not be read (never reported as "no captions") |
 | 410 | `gone` | the row exists but the file was purged |
 | 503 | `media_unavailable` | this host has no media volume or no signing key (Vercel) |
+| 503 | `not_configured` | Supabase is not configured on this host |
 
 The URL is stable and holds no secret, so it never expires. Each press re-reads the row and, for a preview, signs a new link. A page left open for an hour still downloads.
 

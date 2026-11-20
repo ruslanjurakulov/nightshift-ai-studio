@@ -5421,6 +5421,7 @@ export const en = {
     noOrg: "Open or create an organization to use the editor.",
     readFailed: "The editor could not be read just now. Reload the page to try again.",
     freeNote: "Editing and exporting are free: no credits are used.",
+    soldNote: "Editing is free. Exports cost credits, and the price is shown before you export.",
     publishNote: "An export is saved to your library. Nothing is published.",
     projects: "Your projects",
     noProjects: "No projects yet. Start one from a video in your library.",

@@ -76,6 +76,20 @@ describe("download buttons", () => {
     await waitFor(() => expect(clicked).toHaveLength(1));
   });
 
+  it("signed out offers a way to sign in; a server error offers Try again and keeps the keyboard on the key", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }));
+    mount();
+    const key = screen.getByRole("button", { name: /Download original/ });
+    fireEvent.click(key);
+    expect(await screen.findByText(td.errors.unauthorized)).toBeTruthy();
+    expect(screen.getByRole("link", { name: td.signIn }).getAttribute("href")).toBe("/login?next=%2Fx%2Flibrary");
+    expect(document.activeElement).toBe(key);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: "read_failed" }), { status: 502 }));
+    fireEvent.click(key);
+    expect(await screen.findByText(td.errors.server)).toBeTruthy();
+    expect(screen.getByRole("button", { name: td.retry })).toBeTruthy();
+  });
+
   it("a double press starts one check, not two", async () => {
     let release: (r: Response) => void = () => {};
     fetchMock.mockReturnValue(new Promise<Response>((r) => (release = r)));
@@ -91,7 +105,8 @@ describe("download buttons", () => {
   it("a missing preview is a disabled button that says why; no preview link at all for 'none'", () => {
     mount({ preview: "missing" });
     expect(screen.queryByRole("link", { name: new RegExp(td.preview) })).toBeNull();
-    expect(screen.getByRole("button", { name: td.preview })).toHaveProperty("disabled", true);
+    // aria-disabled, not disabled: a disabled key would drop the keyboard out of the Library's dialog.
+    expect(screen.getByRole("button", { name: td.preview }).getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByText(td.errors.no_preview)).toBeTruthy();
     cleanup();
     mount({ preview: "none" });

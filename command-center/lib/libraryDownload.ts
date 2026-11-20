@@ -28,16 +28,14 @@ export function libraryDownloadUrl(assetId: string, variant: LibraryDownloadVari
 }
 
 /**
- * Which stored file a preview is. A video's preview is its 480p proxy and an
- * image's is its display JPEG. An audio file is its own preview (it has no
- * proxy, and playing the original is what the library already does). Null
- * means there is no preview: the original is never handed out under the
+ * Which stored file a preview is: a video's 480p proxy, an image's display
+ * JPEG. Null means there is no separate preview (audio, captions, a picture
+ * without a display copy): the original is never handed out under the
  * preview's name, or the two buttons would quietly be the same file.
  */
 export function previewVariantFor(asset: Pick<MediaAsset, "kind" | "variants">): MediaVariant | null {
   if (asset.kind === "video") return asset.variants.includes("proxy") ? "proxy" : null;
   if (asset.kind === "image") return asset.variants.includes("display") ? "display" : null;
-  if (asset.kind === "audio") return "original";
   return null;
 }
 
@@ -74,7 +72,8 @@ export function downloadFileName(
 ): string {
   const stem = (asset.name ?? "")
     .replace(/\.[A-Za-z0-9]{1,5}$/, "")
-    .replace(/[\u0000-\u001f\u007f"\\/:*?<>|]+/g, " ")
+    // Bidi overrides and other format characters too: "invoice\u202efdp.exe" would show a colleague a spoofed name.
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff"\\/:*?<>|]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80);
@@ -113,7 +112,15 @@ export function exportCues(captions: unknown): { id: string; start_s: number; en
 }
 
 /** The words the panel can say about a refused download; anything else is "failed" (and can be tried again). */
-export type DownloadRefusal = "unauthorized" | "not_found" | "gone" | "media_unavailable" | "no_captions" | "no_preview" | "failed";
+export type DownloadRefusal =
+  | "unauthorized"
+  | "not_found"
+  | "gone"
+  | "media_unavailable"
+  | "no_captions"
+  | "no_preview"
+  | "server"
+  | "failed";
 
 export function downloadRefusal(status: number, error: unknown): DownloadRefusal {
   if (status === 401) return "unauthorized";
@@ -121,10 +128,12 @@ export function downloadRefusal(status: number, error: unknown): DownloadRefusal
   if (typeof error === "string" && (known as readonly string[]).includes(error)) return error as DownloadRefusal;
   if (status === 404) return "not_found";
   if (status === 410) return "gone";
+  // The server answered and could not: not the reader's connection, so the sentence must not blame it (rule 6).
+  if (status >= 500) return "server";
   return "failed";
 }
 
 /** Only a refusal that asking again could fix offers "Try again". */
 export function canRetryDownload(r: DownloadRefusal): boolean {
-  return r === "failed";
+  return r === "failed" || r === "server";
 }

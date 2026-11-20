@@ -142,12 +142,12 @@ describe("the price (HiresExportQuote)", () => {
     const load = vi.fn(ok());
     const q = quote(["youtube_1440p", "youtube_2160p"], load);
     await waitFor(() =>
-      expect(screen.getByText(fmt(hx.line, { name: hx.names.youtube_2160p, minutes: 1, perMinute: "12", credits: "12", hold: "12" }))).toBeTruthy(),
+      expect(screen.getByText(fmt(hx.line, { name: hx.names.youtube_2160p, minutes: 1, perMinute: "12 credits", credits: "12 credits", hold: "12 credits" }))).toBeTruthy(),
     );
     expect(load.mock.calls.map((c) => c.slice(1))).toEqual([[4, "youtube_1440p"], [4, "youtube_2160p"]]);
-    expect(screen.getByText(fmt(hx.total, { credits: "18", hold: "18" }))).toBeTruthy();
+    expect(screen.getByText(fmt(hx.total, { credits: "18 credits", hold: "18 credits" }))).toBeTruthy();
     expect(q.last().ready).toBe(false);
-    await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "18" }) }));
+    await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "18 credits" }) }));
     expect(q.last()).toEqual({ ready: true, key: "4|youtube_1440p,youtube_2160p", maxCredits: { youtube_1440p: 6, youtube_2160p: 12 } });
   });
 
@@ -157,8 +157,8 @@ describe("the price (HiresExportQuote)", () => {
       [{ tooLong: true, durationS: 200 }, fmt(hx.tooLong, { name: hx.names.youtube_2160p, max: "3:00", length: "3:20" })],
       [{ tooFast: true, fps: 60 }, fmt(hx.tooFast, { name: hx.names.youtube_2160p, max: 30, fps: 60 })],
       [{ mayPay: false }, fmt(hx.notAllowed, { name: hx.names.youtube_2160p })],
-      [{ available: 5 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "12", available: "5" })],
-      [{ credits: 4, hold: 30, available: 20 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "30", available: "20" })],
+      [{ available: 5 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "12 credits", available: "5 credits" })],
+      [{ credits: 4, hold: 30, available: 20 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "30 credits", available: "20 credits" })],
       // A database without 0136 does not sell a curve.
       [{ speedCurve: true }, fmt(hx.speedCurve, { name: hx.names.youtube_2160p })],
     ];
@@ -178,7 +178,7 @@ describe("the price (HiresExportQuote)", () => {
     await waitFor(() => expect(screen.getByText(`${fmt(hx.failed, { name: hx.names.vertical_1440p })} ${te.errors.failed}`)).toBeTruthy());
     fail = false;
     await press(screen.getByRole("button", { name: hx.retry }));
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "6" }) })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "6 credits" }) })).toBeTruthy());
     cleanup();
     const idle = vi.fn<Load>(ok());
     quote(["vertical_1440p"], idle, true);
@@ -189,11 +189,11 @@ describe("the price (HiresExportQuote)", () => {
   it("with the platform's job minimum, the charge and the hold are both said, and the yes carries the CHARGE", async () => {
     const q = quote(["youtube_2160p"], ok({ creditsPerMinute: 4, credits: 4, hold: 30 }));
     await waitFor(() =>
-      expect(screen.getByText(fmt(hx.line, { name: hx.names.youtube_2160p, minutes: 1, perMinute: "4", credits: "4", hold: "30" }))).toBeTruthy(),
+      expect(screen.getByText(fmt(hx.line, { name: hx.names.youtube_2160p, minutes: 1, perMinute: "4 credits", credits: "4 credits", hold: "30 credits" }))).toBeTruthy(),
     );
-    expect(screen.getByText(fmt(hx.total, { credits: "4", hold: "30" }))).toBeTruthy();
+    expect(screen.getByText(fmt(hx.total, { credits: "4 credits", hold: "30 credits" }))).toBeTruthy();
     expect(hx.line).toMatch(/charged.*held while it renders/);
-    await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "4" }) }));
+    await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "4 credits" }) }));
     expect(q.last()).toEqual({ ready: true, key: "4|youtube_2160p", maxCredits: { youtube_2160p: 4 } });
   });
 
@@ -231,7 +231,7 @@ describe("a project above 1080p and a speed curve in the editor", () => {
     ratios()!.setAttribute("open", "");
     expect(screen.getAllByText(hx.ownTooBig).length).toBeGreaterThan(0);
     await press(box(hx.names.youtube_2160p));
-    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "12" }) }));
+    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "12 credits" }) }));
     await waitFor(() => expect(exportButton().disabled).toBe(false));
     await press(exportButton());
     expect(posts()).toEqual([{ rev: 1, frames: ["youtube_2160p"], maxCredits: { youtube_2160p: 12 } }]);
@@ -246,7 +246,7 @@ describe("a project above 1080p and a speed curve in the editor", () => {
     ratios()!.setAttribute("open", "");
     for (const n of [hx.names.youtube_1440p, hx.names.vertical_2160p]) expect(box(n).disabled).toBe(false);
     await press(box(hx.names.youtube_1440p));
-    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "6" }) }));
+    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "6 credits" }) }));
     await waitFor(() => expect(exportButton().disabled).toBe(false));
     expect(screen.queryByText(fmt(hx.speedCurve, { name: hx.names.youtube_1440p }))).toBeNull();
   });
@@ -267,7 +267,7 @@ describe("the editor with the hires switch", () => {
     await waitFor(() => expect(quoteUrls()).toEqual([`/api/editor/projects/${PID}/exports/quote?rev=1&frame=youtube_2160p`]));
     expect(exportButton().disabled).toBe(true);
     expect(screen.getAllByText(te.errors.quote_required).length).toBeGreaterThan(0);
-    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "12" }) }));
+    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "12 credits" }) }));
     await waitFor(() => expect(exportButton().disabled).toBe(false));
     await press(exportButton());
     expect(posts()).toEqual([{ rev: 1, frames: ["project", "youtube_2160p"], maxCredits: { youtube_2160p: 12 } }]);
@@ -277,12 +277,12 @@ describe("the editor with the hires switch", () => {
     editor({ multiRatio: true, hires: true });
     ratios()!.setAttribute("open", "");
     await press(box(hx.names.youtube_1440p));
-    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "6" }) }));
+    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "6 credits" }) }));
     await waitFor(() => expect(exportButton().disabled).toBe(false));
     await press(box(hx.names.youtube_1440p));
     await press(box(hx.names.youtube_1440p));
     expect(exportButton().disabled).toBe(true);
-    const yes = await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "6" }) });
+    const yes = await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "6 credits" }) });
     expect((yes as HTMLInputElement).checked).toBe(false);
     expect(quoteUrls()).toHaveLength(2);
   });

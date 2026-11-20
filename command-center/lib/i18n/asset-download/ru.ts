@@ -2,7 +2,7 @@ import type { AssetDownloadDictionary } from "./en";
 
 export const assetDownloadRu: AssetDownloadDictionary = {
   original: "Скачать оригинал",
-  originalSize: "Скачать оригинал · {w}×{h}",
+  size: "{w}×{h}",
   originalHint: "Файл в полном качестве, точно таким, каким он был создан.",
   preview: "Предпросмотр",
   previewHint: "Облегчённая копия для быстрого просмотра (у видео — 480p). Для публикации она не подходит.",
@@ -10,13 +10,16 @@ export const assetDownloadRu: AssetDownloadDictionary = {
   checking: "Готовим…",
   newTab: "(откроется в новой вкладке)",
   retry: "Повторить",
+  signIn: "Войти",
+  backToLibrary: "Вернуться в медиатеку",
   errors: {
     unauthorized: "Вы вышли из аккаунта. Войдите снова, чтобы скачать.",
     not_found: "Этого файла больше нет в вашей библиотеке.",
     gone: "Файл удалён из хранилища. Экспортируйте видео ещё раз, чтобы получить новый.",
-    media_unavailable: "Файлы отдаёт сервер Nightshift, а с этого адреса он недоступен.",
+    media_unavailable: "Файлы отдаёт только приложение Nightshift на его собственном сервере. Откройте Nightshift там, чтобы скачать файл.",
     no_captions: "В этом экспорте нет субтитров.",
     no_preview: "У этого файла пока нет предпросмотра.",
+    server: "Сервер не смог подготовить файл. Повторите через минуту.",
     failed: "Скачивание не началось. Проверьте подключение и повторите.",
   },
 };
