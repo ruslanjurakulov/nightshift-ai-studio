@@ -32,7 +32,10 @@ def _capture_decode(tmp_path: Path, **kw):
 
     src = tmp_path / "source.mp3"
     src.write_bytes(b"\0" * 10)
-    with mock.patch.dict("os.environ", SECRET_ENV, clear=True), mock.patch.object(vv.subprocess, "run", fake_run):
+    # Static argv checks: no ffmpeg runs, so the lab runner need not have one (it has none; CI run 44747681313 failed at the
+    # adapter's own "ffmpeg is not on PATH" guard before any argv was built).
+    with mock.patch.dict("os.environ", SECRET_ENV, clear=True), mock.patch.object(vv.subprocess, "run", fake_run), \
+            mock.patch.object(vv.shutil, "which", lambda name: f"/usr/bin/{name}"):
         vv.decode_to_wav(src, tmp_path / "narration.wav", **kw)
     return seen
 
