@@ -12,9 +12,12 @@
 --     no spec.vendor_model_by_capability (a capability that calls another vendor model was never probed here);
 --   * verified_at and verified_probe_id set: a successful real call through image.openai recorded by tools/probe_models.py (0035).
 --     CLAUDE.md: a model appears to users only after a real call through its adapter has succeeded;
---   * spec.terms_gate empty (0035's CHECK refuses beta otherwise in any case);
---   * spec.api_exposure web_only: OpenAI's own terms pages could not be read on 2026-11-20, so nothing here is offered through the
---     public API or the MCP connector until they are; the Studio only;
+--   * spec.terms_gate empty (0035's CHECK refuses beta otherwise in any case). OpenAI's terms were read for this file on 2026-11-20
+--     (openai.com/policies/services-agreement): "This includes the right to use OpenAI's API to integrate the Services into Customer
+--     Applications and to make Customer Applications available to End Users", with "Customer may not resell or lease access to its
+--     Account or any End User Account" and no use of Output to develop competing models. In-app generation for our users fits that:
+--     no key and no account access is ever exposed. Names are shown as plain text only (§10 No Publicity: no logo, no "powered by");
+--   * spec.api_exposure web_only: the Studio only, until the web+MCP exposure (stream S5) lands and is reviewed for these models;
 --   * not past its announced shutdown (0125): gpt-image-2 leaves OpenAI's API on 2027-02-10 per the registry's shutdown entry;
 --   * not `disabled` (the owner's off) and no blocked_countries (0142);
 --   * a credit_prices row for the base unit and for each quality variant (see above).

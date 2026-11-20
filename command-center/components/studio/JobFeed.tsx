@@ -581,6 +581,10 @@ export function JobFeed({
         >
           {description.text}
         </p>
+        {/* Model text that nobody checked: said so under every description (Anthropic Commercial Terms D.3, AUP disclosure). */}
+        <p className="text-xs text-[var(--color-muted)]" data-testid="describe-ai-note">
+          {t.gen.aiWrittenNote}
+        </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={`${chip} gap-1.5`} onClick={() => void copy(job.id, description.text)}>
             {copied?.id === job.id && copied.ok ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />}

@@ -775,6 +775,7 @@ export function prefillModel<T extends { model: string }>(initial: T | null, raw
  */
 const PROVIDER_NAMES: Record<string, string> = {
   openai: "OpenAI",
+  anthropic: "Anthropic",
   google: "Google",
   elevenlabs: "ElevenLabs",
   bfl: "Black Forest Labs",

@@ -32,7 +32,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("the closed set of vendors", () => {
   it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
-    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(20);
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(21);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -58,6 +58,7 @@ describe("what a verify request is allowed to be", () => {
   // The EXACT request of every vendor, pinned. Changing one is a decision for review: it must still be a free read that makes nothing.
   const PINNED: Record<string, string> = {
     openai: "GET https://api.openai.com/v1/models",
+    anthropic: "GET https://api.anthropic.com/v1/models",
     google: "GET https://generativelanguage.googleapis.com/v1beta/models",
     xai: "GET https://api.x.ai/v1/models",
     elevenlabs: "GET https://api.elevenlabs.io/v1/models",
@@ -89,6 +90,7 @@ describe("what a verify request is allowed to be", () => {
     for (const p of MODEL_KEY_PROVIDERS) if (p.strategy.kind === "http") got[p.id] = [...p.strategy.rejectStatuses];
     expect(got).toEqual({
       openai: [401, 403],
+      anthropic: [401, 403],
       google: [400, 401, 403],
       xai: [401, 403],
       elevenlabs: [401, 403],
@@ -115,6 +117,7 @@ describe("what a verify request is allowed to be", () => {
     }
     expect(got).toEqual({
       openai: 'Authorization:bearer|{}|{"kind":"field","name":"data","type":"array"}',
+      anthropic: 'x-api-key:raw|{"anthropic-version":"2026-10-21"}|{"kind":"field","name":"data","type":"array"}',
       google: 'x-goog-api-key:raw|{}|{"kind":"field","name":"models","type":"array"}',
       xai: 'Authorization:bearer|{}|{"kind":"field","name":"data","type":"array"}',
       elevenlabs: 'xi-api-key:raw|{}|{"kind":"array"}',
@@ -168,7 +171,7 @@ describe("what a verify request is allowed to be", () => {
 });
 
 describe("the key page link", () => {
-  it("is https, comes with the vendor documentation page it was read on, or is absent (Kling, Lightricks, Vidu) and the card says so", () => {
+  it("is https, comes with the vendor documentation page it was read on, or is absent (Anthropic, Kling, Lightricks, Vidu) and the card says so", () => {
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.keyUrl === null) {
         expect(p.keyUrlSource, p.id).toBeNull();
@@ -177,7 +180,7 @@ describe("the key page link", () => {
       expect(new URL(p.keyUrl).protocol, p.id).toBe("https:");
       expect(p.keyUrlSource, p.id).toMatch(/^https:\/\//);
     }
-    expect(MODEL_KEY_PROVIDERS.filter((p) => p.keyUrl === null).map((p) => p.id).sort()).toEqual(["kling", "lightricks", "vidu"]);
+    expect(MODEL_KEY_PROVIDERS.filter((p) => p.keyUrl === null).map((p) => p.id).sort()).toEqual(["anthropic", "kling", "lightricks", "vidu"]);
   });
 });
 
