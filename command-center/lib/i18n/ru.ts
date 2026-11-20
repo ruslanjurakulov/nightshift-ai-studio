@@ -8,6 +8,7 @@ import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { libraryUxRu } from "./library-ux/ru";
+import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
@@ -25,6 +26,7 @@ import { modelKeysRu } from "./model-keys/ru";
 import { operatorCustomersRu } from "./operator-customers/ru";
 import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
+import { ownerAnalyticsRu } from "./owner-analytics/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { availabilityRu } from "./availability/ru";
@@ -60,6 +62,7 @@ export const ru: Dictionary = {
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
+  assetDownload: assetDownloadRu,
   ownerShell: ownerShellRu,
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
@@ -80,6 +83,7 @@ export const ru: Dictionary = {
   customers: operatorCustomersRu,
   seriesPlan: seriesPlanRu,
   ownerTruth: ownerTruthRu,
+  ownerAnalytics: ownerAnalyticsRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   regionEdit: regionEditRu,
@@ -133,6 +137,7 @@ export const ru: Dictionary = {
     providers: "Провайдеры",
     models: "Модели",
     margin: "Маржа",
+    ownerAnalytics: "Аналитика владельца",
     customers: "Клиенты",
     billing: "Оплата",
     studio: "Nightshift Studio",
@@ -5407,6 +5412,7 @@ export const ru: Dictionary = {
     noOrg: "Откройте или создайте организацию, чтобы пользоваться редактором.",
     readFailed: "Не удалось загрузить редактор. Обновите страницу и попробуйте снова.",
     freeNote: "Редактирование и экспорт бесплатны: кредиты не расходуются.",
+    soldNote: "Редактирование бесплатно. Экспорт стоит кредиты, и цена видна до экспорта.",
     publishNote: "Экспорт сохраняется в медиатеку. Ничего не публикуется.",
     projects: "Ваши проекты",
     noProjects: "Проектов пока нет. Начните с видео из медиатеки.",

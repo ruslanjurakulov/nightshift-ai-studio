@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { useChannelPath } from "@/lib/channels-client";
 import { refreshCredits } from "@/lib/credits-live";
 import { filmErrorFromResponse, newIdempotencyKey, type FilmError } from "@/lib/films";
@@ -43,7 +44,7 @@ export function AssemblePanel({
   compact?: boolean;
   onStarted: () => void;
 }) {
-  const { t, fmt } = useI18n();
+  const { t, fmt, locale } = useI18n();
   const c = t.studioTimeline;
   const path = useChannelPath();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
@@ -88,7 +89,8 @@ export function AssemblePanel({
     versionRef.current = version;
     quoteSeq.current += 1;
     if (starter.busy) return;
-    setPhase({ at: "idle" });
+    // A start that went through keeps its "Started" note: starting the project itself bumps the version.
+    setPhase((p) => (p.at === "started" ? p : { at: "idle" }));
     setProblem(null);
   }, [version, starter]);
 
@@ -197,9 +199,10 @@ export function AssemblePanel({
     phase.at === "confirm" ||
     (phase.at === "quoted" && !canStart);
 
+  const statusWord = (filmStudioStrings(locale).status as Record<string, string>)[status] ?? status;
   let note: React.ReactNode = null;
-  if (!editable) note = fmt(c.notEditable, { status });
-  else if (problem === "notEditableNow") note = fmt(c.notEditable, { status });
+  if (!editable && phase.at !== "started") note = fmt(c.notEditable, { status: statusWord });
+  else if (problem === "notEditableNow") note = fmt(c.notEditable, { status: statusWord });
   else if (problem) note = c[problem];
   else if (phase.at === "unpriced") note = <><b>{c.noPrice}</b> {c.noPriceBody}</>;
   else if (phase.at === "quoted" && blocked.length) note = blocked.map((b) => c.blocked[b]).join(" ");
@@ -244,7 +247,6 @@ export function AssemblePanel({
       )}
       {phase.at === "confirm" && (
         <ConfirmDialog
-          returnFocus={assembleKey.current}
           title={c.confirmTitle}
           body={fmt(c.confirmBody, { n: String(phase.quote.total) })}
           cancel={c.cancel}
@@ -261,14 +263,14 @@ export function AssemblePanel({
  * The one place a start is confirmed. Focus moves into it (on Cancel, so a held Enter cannot confirm), Tab stays inside, Escape
  * cancels, and a repeated key press is ignored: holding a key down never confirms a hold of credits.
  */
-function ConfirmDialog({ returnFocus, title, body, cancel, confirm, onCancel, onConfirm }: { returnFocus: HTMLButtonElement | null; title: string; body: string; cancel: string; confirm: string; onCancel: () => void; onConfirm: () => void }) {
+function ConfirmDialog({ title, body, cancel, confirm, onCancel, onConfirm }: { title: string; body: string; cancel: string; confirm: string; onCancel: () => void; onConfirm: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const back = returnFocus;
+    const back = document.activeElement as HTMLElement | null;
     first.current?.focus();
     return () => back?.focus?.();
-  }, [returnFocus]);
+  }, []);
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.repeat) {
       e.preventDefault();

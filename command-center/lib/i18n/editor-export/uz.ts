@@ -26,12 +26,4 @@ export const editorExportUz: ExportPanelDictionary = {
   notFound: "Loyiha topilmadi. U oʻchirilgan boʻlishi mumkin, shuning uchun uning eksportlarini bu yerda kuzatib boʻlmaydi.",
   deletedLine: "Loyiha oʻchirilgan, shuning uchun qayta urinadigan narsa yoʻq. Roʻyxatdan boshqa loyihani oching.",
   fixFirst: "Qayta urinish xuddi shunday tugaydi. Montajni oʻzgartiring, saqlang va «{export}» tugmasini bosing.",
-  expiredLinkHint: "Video havolasi eskirgan boʻlsa, yangisini oling. Bu eksportni qayta boshlamaydi.",
-  fileDownload: "Tayyor faylni yuklab olish",
-  fileDownloading: "Tayyor fayl olinmoqda…",
-  fileMissing: "Bu fayl endi mavjud emas. Yangi render boshlanmadi.",
-  fileReadFailed: "Faylni tekshirib boʻlmadi. Qayta urinib koʻring.",
-  fileUnavailable: "Hozir bu faylni bu yerda yuklab boʻlmaydi. Yangi render boshlanmadi.",
-  fileHanded: "Yuklab olish brauzerga topshirildi. Tugaganini brauzerda tekshiring.",
-  fileFacts: "Asl fayl · {format} · {size}",
 };

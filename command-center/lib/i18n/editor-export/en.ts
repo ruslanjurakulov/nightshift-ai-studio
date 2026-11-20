@@ -29,14 +29,6 @@ export const editorExportEn = {
   notFound: "This project was not found. It may have been deleted, so its exports cannot be followed here.",
   deletedLine: "This project was deleted, so there is nothing to retry. Open another project from the list.",
   fixFirst: "Trying again would fail the same way. Change the edit, save it, then use “{export}”.",
-  expiredLinkHint: "If the video link has expired, get a fresh link. This does not export again.",
-  fileDownload: "Download existing file",
-  fileDownloading: "Getting existing file…",
-  fileMissing: "This file is no longer available. No new render was started.",
-  fileReadFailed: "Could not check this file. Try again.",
-  fileUnavailable: "This file cannot be downloaded here right now. No new render was started.",
-  fileHanded: "Download sent to your browser. Check the browser for completion.",
-  fileFacts: "Original file · {format} · {size}",
 };
 
 export type ExportPanelDictionary = typeof editorExportEn;

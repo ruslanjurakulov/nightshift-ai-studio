@@ -6,7 +6,7 @@
  * "not enough credits" without the way to add them; and Space playing the film while a person types in the Library search.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { studioTimelineEn as c } from "../lib/i18n/studio-timeline/en";
 import { FILM, S1, S2, filmJson, sceneJson } from "./films-fixtures";
@@ -32,6 +32,7 @@ vi.mock("@/components/studio-canvas/StudioCanvas", () => ({
 }));
 
 const { StudioTimeline } = await import("../components/studio-timeline/StudioTimeline");
+const { useMediaUrls, MEDIA_RETRY_WINDOW_MS } = await import("../components/studio-timeline/useTimelineData");
 
 type Answer = { status: number; body: unknown };
 let calls: { method: string; url: string; body: Record<string, unknown> | undefined }[] = [];
@@ -45,9 +46,11 @@ const film = () => filmJson({}, [sceneJson(S1, 0, { title: "Stadium", narration:
 if (typeof window.PointerEvent === "undefined") {
   class PE extends MouseEvent {
     pointerId: number;
+    pointerType: string;
     constructor(type: string, init: PointerEventInit = {}) {
       super(type, init);
       this.pointerId = init.pointerId ?? 1;
+      this.pointerType = init.pointerType ?? "mouse";
     }
   }
   (window as unknown as { PointerEvent: typeof PE }).PointerEvent = PE;
@@ -80,43 +83,6 @@ const open = async () => {
   render(<StudioTimeline filmStudio filmId={FILM} />);
   await screen.findByTestId("lanes");
 };
-
-describe("audio mixer keyboard labels", () => {
-  it("gives each track a unique full mute/solo accessible name and pressed state", async () => {
-    await open();
-    for (const track of ["V1", "A1", "A2", "A3", "A4", "C1"] as const) {
-      for (const template of [c.muteTrack, c.soloTrack]) {
-        const label = template.replace("{t}", c.track[track]);
-        const controls = screen.getAllByRole("button", { name: label });
-        expect(controls).toHaveLength(1);
-        expect(controls[0].getAttribute("aria-pressed")).toBe("false");
-        expect(controls[0].tabIndex).toBe(0);
-      }
-    }
-  });
-
-  it.each((["A1", "A2", "A3", "A4"] as const).flatMap((track) =>
-    (["mute", "solo"] as const).flatMap((action) => (["Space", "Enter"] as const).map((key) => ({ track, action, key }))),
-  ))("$track $action keeps its full label and owns $key without playing", async ({ track, action, key }) => {
-    await open();
-    const label = (action === "mute" ? c.muteTrack : c.soloTrack).replace("{t}", c.track[track]);
-    const control = screen.getByRole("button", { name: label });
-    control.focus();
-    // jsdom does not synthesize the native click default; first verify that
-    // timeline shortcuts leave the key alone, then test activation separately.
-    expect(fireEvent.keyDown(control, { key: key === "Space" ? " " : "Enter", code: key })).toBe(true);
-    for (const transport of screen.getAllByTestId("play")) expect(transport.getAttribute("aria-pressed")).toBe("false");
-    expect(control.textContent).toBe(action === "mute" ? "M" : "S");
-    expect(control.getAttribute("title")).toBe(label);
-    fireEvent.click(control);
-    expect(screen.getByRole("button", { name: label }).getAttribute("aria-pressed")).toBe("true");
-    expect(control.classList.contains(action === "mute" ? "on-m" : "on-s")).toBe(true);
-    fireEvent.click(control);
-    expect(control.getAttribute("aria-pressed")).toBe("false");
-    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
-    expect(calls.some((x) => x.method !== "GET")).toBe(false);
-  });
-});
 
 describe("honest states", () => {
   it("switched off: 'Projects are not open yet', and nothing is read", () => {
@@ -285,6 +251,7 @@ describe("Assemble", () => {
     fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
     await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startNoAnswer));
     mode = "refuse";
+    // Retrying a start that may have gone through still goes through the confirmation (only the dialog starts anything).
     fireEvent.click(key());
     expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(1);
     fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
@@ -296,6 +263,28 @@ describe("Assemble", () => {
     fireEvent.click(key());
     await waitFor(() => expect(calls.filter((x) => x.url.endsWith("/quote")).length).toBe(quotesBefore + 1));
     expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(2);
+  });
+
+  it("H2: holding Enter on the Assemble key never starts: it quotes, opens the dialog, and the key is disabled behind it", async () => {
+    answer = (url) => (url.endsWith("/quote") ? { status: 200, body: { quote: priced } } : url.endsWith("/start") ? { status: 200, body: { start: { ok: true } } } : { status: 200, body: { film: film() } });
+    await open();
+    const key = () => screen.getAllByTestId("assemble-key")[0] as HTMLButtonElement;
+    // An auto-repeating Enter is keydown(repeat) + click, again and again; a press through the background key three times.
+    for (let i = 0; i < 3; i++) {
+      fireEvent.keyDown(key(), { key: "Enter", repeat: i > 0 });
+      fireEvent.click(key());
+      await waitFor(() => expect(calls.some((x) => x.url.endsWith("/quote"))).toBe(true));
+    }
+    await screen.findByTestId("assemble-confirm");
+    expect(key().disabled).toBe(true);
+    fireEvent.click(key());
+    expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(0);
+    // Focus is inside the dialog, on Cancel; Escape closes it; nothing was started.
+    expect(document.activeElement).toBe(screen.getByTestId("assemble-confirm-cancel"));
+    fireEvent.keyDown(screen.getByTestId("assemble-confirm"), { key: "Enter", repeat: true });
+    fireEvent.keyDown(screen.getByTestId("assemble-confirm"), { key: "Escape" });
+    expect(screen.queryByTestId("assemble-confirm")).toBeNull();
+    expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(0);
   });
 
   it("insufficient credits: says so and links to add credits; the key does not start", async () => {
@@ -354,5 +343,155 @@ describe("reorder", () => {
     expect(patch.body?.version).toBe(3);
     const ids = (patch.body?.patch as { scenes: { id: string }[] }).scenes.map((s) => s.id);
     expect(ids).toEqual([S2, S1]);
+  });
+});
+
+describe("Lens round 2", () => {
+  it("H3: a finger dragging a scene scrolls, it never reorders; Move later reorders through save_film", async () => {
+    answer = (url, method) => (method === "PATCH" ? { status: 200, body: { film: filmJson({ version: 4 }, [sceneJson(S2, 0), sceneJson(S1, 1)]) } } : { status: 200, body: { film: film() } });
+    await open();
+    const block = screen.getByTestId(`clip-v1:${S1}`);
+    fireEvent.pointerDown(block, { clientX: 10, pointerId: 1, pointerType: "touch" });
+    fireEvent.pointerMove(block, { clientX: 400, pointerId: 1, pointerType: "touch" });
+    fireEvent.pointerUp(block, { clientX: 400, pointerId: 1, pointerType: "touch" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls.some((x) => x.method === "PATCH")).toBe(false);
+    fireEvent.click(screen.getByTestId("move-later"));
+    await waitFor(() => expect(calls.some((x) => x.method === "PATCH")).toBe(true));
+    const ids = (calls.find((x) => x.method === "PATCH")!.body?.patch as { scenes: { id: string }[] }).scenes.map((x) => x.id);
+    expect(ids).toEqual([S2, S1]);
+  });
+
+  it("M1: a read answering an older version than the one shown does not put the old order back", async () => {
+    let getVersion = 3;
+    answer = (url, method) => {
+      if (method === "PATCH") return { status: 200, body: { film: filmJson({ version: 4 }, [sceneJson(S2, 0, { title: "Light" }), sceneJson(S1, 1, { title: "Stadium" })]) } };
+      return { status: 200, body: { film: getVersion === 3 ? film() : filmJson({ version: getVersion }, [sceneJson(S2, 0), sceneJson(S1, 1)]) } };
+    };
+    await open();
+    fireEvent.pointerDown(screen.getByTestId(`clip-v1:${S1}`), { clientX: 0, pointerId: 1 });
+    fireEvent.click(screen.getByTestId("move-later"));
+    await waitFor(() => expect(screen.getByTestId(`clip-v1:${S2}`).style.left).toBe("8px"));
+    // A poll answering the old version 3 (it left before the save landed): hide and show the tab to read at once.
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(calls.filter((x) => x.method === "GET" && x.url.startsWith("/api/films/")).length).toBeGreaterThanOrEqual(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByTestId(`clip-v1:${S2}`).style.left).toBe("8px");
+    getVersion = 4;
+  });
+
+  it("M4: Space on a focused button presses the button; it never plays the film", async () => {
+    await open();
+    const sort = screen.getByRole("button", { name: new RegExp(c.sort) });
+    sort.focus();
+    fireEvent.keyDown(sort, { key: " ", code: "Space" });
+    expect(screen.getAllByTestId("play")[0].getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("M5: a refused music level says so in its own words and the slider goes back to the saved value", async () => {
+    const MUSIC = "0c000000-0000-4000-8000-0000000000d1";
+    const withMusic = () => ({ ...filmJson({ music_asset_id: MUSIC, music_gain_db: -14 }, [sceneJson(S1, 0), sceneJson(S2, 1)]), music_missing: false });
+    answer = (url, method) => (method === "PATCH" ? { status: 500, body: { error: "failed" } } : url.startsWith("/api/media/") ? { status: 404, body: {} } : { status: 200, body: { film: withMusic() } });
+    await open();
+    fireEvent.pointerDown(screen.getByTestId(`clip-a2:${MUSIC}`), { clientX: 0, pointerId: 1 });
+    const slider = screen.getByTestId("music-level").querySelector("input") as HTMLInputElement;
+    expect(slider.value).toBe("-14");
+    fireEvent.change(slider, { target: { value: "-6" } });
+    expect(slider.value).toBe("-6");
+    await waitFor(() => expect(calls.some((x) => x.method === "PATCH")).toBe(true), { timeout: 2000 });
+    expect(calls.filter((x) => x.method === "PATCH")).toHaveLength(1);
+    await waitFor(() => expect(slider.value).toBe("-14"));
+    await waitFor(() => expect(document.body.textContent).toContain(c.levelSaveFailed));
+  });
+
+  it("a project that is not there (404) says so and offers the picker, not a Retry that cannot work", async () => {
+    answer = () => ({ status: 404, body: { error: "not_found" } });
+    render(<StudioTimeline filmStudio filmId={FILM} />);
+    const box = await screen.findByTestId("timeline-not-found");
+    expect(box.textContent).toContain(c.notFound);
+    expect(screen.queryByRole("button", { name: c.retry })).toBeNull();
+  });
+
+  it("M/S on tracks the preview cannot play, and lock on tracks with nothing to lock, are disabled", async () => {
+    await open();
+    expect((screen.getByRole("button", { name: new RegExp(`^${c.muteTrack.replace("{t}", c.track.A3)}`) }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: c.muteTrack.replace("{t}", c.track.A1) }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: c.lockTrack.replace("{t}", c.track.V1) }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: new RegExp(`^${c.lockTrack.replace("{t}", c.track.C1)}`) }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("Lens round 3", () => {
+  it("N1: switching ?film= while the old project's read is in flight shows the new one, and its saves target it", async () => {
+    const OTHER = "0f000000-0000-4000-8000-0000000000f2";
+    let releaseOld!: (a: Answer) => void;
+    answer = (url, method) => {
+      if (url === `/api/films/${FILM}` && method === "GET") return new Promise<Answer>((r) => (releaseOld = r));
+      if (url === `/api/films/${OTHER}` && method === "GET") return { status: 200, body: { film: filmJson({ id: OTHER, version: 2, title: "Other" }, [sceneJson(S1, 0), sceneJson(S2, 1)]) } };
+      if (method === "PATCH") return { status: 200, body: { film: filmJson({ id: OTHER, version: 3 }, [sceneJson(S2, 0), sceneJson(S1, 1)]) } };
+      return { status: 404, body: {} };
+    };
+    const view = render(<StudioTimeline filmStudio filmId={FILM} />);
+    await waitFor(() => expect(calls.some((x) => x.url === `/api/films/${FILM}`)).toBe(true));
+    view.rerender(<StudioTimeline filmStudio filmId={OTHER} />);
+    await screen.findByTestId("lanes");
+    // The old project's answer, version 9, lands now: it must not replace the new project nor raise its version guard.
+    await act(async () => releaseOld({ status: 200, body: { film: filmJson({ version: 9, title: "Old" }, [sceneJson(S1, 0)]) } }));
+    expect(screen.getByTestId("bar").textContent).toBe("Other");
+    fireEvent.pointerDown(screen.getByTestId(`clip-v1:${S1}`), { clientX: 0, pointerId: 1 });
+    fireEvent.click(screen.getByTestId("move-later"));
+    await waitFor(() => expect(calls.some((x) => x.method === "PATCH")).toBe(true));
+    const patch = calls.find((x) => x.method === "PATCH")!;
+    expect(patch.url).toBe(`/api/films/${OTHER}`);
+    expect(patch.body?.version).toBe(2);
+  });
+
+  it("a level changed while a reorder is saving goes back and says why, never silently dropped", async () => {
+    const MUSIC = "0c000000-0000-4000-8000-0000000000d1";
+    const withMusic = () => ({ ...filmJson({ music_asset_id: MUSIC, music_gain_db: -14 }, [sceneJson(S1, 0), sceneJson(S2, 1)]), music_missing: false });
+    let releaseSave!: (a: Answer) => void;
+    answer = (url, method) => (method === "PATCH" ? new Promise<Answer>((r) => (releaseSave = r)) : url.startsWith("/api/media/") ? { status: 404, body: {} } : { status: 200, body: { film: withMusic() } });
+    await open();
+    fireEvent.pointerDown(screen.getByTestId(`clip-v1:${S1}`), { clientX: 0, pointerId: 1 });
+    fireEvent.click(screen.getByTestId("move-later"));
+    await waitFor(() => expect(calls.filter((x) => x.method === "PATCH")).toHaveLength(1));
+    fireEvent.pointerDown(screen.getByTestId(`clip-a2:${MUSIC}`), { clientX: 0, pointerId: 1 });
+    const slider = screen.getByTestId("music-level").querySelector("input") as HTMLInputElement;
+    // The slider is disabled while the reorder saves: the level cannot be changed into a race.
+    expect(slider.disabled).toBe(true);
+    await act(async () => releaseSave({ status: 200, body: { film: withMusic() } }));
+    await waitFor(() => expect(slider.disabled).toBe(false));
+  });
+});
+
+describe("media links (Lens N2)", () => {
+  const ID = "0c000000-0000-4000-8000-0000000000e1";
+  const ok = () => ({ status: 200, body: { asset: { kind: "video", durationS: 8 }, urls: { proxy: "/api/media/file/x" }, served: true } });
+
+  it("errors in quick succession mark the clip failed after the retries; ordinary expiries ten minutes apart never do", async () => {
+    answer = () => ok();
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const { result } = renderHook(() => useMediaUrls([ID]));
+    await waitFor(() => expect(result.current.urls.get(ID)?.play).toBe("/api/media/file/x"));
+    // Three expiries, each ten minutes after the last: every one fetches fresh links, none marks the clip failed.
+    for (let i = 0; i < 3; i++) {
+      now += 10 * 60_000;
+      act(() => result.current.refresh(ID));
+      await waitFor(() => expect(calls.filter((x) => x.url === `/api/media/${ID}`)).toHaveLength(2 + i));
+    }
+    expect(result.current.urls.get(ID)?.failed).toBeFalsy();
+    // A file that is really broken: errors within the window → two retries, then failed, and no more requests.
+    const before = calls.length;
+    for (let i = 0; i < 4; i++) {
+      now += i === 0 ? 10 * 60_000 : 1000;
+      act(() => result.current.refresh(ID));
+    }
+    await waitFor(() => expect(result.current.urls.get(ID)?.failed).toBe(true));
+    expect(calls.length - before).toBe(2);
+    expect(MEDIA_RETRY_WINDOW_MS).toBeLessThan(10 * 60_000);
   });
 });

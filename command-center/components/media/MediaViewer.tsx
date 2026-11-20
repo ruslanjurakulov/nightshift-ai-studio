@@ -1,5 +1,7 @@
 "use client";
 
+import { AssetDownloads } from "./AssetDownloads";
+import { previewVariantFor } from "@/lib/libraryDownload";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, ExternalLink, Pencil, Trash2, X } from "lucide-react";
@@ -320,7 +322,18 @@ export function MediaViewer({
                   {t.imageEditor.libraryEdit}
                 </Link>
               )}
-              {asset.viewUrl && (
+              {asset.kind === "video" || asset.kind === "image" || asset.kind === "audio" ? (
+                // Two addresses, never one: the master and its lighter preview (lib/libraryDownload.ts).
+                <AssetDownloads
+                  key={`dl:${asset.id}`}
+                  assetId={asset.id}
+                  preview={previewVariantFor(asset) !== null ? "ready" : asset.kind === "video" ? "missing" : "none"}
+                  width={asset.width}
+                  height={asset.height}
+                />
+              ) : null}
+              {/* A picture with no lighter copy, or a sound, is shown as itself, as it always was: open it in a tab. */}
+              {asset.viewUrl && previewVariantFor(asset) === null && asset.kind !== "video" && (
                 <a
                   href={asset.viewUrl}
                   target="_blank"

@@ -69,6 +69,8 @@ const MAP_TALL = 176;
 const FOCUS_Y = 120;
 /** Where the app's header offers this page its bar (components/Header.tsx, Studio only). */
 export const BAR_SLOT_ID = "studio-bar-slot";
+/** The project last opened on the Timeline, in this browser (localStorage), so the view toggle can return to it. */
+export const TIMELINE_FILM_KEY = "ns.studio.timeline.film";
 
 const makeId = () => {
   try {
@@ -1109,6 +1111,7 @@ export function ProjectBar({
   view,
   title,
   sub,
+  filmId,
 }: {
   filmStudio: boolean;
   onSearch?: () => void;
@@ -1117,6 +1120,8 @@ export function ProjectBar({
   /** The Timeline names the project it shows; the canvas is the person's sketch. */
   title?: string;
   sub?: string;
+  /** The project the Timeline has open: the toggle keeps it, so switching views never drops it. */
+  filmId?: string | null;
 }) {
   // The key a person actually presses: ⌘ on a Mac, Ctrl elsewhere (read after hydration, so the server's render is stable).
   const [mac, setMac] = useState(true);
@@ -1125,6 +1130,18 @@ export function ProjectBar({
   const c = t.studioCanvas;
   const path = useChannelPath();
   const { operator, features } = useShell();
+  // The Timeline opens the project last opened there (this browser only) when the canvas has none of its own.
+  const [lastFilm, setLastFilm] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(TIMELINE_FILM_KEY);
+      setLastFilm(v && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
+    } catch {
+      setLastFilm(null);
+    }
+  }, []);
+  const film = filmId ?? lastFilm;
+  const timelineHref = path(film ? `/studio?view=timeline&film=${film}` : "/studio?view=timeline");
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1155,6 +1172,8 @@ export function ProjectBar({
           <div className="cv-pop" role="menu" aria-label={c.switcher}>
             <p className="cv-pop-h">{c.views}</p>
             <MenuLink href={path("/studio")} icon={<Check aria-hidden className="size-4" />} label={c.viewCanvas} current={view === "canvas"} />
+            {/* The Canvas|Timeline toggle is desk-only; on a phone the Timeline is reached from here. */}
+            <MenuLink href={timelineHref} icon={<AlignLeft aria-hidden className="size-4" />} label={c.timeline} current={view === "timeline"} testid="menu-timeline" />
             <MenuLink href={path("/studio?shelf=videos")} icon={<Film aria-hidden className="size-4" />} label={c.viewVideos} />
             <MenuLink href={path("/studio?shelf=projects")} icon={<ICONS.editor aria-hidden className="size-4" />} label={c.viewEditor} />
             {filmStudio && <MenuLink href={path("/create/projects")} icon={<Projector aria-hidden className="size-4" />} label={c.projects} sub={c.projectsSub} testid="menu-projects" />}
@@ -1170,7 +1189,7 @@ export function ProjectBar({
         <Link href={path("/studio")} aria-current={view === "canvas" ? "page" : undefined} data-testid="view-canvas">
           <GitBranch aria-hidden className="size-4" /> {c.viewCanvas}
         </Link>
-        <Link href={path("/studio?view=timeline")} aria-current={view === "timeline" ? "page" : undefined} data-testid="view-timeline">
+        <Link href={timelineHref} aria-current={view === "timeline" ? "page" : undefined} data-testid="view-timeline">
           <AlignLeft aria-hidden className="size-4" /> {c.timeline}
         </Link>
       </div>
