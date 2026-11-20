@@ -66,3 +66,20 @@ whole business together for one period; slice d will reuse the margin report's c
 - **Credits charged** are unknown, not 0, for jobs that carry no charge (running, or paid from the API balance).
 - **What the audit does not cover.** The export log records files built by the hub. The owner's own session can still call the
   read functions directly through the API; that is the owner reading their own data, and is not a file leaving the building.
+
+## Costs & profit (slice d, migration 0183)
+
+| Figure | Source | When it is unknown |
+| :-- | :-- | :-- |
+| Provider spend | `creative_job_costs.usd_estimate` (priced when the job ran), pipeline `video_costs` | A cost row with no price: counted, never added; the total is a floor and profit is unknown |
+| Balances | `provider_balances`: `api` rows from the balance worker, `manual` rows typed by the owner | No row: "no balance on record". A manual row is badged "entered by owner on <date>" |
+| Monthly costs | `owner_cost_entries`, typed by the owner per month and category | A month with no entry is "not entered": its operating result is unknown |
+| Gross profit | net revenue (before provider fees) − customer provider spend | Either side unknown |
+| Operating result | gross profit − internal spend − entered costs, per calendar month | Any part unknown |
+
+Balance APIs, checked against official docs on 2026-11-20 (docs only, not called): a balance endpoint is documented for
+ElevenLabs (a character quota, not money), Runway, xAI, BFL, Vidu, Luma (legacy docs), Kling (resource packs), Recraft, Pika and
+fal.ai. None is documented for Gemini/AI Studio, OpenAI, BytePlus ModelArk, MiniMax, LTX, Ideogram, Krea or Replicate.
+Alibaba exposes only an account-level billing API. Leonardo's reference page could not be re-read. The balance worker
+(`modules/provider_balance.py`) reads ElevenLabs, Leonardo and Runway today. For everyone else, the owner enters a balance by
+hand. Units stay the provider's own and are never converted.

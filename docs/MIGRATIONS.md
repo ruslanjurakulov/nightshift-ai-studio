@@ -1995,3 +1995,16 @@ its reads. Read-only over existing tables, plus one log of its own.
 - **Without it.** The hub says it needs 0182 and shows no figure; exports are refused.
 - Lab: `tests/security/sec_owner_analytics_0182.py`, `tests/security/test_sec_owner_analytics.py`. Rollback:
   `docs/sql/rollback_0182_owner_analytics.sql`.
+
+## Owner analytics: costs, balances and the owner's monthly costs (0183)
+
+0183 (`0183_owner_costs.sql`) gives the hub's Costs & profit tab its reads and the owner's two inputs. No value is in the file.
+
+- **Provider spend.** `owner_analytics_provider_spend(from, to)`: `creative_job_costs` (0037) and the pipeline's `video_costs` (0002)
+  by Tashkent day, provider and model — rows, the sum of the priced ones, and how many were unpriced (unknown, never 0). Internal
+  workspaces (0182) and the pipeline are flagged internal.
+- **Balances.** `owner_analytics_balances()`: the newest `provider_balances` row per provider and metric, with `source` (api /
+  manual). `owner_analytics_balance_enter()` stores an owner-typed balance as `source = 'manual'`. Nothing calls a provider.
+- **Monthly costs.** `owner_cost_entries` (closed), written by `owner_analytics_cost_add / _delete`, read by `owner_analytics_costs`.
+- **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
+- Lab: `tests/security/sec_owner_costs_0183.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0183_owner_costs.sql`.

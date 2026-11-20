@@ -155,3 +155,6 @@
 /* A chip inside an export row keeps the chip's look and size: .oa-export a would otherwise win on specificity. */
 .oa-export .oa-chip { min-height: 36px; border-radius: 999px; padding: 6px 12px; }
 .oa-plot { overflow: hidden; }
+.oa-slider select {
+  background: var(--oa-surface); color: var(--oa-ink); border: 1px solid var(--oa-rule); border-radius: 8px; padding: 6px 8px; min-height: 36px;
+}
