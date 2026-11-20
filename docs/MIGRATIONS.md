@@ -2051,3 +2051,16 @@ and nothing fetches one.
 - **Requires** 0182 and 0184. Lab: `tests/security/sec_owner_fx_0185.py`, `test_sec_owner_fx.py`, `test_sec_breach_owner_fx.py`.
 - **Rollback:** `docs/sql/rollback_0185_owner_fx_rates.sql`. It drops the table and its functions: every frozen rate is lost
   (files already exported keep the rate they were made with).
+
+## Trend templates, second set: the "viral" category (0186)
+
+0186 (`0186_viral_templates.sql`) widens `creative_templates.category` to include `'viral'` and seeds ten more formats: seven
+"Trending effects" (treasure strike, object morph, giant-hand makeover, scale shock, water revival, language-duo podcast and its
+cover), a holiday sale ad and a sale story poster (business), and a 3D family moment (story). Additive: the CHECK is dropped and
+re-added with every old value kept; no table, function or grant changes.
+
+- **Why these.** Chosen from an outlier search on 2026-11-20 (AI-made Reels/TikTok posts far above their own account's median)
+  and a language-duo series the owner collected. Formats only: nothing from those posts is copied, and no view count is shown.
+- **Seed rules as 0183.** A row lands only if its model is in `model_registry`; `on conflict (slug) do nothing`, so re-applying
+  never undoes an owner's edit. Media are static files under `public/templates/<slug>/`, listed in the manifest.
+- Rollback: `docs/sql/rollback_0186_viral_templates.sql` (deletes the ten seed rows, restores the four-value CHECK).
