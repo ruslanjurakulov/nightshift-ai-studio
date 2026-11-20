@@ -40,7 +40,7 @@ def test_the_list_follows_sellable_models_when_a_model_is_switched_off(conn):
         with acting(conn, ANON) as s:
             now = {r[0] for r in s.rows("select display_name from public.public_models_on_sale()")}
         assert names[0] not in now
-        assert now == set(names[1:])  # nothing else changed
+        # (only that one: another model could share its credit unit, so the rest is not asserted)
 
 
 def test_sellable_models_itself_stays_closed_to_anon(conn):

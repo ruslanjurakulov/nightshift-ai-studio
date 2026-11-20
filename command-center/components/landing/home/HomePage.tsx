@@ -11,6 +11,10 @@ import { buttonClass } from "@/components/ds/button-class";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { PriceBlock } from "@/components/landing/PriceBlock";
+import { Faq } from "@/components/landing/Faq";
+import { GoogleData } from "@/components/landing/Landing";
+import { AutopilotDemo } from "@/components/site/AutopilotDemo";
+import type { PackExpiry } from "@/lib/plans";
 import { HERO_JOB, reelItem, reelItems } from "@/components/landing/home/home-reel";
 import "@/components/landing/home/home.css";
 
@@ -33,6 +37,8 @@ export function HomePage({
   rates,
   models,
   oauthLive,
+  expiry,
+  dodo,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -42,6 +48,10 @@ export function HomePage({
   models: PublicModel[] | null;
   /** MCP_OAUTH_LIVE: whether Claude and ChatGPT can connect today (lib/mcp-oauth.ts). */
   oauthLive: boolean;
+  /** How long top-up credits last (lib/plans.ts packExpiry), for the FAQ; app/page.tsx's FAQPage JSON-LD reads the same. */
+  expiry: PackExpiry;
+  /** Dodo Payments sells here: the FAQ names it as the seller. */
+  dodo: boolean;
 }) {
   const h = t.landingHome;
   const hero = reelItem(HERO_JOB);
@@ -51,12 +61,17 @@ export function HomePage({
       <Hero t={t} />
       <Reel t={t} />
       <How t={t} />
+      {/* The stages of one real run, each with its real file (id="autopilot": /solutions links here). */}
+      <AutopilotDemo copy={t.site.autopilot.demo} />
       {models && models.length > 0 && <Models h={h} models={models} />}
       <Mcp h={h} live={oauthLive} />
       <section id="pricing" aria-label={t.site.pricingTeaser.title} className="hm-pricing">
         <PriceBlock t={t} locale={locale} teaser={pricing} rates={rates} />
       </section>
       <Trust t={t} />
+      {/* id="faq" and, in its aside, id="google-data": the statement Google's OAuth reviewers read on the home page
+          (docs/GOOGLE_OAUTH_VERIFICATION.md); the footer links to both on every public page. */}
+      <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} dodo={dodo} />
       <Final h={h} />
     </div>
   );
@@ -80,7 +95,6 @@ function Hero({ t }: { t: Dictionary }) {
             alt=""
             className="hm-hero-still"
             fetchPriority="high"
-            decoding="async"
           />
           <ShowcaseClip jobId={item.e.jobId} compact={false} early />
         </div>
@@ -124,7 +138,7 @@ function Reel({ t }: { t: Dictionary }) {
         </h2>
         <p className="hm-muted">{h.reelNote}</p>
       </div>
-      <ul className="hm-reel-row" aria-label={h.reelLabel}>
+      <ul className="hm-reel-row" aria-labelledby="hm-reel-title">
         {items.map(({ e, f }) => (
           <li key={e.jobId} className="hm-reel-card">
             <div className="hm-reel-pic" data-clip="sample" style={{ aspectRatio: `${e.width} / ${e.height}` }}>
@@ -139,7 +153,10 @@ function Reel({ t }: { t: Dictionary }) {
                 className="hm-reel-still"
               />
               <ShowcaseClip jobId={e.jobId} together />
-              <span className="hm-badge hm-reel-badge">{h.ai}</span>
+              {/* The picture's own description already says it is AI-generated; the badge is for the eye. */}
+              <span className="hm-badge hm-reel-badge" aria-hidden="true">
+                {h.ai}
+              </span>
             </div>
           </li>
         ))}

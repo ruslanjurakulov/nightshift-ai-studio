@@ -18,7 +18,7 @@ export const homeUz: HomeDictionary = {
     steps: [
       { id: "idea", label: "Gʻoya", title: "Tasvirlang", body: "Nima kerakligini yozing yoki shablondan boshlang. Oʻzingizning rasm yoki ovozingiz boʻlsa, qoʻshing." },
       { id: "create", label: "Yaratish", title: "Yarating", body: "Sotuvdagi modellardan rasm, klip va ovoz; har birining narxi boshlanishidan oldin tugmasida." },
-      { id: "export", label: "Eksport", title: "Oling", body: "Tayyor videoni yuklab oling yoki kanalingizga yuboring. Yuklangan videolar siz tasdiqlamaguningizcha yopiq qoladi." },
+      { id: "export", label: "Eksport", title: "Oling", body: "Tayyor videoni yuklab oling yoki kanalingizga yuboring. YouTube’ga yuklangan videolar sukut boʻyicha yopiq." },
     ],
   },
   models: {

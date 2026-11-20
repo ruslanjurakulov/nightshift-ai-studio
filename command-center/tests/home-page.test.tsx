@@ -31,6 +31,8 @@ import { HERO_JOB, REEL_JOBS, reelItem } from "@/components/landing/home/home-re
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { parsePublicModels } from "@/lib/public-models";
+import { packExpiry } from "@/lib/plans";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 
 afterEach(cleanup);
 
@@ -38,7 +40,7 @@ const ANNOUNCED = { kind: "announced" } as const;
 
 function page(code: (typeof LOCALES)[number]["code"], opts: { models?: Parameters<typeof HomePage>[0]["models"]; live?: boolean } = {}) {
   const t = dictionaries[code];
-  return render(<HomePage t={t} locale={code} pricing={ANNOUNCED} rates={null} models={opts.models ?? null} oauthLive={opts.live ?? false} />);
+  return render(<HomePage t={t} locale={code} pricing={ANNOUNCED} rates={null} models={opts.models ?? null} oauthLive={opts.live ?? false} expiry={packExpiry(null, CREDIT_EXPIRY_MONTHS)} dodo={false} />);
 }
 
 describe("the landing's pictures are our own Studio's", () => {
@@ -158,6 +160,13 @@ describe("trust and safety", () => {
       expect(screen.getByText(words)).toBeTruthy();
     }
     expect(screen.getByRole("link", { name: new RegExp(dictionaries[code].landingHome.trust.more) }).getAttribute("href")).toBe("/trust");
+  });
+});
+
+describe("the anchors other pages link to stay on the home page", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: #faq, #google-data (OAuth reviewers read it) and #autopilot exist", (code) => {
+    const { container } = page(code);
+    for (const id of ["faq", "google-data", "autopilot", "how", "pricing"]) expect(container.querySelector(`#${id}`), id).not.toBeNull();
   });
 });
 

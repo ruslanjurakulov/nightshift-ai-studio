@@ -3,7 +3,8 @@
  *
  * Claims, each checked against the code (change the code, change the sentence):
  *  - "the price is on the button before anything starts": the Studio quotes every job before it runs (creative_price, PriceButton).
- *  - "uploads go out private until you approve": CLAUDE.md rule 2, config.YOUTUBE_PRIVACY, /trust "Publishing".
+ *  - "YouTube uploads are private by default": CLAUDE.md rule 2, config.YOUTUBE_PRIVACY, /trust "Uploads are private by default".
+ *    Never "until you approve": Approve alone does not change privacy (tests/approve-copy-truth.test.ts).
  *  - the MCP lines: the two states of MCP_OAUTH_LIVE (lib/mcp-oauth.ts), worded as /mcp words them (lib/i18n/site/dev-en.ts).
  *  - the model strip: migration 0187 public_models_on_sale; nothing is drawn when it cannot be read.
  * The trust section quotes /trust (t.site.trust) rather than paraphrasing it, so the two cannot disagree.
@@ -27,7 +28,7 @@ export const homeEn = {
     steps: [
       { id: "idea", label: "Idea", title: "Describe it", body: "Type what you want, or start from a template. Add a picture or a voice of your own if you have one." },
       { id: "create", label: "Create", title: "Make it", body: "Pictures, clips and voice from the models on sale, each priced on its button before it starts." },
-      { id: "export", label: "Export", title: "Take it out", body: "Download the finished video, or send it to your channel. Uploads stay private until you approve them." },
+      { id: "export", label: "Export", title: "Take it out", body: "Download the finished video, or send it to your channel. YouTube uploads are private by default." },
     ],
   },
   models: {

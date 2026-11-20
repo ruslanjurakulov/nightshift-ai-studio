@@ -266,7 +266,10 @@
    values, so the whole page is one look in either theme and no other public page changes. Unlayered on purpose: the shell's
    own declarations sit in @layer components (site.css), and a token resolved at :root (--color-bg: var(--ns-ground)) has to be
    redeclared here, not just its source, because a var() resolves where it is declared. */
-.st:has(.hm-root) {
+.st:has(.hm-root),
+/* Again inside a dark box (the hero, the closing band): a var() resolves where it is declared, so the remap on .st carries the
+   page's theme and a dark box would inherit light values (the hero's pause key drew grey on navy). */
+.st:has(.hm-root) [data-theme-scope="dark"] {
   --ns-ground: var(--ds-bg);
   --ns-console: var(--ds-surface-1);
   --ns-key: var(--ds-surface-2);
@@ -313,6 +316,9 @@
   --color-accent-soft: var(--ds-accent-soft);
   --cta-base: var(--ds-accent-solid);
   --cta-fg: var(--ds-on-accent);
+}
+/* The shell's own ground (only the shell: a dark box keeps its own background, the closing band its gradient). */
+.st:has(.hm-root) {
   background: var(--ds-bg);
   color: var(--ds-text);
 }

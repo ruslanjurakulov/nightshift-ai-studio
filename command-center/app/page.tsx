@@ -19,6 +19,10 @@ import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { HomePage } from "@/components/landing/home/HomePage";
+import { faqForSale, landingFaqItems } from "@/components/landing/Faq";
+import { faqPageJsonLd } from "@/lib/studio-page";
+import { packExpiry } from "@/lib/plans";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { readPublicModelsOnSale } from "@/lib/server/public-models";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { mcpOauthLive } from "@/lib/mcp-oauth";
@@ -75,13 +79,27 @@ export default async function Home() {
     description: t.landing.meta.description,
     url: runtimeSiteOrigin(),
   });
+  // The questions the page itself shows (Faq.tsx), as the same plain text, so the structured answer cannot differ from the visible one.
+  const expiry = packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS);
+  const dodo = Boolean(resolved.dodo);
+  const faqLd = faqPageJsonLd(faqForSale(landingFaqItems(t.landing.faq, dodo), pricing.kind === "plans", t.site.packsOnly, expiry));
   const graphLd = siteGraphJsonLd({ name: t.brand.name, origin: runtimeSiteOrigin() });
 
   return (
     <PublicShell t={t} fresh>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       {graphLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(graphLd) }} />}
-      <HomePage t={t} locale={locale} pricing={pricing} rates={priceRatesFrom(anchor)} models={models} oauthLive={mcpOauthLive()} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(faqLd) }} />
+      <HomePage
+        t={t}
+        locale={locale}
+        pricing={pricing}
+        rates={priceRatesFrom(anchor)}
+        models={models}
+        oauthLive={mcpOauthLive()}
+        expiry={expiry}
+        dodo={dodo}
+      />
     </PublicShell>
   );
 }
