@@ -1,17 +1,21 @@
 -- 0191 — Trend templates, second set: the formats that are pulling the most views on Reels and TikTok right now.
 --
 -- WHY. 0181 seeded the everyday formats (a product ad, a before/after, a food reveal). What makes a person open an AI studio is
--- usually an EFFECT they just saw in their feed and want for themselves. This adds a "viral" category and eight formats chosen
+-- usually an EFFECT they just saw in their feed and want for themselves. This adds a "viral" category and ten formats chosen
 -- from measurement, not taste: on 2026-11-20 an outlier search (vidIQ, Instagram and TikTok, last 30 days, at least 100k views)
 -- ranked AI-made posts by how far they out-performed their own account's median. The formats kept here each had at least one
 -- such post far above its account's median (for example: a pickaxe strike that bursts a wall into gold, 4.2M views at 656x the
 -- account median; a hand-held object morphing into a living creature, 4.0M at 160x; a calm boat shot over a vast creature
--- below, 3.5M at 813x; a single product photo turned into a seasonal ad, 3.0M). These are FORMATS only: no account, person,
+-- below, 3.5M at 813x; a single product photo turned into a seasonal ad, 3.0M). The two "language duo" rows follow a series the
+-- owner collected the same day across Arabic, Darija, Kazakh, Tajik, Russian and Spanish: two characters at podcast mics, one
+-- asks how to say a word, the other answers in their language. MiniMax H3 speaks the dialogue written into the prompt (measured:
+-- a speech-to-text pass over the preview returns the prompt's lines), so the format needs no separate voice or lip-sync model.
+-- These are FORMATS only: no account, person,
 -- brand, character, script or audio from those posts is copied, and no view count is shown to customers as a promise.
 --
 -- WHAT IT ADDS (it replaces nothing)
 --   creative_templates.category      'viral' joins the allowed list (the CHECK is dropped and re-added with the old values kept).
---   eight seed rows                   five 'viral', two 'business', one 'story'; each written for a model on sale at the time of
+--   ten seed rows                     seven 'viral', two 'business', one 'story'; each written for a model on sale at the time of
 --                                    writing (MiniMax H3 / H3 Max for video, Ideogram 4.5 for the poster).
 --
 -- MEDIA. As in 0181: each preview is a static app file made in our own Studio (public/templates/<slug>/), listed in
@@ -97,7 +101,23 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      'Vertical story poster for a {occasion} sale. A big bold headline that reads "{headline}" and a smaller line that reads "{offer}". {product} as a crisp studio hero shot, a dramatic black and {accent_color} design with light streaks, a modern premium layout with clear hierarchy, sharp readable typography, no logos.',
      'ideogram-4.5', '9:16', null, 'high',
      '{"layout":"headline top, hero centre, offer below","palette":"black and one accent","type":"bold condensed sans-serif"}',
-     35)
+     35),
+    ('language-duo-podcast',
+     '{"en":"Language duo podcast","ru":"Языковой дуэт-подкаст","uz":"Til dueti podkasti"}',
+     '{"en":"Two characters at podcast mics: one asks how to say a word, the other answers in their language. The characters speak your lines out loud.","ru":"Два персонажа у подкаст-микрофонов: один спрашивает, как сказать слово, другой отвечает на своём языке. Персонажи произносят ваши реплики вслух.","uz":"Podkast mikrofonlari oldida ikki personaj: biri soʻzni qanday aytishni soʻraydi, ikkinchisi oʻz tilida javob beradi. Personajlar gaplaringizni ovoz chiqarib aytadi."}',
+     'viral', 'video',
+     'Vertical 2D storybook illustration animation, warm watercolour texture on a beige background, a close medium two-shot where two cute chibi characters with big heads fill most of the frame from the bottom edge up, each wearing studio headphones with a podcast microphone on a boom arm in front of the mouth. On the left, {host}. On the right, {native}. The left character leans in and asks in English: "{language} is easy, right? How do you say {word_question}?" The right character answers calmly into the microphone: "{answer}." The left character grins and repeats "{answer}... easy!" Simple mouth movements synced to the speech, gentle head bobs, static framing, clear studio voices, a soft lo-fi beat underneath, no subtitles.',
+     'minimax-h3', '9:16', 10, '768p',
+     '{"camera":"static close two-shot","lighting":"flat warm storybook","mood":"deadpan comedy","pacing":"question, answer, callback","audio":"spoken dialogue, soft beat"}',
+     0),
+    ('language-duo-cover',
+     '{"en":"Language duo cover","ru":"Обложка языкового дуэта","uz":"Til dueti muqovasi"}',
+     '{"en":"The cover for a language-comedy series: two charming characters at their mics and your headline.","ru":"Обложка для серии языковых скетчей: два обаятельных персонажа у микрофонов и ваш заголовок.","uz":"Til haqidagi hajviy turkum uchun muqova: mikrofon oldida ikki yoqimli personaj va sizning sarlavhangiz."}',
+     'viral', 'image',
+     'Vertical cover for a short language-comedy video, 2D storybook illustration with warm watercolour texture on a beige parchment background. Two cute chibi characters with big heads, each wearing studio headphones at a podcast microphone: on the left {host}; on the right {native}. A clean headline at the top in a bold friendly serif that reads "{language} is easy, right?". Cosy, charming, consistent character design, generous empty space, no logos.',
+     'ideogram-4.5', '9:16', null, 'high',
+     '{"layout":"headline top, duo below","palette":"warm beige watercolour","type":"bold friendly serif"}',
+     6)
   ) as v(slug, title, description, category, kind, prompt_template, model_id, aspect, duration_s, quality, director, sort)
   join public.model_registry m on m.id = v.model_id
 on conflict (slug) do nothing;

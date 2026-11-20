@@ -31,6 +31,14 @@
     "preview": true,
     "poster": true
   },
+  "language-duo-cover": {
+    "preview": false,
+    "poster": true
+  },
+  "language-duo-podcast": {
+    "preview": true,
+    "poster": true
+  },
   "object-morph": {
     "preview": true,
     "poster": true

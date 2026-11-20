@@ -156,7 +156,7 @@ describe("migration 0191's seed (the viral set)", () => {
 
   it("uses only the models on sale when it was written", () => {
     const onSale = ["minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max", "ideogram-3", "ideogram-4", "ideogram-4.5"];
-    expect(seeded.length).toBe(8);
+    expect(seeded.length).toBe(10);
     for (const m of seeded) expect(onSale).toContain(m);
   });
 
@@ -167,7 +167,7 @@ describe("migration 0191's seed (the viral set)", () => {
   it("seeds only categories the gallery can draw a chip for, in every language", async () => {
     const { TEMPLATE_CATEGORIES } = await import("@/lib/templates/trends");
     const { trendsEn } = await import("@/lib/i18n/trends/en");
-    expect(categories.length).toBe(8);
+    expect(categories.length).toBe(10);
     for (const c of categories) {
       expect(TEMPLATE_CATEGORIES as readonly string[]).toContain(c);
       expect((trendsEn.categories as Record<string, string>)[c], c).toBeTruthy();
