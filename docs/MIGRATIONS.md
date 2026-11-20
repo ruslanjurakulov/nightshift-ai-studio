@@ -1969,3 +1969,25 @@ makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.
   shape fails closed, workflows refused before any hold, the API's answer, replay, rollback keeping the record, and the 0075
   replay hazard), the lab's isolation suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py`
   (each body is the earlier one plus inserted 0174 blocks only; pins), `command-center/tests/rights-acknowledgement*.test.ts(x)`.
+
+## Owner analytics hub: owner-only reads of money, people, activity and jobs (0182)
+
+0182 (`0182_owner_analytics.sql`) gives the platform owner's analytics hub (`/{channel}/owner-analytics`, `docs/OWNER_ANALYTICS.md`)
+its reads. Read-only over existing tables, plus one log of its own.
+
+- **Who.** Every function checks `owner_analytics_is_owner()` (signed in and `platform_role() = 'owner'`) before it reads or looks
+  at an argument, and raises 42501 otherwise — a platform **admin** is refused too. Execute is granted to `authenticated` only.
+  `owner_analytics_sales_all()` is internal (no API role may execute it).
+- **Money.** `owner_analytics_money(from, to)`: each credited sale (one row per payment, a webhook retry is not a second sale),
+  classified plan / pack / api_topup / unknown, initial / renewal when the record says (else null), and each refund and dispute.
+  Amounts as the provider reported them; null stays null. `fee_minor` is always null: no webhook stores a provider fee. The
+  operator's own workspace is returned with `internal = true`.
+- **People.** `owner_analytics_people()`: opaque ids only (no e-mail, no name), signup, last sign-in, locale, acquisition when
+  recorded (referral / invite), the funnel milestones and the first plan.
+- **Activity and jobs.** `owner_analytics_activity(from, to)` (distinct Tashkent day × person, ≤ 400 days, the roster left out) and
+  `owner_analytics_jobs(from, to)` (grouped counts, credits charged, timed seconds).
+- **Export log.** `owner_analytics_exports` (RLS on, no policy, no grant), written only by `owner_analytics_record_export()` with the
+  actor pinned to `auth.uid()`, read by `owner_analytics_export_log()`. The export route records before it builds the file.
+- **Without it.** The hub says it needs 0182 and shows no figure; exports are refused.
+- Lab: `tests/security/sec_owner_analytics_0182.py`, `tests/security/test_sec_owner_analytics.py`. Rollback:
+  `docs/sql/rollback_0182_owner_analytics.sql`.
