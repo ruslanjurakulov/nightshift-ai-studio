@@ -27,7 +27,12 @@ CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 #: The models a reviewed change has switched on for connected assistants, each with the vendor terms that allow it. Empty: every
 #: model is off until a separate review of its vendor's terms says "the same end user, through their own assistant" is allowed.
 #: Adding an id here is that review's change, never a default.
-REVIEWED_FOR_ASSISTANTS: dict = {}
+REVIEWED_FOR_ASSISTANTS: dict = {
+    # Recraft support's written confirmation (email of 2026-11-17/18): our own signed-in users, in the web studio and through our MCP
+    # connector, on our credits; not the public developer API (api_exposure web_mcp, migration 0180, keeps /api/v1 off).
+    "recraft-v4.1": "2026-11-17/18",
+    "recraft-v4.1-flash": "2026-11-17/18",
+}
 
 DOORS = {
     "oauth_creative_models": ("public.oauth_creative_models(text, text, text)", "oauth.creative.models"),
@@ -66,6 +71,12 @@ class EveryModelIsOff(unittest.TestCase):
     def test_no_model_in_the_registry_is_offered_to_assistants_without_a_review(self):
         on = sorted(m["id"] for m in REGISTRY["models"] if m.get("mcp_oauth_exposure") is True)
         self.assertEqual(on, sorted(REVIEWED_FOR_ASSISTANTS), "a model offered to connected assistants needs its vendor-terms review here")
+
+    def test_each_model_on_for_assistants_cites_its_review_and_stays_off_the_public_api(self):
+        by_id = {m["id"]: m for m in REGISTRY["models"]}
+        for mid, when in REVIEWED_FOR_ASSISTANTS.items():
+            self.assertIn(when, " ".join(by_id[mid]["terms_notes"]), mid)
+            self.assertNotEqual(by_id[mid]["api_exposure"], "any", mid)   # an assistant's permission is not a developer's
 
     def test_the_migration_turns_nothing_on(self):
         self.assertNotRegex(CODE, r"update public\.model_registry|sync_model_registry|insert into public\.model_registry")
