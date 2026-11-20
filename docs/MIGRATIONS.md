@@ -2003,3 +2003,17 @@ pictures, an @character's pictures, and a film clip's uploaded first frame.
 - **Not changed.** Who may see a job or a video, every price, hold and publish rule.
 - **Undo.** `docs/sql/rollback_0189_job_video_and_list_order.sql` (owner-applied): the three earlier bodies back verbatim; the
   `result_slug` column and its values stay.
+
+## Recraft: the web and our MCP connector, never the public API (0180)
+
+`0180_recraft_web_mcp.sql` adds a third registry exposure, `web_mcp`. A model with it is sold on the web and to the `mcp` surface (our own
+signed-in connector), never to `api` (the public developer API). Recraft V4.1 and V4.1 Flash carry it after Recraft support's written
+confirmation (email of 2026-11-17/18), which covers the web studio and our MCP connector but not /api/v1.
+
+- **Change.** `sellable_models` (0125's body): only `any` opens `api`; `web_mcp` opens `mcp`; any other value opens the web alone (fail
+  closed). `api_creative_model_ok` (0124's body): the "temporarily off" word is for `any` models only.
+- **Beta is guarded.** Both Recraft rows go hidden → beta only where the verified probe is a passed run of the vendor model the registry
+  names now (Flash is `recraftv4_1_flash_v2`). Without one nothing changes: dispatch `.github/workflows/probe_models.yml` with the model
+  id, then apply 0180 again. A sale still needs the owner's `credit_prices` rows.
+- **Not yet reachable over MCP.** No MCP tool asks for the `mcp` surface until the connector's creative tools land (a separate PR).
+- **Undo.** `docs/sql/rollback_0180_recraft_web_mcp.sql`: refuses while a model is `web_mcp` (it would reopen the API).

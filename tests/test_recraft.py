@@ -102,29 +102,31 @@ class RegistryEntryTests(unittest.TestCase):
     def test_the_two_models_are_registered_on_the_recraft_adapter(self):
         self.assertEqual({mid: (self.r[mid].adapter, self.r[mid].provider, self.r[mid].vendor_model) for mid in IDS},
                          {V41: ("image.recraft", "recraft", "recraftv4_1"),
-                          FLASH: ("image.recraft", "recraft", "recraftv4_1_flash")})
+                          FLASH: ("image.recraft", "recraft", "recraftv4_1_flash_v2")})
         for mid in IDS:
             self.assertEqual(self.r[mid].capabilities, ("t2i",), mid)       # raster text-to-image only
             self.assertFalse(self.r[mid].is_async, mid)
 
-    def test_none_of_them_can_be_sold_until_a_person_has_decided_the_terms_questions(self):
+    def test_the_terms_question_was_decided_in_writing_web_and_mcp_never_the_public_api(self):
+        # Recraft support's written confirmation (2026-11-17/18) opened the gate for our own web studio and MCP connector only:
+        # api_exposure web_mcp keeps both off /api/v1 (migration 0180's sellable_models), and the earlier reading stays quoted.
         for mid in IDS:
             e = self.r[mid]
-            self.assertEqual(e.terms_gate, "terms_review_required", mid)
-            self.assertEqual(e.api_exposure, "web_only", mid)
+            self.assertIsNone(e.terms_gate, mid)
+            self.assertEqual(e.api_exposure, "web_mcp", mid)
             notes = " ".join(e.raw["terms_notes"])
+            self.assertIn("2026-11-17/18", notes, mid)
+            self.assertIn("NOT the public API (/api/v1)", notes, mid)
             self.assertIn("2026-10-20", notes, mid)                       # the Terms version that was read
             self.assertIn("3.7 No Substitution", notes, mid)
-            self.assertIn("in place of a new API call", notes, mid)
             self.assertIn("fresh call", notes, mid)
-            self.assertIn("3.2(x)", notes, mid)                           # why the gate is not open
             self.assertIn("may not be used to train", notes, mid)
-            self.assertIn("NOT verified", notes, mid)
 
-    def test_the_terms_gate_reaches_the_database_row(self):
+    def test_the_exposure_reaches_the_database_row(self):
         rows = {row["id"]: row for row in reg.sync_rows(list(self.r.values()))}
         for mid in IDS:
-            self.assertEqual(rows[mid]["spec"]["terms_gate"], "terms_review_required", mid)
+            self.assertEqual(rows[mid]["spec"]["api_exposure"], "web_mcp", mid)
+            self.assertFalse(rows[mid]["spec"].get("terms_gate"), mid)
 
     def test_no_migration_or_price_file_prices_them(self):
         units = [self.r[mid].credit_unit for mid in IDS]
@@ -205,10 +207,10 @@ class SubmitTests(VendorCase):
         self.assertEqual([r.path for r in self.vendor.requests], [GEN])
 
     def test_no_aspect_ratio_leaves_the_vendors_own_choice_and_the_flash_model_is_sent_by_name(self):
-        self.adapter().submit(t2i(aspect_ratio=None, image_size=None), "recraftv4_1_flash")
+        self.adapter().submit(t2i(aspect_ratio=None, image_size=None), "recraftv4_1_flash_v2")
         body = self.sent().json()
         self.assertNotIn("size", body)
-        self.assertEqual(body["model"], "recraftv4_1_flash")
+        self.assertEqual(body["model"], "recraftv4_1_flash_v2")
 
     def test_every_call_is_a_fresh_generation_never_a_replay_of_an_earlier_output(self):
         # Developer Terms 3.7: no service that hands out earlier outputs in place of a new API call.
@@ -227,7 +229,7 @@ class SubmitTests(VendorCase):
             (t2i(), "recraftv3", "not a Recraft model"),
             (t2i(), "", "not a Recraft model"),
             (t2i(image_size="2K"), "recraftv4_1", "image size 2K"),
-            (t2i(image_size="4K"), "recraftv4_1_flash", "image size 4K"),
+            (t2i(image_size="4K"), "recraftv4_1_flash_v2", "image size 4K"),
             (t2i(aspect_ratio="14:10"), "recraftv4_1", "aspect ratio"),       # a row of the size table left out on purpose
             (t2i(aspect_ratio="1024x1024"), "recraftv4_1", "aspect ratio"),
             (t2i(aspect_ratio="19.5:9"), "recraftv4_1", "aspect ratio"),
