@@ -113,6 +113,7 @@ export const studioTimelineEn = {
     run_slots_full: "All of your plan's parallel runs are in use. Nothing was held.",
     limit_reached: "Another project of this workspace is running. Nothing was held.",
     cap_exceeded: "This project costs more than the workspace allows. Nothing was held.",
+    acknowledgement_required: "A model of this project asks you to confirm your rights to one of its pictures (an uploaded frame, a reference, a character or the style kit). Confirm it once in the Studio (generate with that picture on a model that asks), or choose another model. Nothing was held.",
     other: "The server did not start the project. Nothing was held.",
   },
   addCredits: "Add credits",

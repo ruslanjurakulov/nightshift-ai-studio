@@ -1980,10 +1980,13 @@ pictures, an @character's pictures, and a film clip's uploaded first frame.
   (`rights_acknowledgement_subjects`: source, end, the kit's live pictures, every mentioned character's live pictures, with the worker's
   own @name rule). `reroute_creative_job` (0088's body, one marked hunk) skips a candidate the requester has not acknowledged for.
   `start_film` (0171's body, one marked hunk) returns `acknowledgement_required` after the re-pricing and before the hold
-  (`film_acknowledgement_missing`). Three new internal functions; no API role may call them.
+  (`film_acknowledgement_missing`, which also reads each scene's visual prompt for @names); the Timeline names the remedy.
+  `workflow_quote_steps` (0174's body, one marked hunk) refuses a step that sends kit or character pictures, before any hold.
+  `creative_job_style` (0048's body, one marked hunk) asks again when the job runs, so a picture added to a kit or character
+  after the job was created is never handed out unacknowledged. Three new internal functions; no API role may call them.
 - **Not changed.** Which models require an acknowledgement, every availability and price, quote_film (a quote holds nothing).
   Latent today: no model on sale requires one.
-- **Replay.** Replays onto itself. Re-running 0174 after it fails loudly; re-running 0088 or 0171 after it silently restores the old
+- **Replay.** Replays onto itself. Re-running 0174 after it fails loudly; re-running 0088, 0171 or 0048 after it silently restores the old
   body: apply 0179 again and run its Verify query.
-- **Undo.** `docs/sql/rollback_0179_rights_acknowledgement_inputs.sql` (owner-applied): the three earlier bodies back verbatim, the
-  three new functions dropped.
+- **Undo.** `docs/sql/rollback_0179_rights_acknowledgement_inputs.sql` (owner-applied): the five earlier bodies back verbatim, the
+  three new functions dropped. Roll 0179 back BEFORE 0174: rollback_0174 now refuses while 0179 is on.

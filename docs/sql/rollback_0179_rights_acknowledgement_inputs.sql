@@ -2,13 +2,14 @@
 -- about params.source_asset_id and params.end_asset_id of the model a job is created for.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK: 0174's rights_acknowledgement_missing, 0088's reroute_creative_job and 0171's start_film, verbatim, with their
+-- WHAT COMES BACK: 0174's rights_acknowledgement_missing and workflow_quote_steps, 0088's reroute_creative_job, 0171's start_film and
+--   0048's creative_job_style, verbatim, with their
 --   grants. The four holes 0179 closed (failover, style kit pictures, @character pictures, films) are open again: apply this only
 --   while no model on sale requires an acknowledgement (today only runway-gen4.5 and runway-gen4-turbo do, and neither is sold).
 -- WHAT IS LOST: rights_acknowledgement_subjects, rights_acknowledgement_missing_among and film_acknowledgement_missing.
 -- WHAT IS KEPT: every table and row (0179 changed none).
 --
--- REFUSES (changes nothing) if any of the three bodies is not 0179's: a later change would be undone.
+-- REFUSES (changes nothing) if any of the five bodies is not 0179's: a later change would be undone.
 
 begin;
 set local lock_timeout = '5s';
@@ -19,9 +20,11 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.rights_acknowledgement_missing(uuid, uuid, text, jsonb)', 'ff6645d1c02cb8d542a2156967534c33'),
+      ('public.rights_acknowledgement_missing(uuid, uuid, text, jsonb)', 'e7baea73e6c790ed3e8d01b797aa3732'),
       ('public.reroute_creative_job(uuid, text, text)', '9dfc81eb3e77555ee9e04c53b22c84e9'),
-      ('public.start_film(uuid, text, text)', '0cfb804e3e5d415957df0106b65ef75b')) v(sig, want) loop
+      ('public.start_film(uuid, text, text)', '0cfb804e3e5d415957df0106b65ef75b'),
+      ('public.workflow_quote_steps(public.workflows, jsonb)', '67c328c45c253481c2f41718aca0fcc7'),
+      ('public.creative_job_style(uuid, text)', 'a7395eb11514a2c8b0db2c08e991fffc')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0179: % is not 0179''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
@@ -336,11 +339,165 @@ begin
 end
 $$;
 
+-- workflow_quote_steps: 0174's body, verbatim (0174_rights_acknowledgement.sql).
+create or replace function public.workflow_quote_steps(p_wf public.workflows, p_values jsonb)
+  returns jsonb
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  st      record;
+  params  jsonb;
+  stand   text;
+  q       jsonb;
+  steps_  jsonb := '[]'::jsonb;
+  total   numeric := 0;
+  bad     integer[] := '{}';
+  chained boolean;
+  acc     public.credit_accounts;
+begin
+  for st in select v, ord from jsonb_array_elements(p_wf.steps) with ordinality as t(v, ord) loop
+    chained := exists (select 1 from jsonb_each(st.v -> 'params') e
+                        where jsonb_typeof(e.value) = 'object' and e.value ? '$step');
+    stand := null;
+    if chained then
+      select a.id::text into stand
+        from public.media_assets a
+       where a.org_id = p_wf.org_id and a.kind = 'image'
+         and a.deleted_at is null and a.purged_at is null
+         and public.creative_picture_problem(p_wf.org_id, a.id, 'source_asset_id') is null
+       order by a.created_at desc, a.id
+       limit 1;
+    end if;
+    params := public.workflow_fill_params(st.v -> 'params', p_values, stand);
+    begin
+      if chained and stand is null then
+        raise exception 'source_unavailable' using errcode = 'NS400';
+      end if;
+      -- 0174: a step whose model makes the person confirm their rights to its input cannot run in a workflow: an input an
+      -- earlier step makes does not exist yet, and a later step may run in another member's session. Refused before any
+      -- hold, at the quote and at the start (start_workflow_run); such a model is used from the Studio.
+      if cardinality(public.rights_acknowledgement_required(st.v ->> 'model')) > 0
+         and jsonb_typeof(st.v -> 'params') = 'object'
+         and (st.v -> 'params') ?| array['source_asset_id', 'end_asset_id'] then
+        raise exception 'acknowledgement_required' using errcode = 'NS400';
+      end if;
+      q := public.creative_price(p_wf.org_id, st.v ->> 'capability', st.v ->> 'model', params);
+      steps_ := steps_ || jsonb_build_array(jsonb_build_object(
+        'step_index', st.ord - 1, 'capability', st.v ->> 'capability', 'model', st.v ->> 'model',
+        'priced', true, 'credits', (q ->> 'credits')::numeric, 'unit', q ->> 'unit',
+        'quantity', (q ->> 'quantity')::numeric, 'chained', chained));
+      total := total + (q ->> 'credits')::numeric;
+    exception when others then
+      -- Never a zero: the step is unpriced and carries the database's own
+      -- machine word (unpriced, model_not_sellable, source_unavailable, …).
+      steps_ := steps_ || jsonb_build_array(jsonb_build_object(
+        'step_index', st.ord - 1, 'capability', st.v ->> 'capability', 'model', st.v ->> 'model',
+        'priced', false, 'credits', null,
+        'reason', case when sqlerrm ~ '^[a-z0-9_]{1,64}$' then sqlerrm else 'unpriced' end,
+        'chained', chained));
+      bad := bad || (st.ord - 1)::integer;
+    end;
+  end loop;
+  select * into acc from public.credit_accounts where org_id = p_wf.org_id;
+  return jsonb_build_object(
+    'workflow_id', p_wf.id, 'version', p_wf.version, 'steps', steps_,
+    'priced', cardinality(bad) = 0,
+    'total', case when cardinality(bad) = 0 then total end,
+    'unpriced_steps', to_jsonb(bad),
+    'exempt', public.credits_exempt(p_wf.org_id),
+    'available', case when public.credits_exempt(p_wf.org_id) then null
+                      else coalesce(acc.balance - acc.reserved, 0) end);
+end
+$$;
+
+-- creative_job_style: 0048's body, verbatim (0048_creative_style_inputs.sql).
+create or replace function public.creative_job_style(p_job uuid, p_worker text) returns jsonb
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  j       public.creative_jobs;
+  w       text := left(btrim(coalesce(p_worker, '')), 120);
+  problem text;
+  kit     jsonb := null;
+  chars   jsonb := '[]'::jsonb;
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'creative jobs are run by the platform''s worker only' using errcode = '42501';
+  end if;
+  select * into j from public.creative_jobs where id = p_job;
+  -- Read before the paid call only: once 'submitting' is recorded the request
+  -- has been built, and nothing is handed out again.
+  if not found or j.worker_id is distinct from w or j.status <> 'running'
+     or j.submit_started_at is not null then
+    return jsonb_build_object('ok', false, 'problem', 'the job is not this worker''s to start');
+  end if;
+  if j.capability not in ('t2i', 't2v', 'edit', 'i2v') then
+    return jsonb_build_object('ok', true, 'org_id', j.org_id, 'kit', null, 'characters', '[]'::jsonb);
+  end if;
+
+  if j.params ? 'style_kit_id' then
+    problem := public.creative_style_problem(j.org_id, j.capability, j.params);
+    if problem is not null then
+      return jsonb_build_object('ok', false, 'problem', problem);
+    end if;
+    select jsonb_build_object(
+             'id', k.id, 'org_id', k.org_id, 'description', k.description,
+             'references', coalesce((
+               select jsonb_agg(jsonb_build_object('asset_id', a.id, 'org_id', a.org_id, 'mime', a.mime,
+                                                   'variants', to_jsonb(a.variants))
+                                order by r.position)
+                 from public.style_kit_references r
+                 join public.media_assets a on a.id = r.asset_id
+                where r.kit_id = k.id and r.org_id = j.org_id and a.org_id = j.org_id
+                  and a.kind = 'image' and a.deleted_at is null and a.purged_at is null
+                  and (a.mime in ('image/jpeg', 'image/png', 'image/webp')
+                       or (a.mime in ('image/heic', 'image/heif') and 'display' = any (a.variants)))
+             ), '[]'::jsonb))
+      into kit
+      from public.style_kits k
+     where k.id = (j.params ->> 'style_kit_id')::uuid and k.org_id = j.org_id;
+  end if;
+
+  -- @names, as the worker reads them (modules/creative_style.py MENTION_RE):
+  -- '@' not preceded by a letter, digit, '_' or '@', then 2-32 of [A-Za-z0-9_]
+  -- not followed by another. Lower-cased: 0047 stores names lower-case.
+  with mentioned as (
+    select lower(m.x[1]) as name, min(m.o) as first_at
+      from regexp_matches(coalesce(j.params ->> 'prompt', ''),
+                          '(?:^|[^A-Za-z0-9_@])@([A-Za-z0-9_]{2,32})(?![A-Za-z0-9_])', 'g')
+           with ordinality as m(x, o)
+     group by lower(m.x[1])
+     order by min(m.o)
+     limit 16
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', c.id, 'org_id', c.org_id, 'name', c.name, 'description', c.description,
+           'references', coalesce((
+             select jsonb_agg(jsonb_build_object('asset_id', a.id, 'org_id', a.org_id, 'mime', a.mime,
+                                                 'variants', to_jsonb(a.variants))
+                              order by r.position)
+               from public.character_references r
+               join public.media_assets a on a.id = r.asset_id
+              where r.character_id = c.id and r.org_id = j.org_id and a.org_id = j.org_id
+                and a.kind = 'image' and a.deleted_at is null and a.purged_at is null
+                and (a.mime in ('image/jpeg', 'image/png', 'image/webp')
+                     or (a.mime in ('image/heic', 'image/heif') and 'display' = any (a.variants)))
+           ), '[]'::jsonb))
+         order by mentioned.first_at), '[]'::jsonb)
+    into chars
+    from mentioned
+    join public.characters c on c.name = mentioned.name and c.org_id = j.org_id;
+
+  return jsonb_build_object('ok', true, 'org_id', j.org_id, 'kit', kit, 'characters', chars);
+end
+$$;
+
 revoke all on function public.rights_acknowledgement_missing(uuid, uuid, text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function public.reroute_creative_job(uuid, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.reroute_creative_job(uuid, text, text) to service_role;
 revoke all on function public.start_film(uuid, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.start_film(uuid, text, text) to authenticated;
+revoke all on function public.workflow_quote_steps(public.workflows, jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.creative_job_style(uuid, text) from public, anon, authenticated, service_role;
+grant execute on function public.creative_job_style(uuid, text) to service_role;
 
 drop function if exists public.film_acknowledgement_missing(public.films, uuid);
 drop function if exists public.rights_acknowledgement_missing_among(uuid, uuid, text, text[]);
@@ -354,7 +511,9 @@ begin
   for r in select * from (values
       ('public.rights_acknowledgement_missing(uuid, uuid, text, jsonb)', '426ea90d162535b0ee6f10e752e5fe26'),
       ('public.reroute_creative_job(uuid, text, text)', '55d07640bb22798e2a74bb661ac4f8d0'),
-      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38')) v(sig, want) loop
+      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38'),
+      ('public.workflow_quote_steps(public.workflows, jsonb)', '8f9f42da9844571a18a285d87bcffc84'),
+      ('public.creative_job_style(uuid, text)', '75dec758272fcad658e1712fdc7f708e')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0179 end state: % is not the earlier body (md5 %)', r.sig, h;

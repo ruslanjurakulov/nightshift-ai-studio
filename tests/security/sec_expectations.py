@@ -731,3 +731,11 @@ sec_films_0171.extend(TABLES, FUNCTIONS)
 import sec_rights_acknowledgement_0174  # noqa: E402
 
 sec_rights_acknowledgement_0174.extend(TABLES, FUNCTIONS)
+
+# Migration 0179 (the rights acknowledgement asks about every file a job sends: failover, style kits, @characters, films):
+# internal helpers only, called inside create_creative_job, reroute_creative_job and start_film (test_sec_breach_rights_ack_*.py).
+FUNCTIONS.update({
+    "rights_acknowledgement_subjects": SERVICE,
+    "rights_acknowledgement_missing_among": SERVICE,
+    "film_acknowledgement_missing": SERVICE,
+})

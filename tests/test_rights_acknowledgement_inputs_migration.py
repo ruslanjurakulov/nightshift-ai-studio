@@ -31,16 +31,16 @@ MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
 
 # name -> (the file it was built on, md5 before, md5 after)
 REPLACED = {
-    "rights_acknowledgement_missing": ("0174_rights_acknowledgement.sql", "426ea90d162535b0ee6f10e752e5fe26",
-                                       "ff6645d1c02cb8d542a2156967534c33"),
-    "reroute_creative_job": ("0088_router_failover_reason.sql", "55d07640bb22798e2a74bb661ac4f8d0",
-                             "9dfc81eb3e77555ee9e04c53b22c84e9"),
+    "rights_acknowledgement_missing": ("0174_rights_acknowledgement.sql", "426ea90d162535b0ee6f10e752e5fe26", "e7baea73e6c790ed3e8d01b797aa3732"),
+    "reroute_creative_job": ("0088_router_failover_reason.sql", "55d07640bb22798e2a74bb661ac4f8d0", "9dfc81eb3e77555ee9e04c53b22c84e9"),
     "start_film": ("0171_films_money.sql", "63510a6d9c456e66f658353bab592d38", "0cfb804e3e5d415957df0106b65ef75b"),
+    "workflow_quote_steps": ("0174_rights_acknowledgement.sql", "8f9f42da9844571a18a285d87bcffc84", "67c328c45c253481c2f41718aca0fcc7"),
+    "creative_job_style": ("0048_creative_style_inputs.sql", "75dec758272fcad658e1712fdc7f708e", "a7395eb11514a2c8b0db2c08e991fffc"),
 }
 NEW = {
     "rights_acknowledgement_subjects": "8de7e1ebe43848d31f556a0f7e4047a9",
     "rights_acknowledgement_missing_among": "f3a844885ec3b4fc3b0d45dc80f5e65b",
-    "film_acknowledgement_missing": "adc0f941638725a6870fb5999b0f93cf",
+    "film_acknowledgement_missing": "557f17de613be61b95da87fa34d5556f",
 }
 
 
@@ -87,12 +87,13 @@ class Migration0179(unittest.TestCase):
             self.assertIn(f"'{want}'", M0179, name)
 
     def test_failover_and_film_start_are_the_earlier_bodies_plus_one_marked_block(self):
-        for name in ("reroute_creative_job", "start_film"):
+        for name in ("reroute_creative_job", "start_film", "workflow_quote_steps", "creative_job_style"):
             old = latest(name)[1].splitlines()
             new = definition(M0179, name).splitlines()
             ops = [op for op in difflib.SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes() if op[0] != "equal"]
             self.assertEqual([op[0] for op in ops], ["insert"], name)
-            self.assertTrue(new[ops[0][3]].strip().startswith("-- 0179:"), name)
+            # difflib may align the block one line off (a repeated "end if;"): the inserted lines must hold the marker.
+            self.assertIn("-- 0179:", "\n".join(new[ops[0][3]:ops[0][4]]), name)
 
     def test_failover_asks_before_it_moves_the_job(self):
         body = code(definition(M0179, "reroute_creative_job"))
@@ -116,6 +117,31 @@ class Migration0179(unittest.TestCase):
                      "public.character_references", "limit 16"):
             self.assertIn(part, subj, part)
         self.assertIn("rights_acknowledgement_subjects(p_org, p_params)", code(definition(M0179, "rights_acknowledgement_missing")))
+
+    def test_the_worker_asks_again_before_it_hands_out_pictures(self):
+        body = code(definition(M0179, "creative_job_style"))
+        ask = body.index("rights_acknowledgement_missing(j.org_id, j.requested_by, coalesce(j.routed_model, j.requested_model), j.params)")
+        self.assertLess(ask, body.index("from public.style_kit_references r"))
+
+    def test_a_workflow_asks_about_kit_and_character_pictures_too(self):
+        body = code(definition(M0179, "workflow_quote_steps"))
+        self.assertIn("rights_acknowledgement_subjects(p_wf.org_id, params)", body)
+        self.assertLess(body.index("rights_acknowledgement_subjects(p_wf.org_id, params)"), body.index("q := public.creative_price("))
+
+    def test_a_film_reads_the_visual_prompt_for_characters(self):
+        self.assertEqual(code(definition(M0179, "film_acknowledgement_missing")).count(
+            "rights_acknowledgement_subjects(p_film.org_id, jsonb_build_object('prompt', s.visual_prompt))"), 2)
+
+    def test_rollback_0174_refuses_while_0179_is_on(self):
+        rb = (ROOT / "docs" / "sql" / "rollback_0174_rights_acknowledgement.sql").read_text(encoding="utf-8")
+        self.assertIn("apply docs/sql/rollback_0179_rights_acknowledgement_inputs.sql first", rb)
+
+    def test_the_film_refusal_names_its_remedy_in_every_language(self):
+        ts = (ROOT / "command-center" / "lib" / "studio" / "timeline.ts").read_text(encoding="utf-8")
+        self.assertRegex(ts, r'START_REASONS = \[[^\]]*"acknowledgement_required"')
+        for lang in ("en", "ru", "uz"):
+            i18n = (ROOT / "command-center" / "lib" / "i18n" / "studio-timeline" / f"{lang}.ts").read_text(encoding="utf-8")
+            self.assertIn("    acknowledgement_required: ", i18n, lang)
 
     def test_the_mention_rule_is_the_workers(self):
         py = re.search(r'MENTION_RE = re\.compile\(r"(.+?)"\)', STYLE).group(1)

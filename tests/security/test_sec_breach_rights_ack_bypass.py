@@ -33,6 +33,8 @@ MODELS = [
     ("vid-needs-ack", ["i2v"], {"speed_tier": 0}, ["likeness_photo"], "model_vid_needs_ack_second", 2),
     # A picture model that takes reference pictures and requires a likeness acknowledgement.
     ("img-refs-ack", ["t2i"], {"inputs": {"image_refs_max": 4}}, ["likeness_photo"], "model_img_refs_ack_image", 1),
+    # A picture model that requires nothing: a workflow's first step (0179's workflow test).
+    ("img-plain", ["t2i"], {}, None, "model_img_plain_image", 1),
 ]
 PRICES = ", ".join(f"('{u}', {c}, 0)" for _m, _c, _s, _col, u, c in MODELS) + ", ('job_minimum', 1, 0)"
 
@@ -184,3 +186,40 @@ def test_an_at_character_in_the_prompt_is_an_input_the_gate_asks_about(db):
            [out["job"]["id"]])
     assert not acknowledged(db, photo)
     pytest.fail(f"a job of a model that requires likeness_photo was created with an unacknowledged @character picture: {out['job']['id']}")
+
+
+# ── 0179's follow-ups (Lens): a workflow step and the worker's own read ─────
+
+def ack(db, subject):
+    db.act("authenticated", UA, "select public.acknowledge_rights('likeness_photo', %s, %s, 'en')", [V1, subject])
+
+
+def test_a_workflow_step_that_sends_character_pictures_is_refused_at_the_quote(db):
+    photo = asset(db, ORG)
+    db.act("authenticated", UA, "select public.save_character(%s, null, 'lodger', 'character', 'the lodger', %s::uuid[])",
+           [ORG, [photo]])
+    steps = [{"capability": "t2i", "model": "img-plain", "params": {"prompt": "a hallway"}},
+             {"capability": "t2i", "model": "img-refs-ack", "params": {"prompt": "@lodger in the hallway"}}]
+    wf = db.act("authenticated", UA, "select public.save_workflow(%s::uuid, null, %s, '[]'::jsonb, %s::jsonb)",
+                [ORG, f"wf-lodger-{uuid.uuid4().hex[:6]}", json.dumps(steps)])[0][0]
+    q = db.act("authenticated", UA, "select public.quote_workflow(%s, '{}'::jsonb)", [wf["id"]])[0][0]
+    # Safe: refused before any hold, not at step 2's own job after step 1 was paid for.
+    assert q["priced"] is False and q["steps"][1]["reason"] == "acknowledgement_required", q
+
+
+def test_a_character_picture_added_after_the_job_was_created_is_never_handed_out(db):
+    first = asset(db, ORG)
+    ack(db, first)
+    db.act("authenticated", UA, "select public.save_character(%s, null, 'tenant', 'character', 'the tenant', %s::uuid[])",
+           [ORG, [first]])
+    out = create(db, {"prompt": "@tenant at the window"}, "img-refs-ack", cap="t2i")
+    job = out["job"]["id"]
+    later = asset(db, ORG)   # nobody acknowledged this one
+    cid = db.su("select id from public.characters where org_id = %s and name = 'tenant'", [ORG])[0][0]
+    db.act("authenticated", UA, "select public.save_character(%s, %s, 'tenant', 'character', 'the tenant', %s::uuid[])",
+           [ORG, str(cid), [first, later]])
+    claimed = db.act("service_role", None, "select id::text from public.claim_creative_job('breach-w')")
+    assert claimed and claimed[0][0] == job, claimed
+    style = db.act("service_role", None, "select public.creative_job_style(%s, 'breach-w')", [job])[0][0]
+    db.act("service_role", None, "select public.finish_creative_job(%s,'breach-w',false,null,null,'test_drain','drained')", [job])
+    assert style["ok"] is False, style

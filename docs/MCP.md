@@ -27,7 +27,7 @@ limit, prepaid USD balance, holds and database checks as `/api/v1`.
 | `list_channels` | channels (ids for create_video) | — | — |
 | `create_video` | queue a video (topic, duration, …; optional `idempotency_key`) | credits held now, charged on success, released on failure; price = the app's own per-minute price with its minimum per video | USD held now, charged on success ($1.20/min, min $0.60 by default) |
 | `get_job_status` | job status, error, and what it holds or was charged | credits | USD cents |
-| `list_videos` | videos: published first (most recent first), then unpublished in id order (not by age) | — | — |
+| `list_videos` | videos: newest upload first (private included); held runs never uploaded last, in id order | — | — |
 | `get_video` | one video with its publish requests | — | — |
 | `list_connected_accounts` | publish targets (YouTube channels, Instagram / TikTok accounts) | — | — |
 | `publish_video` | cross-post a finished video; same gate and approvals as the site; YouTube uploads private. An OAuth connection's schema has **no** `idempotency_key` (one sent anyway is refused as an unknown field): while a post to a target is still being sent, a repeat call is refused and the text says that target is already being sent, but once it has finished a new call posts again, and the tool's description says so. An API key keeps its optional `idempotency_key` | free | free |

@@ -78,3 +78,21 @@ def test_a_film_never_starts_a_clip_of_an_unacknowledged_upload_on_a_model_that_
     # Safe: refused for the acknowledgement, nothing held, no take planned. Today: started, the total held, the clip planned.
     assert out.get("ok") is False and out.get("reason") == "acknowledgement_required", (out.get("ok"), held, planned, takes)
     assert planned == 0 and not held, (planned, held)
+
+
+def test_a_film_asks_about_the_characters_its_visual_prompt_mentions(db):
+    # 0179 (Lens on #S5): the key frame's and the clip's params carry the scene's visual prompt, and the worker reads @names from it.
+    o = db.new_org(credits=500)
+    db.one("authenticated", o.editor, "select public.save_character(%s, null, 'keeper', 'character', 'the keeper', %s::uuid[])",
+           [o.org, [o.image]])
+    settings = dict(SETTINGS, clip_model="vid-clip-ack")
+    scenes = [{"title": "Open", "narration": "It begins.", "visual_prompt": "@keeper at the lighthouse door", "planned_seconds": 10}]
+    fid = db.film(o, settings=settings, scenes=scenes)
+    q = db.quote(o.editor, fid)
+    assert q.get("quote_id"), q
+    out = db.start(o.admin, fid, q["quote_id"])
+    if out.get("ok") is True:
+        db.cancel(out["id"])
+    assert out.get("ok") is False and out.get("reason") == "acknowledgement_required", out
+    assert out.get("detail", "").endswith(f"subject={o.image}"), out
+    assert not db.holds(o.org)
