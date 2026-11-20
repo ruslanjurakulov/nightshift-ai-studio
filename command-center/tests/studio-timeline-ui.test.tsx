@@ -495,3 +495,83 @@ describe("media links (Lens N2)", () => {
     expect(MEDIA_RETRY_WINDOW_MS).toBeLessThan(10 * 60_000);
   });
 });
+
+/**
+ * The page in the gap between React committing it and React running its passive effects (useEffect). RTL's render and findBy usually
+ * close that gap, but on a loaded CI runner the scheduler yields after the commit (its 5 ms slice is spent), the commit's
+ * MutationObserver microtask resolves findBy first, and the test presses a key or clicks a page whose effects have not run (#824:
+ * "Asking the server…" never came, aria-pressed stayed "false"). A person can press in that gap too. Here the gap is forced: the
+ * scheduler's clock jumps 50 ms on every read until the page is on screen, so it always yields after the commit, and `then` runs in
+ * the commit's own microtask, before any passive effect.
+ */
+async function atFirstCommit(ready: (host: HTMLElement) => Element | null, then: (el: Element) => void) {
+  const { createRoot } = await import("react-dom/client");
+  const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  const wasAct = env.IS_REACT_ACT_ENVIRONMENT;
+  env.IS_REACT_ACT_ENVIRONMENT = false;
+  let fake = performance.now();
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => (fake += 50));
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  let effectsHadRun = true;
+  await new Promise<void>((resolve) => {
+    const mo = new MutationObserver(() => {
+      const el = ready(host);
+      if (!el) return;
+      mo.disconnect();
+      clock.mockRestore();
+      effectsHadRun = false;
+      then(el);
+      resolve();
+    });
+    mo.observe(host, { childList: true, subtree: true });
+    root.render(<StudioTimeline filmStudio filmId={FILM} />);
+  });
+  // Let the passive effects and the updates the press queued run, as they would on the next task.
+  await new Promise((r) => setTimeout(r, 30));
+  return {
+    host,
+    effectsHadRun,
+    unmount: () => {
+      root.unmount();
+      host.remove();
+      env.IS_REACT_ACT_ENVIRONMENT = wasAct;
+    },
+  };
+}
+
+describe("the first frame (CI flakes on #824)", () => {
+  it("a press of Assemble the moment the page is on screen asks for the price, and the answer is kept", async () => {
+    let release!: (a: Answer) => void;
+    answer = (url) => (url.endsWith("/quote") ? new Promise<Answer>((r) => (release = r)) : { status: 200, body: { film: film() } });
+    const page = await atFirstCommit(
+      (h) => h.querySelector('[data-testid="assemble-key"]'),
+      (key) => (key as HTMLButtonElement).click(),
+    );
+    try {
+      const amount = () => page.host.querySelector('[data-testid="assemble-amount"]')?.textContent ?? "";
+      // Without the fix the panel's mount effect ran after the press, counted the press's quote as one for an older version and
+      // put the key back to "Get the price": the request was sent (and counted by quote_film's rate limit), its answer dropped.
+      expect(amount()).toBe(c.quoting);
+      expect(calls.filter((x) => x.url.endsWith("/quote"))).toHaveLength(1);
+      release({ status: 200, body: { quote: priced } });
+      await waitFor(() => expect(amount()).toBe("16 credits"));
+    } finally {
+      page.unmount();
+    }
+  });
+
+  it("Space the moment the page is on screen plays: the shortcut is listening before the page can be seen", async () => {
+    const page = await atFirstCommit(
+      (h) => h.querySelector('[data-testid="lanes"]'),
+      () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true })),
+    );
+    try {
+      const play = page.host.querySelector('[data-testid="play"]') as HTMLElement;
+      // Without the fix the window listener was added by a passive effect that had not run yet, so the key went nowhere.
+      expect(play.getAttribute("aria-pressed")).toBe("true");
+    } finally {
+      page.unmount();
+    }
+  });
+});
