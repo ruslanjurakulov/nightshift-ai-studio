@@ -482,6 +482,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     import sec_rights_acknowledgement_0174
     sec_rights_acknowledgement_0174.seed(conn, sc)
 
+    # Owner analytics (0182): tests/security/sec_owner_analytics_0182.py — one export record, made by the owner.
+    import sec_owner_analytics_0182
+    sec_owner_analytics_0182.seed(conn, sc)
+
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
     with as_superuser(conn, commit=False) as s:
