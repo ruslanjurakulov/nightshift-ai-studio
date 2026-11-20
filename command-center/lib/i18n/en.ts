@@ -7,6 +7,7 @@ import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
+import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
@@ -3199,6 +3200,7 @@ export const en = {
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
   rightsAck: rightsAckEn,
+  voiceCatalog: voiceCatalogEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",

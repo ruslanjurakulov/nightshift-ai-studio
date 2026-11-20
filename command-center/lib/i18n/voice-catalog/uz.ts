@@ -1,0 +1,38 @@
+import type { VoiceCatalogDictionary } from "./en";
+
+/** Studiyada ovoz berish uchun ovoz tanlash. Mashina qoralamasi: ona tilida soʻzlashuvchi oʻqib chiqsin. */
+export const voiceCatalogUz: VoiceCatalogDictionary = {
+  heading: "Akkaunt ovozlari",
+  loading: "Akkaunt ovozlari yuklanmoqda…",
+  builtInTitle: "ElevenLabs standart ovozlari",
+  builtInNote: "Akkauntning oʻz roʻyxati koʻrsatilmadi, shuning uchun bu yerda ElevenLabs standart ovozlari.",
+  notConfigured: "Bu server ovozlar akkauntiga ulanmagan, shuning uchun roʻyxatni bu yerda koʻrsatib boʻlmaydi.",
+  unreachable: "ElevenLabs bilan bogʻlanib boʻlmadi. Birozdan soʻng qayta urinib koʻring.",
+  keyRejected: "ElevenLabs bu server kalitini rad etdi. Platforma operatori uni almashtirishi kerak.",
+  rateLimited: "Ovozlar roʻyxati juda koʻp soʻraldi. Bir necha daqiqadan soʻng qayta urinib koʻring.",
+  signedOut: "Seans tugadi. Ovozlarni koʻrish uchun qayta kiring.",
+  noWorkspace: "Ovozlarni koʻrish uchun ish maydonini tanlang.",
+  failed: "Ovozlar roʻyxatini yuklab boʻlmadi.",
+  retry: "Qayta urinish",
+  empty: "Akkauntda hali ovoz yoʻq.",
+  truncated: "Bu juda uzun roʻyxatning faqat bir qismi: siz qidirgan ovoz bu yerda boʻlmasligi mumkin.",
+  noMatch: "Bu filtrlarga mos ovoz yoʻq.",
+  clearFilters: "Filtrlarni tozalash",
+  search: "Nomi yoki tavsifi boʻyicha qidirish",
+  searchPh: "Xotirjam, hikoyachi, Brian…",
+  facetAny: "Istalgan",
+  facets: { gender: "Jinsi", age: "Yoshi", accent: "Talaffuz", useCase: "Maqsadi" },
+  categories: {
+    premade: "Standart",
+    generated: "Yaratilgan",
+    cloned: "Nusxa",
+    professional: "Professional nusxa",
+    famous: "Mashhur",
+    high_quality: "Yuqori sifat",
+  },
+  library: "Kutubxona ovozi: egasi uni olib qoʻyishi mumkin.",
+  noPreview: "Namuna yoʻq",
+  showing: "{total} tadan {shown} tasi koʻrsatilmoqda",
+  showMore: "Yana koʻrsatish",
+  pickedMissing: "Avval tanlangan ovoz akkaunt roʻyxatida yoʻq. Boshqa ovozni tanlang.",
+};

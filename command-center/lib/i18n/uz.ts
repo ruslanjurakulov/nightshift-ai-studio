@@ -7,6 +7,7 @@ import { madeForKidsUz } from "./made-for-kids/uz";
 import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { rightsAckUz } from "./rights-acknowledgement/uz";
+import { voiceCatalogUz } from "./voice-catalog/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { assetDownloadUz } from "./asset-download/uz";
 import { ownerShellUz } from "./owner-shell/uz";
@@ -3181,6 +3182,7 @@ export const uz: Dictionary = {
   channelRisk: channelRiskUz,
   customVoice: customVoiceUz,
   rightsAck: rightsAckUz,
+  voiceCatalog: voiceCatalogUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",

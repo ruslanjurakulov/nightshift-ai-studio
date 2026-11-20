@@ -7,6 +7,7 @@ import { madeForKidsRu } from "./made-for-kids/ru";
 import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { rightsAckRu } from "./rights-acknowledgement/ru";
+import { voiceCatalogRu } from "./voice-catalog/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
@@ -3181,6 +3182,7 @@ export const ru: Dictionary = {
   channelRisk: channelRiskRu,
   customVoice: customVoiceRu,
   rightsAck: rightsAckRu,
+  voiceCatalog: voiceCatalogRu,
   accountSecurity: {
     cancel: "Отмена",
     title: "Аккаунт и безопасность",
