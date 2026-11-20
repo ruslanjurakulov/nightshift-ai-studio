@@ -26,16 +26,21 @@ WHISPER_MODEL = "base"
 
 
 class SubtitleGenerator:
-    def __init__(self, topic_slug: str):
+    def __init__(self, topic_slug: str, *, work_dir: Path | None = None, download_root: str | None = None):
+        # work_dir / download_root: the Studio's voice video (modules/capabilities/voice_video.py) runs in the creative
+        # worker, which is another user than the pipeline's and cannot write output/ nor read the pipeline user's cache;
+        # it names the job's own folder and the image's shared copy of the model. The pipeline passes neither.
         self.slug = topic_slug
-        self.work_dir = OUTPUT_DIR / topic_slug / "subtitles"
+        self.work_dir = work_dir if work_dir is not None else OUTPUT_DIR / topic_slug / "subtitles"
         self.work_dir.mkdir(parents=True, exist_ok=True)
+        self._download_root = download_root
         self._model: whisper.Whisper | None = None
 
     def _get_model(self) -> whisper.Whisper:
         if self._model is None:
             logger.info("Loading Whisper model '%s'...", WHISPER_MODEL)
-            self._model = whisper.load_model(WHISPER_MODEL)
+            self._model = (whisper.load_model(WHISPER_MODEL) if self._download_root is None
+                           else whisper.load_model(WHISPER_MODEL, download_root=self._download_root))
         return self._model
 
     def release_model(self) -> None:

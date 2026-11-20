@@ -92,17 +92,20 @@ class ApiCreativeModelsMigration(unittest.TestCase):
         self.assertIn("'spec', s.spec - 'api_exposure'", b)
 
     def test_the_listed_capabilities_are_exactly_the_apis_twin_in_typescript(self):
-        b = body("api_creative_models")
+        # The NEWEST body is the one the API runs (0176 added voice_explainer to 0162's list): each one keeps the twin equal.
+        newest = [p for p in sorted(MIG.glob("*.sql")) if "function public.api_creative_models(" in p.read_text(encoding="utf-8")][-1]
+        b = body("api_creative_models", newest.read_text(encoding="utf-8"))
         sql_caps = re.findall(r"'([a-z_0-9]+)'", re.search(r"and s\.capabilities && array\[(.*?)\]::text\[\];", b, re.S).group(1))
         ts = (ROOT / "command-center" / "lib" / "api" / "operations.ts").read_text(encoding="utf-8")
         ts_caps = re.findall(r'"([a-z_0-9]+)"', re.search(r"export const API_CREATIVE_CAPABILITIES = \[(.*?)\] as const", ts, re.S).group(1))
         self.assertEqual(sql_caps, ts_caps)
         # Captions are a web tool (0125): never an API capability.
         self.assertNotIn("captions", sql_caps)
-        # Today every capability the registry allows (0100's check) but captions is an API one, so the array changes nothing; it
+        # Today every capability the registry allows (the newest check) but captions is an API one, so the array changes nothing; it
         # keeps a capability added to the registry later out of the list until the API can generate it.
-        reg = (MIG / "0100_video_ai_ops.sql").read_text(encoding="utf-8")
-        allowed = re.findall(r"'([a-z_0-9]+)'", re.search(r"model_registry_capabilities_check\n  check \(cardinality\(capabilities\) between 1 and 19\n\s+and capabilities <@ array\[(.*?)\]::text\[\]\);", reg, re.S).group(1))
+        checks = [p for p in sorted(MIG.glob("*.sql")) if "add constraint model_registry_capabilities_check" in p.read_text(encoding="utf-8")]
+        reg = checks[-1].read_text(encoding="utf-8")
+        allowed = re.findall(r"'([a-z_0-9]+)'", re.search(r"model_registry_capabilities_check\n  check \(cardinality\(capabilities\) between 1 and \d+\n\s+and capabilities <@ array\[(.*?)\]::text\[\]\);", reg, re.S).group(1))
         self.assertEqual(sorted(allowed), sorted(sql_caps + ["captions"]))
 
     def test_files_only_for_a_job_this_key_started_like_api_creative_get(self):

@@ -6603,6 +6603,66 @@
         "input_video": "generated",
         "input_image": "generated"
       }
+    },
+    {
+      "id": "nightshift-voice-explainer",
+      "display_name": "Nightshift Voice Video",
+      "provider": "nightshift",
+      "adapter": "video.voice_explainer",
+      "vendor_model": "voice-explainer-rules-1",
+      "capabilities": [
+        "voice_explainer"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "explainer_looks": [
+        "dusk",
+        "midnight",
+        "golden",
+        "neon",
+        "paper"
+      ],
+      "audio_out": true,
+      "async": false,
+      "api_documented": {
+        "url": "https://www.remotion.dev/docs/cli/render",
+        "checked_at": "2026-11-14",
+        "source": "own_engine",
+        "evidence": "No vendor is called: modules/voice_explainer.py renders the VoiceExplainer composition (video-engine/src/explainer) with `npx remotion render` on the creative worker; the words come from local Whisper (docs/VOICE_EXPLAINER.md).",
+        "note": "Rules planner only (deterministic, no model call). 1080x1920, 30 fps, word-timed captions, a whoosh on every cut; the person's narration is the soundtrack."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No vendor bill: the cost is the worker's own CPU, about 3.4 s of render per second of narration on 4 cores (docs/VOICE_EXPLAINER.md, Capacity). The owner sets the credit price: docs/sql/price_0176_voice_explainer.sql, applied after the probe."
+      },
+      "credit_unit": "model_nightshift_voice_explainer_second",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 600
+      },
+      "quality_tier": 3,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "voice_explainer",
+        "prompt": "Hello from Nightshift. This is a short test of the voice video.",
+        "input_audio": "speech",
+        "look": "dusk"
+      }
     }
   ]
 }

@@ -3156,11 +3156,28 @@ class WorkerImageTest(unittest.TestCase):
 
     def test_code_is_readable_by_other_uids_and_state_stays_private(self):
         text = (ROOT / "Dockerfile.worker").read_text()
-        chown = text.index("chown -R nightshift:nightshift /app")
-        readable = text.index("chmod -R go+rX,go-w /app")
+        # The engine's node_modules is left out of both: rewriting a few hundred MB of files only to change their owner or
+        # mode copies them into a second layer. It is made readable where it is installed instead.
+        chown = text.index("find /app -path /app/video-engine/node_modules -prune -o -exec chown -h nightshift:nightshift {} +")
+        readable = text.index("find /app -path /app/video-engine/node_modules -prune -o ! -type l -exec chmod go+rX,go-w {} +")
         private = text.index("chmod 700 output history logs")
         self.assertLess(chown, readable)
         self.assertLess(readable, private)
+        self.assertNotIn("chown -R nightshift:nightshift /app", text)
+        install = text.index("npm ci --no-audit --no-fund")
+        fix = text.index("find node_modules \\( ! -perm -o+r -o \\( -type d ! -perm -o+x \\) \\) ! -type l -exec chmod go+rX {} +")
+        self.assertLess(install, fix)
+        self.assertLess(fix, re.search(r"^COPY \. \.", text, re.M).start(), "in the install's own layer")
+
+    def test_the_render_cache_is_warm_and_the_creative_worker_can_write_it(self):
+        text = (ROOT / "Dockerfile.worker").read_text()
+        warm = text.index("npx remotion bundle src/index.ts --out-dir /tmp/remotion-warm")
+        self.assertLess(re.search(r"^COPY \. \.", text, re.M).start(), warm, "the bundle needs the engine's sources")
+        self.assertIn("chown -R 1000:1000 node_modules/.cache", text[warm:])
+        # Runtime libraries for Chrome, never the -dev packages; fontconfig answers the Inter check.
+        for lib in ("libgbm1", "libxkbcommon0", "fontconfig", "fonts-inter"):
+            self.assertIn(f" {lib} ", text)
+        self.assertNotIn("-dev ", text.split("RUN apt-get update", 1)[1].split("rm -rf /var/lib/apt/lists", 1)[0])
 
 
 class RemoteDeployBrandScanTests(_RemoteDeployFixture):

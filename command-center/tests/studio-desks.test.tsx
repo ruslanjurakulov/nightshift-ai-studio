@@ -188,8 +188,9 @@ describe("a desk's composer", () => {
     const tts = document.getElementById("gen-tab-tts") as HTMLElement;
     expect(tts.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(tts, { key: "ArrowLeft" });
-    expect(document.getElementById("gen-tab-dub")?.getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement?.id).toBe("gen-tab-dub");
+    // The desk's last tool (0176's voice video), never a tool of another desk.
+    expect(document.getElementById("gen-tab-voice_explainer")?.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement?.id).toBe("gen-tab-voice_explainer");
   });
 
   it("Video: prices the shot and creates with exactly the quoted price and a fresh key", async () => {
@@ -362,7 +363,7 @@ describe("a desk's results", () => {
     render(withI18n(<JobFeed orgId={ORG} models={MODELS} capabilities={DESK_TOOLS.voice} variant="takes" />));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative/jobs"))).toBe(true));
     const url = String(fetchMock.mock.calls.find(([u]) => String(u).startsWith("/api/creative/jobs"))?.[0]);
-    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub")}`);
+    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub,voice_explainer")}`);
   });
 
   it("Try again and Use as picture on a desk only fill the form", async () => {

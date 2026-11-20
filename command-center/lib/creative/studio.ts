@@ -18,10 +18,14 @@ import {
   type DubLanguage,
   EXPAND_ASPECTS,
   type ExpandAspect,
+  EXPLAINER_LOOKS,
+  type ExplainerLook,
   IMAGE_QUALITIES,
   type ImageQuality,
   MAX_VIDEO_EDIT_WORDS,
+  MAX_NARRATION_SECONDS,
   MEDIA_SOURCE_CAPABILITIES,
+  NARRATION_CAPABILITIES,
   PARAM_KEYS,
   PICTURE_OP_CAPABILITIES,
   PICTURE_OP_PROMPT_MAX,
@@ -96,8 +100,15 @@ export const PICTURE_OPS = PICTURE_OP_CAPABILITIES;
  */
 export const VIDEO_OPS = VIDEO_OP_CAPABILITIES;
 
+/**
+ * Voice to video (migration 0176): one of the organization's recordings (their own narration) and a look in, a 9:16
+ * motion-graphics video out, drawn by our own engine. Offered on the Voice desk (and by a link that names it), not in the
+ * sidebar's tool rows, and usable only once the owner has proven and priced its model.
+ */
+export const VOICE_VIDEO_TOOLS = NARRATION_CAPABILITIES;
+
 /** Everything the composer can make, in the order its tabs show the tools. */
-export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS, ...VIDEO_OPS] as const;
+export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS, ...VIDEO_OPS, ...VOICE_VIDEO_TOOLS] as const;
 export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
@@ -108,7 +119,7 @@ export function needsSource(c: string): c is SourceCapability {
   return (PICTURE_SOURCE_CAPABILITIES as readonly string[]).includes(c);
 }
 
-export { EXPAND_ASPECTS, RELIGHT_LOOKS, type ExpandAspect, type RelightLook };
+export { EXPAND_ASPECTS, RELIGHT_LOOKS, EXPLAINER_LOOKS, MAX_NARRATION_SECONDS, type ExpandAspect, type RelightLook, type ExplainerLook };
 
 export function isPictureOp(c: unknown): c is (typeof PICTURE_OPS)[number] {
   return typeof c === "string" && (PICTURE_OPS as readonly string[]).includes(c);
@@ -134,6 +145,15 @@ export function isExpandAspect(v: unknown): v is ExpandAspect {
 
 export function isRelightLook(v: unknown): v is RelightLook {
   return typeof v === "string" && (RELIGHT_LOOKS as readonly string[]).includes(v);
+}
+
+export function isExplainerLook(v: unknown): v is ExplainerLook {
+  return typeof v === "string" && (EXPLAINER_LOOKS as readonly string[]).includes(v);
+}
+
+/** The tools that start from an AUDIO recording of the library and draw a video over it (migration 0176). */
+export function needsNarration(c: string): c is (typeof NARRATION_CAPABILITIES)[number] {
+  return (NARRATION_CAPABILITIES as readonly string[]).includes(c);
 }
 
 /** The longest words a picture op takes (0099), for the field's limit. */
@@ -237,7 +257,7 @@ export function takesStyle(c: string): boolean {
 export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
   // A video edit is asked by its words (0100); the other video tools take none.
   if (c === "video_edit") return "required";
-  if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c)) return "none";
+  if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c) || needsNarration(c)) return "none";
   // expand (what the new areas show) and relight (the light, instead of a look) are asked by a choice; their words are optional.
   if (c === "i2v" || c === "upscale" || c === "expand" || c === "relight") return "optional";
   return "required";
@@ -320,6 +340,8 @@ export interface StudioModel {
   relightLooks?: RelightLook[];
   /** 0100: the shapes it reframes a video to (spec.aspect_ratios_by_capability.video_reframe), in the canonical order. */
   reframeAspects?: ExpandAspect[];
+  /** 0176: the looks it draws a voice video in (spec.explainer_looks), in the canonical order. */
+  explainerLooks?: ExplainerLook[];
   /**
    * 0060: the render qualities the model is sold by (spec.qualities), cheapest
    * first; absent = it has no tiers. Prices per tier are never kept here: each
@@ -611,6 +633,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     | "soundChoice"
     | "expandAspects"
     | "relightLooks"
+    | "explainerLooks"
     | "reframeAspects"
     | "fixedShape"
     | "attribution"
@@ -643,6 +666,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
         : [];
     const reframes = EXPAND_ASPECTS.filter((a) => reframeList.includes(a));
     const looks = Array.isArray(spec.relight_looks) ? RELIGHT_LOOKS.filter((l) => (spec.relight_looks as unknown[]).includes(l)) : [];
+    const drawn = Array.isArray(spec.explainer_looks) ? EXPLAINER_LOOKS.filter((l) => (spec.explainer_looks as unknown[]).includes(l)) : [];
     // In the canonical order, so the selector reads low, medium, high whatever the row's order.
     const tiers = Array.isArray(spec.qualities) ? IMAGE_QUALITIES.filter((q) => (spec.qualities as unknown[]).includes(q)) : [];
     const makerLine = modelAttribution(spec.attribution);
@@ -671,6 +695,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       ...(shapes.length ? { expandAspects: shapes } : {}),
       ...(reframes.length ? { reframeAspects: reframes } : {}),
       ...(looks.length ? { relightLooks: looks } : {}),
+      ...(drawn.length ? { explainerLooks: drawn } : {}),
       ...(tiers.length ? { qualities: tiers } : {}),
       ...(spec.audio_out === true && (spec.price_variants_by === "audio" || spec.price_variants_by === "resolution_audio")
         ? { soundChoice: true }
@@ -786,6 +811,8 @@ export interface StudioForm {
   shape?: ExpandAspect | null;
   /** The light a relight is asked for by name (0099); the words replace it when typed. */
   look?: RelightLook | null;
+  /** The look a voice video is drawn in (0176): one the model lists, picked (the panel shows which). */
+  explainerLook?: ExplainerLook | null;
   /** The language a description is written in (0055); absent = English. */
   describeLanguage?: DescribeLanguage | null;
   /**
@@ -889,6 +916,9 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     case "video_upscale":
       // The length (and so the price) is the video's own: never sent.
       return { source_asset_id: source, target_resolution: form.target ?? "" };
+    case "voice_explainer":
+      // The recording and the look are the whole request; the length (and so the price) is the recording's own (0176).
+      return { source_asset_id: source, look: form.explainerLook ?? "" };
     default:
       // Speech: the words are the prompt (the price counts their characters)
       // and the voice is the one picked — the speech provider needs one.
@@ -928,11 +958,12 @@ export type BlockedReason =
 export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReason | null {
   if (!hasModel) return "no_model";
   if (needsSource(form.capability) && !isUuid(form.sourceId)) return "need_picture";
-  if (needsRecording(form.capability) && !isUuid(form.sourceId)) return "need_recording";
+  if ((needsRecording(form.capability) || needsNarration(form.capability)) && !isUuid(form.sourceId)) return "need_recording";
   if (needsVideo(form.capability) && !isUuid(form.sourceId)) return "need_video";
   if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return "need_target";
   if ((form.capability === "expand" || form.capability === "video_reframe") && !isExpandAspect(form.shape)) return "need_shape";
   if (form.capability === "relight" && !isRelightLook(form.look) && !form.prompt.trim()) return "need_look";
+  if (form.capability === "voice_explainer" && !isExplainerLook(form.explainerLook)) return "need_look";
   if (form.capability === "erase" && !oneLine(form.prompt, PROMPT_MAX)) return "need_object";
   if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
   if (form.capability === "dub" && !isDubLanguage(form.targetLanguage)) return "need_language";
@@ -970,6 +1001,8 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "video_edit",
   "video_reframe",
   "video_remove_bg",
+  // 0176: priced by the recording's own seconds, whatever the look.
+  "voice_explainer",
 ];
 const PRICE_STAND_IN = "price check";
 
@@ -987,8 +1020,11 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
   if (form.capability === "tts" && form.prompt.trim()) {
     return buildParams({ ...form, voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null) });
   }
-  if ((needsSource(form.capability) || needsRecording(form.capability) || needsVideo(form.capability)) && !isUuid(form.sourceId))
+  if ((needsSource(form.capability) || needsRecording(form.capability) || needsVideo(form.capability) || needsNarration(form.capability)) &&
+    !isUuid(form.sourceId))
     return null;
+  // A voice video is quoted for the look asked; no stand-in look is ever asked about.
+  if (form.capability === "voice_explainer" && !isExplainerLook(form.explainerLook)) return null;
   // A video upscale is priced per size: no stand-in size is ever asked about.
   if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return null;
   // An expand is quoted for the shape asked; no stand-in shape is ever asked about.
@@ -1131,6 +1167,16 @@ export function reframeShapesFor(
 ): ExpandAspect[] {
   if (!routed) return current?.reframeAspects ?? [];
   return EXPAND_ASPECTS.filter((x) => available.some((m) => m.reframeAspects?.includes(x)));
+}
+
+/** The looks a voice video offers (0176), chosen the same way as the shapes: the picked model's, or (Auto) any model's. */
+export function explainerLooksFor(
+  available: readonly Pick<StudioModel, "explainerLooks">[],
+  current: Pick<StudioModel, "explainerLooks"> | null,
+  routed: boolean,
+): ExplainerLook[] {
+  if (!routed) return current?.explainerLooks ?? [];
+  return EXPLAINER_LOOKS.filter((x) => available.some((m) => m.explainerLooks?.includes(x)));
 }
 
 /** The lights a relight offers by name, chosen the same way as the shapes. */
@@ -1436,7 +1482,7 @@ export function describePrefill(assetId: string, language: DescribeLanguage): St
 /** What a finished job made, for its card: a picture, a clip, a voice or (a description) text. */
 export function outputKind(capability: string): "image" | "video" | "audio" | "text" {
   if (capability === "describe") return "text";
-  if (capability === "t2v" || capability === "i2v" || needsVideo(capability)) return "video";
+  if (capability === "t2v" || capability === "i2v" || needsVideo(capability) || needsNarration(capability)) return "video";
   if (capability === "tts" || capability === "sfx" || capability === "music" || needsRecording(capability)) return "audio";
   return "image";
 }
@@ -1460,6 +1506,8 @@ const RATIO = /^(\d{1,2}):(\d{1,2})$/;
 export function cardShape(job: Pick<StudioJob, "capability" | "params" | "status">): { aspect: string; asked: boolean } {
   const kind = outputKind(job.capability);
   if (kind === "audio" || kind === "text") return { aspect: "16 / 7", asked: false };
+  // A voice video is always drawn 1080x1920 (0176): its frame is known before the file is.
+  if (needsNarration(job.capability)) return { aspect: "9 / 16", asked: true };
   const a = job.params.aspect_ratio;
   const m = typeof a === "string" ? RATIO.exec(a) : null;
   const w = m ? Number(m[1]) : 0;
@@ -1520,6 +1568,8 @@ export interface StudioPrefill {
   shape?: ExpandAspect | null;
   /** A relight's light by name (0099), when the job had an offered one. */
   look?: RelightLook | null;
+  /** A voice video's look (0176), when the job had an offered one. */
+  explainerLook?: ExplainerLook | null;
   /** A picture's render quality (0060), when the job named one. */
   quality?: ImageQuality | null;
   /** A clip's soundtrack (0070), when the job named one. */
@@ -1558,6 +1608,9 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
       : {}),
     ...(takesShape(job.capability) ? { shape: isExpandAspect(p.aspect_ratio) ? p.aspect_ratio : null } : {}),
     ...(job.capability === "relight" ? { look: isRelightLook(p.look) ? p.look : null } : {}),
+    ...(needsNarration(job.capability)
+      ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, explainerLook: isExplainerLook(p.look) ? p.look : null }
+      : {}),
     ...(takesQuality(job.capability) && isImageQuality(p.quality) ? { quality: p.quality } : {}),
     ...(takesSound(job.capability) && typeof p.audio === "boolean" ? { audio: p.audio } : {}),
     ...(job.capability === "describe" ? { describeLanguage: isDescribeLanguage(p.language) ? p.language : "en" } : {}),
@@ -1590,7 +1643,7 @@ export function prefillFromQuery(tool: unknown, source: unknown): StudioPrefill 
     if (source === undefined) return { ...base, sourceId: null, factor: 2 };
     return isUuid(source) ? { ...base, sourceId: source, factor: 2 } : null;
   }
-  if (needsRecording(tool) || needsVideo(tool)) {
+  if (needsRecording(tool) || needsVideo(tool) || needsNarration(tool)) {
     if (source === undefined) return { ...base, sourceId: null };
     return isUuid(source) ? { ...base, sourceId: source } : null;
   }

@@ -305,6 +305,8 @@ def test_only_the_anon_role_may_call_them(db, role):
 def test_the_rollback_takes_both_out_and_a_replay_puts_them_back(db):
     rollback = (sec_db.REPO / "docs" / "sql" / "rollback_0162_api_creative_models.sql").read_text(encoding="utf-8")
     migration = next(sec_db.MIGRATIONS.glob("0162_*.sql")).read_text(encoding="utf-8")
+    # 0176 replaces api_creative_models on 0162's body, and 0162's replay refuses any other: 0176 comes off first and goes back last.
+    db.su(sec_db.rollback_0176_body())
     try:
         db.su(rollback)
         assert db.su("select to_regprocedure('public.api_creative_models(text, text, text)') is null")[0][0]
@@ -312,4 +314,5 @@ def test_the_rollback_takes_both_out_and_a_replay_puts_them_back(db):
     finally:
         db.su(migration)
     db.su(migration)  # a replay of the same body is accepted
+    db.su(sec_db.MIGRATION_0176.read_text(encoding="utf-8"))
     assert models(db, "a_full")["ok"]

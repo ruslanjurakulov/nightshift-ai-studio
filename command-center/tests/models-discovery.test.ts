@@ -151,10 +151,10 @@ const imagePrices = { model_img_a_image: 5, model_img_a_image_low: 2, model_img_
 // ── tasks and kinds ──────────────────────────────────────────────────────────
 
 describe("tasks", () => {
-  it("offers twelve task categories, each backed by a registry capability, none twice", () => {
+  it("offers thirteen task categories, each backed by a registry capability, none twice", () => {
     expect(TASKS.map((t) => t.id)).toEqual([
       "image", "edit", "video_text", "video_image", "voice",
-      "sound", "upscale", "remove_bg", "dub", "describe", "captions", "video_edit",
+      "sound", "upscale", "remove_bg", "dub", "describe", "captions", "video_edit", "voice_video",
     ]);
     // One capability, one key: the same model is never listed under two names for one job.
     const caps = TASKS.flatMap((t) => [...t.caps]);

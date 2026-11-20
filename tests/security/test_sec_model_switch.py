@@ -1027,6 +1027,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
     # 0125 sits on 0124's bodies; 0124's drift guard refuses any other text, so take 0125 off for the replay and put it back.
     # 0139 sits on 0125's creative_price, and 0125's rollback refuses any other body: it comes off first and goes back last.
     # 0149 sits on 0139's the same way, 0153 on 0149's and 0155 on 0153's: off before it, back after it.
+    db.su(sec_db.rollback_0176_body())  # 0176 sits on 0159's creative_price: off first
     # 0174 sits on 0124's api_creative_refusal, and 0124's drift guard refuses any other body: off before everything else.
     with psycopg.connect(db.dsn, autocommit=True) as c:
         sec_db.take_off_0174(c)
@@ -1049,6 +1050,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
         db.su(sec_db.MIGRATION_0155.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))  # and 0159 back on it
+        db.su(sec_db.MIGRATION_0176.read_text(encoding="utf-8"))  # and 0176 back on 0159's
         with psycopg.connect(db.dsn, autocommit=True) as c:
             sec_db.put_back_0174(c)  # and 0174 last, on 0124's api_creative_refusal again
     assert db.su("select enforced from public.model_availability_settings") == [(True,)], "the seed row is on conflict do nothing"

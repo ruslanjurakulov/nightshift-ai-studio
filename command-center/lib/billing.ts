@@ -101,7 +101,7 @@ const none = () => 0;
  * keys with the file, so a vendor added to the registry without a row here fails the build). The registry names Google
  * "google", ByteDance "bytedance" and Alibaba "alibaba" (lib/model-keys.ts uses the same ids); their bills already had rows
  * here as Gemini/Veo, Seedance and Wan, so they land there. `unassigned-video-vendor` is the registry's placeholder for the
- * generic video ops, not a vendor, and has no row.
+ * generic video ops, not a vendor, and has no row; nor has `nightshift`, our own engine (voice_explainer, 0176: no vendor bill).
  */
 export const REGISTRY_BILLING: Readonly<Record<string, string>> = Object.freeze({
   alibaba: "wan",

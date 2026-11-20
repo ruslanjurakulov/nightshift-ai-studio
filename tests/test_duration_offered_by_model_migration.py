@@ -156,7 +156,8 @@ class DurationOfferedByModelMigration(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0159"), 1)
         self.assertIn("0156", numbers)
-        for needle in ("def take_off_0159(", "def put_back_0159(", "ON_0156 = (MIGRATION_0159.name,)",
+        # 0176 (voice to video) sits on 0159's creative_price, so it goes wherever 0159 goes (after it).
+        for needle in ("def take_off_0159(", "def put_back_0159(", "ON_0156 = (MIGRATION_0159.name, MIGRATION_0176.name)",
                        "ON_0155 = (MIGRATION_0156.name, *ON_0156)", "ON_0153 = (MIGRATION_0155.name, *ON_0155)"):
             self.assertIn(needle, LAB)
         # take_off_0156 takes 0159 off first, and put_back_0156 puts it back: 0156's rollback and replay refuse 0159's body.
@@ -165,10 +166,10 @@ class DurationOfferedByModelMigration(unittest.TestCase):
         on = LAB[LAB.index("def put_back_0156("):LAB.index("CREATIVE_PRICE_0159 =")]
         self.assertIn("put_back_0159(session)", on)
         # The chain is still found from 0159's body (each has_* compares its own hash only).
-        for fn, needle in (("take_off_0155", "if has_0156(session) or has_0159(session):"),
-                           ("take_off_0153", "or has_0156(session) or has_0159(session):"),
-                           ("take_off_0149", "or has_0156(session) or has_0159(session):"),
-                           ("take_off_0139", "or has_0156(session) or has_0159(session):")):
+        for fn, needle in (("take_off_0155", "if has_0156(session) or has_0159(session)"),
+                           ("take_off_0153", "or has_0156(session) or has_0159(session)"),
+                           ("take_off_0149", "or has_0156(session) or has_0159(session)"),
+                           ("take_off_0139", "or has_0156(session) or has_0159(session)")):
             nxt = {"take_off_0155": "def put_back_0155(", "take_off_0153": "def put_back_0153(", "take_off_0149": "def put_back_0149(",
                    "take_off_0139": "def put_back_0139("}[fn]
             self.assertIn(needle, LAB[LAB.index(f"def {fn}("):LAB.index(nxt)], fn)

@@ -280,6 +280,8 @@ describe("the provider list is derived from the model registry and the billing p
   it("every registry vendor (but the placeholder) has a row, and no row is a guess of a vendor the registry does not name", () => {
     const vendors = new Set(REGISTRY_FILE.models.map((m) => m.provider));
     vendors.delete("unassigned-video-vendor");
+    // `nightshift` is our own engine (voice_explainer, 0176): no vendor, so no bill lands anywhere.
+    vendors.delete("nightshift");
     expect(Object.keys(REGISTRY_BILLING).sort()).toEqual([...vendors].sort());
     for (const [vendor, id] of Object.entries(REGISTRY_BILLING)) expect(BILLED_PROVIDER_IDS, vendor).toContain(id);
   });
