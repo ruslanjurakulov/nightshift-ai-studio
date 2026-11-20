@@ -123,9 +123,11 @@ describe("export status", () => {
     expect(live().textContent).toContain(te.exportStatus.done);
     expect(panel().textContent).not.toContain(ep.timeLeft);
     expect(panel().textContent).toContain(fmt(ep.tookLabel, { time: "1:23" }));
-    const open = screen.getByRole("link", { name: new RegExp(ep.openVideo) });
-    expect(open.getAttribute("href")).toBe("/v/b");
+    // Preview and the original are two addresses (S2): the preview opens in a tab, the original is its own button.
+    const open = screen.getByRole("link", { name: new RegExp(en.assetDownload.preview) });
+    expect(open.getAttribute("href")).toBe(`/api/library/${B}/download?variant=preview`);
     expect(open.getAttribute("target")).toBe("_blank");
+    expect(screen.getByRole("button", { name: /Download original/ })).toBeTruthy();
     expect(screen.getByRole("link", { name: te.viewInLibrary }).getAttribute("href")).toBe("/chronos/library");
 
     // Done: the poll has stopped.
@@ -269,13 +271,13 @@ describe("export status", () => {
     expect(live().textContent).toContain(ep.linkPendingLine);
     expect(live().textContent).not.toContain(te.exportStatus.done);
     expect(live().textContent).not.toContain(ep.doneLine);
-    expect(screen.queryByRole("link", { name: new RegExp(ep.openVideo) })).toBeNull();
+    expect(screen.queryByRole("link", { name: new RegExp(en.assetDownload.preview) })).toBeNull();
     expect(screen.getByText(ep.noLink)).toBeTruthy();
     state.exports = [row("done", { assetId: B })];
     state.assets = { [B]: RESULT };
     fireEvent.click(screen.getByRole("button", { name: ep.getLink }));
     await tick(10);
-    expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe("/v/b");
+    expect(screen.getByRole("link", { name: new RegExp(en.assetDownload.preview) }).getAttribute("href")).toBe(`/api/library/${B}/download?variant=preview`);
     expect(live().textContent).toContain(te.exportStatus.done);
     expect(live().textContent).toContain(ep.doneLine);
     expect(live().textContent).not.toContain(ep.linkPendingLine);
@@ -412,12 +414,12 @@ describe("poll answers arrive out of order", () => {
     fireEvent.click(screen.getByRole("button", { name: ep.getLink }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     rerender(<I18nProvider locale="en"><SwitchedPanel projectId={projectB} job={jobB} /></I18nProvider>);
-    expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe("/v/b");
+    expect(screen.getByRole("link", { name: new RegExp(en.assetDownload.preview) }).getAttribute("href")).toBe(`/api/library/${B}/download?variant=preview`);
     await act(async () => {
       finishA(await json({ id: PID, rev: 1, doc: newDocForAsset(ASSET), exports: [row("done", { id: jobA.id, assetId: A })], assets: { [A]: ASSET } }));
     });
-    expect(screen.getByRole("link", { name: new RegExp(ep.openVideo) }).getAttribute("href")).toBe("/v/b");
-    expect(panel().querySelector('a[href="/v/a"]')).toBeNull();
+    expect(screen.getByRole("link", { name: new RegExp(en.assetDownload.preview) }).getAttribute("href")).toBe(`/api/library/${B}/download?variant=preview`);
+    expect(panel().querySelector(`a[href*="${A}"]`)).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(unexpected).toEqual([]);
   });

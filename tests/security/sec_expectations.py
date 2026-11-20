@@ -732,6 +732,12 @@ import sec_rights_acknowledgement_0174  # noqa: E402
 
 sec_rights_acknowledgement_0174.extend(TABLES, FUNCTIONS)
 
+# Migration 0182 (the owner analytics hub: owner-only reads of money, people, activity and jobs, and the export log):
+# tests/security/sec_owner_analytics_0182.py
+import sec_owner_analytics_0182  # noqa: E402
+
+sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
+
 # Migration 0187 (the names of the models on sale, read signed out by the landing page): tests/security/sec_public_models_0187.py
 import sec_public_models_0187  # noqa: E402
 
