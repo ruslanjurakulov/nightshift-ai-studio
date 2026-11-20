@@ -3,7 +3,8 @@ import type { MoneyRow } from "@/lib/owner-analytics/money";
 import type { ActivityRow, JobRow } from "@/lib/owner-analytics/people";
 import { tashkentDayStartUtc, type Period, type PeriodSelection } from "@/lib/owner-analytics/period";
 import { HISTORY_FROM } from "@/lib/owner-analytics/kpis";
-import { readActivity, readJobs, readMoney, type Read } from "./owner-analytics";
+import { readActivity, readJobs, readMoney, readSpend, type Read } from "./owner-analytics";
+import type { SpendRow } from "@/lib/owner-analytics/costs";
 
 const DAY = 86_400_000;
 /** owner_analytics_activity refuses a window over 400 days; one day of slack for the half-open end. */
@@ -61,4 +62,16 @@ export async function readJobsFor(sel: PeriodSelection): Promise<Read<JobRow[]>>
   if (!a.ok) return a;
   if (!b.ok) return b;
   return { ok: true, data: [...a.data, ...b.data], truncated: a.truncated || b.truncated };
+}
+
+/** Provider spend for the period and, when comparing, the previous one — two reads when one would pass the database's limit. */
+export async function readSpendFor(sel: PeriodSelection): Promise<Read<SpendRow[]>> {
+  const p = sel.previous;
+  if (!p) return readSpend(sel.current.from, sel.current.to);
+  if ((Date.parse(sel.current.to) - Date.parse(p.from)) / DAY <= JOBS_MAX_DAYS) return readSpend(p.from, sel.current.to);
+  const [a, b] = await Promise.all([readSpend(p.from, p.to), readSpend(sel.current.from, sel.current.to)]);
+  if (!a.ok) return a;
+  if (!b.ok) return b;
+  // Undated rows come back on both reads: keep one copy.
+  return { ok: true, data: [...a.data, ...b.data.filter((r) => r.day !== null)], truncated: a.truncated || b.truncated };
 }

@@ -26,8 +26,8 @@ limit, prepaid USD balance, holds and database checks as `/api/v1`.
 | :-- | :-- | :-- | :-- |
 | `list_channels` | channels (ids for create_video) | — | — |
 | `create_video` | queue a video (topic, duration, …; optional `idempotency_key`) | credits held now, charged on success, released on failure; price = the app's own per-minute price with its minimum per video | USD held now, charged on success ($1.20/min, min $0.60 by default) |
-| `get_job_status` | job status, error, and what it holds or was charged | credits | USD cents |
-| `list_videos` | videos, newest first | — | — |
+| `get_job_status` | job status, error, what it holds or was charged, and the video_id it made (null until recorded) | credits | USD cents |
+| `list_videos` | videos, newest first (uploaded or held) | — | — |
 | `get_video` | one video with its publish requests | — | — |
 | `list_connected_accounts` | publish targets (YouTube channels, Instagram / TikTok accounts) | — | — |
 | `publish_video` | cross-post a finished video; same gate and approvals as the site; YouTube uploads private. An OAuth connection's schema has **no** `idempotency_key` (one sent anyway is refused as an unknown field): while a post to a target is still being sent, a repeat call is refused and the text says that target is already being sent, but once it has finished a new call posts again, and the tool's description says so. An API key keeps its optional `idempotency_key` | free | free |
@@ -37,9 +37,16 @@ limit, prepaid USD balance, holds and database checks as `/api/v1`.
 | `create_generation` | start one picture, clip or voice-over; `max_credits` and `idempotency_key` are required (0062 `api_creative_create`) | **not offered** | the organization's **credits**, held at the quote, charged on success, released on failure, refused above `max_credits` or past the key's monthly credit limit; scope `creative:create` |
 | `get_generation` | a generation this key started, with an expiring signed link to each result file (0162 `api_creative_job_files`) | **not offered** | free; scope `creative:read` |
 | `request_download`, `get_download` | HD MP4 of a video | **not offered to OAuth connections** (priced in USD cents from the API balance, file served by an API-key route) | site credit price × the `api_prices` row with `unit = 'download_cents_per_credit'` (1.5¢ by default); the order's answer carries the price (`price_cents`), and no tool text states a rate |
+| `list_creative_models` | the Studio models offered to connected apps (optional `capability`): only a model whose registry spec has `mcp_oauth_exposure: true`, which only Recraft V4.1 / V4.1 Flash have (after their probe, price and beta); an empty list says so (0191 `oauth_creative_models`) | free; permission `studio:create` | **not offered to API keys** (they have `list_models`) |
+| `list_media` | the workspace's own media library (optional `kind`, `limit`), the ids an edit or i2v takes as `source_asset_id` (0191 `oauth_media_list`); no URL fetching | free; `studio:create` | **not offered** |
+| `quote_creative` | the price of one exact generation as `creative_price` computes it, kept for this connection 15 minutes as a `quote_id` (0191 `oauth_creative_quote`) | free; `studio:create` | **not offered** |
+| `create_creative` | start the generation a quote priced: takes only `quote_id` and a required `idempotency_key`; refuses an expired, used or other connection's quote and a moved price (`price_changed`) (0191 `oauth_creative_create`) | the workspace's **credits**, held at exactly the quote, charged on success, refunded on failure, never past the connection's monthly limit; `studio:create` | **not offered** |
+| `get_creative_job` | a generation this connection started; once completed, absolute signed file links that expire after a few minutes (0191 `oauth_creative_get`) | free; `studio:create` | **not offered** |
 
 An OAuth connection is offered only the tools its permissions allow
-(`videos:read`, `videos:create`, `videos:publish`), and the server's
+(`videos:read`, `videos:create`, `videos:publish`, and since 0191 `studio:create` for the
+five Studio tools above: a connection that allowed "make videos" was never asked about
+anything else, so it does not gain them), and the server's
 instructions name only those tools (a read-only connection is told it cannot
 create or publish, and that the person can reconnect it allowing that). A call
 to a connection tool the grant lacks (an assistant that remembers

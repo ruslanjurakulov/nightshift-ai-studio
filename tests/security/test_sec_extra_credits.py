@@ -673,8 +673,15 @@ def test_replaying_0094_twice_changes_nothing(conn):
     assert ws.switch(False).ok
     before = (ws.lots(), ws.acct(), ws.summary())
     sql = (sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql").read_text(encoding="utf-8")
+    # 0192 (the adult gate) sits on 0094's oauth_create_video, and 0094 has no drift guard: a replay would silently put the ungated
+    # body back. Off first, on again after, the way an owner replaying 0094 would do it (0192's header, REPLAY).
+    with psycopg.connect(ws.dsn, autocommit=True) as c:
+        sec_db.take_off_0192(c)
     sec_db.apply_files(ws.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql"])
     sec_db.apply_files(ws.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql"])
+    with psycopg.connect(ws.dsn, autocommit=True) as c:
+        sec_db.put_back_0192(c)
+        assert c.execute("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null").fetchone()[0]
     assert (ws.lots(), ws.acct(), ws.summary()) == before and ws.acct()[2] is False   # an OFF stays OFF
     assert ws.reserve(150, "rj-replay-1")[:2] == (False, "NS402")
     with as_superuser(conn, commit=False) as s:

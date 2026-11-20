@@ -47,7 +47,10 @@
           "type": "object",
           "required": ["image_refs_max"],
           "additionalProperties": false,
-          "properties": {"image_refs_max": {"type": "integer", "minimum": 0, "maximum": 30}}
+          "properties": {
+            "image_refs_max": {"type": "integer", "minimum": 0, "maximum": 30},
+            "prompt_required": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}}
+          }
         },
         "aspect_ratios": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/aspect"}},
         "aspect_ratios_by_capability": {
@@ -172,7 +175,11 @@
             "url": {"$ref": "#/$defs/https_url"}
           }
         },
-        "api_exposure": {"enum": ["any", "web_only"]},
+        "api_exposure": {"enum": ["any", "web_only", "web_mcp"]},
+        "mcp_oauth_exposure": {
+          "description": "true offers this model to an AI assistant the end user connected to their own workspace with OAuth (the MCP Studio tools, migration 0191): the same person generating with their own credits through their own assistant. Separate from api_exposure, which is about a developer's own code. Absent or false: not offered (the default for every model). Set true only in a reviewed change that cites the vendor's terms allowing exactly this use; tests/test_mcp_oauth_creative_migration.py lists the models that may carry it. Cannot be combined with blocked_countries (an assistant's request carries no address) or a rights acknowledgement (given in the Studio only).",
+          "type": "boolean"
+        },
         "limits": {
           "type": "object",
           "required": ["max_prompt_chars", "max_concurrent_per_org"],
@@ -185,7 +192,7 @@
         },
         "quality_tier": {"type": "integer", "minimum": 1, "maximum": 5},
         "speed_tier": {"type": "integer", "minimum": 1, "maximum": 5},
-        "requires_adult": {"type": "boolean", "description": "The vendor's terms are 18+ (e.g. the Gemini API terms): sold only to an account with an adult attestation (requires_adult, migration placeholder 0199). Absent = false."},
+        "requires_adult": {"type": "boolean", "description": "The vendor's terms are 18+ (e.g. the Gemini API terms): sold only to an account with an adult attestation (requires_adult, migration placeholder 0192). Absent = false."},
         "probe": {
           "type": "object",
           "required": ["capability", "prompt"],

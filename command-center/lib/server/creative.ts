@@ -1,5 +1,7 @@
 import "server-only";
 import { cache } from "react";
+import { readAgeState } from "@/lib/server/age";
+import { adultLock } from "@/lib/age";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -91,8 +93,11 @@ async function withLocks(models: StudioModel[], orgId: string | null): Promise<S
       purchased = null;
     }
   }
+  // 0192: a model whose maker's terms are 18+ is locked "for adults only" until this person confirmed they are 18 or older. Read only
+  // when such a model is listed; unknown (no migration, a failed read) is not a refusal, and the quote still decides.
+  const age = models.some((m) => m.adultOnly) ? await readAgeState() : "unknown";
   return models.map((m) => {
-    const lock = modelLock(m.entitlement, purchased);
+    const lock = modelLock(m.entitlement, purchased) ?? adultLock(m, age);
     return lock ? { ...m, lock } : m;
   });
 }

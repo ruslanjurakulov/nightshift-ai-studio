@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/server/audit";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 import { blockedModelsHere, geoRefusal } from "@/lib/server/geo";
-import { sellableFor } from "@/lib/creative/route-around";
+import { missingWords, sellableFor } from "@/lib/creative/route-around";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +50,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // A routed create names the model its quote picked (0075), so this one check covers every mode.
   const blocked = parsed.input.model ? geoRefusal(parsed.input.model, request.headers) : null;
   if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
+  // Rule 6: refused before anything is held when the model needs words that were not sent (registry inputs.prompt_required).
+  const words = await missingWords(session.db, parsed.input.capability, parsed.input.model, parsed.input.params);
+  if (words) return NextResponse.json(words.body, { status: words.status });
   let input = parsed.input;
   if (input.mode !== "exact") {
     // A routed job can fail over to another model (0088), chosen by the database, which does not know the country. Where this

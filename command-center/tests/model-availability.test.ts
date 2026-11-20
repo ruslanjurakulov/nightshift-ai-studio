@@ -304,8 +304,8 @@ describe("Models section navigation", () => {
     expect(keys(false)).not.toContain("models");
     expect(CUSTOMER_SECTIONS).toContain("models");
     expect(studioTilesFor(false).map((x) => x.href)).toContain("/models");
-    // Its sidebar row is Studio, the place whose tile opens it.
-    expect(sidebarCurrent("/models")).toBe("studio");
+    // Its sidebar row is Create: picking a model is part of making something.
+    expect(sidebarCurrent("/models")).toBe("create");
   });
 
   it("is a customer section: sectionAllowed lets both in", () => {

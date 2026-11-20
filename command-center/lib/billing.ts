@@ -729,7 +729,8 @@ export interface ProviderLedger {
 }
 
 /** Probe failures where the vendor refused the key or the account before any work: nothing was made, nothing billed. */
-const REFUSED_BEFORE_WORK = new Set(["auth", "quota", "rate_limited", "not_configured"]);
+// plan_required (0190): the account's plan refused the request outright, like an empty balance; nothing was made.
+export const REFUSED_BEFORE_WORK: ReadonlySet<string> = new Set(["auth", "quota", "rate_limited", "not_configured", "plan_required"]);
 
 export const utcDayStart = (ms: number): number => Math.floor(ms / DAY_MS) * DAY_MS;
 
@@ -910,4 +911,14 @@ export function providerLedger(x: LedgerInputs): ProviderLedger {
   const runsOut = daysLeft(leftUsd, usdPerDay);
   const runsOutEstimate = runsOut !== null && (recent.estimate || remaining.kind === "estimate");
   return { id: p.id, startMs, sinceTopup, bought, sources, used, remaining, usdPerDay, runsOut, runsOutEstimate };
+}
+
+/**
+ * What one provider spent from `fromMs` to `x.now`, by the same three sources and the same rules as providerLedger() — so a
+ * 24-hour or 7-day burn on another page cannot disagree with the ledger it sits beside. Null `usd` when any source is
+ * unknown, cut or unpriced for that window (the priced part is a floor).
+ */
+export function providerSpendSince(x: LedgerInputs, fromMs: number): UsedTotal & { sources: { pipeline: SourceUse; studio: SourceUse; probes: SourceUse } } {
+  const sources = { pipeline: pipelineUse(x, fromMs), studio: studioUse(x, fromMs), probes: probeUse(x, fromMs) };
+  return { ...usedOf([sources.pipeline, sources.studio, sources.probes], x.provider.creditUsd), sources };
 }

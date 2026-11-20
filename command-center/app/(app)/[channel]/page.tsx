@@ -3,6 +3,8 @@ import { ALL_CHANNELS_SLUG, channelSlug } from "@/lib/channels";
 import { getChannelContext } from "@/lib/channels-server";
 import { isOperator } from "@/lib/auth/org-roles";
 import { landingSection } from "@/lib/navigation";
+import { cookies } from "next/headers";
+import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 
 /**
  * A channel on its own names no screen — it names a lens. Landing on one sends
@@ -20,7 +22,9 @@ export default async function ChannelIndex({
   params: Promise<{ channel: string }>;
 }) {
   const { channel } = await params;
-  const landing = landingSection(await isOperator());
+  // The owner with Owner mode off lands where a customer does (lib/owner-mode): the frame decides the first screen.
+  const operator = await isOperator();
+  const landing = landingSection(operator && ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value));
   if (channel === ALL_CHANNELS_SLUG) {
     const { channels } = await getChannelContext();
     const first = channels[0];

@@ -37,7 +37,7 @@ from decimal import Decimal
 import psycopg
 import pytest
 
-from test_sec_films_money import TOTAL, a, b, claims, db, err, no_live_segment  # noqa: F401  (fixtures, re-registered here)
+from test_sec_films_money import TOTAL, a, b, claims, db, err, no_live_segment, one_hour  # noqa: F401  (fixtures, re-registered here)
 
 EXEMPT_ORG = "00000000-0000-0000-0000-000000000001"
 
@@ -55,7 +55,7 @@ def outcome(fn):
 
 # ── BR-0171-01: a refused start is never counted ──────────────────────────────
 
-def test_BR_0171_01_refused_starts_count_against_the_ten_an_hour_start_limit(db, a):
+def test_BR_0171_01_refused_starts_count_against_the_ten_an_hour_start_limit(db, a, one_hour):
     """0171's header: start_film is rate-limited in the database per person, 10 an hour. Eleven calls within the hour must meet the
     limit whatever the first ten answered; otherwise every refused call is a free re-pricing of the whole film under the
     organization's start lock. FAILS on 0171: the counter row rolls back with the refusal, so the limit never sees one."""
