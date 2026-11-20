@@ -58,7 +58,7 @@ E_BAD_RESPONSE = "llm_bad_response"
 
 REMEDIES = {
     E_NOT_CONFIGURED: "the provider's API key is not set on the worker: add it (Model keys page -> GitHub secret) and redeploy",
-    E_AUTH: "the provider rejected the API key: replace the key",
+    E_AUTH: "the provider rejected the API key (for Anthropic, also a key not scoped to a workspace): replace the key",
     E_QUOTA: "the provider account has no credit or hit its spend limit: top it up or raise the limit",
     E_RATE_LIMITED: "the provider is rate limiting this account: try again in a few minutes",
     E_UNAVAILABLE: "the provider did not answer (outage, overload or timeout): try again later",
@@ -119,6 +119,8 @@ def classify(provider: str, resp) -> str:
     if status in (401, 403):
         return E_AUTH
     if provider == "anthropic":
+        if status == 400 and "not scoped to a workspace" in (_error_field(resp, "message") or "").lower():
+            return E_AUTH       # an organization-level key: the operator needs a workspace-scoped one
         if status == 402 or _error_field(resp, "type") == "billing_error":
             return E_QUOTA
         if status == 429:

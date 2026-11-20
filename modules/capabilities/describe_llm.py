@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from modules.capabilities.base import (
+    E_AUTH,
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
     E_POLICY,
@@ -47,6 +48,16 @@ def _error_field(text: str, name: str) -> Optional[str]:
         return None
     val = err.get(name) if isinstance(err, dict) else None
     return val if isinstance(val, str) else None
+
+
+def _unscoped_key(text: str) -> bool:
+    """Anthropic's 400 for an organization-level key used without a workspace ("This API key is not scoped to a workspace,
+    so this request must include ...")."""
+    return "not scoped to a workspace" in (_error_field(text, "message") or text or "").lower()
+
+
+#: What the operator reads on a job or probe that failed for that reason.
+UNSCOPED_KEY_REMEDY = "the Anthropic key is not scoped to a workspace: create a workspace-scoped API key and set ANTHROPIC_API_KEY"
 
 
 class _LlmDescribe(GeminiDescribeAdapter):
@@ -85,6 +96,10 @@ class AnthropicDescribeAdapter(_LlmDescribe):
 
     def vendor_error_code(self, status: int, text: str) -> Optional[str]:
         kind = _error_field(text, "type")
+        if status == 400 and _unscoped_key(text):
+            # The key is fine but belongs to no workspace (the first probe, 2026-11-20): the fix is the operator's (a
+            # workspace-scoped key), never the person's request, so it is `auth`, not `bad_request`.
+            return E_AUTH
         if status == 402 or kind == "billing_error":
             return E_QUOTA
         if kind == "rate_limit_error":
@@ -104,7 +119,12 @@ class AnthropicDescribeAdapter(_LlmDescribe):
         }
         if request.end_user and _END_USER.fullmatch(request.end_user):
             body["metadata"] = {"user_id": request.end_user}   # opaque id only, never an email
-        data = self.post(f"{self.base_url}/messages", body, what="describe")
+        try:
+            data = self.post(f"{self.base_url}/messages", body, what="describe")
+        except AdapterError as e:
+            if e.code == E_AUTH and _unscoped_key(e.message):
+                raise AdapterError(E_AUTH, UNSCOPED_KEY_REMEDY, http_status=400, not_accepted=True) from None
+            raise
         if not isinstance(data, dict):
             raise AdapterError(E_BAD_RESPONSE, "describe: not a JSON object")
         if data.get("stop_reason") == "refusal":

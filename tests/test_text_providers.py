@@ -98,6 +98,8 @@ class TextProviderTests(unittest.TestCase):
         self.assertEqual(self.fails("anthropic", Resp(429, {"error": {"type": "rate_limit_error"}})), tp.E_RATE_LIMITED)
         self.assertEqual(self.fails("anthropic", Resp(529, {"error": {"type": "overloaded_error"}})), tp.E_UNAVAILABLE)
         self.assertEqual(self.fails("anthropic", Resp(400, {"error": {"type": "invalid_request_error"}})), tp.E_BAD_REQUEST)
+        self.assertEqual(self.fails("anthropic", Resp(400, {"error": {"type": "invalid_request_error", "message":
+                         "This API key is not scoped to a workspace, so this request must include ..."}})), tp.E_AUTH)
 
     def test_a_timeout_is_unavailable_and_is_not_retried(self):
         with self.assertRaises(tp.TextProviderError) as cm:

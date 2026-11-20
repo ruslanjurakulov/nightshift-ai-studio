@@ -88,6 +88,20 @@ class Claude(Base):
             self.assertNotIn(gone, body)
         self.assertEqual((task.outputs[0].mime, task.outputs[0].data), ("text/plain", b"A cat on a mat."))
 
+    def test_a_key_without_a_workspace_is_the_operators_key_problem_with_its_fix(self):
+        # The first real probe (2026-11-20) answered exactly this. It is not the person's request: never bad_request.
+        body = {"type": "error", "error": {"type": "invalid_request_error", "message":
+                "This API key is not scoped to a workspace, so this request must include the anthropic-workspace header"}}
+        a = self.adapter("image.anthropic_describe", [("POST", "/v1/messages", FakeResp(400, body))])
+        with self.assertRaises(AdapterError) as cm:
+            a.submit(self.req(), CLAUDE)
+        self.assertEqual(cm.exception.code, E_AUTH)
+        self.assertIn("workspace-scoped API key", cm.exception.message)
+        self.assertNotIn(AKEY, cm.exception.message)
+        # Any other 400 stays the request's problem.
+        other = {"type": "error", "error": {"type": "invalid_request_error", "message": "messages: field required"}}
+        self.assertEqual(self.code("image.anthropic_describe", CLAUDE, FakeResp(400, other), "/v1/messages"), E_BAD_REQUEST)
+
     def test_every_failure_is_named_and_never_carries_the_key(self):
         m = "/v1/messages"
         self.assertEqual(self.code("image.anthropic_describe", CLAUDE, FakeResp(401, {"error": {"type": "authentication_error",
