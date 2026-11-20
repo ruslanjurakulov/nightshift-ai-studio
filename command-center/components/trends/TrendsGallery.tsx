@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useChannelPath } from "@/lib/channels-client";
 import { useI18n } from "@/lib/i18n/context";
 import { Chip } from "@/components/ui/Chip";
 import { TEMPLATE_CATEGORIES, type TemplateCategory } from "@/lib/templates/trends";
@@ -69,6 +72,14 @@ function GalleryBody({
 }) {
   const { t } = useI18n();
   const tt = t.trends;
+  const path = useChannelPath();
+  const here = usePathname();
+  // Every dead end gets a way on: a blank Create is always there.
+  const blank = (
+    <Link href={path("/create")} className="btn-quiet">
+      {tt.blankCreate}
+    </Link>
+  );
   if (state.phase === "loading") {
     return (
       <ul className="tr-grid" aria-busy="true" aria-label={tt.loading}>
@@ -85,6 +96,7 @@ function GalleryBody({
       <div className="tr-state" role="status">
         <h2>{tt.notEnabledTitle}</h2>
         <p>{tt.notEnabledBody}</p>
+        {blank}
       </div>
     );
   }
@@ -93,7 +105,7 @@ function GalleryBody({
       <div className="tr-state" role="alert">
         <h2>{tt.signedOutTitle}</h2>
         <p>{tt.signedOutBody}</p>
-        <a className="btn-quiet" href="/login">
+        <a className="btn-quiet" href={`/login?next=${encodeURIComponent(here)}`}>
           {tt.signIn}
         </a>
       </div>
@@ -115,6 +127,7 @@ function GalleryBody({
       <div className="tr-state" role="status">
         <h2>{tt.emptyTitle}</h2>
         <p>{tt.emptyBody}</p>
+        {blank}
       </div>
     );
   }

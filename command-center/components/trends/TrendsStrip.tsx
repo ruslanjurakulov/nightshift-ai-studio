@@ -41,7 +41,7 @@ export function TrendsStrip() {
       ) : (
         <ul className="tr-strip" aria-busy={state.phase === "loading"}>
           {state.phase === "loading"
-            ? Array.from({ length: 3 }, (_, i) => (
+            ? Array.from({ length: HOME_TEMPLATE_LIMIT }, (_, i) => (
                 <li key={i}>
                   <TrendCardSkeleton />
                 </li>

@@ -75,13 +75,14 @@ export function TrendCard({ template, reduced, canHover }: { template: TemplateD
             muted
             loop
             playsInline
-            preload="none"
+            // No poster yet: load enough to show the first frame instead of an empty box.
+            preload={template.poster_url ? "none" : "metadata"}
             aria-hidden
             tabIndex={-1}
           />
         )}
         {hasPreview && !canHover && (
-          <button type="button" className="tr-play tap" onClick={playing ? stop : play} aria-label={playing ? tt.pause : tt.play} aria-pressed={playing}>
+          <button type="button" className="tr-play tap" onClick={playing ? stop : play} aria-label={fmt(tt.playAria, { title: template.title })} aria-pressed={playing}>
             {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}
           </button>
         )}
@@ -91,7 +92,13 @@ export function TrendCard({ template, reduced, canHover }: { template: TemplateD
         <h3 className="tr-title">{template.title}</h3>
         <p className="tr-desc">{template.description}</p>
         {template.model_status === "unavailable" ? (
-          <p className="tr-note" data-tone="warn">{tt.modelUnavailable}</p>
+          <>
+            <p className="tr-note" data-tone="warn">{tt.modelUnavailable}</p>
+            {/* A way forward that names no substitute (rule 4): the list of what is on sale. */}
+            <Link href={path("/models")} className="tap-link g2-link tr-use-alt">
+              {tt.seeModels}
+            </Link>
+          </>
         ) : (
           <>
             {template.model_status === "unknown" && <p className="tr-note">{tt.modelUnknown}</p>}
