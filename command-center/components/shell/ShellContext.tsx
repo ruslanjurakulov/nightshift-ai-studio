@@ -16,12 +16,14 @@ import { UNKNOWN_TOOLS, type ToolAvailability } from "@/lib/tool-availability";
  */
 interface Shell {
   operator: boolean;
+  /** The platform operator, whichever frame they are drawn in: the avatar menu offers them the Owner mode switch. */
+  ownerSwitch: boolean;
   features: NavFeatures;
   /** Which Studio tools have a model on sale (lib/tool-availability.ts); unknown draws every tool as before. */
   tools: ToolAvailability;
 }
 
-const ShellContext = createContext<Shell>({ operator: true, features: NO_NAV_FEATURES, tools: UNKNOWN_TOOLS });
+const ShellContext = createContext<Shell>({ operator: true, ownerSwitch: false, features: NO_NAV_FEATURES, tools: UNKNOWN_TOOLS });
 
 /**
  * `features` are the switches the SERVER read for this request (lib/navigation NavFeatures): which optional sections are listed.
@@ -32,16 +34,18 @@ const ShellContext = createContext<Shell>({ operator: true, features: NO_NAV_FEA
  */
 export function ShellProvider({
   operator,
+  ownerSwitch = false,
   features = NO_NAV_FEATURES,
   tools = UNKNOWN_TOOLS,
   children,
 }: {
   operator: boolean;
+  ownerSwitch?: boolean;
   features?: NavFeatures;
   tools?: ToolAvailability;
   children: React.ReactNode;
 }) {
-  return <ShellContext.Provider value={{ operator, features, tools }}>{children}</ShellContext.Provider>;
+  return <ShellContext.Provider value={{ operator, ownerSwitch, features, tools }}>{children}</ShellContext.Provider>;
 }
 
 export function useShell(): Shell {
