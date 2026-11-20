@@ -8,7 +8,9 @@ import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
+import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
@@ -25,8 +27,10 @@ import { modelKeysEn } from "./model-keys/en";
 import { operatorCustomersEn } from "./operator-customers/en";
 import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
+import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
+import { trendsEn } from "./trends/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -44,6 +48,7 @@ import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
+import { captionReviewEn } from "./caption-review/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 import { regionEditEn } from "./region-edit/en";
 import { imageEditorEn } from "./image-editor/en";
@@ -64,11 +69,15 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
+  /** The Trends gallery (migration 0183): ./trends/en.ts. */
+  trends: trendsEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
   libraryUx: libraryUxEn,
+  assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
+  customerApp: customerAppEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
@@ -90,6 +99,7 @@ export const en = {
   customers: operatorCustomersEn,
   seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,
+  ownerAnalytics: ownerAnalyticsEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
   regionEdit: regionEditEn,
@@ -119,6 +129,7 @@ export const en = {
     menu: "Menu",
     command: "Command Center",
     create: "Create",
+    projects: "Projects",
     videos: "Videos",
     pipeline: "Pipeline",
     agents: "Agents",
@@ -143,9 +154,11 @@ export const en = {
     providers: "Providers",
     models: "Models",
     margin: "Margin",
+    ownerAnalytics: "Owner analytics",
     customers: "Customers",
     billing: "Billing",
     studio: "Nightshift Studio",
+    trends: "Trends",
     // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
     brandLook: "Brand look",
     library: "Library",
@@ -438,7 +451,7 @@ export const en = {
     stepCreateNeedsChannel: "A full YouTube video needs a connected channel.",
     open: "Open",
     done: "Done",
-    finish: "Go to Command Center",
+    finish: "Go to Home",
     /** The last button when the person came from a model sample's "Try it": it opens the Studio with that sample's tool and words. */
     finishStudio: "Open Nightshift Studio with your sample",
     unavailable: "We couldn't load your workspace just now. Reload the page in a moment.",
@@ -507,6 +520,11 @@ export const en = {
     body2b: "in the repo root. Until then, no data is shown — the dashboard will not invent numbers.",
   },
   dashboard: {
+    eventStatusClear: "Recorded events: no errors in 24h",
+    eventStatusErrors: "Recorded errors in the last 24h",
+    eventStatusUnavailable: "Event status unavailable",
+    eventStatusEmpty: "No recorded events yet",
+    eventStatusScope: "Based on recorded events. Service and Brain health are unverified.",
     latestRun: "Latest run",
     noRunsYet: "No runs yet",
     unreadable: "Cannot read backend",
@@ -904,26 +922,27 @@ export const en = {
     sPublish: "Publish",
   },
   agents: {
-    title: "Agents",
-    subtitle: "Derived from the live system_events stream — no separate agents table",
+    title: "Pipeline agents",
+    subtitle: "Latest recorded pipeline events, not live process checks. Current activity is unverified.",
     seen: "Agents seen",
-    seenSub: "distinct, recent window",
-    running: "Running",
-    activeNow: "active now",
-    noneActive: "none active",
-    failed: "Failed",
+    seenSub: "distinct agents in the event window",
+    running: "Last event: running",
+    activeNow: "recorded as running",
+    noneActive: "none recorded as running",
+    failed: "Last event: failed",
     latestFailed: "latest event failed",
-    noneFailing: "none failing",
+    noneFailing: "none recorded as failed",
     scanned: "Events scanned",
     scannedSub: "most recent 500",
-    roster: "Agent Roster",
+    roster: "Agents seen in events",
     dbErr: "Could not reach the database. The agent roster is unavailable right now.",
-    empty: "No agent activity yet. Once the pipeline runs, each agent appears here with its latest state.",
+    empty: "No agent events in this window. Current process activity is unknown.",
     recentEvents: "{n} recent events",
-    currentTask: "Current task",
+    currentTask: "Last recorded task",
     took: "took {d} · ",
     lastSuccess: "Last success",
     lastFailure: "Last failure",
+    recordedStatus: "Last recorded state: {status}",
     schedTitle: "Schedule & Autopilot",
     schedHint: "Set when this channel's daily run fires, and whether autopilot runs it at all. The scheduler reads this straight from the channel — no redeploy.",
     schedAutopilot: "Autopilot",
@@ -3745,6 +3764,7 @@ export const en = {
       model_not_sellable: "This model is not available right now.",
       model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
       country_blocked: "This model is not available in your region. Nothing was charged. Choose another model from the list.",
+      prompt_required: "This model needs words for this: describe the motion or the shot, then the price is shown. Nothing was charged.",
       entitlement_required: "This model isn't open to your organization yet.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",
@@ -3943,6 +3963,7 @@ export const en = {
       no_model: "No model can make this right now.",
       need_picture: "Pick a picture to see the price.",
       need_words: "Describe it to see the price.",
+      need_motion_words: "{model} needs a description of the motion: write what happens in the shot to see the price.",
       need_recording: "Pick an audio or video file to see the price.",
       need_voice: "Pick a voice to see the price.",
       need_language: "Pick a language to see the price.",
@@ -3992,6 +4013,8 @@ export const en = {
     makeSimilarHint: "Puts this text into the image form, with the picture's shape. You see the price before anything is made.",
     describedPicture: "The described picture",
     emptyTitle: "Your generations appear here",
+    videoCancellationUnknown: "Cancellation recorded in Nightshift. Provider cancellation is not confirmed by this job record.",
+    reloadFeed: "Reload generations",
     feedLoading: "Loading your generations…",
     working: "Working — this updates by itself",
     reasons: {
@@ -4469,6 +4492,7 @@ export const en = {
     confirmAckHint: "Tick the box to continue.",
   },
   media: {
+    comparison: {"action": "Compare images", "title": "Compare saved images", "left": "First image", "right": "Second image", "unnamed": "Unnamed image", "unavailable": "Preview unavailable", "dismiss": "Close comparison", "version": "Version {n}"},
     title: "Library",
     subtitle: "Images, video, audio and captions of {org}: uploaded here or made by Nightshift.",
     notEnabled: "The media library is not enabled on this deployment yet (migration 0038 has not been applied).",
@@ -5419,6 +5443,7 @@ export const en = {
     noOrg: "Open or create an organization to use the editor.",
     readFailed: "The editor could not be read just now. Reload the page to try again.",
     freeNote: "Editing and exporting are free: no credits are used.",
+    soldNote: "Editing is free. Exports cost credits, and the price is shown before you export.",
     publishNote: "An export is saved to your library. Nothing is published.",
     projects: "Your projects",
     noProjects: "No projects yet. Start one from a video in your library.",
@@ -5622,6 +5647,7 @@ export const en = {
     },
     exportRev: "Version {rev}",
     exportPanel: editorExportEn,
+    captionReview: captionReviewEn,
     viewInLibrary: "Open in Library",
     watch: "Watch",
     deleteProject: "Delete project",
@@ -5842,6 +5868,26 @@ export const en = {
     typeDisplay: "Display · Sofia Sans Extra Condensed",
     typeBody: "Body · Sofia Sans",
     typeMono: "Counter · Martian Mono",
+    ds: {
+      title: "Keys and controls (--ds)",
+      primary: "Create video",
+      secondary: "Preview",
+      quiet: "Cancel",
+      danger: "Delete",
+      disabled: "Unavailable",
+      busy: "Saving…",
+      icon: "Settings",
+      field: "Title",
+      fieldPh: "Name your video",
+      fieldHint: "Up to 100 characters.",
+      display: "From idea to finished video",
+      toggle: "Auto captions",
+      toggleHint: "Adds captions to every export.",
+      text: "Text",
+      image: "Image",
+      video: "Video",
+      audio: "Audio",
+    },
     typeSample: "The night shift made twelve videos while you slept.",
     flat: "Flat",
     sunken: "Sunken",

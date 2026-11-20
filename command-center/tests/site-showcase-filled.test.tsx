@@ -109,8 +109,8 @@ describe("/welcome after a sample's Try it", () => {
     expect(btn.getAttribute("href")).toBe(next);
   });
 
-  it("without one, it is the Command Center as before", () => {
+  it("without one, it is Home, named outright (the bare segment would send an operator to the console)", () => {
     renderWelcome(null);
-    expect(screen.getByRole("link", { name: dictionaries.en.signup.finish }).getAttribute("href")).toBe("/all-channels");
+    expect(screen.getByRole("link", { name: dictionaries.en.signup.finish }).getAttribute("href")).toBe("/all-channels/home");
   });
 });

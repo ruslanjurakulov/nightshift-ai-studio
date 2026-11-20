@@ -25,7 +25,7 @@ dialog, o'zbek/rus/ingliz tillaridagi ovoz va o'zbekcha subtitrlar uchun Scribe.
    ElevenLabs'ning "Default" ovozlari, ular **31.12.2026** dan keyin ishlamaydi [E20]. Yana 2 tasi
    (Rachel, Charlotte) allaqachon "Legacy": API ularni boshqa ovozga yo'naltiradi [E21]. Bu 47 kun
    qoldi. 2026-yil martidan keyin ochilgan yangi akkauntda Default ovozlar umuman ko'rinmaydi.
-3. **Mijozlarga sotish uchun kamida Scale tarifi ($299/oy) kerak.** OEM shartlari: Free, Starter,
+3. **Mijozlarga sotish uchun kamida Scale tarifi kerak.** OEM shartlari: Free, Starter,
    Creator yoki Pro tarifida xizmatni mijozlarga berish "aniq taqiqlangan" [E30 §2.B(f)].
    Reestrdagi `plan_required:scale` **to'g'ri**. Hozirgi akkaunt esa **Free** (`docs/CUSTOM_VOICE.md`).
 4. **API'ni boshqalarga qayta sotib bo'lmaydi.** Mijozimiz ElevenLabs'ni o'z mijoziga bera olmaydi
@@ -34,10 +34,10 @@ dialog, o'zbek/rus/ingliz tillaridagi ovoz va o'zbekcha subtitrlar uchun Scribe.
 5. **Saytda "Powered by ElevenLabs" deb yozolmaymiz.** OEM shartlari, ElevenLabs bilan ishimiz haqida
    har qanday ommaviy bayonot uchun ElevenLabs'ning oldindan yozma roziligini talab qiladi
    [E30 §2.B(d)].
-6. **Narx.** v4 va v3 1 000 belgi uchun **$0.08**, v4 Turbo va Flash **$0.04**, Scribe soatiga
-   **$0.20**, Dubbing v2 daqiqasiga **$2.20** [E10]. API dollar bilan hisoblanadi, har tarifda bir xil
-   narx. Ovoz uchun bizning qoida: **sotuvchi narxi (sent) × 3** (`margin 2.0`). 10 daqiqalik
-   hikoya taxminan 9–10 ming belgi: tannarx **$0.72–0.80**, bizda **216–240 kredit**.
+6. **Narx.** v4 va v3 1 000 belgi uchun, v4 Turbo va Flash undan arzonroq, Scribe soatiga, Dubbing v2
+   daqiqasiga narxlanadi [E10] (raqamlar sotuvchining narx sahifasida; bizdagi narx DB narx
+   jadvali / model reestrida, matnda emas). API dollar bilan hisoblanadi, har tarifda bir xil narx.
+   10 daqiqalik hikoya taxminan 9–10 ming belgi: bizda **216–240 kredit**.
 
 **2–3 qahramon bitta loyihada.** Ikki yo'l bor: **Text to Dialogue** (bitta so'rovda 10 tagacha ovoz,
 v3/v4, satrlar vaqti bilan qaytadi) yoki **har bir satr alohida TTS**. Tavsiya: bitta sahna dialogini
@@ -64,10 +64,10 @@ uchun ruxsat so'rash yoki so'ramaslik.
 | `command-center/components/create/CreateStudio.tsx:563-581` | The Create page offers the premade list **plus a free-text "Custom voice id"** box, checked only for 20 alphanumerics. | Conflicts with the known ceiling "pick from the account's list, never type one". The channel editor (`VoiceEditor.tsx`) already does it right: it lists the account's voices. Studio uses only the list (§8.2). |
 | `command-center/lib/ttsModels.ts` | `eleven_v3`, `eleven_multilingual_v2`, `eleven_flash_v2_5`, `eleven_turbo_v2_5`. | `eleven_v4` is in the registry but not in this list. `eleven_turbo_v2_5` is deprecated and "functionally equivalent" to Flash v2.5 [E1]. |
 | `app/api/voices/preview/route.ts` | Serves preview clips from the private `voice-previews` bucket; preparing a new clip is an operator action that spends the operator's characters through an Actions run. | Keep the pattern. The voices API returns a `preview_url` per voice [E7]; whether that URL may be played to our end users under the OEM terms is **unverified**. |
-| `modules/capabilities/audio.py` | Adapters: TTS, SFX (`eleven_text_to_sound_v2`), voice changer (`eleven_multilingual_sts_v2`), dubbing (`/v1/dubbing/project`, v1/v2), Scribe v2 captions. | SFX v2 is deprecated and removed **2027-03-01**; v3 exists [E1]. Scribe v3 exists at the same $0.20/h [E1][E10]. |
+| `modules/capabilities/audio.py` | Adapters: TTS, SFX (`eleven_text_to_sound_v2`), voice changer (`eleven_multilingual_sts_v2`), dubbing (`/v1/dubbing/project`, v1/v2), Scribe v2 captions. | SFX v2 is deprecated and removed **2027-03-01**; v3 exists [E1]. Scribe v3 exists at the same price as v2 [E1][E10]. |
 | `modules/voice_worker.py`, `docs/CUSTOM_VOICE.md` | Instant voice cloning of the user's **own** voice, read-aloud phrase verified by local Whisper; off by default; the account is on the Free plan, which cannot clone. | Fits the terms (§7.3). IVC needs Starter+, PVC Creator+ [E10][E22]. |
 | `schemas/model_registry.json` | 9 ElevenLabs entries, all `plan_required:scale`, `api_exposure: web_only`, `confirmed: false`. | The gate and `web_only` are right (§7.1). Two prices disagree with the page (§5.1). |
-| `docs/sql/prices_*.sql` | `credits_per_unit` = vendor cost in US cents; customer pays `× (1 + margin)`; **margin 2.0 for voice** (×3), 1.5 for image/video and dubbing (×2.5) (`prices_defaults_2026_10_03.sql:22-25`). | The voice rule is ×3. The Scribe row assumes $0.40/h; the page says $0.20/h [E10]; `docs/research/registry-corrections-2026-11-11.md` already flagged it. |
+| `docs/sql/prices_*.sql` | `credits_per_unit` = vendor cost converted to credits; customer pays `× (1 + margin)`, one margin for voice and another for image/video and dubbing (`prices_defaults_2026_10_03.sql:22-25`). | The Scribe row assumes twice the hourly price the page states [E10]; `docs/research/registry-corrections-2026-11-11.md` already flagged it. |
 
 ---
 
@@ -78,20 +78,20 @@ then every row is **not verified**.
 
 | Product line | Our use case | Decision | Why, and the alternative |
 | :-- | :-- | :-- | :-- |
-| **TTS: Eleven v4** (`eleven_v4`) | Narration and character lines, **including Uzbek** | **Yes, default for new projects** (after a probe) | 90+ languages including `uz`, 10,000 chars per request, "most emotive"; recommended over v3 "in almost every case" [E1][E2]. Request stitching works (the guide's example uses `eleven_v4`) [E4]. $0.08/1K chars [E10]. Caveats: no SSML, no Style/Speed sliders; "may sound substantially different from Eleven v3"; "will keep evolving" [E2], so a seed does not pin a voice across months. |
+| **TTS: Eleven v4** (`eleven_v4`) | Narration and character lines, **including Uzbek** | **Yes, default for new projects** (after a probe) | 90+ languages including `uz`, 10,000 chars per request, "most emotive"; recommended over v3 "in almost every case" [E1][E2]. Request stitching works (the guide's example uses `eleven_v4`) [E4]. Priced per 1K chars [E10]. Caveats: no SSML, no Style/Speed sliders; "may sound substantially different from Eleven v3"; "will keep evolving" [E2], so a seed does not pin a voice across months. |
 | **TTS: Eleven v3** (`eleven_v3`) | Existing channels already on v3; fallback **only if a person chooses it** | **Yes, kept** | 70+ languages including `uz`; 5,000 chars per request; **no request stitching** [E1][E4]. Same price as v4 [E10]. |
 | **TTS: Multilingual v2** | English and Russian long-form | **Yes, but never for Uzbek** | 29 languages; `uz` is **not** among them [E1]. Stable on long form. `language_code` is "not supported for multilingual_v2 models" [E3]. |
-| **TTS: Flash v2.5 / v4 Turbo** | Drafts and previews in the editor | **Later** | $0.04/1K [E10]. Flash: 32 languages, **no `uz`** [E1][E10]. v4 Turbo has `uz` but is built for latency; the Text to Dialogue websocket allows **only one** voice on v4 Turbo [E8]. Use for a cheap "draft take" only when the backend prices one (benchmark item 21). |
+| **TTS: Flash v2.5 / v4 Turbo** | Drafts and previews in the editor | **Later** | half the v4 rate per 1K [E10]. Flash: 32 languages, **no `uz`** [E1][E10]. v4 Turbo has `uz` but is built for latency; the Text to Dialogue websocket allows **only one** voice on v4 Turbo [E8]. Use for a cheap "draft take" only when the backend prices one (benchmark item 21). |
 | **Text to Dialogue** | A scene with 2–3 characters | **Yes (P2)** | v4 and v3 only; up to 10 unique voices per request; keep ≤ 2,000 chars per request; with-timestamps returns `voice_segments` (start/end seconds per voice) [E6][E9]. §3. |
-| **Speech to Text: Scribe v2/v3** | Uzbek captions; transcripts of uploaded media | **Yes for Uzbek and for uploads** | Uzbek is listed in the "Good (>10% to ≤20% WER)" band [E11]. $0.20/h; keyterms +$0.05/h [E10]. Up to 32 speakers, word timestamps, SRT export, webhooks [E1]. **Not** for captions of our own narration: those come free from TTS alignment (§6.5). For English and Russian the local Whisper the repo already runs stays first (cost zero; quality not measured here). |
-| **Speech to Speech (voice changer)** | Re-voice a recorded performance in a character's voice | **Later** | $0.12/min [E10]; 5 min per segment; billed 1,000 chars/min [E12]. The capability page lists 29 languages for `eleven_multilingual_sts_v2` (no `uz`) [E12], the pricing card says "70+ languages" [E10]: the two disagree, so Uzbek is **unverified**. |
-| **Dubbing** | A finished project into uz/ru/en when **we have no script** (customer uploads) | **Yes, narrow** | v2 $2.20/min, v1 $0.33/min watermarked or $0.50 without [E10]; `uz` is in both v2 and v1 lists [E13]. 3 concurrent dubs on every self-serve plan [E13]. v2 is "alpha"; API editing and regeneration are Enterprise only [E13]. **For our own projects re-narrate the translated script instead** (§4.2): v4 at about $0.08/min vs $2.20/min, and captions stay aligned. |
-| **Sound effects** | Foley and stingers on a scene | **Yes (existing tool), move to v3** | $0.12/min [E10]; 0.1–30 s, loopable [E14]. `eleven_text_to_sound_v2` (our registry) is deprecated and **removed 2027-03-01**; `eleven_text_to_sound_v3` replaces it [E1]. |
+| **Speech to Text: Scribe v2/v3** | Uzbek captions; transcripts of uploaded media | **Yes for Uzbek and for uploads** | Uzbek is listed in the "Good (>10% to ≤20% WER)" band [E11]. Priced per hour; keyterms cost extra [E10]. Up to 32 speakers, word timestamps, SRT export, webhooks [E1]. **Not** for captions of our own narration: those come free from TTS alignment (§6.5). For English and Russian the local Whisper the repo already runs stays first (cost zero; quality not measured here). |
+| **Speech to Speech (voice changer)** | Re-voice a recorded performance in a character's voice | **Later** | priced per minute [E10]; 5 min per segment; billed 1,000 chars/min [E12]. The capability page lists 29 languages for `eleven_multilingual_sts_v2` (no `uz`) [E12], the pricing card says "70+ languages" [E10]: the two disagree, so Uzbek is **unverified**. |
+| **Dubbing** | A finished project into uz/ru/en when **we have no script** (customer uploads) | **Yes, narrow** | v2 and v1 priced per minute, v1 cheaper with a watermark [E10]; `uz` is in both v2 and v1 lists [E13]. 3 concurrent dubs on every self-serve plan [E13]. v2 is "alpha"; API editing and regeneration are Enterprise only [E13]. **For our own projects re-narrate the translated script instead** (§4.2): v4 costs a small fraction of Dubbing v2 per minute, and captions stay aligned. |
+| **Sound effects** | Foley and stingers on a scene | **Yes (existing tool), move to v3** | priced per minute [E10]; 0.1–30 s, loopable [E14]. `eleven_text_to_sound_v2` (our registry) is deprecated and **removed 2027-03-01**; `eleven_text_to_sound_v3` replaces it [E1]. |
 | **Music** | Background beds | **No** | API Exhibit 3 §1: "Unless you are an Authorized Reseller, you shall not resell, repackage, redistribute, sublicense, or otherwise make API access to the Music Service available to any third party" [E32]. Music rights table limits Scale to "entities … with fewer than 10 employees" [E33]. Keep the library and Sonilo (`docs/research/sonilo-first-party.md`). |
 | **Voice Design** | A new voice for a character from a description | **Later (P3), behind a cap** | 3 previews per call; description 20–1,000 chars, preview text 100–1,000 [E7]; charged by preview text characters [E23]. v4 note: designed voices "may not be as performative" [E2]. Each saved voice uses a **custom voice slot** of our account: Scale 660, Business 2,200 [E10]. Slots are shared by all our customers. |
 | **Instant voice cloning** | The user's own voice (`docs/CUSTOM_VOICE.md`) | **Yes, as already designed** | Starter+ [E10]; IVC "generally one to two minutes" of audio [E2]. Uses a slot as above. |
 | **Professional voice cloning** | — | **No** | "You can only create a Professional Voice Clone of your own voice. Even with their consent, you cannot clone someone else's voice" [E22]. A PVC lives in one account: ours, so the user would not own it. |
-| **Voice Isolator** | Clean an uploaded voice before dub or STT | **Later** | $0.12/min, ≤ 500 MB / 1 h [E10][E15]. Useful only once uploads are common. A local open-source denoiser may do; not evaluated here. |
+| **Voice Isolator** | Clean an uploaded voice before dub or STT | **Later** | priced per minute, ≤ 500 MB / 1 h [E10][E15]. Useful only once uploads are common. A local open-source denoiser may do; not evaluated here. |
 | **Forced alignment** | Align a customer's script to their own recording | **Later** | ≤ 10 h audio, ≤ 675,000 chars [E16]; its language list is the 29 Multilingual v2 languages, **no `uz`** [E16]. Price not shown on the API pricing page: **unverified**. For our own TTS the alignment comes back with the audio. |
 | **Agents / Conversational, Realtime v1, Speech Engine** | — | **No** | A Studio renders files; nothing in it talks to a person live. Revisit only if the operator bot gets a voice. |
 | **Studio projects API, Audio Native, Image & Video, Ads Engine** | — | **No** | ElevenLabs' own creative suite competes with ours and would sit behind the same OEM terms. Not evaluated. |
@@ -237,8 +237,8 @@ For a project the Studio made, we own the script, so "into Russian" means: trans
 LLM step, with the fact-check state carried over), then narrate it with the same Character voices on
 v4, which keeps its native-accent behaviour ("generates fluent, natural-sounding speech in the target
 language rather than carrying over the reference voice's accent") [E2]. The cost is the TTS rate
-(about $0.08 per minute of speech at 1K chars per minute [E10]) instead of Dubbing v2's $2.20 per
-minute [E10], and the captions come back aligned. Dubbing stays for media that arrives without a
+(at about 1K chars per minute of speech [E10]), a small fraction of Dubbing v2's per-minute
+price [E10], and the captions come back aligned. Dubbing stays for media that arrives without a
 script.
 
 ### 4.3 Uzbek: what to enforce
@@ -270,37 +270,42 @@ measured** here. The first P1 probe should include an Uzbek sentence, listened t
 "API usage is billed in US dollars, not credits" [E10, FAQ]. The per-unit price is the same on every
 plan row; a plan buys an included amount.
 
-| Item | Price | Registry today | Match? |
+The figures are on the vendor pricing page (read 2026-11-14); the price itself lives in the DB price
+table / model registry, not in prose. What is priced, and whether the registry matched the page:
+
+| Item | Billed per | Registry today | Match? |
 | :-- | :-- | :-- | :-- |
-| TTS v4 | $0.08 / 1K chars | `elevenlabs-v4` $0.00008/char | yes |
-| TTS v4 Turbo | $0.04 / 1K chars | not in registry | — |
-| TTS v3 | $0.08 / 1K chars | $0.00008/char | yes |
-| TTS v3 Conversational | $0.04 / 1K chars | — | — |
-| TTS Multilingual v2 | $0.08 / 1K chars | $0.00008/char | yes |
-| TTS Flash / Turbo | $0.04 / 1K chars | $0.00004/char | yes |
-| Scribe v3, v2, v2 Medical | $0.20 / hour; keyterms +$0.050/h; transcript editing +$0.070/h | $0.0000556/s | yes (credit row assumes $0.40/h: **2× too high**) |
-| Scribe v3 Live / v2 Realtime | $0.22 / hour | — | — |
-| Music | $0.15 / minute; finetune $1.50 | — | not used (§2) |
-| Voice Isolator | $0.12 / minute | — | — |
-| Voice Changer | $0.12 / minute | $0.002/s | yes |
-| Sound Effects | $0.12 / minute | $0.002/s | yes ("billed per generation" in the FAQ: the exact metering of a 2 s effect is **unverified**) |
-| Dubbing v1 | $0.33 / min with watermark, $0.50 without | $0.008333/s ($0.50) | yes (no-watermark price) |
-| Dubbing v2 | $2.20 / minute | $0.036667/s | yes |
-| Realtime v1 Mini/Max | $0.08/min + LLM tokens | — | not used |
+| TTS v4 | 1K chars | `elevenlabs-v4` | yes |
+| TTS v4 Turbo | 1K chars (half the v4 rate) | not in registry | — |
+| TTS v3 | 1K chars (as v4) | priced | yes |
+| TTS v3 Conversational | 1K chars (as v4 Turbo) | — | — |
+| TTS Multilingual v2 | 1K chars (as v4) | priced | yes |
+| TTS Flash / Turbo | 1K chars (as v4 Turbo) | priced | yes |
+| Scribe v3, v2, v2 Medical | hour; keyterms and transcript editing extra | priced per second | yes (the credit row assumes twice the page's hourly price: **2× too high**) |
+| Scribe v3 Live / v2 Realtime | hour | — | — |
+| Music | minute; finetune extra | — | not used (§2) |
+| Voice Isolator | minute | — | — |
+| Voice Changer | minute | priced per second | yes |
+| Sound Effects | minute | priced per second | yes ("billed per generation" in the FAQ: the exact metering of a 2 s effect is **unverified**) |
+| Dubbing v1 | minute, cheaper with a watermark | priced per second (no-watermark price) | yes (no-watermark price) |
+| Dubbing v2 | minute | priced per second | yes |
+| Realtime v1 Mini/Max | minute + LLM tokens | — | not used |
 
 Plans (API page, monthly billing, read 2026-11-14 [E10][E26]):
 
-| Plan | Price / month | v4 chars included | Scribe hours included | Concurrency (Multilingual v2 / Flash / STT) [E1] | Custom voice slots [E26] | May offer to end users? [E30] |
-| :-- | --: | --: | --: | :-- | --: | :-- |
-| Free / PAYG | $0 | 10,000 | 4 h 30 min | 2 / 4 / 8 | 3 | **no** |
-| Starter | $6 (first month $1 until 1 Dec) | 75,000 | 30 h | 3 / 6 / 12 | 10 | **no** |
-| Creator | $22 (first month $11) | 275,000 | 110 h | 5 / 10 / 20 | 30 | **no** |
-| Pro | $99 | 1,238,000 | 495 h | 10 / 20 / 40 | 160 | **no** |
-| **Scale** | **$299** | 3,738,000 | 1,495 h | 15 / 30 / 60 | 660 | **yes** (Business Entity) |
-| Business | $990 | 12,375,000 | 4,950 h | 15 / 30 / 60 | 2,200 | yes |
+Plan prices are on the vendor pricing page (read 2026-11-14), not in this document.
+
+| Plan | v4 chars included | Scribe hours included | Concurrency (Multilingual v2 / Flash / STT) [E1] | Custom voice slots [E26] | May offer to end users? [E30] |
+| :-- | --: | --: | :-- | --: | :-- |
+| Free / PAYG | 10,000 | 4 h 30 min | 2 / 4 / 8 | 3 | **no** |
+| Starter | 75,000 | 30 h | 3 / 6 / 12 | 10 | **no** |
+| Creator | 275,000 | 110 h | 5 / 10 / 20 | 30 | **no** |
+| Pro | 1,238,000 | 495 h | 10 / 20 / 40 | 160 | **no** |
+| **Scale** | 3,738,000 | 1,495 h | 15 / 30 / 60 | 660 | **yes** (Business Entity) |
+| Business | 12,375,000 | 4,950 h | 15 / 30 / 60 | 2,200 | yes |
 
 Notes:
-- Included amounts equal the plan price at the list rate ($299 / $0.00008 ≈ 3,738,000): the
+- Included amounts equal the plan price at the list rate: the
   subscription is a prepaid commitment, not a discount.
 - What a Scale account pays **past** its included amount is not stated in the text read: the page
   shows the same per-unit price on every row, and the repo's own check reads
@@ -317,20 +322,21 @@ Notes:
 ### 5.2 Our credit price per unit
 
 The repo's convention (`docs/sql/prices_defaults_2026_10_03.sql:22-25`, `prices_2026_10_01.sql`):
-`credits_per_unit` = vendor cost in **US cents**; the customer is charged `credits_per_unit × (1 +
-margin)`; margin **2.0 for voice** (so ×3), 1.5 for image and video (×2.5), and the dubbing rows use 1.5.
-Migration 0084 keeps the margin private: a quote shows the charged rate, never the margin.
+`credits_per_unit` = vendor cost converted to credits; the customer is charged `credits_per_unit × (1 +
+margin)`, with one margin for voice, another for image and video, and the dubbing rows on the latter.
+Migration 0084 keeps the margin private: a quote shows the charged rate, never the margin. The vendor
+cost and the margin live in the DB price table, not in prose; the charged rates:
 
-| Unit | Vendor cost | `credits_per_unit` (cents) | margin | Charged per unit |
-| :-- | :-- | --: | --: | --: |
-| `model_elevenlabs_v4_character` | $0.00008 | 0.008 | 2.0 | 0.024 cr |
-| `model_elevenlabs_v3_character` | $0.00008 | 0.008 | 2.0 | 0.024 cr |
-| `model_elevenlabs_multilingual_v2_character` | $0.00008 | 0.008 | 2.0 | 0.024 cr |
-| `model_elevenlabs_flash_v2_5_character` | $0.00004 | 0.004 | 2.0 | 0.012 cr |
-| `model_elevenlabs_scribe_v2_second` (as seeded) | assumed $0.40/h | 0.0112 | 2.0 | 0.0336 cr/s |
-| same, at the read price $0.20/h | $0.0000556/s | 0.0056 (rounded up) | 2.0 | 0.0168 cr/s |
-| `model_elevenlabs_sfx_second` | $0.002/s | 0.2 | 2.0 | 0.6 cr/s |
-| `model_elevenlabs_dubbing_v2_second` | $0.036667/s | 3.67 | 1.5 | 9.175 cr/s |
+| Unit | Charged per unit |
+| :-- | --: |
+| `model_elevenlabs_v4_character` | 0.024 cr |
+| `model_elevenlabs_v3_character` | 0.024 cr |
+| `model_elevenlabs_multilingual_v2_character` | 0.024 cr |
+| `model_elevenlabs_flash_v2_5_character` | 0.012 cr |
+| `model_elevenlabs_scribe_v2_second` (as seeded) | 0.0336 cr/s |
+| same, at the read price | 0.0168 cr/s |
+| `model_elevenlabs_sfx_second` | 0.6 cr/s |
+| `model_elevenlabs_dubbing_v2_second` | 9.175 cr/s |
 
 A dialogue unit does not exist. The simplest honest choice is to bill Text to Dialogue at the model's
 character unit (it is billed per character [E10]), but that the vendor charges dialogue at the plain
@@ -341,35 +347,33 @@ decision (§11).
 
 Assumptions, stated so they can be checked: the repo's estimator uses **15 characters per second**
 (`audio_mixer.CHARS_PER_SECOND`), i.e. 900 per minute; ElevenLabs' own page equates 1K characters with
-about a minute ("~$0.08/minute") [E10]. Both are estimates of speech density, not measurements.
+about a minute [E10]. Both are estimates of speech density, not measurements.
 
 **A 10-minute narrated project (one narrator, v4, one take):**
 
 | | 9,000 chars (repo estimate) | 10,000 chars (vendor's rule of thumb) |
 | :-- | --: | --: |
-| ElevenLabs cost | $0.72 | $0.80 |
 | Our charge at 0.024 cr/char | **216 credits** | **240 credits** |
 | Captions from the TTS alignment | 0 (no extra call) | 0 |
-| Captions via Scribe instead (600 s), at the read price | 10.1 cr ($0.033 cost) | same |
+| Captions via Scribe instead (600 s), at the read price | 10.1 cr | same |
 
 Retakes multiply the TTS line; a typical retake rate is **not measured**. For scale: the whole
 `video_minute` price is 60 credits a minute (`docs/BILLING_PLANS.md`), so a 10-minute run holds 600
-credits; v4 narration alone would be 36–40% of that hold, and 36–40% of the "≈ $0.20 per minute"
-cost basis that document assumes ($0.072–0.08 of $0.20). If channels move to v4, that cost basis
+credits; v4 narration alone would be 36–40% of that hold, and a comparable share of the per-minute
+cost basis that document assumes. If channels move to v4, that cost basis
 should be re-measured.
 
 **A 3-character dialogue scene** (assumed 60 seconds, about 1,000 characters including tags, v4):
 
 | | One take | Three takes (recommended) |
 | :-- | --: | --: |
-| ElevenLabs cost | $0.08 | $0.24 |
 | Our charge at 0.024 cr/char | **24 credits** | **72 credits** |
 
 Per-line TTS for the same scene costs the same per character; it saves money only when a single line
 is regenerated instead of the whole scene.
 
 At retail (`docs/BILLING_PLANS.md`: one credit sells for about $0.0072–$0.0095 by plan), 240 credits
-bring in about $1.73–$2.28 against $0.80 of vendor cost.
+bring in about $1.73–$2.28.
 
 ### 5.4 Which plan we need
 
@@ -381,7 +385,7 @@ The registry's `plan_required:scale` is therefore **right**. The account today i
 (`docs/CUSTOM_VOICE.md`), which also cannot use Voice Library voices through the API [E7] and is
 "non-commercial" only (Terms of Use §3(c)) [E31].
 
-Business ($990) adds seats, PVC slots and "Low-latency TTS as low as 5c/minute" [E26]; nothing in the
+Business adds seats, PVC slots and a cheaper low-latency TTS rate [E26]; nothing in the
 Studio needs it until volume passes Scale's 3.7M included characters (about 370 ten-minute projects a
 month at 10K chars each). Enterprise is the only route to Zero Retention Mode [E18] and to Dubbing v2
 editing through the API [E13].
@@ -635,9 +639,9 @@ after one query, so URLs came from sitemaps and page links.
 | Studio | Voice provider(s) | Voice features | Voice pricing to users | Uzbek listed? |
 | :-- | :-- | :-- | :-- | :-- |
 | Higgsfield | **ElevenLabs** v3, v4, v4 Turbo; Seed Audio 1.0 (the default), Qwen Audio 3.0, MiniMax Speech 2.8 HD, Seed Speech (higgsfield.ai/audio) | TTS, "Pick or clone a voice", Voice Change, Translate; Seed Audio "Multi-speaker scenes"; lip sync through Kling, Sync and "Lipsync Studio" (higgsfield.ai/pricing) | credits; the cost per voice is **unverified** | unverified |
-| Krea | **ElevenLabs**: TTS "Defaults to eleven_multilingual_v2", with eleven_v4 and v4 Turbo; Seed Audio (api.krea.ai/openapi.json). The pricing page source names elevenlabs-dialogue-v3, -dubbing, -voice-design and -voice-changer (krea.ai/pricing) | TTS, dialogue, dubbing, voice design, voice changer, lip sync | plans $0/$5/$21/$63/$160 a month in compute units; the cost per voice is unverified | unverified. Its **default model has no Uzbek** [E1] |
+| Krea | **ElevenLabs**: TTS "Defaults to eleven_multilingual_v2", with eleven_v4 and v4 Turbo; Seed Audio (api.krea.ai/openapi.json). The pricing page source names elevenlabs-dialogue-v3, -dubbing, -voice-design and -voice-changer (krea.ai/pricing) | TTS, dialogue, dubbing, voice design, voice changer, lip sync | monthly plans in compute units (krea.ai/pricing); the cost per voice is unverified | unverified. Its **default model has no Uzbek** [E1] |
 | buzzy.now | no voice tool found; only video models with "native audio" (buzzy.now/models) | — | — | unverified |
-| Runway | **ElevenLabs** (eleven_v4, v3, multilingual_v2, dubbing, STS, isolation) and Seed Audio (docs.dev.runwayml.com/guides/models) | TTS, custom voices, dubbing, STS | app: "Text to Speech 1 credit/50 chars"; API: v4 "From $0.022/1k chars", v3 and v2 "$0.01/50 chars" (runwayml.com/pricing) | unverified |
+| Runway | **ElevenLabs** (eleven_v4, v3, multilingual_v2, dubbing, STS, isolation) and Seed Audio (docs.dev.runwayml.com/guides/models) | TTS, custom voices, dubbing, STS | app and API both price TTS per character (runwayml.com/pricing) | unverified |
 | HeyGen | ElevenLabs (elevenlabs.io/blog/how-heygen-uses-elevenlabs…, 2025-04-24) plus its own "HeyGen Voice 1" | TTS, clone, dubbing, translation into "175+ languages and dialects", lip sync | Creator $29/mo "up to 10 hours of text to speech" (heygen.com/pricing) | not named: unverified |
 | Hedra | ElevenLabs partnership (elevenlabs.io/blog/hedra, 2024-07-04) | character video with voice, lip sync | the current pricing page shows only GPU compute | unverified |
 | CapCut | its own; no provider named | "200+ AI voices", voice clone (capcut.com/tools/text-to-speech) | advertised as free | not in the list on that page |
@@ -653,28 +657,28 @@ What this tells us:
   defaults to a model with no Uzbek, and InVideo and Pictory advertise a 29-language model. A picker
   that disables voices for Oʻzbekcha (benchmark item 24) is a real gap in the market, not decoration.
 - The second layer that keeps appearing beside ElevenLabs is **ByteDance Seed Audio** (Higgsfield's
-  default, Krea, Runway). We have not evaluated it. Runway's API sells v4 "From $0.022/1k chars",
-  below ElevenLabs' $0.08 list price, so Runway has a volume deal or a promotional rate. The
-  repo's `prices_2026_10_01.sql` notes a "promo $0.022 until Oct 12": the same figure.
-- Nobody we read shows a **per-line voice price before generating**. Runway's "1 credit/50 chars" is
+  default, Krea, Runway). We have not evaluated it. Runway's API sells v4 below
+  ElevenLabs' own list price, so Runway has a volume deal or a promotional rate. The
+  repo's `prices_2026_10_01.sql` notes a promotional rate: the same figure.
+- Nobody we read shows a **per-line voice price before generating**. Runway's per-character credit price is
   the closest. Our quote-before-start rule is ahead of them.
 
 ### 9.2 Voice rivals
 
-| Provider | TTS price | Uzbek TTS | Uzbek STT | Notes |
+| Provider | TTS billed per | Uzbek TTS | Uzbek STT | Notes |
 | :-- | :-- | :-- | :-- | :-- |
-| ElevenLabs (for comparison) | v4/v3 $80 per 1M chars; Flash/v4 Turbo $40 [E10] | v3, v4 yes; v2, Flash no [E1] | Scribe yes, "Good" 10–20% WER [E11] | dialogue, stitching, alignment, cloning |
-| OpenAI | tts-1 $15 / tts-1-hd $30 per 1M chars; gpt-4o-mini-tts in tokens (platform.openai.com/docs/pricing) | not in the documented list | Whisper "98 languages"; Uzbek not stated: unverified | TTS endpoints "shut down on January 6, 2027" (platform.openai.com/docs/guides/text-to-speech). **Not a candidate** |
-| Google Gemini TTS | gemini-3.8-flash-tts $9 per 1M audio tokens out until 2026-12-31, then $18 (ai.google.dev pricing) | **"Northern Uzbek ✔️"** (ai.google.dev/gemini-api/docs/speech-generation) | — | two-speaker dialogue, voice design; the free tier is "Used to improve our products: Yes". **Worth a probe** as a second Uzbek voice |
-| Google Cloud TTS Chirp 3 HD | $30 per 1M chars | **no uz-UZ** (cloud.google.com/text-to-speech/docs/chirp3-hd) | **uz-UZ yes** on chirp, chirp_2, chirp_3 | an STT alternative to Scribe for Uzbek; WER not compared |
-| Azure AI Speech | Neural $15 per 1M chars (azure.microsoft.com pricing) | **uz-UZ-MadinaNeural, uz-UZ-SardorNeural** (no custom lexicon or visemes) | **uz-UZ yes** (learn.microsoft.com language-support) | the cheapest proven Uzbek TTS; two stock voices only; no Uzbek custom or personal voice |
-| Cartesia Sonic 3.6 | about 1 credit per char; Scale $299 for 8M credits | **no** (44 languages) | unverified | fast, timestamps |
-| MiniMax Speech 2.8 | hd $100, turbo $60 per 1M chars | **no** | **no** | already a vendor of ours for video |
+| ElevenLabs (for comparison) | 1M chars; Flash/v4 Turbo at half the v4/v3 rate [E10] | v3, v4 yes; v2, Flash no [E1] | Scribe yes, "Good" 10–20% WER [E11] | dialogue, stitching, alignment, cloning |
+| OpenAI | 1M chars (tts-1, tts-1-hd dearer); gpt-4o-mini-tts in tokens (platform.openai.com/docs/pricing) | not in the documented list | Whisper "98 languages"; Uzbek not stated: unverified | TTS endpoints "shut down on January 6, 2027" (platform.openai.com/docs/guides/text-to-speech). **Not a candidate** |
+| Google Gemini TTS | gemini-3.8-flash-tts per 1M audio tokens out, doubling after 2026-12-31 (ai.google.dev pricing) | **"Northern Uzbek ✔️"** (ai.google.dev/gemini-api/docs/speech-generation) | — | two-speaker dialogue, voice design; the free tier is "Used to improve our products: Yes". **Worth a probe** as a second Uzbek voice |
+| Google Cloud TTS Chirp 3 HD | 1M chars | **no uz-UZ** (cloud.google.com/text-to-speech/docs/chirp3-hd) | **uz-UZ yes** on chirp, chirp_2, chirp_3 | an STT alternative to Scribe for Uzbek; WER not compared |
+| Azure AI Speech | Neural per 1M chars (azure.microsoft.com pricing) | **uz-UZ-MadinaNeural, uz-UZ-SardorNeural** (no custom lexicon or visemes) | **uz-UZ yes** (learn.microsoft.com language-support) | the cheapest proven Uzbek TTS; two stock voices only; no Uzbek custom or personal voice |
+| Cartesia Sonic 3.6 | credits per char, prepaid plans | **no** (44 languages) | unverified | fast, timestamps |
+| MiniMax Speech 2.8 | 1M chars (hd dearer than turbo) | **no** | **no** | already a vendor of ours for video |
 | PlayHT | could not read (play.ht: proxy "502, gateway could not connect") | — | — | third-party pages say it shut down 2025-12-31: **unverified**, treat as unavailable |
-| Fish Audio | $15–$50 per 1M UTF-8 bytes | "83 languages", list not given: unverified | unverified | dialogue, cloning |
+| Fish Audio | 1M UTF-8 bytes | "83 languages", list not given: unverified | unverified | dialogue, cloning |
 
 Conclusion for us: for **Uzbek**, ElevenLabs v3/v4 is the only option with dialogue, stitching and
-alignment together. Azure (two stock voices, $15 per 1M) and Gemini TTS ("Northern Uzbek") are the
+alignment together. Azure (two stock voices) and Gemini TTS ("Northern Uzbek") are the
 only other official Uzbek TTS found. They are the candidates for a *second* provider, which under
 rule 4 would be a separate, explicit choice a person makes, never a fallback. For Uzbek captions of
 uploads, Google Cloud STT and Azure STT both list uz-UZ. Neither has been measured against Scribe
@@ -694,7 +698,7 @@ Each phase is one small draft PR, in order. None needs the plan upgrade except w
 3. Default-voice deadline: a script that lists every channel's saved voice ids and flags the Default
    and Legacy ones (read-only; prints names, not keys); the Create page stops offering expiring ids
    once the owner picks replacements (decision 3).
-4. Fix the Scribe credit row note ($0.20/h read 2026-11-14) as an owner-apply SQL file, not a migration
+4. Fix the Scribe credit row note (the page's hourly price, read 2026-11-14) as an owner-apply SQL file, not a migration
    change.
 
 **P1: Scale plan and the first real calls (needs decision 1).**
@@ -722,7 +726,7 @@ Each phase is one small draft PR, in order. None needs the plan upgrade except w
 
 | # | Decision | Why it is yours | Our recommendation |
 | :-- | :-- | :-- | :-- |
-| 1 | Move ElevenLabs to **Scale ($299/mo)**, and when | Money; OEM §2.B(f) makes it the minimum for any customer use | Yes, right before P1; not before the P0 PRs |
+| 1 | Move ElevenLabs to **Scale**, and when | Money; OEM §2.B(f) makes it the minimum for any customer use | Yes, right before P1; not before the P0 PRs |
 | 2 | Default TTS model for Uzbek channels: v4 or v3 | Changes how every Uzbek video sounds | v4 (stitching, 90+ languages), after you hear the probe |
 | 3 | Replacement voices for the 13 expiring Default voices | Brand voice of every channel | Pick from the vendor's replacement table after listening |
 | 4 | Data-use toggle off ("Improve the models for everyone") | Covers every customer's data | Off |

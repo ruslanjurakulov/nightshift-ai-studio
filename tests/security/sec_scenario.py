@@ -482,6 +482,20 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     import sec_rights_acknowledgement_0174
     sec_rights_acknowledgement_0174.seed(conn, sc)
 
+    # Owner analytics (0182): tests/security/sec_owner_analytics_0182.py — one export record, made by the owner.
+    import sec_owner_analytics_0182
+    sec_owner_analytics_0182.seed(conn, sc)
+    # Owner costs (0184): tests/security/sec_owner_costs_0184.py — one monthly cost entry, made by the owner.
+    import sec_owner_costs_0184
+    sec_owner_costs_0184.seed(conn, sc)
+
+    # Trend templates (0183): tests/security/sec_creative_templates_0183.py — one published template and one draft.
+    import sec_creative_templates_0183
+    sec_creative_templates_0183.seed(conn, sc)
+    # Owner FX rates (0185): tests/security/sec_owner_fx_0185.py — one frozen rate, set by the owner.
+    import sec_owner_fx_0185
+    sec_owner_fx_0185.seed(conn, sc)
+
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
     with as_superuser(conn, commit=False) as s:

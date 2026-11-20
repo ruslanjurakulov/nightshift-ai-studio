@@ -44,7 +44,7 @@ export function cspMode(raw: string | undefined): CspMode {
  * tests/csp.test.ts recomputes it, so editing the script without updating
  * this fails the suite instead of silently blocking the theme in production.
  */
-export const NO_FLASH_SCRIPT_HASH = "'sha256-0sat8E4VTcOjmj9b0kR7WSmpelpaTP7qCVYbsdetoNY='";
+export const NO_FLASH_SCRIPT_HASH = "'sha256-ktjGHzaCwS/h7xFBMw1Ju+H5H5ceE/SPJVhA/X5uNUk='";
 
 /**
  * Paddle.js v2 and what it loads, read from cdn.paddle.com/paddle/v2/paddle.js

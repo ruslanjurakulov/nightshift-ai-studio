@@ -1970,6 +1970,101 @@ makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.
   replay hazard), the lab's isolation suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py`
   (each body is the earlier one plus inserted 0174 blocks only; pins), `command-center/tests/rights-acknowledgement*.test.ts(x)`.
 
+## Owner analytics hub: owner-only reads of money, people, activity and jobs (0182)
+
+0182 (`0182_owner_analytics.sql`) gives the platform owner's analytics hub (`/{channel}/owner-analytics`, `docs/OWNER_ANALYTICS.md`)
+its reads. Read-only over existing tables, plus one log of its own.
+
+- **Who.** Every function checks `owner_analytics_is_owner()` (signed in and `platform_role() = 'owner'`) before it reads or looks
+  at an argument, and raises 42501 otherwise — a platform **admin** is refused too. Execute is granted to `authenticated` only.
+  `owner_analytics_sales_all()` is internal (no API role may execute it).
+- **Money.** `owner_analytics_money(from, to)`: each credited sale (one row per payment, a webhook retry is not a second sale),
+  classified plan / pack / api_topup / unknown, initial / renewal when the record says (else null), and each refund and dispute.
+  Amounts as the provider reported them; null stays null. `fee_minor` is always null: no webhook stores a provider fee. The
+  operator's own workspace is returned with `internal = true`.
+- **People.** `owner_analytics_people()`: opaque ids only (no e-mail, no name), signup, last sign-in, locale, acquisition when
+  recorded (referral / invite), the funnel milestones and the first plan.
+- **Activity and jobs.** `owner_analytics_activity(from, to)` (distinct Tashkent day × person, ≤ 400 days, the roster left out) and
+  `owner_analytics_jobs(from, to)` (grouped counts, credits charged, timed seconds).
+- **Export log.** `owner_analytics_exports` (RLS on, no policy, no grant), written only by `owner_analytics_record_export()` with the
+  actor pinned to `auth.uid()`, read by `owner_analytics_export_log()`. The export route records before it builds the file.
+- **Internal / test workspaces.** `owner_analytics_internal_orgs` (closed like the log), set by the owner through
+  `owner_analytics_set_internal(org, on, reason)` and listed by `owner_analytics_internal_list()`. Internal = the default workspace,
+  any workspace owned by a roster account, and any flagged one. Every function returns `internal`; the hub leaves those rows out
+  by default, with a toggle. No workspace id is written in the migration. Granted credits are never revenue.
+- **Without it.** The hub says it needs 0182 and shows no figure; exports are refused.
+- Lab: `tests/security/sec_owner_analytics_0182.py`, `tests/security/test_sec_owner_analytics.py`. Rollback:
+  `docs/sql/rollback_0182_owner_analytics.sql`.
+
+## Trend templates: ready formats for the Trends gallery (0183)
+
+0183 (`0183_creative_templates.sql`) gives the Trends gallery (`/{channel}/trends`, `GET /api/templates`) its table: ready
+short-form formats that open Create prefilled. Additive: one table, its updated_at trigger, and a ten-row seed.
+
+- **Who.** RLS on. `anon` and `authenticated` may read **published** rows only. No API role may insert, update or delete; the
+  service key and the SQL editor write.
+- **What a row is.** A format, not content: a prompt with `{placeholders}`, the model it was written for (`model_id`, a foreign key
+  to `model_registry`), the shape (16:9 / 9:16 / 1:1), the length for video (5 or 10 s), a quality tier, director notes, and
+  titles and descriptions in en / ru / uz. A slug must contain a hyphen, so it can never be read as a Studio starter id (those
+  use underscores and share `?template=`).
+- **Availability is never stored.** Whether the template's model is on sale is asked of `sellable_models()` on every request. The
+  API returns `model_status` available / unavailable / unknown, and never names a substitute model.
+- **Media is not in the database.** Preview clips and posters are app files under `command-center/public/templates/<slug>/`,
+  listed in `command-center/lib/templates/media-manifest.json`. A test holds the manifest and the files in step.
+- **Seed.** Ten formats on models on sale when it was written (the MiniMax H3 family, Ideogram). A row is inserted only when its
+  model exists in `model_registry`, and `on conflict (slug) do nothing`, so re-applying never undoes an edit.
+- **Without it.** `/api/templates` answers 503 `not_enabled` and the Trends page says Trends are not available here.
+- Lab: `tests/security/sec_creative_templates_0183.py`, `tests/security/test_sec_creative_templates.py`,
+  `tests/security/test_sec_breach_creative_templates.py`. Rollback: `docs/sql/rollback_0183_creative_templates.sql`.
+
+## Owner analytics: costs, balances and the owner's monthly costs (0184)
+
+0184 (`0184_owner_costs.sql`) gives the hub's Costs & profit tab its reads and the owner's two inputs. No value is in the file.
+
+- **Provider spend.** `owner_analytics_provider_spend(from, to)`: `creative_job_costs` (0037) and the pipeline's `video_costs` (0002)
+  by Tashkent day, provider and model — rows, the sum of the priced ones, and how many were unpriced (unknown, never 0). Internal
+  workspaces (0182) and the pipeline are flagged internal.
+- **Balances.** `owner_analytics_balances()`: the newest `provider_balances` row per provider and metric, with `source` (api /
+  manual). `owner_analytics_balance_enter()` stores an owner-typed balance in its own closed table `owner_manual_balances`, never in
+  `provider_balances` (the operator bot's stale/zero alerts and Billing read that as the provider's own word). Nothing calls a provider.
+- **Writes** go through `owner_costs_write_guard()`: owner, 0107's second factor, and 60 writes per 10 minutes (`take_web_rate`).
+- **Monthly costs.** `owner_cost_entries` (closed), written by `owner_analytics_cost_add / _delete`, read by `owner_analytics_costs`.
+- **Provider runway.** `owner_analytics_model_activity(from, to)` (at most 200 days): creative jobs per model and unit — counts by
+  outcome, units, first and last time, and how the newest job ended (status, error_code). Every workspace counts: all spend the
+  provider's balance. Counts only, no amount and no customer.
+- **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
+- Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.
+
+- Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.
+
+## Owner analytics: frozen exchange rates for the income register (0185)
+
+0185 (`0185_owner_fx_rates.sql`) stores the exchange rates the owner freezes for the hub's Tax register. No rate is in the file,
+and nothing fetches one.
+
+- **Table.** `owner_fx_rates`: one rate per day and currency (UZS per unit, numeric(18,4)), the source the owner names, who
+  entered it and when. RLS on, no policy, closed to every API role.
+- **Functions.** `owner_analytics_fx_set(day, currency, uzs, source)` (setting it again replaces it), `owner_analytics_fx_delete`,
+  `owner_analytics_fx_rates(from, to)` (at most 1100 days). Writes go through 0183's `owner_costs_write_guard()` (owner, 0107's
+  second factor, the shared rate limit). Granted to `authenticated` only.
+- **Without it** the register lists payments in their own currency and every UZS cell reads "no rate stored".
+- **Requires** 0182 and 0184. Lab: `tests/security/sec_owner_fx_0185.py`, `test_sec_owner_fx.py`, `test_sec_breach_owner_fx.py`.
+- **Rollback:** `docs/sql/rollback_0185_owner_fx_rates.sql`. It drops the table and its functions: every frozen rate is lost
+  (files already exported keep the rate they were made with).
+
+## Trend templates, second set: the "viral" category (0186)
+
+0186 (`0186_viral_templates.sql`) widens `creative_templates.category` to include `'viral'` and seeds ten more formats: seven
+"Trending effects" (treasure strike, object morph, giant-hand makeover, scale shock, water revival, language-duo podcast and its
+cover), a holiday sale ad and a sale story poster (business), and a 3D family moment (story). Additive: the CHECK is dropped and
+re-added with every old value kept; no table, function or grant changes.
+
+- **Why these.** Chosen from an outlier search on 2026-11-20 (AI-made Reels/TikTok posts far above their own account's median)
+  and a language-duo series the owner collected. Formats only: nothing from those posts is copied, and no view count is shown.
+- **Seed rules as 0183.** A row lands only if its model is in `model_registry`; `on conflict (slug) do nothing`, so re-applying
+  never undoes an owner's edit. Media are static files under `public/templates/<slug>/`, listed in the manifest.
+- Rollback: `docs/sql/rollback_0186_viral_templates.sql` (deletes the ten seed rows, restores the four-value CHECK).
+
 ## Rights acknowledgement asks about every file a job sends (0179)
 
 `0179_rights_acknowledgement_inputs.sql` closes the four latent paths Breach found past 0174 (tests/security/test_sec_breach_rights_ack_bypass.py,
@@ -1991,19 +2086,6 @@ pictures, an @character's pictures, and a film clip's uploaded first frame.
 - **Undo.** `docs/sql/rollback_0179_rights_acknowledgement_inputs.sql` (owner-applied): the five earlier bodies back verbatim, the
   three new functions dropped. Roll 0179 back BEFORE 0174: rollback_0174 now refuses while 0179 is on.
 
-## get_job_status names the video; list_videos lists newest first (0189)
-
-`0189_job_video_and_list_order.sql`: through the MCP connector a new video could not be found. `get_job_status` named no video, and
-`api_list_videos` (0042) sorted held runs (no `published_at`) by id after every upload, while a video made through MCP is held for review.
-
-- **Change.** `render_jobs.result_slug` (written once by the queue worker, from the run's result file, when the run succeeded; a
-  browser's insert must leave it empty). `api_get_job` and `oauth_get_job` (0111's bodies, one marked hunk each) answer `video_id`: that
-  slug's video in the job's own channel (an uploaded row before a held one), NULL until recorded. `api_list_videos` (0042's body) orders
-  by `video_listed_at(published_at, held_at)` desc: an unreadable `published_at` is unknown and sorts last, never a guessed date.
-- **Not changed.** Who may see a job or a video, every price, hold and publish rule.
-- **Undo.** `docs/sql/rollback_0189_job_video_and_list_order.sql` (owner-applied): the three earlier bodies back verbatim; the
-  `result_slug` column and its values stay.
-
 ## Recraft: the web and our MCP connector, never the public API (0180)
 
 `0180_recraft_web_mcp.sql` adds a third registry exposure, `web_mcp`. A model with it is sold on the web and to the `mcp` surface (our own
@@ -2017,3 +2099,16 @@ confirmation (email of 2026-11-17/18), which covers the web studio and our MCP c
   id, then apply 0180 again. A sale still needs the owner's `credit_prices` rows.
 - **Not yet reachable over MCP.** No MCP tool asks for the `mcp` surface until the connector's creative tools land (a separate PR).
 - **Undo.** `docs/sql/rollback_0180_recraft_web_mcp.sql`: refuses while a model is `web_mcp` (it would reopen the API).
+
+## get_job_status names the video; list_videos lists newest first (0189)
+
+`0189_job_video_and_list_order.sql`: through the MCP connector a new video could not be found. `get_job_status` named no video, and
+`api_list_videos` (0042) sorted held runs (no `published_at`) by id after every upload, while a video made through MCP is held for review.
+
+- **Change.** `render_jobs.result_slug` (written once by the queue worker, from the run's result file, when the run succeeded; a
+  browser's insert must leave it empty). `api_get_job` and `oauth_get_job` (0111's bodies, one marked hunk each) answer `video_id`: that
+  slug's video in the job's own channel (an uploaded row before a held one), NULL until recorded. `api_list_videos` (0042's body) orders
+  by `video_listed_at(published_at, held_at)` desc: an unreadable `published_at` is unknown and sorts last, never a guessed date.
+- **Not changed.** Who may see a job or a video, every price, hold and publish rule.
+- **Undo.** `docs/sql/rollback_0189_job_video_and_list_order.sql` (owner-applied): the three earlier bodies back verbatim; the
+  `result_slug` column and its values stay.

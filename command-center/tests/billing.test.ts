@@ -423,7 +423,7 @@ describe("providerLedger", () => {
       { provider: "kling", vendor_model: "kling-v2-6", unit: "second", quantity: 10, usd_estimate: null, recorded_at: at(12) },
     ];
     const l = providerLedger(base("kling", { topups: [{ provider: "kling", amount_usd: 20, paid_at: at(1) }], studioRows: studio }));
-    // kling-v3 has two audio prices and the row does not say which ran: no price. kling-v2.6 has one: $0.042 a second.
+    // kling-v3 has two audio prices and the row does not say which ran: no price. kling-v2.6 has one per-second price.
     expect(l.sources.studio.usd).toBeNull();
     expect(l.sources.studio.pricedUsd).toBeCloseTo(0.42);
     expect(l.sources.studio.unpriced).toEqual([{ unit: "second", quantity: 5, rows: 1 }]);

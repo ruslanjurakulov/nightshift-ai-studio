@@ -41,14 +41,14 @@ Sources (alibabacloud.com/help/en/model-studio, read 2026-10-25): `happyhorse-te
 
 ## Wan 3.0 (note only)
 
-The `use-video-generation` page lists `wan3.0-video` as text-to-video, first/last-frame image-to-video and all-in-one reference-to-video, 480P/720P/1080P, 2-30 s, 30 fps, with audio, an audio toggle, smart duration and adaptive aspect ratio, and `wan3.0-video-prime` as its speed-optimised variant. The entry stays text-to-video only: the API reference for those inputs was not read, and the Wan adapter sends the Wan 2.7 wire format. The page is recorded in the entry's `api_documented.note`. Prices on the 2026-10-25 pricing page: `wan3.0-video` list $0.05 / $0.10 / $0.20 per second (480P / 720P / 1080P) tagged "Limited-time 30% off" (which price is charged is not clear), `wan3.0-video-prime` $0.068 / $0.14 / $0.28; input video is billed too. The registry prices are unchanged.
+The `use-video-generation` page lists `wan3.0-video` as text-to-video, first/last-frame image-to-video and all-in-one reference-to-video, 480P/720P/1080P, 2-30 s, 30 fps, with audio, an audio toggle, smart duration and adaptive aspect ratio, and `wan3.0-video-prime` as its speed-optimised variant. The entry stays text-to-video only: the API reference for those inputs was not read, and the Wan adapter sends the Wan 2.7 wire format. The page is recorded in the entry's `api_documented.note`. Prices on the 2026-10-25 pricing page: `wan3.0-video` has a per-second list for 480P / 720P / 1080P tagged "Limited-time 30% off" (which price is charged is not clear), `wan3.0-video-prime` a dearer one; input video is billed too. The figures are on the vendor pricing page, not here. The registry prices are unchanged.
 
 ## Prices (all ESTIMATES, `confirmed: false`)
 
-Singapore list per output unit, `model-pricing`, 2026-10-25: HappyHorse 1.1 $0.07 / $0.14 / $0.18 per second at 480P / 720P / 1080P (text and image input alike); Qwen-Image 2.1 Pro $0.04 and Turbo $0.016 per image; Z-Image Turbo $0.015 with prompt rewriting off ($0.03 on). Other regions are about 12% lower. Rate limits were not on the pages read.
+Singapore list per output unit, `model-pricing`, 2026-10-25: HappyHorse 1.1 per second at 480P / 720P / 1080P (text and image input alike); Qwen-Image 2.1 Pro and Turbo per image; Z-Image Turbo per image with prompt rewriting off (dearer on). Other regions are about 12% lower. The figures are on the vendor pricing page; the prices themselves live in the model registry, not in prose. Rate limits were not on the pages read.
 
 ## To enable one (owner)
 
 1. Ask Alibaba Cloud in writing to authorise Nightshift to resell Model Studio generations (4.48.1(d)(v)). The watermark policy is decided: each maker's default is kept (2026-11-12).
-2. `python tools/probe_models.py --dry-run --model happyhorse-1.1`, then the real probe by name (`--all` skips every gated model): about $0.21 for HappyHorse (480p, 3 s), $0.04 / $0.016 / $0.015 for the pictures. Read the result host off the probe if it is refused.
+2. `python tools/probe_models.py --dry-run --model happyhorse-1.1`, then the real probe by name (`--all` skips every gated model): a 480p, 3 s clip for HappyHorse and one picture each for the image models, at the registry's prices. Read the result host off the probe if it is refused.
 3. Re-check the prices, set `confirmed: true`, add the `credit_prices` rows, clear `terms_gate` in a reviewed change.

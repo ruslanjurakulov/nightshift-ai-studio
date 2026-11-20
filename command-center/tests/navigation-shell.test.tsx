@@ -100,28 +100,30 @@ describe("customer sidebar model", () => {
     }
   });
 
-  it("marks the row you are on: Home for Home, Studio for every creative screen, Settings and Credits for theirs", () => {
+  it("marks the row you are on: Home, Create for every making screen, Trends, Projects, Library, Credits and Settings", () => {
     expect(sidebarCurrent("/home")).toBe("home");
-    // Every tool lives under the one Studio entry now: no per-tool, per-desk or per-screen rows to light.
-    expect(sidebarCurrent("/create")).toBe("studio");
-    expect(sidebarCurrent("/create")).toBe("studio");
-    expect(sidebarCurrent("/studio")).toBe("studio");
-    expect(sidebarCurrent("/studio/look")).toBe("studio");
-    expect(sidebarCurrent("/series")).toBe("studio");
-    expect(sidebarCurrent("/library")).toBe("studio");
-    expect(sidebarCurrent("/styles")).toBe("studio");
-    expect(sidebarCurrent("/presets")).toBe("studio");
-    expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e")).toBe("studio");
-    expect(sidebarCurrent("/videos/abc")).toBe("studio");
-    expect(sidebarCurrent("/workflows")).toBe("studio");
-    // The Inbox stays outside the Studio (STUDIO_IA.md §9.4), with its own row.
-    expect(sidebarCurrent("/inbox")).toBe("inbox");
-    expect(sidebarCurrent("/channels")).toBe("channels");
+    // Every tool and making screen lives under the one Create entry: no per-tool, per-desk or per-screen rows to light.
+    expect(sidebarCurrent("/create")).toBe("create");
+    expect(sidebarCurrent("/studio/look")).toBe("create");
+    expect(sidebarCurrent("/series")).toBe("create");
+    expect(sidebarCurrent("/styles")).toBe("create");
+    expect(sidebarCurrent("/presets")).toBe("create");
+    expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e")).toBe("create");
+    expect(sidebarCurrent("/videos/abc")).toBe("create");
+    expect(sidebarCurrent("/workflows")).toBe("create");
+    expect(sidebarCurrent("/trends")).toBe("trends");
+    // The Studio canvas and its project shelf are where projects live.
+    expect(sidebarCurrent("/studio")).toBe("projects");
+    expect(sidebarCurrent("/library")).toBe("library");
+    // The Inbox and Channels left the rail for the avatar menu: no row lights for them.
+    expect(sidebarCurrent("/inbox")).toBeNull();
+    expect(sidebarCurrent("/channels")).toBeNull();
     expect(sidebarCurrent("/credits")).toBe("credits");
     // Usage (plan allowance, the extra-credits switch) is part of the credits story: Credits is its row.
     expect(sidebarCurrent("/usage")).toBe("credits");
     expect(sectionAllowed("usage", false)).toBe(true);
-    expect(sidebarCurrent("/developers")).toBe("developers");
+    // Developers is reached from Settings, and lights it.
+    expect(sidebarCurrent("/developers")).toBe("settings");
     expect(sidebarCurrent("/organization")).toBe("settings");
     expect(sidebarCurrent("/billing")).toBeNull();
   });
@@ -151,12 +153,18 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Home, Nightshift Studio, the Inbox and Channels, and the account foot: no wall of tools", () => {
+  it("shows Home, Create, Trends, Projects and Library, and the account foot: no wall of tools", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.studio, en.nav.inbox, en.nav.channels]);
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/chronos/home", "/chronos/studio", "/chronos/inbox", "/chronos/channels"]);
+    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.create, en.nav.trends, en.nav.projects, en.nav.library]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "/chronos/home",
+      "/chronos/create",
+      "/chronos/trends",
+      "/chronos/studio?shelf=projects",
+      "/chronos/library",
+    ]);
     // The desks and the per-screen rows are nodes on the Studio canvas now (components/studio-canvas).
     expect(within(nav).queryByRole("heading", { name: en.shell.gCreate })).toBeNull();
     for (const d of DESKS) expect(within(nav).queryByRole("link", { name: en.desk.names[d] })).toBeNull();
@@ -169,11 +177,11 @@ describe("customer sidebar (rendered)", () => {
     expect(card.textContent).toContain("Creator");
   });
 
-  it("lights Studio on a creative screen, whatever the query names", () => {
+  it("lights Create on a creative screen, whatever the query names", () => {
     search = "tool=upscale";
     render(withI18n(<SideNav email={null} plan={null} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
-    expect(within(nav).getByRole("link", { name: en.nav.studio }).getAttribute("aria-current")).toBe("page");
+    expect(within(nav).getByRole("link", { name: en.nav.create }).getAttribute("aria-current")).toBe("page");
     expect(within(nav).getByRole("link", { name: en.nav.home }).getAttribute("aria-current")).toBeNull();
   });
 

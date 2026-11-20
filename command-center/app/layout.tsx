@@ -69,8 +69,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // cannot live in a frame leave it.
   const inFrame = isFrameRequest(requestHeaders.get("sec-fetch-dest"));
 
+  // ds-skin: the whole product in the approved navy/neon look (app/tokens.css). Taking the class away restores the old look.
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html lang={locale} className="ds-skin" suppressHydrationWarning>
       <head>
         {/* Apply the saved theme before first paint — prevents a flash of the
             wrong theme. Must run synchronously, ahead of the body. */}

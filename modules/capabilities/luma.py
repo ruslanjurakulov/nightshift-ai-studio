@@ -14,7 +14,7 @@ stored file's type must be known). ``aspect_ratio`` only when the job names one 
 a ratio from the prompt: the docs say so, and the price does not depend on it). Every output is 2K, and
 the price is one figure per image, so nothing else is priced: ``style`` (``auto``) and ``web_search``
 (false) are left to their defaults and the docs list no surcharge for either. Not wired: ``image_edit``,
-``image_ref`` (each extra reference adds $0.003), the Files API.
+``image_ref`` (each extra reference adds a surcharge), the Files API.
 
 RESULT LINKS: the docs show a presigned link on ``storage.example.com`` (a placeholder) and name no real
 host. ``RESULT_HOSTS`` is therefore EMPTY: a link is refused (fail closed), the refusal names the host
