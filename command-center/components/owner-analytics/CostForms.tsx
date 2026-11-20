@@ -5,8 +5,9 @@
  * Each writes one row through its route and refreshes the page; nothing here spends, charges or calls a provider.
  */
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { COST_CATEGORIES, type CostCategory } from "@/lib/owner-analytics/costs";
 
@@ -26,23 +27,36 @@ export function categoryLabel(d: Dict, c: CostCategory): string {
 function usePost(path: string, failText: string, invalidText: string) {
   const { t } = useI18n();
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ReactNode>(null);
+  const [saved, setSaved] = useState(false);
   // Set before the request, not after: a second click while the first is in flight would store the cost twice.
   const [submitting, setSubmitting] = useState(false);
   async function post(body: unknown): Promise<boolean> {
     if (submitting) return false;
     setSubmitting(true);
     setError(null);
+    setSaved(false);
     try {
       const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) {
         const e = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+        if (res.status === 401 && e !== "mfa_required") {
+          // The session ended: nothing was saved, and only signing in again helps.
+          setError(
+            <>
+              {t.ownerAnalytics.sessionEnded} <Link href={`/login?next=${encodeURIComponent(pathname)}`}>{t.ownerAnalytics.signInAgain}</Link>
+            </>,
+          );
+          return false;
+        }
         setError(
           e === "invalid_request" ? invalidText : e === "mfa_required" ? t.ownerAnalytics.mfaNeeded : e === "rate_limited" ? t.ownerAnalytics.rateLimited : failText,
         );
         return false;
       }
+      setSaved(true);
       start(() => router.refresh());
       return true;
     } catch {
@@ -52,7 +66,7 @@ function usePost(path: string, failText: string, invalidText: string) {
       setSubmitting(false);
     }
   }
-  return { post, pending: pending || submitting, error };
+  return { post, pending: pending || submitting, error, saved };
 }
 
 export function CostEntryForm({ maxMonth }: { maxMonth: string }) {
@@ -174,10 +188,11 @@ export function BalanceForm() {
   );
 }
 
-export function FxForm({ maxDay, currencies }: { maxDay: string; currencies: string[] }) {
+export function FxForm({ maxDay, currencies, period }: { maxDay: string; currencies: string[]; period: { startDay: string; endDay: string } }) {
   const { t } = useI18n();
   const d = t.ownerAnalytics;
-  const { post, pending, error } = usePost("/api/owner-analytics/fx", d.fxFailed, d.fxInvalid);
+  const { post, pending, error, saved } = usePost("/api/owner-analytics/fx", d.fxFailed, d.fxInvalid);
+  const [savedDay, setSavedDay] = useState<string | null>(null);
   const [day, setDay] = useState(maxDay);
   const [currency, setCurrency] = useState(currencies[0] ?? "USD");
   const [uzs, setUzs] = useState("");
@@ -189,7 +204,10 @@ export function FxForm({ maxDay, currencies }: { maxDay: string; currencies: str
       onSubmit={async (e) => {
         e.preventDefault();
         const ok = await post({ day, currency: currency.trim().toUpperCase(), uzs: Number(uzs), source });
-        if (ok) setUzs("");
+        if (ok) {
+          setUzs("");
+          setSavedDay(day);
+        }
       }}
     >
       <label className="oa-slider">
@@ -214,6 +232,12 @@ export function FxForm({ maxDay, currencies }: { maxDay: string; currencies: str
       {error && (
         <p className="oa-note" data-tone="warn" role="alert">
           {error}
+        </p>
+      )}
+      {saved && savedDay && (
+        <p className="oa-note" role="status">
+          {/* The table lists the period's rates only: say where a rate outside it went, so saving it is not silent. */}
+          {savedDay >= period.startDay && savedDay <= period.endDay ? d.fxSaved : d.fxSavedOutside.replace("{day}", savedDay)}
         </p>
       )}
     </form>

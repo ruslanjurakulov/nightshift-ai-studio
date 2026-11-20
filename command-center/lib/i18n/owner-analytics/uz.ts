@@ -349,4 +349,10 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   runwayNotEnabled: "Modellar boʻyicha vazifalar soni uchun 0183-migratsiya kerak; xarajat va balanslar usiz koʻrsatilgan.",
   runwayNoProviders: "Hech bir pullik provayderda hali toʻldirish, balans yoki vazifa yoʻq.",
   runwayHorizon: "Toʻldirish 180 kundan eski: unga bogʻliq balanslar nomaʼlum.",
+  exportPreparing: "Fayl tayyorlanmoqda…",
+  fxSaved: "Kurs saqlandi.",
+  fxSavedOutside: "{day} uchun kurs saqlandi. U tanlangan davrdan tashqarida, shuning uchun quyida koʻrsatilmagan.",
+  forecastCosts: "Xarajatlar",
+  reportFull: "Toʻliq hisobot",
+  useValue: "{value} ni olish",
 };

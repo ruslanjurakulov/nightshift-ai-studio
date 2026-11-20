@@ -101,7 +101,7 @@ export async function HubFrame({ ctx, section, children }: { ctx: HubContext; se
           <p className="oa-note">{d.subtitle}</p>
         </div>
         <div className="oa-picker">
-          <ExportButtons what="report.full" query={ctx.query} reauthMinutes={EXPORT_REAUTH_MINUTES} title={d.reportPdf} formats={["pdf", "xlsx"]} />
+          <ExportButtons what="report.full" query={ctx.query} reauthMinutes={EXPORT_REAUTH_MINUTES} title={d.reportFull} formats={["pdf", "xlsx"]} label={d.reportFull} />
           <PresentToggle on={ctx.present} />
         </div>
       </div>

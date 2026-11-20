@@ -349,4 +349,10 @@ export const ownerAnalyticsRu: OwnerAnalyticsDictionary = {
   runwayNotEnabled: "Число задач по моделям требует миграции 0183; расходы и балансы показаны без него.",
   runwayNoProviders: "Ни у одного платного провайдера ещё нет пополнения, баланса или задачи.",
   runwayHorizon: "Пополнение старше 180 дней: зависящие от него балансы неизвестны.",
+  exportPreparing: "Готовим файл…",
+  fxSaved: "Курс сохранён.",
+  fxSavedOutside: "Курс на {day} сохранён. Он вне выбранного периода, поэтому ниже не показан.",
+  forecastCosts: "Расходы",
+  reportFull: "Полный отчёт",
+  useValue: "Взять {value}",
 };

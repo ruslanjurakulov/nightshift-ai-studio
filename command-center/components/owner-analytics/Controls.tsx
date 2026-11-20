@@ -151,7 +151,7 @@ export function PresentToggle({ on }: { on: boolean }) {
 }
 
 type Format = "csv" | "xlsx" | "pdf";
-type ExportState = { kind: "idle" } | { kind: "busy" } | { kind: "reauth"; format: Format } | { kind: "failed" } | { kind: "tooLarge" } | { kind: "mfa" };
+type ExportState = { kind: "idle" } | { kind: "busy" } | { kind: "reauth"; format: Format } | { kind: "failed" } | { kind: "tooLarge" } | { kind: "mfa" } | { kind: "expired" };
 
 /**
  * CSV and XLSX for one table. The file is built on the server from the database, never from what the browser holds, and the
@@ -164,28 +164,36 @@ export function ExportButtons({
   reauthMinutes,
   title,
   formats = ["csv", "xlsx"],
+  label,
 }: {
   what: string;
   query: string;
   reauthMinutes: number;
   title: string;
   formats?: Array<"csv" | "xlsx" | "pdf">;
+  /** Visible text before the buttons, for a set that is not under its own card title (the header's full report). */
+  label?: string;
 }) {
   const { t } = useI18n();
   const d = t.ownerAnalytics;
   const [state, setState] = useState<ExportState>({ kind: "idle" });
   const [password, setPassword] = useState("");
   const [reauthError, setReauthError] = useState<string | null>(null);
-  const csvRef = useRef<HTMLButtonElement>(null);
+  const buttons = useRef<Partial<Record<Format, HTMLButtonElement | null>>>({});
+  const last = useRef<Format>(formats[0]);
   const pathname = usePathname();
-  // Closing the prompt puts focus back where the owner was, not on the page body.
+  // Focus goes back to the button the owner pressed — after the prompt closes, and after the file is made.
+  const refocus = () => requestAnimationFrame(() => buttons.current[last.current]?.focus());
   const close = () => {
     setState({ kind: "idle" });
     setPassword("");
-    requestAnimationFrame(() => csvRef.current?.focus());
+    refocus();
   };
+  const busy = state.kind === "busy";
 
   async function download(format: Format) {
+    if (busy) return;
+    last.current = format;
     setState({ kind: "busy" });
     try {
       const res = await fetch("/api/owner-analytics/export", {
@@ -204,6 +212,9 @@ export function ExportButtons({
           setState({ kind: "mfa" });
           return;
         }
+        // The session itself ended: only signing in again helps, and the page says how.
+        setState({ kind: "expired" });
+        return;
       }
       if (res.status === 413) {
         setState({ kind: "tooLarge" });
@@ -221,6 +232,7 @@ export function ExportButtons({
       a.remove();
       URL.revokeObjectURL(url);
       setState({ kind: "idle" });
+      refocus();
     } catch {
       setState({ kind: "failed" });
     }
@@ -242,19 +254,33 @@ export function ExportButtons({
   }
 
   return (
-    <div className="oa-export">
-      {formats.map((f, i) => (
+    <div className="oa-export" aria-busy={busy || undefined}>
+      {label && <span className="oa-note">{label}</span>}
+      {formats.map((f) => (
         <button
           key={f}
           type="button"
-          ref={i === 0 ? csvRef : undefined}
+          ref={(el) => {
+            buttons.current[f] = el;
+          }}
           onClick={() => download(f)}
-          disabled={state.kind === "busy"}
+          // Not `disabled`: a disabled button drops keyboard focus to the page body while the file is being made.
+          aria-disabled={busy || undefined}
           aria-label={fill(d.exportFor, { format: f === "csv" ? d.exportCsv : f === "xlsx" ? d.exportXlsx : d.exportPdf, title })}
         >
           <Download size={12} aria-hidden /> {f === "csv" ? d.exportCsv : f === "xlsx" ? d.exportXlsx : d.exportPdf}
         </button>
       ))}
+      {busy && (
+        <span className="oa-note" role="status">
+          {d.exportPreparing}
+        </span>
+      )}
+      {state.kind === "expired" && (
+        <span className="oa-note" data-tone="warn" role="alert">
+          {d.sessionEnded} <Link href={`/login?next=${encodeURIComponent(pathname)}`}>{d.signInAgain}</Link>
+        </span>
+      )}
       {state.kind === "mfa" && (
         <span className="oa-note" data-tone="warn" role="alert">
           {d.mfaNeeded}{" "}

@@ -105,7 +105,7 @@ export default async function OwnerAnalyticsTax({ searchParams }: { searchParams
               </table>
             </div>
           )}
-          <FxForm maxDay={tashkentDay(ctx.now)} currencies={currencies.length ? currencies : ["USD"]} />
+          <FxForm maxDay={tashkentDay(ctx.now)} currencies={currencies.length ? currencies : ["USD"]} period={{ startDay: p.startDay, endDay: p.endDay }} />
         </section>
       )}
 

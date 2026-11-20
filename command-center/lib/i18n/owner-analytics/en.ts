@@ -362,6 +362,12 @@ export const ownerAnalyticsEn = {
   runwayNotEnabled: "Job counts per model need migration 0183; spend and balances are shown without them.",
   runwayNoProviders: "No paid provider has a top-up, a balance or a job yet.",
   runwayHorizon: "A top-up is older than 180 days: the balances that depend on it are unknown.",
+  exportPreparing: "Preparing the file…",
+  fxSaved: "Rate saved.",
+  fxSavedOutside: "Rate for {day} saved. It is outside the selected period, so it is not listed below.",
+  forecastCosts: "Costs",
+  reportFull: "Full report",
+  useValue: "Use {value}",
 };
 
 export type OwnerAnalyticsDictionary = { [K in keyof typeof ownerAnalyticsEn]: string };
