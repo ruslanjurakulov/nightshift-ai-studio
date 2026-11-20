@@ -1,4 +1,4 @@
--- 0191 — Trend templates, second set: the formats that are pulling the most views on Reels and TikTok right now.
+-- 0186 — Trend templates, second set: the formats that are pulling the most views on Reels and TikTok right now.
 --
 -- WHY. 0183 seeded the everyday formats (a product ad, a before/after, a food reveal). What makes a person open an AI studio is
 -- usually an EFFECT they just saw in their feed and want for themselves. This adds a "viral" category and ten formats chosen

@@ -12,7 +12,7 @@
  */
 import type { Locale } from "@/lib/i18n/core";
 
-// "viral" (0191): effects that are trending on Reels and TikTok. Listed first so the gallery's chips lead with them.
+// "viral" (0186): effects that are trending on Reels and TikTok. Listed first so the gallery's chips lead with them.
 export const TEMPLATE_CATEGORIES = ["viral", "business", "story", "lifestyle", "text"] as const;
 export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
 

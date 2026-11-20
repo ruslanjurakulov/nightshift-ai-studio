@@ -60,6 +60,8 @@ export function routeReason(ranked: readonly RouteCandidate[], mode: RoutedMode)
 interface Sellable {
   id: string;
   displayName: string;
+  /** Registry inputs.prompt_required: the tools this model needs words for. */
+  wordsRequired: string[];
   qualityTier: number;
   speedTier: number;
 }
@@ -77,11 +79,38 @@ export async function sellableFor(db: CreativeDb, capability: string): Promise<S
     out.push({
       id: row.id,
       displayName: typeof row.display_name === "string" && row.display_name ? row.display_name : row.id,
+      wordsRequired: wordsRequiredOf(spec),
       qualityTier: tier(spec.quality_tier),
       speedTier: tier(spec.speed_tier),
     });
   }
   return out;
+}
+
+function wordsRequiredOf(spec: Record<string, unknown>): string[] {
+  const inputs = spec.inputs && typeof spec.inputs === "object" && !Array.isArray(spec.inputs) ? (spec.inputs as Record<string, unknown>) : {};
+  return Array.isArray(inputs.prompt_required) ? inputs.prompt_required.filter((c): c is string => typeof c === "string") : [];
+}
+
+/**
+ * Rule 6, fail early: a model that needs words for this tool (registry inputs.prompt_required, e.g. MiniMax H3's
+ * image-to-video) is refused at the quote and at the create when none were sent, with the reason named — not created and
+ * then refused by the adapter as "settings were not accepted". Words present: nothing is read. The model list cannot be
+ * read: null (the check cannot be made here; the adapter still refuses and the hold is released, so nothing is charged).
+ */
+export async function missingWords(
+  db: CreativeDb,
+  capability: string,
+  model: string,
+  params: Record<string, unknown>,
+): Promise<CreativeResult | null> {
+  if (!model) return null;
+  // Invisible characters (zero-width spaces, BOM) are not words: trim() leaves them, so they are removed first.
+  if (typeof params.prompt === "string" && params.prompt.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim() !== "") return null;
+  const sellable = await sellableFor(db, capability);
+  const m = sellable?.find((x) => x.id === model);
+  if (!m || !m.wordsRequired.includes(capability)) return null;
+  return { status: 422, body: { error: "prompt_required", detail: `${m.displayName} needs words for ${capability}`, model: m.id } };
 }
 
 /**

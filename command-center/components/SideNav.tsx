@@ -10,7 +10,6 @@ import { ALL_SECTIONS, CUSTOMER_RAIL, HOME, OPERATOR_TABS, navGroupsFor, operato
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import { useShell } from "@/components/shell/ShellContext";
 import { type AccountPlan } from "@/lib/account";
-import { Avatar } from "@/components/account/Avatar";
 import { nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 
@@ -42,8 +41,11 @@ export function useIsActive() {
   const pathname = usePathname();
   const section = "/" + pathname.split("/").slice(2).join("/");
   const group = tabsFor(pathname.split("/")[2] ?? "")?.rail;
-  return (href: string, key?: NavKey) =>
-    section === href || section.startsWith(href + "/") || (key !== undefined && key === group);
+  return (href: string, key?: NavKey) => {
+    // A rail entry can carry a query (Projects is /studio?shelf=projects): the section path has none, so match its path.
+    const bare = href.split("?")[0];
+    return section === bare || section.startsWith(bare + "/") || (key !== undefined && key === group);
+  };
 }
 
 function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () => void }) {
@@ -128,7 +130,7 @@ export function SideNav({
 
       {/* A customer's phone: the five destinations as a bottom tab bar, Studio in
           the middle and raised — where the thumb is, as phone apps do. */}
-      {!operator && <BottomBar email={email} avatarV={avatarV} />}
+      {!operator && <BottomBar />}
 
       {/* The owner's phone: the same bottom-bar idea, with the owner's five destinations. */}
       {operator && <OperatorBottomBar />}
@@ -180,25 +182,13 @@ function StudioRail({ operator }: { operator: boolean }) {
   );
 }
 
-/** Bottom order: Home, Channels, Studio (centre), Credits, Settings. Videos are a shelf of Studio now. */
-const BOTTOM_ORDER: readonly NavKey[] = ["home", "channels", "studio", "credits", "settings"];
-
 /**
- * The Settings tab is the account, as a profile tab is on Instagram: the
- * photo in a circle where the other tabs have a glyph, or the account's
- * initial when there is no photo (a neutral person when there is no e-mail).
- * The circle is decoration: the tab is still named "Settings", and neither
- * the e-mail nor the photo is in its name or title.
+ * Bottom order: Home, Trends, Create (centre, raised), Projects, Library: the rail's five, with making where the thumb is.
+ * Credits and the account are the top bar's credit pill and avatar on a phone.
  */
-function AccountAvatar({ email, avatarV, active }: { email: string | null; avatarV: number | null; active: boolean }) {
-  return (
-    <span aria-hidden className={active ? "ns-tab-avatar is-current" : "ns-tab-avatar"}>
-      <Avatar email={email} version={avatarV} size={24} className="size-full!" />
-    </span>
-  );
-}
+const BOTTOM_ORDER: readonly NavKey[] = ["home", "trends", "create", "projects", "library"];
 
-function BottomBar({ email, avatarV }: { email: string | null; avatarV: number | null }) {
+function BottomBar() {
   const { t } = useI18n();
   const isActive = useIsActive();
   const path = useChannelPath();
@@ -217,7 +207,7 @@ function BottomBar({ email, avatarV }: { email: string | null; avatarV: number |
           {ordered.map(({ href, key }) => {
             const active = isActive(href, key);
             const Icon = ICONS[key];
-            const centre = key === "studio";
+            const centre = key === "create";
             return (
               <li key={key} className="flex justify-center">
                 <Link href={path(href)} aria-current={active ? "page" : undefined} className="ns-tab">
@@ -230,14 +220,10 @@ function BottomBar({ email, avatarV }: { email: string | null; avatarV: number |
                     // The selection tint is one plate that slides to the tab you tap.
                     <span className={active ? "ns-tab-icon ns-plate-host" : "ns-tab-icon"}>
                       {active && <Plate id="tab-current" className="is-tab" />}
-                      {key === "settings" ? (
-                        <AccountAvatar email={email} avatarV={avatarV} active={active} />
-                      ) : (
-                        <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
-                      )}
+                      <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
                     </span>
                   )}
-                  <span className="truncate">{centre ? t.shell.hubTab : t.nav[key]}</span>
+                  <span className="truncate">{t.nav[key]}</span>
                 </Link>
               </li>
             );

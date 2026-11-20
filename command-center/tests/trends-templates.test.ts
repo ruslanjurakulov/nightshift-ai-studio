@@ -149,8 +149,8 @@ describe("migration 0183's seed", () => {
   });
 });
 
-describe("migration 0191's seed (the viral set)", () => {
-  const sql = readFileSync(join(__dirname, "../../supabase/migrations/0191_viral_templates.sql"), "utf8");
+describe("migration 0186's seed (the viral set)", () => {
+  const sql = readFileSync(join(__dirname, "../../supabase/migrations/0186_viral_templates.sql"), "utf8");
   const seeded = [...sql.matchAll(/'(minimax-h3[a-z-]*|ideogram-[0-9.]+|[a-z0-9.-]+)', '(9:16|16:9|1:1)'/g)].map((m) => m[1]);
   const categories = [...sql.matchAll(/^\s+'([a-z]+)', '(video|image)',$/gm)].map((m) => m[1]);
 
