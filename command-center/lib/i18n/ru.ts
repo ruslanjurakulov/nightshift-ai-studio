@@ -9,6 +9,7 @@ import { customVoiceRu } from "./custom-voice/ru";
 import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
@@ -60,6 +61,7 @@ export const ru: Dictionary = {
   effects: effectsRu,
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
+  customerApp: customerAppRu,
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
@@ -108,6 +110,8 @@ export const ru: Dictionary = {
     menu: "Меню",
     command: "Центр управления",
     create: "Создать",
+    trends: "Тренды",
+    projects: "Проекты",
     videos: "Видео",
     pipeline: "Конвейер",
     agents: "Агенты",

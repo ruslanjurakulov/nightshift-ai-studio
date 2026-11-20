@@ -9,6 +9,7 @@ import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
@@ -69,6 +70,7 @@ export const en = {
   effects: effectsEn,
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
+  customerApp: customerAppEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
@@ -119,6 +121,8 @@ export const en = {
     menu: "Menu",
     command: "Command Center",
     create: "Create",
+    trends: "Trends",
+    projects: "Projects",
     videos: "Videos",
     pipeline: "Pipeline",
     agents: "Agents",

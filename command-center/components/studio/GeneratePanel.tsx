@@ -157,6 +157,8 @@ export function GeneratePanel({
   onePerQuote = false,
   onQuote,
   onPressing,
+  appendRequest = null,
+  verb = null,
 }: {
   /**
    * The tools this form may offer, narrower than its desk's (the Studio canvas: an Image → Video node is i2v only, so no tab
@@ -179,6 +181,13 @@ export function GeneratePanel({
    * pressing too. Unlike onSubmittingChange, an unmount never reports false while the POST is still in flight.
    */
   onPressing?: (pressing: boolean) => void;
+  /**
+   * Words to add to the end of the prompt, once per nonce (the Create screen's Director presets). Only the words change: the
+   * quote asks again for the new words as for any typing, and nothing is sent until the priced press.
+   */
+  appendRequest?: { nonce: number; text: string } | null;
+  /** The action's own word on the price key ("Create" on the Create screen): `word`, and `priced` with {n} for its name. */
+  verb?: { word: string; priced: string } | null;
   /**
    * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
    * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
@@ -526,6 +535,19 @@ export function GeneratePanel({
 
   // "Use as picture": applied once per request, never on the mount that a
   // template or Try again caused (that request was already used or cleared).
+  const appliedAppend = useRef(appendRequest?.nonce ?? 0);
+  useEffect(() => {
+    if (!appendRequest || appendRequest.nonce === appliedAppend.current) return;
+    appliedAppend.current = appendRequest.nonce;
+    const add = appendRequest.text.trim();
+    if (!add) return;
+    // Never past the tool's own limit: words that do not fit are not added (the Director says it is guidance, not a setting).
+    setPrompt((p) => {
+      const next = p.trim() ? `${p.trimEnd()}, ${add}` : add;
+      return next.length <= wordsMax(capability) ? next : p;
+    });
+  }, [appendRequest, capability]);
+
   const appliedSource = useRef(sourceRequest?.nonce ?? 0);
   useEffect(() => {
     if (!sourceRequest || sourceRequest.nonce === appliedSource.current) return;
@@ -1668,6 +1690,16 @@ export function GeneratePanel({
     </Link>
   );
 
+  // The price key's name: the tool's own sentence, or the page's verb ("Create · 12 credits") once the server priced it.
+  const keyName =
+    verb && capability !== "describe"
+      ? quote.status === "ready"
+        ? fmt(verb.priced, { n: formatCredits(quote.credits, locale) })
+        : quote.status === "quoting"
+          ? t.gen.quoting
+          : verb.word
+      : generateLabel(t, quote, locale, capability);
+
   const dockBlock = (
     <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock" data-at-top={dockAtTop ? "true" : undefined}>
       {/* The price key (components/ui/PriceButton): the action and the
@@ -1682,7 +1714,7 @@ export function GeneratePanel({
         onClick={generate}
         aria-busy={submitting || quote.status === "quoting"}
         aria-describedby="gen-status"
-        aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+        aria-label={submitting ? t.gen.starting : keyName}
         label={
           submitting
             ? t.gen.starting
@@ -1690,7 +1722,7 @@ export function GeneratePanel({
               ? t.gen.quoting
               : capability === "describe"
                 ? t.gen.describe
-                : t.gen.generate
+                : (verb?.word ?? t.gen.generate)
         }
         credits={!submitting && quote.status === "ready" ? quote.credits : null}
         unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}
@@ -1856,7 +1888,7 @@ export function GeneratePanel({
         ? t.gen.quoting
         : capability === "describe"
           ? t.gen.describe
-          : t.gen.generate;
+          : (verb?.word ?? t.gen.generate);
 
     return (
       <section className="studio-surface sc-composer" aria-labelledby="gen-title" data-testid="composer" data-capability={capability}>
@@ -2015,7 +2047,7 @@ export function GeneratePanel({
             onClick={generate}
             aria-busy={submitting || quote.status === "quoting"}
             aria-describedby="gen-status"
-            aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+            aria-label={submitting ? t.gen.starting : keyName}
             label={<span className="sc-send-word">{sendLabel}</span>}
             credits={!submitting && quote.status === "ready" ? quote.credits : null}
             unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}

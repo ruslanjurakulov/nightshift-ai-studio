@@ -33,6 +33,8 @@ import { loadEditorProjects } from "@/lib/server/editor";
 import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
+import { CreateScreen } from "@/components/customer/CreateScreen";
+import { SLUG_RE, cleanLinkPrompt, isCreateKind } from "@/lib/customer/create";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -156,7 +158,7 @@ export default async function CreatePage({
   // Unreadable is unknown, never a zero; the operator's own organization is not charged.
   let credits: CreditsReading = { state: "unknown" };
   let projects: ProjectsReading = { state: "not_available" };
-  if (desk === "overview" && org.supported && org.current) {
+  if (desk === "overview" && pendingNonce && org.supported && org.current) {
     const orgId = org.current.id;
     const supabase = await createClient();
     const [account, list] = await Promise.all([
@@ -177,7 +179,31 @@ export default async function CreatePage({
       {/* The overview opens on its own question and the box to write in; the full pages keep their header and switcher. */}
       {desk !== "overview" && <PageHeader icon="studio" title={t.create.title} subtitle={t.desk.blurbs[desk]} />}
       {desk !== "overview" && <DeskBar current={desk} />}
-      {desk === "overview" && (
+      {/* The sprint's Create screen is the overview, except for the public home page's file hand-off, which StudioHome
+          carries (it asks whether to use the kept file). Template links (?template=<slug>, no ?tool=) and Home's
+          ?kind=&prompt= only fill its form: it is priced by the server and nothing starts before the press. */}
+      {desk === "overview" && !pendingNonce && (
+        genOrgId ? (
+          <CreateScreen
+            orgId={genOrgId}
+            models={panelModels}
+            unavailable={switchedOff}
+            plans={plans}
+            defaultStyleKitId={startKit}
+            dna={dna.studio}
+            bottomBar={!operator}
+            initialKind={isCreateKind(one(q.kind)) ? (one(q.kind) as "video" | "image" | "audio") : "video"}
+            initialPrompt={cleanLinkPrompt(one(q.prompt))}
+            templateSlug={(() => {
+              const slug = one(q.template);
+              return typeof slug === "string" && SLUG_RE.test(slug) ? slug : null;
+            })()}
+          />
+        ) : (
+          <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.customerApp.create.noOrg}</p>
+        )
+      )}
+      {desk === "overview" && pendingNonce && (
         <StudioHome
           orgId={genOrgId}
           models={panelModels}

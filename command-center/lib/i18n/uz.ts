@@ -9,6 +9,7 @@ import { customVoiceUz } from "./custom-voice/uz";
 import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { ownerShellUz } from "./owner-shell/uz";
+import { customerAppUz } from "./customer-app/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
 import { studioTimelineUz } from "./studio-timeline/uz";
@@ -60,6 +61,7 @@ export const uz: Dictionary = {
   effects: effectsUz,
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
+  customerApp: customerAppUz,
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
   studioTimeline: studioTimelineUz,
@@ -108,6 +110,8 @@ export const uz: Dictionary = {
     menu: "Menyu",
     command: "Boshqaruv markazi",
     create: "Yaratish",
+    trends: "Trendlar",
+    projects: "Loyihalar",
     videos: "Videolar",
     pipeline: "Konveyer",
     agents: "Agentlar",

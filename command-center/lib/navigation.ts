@@ -70,6 +70,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/analytics", key: "analytics" },
       // Housed in Nightshift Studio (hidden from the rail, reached from Studio home's tiles):
       { href: "/create", key: "create" },
+      // The customer rail's Trends (the trend templates). Not in the operator's rail (RAIL_HIDDEN_KEYS); reachable by URL and ⌘K.
+      { href: "/trends", key: "trends" },
       { href: "/videos", key: "videos" },
       // Brand look: it was /studio, and is one click from Studio home (the Channel look chip).
       { href: "/studio/look", key: "brandLook" },
@@ -212,6 +214,7 @@ export const SECTION_ITEMS: readonly SectionItem[] = [
 export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "command",
   "create",
+  "trends",
   "videos",
   "inbox",
   "studio",
@@ -257,22 +260,25 @@ export const STUDIO_HOUSED_KEYS: readonly NavKey[] = [
   "pipeline",
 ];
 
-export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members", ...STUDIO_HOUSED_KEYS];
+export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members", "trends", ...STUDIO_HOUSED_KEYS];
+
+/** The customer's Trends screen: the trend templates (S3's /api/templates), each one opening Create prefilled. */
+export const TRENDS = "/trends";
+/** The customer's projects: Nightshift Studio's project shelf (the canvas projects and the editor's), which /editor redirects to. */
+export const PROJECTS = "/studio?shelf=projects";
 
 /**
- * A customer's rail: five destinations, nothing else. Home is the first screen
- * after sign-in; Nightshift Studio is where things are made (every creative
- * tool, the videos and the projects, behind one entry); Settings holds the
- * workspace (Account and security; Developers is reached from it). No tab bar:
- * Studio home lays its tools out as tiles — a short rail with the tools behind
- * it, never a wall of tools.
+ * A customer's rail: five places to make and find things, nothing else. Home asks "what shall we create?"; Create is the
+ * one screen where a priced generation is started; Trends lists the templates; Projects and Library hold what was made.
+ * Credits and Settings sit at the foot of the desktop sidebar (and behind the credit pill and the avatar on a phone).
+ * Channels, the Inbox and Nightshift Studio's canvas keep their URLs and are reached from Projects, the avatar menu and ⌘K.
  */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
   { href: CUSTOMER_HOME, key: "home" },
-  { href: "/studio", key: "studio" },
-  { href: "/channels", key: "channels" },
-  { href: "/credits", key: "credits" },
-  { href: "/organization", key: "settings" },
+  { href: "/create", key: "create" },
+  { href: TRENDS, key: "trends" },
+  { href: PROJECTS, key: "projects" },
+  { href: "/library", key: "library" },
 ];
 
 /**
@@ -387,15 +393,10 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
   // Kept as data for the canvas's Add node menu (STUDIO_IA.md §4); the sidebar no longer lists them, Studio home's
   // Create tile and its desk chips do. Every link still works (tests/studio-routes.test.ts).
   tools: STUDIO_TOOLS.map((tool) => ({ tool, href: toolHref(tool) })),
-  work: [
-    { href: "/studio", key: "studio" },
-    // The Inbox stays outside the Studio (STUDIO_IA.md §9.4) and was a hub tab: it keeps a row of its own here.
-    { href: "/inbox", key: "inbox" },
-    { href: "/channels", key: "channels" },
-  ],
+  // The rail after Home, in the same order the phone's bottom bar draws it.
+  work: CUSTOMER_RAIL.slice(1),
   footer: [
     { href: "/credits", key: "credits" },
-    { href: "/developers", key: "developers" },
     { href: "/organization", key: "settings" },
   ],
 };
@@ -407,20 +408,19 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
  * The query no longer matters: the tools are not rows of their own any more.
  */
 export function sidebarCurrent(section: string): string | null {
-  const first = "/" + (section.split("/").filter(Boolean)[0] ?? "");
+  const parts = section.split("/").filter(Boolean);
+  const first = "/" + (parts[0] ?? "");
   if (first === CUSTOMER_HOME) return "home";
-  // Developers has its own row; Settings is the workspace page alone.
-  if (first === "/developers") return "developers";
+  if (first === TRENDS) return "trends";
+  // The projects shelf and the canvas a project opens in are both Projects (the section path carries no query).
+  if (first === "/studio" && parts.length === 1) return "projects";
+  if (first === "/library") return "library";
+  if (first === "/developers" || first === "/organization") return "settings";
   // Usage is part of the credits story (plan allowance, extra credits): its row is Credits.
-  if (first === "/usage") return "credits";
-  // Series and Models were hub tabs; their way in is now a Studio home tile.
-  if (first === "/series" || first === "/models") return "studio";
-  const group = tabsFor(first.slice(1))?.rail;
-  if (group === "studio") return "studio";
-  if (group === "settings") return "settings";
-  for (const item of [...CUSTOMER_SIDEBAR.work, ...CUSTOMER_SIDEBAR.footer]) {
-    if (first === item.href) return item.key;
-  }
+  if (first === "/usage" || first === "/credits") return "credits";
+  // Every other creative screen (a tool, the editor, styles, presets, a video's page, Series, Models) is part of making.
+  if (first === "/series" || first === "/models") return "create";
+  if (tabsFor(first.slice(1))?.rail === "studio") return "create";
   return null;
 }
 

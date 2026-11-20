@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot, SwatchBook,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House, Sparkles, Flame, FolderOpen,
   type LucideIcon,
 } from "lucide-react";
 import type { NavKey } from "@/lib/navigation";
@@ -20,7 +20,10 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   settings: Settings,
   design: SwatchBook,
   command: LayoutDashboard,
-  create: CircleDot,
+  // The customer rail's Create (the sprint IA): sparkles, as Krea and Higgsfield mark the make-something screen.
+  create: Sparkles,
+  trends: Flame,
+  projects: FolderOpen,
   videos: Film,
   inbox: Inbox,
   // Nightshift Studio is where things are made: it takes the hub's record key.

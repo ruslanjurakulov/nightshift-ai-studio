@@ -47,6 +47,7 @@ import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 import { characterStudioEnabled } from "@/lib/characterStudio/model";
 import { filmStudioListed, filmStudioMode } from "@/lib/server/films";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
+import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { GlassPointer } from "@/components/ui/GlassPointer";
 import "./app-redesign.css";
 import "./app-pages-1.css";
@@ -139,6 +140,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // The customer sidebar's width is a per-browser preference (a cookie mirrored from localStorage), read here so the
   // first frame is already the right width.
   const sidebarCollapsed = isSidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
+  // Owner mode (lib/owner-mode.ts): which frame the operator is DRAWN in. The cookie counts only once the server said
+  // "operator"; the redirects above already used the real role, so every operator URL keeps working in either frame.
+  const frame = ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value);
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database
@@ -199,7 +203,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       scope={scope}
       email={email}
       avatarV={avatarV}
-      operator={operator}
+      operator={frame}
       plan={plan}
     />
   );
@@ -214,8 +218,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MotionProvider>
       <NavigationProvider channelNames={channelNames}>
         {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
-        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmStudioMode(), operator) }} tools={tools}>
-        <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
+        <ShellProvider operator={frame} ownerSwitch={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmStudioMode(), operator) }} tools={tools}>
+        <SidebarProvider initialCollapsed={!frame && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}
             <SkipLink />
@@ -223,7 +227,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {/* One delegated listener for every glass key's pointer highlight (app-glass.css). */}
             <GlassPointer />
             <NeuralBackdrop dim />
-            {operator ? (
+            {frame ? (
               <div className="relative z-10 flex min-h-svh flex-col">
                 <AdminMfaBanner action={operator ? mfa : "allow"} t={tt.mfa} path={path} />
                 {header}
@@ -241,12 +245,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <div className="relative z-10 flex min-h-svh">
                 <SideNav email={email} avatarV={avatarV} plan={plan} />
                 <div className="flex min-w-0 flex-1 flex-col">
+                  {/* The operator in the customer's frame (Owner mode off) still gets the second-factor banner. */}
+                  {operator && <AdminMfaBanner action={mfa} t={tt.mfa} path={path} />}
                   {header}
                   <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}{geo}</main>
                 </div>
               </div>
             )}
-            <CommandPalette scope={scope} operator={operator} />
+            <CommandPalette scope={scope} operator={frame} />
             <ScrollToTop dock />
             <InstallHint />
             <PendingSweep />
