@@ -738,6 +738,12 @@ import sec_owner_analytics_0182  # noqa: E402
 
 sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 
+# Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
+# tests/security/sec_creative_templates_0183.py
+import sec_creative_templates_0183  # noqa: E402
+
+sec_creative_templates_0183.extend(TABLES, FUNCTIONS)
+
 # Migration 0187 (the names of the models on sale, read signed out by the landing page): tests/security/sec_public_models_0187.py
 import sec_public_models_0187  # noqa: E402
 
