@@ -7,6 +7,7 @@ import type { PricingTeaser } from "@/lib/landing";
 import type { PriceRates } from "@/lib/site/price-check";
 import type { PublicModel } from "@/lib/public-models";
 import { posterSrcSet } from "@/lib/site/renditions";
+import { showcasePoster } from "@/lib/showcase/items";
 import { buttonClass } from "@/components/ds/button-class";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { MotionToggle } from "@/components/site/MotionToggle";
@@ -15,7 +16,8 @@ import { Faq } from "@/components/landing/Faq";
 import { GoogleData } from "@/components/landing/Landing";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import type { PackExpiry } from "@/lib/plans";
-import { HERO_JOB, reelItem, reelItems } from "@/components/landing/home/home-reel";
+import { HERO_JOB, PIECE_SIZE, reelItem, studioPieces } from "@/components/landing/home/home-reel";
+import { StudioClip } from "@/components/site/StudioClip";
 import "@/components/landing/home/home.css";
 
 /** The hero picture's widths, as the browser should choose them: the whole screen. */
@@ -59,7 +61,7 @@ export function HomePage({
   return (
     <div className="hm-root">
       <Hero t={t} />
-      <Reel t={t} />
+      <Reel t={t} locale={locale} />
       <How t={t} />
       {/* The stages of one real run, each with its real file (id="autopilot": /solutions links here). */}
       <AutopilotDemo copy={t.site.autopilot.demo} />
@@ -126,10 +128,10 @@ function Hero({ t }: { t: Dictionary }) {
   );
 }
 
-function Reel({ t }: { t: Dictionary }) {
+function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
   const h = t.landingHome.hero;
-  const items = reelItems();
-  if (items.length === 0) return null;
+  const pieces = studioPieces();
+  if (pieces.length === 0) return null;
   return (
     <section aria-labelledby="hm-reel-title" className="hm-section hm-reel">
       <div className="hm-wrap">
@@ -138,28 +140,38 @@ function Reel({ t }: { t: Dictionary }) {
         </h2>
         <p className="hm-muted">{h.reelNote}</p>
       </div>
-      <ul className="hm-reel-row" aria-labelledby="hm-reel-title">
-        {items.map(({ e, f }) => (
-          <li key={e.jobId} className="hm-reel-card">
-            <div className="hm-reel-pic" data-clip="sample">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={f.posterSm}
-                width={e.width}
-                height={e.height}
-                alt={t.site.gallery.bgClip}
-                loading="lazy"
-                decoding="async"
-                className="hm-reel-still"
-              />
-              <ShowcaseClip jobId={e.jobId} together />
-              {/* The picture's own description already says it is AI-generated; the badge is for the eye. */}
-              <span className="hm-badge hm-reel-badge" aria-hidden="true">
-                {h.ai}
-              </span>
-            </div>
-          </li>
-        ))}
+      {/* A row wider than the screen scrolls: focusable, so a keyboard can scroll it too. */}
+      <ul className="hm-reel-row" aria-labelledby="hm-reel-title" tabIndex={0}>
+        {pieces.map((p) => {
+          const size = PIECE_SIZE[p.aspect];
+          return (
+            <li key={p.slug} className="hm-reel-card" data-aspect={p.aspect} data-piece={p.slug}>
+              <figure>
+                <div className="hm-reel-pic" data-clip="sample">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={showcasePoster(p.slug)}
+                    width={size.width}
+                    height={size.height}
+                    alt={`${p.title[locale]}. ${h.ai}.`}
+                    loading="lazy"
+                    decoding="async"
+                    className="hm-reel-still"
+                  />
+                  {p.kind === "video" && <StudioClip slug={p.slug} />}
+                  {/* The picture's description already says it is AI-generated; the badge is for the eye. */}
+                  <span className="hm-badge hm-reel-badge" aria-hidden="true">
+                    {h.ai}
+                  </span>
+                </div>
+                <figcaption className="hm-reel-cap">
+                  <span className="hm-reel-title">{p.title[locale]}</span>
+                  <span className="hm-reel-credit">{h.credit.replace("{model}", p.model)}</span>
+                </figcaption>
+              </figure>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

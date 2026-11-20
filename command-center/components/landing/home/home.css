@@ -129,40 +129,57 @@
 
   /* ── Reel ─────────────────────────────────────────────────────────────── */
   .hm-reel { padding-bottom: 56px; }
+  /* Nine pieces in three shapes: one row at one height, each card as wide as its own shape, scrolled sideways at every width
+     (2,900 px of pictures at desktop height never fits a screen). The height is the one number; widths follow from it. */
   .hm-reel-row {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(150px, 46vw);
+    --hm-reel-h: min(56svh, 340px);
+    --hm-reel-pad: var(--hm-gutter);
+    display: flex;
     gap: var(--ds-space-3);
     margin-top: var(--ds-space-6);
-    padding-inline: var(--hm-gutter);
-    padding-bottom: var(--ds-space-2);
+    padding-inline: var(--hm-reel-pad);
+    padding-bottom: var(--ds-space-3);
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: var(--hm-gutter);
+    /* The same inset as the padding, or snapping pulls the first card back to the gutter. */
+    scroll-padding-inline: var(--hm-reel-pad);
     scrollbar-width: thin;
   }
-  @media (min-width: 640px) { .hm-reel-row { grid-auto-columns: 220px; } }
-  @media (min-width: 1280px) {
-    .hm-reel-row {
-      grid-auto-flow: row;
-      grid-template-columns: repeat(8, minmax(0, 1fr));
-      max-width: calc(var(--hm-max) + 2 * var(--hm-gutter));
-      margin-inline: auto;
-      overflow: visible;
-    }
+  @media (min-width: 1024px) { .hm-reel-row { --hm-reel-h: 380px; } }
+  @media (min-width: 1440px) {
+    /* The row starts where the page's column does, and still runs out to the screen's edge. */
+    .hm-reel-row { --hm-reel-pad: max(var(--hm-gutter), calc((100vw - var(--hm-max)) / 2)); }
   }
-  .hm-reel-card { scroll-snap-align: start; }
+  .hm-reel-row:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
+  .hm-reel-card { flex: 0 0 auto; scroll-snap-align: start; }
+  .hm-reel-card figure { margin: 0; }
   .hm-reel-pic {
     position: relative;
+    height: var(--hm-reel-h);
     aspect-ratio: 9 / 16;
     overflow: hidden;
     border-radius: var(--ds-r-panel);
     border: 1px solid var(--ds-border);
     background: var(--ds-surface-2);
   }
-  .hm-reel-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .hm-reel-badge { position: absolute; left: 8px; bottom: 8px; }
+  .hm-reel-card[data-aspect="16:9"] .hm-reel-pic { aspect-ratio: 16 / 9; }
+  .hm-reel-card[data-aspect="1:1"] .hm-reel-pic { aspect-ratio: 1; }
+  /* A wide piece on a phone would be wider than the screen at the row's height: it keeps its shape at the screen's width instead. */
+  @media (max-width: 767px) {
+    .hm-reel-card[data-aspect="16:9"] .hm-reel-pic { height: auto; width: calc(100vw - 2 * var(--hm-gutter) - 24px); }
+    .hm-reel-card[data-aspect="1:1"] .hm-reel-pic { height: auto; width: min(var(--hm-reel-h), calc(100vw - 2 * var(--hm-gutter) - 24px)); }
+  }
+  .hm-reel-pic .hm-reel-still, .hm-reel-pic .nx-clip { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .hm-reel-pic .nx-clip { opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
+  .hm-reel-pic[data-live="true"] .nx-clip { opacity: 1; }
+  /* At the top: the tall pieces carry their captions burned in at the bottom. */
+  .hm-reel-badge { position: absolute; left: 8px; top: 8px; }
+  /* The caption is as wide as its picture, never wider: a long credit wraps under a tall card. */
+  .hm-reel-cap { display: grid; gap: 2px; width: 0; min-width: 100%; margin-top: var(--ds-space-2); }
+  .hm-reel-title { color: var(--ds-text); font-size: 0.9375rem; font-weight: 600; line-height: 1.35; }
+  .hm-reel-credit { color: var(--ds-muted); font-size: 0.8125rem; line-height: 1.4; }
+  @media (prefers-reduced-motion: reduce) { .hm-reel-pic .nx-clip { transition: none; } }
 
   /* ── How it works ─────────────────────────────────────────────────────── */
   .hm-steps { display: grid; gap: var(--ds-space-4); margin-top: var(--ds-space-10); counter-reset: none; }

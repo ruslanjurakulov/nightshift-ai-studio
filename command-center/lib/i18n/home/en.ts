@@ -8,7 +8,8 @@
  *  - the MCP lines: the two states of MCP_OAUTH_LIVE (lib/mcp-oauth.ts), worded as /mcp words them (lib/i18n/site/dev-en.ts).
  *  - the model strip: migration 0187 public_models_on_sale; nothing is drawn when it cannot be read.
  * The trust section quotes /trust (t.site.trust) rather than paraphrasing it, so the two cannot disagree.
- * No numbers here: no user counts, no speed or quality promise, no testimonials, no provider names.
+ * No numbers here: no user counts, no speed or quality promise, no testimonials. A model is named only where it is on sale (the
+ * strip) or where it made the piece shown above its name (the reel's credit line).
  */
 export const homeEn = {
   hero: {
@@ -19,7 +20,9 @@ export const homeEn = {
     primary: "Start creating",
     secondary: "See how it works",
     reelLabel: "Made in Nightshift Studio",
-    reelNote: "Every clip here was generated in our own Studio.",
+    reelNote: "Every piece here was made in our own Studio, with the model that made it named under it.",
+    /** {model}: the registry display name of the model that made the piece (lib/creative/model-names.ts). */
+    credit: "Made with {model} in Nightshift Studio",
     ai: "AI-generated",
   },
   how: {

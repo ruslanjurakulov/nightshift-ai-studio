@@ -9,7 +9,8 @@ export const homeUz: HomeDictionary = {
     primary: "Yaratishni boshlash",
     secondary: "Qanday ishlaydi",
     reelLabel: "Nightshift Studio’da yaratilgan",
-    reelNote: "Bu yerdagi har bir klip oʻzimizning Studio’mizda yaratilgan.",
+    reelNote: "Bu yerdagi har bir ish oʻzimizning Studio’mizda yaratilgan, ostida uni yaratgan model nomi yozilgan.",
+    credit: "Nightshift Studio’da {model} bilan yaratilgan",
     ai: "Sunʼiy intellekt yaratgan",
   },
   how: {

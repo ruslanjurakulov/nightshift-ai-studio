@@ -9,7 +9,8 @@ export const homeRu: HomeDictionary = {
     primary: "Начать создавать",
     secondary: "Как это работает",
     reelLabel: "Сделано в Nightshift Studio",
-    reelNote: "Каждый клип здесь создан в нашей собственной Studio.",
+    reelNote: "Каждая работа здесь создана в нашей собственной Studio, под ней указана модель, которая её сделала.",
+    credit: "Сделано на {model} в Nightshift Studio",
     ai: "Создано нейросетью",
   },
   how: {

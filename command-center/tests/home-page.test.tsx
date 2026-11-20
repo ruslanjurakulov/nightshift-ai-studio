@@ -27,7 +27,10 @@ vi.mock("next/link", () => ({
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { HomePage } from "@/components/landing/home/HomePage";
-import { HERO_JOB, REEL_JOBS, reelItem } from "@/components/landing/home/home-reel";
+import { HERO_JOB, reelItem, studioPieces } from "@/components/landing/home/home-reel";
+import { SHOWCASE_ITEMS } from "@/lib/showcase/items";
+import { REGISTRY_NAMES } from "@/lib/creative/model-names";
+import { existsSync } from "node:fs";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { parsePublicModels } from "@/lib/public-models";
@@ -44,27 +47,63 @@ function page(code: (typeof LOCALES)[number]["code"], opts: { models?: Parameter
 }
 
 describe("the landing's pictures are our own Studio's", () => {
-  it.each([HERO_JOB, ...REEL_JOBS])("%s is a showcase entry (a real generation) with its own clip files", (jobId) => {
-    const e = SHOWCASE_ENTRIES.find((x) => x.jobId === jobId);
+  it("the hero is a showcase entry (a real generation) with its own clip files", () => {
+    const e = SHOWCASE_ENTRIES.find((x) => x.jobId === HERO_JOB);
     expect(e, "not in lib/site/showcase.json").toBeTruthy();
     expect(e?.kind).toBe("video");
-    expect(SHOWCASE_FILES[jobId]?.clip).toBeTruthy();
-    expect(reelItem(jobId)).not.toBeNull();
+    expect(SHOWCASE_FILES[HERO_JOB]?.clip).toBeTruthy();
+    expect(reelItem(HERO_JOB)).not.toBeNull();
+  });
+
+  it.each(SHOWCASE_ITEMS.map((x) => [x.slug, x] as const))("%s: its files are in public/showcase/ and the registry names its model", (slug, it) => {
+    const root = process.cwd();
+    expect(existsSync(path.join(root, "public/showcase", `${slug}.webp`)), "poster").toBe(true);
+    if (it.kind === "video") expect(existsSync(path.join(root, "public/showcase", `${slug}.mp4`)), "clip").toBe(true);
+    expect(REGISTRY_NAMES[it.modelId], `${it.modelId} is not a registry id`).toBeTruthy();
+  });
+
+  it("the reel is every Studio piece, in the list's order, language-duo first", () => {
+    expect(studioPieces().map((p) => p.slug)).toEqual(SHOWCASE_ITEMS.map((x) => x.slug));
+    expect(studioPieces()[0].slug).toBe("language-duo");
   });
 
   it("imports no stock clip (components/site/clip-assets.ts is Pexels footage)", () => {
     const root = process.cwd();
-    for (const f of ["components/landing/home/HomePage.tsx", "components/landing/home/home-reel.ts"]) {
+    for (const f of ["components/landing/home/HomePage.tsx", "components/landing/home/home-reel.ts", "components/site/StudioClip.tsx"]) {
       const src = readFileSync(path.join(root, f), "utf8");
-      expect(src, f).not.toMatch(/from "@\/components\/site\/(clip-assets|PlaceFill|samples|LoopClip)"/);
+      expect(src, f).not.toMatch(/from "@\/components\/site\/(clip-assets|PlaceFill|samples)"/);
     }
+    // The landing reaches LoopClip only through StudioClip and ShowcaseClip, whose files come from our own lists.
+    expect(readFileSync(path.join(root, "components/landing/home/HomePage.tsx"), "utf8")).not.toMatch(/from "@\/components\/site\/LoopClip"/);
   });
 
-  it("labels every moving picture AI-generated", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: every piece is labelled AI-generated and credits the model that made it", (code) => {
+    const { container } = page(code);
+    const h = dictionaries[code].landingHome.hero;
+    const cards = [...container.querySelectorAll(".hm-reel-card")] as HTMLElement[];
+    expect(cards.length).toBe(SHOWCASE_ITEMS.length);
+    cards.forEach((card, i) => {
+      const it = SHOWCASE_ITEMS[i];
+      expect(card.dataset.piece).toBe(it.slug);
+      expect(within(card).getByText(h.ai)).toBeTruthy();
+      expect(card.querySelector(".hm-reel-credit")?.textContent).toBe(h.credit.replace("{model}", REGISTRY_NAMES[it.modelId]));
+      expect(card.querySelector(".hm-reel-title")?.textContent).toBe(it.title[code]);
+      const img = card.querySelector("img") as HTMLImageElement;
+      expect(img.getAttribute("src")).toBe(`/showcase/${it.slug}.webp`);
+      expect(img.getAttribute("loading")).toBe("lazy");
+      expect(img.getAttribute("alt")).toContain(h.ai);
+    });
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: the credit line names its model exactly once", (code) => {
+    const c = dictionaries[code].landingHome.hero.credit;
+    expect(c.split("{model}").length - 1).toBe(1);
+  });
+
+  it("no clip is drawn while motion is not allowed (jsdom has no matchMedia): the poster is the picture", () => {
     const { container } = page("en");
-    const pics = container.querySelectorAll(".hm-reel-pic");
-    expect(pics.length).toBe(REEL_JOBS.length);
-    for (const p of pics) expect(within(p as HTMLElement).getByText(dictionaries.en.landingHome.hero.ai)).toBeTruthy();
+    expect(container.querySelectorAll(".hm-reel-card video").length).toBe(0);
+    expect(container.querySelectorAll(".hm-reel-card img").length).toBe(SHOWCASE_ITEMS.length);
   });
 });
 
