@@ -445,7 +445,7 @@ export const en = {
     stepCreateNeedsChannel: "A full YouTube video needs a connected channel.",
     open: "Open",
     done: "Done",
-    finish: "Go to Command Center",
+    finish: "Go to Home",
     /** The last button when the person came from a model sample's "Try it": it opens the Studio with that sample's tool and words. */
     finishStudio: "Open Nightshift Studio with your sample",
     unavailable: "We couldn't load your workspace just now. Reload the page in a moment.",
@@ -3752,6 +3752,7 @@ export const en = {
       model_not_sellable: "This model is not available right now.",
       model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
       country_blocked: "This model is not available in your region. Nothing was charged. Choose another model from the list.",
+      prompt_required: "This model needs words for this: describe the motion or the shot, then the price is shown. Nothing was charged.",
       entitlement_required: "This model isn't open to your organization yet.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",

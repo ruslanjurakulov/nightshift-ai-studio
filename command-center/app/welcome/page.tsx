@@ -74,6 +74,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
           welcomeCredits={welcomeCredits}
           contactEmail={LEGAL.contactEmail}
           next={next}
+          initialStep={typeof q.step === "string" ? q.step : null}
         />
     </main>
   );

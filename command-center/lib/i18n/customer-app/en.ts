@@ -17,6 +17,13 @@ export const customerAppEn = {
     image: "Image",
     audio: "Audio",
   },
+  welcome: {
+    title: "What shall we create?",
+    hint: "Start with one thing. You see the price before anything is made, and no channel is needed.",
+    image: "A picture from your words, for a post, a thumbnail or an ad.",
+    video: "A short clip from your words or a picture.",
+    audio: "A voice-over from your text.",
+  },
   home: {
     title: "What shall we create?",
     lead: "Describe it in your own words. You see the price before anything is made.",

@@ -16,6 +16,13 @@ export const customerAppUz: CustomerAppDictionary = {
     image: "Rasm",
     audio: "Audio",
   },
+  welcome: {
+    title: "Nima yaratamiz?",
+    hint: "Bitta narsadan boshlang. Narxni yaratishdan oldin koʻrasiz, kanal kerak emas.",
+    image: "Soʻzlaringiz boʻyicha rasm: post, muqova yoki reklama uchun.",
+    video: "Soʻzlaringiz yoki rasm boʻyicha qisqa rolik.",
+    audio: "Matningiz uchun ovoz.",
+  },
   home: {
     title: "Nima yaratamiz?",
     lead: "Oʻz soʻzlaringiz bilan tasvirlang. Narxni hech narsa yaratilmasidan oldin koʻrasiz.",

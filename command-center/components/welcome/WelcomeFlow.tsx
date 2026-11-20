@@ -12,13 +12,30 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { deskHref } from "@/lib/creative/desks";
 import { Wordmark } from "@/components/site/Wordmark";
 import { StatusLamp } from "@/components/ui/StatusLamp";
-import { newChannelHref, WELCOME_NICHE_MAX, WELCOME_LANGUAGE_MAX } from "@/lib/welcome";
+import { newChannelHref } from "@/lib/welcome";
+import { AudioLines, Clapperboard, Image as ImageIcon } from "lucide-react";
+import { createHref } from "@/lib/customer/create";
 
-type Step = "workspace" | "about" | "next";
+type Step = "workspace" | "create" | "next";
 
-// Suggestions only: the channel's language is free text the pipeline reads as
-// written, and English names are what existing channels use.
-const LANGUAGE_SUGGESTIONS = ["English", "Russian", "Uzbek", "Spanish", "German", "French", "Portuguese", "Turkish", "Arabic", "Hindi"];
+/**
+ * The flow is always the same three steps, so a reload never changes the count under the person ("Step 2 of 3" stays
+ * "of 3"): a workspace that already exists is a step done, not a step gone. Where they are is in the address (?step=),
+ * written with replaceState, so a reload returns to the same step instead of the first.
+ */
+const STEPS: readonly Step[] = ["workspace", "create", "next"];
+
+export function startIndex(needsWorkspace: boolean, asked: string | null): number {
+  if (needsWorkspace) return 0;
+  return asked === "next" ? 2 : 1;
+}
+
+/** The Studio-first start: a priced result needs no channel, so the first choice is what to make. */
+const MAKE = [
+  { kind: "image", icon: ImageIcon },
+  { kind: "video", icon: Clapperboard },
+  { kind: "audio", icon: AudioLines },
+] as const;
 
 const inputClass = "ns-field min-w-0";
 
@@ -37,6 +54,7 @@ export function WelcomeFlow({
   welcomeCredits,
   contactEmail,
   next = null,
+  initialStep = null,
 }: {
   needsWorkspace: boolean;
   unavailable: boolean;
@@ -47,23 +65,31 @@ export function WelcomeFlow({
   contactEmail: string | null;
   /** A Studio form to open at the end (app/welcome/page.tsx, already checked by lib/safe-redirect.ts studioNext), or null. */
   next?: string | null;
+  /** `?step=` from the address (only "next" means anything), so a reload lands on the step the person was on. */
+  initialStep?: string | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
-  // Fixed at first render: after the workspace is created the server props
-  // change (router.refresh), but the step count the person saw must not.
-  const [steps] = useState<Step[]>(() => (needsWorkspace ? ["workspace", "about", "next"] : ["about", "next"]));
-  const [index, setIndex] = useState(0);
+  const steps = STEPS;
+  const [index, setIndexState] = useState(() => startIndex(needsWorkspace, initialStep));
   const step = steps[index];
+  const setIndex = (i: number) => {
+    setIndexState(i);
+    try {
+      const url = new URL(window.location.href);
+      if (STEPS[i] === "next") url.searchParams.set("step", "next");
+      else url.searchParams.delete("step");
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch {
+      // The address is a convenience: without it a reload returns to the create step.
+    }
+  };
 
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [niche, setNiche] = useState("");
-  const [language, setLanguage] = useState("");
-
-  // The bare segment lands on the first channel (app/(app)/[channel]/page.tsx).
-  const home = `/${ALL_CHANNELS_SLUG}`;
+  // Home, named outright: the bare segment's redirect chooses the console for an operator (app/(app)/[channel]/page.tsx).
+  const home = channelPath(ALL_CHANNELS_SLUG, "/home");
   const at = (section: string) => channelPath(ALL_CHANNELS_SLUG, section);
   const firstChannelStep = hasChannel ? 1 : 2;
 
@@ -110,7 +136,7 @@ export function WelcomeFlow({
     );
   }
 
-  const stepName: Record<Step, string> = { workspace: t.signup.wsTitle, about: t.signup.aboutTitle, next: t.signup.nextTitle };
+  const stepName: Record<Step, string> = { workspace: t.signup.wsTitle, create: t.customerApp.welcome.title, next: t.signup.nextTitle };
 
   return (
     <Frame steps={steps.map((k) => stepName[k])} index={index}>
@@ -147,65 +173,36 @@ export function WelcomeFlow({
         </form>
       )}
 
-      {step === "about" && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setIndex(index + 1);
-          }}
-          className="mt-3 flex flex-col gap-5"
-        >
+      {step === "create" && (
+        <div className="mt-3 flex flex-col gap-5">
           {welcomeCredits !== null && <CreditsNote amount={welcomeCredits} />}
           <div>
-            <h2 className="g5-h">{t.signup.aboutTitle}</h2>
-            <p className="g5-sub">{t.signup.aboutHint}</p>
+            <h2 className="g5-h">{t.customerApp.welcome.title}</h2>
+            <p className="g5-sub">{t.customerApp.welcome.hint}</p>
           </div>
-          <label className="g5-field">
-            <span className="g5-k">{t.signup.nicheLabel}</span>
-            <input
-              type="text"
-              autoFocus
-              value={niche}
-              maxLength={WELCOME_NICHE_MAX}
-              onChange={(e) => setNiche(e.target.value)}
-              placeholder={t.signup.nichePh}
-              className={inputClass}
-            />
-          </label>
-          <label className="g5-field">
-            <span className="g5-k">{t.signup.languageLabel}</span>
-            <input
-              type="text"
-              list="welcome-languages"
-              value={language}
-              maxLength={WELCOME_LANGUAGE_MAX}
-              onChange={(e) => setLanguage(e.target.value)}
-              placeholder={t.signup.languagePh}
-              className={inputClass}
-            />
-            <datalist id="welcome-languages">
-              {LANGUAGE_SUGGESTIONS.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-          </label>
+          <ul className="g5-rows" data-testid="welcome-make">
+            {MAKE.map(({ kind, icon: Icon }) => (
+              <li key={kind} className="g5-row g5-next-step">
+                <span className="g5-num" aria-hidden>
+                  <Icon className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="g5-row-title">{t.customerApp.kinds[kind]}</h3>
+                  <p className="g5-row-meta">{t.customerApp.welcome[kind]}</p>
+                </div>
+                {/* A full load: the app's layout reads the workspace just made (its cookie) on the server. It opens a form only. */}
+                <a href={at(createHref(kind))} onClick={rememberAllChannels} className="btn-quiet">
+                  {t.signup.open} →
+                </a>
+              </li>
+            ))}
+          </ul>
           <div className="g5-actions" style={{ justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setNiche("");
-                setLanguage("");
-                setIndex(index + 1);
-              }}
-              className="btn-quiet"
-            >
+            <button type="button" onClick={() => setIndex(index + 1)} className="btn-quiet">
               {t.signup.skip}
             </button>
-            <button type="submit" className="btn-primary">
-              {t.signup.continue}
-            </button>
           </div>
-        </form>
+        </div>
       )}
 
       {step === "next" && (
@@ -223,7 +220,7 @@ export function WelcomeFlow({
               title={t.signup.stepChannel}
               body={t.signup.stepChannelBody}
               done={hasChannel}
-              href={hasChannel ? at("/channels") : newChannelHref(ALL_CHANNELS_SLUG, { niche, language })}
+              href={hasChannel ? at("/channels") : newChannelHref(ALL_CHANNELS_SLUG, {})}
             />
             <Item
               n={firstChannelStep + 1}
@@ -251,9 +248,11 @@ export function WelcomeFlow({
             <button type="button" onClick={() => setIndex(index - 1)} className="g5-link" style={{ background: "none", border: 0, cursor: "pointer" }}>
               ← {t.signup.back}
             </button>
-            <Link href={next ?? home} onClick={rememberAllChannels} className="btn-primary">
+            {/* A full load, not a client navigation: the (app) layout must read the new workspace's cookie on the server, and
+                a client transition could replay an answer cached before the workspace existed. */}
+            <a href={next ?? home} onClick={rememberAllChannels} className="btn-primary">
               {next ? t.signup.finishStudio : t.signup.finish}
-            </Link>
+            </a>
           </div>
         </div>
       )}
