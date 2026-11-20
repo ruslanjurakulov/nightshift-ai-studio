@@ -49,12 +49,6 @@ export function AssemblePanel({
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
   const [problem, setProblem] = useState<"quoteFailed" | "notEditableNow" | null>(null);
 
-  // A new version of the project is a new price: whatever was quoted is forgotten.
-  useEffect(() => {
-    setPhase({ at: "idle" });
-    setProblem(null);
-  }, [version]);
-
   const assembleKey = useRef<HTMLButtonElement>(null);
   const quoteRef = useRef<FilmQuote | null>(null);
   const starter = useMemo(
@@ -81,7 +75,27 @@ export function AssemblePanel({
     [filmId],
   );
 
+  // The version on screen, and which quote request is the current one: an answer for an older version or an older press is
+  // dropped, so the price the person confirms is always the price of what they see (Breach BR-803-01).
+  const versionRef = useRef(version);
+  const quoteSeq = useRef(0);
+
+  // A new version of the project is a new price: whatever was quoted is forgotten. Not while a confirmed start is waiting for
+  // its answer: the panel stays "starting" with that start's key, so a second start can never be sent under a new key while
+  // the first may still go through (Breach BR-803-02).
+  useEffect(() => {
+    versionRef.current = version;
+    quoteSeq.current += 1;
+    if (starter.busy) return;
+    setPhase({ at: "idle" });
+    setProblem(null);
+  }, [version, starter]);
+
   async function quote() {
+    if (starter.busy) return;
+    const seq = ++quoteSeq.current;
+    const asked = version;
+    const stale = () => seq !== quoteSeq.current || asked !== versionRef.current;
     setProblem(null);
     setPhase({ at: "quoting" });
     try {
@@ -93,6 +107,7 @@ export function AssemblePanel({
         body: JSON.stringify({ version }),
       });
       const json: unknown = await res.json().catch(() => null);
+      if (stale()) return;
       if (!res.ok) {
         const e = filmErrorFromResponse(res.status, json).error;
         // Only a missing quote_film (0171 not applied) means pricing is not live; any other refusal is a failed read, said as one.
@@ -109,10 +124,12 @@ export function AssemblePanel({
         setPhase({ at: "idle" });
         return;
       }
+      if (starter.busy) return;
       quoteRef.current = q;
       starter.reset();
       setPhase(q.priced ? { at: "quoted", quote: q } : { at: "unpriced" });
     } catch {
+      if (stale()) return;
       setProblem("quoteFailed");
       setPhase({ at: "idle" });
     }
