@@ -312,7 +312,7 @@ class ReviewFindings(unittest.TestCase):
             (engine / "node_modules").mkdir(parents=True)
             out = Path(d) / "o.mp4"
 
-            def run(cmd, cwd, deadline, timeout_s, what, on_spawn):
+            def run(*_args, **_kwargs):   # whatever _run takes on the branch it lands with
                 out.write_bytes(b"half a video")
                 raise KeyboardInterrupt
 
