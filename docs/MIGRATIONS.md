@@ -1969,3 +1969,21 @@ makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.
   shape fails closed, workflows refused before any hold, the API's answer, replay, rollback keeping the record, and the 0075
   replay hazard), the lab's isolation suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py`
   (each body is the earlier one plus inserted 0174 blocks only; pins), `command-center/tests/rights-acknowledgement*.test.ts(x)`.
+
+## Rights acknowledgement asks about every file a job sends (0179)
+
+`0179_rights_acknowledgement_inputs.sql` closes the four latent paths Breach found past 0174 (tests/security/test_sec_breach_rights_ack_bypass.py,
+test_sec_breach_rights_ack_films.py): an auto-mode failover onto a model that requires an acknowledgement, a style kit's reference
+pictures, an @character's pictures, and a film clip's uploaded first frame.
+
+- **Change.** `rights_acknowledgement_missing` keeps 0174's signature and now asks about every file the job sends
+  (`rights_acknowledgement_subjects`: source, end, the kit's live pictures, every mentioned character's live pictures, with the worker's
+  own @name rule). `reroute_creative_job` (0088's body, one marked hunk) skips a candidate the requester has not acknowledged for.
+  `start_film` (0171's body, one marked hunk) returns `acknowledgement_required` after the re-pricing and before the hold
+  (`film_acknowledgement_missing`). Three new internal functions; no API role may call them.
+- **Not changed.** Which models require an acknowledgement, every availability and price, quote_film (a quote holds nothing).
+  Latent today: no model on sale requires one.
+- **Replay.** Replays onto itself. Re-running 0174 after it fails loudly; re-running 0088 or 0171 after it silently restores the old
+  body: apply 0179 again and run its Verify query.
+- **Undo.** `docs/sql/rollback_0179_rights_acknowledgement_inputs.sql` (owner-applied): the three earlier bodies back verbatim, the
+  three new functions dropped.

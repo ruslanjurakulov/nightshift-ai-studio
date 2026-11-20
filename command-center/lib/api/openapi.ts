@@ -429,7 +429,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
           },
         },
         get: {
-          summary: "List videos, newest first",
+          summary: "List videos: published first (most recent first), then unpublished in id order",
           parameters: [
             { name: "channel_id", in: "query", schema: { type: "string" } },
             { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },

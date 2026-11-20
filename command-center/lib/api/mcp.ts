@@ -325,7 +325,7 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     "list_videos",
     {
       title: "List videos",
-      description: "The organization's videos, newest first, optionally for one channel.",
+      description: "The organization's videos, optionally for one channel: published videos first, most recently published first, then videos that were never published (private renders) in id order, NOT by age. A job's status does not name its video yet, so match a new video by its topic or title.",
       inputSchema: z
         .object({
           channel_id: z.string().optional(),

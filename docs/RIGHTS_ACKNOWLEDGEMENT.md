@@ -81,4 +81,7 @@ acknowledgement then stops counting, and the record keeps both. Fixing a typo th
 - Undo: `docs/sql/rollback_0174_rights_acknowledgement.sql` puts the four earlier bodies back and drops 0174's functions and the
   requirement guard; it **keeps the record** (the tables with their rows, the append-only triggers, the column). Apply it only
   while no model that requires a kind is on sale.
-- Not covered by 0174: the Film Studio's job path (0171, open), handled in a follow-up.
+- 0179 (`0179_rights_acknowledgement_inputs.sql`) widens the gate to every file a job sends: the style kit's reference
+  pictures and every @character's pictures count as inputs; a failover (`reroute_creative_job`) skips a candidate that would
+  ask for an acknowledgement the requester never gave; and `start_film` refuses `acknowledgement_required` before the hold
+  when a clip's uploaded first/last frame, or a key frame's references, characters or style kit, reach a model that requires one.
