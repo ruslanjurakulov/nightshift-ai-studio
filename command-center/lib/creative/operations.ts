@@ -260,6 +260,10 @@ export const CREATIVE_ERRORS = [
   "source_unavailable",
   // 0174: the model requires a rights acknowledgement for an input, and this person has not given it at the current text version.
   "acknowledgement_required",
+  // The model's maker allows it for adults only (registry requires_adult) and this person has no adult attestation (0199).
+  "adult_attestation_required",
+  // This person said they are under 18 (0199): the service is 18+, so nothing is quoted or created for them.
+  "adult_only_service",
   "style_unavailable",
   "mode_not_supported",
   // 0075: the automatic choice changed since the quote; nothing fits these settings.
@@ -326,6 +330,8 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   source_unavailable: { status: 422, code: "source_unavailable" },
   // 0174: nothing was priced or held; the detail names kind=… version=… subject=…, which the Studio's dialog asks about.
   acknowledgement_required: { status: 428, code: "acknowledgement_required" },
+  adult_attestation_required: { status: 403, code: "adult_attestation_required" },
+  adult_only_service: { status: 403, code: "adult_only_service" },
   // 0048: the style kit is not this organization's or no longer exists —
   // another organization's kit reads exactly like a missing one.
   style_unavailable: { status: 422, code: "style_unavailable" },

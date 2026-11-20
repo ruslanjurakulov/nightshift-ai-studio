@@ -10,6 +10,7 @@ import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { ageEn } from "./age/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
@@ -73,6 +74,7 @@ export const en = {
   libraryUx: libraryUxEn,
   assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
+  age: ageEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
@@ -3762,6 +3764,8 @@ export const en = {
       capability_not_supported: "This kind of generation is not available yet.",
       source_unavailable: "This picture cannot be used: it is not in your organization's library, was deleted, or is not a PNG, JPEG or WebP image.",
       acknowledgement_required: "This model needs you to confirm your rights to the picture first. Nothing was started or charged.",
+      adult_attestation_required: "This model is for adults (18+) only, by its maker's terms. Confirm your age in Create first. Nothing was started or charged.",
+      adult_only_service: "Nightshift is for adults (18+). This account said it is under 18, so nothing can be created. Nothing was charged.",
       style_unavailable: "This style kit cannot be used: it is not in your organization or was deleted. Pick another style, or None.",
       mode_not_supported: "Only the model you pick is used; automatic model choice is not available yet.",
       route_changed: "The automatic choice changed since the price was shown. Check the new pick and its price, then confirm again.",
@@ -3896,10 +3900,11 @@ export const en = {
     factSecondsRange: "{min}–{max} s",
     factUpTo: "up to {r}",
     verifiedOn: "Last proven working {date}",
-    lock: { first_purchase: "After first purchase", not_on_sale: "Not open to any workspace" },
+    lock: { first_purchase: "After first purchase", not_on_sale: "Not open to any workspace", adult_only: "For adults (18+)" },
     lockWhy: {
       first_purchase: "This model opens after your organization's first credit purchase.",
       not_on_sale: "This model isn't sold to any workspace yet, on any plan. Pick another model.",
+      adult_only: "This model's maker allows it for adults only. Confirm you are 18 or older to use it.",
     },
     lockBuy: "Buy credits",
     needMore: "Add credits · need {n} more",

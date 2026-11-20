@@ -10,6 +10,7 @@ import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { assetDownloadUz } from "./asset-download/uz";
 import { ownerShellUz } from "./owner-shell/uz";
+import { ageUz } from "./age/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
 import { studioTimelineUz } from "./studio-timeline/uz";
@@ -64,6 +65,7 @@ export const uz: Dictionary = {
   libraryUx: libraryUxUz,
   assetDownload: assetDownloadUz,
   ownerShell: ownerShellUz,
+  age: ageUz,
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
   studioTimeline: studioTimelineUz,
@@ -3744,6 +3746,8 @@ export const uz: Dictionary = {
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
       source_unavailable: "Bu rasmdan foydalanib boʻlmaydi: u tashkilotingiz mediatekasida yoʻq, oʻchirilgan yoki PNG, JPEG yoki WebP emas.",
       acknowledgement_required: "Avval bu rasmga huquqingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
+      adult_attestation_required: "Bu model yaratuvchisining shartlariga koʻra faqat kattalar (18+) uchun. Avval «Yaratish»da yoshingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
+      adult_only_service: "Nightshift kattalar uchun (18+). Bu akkaunt 18 yoshga toʻlmaganini bildirgan, shuning uchun hech narsa yaratib boʻlmaydi. Hech narsa yechilmadi.",
       style_unavailable: "Bu uslub toʻplamidan foydalanib boʻlmaydi: u tashkilotingizda yoʻq yoki oʻchirilgan. Boshqa uslubni yoki «Uslubsiz»ni tanlang.",
       mode_not_supported: "Faqat siz tanlagan model ishlatiladi; modelni avtomatik tanlash hali mavjud emas.",
       route_changed: "Narx koʻrsatilgandan keyin avtomatik tanlov oʻzgardi. Yangi model va narxni tekshirib, qayta tasdiqlang.",
@@ -3878,10 +3882,11 @@ export const uz: Dictionary = {
     factSecondsRange: "{min}–{max} s",
     factUpTo: "{r} gacha",
     verifiedOn: "Oxirgi marta ishlashi tekshirilgan: {date}",
-    lock: { first_purchase: "Birinchi xariddan keyin", not_on_sale: "Hech bir ish maydoniga ochiq emas" },
+    lock: { first_purchase: "Birinchi xariddan keyin", not_on_sale: "Hech bir ish maydoniga ochiq emas", adult_only: "Kattalar uchun (18+)" },
     lockWhy: {
       first_purchase: "Bu model tashkilotingiz birinchi marta kredit sotib olgandan keyin ochiladi.",
       not_on_sale: "Bu model hali hech bir ish maydoniga, hech bir tarifda sotilmaydi. Boshqa model tanlang.",
+      adult_only: "Bu modelni yaratuvchisi faqat kattalarga ruxsat beradi. Undan foydalanish uchun 18 yoki undan katta ekaningizni tasdiqlang.",
     },
     lockBuy: "Kredit sotib olish",
     needMore: "Kredit qoʻshish · yana {n} kerak",

@@ -5,6 +5,8 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { isPlatformAdmin } from "@/lib/auth/org-roles";
 import { NotConfigured } from "@/components/NotConfigured";
 import { WelcomeFlow } from "@/components/welcome/WelcomeFlow";
+import { AgeGate } from "@/components/age/AgeGate";
+import { readAgeState } from "@/lib/server/age";
 import { LEGAL } from "@/lib/legal";
 import { studioNext } from "@/lib/safe-redirect";
 import "../(app)/app-redesign.css";
@@ -60,6 +62,12 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
 
   return (
     <main className="g5-welcome">
+        {/* 0199: asked first, once, of an account with no 18+ record — the Google sign-up path never saw the form's checkbox. */}
+        {(await readAgeState()) !== "adult" && (
+          <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+            <AgeGate state={await readAgeState()} from="welcome" />
+          </div>
+        )}
         <WelcomeFlow
           needsWorkspace={org.supported && org.orgs.length === 0}
           unavailable={Boolean(org.unavailable)}

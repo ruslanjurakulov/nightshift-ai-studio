@@ -10,6 +10,7 @@ import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { ageRu } from "./age/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
@@ -64,6 +65,7 @@ export const ru: Dictionary = {
   libraryUx: libraryUxRu,
   assetDownload: assetDownloadRu,
   ownerShell: ownerShellRu,
+  age: ageRu,
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
@@ -3744,6 +3746,8 @@ export const ru: Dictionary = {
       capability_not_supported: "Такой вид генерации пока недоступен.",
       source_unavailable: "Это изображение нельзя использовать: его нет в медиатеке вашей организации, оно удалено или это не PNG, JPEG или WebP.",
       acknowledgement_required: "Сначала подтвердите свои права на эту картинку. Ничего не запущено и не списано.",
+      adult_attestation_required: "Эта модель по условиям её создателя только для взрослых (18+). Сначала подтвердите возраст в «Создать». Ничего не запущено и не списано.",
+      adult_only_service: "Nightshift — для взрослых (18+). Для этого аккаунта указан возраст младше 18, поэтому создание недоступно. Ничего не списано.",
       style_unavailable: "Этот набор стиля нельзя использовать: его нет в вашей организации или он удалён. Выберите другой стиль или «Без стиля».",
       mode_not_supported: "Используется только выбранная вами модель; автоматический выбор модели пока недоступен.",
       route_changed: "Автоматический выбор изменился после показа цены. Проверьте новую модель и цену и подтвердите ещё раз.",
@@ -3878,10 +3882,11 @@ export const ru: Dictionary = {
     factSecondsRange: "{min}–{max} с",
     factUpTo: "до {r}",
     verifiedOn: "Последний раз проверена в работе {date}",
-    lock: { first_purchase: "После первой покупки", not_on_sale: "Не открыта ни одному пространству" },
+    lock: { first_purchase: "После первой покупки", not_on_sale: "Не открыта ни одному пространству", adult_only: "Для взрослых (18+)" },
     lockWhy: {
       first_purchase: "Эта модель открывается после первой покупки кредитов вашей организацией.",
       not_on_sale: "Эта модель пока не продаётся ни одному рабочему пространству, ни на одном тарифе. Выберите другую модель.",
+      adult_only: "Создатель этой модели разрешает её только взрослым. Подтвердите, что вам 18 или больше, чтобы ею пользоваться.",
     },
     lockBuy: "Купить кредиты",
     needMore: "Пополнить · не хватает {n}",
