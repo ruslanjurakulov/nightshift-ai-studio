@@ -1,8 +1,9 @@
 "use client";
 
+import { downloadRefusal, libraryDownloadUrl, type DownloadRefusal } from "@/lib/libraryDownload";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, Download, ExternalLink, Film, FolderOpen, ImagePlus, Play, ScanText, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, Download, ExternalLink, Film, FolderOpen, ImagePlus, Loader2, Play, ScanText, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
@@ -319,7 +320,8 @@ export function JobFeed({
   );
   const chip = "studio-chip tap";
   // Square keys on the picture: named for screen readers and on hover; 44px on a phone.
-  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11";
+  // 44 px on any touch screen (a tablet is wider than `sm` and still a finger), 36 px under a mouse.
+  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11 pointer-coarse:size-11";
 
   // The one shown large on a monitor or a light table (featuredJob below).
   const featured = variant === "monitor" || variant === "table" ? featuredJob(shown, featuredId) : null;
@@ -553,7 +555,7 @@ export function JobFeed({
         {isSendKind(kind) && job.result_asset_ids[0] && (
           <SendToEditor orgId={orgId} assetId={job.result_asset_ids[0]} kind={kind} variant="icon" className={onMedia} />
         )}
-        {saveId && <DownloadKey assetId={saveId} fallbackHref={href} className={onMedia} />}
+        {saveId && <DownloadKey assetId={saveId} className={onMedia} />}
         {href ? (
           <a href={href} target="_blank" rel="noopener noreferrer" className={onMedia} aria-label={t.gen.open} title={t.gen.open}>
             <ExternalLink aria-hidden className="size-4" />
@@ -950,46 +952,54 @@ export function JobFeed({
 
 /**
  * Download one result: the ORIGINAL file, never the library's view copy (a video's view copy is the 480p
- * proxy). Its signed link lives ten minutes, so it is asked for when the key is pressed (GET /api/media/{id},
- * read as the member), not when the card was drawn. When the library cannot sign one, the result's own link
- * opens in a new tab: the page, and whatever is typed in the composer, stay where they are.
+ * proxy), through its stable session-checked address (GET /api/library/{id}/download?variant=original,
+ * docs/EXPORT_DOWNLOADS.md). One ranged byte is asked first, so a refusal shows as the key's failed state
+ * instead of a saved file holding an error. There is no fallback: the provider's own link is a different file
+ * that can expire, and handing it out under "Download" would be a quiet substitute.
  */
-function DownloadKey({ assetId, fallbackHref, className }: { assetId: string; fallbackHref: string | null; className: string }) {
+function DownloadKey({ assetId, className }: { assetId: string; className: string }) {
   const { t } = useI18n();
   const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  // Why it failed, in the words the library uses (signed out, gone, not served here): "Try again" fits only some of them.
+  const [refusal, setRefusal] = useState<DownloadRefusal | null>(null);
   async function save() {
     if (state === "busy") return;
+    const url = libraryDownloadUrl(assetId, "original");
+    const fail = (r: DownloadRefusal) => {
+      setRefusal(r);
+      setState("failed");
+    };
+    if (!url) return fail("not_found");
     setState("busy");
-    let url: string | null = null;
-    let name = "";
+    setRefusal(null);
     try {
-      const res = await fetch(`/api/media/${encodeURIComponent(assetId)}`, { cache: "no-store" });
-      const body = (await res.json().catch(() => ({}))) as { urls?: Record<string, unknown>; asset?: { name?: unknown } };
-      const original = body.urls?.original;
-      // Only our own signed file route: a download never leaves the origin.
-      if (res.ok && typeof original === "string" && original.startsWith("/api/media/file/")) url = original;
-      if (typeof body.asset?.name === "string") name = body.asset.name;
-    } catch {
-      url = null;
-    }
-    if (url) {
+      const res = await fetch(url, { headers: { Range: "bytes=0-0" }, cache: "no-store", credentials: "same-origin" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+        return fail(downloadRefusal(res.status, body.error));
+      }
+      await res.body?.cancel().catch(() => {});
       const a = document.createElement("a");
       a.href = url;
-      a.download = name;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setState("idle");
-    } else if (fallbackHref) {
-      window.open(fallbackHref, "_blank", "noopener,noreferrer");
-      setState("idle");
-    } else setState("failed");
+    } catch {
+      fail("failed");
+    }
   }
-  const label = state === "failed" ? t.studioHome.actions.downloadFailed : t.studioHome.actions.download;
+  const label =
+    state === "failed"
+      ? refusal && refusal !== "failed"
+        ? t.assetDownload.errors[refusal]
+        : t.studioHome.actions.downloadFailed
+      : t.studioHome.actions.download;
   return (
     <button
       type="button"
-      className={className}
+      // A failure is said in words on the card, not only in a tooltip a phone never shows: the key widens to hold them.
+      className={state === "failed" ? `${className} !inline-flex !w-auto max-w-[16rem] items-center gap-1.5 px-2.5 text-left text-xs font-semibold` : className}
       onClick={() => void save()}
       aria-label={label}
       title={label}
@@ -997,7 +1007,22 @@ function DownloadKey({ assetId, fallbackHref, className }: { assetId: string; fa
       data-testid="result-download"
       data-state={state}
     >
-      {state === "failed" ? <TriangleAlert aria-hidden className="size-4" /> : <Download aria-hidden className="size-4" />}
+      {state === "failed" ? (
+        <>
+          <TriangleAlert aria-hidden className="size-4 shrink-0" />
+          <span aria-hidden className="min-w-0 break-words" data-testid="result-download-reason">
+            {label}
+          </span>
+        </>
+      ) : state === "busy" ? (
+        <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" />
+      ) : (
+        <Download aria-hidden className="size-4" />
+      )}
+      {/* The reason is said, not only shown in a tooltip a phone never has. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {state === "failed" ? label : ""}
+      </span>
     </button>
   );
 }

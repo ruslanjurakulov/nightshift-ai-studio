@@ -8,6 +8,7 @@ import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
 import { libraryUxEn } from "./library-ux/en";
+import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
@@ -25,6 +26,7 @@ import { modelKeysEn } from "./model-keys/en";
 import { operatorCustomersEn } from "./operator-customers/en";
 import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
+import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { availabilityEn } from "./availability/en";
@@ -68,6 +70,7 @@ export const en = {
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
   libraryUx: libraryUxEn,
+  assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
@@ -90,6 +93,7 @@ export const en = {
   customers: operatorCustomersEn,
   seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,
+  ownerAnalytics: ownerAnalyticsEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
   regionEdit: regionEditEn,
@@ -143,6 +147,7 @@ export const en = {
     providers: "Providers",
     models: "Models",
     margin: "Margin",
+    ownerAnalytics: "Owner analytics",
     customers: "Customers",
     billing: "Billing",
     studio: "Nightshift Studio",
@@ -5419,6 +5424,7 @@ export const en = {
     noOrg: "Open or create an organization to use the editor.",
     readFailed: "The editor could not be read just now. Reload the page to try again.",
     freeNote: "Editing and exporting are free: no credits are used.",
+    soldNote: "Editing is free. Exports cost credits, and the price is shown before you export.",
     publishNote: "An export is saved to your library. Nothing is published.",
     projects: "Your projects",
     noProjects: "No projects yet. Start one from a video in your library.",

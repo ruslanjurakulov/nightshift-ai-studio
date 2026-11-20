@@ -170,6 +170,7 @@ export const uz: LegalTexts = {
                 ["`chronos_locale`", "Siz tanlagan tilni eslab qoladi.", "1 yil"],
                 ["`ns_view`", "Mobil yoki kompyuter koʻrinishidan qaysi birini tanlaganingizni eslab qoladi.", "1 yil"],
                 ["`chronos_channel`, `nightshift_org`, `ns_sidebar` (kirgandan keyin)", "Oxirgi marta qaysi kanal va tashkilotni koʻrganingizni hamda yon menyu kengligini eslab qoladi.", "1 yil"],
+                ["`ns_oa_present` (faqat platforma egasi)", "Egasi taqdimot rejimini yoqqanini eslab qoladi; bu rejim analitika ekranlarida toʻlov identifikatorlarini yashiradi.", "12 soat"],
                 ["`ns_auth_pending`, `ns_recovery`, `ns_invite`", "Xatdagi havola orqali kirishni, parolni tiklashni yoki siz ochgan taklifni yakunlaydi. Ularni faqat kerak boʻlgan sahifalar oʻqiy oladi.", "10 daqiqa, 15 daqiqa va 24 soat"],
                 ["`__Host-yt_oauth_nonce`, `ig_oauth_nonce`, `tt_oauth_nonce`, `tt_oauth_pkce` (akkaunt ulanayotganda)", "Rozilik ekranida turganingizda YouTube (yoki boshqa) akkauntingizni ulashni saytlararo soxta soʻrovdan himoya qiladi.", "10 daqiqa"],
                 ["`__Host-ns_connect_pending` (qaysi akkauntni ulashni tanlayotganda)", "Google, Instagram yoki TikTok orqali kirishning identifikatorini siz ulanadigan akkauntni tanlayotganingizda saqlaydi. U shu qadam uchun qatʼiy zarur, uni faqat server oʻqiy oladi va unda hech qachon akkaunt nomi yoki token boʻlmaydi.", "10 daqiqagacha yoki foydalanilgunga qadar"],

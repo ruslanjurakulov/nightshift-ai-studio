@@ -107,6 +107,7 @@ beforeEach(() => {
     if (url.startsWith("/api/creative/jobs") && init?.method === "POST") return jobPost ? jobPost() : json({ job: { id: "new" } });
     if (url.startsWith("/api/creative/jobs")) return json({ jobs: feed });
     // One asset, read as the member: freshly signed links, the original among them.
+    if (url === `/api/library/${OUT}/download?variant=original`) return new Response("x", { status: 206 });
     if (url === `/api/media/${OUT}`)
       return json({ asset: { ...asset(OUT), name: "out.png" }, urls: { original: `/api/media/file/${OUT}/original?sig=fresh`, thumb: `/thumb/${OUT}` }, served: true });
     if (url.startsWith("/api/media")) return json({ available: true, assets: [asset(OUT)], uploads: [] });
@@ -368,17 +369,36 @@ describe("the recent work", () => {
     expect(chip(th.modes.enhance).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("composer").getAttribute("data-capability")).toBe("upscale");
     await waitFor(() => expect(quotes.at(-1)).toMatchObject({ capability: "upscale", params: { source_asset_id: OUT, factor: 2 } }), { timeout: 2000 });
-    // Download saves the ORIGINAL (not the view copy, a video's 480p proxy), signed when pressed.
+    // Download saves the ORIGINAL (not the view copy, a video's 480p proxy) through its session-checked address (S2).
     const clicked: Array<{ href: string; download: string }> = [];
     const spy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       clicked.push({ href: this.getAttribute("href") ?? "", download: this.download });
     });
     fireEvent.click(await screen.findByRole("button", { name: th.actions.download }));
-    await waitFor(() => expect(clicked).toEqual([{ href: `/api/media/file/${OUT}/original?sig=fresh`, download: "out.png" }]));
-    expect(fetchMock.mock.calls.some(([u]) => u === `/api/media/${OUT}`)).toBe(true);
+    await waitFor(() => expect(clicked).toEqual([{ href: `/api/library/${OUT}/download?variant=original`, download: "" }]));
     spy.mockRestore();
     expect(screen.getByRole("link", { name: th.recent.all }).getAttribute("href")).toBe("/chronos/library");
     expect(creates()).toHaveLength(0);
+  });
+
+  it("a download that cannot start says why in words on the card, not only in a tooltip, and saves nothing", async () => {
+    feed = [job({ id: "a" })];
+    const clicked: string[] = [];
+    const spy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(this.getAttribute("href") ?? "");
+    });
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+      url === `/api/library/${OUT}/download?variant=original`
+        ? Promise.resolve(new Response(JSON.stringify({ error: "gone" }), { status: 410 }))
+        : (base as (u: string, i?: RequestInit) => Promise<Response>)(url, init),
+    );
+    render(withI18n(home()));
+    fireEvent.click(await screen.findByRole("button", { name: th.actions.download }));
+    const reason = await screen.findByTestId("result-download-reason");
+    expect(reason.textContent).toBe(t.assetDownload.errors.gone);
+    expect(clicked).toEqual([]);
+    spy.mockRestore();
   });
 });
 

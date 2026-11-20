@@ -15,6 +15,7 @@ import {
   tookSeconds,
 } from "@/lib/editorExportStatus";
 import type { PollHalt } from "./useExportPoll";
+import { AssetDownloads } from "@/components/media/AssetDownloads";
 
 /** A second-by-second clock, only while an export runs and only after mount (the server cannot know the time). */
 function useNow(on: boolean): number | null {
@@ -59,6 +60,7 @@ export function ExportStatusPanel({
   quietRetry = false,
   heading,
   notice = null,
+  captions = false,
 }: {
   /** The newest export of the project. */
   latest: EditorExport;
@@ -84,6 +86,8 @@ export function ExportStatusPanel({
   heading?: string;
   /** A warning about the finished file, in words (its size is not the size that was asked for). */
   notice?: string | null;
+  /** The project has captions: offer their SRT next to the video (the route answers for the export's own captions). */
+  captions?: boolean;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -101,6 +105,8 @@ export function ExportStatusPanel({
     running && now !== null ? elapsedSeconds(latest.createdAt, now) : null;
   const took = !running ? tookSeconds(latest) : null;
   const video = latest.assetId ? assets[latest.assetId] : undefined;
+  // A null view link also means this host does not serve media (no volume or signing key), not only a missing proxy:
+  // "link pending" with "Get the link" stays the honest answer then, rather than download buttons that cannot work.
   const displayStatus = exportDisplayStatus(latest.status, Boolean(video?.viewUrl));
 
   const Icon =
@@ -247,17 +253,15 @@ export function ExportStatusPanel({
       ) : null}
 
       {latest.status === "done" ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {video?.viewUrl ? (
-            <a
-              href={video.viewUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-primary text-sm no-underline"
-            >
-              {ep.openVideo}
-              <span className="sr-only"> {ep.newTab}</span>
-            </a>
+        <div className="flex min-w-0 flex-col items-start gap-2">
+          {video?.viewUrl && latest.assetId ? (
+            <AssetDownloads
+              assetId={latest.assetId}
+              preview={video.preview === false ? "missing" : "ready"}
+              captions={captions}
+              width={video.width}
+              height={video.height}
+            />
           ) : (
             <>
               <p className="m-0 min-w-0 break-words text-xs text-[var(--color-muted)]">
