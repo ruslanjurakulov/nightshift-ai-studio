@@ -20,7 +20,7 @@
 --     the web alone (before: everything that was not 'web_only' was open to the API).
 --   api_creative_model_ok (0124's body): the "temporarily off" word is for 'any' models only.
 --   recraft-v4.1 and recraft-v4.1-flash -> availability 'beta' ONLY where the model's verified probe is a successful run of the
---     vendor model the registry names now (model_probe_runs.vendor_model = spec.vendor_model). With no such probe nothing changes;
+--     vendor model the registry names now (model_probe_runs.vendor_model = spec.vendor_model) AND its terms_gate is clear. With no such probe nothing changes;
 --     apply this file again after tools/probe_models.py (.github/workflows/probe_models.yml) has recorded one. It never lowers an
 --     availability, and it opens nothing by itself: a sale still needs the price rows (credit_prices, set by the owner), a clear
 --     terms_gate (the registry file) and the owner's switch, exactly as sellable_models already requires.
@@ -167,6 +167,9 @@ update public.model_registry m
  where m.id in ('recraft-v4.1', 'recraft-v4.1-flash')
    and m.availability = 'hidden'
    and m.verified_at is not null
+   -- A model whose terms are still under review stays hidden: model_registry_terms_before_sale refuses beta with a terms_gate, and
+   -- the first live apply (2026-11-20) stopped on exactly that for recraft-v4.1 (probe passed, terms_gate still set).
+   and coalesce(m.spec ->> 'terms_gate', '') = ''
    and exists (select 1 from public.model_probe_runs r
                 where r.id = m.verified_probe_id and r.ok and r.model_id = m.id
                   and r.vendor_model = m.spec ->> 'vendor_model');
@@ -174,7 +177,7 @@ update public.model_registry m
 do $$
 begin
   if exists (select 1 from public.model_registry where id in ('recraft-v4.1', 'recraft-v4.1-flash') and availability = 'hidden') then
-    raise notice '0188: a Recraft model is still hidden: no passed probe of its current vendor model is recorded yet; run the probe, then apply 0188 again';
+    raise notice '0188: a Recraft model is still hidden: no passed probe of its current vendor model is recorded yet, or its terms_gate is not clear; run the probe and clear the gate in the registry, then apply 0188 again';
   end if;
 end $$;
 
