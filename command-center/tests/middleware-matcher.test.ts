@@ -237,6 +237,23 @@ describe("the real static files stay public", () => {
     }
   });
 
+  it("a trend template's media is public only as /templates/<hyphenated-slug>/preview.mp4 or poster.webp", () => {
+    expect(runs("/templates/food-reveal/preview.mp4")).toBe(false);
+    expect(runs("/templates/food-reveal/poster.webp")).toBe(false);
+    for (const p of [
+      "/templates/food-reveal/preview.mp4x",
+      "/templates/food-reveal/poster.webp/providers",
+      "/templates/food-reveal/other.mp4",
+      "/templates/food/preview.mp4",
+      "/templates/a/b-c/preview.mp4",
+      "/templates/Food-Reveal/poster.webp",
+      "/chronos/templates/food-reveal/poster.webp",
+      "/templates/food-reveal",
+    ]) {
+      expect(runs(p), p).toBe(true);
+    }
+  });
+
   it("an excluded name is excluded only as the whole path", () => {
     for (const name of ["favicon.ico", "icon.png", "apple-icon.png", "og.png"]) {
       expect(runs(`/${name}`), name).toBe(false);

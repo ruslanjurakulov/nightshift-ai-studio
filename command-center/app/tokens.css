@@ -166,6 +166,7 @@
   --ds-focus: #406a00;
   --ds-hover: rgb(10 18 34 / 0.05);
   --ds-scrim: rgb(10 18 34 / 0.45);
+  --ds-veil-rgb: 245, 247, 252;
   --ds-type-text: #765600;
   --ds-type-image: #00677f;
   --ds-type-video: #b0105f;
@@ -211,6 +212,7 @@
     --ds-focus: #c8ff2e;
     --ds-hover: rgb(230 238 252 / 0.06);
     --ds-scrim: rgb(2 5 12 / 0.72);
+    --ds-veil-rgb: 7, 10, 20;
     --ds-type-text: #ffd23f;
     --ds-type-image: #33d6ff;
     --ds-type-video: #ff4fa3;
@@ -252,6 +254,7 @@
   --ds-focus: #c8ff2e;
   --ds-hover: rgb(230 238 252 / 0.06);
   --ds-scrim: rgb(2 5 12 / 0.72);
+  --ds-veil-rgb: 7, 10, 20;
   --ds-type-text: #ffd23f;
   --ds-type-image: #33d6ff;
   --ds-type-video: #ff4fa3;
@@ -261,6 +264,124 @@
   --ds-elev-3: 0 0 0 1px rgb(80 140 220 / 0.08), 0 30px 70px -20px rgb(0 0 0 / 0.9);
   --ds-glow-accent: 0 0 0 1px rgb(87 162 255 / 0.35), 0 8px 28px -6px rgb(47 139 255 / 0.6);
   --ds-glow-select: 0 0 0 1px rgb(200 255 46 / 0.5), 0 0 18px -2px rgb(200 255 46 / 0.45);
+}
+
+/* ── The skin: the whole product in the --ds look ────────────────────────────
+   <html class="ds-skin"> (app/layout.tsx). Every screen still paints with the older names (--ns-*, --st-*, --color-*,
+   --studio-*, --cta-*, the glass key); under the skin those names point at the --ds-* values, so sign-in, welcome, the app
+   shell, its dialogs (portalled to <body>, hence the root and not .app-shell) and the public pages are one product without
+   rewriting a component. Remove the class and everything is exactly as it was.
+
+   Why these selectors: the remap must beat globals.css's own theme blocks, which come later in the cascade and reach
+   (0,2,0) (:root[data-theme="dark"], :root:not([data-theme="light"])); :root.ds-skin.ds-skin is (0,3,0). The public shell
+   (.st, site.css) redeclares its own key colours on its root, so it is listed too. A var() resolves
+   where it is declared, so a [data-theme-scope] box (the hero, a specimen) declares the remap again for its own theme.
+   The Studio canvas (.cv-root, studio-canvas.css) sets its own names on its own elements and is left exactly as it is. */
+:root.ds-skin.ds-skin,
+.ds-skin :is(.st, .nx-final, .nx-bar, .st-auth-aside),
+.ds-skin [data-theme-scope] {
+  --ns-ground: var(--ds-bg);
+  --ns-console: var(--ds-surface-1);
+  --ns-key: var(--ds-surface-2);
+  --ns-key-hi: var(--ds-surface-3);
+  --ns-rule: var(--ds-border);
+  --ns-rule-strong: var(--ds-border-strong);
+  --ns-text: var(--ds-text);
+  --ns-text-dim: var(--ds-text-2);
+  --ns-amber: var(--ds-select);
+  --ns-amber-ink: var(--ds-select);
+  --ns-on-amber: var(--ds-on-select);
+  --ns-cta-bg: var(--ds-accent-solid);
+  --ns-cta-fg: var(--ds-on-accent);
+  --ns-cta-price: var(--ds-on-accent);
+  --ns-lit-hover: var(--ds-accent-solid-hover);
+  --ns-lit-edge: var(--ds-accent-solid);
+  --ns-lit-glow: rgb(47 139 255 / 0.5);
+  --ns-act: var(--ds-accent);
+  --ns-act-ink: var(--ds-accent);
+  --ns-act-soft: var(--ds-accent-soft);
+  --ns-warm: var(--ds-select-soft);
+  --ns-cool: var(--ds-accent-soft);
+  --ns-hover: var(--ds-hover);
+  --ns-select: var(--ds-select-soft);
+  --ns-scrim: var(--ds-scrim);
+  --ns-lift: var(--ds-elev-3);
+  --ns-focus: var(--ds-focus);
+  --ns-go: var(--ds-success);
+  --ns-tally: var(--ds-danger);
+  --ns-danger-bg: var(--ds-danger-solid);
+  --ns-on-danger: var(--ds-on-danger);
+  --ns-caution: var(--ds-warning);
+  --ns-cue: var(--ds-accent);
+  --st-lit-bg: var(--ds-accent-solid);
+  --st-lit-hover: var(--ds-accent-solid-hover);
+  --st-lit-fg: var(--ds-on-accent);
+  --st-lit-edge: var(--ds-accent-solid);
+  --st-lit-glow: rgb(47 139 255 / 0.5);
+  --st-act: var(--ds-accent);
+  --st-act-ink: var(--ds-accent);
+  --st-focus-gap: var(--ds-bg);
+  --color-bg: var(--ds-bg);
+  --color-panel: var(--ds-surface-1);
+  --color-panel-2: var(--ds-surface-2);
+  --color-border: var(--ds-border);
+  --color-fg: var(--ds-text);
+  --color-muted: var(--ds-text-2);
+  --color-primary: var(--ds-accent);
+  --color-primary-dim: var(--ds-accent-solid);
+  --color-secondary: var(--ds-accent);
+  --color-on-accent: var(--ds-on-accent);
+  --color-ok: var(--ds-success);
+  --color-warn: var(--ds-warning);
+  --color-fail: var(--ds-danger);
+  --color-info: var(--ds-accent);
+  --color-hover: var(--ds-hover);
+  --color-active: var(--ds-select-soft);
+  --color-accent-soft: var(--ds-accent-soft);
+  --glow-primary: rgb(47 139 255 / 0.22);
+  --atmos-1: rgb(47 139 255 / 0.08);
+  --shadow-elevated: var(--ds-elev-3);
+  --backdrop-base: var(--ds-bg);
+  --veil-rgb: var(--ds-veil-rgb);
+  --backdrop-dim: color-mix(in srgb, var(--ds-bg) 62%, transparent);
+  --ns-grid: color-mix(in srgb, var(--ds-text) 4.5%, transparent);
+  --grid-line: color-mix(in srgb, var(--ds-text) 3.5%, transparent);
+  --ns-lamp-off: var(--ds-border-strong);
+  --color-idle: var(--ds-muted);
+  --shell-bg: var(--ds-surface-1);
+  --shell-border: var(--ds-border);
+  --cta-base: var(--ds-accent-solid);
+  --cta-fg: var(--ds-on-accent);
+  --studio-field: var(--ds-surface-2);
+  --studio-raised: var(--ds-surface-1);
+  --studio-cta-bg: var(--ds-accent-solid);
+  --studio-cta-fg: var(--ds-on-accent);
+  --studio-dock-bg: color-mix(in srgb, var(--ds-surface-1) 94%, transparent);
+  /* The glass primary key (app/glass.css): the Studio canvas's own blue glass, white words >= 4.7:1. */
+  --glass-primary: rgb(26 95 208 / 0.95);
+  --glass-primary-fg: #ffffff;
+  --glass-primary-edge-hi: #57a2ff;
+  --glass-primary-edge-lo: #0d3f96;
+  --glass-primary-glow: 0 1px 2px rgb(13 63 150 / 0.3), 0 8px 20px -8px rgb(47 139 255 / 0.6);
+  --glass-sheen: rgb(47 139 255 / 0.07);
+  /* The public site's product stage, a dark box in either theme. */
+  --nx-stage: #0f1626;
+  --nx-stage-edge: rgb(80 140 220 / 0.18);
+  --nx-stage-text: #e6eefc;
+  --nx-stage-dim: #a9b8d4;
+  --nx-stage-act: #57a2ff;
+  --nx-stage-amber: #c8ff2e;
+  --nx-stage-go: #3dff8a;
+}
+/* The sign-in aside's glow was amber; under the skin it is the electric blue. */
+.ds-skin .nx .st-auth-aside {
+  background-image: radial-gradient(80% 50% at 50% -10%, rgb(47 139 255 / 0.22), transparent 70%);
+}
+/* Headings set in a display role take the display face under the skin; body text stays Onest. */
+.ds-skin :is(.t-hero, .st-h1, .nx-h1, .st-h2, .nx-h2, .g5-h) {
+  font-family: var(--ds-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 /* ── Type helpers ────────────────────────────────────────────────────────── */

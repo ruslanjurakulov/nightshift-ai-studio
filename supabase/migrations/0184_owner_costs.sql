@@ -1,11 +1,11 @@
--- 0183_owner_costs.sql — the owner analytics hub's costs: provider spend, provider balances, and the costs only the owner knows.
--- docs/MIGRATIONS.md "0183", docs/OWNER_ANALYTICS.md.
+-- 0184_owner_costs.sql — the owner analytics hub's costs: provider spend, provider balances, and the costs only the owner knows.
+-- docs/MIGRATIONS.md "0184", docs/OWNER_ANALYTICS.md.
 --
 -- *** LIVE ON APPLY. *** It adds two tables (owner_cost_entries and owner_manual_balances, both closed to every API role) and seven
 -- functions. It replaces nothing and alters no existing table, column, policy or trigger. Its only writes are the owner's own
 -- cost entries and typed balances, each in its own table. A typed balance is deliberately NOT written to provider_balances: the
 -- operator bot's stale / zero / low-credit alerts and the Billing page read that table as the providers' own word, and a typed
--- figure there would silence an alert about a dead key (security review of 0183).
+-- figure there would silence an alert about a dead key (security review of 0184).
 --
 -- WHY. Profit is revenue (0182) less what the business paid to run. Three sources, each said for what it is:
 --   * Provider spend: what each creative job's provider cost, as the platform recorded it when the job ran (creative_job_costs,
@@ -24,33 +24,33 @@
 -- rate limit (take_web_rate, 0042/0087: 60 writes per 10 minutes). Execute is granted to
 -- `authenticated` only. search_path is pinned. owner_cost_entries has RLS on and no policy.
 --
--- THE APP WITHOUT THIS FILE. The costs tab says it needs migration 0183 and shows no profit figure; revenue (0182) is unaffected.
+-- THE APP WITHOUT THIS FILE. The costs tab says it needs migration 0184 and shows no profit figure; revenue (0182) is unaffected.
 --
 -- REQUIRES 0002 (video_costs), 0012 (provider_balances), 0037 (creative_job_costs), 0107 (admin_aal_ok) and 0182 (owner gate,
--- internal workspaces). Additive and idempotent. Undo: docs/sql/rollback_0183_owner_costs.sql.
+-- internal workspaces). Additive and idempotent. Undo: docs/sql/rollback_0184_owner_costs.sql.
 --
--- NUMBER. 0183, reserved for the owner analytics stream; may be renumbered at merge (live ends at 0174).
+-- NUMBER. 0184, assigned at merge (0183 is another stream's).
 set local lock_timeout = '5s';
 
 do $$
 begin
   if to_regprocedure('public.owner_analytics_is_owner()') is null then
-    raise exception '0183 needs 0182_owner_analytics.sql: apply it first';
+    raise exception '0184 needs 0182_owner_analytics.sql: apply it first';
   end if;
   if to_regclass('public.creative_job_costs') is null then
-    raise exception '0183 needs 0037 (creative_job_costs): apply it first';
+    raise exception '0184 needs 0037 (creative_job_costs): apply it first';
   end if;
   if to_regclass('public.video_costs') is null then
-    raise exception '0183 needs 0002 (video_costs): apply it first';
+    raise exception '0184 needs 0002 (video_costs): apply it first';
   end if;
   if to_regclass('public.provider_balances') is null then
-    raise exception '0183 needs 0012_billing.sql (provider_balances): apply it first';
+    raise exception '0184 needs 0012_billing.sql (provider_balances): apply it first';
   end if;
   if to_regprocedure('public.admin_aal_ok()') is null then
-    raise exception '0183 needs 0107_owner_safety.sql (admin_aal_ok): apply it first';
+    raise exception '0184 needs 0107_owner_safety.sql (admin_aal_ok): apply it first';
   end if;
   if to_regprocedure('public.take_web_rate(text, integer, integer)') is null then
-    raise exception '0183 needs take_web_rate (0042, 0087): apply it first';
+    raise exception '0184 needs take_web_rate (0042, 0087): apply it first';
   end if;
 end $$;
 
@@ -72,7 +72,7 @@ end
 $$;
 
 comment on function public.owner_costs_write_guard() is
-  'Migration 0183 (internal): owner, second factor (0107) and a 60-per-10-minutes rate limit, in front of every cost or balance write. No API role may execute it.';
+  'Migration 0184 (internal): owner, second factor (0107) and a 60-per-10-minutes rate limit, in front of every cost or balance write. No API role may execute it.';
 revoke all on function public.owner_costs_write_guard() from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ end
 $$;
 
 comment on function public.owner_analytics_provider_spend(timestamptz, timestamptz) is
-  'Migration 0183: provider cost in [p_from, p_to) by Tashkent day (pipeline rows by their recorded date; undated ones with day = null), source (creative jobs / the pipeline), provider and model: how many cost rows, the sum of the priced ones, and how many were unpriced (unknown, never 0). Platform owner only; read-only.';
+  'Migration 0184: provider cost in [p_from, p_to) by Tashkent day (pipeline rows by their recorded date; undated ones with day = null), source (creative jobs / the pipeline), provider and model: how many cost rows, the sum of the priced ones, and how many were unpriced (unknown, never 0). Platform owner only; read-only.';
 
 revoke all on function public.owner_analytics_provider_spend(timestamptz, timestamptz) from public, anon, authenticated, service_role;
 grant execute on function public.owner_analytics_provider_spend(timestamptz, timestamptz) to authenticated;
@@ -169,7 +169,7 @@ create table if not exists public.owner_manual_balances (
 );
 
 comment on table public.owner_manual_balances is
-  'Migration 0183: provider balances the owner read off a provider''s dashboard and typed in, for the analytics hub only. Kept apart from provider_balances on purpose: the operator bot and the Billing page treat that table as the providers'' own word. Written only by owner_analytics_balance_enter(); no API role reads or writes it directly.';
+  'Migration 0184: provider balances the owner read off a provider''s dashboard and typed in, for the analytics hub only. Kept apart from provider_balances on purpose: the operator bot and the Billing page treat that table as the providers'' own word. Written only by owner_analytics_balance_enter(); no API role reads or writes it directly.';
 
 alter table public.owner_manual_balances enable row level security;
 revoke all on table public.owner_manual_balances from public, anon, authenticated, service_role;
@@ -205,7 +205,7 @@ end
 $$;
 
 comment on function public.owner_analytics_balances() is
-  'Migration 0183: the newest balance per provider and metric from the provider''s API (provider_balances, source api) and, separately, the newest one the owner typed in (owner_manual_balances, source manual), each with its time. Platform owner only; read-only.';
+  'Migration 0184: the newest balance per provider and metric from the provider''s API (provider_balances, source api) and, separately, the newest one the owner typed in (owner_manual_balances, source manual), each with its time. Platform owner only; read-only.';
 
 revoke all on function public.owner_analytics_balances() from public, anon, authenticated, service_role;
 grant execute on function public.owner_analytics_balances() to authenticated;
@@ -234,7 +234,7 @@ end
 $$;
 
 comment on function public.owner_analytics_balance_enter(text, text, double precision, text) is
-  'Migration 0183: the owner types in a provider balance the provider''s API does not report, into owner_manual_balances (never provider_balances). Platform owner only, second factor when 0107''s gate is on, rate limited.';
+  'Migration 0184: the owner types in a provider balance the provider''s API does not report, into owner_manual_balances (never provider_balances). Platform owner only, second factor when 0107''s gate is on, rate limited.';
 
 revoke all on function public.owner_analytics_balance_enter(text, text, double precision, text) from public, anon, authenticated, service_role;
 grant execute on function public.owner_analytics_balance_enter(text, text, double precision, text) to authenticated;
@@ -254,7 +254,7 @@ create table if not exists public.owner_cost_entries (
 );
 
 comment on table public.owner_cost_entries is
-  'Migration 0183: the owner''s own monthly costs (infrastructure, tools, people, …), typed in by the owner for the analytics hub''s profit figures. Written only by owner_analytics_cost_add / _delete; no API role reads or writes it directly.';
+  'Migration 0184: the owner''s own monthly costs (infrastructure, tools, people, …), typed in by the owner for the analytics hub''s profit figures. Written only by owner_analytics_cost_add / _delete; no API role reads or writes it directly.';
 
 alter table public.owner_cost_entries enable row level security;
 revoke all on table public.owner_cost_entries from public, anon, authenticated, service_role;
@@ -317,11 +317,11 @@ end
 $$;
 
 comment on function public.owner_analytics_cost_add(date, text, numeric, text) is
-  'Migration 0183: the owner records one monthly cost (first day of a month, a category, an amount in USD, an optional note). Platform owner only, second factor when 0107''s gate is on.';
+  'Migration 0184: the owner records one monthly cost (first day of a month, a category, an amount in USD, an optional note). Platform owner only, second factor when 0107''s gate is on.';
 comment on function public.owner_analytics_cost_delete(bigint) is
-  'Migration 0183: the owner deletes one of their cost entries. Platform owner only, second factor when 0107''s gate is on.';
+  'Migration 0184: the owner deletes one of their cost entries. Platform owner only, second factor when 0107''s gate is on.';
 comment on function public.owner_analytics_costs(date, date) is
-  'Migration 0183: the owner''s cost entries for a range of months. Platform owner only; read-only.';
+  'Migration 0184: the owner''s cost entries for a range of months. Platform owner only; read-only.';
 
 revoke all on function public.owner_analytics_cost_add(date, text, numeric, text) from public, anon, authenticated, service_role;
 revoke all on function public.owner_analytics_cost_delete(bigint) from public, anon, authenticated, service_role;
@@ -432,7 +432,7 @@ end
 $$;
 
 comment on function public.owner_analytics_model_activity(timestamptz, timestamptz) is
-  'Migration 0183: creative jobs in [p_from, p_to) by model and unit — counts by outcome, units used, first and last time, how the newest job of each model ended — and per model the last completion and the last refusal for want of balance (quota), routing failovers included. At most 200 days. Platform owner only; read-only.';
+  'Migration 0184: creative jobs in [p_from, p_to) by model and unit — counts by outcome, units used, first and last time, how the newest job of each model ended — and per model the last completion and the last refusal for want of balance (quota), routing failovers included. At most 200 days. Platform owner only; read-only.';
 
 revoke all on function public.owner_analytics_model_activity(timestamptz, timestamptz) from public, anon, authenticated, service_role;
 grant execute on function public.owner_analytics_model_activity(timestamptz, timestamptz) to authenticated;
@@ -457,24 +457,24 @@ begin
   ] loop
     fn := to_regprocedure(sig);
     if fn is null then
-      raise exception '0183 end state: % does not exist', sig;
+      raise exception '0184 end state: % does not exist', sig;
     end if;
     if not has_function_privilege('authenticated', fn, 'EXECUTE')
        or has_function_privilege('anon', fn, 'EXECUTE')
        or has_function_privilege('service_role', fn, 'EXECUTE') then
-      raise exception '0183 end state: % has the wrong grants', sig;
+      raise exception '0184 end state: % has the wrong grants', sig;
     end if;
     if exists (select 1 from pg_proc p where p.oid = fn
                 and (not p.prosecdef or p.proacl is null
                      or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-      raise exception '0183 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
+      raise exception '0184 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
     end if;
   end loop;
   fn := to_regprocedure('public.owner_costs_write_guard()');
   if fn is null or has_function_privilege('authenticated', fn, 'EXECUTE') or has_function_privilege('anon', fn, 'EXECUTE')
      or has_function_privilege('service_role', fn, 'EXECUTE') then
-    raise exception '0183 end state: owner_costs_write_guard() is missing or an API role may call it';
+    raise exception '0184 end state: owner_costs_write_guard() is missing or an API role may call it';
   end if;
   if not (select relrowsecurity from pg_class where oid = 'public.owner_cost_entries'::regclass)
      or not (select relrowsecurity from pg_class where oid = 'public.owner_manual_balances'::regclass)
@@ -482,6 +482,6 @@ begin
                               unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) pr,
                               unnest(array['public.owner_cost_entries', 'public.owner_manual_balances']) t
                  where has_table_privilege(r, t, pr)) then
-    raise exception '0183 end state: owner_cost_entries or owner_manual_balances is not closed to the API roles';
+    raise exception '0184 end state: owner_cost_entries or owner_manual_balances is not closed to the API roles';
   end if;
 end $$;

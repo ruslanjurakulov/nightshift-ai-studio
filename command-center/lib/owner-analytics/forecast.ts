@@ -101,7 +101,7 @@ export interface Baseline {
   arpu: Measured<number>;
   /** Paid subscriptions billed today (a subscription taken back does not count). */
   payers: Measured<number>;
-  /** Customer provider spend per paid subscription per month; null while a cost is unpriced, the read was cut, or 0183 is not applied. */
+  /** Customer provider spend per paid subscription per month; null while a cost is unpriced, the read was cut, or 0184 is not applied. */
   costPerPayer: Measured<number>;
   /** The average of the owner's entered monthly costs over the last three months that have entries. */
   fixedMonthly: Measured<number>;

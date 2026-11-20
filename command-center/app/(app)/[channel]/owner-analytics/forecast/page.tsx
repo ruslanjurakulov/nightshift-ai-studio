@@ -15,7 +15,7 @@ const DAY = 86_400_000;
 /**
  * Owner analytics — forecast. The baseline is measured (the last 90 days of signups, conversion, churn, revenue and cost per
  * payer, and the owner's entered costs); the scenario is the owner's, moved with sliders in the browser. Measured MRR is drawn
- * solid; every projected figure is dashed or badged "projection". Costs (0183) are optional: without them their sliders start
+ * solid; every projected figure is dashed or badged "projection". Costs (0184) are optional: without them their sliders start
  * as assumptions. Owner-only; read-only.
  *
  * The forecast always runs from today, whatever period the picker shows: money is read up to tomorrow (Tashkent), not to the

@@ -29,6 +29,7 @@ import { ownerTruthRu } from "./owner-truth/ru";
 import { ownerAnalyticsRu } from "./owner-analytics/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
+import { trendsRu } from "./trends/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
@@ -59,6 +60,8 @@ import { adsFactoryRu } from "./ads-factory/ru";
 export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
+  /** The Trends gallery (migration 0183): ./trends/ru.ts. */
+  trends: trendsRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
@@ -141,6 +144,7 @@ export const ru: Dictionary = {
     customers: "Клиенты",
     billing: "Оплата",
     studio: "Nightshift Studio",
+    trends: "Тренды",
     brandLook: "Облик бренда",
     library: "Медиатека",
     styles: "Стили",

@@ -738,11 +738,17 @@ import sec_owner_analytics_0182  # noqa: E402
 
 sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 
-# Migration 0183 (the owner analytics hub's costs: provider spend, balances, the owner's monthly cost entries):
-# tests/security/sec_owner_costs_0183.py
-import sec_owner_costs_0183  # noqa: E402
+# Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
+# tests/security/sec_creative_templates_0183.py
+import sec_creative_templates_0183  # noqa: E402
 
-sec_owner_costs_0183.extend(TABLES, FUNCTIONS)
+sec_creative_templates_0183.extend(TABLES, FUNCTIONS)
+
+# Migration 0184 (the owner analytics hub's costs: provider spend, balances, the owner's monthly cost entries):
+# tests/security/sec_owner_costs_0184.py
+import sec_owner_costs_0184  # noqa: E402
+
+sec_owner_costs_0184.extend(TABLES, FUNCTIONS)
 
 # Migration 0185 (frozen exchange rates for the owner's income register): tests/security/sec_owner_fx_0185.py
 import sec_owner_fx_0185  # noqa: E402

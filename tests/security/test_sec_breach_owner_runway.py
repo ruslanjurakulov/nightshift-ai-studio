@@ -1,4 +1,4 @@
-"""Breach: attacks on the provider runway (0183's owner_analytics_model_activity) that were tried and held.
+"""Breach: attacks on the provider runway (0184's owner_analytics_model_activity) that were tried and held.
 
 The runway reads every workspace's creative jobs, so its one SQL function must answer the platform owner only — not a
 platform admin on app_members, not a tenant admin, not anon, not the service role, not a token that carries the owner's

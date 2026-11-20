@@ -1,10 +1,10 @@
-"""Breach: attacks on migration 0183 (owner costs and balances) and its two routes.
+"""Breach: attacks on migration 0184 (owner costs and balances) and its two routes.
 
 Two kinds of test live here. The ones that PASS are attacks that were tried and held (kept so a later change cannot quietly
 reopen them). The ones that FAIL are holes that are still open; they stay failing, never skipped, until the fix lands.
 
-The open holes all come from one fact: before 0183 the only writer of public.provider_balances was the balance worker with
-the provider's own API (source = 'api'). 0183 adds a second writer, owner_analytics_balance_enter(), and stores its rows in
+The open holes all come from one fact: before 0184 the only writer of public.provider_balances was the balance worker with
+the provider's own API (source = 'api'). 0184 adds a second writer, owner_analytics_balance_enter(), and stores its rows in
 the same table. The owner hub reads `source` and badges a typed figure, but the operator bot's dead-man switch
 (modules/operator_bot/sources.py balances(), reliability.provider_alerts) and the Billing page (lib/billing.ts latestBalance)
 read the newest row whatever its source. So a typed figure silences the alerts that exist to catch a dead balance worker or

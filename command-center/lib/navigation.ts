@@ -65,6 +65,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: HOME, key: "command" },
       { href: "/studio", key: "studio" },
+      // Trend templates (migration 0181): ready formats that open Create prefilled. A customer rail entry of its own.
+      { href: "/trends", key: "trends" },
       // Comments on the channel's videos, with drafted replies a person approves (migration 0081).
       { href: "/inbox", key: "inbox" },
       { href: "/analytics", key: "analytics" },
@@ -214,6 +216,7 @@ export const SECTION_ITEMS: readonly SectionItem[] = [
 export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "command",
   "create",
+  "trends",
   "videos",
   "inbox",
   "studio",
@@ -313,7 +316,7 @@ const RAIL_SCREENS: Readonly<Record<RailGroup, readonly string[]>> = {
  * screen with no rail key. Filtered by navShown (switches) and sectionAllowed (operator-only).
  */
 export type StudioTileKey =
-  | Extract<NavKey, "create" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models">
+  | Extract<NavKey, "create" | "trends" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models">
   | "presets";
 
 export interface StudioTile {
@@ -329,6 +332,8 @@ export const STUDIO_TILES: readonly StudioTile[] = [
   { href: "/workflows", key: "workflows", group: "make" },
   { href: "/styles", key: "styles", group: "make" },
   { href: "/presets", key: "presets", group: "make" },
+  // Trends (0183): ready formats that open Create prefilled.
+  { href: "/trends", key: "trends", group: "make" },
   { href: "/studio/look", key: "brandLook", group: "make" },
   { href: "/pipeline", key: "pipeline", group: "make" },
   { href: "/ads", key: "ads", group: "make" },

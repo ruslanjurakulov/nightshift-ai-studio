@@ -67,7 +67,7 @@ whole business together for one period; slice d will reuse the margin report's c
 - **What the audit does not cover.** The export log records files built by the hub. The owner's own session can still call the
   read functions directly through the API; that is the owner reading their own data, and is not a file leaving the building.
 
-## Costs & profit (slice d, migration 0183)
+## Costs & profit (slice d, migration 0184)
 
 | Figure | Source | When it is unknown |
 | :-- | :-- | :-- |
@@ -116,5 +116,5 @@ Per paid provider and per model: what was spent, what is left, how fast it goes,
   "balance before tracking: unknown".
 - **Runs out.** At the 7-day pace, with the range the 24-hour and 7-day paces span; re-run in the browser at an expected
   daily volume the owner types (a share of the last 7 days). "Low" under 3 days, unless the provider recharges itself.
-  "Empty" when the provider's newest job or probe failed with error_code `quota` (0183's `owner_analytics_model_activity`).
+  "Empty" when the provider's newest job or probe failed with error_code `quota` (0184's `owner_analytics_model_activity`).
 - **No numbers in the repository.** Prices, top-ups and balances exist only in the database; tests use synthetic fixtures.

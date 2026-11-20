@@ -13,7 +13,7 @@
 -- fetches a rate, and nothing here is a tax declaration.
 --
 -- WHO. Owner only (0182's owner_analytics_is_owner), writes also need 0107's second factor (NS401) and pass a rate limit
--- (0183's owner_costs_write_guard). Execute granted to `authenticated` only. RLS on, no policy.
+-- (0184's owner_costs_write_guard). Execute granted to `authenticated` only. RLS on, no policy.
 --
 -- THE APP WITHOUT THIS FILE. The register lists payments in their own currency and says UZS needs migration 0185.
 --

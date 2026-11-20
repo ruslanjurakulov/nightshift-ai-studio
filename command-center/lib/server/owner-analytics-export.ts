@@ -155,7 +155,7 @@ export async function buildExport(
 }
 
 /**
- * The full report: the overview, revenue by source and item, the signup funnel and, when 0183 is applied, the month-by-month
+ * The full report: the overview, revenue by source and item, the signup funnel and, when 0184 is applied, the month-by-month
  * result. Each table is the one the page renders. A part that cannot be read is left out and said so in the notes — the report
  * does not stop for it, and does not fill it with zeros.
  */

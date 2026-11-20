@@ -1,5 +1,5 @@
 /**
- * Costs and profit for the owner analytics hub (migration 0183). Pure: no server imports.
+ * Costs and profit for the owner analytics hub (migration 0184). Pure: no server imports.
  *
  * Three costs, three honesty rules:
  * - Provider spend: the priced rows are summed and the unpriced ones COUNTED; a total with an unpriced row is a floor, and says so.
