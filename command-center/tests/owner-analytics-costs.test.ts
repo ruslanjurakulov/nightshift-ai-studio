@@ -16,6 +16,19 @@ const sale = (at: string, minor: number): MoneyRow => ({
 });
 
 describe("owner analytics costs", () => {
+  it("counts an undated pipeline row and makes the internal side incomplete", () => {
+    const s = summarizeSpend([spend({ day: null, source: "pipeline", internal: true })], OCT);
+    expect(s.undated).toBe(1);
+    const m = monthlyResults([], [spend({ day: null, internal: true })], [{ id: 1, month: "2026-10-01", category: "tools", amountUsd: 1, note: null, enteredAt: "" }], OCT, tashkentDayStartUtc);
+    expect(m[0].internalSpend).toBeNull();
+    expect(m[0].operating).toBeNull();
+  });
+
+  it("gives a whole month with everything known an operating result", () => {
+    const m = monthlyResults([sale("2026-10-05T10:00:00Z", 1000)], [spend({})], [{ id: 1, month: "2026-10-01", category: "tools", amountUsd: 3, note: null, enteredAt: "" }], OCT, tashkentDayStartUtc);
+    expect(m[0]).toMatchObject({ partial: false, net: 10, spend: 2, internalSpend: 0, entered: 3, operating: 5 });
+  });
+
   it("keeps an unpriced cost row out of the sum and counts it, and splits customer from internal spend", () => {
     const s = summarizeSpend([spend({}), spend({ usdKnown: 0, unpriced: 1 }), spend({ internal: true, usdKnown: 5 })], OCT);
     expect(s.customer).toEqual({ usd: 2, unpriced: 1, rows: 2 });
@@ -39,13 +52,15 @@ describe("owner analytics costs", () => {
       tashkentDayStartUtc,
     );
     expect(months.map((m) => [m.month, m.partial, m.net, m.spend, m.entered, m.operating])).toEqual([
-      ["2026-10", true, 10, 2, 3, 5],
+      // Partial months have no operating result: a whole month's costs against part of a month's revenue is not a number.
+      ["2026-10", true, 10, 2, 3, null],
       ["2026-11", true, 5, 1, null, null],
     ]);
   });
 
   it("drops malformed rows instead of reading them as zero", () => {
     expect(coerceSpendRows([{ day: "x", provider: "v", cost_rows: 1 }, { day: "2026-10-01", provider: "v", cost_rows: 2, usd_known: "1.5", unpriced_count: 0 }])).toHaveLength(1);
+    expect(coerceSpendRows([{ day: "2026-10-01", provider: "v", cost_rows: 2, usd_known: "garbage", unpriced_count: 0 }])[0]).toMatchObject({ usdKnown: 0, unpriced: 2 });
     const b = coerceBalanceRows([{ provider: "v", metric: "credits", remaining: null, unit: "credits", source: "manual", checked_at: "2026-10-01T00:00:00Z" }]);
     expect(b[0]).toMatchObject({ remaining: null, source: "manual" });
   });

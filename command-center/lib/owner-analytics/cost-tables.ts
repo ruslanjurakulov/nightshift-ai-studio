@@ -69,7 +69,8 @@ export function costEntriesTable(d: D, entries: CostEntry[], p: Period, present:
   return {
     name: d.costEntries,
     preamble: preamble(d, d.costEntries, p, present),
-    columns: [d.month, d.category, `${d.amount}, ${d.usd}`, d.note],
-    rows: entries.map((e) => [e.month.slice(0, 7), label[e.category], r2(e.amountUsd), e.note]),
+    // A note is free text the owner typed (a name, a salary line): it does not exist in presentation mode, on screen or in a file.
+    columns: [d.month, d.category, `${d.amount}, ${d.usd}`, ...(present ? [] : [d.note])],
+    rows: entries.map((e) => [e.month.slice(0, 7), label[e.category], r2(e.amountUsd), ...(present ? [] : [e.note])]),
   };
 }

@@ -28,13 +28,19 @@ function usePost(path: string, failText: string, invalidText: string) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Set before the request, not after: a second click while the first is in flight would store the cost twice.
+  const [submitting, setSubmitting] = useState(false);
   async function post(body: unknown): Promise<boolean> {
+    if (submitting) return false;
+    setSubmitting(true);
     setError(null);
     try {
       const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) {
         const e = ((await res.json().catch(() => ({}))) as { error?: string }).error;
-        setError(e === "invalid_request" ? invalidText : e === "mfa_required" ? t.ownerAnalytics.mfaNeeded : failText);
+        setError(
+          e === "invalid_request" ? invalidText : e === "mfa_required" ? t.ownerAnalytics.mfaNeeded : e === "rate_limited" ? t.ownerAnalytics.rateLimited : failText,
+        );
         return false;
       }
       start(() => router.refresh());
@@ -42,9 +48,11 @@ function usePost(path: string, failText: string, invalidText: string) {
     } catch {
       setError(failText);
       return false;
+    } finally {
+      setSubmitting(false);
     }
   }
-  return { post, pending, error };
+  return { post, pending: pending || submitting, error };
 }
 
 export function CostEntryForm({ maxMonth }: { maxMonth: string }) {

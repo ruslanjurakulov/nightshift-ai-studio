@@ -2004,7 +2004,9 @@ its reads. Read-only over existing tables, plus one log of its own.
   by Tashkent day, provider and model — rows, the sum of the priced ones, and how many were unpriced (unknown, never 0). Internal
   workspaces (0182) and the pipeline are flagged internal.
 - **Balances.** `owner_analytics_balances()`: the newest `provider_balances` row per provider and metric, with `source` (api /
-  manual). `owner_analytics_balance_enter()` stores an owner-typed balance as `source = 'manual'`. Nothing calls a provider.
+  manual). `owner_analytics_balance_enter()` stores an owner-typed balance in its own closed table `owner_manual_balances`, never in
+  `provider_balances` (the operator bot's stale/zero alerts and Billing read that as the provider's own word). Nothing calls a provider.
+- **Writes** go through `owner_costs_write_guard()`: owner, 0107's second factor, and 60 writes per 10 minutes (`take_web_rate`).
 - **Monthly costs.** `owner_cost_entries` (closed), written by `owner_analytics_cost_add / _delete`, read by `owner_analytics_costs`.
 - **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
 - Lab: `tests/security/sec_owner_costs_0183.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0183_owner_costs.sql`.

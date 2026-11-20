@@ -19,7 +19,8 @@ const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface SpendRow {
-  day: string;
+  /** Tashkent day; null for a pipeline row whose recorded date could not be read (undated: counted, makes totals incomplete). */
+  day: string | null;
   source: "creative" | "pipeline";
   provider: string;
   model: string;
@@ -56,10 +57,12 @@ export function coerceSpendRows(data: unknown): SpendRow[] {
   const out: SpendRow[] = [];
   for (const r of data) {
     if (!isObj(r)) continue;
-    const day = typeof r.day === "string" ? r.day.slice(0, 10) : "";
+    const day = typeof r.day === "string" ? r.day.slice(0, 10) : null;
     const provider = str(r.provider);
     const rows = known(r.cost_rows);
-    if (!DAY_RE.test(day) || !provider || rows === null) continue;
+    if ((day !== null && !DAY_RE.test(day)) || !provider || rows === null) continue;
+    // A sum the database sent that does not parse is not a known 0: the rows behind it are unpriced.
+    const usd = known(r.usd_known);
     out.push({
       day,
       source: r.source === "pipeline" ? "pipeline" : "creative",
@@ -67,8 +70,8 @@ export function coerceSpendRows(data: unknown): SpendRow[] {
       model: str(r.model) ?? "unknown",
       internal: r.internal === true,
       costRows: rows,
-      usdKnown: known(r.usd_known) ?? 0,
-      unpriced: known(r.unpriced_count) ?? 0,
+      usdKnown: usd ?? 0,
+      unpriced: usd === null ? rows : (known(r.unpriced_count) ?? rows),
     });
   }
   return out;
@@ -125,6 +128,8 @@ const addTo = (t: SpendTotal, r: SpendRow) => {
 };
 
 export interface SpendSummary {
+  /** Cost rows whose date could not be read: they may belong to this period, so every total is incomplete while any exist. */
+  undated: number;
   customer: SpendTotal;
   internal: SpendTotal;
   byProvider: Array<{ provider: string; source: SpendRow["source"]; total: SpendTotal; internal: SpendTotal }>;
@@ -133,10 +138,14 @@ export interface SpendSummary {
 
 /** Provider spend in a period, split into what serving customers cost and what the operator's own use cost. */
 export function summarizeSpend(rows: SpendRow[], p: Pick<Period, "startDay" | "endDay">): SpendSummary {
-  const s: SpendSummary = { customer: zero(), internal: zero(), byProvider: [], byModel: [] };
+  const s: SpendSummary = { undated: 0, customer: zero(), internal: zero(), byProvider: [], byModel: [] };
   const prov = new Map<string, SpendSummary["byProvider"][number]>();
   const model = new Map<string, SpendSummary["byModel"][number]>();
   for (const r of rows) {
+    if (r.day === null) {
+      s.undated += r.costRows;
+      continue;
+    }
     if (r.day < p.startDay || r.day > p.endDay) continue;
     addTo(r.internal ? s.internal : s.customer, r);
     const pk = `${r.source}:${r.provider}`;
@@ -169,6 +178,7 @@ export function grossProfit(money: MoneyRow[], spend: SpendSummary, p: Period): 
   const s = summarize(money, p);
   const net = s.netBeforeFees.unknownCount === 0 ? s.netBeforeFees.usd : null;
   const cost = spend.customer.unpriced === 0 ? spend.customer.usd : null;
+  // Undated rows are the pipeline's (internal): they make the operating result unknown, not the customers' gross profit.
   const gp = net !== null && cost !== null ? net - cost : null;
   return { net, spend: cost, grossProfit: gp, margin: gp !== null && net !== null && net > 0 ? gp / net : null };
 }
@@ -231,10 +241,12 @@ export function monthlyResults(
     const mine = entries.filter((e) => e.month.slice(0, 7) === month);
     const net = s.netBeforeFees.unknownCount === 0 ? s.netBeforeFees.usd : null;
     const spend = sp.customer.unpriced === 0 ? sp.customer.usd : null;
-    const internalSpend = sp.internal.unpriced === 0 ? sp.internal.usd : null;
+    const internalSpend = sp.internal.unpriced === 0 && sp.undated === 0 ? sp.internal.usd : null;
     const entered = mine.length > 0 ? mine.reduce((a, e) => a + e.amountUsd, 0) : null;
+    const partial = startDay !== first || endDay !== last;
+    // A partial month would subtract a whole month's entered costs from part of a month's revenue: no result, not a wrong one.
     const operating =
-      net !== null && spend !== null && internalSpend !== null && entered !== null ? net - spend - internalSpend - entered : null;
-    return { month, partial: startDay !== first || endDay !== last, net, spend, internalSpend, entered, operating };
+      !partial && net !== null && spend !== null && internalSpend !== null && entered !== null ? net - spend - internalSpend - entered : null;
+    return { month, partial, net, spend, internalSpend, entered, operating };
   });
 }

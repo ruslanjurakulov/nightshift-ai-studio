@@ -3,7 +3,7 @@
 --
 -- WHAT IS LOST: the owner's monthly cost entries (owner_cost_entries). Keep a copy first if they matter:
 --   select * from public.owner_cost_entries order by month, id;
--- Manual balances the owner entered stay in provider_balances (source = 'manual'): they are that table's rows, not this file's.
+-- The owner's typed balances (owner_manual_balances) are lost too: select * from public.owner_manual_balances;
 -- After this, the costs tab says it needs migration 0183; revenue and the rest of the hub (0182) are unaffected.
 
 begin;
@@ -15,8 +15,9 @@ drop function if exists public.owner_analytics_cost_add(date, text, numeric, tex
 drop function if exists public.owner_analytics_balance_enter(text, text, double precision, text);
 drop function if exists public.owner_analytics_balances();
 drop function if exists public.owner_analytics_provider_spend(timestamptz, timestamptz);
-drop function if exists public.owner_analytics_try_instant(text);
+drop function if exists public.owner_costs_write_guard();
 drop table if exists public.owner_cost_entries;
+drop table if exists public.owner_manual_balances;
 
 do $$
 begin

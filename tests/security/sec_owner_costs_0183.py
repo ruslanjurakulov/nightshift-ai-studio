@@ -12,6 +12,8 @@ def extend(tables: dict, functions: dict) -> None:
     tables.update({
         # The owner's own monthly costs: RLS on, no policy, no grant; only owner_analytics_cost_add / _delete write it.
         "owner_cost_entries": Service(),
+        # The owner's typed balances, kept apart from provider_balances so the bot and Billing never read them as the provider's.
+        "owner_manual_balances": Service(),
     })
     functions.update({
         "owner_analytics_provider_spend": USER,
@@ -20,7 +22,7 @@ def extend(tables: dict, functions: dict) -> None:
         "owner_analytics_cost_add": USER,
         "owner_analytics_cost_delete": USER,
         "owner_analytics_costs": USER,
-        "owner_analytics_try_instant": SERVICE,
+        "owner_costs_write_guard": SERVICE,
     })
 
 
@@ -30,4 +32,7 @@ def seed(conn, sc) -> None:
 
     with acting(conn, sc.operator, commit=True) as s:
         out = s.run("select public.owner_analytics_cost_add(date_trunc('month', now())::date, 'infrastructure', 1, 'lab')")
+    assert out.ok, out
+    with acting(conn, sc.operator, commit=True) as s:
+        out = s.run("select public.owner_analytics_balance_enter('lab-vendor', 'credits', 1, 'credits')")
     assert out.ok, out
