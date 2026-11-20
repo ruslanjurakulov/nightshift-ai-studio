@@ -160,7 +160,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             logger.info("removed %d leftover job input folder(s) older than %d hours", swept, cw.SCRATCH_MAX_AGE_HOURS)
 
     media_root = media_root_from(os.environ)
-    library_on =media_root is not None and os.access(media_root, os.W_OK)
+    library_on = media_root is not None and os.access(media_root, os.W_OK)
     tools = None
     if library_on:
         from modules import media_library as ml  # noqa: PLC0415
