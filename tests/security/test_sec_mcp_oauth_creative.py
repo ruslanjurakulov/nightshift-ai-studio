@@ -21,6 +21,7 @@ Runs in its own scratch database (it commits).
 import hashlib
 import json
 import os
+import time
 import uuid
 
 import psycopg
@@ -408,6 +409,11 @@ def test_only_anon_may_call_the_doors_and_nobody_reads_the_records(db, role):
 
 def test_the_quote_bucket_refuses_a_loop(db):
     tok, _g = connection(db, UA, ORG_A)
+    # The bucket is a calendar minute (date_trunc('minute', now())): 31 quotes that straddle a minute boundary are two buckets and
+    # the 31st is allowed (CI failed exactly so). Start with at least 15 seconds of the database's own minute left.
+    left = float(db.su("select 60 - extract(second from clock_timestamp())")[0][0])
+    if left < 15:
+        time.sleep(left + 0.5)
     answers = [quote(db, tok)["status"] for _ in range(31)]
     assert answers[:30] == [201] * 30 and answers[30] == 429, answers
 
