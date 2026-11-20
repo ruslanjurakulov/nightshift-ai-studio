@@ -195,6 +195,11 @@ main:has([data-studio-canvas]) {
 .cv-grow { flex: 1; min-width: 0; }
 .cv-loading { margin: auto; color: var(--dim); }
 
+/* The DB-IP credit (app/(app)/layout.tsx, after every signed-in page; CC BY 4.0 asks for the link) on the full-height canvas: a
+   small muted line, right-aligned just under it, instead of a bare line at the page's foot under the canvas toolbar. */
+main:has([data-studio-canvas]) > .app-geo-credit { display: flex; justify-content: flex-end; margin-top: 6px; padding: 0 14px 8px; }
+main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-height: 1.4; }
+
 /* ── the Studio's one bar (in the app's header) and its rail ─────────────────── */
 .cv-appbar {
   position: sticky;

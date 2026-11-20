@@ -18,7 +18,7 @@ const css = readFileSync(path.join(root, "components/studio-canvas/studio-canvas
 
 /** The declarations of the first top-level rule whose selector is exactly `sel`. */
 function rule(sel: string): Record<string, string> {
-  const at = css.search(new RegExp(`(^|\\n)${sel.replace(/\./g, "\\.")}\\s*\\{`));
+  const at = css.search(new RegExp(`(^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{`));
   expect(at, `${sel} rule`).toBeGreaterThanOrEqual(0);
   const body = css.slice(css.indexOf("{", at) + 1, css.indexOf("}", at));
   const out: Record<string, string> = {};
@@ -49,5 +49,15 @@ describe("the Studio bar's menu is never drawn under the rail", () => {
     const frame = layout.slice(layout.indexOf("{frame ? ("));
     expect(frame.indexOf("{header}")).toBeGreaterThan(-1);
     expect(frame.indexOf("<SideNav operator />")).toBeGreaterThan(frame.indexOf("{header}"));
+  });
+});
+
+describe("the DB-IP credit on the full-height canvas (CC BY 4.0 asks for it; it must not look stray)", () => {
+  it("stays on every signed-in page, and on the canvas is a small right-aligned line under it", () => {
+    const layout = readFileSync(path.join(root, "app/(app)/layout.tsx"), "utf8");
+    expect(layout).toMatch(/<div className="app-geo-credit[^"]*">\s*<GeoAttribution label=\{tt\.create\.geoAttribution\} \/>/);
+    const box = rule("main:has([data-studio-canvas]) > .app-geo-credit");
+    expect(box["justify-content"]).toBe("flex-end");
+    expect(rule("main:has([data-studio-canvas]) > .app-geo-credit p")["font-size"]).toBe("11px");
   });
 });
