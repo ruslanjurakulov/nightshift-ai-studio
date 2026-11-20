@@ -102,7 +102,10 @@ class OpenAIImageAdapter(HttpAdapter):
         if request.quality:
             body["quality"] = request.quality        # the tier the person was quoted
         if request.end_user and _END_USER.fullmatch(request.end_user):
-            body["user"] = request.end_user          # OpenAI's safety identifier
+            # OpenAI deprecated ``user`` on the Images API for ``safety_identifier``
+            # (developers.openai.com safety-best-practices, read 2026-11-20); an
+            # opaque id, never an email, so a moderation flag lands on one person.
+            body["safety_identifier"] = request.end_user
         return body
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:

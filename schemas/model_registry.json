@@ -65,11 +65,11 @@
         "note": "billed per token ($30 per 1M image output tokens per a search extract; another extract said $15); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_image",
-      "entitlement": "models_image:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
@@ -138,11 +138,11 @@
         "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_flare_image",
-      "entitlement": "models_image:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
@@ -211,17 +211,165 @@
         "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_sunburst_image",
-      "entitlement": "models_image:ultra",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
       },
       "quality_tier": 5,
       "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "quality": "low"
+      }
+    },
+    {
+      "id": "openai-gpt-image-2.6-sunburst",
+      "display_name": "OpenAI GPT Image 2.6 Sunburst",
+      "provider": "openai",
+      "adapter": "image.openai",
+      "vendor_model": "gpt-image-2.6-sunburst",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 16
+      },
+      "aspect_ratios": [
+        "1:1",
+        "3:2",
+        "2:3",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst",
+        "checked_at": "2026-11-20",
+        "source": "vendor_docs",
+        "evidence": "developers.openai.com api/reference images generate: model enum lists gpt-image-2.6-sunburst and gpt-image-2.6-flare; models/all lists both as current, with v1/images/generations and v1/images/edits (multipart image[], optional mask)",
+        "note": "not verified by a real call: hidden until tools/probe_models.py records one (migration 0035)"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
+        "note": "billed per token; no per-image figure pinned"
+      },
+      "credit_unit": "model_openai_gpt_image_2_6_sunburst_image",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "quality": "low"
+      }
+    },
+    {
+      "id": "openai-gpt-image-2.6-flare",
+      "display_name": "OpenAI GPT Image 2.6 Flare",
+      "provider": "openai",
+      "adapter": "image.openai",
+      "vendor_model": "gpt-image-2.6-flare",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 16
+      },
+      "aspect_ratios": [
+        "1:1",
+        "3:2",
+        "2:3",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/models/gpt-image-2.6-flare",
+        "checked_at": "2026-11-20",
+        "source": "vendor_docs",
+        "evidence": "developers.openai.com api/reference images generate: model enum lists gpt-image-2.6-sunburst and gpt-image-2.6-flare; models/all lists both as current, with v1/images/generations and v1/images/edits (multipart image[], optional mask)",
+        "note": "not verified by a real call: hidden until tools/probe_models.py records one (migration 0035)"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
+        "note": "billed per token; no per-image figure pinned"
+      },
+      "credit_unit": "model_openai_gpt_image_2_6_flare_image",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",

@@ -65,6 +65,8 @@ export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "openai-gpt-image-2": "OpenAI GPT Image 2",
   "openai-gpt-image-2.5-flare": "OpenAI GPT Image 2.5 Flare",
   "openai-gpt-image-2.5-sunburst": "OpenAI GPT Image 2.5 Sunburst",
+  "openai-gpt-image-2.6-flare": "OpenAI GPT Image 2.6 Flare",
+  "openai-gpt-image-2.6-sunburst": "OpenAI GPT Image 2.6 Sunburst",
   "pika-2.5": "Pika 2.5",
   "pika-pikaframes": "Pika 2.5 Pikaframes",
   "qwen-image-2.1-pro": "Qwen-Image 2.1 Pro",
