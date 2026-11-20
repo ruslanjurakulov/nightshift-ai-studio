@@ -175,7 +175,7 @@
             "url": {"$ref": "#/$defs/https_url"}
           }
         },
-        "api_exposure": {"enum": ["any", "web_only"]},
+        "api_exposure": {"enum": ["any", "web_only", "web_mcp"]},
         "limits": {
           "type": "object",
           "required": ["max_prompt_chars", "max_concurrent_per_org"],

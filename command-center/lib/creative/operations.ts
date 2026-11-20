@@ -532,6 +532,11 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `factor does not apply to ${capability}` }) };
   if (capability === "voice_change" && !(typeof params.voice_id === "string" && VOICE_ID_RE.test(params.voice_id)))
     return { ok: false, result: fail(400, "invalid_params", { detail: "voice_id (a voice of the account) is required for voice_change" }) };
+  // Every speech model speaks through ElevenLabs, whose worker adapter refuses a request without a voice of the
+  // account (modules/capabilities/audio.py). The database (0156) accepts speech with no voice, so without this the
+  // refusal came after the credits were held: asked here, it comes before the quote and the hold (rule 6).
+  if (capability === "tts" && !(typeof params.voice_id === "string" && VOICE_ID_RE.test(params.voice_id)))
+    return { ok: false, result: fail(400, "invalid_params", { detail: "voice_id (a voice picked from the account's voice list) is required for tts" }) };
   if (capability === "dub" && !(DUB_LANGUAGES as readonly unknown[]).includes(params.target_language))
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_language must be one of ${DUB_LANGUAGES.join(", ")}` }) };
   if (capability !== "dub" && params.target_language !== undefined)

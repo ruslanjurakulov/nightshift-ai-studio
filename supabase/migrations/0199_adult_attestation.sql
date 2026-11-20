@@ -43,7 +43,7 @@
 --     left out of the candidates for a person without an adult attestation (the route picks among the others; the stored
 --     failover list never names it); only when nothing else is left is the route refused adult_attestation_required. It serves
 --     quote_creative_route, the API's routed quote and a routed create_creative_job alike.
---   sellable_models (0125's body, one marked hunk): such a model is STILL listed; its public spec object carries
+--   sellable_models (0188's body, one marked hunk): such a model is STILL listed; its public spec object carries
 --     requires_adult: true so the app marks it "for adults only". No other column or key changes.
 --   api_creative_refusal (0174's body, one marked hunk): adult_attestation_required (428, with the remedy) and adult_only_service
 --     (403). There is no API call to attest: a key acts as its creator and an MCP grant as its person (api_act_as), so the person
@@ -53,7 +53,7 @@
 --   quote_film (0171's body, two marked hunks): the film's adult refusals (film_adult_refusals: adult_only_service for a minor, or one
 --     adult_attestation_required per requires_adult model of the film, named) join the quote's refusals; such a quote is unpriced,
 --     carries no quote_id and is not stored, so it cannot be started (rule 6: said before Start, not at the hold).
---   start_film (0171's body, one marked hunk): the first of the same refusals is raised (NS400, its own word) right after the admin
+--   start_film (0187's body, one marked hunk, before 0187's own acknowledgement check): the first of the same refusals is raised (NS400, its own word) right after the admin
 --     check: before the key and the quote are read, a replay is answered, the start is counted, anything is priced, held or written.
 --   api_create_video (0147's body, one marked hunk): a minor's API key or MCP grant is answered 403 adult_only_service before the
 --     price and the API hold, in an exempt organization too.
@@ -66,7 +66,7 @@
 --   names a registry model, a requires_adult model to someone without an adult attestation (A):
 --     create_creative_job (the Studio, the API, MCP, region edit, each workflow step)   M, A: the gate (section 6)
 --     quote_creative_job, quote_creative_route, the API's quotes (they call these)       M, A: the gate and the router
---     quote_film, start_film (0171)                                                      M, A for every model of the film
+--     quote_film (0171), start_film (0187)                                              M, A for every model of the film
 --     api_create_video (0147: an API key; the MCP server's create_video)                 M: 403 in the body (section 12)
 --     request_reply_draft, request_editor_export, request_brand_scan,
 --       request_character_swap (each holds through creative_platform_reserve)           M: in that helper (section 9)
@@ -88,20 +88,20 @@
 --       to it (a trigger here would tie 0199 to both files, which the security lab replays and rolls back on their own).
 --
 -- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space):
---   quote_creative_job and creative_platform_reserve (0036), route_model (0075), sellable_models (0125), create_creative_job and
---   api_creative_refusal (0174), api_create_video (0147), quote_film and start_film (0171); none redefined since. Signatures,
+--   quote_creative_job and creative_platform_reserve (0036), route_model (0075), sellable_models (0188), create_creative_job and
+--   api_creative_refusal (0174), api_create_video (0147), quote_film (0171) and start_film (0187); none redefined since. Signatures,
 --   SECURITY DEFINER (or not), the pinned search_path and the grants stay as they were (restated).
 -- NOT CHANGED: creative_price, creative_route_quote, quote_creative_route, reroute_creative_job, reserve_credits, film_price,
 --   film_precheck, every price, hold and ledger rule, every model's availability.
 --
--- REPLAY. This file replays safely onto itself. 0174, 0171, 0147, 0125 and 0124 refuse to replay over it (their drift guards accept
---   only their own bodies), but 0036 and 0075 do NOT protect it: re-running either after this file SILENTLY puts the old
+-- REPLAY. This file replays safely onto itself. 0188, 0187, 0174, 0171, 0147, 0125 and 0124 refuse to replay over it (their drift
+--   guards accept only their own bodies), but 0036 and 0075 do NOT protect it: re-running either after this file SILENTLY puts the old
 --   quote_creative_job / creative_platform_reserve / route_model (0075 also create_creative_job and api_creative_refusal) back and
 --   removes the gate. Undo 0199 first (its rollback), re-run the older file, then apply 0199 again; after any manual replay run the
 --   Verify query below.
 --
--- NUMBER. 0199 is a placeholder; it is renumbered at merge. Needs 0018, 0020, 0031, 0035, 0036, 0075, 0124, 0125, 0147, 0171 and
---   0174.
+-- NUMBER. 0199 is a placeholder; it is renumbered at merge. Needs 0018, 0020, 0031, 0035, 0036, 0075, 0124, 0125, 0147, 0171, 0174,
+--   0187 and 0188.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
 --   select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc p
@@ -115,13 +115,13 @@
 --                    'public.start_film(uuid, text, text)'::regprocedure,
 --                    'public.api_create_video(text, text, jsonb, text, text, text)'::regprocedure);
 --   expected BEFORE quote_creative_job 8494b320cece395444edec700a2f1696 (0036), route_model e4344e61983e7decb4b1eac73761fbf0 (0075),
---     sellable_models ea8add748052456a6ef8898b4c87d610 (0125), create_creative_job 88107b00b0a8c143606ed17f5898c98d (0174),
+--     sellable_models 0ab9e7da07b4347010a887c5118d5150 (0188), create_creative_job 88107b00b0a8c143606ed17f5898c98d (0174),
 --     api_creative_refusal e6ec45d0d912389a05eb2d40261c2c2a (0174), creative_platform_reserve 4a61076948e0dd8992d37de2a9016607 (0036),
---     quote_film 8839e2cb264663acf98c6f49aaaf89a5 (0171), start_film 63510a6d9c456e66f658353bab592d38 (0171),
+--     quote_film 8839e2cb264663acf98c6f49aaaf89a5 (0171), start_film 5468183a8f24a48f708efcbbf9d2d22c (0187),
 --     api_create_video cba47be1a674f5cea3b5d7443bc31bab (0147);
---   AFTER ce54b243814e7e8205e8f2c200f05adc, 446a8891a780d38237af38e46c24349a, baeea1418bed413cab7bcf7bf5113ecd,
+--   AFTER ce54b243814e7e8205e8f2c200f05adc, 446a8891a780d38237af38e46c24349a, 0e69dd8226d0ba7ee7f71b5481844488,
 --     5d373e69b2b33c9a461a245d46c0047f, 689a675e9ff2d1b6df46ccd89f351589, 8e8e0cc80de8f21793897af0223a7044,
---     e67c0d25f9872b6e9ff19e9d06e95261, edc65ceb6378e5e3bfe6e4b3c46ef699, 84477b7bff7fe4e2ec50376a4e5bb72e (this file).
+--     e67c0d25f9872b6e9ff19e9d06e95261, 45c36b8ebc8bd71bbf2ebc60243b718b, 84477b7bff7fe4e2ec50376a4e5bb72e (this file).
 -- Undo: docs/sql/rollback_0199_adult_attestation.sql (owner-applied). It puts the nine earlier bodies back and drops the hold
 --   gate trigger, the two calls and the helpers. It KEEPS the record: adult_attestations (with its append-only triggers) stays, and
 --   applying 0199 again picks it up as its own.
@@ -158,16 +158,19 @@ begin
   if to_regclass('public.film_segments') is null then
     raise exception '0199 needs the Film Studio''s money: apply 0171_films_money.sql first';
   end if;
+  if to_regprocedure('public.film_acknowledgement_missing(public.films, uuid)') is null then
+    raise exception '0199 is built on 0187''s start_film: apply 0187_rights_acknowledgement_inputs.sql first';
+  end if;
   -- The nine bodies this file replaces: the earlier one, or this file's own (a replay).
   for r in select * from (values
       ('public.quote_creative_job(uuid, text, text, jsonb)', '8494b320cece395444edec700a2f1696', 'ce54b243814e7e8205e8f2c200f05adc', '0036'),
       ('public.route_model(text, jsonb, text, uuid, text)', 'e4344e61983e7decb4b1eac73761fbf0', '446a8891a780d38237af38e46c24349a', '0075'),
-      ('public.sellable_models(text, text)', 'ea8add748052456a6ef8898b4c87d610', 'baeea1418bed413cab7bcf7bf5113ecd', '0125'),
+      ('public.sellable_models(text, text)', '0ab9e7da07b4347010a887c5118d5150', '0e69dd8226d0ba7ee7f71b5481844488', '0188'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d', '5d373e69b2b33c9a461a245d46c0047f', '0174'),
       ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a', '689a675e9ff2d1b6df46ccd89f351589', '0174'),
       ('public.creative_platform_reserve(uuid, text, numeric)', '4a61076948e0dd8992d37de2a9016607', '8e8e0cc80de8f21793897af0223a7044', '0036'),
       ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5', 'e67c0d25f9872b6e9ff19e9d06e95261', '0171'),
-      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38', 'edc65ceb6378e5e3bfe6e4b3c46ef699', '0171'),
+      ('public.start_film(uuid, text, text)', '5468183a8f24a48f708efcbbf9d2d22c', '45c36b8ebc8bd71bbf2ebc60243b718b', '0187'),
       ('public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab', '84477b7bff7fe4e2ec50376a4e5bb72e', '0147')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
@@ -788,7 +791,7 @@ revoke all on function public.create_creative_job(uuid, text, text, jsonb, text,
 grant execute on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 7. The list: 0125's sellable_models, one marked hunk (the model stays listed, marked)
+-- 7. The list: 0188's sellable_models, one marked hunk (the model stays listed, marked)
 -- ───────────────────────────────────────────────────────────────────────────
 
 create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
@@ -870,7 +873,11 @@ begin
                            on vp.unit = m.credit_unit || '_' || regexp_replace(lower(vk.variant), '[^a-z0-9]', '_', 'g')
                         where vp.credits_per_unit > 0))
        and (p_capability is null or p_capability = any (m.capabilities))
-       and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') <> 'web_only')
+       -- 0188: 'web_mcp' is sold on the web and to the 'mcp' surface (our own signed-in connector), never to 'api' (the public
+       -- developer API: a vendor's written permission can stop short of it). Only 'any' opens 'api'; a value this file does not
+       -- know opens nothing but the web (fail closed).
+       and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') = 'any'
+            or (p_surface = 'mcp' and m.spec ->> 'api_exposure' = 'web_mcp'))
        and (p_surface = 'web' or not ('captions' = any (m.capabilities)))
      order by m.provider, m.id;
 end
@@ -1085,7 +1092,7 @@ revoke all on function public.quote_film(uuid, integer) from public, anon, authe
 grant execute on function public.quote_film(uuid, integer) to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 11. The film's start: 0171's start_film, one marked hunk
+-- 11. The film's start: 0187's start_film, one marked hunk
 -- ───────────────────────────────────────────────────────────────────────────
 
 create or replace function public.start_film(p_film uuid, p_quote_id text, p_idempotency_key text) returns jsonb
@@ -1205,6 +1212,16 @@ begin
   if q ->> 'quote_id' <> p_quote_id then
     return jsonb_build_object('ok', false, 'reason', 'price_changed', 'code', 'NS409',
                               'detail', format('the price is now %s credits; quote it again', total));
+  end if;
+  -- 0187: a film sends the person's own files to its models too (a clip's uploaded first or last frame; a key frame's
+  -- reference pictures, @characters and style kit). A model that requires a rights acknowledgement refuses here, after the
+  -- price (a line refused anyway never asks) and before the hold and every take, unless THIS person (the one starting the
+  -- film, who pays for it) acknowledged each such file at the CURRENT text version. The takes' jobs are written later by the
+  -- worker, never through create_creative_job, so this is the only place a film asks.
+  bad := public.film_acknowledgement_missing(f, uid);
+  if bad is not null then
+    return jsonb_build_object('ok', false, 'reason', 'acknowledgement_required', 'code', 'NS400',
+      'detail', format('kind=%s version=%s subject=%s', bad ->> 'kind', coalesce(bad ->> 'text_version', 'none'), bad ->> 'subject'));
   end if;
 
   -- The hold: 0020's reserve_credits in the admin's own session, before anything is created. Its two refusals (NS402 with available
@@ -1439,12 +1456,12 @@ begin
   for r in select * from (values
       ('public.quote_creative_job(uuid, text, text, jsonb)', 'ce54b243814e7e8205e8f2c200f05adc'),
       ('public.route_model(text, jsonb, text, uuid, text)', '446a8891a780d38237af38e46c24349a'),
-      ('public.sellable_models(text, text)', 'baeea1418bed413cab7bcf7bf5113ecd'),
+      ('public.sellable_models(text, text)', '0e69dd8226d0ba7ee7f71b5481844488'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '5d373e69b2b33c9a461a245d46c0047f'),
       ('public.api_creative_refusal(text, text, text)', '689a675e9ff2d1b6df46ccd89f351589'),
       ('public.creative_platform_reserve(uuid, text, numeric)', '8e8e0cc80de8f21793897af0223a7044'),
       ('public.quote_film(uuid, integer)', 'e67c0d25f9872b6e9ff19e9d06e95261'),
-      ('public.start_film(uuid, text, text)', 'edc65ceb6378e5e3bfe6e4b3c46ef699'),
+      ('public.start_film(uuid, text, text)', '45c36b8ebc8bd71bbf2ebc60243b718b'),
       ('public.api_create_video(text, text, jsonb, text, text, text)', '84477b7bff7fe4e2ec50376a4e5bb72e')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
       raise exception '0199 end state: % is not 0199''s body', r.sig;
@@ -1526,7 +1543,7 @@ end $$;
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.route_model(text,jsonb,text,uuid,text)'::regprocedure) = '446a8891a780d38237af38e46c24349a'                        as route_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.sellable_models(text,text)'::regprocedure) = 'baeea1418bed413cab7bcf7bf5113ecd'                                  as listed_for_adults,
+--     where oid = 'public.sellable_models(text,text)'::regprocedure) = '0e69dd8226d0ba7ee7f71b5481844488'                                  as listed_for_adults,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure) = '5d373e69b2b33c9a461a245d46c0047f' as job_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
@@ -1536,7 +1553,7 @@ end $$;
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.quote_film(uuid,integer)'::regprocedure) = 'e67c0d25f9872b6e9ff19e9d06e95261'                                as film_quote_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.start_film(uuid,text,text)'::regprocedure) = 'edc65ceb6378e5e3bfe6e4b3c46ef699'                              as film_start_gate,
+--     where oid = 'public.start_film(uuid,text,text)'::regprocedure) = '45c36b8ebc8bd71bbf2ebc60243b718b'                              as film_start_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.api_create_video(text,text,jsonb,text,text,text)'::regprocedure) = '84477b7bff7fe4e2ec50376a4e5bb72e'       as video_api_gate,
 --   (select count(*) = 1 from pg_trigger where tgname = 'adult_attestation_hold_gate'

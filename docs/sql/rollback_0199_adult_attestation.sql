@@ -1,8 +1,8 @@
 -- rollback_0199_adult_attestation.sql — takes migration 0199 (the adult attestation gate) out of the quote and job path.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK: 0036's quote_creative_job and creative_platform_reserve, 0075's route_model, 0125's sellable_models, 0174's
---   create_creative_job and api_creative_refusal, 0147's api_create_video and 0171's quote_film and start_film, none of which asks
+-- WHAT COMES BACK: 0036's quote_creative_job and creative_platform_reserve, 0075's route_model, 0188's sellable_models, 0174's
+--   create_creative_job and api_creative_refusal, 0147's api_create_video, 0171's quote_film and 0187's start_film, none of which asks
 --   for an age answer, and no hold gate. A requires_adult model is then sold to anyone, and a person who said they are under 18 is
 --   sold everything: apply this only while no requires_adult model is on sale, and say so to the owner.
 -- WHAT IS KEPT: the record. adult_attestations (its rows, its RLS and its append-only triggers) stays as it is: who answered what
@@ -28,12 +28,12 @@ begin
   for r in select * from (values
       ('public.quote_creative_job(uuid, text, text, jsonb)', 'ce54b243814e7e8205e8f2c200f05adc'),
       ('public.route_model(text, jsonb, text, uuid, text)', '446a8891a780d38237af38e46c24349a'),
-      ('public.sellable_models(text, text)', 'baeea1418bed413cab7bcf7bf5113ecd'),
+      ('public.sellable_models(text, text)', '0e69dd8226d0ba7ee7f71b5481844488'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '5d373e69b2b33c9a461a245d46c0047f'),
       ('public.api_creative_refusal(text, text, text)', '689a675e9ff2d1b6df46ccd89f351589'),
       ('public.creative_platform_reserve(uuid, text, numeric)', '8e8e0cc80de8f21793897af0223a7044'),
       ('public.quote_film(uuid, integer)', 'e67c0d25f9872b6e9ff19e9d06e95261'),
-      ('public.start_film(uuid, text, text)', 'edc65ceb6378e5e3bfe6e4b3c46ef699'),
+      ('public.start_film(uuid, text, text)', '45c36b8ebc8bd71bbf2ebc60243b718b'),
       ('public.api_create_video(text, text, jsonb, text, text, text)', '84477b7bff7fe4e2ec50376a4e5bb72e')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
@@ -362,7 +362,7 @@ $$;
 revoke all on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) from public, anon, authenticated, service_role;
 grant execute on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated;
 
--- sellable_models: 0125's body, verbatim (0125_model_shutdown.sql).
+-- sellable_models: 0188's body, verbatim (0188_recraft_web_mcp.sql).
 create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
   returns table (
     id text, display_name text, provider text, capabilities text[], availability text,
@@ -440,7 +440,11 @@ begin
                            on vp.unit = m.credit_unit || '_' || regexp_replace(lower(vk.variant), '[^a-z0-9]', '_', 'g')
                         where vp.credits_per_unit > 0))
        and (p_capability is null or p_capability = any (m.capabilities))
-       and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') <> 'web_only')
+       -- 0188: 'web_mcp' is sold on the web and to the 'mcp' surface (our own signed-in connector), never to 'api' (the public
+       -- developer API: a vendor's written permission can stop short of it). Only 'any' opens 'api'; a value this file does not
+       -- know opens nothing but the web (fail closed).
+       and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') = 'any'
+            or (p_surface = 'mcp' and m.spec ->> 'api_exposure' = 'web_mcp'))
        and (p_surface = 'web' or not ('captions' = any (m.capabilities)))
      order by m.provider, m.id;
 end
@@ -624,7 +628,7 @@ $$;
 revoke all on function public.quote_film(uuid, integer) from public, anon, authenticated, service_role;
 grant execute on function public.quote_film(uuid, integer) to authenticated;
 
--- start_film: 0171's body, verbatim (0171_films_money.sql).
+-- start_film: 0187's body, verbatim (0187_rights_acknowledgement_inputs.sql).
 create or replace function public.start_film(p_film uuid, p_quote_id text, p_idempotency_key text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -735,6 +739,16 @@ begin
   if q ->> 'quote_id' <> p_quote_id then
     return jsonb_build_object('ok', false, 'reason', 'price_changed', 'code', 'NS409',
                               'detail', format('the price is now %s credits; quote it again', total));
+  end if;
+  -- 0187: a film sends the person's own files to its models too (a clip's uploaded first or last frame; a key frame's
+  -- reference pictures, @characters and style kit). A model that requires a rights acknowledgement refuses here, after the
+  -- price (a line refused anyway never asks) and before the hold and every take, unless THIS person (the one starting the
+  -- film, who pays for it) acknowledged each such file at the CURRENT text version. The takes' jobs are written later by the
+  -- worker, never through create_creative_job, so this is the only place a film asks.
+  bad := public.film_acknowledgement_missing(f, uid);
+  if bad is not null then
+    return jsonb_build_object('ok', false, 'reason', 'acknowledgement_required', 'code', 'NS400',
+      'detail', format('kind=%s version=%s subject=%s', bad ->> 'kind', coalesce(bad ->> 'text_version', 'none'), bad ->> 'subject'));
   end if;
 
   -- The hold: 0020's reserve_credits in the admin's own session, before anything is created. Its two refusals (NS402 with available
@@ -950,12 +964,12 @@ begin
   for r in select * from (values
       ('public.quote_creative_job(uuid, text, text, jsonb)', '8494b320cece395444edec700a2f1696'),
       ('public.route_model(text, jsonb, text, uuid, text)', 'e4344e61983e7decb4b1eac73761fbf0'),
-      ('public.sellable_models(text, text)', 'ea8add748052456a6ef8898b4c87d610'),
+      ('public.sellable_models(text, text)', '0ab9e7da07b4347010a887c5118d5150'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d'),
       ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a'),
       ('public.creative_platform_reserve(uuid, text, numeric)', '4a61076948e0dd8992d37de2a9016607'),
       ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5'),
-      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38'),
+      ('public.start_film(uuid, text, text)', '5468183a8f24a48f708efcbbf9d2d22c'),
       ('public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
       raise exception 'rollback 0199 end state: % is not its earlier body', r.sig;

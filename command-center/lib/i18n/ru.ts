@@ -7,6 +7,7 @@ import { madeForKidsRu } from "./made-for-kids/ru";
 import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { rightsAckRu } from "./rights-acknowledgement/ru";
+import { voiceCatalogRu } from "./voice-catalog/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
@@ -3190,6 +3191,7 @@ export const ru: Dictionary = {
   channelRisk: channelRiskRu,
   customVoice: customVoiceRu,
   rightsAck: rightsAckRu,
+  voiceCatalog: voiceCatalogRu,
   accountSecurity: {
     cancel: "Отмена",
     title: "Аккаунт и безопасность",
@@ -4007,6 +4009,7 @@ export const ru: Dictionary = {
     reasons: {
       policy: "Проверка безопасности отклонила запрос. Измените описание и попробуйте снова.",
       bad_request: "Эти настройки не приняты. Измените их и попробуйте снова.",
+      plan: "Тариф провайдера этого не позволяет. Для озвучки выберите стандартный голос и попробуйте снова.",
       busy: "Сервис был перегружен или не успел. Попробуйте через несколько минут.",
       service: "Что-то пошло не так на нашей стороне. Попробуйте снова или выберите другую модель.",
       credits: "Не удалось проверить кредиты для этой генерации, поэтому она не запустилась.",

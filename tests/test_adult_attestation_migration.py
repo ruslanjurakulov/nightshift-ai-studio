@@ -35,12 +35,12 @@ SCHEMA = json.loads((ROOT / "schemas" / "model_registry.schema.json").read_text(
 REPLACED = {
     "quote_creative_job": ("0036_creative_jobs.sql", "8494b320cece395444edec700a2f1696", "ce54b243814e7e8205e8f2c200f05adc", 1),
     "route_model": ("0075_model_router.sql", "e4344e61983e7decb4b1eac73761fbf0", "446a8891a780d38237af38e46c24349a", 4),
-    "sellable_models": ("0125_model_shutdown.sql", "ea8add748052456a6ef8898b4c87d610", "baeea1418bed413cab7bcf7bf5113ecd", 1),
+    "sellable_models": ("0188_recraft_web_mcp.sql", "0ab9e7da07b4347010a887c5118d5150", "0e69dd8226d0ba7ee7f71b5481844488", 1),
     "create_creative_job": ("0174_rights_acknowledgement.sql", "88107b00b0a8c143606ed17f5898c98d", "5d373e69b2b33c9a461a245d46c0047f", 1),
     "api_creative_refusal": ("0174_rights_acknowledgement.sql", "e6ec45d0d912389a05eb2d40261c2c2a", "689a675e9ff2d1b6df46ccd89f351589", 1),
     "creative_platform_reserve": ("0036_creative_jobs.sql", "4a61076948e0dd8992d37de2a9016607", "8e8e0cc80de8f21793897af0223a7044", 1),
     "quote_film": ("0171_films_money.sql", "8839e2cb264663acf98c6f49aaaf89a5", "e67c0d25f9872b6e9ff19e9d06e95261", 2),
-    "start_film": ("0171_films_money.sql", "63510a6d9c456e66f658353bab592d38", "edc65ceb6378e5e3bfe6e4b3c46ef699", 1),
+    "start_film": ("0187_rights_acknowledgement_inputs.sql", "5468183a8f24a48f708efcbbf9d2d22c", "45c36b8ebc8bd71bbf2ebc60243b718b", 1),
     "api_create_video": ("0147_mcp_free_tier.sql", "cba47be1a674f5cea3b5d7443bc31bab", "84477b7bff7fe4e2ec50376a4e5bb72e", 1),
 }
 NEW_FUNCTIONS = ["adult_attestations_append_only", "model_requires_adult", "adult_attestation_state", "adult_attestation_missing",

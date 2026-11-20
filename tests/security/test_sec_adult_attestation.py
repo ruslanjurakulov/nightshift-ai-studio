@@ -434,8 +434,8 @@ GATED = ("public.quote_creative_job(uuid,text,text,jsonb)", "public.route_model(
          "public.api_creative_refusal(text,text,text)", "public.creative_platform_reserve(uuid,text,numeric)",
          "public.quote_film(uuid,integer)", "public.start_film(uuid,text,text)",
          "public.api_create_video(text,text,jsonb,text,text,text)")
-#: The bodies the rollback puts back (0036, 0171, 0171, 0147's), by GATED index.
-EARLIER = {5: "4a61076948e0dd8992d37de2a9016607", 6: "8839e2cb264663acf98c6f49aaaf89a5", 7: "63510a6d9c456e66f658353bab592d38",
+#: The bodies the rollback puts back (0036's, 0171's, 0187's, 0147's), by GATED index.
+EARLIER = {5: "4a61076948e0dd8992d37de2a9016607", 6: "8839e2cb264663acf98c6f49aaaf89a5", 7: "5468183a8f24a48f708efcbbf9d2d22c",
            8: "cba47be1a674f5cea3b5d7443bc31bab"}
 
 

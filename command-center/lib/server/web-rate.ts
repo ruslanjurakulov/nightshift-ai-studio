@@ -23,6 +23,12 @@ export interface RateRule {
 }
 
 export const VOICE_LIST_RATE: RateRule = { bucket: "elevenlabs.voices", max: 20, windowSeconds: 3600 };
+/**
+ * The Studio's speech voice list (GET /api/creative/voices), per member. Reading the list spends no characters,
+ * but each miss of the route's short cache is a call on the platform's ElevenLabs key: a person opening the
+ * Voice tab a few times an hour is the real use, a loop is not.
+ */
+export const STUDIO_VOICE_LIST_RATE: RateRule = { bucket: "studio.voices", max: 30, windowSeconds: 3600 };
 export const VOICE_PREVIEW_RATE: RateRule = { bucket: "elevenlabs.preview", max: 10, windowSeconds: 3600 };
 /** Notification channel controls (pause, disconnect, language): a few real edits, not a loop. The link, test and
  *  preference calls are limited again inside their own database functions (0102). */

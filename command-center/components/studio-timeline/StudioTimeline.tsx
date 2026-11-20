@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -236,7 +237,9 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
   const inspectorRef = useRef<HTMLElement>(null);
   const pRef = useRef(p);
   pRef.current = p;
-  useEffect(() => {
+  // Added in the commit that draws the page (a layout effect), so a key pressed the moment it is on screen is heard: as a passive
+  // effect it could be added after that press (the CI flakes on #824).
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!shortcutAllowed(e.target, inspectorRef.current)) return;
       const a = keyAction(e);
