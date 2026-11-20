@@ -160,3 +160,7 @@
 .oa-slider select {
   background: var(--oa-surface); color: var(--oa-ink); border: 1px solid var(--oa-rule); border-radius: 8px; padding: 6px 8px; min-height: 36px;
 }
+.oa-sliders { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.oa-slider-head { display: flex; justify-content: space-between; gap: 8px; }
+.oa-slider input[type="range"] { min-height: 32px; }
+.oa-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 0.875rem; }

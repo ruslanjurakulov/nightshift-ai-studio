@@ -59,7 +59,8 @@ What a scan of the code found (every cookie constant, every `localStorage` and
 - **First-party cookies, all strictly necessary:** the sign-in session
   (Supabase's own cookies), `chronos_locale` (language), `ns_view`
   (Mobile/Desktop), `chronos_channel`, `nightshift_org`, `ns_sidebar` (signed
-  in: last channel, organization, menu width), `ns_auth_pending`, `ns_recovery`,
+  in: last channel, organization, menu width), `ns_owner_mode` (platform owner
+  only: owner sections or the customer view), `ns_auth_pending`, `ns_recovery`,
   `ns_invite` (10 min / 15 min / 24 h, one purpose each), and the connect-flow
   nonces `__Host-yt_oauth_nonce`, `ig_oauth_nonce`, `tt_oauth_nonce`, `tt_oauth_pkce`
   (10 min), and `__Host-ns_connect_pending` (the held sign-in handle while an account is picked, 10 min, httpOnly).

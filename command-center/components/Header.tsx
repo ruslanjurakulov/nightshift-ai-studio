@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Plus, Search } from "lucide-react";
+import { PROJECTS, sidebarCurrent } from "@/lib/navigation";
 
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
@@ -109,25 +111,30 @@ export function Header({
   }
 
   if (!operator) {
+    const section = "/" + pathname.split("/").slice(2).join("/");
+    const here = sidebarCurrent(section);
+    const hereLabel = here && here in t.nav ? t.nav[here as keyof typeof t.nav] : null;
     return (
-      <header className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6">
+      <header className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6" data-customer-topbar="">
         <div className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
-          {/* The wordmark lives in the sidebar from `lg` up. The N is 30px high from 375px wide, 28px from
-              351 to 374, 26px from 331 to 350 and 22px below (lettering 14.6, 13.7, 12.7 and 10.7px): the
-              widest that leaves the credit key (up to 12,345) and the bell on this row with room to spare
-              (measured in tools/visual-qa/account-tab.mjs). The account is not on this bar any more, so
-              the lockup got back the width the round button took. */}
-          <Link
-            href={path("/create")}
-            aria-label={t.brand.name}
-            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:30px] max-[374px]:[--wm-h:28px] max-[350px]:[--wm-h:26px] max-[330px]:[--wm-h:22px] lg:hidden"
-          >
-            <Wordmark />
-          </Link>
-          {/* The organization and channel, when there is more than one to choose
-              between (each renders nothing otherwise): beside the wordmark on a
-              wide screen, a row of their own under the bar on a phone. */}
-          <div className="order-last flex w-full min-w-0 items-center gap-2 empty:hidden sm:order-none sm:mr-auto sm:w-auto">
+          {/* Left: the N and where you are. From `lg` the sidebar carries the full lockup, so the bar keeps only the trail. */}
+          <nav aria-label={t.customerApp.shell.breadcrumb} className="flex min-w-0 shrink items-center gap-2">
+            <Link
+              href={path("/home")}
+              aria-label={t.brand.name}
+              className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:28px] lg:hidden"
+            >
+              <Wordmark mark />
+            </Link>
+            {hereLabel && (
+              <span className="flex min-w-0 items-center gap-2 text-sm">
+                <span aria-hidden className="text-[var(--color-muted)] lg:hidden">/</span>
+                <span aria-current="page" className="truncate font-medium text-[var(--color-fg)]">{hereLabel}</span>
+              </span>
+            )}
+          </nav>
+          {/* The organization and channel, when there is more than one to choose between (each renders nothing otherwise). */}
+          <div className="order-last flex w-full min-w-0 items-center gap-2 empty:hidden sm:order-none sm:w-auto">
             <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
             <ChannelSwitcher channels={channels} selection={selection} />
           </div>
@@ -139,27 +146,29 @@ export function Header({
                 aria-label={t.ops.palettePlaceholder}
                 className="btn-sky is-quiet pill h-10 gap-2 px-3.5"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="m21 21-4.3-4.3" />
-                </svg>
+                <Search aria-hidden className="size-4" strokeWidth={2} />
+                <span className="hidden text-sm md:inline">{t.customerApp.shell.search}</span>
                 <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
               </button>
             </span>
             <CreditMenu account={account} plan={plan} stale={stale} />
-            {/* The customer's own, database-backed inbox (migration 0064); the
-                operator's bar below keeps the event-derived feed. */}
+            {/* The customer's own, database-backed inbox (migration 0064). */}
             <NotificationBell orgId={currentOrgId} channels={channels} />
             <span className="hidden sm:contents">
               <LanguageSelector />
-              <ThemeToggle />
-              <span className="hidden md:contents">
-                <ViewModeToggle showLabel compact />
-              </span>
             </span>
-            {/* No account button here: on a phone and tablet the account is the
-                bottom bar's last tab (the initial, then Settings → Account), and
-                from `lg` up it is the sidebar's user card. */}
+            {/* "+ New project": the projects shelf, where a project is started. A link: nothing is made or spent by it. */}
+            {/* A span, not `hidden` on the key: .btn-sky sets its own display, which beats the utility. */}
+            <span className="hidden md:contents">
+              <Link href={path(PROJECTS)} className="btn-sky pill h-10 items-center gap-1.5 px-3.5 text-sm font-medium" data-testid="topbar-new-project">
+                <Plus aria-hidden className="size-4" strokeWidth={2.25} />
+                {t.customerApp.shell.newProject}
+              </Link>
+            </span>
+            {/* Below `lg` there is no sidebar card: the account (and Owner mode, for the owner) is this round button. */}
+            <span className="lg:hidden">
+              <AccountMenu email={email} avatarV={avatarV} />
+            </span>
           </div>
         </div>
       </header>

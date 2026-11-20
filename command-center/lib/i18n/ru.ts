@@ -11,6 +11,7 @@ import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
@@ -68,6 +69,7 @@ export const ru: Dictionary = {
   libraryUx: libraryUxRu,
   assetDownload: assetDownloadRu,
   ownerShell: ownerShellRu,
+  customerApp: customerAppRu,
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
@@ -118,6 +120,7 @@ export const ru: Dictionary = {
     menu: "Меню",
     command: "Центр управления",
     create: "Создать",
+    projects: "Проекты",
     videos: "Видео",
     pipeline: "Конвейер",
     agents: "Агенты",
@@ -434,7 +437,7 @@ export const ru: Dictionary = {
     stepCreateNeedsChannel: "Для полного видео на YouTube нужен подключённый канал.",
     open: "Открыть",
     done: "Готово",
-    finish: "Перейти в Центр управления",
+    finish: "На главную",
     finishStudio: "Открыть Nightshift Studio с вашим примером",
     unavailable: "Не удалось загрузить рабочее пространство. Обновите страницу через минуту.",
     welcomeCredits: "В вашем рабочем пространстве {n} бесплатных кредитов (≈ один Short) — подарок к старту.",
@@ -3745,6 +3748,7 @@ export const ru: Dictionary = {
       model_not_sellable: "Эта модель сейчас недоступна.",
       model_temporarily_off: "Эта модель временно недоступна. Ничего не списано. Выберите другую модель или попробуйте позже.",
       country_blocked: "Эта модель недоступна в вашем регионе. Ничего не списано. Выберите другую модель из списка.",
+      prompt_required: "Этой модели нужны слова: опишите движение или кадр, и появится цена. Ничего не списано.",
       entitlement_required: "Эта модель пока не открыта для вашей организации.",
       unpriced: "У этой модели ещё нет цены, поэтому её нельзя использовать.",
       capability_not_supported: "Такой вид генерации пока недоступен.",
@@ -3943,6 +3947,7 @@ export const ru: Dictionary = {
       no_model: "Сейчас это не может сделать ни одна модель.",
       need_picture: "Выберите картинку, чтобы увидеть цену.",
       need_words: "Опишите, что нужно, чтобы увидеть цену.",
+      need_motion_words: "{model} нужно описание движения: напишите, что происходит в кадре, чтобы увидеть цену.",
       need_recording: "Выберите аудио или видео, чтобы увидеть цену.",
       need_voice: "Выберите голос, чтобы увидеть цену.",
       need_language: "Выберите язык, чтобы увидеть цену.",

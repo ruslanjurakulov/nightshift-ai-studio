@@ -27,6 +27,10 @@ on:
         description: "One model id from schemas/model_registry.json (empty = every model; each probe is a paid call)"
         required: false
         default: ""
+      voice_id:
+        description: "ElevenLabs voice for the speech probes: a voice id picked from the account's voice list (20 letters and digits). Empty = the ELEVENLABS_VOICE_ID variable"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -63,6 +67,9 @@ jobs:
       - name: Probe
         env:
           MODEL_ID: ${{ github.event.inputs.model }}
+          # Its own input, so a probe never needs ELEVENLABS_VOICE_ID set: daily_video.yml and deploy_web.yml read
+          # that variable too, and setting it just to probe would change the bot's voice.
+          VOICE_INPUT: ${{ github.event.inputs.voice_id }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -109,6 +116,14 @@ jobs:
           else
             args+=(--all)
             scope="every model whose vendor terms gate is clear and whose announced shutdown date has not come (those are only probed when named)"
+          fi
+          # A voice id is 20 letters and digits (the CLAUDE.md ceiling); anything else is refused before any call.
+          if [[ -n "$VOICE_INPUT" ]]; then
+            if [[ ! "$VOICE_INPUT" =~ ^[A-Za-z0-9]{20}$ ]]; then
+              echo "::error::the voice_id input must be a voice id from the account's voice list: 20 letters and digits"
+              exit 1
+            fi
+            args+=(--voice-id "$VOICE_INPUT")
           fi
           out="$RUNNER_TEMP/probe.txt"
           set +e
