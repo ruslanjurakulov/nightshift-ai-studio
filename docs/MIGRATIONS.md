@@ -2008,6 +2008,9 @@ its reads. Read-only over existing tables, plus one log of its own.
   `provider_balances` (the operator bot's stale/zero alerts and Billing read that as the provider's own word). Nothing calls a provider.
 - **Writes** go through `owner_costs_write_guard()`: owner, 0107's second factor, and 60 writes per 10 minutes (`take_web_rate`).
 - **Monthly costs.** `owner_cost_entries` (closed), written by `owner_analytics_cost_add / _delete`, read by `owner_analytics_costs`.
+- **Provider runway.** `owner_analytics_model_activity(from, to)` (at most 200 days): creative jobs per model and unit — counts by
+  outcome, units, first and last time, and how the newest job ended (status, error_code). Every workspace counts: all spend the
+  provider's balance. Counts only, no amount and no customer.
 - **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
 - Lab: `tests/security/sec_owner_costs_0183.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0183_owner_costs.sql`.
 

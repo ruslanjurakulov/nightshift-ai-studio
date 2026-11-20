@@ -23,6 +23,9 @@ import { costEntriesTable, monthlyTable, spendModelsTable, spendProvidersTable }
 import { tashkentDayStartUtc } from "@/lib/owner-analytics/period";
 import { monthlyTotals, quarterlyTotals, registerRows, registerTable, totalsTable } from "@/lib/owner-analytics/tax";
 import { readActivityFor, readCohortActivity, readMoneyFor } from "./owner-analytics-data";
+import { readRunway } from "./owner-runway";
+import { providerRunways } from "@/lib/owner-analytics/runway";
+import { runwayModelsTable, runwayProvidersTable } from "@/lib/owner-analytics/runway-tables";
 
 /** Every table the hub can export, by the name its export button sends. Anything else is refused before anything is read. */
 export const EXPORTABLE = [
@@ -46,6 +49,8 @@ export const EXPORTABLE = [
   "tax.monthly",
   "tax.quarterly",
   "report.full",
+  "runway.providers",
+  "runway.models",
 ] as const;
 export type Exportable = (typeof EXPORTABLE)[number];
 export const isExportable = (v: unknown): v is Exportable => typeof v === "string" && (EXPORTABLE as readonly string[]).includes(v);
@@ -81,6 +86,14 @@ export async function buildExport(
     const k = revenueKpis(rows, act, p);
     const prev = sel.previous ? revenueKpis(rows, activity?.previous ? act : null, sel.previous) : null;
     return done(overviewTable(d, k, prev, p, present));
+  }
+  if (what.startsWith("runway.")) {
+    // A runway is measured up to now, whatever period is picked (the page says the same).
+    const nowMs = Date.now();
+    const data = await readRunway(nowMs);
+    if (!data) return { ok: false, reason: "error" };
+    const rows = providerRunways(data);
+    return { ok: true, table: what === "runway.providers" ? runwayProvidersTable(d, rows, nowMs) : runwayModelsTable(d, rows, nowMs) };
   }
   if (what.startsWith("tax.")) {
     const money = await readMoneyFor(sel);

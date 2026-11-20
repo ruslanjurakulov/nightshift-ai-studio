@@ -10,13 +10,14 @@ import { delta } from "@/lib/owner-analytics/period";
 import { fill, pct } from "@/lib/owner-analytics/format";
 import { PeriodPicker, PresentToggle, ExportButtons, RetryButton } from "./Controls";
 
-export type Section = "overview" | "revenue" | "users" | "usage" | "costs" | "forecast" | "tax";
+export type Section = "overview" | "revenue" | "users" | "usage" | "costs" | "runway" | "forecast" | "tax";
 const SECTIONS: Array<{ key: Section; path: string; label: keyof Dictionary["ownerAnalytics"] }> = [
   { key: "overview", path: "owner-analytics", label: "tabOverview" },
   { key: "revenue", path: "owner-analytics/revenue", label: "tabRevenue" },
   { key: "users", path: "owner-analytics/users", label: "tabUsers" },
   { key: "usage", path: "owner-analytics/usage", label: "tabUsage" },
   { key: "costs", path: "owner-analytics/costs", label: "tabCosts" },
+  { key: "runway", path: "owner-analytics/runway", label: "tabRunway" },
   { key: "forecast", path: "owner-analytics/forecast", label: "tabForecast" },
   { key: "tax", path: "owner-analytics/tax", label: "tabTax" },
 ];

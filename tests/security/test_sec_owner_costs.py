@@ -29,8 +29,9 @@ CALLS = [
     ("select public.owner_analytics_cost_add('2026-10-01', 'tools', 10, 'x')", None),
     ("select public.owner_analytics_cost_delete(1)", None),
     ("select * from public.owner_analytics_costs('2026-01-01', '2026-12-01')", None),
+    ("select * from public.owner_analytics_model_activity(now() - interval '7 days', now())", None),
 ]
-IDS = ["spend", "balances", "balance_enter", "cost_add", "cost_delete", "costs"]
+IDS = ["spend", "balances", "balance_enter", "cost_add", "cost_delete", "costs", "model_activity"]
 
 
 @contextmanager
@@ -133,3 +134,26 @@ def test_with_the_mfa_gate_on_a_password_only_owner_cannot_write(conn, sc):
     assert not add.ok and add.sqlstate == "NS401", add
     assert not bal.ok and bal.sqlstate == "NS401", bal
     assert read.ok, read
+
+
+def test_model_activity_counts_every_workspace_and_says_how_the_newest_job_ended(conn, sc):
+    """The provider runway's job counts: every workspace's jobs spend the provider's balance, the operator's own included,
+    and a model whose newest job was refused with error_code 'quota' must say so (the runway reads it as EMPTY)."""
+    q = "select * from public.owner_analytics_model_activity(now() - interval '1 day', now() + interval '1 minute')"
+    with world(conn, sc):
+        with as_superuser(conn, commit=False) as su:
+            su.rows("insert into public.creative_jobs (org_id, capability, requested_model, params, status, quoted_credits, error_code, "
+                    "created_at) values (%s, 't2i', 'm-oclab', '{}', 'failed', 1, 'quota', now() + interval '1 second') returning 1",
+                    [sc.alice.org])
+            out = _call(conn, sc.operator, q)
+    assert out.ok, out
+    row = [r for r in out.rows if r[0] == "m-oclab"]
+    assert len(row) == 1, out.rows
+    model, unit, jobs, completed, failed, quota, *_rest, last_status, last_error = row[0]
+    assert (jobs, completed, failed, quota) == (4, 3, 1, 1), row
+    assert (last_status, last_error) == ("failed", "quota"), row
+
+
+def test_model_activity_refuses_an_unbounded_window(conn, sc):
+    out = _call(conn, sc.operator, "select * from public.owner_analytics_model_activity(now() - interval '201 days', now())")
+    assert not out.ok and out.sqlstate == "22023", out
