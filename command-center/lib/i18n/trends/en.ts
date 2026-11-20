@@ -4,7 +4,7 @@ export const trendsEn = {
   subtitle: "Ready formats for short videos and posts. Pick one and Create opens with it. You only replace the words in {braces}.",
   note: "Nothing is charged or started on this page. Create shows the price and asks you to confirm.",
   filterLabel: "Category",
-  categories: { all: "All", business: "Business", story: "Storytelling", lifestyle: "Lifestyle", text: "Text and quotes" },
+  categories: { all: "All", viral: "Trending effects", business: "Business", story: "Storytelling", lifestyle: "Lifestyle", text: "Text and quotes" },
   kind: { video: "Video", image: "Image" },
   seconds: "{n} s",
   use: "Use template",

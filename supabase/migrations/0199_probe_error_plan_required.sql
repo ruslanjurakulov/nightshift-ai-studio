@@ -21,7 +21,7 @@
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
 -- only holds inside one. The table is append-only and small; the lock is held for the validation only.
 --
--- NUMBER. 0199 is a placeholder: the coordinator assigns the real number at merge (main ends at 0185 as this is written).
+-- NUMBER. 0199 is a placeholder: the coordinator assigns the real number at merge (main ends at 0186 as this is written).
 --
 -- UNDO: docs/sql/rollback_0199_probe_error_plan_required.sql (owner-applied).
 
