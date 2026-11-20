@@ -64,7 +64,8 @@ face it does not show.
 ## Keys and controls
 
 ```tsx
-import { Button, IconButton, Toggle, buttonClass } from "@/components/ds/Button";
+import { Button, IconButton, Toggle } from "@/components/ds/Button";   // Client Components
+import { buttonClass } from "@/components/ds/button-class";             // anywhere, Server Components included
 
 <Button variant="primary">{t.x.create}</Button>
 <Button variant="primary" loading={saving} busyLabel={t.x.saving}>{t.x.save}</Button>
@@ -80,8 +81,14 @@ Variants: `primary` (one per view; glows on hover), `secondary`, `quiet`,
 label; the key stays focusable and swallows a second press). The components
 hold no strings — every label comes from `lib/i18n/{en,ru,uz}`.
 
-The classes are unlayered (like the older `.btn-*`), so a Tailwind utility will
-not override their padding or colour: use the size/variant modifiers instead.
+`buttonClass` lives in `components/ds/button-class.ts`, a plain module: import it
+from there in a Server Component (a function exported from the `"use client"`
+`Button.tsx` throws when a server calls it). `Button.tsx` re-exports it for
+client code.
+
+The component rules are in `@layer components`, so a Tailwind utility in
+`className` wins over them. The focus rings and the controls' edges are kept
+out of reach of the app's unlayered defaults (tested).
 
 Live specimen, both themes: `/{channel}/design` (operator only), "Keys and
 controls (--ds)".

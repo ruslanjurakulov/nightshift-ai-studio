@@ -143,6 +143,14 @@ describe("the display face (Unbounded)", () => {
   });
 });
 
+describe("buttonClass is usable from a Server Component", () => {
+  it("lives in a plain module (no \"use client\"), so a server page can call it", () => {
+    const src = readFileSync(path.join(root, "components/ds/button-class.ts"), "utf8");
+    expect(src).not.toMatch(/^\s*["']use client["']/m);
+    expect(src).toMatch(/export function buttonClass/);
+  });
+});
+
 describe("Button", () => {
   it("builds the class list from variant, size and shape", () => {
     expect(buttonClass({ variant: "primary" })).toBe("ds-btn ds-btn--primary");

@@ -9,23 +9,11 @@ import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
  * stay in lib/i18n.
  */
 
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
-export type ButtonSize = "sm" | "md" | "lg";
+import { buttonClass, type ButtonSize, type ButtonVariant } from "@/components/ds/button-class";
 
-export function buttonClass({
-  variant = "secondary",
-  size = "md",
-  icon = false,
-  block = false,
-  className,
-}: { variant?: ButtonVariant; size?: ButtonSize; icon?: boolean; block?: boolean; className?: string } = {}): string {
-  const parts = ["ds-btn", `ds-btn--${variant}`];
-  if (size !== "md") parts.push(`ds-btn--${size}`);
-  if (icon) parts.push("ds-btn--icon");
-  if (block) parts.push("ds-btn--block");
-  if (className) parts.push(className);
-  return parts.join(" ");
-}
+// Re-exported for Client Components; a Server Component imports it from "@/components/ds/button-class" (a function exported
+// from a "use client" module cannot be called on the server).
+export { buttonClass, type ButtonSize, type ButtonVariant };
 
 type BaseProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-busy" | "aria-disabled"> & {
   variant?: ButtonVariant;
