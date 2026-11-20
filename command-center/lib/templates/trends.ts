@@ -28,7 +28,8 @@ export const TEMPLATE_MEDIA_BUCKET = "template-media";
 export const HOME_TEMPLATE_LIMIT = 6;
 export const MAX_TEMPLATE_LIMIT = 50;
 
-export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
+/** Mirrors 0181's slug CHECK: at least one hyphen, so it is never a Studio starter id (those use underscores). */
+export const SLUG_RE = /^(?=.{3,48}$)[a-z0-9]+(-[a-z0-9]+)+$/;
 // Mirrors 0181's creative_templates_media_path_check: no scheme, no host, no "..", so a URL can only point at our bucket.
 const VIDEO_PATH_RE = /^[a-z0-9][a-z0-9_/-]{0,150}\.(mp4|webm)$/;
 const IMAGE_PATH_RE = /^[a-z0-9][a-z0-9_/-]{0,150}\.(webp|jpg|jpeg|png)$/;
@@ -109,10 +110,10 @@ export function coerceTemplateRows(rows: unknown): TemplateRow[] {
     const duration = r.duration_s;
     if (r.kind === "video" && !(duration === 5 || duration === 10)) continue;
     if (r.kind === "image" && duration !== null && duration !== undefined) continue;
-    const preview = typeof r.preview_asset_path === "string" && VIDEO_PATH_RE.test(r.preview_asset_path) && !r.preview_asset_path.includes("..")
+    const preview = typeof r.preview_asset_path === "string" && VIDEO_PATH_RE.test(r.preview_asset_path) && !r.preview_asset_path.includes("//")
       ? r.preview_asset_path
       : null;
-    const poster = typeof r.poster_path === "string" && IMAGE_PATH_RE.test(r.poster_path) && !r.poster_path.includes("..")
+    const poster = typeof r.poster_path === "string" && IMAGE_PATH_RE.test(r.poster_path) && !r.poster_path.includes("//")
       ? r.poster_path
       : null;
     out.push({
@@ -208,7 +209,10 @@ export function parseListQuery(
   return { ok: true, category: cat ? (cat as TemplateCategory) : null, limit, locale: loc ? (loc as Locale) : null };
 }
 
-/** The Create screen's address for a template (S1 reads ?template=). Following it only fills the form. */
+/**
+ * The Create screen's address for a template (the S1 Create stream reads ?template=; a trend slug always holds a hyphen, a
+ * Studio starter id never does, so the two cannot be confused). Following it only fills the form.
+ */
 export function templateCreateHref(slug: string): string {
   return `/create?template=${encodeURIComponent(slug)}`;
 }

@@ -20,7 +20,8 @@ export function TrendsStrip() {
   const { state, retry } = useTemplates(locale, HOME_TEMPLATE_LIMIT);
   const reduced = useReducedMotion();
   const canHover = useCanHover();
-  if (state.phase === "not_enabled" || (state.phase === "ok" && state.templates.length === 0)) return null;
+  // Hidden when there is nothing to show, the feature is off here, or the session ended (the shell's own bar says that).
+  if (state.phase === "not_enabled" || state.phase === "signed_out" || (state.phase === "ok" && state.templates.length === 0)) return null;
 
   return (
     <section className="flex flex-col gap-3" aria-label={tt.homeTitle} data-trends-strip="">

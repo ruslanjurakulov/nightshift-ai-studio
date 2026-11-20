@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const query = parseListQuery(new URL(request.url).searchParams);
-  if (!query.ok) return NextResponse.json({ error: query.error }, { status: 400 });
+  if (!query.ok) return NextResponse.json({ error: query.error }, { status: 400, headers: { "Cache-Control": "private, no-store" } });
   const locale = query.locale ?? (await getLocale());
   const result = await loadTemplates({ locale, category: query.category, limit: query.limit });
   const body = result.status === "ok" ? { status: "ok", locale, templates: result.templates } : { error: result.status };

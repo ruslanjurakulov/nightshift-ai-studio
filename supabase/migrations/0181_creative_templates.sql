@@ -16,7 +16,9 @@
 --                                    preview, both are NULL and the card draws its designed poster state: no stock or
 --                                    third-party picture is ever used in its place.
 --   set_creative_template_media()    a platform owner/admin (owner_guard, 0107: second factor, rate limit) or the SQL editor sets a
---                                    template's preview, poster and published switch, and one security_events row records it.
+--                                    template's preview, poster and published switch, and one security_events row records a
+--                                    change. A NULL path keeps the stored one ('' clears it), so unpublishing never loses the
+--                                    media; a call that changes nothing writes nothing.
 --
 -- HONEST DEGRADATION. Without this migration /api/templates answers 503 "not_enabled" and the Trends page says so; it never
 -- renders an empty gallery that reads as "there are no templates".
@@ -56,10 +58,12 @@ create table if not exists public.creative_templates (
 comment on table public.creative_templates is
   'Trend templates (0181): ready formats for the Trends gallery. Anyone reads a published row; only the service key and set_creative_template_media() write. Whether model_id is on sale is asked of sellable_models() per request, never stored here.';
 
--- A slug is a URL segment (/api/templates/<slug>, ?template=<slug>): lower-case words and hyphens, nothing a path could misread.
+-- A slug is a URL segment (/api/templates/<slug>, ?template=<slug>): lower-case words joined by hyphens, at least two words.
+-- The hyphen is required on purpose: the Studio's own starter ids share ?template= and are written with underscores
+-- (lib/creative/templates.ts, yt_thumbnail), so a trend slug can never be read as a starter, or a starter as a trend.
 alter table public.creative_templates drop constraint if exists creative_templates_slug_check;
 alter table public.creative_templates add constraint creative_templates_slug_check
-  check (slug ~ '^[a-z0-9][a-z0-9-]{1,47}$');
+  check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)+$' and char_length(slug) <= 48);
 
 -- Every user-visible string in three languages (CLAUDE.md): a row missing one would show a blank card in that language.
 alter table public.creative_templates drop constraint if exists creative_templates_title_check;
@@ -120,6 +124,8 @@ alter table public.creative_templates add constraint creative_templates_sort_che
 
 create index if not exists creative_templates_published_sort_idx
   on public.creative_templates (sort, id) where published;
+-- The foreign key's own index, so model_registry's cascade / restrict checks never scan the table.
+create index if not exists creative_templates_model_id_idx on public.creative_templates (model_id);
 
 create or replace function public.creative_templates_touch() returns trigger
   language plpgsql set search_path = public, pg_temp as $$
@@ -140,7 +146,7 @@ create trigger creative_templates_touch before update on public.creative_templat
 
 alter table public.creative_templates enable row level security;
 
-revoke all on table public.creative_templates from public, anon, authenticated;
+revoke all on table public.creative_templates from public, anon, authenticated, service_role;
 grant select on table public.creative_templates to anon, authenticated;
 grant select, insert, update, delete on table public.creative_templates to service_role;
 
@@ -157,10 +163,8 @@ create policy creative_templates_read on public.creative_templates
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('template-media', 'template-media', true, 52428800,
         array['video/mp4', 'video/webm', 'image/webp', 'image/jpeg', 'image/png'])
-on conflict (id) do update
-  set public = true,
-      file_size_limit = 52428800,
-      allowed_mime_types = array['video/mp4', 'video/webm', 'image/webp', 'image/jpeg', 'image/png'];
+-- do nothing: re-applying this file must not undo a setting the owner later changed on the bucket.
+on conflict (id) do nothing;
 
 -- No insert / update / delete policy on storage.objects for this bucket: the service key (which bypasses RLS) uploads, nobody
 -- else. A public bucket is served by URL without a select policy, so none is added either.
@@ -185,6 +189,9 @@ declare
                      and pg_has_role(invoker::name, 'postgres', 'member');
   g       jsonb;
   old     public.creative_templates%rowtype;
+  -- NULL keeps what is stored, '' clears it: "unpublish" alone must not wipe a preview Studio made.
+  v_prev  text;
+  v_post  text;
 begin
   if not editor then
     -- Signed in and a platform owner/admin, else 42501 before anything is read; then the second factor and a rate limit.
@@ -200,25 +207,30 @@ begin
   if not found then
     return jsonb_build_object('ok', false, 'error', 'not_found');
   end if;
+  v_prev := case when p_preview_asset_path is null then old.preview_asset_path else nullif(p_preview_asset_path, '') end;
+  v_post := case when p_poster_path is null then old.poster_path else nullif(p_poster_path, '') end;
+  if old.published = p_published and old.preview_asset_path is not distinct from v_prev
+     and old.poster_path is not distinct from v_post then
+    -- A retry or a double press: nothing to change, nothing to audit (as 0164's switch).
+    return jsonb_build_object('ok', true, 'slug', p_slug, 'published', p_published, 'changed', false);
+  end if;
   -- The table's path CHECK refuses a bad path (23514); it is not caught, so the caller sees the refusal.
   update public.creative_templates
-     set published = p_published,
-         preview_asset_path = nullif(p_preview_asset_path, ''),
-         poster_path = nullif(p_poster_path, '')
+     set published = p_published, preview_asset_path = v_prev, poster_path = v_post
    where id = old.id;
   -- Not swallowed: a change that cannot be audited rolls back with it.
   perform public.security_event_log('creative_template.media', 'notice', p_slug,
     jsonb_build_object(
       'published', jsonb_build_object('from', old.published, 'to', p_published),
-      'preview', jsonb_build_object('from', old.preview_asset_path, 'to', nullif(p_preview_asset_path, '')),
-      'poster', jsonb_build_object('from', old.poster_path, 'to', nullif(p_poster_path, '')),
+      'preview', jsonb_build_object('from', old.preview_asset_path, 'to', v_prev),
+      'poster', jsonb_build_object('from', old.poster_path, 'to', v_post),
       'via', case when editor then 'sql_editor' else 'admin' end));
-  return jsonb_build_object('ok', true, 'slug', p_slug, 'published', p_published);
+  return jsonb_build_object('ok', true, 'slug', p_slug, 'published', p_published, 'changed', true);
 end
 $$;
 
 comment on function public.set_creative_template_media(text, boolean, text, text) is
-  'Set a trend template''s preview, poster and published switch (0181). A platform owner/admin (owner_guard: second factor, 30 calls per 10 minutes) or the SQL editor; everyone else 42501. Writes one security_events row (creative_template.media).';
+  'Set a trend template''s preview, poster and published switch (0181). A platform owner/admin (owner_guard: second factor, 30 calls per 10 minutes) or the SQL editor; everyone else 42501. A NULL path keeps the stored one, an empty string clears it. A change writes one security_events row (creative_template.media); a call that changes nothing writes none.';
 
 revoke all on function public.set_creative_template_media(text, boolean, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.set_creative_template_media(text, boolean, text, text) to authenticated;
@@ -244,7 +256,7 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      10),
     ('before-after-reveal',
      '{"en":"Before / after","ru":"До и после","uz":"Oldin va keyin"}',
-     '{"en":"One locked-off frame, a clean wipe, and the transformation lands. Made for makeovers and results.","ru":"Один неподвижный кадр, чистая шторка — и преображение. Для ремонта, стиля и результатов.","uz":"Bitta qotirilgan kadr, toza o''tish va o''zgarish ko''rinadi. Ta''mir, uslub va natijalar uchun."}',
+     '{"en":"One locked-off frame, a clean wipe, and the transformation lands. Made for makeovers and results.","ru":"Один неподвижный кадр, чистая шторка — и преображение. Для ремонта, стиля и результатов.","uz":"Bitta qotirilgan kadr, toza oʻtish va oʻzgarish koʻrinadi. Taʼmir, uslub va natijalar uchun."}',
      'business', 'video',
      'Vertical before-and-after reveal. It opens on {before}, flat dull light, static camera. A clean vertical wipe sweeps left to right and reveals {after} in exactly the same framing, bright and polished, warm light. Locked-off camera so both states line up, a satisfying transformation, no text.',
      'minimax-h3', '9:16', 5, '768p',
@@ -260,7 +272,7 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      30),
     ('cinematic-intro',
      '{"en":"Cinematic intro","ru":"Кинематографичное интро","uz":"Kinematografik intro"}',
-     '{"en":"A slow aerial push through fog that settles on an empty sky, ready for your title card.","ru":"Медленный пролёт сквозь туман, который останавливается на чистом небе — под ваш титр.","uz":"Tuman ichidan sekin parvoz va bo''sh osmonda to''xtash — sarlavhangiz uchun tayyor."}',
+     '{"en":"A slow aerial push through fog that settles on an empty sky, ready for your title card.","ru":"Медленный пролёт сквозь туман, который останавливается на чистом небе — под ваш титр.","uz":"Tuman ichidan sekin parvoz va boʻsh osmonda toʻxtash — sarlavhangiz uchun tayyor."}',
      'story', 'video',
      'Cinematic channel intro for {channel_topic}. A slow aerial push through drifting fog over {setting} at blue hour, volumetric light beams, anamorphic lens flare, film grain, an epic mood. The camera rises and settles on a wide empty sky in the centre of the frame, leaving room for a title card. No text, no logos.',
      'minimax-h3-max', '16:9', 10, '768p',
@@ -268,7 +280,7 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      40),
     ('faceless-story',
      '{"en":"Faceless story","ru":"История без лица","uz":"Yuzsiz hikoya"}',
-     '{"en":"A moody scene of hands, silhouettes and places, with a calm lower third left for captions.","ru":"Атмосферная сцена: руки, силуэты и места, с пустой нижней третью под субтитры.","uz":"Qo''llar, siluetlar va joylardan iborat atmosferali sahna, pastki qismi subtitr uchun bo''sh."}',
+     '{"en":"A moody scene of hands, silhouettes and places, with a calm lower third left for captions.","ru":"Атмосферная сцена: руки, силуэты и места, с пустой нижней третью под субтитры.","uz":"Qoʻllar, siluetlar va joylardan iborat atmosferali sahna, pastki qismi subtitr uchun boʻsh."}',
      'story', 'video',
      'Atmospheric faceless storytelling shot for a short about {story}. No faces visible: hands, silhouettes, objects and places only. Moody low-key lighting, a slow handheld drift, light dust in the air, a muted cinematic colour grade, a sense of mystery. Keep the lower third of the frame calm for captions.',
      'minimax-h3-lite', '9:16', 10, '768p',
@@ -276,7 +288,7 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      50),
     ('podcast-clip',
      '{"en":"Podcast clip","ru":"Клип подкаста","uz":"Podkast klipi"}',
-     '{"en":"A warm studio, a broadcast microphone and a pulsing waveform: the backdrop for a clip of your episode.","ru":"Тёплая студия, микрофон и пульсирующая звуковая волна — фон для фрагмента вашего выпуска.","uz":"Iliq studiya, mikrofon va to''lqinlanuvchi tovush chizig''i — epizodingiz parchasi uchun fon."}',
+     '{"en":"A warm studio, a broadcast microphone and a pulsing waveform: the backdrop for a clip of your episode.","ru":"Тёплая студия, микрофон и пульсирующая звуковая волна — фон для фрагмента вашего выпуска.","uz":"Iliq studiya, mikrofon va toʻlqinlanuvchi tovush chizigʻi — epizodingiz parchasi uchun fon."}',
      'story', 'video',
      'Vertical podcast-clip style shot: a cozy studio with a large broadcast microphone on a boom arm in the foreground, warm practical lamps, acoustic panels, soft bokeh. A slow push-in toward the microphone while a subtle glowing audio waveform pulses on a screen behind it. The episode is about {topic}. No people, no text, no logos.',
      'minimax-h3-highspeed', '9:16', 10, '768p',
@@ -284,7 +296,7 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      60),
     ('travel-montage',
      '{"en":"Travel montage","ru":"Тревел-монтаж","uz":"Sayohat montaji"}',
-     '{"en":"Golden-hour streets, a sweeping skyline, steaming local food and a sunset wide, cut to a rhythm.","ru":"Улицы в золотой час, панорама города, местная еда и закат — в ритме монтажа.","uz":"Oltin soatdagi ko''chalar, shahar panoramasi, mahalliy taom va quyosh botishi — ritmli montajda."}',
+     '{"en":"Golden-hour streets, a sweeping skyline, steaming local food and a sunset wide, cut to a rhythm.","ru":"Улицы в золотой час, панорама города, местная еда и закат — в ритме монтажа.","uz":"Oltin soatdagi koʻchalar, shahar panoramasi, mahalliy taom va quyosh botishi — ritmli montajda."}',
      'lifestyle', 'video',
      'Vertical travel montage of {destination}: rhythmic cuts between a golden-hour street, a sweeping drone shot over the skyline, a close-up of steam rising from local food, and a wide landscape at sunset. Vibrant but natural colour, energetic match cuts, a handheld travel-vlog feel, nobody looking into the camera, no text.',
      'minimax-h3', '9:16', 10, '768p',
@@ -292,7 +304,7 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      70),
     ('food-reveal',
      '{"en":"Food reveal","ru":"Подача блюда","uz":"Taom taqdimoti"}',
-     '{"en":"Steam, a lifted lid and a slow pull-back to the dish. For a menu, a recipe or a new item.","ru":"Пар, поднятая крышка и медленный отъезд к блюду. Для меню, рецепта или новинки.","uz":"Bug'', ko''tarilgan qopqoq va taomga sekin uzoqlashish. Menyu, retsept yoki yangi taom uchun."}',
+     '{"en":"Steam, a lifted lid and a slow pull-back to the dish. For a menu, a recipe or a new item.","ru":"Пар, поднятая крышка и медленный отъезд к блюду. Для меню, рецепта или новинки.","uz":"Bugʻ, koʻtarilgan qopqoq va taomga sekin uzoqlashish. Menyu, retsept yoki yangi taom uchun."}',
      'lifestyle', 'video',
      'Vertical food reveal of {dish}. It starts tight on rising steam, then the camera pulls back as a hand lifts a lid to reveal {dish} on a rustic table, warm side light, glistening textures, slow motion, an appetising close-up, shallow depth of field, no text.',
      'minimax-h3', '9:16', 5, '768p',
@@ -308,7 +320,7 @@ select v.slug, v.title::jsonb, v.description::jsonb, v.category, v.kind, v.promp
      90),
     ('quote-poster',
      '{"en":"Motivational quote","ru":"Мотивационная цитата","uz":"Motivatsion iqtibos"}',
-     '{"en":"Your words in elegant type over a cinematic scene, dark enough to stay readable.","ru":"Ваши слова элегантным шрифтом поверх кинематографичной сцены, достаточно тёмной для чтения.","uz":"So''zlaringiz kinematografik sahna ustida nafis shriftda, o''qish uchun yetarlicha qorong''i."}',
+     '{"en":"Your words in elegant type over a cinematic scene, dark enough to stay readable.","ru":"Ваши слова элегантным шрифтом поверх кинематографичной сцены, достаточно тёмной для чтения.","uz":"Soʻzlaringiz kinematografik sahna ustida nafis shriftda, oʻqish uchun yetarlicha qorongʻi."}',
      'text', 'image',
      'Vertical motivational quote poster. The quote in large elegant serif type, centred: "{quote}". The background is {scene}, cinematic and slightly dark so the text stays readable, soft grain, a minimal layout, no signature, no logo.',
      'ideogram-4', '9:16', null, null,

@@ -39,7 +39,16 @@ export function TrendCard({ template, reduced, canHover }: { template: TemplateD
     setPlaying(false);
   };
 
-  const hoverHandlers = hasPreview && canHover ? { onPointerEnter: play, onPointerLeave: stop, onFocus: play, onBlur: stop } : {};
+  // A mouse only: on a touch laptop a finger tap fires pointerenter with no pointerleave, and the preview would never stop.
+  const hoverHandlers =
+    hasPreview && canHover
+      ? {
+          onPointerEnter: (e: React.PointerEvent) => e.pointerType === "mouse" && play(),
+          onPointerLeave: (e: React.PointerEvent) => e.pointerType === "mouse" && stop(),
+          onFocus: play,
+          onBlur: stop,
+        }
+      : {};
   const meta = [tt.kind[template.kind], template.aspect, template.duration_s ? fmt(tt.seconds, { n: template.duration_s }) : null]
     .filter(Boolean)
     .join(" · ");
@@ -53,7 +62,7 @@ export function TrendCard({ template, reduced, canHover }: { template: TemplateD
         ) : (
           <div className="tr-placeholder" aria-hidden>
             <Icon className="size-8" strokeWidth={1.6} />
-            <span>{tt.noPreview}</span>
+            {!hasPreview && <span>{tt.noPreview}</span>}
           </div>
         )}
         {hasPreview && (
@@ -69,7 +78,6 @@ export function TrendCard({ template, reduced, canHover }: { template: TemplateD
             preload="none"
             aria-hidden
             tabIndex={-1}
-            onEnded={() => setPlaying(false)}
           />
         )}
         {hasPreview && !canHover && (

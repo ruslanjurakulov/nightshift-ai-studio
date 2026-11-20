@@ -88,6 +88,17 @@ function GalleryBody({
       </div>
     );
   }
+  if (state.phase === "signed_out") {
+    return (
+      <div className="tr-state" role="alert">
+        <h2>{tt.signedOutTitle}</h2>
+        <p>{tt.signedOutBody}</p>
+        <a className="btn-quiet" href="/login">
+          {tt.signIn}
+        </a>
+      </div>
+    );
+  }
   if (state.phase === "error") {
     return (
       <div className="tr-state" role="alert">

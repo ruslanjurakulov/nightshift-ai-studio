@@ -9,6 +9,8 @@ export type TemplatesState =
   | { phase: "loading" }
   | { phase: "ok"; templates: TemplateDto[] }
   | { phase: "not_enabled" }
+  /** 401 from the sign-in gate: retrying cannot help, signing in again does. */
+  | { phase: "signed_out" }
   | { phase: "error" };
 
 /** Reads /api/templates in the viewer's language. A read only: nothing here prices or starts anything. */
@@ -24,8 +26,11 @@ export function useTemplates(locale: Locale, limit?: number): { state: Templates
     fetch(`/api/templates?${qs.toString()}`, { signal: ctrl.signal, cache: "no-store" })
       .then(async (res) => {
         const body: unknown = await res.json().catch(() => null);
-        if (res.status === 503) return setState({ phase: "not_enabled" });
-        const list = typeof body === "object" && body !== null ? (body as { templates?: unknown }).templates : undefined;
+        const obj = typeof body === "object" && body !== null ? (body as { templates?: unknown; error?: unknown }) : {};
+        // By the body, not the status: a 503 is also "auth server down" or "not configured", which need another remedy.
+        if (obj.error === "not_enabled") return setState({ phase: "not_enabled" });
+        if (res.status === 401) return setState({ phase: "signed_out" });
+        const list = obj.templates;
         if (!res.ok || !Array.isArray(list)) return setState({ phase: "error" });
         setState({ phase: "ok", templates: list as TemplateDto[] });
       })

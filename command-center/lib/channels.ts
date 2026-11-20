@@ -70,6 +70,8 @@ export const SECTIONS = [
   "character-studio",
   // Presets & looks: the gallery of ready starting points, opened from Studio and Home.
   "presets",
+  // Trends (0181): ready formats that open Create prefilled.
+  "trends",
   "library",
   "editor",
   "workflows",

@@ -140,3 +140,13 @@ describe("migration 0181's seed", () => {
     expect(sql).toMatch(/on conflict \(slug\) do nothing;\s*$/);
   });
 });
+
+describe("the slug", () => {
+  it("can never be a Studio starter id, which shares ?template=", async () => {
+    const { SLUG_RE } = await import("@/lib/templates/trends");
+    const { TEMPLATE_IDS } = await import("@/lib/creative/templates");
+    for (const id of TEMPLATE_IDS) expect(SLUG_RE.test(id), id).toBe(false);
+    expect(SLUG_RE.test("food-reveal")).toBe(true);
+    expect(SLUG_RE.test("sharpen")).toBe(false);
+  });
+});

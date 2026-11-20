@@ -1,7 +1,7 @@
 /** The Trends gallery (migration 0181, /trends): ready formats that open Create prefilled. */
 export const trendsEn = {
   title: "Trends",
-  subtitle: "Formats people post right now. Pick one and Create opens filled in. You only replace the words in {braces}.",
+  subtitle: "Ready formats for short videos and posts. Pick one and Create opens with it. You only replace the words in {braces}.",
   note: "Nothing is priced or started on this page. Create shows the price and asks you to confirm.",
   filterLabel: "Category",
   categories: { all: "All", business: "Business", story: "Storytelling", lifestyle: "Lifestyle", text: "Text and quotes" },
@@ -22,9 +22,12 @@ export const trendsEn = {
   errorBody: "This is on our side. Try again in a moment.",
   notEnabledTitle: "Trends are not switched on here yet",
   notEnabledBody: "This deployment has not applied migration 0181. An administrator can apply it.",
+  signedOutTitle: "Your session has ended",
+  signedOutBody: "Sign in again to see the templates.",
+  signIn: "Sign in",
   retry: "Try again",
   loading: "Loading templates",
-  homeTitle: "Trending templates",
+  homeTitle: "Ready formats",
   homeAll: "All trends",
 };
 

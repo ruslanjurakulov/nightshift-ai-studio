@@ -89,3 +89,21 @@ def test_the_media_bucket_has_no_api_write_policy(conn):
             "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects' "
             "and cmd in ('INSERT', 'UPDATE', 'DELETE', 'ALL') and (qual like '%%template-media%%' or with_check like '%%template-media%%')")
         assert policies == [], f"an API role may write the template-media bucket: {policies}"
+
+
+def test_unpublishing_keeps_the_media_and_a_repeat_writes_no_event(conn):
+    with as_superuser(conn, commit=False) as s:
+        s.value("select public.set_creative_template_media(%s, true, %s, %s)",
+                [DRAFT_SLUG, "lab-draft/preview.mp4", "lab-draft/poster.webp"])
+        res = s.value("select public.set_creative_template_media(%s, false)", [DRAFT_SLUG])
+        assert res["changed"] is True
+        row = s.rows("select published, preview_asset_path, poster_path from public.creative_templates where slug = %s",
+                     [DRAFT_SLUG])[0]
+        assert row == (False, "lab-draft/preview.mp4", "lab-draft/poster.webp"), "unpublishing wiped the media"
+        before = s.value("select count(*) from public.security_events where kind = 'creative_template.media'")
+        again = s.value("select public.set_creative_template_media(%s, false)", [DRAFT_SLUG])
+        assert again["changed"] is False
+        assert s.value("select count(*) from public.security_events where kind = 'creative_template.media'") == before
+        s.value("select public.set_creative_template_media(%s, false, '', '')", [DRAFT_SLUG])
+        assert s.rows("select preview_asset_path, poster_path from public.creative_templates where slug = %s",
+                      [DRAFT_SLUG])[0] == (None, None)

@@ -42,6 +42,9 @@ const AUTH_CALLS = [
 
 /** Routes allowed to carry no check of their own, and why. */
 const PUBLIC_BY_DESIGN: Record<string, string> = {
+  "templates/route.ts":
+    "the Trends gallery's read (0181): published templates only, under the caller's own session (RLS); model availability is asked of sellable_models() in lib/templates/server.ts (getUser there), and an unknown caller gets \"unknown\", never true",
+  "templates/[slug]/route.ts": "one published template, the same read as templates/route.ts",
   "v1/[...rest]/route.ts": "the API's own 404 for an unknown path; it answers nothing about anyone",
   "handle-available/route.ts":
     "the sign-up form's username check, asked before an account exists: same-origin POST only, one yes/no/unknown, limited per address and platform-wide in the database (0096)",

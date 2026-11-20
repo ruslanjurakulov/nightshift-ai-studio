@@ -18,7 +18,8 @@ export interface TemplatesResult {
 }
 
 function missingTable(error: { code?: string; message?: string }): boolean {
-  return error.code === "42P01" || error.code === "PGRST205" || /does not exist|could not find the table/i.test(error.message ?? "");
+  // Codes only: a "column ... does not exist" (42703) is a broken schema, an error, not "not switched on here" (rule 5).
+  return error.code === "42P01" || error.code === "PGRST205";
 }
 
 export async function loadTemplates(opts: {
