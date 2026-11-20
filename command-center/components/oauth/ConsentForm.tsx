@@ -16,6 +16,8 @@ import { OAuthNotice } from "@/components/oauth/OAuthShell";
  */
 
 export interface ConsentText {
+  /** 0176: the opt-in line for studio:create (shown only when the app asked for it). */
+  studioOptIn?: string;
   limitLabel: string;
   limitHint: string;
   limitInvalid: string;
@@ -57,6 +59,7 @@ export function ConsentForm({
   locale,
   defaultLimit,
   maxLimit,
+  offerStudio = false,
   text,
 }: {
   secret: string;
@@ -64,9 +67,13 @@ export function ConsentForm({
   locale: string;
   defaultLimit: number;
   maxLimit: number;
+  /** The app asked for studio:create: offer it as a separate, unticked choice (Lens/Breach on 0176). */
+  offerStudio?: boolean;
   text: ConsentText;
 }) {
   const [limit, setLimit] = useState(String(defaultLimit));
+  // Spending on Studio generations is never part of the default: the person ticks it, or the connection does not get it.
+  const [studio, setStudio] = useState(false);
   const [busy, setBusy] = useState<null | "allow" | "deny">(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,7 +93,7 @@ export function ConsentForm({
         headers: { "content-type": "application/json" },
         credentials: "same-origin",
         cache: "no-store",
-        body: JSON.stringify({ request: secret, decision, limit: decision === "allow" ? parsed : null }),
+        body: JSON.stringify({ request: secret, decision, limit: decision === "allow" ? parsed : null, studio: decision === "allow" && offerStudio && studio }),
       });
       const type = res.headers.get("content-type") ?? "";
       if (!type.includes("application/json")) {
@@ -116,6 +123,12 @@ export function ConsentForm({
     // Enter even with no submit button, and Enter in the limit box must not be
     // read as "Allow". Only a deliberate press of Allow or Deny sends a decision.
     <form className="fl-card" onSubmit={(e) => e.preventDefault()}>
+      {offerStudio && text.studioOptIn && (
+        <label className="flex items-start gap-3 text-base leading-snug">
+          <input type="checkbox" className="mt-1 size-5 shrink-0" checked={studio} onChange={(e) => setStudio(e.target.checked)} />
+          <span>{text.studioOptIn}</span>
+        </label>
+      )}
       <label className="st-field">
         <span>{text.limitLabel}</span>
         <input

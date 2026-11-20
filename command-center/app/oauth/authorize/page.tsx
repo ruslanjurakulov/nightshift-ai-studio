@@ -145,7 +145,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
         <section className="fl-card" aria-labelledby="oauth-can">
           <h2 id="oauth-can" className="fl-q">{o.canTitle}</h2>
           <ul className="flex flex-col gap-3">
-            {view.scopes.map((s) => (
+            {view.scopes.filter((s) => s !== "studio:create").map((s) => (
               <li key={s} className="flex items-start gap-3 text-base leading-snug">
                 <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-[var(--color-ok)]" />
                 <span>{scopeText[s] ?? s}</span>
@@ -165,7 +165,9 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
         locale={locale}
         defaultLimit={view.defaultLimit}
         maxLimit={view.maxLimit}
+        offerStudio={view.scopes.includes("studio:create")}
         text={{
+          studioOptIn: o.studioOptIn,
           limitLabel: o.limitLabel,
           limitHint: fmt(o.limitHint, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),
           limitInvalid: fmt(o.limitInvalid, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),

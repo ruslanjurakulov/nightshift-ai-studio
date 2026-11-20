@@ -274,7 +274,7 @@ function studioRefusalText(result: Extract<ApiResult, { ok: false }>, origin: st
     case "job_not_found":
       return "There is no generation with that id for this connection. Only generations this connection started can be read here.";
     case "rate_limit_exceeded":
-      return `Too many quotes or generations in a short time. Wait ${Math.max(1, Math.ceil(result.retryAfter ?? 30))} seconds and try again.`;
+      return `Too many requests from this connection in a short time. Wait ${Math.max(1, Math.ceil(result.retryAfter ?? 30))} seconds and try again.`;
     case "forbidden":
       return "This workspace's generations cannot be started by a connected app. Nothing was started or charged.";
     case "upstream_error":

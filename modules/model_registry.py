@@ -640,6 +640,10 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 errors.append(_err(mid, "mcp_oauth_exposure cannot be combined with requires_acknowledgement"))
             if CAPTIONS in caps:
                 errors.append(_err(mid, "captions are a web tool: mcp_oauth_exposure cannot be true"))
+            # The vendor's permission for our connector is api_exposure web_mcp (0180), or any; web_only means the vendor did not
+            # give it, and 0176's gate (sellable_models 'mcp') would refuse the model anyway: the file must not promise it.
+            if m["api_exposure"] not in ("web_mcp", "any"):
+                errors.append(_err(mid, "mcp_oauth_exposure needs api_exposure web_mcp (or any): web_only is the vendor's no"))
         ent = m["entitlement"]
         if ent and ent.split(":")[0] != f"models_{m['output']}":
             errors.append(_err(mid, "entitlement category must match the output"))

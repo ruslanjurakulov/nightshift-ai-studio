@@ -1,8 +1,8 @@
 """supabase/migrations/0176_mcp_oauth_creative.sql — the Studio's generations for an AI assistant connected with OAuth.
 
 SQL does not run in this suite (tests/security/test_sec_mcp_oauth_creative.py does that, against a real Postgres); these pin what
-must never change by accident: every model is OFF for assistants unless the registry file says so for that model, and no model does
-yet; the switch is JSON true only; the three replaced 0093 bodies are 0093's plus marked hunks, and the md5 in the drift guard and the
+must never change by accident: every model is OFF for assistants unless the registry file says so for that model (only the reviewed ones
+do); the switch is JSON true only; the three replaced 0093 bodies are 0093's plus marked hunks, and the md5 in the drift guard and the
 rollback is each body's own; create takes a quote id and an idempotency key and nothing that could differ from the quote; the five
 doors open with oauth_ctx (a connection's), never api_begin (which would also admit an API key); the API key's creative endpoints stay
 off the token allow-list; the number is listed and documented.
@@ -24,7 +24,7 @@ REGISTRY = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encod
 OPERATIONS_TS = (ROOT / "command-center" / "lib" / "api" / "operations.ts").read_text(encoding="utf-8")
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 
-#: The models a reviewed change has switched on for connected assistants, each with the vendor terms that allow it. Empty: every
+#: The models a reviewed change has switched on for connected assistants, each with the vendor terms that allow it. Otherwise every
 #: model is off until a separate review of its vendor's terms says "the same end user, through their own assistant" is allowed.
 #: Adding an id here is that review's change, never a default.
 REVIEWED_FOR_ASSISTANTS: dict = {
@@ -78,6 +78,14 @@ class EveryModelIsOff(unittest.TestCase):
             self.assertIn(when, " ".join(by_id[mid]["terms_notes"]), mid)
             self.assertNotEqual(by_id[mid]["api_exposure"], "any", mid)   # an assistant's permission is not a developer's
 
+    def test_consent_can_only_narrow(self):
+        drop = squash(body("oauth_drop_requested_scope"))
+        self.assertIn("p_scope is distinct from 'studio:create'", drop)
+        self.assertIn("set scopes = array_remove(r.scopes, p_scope)", drop)
+        self.assertIn("r.user_id = v_user", drop)
+        self.assertIn("cardinality(r.scopes) > 1", drop)
+        self.assertIn("grant execute on function public.oauth_drop_requested_scope(text, text) to authenticated;", CODE)
+
     def test_the_migration_turns_nothing_on(self):
         self.assertNotRegex(CODE, r"update public\.model_registry|sync_model_registry|insert into public\.model_registry")
         self.assertNotRegex(CODE, r"mcp_oauth_exposure'\s*,\s*'true'|'\{\"mcp_oauth_exposure\": true")
@@ -93,7 +101,7 @@ class EveryModelIsOff(unittest.TestCase):
         self.assertIn("r.spec ? 'blocked_countries'", state)
         self.assertIn("'acknowledgement_required'", state)
         self.assertIn("to_jsonb(r) -> 'requires_acknowledgement'", state)  # 0174's column, read without naming it
-        self.assertIn("sellable_models(cap, 'web')", state)
+        self.assertIn("sellable_models(cap, 'mcp')", state)       # 0180's surface: a vendor's web-only model never
         self.assertIn("'captions' = any (r.capabilities)", state)
 
     def test_the_capabilities_are_the_apis(self):
@@ -155,7 +163,8 @@ class TheDoors(unittest.TestCase):
         # The doors are anon's; the one other grant is 0147's own, restated for the replaced oauth_begin_authorization.
         self.assertEqual(len(re.findall(r"^grant execute on function .* to anon;$", CODE, re.M)), len(DOORS))
         self.assertEqual(re.findall(r"^grant (?!execute on function public\.oauth_creative_|execute on function public\.oauth_media_list).*$", CODE, re.M),
-                         ["grant execute on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) to authenticated;"])
+                         ["grant execute on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) to authenticated;",
+                          "grant execute on function public.oauth_drop_requested_scope(text, text) to authenticated;"])
 
     def test_the_consent_default_is_still_0093s_three_and_the_rollback_restores_0147s_body(self):
         new = body("oauth_begin_authorization")

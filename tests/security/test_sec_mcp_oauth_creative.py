@@ -43,8 +43,10 @@ PROMPT = {"prompt": "a lighthouse at dawn"}
 
 # (id, capabilities, extra spec)
 MODELS = [
-    # On for assistants although web-only for API keys: the two switches are separate.
-    ("img-on", ["t2i", "edit"], {"api_exposure": "web_only", "mcp_oauth_exposure": True}),
+    # On for assistants and never for API keys: the vendor's web + connector permission (0180's web_mcp) and the switch.
+    ("img-on", ["t2i", "edit"], {"api_exposure": "web_mcp", "mcp_oauth_exposure": True}),
+    # The switch on a model whose vendor said web only: the 'mcp' surface refuses it (Lens on 0176).
+    ("img-webonly", ["t2i"], {"api_exposure": "web_only", "mcp_oauth_exposure": True}),
     ("img-off", ["t2i"], {}),
     ("img-api", ["t2i"], {"api_exposure": "any"}),
     ("img-string", ["t2i"], {"mcp_oauth_exposure": "true"}),
@@ -441,3 +443,17 @@ def test_replay_then_rollback_refuses_while_a_connection_holds_the_permission_th
     finally:
         if not os.environ.get("NIGHTSHIFT_SECURITY_KEEP"):
             sec_db.drop_database(admin, name)
+
+
+def test_a_vendors_web_only_model_is_never_offered_to_an_assistant_whatever_the_switch_says(db):
+    tok, _g = connection(db, UA, ORG_A)
+    res = quote(db, tok, "img-webonly")
+    assert res["ok"] is False and res["status"] == 422 and res["error"]["code"] == "model_not_offered", res
+
+
+def test_the_media_list_names_no_file(db):
+    # Breach on 0176: a member's file name reached the admin's assistant verbatim (an instruction channel).
+    tok, _g = connection(db, UA, ORG_A)
+    out = db.act("anon", None, "select public.oauth_media_list(%s, null, 50, null)", [tok])[0][0]
+    assert out["ok"] is True, out
+    assert all("name" not in m for m in out["data"]["media"]), out["data"]["media"][:3]

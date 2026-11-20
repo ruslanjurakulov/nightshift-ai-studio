@@ -1804,7 +1804,8 @@ provider or creates a creative or render job, and no credit function body is rep
 ## The Studio for a connected assistant (0176)
 
 0176 (`0176_mcp_oauth_creative.sql`) lets an AI assistant the person connected with OAuth (0093) quote and start Studio generations,
-charged to the workspace's credits exactly as in the Studio, with **every model off** until its vendor's terms allow it.
+charged to the workspace's credits exactly as in the Studio, with every model off until its vendor's terms allow it (the first on: Recraft V4.1 / Flash). The consent page offers Studio
+spending as its own unticked choice; a connection gets it only when the person ticks it.
 
 - **A new permission, `studio:create`.** Shown on the consent screen on its own line. Not folded into `videos:create`: a person who
   allowed "make videos" agreed to nothing else, so no existing connection gains generation. `oauth_scopes_supported()` lists it and
@@ -1813,7 +1814,7 @@ charged to the workspace's credits exactly as in the Studio, with **every model 
   separate from `api_exposure` (a developer's own code). `oauth_creative_model_state(capability, model)` is the one judgement the
   list, the quote and the create share: on sale in the Studio (`sellable_models(cap, 'web')`), one of the API's capabilities (never
   captions), switched on, no `blocked_countries`, no rights acknowledgement (0174's file list or column, read without naming the
-  column, so it applies with or without 0174). `tests/test_mcp_oauth_creative_migration.py` lists the models that may be on: none.
+  column, so it applies with or without 0174). `tests/test_mcp_oauth_creative_migration.py` lists the models that may be on (Recraft V4.1 / Flash, written permission of 2026-11-17/18).
 - **Records.** `oauth_creative_quotes` (one connection's price for one exact generation, 15 minutes, used once), `oauth_creative_jobs`
   (which connection started which generation from which quote, under which key, holding what), `oauth_creative_rate_counters` (30
   quotes and 10 creates a minute per connection, on top of 120 requests). RLS on, no policy, no API role.

@@ -47,6 +47,7 @@ begin
   end if;
 end $$;
 
+drop function if exists public.oauth_drop_requested_scope(text, text);
 drop function if exists public.oauth_creative_models(text, text, text);
 drop function if exists public.oauth_media_list(text, text, integer, text);
 drop function if exists public.oauth_creative_quote(text, text, text, jsonb, text);

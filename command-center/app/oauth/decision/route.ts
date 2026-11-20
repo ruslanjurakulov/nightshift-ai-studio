@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
-import { decideAuthorization, oauthDeps } from "@/lib/server/oauth";
+import { decideAuthorization, dropStudioScope, oauthDeps } from "@/lib/server/oauth";
 import { redirectWith } from "@/lib/oauth/authorize";
 import { REQUEST_SECRET_RE, hashSecret, newAuthorizationCode } from "@/lib/oauth/tokens";
 import { boundedText } from "@/lib/oauth/responses";
@@ -44,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!user) return json({ error: "signed_out" }, 401);
 
   const text = await boundedText(request, 2048);
-  let body: { request?: unknown; decision?: unknown; limit?: unknown } = {};
+  let body: { request?: unknown; decision?: unknown; limit?: unknown; studio?: unknown } = {};
   try {
     body = text === null ? {} : JSON.parse(text);
   } catch {
@@ -55,9 +55,16 @@ export async function POST(request: Request): Promise<Response> {
   const allow = body.decision === "allow";
   const limit = typeof body.limit === "number" && Number.isFinite(body.limit) ? body.limit : null;
 
+  const secretHash = await hashSecret(body.request);
+  // 0176: spending on Studio generations is granted only when the person ticked it. Anything but an explicit true takes the
+  // permission off the request first; if that cannot be done, nothing is granted (fail closed, never a wider connection).
+  if (allow && body.studio !== true) {
+    const dropped = await dropStudioScope(secretHash);
+    if (dropped === "unavailable") return json({ error: "unavailable" }, 503);
+  }
   const code = newAuthorizationCode();
   const result = await decideAuthorization({
-    secretHash: await hashSecret(body.request),
+    secretHash,
     allow,
     limit,
     codeHash: await hashSecret(code),

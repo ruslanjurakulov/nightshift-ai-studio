@@ -17,7 +17,8 @@ const ORIGIN = "https://nightshift-ai.studio";
 const MCP = ORIGIN + "/api/mcp";
 const REDIRECT = "http://127.0.0.1:33418/callback";
 
-const h = vi.hoisted(() => ({ db: null as unknown as import("./helpers/oauth-fake-db").FakeOauthDb, user: { id: "u1" } as { id: string } | null }));
+const h = vi.hoisted(() => ({ db: null as unknown as import("./helpers/oauth-fake-db").FakeOauthDb, user: { id: "u1" } as { id: string } | null,
+  dropped: [] as string[], dropAnswer: "ok" as "ok" | "absent" | "unavailable" }));
 
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
@@ -45,6 +46,10 @@ vi.mock("@/lib/server/oauth", async () => {
       if (r.entitled === false) return { ok: true, entitled: false, clientName: r.client_name, workspaceName: r.workspace_name, plan: r.plan };
       return { ok: true, entitled: true, clientName: r.client_name, redirectUri: r.redirect_uri, workspaceName: r.workspace_name, plan: r.plan,
         scopes: r.scopes, defaultLimit: r.default_limit_credits, maxLimit: r.max_limit_credits, exempt: false };
+    },
+    dropStudioScope: async (secretHash: string) => {
+      h.dropped.push(secretHash);
+      return h.dropAnswer;
     },
     decideAuthorization: async (a: Parameters<FakeOauthDb["decide"]>[0]) => {
       const r = h.db.decide(a) as Record<string, unknown>;
@@ -411,6 +416,27 @@ describe("the consent decision cannot be forged", () => {
     const ok = await post(secret, { ...json, origin: ORIGIN, "sec-fetch-site": "same-origin" });
     expect(ok.status).toBe(200);
     expect(ok.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("takes studio:create off unless the person ticked it, and grants nothing if that cannot be done (0176)", async () => {
+    const headers = { "content-type": "application/json", origin: ORIGIN };
+    h.dropped = [];
+    h.dropAnswer = "ok";
+    expect((await post(await pending(), headers, { request: await pending(), decision: "allow", limit: 5 })).status).toBe(200);
+    expect(h.dropped).toHaveLength(1);                                   // no tick: the permission is removed first
+    h.dropped = [];
+    expect((await post("", headers, { request: await pending(), decision: "allow", limit: 5, studio: true })).status).toBe(200);
+    expect(h.dropped).toHaveLength(0);                                   // ticked: kept
+    expect((await post("", headers, { request: await pending(), decision: "allow", limit: 5, studio: "true" })).status).toBe(200);
+    expect(h.dropped).toHaveLength(1);                                   // only JSON true counts
+    h.dropped = [];
+    expect((await post("", headers, { request: await pending(), decision: "deny" })).status).toBe(200);
+    expect(h.dropped).toHaveLength(0);                                   // a denial grants nothing to narrow
+    h.dropAnswer = "unavailable";
+    const codes = h.db.codes.size;
+    expect((await post("", headers, { request: await pending(), decision: "allow", limit: 5 })).status).toBe(503);
+    expect(h.db.codes.size).toBe(codes);                                 // nothing granted
+    h.dropAnswer = "ok";
   });
 
   it("refuses a malformed or replayed secret", async () => {

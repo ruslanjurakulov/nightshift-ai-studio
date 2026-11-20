@@ -15,7 +15,7 @@ from __future__ import annotations
 
 
 def extend(tables: dict, functions: dict) -> None:
-    from sec_expectations import API, SERVICE, Service
+    from sec_expectations import API, SERVICE, USER, Service
 
     tables.update({
         "oauth_creative_quotes": Service(),
@@ -31,6 +31,8 @@ def extend(tables: dict, functions: dict) -> None:
         "oauth_creative_get": API,
         # Internal: called only inside the definer functions above.
         "oauth_creative_capabilities": SERVICE,
+        # The consent page narrows its own pending request (removes studio:create only): a signed-in user.
+        "oauth_drop_requested_scope": USER,
         "oauth_creative_limits": SERVICE,
         "oauth_creative_model_state": SERVICE,
         "oauth_creative_state_refusal": SERVICE,

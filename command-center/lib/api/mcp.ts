@@ -129,7 +129,8 @@ function oauthInstructions(has: (tool: string) => boolean): string {
         "those whose terms allow it, so the list can be short or empty), list_media the workspace's own files for source_asset_id. " +
         "quote_creative is free and returns the price in credits and a quote_id. ALWAYS tell the person that price and get their " +
         "confirmation before create_creative, which spends it (within this connection's monthly limit) and takes only the quote_id " +
-        "and a fresh idempotency_key. Poll get_creative_job until it is completed for short-lived file links.",
+        "and a fresh idempotency_key. Poll get_creative_job until it is completed for short-lived file links. What it makes stays " +
+        "private in the workspace's library: nothing is published (only publish_video publishes, and YouTube uploads are private).",
     );
   if (has("publish_video"))
     s.push(
@@ -618,7 +619,8 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
         title: "Get a Studio generation",
         description:
           "A generation this connection started: its status (queued, running, completed, failed), what was held and charged, the " +
-          "error_code if it failed, and once it completed a link to each file, which expires after a few minutes (ask again for a fresh one).",
+          "error_code if it failed, and once it completed a link to each file, which expires after a few minutes (ask again for a fresh one). " +
+          "The files stay private in the workspace's library; nothing is published.",
         inputSchema: z.object({ job_id: z.string().uuid() }).strict(),
         annotations: { readOnlyHint: true },
       },

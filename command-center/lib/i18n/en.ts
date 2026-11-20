@@ -4673,6 +4673,7 @@ export const en = {
     scopeRead: "See your channels, videos, jobs and credit balance.",
     scopeCreate: "Make videos. Each one spends credits from your balance, at the same price as in the app.",
     scopePublish: "Send finished videos to your connected accounts, with the same checks and approvals as in the app.",
+    studioOptIn: "Also allow it to generate pictures and clips in the Studio (spends credits after you confirm each price). Off unless you tick it.",
     scopeStudio: "Generate pictures and clips in the Studio, only with the models that allow it. Each one spends credits from your balance, at the same price as in the app, after you confirm the price.",
     cannotTitle: "It can never",
     cannot: "Change your plan or password, buy credits, delete anything, or see your API keys.",

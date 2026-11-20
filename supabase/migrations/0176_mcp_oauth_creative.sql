@@ -1,5 +1,6 @@
 -- 0176_mcp_oauth_creative.sql — the Studio's generations for an AI assistant the person connected with OAuth (0093): a quote the
--- database keeps, a create that spends exactly that quote, and a per-model switch that is OFF for every model.
+-- database keeps, a create that spends exactly that quote, and a per-model switch that is off unless a reviewed registry change
+-- turns it on (the first: Recraft V4.1 / Flash, on the vendor's written permission).
 --
 -- WHY A MIGRATION. A connected app reaches the database only through oauth_ctx (0093/0147), whose endpoint list is the whole surface
 -- ("a new api_* endpoint ships closed to tokens"). The creative API (0062's api_creative_quote / api_creative_create, 0162's list and
@@ -13,7 +14,7 @@
 --     consent screen on its own line. Not folded into videos:create: a person who allowed "make videos" never agreed to anything else
 --     being made with their credits, so no existing connection gains generation. oauth_scopes_supported() lists it and the grants'
 --     check accepts it (the one constraint change; widened, nothing existing fails it).
---   * A per-model switch, OFF for every model: spec.mcp_oauth_exposure (the registry file's `mcp_oauth_exposure`, synced into spec
+--   * A per-model switch, OFF unless the registry turns it on: spec.mcp_oauth_exposure (the registry file's `mcp_oauth_exposure`, synced into spec
 --     like every other key). Only the JSON value `true` turns a model on for connected assistants; absent, false, "true" or anything
 --     else is off. It is separate from api_exposure on purpose: api_exposure is about handing a vendor's model to a developer's own
 --     code (an API key), this is about the same end user generating through their own assistant, and a vendor's terms can answer the
@@ -47,8 +48,10 @@
 --   app_audit_log row 'creative.generate' (via mcp_oauth, with the grant id, like oauth_create_video's 'agent.run').
 --
 -- REPLACES (md5 drift guards: 0093's bodies, or this file's own on a replay; whitespace runs read as one space):
---   oauth_scopes_supported (0093), oauth_endpoint_scope (0093), oauth_grant_month_credits (0093). Signatures, SECURITY DEFINER where
---   it was, the pinned search_path and the grants (none) stay as 0093 made them.
+--   oauth_scopes_supported (0093), oauth_endpoint_scope (0093), oauth_grant_month_credits (0093), oauth_begin_authorization (0147:
+--   a client that asks for nothing gets 0093's three). Signatures, SECURITY DEFINER where it was, the pinned search_path and the
+--   grants stay as 0093 and 0147 made them. ADDS oauth_drop_requested_scope (authenticated): the consent page's unticked Studio
+--   choice takes studio:create off the pending request; it only removes.
 -- ALTERS: the check on oauth_grants.scopes (oauth_grants_scopes_check), from 1-3 of the three to 1-4 of the four.
 -- NOT CHANGED: create_creative_job (0075; 0174 replaces it), creative_price (0159), sellable_models (0125), api_creative_* (0062,
 --   0075, 0124, 0162), oauth_ctx and oauth_check (0147), every price, hold, capture and refund rule, every other table.
@@ -201,6 +204,29 @@ begin
     'default_limit_credits', (lim ->> 'default_limit_credits')::numeric,
     'max_limit_credits', (lim ->> 'max_limit_credits')::numeric,
     'exempt', public.credits_exempt(v_org));
+end
+$$;
+
+-- The consent page offers studio:create as its own, unticked choice (Lens and Breach on 0176: the MCP server's 401 challenge names
+-- every permission it supports, so every client asks for this one, and a person who wanted videos only would have had to grant
+-- Studio spending too). Unless the person ticks it, the decision route calls this first. It only REMOVES, only this permission,
+-- only from the signed-in person's own live request, and never empties it: it can narrow a connection, never widen one.
+create or replace function public.oauth_drop_requested_scope(p_secret_hash text, p_scope text) returns boolean
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user uuid := auth.uid();
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  if p_scope is distinct from 'studio:create' or coalesce(p_secret_hash, '') !~ '^[0-9a-f]{64}$' then
+    return false;
+  end if;
+  update public.oauth_auth_requests r
+     set scopes = array_remove(r.scopes, p_scope)
+   where r.secret_hash = p_secret_hash and r.user_id = v_user and r.expires_at >= now()
+     and p_scope = any (r.scopes) and cardinality(r.scopes) > 1;
+  return found;
 end
 $$;
 
@@ -368,7 +394,8 @@ begin
     return 'temporarily_off';
   end if;
   -- Everything else the Studio requires to sell it: verified, probed, priced, not past its shutdown, no terms gate.
-  if not exists (select 1 from public.sellable_models(cap, 'web') s where s.id = r.id) then
+  -- The 'mcp' surface (0180): a vendor's web-only model is never offered here, whatever the switch says; 'web_mcp' and 'any' are.
+  if not exists (select 1 from public.sellable_models(cap, 'mcp') s where s.id = r.id) then
     return 'not_offered';
   end if;
   return 'ok';
@@ -474,7 +501,7 @@ begin
              'availability', s.availability,
              'spec', s.spec - 'api_exposure') order by s.id), '[]'::jsonb)
       into v_list
-      from public.sellable_models(v_cap, 'web') s
+      from public.sellable_models(v_cap, 'mcp') s
      where (coalesce(s.entitlement, 'any') = 'any' or (s.entitlement = 'paid' and v_paid))
        and exists (select 1 from unnest(s.capabilities) c
                     where (v_cap is null or c = v_cap) and public.oauth_creative_model_state(c, s.id) = 'ok');
@@ -513,7 +540,9 @@ begin
     select coalesce(jsonb_agg(x.j order by x.created_at desc, x.id), '[]'::jsonb) into v_list
       from (select m.id, m.created_at,
                    jsonb_build_object('asset_id', m.id, 'kind', m.kind, 'mime', m.mime, 'width', m.width, 'height', m.height,
-                                      'duration_s', m.duration_s, 'name', m.original_name, 'source', m.source,
+                                      -- No file name (Breach on 0176): any member may upload and name a file, and the name would reach
+                                      -- the admin's assistant as tool output, verbatim. The id, type and size are enough to use it.
+                                      'duration_s', m.duration_s, 'source', m.source,
                                       'created_at', m.created_at) as j
               from public.media_assets m
              where m.org_id = (ctx ->> 'org_id')::uuid
@@ -596,8 +625,10 @@ begin
       v_spent := public.oauth_grant_month_credits(v_grant);
       v_res := public.api_ok(public.oauth_creative_quote_json(v_row)
         || jsonb_build_object('this_connection', jsonb_build_object(
-             'monthly_limit_credits', (ctx ->> 'limit_credits')::numeric,
-             'left_this_month_credits', greatest((ctx ->> 'limit_credits')::numeric - v_spent, 0))), 201);
+             'monthly_limit_credits', (ctx ->> 'limit_credits')::numeric)
+           -- Only where create applies the limit: on the credits-exempt workspace it is not a ceiling, so no number is shown as one.
+           || case when public.credits_exempt(v_org) then '{}'::jsonb
+                   else jsonb_build_object('left_this_month_credits', greatest((ctx ->> 'limit_credits')::numeric - v_spent, 0)) end), 201);
     exception when others then
       get stacked diagnostics v_msg = message_text, v_detail = pg_exception_detail;
       v_sql := sqlstate;
@@ -704,7 +735,9 @@ begin
     if (ctx ->> 'limit_credits')::numeric <= 0 then
       return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
         'This connection is read-only: its monthly spending limit is 0.',
-        jsonb_build_object('limit_credits', 0, 'spent_credits', 0, 'price_credits', q.credits)), 0);
+        -- What was spent is counted, never assumed to be 0: the limit may have been lowered after spending.
+        jsonb_build_object('limit_credits', 0, 'spent_credits', public.oauth_grant_month_credits(v_grant),
+                           'price_credits', q.credits)), 0);
     end if;
 
     begin
@@ -836,6 +869,8 @@ $$;
 revoke all on function public.oauth_scopes_supported() from public, anon, authenticated, service_role;
 revoke all on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) to authenticated;
+revoke all on function public.oauth_drop_requested_scope(text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_drop_requested_scope(text, text) to authenticated;
 revoke all on function public.oauth_endpoint_scope(text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_grant_month_credits(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_creative_capabilities() from public, anon, authenticated, service_role;
@@ -909,7 +944,8 @@ end $$;
 -- select 'studio:create' = any (public.oauth_scopes_supported()) as permission_listed,
 --        public.oauth_endpoint_scope('oauth.creative.create') = 'studio:create' as create_needs_it,
 --        public.oauth_endpoint_scope('creative.create') is null as api_key_doors_stay_closed,
---        not exists (select 1 from public.model_registry where spec -> 'mcp_oauth_exposure' = 'true'::jsonb) as every_model_off,
+--        not exists (select 1 from public.model_registry where spec -> 'mcp_oauth_exposure' = 'true'::jsonb
+--                     and id not in ('recraft-v4.1', 'recraft-v4.1-flash')) as only_reviewed_models_on,
 --        public.oauth_creative_quote(repeat('0', 64), 't2i', 'x', '{}'::jsonb, null) ->> 'status' = '401' as quote_refuses_unknown_token,
 --        public.oauth_creative_create('not-a-token', gen_random_uuid(), 'k', null) ->> 'status' = '401' as create_refuses_bad_token,
 --        not has_table_privilege('authenticated', 'public.oauth_creative_quotes', 'SELECT') as quotes_private;
