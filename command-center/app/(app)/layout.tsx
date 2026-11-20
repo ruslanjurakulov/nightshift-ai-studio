@@ -179,7 +179,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // shaped by the country filter (readStudioModels -> hideBlockedModelsHere), not only the few pages that drew it. It renders nothing
   // while no model has a country list.
   const geo = (
-    <div className="mt-10">
+    // app-geo-credit: on a full-height screen (the Studio canvas) it is a small right-aligned line under the page, not a stray one
+    // at its foot (components/studio-canvas/studio-canvas.css).
+    <div className="app-geo-credit mt-10">
       <GeoAttribution label={tt.create.geoAttribution} />
     </div>
   );
