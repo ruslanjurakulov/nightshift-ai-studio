@@ -199,7 +199,11 @@ main:has([data-studio-canvas]) {
 .cv-appbar {
   position: sticky;
   top: 0;
-  z-index: 30;
+  /* One above the rail (30). Both are sticky, so each is its own stacking context, and the switcher's menu (.cv-pop, z 50)
+     only outranks things inside the bar. In the owner's frame the rail comes after the bar in the page and starts under it,
+     so at a tie the rail painted over the menu as it dropped across the rail's column: the menu's first 50 px were hidden
+     ("nvas", "neline"). The bar and the rail never overlap otherwise, so this changes nothing else. */
+  z-index: 31;
   display: flex;
   align-items: center;
   gap: 10px;
