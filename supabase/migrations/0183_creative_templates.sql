@@ -1,4 +1,4 @@
--- 0181 — Trend templates: the "Trends" gallery's ready starting points (one click opens Create, prefilled).
+-- 0183 — Trend templates: the "Trends" gallery's ready starting points (one click opens Create, prefilled).
 --
 -- WHY. A person who has never written a prompt needs a starting point that already looks like something people post (a vertical
 -- product ad, a before/after, a food reveal). A template is the FORMAT only: a structure with {placeholders} the person fills in.
@@ -50,7 +50,7 @@ create table if not exists public.creative_templates (
 );
 
 comment on table public.creative_templates is
-  'Trend templates (0181): ready formats for the Trends gallery. Anyone reads a published row; only the service key writes. Media are static app files (lib/templates/media-manifest.json). Whether model_id is on sale is asked of sellable_models() per request, never stored here.';
+  'Trend templates (0183): ready formats for the Trends gallery. Anyone reads a published row; only the service key writes. Media are static app files (lib/templates/media-manifest.json). Whether model_id is on sale is asked of sellable_models() per request, never stored here.';
 
 -- A slug is a URL segment (/api/templates/<slug>, ?template=<slug>): lower-case words joined by hyphens, at least two words.
 -- The hyphen is required on purpose: the Studio's own starter ids share ?template= and are written with underscores

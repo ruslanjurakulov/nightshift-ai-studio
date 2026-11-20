@@ -1,4 +1,4 @@
-"""Trend templates (0181), attacked in the shared lab.
+"""Trend templates (0183), attacked in the shared lab.
 
 What would break, and which test says so:
   * a draft template leaks to the gallery before it is finished          test_a_draft_is_invisible_to_every_api_role
@@ -7,7 +7,7 @@ What would break, and which test says so:
 """
 import pytest
 
-from sec_creative_templates_0181 import DRAFT_SLUG, PUBLISHED_SLUG
+from sec_creative_templates_0183 import DRAFT_SLUG, PUBLISHED_SLUG
 from sec_db import ANON, acting, as_superuser
 
 

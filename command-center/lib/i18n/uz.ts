@@ -59,7 +59,7 @@ import { adsFactoryUz } from "./ads-factory/uz";
 export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
-  /** The Trends gallery (migration 0181): ./trends/uz.ts. */
+  /** The Trends gallery (migration 0183): ./trends/uz.ts. */
   trends: trendsUz,
   availability: availabilityUz,
   effects: effectsUz,

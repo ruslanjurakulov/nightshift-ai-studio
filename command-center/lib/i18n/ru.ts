@@ -59,7 +59,7 @@ import { adsFactoryRu } from "./ads-factory/ru";
 export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
-  /** The Trends gallery (migration 0181): ./trends/ru.ts. */
+  /** The Trends gallery (migration 0183): ./trends/ru.ts. */
   trends: trendsRu,
   availability: availabilityRu,
   effects: effectsRu,

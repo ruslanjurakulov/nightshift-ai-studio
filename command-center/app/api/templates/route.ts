@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/templates?category=&locale=&limit= — the published trend templates (0181), in the caller's language.
+ * GET /api/templates?category=&locale=&limit= — the published trend templates (0183), in the caller's language.
  *
  * Reads only: it prices nothing and starts nothing. `model_available` is the caller's own sellable_models() answer, so the
  * response is private to the session and never cached in between.

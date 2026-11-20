@@ -134,8 +134,8 @@ describe("the media manifest", () => {
   });
 });
 
-describe("migration 0181's seed", () => {
-  const sql = readFileSync(join(__dirname, "../../supabase/migrations/0181_creative_templates.sql"), "utf8");
+describe("migration 0183's seed", () => {
+  const sql = readFileSync(join(__dirname, "../../supabase/migrations/0183_creative_templates.sql"), "utf8");
   const seeded = [...sql.matchAll(/'(minimax-h3[a-z-]*|ideogram-[0-9.]+|[a-z0-9.-]+)', '(9:16|16:9|1:1)'/g)].map((m) => m[1]);
 
   it("uses only the models on sale when it was written", () => {

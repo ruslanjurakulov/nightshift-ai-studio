@@ -67,7 +67,7 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
-  /** The Trends gallery (migration 0181): ./trends/en.ts. */
+  /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */

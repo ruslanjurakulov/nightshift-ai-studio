@@ -1,5 +1,5 @@
 /**
- * Trend templates (migration 0181): the Trends gallery's ready formats. Pure and client-safe — the row coercion, the API's wire
+ * Trend templates (migration 0183): the Trends gallery's ready formats. Pure and client-safe — the row coercion, the API's wire
  * shape (the contract with the Create screen), the placeholder list and the media URL. The database read lives in ./server.ts.
  *
  * A template is a FORMAT: a prompt with {placeholders}, a model it was written for, a shape and a length. Following one opens
@@ -32,7 +32,7 @@ export const TEMPLATE_MEDIA_DIR = "/templates";
 export const HOME_TEMPLATE_LIMIT = 6;
 export const MAX_TEMPLATE_LIMIT = 50;
 
-/** Mirrors 0181's slug CHECK: at least one hyphen, so it is never a Studio starter id (those use underscores). */
+/** Mirrors 0183's slug CHECK: at least one hyphen, so it is never a Studio starter id (those use underscores). */
 export const SLUG_RE = /^(?=.{3,48}$)[a-z0-9]+(-[a-z0-9]+)+$/;
 const PLACEHOLDER_RE = /\{([a-z][a-z0-9_]{0,31})\}/g;
 

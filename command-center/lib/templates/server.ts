@@ -8,7 +8,7 @@ import mediaManifest from "@/lib/templates/media-manifest.json";
 const MANIFEST: MediaManifest = mediaManifest;
 
 /**
- * The trend templates (0181), read under the caller's own session (anon or signed in) — RLS hands out published rows only, and
+ * The trend templates (0183), read under the caller's own session (anon or signed in) — RLS hands out published rows only, and
  * no service key is involved. Availability is the signed-in viewer's sellable_models() answer, asked once per request; a viewer
  * the registry cannot answer for gets "unknown", never a guessed true.
  */
