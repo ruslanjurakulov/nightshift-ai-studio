@@ -9,3 +9,6 @@ pillow-heif>=0.20.0,<2
 # test_sec_channel_settings.py holds the SQL reading of a spend limit to the worker's own reader (modules/channels.py), which
 # imports config.py, which loads a .env with python-dotenv. Nothing else of the pipeline is imported.
 python-dotenv>=1.0.0  # same floor as requirements.txt
+# test_sec_breach_llm_describe.py attacks the Claude / GPT describe adapters and modules/text_providers.py with fake sessions;
+# they import requests (no request is ever sent from the lab).
+requests>=2.33.0  # same floor as requirements.txt
