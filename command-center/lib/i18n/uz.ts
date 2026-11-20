@@ -27,6 +27,7 @@ import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
+import { trendsUz } from "./trends/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
@@ -56,6 +57,8 @@ import { adsFactoryUz } from "./ads-factory/uz";
 export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
+  /** The Trends gallery (migration 0181): ./trends/uz.ts. */
+  trends: trendsUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
@@ -135,6 +138,7 @@ export const uz: Dictionary = {
     customers: "Mijozlar",
     billing: "Toʻlovlar",
     studio: "Nightshift Studio",
+    trends: "Trendlar",
     brandLook: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",

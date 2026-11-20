@@ -1,0 +1,31 @@
+/** The Trends gallery (migration 0181, /trends): ready formats that open Create prefilled. */
+export const trendsEn = {
+  title: "Trends",
+  subtitle: "Formats people post right now. Pick one and Create opens filled in. You only replace the words in {braces}.",
+  note: "Nothing is priced or started on this page. Create shows the price and asks you to confirm.",
+  filterLabel: "Category",
+  categories: { all: "All", business: "Business", story: "Storytelling", lifestyle: "Lifestyle", text: "Text and quotes" },
+  kind: { video: "Video", image: "Image" },
+  seconds: "{n} s",
+  use: "Use template",
+  useAria: "Use the template {title}",
+  play: "Play preview",
+  pause: "Pause preview",
+  noPreview: "Preview coming soon",
+  modelUnavailable: "Its model is not on sale right now",
+  modelUnknown: "Availability unknown",
+  emptyTitle: "No templates yet",
+  emptyBody: "New formats appear here as soon as they are published.",
+  emptyCategory: "No templates in this category yet.",
+  showAll: "Show all",
+  errorTitle: "Templates could not be loaded",
+  errorBody: "This is on our side. Try again in a moment.",
+  notEnabledTitle: "Trends are not switched on here yet",
+  notEnabledBody: "This deployment has not applied migration 0181. An administrator can apply it.",
+  retry: "Try again",
+  loading: "Loading templates",
+  homeTitle: "Trending templates",
+  homeAll: "All trends",
+};
+
+export type TrendsDictionary = typeof trendsEn;

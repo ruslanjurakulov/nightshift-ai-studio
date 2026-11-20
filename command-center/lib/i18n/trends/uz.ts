@@ -1,0 +1,31 @@
+import type { TrendsDictionary } from "./en";
+
+/** «Trendlar» galereyasi (migratsiya 0181). Matn manbasi — ./en.ts. */
+export const trendsUz: TrendsDictionary = {
+  title: "Trendlar",
+  subtitle: "Hozir eng ko'p joylanayotgan formatlar. Birini tanlang — «Yaratish» to'ldirilgan holda ochiladi. Faqat {qavs} ichidagi so'zlarni almashtirasiz.",
+  note: "Bu sahifada hech narsa narxlanmaydi va ishga tushmaydi. «Yaratish» narxni ko'rsatadi va tasdiqlashni so'raydi.",
+  filterLabel: "Toifa",
+  categories: { all: "Hammasi", business: "Biznes", story: "Hikoyalar", lifestyle: "Turmush tarzi", text: "Matn va iqtiboslar" },
+  kind: { video: "Video", image: "Rasm" },
+  seconds: "{n} s",
+  use: "Shablonni ishlatish",
+  useAria: "«{title}» shablonini ishlatish",
+  play: "Ko'rib chiqishni boshlash",
+  pause: "Ko'rib chiqishni to'xtatish",
+  noPreview: "Namuna tez orada",
+  modelUnavailable: "Uning modeli hozir sotuvda emas",
+  modelUnknown: "Mavjudligi noma'lum",
+  emptyTitle: "Hozircha shablonlar yo'q",
+  emptyBody: "Yangi formatlar e'lon qilinishi bilan shu yerda paydo bo'ladi.",
+  emptyCategory: "Bu toifada hozircha shablon yo'q.",
+  showAll: "Hammasini ko'rsatish",
+  errorTitle: "Shablonlarni yuklab bo'lmadi",
+  errorBody: "Muammo bizning tomonda. Birozdan keyin qayta urinib ko'ring.",
+  notEnabledTitle: "Trendlar bu yerda hali yoqilmagan",
+  notEnabledBody: "Bu serverda 0181-migratsiya qo'llanmagan. Uni administrator qo'llashi mumkin.",
+  retry: "Qayta urinish",
+  loading: "Shablonlar yuklanmoqda",
+  homeTitle: "Trenddagi shablonlar",
+  homeAll: "Barcha trendlar",
+};
