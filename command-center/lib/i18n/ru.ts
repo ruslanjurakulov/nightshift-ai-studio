@@ -1,3 +1,4 @@
+import { homeRu } from "./home/ru";
 import { studioHomeRu } from "./studio-home/ru";
 import { improveRu } from "./improve/ru";
 import { studioProgressRu } from "./studio-progress/ru";
@@ -69,6 +70,7 @@ export const ru: Dictionary = {
   marketing: marketingRu,
   modelSwitch: modelSwitchRu,
   studioHome: studioHomeRu,
+  home: homeRu,
   modelBudget: modelBudgetRu,
   planFinder: planFinderRu,
   /** The owner's per-provider ledger on the Billing page: ./billing-ledger/ru.ts. */

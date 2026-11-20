@@ -1,3 +1,4 @@
+import { homeUz } from "./home/uz";
 import { studioHomeUz } from "./studio-home/uz";
 import { improveUz } from "./improve/uz";
 import { studioProgressUz } from "./studio-progress/uz";
@@ -69,6 +70,7 @@ export const uz: Dictionary = {
   marketing: marketingUz,
   modelSwitch: modelSwitchUz,
   studioHome: studioHomeUz,
+  home: homeUz,
   modelBudget: modelBudgetUz,
   planFinder: planFinderUz,
   /** The per-provider ledger the owner reads on the Billing page: ./billing-ledger/uz.ts. */

@@ -1,3 +1,4 @@
+import { homeEn } from "./home/en";
 import { studioHomeEn } from "./studio-home/en";
 import { improveEn } from "./improve/en";
 import { studioProgressEn } from "./studio-progress/en";
@@ -78,6 +79,7 @@ export const en = {
   marketing: marketingEn,
   modelSwitch: modelSwitchEn,
   studioHome: studioHomeEn,
+  home: homeEn,
   modelBudget: modelBudgetEn,
   /** /pricing's "What does my plan make?": per-plan outputs, the plan finder, the per-item table: ./plan-finder/en.ts. */
   planFinder: planFinderEn,

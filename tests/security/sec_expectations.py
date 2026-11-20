@@ -731,3 +731,8 @@ sec_films_0171.extend(TABLES, FUNCTIONS)
 import sec_rights_acknowledgement_0174  # noqa: E402
 
 sec_rights_acknowledgement_0174.extend(TABLES, FUNCTIONS)
+
+# Migration 0187 (the names of the models on sale, read signed out by the landing page): tests/security/sec_public_models_0187.py
+import sec_public_models_0187  # noqa: E402
+
+sec_public_models_0187.extend(TABLES, FUNCTIONS)
