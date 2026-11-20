@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Activity, Coins, Gift, LogOut, Settings, X } from "lucide-react";
+import { Activity, Coins, Gift, Inbox, LogOut, Settings, Tv, X } from "lucide-react";
+import { OwnerModeSwitch } from "@/components/shell/OwnerModeSwitch";
+import { useShell } from "@/components/shell/ShellContext";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -48,6 +50,8 @@ export function AccountMenu({
 }) {
   const { t, locale, setLocale } = useI18n();
   const path = useChannelPath();
+  // The customer's top bar keeps only search, credits, language and New project: theme and view live in this menu at every width.
+  const operatorFrame = useShell().operator;
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -170,7 +174,7 @@ export function AccountMenu({
           aria-modal="false"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : "right-0 top-full mt-3 max-h-[calc(100dvh-110px)]"} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
+          className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : `right-0 top-full mt-3 ${operatorFrame ? "max-h-[calc(100dvh-110px)]" : "max-h-[calc(100dvh-200px)]"}`} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
         >
           <header className="flex items-start gap-3">
             <Avatar email={shownEmail} version={avatarV} size={40} ring />
@@ -242,7 +246,7 @@ export function AccountMenu({
 
           {/* Language and theme live here on a phone; the header bar has room for
               them from `sm` up. */}
-          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:hidden">
+          <div className={`flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 ${operatorFrame ? "sm:hidden" : ""}`}>
             <div role="group" aria-label={t.common.language} className="flex gap-1.5">
               {LOCALES.map((l) => (
                 <button
@@ -263,6 +267,15 @@ export function AccountMenu({
           </div>
 
           <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">
+            {/* Channels and the Inbox left the rail for Create, Trends, Projects and Library: they are one tap away here. */}
+            <Link href={path("/channels")} onClick={() => close(false)} className="side-link">
+              <Tv aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+              <span>{t.nav.channels}</span>
+            </Link>
+            <Link href={path("/inbox")} onClick={() => close(false)} className="side-link">
+              <Inbox aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+              <span>{t.nav.inbox}</span>
+            </Link>
             <Link href={path("/usage")} onClick={() => close(false)} className="side-link">
               <Activity aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.account.usage}</span>
@@ -279,6 +292,7 @@ export function AccountMenu({
               <Settings aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.account.settings}</span>
             </Link>
+            <OwnerModeSwitch onDone={() => close(false)} />
             <button type="button" onClick={signOut} className="side-link w-full text-left">
               <LogOut aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.common.signOut}</span>

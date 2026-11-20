@@ -20,11 +20,10 @@ import "./studio-hub.css";
 
 /** The moved screens, by their first path segment, and the name the notice gives each. */
 const MOVED: Record<string, (t: Dictionary) => string> = {
-  create: (t) => t.nav.create,
+  // Create and Library are rail entries of their own again (the sprint IA): no "moved" notice on them.
   videos: (t) => t.nav.videos,
   styles: (t) => t.nav.styles,
   presets: (t) => t.presets.title,
-  library: (t) => t.nav.library,
   editor: (t) => t.nav.editor,
   workflows: (t) => t.nav.workflows,
   pipeline: (t) => t.nav.pipeline,
