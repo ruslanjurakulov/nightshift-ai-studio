@@ -737,3 +737,9 @@ sec_rights_acknowledgement_0174.extend(TABLES, FUNCTIONS)
 import sec_owner_analytics_0182  # noqa: E402
 
 sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
+
+# Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
+# tests/security/sec_creative_templates_0183.py
+import sec_creative_templates_0183  # noqa: E402
+
+sec_creative_templates_0183.extend(TABLES, FUNCTIONS)

@@ -1995,3 +1995,24 @@ its reads. Read-only over existing tables, plus one log of its own.
 - **Without it.** The hub says it needs 0182 and shows no figure; exports are refused.
 - Lab: `tests/security/sec_owner_analytics_0182.py`, `tests/security/test_sec_owner_analytics.py`. Rollback:
   `docs/sql/rollback_0182_owner_analytics.sql`.
+
+## Trend templates: ready formats for the Trends gallery (0183)
+
+0183 (`0183_creative_templates.sql`) gives the Trends gallery (`/{channel}/trends`, `GET /api/templates`) its table: ready
+short-form formats that open Create prefilled. Additive: one table, its updated_at trigger, and a ten-row seed.
+
+- **Who.** RLS on. `anon` and `authenticated` may read **published** rows only. No API role may insert, update or delete; the
+  service key and the SQL editor write.
+- **What a row is.** A format, not content: a prompt with `{placeholders}`, the model it was written for (`model_id`, a foreign key
+  to `model_registry`), the shape (16:9 / 9:16 / 1:1), the length for video (5 or 10 s), a quality tier, director notes, and
+  titles and descriptions in en / ru / uz. A slug must contain a hyphen, so it can never be read as a Studio starter id (those
+  use underscores and share `?template=`).
+- **Availability is never stored.** Whether the template's model is on sale is asked of `sellable_models()` on every request. The
+  API returns `model_status` available / unavailable / unknown, and never names a substitute model.
+- **Media is not in the database.** Preview clips and posters are app files under `command-center/public/templates/<slug>/`,
+  listed in `command-center/lib/templates/media-manifest.json`. A test holds the manifest and the files in step.
+- **Seed.** Ten formats on models on sale when it was written (the MiniMax H3 family, Ideogram). A row is inserted only when its
+  model exists in `model_registry`, and `on conflict (slug) do nothing`, so re-applying never undoes an edit.
+- **Without it.** `/api/templates` answers 503 `not_enabled` and the Trends page says Trends are not available here.
+- Lab: `tests/security/sec_creative_templates_0183.py`, `tests/security/test_sec_creative_templates.py`,
+  `tests/security/test_sec_breach_creative_templates.py`. Rollback: `docs/sql/rollback_0183_creative_templates.sql`.

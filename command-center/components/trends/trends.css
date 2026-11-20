@@ -1,0 +1,131 @@
+/* The Trends gallery (migration 0183). Tokens only (globals.css): it follows light, dark and the brand's colours. */
+
+.tr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+@media (max-width: 479px) {
+  /* Two columns on a phone (360/390 px): a 9:16 card at full width would be a screen tall. */
+  .tr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+}
+
+.tr-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ns-r-panel, 0.9rem);
+  background: var(--color-panel);
+  overflow: hidden;
+}
+
+.tr-media {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  max-height: 26rem;
+  width: 100%;
+  overflow: hidden;
+  background: var(--color-panel-2);
+}
+.tr-media[data-aspect="16:9"] { aspect-ratio: 16 / 9; }
+.tr-media[data-aspect="1:1"] { aspect-ratio: 1 / 1; }
+/* Mixed shapes in one row: the box keeps a 4:5 frame and the media covers it, so the row's cards line up. */
+.tr-grid .tr-media,
+.tr-strip .tr-media { aspect-ratio: 4 / 5; }
+
+.tr-poster,
+.tr-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.tr-video { opacity: 0; transition: opacity var(--ns-dur-1, 160ms) var(--ns-ease, ease); }
+.tr-video[data-playing="true"] { opacity: 1; }
+
+/* The designed poster state: the kind's colour, its icon, and words saying the preview is not made yet. */
+.tr-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-fg);
+  background:
+    radial-gradient(120% 80% at 20% 0%, color-mix(in srgb, var(--tr-hue) 55%, transparent), transparent 70%),
+    linear-gradient(160deg, color-mix(in srgb, var(--tr-hue) 30%, var(--color-panel-2)), var(--color-panel-2));
+}
+.tr-card { --tr-hue: var(--ns-amber, var(--color-primary)); }
+.tr-card[data-kind="image"] { --tr-hue: var(--color-info, var(--color-secondary)); }
+
+.tr-play {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  border: 0;
+  color: var(--ns-on-film, #fff);
+  background: var(--studio-media-chip, rgb(0 0 0 / 0.6));
+}
+.tr-play:focus-visible { outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }
+
+.tr-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem 0.9rem;
+  min-width: 0;
+}
+.tr-meta { margin: 0; font-size: 0.72rem; color: var(--color-muted); }
+.tr-title { margin: 0; font-size: 0.98rem; font-weight: 600; color: var(--color-fg); overflow-wrap: break-word; hyphens: auto; }
+.tr-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tr-note { margin: 0; font-size: 0.76rem; color: var(--color-muted); }
+.tr-note[data-tone="warn"] { color: var(--color-warn); }
+.tr-use { margin-top: auto; align-self: stretch; justify-content: center; text-align: center; min-height: 2.75rem; }
+
+.tr-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.tr-state { display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+.tr-state h2 { margin: 0; font-size: 1rem; font-weight: 600; color: var(--color-fg); }
+.tr-state p { margin: 0; color: var(--color-muted); }
+
+.tr-strip { display: flex; gap: 0.75rem; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 0.25rem; list-style: none; margin: 0; padding-left: 0; }
+.tr-strip > li { flex: 0 0 min(42vw, 12rem); scroll-snap-align: start; }
+/* Desktop: all six in one row, no hidden sideways scroll a mouse cannot see. */
+@media (min-width: 64rem) {
+  .tr-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); overflow: visible; }
+}
+
+@media (max-width: 479px) {
+  .tr-body { padding: 0.6rem 0.65rem 0.75rem; }
+  .tr-desc { -webkit-line-clamp: 2; }
+  .tr-title { font-size: 0.9rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tr-video { display: none; }
+}
