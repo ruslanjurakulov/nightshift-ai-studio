@@ -342,6 +342,8 @@ ON_0139 = (MIGRATION_0149.name, *ON_0149)
 #: 0188 (Recraft web_mcp) replaces 0125's sellable_models and 0124's api_creative_model_ok and refuses any other body: it does not sit
 #: on 0139, but every sequence that leaves 0139 out leaves 0125's sitters out, so it is added here, last.
 ON_0139 = (*ON_0139, "0188_recraft_web_mcp.sql")
+#: 0191 (the MCP Studio tools) calls 0125's model_past_shutdown and sellable_models and refuses to apply without them: likewise.
+ON_0139 = (*ON_0139, "0191_mcp_oauth_creative.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -351,7 +353,8 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
-           "0174_rights_acknowledgement.sql", "0187_rights_acknowledgement_inputs.sql", "0199_adult_attestation.sql")
+           "0174_rights_acknowledgement.sql", "0187_rights_acknowledgement_inputs.sql", "0191_mcp_oauth_creative.sql",
+           "0199_adult_attestation.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names

@@ -132,6 +132,8 @@ class Numbering(unittest.TestCase):
         # none of the three words below.
         # 0171 (Film Studio P2: the film's quote, its one credit hold and the settle functions) was reviewed the same way: it names
         # none of the three words below.
+        # 0191 (a connected assistant's Studio generations: oauth_* functions and tables, 0093's three bodies, the grants' scope check)
+        # was reviewed the same way: it reads, replaces and alters nothing these pins guard, and names none of their words.
         # 0172 (an owner's grant reversal that met a hold collects when the hold is released: owner_reverse_grant, the lot trigger,
         # one table, one trigger on credit_transactions) was reviewed the same way: it names none of the three words below.
         # 0173 (the seven cleared models on sale: credit_prices rows and model_registry availability / entitlement only) was reviewed
@@ -150,7 +152,7 @@ class Numbering(unittest.TestCase):
         # 0190 (the probe log's plan_required word: one check constraint on model_probe_runs) was reviewed the same way: names nothing these pin.
         # 0199 (the adult attestation: adult_attestations, two calls, its helpers and hold gate, marked hunks in quote_creative_job,
         # route_model, sellable_models, create_creative_job, api_creative_refusal, creative_platform_reserve, quote_film, start_film and api_create_video) was reviewed the same way: it names none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0199")
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0199")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

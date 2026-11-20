@@ -209,7 +209,9 @@ export function ConnectedApps({ mcpUrl, oauthLive = false }: { mcpUrl?: string; 
         <ul className="flex flex-col gap-3">
           {grants.map((g) => {
             const where = g.redirect_uris[0] ? describeRedirect(g.redirect_uris[0]).host : "";
-            const scopeNames = g.scopes.map((s) => (s === "videos:read" ? c.scopesRead : s === "videos:create" ? c.scopesCreate : c.scopesPublish));
+            const scopeNames = g.scopes.map((s) =>
+              s === "videos:read" ? c.scopesRead : s === "videos:create" ? c.scopesCreate : s === "studio:create" ? c.scopesStudio : c.scopesPublish,
+            );
             return (
               <li key={g.id} className="rounded-[var(--ns-r-panel)] bg-[var(--ns-key)] p-4" data-testid="connected-app">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">

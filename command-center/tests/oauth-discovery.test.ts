@@ -70,7 +70,7 @@ describe("discovery documents (RFC 9728, RFC 8414, MCP authorization 2026-07-28)
     const e = oauthEndpoints(O);
     expect(e.resourceMetadata).toBe(O + "/.well-known/oauth-protected-resource/api/mcp");
     expect(wwwAuthenticate(e.resourceMetadata, OAUTH_SCOPES)).toBe(
-      `Bearer resource_metadata="${e.resourceMetadata}", scope="videos:read videos:create videos:publish"`,
+      `Bearer resource_metadata="${e.resourceMetadata}", scope="videos:read videos:create videos:publish studio:create"`,
     );
     expect(wwwAuthenticate(e.resourceMetadata, ["videos:read"], true)).toMatch(/^Bearer error="invalid_token", error_description="[^"]+", resource_metadata=/);
   });

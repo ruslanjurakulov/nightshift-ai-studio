@@ -113,7 +113,12 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   }
 
   const where = describeRedirect(view.redirectUri);
-  const scopeText: Record<string, string> = { "videos:read": o.scopeRead, "videos:create": o.scopeCreate, "videos:publish": o.scopePublish };
+  const scopeText: Record<string, string> = {
+    "videos:read": o.scopeRead,
+    "videos:create": o.scopeCreate,
+    "videos:publish": o.scopePublish,
+    "studio:create": o.scopeStudio,
+  };
   return (
     <OAuthShell title={withParts(o.title, { app: <AppName name={view.clientName} /> })}>
       <p className="st-body mt-3 [overflow-wrap:anywhere]">{withParts(o.lead, { app: <AppName name={view.clientName} /> })}</p>
@@ -140,7 +145,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
         <section className="fl-card" aria-labelledby="oauth-can">
           <h2 id="oauth-can" className="fl-q">{o.canTitle}</h2>
           <ul className="flex flex-col gap-3">
-            {view.scopes.map((s) => (
+            {view.scopes.filter((s) => s !== "studio:create").map((s) => (
               <li key={s} className="flex items-start gap-3 text-base leading-snug">
                 <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-[var(--color-ok)]" />
                 <span>{scopeText[s] ?? s}</span>
@@ -151,7 +156,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
             <strong className="font-semibold text-[var(--ns-text)]">{o.cannotTitle}</strong> {o.cannot}
           </p>
           {/* Free can approve since 0147: say up front that credits, not the plan, are what this app's videos need. */}
-          {!view.exempt && view.scopes.includes("videos:create") && <p className="fl-hint">{o.creditsNote}</p>}
+          {!view.exempt && (view.scopes.includes("videos:create") || view.scopes.includes("studio:create")) && <p className="fl-hint">{o.creditsNote}</p>}
         </section>
 
       <ConsentForm
@@ -160,7 +165,10 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
         locale={locale}
         defaultLimit={view.defaultLimit}
         maxLimit={view.maxLimit}
+        offerStudio={view.scopes.includes("studio:create")}
         text={{
+          studioOptIn: o.studioOptIn,
+          studioOnly: o.studioOnly,
           limitLabel: o.limitLabel,
           limitHint: fmt(o.limitHint, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),
           limitInvalid: fmt(o.limitInvalid, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),

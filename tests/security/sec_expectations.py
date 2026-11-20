@@ -726,6 +726,11 @@ import sec_films_0171  # noqa: E402
 
 sec_films_0171.extend(TABLES, FUNCTIONS)
 
+# Migration 0191 (the Studio's generations for a connected assistant: quotes, jobs and rate buckets of a connection's own, five
+# token-only doors, every model off): tests/security/sec_mcp_oauth_creative_0191.py
+import sec_mcp_oauth_creative_0191  # noqa: E402
+
+sec_mcp_oauth_creative_0191.extend(TABLES, FUNCTIONS)
 # Migration 0174 (rights acknowledgement: an append-only record of who took responsibility for which input, and the job start path
 # refusing a model that requires one without it): tests/security/sec_rights_acknowledgement_0174.py
 import sec_rights_acknowledgement_0174  # noqa: E402
