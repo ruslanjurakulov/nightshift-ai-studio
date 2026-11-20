@@ -4,12 +4,12 @@ Status: adapters shipped DARK, 2026-10-25. Internal notes. Nothing here makes a 
 
 Four registry entries, two vendors, raster text-to-image only:
 
-| Registry id | Vendor | Adapter | Vendor model | Price (ESTIMATE) |
+| Registry id | Vendor | Adapter | Vendor model | Priced (ESTIMATE; figures in the model registry, not in prose) |
 | :-- | :-- | :-- | :-- | :-- |
-| `recraft-v4.1` | Recraft (`https://external.api.recraft.ai/v1`, key `RECRAFT_API_TOKEN`) | `image.recraft` | `recraftv4_1` | $0.035 per 1K raster image |
-| `recraft-v4.1-flash` | Recraft | `image.recraft` | `recraftv4_1_flash` | $0.007, about 1.3 s |
-| `flux-3-image` | Black Forest Labs (`https://api.bfl.ai/v1`, key `BFL_API_KEY`) | `image.bfl3` | `flux-3-image` | $0.048 (1K), $0.10 (2K) |
-| `flux-3-image-klein` | Black Forest Labs | `image.bfl3` | `flux-3-image-klein` | $0.009 (1K), $0.014 (2K) |
+| `recraft-v4.1` | Recraft (`https://external.api.recraft.ai/v1`, key `RECRAFT_API_TOKEN`) | `image.recraft` | `recraftv4_1` | per 1K raster image |
+| `recraft-v4.1-flash` | Recraft | `image.recraft` | `recraftv4_1_flash` | per image (cheaper than V4.1), about 1.3 s |
+| `flux-3-image` | Black Forest Labs (`https://api.bfl.ai/v1`, key `BFL_API_KEY`) | `image.bfl3` | `flux-3-image` | per image, 1K and 2K |
+| `flux-3-image-klein` | Black Forest Labs | `image.bfl3` | `flux-3-image-klein` | per image, 1K and 2K |
 
 ## Why they are not for sale
 
@@ -40,10 +40,10 @@ Every entry has `terms_gate: terms_review_required` and `api_exposure: web_only`
 Sources (`recraft.ai/docs/api-reference/...` as markdown, read 2026-10-25): getting-started, models/{overview,recraft-v4-1,recraft-v4-1-flash}, endpoints, image-inputs-and-results, error-handling, pricing, appendix.
 
 - `POST /v1/images/generations`, synchronous. `response_format: b64_json` and `image_format: png` are always sent, `n` is 1. **The docs print the result link as `https://...` and name no host** (the links live about 24 hours and are public), so no host could go on an allow-list; rather than guess one, nothing is downloaded. The image arrives inline and is stored through `safe_fetch` (type sniffed from the bytes, atomic write). An answer that carries a link instead of bytes is treated as unusable and possibly billed (`UNCONFIRMED SPEND`), and the link is never requested.
-- Only the raster 1K models are offered. Vector (`_vector`, $0.08 on V4.1) and Pro 2K (`_pro`, $0.21) are priced apart and refused; so are V4, V4 Styles, V3 and the Utility line. Styles, style references, colour controls and the seed are not wired; V4.1 takes no `negative_prompt`.
+- Only the raster 1K models are offered. Vector (`_vector`) and Pro 2K (`_pro`) are priced apart and refused; so are V4, V4 Styles, V3 and the Utility line. Styles, style references, colour controls and the seed are not wired; V4.1 takes no `negative_prompt`.
 - `size` is the job's aspect ratio (eleven plain `w:h` rows of the vendor's size table); with none it is left out and Recraft picks the shape from the prompt. The price does not depend on it.
 - Errors: plain text or JSON ("request unauthorized" for a rejected token), so the body is read as text and classified by status and words. A lost submit answer (timeout, dropped connection, 5xx, unreadable 2xx) is `UNCONFIRMED SPEND` with `not_accepted` False; 401/402/404/429 are proof of refusal.
-- `credits` in the answer is the units charged ($1 = 1,000 units); it is not recorded yet. Rate limit: 100 images per minute and 5 requests per second per user across all tokens (registry allows 2 per organization).
+- `credits` in the answer is the units charged (prepaid API units); it is not recorded yet. Rate limit: 100 images per minute and 5 requests per second per user across all tokens (registry allows 2 per organization).
 
 ### `image.bfl3` (`modules/capabilities/bfl.py`)
 
@@ -55,7 +55,7 @@ Sources (`docs.bfl.ml/...` as markdown, read 2026-10-25): api-reference/utility/
 - **The polling link carries the key, so it is checked as strictly as a result link** (review finding, fixed here for all three BFL adapters: `image.bfl`, `video.bfl`, `image.bfl3`). `base.host_is` reads a URL's host with `urlparse`; `requests` reads it differently, so `https://127.0.0.1:PORT\\@api.bfl.ai/x` passed it while the connection, and the `x-key` header, went to 127.0.0.1. `safe_fetch.checked_polling_url` (https, no credentials, no backslash, `#` or `?` trick, standard port, and the host urllib3 will connect to equals the host read) now guards both the submit answer (failure: `UNCONFIRMED SPEND`) and every poll (failure: `SPEND MAY HAVE OCCURRED`, nothing requested). The three BFL adapters also never follow a 3xx from the API host (`follow_redirects = False`); `requests` drops only `Authorization` on a cross-host redirect, so `x-key` would have gone along. `tests/test_bfl_polling_link.py` points an attacker listener at the link and at a 307 and asserts it receives nothing (plus a control showing the redirect WOULD leak the key if followed).
 - **"Task not found" is a verdict only with HTTP 200 or 404** (BFL's errors page). A 503 whose body says so is a gateway's word and is treated as an outage; a 503 saying `Error`, `Request Moderated` or `Content Moderated` is the task's own failure, as documented.
 - **The format of the result is not documented** (FLUX 3 Image has no output-format field; the docs' example saves `.png`), so `safe_fetch` gained a pseudo type `image/*`: the first bytes decide among PNG / JPEG / WebP, the file is stored under that extension, anything else is refused and removed.
-- `resolution` (the priced tier) is always sent from the job's image size and a job with none is refused; the vendor default is `1k`. Offered: 1K and 2K. `768sq` and `1.5k` have no name in the registry's size list, and `4k` costs $0.607 (12 times 1K). `grounding` (web and image search for the prompt) is ON by default on FLUX 3 Image and is sent as `false`; the pages state no price for it and a customer's prompt is not sent to a search engine. Klein has no such field. `safety_tolerance` stays the vendor default (2). The opaque per-organization id goes in `user`.
+- `resolution` (the priced tier) is always sent from the job's image size and a job with none is refused; the vendor default is `1k`. Offered: 1K and 2K. `768sq` and `1.5k` have no name in the registry's size list, and `4k` costs many times 1K. `grounding` (web and image search for the prompt) is ON by default on FLUX 3 Image and is sent as `false`; the pages state no price for it and a customer's prompt is not sent to a search engine. Klein has no such field. `safety_tolerance` stays the vendor default (2). The opaque per-organization id goes in `user`.
 - Moderation: `Request Moderated` (before generating) and `Content Moderated` (the finished image withheld) are `policy`. BFL does not say whether either is billed, so every failure message ends with that caveat and none claims the task was free. A failure after BFL said `Ready` (bad link, bad file, download error) starts with `SPEND MAY HAVE OCCURRED`.
 - Not wired: editing and up to ten reference images, bounding-box layouts (they are just prompt text and would pass), FLUX 3 Video and Video Edit/Upscale, the FLUX.2 family, webhooks, regional endpoints (`api.eu.bfl.ai`, `api.us.bfl.ai`; the polling URL already names the region).
 
@@ -65,13 +65,13 @@ Sources (`docs.bfl.ml/...` as markdown, read 2026-10-25): api-reference/utility/
 
 ## Prices (all ESTIMATES, `confirmed: false`, as of 2026-10-25)
 
-- Recraft (`recraft.ai/docs/api-reference/pricing`, prepaid API units, never expire, non-refundable): V4.1 raster $0.035, V4.1 Flash $0.007. Whether a failed or refused request is billed is not stated.
-- BFL (the structured price list in `bfl.ai/pricing`; the docs' own price tables render client-side and were blank; 1 credit = $0.01), per image: FLUX 3 Image 768sq $0.041, 1k $0.048, 1.5k $0.07, 2k $0.10, 4k $0.607; FLUX 3 Image Klein 768sq $0.008, 1k $0.009, 1.5k $0.011, 2k $0.014, 4k $0.036. The submit answer reports `cost` in credits for the request.
+- Recraft (`recraft.ai/docs/api-reference/pricing`, prepaid API units, never expire, non-refundable): V4.1 raster and V4.1 Flash per image. Whether a failed or refused request is billed is not stated.
+- BFL (the structured price list in `bfl.ai/pricing`; the docs' own price tables render client-side and were blank; priced in BFL credits), per image: FLUX 3 Image and FLUX 3 Image Klein at 768sq, 1k, 1.5k, 2k and 4k. The submit answer reports `cost` in credits for the request.
 - `quality_tier` / `speed_tier`: Recraft V4.1 4/4 and Flash 3/5 are the research report's recommendation; FLUX 3 Image 5/3 and Klein 3/5 are this change's own judgement (the report gave none). No benchmark was read for any of them.
 
 ## To enable one (owner)
 
 1. Recraft: decide 3.2(x) and 3.7 in writing, ideally by asking Recraft for a reseller or platform agreement (1.4); put the no-AI-training rule and the end-user terms of 3.5 into Nightshift's own terms. BFL: decide the training-licence question (2(b)), the privacy notice, the under-18 upload rule and the end-user flow-down; consider whether the FLUX.2 entries need the same gate.
 2. Create the key (`RECRAFT_API_TOKEN` for Recraft; `BFL_API_KEY` is already wired), set the repository secret (never in chat) and a spend cap; check Uzbekistan sign-up and payment.
-3. `python tools/probe_models.py --dry-run --model recraft-v4.1-flash`, then the real probe by naming it (about $0.007 for Recraft Flash, $0.035 V4.1, $0.009 Klein, $0.048 FLUX 3 Image).
+3. `python tools/probe_models.py --dry-run --model recraft-v4.1-flash`, then the real probe by naming it (one image each, at the registry's price).
 4. The probe is also what shows the real delivery host and the format FLUX 3 serves. Re-check the prices, set `confirmed: true`, add the `credit_prices` rows, and clear `terms_gate` in a reviewed change.

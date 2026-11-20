@@ -309,13 +309,20 @@ describe("the status chip never says healthy over a failed count", () => {
     state.tables.system_events = rows([{ id: 1, ts: new Date().toISOString(), event: "x.completed", status: "completed", agent: "a" }]);
     state.tables["system_events#count"] = FAIL;
     const html = renderToStaticMarkup(await CommandCenter());
-    expect(html).toContain(en.dashboard.unreadable);
+    expect(html).toContain(en.dashboard.eventStatusUnavailable);
+    expect(html).toContain(en.dashboard.eventStatusScope);
+    expect(html).not.toContain(en.dashboard.eventStatusClear);
+    expect(html).not.toContain(en.dashboard.eventStatusEmpty);
     expect(html).not.toContain(en.dashboard.systemHealthy);
   });
-  it("with every read working and an event recorded it is healthy (the control)", async () => {
+  it("with every read working and an event recorded it reports event evidence, not proven health (the control)", async () => {
     state.tables.system_events = rows([{ id: 1, ts: new Date().toISOString(), event: "x.completed", status: "completed", agent: "a" }], 0);
     const html = renderToStaticMarkup(await CommandCenter());
-    expect(html).toContain(en.dashboard.systemHealthy);
+    expect(html).toContain(en.dashboard.eventStatusClear);
+    expect(html).toContain(en.dashboard.eventStatusScope);
+    expect(html).not.toContain(en.dashboard.eventStatusUnavailable);
+    expect(html).not.toContain(en.dashboard.eventStatusEmpty);
+    expect(html).not.toContain(en.dashboard.systemHealthy);
   });
 });
 

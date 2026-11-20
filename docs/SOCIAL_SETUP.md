@@ -338,8 +338,9 @@ Rasmiy hujjatlar (2026-10-25 da o'qilgan; ishlatishdan oldin qayta o'qing):
    (`https://nightshift-ai.studio/api/oauth/x/callback`, hali yo'q — keyingi PR).
 2. Ruxsatlar (scopes): `tweet.write`, `tweet.read`, `users.read`, `media.write`, `offline.access` (`offline.access`siz
    refresh token berilmaydi, access token esa 2 soat yashaydi).
-3. **Pul**: X hozir faqat "pay-per-usage" ko'rsatadi (narx sahifasi 2026-10-24 da o'qilgan, sana yozilmagan): post yaratish
-   $0.015, **havolali post $0.200**, media metadata $0.005. To'lov **sizning ilovangizdan** har bir mijoz posti uchun
+3. **Pul**: X hozir faqat "pay-per-usage" ko'rsatadi (narx sahifasi 2026-10-24 da o'qilgan, sana yozilmagan): post yaratish,
+   **havolali post** (oddiy postdan ancha qimmat) va media metadata alohida narxlanadi — narxlarni X'ning narx sahifasida
+   ko'ring. To'lov **sizning ilovangizdan** har bir mijoz posti uchun
    olinadi. Kod postga havola qo'ymaydi (matndan olib tashlanadi), shuning uchun arzon tarif qo'llanadi. Oldindan kredit
    to'ldiring va xarajat chegarasi qo'ying; mijozlarga narx qo'yish yoki pass-through — sizning qaroringiz (kredit narxi
    bu PR'da YO'Q).

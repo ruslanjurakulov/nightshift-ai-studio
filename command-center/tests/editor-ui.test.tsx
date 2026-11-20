@@ -447,9 +447,9 @@ describe("the editor", () => {
     );
     expect(
       screen
-        .getByRole("link", { name: new RegExp(te.exportPanel.openVideo) })
+        .getByRole("link", { name: new RegExp(en.assetDownload.preview) })
         .getAttribute("href"),
-    ).toBe(OTHER.viewUrl);
+    ).toBe(`/api/library/${OTHER.id}/download?variant=preview`);
     expect(
       screen.getByRole("link", { name: te.viewInLibrary }).getAttribute("href"),
     ).toBe("/chronos/library");

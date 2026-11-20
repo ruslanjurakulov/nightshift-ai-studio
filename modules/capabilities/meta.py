@@ -207,7 +207,7 @@ def _picture_part(ref: str) -> dict:
 class MuseImageAdapter(SafeResultMixin, HttpAdapter):
     """Text-to-image and edit / compose with 1-10 pictures, on ``POST /v1/responses`` with ``store: false``.
 
-    Billing claims (dev.meta.ai/docs/pricing-rate-limits; a vendor claim, unverified here): a flat $0.01 per generated
+    Billing claims (dev.meta.ai/docs/pricing-rate-limits; a vendor claim, unverified here): a flat price per generated
     image, built-in search included; "images that fail to generate, or that are removed by safety filtering before
     they're returned, aren't counted"; a request that returns several images is billed for each. Every picture the
     answer carries is therefore handed back, never only the first. 150 requests per minute per team."""
