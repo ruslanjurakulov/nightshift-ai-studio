@@ -27,7 +27,7 @@
   }
   .hm-hero-media { position: absolute; inset: 0; z-index: -2; }
   .hm-hero-still,
-  .hm-hero-media .nx-clip { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 62% 50%; }
+  .hm-hero-media .nx-clip { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 55%; }
   .hm-hero-media .nx-clip { opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
   .hm-hero-media[data-live="true"] .nx-clip { opacity: 1; }
   /* The words sit on the left (the dark side of the planet); the veil keeps them >= 4.5:1 whatever frame is behind. */
@@ -35,9 +35,11 @@
     position: absolute;
     inset: 0;
     z-index: -1;
+    /* Heavy only behind the words (left) and on the last strip, which meets the next section: the right two thirds stay the
+       picture, so the still (Earth from orbit, frame 0) is seen before the clip starts and when it never does. */
     background:
-      linear-gradient(90deg, rgb(7 10 20 / 0.92) 0%, rgb(7 10 20 / 0.7) 42%, rgb(7 10 20 / 0.1) 75%),
-      linear-gradient(0deg, rgb(7 10 20 / 0.95) 0%, rgb(7 10 20 / 0) 45%);
+      linear-gradient(90deg, rgb(7 10 20 / 0.9) 0%, rgb(7 10 20 / 0.62) 40%, rgb(7 10 20 / 0) 70%),
+      linear-gradient(0deg, rgb(7 10 20 / 0.85) 0%, rgb(7 10 20 / 0) 22%);
   }
   @media (max-width: 767px) {
     .hm-hero-veil { background: linear-gradient(0deg, rgb(7 10 20 / 0.96) 0%, rgb(7 10 20 / 0.82) 45%, rgb(7 10 20 / 0.35) 100%); }
@@ -258,3 +260,61 @@
 @media (prefers-reduced-motion: reduce) {
   .hm-hero-media .nx-clip { transition: none; }
 }
+
+/* The landing's frame in the --ds-* look. The public shell (header, footer) and the reused pricing teaser paint with the
+   older --ns-* / --st-* / --color-* names; on this page only (the shell that holds .hm-root), those names point at the --ds-*
+   values, so the whole page is one look in either theme and no other public page changes. Unlayered on purpose: the shell's
+   own declarations sit in @layer components (site.css), and a token resolved at :root (--color-bg: var(--ns-ground)) has to be
+   redeclared here, not just its source, because a var() resolves where it is declared. */
+.st:has(.hm-root) {
+  --ns-ground: var(--ds-bg);
+  --ns-console: var(--ds-surface-1);
+  --ns-key: var(--ds-surface-2);
+  --ns-key-hi: var(--ds-surface-3);
+  --ns-rule: var(--ds-border);
+  --ns-rule-strong: var(--ds-border-strong);
+  --ns-text: var(--ds-text);
+  --ns-text-dim: var(--ds-text-2);
+  --ns-amber: var(--ds-select);
+  --ns-amber-ink: var(--ds-select);
+  --ns-on-amber: var(--ds-on-select);
+  --ns-cta-bg: var(--ds-accent-solid);
+  --ns-cta-fg: var(--ds-on-accent);
+  --ns-cta-price: var(--ds-on-accent);
+  --ns-lit-hover: var(--ds-accent-solid-hover);
+  --ns-lit-edge: var(--ds-accent-solid);
+  --ns-lit-glow: rgb(47 139 255 / 0.5);
+  --ns-act: var(--ds-accent);
+  --ns-act-ink: var(--ds-accent);
+  --ns-act-soft: var(--ds-accent-soft);
+  --ns-hover: var(--ds-hover);
+  --ns-select: var(--ds-select-soft);
+  --ns-focus: var(--ds-focus);
+  --ns-go: var(--ds-success);
+  --ns-tally: var(--ds-danger);
+  --ns-caution: var(--ds-warning);
+  --st-lit-bg: var(--ds-accent-solid);
+  --st-lit-hover: var(--ds-accent-solid-hover);
+  --st-lit-fg: var(--ds-on-accent);
+  --st-lit-edge: var(--ds-accent-solid);
+  --st-lit-glow: rgb(47 139 255 / 0.5);
+  --st-act: var(--ds-accent);
+  --st-act-ink: var(--ds-accent);
+  --st-focus-gap: var(--ds-bg);
+  --color-bg: var(--ds-bg);
+  --color-panel: var(--ds-surface-1);
+  --color-panel-2: var(--ds-surface-2);
+  --color-border: var(--ds-border);
+  --color-fg: var(--ds-text);
+  --color-muted: var(--ds-text-2);
+  --color-primary: var(--ds-accent);
+  --color-hover: var(--ds-hover);
+  --color-active: var(--ds-select-soft);
+  --color-accent-soft: var(--ds-accent-soft);
+  --cta-base: var(--ds-accent-solid);
+  --cta-fg: var(--ds-on-accent);
+  background: var(--ds-bg);
+  color: var(--ds-text);
+}
+/* The pricing teaser's heading in the display face, like every other section title on the page. */
+.hm-pricing h2 { font-family: var(--ds-font-display); font-weight: 600; letter-spacing: -0.02em; }

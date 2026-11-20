@@ -7,7 +7,7 @@ import type { PricingTeaser } from "@/lib/landing";
 import type { PriceRates } from "@/lib/site/price-check";
 import type { PublicModel } from "@/lib/public-models";
 import { posterSrcSet } from "@/lib/site/renditions";
-import { buttonClass } from "@/components/ds/Button";
+import { buttonClass } from "@/components/ds/button-class";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { PriceBlock } from "@/components/landing/PriceBlock";
@@ -239,7 +239,7 @@ function Trust({ t }: { t: Dictionary }) {
   // Quoted from /trust, not paraphrased: the two pages cannot drift apart (lib/i18n/trust).
   const items = [
     { id: "publishing", title: tr.publishing.title, body: tr.publishing.lead },
-    { id: "private", title: tr.youtube.privateTitle, body: tr.youtube.privateBody },
+    { id: "keys", title: tr.keys.title, body: tr.keys.lead },
     { id: "fallback", title: tr.fallback.title, body: tr.fallback.body },
     { id: "payments", title: tr.payments.title, body: tr.payments.body[0] },
   ];
