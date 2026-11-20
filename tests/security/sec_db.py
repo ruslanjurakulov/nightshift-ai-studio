@@ -277,6 +277,7 @@ def take_off_0125(session) -> None:
     replays 0124 or applies its rollback on a database that has 0125 takes 0125 off first with its own rollback, and puts it back with
     put_back_0125 where the chain goes on. 0139 sits on 0125's creative_price(), and 0125's rollback refuses any other body, so 0139
     comes off first when it is there."""
+    take_off_0199(session)  # 0199 sits on 0125's sellable_models, and 0125's rollback refuses any other body
     if has_0139(session):
         take_off_0139(session)
     text = ROLLBACK_0125.read_text(encoding="utf-8")
@@ -286,6 +287,7 @@ def take_off_0125(session) -> None:
 def put_back_0125(session) -> None:
     session.conn.execute(MIGRATION_0125.read_text(encoding="utf-8"))
     put_back_0139(session)
+    put_back_0199(session)
 
 
 MIGRATION_0139 = MIGRATIONS / "0139_operator_preview.sql"
@@ -301,7 +303,11 @@ ROLLBACK_0156 = REPO / "docs" / "sql" / "rollback_0156_named_resolution_params.s
 MIGRATION_0159 = MIGRATIONS / "0159_duration_offered_by_model.sql"
 ROLLBACK_0159 = REPO / "docs" / "sql" / "rollback_0159_duration_offered_by_model.sql"
 #: Migrations written on 0156's creative_price, which refuse to apply without it: a sequence that leaves 0156 out leaves these out too.
+#: 0199 (the adult attestation) replaces 0125's sellable_models() and refuses any other body. It is listed here, at the bottom of the
+#: 0125 chain, so that every sequence that leaves out 0125 or a file on it leaves 0199 out too; it also sits on 0174, so it is listed
+#: again at the end of ON_0124 (a sequence that puts both lists back applies it once, last).
 ON_0156 = (MIGRATION_0159.name,)
+ON_0156 = (*ON_0156, "0199_adult_attestation.sql")
 #: Migrations written on 0155's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0155 out
 #: leaves these out too, in this order. (0156 also sits on 0126's creative_params_problem, which every sequence that reaches 0155 has
 #: applied already.)
@@ -324,7 +330,7 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
-           "0174_rights_acknowledgement.sql")
+           "0174_rights_acknowledgement.sql", "0199_adult_attestation.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -628,6 +634,7 @@ def take_off_0174(conn_or_session) -> None:
     guard, while rights_acknowledgements (the record, with its append-only triggers), rights_acknowledgement_kinds and
     model_registry.requires_acknowledgement stay. put_back_0174 applies 0174 again; it picks the kept tables up as its own."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0199(conn)  # 0199 sits on 0174's create_creative_job and api_creative_refusal; 0174's rollback refuses any other body
     if has_0174(conn):
         text = ROLLBACK_0174.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -637,6 +644,37 @@ def put_back_0174(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0174(conn):
         conn.execute(MIGRATION_0174.read_text(encoding="utf-8"))
+    put_back_0199(conn)
+
+
+MIGRATION_0199 = MIGRATIONS / "0199_adult_attestation.sql"
+ROLLBACK_0199 = REPO / "docs" / "sql" / "rollback_0199_adult_attestation.sql"
+
+
+def has_0199(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.record_adult_attestation(boolean, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0199(conn_or_session) -> None:
+    """0199 (the adult attestation) replaces quote_creative_job() (0036's body), route_model() (0075's), sellable_models() (0125's) and
+    create_creative_job() and api_creative_refusal() (0174's). 0125's and 0174's drift guards and rollbacks refuse any body but their
+    own, so take_off_0125 and take_off_0174 take 0199 off first. Its rollback puts the five earlier bodies back and drops its functions;
+    adult_attestations (the record, with its append-only triggers) stays, and put_back_0199 picks it up again."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0199(conn):
+        text = ROLLBACK_0199.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0199(conn_or_session) -> None:
+    """0199 again, once both 0125 and 0174 are on (it refuses to apply without either), and only when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0199(conn) or not has_0174(conn):
+        return
+    if not conn.execute("select to_regprocedure('public.model_past_shutdown(jsonb)') is not null").fetchone()[0]:
+        return
+    conn.execute(MIGRATION_0199.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

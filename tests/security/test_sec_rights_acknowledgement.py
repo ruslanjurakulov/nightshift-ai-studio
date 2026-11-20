@@ -578,6 +578,10 @@ def _gate_md5(db):
 
 
 def test_replaying_0174_changes_nothing_and_rollback_keeps_the_record(db):
+    # 0199 (the adult attestation) sits on 0174's create_creative_job, and 0174's drift guard refuses any other body: off for the
+    # replay, and back on after (put_back_0174 puts it back).
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0199(c)
     gate = _gate_md5(db)
     rows = db.su("select count(*) from public.rights_acknowledgements")[0][0]
     db.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8"))
@@ -591,7 +595,11 @@ def test_replaying_0174_changes_nothing_and_rollback_keeps_the_record(db):
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
             sec_db.put_back_0174(c)
-    assert _gate_md5(db) == gate
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        assert sec_db.has_0199(c), "0199 is back on top of 0174"
+        sec_db.take_off_0199(c)
+        assert _gate_md5(db) == gate, "under 0199, 0174's own gate is the one that was there"
+        sec_db.put_back_0199(c)
 
 
 def test_a_replay_of_0075_silently_removes_the_gate_which_is_why_the_doc_says_undo_first():

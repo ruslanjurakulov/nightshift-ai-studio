@@ -482,6 +482,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     import sec_rights_acknowledgement_0174
     sec_rights_acknowledgement_0174.seed(conn, sc)
 
+    # Adult attestation (0199): tests/security/sec_adult_attestation_0199.py — each tenant's member confirms they are 18 or older.
+    import sec_adult_attestation_0199
+    sec_adult_attestation_0199.seed(conn, sc)
+
     # Owner analytics (0182): tests/security/sec_owner_analytics_0182.py — one export record, made by the owner.
     import sec_owner_analytics_0182
     sec_owner_analytics_0182.seed(conn, sc)

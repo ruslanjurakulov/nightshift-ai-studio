@@ -737,3 +737,9 @@ sec_rights_acknowledgement_0174.extend(TABLES, FUNCTIONS)
 import sec_owner_analytics_0182  # noqa: E402
 
 sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
+
+# Migration 0199 (the adult attestation: one append-only answer per person, and the quote / route / job gate on it):
+# tests/security/sec_adult_attestation_0199.py
+import sec_adult_attestation_0199  # noqa: E402
+
+sec_adult_attestation_0199.extend(TABLES, FUNCTIONS)
