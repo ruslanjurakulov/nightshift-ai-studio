@@ -21,12 +21,13 @@ const text: ConsentText = {
   tooManyConnections: "Too many live", tooManyToday: "Too many today",
 };
 
-function setup() {
+function setup(offerStudio = false) {
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({ redirect: "https://a.example.com/cb?code=c" }), { status: 200, headers: { "content-type": "application/json" } }));
   vi.stubGlobal("fetch", fetchMock);
   const assign = vi.fn();
   Object.defineProperty(window, "location", { value: { ...window.location, assign }, writable: true });
-  render(<ConsentForm secret="nso_rq_x" app="Some App" locale="en" defaultLimit={500} maxLimit={20000} text={text} />);
+  render(<ConsentForm secret="nso_rq_x" app="Some App" locale="en" defaultLimit={500} maxLimit={20000} offerStudio={offerStudio}
+    text={{ ...text, studioOptIn: "Also allow Studio generations" }} />);
   return { fetchMock, assign };
 }
 
@@ -71,6 +72,35 @@ describe("the consent form never decides by itself", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ request: "nso_rq_x", decision: "deny", limit: null });
+  });
+});
+
+describe("Studio spending is the person's own, unticked choice (0191)", () => {
+  it("no checkbox and no studio field when the app did not ask for it", async () => {
+    const { fetchMock } = setup(false);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("studio");
+  });
+
+  it("starts unticked, and Allow without a tick sends studio false", async () => {
+    const { fetchMock } = setup(true);
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ request: "nso_rq_x", decision: "allow", limit: 500, studio: false });
+  });
+
+  it("only a tick and Allow send studio true; Deny never does", async () => {
+    const { fetchMock } = setup(true);
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).studio).toBe(true);
   });
 });
 

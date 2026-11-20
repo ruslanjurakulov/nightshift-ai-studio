@@ -6,7 +6,7 @@
  *  - "YouTube uploads are private by default": CLAUDE.md rule 2, config.YOUTUBE_PRIVACY, /trust "Uploads are private by default".
  *    Never "until you approve": Approve alone does not change privacy (tests/approve-copy-truth.test.ts).
  *  - the MCP lines: the two states of MCP_OAUTH_LIVE (lib/mcp-oauth.ts), worded as /mcp words them (lib/i18n/site/dev-en.ts).
- *  - the model strip: migration 0187 public_models_on_sale; nothing is drawn when it cannot be read.
+ *  - the model strip: migration 0193 public_models_on_sale; nothing is drawn when it cannot be read.
  * The trust section quotes /trust (t.site.trust) rather than paraphrasing it, so the two cannot disagree.
  * No numbers here: no user counts, no speed or quality promise, no testimonials. A model is named only where it is on sale (the
  * strip) or where it made the piece shown above its name (the reel's credit line).

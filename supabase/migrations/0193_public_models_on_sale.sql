@@ -1,4 +1,4 @@
--- 0187_public_models_on_sale.sql — the names of the models a person can buy in the Studio today, for the public landing page.
+-- 0193_public_models_on_sale.sql — the names of the models a person can buy in the Studio today, for the public landing page.
 --
 -- EVIDENCE:
 --   * The landing's model strip (S4 sprint brief) must show "only the models currently on sale", read the way /pricing reads them.
@@ -39,7 +39,7 @@ set local lock_timeout = '5s';
 do $$
 begin
   if to_regprocedure('public.sellable_models(text, text)') is null then
-    raise exception '0187 needs 0035 (model_registry, sellable_models): apply it first';
+    raise exception '0193 needs 0035 (model_registry, sellable_models): apply it first';
   end if;
 end
 $$;
@@ -57,7 +57,7 @@ create or replace function public.public_models_on_sale()
 $$;
 
 comment on function public.public_models_on_sale() is
-  'The display names (and capability codes) of the models sellable_models(null, ''web'') lists today. No price, id, provider or spec. Public: the landing page reads it signed out (0187).';
+  'The display names (and capability codes) of the models sellable_models(null, ''web'') lists today. No price, id, provider or spec. Public: the landing page reads it signed out (0193).';
 
 revoke all on function public.public_models_on_sale() from public;
 grant execute on function public.public_models_on_sale() to anon, authenticated;

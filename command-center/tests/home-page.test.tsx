@@ -2,7 +2,7 @@
 /**
  * The public landing "/" (components/landing/home/HomePage.tsx, S4). What would break without these:
  * - a clip on the page that is not our own Studio's output (stock footage or someone else's), or a broken frame for a missing file;
- * - a model shown as on sale that the Studio does not sell: the strip is the database's list (0187) or nothing, never a guess;
+ * - a model shown as on sale that the Studio does not sell: the strip is the database's list (0193) or nothing, never a guess;
  * - "Works inside Claude and ChatGPT" said while their sign-in is off (MCP_OAUTH_LIVE);
  * - the trust section drifting from /trust (it quotes it);
  * - the hero sentence or any section missing in Russian or Uzbek.
@@ -175,7 +175,7 @@ describe("the model strip is the database's list or nothing", () => {
     expect(within(list).getAllByRole("listitem").map((li) => li.querySelector(".hm-model-name")?.textContent)).toEqual(["Model A", "Model B"]);
   });
 
-  it("parses the 0187 answer: names once, codes to words, unknown codes dropped, junk refused", () => {
+  it("parses the 0193 answer: names once, codes to words, unknown codes dropped, junk refused", () => {
     expect(parsePublicModels(null)).toBeNull();
     expect(parsePublicModels({})).toBeNull();
     expect(

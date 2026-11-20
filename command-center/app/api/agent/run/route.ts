@@ -15,6 +15,7 @@ import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { acceptedHint } from "@/lib/publish";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { readAgeState } from "@/lib/server/age";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -152,6 +153,10 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     const error = access.error === "not_found" ? "channel_not_found" : access.error;
     return NextResponse.json({ error }, { status: access.status });
   }
+  // 0192's gates sit on a credit hold and on the render_jobs row. In a credits-exempt workspace the Actions dispatch takes
+  // neither, so for a person who said "under 18" nothing in the database would refuse this run: the answer is read here,
+  // before anything is dispatched. An unknown answer (migration not applied, read failed) blocks no one, as everywhere else.
+  if ((await readAgeState()) === "minor") return NextResponse.json({ error: "adult_only_service" }, { status: 403 });
   // A customer organization's run is paid for with its credits. Without
   // enforcement nothing would pay, so only the operator may start one.
   const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });

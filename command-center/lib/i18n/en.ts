@@ -8,9 +8,11 @@ import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
+import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { ageEn } from "./age/en";
 import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
@@ -78,6 +80,7 @@ export const en = {
   libraryUx: libraryUxEn,
   assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
+  age: ageEn,
   customerApp: customerAppEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
@@ -2430,6 +2433,7 @@ export const en = {
       errors: {
         insufficient_credits: "Not enough credits.",
         master_not_available: "There is no full-quality master for this quality.",
+        adult_only_service: "Nightshift is for adults (18+). You told us you are under 18, so downloads are not available on this account. Nothing was charged. If that answer was a mistake, contact support.",
         unpriced: "This quality is not priced yet.",
         price_changed: "The price changed — check it and confirm again.",
         forbidden: "You don't have access to buy a download here.",
@@ -3208,6 +3212,7 @@ export const en = {
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
   rightsAck: rightsAckEn,
+  voiceCatalog: voiceCatalogEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",
@@ -3772,6 +3777,8 @@ export const en = {
       capability_not_supported: "This kind of generation is not available yet.",
       source_unavailable: "This picture cannot be used: it is not in your organization's library, was deleted, or is not a PNG, JPEG or WebP image.",
       acknowledgement_required: "This model needs you to confirm your rights to the picture first. Nothing was started or charged.",
+      adult_attestation_required: "This model is for adults (18+) only, by its maker's terms. Confirm your age in the box at the top of Create. Nothing was started or charged.",
+      adult_only_service: "Nightshift is for adults (18+). This account said it is under 18, so nothing can be created. Nothing was charged.",
       style_unavailable: "This style kit cannot be used: it is not in your organization or was deleted. Pick another style, or None.",
       mode_not_supported: "Only the model you pick is used; automatic model choice is not available yet.",
       route_changed: "The automatic choice changed since the price was shown. Check the new pick and its price, then confirm again.",
@@ -3906,10 +3913,11 @@ export const en = {
     factSecondsRange: "{min}–{max} s",
     factUpTo: "up to {r}",
     verifiedOn: "Last proven working {date}",
-    lock: { first_purchase: "After first purchase", not_on_sale: "Not open to any workspace" },
+    lock: { first_purchase: "After first purchase", not_on_sale: "Not open to any workspace", adult_only: "For adults (18+)" },
     lockWhy: {
       first_purchase: "This model opens after your organization's first credit purchase.",
       not_on_sale: "This model isn't sold to any workspace yet, on any plan. Pick another model.",
+      adult_only: "This model's maker allows it for adults only. Confirm your age in the box at the top of Create to use it.",
     },
     lockBuy: "Buy credits",
     needMore: "Add credits · need {n} more",
@@ -4022,6 +4030,7 @@ export const en = {
     reasons: {
       policy: "The safety check refused this request. Change the description and try again.",
       bad_request: "These settings were not accepted. Change them and try again.",
+      plan: "The provider's plan does not allow this. For speech, pick a premade voice and try again.",
       busy: "The service was busy or too slow. Try again in a few minutes.",
       service: "Something went wrong on our side. Try again, or pick another model.",
       credits: "Credits could not be checked for this generation, so it did not run.",
@@ -4699,6 +4708,9 @@ export const en = {
     scopeRead: "See your channels, videos, jobs and credit balance.",
     scopeCreate: "Make videos. Each one spends credits from your balance, at the same price as in the app.",
     scopePublish: "Send finished videos to your connected accounts, with the same checks and approvals as in the app.",
+    studioOptIn: "Also allow it to generate pictures and clips in the Studio (spends credits after you confirm each price). Off unless you tick it.",
+    studioOnly: "This app asked only to generate in the Studio. Tick that choice to allow it, or deny.",
+    scopeStudio: "Generate pictures and clips in the Studio, only with the models that allow it. Each one spends credits from your balance, at the same price as in the app, after you confirm the price.",
     cannotTitle: "It can never",
     cannot: "Change your plan or password, buy credits, delete anything, or see your API keys.",
     nameNote: "The name comes from the app itself; Nightshift has not checked it. Rely on the address below.",
@@ -4752,6 +4764,7 @@ export const en = {
     scopesRead: "read",
     scopesCreate: "create videos",
     scopesPublish: "publish",
+    scopesStudio: "Studio",
     loadFailed: "Couldn't load your connected apps. Try again.",
     notMigrated: "Connecting apps is not set up on this database yet (migration 0093).",
     actionFailed: "That did not work. Nothing was changed. Try again.",

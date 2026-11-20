@@ -8,9 +8,11 @@ import { madeForKidsRu } from "./made-for-kids/ru";
 import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { rightsAckRu } from "./rights-acknowledgement/ru";
+import { voiceCatalogRu } from "./voice-catalog/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
+import { ageRu } from "./age/ru";
 import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
@@ -69,6 +71,7 @@ export const ru: Dictionary = {
   libraryUx: libraryUxRu,
   assetDownload: assetDownloadRu,
   ownerShell: ownerShellRu,
+  age: ageRu,
   customerApp: customerAppRu,
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
@@ -2412,6 +2415,7 @@ export const ru: Dictionary = {
       errors: {
         insufficient_credits: "Недостаточно кредитов.",
         master_not_available: "Для этого качества нет мастера в полном качестве.",
+        adult_only_service: "Nightshift предназначен для взрослых (18+). Вы указали, что вам нет 18, поэтому загрузки на этом аккаунте недоступны. Ничего не списано. Если ответ был ошибкой, напишите в поддержку.",
         unpriced: "Для этого качества цена пока не задана.",
         price_changed: "Цена изменилась — проверьте и подтвердите снова.",
         forbidden: "У вас нет доступа к покупке загрузки.",
@@ -3190,6 +3194,7 @@ export const ru: Dictionary = {
   channelRisk: channelRiskRu,
   customVoice: customVoiceRu,
   rightsAck: rightsAckRu,
+  voiceCatalog: voiceCatalogRu,
   accountSecurity: {
     cancel: "Отмена",
     title: "Аккаунт и безопасность",
@@ -3754,6 +3759,8 @@ export const ru: Dictionary = {
       capability_not_supported: "Такой вид генерации пока недоступен.",
       source_unavailable: "Это изображение нельзя использовать: его нет в медиатеке вашей организации, оно удалено или это не PNG, JPEG или WebP.",
       acknowledgement_required: "Сначала подтвердите свои права на эту картинку. Ничего не запущено и не списано.",
+      adult_attestation_required: "Эта модель по условиям её создателя только для взрослых (18+). Подтвердите возраст в блоке вверху «Создать». Ничего не запущено и не списано.",
+      adult_only_service: "Nightshift — для взрослых (18+). Для этого аккаунта указан возраст младше 18, поэтому создание недоступно. Ничего не списано.",
       style_unavailable: "Этот набор стиля нельзя использовать: его нет в вашей организации или он удалён. Выберите другой стиль или «Без стиля».",
       mode_not_supported: "Используется только выбранная вами модель; автоматический выбор модели пока недоступен.",
       route_changed: "Автоматический выбор изменился после показа цены. Проверьте новую модель и цену и подтвердите ещё раз.",
@@ -3888,10 +3895,11 @@ export const ru: Dictionary = {
     factSecondsRange: "{min}–{max} с",
     factUpTo: "до {r}",
     verifiedOn: "Последний раз проверена в работе {date}",
-    lock: { first_purchase: "После первой покупки", not_on_sale: "Не открыта ни одному пространству" },
+    lock: { first_purchase: "После первой покупки", not_on_sale: "Не открыта ни одному пространству", adult_only: "Для взрослых (18+)" },
     lockWhy: {
       first_purchase: "Эта модель открывается после первой покупки кредитов вашей организацией.",
       not_on_sale: "Эта модель пока не продаётся ни одному рабочему пространству, ни на одном тарифе. Выберите другую модель.",
+      adult_only: "Создатель этой модели разрешает её только взрослым. Подтвердите возраст в блоке вверху «Создать», чтобы ею пользоваться.",
     },
     lockBuy: "Купить кредиты",
     needMore: "Пополнить · не хватает {n}",
@@ -4004,6 +4012,7 @@ export const ru: Dictionary = {
     reasons: {
       policy: "Проверка безопасности отклонила запрос. Измените описание и попробуйте снова.",
       bad_request: "Эти настройки не приняты. Измените их и попробуйте снова.",
+      plan: "Тариф провайдера этого не позволяет. Для озвучки выберите стандартный голос и попробуйте снова.",
       busy: "Сервис был перегружен или не успел. Попробуйте через несколько минут.",
       service: "Что-то пошло не так на нашей стороне. Попробуйте снова или выберите другую модель.",
       credits: "Не удалось проверить кредиты для этой генерации, поэтому она не запустилась.",
@@ -4678,6 +4687,9 @@ export const ru: Dictionary = {
     scopeRead: "Видеть ваши каналы, видео, задачи и баланс кредитов.",
     scopeCreate: "Создавать видео. Каждое тратит кредиты с вашего баланса по той же цене, что и в приложении.",
     scopePublish: "Отправлять готовые видео в подключённые аккаунты с теми же проверками и подтверждениями, что и в приложении.",
+    studioOptIn: "Также разрешить создавать изображения и клипы в Студии (тратит кредиты после того, как вы подтвердите каждую цену). Выключено, пока вы не поставите галочку.",
+    studioOnly: "Это приложение просит только создавать в Студии. Поставьте галочку, чтобы разрешить, или откажите.",
+    scopeStudio: "Создавать изображения и клипы в Студии, только моделями, которые это разрешают. Каждый раз тратятся кредиты с вашего баланса по той же цене, что и в приложении, после того как вы подтвердите цену.",
     cannotTitle: "Он никогда не сможет",
     cannot: "Менять тариф или пароль, покупать кредиты, что-либо удалять и видеть ваши API-ключи.",
     nameNote: "Название задаёт само приложение, Nightshift его не проверял. Ориентируйтесь на адрес ниже.",
@@ -4731,6 +4743,7 @@ export const ru: Dictionary = {
     scopesRead: "чтение",
     scopesCreate: "создание видео",
     scopesPublish: "публикация",
+    scopesStudio: "Студия",
     loadFailed: "Не удалось загрузить подключённые приложения. Попробуйте снова.",
     notMigrated: "Подключение приложений ещё не настроено в этой базе (миграция 0093).",
     actionFailed: "Не получилось. Ничего не изменено. Попробуйте снова.",

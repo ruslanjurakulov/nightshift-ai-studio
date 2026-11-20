@@ -8,9 +8,11 @@ import { madeForKidsUz } from "./made-for-kids/uz";
 import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { rightsAckUz } from "./rights-acknowledgement/uz";
+import { voiceCatalogUz } from "./voice-catalog/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { assetDownloadUz } from "./asset-download/uz";
 import { ownerShellUz } from "./owner-shell/uz";
+import { ageUz } from "./age/uz";
 import { customerAppUz } from "./customer-app/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
@@ -69,6 +71,7 @@ export const uz: Dictionary = {
   libraryUx: libraryUxUz,
   assetDownload: assetDownloadUz,
   ownerShell: ownerShellUz,
+  age: ageUz,
   customerApp: customerAppUz,
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
@@ -2412,6 +2415,7 @@ export const uz: Dictionary = {
       errors: {
         insufficient_credits: "Kredit yetarli emas.",
         master_not_available: "Bu sifat uchun toʻliq sifatli master yoʻq.",
+        adult_only_service: "Nightshift kattalar uchun (18+). Siz 18 yoshga toʻlmaganingizni aytgansiz, shuning uchun bu akkauntda yuklamalar mavjud emas. Hech narsa yechilmadi. Agar javob xato boʻlsa, qoʻllab-quvvatlash xizmatiga yozing.",
         unpriced: "Bu sifat uchun narx hali belgilanmagan.",
         price_changed: "Narx oʻzgardi — tekshirib, qayta tasdiqlang.",
         forbidden: "Bu yerda yuklamani sotib olishga ruxsatingiz yoʻq.",
@@ -3190,6 +3194,7 @@ export const uz: Dictionary = {
   channelRisk: channelRiskUz,
   customVoice: customVoiceUz,
   rightsAck: rightsAckUz,
+  voiceCatalog: voiceCatalogUz,
   accountSecurity: {
     cancel: "Bekor qilish",
     title: "Hisob va xavfsizlik",
@@ -3754,6 +3759,8 @@ export const uz: Dictionary = {
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
       source_unavailable: "Bu rasmdan foydalanib boʻlmaydi: u tashkilotingiz mediatekasida yoʻq, oʻchirilgan yoki PNG, JPEG yoki WebP emas.",
       acknowledgement_required: "Avval bu rasmga huquqingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
+      adult_attestation_required: "Bu model yaratuvchisining shartlariga koʻra faqat kattalar (18+) uchun. «Yaratish» yuqorisidagi blokda yoshingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
+      adult_only_service: "Nightshift kattalar uchun (18+). Bu akkaunt 18 yoshga toʻlmaganini bildirgan, shuning uchun hech narsa yaratib boʻlmaydi. Hech narsa yechilmadi.",
       style_unavailable: "Bu uslub toʻplamidan foydalanib boʻlmaydi: u tashkilotingizda yoʻq yoki oʻchirilgan. Boshqa uslubni yoki «Uslubsiz»ni tanlang.",
       mode_not_supported: "Faqat siz tanlagan model ishlatiladi; modelni avtomatik tanlash hali mavjud emas.",
       route_changed: "Narx koʻrsatilgandan keyin avtomatik tanlov oʻzgardi. Yangi model va narxni tekshirib, qayta tasdiqlang.",
@@ -3888,10 +3895,11 @@ export const uz: Dictionary = {
     factSecondsRange: "{min}–{max} s",
     factUpTo: "{r} gacha",
     verifiedOn: "Oxirgi marta ishlashi tekshirilgan: {date}",
-    lock: { first_purchase: "Birinchi xariddan keyin", not_on_sale: "Hech bir ish maydoniga ochiq emas" },
+    lock: { first_purchase: "Birinchi xariddan keyin", not_on_sale: "Hech bir ish maydoniga ochiq emas", adult_only: "Kattalar uchun (18+)" },
     lockWhy: {
       first_purchase: "Bu model tashkilotingiz birinchi marta kredit sotib olgandan keyin ochiladi.",
       not_on_sale: "Bu model hali hech bir ish maydoniga, hech bir tarifda sotilmaydi. Boshqa model tanlang.",
+      adult_only: "Bu model yaratuvchisi uni faqat kattalarga ruxsat beradi. Undan foydalanish uchun «Yaratish» yuqorisidagi blokda yoshingizni tasdiqlang.",
     },
     lockBuy: "Kredit sotib olish",
     needMore: "Kredit qoʻshish · yana {n} kerak",
@@ -4004,6 +4012,7 @@ export const uz: Dictionary = {
     reasons: {
       policy: "Xavfsizlik tekshiruvi bu soʻrovni rad etdi. Tavsifni oʻzgartirib, qayta urinib koʻring.",
       bad_request: "Bu sozlamalar qabul qilinmadi. Ularni oʻzgartirib, qayta urinib koʻring.",
+      plan: "Provayder tarifi bunga ruxsat bermaydi. Ovoz berish uchun standart ovozni tanlab, qayta urinib koʻring.",
       busy: "Xizmat band yoki juda sekin edi. Bir necha daqiqadan soʻng qayta urinib koʻring.",
       service: "Bizning tomonimizda nimadir xato ketdi. Qayta urinib koʻring yoki boshqa modelni tanlang.",
       credits: "Bu generatsiya uchun kreditlarni tekshirib boʻlmadi, shuning uchun u ishga tushmadi.",
@@ -4678,6 +4687,9 @@ export const uz: Dictionary = {
     scopeRead: "Kanallaringiz, videolaringiz, topshiriqlaringiz va kredit balansingizni koʻrish.",
     scopeCreate: "Video yaratish. Har biri balansingizdagi kreditlarni ilovadagi narxda sarflaydi.",
     scopePublish: "Tayyor videolarni ulangan akkauntlaringizga yuborish: ilovadagi kabi tekshiruvlar va tasdiqlar bilan.",
+    studioOptIn: "Studiyada rasm va kliplar yaratishga ham ruxsat berish (har bir narxni tasdiqlaganingizdan keyin kredit sarflaydi). Belgilamaguningizcha oʻchiq.",
+    studioOnly: "Bu ilova faqat Studiyada yaratishni soʻrayapti. Ruxsat berish uchun belgilang yoki rad eting.",
+    scopeStudio: "Studiyada rasm va kliplar yaratish, faqat bunga ruxsat beradigan modellar bilan. Har birida narxni tasdiqlaganingizdan keyin balansingizdagi kreditlar ilovadagi narxda sarflanadi.",
     cannotTitle: "U hech qachon qila olmaydi",
     cannot: "Tarif yoki parolni oʻzgartirish, kredit sotib olish, biror narsani oʻchirish yoki API kalitlaringizni koʻrish.",
     nameNote: "Nomni ilovaning oʻzi beradi, Nightshift uni tekshirmagan. Quyidagi manzilga tayaning.",
@@ -4731,6 +4743,7 @@ export const uz: Dictionary = {
     scopesRead: "oʻqish",
     scopesCreate: "video yaratish",
     scopesPublish: "nashr qilish",
+    scopesStudio: "Studiya",
     loadFailed: "Ulangan ilovalarni yuklab boʻlmadi. Qayta urinib koʻring.",
     notMigrated: "Ilovalarni ulash bu bazada hali sozlanmagan (0093-migratsiya).",
     actionFailed: "Boʻlmadi. Hech narsa oʻzgarmadi. Qayta urinib koʻring.",

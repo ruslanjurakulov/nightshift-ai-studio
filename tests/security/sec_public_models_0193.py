@@ -1,8 +1,8 @@
-"""Security-lab contract for migration 0187 (the public names of the models on sale, for the landing page).
+"""Security-lab contract for migration 0193 (the public names of the models on sale, for the landing page).
 
 Wired in at the bottom of sec_expectations.py, like the other per-migration files:
 
-    import sec_public_models_0187; sec_public_models_0187.extend(TABLES, FUNCTIONS)
+    import sec_public_models_0193; sec_public_models_0193.extend(TABLES, FUNCTIONS)
 
 One new function, no table:
 

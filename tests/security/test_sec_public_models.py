@@ -1,4 +1,4 @@
-"""0187: public_models_on_sale() hands anyone — signed in or not — the display names and capability codes of the models the Studio
+"""0193: public_models_on_sale() hands anyone — signed in or not — the display names and capability codes of the models the Studio
 sells today, and nothing else.
 
 What it must not reopen: sellable_models() is closed to anon since 0035 because it returns the charged rate and the public half

@@ -302,6 +302,12 @@ def a(db):
 
 
 @pytest.fixture
+def one_hour(db):
+    """The test's counted calls all land in one hour of take_web_rate's db.film.* windows (sec_db.one_rate_window)."""
+    sec_db.one_rate_window(db.dsn, 3600)
+
+
+@pytest.fixture
 def b(db):
     return db.new_org()
 
@@ -637,7 +643,7 @@ def test_an_edited_film_invalidates_its_quote(db, a):
     assert db.start(a.admin, fid, q["quote_id"])["status"] == "queued"
 
 
-def test_a_quote_that_was_never_stored_or_has_expired_is_refused_before_any_pricing(db, a):
+def test_a_quote_that_was_never_stored_or_has_expired_is_refused_before_any_pricing(db, a, one_hour):
     """Item 8 / Breach option 2: start_film compares with the stored quote first; a forged or expired id never reaches film_price."""
     fid = db.film(a)
     qid = db.quote(a.editor, fid)["quote_id"]
@@ -665,7 +671,7 @@ def test_a_stale_quote_is_refused_when_a_rate_moves(db, a):
     assert db.start(a.admin, fid, qid)["confirmed_credits"] == TOTAL
 
 
-def test_refused_starts_count_against_the_hourly_limit(db, a):
+def test_refused_starts_count_against_the_hourly_limit(db, a, one_hour):
     """Item 8 / BR-0171-01: a refusal after the rate step is answered, not raised, so the counter commits with it."""
     fid = db.film(a)
     qid = db.quote(a.editor, fid)["quote_id"]
@@ -675,6 +681,53 @@ def test_refused_starts_count_against_the_hourly_limit(db, a):
     assert db.rate_used(a.admin, "start") == 10
     assert err(lambda: db.start(a.admin, fid, qid))[:2] == ("NS429", "rate_limited")
     assert db.holds(a.org) == [] and db.film_row(fid)[0] == "draft"
+
+
+@pytest.mark.parametrize("n", [10, 30])
+def test_concurrent_refused_starts_are_each_counted_and_the_hourly_limit_holds_exactly(db, a, one_hour, n):
+    """The CI flake of 2026-11-20 (7 of 10 counted, #824) read as refused starts escaping the counter under concurrency. They do not:
+    n forged starts sent at once, each its own transaction, leave exactly min(n, 10) on the counter, the first 10 are answered
+    price_changed (counted, committed) and every one past the limit is refused rate_limited (raised, so its own increment rolls back
+    and the counter stays at the limit). The 7 was a clock-hour boundary (test_a_new_hour_starts_the_start_count_again)."""
+    fid = db.film(a)
+    forged = db.quote(a.editor, fid)["quote_id"][:-32] + "f" * 32
+    gate, seen, lock = threading.Barrier(n), [], threading.Lock()
+    keys = iter([db.key() for _ in range(n)])  # made here: Db.key() is not thread-safe
+
+    def go(key):
+        gate.wait()
+        try:
+            r = ("ok", db.start(a.admin, fid, forged, key)["reason"])
+        except psycopg.Error as e:
+            r = (e.sqlstate, str(e).splitlines()[0])
+        with lock:
+            seen.append(r)
+
+    threads = [threading.Thread(target=go, args=(next(keys),)) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(seen) == sorted([("ok", "price_changed")] * min(n, 10) + [("NS429", "rate_limited")] * max(0, n - 10)), seen
+    assert db.rate_used(a.admin, "start") == min(n, 10)
+    assert db.holds(a.org) == [] and db.film_row(fid)[0] == "draft"
+
+
+def test_a_new_hour_starts_the_start_count_again_and_drops_the_last_hours(db, a):
+    """'10 starts an hour' is 10 per clock hour (take_web_rate's fixed window, 0042/0087): the first start of a new hour counts 1 and
+    deletes that person's previous hours (BR-G-004 pins the deletion for every bucket). This is what failed the hourly test once on
+    #824: three refused starts before 18:00:00 and seven after summed to 7. Measured here with the previous hour seeded."""
+    sec_db.one_rate_window(db.dsn, 3600)
+    fid = db.film(a)
+    forged = db.quote(a.editor, fid)["quote_id"][:-32] + "f" * 32
+    db.su("insert into public.web_rate_counters (user_id, bucket, window_start, count) "
+          "values (%s, 'db.film.start@3600', to_timestamp(floor(extract(epoch from now()) / 3600) * 3600) - interval '1 hour', 3)",
+          [a.admin])
+    for _ in range(7):
+        assert refused(db.start(a.admin, fid, forged)) == ("price_changed", "NS409")
+    assert db.rate_used(a.admin, "start") == 7
+    assert db.su("select count(*) from public.web_rate_counters where user_id = %s and bucket = 'db.film.start@3600' "
+                 "and window_start < to_timestamp(floor(extract(epoch from now()) / 3600) * 3600)", [a.admin])[0][0] == 0
 
 
 # ── the start ───────────────────────────────────────────────────────────────
@@ -769,7 +822,7 @@ def test_two_films_at_once_are_refused_by_the_default_limit_and_the_cap_refuses_
     assert len(db.holds(o.org)) == 1
 
 
-def test_start_is_rate_limited_in_the_database(db, a):
+def test_start_is_rate_limited_in_the_database(db, a, one_hour):
     fid = db.film(a)
     qid = db.quote(a.editor, fid)["quote_id"]
     db.spend_rate(a.admin, "start", 10)
@@ -1342,10 +1395,14 @@ select jsonb_build_object(
 def test_reapplying_the_migration_changes_nothing(db, a):
     fid = db.film(a)
     db.quoted_start(a, fid)
-    before = db.su(SNAPSHOT)[0][0]
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    assert db.su(SNAPSHOT)[0][0] == before
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0187 replaces start_film (0171's drift guard refuses its body): compared on 0171 alone, inside one transaction.
+        sec_db.take_off_0187(c)
+        before = c.execute(SNAPSHOT).fetchone()[0]
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert c.execute(SNAPSHOT).fetchone()[0] == before
+        c.rollback()
 
 
 def test_the_drift_guard_refuses_a_body_or_a_constraint_that_is_not_its_own(db):
@@ -1393,16 +1450,19 @@ def test_the_rollback_refuses_while_a_segment_lives_then_takes_everything_out_an
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0187(c)  # 0187 sits on 0171's start_film; 0171's rollback refuses any other body
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=True))
         assert "film segments are live" in str(e.value)
         c.rollback()
     db.cancel(seg["id"])
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0187(c)
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=False))
         assert "film segments exist and their record would be deleted" in str(e.value)
         c.rollback()
+        sec_db.take_off_0187(c)
         c.execute(sec_db.rollback_0171_body(override=True))
         assert c.execute("select to_regclass('public.film_segments'), to_regclass('public.film_quotes'), "
                          "to_regclass('public.film_studio_settings'), to_regprocedure('public.start_film(uuid, text, text)')").fetchone() \

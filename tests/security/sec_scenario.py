@@ -433,6 +433,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # One rate credit for that connection (0147): tests/security/sec_mcp_free_tier_0147.py.
     import sec_mcp_free_tier_0147
     sec_mcp_free_tier_0147.seed(conn, sc)
+    # A connected assistant's Studio quote, the generation it paid for and a rate counter (0191):
+    # tests/security/sec_mcp_oauth_creative_0191.py.
+    import sec_mcp_oauth_creative_0191
+    sec_mcp_oauth_creative_0191.seed(conn, sc)
     # A LEGACY pending invite into org A, addressed to Ivan's email: written as the
     # database owner, because since 0091 no API role can create one (and the
     # migration deleted every one that existed). It is kept so the lab keeps
@@ -481,6 +485,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Rights acknowledgement (0174): tests/security/sec_rights_acknowledgement_0174.py — one likeness_photo acknowledgement per tenant.
     import sec_rights_acknowledgement_0174
     sec_rights_acknowledgement_0174.seed(conn, sc)
+
+    # Adult attestation (0192): tests/security/sec_adult_attestation_0192.py — each tenant's member confirms they are 18 or older.
+    import sec_adult_attestation_0192
+    sec_adult_attestation_0192.seed(conn, sc)
 
     # Owner analytics (0182): tests/security/sec_owner_analytics_0182.py — one export record, made by the owner.
     import sec_owner_analytics_0182

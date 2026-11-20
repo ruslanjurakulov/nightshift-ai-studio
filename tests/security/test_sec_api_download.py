@@ -21,6 +21,7 @@ from contextlib import contextmanager
 
 import psycopg
 
+import sec_db
 from sec_db import ANON, MIGRATIONS, REPO
 
 from sec_scenario import DEFAULT_ORG
@@ -248,6 +249,8 @@ def _sql(path):
 def test_the_live_body_is_0170s_and_its_grants_are_0147s(conn, sc):
     with _txn(conn):
         _owner(conn)
+        # 0192 (the adult gate) sits on 0170's body, which 0170's replay and rollback refuse to touch: off inside this transaction.
+        sec_db.take_off_0192(conn)
         assert _body_md5(conn) == BODY_0170
         grants = {r: _one(conn, "select has_function_privilege(%s, %s, 'execute')", [r, SIGNATURE])[0]
                   for r in ("anon", "authenticated", "service_role")}
@@ -262,6 +265,8 @@ def test_the_files_verify_query_reads_true_in_every_column(conn, sc):
     query = "select\n" + "\n".join(ln[3:] for ln in block.splitlines() if ln.startswith("--   ") or ln.startswith("-- from"))
     with _txn(conn):
         _owner(conn)
+        # 0192 (the adult gate) sits on 0170's body, which 0170's replay and rollback refuse to touch: off inside this transaction.
+        sec_db.take_off_0192(conn)
         cur = conn.execute(query)
         row = dict(zip([d.name for d in cur.description], cur.fetchone()))
     assert len(row) == 4 and all(v is True for v in row.values()), row
@@ -271,6 +276,8 @@ def test_replaying_0170_changes_nothing_and_the_download_still_works(conn, sc):
     a = sc.alice
     with _txn(conn):
         _owner(conn)
+        # 0192 (the adult gate) sits on 0170's body, which 0170's replay and rollback refuse to touch: off inside this transaction.
+        sec_db.take_off_0192(conn)
         conn.execute(_sql(MIGRATION))
         conn.execute(_sql(MIGRATION))
         assert _body_md5(conn) == BODY_0170
@@ -282,6 +289,8 @@ def test_the_rollback_puts_0147s_body_back_and_0170_applies_again(conn, sc):
     a = sc.alice
     with _txn(conn):
         _owner(conn)
+        # 0192 (the adult gate) sits on 0170's body, which 0170's replay and rollback refuse to touch: off inside this transaction.
+        sec_db.take_off_0192(conn)
         conn.execute(_sql(ROLLBACK))
         assert _body_md5(conn) == BODY_0147
         # 0147's body is the bug: the download fails closed again, and charges nothing.

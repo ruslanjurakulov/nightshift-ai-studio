@@ -726,6 +726,11 @@ import sec_films_0171  # noqa: E402
 
 sec_films_0171.extend(TABLES, FUNCTIONS)
 
+# Migration 0191 (the Studio's generations for a connected assistant: quotes, jobs and rate buckets of a connection's own, five
+# token-only doors, every model off): tests/security/sec_mcp_oauth_creative_0191.py
+import sec_mcp_oauth_creative_0191  # noqa: E402
+
+sec_mcp_oauth_creative_0191.extend(TABLES, FUNCTIONS)
 # Migration 0174 (rights acknowledgement: an append-only record of who took responsibility for which input, and the job start path
 # refusing a model that requires one without it): tests/security/sec_rights_acknowledgement_0174.py
 import sec_rights_acknowledgement_0174  # noqa: E402
@@ -738,6 +743,11 @@ import sec_owner_analytics_0182  # noqa: E402
 
 sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 
+# Migration 0192 (the adult attestation: one append-only answer per person, and the quote / route / job gate on it):
+# tests/security/sec_adult_attestation_0192.py
+import sec_adult_attestation_0192  # noqa: E402
+
+sec_adult_attestation_0192.extend(TABLES, FUNCTIONS)
 # Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
 # tests/security/sec_creative_templates_0183.py
 import sec_creative_templates_0183  # noqa: E402
@@ -755,7 +765,21 @@ import sec_owner_fx_0185  # noqa: E402
 
 sec_owner_fx_0185.extend(TABLES, FUNCTIONS)
 
-# Migration 0187 (the names of the models on sale, read signed out by the landing page): tests/security/sec_public_models_0187.py
-import sec_public_models_0187  # noqa: E402
+# Migration 0187 (the rights acknowledgement asks about every file a job sends: failover, style kits, @characters, films):
+# internal helpers only, called inside create_creative_job, reroute_creative_job and start_film (test_sec_breach_rights_ack_*.py).
+FUNCTIONS.update({
+    "rights_acknowledgement_subjects": SERVICE,
+    "rights_acknowledgement_missing_among": SERVICE,
+    "film_acknowledgement_missing": SERVICE,
+})
 
-sec_public_models_0187.extend(TABLES, FUNCTIONS)
+# Migration 0189 (get_job_status names the video, list_videos newest first): internal helpers, called inside the API functions.
+FUNCTIONS.update({
+    "video_listed_at": SERVICE,
+    "render_job_video_id": SERVICE,
+})
+
+# Migration 0193 (the names of the models on sale, read signed out by the landing page): tests/security/sec_public_models_0193.py
+import sec_public_models_0193  # noqa: E402
+
+sec_public_models_0193.extend(TABLES, FUNCTIONS)

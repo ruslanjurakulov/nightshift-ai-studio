@@ -62,7 +62,7 @@ export default async function Home() {
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
   // Plans (0034) come from the public price list in the database. The landing
   // is signed out by now, so all of these are the shared public reads: bounded,
-  // kept and run together (BR-L-047, BR-L-101). The models on sale (0187) are the same kind of read, and null when unreadable.
+  // kept and run together (BR-L-047, BR-L-101). The models on sale (0193) are the same kind of read, and null when unreadable.
   const [catalogRead, apiPrices, siteRates, models] = await Promise.all([
     readPublicPlanCatalog(),
     readPublicApiPrices(),

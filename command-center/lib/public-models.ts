@@ -1,5 +1,5 @@
 /**
- * The public model list (migration 0187), parsed. Pure, so a test can feed it anything the database might answer.
+ * The public model list (migration 0193), parsed. Pure, so a test can feed it anything the database might answer.
  *
  * A model's capability codes become the words a visitor knows: image, video or voice. A code we do not know is left out of
  * the words, never guessed; a model left with no known kind is still listed by name.

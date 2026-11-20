@@ -46,7 +46,7 @@ export function HomePage({
   locale: Locale;
   pricing: PricingTeaser;
   rates: PriceRates | null;
-  /** null: the list could not be read (or 0187 is not applied); the strip is then not drawn at all. */
+  /** null: the list could not be read (or 0193 is not applied); the strip is then not drawn at all. */
   models: PublicModel[] | null;
   /** MCP_OAUTH_LIVE: whether Claude and ChatGPT can connect today (lib/mcp-oauth.ts). */
   oauthLive: boolean;

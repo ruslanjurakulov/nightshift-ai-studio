@@ -234,6 +234,9 @@ FAKE_MAIN = textwrap.dedent("""
     print("running with key " + os.environ.get("GEMINI_API_KEY", ""), flush=True)
     if os.environ.get("FAKE_TRACE"):
         print(os.environ["FAKE_TRACE"], flush=True)
+    if os.environ.get("NIGHTSHIFT_RUN_RESULT_FILE") and os.environ.get("FAKE_SLUG"):
+        with open(os.environ["NIGHTSHIFT_RUN_RESULT_FILE"], "w") as fh:
+            json.dump({"slug": os.environ["FAKE_SLUG"], "video_path": "v.mp4"}, fh)
     time.sleep(float(os.environ.get("FAKE_SLEEP", "0")))
     sys.exit(int(os.environ.get("FAKE_RC", "0")))
 """)
@@ -258,6 +261,10 @@ class FakeQueue:
 
     def finish(self, job_id, worker_id, status, error):
         self.calls.append(("finish", job_id, status, error))
+        return True
+
+    def record_result_slug(self, job_id, worker_id, slug):
+        self.calls.append(("slug", job_id, slug))
         return True
 
     def release(self, job_id, worker_id, *, status, attempts, error):
@@ -337,6 +344,28 @@ class WorkerCase(unittest.TestCase):
         self.assertEqual(r["argv"], ["--channel", "news", "--privacy", "private", "--topic", "Rome",
                                      "--duration", "300"])
         self.assertEqual(r["privacy"], "private")
+
+    def test_a_succeeded_run_records_the_slug_of_its_video_before_the_job_ends(self):
+        # 0189: get_job_status names the video only from this; a free (exempt) run reports it too, and the file is removed.
+        self.env["FAKE_SLUG"] = "the-mystery-of-the-mary-celeste"
+        q = FakeQueue([job()])
+        self.worker(q).run_forever(once=True)
+        names = [c for c in q.calls if c[0] in ("slug", "finish")]
+        self.assertEqual(names, [("slug", 7, "the-mystery-of-the-mary-celeste"), ("finish", 7, "succeeded", None)])
+        self.assertFalse((self.repo / ".run_result_7.json").exists())
+
+    def test_a_failed_run_or_an_unreadable_slug_names_no_video(self):
+        self.env["FAKE_SLUG"] = "the-mystery"
+        self.env["FAKE_RC"] = "3"
+        q = FakeQueue([job()])
+        self.worker(q).run_forever(once=True)
+        self.assertNotIn("slug", [c[0] for c in q.calls])
+        self.env["FAKE_RC"] = "0"
+        self.env["FAKE_SLUG"] = "../../etc/passwd"
+        q = FakeQueue([job()])
+        self.worker(q).run_forever(once=True)
+        self.assertNotIn("slug", [c[0] for c in q.calls])
+        self.assertEqual(q.ends(), [("finish", 7, "succeeded", None)])
 
     def test_output_is_streamed_scrubbed(self):
         q = FakeQueue([job()])
