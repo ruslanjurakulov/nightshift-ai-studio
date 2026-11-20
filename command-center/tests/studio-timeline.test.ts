@@ -16,6 +16,7 @@ import {
   layoutTimeline,
   chosenShots,
   segmentAt,
+  CHAIN_SKIP_S,
   reorder,
   sceneAt,
   shortcutAllowed,
@@ -28,53 +29,58 @@ const CLIP = "c1000000-0000-4000-8000-0000000000c1";
 const NARR = "c2000000-0000-4000-8000-0000000000c2";
 const MUSIC = "c3000000-0000-4000-8000-0000000000c3";
 const CLIP2 = "c4000000-0000-4000-8000-0000000000c4";
+const CLIP3 = "c5000000-0000-4000-8000-0000000000c5";
 const take = (over: Record<string, unknown>) => ({
   id: crypto.randomUUID(), scene_id: S1, version: 1, shot_index: 1, kind: "clip", status: "completed", duration_s: 5.5, result_asset_id: CLIP, ...over,
 });
 
 describe("lanes from film_json", () => {
-  it("a scene without a chosen, finished take is a draft at its PLANNED length; a shot scene is measured only by the library's duration", () => {
+  it("every scene is its PLANNED length (the worker trims to it); a shot scene is measured only once the library knows its files", () => {
     const raw = filmJson({}, [
       sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: [take({})] }),
       sceneJson(S2, 1, { planned_seconds: 6, takes: [take({ scene_id: S2, status: "running", result_asset_id: null })] }),
     ]);
     const film = coerceTimelineFilm(raw)!;
-    // No asset duration yet: the shot scene keeps its planned 8 s and is NOT measured, whatever film_takes.duration_s (5.5) asked for.
+    // No asset duration yet: shot, but not measured, whatever film_takes.duration_s (5.5) asked for.
     const before = layoutTimeline(film).clips.filter((c) => c.track === "V1");
-    expect(before[0]).toMatchObject({ draft: false, length: 8, measured: false, assetId: CLIP });
-    // The library recorded 5.2 s for the file: that, not the requested 5.5 s, is the measured length.
-    const { clips, duration } = layoutTimeline(film, new Map([[CLIP, 5.2]]));
+    expect(before[0]).toMatchObject({ draft: false, length: 8, measured: false, short: false, assetId: CLIP });
+    const { clips, duration } = layoutTimeline(film, new Map([[CLIP, 12]]));
     const v1 = clips.filter((c) => c.track === "V1");
-    expect(v1[0]).toMatchObject({ draft: false, length: 5.2, measured: true, assetId: CLIP, start: 0 });
-    expect(v1[1]).toMatchObject({ draft: true, length: 6, measured: false, assetId: null, start: 5.2 });
-    expect(duration).toBeCloseTo(11.2);
+    expect(v1[0]).toMatchObject({ draft: false, length: 8, measured: true, short: false, start: 0 });
+    expect(v1[1]).toMatchObject({ draft: true, length: 6, measured: false, start: 8 });
+    expect(duration).toBe(14);
   });
 
-  it("H1: a 2-shot scene with only shot 1 finished is a draft, exactly as the assembly worker would refuse it", () => {
-    const two = filmJson({}, [sceneJson(S1, 0, { current_version: 1, shot_count: 2, takes: [take({})] })]);
-    expect(layoutTimeline(coerceTimelineFilm(two)!).clips.find((c) => c.track === "V1")?.draft).toBe(true);
-    const both = filmJson({}, [
-      sceneJson(S1, 0, { current_version: 1, shot_count: 2, takes: [take({}), take({ kind: "extend", shot_index: 2, result_asset_id: CLIP2 })] }),
-    ]);
-    const v1 = layoutTimeline(coerceTimelineFilm(both)!, new Map([[CLIP, 4], [CLIP2, 3]])).clips.find((c) => c.track === "V1")!;
-    expect(v1).toMatchObject({ draft: false, length: 7, measured: true, assetIds: [CLIP, CLIP2] });
-    expect(v1.segments).toEqual([{ assetId: CLIP, start: 0, length: 4 }, { assetId: CLIP2, start: 4, length: 3 }]);
-    expect(segmentAt(v1, 5)).toEqual({ assetId: CLIP2, offset: 1, measured: true });
-  });
-
-  it("H1: of two completed attempts of a shot, the preview uses the higher attempt (the worker's done[-1])", () => {
+  it("H1 (Lens round 2): two 8 s scenes with 12 s and 3 s clips: 16 s in all, scene 2 flagged short, the preview follows the trim", () => {
     const raw = filmJson({}, [
-      sceneJson(S1, 0, { current_version: 1, takes: [take({ attempt: 2, result_asset_id: CLIP2 }), take({ attempt: 1, result_asset_id: CLIP })] }),
+      sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: [take({ result_asset_id: CLIP })] }),
+      sceneJson(S2, 1, { current_version: 1, planned_seconds: 8, takes: [take({ scene_id: S2, result_asset_id: CLIP2 })] }),
     ]);
-    const film = coerceTimelineFilm(raw)!;
-    expect(chosenShots(film.view.scenes[0], film.sceneTakes.get(S1)!)?.map((t) => t.resultAssetId)).toEqual([CLIP2]);
-    expect(layoutTimeline(film).clips.find((c) => c.track === "V1")?.assetId).toBe(CLIP2);
+    const { clips, duration } = layoutTimeline(coerceTimelineFilm(raw)!, new Map([[CLIP, 12], [CLIP2, 3]]));
+    const [a, b] = clips.filter((c) => c.track === "V1");
+    expect(duration).toBe(16);
+    expect(a).toMatchObject({ start: 0, length: 8, measured: true, short: false });
+    expect(a.segments).toEqual([{ assetId: CLIP, start: 0, length: 8, inPoint: 0 }]);
+    expect(b).toMatchObject({ start: 8, length: 8, measured: false, short: true });
+    expect(segmentAt(a, 7.5)).toMatchObject({ assetId: CLIP, offset: 7.5, measured: true });
   });
 
-  it("H1: an unmeasured shot scene plays its first shot from the scene's start and never claims a measured offset", () => {
-    const raw = filmJson({}, [sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: [take({})] })]);
-    const v1 = layoutTimeline(coerceTimelineFilm(raw)!).clips.find((c) => c.track === "V1")!;
-    expect(segmentAt(v1, 3)).toEqual({ assetId: CLIP, offset: 3, measured: false });
+  it("H1: a chained shot starts CHAIN_SKIP_S into its file; a scene continued by the next keeps the END of its footage", () => {
+    const raw = filmJson({}, [
+      sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, shot_count: 2, takes: [take({ result_asset_id: CLIP }), take({ kind: "extend", shot_index: 2, result_asset_id: CLIP2 })] }),
+      sceneJson(S2, 1, { current_version: 1, planned_seconds: 4, first_frame: "previous", takes: [take({ scene_id: S2, result_asset_id: CLIP3 })] }),
+    ]);
+    // Scene 1: 5 s + (6 − 0.042) s of footage, 8 s shown, scene 2 continues it → the window ends at the footage's end.
+    const v1 = layoutTimeline(coerceTimelineFilm(raw)!, new Map([[CLIP, 5], [CLIP2, 6], [CLIP3, 4.5]])).clips.filter((c) => c.track === "V1");
+    const total = 5 + (6 - CHAIN_SKIP_S);
+    const x = total - 8;
+    expect(v1[0].segments![0]).toMatchObject({ assetId: CLIP, start: 0, inPoint: x });
+    expect(v1[0].segments![0].length).toBeCloseTo(5 - x);
+    expect(v1[0].segments![1].assetId).toBe(CLIP2);
+    expect(v1[0].segments![1].inPoint).toBeCloseTo(CHAIN_SKIP_S);
+    expect(v1[0].segments![1].length).toBeCloseTo(6 - CHAIN_SKIP_S);
+    // Scene 2 continues the previous one: its only shot is chained too.
+    expect(v1[1].segments![0]).toMatchObject({ assetId: CLIP3, start: 8, inPoint: CHAIN_SKIP_S, length: 4 });
   });
 
   it("a completed take of a version that is not the chosen one does not make the scene shot", () => {

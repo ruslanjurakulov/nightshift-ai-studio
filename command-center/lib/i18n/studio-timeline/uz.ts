@@ -53,6 +53,8 @@ export const studioTimelineUz: StudioTimelineDictionary = {
   moveLater: "Sahnani keyinga surish",
   levelSaveFailed: "Darajani saqlab boʻlmadi. Saqlangan qiymat qaytarildi.",
   waveSkipped: "Uzun tovush uchun toʻlqin koʻrsatilmaydi",
+  footageShort: "Tasvir yetarli emas: film bu sahnani qabul qilmaydi",
+  levelBusy: "Boshqa oʻzgarish saqlanmoqda. Daraja qaytarildi; birozdan keyin qayta oʻrnating.",
   previewFailed: "Koʻrib chiqish yuklanmadi",
   start: "Boshiga",
   end: "Oxiriga",

@@ -40,6 +40,8 @@ export interface ClipSegment {
   /** Seconds from the start of the film. */
   start: number;
   length: number;
+  /** Where in the file this piece starts (the worker's in-point: a chained shot skips its first frame, a trimmed head is skipped). */
+  inPoint: number;
 }
 
 export interface TimelineClip {
@@ -57,11 +59,15 @@ export interface TimelineClip {
   assetId?: string | null;
   /** Every shot's file in order (V1). */
   assetIds?: string[];
-  /** Where each shot sits, only when every shot's length was measured by the library (`measured`). */
+  /** The pieces of footage the film will show in this scene's slot, only when every shot's length was measured by the library. */
   segments?: ClipSegment[];
+  /** V1: every shot finished, but its usable footage is shorter than the slot: the assembly will refuse this scene (scene_too_short). */
+  short?: boolean;
   /**
-   * True only when `length` is the library's recorded duration of the file(s). Otherwise it is the scene's planned seconds and the
-   * screen says "planned": film_takes.duration_s is the length that was asked for, not the length that came back.
+   * V1: true only when the library recorded the length of every shot file and they cover the slot, so the pieces shown are known.
+   * A V1 block is ALWAYS its planned seconds long (the worker trims longer footage to it); `measured` says whether the footage that
+   * fills it is known. A1: true when `length` is the narration file's recorded duration. film_takes.duration_s (the requested length)
+   * is never a measurement.
    */
   measured?: boolean;
 }
@@ -76,6 +82,10 @@ export interface TimelineFilm {
   filmTakes: TakeMedia[];
   /** Per scene id, its takes with their result files. */
   sceneTakes: Map<string, TakeMedia[]>;
+  /** Per scene id, film_scenes.transition_in (null: the film's default). */
+  sceneTransitions: Map<string, string | null>;
+  /** films.transition_default. */
+  transitionDefault: string;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
@@ -111,12 +121,15 @@ export function coerceTimelineFilm(raw: unknown): TimelineFilm | null {
   const r = raw as Record<string, unknown>;
   const f = (r.film && typeof r.film === "object" ? r.film : {}) as Record<string, unknown>;
   const sceneTakes = new Map<string, TakeMedia[]>();
+  const sceneTransitions = new Map<string, string | null>();
   const scenesRaw = Array.isArray(r.scenes) ? r.scenes : [];
   for (const s of scenesRaw) {
     if (!s || typeof s !== "object") continue;
     const id = str((s as Record<string, unknown>).id);
     const takes = (s as Record<string, unknown>).takes;
-    if (id) sceneTakes.set(id, (Array.isArray(takes) ? takes : []).map(coerceTake).filter((x): x is TakeMedia => x !== null));
+    if (!id) continue;
+    sceneTakes.set(id, (Array.isArray(takes) ? takes : []).map(coerceTake).filter((x): x is TakeMedia => x !== null));
+    sceneTransitions.set(id, str((s as Record<string, unknown>).transition_in));
   }
   return {
     view,
@@ -126,6 +139,8 @@ export function coerceTimelineFilm(raw: unknown): TimelineFilm | null {
     duckDb: num(f.duck_db),
     filmTakes: (Array.isArray(r.takes) ? r.takes : []).map(coerceTake).filter((x): x is TakeMedia => x !== null),
     sceneTakes,
+    sceneTransitions,
+    transitionDefault: str(f.transition_default) ?? "cut",
   };
 }
 
@@ -182,30 +197,79 @@ export interface TimelineLayout {
 /** A recorded length in seconds for each asset id the library has probed (GET /api/media's `asset.durationS`). */
 export type AssetDurations = ReadonlyMap<string, number>;
 
+/** The assembly worker's constants (modules/film_timeline.py), seconds. */
+export const CHAIN_SKIP_S = 0.042;
+export const CROSSFADE_S = 0.5;
+
 /**
- * The lanes. V1 is the scenes in their saved order. A shot scene is as long as the library's recorded durations of its shot files add
- * up to, when every one is known; otherwise it keeps its planned seconds and says so (`measured: false`). A scene not fully shot is a
- * dashed draft at its planned seconds. C1 is each scene's narration text over the same span. A1 is the film's narration file, A2 its
+ * Which footage fills one scene's slot, as the assembly worker cuts it (modules/film_timeline.py, the picture loop):
+ * - every scene is exactly its planned seconds on screen; a cross-fade in needs CROSSFADE_S more footage at its head;
+ * - a chained shot (shot 2+, or shot 1 of a scene that continues the previous one) skips its first CHAIN_SKIP_S;
+ * - the window starts at the footage's start, or ends at its end when the NEXT scene continues this one;
+ * - usable footage shorter than the slot is refused (scene_too_short).
+ * Not mirrored: the small shift the worker makes so a cross-fade or dip OUT does not land on a sliver of the last shot (MIN_PIECE_S);
+ * it moves where the window starts by at most a second and never makes a refused scene look accepted.
+ */
+export function sceneWindow(
+  scenes: readonly FilmScene[],
+  i: number,
+  shots: readonly TakeMedia[],
+  durations: AssetDurations,
+  film: Pick<TimelineFilm, "sceneTransitions" | "transitionDefault">,
+  blockStart: number,
+): { state: "unknown" } | { state: "short"; usable: number; need: number } | { state: "ok"; segments: ClipSegment[] } {
+  const scene = scenes[i];
+  const continues = i > 0 && scene.firstFrame === "previous";
+  const tr = i === 0 || continues ? "cut" : (film.sceneTransitions.get(scene.id) ?? film.transitionDefault);
+  const head = tr === "crossfade" ? CROSSFADE_S : 0;
+  const pieces: { assetId: string; inMs: number; usable: number; off: number }[] = [];
+  let off = 0;
+  for (let k = 0; k < shots.length; k++) {
+    const assetId = shots[k].resultAssetId as string;
+    const d = durations.get(assetId);
+    if (typeof d !== "number" || !(d > 0)) return { state: "unknown" };
+    const chained = k > 0 || continues;
+    const inMs = chained ? CHAIN_SKIP_S : 0;
+    const usable = Math.max(0, d - inMs);
+    pieces.push({ assetId, inMs, usable, off });
+    off += usable;
+  }
+  const total = off;
+  const need = scene.plannedSeconds + head;
+  if (total + 1e-9 < need) return { state: "short", usable: total, need };
+  const keepEnd = i + 1 < scenes.length && scenes[i + 1].firstFrame === "previous";
+  const x = keepEnd ? total - need : 0;
+  const segments: ClipSegment[] = [];
+  // The head of a cross-fade overlaps the previous scene; the preview shows the scene from its own start, after the head.
+  let at = blockStart;
+  for (const p of pieces) {
+    const lo = Math.max(x + head, p.off);
+    const hi = Math.min(x + need, p.off + p.usable);
+    if (hi > lo) {
+      segments.push({ assetId: p.assetId, start: at, length: hi - lo, inPoint: p.inMs + lo - p.off });
+      at += hi - lo;
+    }
+  }
+  return { state: "ok", segments };
+}
+
+/**
+ * The lanes. V1 is the scenes in their saved order, every block exactly its planned seconds long, as in the assembled film. A scene
+ * whose every shot finished is drawn shot; its footage is placed inside the slot as the worker will cut it once the library has the
+ * length of every file (`measured`), and flagged `short` when that footage cannot fill the slot (the assembly would refuse it). A scene
+ * not fully shot is a dashed draft. C1 is each scene's narration text over the same span. A1 is the film's narration file, A2 its
  * music, each only when the file exists. A3 and A4 are always empty: no table stores an effect or an ambience clip.
  */
 export function layoutTimeline(film: TimelineFilm, durations: AssetDurations = new Map()): TimelineLayout {
   const clips: TimelineClip[] = [];
+  const scenes = film.view.scenes;
   let t = 0;
-  film.view.scenes.forEach((scene, i) => {
+  scenes.forEach((scene, i) => {
     const takes = film.sceneTakes.get(scene.id) ?? [];
     const shots = chosenShots(scene, takes);
     const ids = shots ? shots.map((s) => s.resultAssetId as string) : [];
-    const lengths = ids.map((id) => durations.get(id));
-    const measured = ids.length > 0 && lengths.every((d) => typeof d === "number" && d > 0);
-    const length = measured ? (lengths as number[]).reduce((a, b) => a + b, 0) : scene.plannedSeconds;
-    let at = t;
-    const segments = measured
-      ? ids.map((assetId, k) => {
-          const seg = { assetId, start: at, length: lengths[k] as number };
-          at += seg.length;
-          return seg;
-        })
-      : undefined;
+    const win = shots ? sceneWindow(scenes, i, shots, durations, film, t) : null;
+    const length = scene.plannedSeconds;
     const n = String(i + 1).padStart(2, "0");
     clips.push({
       id: `v1:${scene.id}`,
@@ -215,13 +279,14 @@ export function layoutTimeline(film: TimelineFilm, durations: AssetDurations = n
       label: scene.title ? `${n} · ${scene.title}` : n,
       sceneId: scene.id,
       draft: !shots,
+      short: win?.state === "short",
       assetId: ids[0] ?? null,
       assetIds: ids,
-      segments,
-      measured,
+      segments: win?.state === "ok" ? win.segments : undefined,
+      measured: win?.state === "ok",
     });
     const words = scene.narration.trim();
-    if (words) clips.push({ id: `c1:${scene.id}`, track: "C1", start: t, length, label: words, sceneId: scene.id, measured });
+    if (words) clips.push({ id: `c1:${scene.id}`, track: "C1", start: t, length, label: words, sceneId: scene.id, measured: false });
     t += length;
   });
   const narr = narrationTake(film);
@@ -242,14 +307,16 @@ export function sceneAt(clips: readonly TimelineClip[], seconds: number): Timeli
 }
 
 /**
- * What the viewer plays at a time: the shot file under it and how far into that file, only where the block's shots were measured.
- * An unmeasured block plays its first shot from the scene's start and the clock runs by real time, so nothing jumps at its end.
+ * What the viewer plays at a time: the file under it and where in that file, inside the worker's window (its in-points), only where
+ * the scene's footage is measured. Otherwise the scene's first shot plays from its start and the clock runs by real time, so nothing
+ * jumps at a block's end; a short scene plays what footage it has and then shows nothing more.
  */
-export function segmentAt(clip: TimelineClip | null, seconds: number): { assetId: string; offset: number; measured: boolean } | null {
+export function segmentAt(clip: TimelineClip | null, seconds: number): { assetId: string; offset: number; measured: boolean; segment?: ClipSegment } | null {
   if (!clip || !clip.assetId) return null;
   if (clip.measured && clip.segments?.length) {
     const seg = clip.segments.find((s) => seconds >= s.start && seconds < s.start + s.length) ?? clip.segments[clip.segments.length - 1];
-    return { assetId: seg.assetId, offset: Math.max(0, Math.min(seg.length, seconds - seg.start)), measured: true };
+    const into = Math.max(0, Math.min(seg.length, seconds - seg.start));
+    return { assetId: seg.assetId, offset: seg.inPoint + into, measured: true, segment: seg };
   }
   return { assetId: clip.assetId, offset: Math.max(0, seconds - clip.start), measured: false };
 }

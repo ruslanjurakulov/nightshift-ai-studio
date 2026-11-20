@@ -52,9 +52,16 @@ export function useTimelineFilm(filmId: string | null) {
   const current = useRef<FilmLoad>(load);
   current.current = load;
   const shownVersion = useRef(0);
+  // Which project this hook is showing, and which effect run a read belongs to: an answer for the PREVIOUS project, still in flight
+  // when ?film= changed, must neither show nor set the version guard for the new one (Lens N1), or every read of the new project
+  // would be dropped as "older" and a save would PATCH the old one.
+  const filmRef = useRef(filmId);
+  const gen = useRef(0);
 
-  const accept = useCallback((next: FilmLoad) => {
+  const accept = useCallback((next: FilmLoad, from: number) => {
+    if (from !== gen.current) return;
     if (next.state === "ready") {
+      if (next.film.view.film.id !== filmRef.current) return;
       if (next.film.view.film.version < shownVersion.current) return;
       shownVersion.current = next.film.view.film.version;
       setLoad(next);
@@ -68,16 +75,21 @@ export function useTimelineFilm(filmId: string | null) {
 
   const reload = useCallback(async (): Promise<PollVerdict> => {
     if (!filmId) return "stop";
+    const from = gen.current;
     const next = await readFilm(filmId);
-    accept(next);
+    accept(next, from);
+    if (from !== gen.current) return "stop";
     if (TERMINAL.includes(next.state)) return "stop";
     return next.state === "ready" ? "ok" : "error";
   }, [filmId, accept]);
 
   useEffect(() => {
     if (!filmId) return;
+    gen.current += 1;
+    filmRef.current = filmId;
     shownVersion.current = 0;
     setLoad({ state: "loading" });
+    setStale(false);
     let stopped = false;
     void reload().then((v) => {
       if (v === "stop") {
@@ -94,16 +106,17 @@ export function useTimelineFilm(filmId: string | null) {
     document.addEventListener("visibilitychange", onVisible);
     if (document.hidden) poll.pause();
     return () => {
+      gen.current += 1;
       poll.stop();
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [filmId, reload]);
 
-  /** A save's answer: the film as the database now holds it. Its version is the newest the page has seen. */
+  /** A save's answer: the film as the database now holds it, accepted only if it is still the project on screen. */
   const replace = useCallback(
     (raw: unknown) => {
       const film = coerceTimelineFilm(raw);
-      if (film) accept({ state: "ready", film, raw });
+      if (film) accept({ state: "ready", film, raw }, gen.current);
     },
     [accept],
   );
@@ -141,8 +154,12 @@ export interface MediaUrls {
   durationS: number | null;
 }
 
-/** How many times one asset's links are fetched again after a player or picture reports an error before it is shown as failed. */
+/**
+ * How many errors in a row (within MEDIA_RETRY_WINDOW_MS of each other) one asset may report before it is shown as failed. A signed
+ * link expires every ten minutes, so an error long after the last one is an ordinary expiry and starts the count again (Lens N2).
+ */
 export const MEDIA_RETRIES = 2;
+export const MEDIA_RETRY_WINDOW_MS = 60_000;
 
 /**
  * Signed links for the assets the timeline shows (GET /api/media/{id}: RLS read, then 10-minute signed links). Fetched once per id;
@@ -152,7 +169,7 @@ export const MEDIA_RETRIES = 2;
 export function useMediaUrls(ids: readonly string[]) {
   const [urls, setUrls] = useState<ReadonlyMap<string, MediaUrls>>(new Map());
   const asked = useRef(new Set<string>());
-  const retries = useRef(new Map<string, number>());
+  const retries = useRef(new Map<string, { n: number; at: number }>());
   const key = [...new Set(ids)].sort().join(",");
 
   const fetchOne = useCallback(async (id: string) => {
@@ -187,7 +204,9 @@ export function useMediaUrls(ids: readonly string[]) {
 
   const refresh = useCallback(
     (id: string) => {
-      const n = retries.current.get(id) ?? 0;
+      const now = Date.now();
+      const was = retries.current.get(id);
+      const n = was && now - was.at < MEDIA_RETRY_WINDOW_MS ? was.n : 0;
       if (n >= MEDIA_RETRIES) {
         setUrls((prev) => {
           const was = prev.get(id);
@@ -195,7 +214,7 @@ export function useMediaUrls(ids: readonly string[]) {
         });
         return;
       }
-      retries.current.set(id, n + 1);
+      retries.current.set(id, { n: n + 1, at: now });
       void fetchOne(id);
     },
     [fetchOne],

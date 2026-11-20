@@ -321,7 +321,12 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
   // refused or failed save says so and the slider returns to the saved value (it is driven by `film`, which did not change).
   const saveGain = useCallback(
     async (key: "music_gain_db" | "duck_db", db: number): Promise<boolean> => {
-      if (!view.editable || !claim("gain")) return false;
+      if (!view.editable) return false;
+      if (!claim("gain")) {
+        // Another save (a reorder) is on its way: the level is not dropped silently, it goes back and says why.
+        say(c.levelBusy);
+        return false;
+      }
       try {
         const { res, json } = await patchFilm({ [key]: db });
         if (res.ok) {
@@ -479,6 +484,7 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
           onSeek={p.seek}
           onMove={(from, to) => void moveScene(from, to)}
           onLocked={() => say(fmt(c.reorderLocked, { status: statusWord(view.film.status) }))}
+          onThumbError={media.refresh}
           actors={actors}
         />
         <Mixer levels={p.levels} film={film} />
@@ -704,15 +710,14 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
     const frame = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
-      const scene = sceneAt(clips, tRef.current);
-      const seg = segmentAt(scene, tRef.current);
+      const seg = segmentAt(sceneAt(clips, tRef.current), tRef.current);
       const v = videoRef.current;
       let next = tRef.current + dt;
       // Only a MEASURED shot may drive the clock: its file's length is known, so its end is the next shot's start (Lens H1).
-      if (seg?.measured && v && !v.paused && v.readyState >= 2 && v.src) {
-        const segStart = tRef.current - seg.offset;
-        const segLen = scene?.segments?.find((s) => s.assetId === seg.assetId && Math.abs(s.start - segStart) < 0.5)?.length ?? Infinity;
-        next = v.ended || v.currentTime >= segLen - 0.02 ? segStart + segLen : segStart + v.currentTime;
+      if (seg?.measured && seg.segment && v && !v.paused && v.readyState >= 2 && v.src) {
+        // The piece shown is [inPoint, inPoint + length) of its file: past its out-point the next piece (or scene) starts.
+        const sg = seg.segment;
+        next = v.ended || v.currentTime >= sg.inPoint + sg.length - 0.02 ? sg.start + sg.length : sg.start + Math.max(0, v.currentTime - sg.inPoint);
       }
       if (next >= duration) {
         if (loopRef.current) next = 0;
@@ -726,7 +731,7 @@ function usePlayback({ clips, duration, film, media, mix, onMediaError }: { clip
       tRef.current = next;
       setT(next);
       const nowSeg = segmentAt(sceneAt(clips, next), next);
-      const k = nowSeg ? `${nowSeg.assetId}@${sceneAt(clips, next)?.id}` : null;
+      const k = nowSeg ? `${nowSeg.assetId}@${nowSeg.segment?.start ?? sceneAt(clips, next)?.id}` : null;
       if (k !== segKey.current) {
         segKey.current = k;
         syncMedia(next, true);
@@ -914,7 +919,7 @@ function Inspector({
             <dt>{c.planned}</dt>
             <dd>{scene ? clock(scene.plannedSeconds) : "—"}</dd>
             <dt>{c.measured}</dt>
-            <dd data-testid="inspector-measured">{clip?.measured ? clock(clip.length) : c.unknown}</dd>
+            <dd data-testid="inspector-measured">{clip?.short ? c.footageShort : clip?.measured ? clock(clip.length) : c.unknown}</dd>
             <dt>{c.take}</dt>
             <dd>{take ? `v${take.version}` : c.noTake}</dd>
             <dt>{c.status}</dt>
@@ -1030,6 +1035,7 @@ function Lanes({
   onSeek,
   onMove,
   onLocked,
+  onThumbError,
   actors,
 }: {
   clips: TimelineClip[];
@@ -1045,6 +1051,7 @@ function Lanes({
   onSeek: (t: number) => void;
   onMove: (from: number, to: number) => void;
   onLocked: () => void;
+  onThumbError: (assetId: string) => void;
   actors?: ReadonlyMap<string, TimelineActor[]>;
 }) {
   const { t: tr, fmt } = useI18n();
@@ -1144,7 +1151,7 @@ function Lanes({
                 const s = x.sceneId ? scenes.get(x.sceneId) : undefined;
                 const thumb = id === "V1" && s ? thumbOf(s, film, media) : null;
                 const who = actors?.get(x.id) ?? [];
-                const cls = ["tl-clip", `is-${id.toLowerCase()}`, x.draft ? "is-draft" : "", selected === x.id ? "is-sel" : "", dragging ? "is-drag" : "", who.length ? "has-actor" : ""].filter(Boolean).join(" ");
+                const cls = ["tl-clip", `is-${id.toLowerCase()}`, x.draft ? "is-draft" : "", x.short ? "is-short" : "", selected === x.id ? "is-sel" : "", dragging ? "is-drag" : "", who.length ? "has-actor" : ""].filter(Boolean).join(" ");
                 const style = {
                   left: 8 + x.start * pps,
                   width: Math.max(id === "A3" || id === "A4" ? 56 : 6, x.length * pps - 2),
@@ -1163,6 +1170,7 @@ function Lanes({
                     data-testid={`clip-${x.id}`}
                     data-draft={x.draft ? "" : undefined}
                     data-measured={x.measured ? "" : undefined}
+                    data-short={x.short ? "" : undefined}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
@@ -1197,10 +1205,16 @@ function Lanes({
                     }}
                     onPointerCancel={() => setDrag(null)}
                   >
-                    {id === "V1" && !x.draft && <span className="tl-thumbs" style={thumb ? ({ backgroundImage: `url("${thumb}")` } as CSSProperties) : undefined} />}
+                    {id === "V1" && !x.draft && (
+                      <span className="tl-thumbs">
+                        {/* An <img>, not a CSS background, so an expired link reports its error and is fetched again. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {thumb && <img src={thumb} alt="" draggable={false} onError={() => { const aid = thumbAssetOf(s, film); if (aid) onThumbError(aid); }} />}
+                      </span>
+                    )}
                     {peaks?.state === "ready" && <Wave peaks={peaks.peaks} />}
                     <span className="tl-lb">{x.label || c.track[id]}</span>
-                    {id === "V1" && <span className="tl-dur">{x.measured ? clock(x.length) : fmt(c.plannedLength, { t: clock(x.length) })}</span>}
+                    {id === "V1" && <span className="tl-dur">{x.short ? c.footageShort : x.measured ? clock(x.length) : fmt(c.plannedLength, { t: clock(x.length) })}</span>}
                     {peaks?.state === "skipped" && <span className="tl-dur">{c.waveSkipped}</span>}
                     {who.map((a) => (
                       <span key={a.id} className="tl-actor" style={{ background: a.color }}>

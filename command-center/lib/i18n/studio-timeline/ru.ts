@@ -53,6 +53,8 @@ export const studioTimelineRu: StudioTimelineDictionary = {
   moveLater: "Сдвинуть сцену позже",
   levelSaveFailed: "Не удалось сохранить уровень. Возвращено сохранённое значение.",
   waveSkipped: "Волна не показана для длинного звука",
+  footageShort: "Мало отснятого: фильм не примет эту сцену",
+  levelBusy: "Сохраняется другое изменение. Уровень вернулся; задайте его ещё раз чуть позже.",
   previewFailed: "Не удалось загрузить превью",
   start: "В начало",
   end: "В конец",

@@ -6,7 +6,7 @@
  * "not enough credits" without the way to add them; and Space playing the film while a person types in the Library search.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { studioTimelineEn as c } from "../lib/i18n/studio-timeline/en";
 import { FILM, S1, S2, filmJson, sceneJson } from "./films-fixtures";
@@ -32,6 +32,7 @@ vi.mock("@/components/studio-canvas/StudioCanvas", () => ({
 }));
 
 const { StudioTimeline } = await import("../components/studio-timeline/StudioTimeline");
+const { useMediaUrls, MEDIA_RETRY_WINDOW_MS } = await import("../components/studio-timeline/useTimelineData");
 
 type Answer = { status: number; body: unknown };
 let calls: { method: string; url: string; body: Record<string, unknown> | undefined }[] = [];
@@ -420,5 +421,77 @@ describe("Lens round 2", () => {
     expect((screen.getByRole("button", { name: c.muteTrack.replace("{t}", c.track.A1) }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: c.lockTrack.replace("{t}", c.track.V1) }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: new RegExp(`^${c.lockTrack.replace("{t}", c.track.C1)}`) }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("Lens round 3", () => {
+  it("N1: switching ?film= while the old project's read is in flight shows the new one, and its saves target it", async () => {
+    const OTHER = "0f000000-0000-4000-8000-0000000000f2";
+    let releaseOld!: (a: Answer) => void;
+    answer = (url, method) => {
+      if (url === `/api/films/${FILM}` && method === "GET") return new Promise<Answer>((r) => (releaseOld = r));
+      if (url === `/api/films/${OTHER}` && method === "GET") return { status: 200, body: { film: filmJson({ id: OTHER, version: 2, title: "Other" }, [sceneJson(S1, 0), sceneJson(S2, 1)]) } };
+      if (method === "PATCH") return { status: 200, body: { film: filmJson({ id: OTHER, version: 3 }, [sceneJson(S2, 0), sceneJson(S1, 1)]) } };
+      return { status: 404, body: {} };
+    };
+    const view = render(<StudioTimeline filmStudio filmId={FILM} />);
+    await waitFor(() => expect(calls.some((x) => x.url === `/api/films/${FILM}`)).toBe(true));
+    view.rerender(<StudioTimeline filmStudio filmId={OTHER} />);
+    await screen.findByTestId("lanes");
+    // The old project's answer, version 9, lands now: it must not replace the new project nor raise its version guard.
+    await act(async () => releaseOld({ status: 200, body: { film: filmJson({ version: 9, title: "Old" }, [sceneJson(S1, 0)]) } }));
+    expect(screen.getByTestId("bar").textContent).toBe("Other");
+    fireEvent.pointerDown(screen.getByTestId(`clip-v1:${S1}`), { clientX: 0, pointerId: 1 });
+    fireEvent.click(screen.getByTestId("move-later"));
+    await waitFor(() => expect(calls.some((x) => x.method === "PATCH")).toBe(true));
+    const patch = calls.find((x) => x.method === "PATCH")!;
+    expect(patch.url).toBe(`/api/films/${OTHER}`);
+    expect(patch.body?.version).toBe(2);
+  });
+
+  it("a level changed while a reorder is saving goes back and says why, never silently dropped", async () => {
+    const MUSIC = "0c000000-0000-4000-8000-0000000000d1";
+    const withMusic = () => ({ ...filmJson({ music_asset_id: MUSIC, music_gain_db: -14 }, [sceneJson(S1, 0), sceneJson(S2, 1)]), music_missing: false });
+    let releaseSave!: (a: Answer) => void;
+    answer = (url, method) => (method === "PATCH" ? new Promise<Answer>((r) => (releaseSave = r)) : url.startsWith("/api/media/") ? { status: 404, body: {} } : { status: 200, body: { film: withMusic() } });
+    await open();
+    fireEvent.pointerDown(screen.getByTestId(`clip-v1:${S1}`), { clientX: 0, pointerId: 1 });
+    fireEvent.click(screen.getByTestId("move-later"));
+    await waitFor(() => expect(calls.filter((x) => x.method === "PATCH")).toHaveLength(1));
+    fireEvent.pointerDown(screen.getByTestId(`clip-a2:${MUSIC}`), { clientX: 0, pointerId: 1 });
+    const slider = screen.getByTestId("music-level").querySelector("input") as HTMLInputElement;
+    // The slider is disabled while the reorder saves: the level cannot be changed into a race.
+    expect(slider.disabled).toBe(true);
+    await act(async () => releaseSave({ status: 200, body: { film: withMusic() } }));
+    await waitFor(() => expect(slider.disabled).toBe(false));
+  });
+});
+
+describe("media links (Lens N2)", () => {
+  const ID = "0c000000-0000-4000-8000-0000000000e1";
+  const ok = () => ({ status: 200, body: { asset: { kind: "video", durationS: 8 }, urls: { proxy: "/api/media/file/x" }, served: true } });
+
+  it("errors in quick succession mark the clip failed after the retries; ordinary expiries ten minutes apart never do", async () => {
+    answer = () => ok();
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const { result } = renderHook(() => useMediaUrls([ID]));
+    await waitFor(() => expect(result.current.urls.get(ID)?.play).toBe("/api/media/file/x"));
+    // Three expiries, each ten minutes after the last: every one fetches fresh links, none marks the clip failed.
+    for (let i = 0; i < 3; i++) {
+      now += 10 * 60_000;
+      act(() => result.current.refresh(ID));
+      await waitFor(() => expect(calls.filter((x) => x.url === `/api/media/${ID}`)).toHaveLength(2 + i));
+    }
+    expect(result.current.urls.get(ID)?.failed).toBeFalsy();
+    // A file that is really broken: errors within the window → two retries, then failed, and no more requests.
+    const before = calls.length;
+    for (let i = 0; i < 4; i++) {
+      now += i === 0 ? 10 * 60_000 : 1000;
+      act(() => result.current.refresh(ID));
+    }
+    await waitFor(() => expect(result.current.urls.get(ID)?.failed).toBe(true));
+    expect(calls.length - before).toBe(2);
+    expect(MEDIA_RETRY_WINDOW_MS).toBeLessThan(10 * 60_000);
   });
 });
