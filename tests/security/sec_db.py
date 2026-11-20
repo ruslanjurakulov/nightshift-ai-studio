@@ -762,11 +762,12 @@ def take_off_0192(conn_or_session) -> None:
     """0192 (the adult attestation) replaces quote_creative_job() and creative_platform_reserve() (0036's bodies), route_model() (0075's),
     sellable_models() (0188's), create_creative_job() and api_creative_refusal() (0174's), api_create_video() (0147's), quote_film()
     (0171's), start_film() (0187's), oauth_creative_quote() and oauth_creative_models() (0191's), api_request_download() (0170's) and
-    oauth_create_video() (0094's), and adds the hold and download gate triggers. 0125's, 0147's, 0170's, 0171's, 0174's, 0187's and
+    oauth_create_video() (0094's), workflow_advance_locked() (0083's) and start_workflow_run() (0174's), and adds the hold, download
+    and run gate triggers. 0125's, 0147's, 0170's, 0171's, 0174's, 0187's and
     0188's drift guards and rollbacks refuse any body but their own, so take_off_0125, take_off_0174, take_off_0187 and take_off_0188
     take 0192 off first (take_off_0171 and take_off_0139 reach it through them; a lab that replays 0147, 0170 or 0191 undoes it
     first too). 0093, 0094 and 0191 do NOT refuse: replaying one over 0192 silently removes that gate, so a lab that replays them
-    takes 0192 off first as well. Its rollback puts the thirteen earlier bodies back and drops its functions and triggers;
+    takes 0192 off first as well. Its rollback puts the fifteen earlier bodies back and drops its functions and triggers;
     adult_attestations (the record, with its append-only triggers) stays, and put_back_0192 picks it up again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0192(conn):
