@@ -34,7 +34,7 @@ set local lock_timeout = '5s';
 
 do $$
 begin
-  if to_regprocedure('public.owner_analytics_is_owner()') is null or to_regprocedure('public.owner_analytics_internal_org_ids()') is null then
+  if to_regprocedure('public.owner_analytics_is_owner()') is null then
     raise exception '0183 needs 0182_owner_analytics.sql: apply it first';
   end if;
   if to_regclass('public.creative_job_costs') is null then
@@ -352,7 +352,9 @@ create or replace function public.owner_analytics_model_activity(p_from timestam
     first_at        timestamptz,
     last_at         timestamptz,
     last_status     text,
-    last_error_code text
+    last_error_code text,
+    last_ok_at      timestamptz,
+    last_quota_at   timestamptz
   )
   language plpgsql stable security definer set search_path = public, pg_temp
 as $$
@@ -367,9 +369,9 @@ begin
 
   return query
   with w as (
-    select coalesce(j.routed_model, j.requested_model, 'unknown') as m,
+    select j.id, coalesce(j.routed_model, j.requested_model, 'unknown') as m,
            coalesce(j.credit_unit, 'unknown') as u,
-           j.status, j.error_code, j.quantity, j.created_at
+           j.status, j.error_code, j.quantity, j.created_at, coalesce(j.finished_at, j.created_at) as ended_at
       from public.creative_jobs j
      where j.created_at >= p_from and j.created_at < p_to
   ),
@@ -377,6 +379,29 @@ begin
     select distinct on (w.m) w.m, w.status, w.error_code
       from w
      order by w.m, w.created_at desc
+  ),
+  -- A routed job that a model refused for want of balance moves on to the next model (reroute_creative_job, 0088): the job row
+  -- then names the model that ran, and the refusal lives only in the platform-only route row, tried[k] refused with reasons[k].
+  -- Without this, a provider whose balance is spent would never read as empty while routing hides it.
+  refused as (
+    select r.tried ->> (k.i - 1)::int as m, w.created_at as at
+      from w
+      join public.creative_job_routes r on r.job_id = w.id
+      cross join lateral jsonb_array_elements_text(r.reasons) with ordinality as k(reason, i)
+     where k.reason = 'quota'
+  ),
+  marks as (
+    select m,
+           max(at) filter (where kind = 'ok') as ok_at,
+           max(at) filter (where kind = 'quota') as quota_at
+      from (
+        select w.m, w.ended_at as at, 'ok' as kind from w where w.status = 'completed'
+        union all
+        select w.m, w.ended_at, 'quota' from w where w.status = 'failed' and w.error_code = 'quota'
+        union all
+        select refused.m, refused.at, 'quota' from refused where refused.m is not null
+      ) e
+     group by m
   )
   select w.m, w.u,
          count(*),
@@ -389,17 +414,25 @@ begin
          min(w.created_at),
          max(w.created_at),
          n.status,
-         n.error_code
+         n.error_code,
+         mk.ok_at,
+         mk.quota_at
     from w
     join newest n on n.m = w.m
-   group by w.m, w.u, n.status, n.error_code
+    left join marks mk on mk.m = w.m
+   group by w.m, w.u, n.status, n.error_code, mk.ok_at, mk.quota_at
+  union all
+  -- A model that only ever refused inside routing has no job row of its own: it still gets a line, with no job counted.
+  select mk.m, 'unknown', 0, 0, 0, 0, 0, 0, null, null, null, null, mk.ok_at, mk.quota_at
+    from marks mk
+   where not exists (select 1 from w where w.m = mk.m)
    order by 1, 2
    limit 5000;
 end
 $$;
 
 comment on function public.owner_analytics_model_activity(timestamptz, timestamptz) is
-  'Migration 0183: creative jobs in [p_from, p_to) by model and unit — counts by outcome, units used, first and last time — and how the newest job of each model ended (status, error_code). At most 200 days. Platform owner only; read-only.';
+  'Migration 0183: creative jobs in [p_from, p_to) by model and unit — counts by outcome, units used, first and last time, how the newest job of each model ended — and per model the last completion and the last refusal for want of balance (quota), routing failovers included. At most 200 days. Platform owner only; read-only.';
 
 revoke all on function public.owner_analytics_model_activity(timestamptz, timestamptz) from public, anon, authenticated, service_role;
 grant execute on function public.owner_analytics_model_activity(timestamptz, timestamptz) to authenticated;

@@ -88,7 +88,7 @@ export async function buildExport(
     const data = await readRunway(nowMs);
     if (!data) return { ok: false, reason: "error" };
     const rows = providerRunways(data);
-    return { ok: true, table: what === "runway.providers" ? runwayProvidersTable(d, rows, nowMs) : runwayModelsTable(d, rows, nowMs) };
+    return done(what === "runway.providers" ? runwayProvidersTable(d, rows, nowMs, present) : runwayModelsTable(d, rows, nowMs, present));
   }
   if (what.startsWith("costs.")) {
     const fromMonth = `${p.startDay.slice(0, 7)}-01`;

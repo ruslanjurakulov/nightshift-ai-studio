@@ -315,4 +315,10 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   runwayNotEnabled: "Modellar boʻyicha vazifalar soni uchun 0183-migratsiya kerak; xarajat va balanslar usiz koʻrsatilgan.",
   runwayNoProviders: "Hech bir pullik provayderda hali toʻldirish, balans yoki vazifa yoʻq.",
   runwayHorizon: "Toʻldirish 180 kundan eski: unga bogʻliq balanslar nomaʼlum.",
+  runwayNativeNote: "provayderning oʻz birligida pipeline sarfiga nisbatan hisoblangan, Billing sahifasidagidek",
+  runwayPipelineStale: "bu oraliq uchun pipeline xarajati hali koʻchirilmagan",
+  runwayEmptyUnchecked: "provayder balans yetmagani uchun rad etayotganini tekshirib boʻlmadi",
+  runwayPipelineAsOf: "Pipeline xarajati oxirgi tungi koʻchirish holatiga: {when}.",
+  runwaySpendBasis: "Xarajat",
+  runwayBilled: "yetkazib beruvchi hisobi",
 };

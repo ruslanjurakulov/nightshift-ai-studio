@@ -328,6 +328,12 @@ export const ownerAnalyticsEn = {
   runwayNotEnabled: "Job counts per model need migration 0183; spend and balances are shown without them.",
   runwayNoProviders: "No paid provider has a top-up, a balance or a job yet.",
   runwayHorizon: "A top-up is older than 180 days: the balances that depend on it are unknown.",
+  runwayNativeNote: "counted in the provider's own unit against the pipeline's use, as on Billing",
+  runwayPipelineStale: "pipeline spend not mirrored yet for this window",
+  runwayEmptyUnchecked: "whether the provider already refuses for want of balance could not be checked",
+  runwayPipelineAsOf: "Pipeline spend as of the last nightly mirror: {when}.",
+  runwaySpendBasis: "Spend is",
+  runwayBilled: "the vendor's bill",
 };
 
 export type OwnerAnalyticsDictionary = { [K in keyof typeof ownerAnalyticsEn]: string };
