@@ -40,6 +40,17 @@ def _capture_decode(tmp_path: Path, **kw):
     return seen
 
 
+def test_without_ffmpeg_the_decode_refuses_as_not_configured_and_runs_nothing(tmp_path):
+    ran = []
+    src = tmp_path / "source.mp3"
+    src.write_bytes(b"\0" * 10)
+    with mock.patch.object(vv.subprocess, "run", lambda *a, **k: ran.append(a)), \
+            mock.patch.object(vv.shutil, "which", lambda name: None):
+        with pytest.raises(vv.AdapterError) as e:
+            vv.decode_to_wav(src, tmp_path / "narration.wav")
+    assert e.value.code == vv.E_NOT_CONFIGURED and ran == []
+
+
 def test_the_decode_of_a_members_file_opens_no_protocol_but_file(tmp_path):
     cmd = _capture_decode(tmp_path)["cmd"]
     assert "-protocol_whitelist" in cmd and cmd[cmd.index("-protocol_whitelist") + 1] == "file", cmd
