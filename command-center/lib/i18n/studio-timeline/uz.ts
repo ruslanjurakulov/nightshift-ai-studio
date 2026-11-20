@@ -119,6 +119,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
     cap_exceeded: "Loyiha ish maydoni ruxsatidan qimmat. Hech narsa band qilinmadi.",
     other: "Server loyihani boshlamadi. Hech narsa band qilinmadi.",
   },
+  startNoAnswer: "Serverdan javob kelmadi. Boshlash amalga oshgan boʻlishi mumkin: qayta bosish xuddi shu boshlashni takrorlaydi va ikki marta yechmaydi.",
   addCredits: "Kredit qoʻshish",
   notAdmin: "Pullik loyihani faqat ish maydoni administratori boshlay oladi.",
   notEditable: "Loyiha «{status}» holatida: qayta baholanmaydi.",
