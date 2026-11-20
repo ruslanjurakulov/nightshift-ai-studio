@@ -2000,3 +2000,51 @@ makes the person confirm their rights to an input (`docs/RIGHTS_ACKNOWLEDGEMENT.
   shape fails closed, workflows refused before any hold, the API's answer, replay, rollback keeping the record, and the 0075
   replay hazard), the lab's isolation suite (`sec_rights_acknowledgement_0174.py`), `tests/test_rights_acknowledgement_migration.py`
   (each body is the earlier one plus inserted 0174 blocks only; pins), `command-center/tests/rights-acknowledgement*.test.ts(x)`.
+
+## Rights acknowledgement asks about every file a job sends (0179)
+
+`0179_rights_acknowledgement_inputs.sql` closes the four latent paths Breach found past 0174 (tests/security/test_sec_breach_rights_ack_bypass.py,
+test_sec_breach_rights_ack_films.py): an auto-mode failover onto a model that requires an acknowledgement, a style kit's reference
+pictures, an @character's pictures, and a film clip's uploaded first frame.
+
+- **Change.** `rights_acknowledgement_missing` keeps 0174's signature and now asks about every file the job sends
+  (`rights_acknowledgement_subjects`: source, end, the kit's live pictures, every mentioned character's live pictures, with the worker's
+  own @name rule). `reroute_creative_job` (0088's body, one marked hunk) skips a candidate the requester has not acknowledged for.
+  `start_film` (0171's body, one marked hunk) returns `acknowledgement_required` after the re-pricing and before the hold
+  (`film_acknowledgement_missing`, which also reads each scene's visual prompt for @names); the Timeline names the remedy.
+  `workflow_quote_steps` (0174's body, one marked hunk) refuses a step that sends kit or character pictures, before any hold.
+  `creative_job_style` (0048's body, one marked hunk) asks again when the job runs, so a picture added to a kit or character
+  after the job was created is never handed out unacknowledged. Three new internal functions; no API role may call them.
+- **Not changed.** Which models require an acknowledgement, every availability and price, quote_film (a quote holds nothing).
+  Latent today: no model on sale requires one.
+- **Replay.** Replays onto itself. Re-running 0174 after it fails loudly; re-running 0088, 0171 or 0048 after it silently restores the old
+  body: apply 0179 again and run its Verify query.
+- **Undo.** `docs/sql/rollback_0179_rights_acknowledgement_inputs.sql` (owner-applied): the five earlier bodies back verbatim, the
+  three new functions dropped. Roll 0179 back BEFORE 0174: rollback_0174 now refuses while 0179 is on.
+
+## get_job_status names the video; list_videos lists newest first (0189)
+
+`0189_job_video_and_list_order.sql`: through the MCP connector a new video could not be found. `get_job_status` named no video, and
+`api_list_videos` (0042) sorted held runs (no `published_at`) by id after every upload, while a video made through MCP is held for review.
+
+- **Change.** `render_jobs.result_slug` (written once by the queue worker, from the run's result file, when the run succeeded; a
+  browser's insert must leave it empty). `api_get_job` and `oauth_get_job` (0111's bodies, one marked hunk each) answer `video_id`: that
+  slug's video in the job's own channel (an uploaded row before a held one), NULL until recorded. `api_list_videos` (0042's body) orders
+  by `video_listed_at(published_at, held_at)` desc: an unreadable `published_at` is unknown and sorts last, never a guessed date.
+- **Not changed.** Who may see a job or a video, every price, hold and publish rule.
+- **Undo.** `docs/sql/rollback_0189_job_video_and_list_order.sql` (owner-applied): the three earlier bodies back verbatim; the
+  `result_slug` column and its values stay.
+
+## Recraft: the web and our MCP connector, never the public API (0180)
+
+`0180_recraft_web_mcp.sql` adds a third registry exposure, `web_mcp`. A model with it is sold on the web and to the `mcp` surface (our own
+signed-in connector), never to `api` (the public developer API). Recraft V4.1 and V4.1 Flash carry it after Recraft support's written
+confirmation (email of 2026-11-17/18), which covers the web studio and our MCP connector but not /api/v1.
+
+- **Change.** `sellable_models` (0125's body): only `any` opens `api`; `web_mcp` opens `mcp`; any other value opens the web alone (fail
+  closed). `api_creative_model_ok` (0124's body): the "temporarily off" word is for `any` models only.
+- **Beta is guarded.** Both Recraft rows go hidden → beta only where the verified probe is a passed run of the vendor model the registry
+  names now (Flash is `recraftv4_1_flash_v2`). Without one nothing changes: dispatch `.github/workflows/probe_models.yml` with the model
+  id, then apply 0180 again. A sale still needs the owner's `credit_prices` rows.
+- **Not yet reachable over MCP.** No MCP tool asks for the `mcp` surface until the connector's creative tools land (a separate PR).
+- **Undo.** `docs/sql/rollback_0180_recraft_web_mcp.sql`: refuses while a model is `web_mcp` (it would reopen the API).

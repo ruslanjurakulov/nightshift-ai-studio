@@ -324,7 +324,7 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
-           "0174_rights_acknowledgement.sql")
+           "0174_rights_acknowledgement.sql", "0179_rights_acknowledgement_inputs.sql", "0180_recraft_web_mcp.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -600,6 +600,7 @@ def take_off_0171(conn_or_session) -> None:
     replays or rolls back 0166 takes 0171 off first with its own rollback (override on: the lab's segments are not kept) and puts it
     back with put_back_0171 where the chain goes on."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0179(conn)
     if has_0171(conn):
         conn.execute(rollback_0171_body(override=True))
 
@@ -608,6 +609,7 @@ def put_back_0171(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0171(conn):
         conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
+    put_back_0179(conn)
 
 
 MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"
@@ -628,6 +630,7 @@ def take_off_0174(conn_or_session) -> None:
     guard, while rights_acknowledgements (the record, with its append-only triggers), rights_acknowledgement_kinds and
     model_registry.requires_acknowledgement stay. put_back_0174 applies 0174 again; it picks the kept tables up as its own."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0179(conn)
     if has_0174(conn):
         text = ROLLBACK_0174.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -637,6 +640,50 @@ def put_back_0174(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0174(conn):
         conn.execute(MIGRATION_0174.read_text(encoding="utf-8"))
+    put_back_0179(conn)
+
+
+MIGRATION_0179 = MIGRATIONS / "0179_rights_acknowledgement_inputs.sql"
+ROLLBACK_0179 = REPO / "docs" / "sql" / "rollback_0179_rights_acknowledgement_inputs.sql"
+
+
+def has_0179(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.film_acknowledgement_missing(public.films, uuid)') is not null").fetchone()[0])
+
+
+def take_off_0179(conn_or_session) -> None:
+    """0179 replaces rights_acknowledgement_missing() (0174's body), reroute_creative_job() (0088's) and start_film() (0171's). 0174's
+    and 0171's drift guards and rollbacks refuse any body but their own, so a test that replays or rolls back 0174 or 0171 takes 0179
+    off first (take_off_0174 and take_off_0171 do it), and put_back_0174 / put_back_0171 put it back once both are on again."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0179(conn):
+        text = ROLLBACK_0179.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0179(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0179(conn) and has_0174(conn) and has_0171(conn):
+        conn.execute(MIGRATION_0179.read_text(encoding="utf-8"))
+
+
+MIGRATION_0189 = MIGRATIONS / "0189_job_video_and_list_order.sql"
+ROLLBACK_0189 = REPO / "docs" / "sql" / "rollback_0189_job_video_and_list_order.sql"
+
+
+def has_0189(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.render_job_video_id(public.render_jobs)') is not null").fetchone()[0])
+
+
+def take_off_0189(conn_or_session) -> None:
+    """0189 replaces api_get_job() and oauth_get_job() (0111's bodies) and api_list_videos() (0042's). 0111's replay and rollback
+    refuse any other body, so a test that replays or rolls back 0111 takes 0189 off first (inside its own transaction)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0189(conn):
+        text = ROLLBACK_0189.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def migration_files() -> list[Path]:

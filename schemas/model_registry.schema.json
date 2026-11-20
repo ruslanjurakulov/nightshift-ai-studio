@@ -172,7 +172,7 @@
             "url": {"$ref": "#/$defs/https_url"}
           }
         },
-        "api_exposure": {"enum": ["any", "web_only"]},
+        "api_exposure": {"enum": ["any", "web_only", "web_mcp"]},
         "mcp_oauth_exposure": {
           "description": "true offers this model to an AI assistant the end user connected to their own workspace with OAuth (the MCP Studio tools, migration 0176): the same person generating with their own credits through their own assistant. Separate from api_exposure, which is about a developer's own code. Absent or false: not offered (the default for every model). Set true only in a reviewed change that cites the vendor's terms allowing exactly this use; tests/test_mcp_oauth_creative_migration.py lists the models that may carry it. Cannot be combined with blocked_countries (an assistant's request carries no address) or a rights acknowledgement (given in the Studio only).",
           "type": "boolean"
