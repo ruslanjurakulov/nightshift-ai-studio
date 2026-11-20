@@ -12,6 +12,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { deskHref } from "@/lib/creative/desks";
 import { Wordmark } from "@/components/site/Wordmark";
 import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Button, buttonClass } from "@/components/ds/Button";
 import { newChannelHref, WELCOME_NICHE_MAX, WELCOME_LANGUAGE_MAX } from "@/lib/welcome";
 
 type Step = "workspace" | "about" | "next";
@@ -140,9 +141,9 @@ export function WelcomeFlow({
             </p>
           )}
           <div className="g5-actions" style={{ justifyContent: "flex-end" }}>
-            <button type="submit" disabled={busy || validateOrgName(name) === null} className="btn-primary disabled:opacity-40">
-              {busy ? t.signup.wsCreating : t.signup.wsCreate}
-            </button>
+            <Button type="submit" variant="primary" loading={busy} busyLabel={t.signup.wsCreating} disabled={validateOrgName(name) === null}>
+              {t.signup.wsCreate}
+            </Button>
           </div>
         </form>
       )}
@@ -197,11 +198,11 @@ export function WelcomeFlow({
                 setLanguage("");
                 setIndex(index + 1);
               }}
-              className="btn-quiet"
+              className={buttonClass({ variant: "quiet" })}
             >
               {t.signup.skip}
             </button>
-            <button type="submit" className="btn-primary">
+            <button type="submit" className={buttonClass({ variant: "primary" })}>
               {t.signup.continue}
             </button>
           </div>
@@ -235,7 +236,7 @@ export function WelcomeFlow({
                 (contactEmail ? (
                   <a
                     href={`mailto:${contactEmail}?subject=${encodeURIComponent(t.signup.requestSubject)}`}
-                    className="btn-quiet mt-3 inline-flex"
+                    className={buttonClass({ variant: "secondary", size: "sm", className: "mt-3" })}
                   >
                     {t.signup.requestConnection}
                   </a>
@@ -251,7 +252,7 @@ export function WelcomeFlow({
             <button type="button" onClick={() => setIndex(index - 1)} className="g5-link" style={{ background: "none", border: 0, cursor: "pointer" }}>
               ← {t.signup.back}
             </button>
-            <Link href={next ?? home} onClick={rememberAllChannels} className="btn-primary">
+            <Link href={next ?? home} onClick={rememberAllChannels} className={buttonClass({ variant: "primary" })}>
               {next ? t.signup.finishStudio : t.signup.finish}
             </Link>
           </div>
@@ -342,7 +343,7 @@ function Item({
       {done ? (
         <StatusLamp tone="ok" label={t.signup.done} />
       ) : href ? (
-        <Link href={href} className="btn-quiet">
+        <Link href={href} className={buttonClass({ variant: "secondary", size: "sm" })}>
           {t.signup.open} →
         </Link>
       ) : (
