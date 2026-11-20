@@ -40,7 +40,7 @@ saw and carries the ``SPEND MAY HAVE OCCURRED`` note, and the first real probe f
 message. A person reads it, checks it is Vidu's, and puts that EXACT host (as luma.py does; never a parent
 domain such as ``amazonaws.com.cn`` that other customers' buckets share) in ``RESULT_HOSTS`` on purpose, then runs a
 NEW probe. THE FIRST PROBE'S SPEND IS LOST: no code path fetches a finished task again, the job fails at once on
-``bad_response`` and the clip is not stored (about $0.07 to $0.14 at the probe sizes).
+``bad_response`` and the clip is not stored (a few seconds of video at the probe sizes).
 
 WATERMARK (read 2026-11-11): Vidu answers a plain ``url`` and a ``watermarked_url``; its ``watermark`` flag is
 optional and "no watermark is added by default" (reference-to-video page). The Terms of Use, clause 4, say "You,

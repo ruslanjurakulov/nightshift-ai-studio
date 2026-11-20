@@ -249,7 +249,7 @@ describe("Assemble", () => {
     await waitFor(() => expect(screen.getAllByTestId("assemble-amount")[0].textContent).toBe("16 credits"));
     fireEvent.click(key());
     fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
-    await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startFailed.other));
+    await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startNoAnswer));
     mode = "refuse";
     // Retrying a start that may have gone through still goes through the confirmation (only the dialog starts anything).
     fireEvent.click(key());

@@ -1,5 +1,6 @@
 import { Note } from "@/components/g3/Section";
 import { FilmList, type FilmListInitial } from "@/components/films/FilmList";
+import { FilmShelfReadNotice } from "./FilmShelfReadNotice";
 import "@/components/films/films.css";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -31,7 +32,12 @@ export async function FilmProjectsShelf() {
   if (!org.supported) return <section aria-labelledby="studio-film-projects" className="rhythm">{heading}<Note>{t.org.notMigrated}</Note></section>;
   if (!org.current) return <section aria-labelledby="studio-film-projects" className="rhythm">{heading}<Note>{s.noOrg}</Note></section>;
   const supabase = await createClient();
-  if (!supabase) return null;
+  if (!supabase) return (
+    <section aria-labelledby="studio-film-projects" className="rhythm" data-studio-shelf="films">
+      {heading}
+      <FilmShelfReadNotice message={s.list.loadFailed} retryLabel={s.retry} />
+    </section>
+  );
   const [read, ctx] = await Promise.all([listFilms(supabase, org.current.id, false), getChannelContext()]);
   const initial: FilmListInitial = read.ok ? { state: "ok", films: read.films } : read.error === "not_available" ? { state: "not_available" } : { state: "failed" };
   // A project made while one channel is in view is made for that channel (the database checks it is this workspace's).

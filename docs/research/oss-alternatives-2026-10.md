@@ -27,7 +27,7 @@ Licences and weights:
 - Its own model inventory lists 56 repositories plus 7 families with unresolved licences, and does not claim any
   commercial clearance. The blocking issue is the weights, not the app licence.
 - AGPL on the app: running it unmodified as a separate service is a grey area; modifying it and letting users reach it
-  over a network brings source-offer duties. A paid Pro build is sold (reported as $99 per year or $299) and is closed
+  over a network brings source-offer duties. A paid Pro build is sold (yearly or one-off, per reports) and is closed
   source, and contributors sign a CLA in favour of Yupcha Softwares.
 
 Consent and ownership:

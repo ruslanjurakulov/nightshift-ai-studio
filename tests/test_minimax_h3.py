@@ -240,7 +240,7 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertEqual(seen, {(f, u) for f in allowed for u in units}, "0173 and its rollback name every unit")
 
     def test_every_price_is_a_dated_unconfirmed_estimate_with_a_source(self):
-        # Re-read 2026-11-13 for the cleared three (Highspeed 480P is on the page at $0.04/s); Max was not touched.
+        # Re-read 2026-11-13 for the cleared three (Highspeed 480P is on the vendor pricing page); Max was not touched.
         want = {H3: {"768p": 0.08, "2k": 0.13}, HS: {"480p": 0.04, "768p": 0.06}, LITE: {"480p": 0.025, "768p": 0.04},
                 MAX: {"480p": 0.05, "768p": 0.08}}
         for mid in NEW_IDS:
