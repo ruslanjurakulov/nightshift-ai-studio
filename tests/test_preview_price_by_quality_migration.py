@@ -167,9 +167,9 @@ PREVIEW_SET = {"minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax
 #: The image models the owner asked to preview. The vendor states no per-image figure for any of them (2026-11-13): OpenAI bills GPT
 #: Image 2.5 by token ("The GPT Image 2 calculator does not estimate GPT-Image-2.5 token consumption"), so neither is marked and
 #: neither is given a guessed figure. Ideogram's API price table is drawn in the browser, behind a script a plain fetch is refused; the
-#: owner read it there on 2026-11-13 (3.0 and 4.0 Turbo, the speed the adapter sends: US$0.03 an image), so Ideogram 3 and 4 carry that
-#: flat figure, labelled an estimate, and are marked. Ideogram 4.5 is priced by the tier it is sent (Low / Medium / High 1K/2K: US$0.03 /
-#: 0.06 / 0.10, read the same way), so it carries one figure per tier. This test still holds every marked one to a figure the preview
+#: owner read it there on 2026-11-13 (3.0 and 4.0 Turbo, the speed the adapter sends: one per-image figure), so Ideogram 3 and 4 carry that
+#: flat figure, labelled an estimate, and are marked. Ideogram 4.5 is priced by the tier it is sent (Low / Medium / High 1K/2K, read the
+#: same way), so it carries one figure per tier. This test still holds every marked one to a figure the preview
 #: rate can use.
 ASKED = ("openai-gpt-image-2.5-flare", "openai-gpt-image-2.5-sunburst", "ideogram-3", "ideogram-4", "ideogram-4.5")
 

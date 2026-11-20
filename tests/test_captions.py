@@ -237,7 +237,7 @@ class Registry(unittest.TestCase):
         self.assertEqual((e.adapter, e.capabilities, e.output), ("audio.elevenlabs_scribe", ("captions",), "text"))
         self.assertEqual(OUTPUT_OF["captions"], "text")
         self.assertEqual(e.languages, ("uz", "ru", "en"))
-        # The provider price is the one ElevenLabs' page states ($0.20 per hour, read 2026-11-11,
+        # The provider price is the one ElevenLabs' page states (per hour, read 2026-11-11,
         # docs/research/registry-corrections-2026-11-11.md), never an invented one: unknown is never 0.
         self.assertEqual(e.credit_unit, "model_elevenlabs_scribe_v2_second")
         p = e.raw["pricing"]

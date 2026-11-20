@@ -189,6 +189,11 @@ export const PUBLIC_FONT_PATHS = [
   "/fonts/onest-latin-ext-v1.woff2",
   "/fonts/onest-cyrillic-v1.woff2",
   "/fonts/onest-cyrillic-ext-v1.woff2",
+  // The display face (Unbounded, OFL; brand/og-fonts/OFL-Unbounded.txt), for display headings only (app/tokens.css).
+  "/fonts/unbounded-latin-v1.woff2",
+  "/fonts/unbounded-latin-ext-v1.woff2",
+  "/fonts/unbounded-cyrillic-v1.woff2",
+  "/fonts/unbounded-cyrillic-ext-v1.woff2",
 ] as const;
 
 /** What each language needs on its first paint (the rest load on demand). */
@@ -196,6 +201,17 @@ export const CRITICAL_FONT_PATHS = {
   en: ["/fonts/onest-latin-v1.woff2"],
   uz: ["/fonts/onest-latin-v1.woff2"],
   ru: ["/fonts/onest-latin-v1.woff2", "/fonts/onest-cyrillic-v1.woff2"],
+} as const satisfies Record<"en" | "ru" | "uz", readonly (typeof PUBLIC_FONT_PATHS)[number][]>;
+
+/**
+ * The display face's first-paint files, preloaded only by a page whose first screen sets a display heading
+ * (components/site/fonts.ts preloadDisplayFont). Every other page lets unicode-range fetch it on demand, so
+ * an app screen never pays 50 KB for a face it does not show. Digits live in the Latin file, so Russian needs both.
+ */
+export const DISPLAY_FONT_PATHS = {
+  en: ["/fonts/unbounded-latin-v1.woff2"],
+  uz: ["/fonts/unbounded-latin-v1.woff2"],
+  ru: ["/fonts/unbounded-latin-v1.woff2", "/fonts/unbounded-cyrillic-v1.woff2"],
 } as const satisfies Record<"en" | "ru" | "uz", readonly (typeof PUBLIC_FONT_PATHS)[number][]>;
 
 export function isPublicFontPath(pathname: string): boolean {

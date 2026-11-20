@@ -348,11 +348,11 @@ checks** (`org_daily_checks`) per 24 hours. To set them explicitly: `update publ
 org_daily_checks = 200;`.
 
 The proposal and its basis, as approved: **1 credit per scan** (`update public.brand_scan_settings set price_credits = 1;`). Cost basis (assumptions, not
-measurements: our own dedicated worker server at roughly EUR 50 a month, 8 cores, inbound traffic not billed; 1 credit is about
+measurements: our own dedicated worker server at a flat monthly rent, 8 cores, inbound traffic not billed; 1 credit is about
 $0.01 retail, docs/API.md): one scan holds one worker slot for at most 30 s of wall clock (mostly waiting on the site), uses at most a few
 CPU-seconds (the HTML parse, one Pillow decode in the child, a thumbnail when ffmpeg is there), downloads at most about 41 MB (6 pages,
 4 stylesheets, 6 pictures, all capped; typically 1-3 MB), asks the resolver twice (free), and stores at most 5 pictures in the
-organization's own library quota. That is well under $0.001 of marginal cost; 1 credit is the smallest whole price, covers the scans
+organization's own library quota. That is a small fraction of one credit's worth of marginal cost; 1 credit is the smallest whole price, covers the scans
 that fail (those are released, so they cost the person nothing) and the worst case many times over, and still makes a scan cost money
 for anyone who would use it as a crawler (each scan also needs a domain they control). The charged price is not raised to the platform's
 `job_minimum`; the HOLD is (reserve_credits demands it of every hold), so a person needs that many credits available while the scan runs:

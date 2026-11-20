@@ -88,7 +88,7 @@ def test_480p_and_768p_of_h3_lite_quote_their_own_two_vendor_costs(conn, sc):
         _make(conn)
         low = _ok(conn, sc, LITE, _params(resolution="480p"))
         high = _ok(conn, sc, LITE, _params())              # 768p, the pinned default (a NAMED 768p: below)
-        # 0.025 and 0.04 USD a second x 100 credits per USD, no margin; 4 seconds, rounded up, floored at job_minimum like every quote.
+        # The registry's 480p and 768p USD a second x 100 credits per USD, no margin; 4 seconds, rounded up, floored at job_minimum like every quote.
         assert (float(low["credits_per_unit"]), low["unit"], low["resolution"]) == (2.5, _unit(LITE) + "_480p", "480p"), low
         assert (float(high["credits_per_unit"]), high["unit"], high["resolution"]) == (4.0, _unit(LITE) + "_768p", "768p"), high
         assert float(low["credits"]) == max(10.0, _minimum(conn)) and float(high["credits"]) == max(16.0, _minimum(conn))

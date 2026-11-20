@@ -158,7 +158,7 @@ def test_every_variant_is_quoted_to_a_customer_at_two_and_a_half_times_its_vendo
         assert q["unit"] == unit_quoted and "preview" not in q and q["exempt"] is False, q
         assert Decimal(str(q["credits_per_unit"])) == usd * 100 * Decimal("2.5"), q
         vendor_cents = usd * 100 * _qty(model)
-        # The customer's credits never buy more vendor cost than they pay for: 1 credit buys at most 0.4 cents of vendor cost.
+        # The customer's credits never buy more vendor cost than they pay for.
         assert Decimal(str(q["credits"])) >= vendor_cents * Decimal("2.5"), q
         assert Decimal(str(q["credits"])) / Decimal("2.5") >= vendor_cents
 
