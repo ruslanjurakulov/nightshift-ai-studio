@@ -56,6 +56,7 @@ export function WelcomeFlow({
   contactEmail,
   next = null,
   initialStep = null,
+  ageGate = null,
 }: {
   needsWorkspace: boolean;
   unavailable: boolean;
@@ -68,6 +69,8 @@ export function WelcomeFlow({
   next?: string | null;
   /** `?step=` from the address (only "next" means anything), so a reload lands on the step the person was on. */
   initialStep?: string | null;
+  /** The 18+ question (components/age/AgeGate), drawn at the top of the step in hand, inside the flow's own column. */
+  ageGate?: React.ReactNode;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -141,6 +144,7 @@ export function WelcomeFlow({
 
   return (
     <Frame steps={steps.map((k) => stepName[k])} index={index}>
+      {ageGate && <div className="mb-5">{ageGate}</div>}
       <p className="g5-k">{fmt(t.signup.stepOf, { n: index + 1, total: steps.length })}</p>
 
       {step === "workspace" && (

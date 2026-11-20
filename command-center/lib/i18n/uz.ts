@@ -3754,7 +3754,7 @@ export const uz: Dictionary = {
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
       source_unavailable: "Bu rasmdan foydalanib boʻlmaydi: u tashkilotingiz mediatekasida yoʻq, oʻchirilgan yoki PNG, JPEG yoki WebP emas.",
       acknowledgement_required: "Avval bu rasmga huquqingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
-      adult_attestation_required: "Bu model yaratuvchisining shartlariga koʻra faqat kattalar (18+) uchun. Avval «Yaratish»da yoshingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
+      adult_attestation_required: "Bu model yaratuvchisining shartlariga koʻra faqat kattalar (18+) uchun. «Yaratish» yuqorisidagi blokda yoshingizni tasdiqlang. Hech narsa boshlanmadi va hisobdan yechilmadi.",
       adult_only_service: "Nightshift kattalar uchun (18+). Bu akkaunt 18 yoshga toʻlmaganini bildirgan, shuning uchun hech narsa yaratib boʻlmaydi. Hech narsa yechilmadi.",
       style_unavailable: "Bu uslub toʻplamidan foydalanib boʻlmaydi: u tashkilotingizda yoʻq yoki oʻchirilgan. Boshqa uslubni yoki «Uslubsiz»ni tanlang.",
       mode_not_supported: "Faqat siz tanlagan model ishlatiladi; modelni avtomatik tanlash hali mavjud emas.",
@@ -3894,7 +3894,7 @@ export const uz: Dictionary = {
     lockWhy: {
       first_purchase: "Bu model tashkilotingiz birinchi marta kredit sotib olgandan keyin ochiladi.",
       not_on_sale: "Bu model hali hech bir ish maydoniga, hech bir tarifda sotilmaydi. Boshqa model tanlang.",
-      adult_only: "Bu modelni yaratuvchisi faqat kattalarga ruxsat beradi. Undan foydalanish uchun 18 yoki undan katta ekaningizni tasdiqlang.",
+      adult_only: "Bu model yaratuvchisi uni faqat kattalarga ruxsat beradi. Undan foydalanish uchun «Yaratish» yuqorisidagi blokda yoshingizni tasdiqlang.",
     },
     lockBuy: "Kredit sotib olish",
     needMore: "Kredit qoʻshish · yana {n} kerak",

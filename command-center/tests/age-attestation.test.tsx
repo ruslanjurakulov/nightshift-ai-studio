@@ -16,7 +16,8 @@ const h = vi.hoisted(() => ({
   refresh: vi.fn(),
 }));
 vi.mock("@/lib/supabase/server", () => ({ getUser: async () => h.user, createClient: async () => ({ rpc: h.rpc }) }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: h.refresh, push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: h.refresh, push: vi.fn() }), usePathname: () => "/chronos/create" }));
+vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
 
 const { POST, GET } = await import("../app/api/account/age/route");
 const { AgeGate } = await import("@/components/age/AgeGate");
@@ -104,17 +105,29 @@ describe("AgeGate", () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ state: "adult", recorded: true }) }));
     vi.stubGlobal("fetch", fetchMock);
     render(wrap(<AgeGate state="none" from="welcome" />));
+    // What each answer means is said before it is given.
+    expect(screen.getByText(en.age.consequence)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: en.age.confirm }));
-    await waitFor(() => expect(screen.queryByTestId("age-gate")).toBeNull());
+    // The outcome is said where focus lands, from a region mounted before the answer.
+    await waitFor(() => expect(screen.getByTestId("age-saved").textContent).toBe(en.age.done));
+    expect(document.activeElement).toBe(screen.getByTestId("age-saved"));
     expect(JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({ adult: true, from: "welcome" });
     expect(h.refresh).toHaveBeenCalled();
   });
 
   it("answers 'under 18' with the honest notice: the models exist, for adults only", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ state: "minor", recorded: true }) })));
-    render(wrap(<AgeGate state="none" from="create" />));
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ state: "minor", recorded: true }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(wrap(<AgeGate state="none" from="create" contactEmail="help@example.com" />));
     fireEvent.click(screen.getByRole("button", { name: en.age.under }));
+    // A permanent answer asks once more, and nothing is sent until it is confirmed; "Go back" returns to the choice.
+    expect(screen.getByText(en.age.underSure)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: en.age.goBack }));
+    fireEvent.click(screen.getByRole("button", { name: en.age.under }));
+    fireEvent.click(screen.getByRole("button", { name: en.age.underConfirm }));
     expect(await screen.findByTestId("age-minor")).toBeTruthy();
+    expect(screen.getByRole("link", { name: en.age.contact }).getAttribute("href")).toBe("mailto:help@example.com");
     expect(screen.getByText(en.age.minorBody)).toBeTruthy();
   });
 
@@ -122,7 +135,7 @@ describe("AgeGate", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, json: async () => ({ error: "age_unavailable" }) })));
     render(wrap(<AgeGate state="none" from="create" />));
     fireEvent.click(screen.getByRole("button", { name: en.age.confirm }));
-    expect((await screen.findByRole("alert")).textContent).toBe(en.age.unavailable);
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(en.age.unavailable));
     expect(screen.getByTestId("age-gate")).toBeTruthy();
   });
 

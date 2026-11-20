@@ -5,7 +5,8 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { isPlatformAdmin } from "@/lib/auth/org-roles";
 import { NotConfigured } from "@/components/NotConfigured";
 import { WelcomeFlow } from "@/components/welcome/WelcomeFlow";
-import { AgeGate } from "@/components/age/AgeGate";
+import { AgeGate, MinorNotice } from "@/components/age/AgeGate";
+import { mustAsk } from "@/lib/age";
 import { readAgeState } from "@/lib/server/age";
 import { LEGAL } from "@/lib/legal";
 import { studioNext } from "@/lib/safe-redirect";
@@ -60,14 +61,21 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
     welcomeCredits = Number.isFinite(amount) && amount > 0 ? amount : null;
   }
 
+  // 0199: the 18+ question, asked once of an account with no record (the Google sign-up path never saw the form's checkbox).
+  // Someone who said they are under 18 gets the notice instead of a flow whose every way forward is creating.
+  const age = await readAgeState();
+  if (age === "minor") {
+    return (
+      <main className="g5-welcome">
+        <div className="mx-auto w-full max-w-3xl px-4 pt-10">
+          <MinorNotice contactEmail={LEGAL.contactEmail} />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="g5-welcome">
-        {/* 0199: asked first, once, of an account with no 18+ record — the Google sign-up path never saw the form's checkbox. */}
-        {(await readAgeState()) !== "adult" && (
-          <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-            <AgeGate state={await readAgeState()} from="welcome" />
-          </div>
-        )}
         <WelcomeFlow
           needsWorkspace={org.supported && org.orgs.length === 0}
           unavailable={Boolean(org.unavailable)}
@@ -82,6 +90,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
           welcomeCredits={welcomeCredits}
           contactEmail={LEGAL.contactEmail}
           next={next}
+          ageGate={mustAsk(age) ? <AgeGate state={age} from="welcome" contactEmail={LEGAL.contactEmail} /> : null}
           initialStep={typeof q.step === "string" ? q.step : null}
         />
     </main>
