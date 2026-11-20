@@ -123,20 +123,21 @@ export function useExportPoll({
     };
   }, [active, projectId]);
 
-  /** One read now (the "Check now" / "Get the link" buttons), whether or not a poll is running. */
+  /** One read now (the "Check now" / "Get the link" buttons), whether or not a poll is running. Returns the safe error
+   *  word, so a manual link read can explain its first failure instead of reading as success (null: no answer to show). */
   const checkNow = useCallback(async () => {
     const current = scope.current;
-    if (!current || current.projectId !== projectId) return;
+    if (!current || current.projectId !== projectId) return null;
     pending.current += 1;
     setChecking(true);
     const mine = ++asked.current;
     const out = await fetchProject(projectId);
     // Ignore the whole old completion, including its pending-count decrement:
     // the new scope may already have its own Check now waiting.
-    if (scope.current !== current) return;
+    if (scope.current !== current) return null;
     pending.current -= 1;
     setChecking(pending.current > 0);
-    if (mine !== asked.current) return; // a newer read answered (or will answer) instead
+    if (mine !== asked.current) return null; // a newer read answered (or will answer) instead
     if (out.ok) {
       setFailures(0);
       setHalt(null);
@@ -146,6 +147,7 @@ export function useExportPoll({
     } else {
       setFailures((f) => f + 1);
     }
+    return out.ok ? null : out.error;
   }, [projectId]);
 
   return { failing: failures >= FAILING_AFTER || halt !== null, halt, checking, checkNow };

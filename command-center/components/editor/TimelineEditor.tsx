@@ -151,6 +151,7 @@ import { SoundPreview, previewVolume } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
 import { CaptionPreview } from "./CaptionPreview";
+import { CaptionReviewHints } from "./CaptionReviewHints";
 import { isCaptionStyleId, perWordCueIds } from "@/lib/captionStyleTable";
 import {
   fitOf,
@@ -264,6 +265,8 @@ function firstFrameOf(model: EditorModel, id: string): number {
 }
 
 const HISTORY = 100;
+/** A history step restores the complete editable project, including its name. */
+type EditorSnapshot = { model: EditorModel; title: string };
 
 const fieldClass =
   "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
@@ -405,8 +408,8 @@ export function TimelineEditor({
   const ids = useId();
 
   const [model, setModel] = useState<EditorModel>(() => toModel(doc));
-  const [past, setPast] = useState<EditorModel[]>([]);
-  const [future, setFuture] = useState<EditorModel[]>([]);
+  const [past, setPast] = useState<EditorSnapshot[]>([]);
+  const [future, setFuture] = useState<EditorSnapshot[]>([]);
   const [saved, setSaved] = useState(() => JSON.stringify(toDoc(toModel(doc))));
   const [title, setTitle] = useState(initialTitle);
   const [savedTitle, setSavedTitle] = useState(initialTitle);
@@ -552,7 +555,9 @@ export function TimelineEditor({
     onRestore: (d, found) => {
       setAssets((x) => ({ ...found, ...x }));
       // What was on screen (edits made while the offer was open) stays one Undo away.
-      setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
+      gesture.current = null;
+      burst.current = null;
+      setPast((p) => [...p.slice(-(HISTORY - 1)), { model, title }]);
       setFuture([]);
       setModel(toModel(d.doc));
       setTitle(d.title.slice(0, 120));
@@ -575,31 +580,34 @@ export function TimelineEditor({
       const next = fixed.model;
       setSettled(fixed.changes);
       if (!group || gesture.current !== group) {
-        setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
+        setPast((p) => [...p.slice(-(HISTORY - 1)), { model, title }]);
         setFuture([]);
       }
       gesture.current = group ?? null;
       setModel(next);
       setError(null);
     },
-    [model],
+    [model, title],
   );
   const undo = useCallback(() => {
     if (!past.length) return;
     gesture.current = null;
     setSettled([]);
-    setFuture([model, ...future]);
-    setModel(past[past.length - 1]);
+    setFuture([{ model, title }, ...future]);
+    const previous = past[past.length - 1];
+    setModel(previous.model);
+    setTitle(previous.title);
     setPast(past.slice(0, -1));
-  }, [model, past, future]);
+  }, [model, title, past, future]);
   const redo = useCallback(() => {
     if (!future.length) return;
     gesture.current = null;
     setSettled([]);
-    setPast([...past, model]);
-    setModel(future[0]);
+    setPast([...past, { model, title }]);
+    setModel(future[0].model);
+    setTitle(future[0].title);
     setFuture(future.slice(1));
-  }, [model, past, future]);
+  }, [model, title, past, future]);
 
   useEffect(() => {
     const where = overlayFocus.current;
@@ -898,6 +906,9 @@ export function TimelineEditor({
       setError(out.error);
       return;
     }
+    // A new persisted revision is a boundary for grouped edits, not a history reset.
+    gesture.current = null;
+    burst.current = null;
     setRev(out.value.rev);
     draft.afterSave(out.value.rev);
     setSaved(JSON.stringify(docNow));
@@ -1050,7 +1061,7 @@ export function TimelineEditor({
     const base = dragBase.current;
     dragBase.current = null;
     if (base && base !== model) {
-      setPast((p) => [...p.slice(-(HISTORY - 1)), base]);
+      setPast((p) => [...p.slice(-(HISTORY - 1)), { model: base, title }]);
       setFuture([]);
     }
   }
@@ -1097,7 +1108,7 @@ export function TimelineEditor({
     const fixed = settleAll(model, base);
     setSettled(fixed.changes);
     gesture.current = null;
-    setPast((p) => [...p.slice(-(HISTORY - 1)), base]);
+    setPast((p) => [...p.slice(-(HISTORY - 1)), { model: base, title }]);
     setFuture([]);
     if (fixed.model !== model) setModel(fixed.model);
   }
@@ -1463,7 +1474,21 @@ export function TimelineEditor({
             id={`${ids}-title`}
             value={title}
             maxLength={120}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === title) return;
+              if (gesture.current !== "title") {
+                setPast((p) => [...p.slice(-(HISTORY - 1)), { model, title }]);
+              }
+              setFuture([]);
+              gesture.current = "title";
+              burst.current = null;
+              setTitle(next);
+              setError(null);
+            }}
+            onBlur={() => {
+              if (gesture.current === "title") gesture.current = null;
+            }}
             className={`${fieldClass} [grid-area:input]`}
           />
         </div>
@@ -1808,6 +1833,7 @@ export function TimelineEditor({
               ? ` ${t.captions.animated.previewNote}`
               : ""}
           </p>
+          <CaptionReviewHints cues={captionsOf(model)?.cues ?? []} pictureEnd={picture} />
           {/* The header panel's note about free export and nothing being published, here below the picture on a phone so the controls above start higher. */}
           <p className="m-0 text-center text-xs text-[var(--color-muted)] sm:hidden">
             {te.freeNote} {te.publishNote}

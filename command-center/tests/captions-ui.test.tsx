@@ -657,10 +657,19 @@ describe("inside the editor", () => {
     expect(onScreen).toBeTruthy();
     expect(screen.getByRole("heading", { name: tc.heading })).toBeTruthy();
     expect(screen.getByRole("textbox", { name: fmt(tc.cueText, { n: 1 }) })).toHaveProperty("value", "Salom dunyo");
+    expect(screen.queryByRole("complementary", { name: "Caption review" })).toBeNull();
     const box = screen.getByRole("textbox", { name: fmt(tc.cueText, { n: 1 }) });
     fireEvent.change(box, { target: { value: "Edited" } });
     fireEvent.blur(box);
     expect(screen.getByText(t.editor.unsaved)).toBeTruthy();
+    fireEvent.change(box, { target: { value: "" } });
+    fireEvent.blur(box);
+    const review = screen.getByRole("complementary", { name: "Caption review" });
+    expect(review.textContent).toContain("Caption 1: Add caption text.");
+    expect(within(review).queryByRole("button")).toBeNull();
+    fireEvent.change(box, { target: { value: "Edited" } });
+    fireEvent.blur(box);
+    expect(screen.queryByRole("complementary", { name: "Caption review" })).toBeNull();
     // Free, and never a render: nothing was exported or priced.
     expect(calls("POST", "/exports")).toHaveLength(0);
     expect(calls("POST", "/api/creative/jobs")).toHaveLength(0);

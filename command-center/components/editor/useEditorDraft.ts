@@ -169,6 +169,9 @@ export function useEditorDraft(p: {
       const a = latest.current.resolveAsset(id);
       if (a) assets[id] = a;
     }
+    // Restore consumes this stored draft. If Undo returns to the saved project
+    // before the debounce writes, the clean-state effect must remove it too.
+    wrote.current = true;
     setResume(NONE);
     p.onRestore(resume.draft, assets);
   }, [resume, p]);

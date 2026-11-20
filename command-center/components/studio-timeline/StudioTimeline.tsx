@@ -349,9 +349,9 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
             <div key={id} className="tl-th" style={{ "--c": TRACK_TONE[id] } as CSSProperties}>
               <span className="tl-id">{id}</span>
               <span className="tl-tn">{c.track[id]}</span>
-              <span className="tl-ms">
-                <button type="button" className={mix[id].m ? "on-m" : ""} aria-pressed={mix[id].m} aria-label={fmt(c.muteTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], m: !m[id].m } }))}>M</button>
-                <button type="button" className={mix[id].s ? "on-s" : ""} aria-pressed={mix[id].s} aria-label={fmt(c.soloTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], s: !m[id].s } }))}>S</button>
+              <span className="tl-ms" data-no-shortcuts>
+                <button type="button" className={mix[id].m ? "on-m" : ""} aria-pressed={mix[id].m} aria-label={fmt(c.muteTrack, { t: c.track[id] })} title={fmt(c.muteTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], m: !m[id].m } }))}>M</button>
+                <button type="button" className={mix[id].s ? "on-s" : ""} aria-pressed={mix[id].s} aria-label={fmt(c.soloTrack, { t: c.track[id] })} title={fmt(c.soloTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], s: !m[id].s } }))}>S</button>
                 <button type="button" className={mix[id].lock ? "on-l" : ""} aria-pressed={mix[id].lock} aria-label={fmt(c.lockTrack, { t: c.track[id] })} onClick={() => setMix((m) => ({ ...m, [id]: { ...m[id], lock: !m[id].lock } }))}>
                   <Lock aria-hidden className="size-3" />
                 </button>
@@ -881,9 +881,14 @@ function Lanes({
   onLocked: () => void;
   actors?: ReadonlyMap<string, TimelineActor[]>;
 }) {
-  const { t: tr } = useI18n();
+  const { t: tr, fmt } = useI18n();
   const c = tr.studioTimeline;
   const width = Math.max(duration * pps + 120, 600);
+  // Keep both ARIA values on the same displayed frame, so sub-frame pointer
+  // changes cannot repeat an unchanged timecode to assistive technology.
+  const [h, m, s, f] = timecode(t).split(":").map(Number);
+  const spokenPosition = fmt(c.scrubPosition, { h, m, s, f });
+  const framePosition = h * 3600 + m * 60 + s + f / FPS;
   const scroller = useRef<HTMLDivElement>(null);
   const tickEvery = pps >= 36 ? 1 : pps >= 14 ? 5 : 10;
   const ticks: number[] = [];
@@ -928,7 +933,7 @@ function Lanes({
   return (
     <div className="tl-lanes" ref={scroller} data-testid="lanes">
       <div className="tl-lanes-in" style={{ width }}>
-        <div className="tl-ruler" onPointerDown={scrub} onPointerMove={(e) => e.buttons === 1 && onSeek(timeAt(e.clientX))} role="slider" aria-label={c.ruler} aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(t)} aria-valuetext={timecode(t)} tabIndex={-1}>
+        <div className="tl-ruler" onPointerDown={scrub} onPointerMove={(e) => e.buttons === 1 && onSeek(timeAt(e.clientX))} role="slider" aria-label={c.ruler} aria-valuemin={0} aria-valuemax={duration} aria-valuenow={framePosition} aria-valuetext={spokenPosition} tabIndex={-1}>
           {ticks.map((s) => (
             <span key={s} className="tl-tick" style={{ left: 8 + s * pps }}>
               <i>{clock(s)}</i>

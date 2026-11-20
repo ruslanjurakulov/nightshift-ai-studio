@@ -81,6 +81,43 @@ const open = async () => {
   await screen.findByTestId("lanes");
 };
 
+describe("audio mixer keyboard labels", () => {
+  it("gives each track a unique full mute/solo accessible name and pressed state", async () => {
+    await open();
+    for (const track of ["V1", "A1", "A2", "A3", "A4", "C1"] as const) {
+      for (const template of [c.muteTrack, c.soloTrack]) {
+        const label = template.replace("{t}", c.track[track]);
+        const controls = screen.getAllByRole("button", { name: label });
+        expect(controls).toHaveLength(1);
+        expect(controls[0].getAttribute("aria-pressed")).toBe("false");
+        expect(controls[0].tabIndex).toBe(0);
+      }
+    }
+  });
+
+  it.each((["A1", "A2", "A3", "A4"] as const).flatMap((track) =>
+    (["mute", "solo"] as const).flatMap((action) => (["Space", "Enter"] as const).map((key) => ({ track, action, key }))),
+  ))("$track $action keeps its full label and owns $key without playing", async ({ track, action, key }) => {
+    await open();
+    const label = (action === "mute" ? c.muteTrack : c.soloTrack).replace("{t}", c.track[track]);
+    const control = screen.getByRole("button", { name: label });
+    control.focus();
+    // jsdom does not synthesize the native click default; first verify that
+    // timeline shortcuts leave the key alone, then test activation separately.
+    expect(fireEvent.keyDown(control, { key: key === "Space" ? " " : "Enter", code: key })).toBe(true);
+    for (const transport of screen.getAllByTestId("play")) expect(transport.getAttribute("aria-pressed")).toBe("false");
+    expect(control.textContent).toBe(action === "mute" ? "M" : "S");
+    expect(control.getAttribute("title")).toBe(label);
+    fireEvent.click(control);
+    expect(screen.getByRole("button", { name: label }).getAttribute("aria-pressed")).toBe("true");
+    expect(control.classList.contains(action === "mute" ? "on-m" : "on-s")).toBe(true);
+    fireEvent.click(control);
+    expect(control.getAttribute("aria-pressed")).toBe("false");
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    expect(calls.some((x) => x.method !== "GET")).toBe(false);
+  });
+});
+
 describe("honest states", () => {
   it("switched off: 'Projects are not open yet', and nothing is read", () => {
     render(<StudioTimeline filmStudio={false} filmId={FILM} />);
@@ -249,6 +286,8 @@ describe("Assemble", () => {
     await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(c.startFailed.other));
     mode = "refuse";
     fireEvent.click(key());
+    expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(1);
+    fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
     await waitFor(() => expect(calls.filter((x) => x.url.endsWith("/start"))).toHaveLength(2));
     const starts = calls.filter((x) => x.url.endsWith("/start"));
     expect(starts[1].body?.idem).toBe(starts[0].body?.idem);
