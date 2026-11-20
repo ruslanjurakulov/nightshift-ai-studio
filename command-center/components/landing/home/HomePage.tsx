@@ -159,7 +159,7 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
                     decoding="async"
                     className="hm-reel-still"
                   />
-                  {p.kind === "video" && <StudioClip slug={p.slug} />}
+                  {p.kind === "video" && <StudioClip slug={p.slug} captionsLabel={h.captions} />}
                   {/* The picture's description already says it is AI-generated; the badge is for the eye. */}
                   <span className="hm-badge hm-reel-badge" aria-hidden="true">
                     {h.ai}

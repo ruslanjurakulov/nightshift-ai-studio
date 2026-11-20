@@ -28,7 +28,7 @@ describe("StudioClip", () => {
   it("lists only the piece's MP4, with its own poster", () => {
     vi.stubGlobal("matchMedia", media(false));
     vi.stubGlobal("IntersectionObserver", IO);
-    const { container } = render(<StudioClip slug="language-duo" />);
+    const { container } = render(<StudioClip slug="language-duo" captionsLabel="English" />);
     const v = container.querySelector("video") as HTMLVideoElement;
     expect(v).not.toBeNull();
     expect(v.getAttribute("poster")).toBe("/showcase/language-duo.webp");
@@ -37,10 +37,26 @@ describe("StudioClip", () => {
     expect(v.getAttribute("preload")).toBe("none");
   });
 
+  it("a piece with spoken words carries them as a default captions track after its source; one without carries none", () => {
+    vi.stubGlobal("matchMedia", media(false));
+    vi.stubGlobal("IntersectionObserver", IO);
+    const duo = render(<StudioClip slug="language-duo" captionsLabel="English" />).container.querySelector("video") as HTMLVideoElement;
+    const track = duo.querySelector("track") as HTMLTrackElement;
+    expect(track.getAttribute("kind")).toBe("captions");
+    expect(track.getAttribute("src")).toBe("/showcase/language-duo.vtt");
+    expect(track.getAttribute("srclang")).toBe("en");
+    expect(track.getAttribute("label")).toBe("English");
+    expect(track.hasAttribute("default")).toBe(true);
+    expect(duo.lastElementChild).toBe(track);
+    cleanup();
+    const coffee = render(<StudioClip slug="coffee-pour" captionsLabel="English" />).container.querySelector("video") as HTMLVideoElement;
+    expect(coffee.querySelector("track")).toBeNull();
+  });
+
   it("draws no video under reduced motion: the poster under it is the picture", () => {
     vi.stubGlobal("matchMedia", media(true));
     vi.stubGlobal("IntersectionObserver", IO);
-    const { container } = render(<StudioClip slug="language-duo" />);
+    const { container } = render(<StudioClip slug="language-duo" captionsLabel="English" />);
     expect(container.querySelector("video")).toBeNull();
   });
 });

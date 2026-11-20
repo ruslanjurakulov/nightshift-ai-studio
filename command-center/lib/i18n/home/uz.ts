@@ -12,6 +12,7 @@ export const homeUz: HomeDictionary = {
     reelNote: "Bu yerdagi har bir ish oʻzimizning Studio’mizda yaratilgan, ostida uni yaratgan modellar nomi yozilgan.",
     and: "va",
     credit: "Nightshift Studio’da {model} bilan yaratilgan",
+    captions: "Inglizcha",
     ai: "Sunʼiy intellekt yaratgan",
   },
   how: {

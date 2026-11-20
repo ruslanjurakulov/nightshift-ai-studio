@@ -59,6 +59,10 @@ describe("the landing's pictures are our own Studio's", () => {
     const root = process.cwd();
     expect(existsSync(path.join(root, "public/showcase", `${slug}.webp`)), "poster").toBe(true);
     if (it.kind === "video") expect(existsSync(path.join(root, "public/showcase", `${slug}.mp4`)), "clip").toBe(true);
+    if (it.captions) {
+      const vtt = readFileSync(path.join(root, "public/showcase", `${slug}.vtt`), "utf8");
+      expect(vtt.startsWith("WEBVTT"), "captions file").toBe(true);
+    }
     expect(it.modelIds.length).toBeGreaterThan(0);
     for (const id of it.modelIds) expect(REGISTRY_NAMES[id], `${id} is not a registry id`).toBeTruthy();
   });

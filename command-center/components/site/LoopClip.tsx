@@ -62,8 +62,14 @@ export function LoopClip({
   position,
   compact = false,
   together = false,
+  captions,
 }: {
   poster: string;
+  /**
+   * Captions for a clip with spoken words (a Studio piece, components/site/StudioClip.tsx): shown by default, because every clip
+   * here plays muted and the words are otherwise lost.
+   */
+  captions?: { src: string; srcLang: string; label: string };
   early?: boolean;
   position?: string;
   compact?: boolean;
@@ -187,6 +193,8 @@ export function LoopClip({
         return webm ? <source src={webm} type="video/webm" /> : null;
       })()}
       <source src={size === "sm" ? sources.smMp4 : size === "lg" && sources.lg ? sources.lg.mp4 : sources.mp4} type="video/mp4" />
+      {/* After every source: the HTML content model puts tracks last. */}
+      {captions && <track kind="captions" src={captions.src} srcLang={captions.srcLang} label={captions.label} default />}
     </video>
   );
 }

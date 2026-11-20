@@ -175,6 +175,15 @@
   .hm-reel-pic[data-live="true"] .nx-clip { opacity: 1; }
   /* At the top: the tall pieces carry their captions burned in at the bottom. */
   .hm-reel-badge { position: absolute; left: 8px; top: 8px; }
+  /* A piece's captions (its spoken words; the clip plays muted): the browser places them at the frame's bottom, inside the picture.
+     ::cue takes only colour, background and font. */
+  .hm-reel-pic .nx-clip::cue {
+    background: rgb(7 10 20 / 0.78);
+    color: #f4f7ff;
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
   /* The caption is as wide as its picture, never wider: a long credit wraps under a tall card. */
   .hm-reel-cap { display: grid; gap: 2px; width: 0; min-width: 100%; margin-top: var(--ds-space-2); }
   .hm-reel-title { color: var(--ds-text); font-size: 0.9375rem; font-weight: 600; line-height: 1.35; }

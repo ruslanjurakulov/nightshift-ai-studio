@@ -12,6 +12,7 @@ export const homeRu: HomeDictionary = {
     reelNote: "Каждая работа здесь создана в нашей собственной Studio, под ней указаны модели, которые её сделали.",
     and: "и",
     credit: "Сделано на {model} в Nightshift Studio",
+    captions: "Английский",
     ai: "Создано нейросетью",
   },
   how: {

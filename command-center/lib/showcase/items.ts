@@ -12,6 +12,11 @@ export type ShowcaseItem = {
    */
   modelIds: readonly string[];
   aspect: "16:9" | "9:16" | "1:1";
+  /**
+   * The language of its spoken words, when it has some: public/showcase/<slug>.vtt holds them as captions, timed from a transcript
+   * of the clip's own audio. A separate track, never burned in, because burning them in is post-production the Studio did not do.
+   */
+  captions?: "en";
   title: { en: string; ru: string; uz: string };
 };
 
@@ -19,8 +24,8 @@ export const SHOWCASE_ITEMS: readonly ShowcaseItem[] = [
   // Two steps in Studio: an Ideogram 4.5 picture of the two characters, then MiniMax H3 image-to-video with the dialogue written
   // into the prompt. The model speaks the lines itself; the captions are burned in from a transcript of its own audio, because
   // the landing plays clips muted.
-  { slug: "language-duo", kind: "video", modelIds: ["ideogram-4.5", "minimax-h3"], aspect: "9:16",
-    title: { en: "One picture, two characters, real dialogue", ru: "Одна картинка, два героя, живой диалог", uz: "Bitta rasm, ikki personaj, jonli dialog" } },
+  { slug: "language-duo", kind: "video", modelIds: ["ideogram-4.5", "minimax-h3"], aspect: "9:16", captions: "en",
+    title: { en: "One picture, two talking characters", ru: "Одна картинка, два говорящих героя", uz: "Bitta rasm, ikki gapiruvchi personaj" } },
   { slug: "registan-dusk", kind: "video", modelIds: ["minimax-h3-max"], aspect: "16:9",
     title: { en: "Registan at blue hour", ru: "Регистан в синий час", uz: "Registon, kechki moviy soat" } },
   { slug: "perfume-splash", kind: "video", modelIds: ["minimax-h3"], aspect: "9:16",
@@ -41,3 +46,4 @@ export const SHOWCASE_ITEMS: readonly ShowcaseItem[] = [
 
 export const showcasePoster = (slug: string) => `/showcase/${slug}.webp`;
 export const showcaseVideo = (slug: string) => `/showcase/${slug}.mp4`;
+export const showcaseCaptions = (slug: string) => `/showcase/${slug}.vtt`;

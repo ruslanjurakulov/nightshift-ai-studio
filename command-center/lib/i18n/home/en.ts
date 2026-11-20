@@ -25,6 +25,8 @@ export const homeEn = {
     and: "and",
     /** {model}: the registry display name of the model that made the piece (lib/creative/model-names.ts). */
     credit: "Made with {model} in Nightshift Studio",
+    /** The captions track's name (language-duo's spoken lines are English). */
+    captions: "English",
     ai: "AI-generated",
   },
   how: {
