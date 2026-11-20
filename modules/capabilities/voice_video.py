@@ -195,6 +195,13 @@ def installed_family(name: str = FONT_FAMILY) -> Optional[str]:
 _SUFFIX_DEMUXER = {suffix: ml.DEMUXER[mime] for mime, suffix in ml.MEDIA_SOURCE_SUFFIX.items() if mime in ml.DEMUXER}
 
 
+#: The seconds cap alone does not bound the bytes: a 10 KB FLAC that declares 655 kHz in 7.1 decodes to ~10 MB a second
+#: (Breach BR-VV-R1). aformat picks the nearest listed rate and layout, so an ordinary recording (mono, or 44.1 kHz) is
+#: decoded as it is and only a rate above 48 kHz or more than two channels is brought down.
+NARRATION_FORMAT = ("aformat=sample_rates=8000|11025|16000|22050|24000|32000|44100|48000"
+                    ":channel_layouts=mono|stereo")
+
+
 def decode_to_wav(src: Path, dst: Path, *, rate: Optional[int] = None, channels: Optional[int] = None) -> None:
     """The recording's first audio stream as a PCM WAV at ``dst``: its own rate and channels, or the ones named (the copy
     sent for transcription). Raises AdapterError, named: no ffmpeg is the operator's fix, a file that does not decode is
@@ -213,7 +220,10 @@ def decode_to_wav(src: Path, dst: Path, *, rate: Optional[int] = None, channels:
         raise AdapterError(E_NOT_CONFIGURED, "ffmpeg is not on PATH on this worker (the worker image installs it); nothing "
                                              "was charged", not_accepted=True)
     cap = ve.MAX_SECONDS + 2 * LENGTH_TOLERANCE_S
+    # The named shape (the transcription copy) bounds the bytes itself; otherwise aformat does (NARRATION_FORMAT).
     shape = (["-ar", str(int(rate))] if rate else []) + (["-ac", str(int(channels))] if channels else [])
+    if not (rate and channels):
+        shape = ["-af", NARRATION_FORMAT, *shape]
     cmd = ffmpeg_limits.limited_argv([
         "ffmpeg", "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file", "-f", demuxer,
         *ffmpeg_limits.decode_thread_options(), "-i", str(src), "-t", f"{cap:.3f}",

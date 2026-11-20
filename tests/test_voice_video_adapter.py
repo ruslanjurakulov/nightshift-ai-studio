@@ -1282,6 +1282,15 @@ class TheSlot(Tmp):
         self.assertEqual(q.finished[JOB]["error_code"], "hold_not_open")
         self.assertEqual(self.e.rendered, [])
 
+    def test_a_voice_video_with_no_price_is_refused_before_anything_is_spent(self):
+        # Breach (informational): a price row of 0 skipped every hold check, yet the job still pays a transcription.
+        q = SlotQueue([vv_job(quoted_credits=0)], audio_source())
+        w = self.worker(q, credits=FakeCredits(amount=None), enforce=False)
+        with cw._SERIAL_SLOT:
+            w.run_once()
+        self.assertEqual(q.finished[JOB]["error_code"], "not_priced")
+        self.assertEqual(self.e.rendered, [])
+
     def test_the_slot_is_held_through_the_whole_job_and_released_on_failure(self):
         seen = []
         real = self.e.render
