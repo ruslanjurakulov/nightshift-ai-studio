@@ -106,3 +106,10 @@ jobs:
       - name: Build
         if: ${{ !cancelled() }}
         run: npx next build
+
+      # The build passing says nothing about what it put in a public page's JavaScript. One client component on /pricing
+      # importing from "@/lib/i18n" instead of "@/lib/i18n/core" shipped every screen's copy (about 2 MB) to signed-out
+      # visitors. tests/public-bundle-dictionary.test.ts checks the import graph; this checks the built chunks.
+      - name: Public bundles carry no app dictionary
+        if: ${{ !cancelled() }}
+        run: node scripts/public-bundle-check.mjs

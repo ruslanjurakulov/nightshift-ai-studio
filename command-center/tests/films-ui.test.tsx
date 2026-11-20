@@ -56,6 +56,69 @@ const view = (over: Record<string, unknown> = {}, scenes = [sceneJson(S1, 0), sc
 const canvas = (v = view(), canEdit = true) =>
   render(<FilmCanvas initial={v} canEdit={canEdit} pictures={[{ id: PIC, name: "pic.png", thumbUrl: null }]} characters={[]} listHref="/alpha/create/projects" />);
 
+describe("last-clip deletion focus", () => {
+  it.each(["Delete", "Backspace", "inspector"])("keeps Commands reachable after removing the last clip through %s", async (removal) => {
+    vi.useFakeTimers();
+    canvas(view({}, [sceneJson(S1, 0)]));
+    const timeline = () => within(screen.getByTestId("fs-timeline"));
+    const narration = screen.getByTestId("fs-timeline").querySelector(".fs-narr-block")?.textContent;
+    const total = screen.getByTestId("fs-total").textContent;
+    fireEvent.click(timeline().getByRole("button"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    if (removal === "inspector") {
+      const button = screen.getAllByRole("button", { name: t.scene.remove })[0];
+      button.focus();
+      fireEvent.click(button);
+    } else {
+      const cell = within(screen.getByTestId("fs-board")).getByRole("option");
+      cell.focus();
+      fireEvent.keyDown(cell, { key: removal });
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    const commands = screen.getByTestId("fs-open-palette");
+    expect(timeline().queryAllByRole("button")).toHaveLength(0);
+    expect(document.activeElement).toBe(commands);
+    fireEvent.click(commands);
+    const palette = screen.getByTestId("fs-palette");
+    expect(within(palette).getByText(t.canvas.addScene).closest("[role=option]")?.getAttribute("aria-disabled")).not.toBe("true");
+    fireEvent.keyDown(palette, { key: "Escape" });
+    expect(document.activeElement).toBe(commands);
+    fireEvent.keyDown(commands, { key: "z", ctrlKey: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    expect(timeline().getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByTestId("fs-timeline").querySelector(".fs-narr-block")?.textContent).toBe(narration);
+    expect(screen.getByTestId("fs-total").textContent).toBe(total);
+    expect(document.activeElement).toBe(commands);
+    expect(calls).toEqual([]);
+  });
+
+  it("keeps a surviving selected neighbor focused", async () => {
+    vi.useFakeTimers();
+    canvas();
+    const cells = within(screen.getByTestId("fs-board")).getAllByRole("option");
+    fireEvent.keyDown(cells[0], { key: "ArrowRight" });
+    cells[1].focus();
+    fireEvent.keyDown(cells[1], { key: "Delete" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    expect(document.activeElement).toBe(cells[0]);
+    expect(cells[0].getAttribute("aria-selected")).toBe("true");
+    expect(calls).toEqual([]);
+  });
+
+  it("preserves focus moved to a project field after removal", async () => {
+    vi.useFakeTimers();
+    canvas(view({}, [sceneJson(S1, 0)]));
+    const cell = within(screen.getByTestId("fs-board")).getByRole("option");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "Delete" });
+    const field = screen.getAllByRole("textbox")[0];
+    field.focus();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    expect(document.activeElement).toBe(field);
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("the list", () => {
   it("empty: says so and offers a new project; a viewer gets neither the button nor editable anything", () => {
     render(<FilmList initial={{ state: "ok", films: [] }} canEdit channel={null} studioName="Studio" />);
