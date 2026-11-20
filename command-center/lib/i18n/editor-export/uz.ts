@@ -6,6 +6,8 @@ export const editorExportUz: ExportPanelDictionary = {
   queuedLine: "Eksport navbatda. Server boʻshashi bilan boshlanadi.",
   renderingLine: "Server videongizni render qilmoqda. Tahrirlashni davom ettirishingiz mumkin: eksport siz saqlagan versiyadan foydalanadi.",
   doneLine: "Video tayyor va mediatekangizga saqlandi.",
+  linkPending: "Render tugadi",
+  linkPendingLine: "Render tugadi. Video havolasi bu yerda hali mavjud emas.",
   failedLine: "Eksport yakunlanmadi.",
   elapsed: "Oʻtgan vaqt {time}",
   tookLabel: "{time} ketdi",

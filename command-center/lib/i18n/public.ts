@@ -18,7 +18,8 @@ export type PublicDictionary = {
   legal: Dictionary["legal"];
   // Minus the operator's setup notes (env names, docs paths): they are app copy,
   // never shown to a visitor, and must not ride along in a public page's payload.
-  pricing: Omit<Dictionary["pricing"], "comingSoonOperator">;
+  // Minus the test-payments badge too: PricingView hands it to the platform admin's page only.
+  pricing: Omit<Dictionary["pricing"], "comingSoonOperator" | "sandbox">;
   plans: Omit<Dictionary["plans"], "managePortalMissing">;
   credits: { buy: { pack: Dictionary["credits"]["buy"]["pack"] } };
   creditsPage: { eq: Dictionary["creditsPage"]["eq"] };
@@ -46,10 +47,10 @@ export type PublicDictionary = {
   ux: Pick<Dictionary["ux"], "errorTitle" | "errorBody" | "errorRetry" | "errorHome" | "errorRef">;
 };
 
-function omit<T extends object, K extends keyof T>(o: T, key: K): Omit<T, K> {
-  const { [key]: _dropped, ...rest } = o;
-  void _dropped;
-  return rest;
+function omit<T extends object, K extends keyof T>(o: T, ...keys: K[]): Omit<T, K> {
+  const rest: Partial<T> = { ...o };
+  for (const key of keys) delete rest[key];
+  return rest as Omit<T, K>;
 }
 
 export function publicDictionary(t: Dictionary): PublicDictionary {
@@ -58,7 +59,7 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     common: t.common,
     landing: { nav: t.landing.nav },
     legal: t.legal,
-    pricing: omit(t.pricing, "comingSoonOperator"),
+    pricing: omit(t.pricing, "comingSoonOperator", "sandbox"),
     plans: omit(t.plans, "managePortalMissing"),
     credits: { buy: { pack: t.credits.buy.pack } },
     creditsPage: { eq: t.creditsPage.eq },

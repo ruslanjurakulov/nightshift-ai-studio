@@ -20,6 +20,7 @@ import { UNIT_JOB_MINIMUM, type PriceMap } from "@/lib/credits";
 import { studioRows, videoPrices, videoRateSetAt, type PlanFinderData } from "@/lib/plan-finder";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
+import { isPlatformAdmin } from "@/lib/auth/org-roles";
 
 // Who is asking decides the rates panel, so this is never a static page.
 export const dynamic = "force-dynamic";
@@ -72,6 +73,9 @@ export default async function PricingPage() {
 
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  // Asked of the database, never a client flag: only the platform admin is shown the test checkout (PricingView).
+  // A lookup that fails is "no", so an error closes test sales rather than opening them.
+  const operatorRead = user ? isPlatformAdmin() : Promise.resolve(false);
   // The plan catalog is a public price list (0034). Signed out, it is the
   // shared public read — bounded, kept and run alongside the price reads
   // (BR-L-047, BR-L-101); signed in, a per-request read, bounded the same way.
@@ -144,6 +148,7 @@ export default async function PricingPage() {
         anchor={moneyAnchor(pricing, await apiPricesRead, publicRates)}
         referral={referral.state === "ok" ? referral.value : null}
         finder={finder}
+        operator={await operatorRead}
       />
     </PublicShell>
   );
