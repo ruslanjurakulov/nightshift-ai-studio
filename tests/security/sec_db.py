@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -37,6 +38,23 @@ _MIGRATION_RE = re.compile(r"^(\d{4})_[a-z0-9_]+\.sql$")
 
 def admin_dsn() -> Optional[str]:
     return os.environ.get(DSN_ENV) or None
+
+
+def one_rate_window(dsn: str, window_s: int, need_s: float = 20.0) -> None:
+    """Wait, if needed, so the next ``need_s`` seconds of a test fall in one window of take_web_rate (0042/0087).
+
+    take_web_rate counts in fixed windows (floor(now / window)), and the first call of a new window deletes the caller's older windows
+    of that bucket (0087; BR-G-004 pins it). A test that makes several counted calls, each in its own transaction, and then reads the
+    counter or expects the limit, is right only inside one window: across the boundary the count starts again at 1 and the earlier
+    calls are gone. That is the limiter working as designed, not a call escaping it, and it failed test_sec_films_money once on #824
+    (10 refused starts from 17:59:59.69 to 18:00:00.34 summed to 7: three in the old hour, seven in the new one). The clock is the
+    database's own, the one take_web_rate reads. At most ``need_s`` of waiting, and only that close to a boundary.
+    """
+    with psycopg.connect(dsn, autocommit=True) as c:
+        epoch = float(c.execute("select extract(epoch from clock_timestamp())").fetchone()[0])
+    left = window_s - (epoch % window_s)
+    if left < need_s:
+        time.sleep(left + 0.05)
 
 
 MIGRATION_0119 = MIGRATIONS / "0119_channel_settings_guard.sql"

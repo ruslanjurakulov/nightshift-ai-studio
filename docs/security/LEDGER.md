@@ -324,3 +324,19 @@ Recorded so these are not re-reported.
   (2) Fixture gap: the lab scenario seeds no `video_minute` or `job_minimum` prices, so Run-now and
   storyboard floor checks do nothing in the lab. `test_sec_creative_credits` and
   `test_sec_web_api_hardening` cover them separately. Seed those prices in a future scenario pass.
+- **CI flake triage, `test_refused_starts_count_against_the_hourly_limit` (2026-11-20, #824 at e77d9f73): not a finding.**
+  Reported as a possible bypass of 0171's 10-an-hour start limit (`assert 7 == 10`: three refused starts uncounted). Evidence:
+  the test ran from 17:59:59.69 to 18:00:00.34 (Security lab run 44787811383), across a clock hour. take_web_rate (0087) counts
+  per fixed window and the first call of a new window deletes the caller's older windows of that bucket (BR-G-004 pins it), so
+  three counts in the 17:00 window were deleted and seven landed in the 18:00 one. Reproduced end to end with the lab Postgres
+  clock set by libfaketime: the unchanged test fails `assert 3/4/7 == 10` when the hour turns during its ten starts, and
+  BR_0171_01 and `test_start_is_rate_limited_in_the_database` fail the same way; 50 sequential runs away from the boundary all
+  pass. Concurrency held: 10 forged starts sent at once leave exactly 10 counted; 30 leave 10 counted, 10 answered
+  price_changed and 20 refused rate_limited (start_film's increment and its answered refusal are one transaction, behind the
+  organization's advisory start lock; the counter is one upserted row). Pinned in `test_sec_films_money.py`
+  (`test_concurrent_refused_starts_are_each_counted_and_the_hourly_limit_holds_exactly`,
+  `test_a_new_hour_starts_the_start_count_again_and_drops_the_last_hours`). The tests that read a window's count across
+  several transactions now start inside one window (`sec_db.one_rate_window`); so does the model switch's 60-in-ten-minutes
+  test, which failed the same way at the boundary. films_core's spend-then-call test has the same shape and is guarded too,
+  but was not reproduced on its own (its gap between the two transactions is about 20 ms). Known property, no row: a fixed window lets up to twice the limit through
+  in a short span straddling the boundary (10 before the hour, 10 after); that is the design of every take_web_rate limit.

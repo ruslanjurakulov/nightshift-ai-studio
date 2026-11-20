@@ -430,6 +430,8 @@ def test_turning_on_clears_a_reason_and_a_note_the_caller_sent_along(db):
 
 
 def test_the_switch_is_rate_limited_after_sixty_calls_in_ten_minutes(db):
+    # 62 calls, each its own transaction: split across a ten-minute boundary none reaches the 61st (sec_db.one_rate_window).
+    sec_db.one_rate_window(db.dsn, 600)
     enforce(db)
     seen = set()
     for _ in range(62):
