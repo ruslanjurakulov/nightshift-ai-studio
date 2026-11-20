@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -236,7 +237,9 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
   const inspectorRef = useRef<HTMLElement>(null);
   const pRef = useRef(p);
   pRef.current = p;
-  useEffect(() => {
+  // Attached during the commit, not in a passive effect: React runs those in a later task, and a key pressed the moment the
+  // timeline appeared went to no listener and was lost.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!shortcutAllowed(e.target, inspectorRef.current)) return;
       const a = keyAction(e);

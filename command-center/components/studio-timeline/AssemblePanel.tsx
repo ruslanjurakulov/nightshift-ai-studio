@@ -86,6 +86,9 @@ export function AssemblePanel({
   // its answer: the panel stays "starting" with that start's key, so a second start can never be sent under a new key while
   // the first may still go through (Breach BR-803-02).
   useEffect(() => {
+    // Only a real change of version. The effect also runs on mount, after the commit: a press can land before it (React runs
+    // passive effects in a later task), and bumping the sequence then dropped that press's own quote as stale.
+    if (versionRef.current === version) return;
     versionRef.current = version;
     quoteSeq.current += 1;
     if (starter.busy) return;
