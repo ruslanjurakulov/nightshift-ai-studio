@@ -26,6 +26,7 @@ import { modelKeysRu } from "./model-keys/ru";
 import { operatorCustomersRu } from "./operator-customers/ru";
 import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
+import { ownerAnalyticsRu } from "./owner-analytics/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { availabilityRu } from "./availability/ru";
@@ -81,6 +82,7 @@ export const ru: Dictionary = {
   customers: operatorCustomersRu,
   seriesPlan: seriesPlanRu,
   ownerTruth: ownerTruthRu,
+  ownerAnalytics: ownerAnalyticsRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   regionEdit: regionEditRu,
@@ -135,6 +137,7 @@ export const ru: Dictionary = {
     providers: "Провайдеры",
     models: "Модели",
     margin: "Маржа",
+    ownerAnalytics: "Аналитика владельца",
     customers: "Клиенты",
     billing: "Оплата",
     studio: "Nightshift Studio",

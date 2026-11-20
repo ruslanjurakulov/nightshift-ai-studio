@@ -26,6 +26,7 @@ import { modelKeysUz } from "./model-keys/uz";
 import { operatorCustomersUz } from "./operator-customers/uz";
 import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
+import { ownerAnalyticsUz } from "./owner-analytics/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { availabilityUz } from "./availability/uz";
@@ -81,6 +82,7 @@ export const uz: Dictionary = {
   customers: operatorCustomersUz,
   seriesPlan: seriesPlanUz,
   ownerTruth: ownerTruthUz,
+  ownerAnalytics: ownerAnalyticsUz,
   connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,
   regionEdit: regionEditUz,
@@ -135,6 +137,7 @@ export const uz: Dictionary = {
     providers: "Provayderlar",
     models: "Modellar",
     margin: "Marja",
+    ownerAnalytics: "Egasi analitikasi",
     customers: "Mijozlar",
     billing: "Toʻlovlar",
     studio: "Nightshift Studio",
