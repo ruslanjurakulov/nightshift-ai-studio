@@ -45,6 +45,7 @@ import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
+import { captionReviewUz } from "./caption-review/uz";
 import { reviewLinkUz, reviewPageUz } from "./review-link/uz";
 import { regionEditUz } from "./region-edit/uz";
 import { imageEditorUz } from "./image-editor/uz";
@@ -5609,6 +5610,7 @@ export const uz: Dictionary = {
     },
     exportRev: "{rev}-versiya",
     exportPanel: editorExportUz,
+    captionReview: captionReviewUz,
     viewInLibrary: "Mediatekada ochish",
     watch: "Koʻrish",
     deleteProject: "Loyihani oʻchirish",

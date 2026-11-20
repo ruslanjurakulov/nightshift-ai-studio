@@ -66,7 +66,7 @@ it("background key is disabled while confirming and held Enter cannot confirm", 
 it("network retry opens visible confirmation and preserves the original intent", async () => {
   fail = true; const key = mount(); await dialog(key);
   fireEvent.click(screen.getByTestId("assemble-confirm-key"));
-  await waitFor(() => expect(screen.getByTestId("assemble-note").textContent).toBe(c.startFailed.other));
+  await waitFor(() => expect(screen.getByTestId("assemble-note").textContent).toBe(c.startNoAnswer));
   expect(starts).toHaveLength(1); const first = starts[0];
   fail = false; fireEvent.click(key);
   expect(starts).toHaveLength(1); await screen.findByRole("dialog");

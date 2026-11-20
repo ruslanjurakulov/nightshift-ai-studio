@@ -44,6 +44,7 @@ import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
+import { captionReviewEn } from "./caption-review/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 import { regionEditEn } from "./region-edit/en";
 import { imageEditorEn } from "./image-editor/en";
@@ -5631,6 +5632,7 @@ export const en = {
     },
     exportRev: "Version {rev}",
     exportPanel: editorExportEn,
+    captionReview: captionReviewEn,
     viewInLibrary: "Open in Library",
     watch: "Watch",
     deleteProject: "Delete project",

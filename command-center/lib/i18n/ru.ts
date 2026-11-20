@@ -45,6 +45,7 @@ import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
 import { captionStylesRu } from "./caption-styles/ru";
 import { editorExportRu } from "./editor-export/ru";
+import { captionReviewRu } from "./caption-review/ru";
 import { reviewLinkRu, reviewPageRu } from "./review-link/ru";
 import { regionEditRu } from "./region-edit/ru";
 import { imageEditorRu } from "./image-editor/ru";
@@ -5609,6 +5610,7 @@ export const ru: Dictionary = {
     },
     exportRev: "Версия {rev}",
     exportPanel: editorExportRu,
+    captionReview: captionReviewRu,
     viewInLibrary: "Открыть в медиатеке",
     watch: "Смотреть",
     deleteProject: "Удалить проект",

@@ -317,7 +317,8 @@ export function ExportStatusPanel({
           <Link href={path("/library")} className={libraryLink}>
             {te.viewInLibrary}
           </Link>
-          {latest.assetId ? <ExistingExportFile key={latest.assetId} assetId={latest.assetId} /> : null}
+          {/* Signed out (or the project gone), a file read cannot succeed: the halt line above says what to do, not "try again". */}
+          {latest.assetId && !halt ? <ExistingExportFile key={latest.assetId} assetId={latest.assetId} /> : null}
         </div>
       ) : null}
 

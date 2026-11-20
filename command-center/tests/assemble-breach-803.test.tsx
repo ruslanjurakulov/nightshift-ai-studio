@@ -142,3 +142,23 @@ it("the feed's read recovery only reads: no POST, no create, no prefill", async 
   }
   expect(onRetry).not.toHaveBeenCalled();
 });
+
+it("a start with no answer says the start may have gone through, shows the held quote's credits, and keeps focus on the panel", async () => {
+  const { en } = await import("@/lib/i18n/en");
+  render(panel(3));
+  fireEvent.click(key());
+  await waitFor(() => expect(quoteCalls).toHaveLength(1));
+  await act(async () => quoteCalls[0].p.resolve(new Response(JSON.stringify({ quote: q(3, 16) }))));
+  fireEvent.click(key());
+  fireEvent.click(await screen.findByTestId("assemble-confirm-key"));
+  await waitFor(() => expect(starts).toHaveLength(1));
+  // Pixel M1: the dialog closed while the key is disabled; focus is on the panel, not lost to the page body.
+  expect(document.activeElement).toBe(screen.getByTestId("assemble"));
+  await act(async () => starts[0].p.reject(new TypeError("synthetic network loss")));
+  // Pixel P1 (rule 5): no answer is not "nothing was held".
+  const note = screen.getByTestId("assemble-note").textContent ?? "";
+  expect(note).toContain(en.studioTimeline.startNoAnswer);
+  expect(note).not.toContain(en.studioTimeline.startFailed.other);
+  // Pixel M2: the key names the held quote's credits, since pressing it reopens that confirmation.
+  expect(screen.getByTestId("assemble-amount").textContent).toMatch(/16/);
+});

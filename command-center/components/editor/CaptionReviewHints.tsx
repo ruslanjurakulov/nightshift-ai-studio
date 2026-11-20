@@ -4,16 +4,10 @@ import type { Cue } from "@/lib/captions";
 import { reviewCaptions } from "@/lib/captionReview";
 import { useI18n } from "@/lib/i18n/context";
 
-const COPY = {
-  en: { title: "Caption review", note: "Suggestions only. Captions are unchanged.", cue: "Caption {n}", empty: "Add caption text.", out_of_order: "Check timing, order or overlaps.", past_end: "Check the caption against the picture’s end.", more: "{n} more captions to review." },
-  ru: { title: "Проверка субтитров", note: "Только подсказки. Субтитры не изменены.", cue: "Субтитр {n}", empty: "Добавьте текст субтитра.", out_of_order: "Проверьте время, порядок или пересечения.", past_end: "Проверьте субтитр относительно конца видео.", more: "Ещё субтитров для проверки: {n}." },
-  uz: { title: "Subtitrlarni tekshirish", note: "Faqat tavsiyalar. Subtitrlar oʻzgarmadi.", cue: "Subtitr {n}", empty: "Subtitr matnini kiriting.", out_of_order: "Vaqt, tartib yoki ustma-ust kelishni tekshiring.", past_end: "Subtitrni tasvir oxiriga nisbatan tekshiring.", more: "Yana {n} ta subtitrni tekshirish kerak." },
-} as const;
-
 /** Read-only advice outside the preview picture; never repairs or gates export. */
 export function CaptionReviewHints({ cues, pictureEnd }: { cues: readonly Cue[]; pictureEnd: number }) {
-  const { locale, fmt } = useI18n();
-  const copy = COPY[locale];
+  const { t, fmt } = useI18n();
+  const copy = t.editor.captionReview;
   const flags = reviewCaptions(cues, pictureEnd);
   if (!flags.length) return null;
   return (
