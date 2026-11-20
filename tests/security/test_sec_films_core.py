@@ -720,6 +720,9 @@ def test_archived_films_count_toward_the_organizations_total_of_five_hundred(db)
 
 @pytest.mark.parametrize("bucket,limit", [("create", 30), ("save", 240), ("archive", 60)])
 def test_each_film_call_is_rate_limited_in_the_database_per_person(db, a, bucket, limit):
+    # The allowance is spent in this hour's window and the next call is its own transaction: across the hour it would start a fresh
+    # window and go through (sec_db.one_rate_window; the same shape failed test_start_is_rate_limited_in_the_database at the hour).
+    sec_db.one_rate_window(db.dsn, 3600)
     fid = db.create(a.editor, a.org)["film"]["id"]
     calls = {"create": lambda who: db.create(who, a.org),
              "save": lambda who: db.save(who, fid, 1, {"title": "Rate"}),
