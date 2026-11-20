@@ -8,6 +8,7 @@ import {
   POLL_DELAYS_MS,
   canRetry,
   elapsedSeconds,
+  exportDisplayStatus,
   exportSignature,
   formatClock,
   pollDelay,
@@ -32,6 +33,21 @@ const row = (over: Partial<EditorExport> = {}): EditorExport => ({
   createdAt: "2026-01-01T10:00:00.000Z",
   finishedAt: null,
   ...over,
+});
+
+describe("export display status", () => {
+  it.each([
+    ["queued", false, "queued"],
+    ["queued", true, "queued"],
+    ["rendering", false, "rendering"],
+    ["rendering", true, "rendering"],
+    ["failed", false, "failed"],
+    ["failed", true, "failed"],
+    ["done", false, "link_pending"],
+    ["done", true, "done"],
+  ] as const)("%s with a view link=%s displays %s", (status, hasViewUrl, expected) => {
+    expect(exportDisplayStatus(status, hasViewUrl)).toBe(expected);
+  });
 });
 
 describe("poll wait", () => {

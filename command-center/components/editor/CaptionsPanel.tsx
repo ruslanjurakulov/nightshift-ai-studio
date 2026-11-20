@@ -142,7 +142,9 @@ function CueRow({
   const commit = () => {
     const ns = Number(s);
     const ne = Number(e);
-    if (Number.isFinite(ns) && Number.isFinite(ne)) onTimes(ns, ne);
+    // A cleared field is an unfinished edit, not an explicitly typed zero.
+    const complete = s.trim() !== "" && e.trim() !== "";
+    if (complete && Number.isFinite(ns) && Number.isFinite(ne)) onTimes(ns, ne);
     else {
       setS(String(start));
       setE(String(end));

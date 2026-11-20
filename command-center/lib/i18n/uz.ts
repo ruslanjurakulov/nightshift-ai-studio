@@ -4289,6 +4289,7 @@ export const uz: Dictionary = {
     priceAtCheckout: "Narx toʻlov oynasida koʻrsatiladi",
     minutes: "Joriy daqiqalik stavkada ≈ {m} daqiqa tayyor video",
     sandbox: "Sandbox · faqat test toʻlovlar",
+    purchasesSoon: "Xaridlar tez orada ochiladi",
     taxNote: "Yakuniy narx, yashash joyingizda amal qiladigan soliqlar bilan birga, toʻlashdan oldin Paddle toʻlov oynasida koʻrsatiladi.",
     buySignedOut: "Sotib olish uchun kiring",
     buySignedIn: "Kredit sotib olish",
