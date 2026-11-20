@@ -13,7 +13,7 @@ describe("root layout icons", () => {
     const { metadata } = await import("@/app/layout");
     const icons = metadata.icons as { icon: { url: string; type?: string; sizes?: string }[]; apple: { url: string; type?: string; sizes?: string }[] };
     expect(icons.apple).toContainEqual({ url: "/apple-icon.png", sizes: "180x180", type: "image/png" });
-    expect(icons.icon).toContainEqual({ url: "/icon.svg", type: "image/svg+xml" });
+    expect(icons.icon).toContainEqual({ url: "/icon.svg?v=2", type: "image/svg+xml" });
     expect(icons.icon).toContainEqual({ url: "/favicon.ico", sizes: "32x32" });
   });
 });
