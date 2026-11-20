@@ -59,6 +59,7 @@ export const studioTimelineEn = {
   levelSaveFailed: "The level could not be saved. It is back at the saved value.",
   waveSkipped: "Waveform not shown for long audio",
   footageShort: "Footage too short: the film will refuse this scene",
+  footageTrim: "Footage too long to trim: both ends continue a scene, so the film will refuse it",
   levelBusy: "Another change is being saved. The level went back; set it again in a moment.",
   previewFailed: "The preview could not be loaded",
   start: "Go to start",

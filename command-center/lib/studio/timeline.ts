@@ -63,6 +63,8 @@ export interface TimelineClip {
   segments?: ClipSegment[];
   /** V1: every shot finished, but its usable footage is shorter than the slot: the assembly will refuse this scene (scene_too_short). */
   short?: boolean;
+  /** Both seams are held and the footage is too long to trim within SEAM_TOLERANCE_S: the assembly would refuse it. */
+  trim?: boolean;
   /**
    * V1: true only when the library recorded the length of every shot file and they cover the slot, so the pieces shown are known.
    * A V1 block is ALWAYS its planned seconds long (the worker trims longer footage to it); `measured` says whether the footage that
@@ -200,15 +202,28 @@ export type AssetDurations = ReadonlyMap<string, number>;
 /** The assembly worker's constants (modules/film_timeline.py), seconds. */
 export const CHAIN_SKIP_S = 0.042;
 export const CROSSFADE_S = 0.5;
+export const MIN_PIECE_S = 1.0;
+export const SEAM_TOLERANCE_S = 0.1;
+
+/** The worker counts whole milliseconds (`_ms`); comparing floats here would judge footage within half a millisecond differently. */
+const ms = (seconds: number) => Math.round(seconds * 1000);
+
+/** The way into scene `i`, as the worker reads it: the first scene, and one that continues the previous, cut in. */
+function transitionIn(scenes: readonly FilmScene[], i: number, film: Pick<TimelineFilm, "sceneTransitions" | "transitionDefault">): string {
+  const scene = scenes[i];
+  if (i === 0 || scene.firstFrame === "previous") return "cut";
+  return film.sceneTransitions.get(scene.id) ?? film.transitionDefault;
+}
 
 /**
  * Which footage fills one scene's slot, as the assembly worker cuts it (modules/film_timeline.py, the picture loop):
  * - every scene is exactly its planned seconds on screen; a cross-fade in needs CROSSFADE_S more footage at its head;
  * - a chained shot (shot 2+, or shot 1 of a scene that continues the previous one) skips its first CHAIN_SKIP_S;
  * - the window starts at the footage's start, or ends at its end when the NEXT scene continues this one;
- * - usable footage shorter than the slot is refused (scene_too_short).
- * Not mirrored: the small shift the worker makes so a cross-fade or dip OUT does not land on a sliver of the last shot (MIN_PIECE_S);
- * it moves where the window starts by at most a second and never makes a refused scene look accepted.
+ * - when the way out is not a cut, the window moves later so its last piece is at least MIN_PIECE_S long.
+ * Each of the worker's refusals is mirrored, so a scene drawn ready is one the worker accepts (Lens round 4):
+ * - `short`: too little footage for the slot, or for the MIN_PIECE_S the way out needs (scene_too_short);
+ * - `trim`: both seams are held and there is more than SEAM_TOLERANCE_S of extra footage to lose (continuity_trim).
  */
 export function sceneWindow(
   scenes: readonly FilmScene[],
@@ -217,11 +232,14 @@ export function sceneWindow(
   durations: AssetDurations,
   film: Pick<TimelineFilm, "sceneTransitions" | "transitionDefault">,
   blockStart: number,
-): { state: "unknown" } | { state: "short"; usable: number; need: number } | { state: "ok"; segments: ClipSegment[] } {
+):
+  | { state: "unknown" }
+  | { state: "short"; usable: number; need: number }
+  | { state: "trim"; extra: number }
+  | { state: "ok"; segments: ClipSegment[] } {
   const scene = scenes[i];
   const continues = i > 0 && scene.firstFrame === "previous";
-  const tr = i === 0 || continues ? "cut" : (film.sceneTransitions.get(scene.id) ?? film.transitionDefault);
-  const head = tr === "crossfade" ? CROSSFADE_S : 0;
+  const headMs = transitionIn(scenes, i, film) === "crossfade" ? ms(CROSSFADE_S) : 0;
   const pieces: { assetId: string; inMs: number; usable: number; off: number }[] = [];
   let off = 0;
   for (let k = 0; k < shots.length; k++) {
@@ -229,25 +247,35 @@ export function sceneWindow(
     const d = durations.get(assetId);
     if (typeof d !== "number" || !(d > 0)) return { state: "unknown" };
     const chained = k > 0 || continues;
-    const inMs = chained ? CHAIN_SKIP_S : 0;
-    const usable = Math.max(0, d - inMs);
+    const inMs = chained ? ms(CHAIN_SKIP_S) : 0;
+    const usable = Math.max(0, ms(d) - inMs);
     pieces.push({ assetId, inMs, usable, off });
     off += usable;
   }
   const total = off;
-  const need = scene.plannedSeconds + head;
-  if (total + 1e-9 < need) return { state: "short", usable: total, need };
+  const need = scene.plannedSeconds * 1000 + headMs;
+  if (total < need) return { state: "short", usable: total / 1000, need: need / 1000 };
   const keepEnd = i + 1 < scenes.length && scenes[i + 1].firstFrame === "previous";
-  const x = keepEnd ? total - need : 0;
+  let x = keepEnd ? total - need : 0;
+  if (keepEnd && continues && x > ms(SEAM_TOLERANCE_S)) return { state: "trim", extra: x / 1000 };
+  const outTr = i + 1 < scenes.length ? transitionIn(scenes, i + 1, film) : "cut";
+  if (!keepEnd && outTr !== "cut") {
+    const last = [...pieces].reverse().find((p) => p.off < need) as (typeof pieces)[number];
+    const short = ms(MIN_PIECE_S) - (need - last.off);
+    if (short > 0 && last !== pieces[0]) {
+      if (continues || need + short > total) return { state: "short", usable: total / 1000, need: (need + short) / 1000 };
+      x = short;
+    }
+  }
   const segments: ClipSegment[] = [];
   // The head of a cross-fade overlaps the previous scene; the preview shows the scene from its own start, after the head.
   let at = blockStart;
   for (const p of pieces) {
-    const lo = Math.max(x + head, p.off);
+    const lo = Math.max(x + headMs, p.off);
     const hi = Math.min(x + need, p.off + p.usable);
     if (hi > lo) {
-      segments.push({ assetId: p.assetId, start: at, length: hi - lo, inPoint: p.inMs + lo - p.off });
-      at += hi - lo;
+      segments.push({ assetId: p.assetId, start: at, length: (hi - lo) / 1000, inPoint: (p.inMs + lo - p.off) / 1000 });
+      at += (hi - lo) / 1000;
     }
   }
   return { state: "ok", segments };
@@ -280,6 +308,7 @@ export function layoutTimeline(film: TimelineFilm, durations: AssetDurations = n
       sceneId: scene.id,
       draft: !shots,
       short: win?.state === "short",
+      trim: win?.state === "trim",
       assetId: ids[0] ?? null,
       assetIds: ids,
       segments: win?.state === "ok" ? win.segments : undefined,

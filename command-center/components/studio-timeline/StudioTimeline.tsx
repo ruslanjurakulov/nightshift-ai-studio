@@ -387,7 +387,7 @@ function Editor({ film, stale, onSaved, onReload, actors }: { film: TimelineFilm
             <video ref={p.videoRef} className="tl-video" playsInline preload="auto" hidden={!curUrls?.play} onError={() => seg && media.refresh(seg.assetId)} />
             {/* A signed, short-lived link to the project's own file: nothing for next/image to optimise or cache. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {!curUrls?.play && curThumb && <img className="tl-still" src={curThumb} alt="" onError={() => { const id = thumbAssetOf(curScene, film); if (id) media.refresh(id); }} />}
+            {!curUrls?.play && curThumb && <img className="tl-still" src={curThumb} alt="" onError={() => { const id = thumbAssetOf(curScene, film, media.urls); if (id) media.refresh(id); }} />}
             {/* A shot scene whose file cannot be shown here is said so; it is never called a draft. */}
             {!curUrls?.play && !curThumb && cur && !cur.draft && (
               <div className="tl-draftscreen is-shot" data-testid="viewer-unavailable">
@@ -512,17 +512,26 @@ function safePlay(el: HTMLMediaElement) {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-function thumbAssetOf(scene: FilmScene | undefined, film: TimelineFilm): string | null {
+/**
+ * The thumbnail a scene shows, and the asset it comes from: the clip's, else the keyframe's. One choice for both, so a broken
+ * picture refreshes the link of the asset actually shown (Lens round 4: a keyframe thumb used to refresh the clip instead).
+ */
+function thumbSource(scene: FilmScene | undefined, film: TimelineFilm, urls: ReadonlyMap<string, MediaUrls>): { assetId: string; url: string } | null {
   if (!scene) return null;
   const takes = film.sceneTakes.get(scene.id) ?? [];
-  return chosenClip(scene, takes)?.resultAssetId ?? chosenKeyframe(scene, takes)?.resultAssetId ?? null;
+  for (const take of [chosenClip(scene, takes), chosenKeyframe(scene, takes)]) {
+    const url = take?.resultAssetId ? urls.get(take.resultAssetId)?.thumb : null;
+    if (take?.resultAssetId && url) return { assetId: take.resultAssetId, url };
+  }
+  return null;
+}
+
+function thumbAssetOf(scene: FilmScene | undefined, film: TimelineFilm, urls: ReadonlyMap<string, MediaUrls>): string | null {
+  return thumbSource(scene, film, urls)?.assetId ?? null;
 }
 
 function thumbOf(scene: FilmScene, film: TimelineFilm, urls: ReadonlyMap<string, MediaUrls>): string | null {
-  const takes = film.sceneTakes.get(scene.id) ?? [];
-  const clip = chosenClip(scene, takes);
-  const key = chosenKeyframe(scene, takes);
-  return (clip?.resultAssetId && urls.get(clip.resultAssetId)?.thumb) || (key?.resultAssetId && urls.get(key.resultAssetId)?.thumb) || null;
+  return thumbSource(scene, film, urls)?.url ?? null;
 }
 
 function ToolKey({ label, pressed, soon, disabled, onClick, testid, children }: { label: string; pressed?: boolean; soon?: boolean; disabled?: boolean; onClick: () => void; testid?: string; children: ReactNode }) {
@@ -822,7 +831,7 @@ function LibraryPanel({ film, clips, media, selected, onPick, onThumbError }: { 
                   <button type="button" className="tl-libitem" aria-current={selected === x.id || undefined} onClick={() => onPick(x)} style={{ "--c": "var(--t-video)" } as CSSProperties}>
                     <span className={x.draft ? "tl-lth is-draft" : "tl-lth"}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      {thumb && <img src={thumb} alt="" onError={() => { const id = thumbAssetOf(s, film); if (id) onThumbError(id); }} />}
+                      {thumb && <img src={thumb} alt="" onError={() => { const id = thumbAssetOf(s, film, media); if (id) onThumbError(id); }} />}
                     </span>
                     <span className="tl-lnm">
                       <b>{x.label}</b>
@@ -919,7 +928,7 @@ function Inspector({
             <dt>{c.planned}</dt>
             <dd>{scene ? clock(scene.plannedSeconds) : "—"}</dd>
             <dt>{c.measured}</dt>
-            <dd data-testid="inspector-measured">{clip?.short ? c.footageShort : clip?.measured ? clock(clip.length) : c.unknown}</dd>
+            <dd data-testid="inspector-measured">{clip?.short ? c.footageShort : clip?.trim ? c.footageTrim : clip?.measured ? clock(clip.length) : c.unknown}</dd>
             <dt>{c.take}</dt>
             <dd>{take ? `v${take.version}` : c.noTake}</dd>
             <dt>{c.status}</dt>
@@ -1151,7 +1160,7 @@ function Lanes({
                 const s = x.sceneId ? scenes.get(x.sceneId) : undefined;
                 const thumb = id === "V1" && s ? thumbOf(s, film, media) : null;
                 const who = actors?.get(x.id) ?? [];
-                const cls = ["tl-clip", `is-${id.toLowerCase()}`, x.draft ? "is-draft" : "", x.short ? "is-short" : "", selected === x.id ? "is-sel" : "", dragging ? "is-drag" : "", who.length ? "has-actor" : ""].filter(Boolean).join(" ");
+                const cls = ["tl-clip", `is-${id.toLowerCase()}`, x.draft ? "is-draft" : "", x.short || x.trim ? "is-short" : "", selected === x.id ? "is-sel" : "", dragging ? "is-drag" : "", who.length ? "has-actor" : ""].filter(Boolean).join(" ");
                 const style = {
                   left: 8 + x.start * pps,
                   width: Math.max(id === "A3" || id === "A4" ? 56 : 6, x.length * pps - 2),
@@ -1170,7 +1179,7 @@ function Lanes({
                     data-testid={`clip-${x.id}`}
                     data-draft={x.draft ? "" : undefined}
                     data-measured={x.measured ? "" : undefined}
-                    data-short={x.short ? "" : undefined}
+                    data-short={x.short || x.trim ? "" : undefined}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
@@ -1209,12 +1218,12 @@ function Lanes({
                       <span className="tl-thumbs">
                         {/* An <img>, not a CSS background, so an expired link reports its error and is fetched again. */}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {thumb && <img src={thumb} alt="" draggable={false} onError={() => { const aid = thumbAssetOf(s, film); if (aid) onThumbError(aid); }} />}
+                        {thumb && <img src={thumb} alt="" draggable={false} onError={() => { const aid = thumbAssetOf(s, film, media); if (aid) onThumbError(aid); }} />}
                       </span>
                     )}
                     {peaks?.state === "ready" && <Wave peaks={peaks.peaks} />}
                     <span className="tl-lb">{x.label || c.track[id]}</span>
-                    {id === "V1" && <span className="tl-dur">{x.short ? c.footageShort : x.measured ? clock(x.length) : fmt(c.plannedLength, { t: clock(x.length) })}</span>}
+                    {id === "V1" && <span className="tl-dur">{x.short ? c.footageShort : x.trim ? c.footageTrim : x.measured ? clock(x.length) : fmt(c.plannedLength, { t: clock(x.length) })}</span>}
                     {peaks?.state === "skipped" && <span className="tl-dur">{c.waveSkipped}</span>}
                     {who.map((a) => (
                       <span key={a.id} className="tl-actor" style={{ background: a.color }}>

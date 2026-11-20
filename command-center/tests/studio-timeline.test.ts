@@ -83,6 +83,40 @@ describe("lanes from film_json", () => {
     expect(v1[1].segments![0]).toMatchObject({ assetId: CLIP3, start: 8, inPoint: CHAIN_SKIP_S, length: 4 });
   });
 
+  it("Lens round 4: a cross-fade out that would land on a sliver of the last shot is refused, as scene_too_short is in the worker", () => {
+    const S3 = "53000000-0000-4000-8000-000000000003";
+    const film = () =>
+      coerceTimelineFilm(filmJson({}, [
+        sceneJson(S1, 0, { current_version: 1, planned_seconds: 5, shot_count: 2, takes: [take({ result_asset_id: CLIP }), take({ kind: "extend", shot_index: 2, result_asset_id: CLIP2 })] }),
+        sceneJson(S3, 1, { current_version: 1, planned_seconds: 4, transition_in: "crossfade", takes: [take({ scene_id: S3, result_asset_id: CLIP3 })] }),
+      ]))!;
+    // 4.5 s + 0.558 s covers the 5 s slot, but the window ends 0.5 s into shot 2: the cross-fade needs a 1 s last piece, and
+    // moving the window 0.5 s later needs 5.5 s of footage. The worker refuses; the Timeline must not draw it ready.
+    const refused = layoutTimeline(film(), new Map([[CLIP, 4.5], [CLIP2, 0.6], [CLIP3, 6]])).clips.filter((c) => c.track === "V1");
+    expect(refused[0]).toMatchObject({ short: true, measured: false });
+    // With 2 s in shot 2 the worker shows the window 0.5 s later, so shot 2 carries a 1 s last piece.
+    const ok = layoutTimeline(film(), new Map([[CLIP, 4.5], [CLIP2, 2], [CLIP3, 6]])).clips.filter((c) => c.track === "V1");
+    expect(ok[0]).toMatchObject({ short: false, measured: true });
+    expect(ok[0].segments).toEqual([
+      { assetId: CLIP, start: 0, length: 4, inPoint: 0.5 },
+      { assetId: CLIP2, start: 4, length: 1, inPoint: CHAIN_SKIP_S },
+    ]);
+  });
+
+  it("Lens round 4: a scene that continues one and is continued by the next cannot lose more than SEAM_TOLERANCE_S (continuity_trim)", () => {
+    const S3 = "53000000-0000-4000-8000-000000000003";
+    const raw = filmJson({}, [
+      sceneJson(S1, 0, { current_version: 1, planned_seconds: 4, takes: [take({ result_asset_id: CLIP })] }),
+      sceneJson(S2, 1, { current_version: 1, planned_seconds: 4, first_frame: "previous", takes: [take({ scene_id: S2, result_asset_id: CLIP2 })] }),
+      sceneJson(S3, 2, { current_version: 1, planned_seconds: 4, first_frame: "previous", takes: [take({ scene_id: S3, result_asset_id: CLIP3 })] }),
+    ]);
+    const lanes = (mid: number) => layoutTimeline(coerceTimelineFilm(raw)!, new Map([[CLIP, 5], [CLIP2, mid], [CLIP3, 5]])).clips.filter((c) => c.track === "V1");
+    // 5 s − 0.042 s leaves 0.958 s too much, and neither end of scene 2 may be trimmed: refused, never drawn ready.
+    expect(lanes(5)[1]).toMatchObject({ trim: true, short: false, measured: false });
+    // 4.1 s − 0.042 s leaves 0.058 s, within the tolerance: accepted.
+    expect(lanes(4.1)[1]).toMatchObject({ trim: false, measured: true });
+  });
+
   it("a completed take of a version that is not the chosen one does not make the scene shot", () => {
     const raw = filmJson({}, [sceneJson(S1, 0, { current_version: 2, takes: [take({ version: 1 })] })]);
     const v1 = layoutTimeline(coerceTimelineFilm(raw)!).clips.filter((c) => c.track === "V1");
