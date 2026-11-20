@@ -105,6 +105,7 @@ const none = () => 0;
  */
 export const REGISTRY_BILLING: Readonly<Record<string, string>> = Object.freeze({
   alibaba: "wan",
+  anthropic: "anthropic",
   assemblyai: "assemblyai",
   bfl: "bfl",
   bytedance: "seedance",
