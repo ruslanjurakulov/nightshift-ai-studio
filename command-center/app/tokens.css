@@ -67,7 +67,7 @@
   --ease-ds-press: var(--ds-ease-press);
 
   /* Display headings only. Body, labels and buttons stay Onest (font-sans). */
-  --font-brand: "Unbounded", "Unbounded Fallback", var(--font-sans);
+  --font-brand: var(--ds-font-display);
 }
 
 /* Theme-independent: space, shape, motion, layers. */
@@ -123,6 +123,8 @@
 
   --ds-font-display: "Unbounded", "Unbounded Fallback", var(--font-sans);
 }
+/* Uzbek's Latin wraps later than English's at the same scale: its own fallback (app/fonts.css). */
+:root:lang(uz) { --ds-font-display: "Unbounded", "Unbounded Fallback Uz", var(--font-sans); }
 @media (prefers-reduced-motion: reduce) {
   :root {
     --ds-dur-press: 0ms;
