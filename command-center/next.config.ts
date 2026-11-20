@@ -87,6 +87,10 @@ export const FONT_FILES = [
   "/fonts/onest-latin-ext-v1.woff2",
   "/fonts/onest-cyrillic-v1.woff2",
   "/fonts/onest-cyrillic-ext-v1.woff2",
+  "/fonts/unbounded-latin-v1.woff2",
+  "/fonts/unbounded-latin-ext-v1.woff2",
+  "/fonts/unbounded-cyrillic-v1.woff2",
+  "/fonts/unbounded-cyrillic-ext-v1.woff2",
 ] as const;
 
 /** The subset that cannot collide with the media file route's own headers. */

@@ -62,39 +62,35 @@ The stricter reading is the one the gated siblings already had. No gate was clea
 
 `confirmed` stays `false` on every entry. In this repository, `true` is kept for a price pinned by a probe's billed amount. Each page figure is quoted in `pricing.note`, with `source_url` set and `as_of` set to 2026-11-11.
 
+The figures themselves are on the vendor pricing pages and in `schemas/model_registry.json` (`provider_usd_per_unit`, `variants`); this document does not repeat them.
+
 | Entry | Was | Now | Quote |
 | :-- | :-- | :-- | :-- |
-| `flux-3-video` | $0.17/s (search extract, release-notes URL) | $0.15/s base; variants 720p $0.15, 1080p $0.24 | bfl.ai/pricing, FLUX 3 Video: "Text / Image → Video, HD$0.15/s", "Text / Image → Video, FHD$0.24/s"; HD is "above 0.5 and up to 1.0 MP per frame", Full HD "above 1.0 and up to 2.0 MP". api.bfl.ai/openapi.json, Flux3VideoT2VInputs.resolution: `"default": "hd"`. The adapter sends hd or fhd. |
-| `elevenlabs-scribe-v2` | null | $0.0000556/s | elevenlabs.io/pricing/api: "Scribe v2 ... $0.20 Price per hour". It is the same $0.20 on every plan row. Keyterm prompting ($0.050/h) and transcript editing ($0.070/h) are extra, and the adapter sends neither. |
-| `elevenlabs-v4` | null | $0.00008/char | same page: "v4 ... $0.08 Price per 1K characters" |
-| `elevenlabs-v3` | null | $0.00008/char | same page: "v3 ... $0.08 Price per 1K characters", "5,000 character limit" |
-| `kling-v2.6` | null | $0.042/s | kling.ai/document-api/pricing/base/video: "Kling 2.6 \| No Native Audio \| ... \| 0.3 Units ($0.042) /s \| 0.5 Units ($0.07) /s" (720P, 1080P). Native audio is 1080P only. The adapter always sends `"mode": "std"` (720p). |
-| `minimax-hailuo-2.3` | null, no source | still null, with source and date | platform.minimax.io/docs/pricing/overview, Legacy Models: "$0.28 per 768P, 6s video", "$0.56 per 768P, 10s video", "$0.49 per 1080P, 6s video". |
+| `flux-3-video` | a search-extract figure (release-notes URL) | the pricing page's HD figure as base; variants 720p (HD) and 1080p (FHD) | bfl.ai/pricing, FLUX 3 Video, "Text / Image → Video" at HD and FHD; HD is "above 0.5 and up to 1.0 MP per frame", Full HD "above 1.0 and up to 2.0 MP". api.bfl.ai/openapi.json, Flux3VideoT2VInputs.resolution: `"default": "hd"`. The adapter sends hd or fhd. |
+| `elevenlabs-scribe-v2` | null | the hourly price per second, rounded up | elevenlabs.io/pricing/api: "Scribe v2 ... Price per hour", the same on every plan row. Keyterm prompting and transcript editing are extra, and the adapter sends neither. |
+| `elevenlabs-v4` | null | the per-1K-character price per character | same page: "v4 ... Price per 1K characters" |
+| `elevenlabs-v3` | null | the per-1K-character price per character | same page: "v3 ... Price per 1K characters", "5,000 character limit" |
+| `kling-v2.6` | null | the 720P silent rate | kling.ai/document-api/pricing/base/video: "Kling 2.6 \| No Native Audio", priced in Units per second at 720P and 1080P. Native audio is 1080P only. The adapter always sends `"mode": "std"` (720p). |
+| `minimax-hailuo-2.3` | null, no source | still null, with source and date | platform.minimax.io/docs/pricing/overview, Legacy Models: one price per clip for 768P 6 s, 768P 10 s and 1080P 6 s. |
 
 Notes on the prices:
 
 - **FLUX 3 Video.** The release note of 2026-09-10 gives other figures for qhd and uhd. The registry does not offer those bands, and the note itself points to "full rates on the pricing page".
-- **Hailuo 2.3 is billed per clip.** The clips work out to $0.047/s, $0.056/s and $0.082/s. No single per-second figure fits, so none is claimed.
+- **Hailuo 2.3 is billed per clip.** The three clips work out to three different per-second figures. No single per-second figure fits, so none is claimed.
 - **Hailuo 2.3 at 1080P for 10 s.** MiniMax lists no price for it, but the registry offers `1080p` with `durations_s` 6 and 10. That pair was not changed here and needs a separate decision.
 
-Rechecked, and the same as the registry: Runway gen4.5 "12 credits per second" and gen4_turbo "5 credits per second"; Kling 3.0 at 720P, $0.084/s silent and $0.126/s with audio; ElevenLabs Multilingual v2 at $0.08 and Flash at $0.04 per 1K characters.
+Rechecked, and the same as the registry: Runway gen4.5 and gen4_turbo credits per second; Kling 3.0 at 720P, silent and with audio; ElevenLabs Multilingual v2 and Flash per 1K characters.
 
 ### Credit prices against these costs (not changed in this PR)
 
-Customer credits are `credits_per_unit × (1 + margin)`, and a credit is about $0.01 retail (docs/API.md: Starter is 1,000 credits for $10). The prices of the larger packs are not in the repository. **No unit sells below cost at $0.01 per credit.** Three units have a cost basis that is now wrong:
-
-| Unit | Seeded | Customer price | New cost | Below cost when a credit sells under |
-| :-- | :-- | :-- | :-- | :-- |
-| `model_flux_3_video_second` | 17 credits, margin 1.5 | 42.5 credits/s ≈ $0.425/s | $0.15/s at 720p, $0.24/s at 1080p | $0.0056 (1080p) |
-| `model_minimax_hailuo_2_3_second` | 4.7 credits, margin 1.5 ("≈ $0.047/s") | 11.75 credits/s | 768P 10 s $0.056/s, 1080P 6 s $0.082/s | $0.0069 (1080P 6 s) |
-| `model_elevenlabs_scribe_v2_second` | 0.0112 credits, margin 2.0 (assumed $0.40/h) | 0.0336 credits/s ≈ $1.21/h | $0.20/h | far below any pack price |
+Customer credits are `credits_per_unit × (1 + margin)`, and a credit is about $0.01 retail (docs/API.md: Starter is 1,000 credits for $10). The prices of the larger packs are not in the repository. **No unit sells below cost at $0.01 per credit.** Three units have a cost basis that is now wrong: `model_flux_3_video_second`, `model_minimax_hailuo_2_3_second` and `model_elevenlabs_scribe_v2_second`. The seeded rows, the margins and the costs they were compared with live in the DB price table and the registry, not in prose.
 
 Details:
 
-- **FLUX 3 Video.** The base row is quoted at every resolution: there is no `default_resolution`, so migration 0125 uses the base unit. At 1080p the margin is about 1.8×, not 2.5×.
-- **Hailuo 2.3.** The 4.7 basis understates the 10 s and 1080P clips.
-- **Scribe v2.** The basis is overstated by 2×, so the customer pays more than intended. It is not a loss.
-- **The other entries** keep their margins: Kling 2.6 (4.2 after `prices_corrections_2026_10_01.sql`, i.e. $0.105/s against $0.042/s), and ElevenLabs v4 and v3 (0.008 with margin 2.0, i.e. $0.24 against $0.08 per 1K characters).
+- **FLUX 3 Video.** The base row is quoted at every resolution: there is no `default_resolution`, so migration 0125 uses the base unit. At 1080p the margin is thinner than intended.
+- **Hailuo 2.3.** The seeded basis understates the 10 s and 1080P clips.
+- **Scribe v2.** The basis is overstated, so the customer pays more than intended. It is not a loss.
+- **The other entries** keep their margins: Kling 2.6 (after `prices_corrections_2026_10_01.sql`), and ElevenLabs v4 and v3.
 - **The gated units.** The FLUX.2, Gemini 3.x and Seedance 1.0 Pro units keep their seeded rows. While those entries are gated, the rows are not used.
 
 ## 4. Gemini Omni 1.1: served as 1.2 from 2026-12-03
@@ -102,12 +98,12 @@ Details:
 | Page (read 2026-11-11) | Quote |
 | :-- | :-- |
 | aistudio.google.com/docs/deprecations (`.md`), Gemini Omni Flash models | `gemini-omni-1.1-flash`, released "August 27, 2026", shutdown "December 3, 2026", replacement "`gemini-omni-1.2-flash` (Effective December 3, 2026, the endpoint is automatically routing API requests to `gemini-omni-1.2-flash`)" |
-| aistudio.google.com/docs/pricing (`.md`), Gemini Omni 1.1 Flash | "Effective December 3, 2026, all API requests to `gemini-omni-1.1-flash` automatically route to `gemini-omni-1.2-flash` and are billed at `gemini-omni-1.2-flash` rates." 1.1 video output is "$17.50" per 1M tokens (about $0.10/s). |
-| same page, Gemini Omni 1.2 Flash | video output "$12.00" per 1M tokens, "approximately $0.07 per second" at 720p; "$0.023/s for 360p", "$0.104/s for 1080p", "$0.209/s for 4K" |
+| aistudio.google.com/docs/pricing (`.md`), Gemini Omni 1.1 Flash | "Effective December 3, 2026, all API requests to `gemini-omni-1.1-flash` automatically route to `gemini-omni-1.2-flash` and are billed at `gemini-omni-1.2-flash` rates." 1.1 video output is priced per 1M tokens. |
+| same page, Gemini Omni 1.2 Flash | video output per 1M tokens (cheaper than 1.1), with Google's own per-second approximations for 720p, 360p, 1080p and 4K |
 
 The registry already had the shutdown fields: `shutdown.on` is 2026-12-03 and `replacement` is `gemini-omni-1.2-flash`, read 2026-11-10. Migration 0125 ends the sale on that day, so nothing is sold as 1.1 once Google serves 1.2 in its place. This PR makes the routing explicit:
 
-- `pricing.note` now says that from 2026-12-03 every 1.1 call is served by 1.2 and "billed at gemini-omni-1.2-flash rates" ($12 per 1M tokens of video, about $0.07/s at 720p). The 1.1 estimate ($0.1014/s) is kept for the days before that.
+- `pricing.note` now says that from 2026-12-03 every 1.1 call is served by 1.2 and "billed at gemini-omni-1.2-flash rates" (the note quotes 1.2's per-1M video rate). The 1.1 estimate is kept for the days before that.
 - `api_documented.note` quotes the deprecations page's routing sentence.
 - A terms note, starting "Silent routing:", records it as well.
 

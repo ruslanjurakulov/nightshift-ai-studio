@@ -738,8 +738,8 @@ import sec_owner_analytics_0182  # noqa: E402
 
 sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 
-# Migration 0181 (trend templates: anyone reads a published row, only the service key writes):
-# tests/security/sec_creative_templates_0181.py
-import sec_creative_templates_0181  # noqa: E402
+# Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
+# tests/security/sec_creative_templates_0183.py
+import sec_creative_templates_0183  # noqa: E402
 
-sec_creative_templates_0181.extend(TABLES, FUNCTIONS)
+sec_creative_templates_0183.extend(TABLES, FUNCTIONS)

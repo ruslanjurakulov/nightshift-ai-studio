@@ -1,6 +1,6 @@
 import type { TrendsDictionary } from "./en";
 
-/** «Trendlar» galereyasi (migratsiya 0181). Matn manbasi — ./en.ts. */
+/** «Trendlar» galereyasi (migratsiya 0183). Matn manbasi — ./en.ts. */
 export const trendsUz: TrendsDictionary = {
   title: "Trendlar",
   subtitle: "Qisqa video va postlar uchun tayyor formatlar. Birini tanlang, «Yaratish» u bilan ochiladi. Faqat {qavs} ichidagi soʻzlarni almashtirasiz.",

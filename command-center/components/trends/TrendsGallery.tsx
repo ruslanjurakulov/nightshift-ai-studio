@@ -13,7 +13,7 @@ import "@/components/trends/trends.css";
 
 /**
  * The Trends gallery: category chips over a grid of template cards. Every state has its own words — loading (skeletons),
- * empty, an empty category, not switched on (0181 not applied), and an error with a retry — so none of them reads as another.
+ * empty, an empty category, not switched on (0183 not applied), and an error with a retry — so none of them reads as another.
  */
 export function TrendsGallery() {
   const { t, locale } = useI18n();

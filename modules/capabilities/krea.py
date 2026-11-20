@@ -11,11 +11,11 @@ Sources, all on krea.ai/docs and read 2026-10-25 (each page as markdown, append 
   and draws on its API balance (HTTP 402 when empty: the docs say the API balance is separate from the
   app's compute units, so a plan upgrade does not fix it).
 
-What is sent, and why: ``thinking_mode`` is ALWAYS sent (``fast``, the docs' default): ``high`` costs
-+$0.02 and ``ultra`` +$0.20 per generation, so the mode that was priced is the mode that runs, and
-neither dearer mode is offered. ``resolution`` (``1K`` | ``2K``) is always sent explicitly: the job's
+What is sent, and why: ``thinking_mode`` is ALWAYS sent (``fast``, the docs' default): ``high`` and
+``ultra`` cost extra per generation (vendor pricing page), so the mode that was priced is the mode
+that runs, and neither dearer mode is offered. ``resolution`` (``1K`` | ``2K``) is always sent explicitly: the job's
 image size when it names one, else ``1K`` (the registry offers only 1K: the creative bridge passes no
-image size and the quote prices the base unit, so 2K, $0.06 against $0.03, is supported here but not
+image size and the quote prices the base unit, so 2K, dearer than 1K, is supported here but not
 sold). Omitted, Krea would pick 1K itself; the adapter says so instead of relying on it. ``aspect_ratio`` is optional (the docs: omit it for
 automatic framing). Not sent: ``width``/``height`` (they cannot be combined with a resolution),
 ``priority``, ``seed``, ``loras`` / ``style_urls`` (a 422 on Krea 3), ``X-Api-Zero-Data-Retention``.
@@ -28,7 +28,7 @@ up to 24, ``image_idx`` / ``x`` / ``y`` / ``width`` / ``height`` / ``label`` / `
 here: nothing in this repository can draw one, the coordinate frame was not tested, and no request path
 exists, so they are never sent.
 
-REFERENCES: each reference picture adds to the price (+$0.02 per 1K reference, +$0.07 per 2K reference);
+REFERENCES: each reference picture adds to the price (a surcharge per 1K reference, a larger one per 2K reference);
 the docs do not say how a picture is classed 1K or 2K, so an edit is registered with at most ONE picture
 and its price in the registry is only the base, flagged as such.
 

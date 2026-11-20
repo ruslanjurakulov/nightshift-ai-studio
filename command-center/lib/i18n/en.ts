@@ -47,6 +47,7 @@ import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
+import { captionReviewEn } from "./caption-review/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 import { regionEditEn } from "./region-edit/en";
 import { imageEditorEn } from "./image-editor/en";
@@ -67,7 +68,7 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
-  /** The Trends gallery (migration 0181): ./trends/en.ts. */
+  /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
@@ -516,6 +517,11 @@ export const en = {
     body2b: "in the repo root. Until then, no data is shown — the dashboard will not invent numbers.",
   },
   dashboard: {
+    eventStatusClear: "Recorded events: no errors in 24h",
+    eventStatusErrors: "Recorded errors in the last 24h",
+    eventStatusUnavailable: "Event status unavailable",
+    eventStatusEmpty: "No recorded events yet",
+    eventStatusScope: "Based on recorded events. Service and Brain health are unverified.",
     latestRun: "Latest run",
     noRunsYet: "No runs yet",
     unreadable: "Cannot read backend",
@@ -913,26 +919,27 @@ export const en = {
     sPublish: "Publish",
   },
   agents: {
-    title: "Agents",
-    subtitle: "Derived from the live system_events stream — no separate agents table",
+    title: "Pipeline agents",
+    subtitle: "Latest recorded pipeline events, not live process checks. Current activity is unverified.",
     seen: "Agents seen",
-    seenSub: "distinct, recent window",
-    running: "Running",
-    activeNow: "active now",
-    noneActive: "none active",
-    failed: "Failed",
+    seenSub: "distinct agents in the event window",
+    running: "Last event: running",
+    activeNow: "recorded as running",
+    noneActive: "none recorded as running",
+    failed: "Last event: failed",
     latestFailed: "latest event failed",
-    noneFailing: "none failing",
+    noneFailing: "none recorded as failed",
     scanned: "Events scanned",
     scannedSub: "most recent 500",
-    roster: "Agent Roster",
+    roster: "Agents seen in events",
     dbErr: "Could not reach the database. The agent roster is unavailable right now.",
-    empty: "No agent activity yet. Once the pipeline runs, each agent appears here with its latest state.",
+    empty: "No agent events in this window. Current process activity is unknown.",
     recentEvents: "{n} recent events",
-    currentTask: "Current task",
+    currentTask: "Last recorded task",
     took: "took {d} · ",
     lastSuccess: "Last success",
     lastFailure: "Last failure",
+    recordedStatus: "Last recorded state: {status}",
     schedTitle: "Schedule & Autopilot",
     schedHint: "Set when this channel's daily run fires, and whether autopilot runs it at all. The scheduler reads this straight from the channel — no redeploy.",
     schedAutopilot: "Autopilot",
@@ -4001,6 +4008,8 @@ export const en = {
     makeSimilarHint: "Puts this text into the image form, with the picture's shape. You see the price before anything is made.",
     describedPicture: "The described picture",
     emptyTitle: "Your generations appear here",
+    videoCancellationUnknown: "Cancellation recorded in Nightshift. Provider cancellation is not confirmed by this job record.",
+    reloadFeed: "Reload generations",
     feedLoading: "Loading your generations…",
     working: "Working — this updates by itself",
     reasons: {
@@ -4478,6 +4487,7 @@ export const en = {
     confirmAckHint: "Tick the box to continue.",
   },
   media: {
+    comparison: {"action": "Compare images", "title": "Compare saved images", "left": "First image", "right": "Second image", "unnamed": "Unnamed image", "unavailable": "Preview unavailable", "dismiss": "Close comparison", "version": "Version {n}"},
     title: "Library",
     subtitle: "Images, video, audio and captions of {org}: uploaded here or made by Nightshift.",
     notEnabled: "The media library is not enabled on this deployment yet (migration 0038 has not been applied).",
@@ -5632,6 +5642,7 @@ export const en = {
     },
     exportRev: "Version {rev}",
     exportPanel: editorExportEn,
+    captionReview: captionReviewEn,
     viewInLibrary: "Open in Library",
     watch: "Watch",
     deleteProject: "Delete project",
@@ -5852,6 +5863,26 @@ export const en = {
     typeDisplay: "Display · Sofia Sans Extra Condensed",
     typeBody: "Body · Sofia Sans",
     typeMono: "Counter · Martian Mono",
+    ds: {
+      title: "Keys and controls (--ds)",
+      primary: "Create video",
+      secondary: "Preview",
+      quiet: "Cancel",
+      danger: "Delete",
+      disabled: "Unavailable",
+      busy: "Saving…",
+      icon: "Settings",
+      field: "Title",
+      fieldPh: "Name your video",
+      fieldHint: "Up to 100 characters.",
+      display: "From idea to finished video",
+      toggle: "Auto captions",
+      toggleHint: "Adds captions to every export.",
+      text: "Text",
+      image: "Image",
+      video: "Video",
+      audio: "Audio",
+    },
     typeSample: "The night shift made twelve videos while you slept.",
     flat: "Flat",
     sunken: "Sunken",

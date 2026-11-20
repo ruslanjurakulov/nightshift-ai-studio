@@ -1,6 +1,6 @@
 # Trend templates: Instagram showcase reels
 
-One 15–30 second reel per trend template (migration 0181, the Trends gallery). Each reel shows a real result made in our own
+One 15–30 second reel per trend template (migration 0183, the Trends gallery). Each reel shows a real result made in our own
 Studio from that template. The structure is the same every time: a **hook** (0–3 s), the **steps** ("made from this template
 in 60 s": what the person actually does), the **result**, then the **CTA**.
 

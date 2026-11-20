@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Locale } from "@/lib/i18n/core";
 import type { TemplateDto } from "@/lib/templates/trends";
 
-/** loading → ok (possibly empty) | not_enabled (0181 not applied) | error. Never an empty list standing in for a failure. */
+/** loading → ok (possibly empty) | not_enabled (0183 not applied) | error. Never an empty list standing in for a failure. */
 export type TemplatesState =
   | { phase: "loading" }
   | { phase: "ok"; templates: TemplateDto[] }

@@ -1,6 +1,6 @@
 -- 0191 — Trend templates, second set: the formats that are pulling the most views on Reels and TikTok right now.
 --
--- WHY. 0181 seeded the everyday formats (a product ad, a before/after, a food reveal). What makes a person open an AI studio is
+-- WHY. 0183 seeded the everyday formats (a product ad, a before/after, a food reveal). What makes a person open an AI studio is
 -- usually an EFFECT they just saw in their feed and want for themselves. This adds a "viral" category and ten formats chosen
 -- from measurement, not taste: on 2026-11-20 an outlier search (vidIQ, Instagram and TikTok, last 30 days, at least 100k views)
 -- ranked AI-made posts by how far they out-performed their own account's median. The formats kept here each had at least one
@@ -18,10 +18,10 @@
 --   ten seed rows                     seven 'viral', two 'business', one 'story'; each written for a model on sale at the time of
 --                                    writing (MiniMax H3 / H3 Max for video, Ideogram 4.5 for the poster).
 --
--- MEDIA. As in 0181: each preview is a static app file made in our own Studio (public/templates/<slug>/), listed in
+-- MEDIA. As in 0183: each preview is a static app file made in our own Studio (public/templates/<slug>/), listed in
 -- lib/templates/media-manifest.json. Nothing about media is stored here.
 --
--- SEED RULES (as 0181). A row is inserted only when its model exists in model_registry, and never overwrites a row that is
+-- SEED RULES (as 0183). A row is inserted only when its model exists in model_registry, and never overwrites a row that is
 -- already there (on conflict do nothing), so re-applying this file cannot undo an owner's edit. Whether a model is on sale is
 -- asked of sellable_models() per request by /api/templates, never stored here.
 --

@@ -1,4 +1,4 @@
-/** The Trends gallery (migration 0181, /trends): ready formats that open Create prefilled. */
+/** The Trends gallery (migration 0183, /trends): ready formats that open Create prefilled. */
 export const trendsEn = {
   title: "Trends",
   subtitle: "Ready formats for short videos and posts. Pick one and Create opens with it. You only replace the words in {braces}.",

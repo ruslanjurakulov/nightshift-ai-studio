@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Trends: the formats people post right now (migration 0181), as cards that open Create prefilled. It prices nothing and starts
+ * Trends: the formats people post right now (migration 0183), as cards that open Create prefilled. It prices nothing and starts
  * nothing; Create shows the price and asks before anything runs.
  */
 export default async function TrendsPage() {
