@@ -77,7 +77,6 @@ afterEach(() => {
 });
 
 const bar = () => document.querySelector("nav.ns-tabbar") as HTMLElement;
-const settingsTab = () => within(bar()).getByRole("link", { name: en.nav.settings });
 
 describe("the version marker", () => {
   it("is read from the auth user's metadata, and only a positive safe integer counts", () => {
@@ -98,53 +97,36 @@ describe("the version marker", () => {
   });
 });
 
-describe("the bottom bar's Settings tab", () => {
-  it("shows the photo, still named only 'Settings', with the photo hidden from assistive tech", () => {
-    render(wrap(<SideNav email={EMAIL} avatarV={V} plan={null} />));
-    const link = settingsTab();
-    const img = link.querySelector("img") as HTMLImageElement;
+describe("the customer's top-bar avatar (below lg; the bottom bar has no account tab any more)", () => {
+  const button = () => screen.getByRole("button", { name: en.account.open });
+  it("shows the photo, named only by what it does, with the photo hidden from assistive tech", () => {
+    render(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={V} />));
+    const img = button().querySelector("img") as HTMLImageElement;
     expect(img.getAttribute("src")).toBe(PHOTO);
     expect(img.getAttribute("alt")).toBe("");
-    expect(img.getAttribute("loading")).toBe("lazy");
-    expect(link.querySelector(".ns-tab-avatar")?.getAttribute("aria-hidden")).toBe("true");
-    expect(link.getAttribute("aria-label")).toBeNull();
-    expect(link.getAttribute("title")).toBeNull();
-    // getByRole matched on the exact name "Settings": the aria-hidden circle adds nothing to it.
-    expect(link.querySelector("span.truncate")?.textContent).toBe(en.nav.settings);
-    // Neither the e-mail nor a derived string is anywhere in the bar.
-    expect(bar().innerHTML).not.toContain(EMAIL);
-    expect(bar().innerHTML).not.toContain("ana.k");
+    expect(button().getAttribute("aria-label")).toBe(en.account.open);
   });
 
-  it("draws the initial when there is no photo", () => {
-    render(wrap(<SideNav email={EMAIL} avatarV={null} plan={null} />));
-    const circle = settingsTab().querySelector(".ns-tab-avatar") as HTMLElement;
-    expect(circle.textContent).toBe("A");
-    expect(circle.querySelector("img")).toBeNull();
-  });
-
-  it("falls back to the initial when the photo does not load (no bucket, a lapsed session, a gone file)", () => {
-    render(wrap(<SideNav email={EMAIL} avatarV={V} plan={null} />));
-    const img = settingsTab().querySelector("img") as HTMLImageElement;
-    fireEvent.error(img);
-    const circle = settingsTab().querySelector(".ns-tab-avatar") as HTMLElement;
-    expect(circle.querySelector("img")).toBeNull();
-    expect(circle.textContent).toBe("A");
-    expect(settingsTab()).toBeTruthy(); // still found by the exact name "Settings"
-  });
-
-  it("keeps the selected state on the circle with a photo", () => {
-    pathname = "/chronos/organization";
-    render(wrap(<SideNav email={EMAIL} avatarV={V} plan={null} />));
-    expect(settingsTab().getAttribute("aria-current")).toBe("page");
-    expect(settingsTab().querySelector(".ns-tab-avatar")?.classList.contains("is-current")).toBe(true);
-    expect(settingsTab().querySelector("img")).not.toBeNull();
+  it("draws the initial when there is no photo, and when the photo does not load", () => {
+    const { unmount } = render(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={null} />));
+    expect(button().querySelector("img")).toBeNull();
+    expect(button().querySelector("[data-avatar]")?.textContent).toBe("A");
+    unmount();
+    render(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={V} />));
+    fireEvent.error(button().querySelector("img") as HTMLImageElement);
+    expect(button().querySelector("img")).toBeNull();
+    expect(button().querySelector("[data-avatar]")?.textContent).toBe("A");
   });
 
   it("ignores a wrong marker: a bad version means the initial", () => {
-    render(wrap(<SideNav email={EMAIL} avatarV={avatarVersionFromMetadata({ avatar_v: "../x" })} plan={null} />));
-    expect(settingsTab().querySelector("img")).toBeNull();
-    expect(settingsTab().querySelector(".ns-tab-avatar")?.textContent).toBe("A");
+    render(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={avatarVersionFromMetadata({ avatar_v: "../x" })} />));
+    expect(button().querySelector("img")).toBeNull();
+  });
+
+  it("puts nothing of the e-mail in the bottom bar", () => {
+    render(wrap(<SideNav email={EMAIL} avatarV={V} plan={null} />));
+    expect(bar().innerHTML).not.toContain(EMAIL);
+    expect(bar().innerHTML).not.toContain("ana.k");
   });
 });
 
@@ -180,9 +162,9 @@ describe("the account menu", () => {
     expect(button.querySelector("img")?.getAttribute("src")).toBe(PHOTO);
   });
 
-  it("the customer's top bar still has no account button, with or without a photo", () => {
+  it("the customer's top bar has the account button below lg, with the same photo", () => {
     render(wrap(<Header operator={false} credits={null} email={EMAIL} avatarV={V} />));
-    expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
+    expect(screen.getByRole("button", { name: en.account.open }).querySelector("img")?.getAttribute("src")).toBe(PHOTO);
   });
 
   it("the sidebar (from lg) hands the card the same version", () => {
@@ -303,7 +285,8 @@ describe("the invite shortcut", () => {
 
 describe("Avatar is used where the initial circle was", () => {
   it("none of the four places draws its own circle any more", () => {
-    for (const f of ["components/SideNav.tsx", "components/account/AccountMenu.tsx"]) {
+    // The bottom bar's account tab is gone (the account is the top bar's AccountMenu): AccountMenu is the one place left.
+    for (const f of ["components/account/AccountMenu.tsx"]) {
       const src = readFileSync(path.join(process.cwd(), f), "utf8");
       expect(src).not.toContain("accountInitial");
       expect(src).toContain("<Avatar");

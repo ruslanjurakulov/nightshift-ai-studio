@@ -234,12 +234,17 @@ export function takesStyle(c: string): boolean {
 }
 
 /** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice and video tools and describe. */
-export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
+export function promptRule(
+  c: StudioCapability,
+  model?: Pick<StudioModel, "wordsRequired"> | null,
+): "required" | "optional" | "none" {
   // A video edit is asked by its words (0100); the other video tools take none.
   if (c === "video_edit") return "required";
   if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c)) return "none";
   // expand (what the new areas show) and relight (the light, instead of a look) are asked by a choice; their words are optional.
-  if (c === "i2v" || c === "upscale" || c === "expand" || c === "relight") return "optional";
+  // Optional for the kind, unless the picked model's registry entry says it needs words for it (inputs.prompt_required): MiniMax
+  // H3 refuses an animation with no words, and a job sent without them used to fail after the press with a vague message.
+  if (c === "i2v" || c === "upscale" || c === "expand" || c === "relight") return model?.wordsRequired?.includes(c) ? "required" : "optional";
   return "required";
 }
 
@@ -310,6 +315,8 @@ export interface StudioModel {
   speedTier?: number | null;
   /** 0052: the model can end an animated picture on a chosen one (spec.end_frame). */
   endFrame?: boolean;
+  /** Registry inputs.prompt_required: the tools this model needs words for even where the kind's words are optional (MiniMax H3's i2v). */
+  wordsRequired?: StudioCapability[];
   /** 0052: the sizes the model upscales a video to (spec.upscale_targets). */
   upscaleTargets?: UpscaleTarget[];
   /** 0052: the longest source it takes, in seconds (spec.limits.max_source_seconds); null = not stated. */
@@ -660,6 +667,9 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     const resList = strList(spec.resolutions);
     const defRes = typeof spec.default_resolution === "string" && spec.default_resolution ? spec.default_resolution : null;
     const byRes = spec.price_variants_by === "resolution" || spec.price_variants_by === "resolution_audio";
+    // The tools this model needs words for even where the kind takes none (registry inputs.prompt_required), as the spec states it.
+    const inputs = spec.inputs && typeof spec.inputs === "object" && !Array.isArray(spec.inputs) ? (spec.inputs as Record<string, unknown>) : {};
+    const wordsFor = Array.isArray(inputs.prompt_required) ? inputs.prompt_required.filter(isStudioCapability) : [];
     // Only what the spec states: a model that says nothing about the video
     // tools carries nothing for them (absent reads as "no").
     marks.set(row.id, {
@@ -667,6 +677,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       speedTier: tier(spec.speed_tier),
       entitlement: typeof row.entitlement === "string" && row.entitlement ? row.entitlement : null,
       ...(spec.end_frame === true ? { endFrame: true } : {}),
+      ...(wordsFor.length ? { wordsRequired: wordsFor } : {}),
       ...(targets.length ? { upscaleTargets: targets } : {}),
       ...(shapes.length ? { expandAspects: shapes } : {}),
       ...(reframes.length ? { reframeAspects: reframes } : {}),
@@ -900,8 +911,8 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
  * Enough to ask for a price: the picture or recording when the tool needs
  * one, the voice / language a voice tool needs, the words when they are required.
  */
-export function canQuote(form: StudioForm): boolean {
-  return blockedReason(form, true) === null;
+export function canQuote(form: StudioForm, model?: Pick<StudioModel, "wordsRequired"> | null): boolean {
+  return blockedReason(form, true, model) === null;
 }
 
 /** One key per click: a replayed click answers the first job instead of paying twice. */
@@ -925,7 +936,11 @@ export type BlockedReason =
   | "need_language"
   | "need_words";
 
-export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReason | null {
+export function blockedReason(
+  form: StudioForm,
+  hasModel: boolean,
+  model?: Pick<StudioModel, "wordsRequired"> | null,
+): BlockedReason | null {
   if (!hasModel) return "no_model";
   if (needsSource(form.capability) && !isUuid(form.sourceId)) return "need_picture";
   if (needsRecording(form.capability) && !isUuid(form.sourceId)) return "need_recording";
@@ -936,7 +951,7 @@ export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReaso
   if (form.capability === "erase" && !oneLine(form.prompt, PROMPT_MAX)) return "need_object";
   if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
   if (form.capability === "dub" && !isDubLanguage(form.targetLanguage)) return "need_language";
-  if (promptRule(form.capability) === "required" && !form.prompt.trim()) return "need_words";
+  if (promptRule(form.capability, model) === "required" && !form.prompt.trim()) return "need_words";
   // Speech: the words first, then the voice that speaks them.
   if (form.capability === "tts" && !isVoiceId(form.voiceId)) return "need_voice";
   return null;
@@ -1273,7 +1288,7 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   bad_request: "bad_request",
   // The vendor refused an option sent through its tool (the aspect ratio): the person changes the settings (0143).
   vendor_tool_unsupported: "bad_request",
-  // The vendor account's plan refuses the voice (a library voice on a free ElevenLabs plan, 0183): pick another, it is not "busy".
+  // The vendor account's plan refuses the voice (a library voice on a free ElevenLabs plan, 0185): pick another, it is not "busy".
   plan_required: "plan",
   rate_limited: "busy",
   unavailable: "busy",

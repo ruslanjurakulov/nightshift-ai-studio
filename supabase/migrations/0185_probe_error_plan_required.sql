@@ -1,4 +1,4 @@
--- 0183_probe_error_plan_required.sql — the probe log accepts one more typed failure word: plan_required.
+-- 0185_probe_error_plan_required.sql — the probe log accepts one more typed failure word: plan_required.
 --
 -- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It replaces ONE check constraint on
 -- public.model_probe_runs (model_probe_runs_error_code_check, 0035 / 0143) with the same rule plus one word. No table, column, row,
@@ -21,9 +21,9 @@
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
 -- only holds inside one. The table is append-only and small; the lock is held for the validation only.
 --
--- NUMBER. 0183, after 0182 (the last file on main when this was written); 0175-0181 are left to the work that reserved them.
+-- NUMBER. 0185, after 0184 (the last file on main when this was renumbered); the number is final only when it merges.
 --
--- UNDO: docs/sql/rollback_0183_probe_error_plan_required.sql (owner-applied).
+-- UNDO: docs/sql/rollback_0185_probe_error_plan_required.sql (owner-applied).
 
 set local lock_timeout = '5s';
 
@@ -45,6 +45,6 @@ begin
     from pg_constraint c
    where c.conrelid = 'public.model_probe_runs'::regclass and c.conname = 'model_probe_runs_error_code_check';
   if def is distinct from 'CHECK (((ok AND (error_code IS NULL) AND (error IS NULL)) OR ((NOT ok) AND (error_code = ANY (ARRAY[''not_configured''::text, ''auth''::text, ''quota''::text, ''rate_limited''::text, ''bad_request''::text, ''policy''::text, ''not_found''::text, ''unavailable''::text, ''bad_response''::text, ''vendor_tool_unsupported''::text, ''plan_required''::text, ''timeout''::text])))))' then
-    raise exception '0183: model_probe_runs_error_code_check is not the expected rule (%)', def;
+    raise exception '0185: model_probe_runs_error_code_check is not the expected rule (%)', def;
   end if;
 end $$;

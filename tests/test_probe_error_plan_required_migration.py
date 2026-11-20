@@ -1,8 +1,8 @@
-"""supabase/migrations/0183_probe_error_plan_required.sql — the probe log accepts the plan_required code.
+"""supabase/migrations/0185_probe_error_plan_required.sql — the probe log accepts the plan_required code.
 
 What would break without these tests: E_PLAN_REQUIRED (modules/capabilities/base.py) raised by a probe whose account's plan does
 not allow the request, and ``record_model_probe`` (0035) refused by the check constraint, so the probe could not be recorded and the
-workflow stopped on a database error instead of naming the plan; or 0183 changing anything beyond that one constraint.
+workflow stopped on a database error instead of naming the plan; or 0185 changing anything beyond that one constraint.
 """
 
 from __future__ import annotations
@@ -13,14 +13,14 @@ import unittest
 from modules.capabilities.base import E_PLAN_REQUIRED, ERROR_CODES
 from tests.test_probe_error_vendor_tool_migration import MIG, ROOT, code, newest, ordered, printed, words
 
-TEXT = (MIG / "0183_probe_error_plan_required.sql").read_text(encoding="utf-8")
+TEXT = (MIG / "0185_probe_error_plan_required.sql").read_text(encoding="utf-8")
 M0143 = (MIG / "0143_probe_error_vendor_tool.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0183_probe_error_plan_required.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0185_probe_error_plan_required.sql").read_text(encoding="utf-8")
 
 
 class Check(unittest.TestCase):
     def test_it_is_the_newest_check_and_lists_exactly_the_adapter_codes(self):
-        self.assertEqual(newest(), "0183_probe_error_plan_required.sql")
+        self.assertEqual(newest(), "0185_probe_error_plan_required.sql")
         self.assertEqual(words(TEXT), set(ERROR_CODES) | {"timeout"})
         self.assertIn(E_PLAN_REQUIRED, words(TEXT))
 

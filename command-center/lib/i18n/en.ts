@@ -11,6 +11,7 @@ import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
@@ -30,6 +31,7 @@ import { ownerTruthEn } from "./owner-truth/en";
 import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
+import { trendsEn } from "./trends/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -68,12 +70,15 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
+  /** The Trends gallery (migration 0183): ./trends/en.ts. */
+  trends: trendsEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
   libraryUx: libraryUxEn,
   assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
+  customerApp: customerAppEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
@@ -125,6 +130,7 @@ export const en = {
     menu: "Menu",
     command: "Command Center",
     create: "Create",
+    projects: "Projects",
     videos: "Videos",
     pipeline: "Pipeline",
     agents: "Agents",
@@ -153,6 +159,7 @@ export const en = {
     customers: "Customers",
     billing: "Billing",
     studio: "Nightshift Studio",
+    trends: "Trends",
     // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
     brandLook: "Brand look",
     library: "Library",
@@ -445,7 +452,7 @@ export const en = {
     stepCreateNeedsChannel: "A full YouTube video needs a connected channel.",
     open: "Open",
     done: "Done",
-    finish: "Go to Command Center",
+    finish: "Go to Home",
     /** The last button when the person came from a model sample's "Try it": it opens the Studio with that sample's tool and words. */
     finishStudio: "Open Nightshift Studio with your sample",
     unavailable: "We couldn't load your workspace just now. Reload the page in a moment.",
@@ -3759,6 +3766,7 @@ export const en = {
       model_not_sellable: "This model is not available right now.",
       model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
       country_blocked: "This model is not available in your region. Nothing was charged. Choose another model from the list.",
+      prompt_required: "This model needs words for this: describe the motion or the shot, then the price is shown. Nothing was charged.",
       entitlement_required: "This model isn't open to your organization yet.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",
@@ -3957,6 +3965,7 @@ export const en = {
       no_model: "No model can make this right now.",
       need_picture: "Pick a picture to see the price.",
       need_words: "Describe it to see the price.",
+      need_motion_words: "{model} needs a description of the motion: write what happens in the shot to see the price.",
       need_recording: "Pick an audio or video file to see the price.",
       need_voice: "Pick a voice to see the price.",
       need_language: "Pick a language to see the price.",

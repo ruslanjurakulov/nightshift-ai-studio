@@ -58,14 +58,15 @@ describe("mobile navigation", () => {
     expect(labels).toEqual(["Home", "Studio", "Billing", "Alerts", "More"]);
   });
 
-  it("gives a customer a bottom tab bar with Studio in the centre and no drawer", () => {
+  it("gives a customer a bottom tab bar with Create in the centre and no drawer", () => {
     render(withI18n(<SideNav />));
     expect(screen.queryByRole("button", { name: "Menu" })).toBeNull();
     const bar = screen.getAllByRole("navigation", { name: "Menu" }).at(-1)!;
     const labels = Array.from(bar.querySelectorAll("a")).map((a) => a.textContent);
-    // Home takes the place Videos had (Videos are a Studio shelf), and the centre Studio key opens Studio home.
-    expect(labels).toEqual(["Home", "Channels", "Studio", "Credits", "Settings"]);
-    expect(Array.from(bar.querySelectorAll("a")).map((a) => a.getAttribute("href")?.split("/").slice(2).join("/"))).toEqual(["home", "channels", "studio", "credits", "organization"]);
+    // The sprint IA: the rail's five, with Create raised in the centre where the thumb is. Credits and the account are the
+    // top bar's credit pill and avatar on a phone.
+    expect(labels).toEqual(["Home", "Trends", "Create", "Projects", "Library"]);
+    expect(Array.from(bar.querySelectorAll("a")).map((a) => a.getAttribute("href")?.split("/").slice(2).join("/"))).toEqual(["home", "trends", "create", "studio?shelf=projects", "library"]);
   });
 
   it("names the hub Nightshift Studio everywhere but the phone's tab, whose short form is that same brand in every language", () => {
