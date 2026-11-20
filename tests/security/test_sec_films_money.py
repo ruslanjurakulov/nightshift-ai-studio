@@ -1343,8 +1343,14 @@ def test_reapplying_the_migration_changes_nothing(db, a):
     fid = db.film(a)
     db.quoted_start(a, fid)
     before = db.su(SNAPSHOT)[0][0]
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    db.su(MIGRATION.read_text(encoding="utf-8"))
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0199 (the adult gate) sits on quote_film / start_film, and this file's drift guard refuses any other body: it comes off
+        # first and goes back after, inside one transaction, as an owner replaying 0171 would do it.
+        sec_db.take_off_0199(c)
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        sec_db.put_back_0199(c)
+        c.commit()
     assert db.su(SNAPSHOT)[0][0] == before
 
 
@@ -1393,16 +1399,19 @@ def test_the_rollback_refuses_while_a_segment_lives_then_takes_everything_out_an
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0199(c)  # 0199 sits on quote_film / start_film, and this rollback refuses any other body
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=True))
         assert "film segments are live" in str(e.value)
         c.rollback()
     db.cancel(seg["id"])
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0199(c)
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=False))
         assert "film segments exist and their record would be deleted" in str(e.value)
         c.rollback()
+        sec_db.take_off_0199(c)
         c.execute(sec_db.rollback_0171_body(override=True))
         assert c.execute("select to_regclass('public.film_segments'), to_regclass('public.film_quotes'), "
                          "to_regclass('public.film_studio_settings'), to_regprocedure('public.start_film(uuid, text, text)')").fetchone() \

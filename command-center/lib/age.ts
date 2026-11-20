@@ -8,7 +8,11 @@
  */
 export type AgeState = "adult" | "minor" | "none" | "unknown";
 
-/** The terms text version this app asks people to confirm against; bump it when the 18+ wording changes. */
+/**
+ * The terms text version this app asks people to confirm against; bump it when the 18+ wording changes. COUPLED: the
+ * database's record_adult_attestation (migration 0199) accepts exactly this string and refuses any other, so a bump ships
+ * with a migration that names the new one, in the same PR.
+ */
 export const AGE_TERMS_VERSION = "2026-11-20";
 
 /** How the confirmation was asked: chosen by the server from the session (Google) or by the page that asked. */

@@ -38,9 +38,16 @@ REPLACED = {
     "sellable_models": ("0125_model_shutdown.sql", "ea8add748052456a6ef8898b4c87d610", "baeea1418bed413cab7bcf7bf5113ecd", 1),
     "create_creative_job": ("0174_rights_acknowledgement.sql", "88107b00b0a8c143606ed17f5898c98d", "5d373e69b2b33c9a461a245d46c0047f", 1),
     "api_creative_refusal": ("0174_rights_acknowledgement.sql", "e6ec45d0d912389a05eb2d40261c2c2a", "689a675e9ff2d1b6df46ccd89f351589", 1),
+    "creative_platform_reserve": ("0036_creative_jobs.sql", "4a61076948e0dd8992d37de2a9016607", "8e8e0cc80de8f21793897af0223a7044", 1),
+    "quote_film": ("0171_films_money.sql", "8839e2cb264663acf98c6f49aaaf89a5", "e67c0d25f9872b6e9ff19e9d06e95261", 2),
+    "start_film": ("0171_films_money.sql", "63510a6d9c456e66f658353bab592d38", "edc65ceb6378e5e3bfe6e4b3c46ef699", 1),
+    "api_create_video": ("0147_mcp_free_tier.sql", "cba47be1a674f5cea3b5d7443bc31bab", "84477b7bff7fe4e2ec50376a4e5bb72e", 1),
 }
 NEW_FUNCTIONS = ["adult_attestations_append_only", "model_requires_adult", "adult_attestation_state", "adult_attestation_missing",
-                 "adult_attestation_gate", "record_adult_attestation", "my_adult_attestation"]
+                 "adult_attestation_gate", "film_adult_refusals", "adult_attestation_refuse_minor", "record_adult_attestation",
+                 "my_adult_attestation"]
+GATE_TRIGGERS = [("adult_attestation_hold_gate", "credit_reservations", None)]
+AGE_TS = (ROOT / "command-center" / "lib" / "age.ts").read_text(encoding="utf-8")
 METHODS = ["email_signup", "google", "welcome", "create"]
 
 
@@ -105,11 +112,14 @@ class BuiltOnTheEarlierBodies(unittest.TestCase):
             "public.sellable_models(text, text) to authenticated, service_role",
             "public.record_adult_attestation(boolean, text, text) to authenticated",
             "public.my_adult_attestation() to authenticated",
+            "public.quote_film(uuid, integer) to authenticated",
+            "public.start_film(uuid, text, text) to authenticated",
+            "public.api_create_video(text, text, jsonb, text, text, text) to anon",
         ]))
         for name in [*NEW_FUNCTIONS, *REPLACED]:
             self.assertRegex(M, rf"revoke all on function public\.{name}\([^)]*\) from public, anon")
         for name in ("record_adult_attestation", "my_adult_attestation", "adult_attestation_state", "adult_attestation_missing",
-                     "adult_attestation_gate"):
+                     "adult_attestation_gate", "film_adult_refusals", "adult_attestation_refuse_minor"):
             self.assertIn("security definer set search_path = public, pg_temp as $$", definition(M, name), name)
 
 
@@ -195,9 +205,10 @@ class TheRecord(unittest.TestCase):
 
     def test_the_write_is_bound_to_the_session_and_the_first_answer_stands(self):
         body = definition(M, "record_adult_attestation")
-        self.assertIn("uid  uuid := auth.uid();", body)
+        self.assertIn("uid     uuid := auth.uid();", body)
         self.assertIn("raise exception 'not_signed_in' using errcode = 'NS401'", body)
-        self.assertIn("values (uid, p_adult, p_terms_version, p_method)\n  on conflict (user_id) do nothing", body)
+        self.assertIn("values (uid, p_adult, p_terms_version, case when google_ then 'google' else p_method end)\n"
+                      "  on conflict (user_id) do nothing", body)
         self.assertNotIn("on conflict (user_id) do update", body)
         self.assertIn("'recorded', ins", body)
         self.assertIn(f"p_method not in ({', '.join(repr(m) for m in METHODS)})", body)
@@ -213,9 +224,19 @@ class TheRollbackAndTheFile(unittest.TestCase):
         self.assertEqual(sorted(re.findall(r"grant execute on function (.*?);", code(ROLLBACK))), sorted([
             "public.quote_creative_job(uuid, text, text, jsonb) to authenticated",
             "public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated",
-            "public.sellable_models(text, text) to authenticated, service_role"]))
+            "public.sellable_models(text, text) to authenticated, service_role",
+            "public.quote_film(uuid, integer) to authenticated",
+            "public.start_film(uuid, text, text) to authenticated",
+            "public.api_create_video(text, text, jsonb, text, text, text) to anon"]))
         self.assertTrue(ROLLBACK.rstrip().endswith("commit;") and "\nbegin;\n" in ROLLBACK)
-        self.assertNotRegex(code(ROLLBACK), r"(?i)drop table|drop column|delete from|truncate|drop trigger")
+        # Outside the earlier bodies it puts back verbatim (0171's quote_film prunes its own old quotes), it deletes nothing.
+        own = ROLLBACK
+        for name in REPLACED:
+            own = own.replace(definition(ROLLBACK, name), "")
+        self.assertNotRegex(code(own), r"(?i)drop table|drop column|delete from|truncate")
+        # The only triggers it drops are the three gates; the record's append-only triggers stay.
+        self.assertEqual(sorted(re.findall(r"drop trigger if exists (\w+) on public\.(\w+);", code(ROLLBACK))),
+                         sorted((n, tbl) for n, tbl, _w in GATE_TRIGGERS))
 
     def test_the_file_says_how_to_apply_verify_and_undo_and_what_replay_does(self):
         self.assertIn("APPLY AS ONE TRANSACTION", M)
@@ -234,6 +255,82 @@ class TheRollbackAndTheFile(unittest.TestCase):
         # margin, cost or price figure.
         own = M.split("set local lock_timeout", 1)[0] + "\n".join(definition(M, n) for n in NEW_FUNCTIONS)
         self.assertNotRegex(own, r"(?i)\bmargin|\bcosts?\b|\$[0-9]|credits_per_unit")
+
+
+class TheOtherPaidPaths(unittest.TestCase):
+    """Breach on PR #832: a film, the video API and every creative hold made paid work for a minor without the gate."""
+
+    def test_the_hold_gate_is_before_insert_on_the_credit_holds_only(self):
+        c = code(M)
+        for name, table, when in GATE_TRIGGERS:
+            clause = f"for each row when ({when}) execute" if when else "for each row execute"
+            self.assertRegex(c, rf"create trigger {name}\s+before insert on public\.{table}\s+{re.escape(clause)} "
+                                rf"function public\.adult_attestation_refuse_minor\(\);", table)
+        self.assertEqual(len(re.findall(r"create trigger adult_attestation_", c)), 1)
+        # Never on an update, a delete or the ledger: capturing, releasing, refunding or expiring a hold that exists is never refused.
+        self.assertNotRegex(c, r"(?i)create trigger adult_attestation_\w+\s+(after|before)\s+(update|delete)")
+        self.assertNotRegex(c, r"(?i)create trigger \w+\s+before insert on public\.(credit_transactions|api_holds)")
+        body = definition(M, "adult_attestation_refuse_minor")
+        self.assertIn("if public.adult_attestation_state(auth.uid()) = 'minor' then", body)
+        self.assertIn("'adult_only_service'", body)
+
+    def test_the_creative_helper_asks_before_it_clears_the_session(self):
+        body = definition(M, "creative_platform_reserve")
+        ask = body.index("if public.adult_attestation_state(auth.uid()) = 'minor' then")
+        self.assertLess(ask, body.index("perform set_config('request.jwt.claims', '', true);"))
+
+    def test_the_film_quote_names_the_refusal_and_cannot_be_started(self):
+        body = definition(M, "quote_film")
+        ask = body.index("adult_ := public.film_adult_refusals(f.id, auth.uid());")
+        self.assertLess(body.index("q := public.film_price(f);"), ask)
+        self.assertLess(ask, body.index("insert into public.film_quotes"), "an adult-refused quote is never stored")
+        self.assertIn("q := q || jsonb_build_object('priced', false, 'total', null, 'quote_id', null,", body)
+
+    def test_the_film_start_refuses_right_after_the_admin_check_and_before_anything_else(self):
+        body = definition(M, "start_film")
+        ask = body.index("bad := public.film_adult_refusals(p_film, uid) -> 0;")
+        self.assertLess(body.index("if not public.is_org_member(org, 'admin') or (exempt_ and not public.is_platform_admin()) then"), ask)
+        for later in ("if p_idempotency_key is null", "if p_quote_id is null", "select * into s from public.film_segments",
+                      "perform public.film_take_rate('start'", "q := public.film_price(f);", "perform public.reserve_credits(",
+                      "insert into public.film_segments", "insert into public.film_takes"):
+            self.assertLess(ask, body.index(later), later)
+
+    def test_the_film_reads_every_model_it_would_use(self):
+        body = definition(M, "film_adult_refusals")
+        for model in ("coalesce(s.keyframe_model, f.keyframe_model)", "coalesce(s.clip_model, f.clip_model)", "f.voice ->> 'model'"):
+            self.assertIn(model, body)
+        self.assertLess(body.index("'adult_only_service'"), body.index("'adult_attestation_required'"))
+        self.assertIn("public.adult_attestation_missing(p_user, m)", body)
+        self.assertNotIn("film_segments", body, "0171's rollback refuses while a later function reads film_segments")
+
+    def test_the_video_api_answers_a_minor_with_a_403_before_the_price_and_the_hold(self):
+        body = definition(M, "api_create_video")
+        ask = body.index("if public.adult_attestation_state(auth.uid()) = 'minor' then")
+        self.assertLess(body.index("v_res := public.api_idem_begin(ctx, p_idem_key, p_fingerprint);"), ask)
+        for later in ("v_price := public.api_video_price(v_secs);", "insert into public.api_holds", "insert into public.render_jobs"):
+            self.assertLess(ask, body.index(later), later)
+        self.assertIn("public.api_err(403, 'adult_only_service',", body)
+
+    def test_the_header_lists_what_is_not_covered(self):
+        for words in ("NOT COVERED", "oauth_create_video", "EXEMPT organization", "Paid DOWNLOADS", "DORMANT requests"):
+            self.assertIn(words, M)
+
+
+class TheRecordedWords(unittest.TestCase):
+    def test_only_the_apps_current_terms_version_is_accepted(self):
+        version = re.search(r'export const AGE_TERMS_VERSION = "([^"]+)";', AGE_TS).group(1)
+        body = definition(M, "record_adult_attestation")
+        self.assertIn(f"if p_terms_version is distinct from '{version}' then", body,
+                      "lib/age.ts AGE_TERMS_VERSION and record_adult_attestation must name the same version")
+        self.assertIn("command-center/lib/age.ts AGE_TERMS_VERSION", body)
+        self.assertIn("record_adult_attestation", AGE_TS.split("AGE_TERMS_VERSION", 1)[0].rsplit("/**", 1)[1],
+                      "the app side names the coupling too")
+
+    def test_the_session_decides_google(self):
+        body = definition(M, "record_adult_attestation")
+        self.assertIn("google_ boolean := coalesce(auth.jwt() -> 'app_metadata' ->> 'provider', '') = 'google';", body)
+        self.assertIn("if p_method = 'google' and not google_ then", body)
+        self.assertNotIn("user_metadata' ->>", code(body), "user_metadata is the user's to edit")
 
 
 if __name__ == "__main__":

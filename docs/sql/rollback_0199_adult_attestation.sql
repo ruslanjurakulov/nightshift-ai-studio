@@ -1,18 +1,20 @@
 -- rollback_0199_adult_attestation.sql — takes migration 0199 (the adult attestation gate) out of the quote and job path.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK: 0036's quote_creative_job, 0075's route_model, 0125's sellable_models and 0174's create_creative_job and
---   api_creative_refusal, none of which asks for an age answer. A requires_adult model is then sold to anyone, and a person who said
---   they are under 18 is sold every model: apply this only while no requires_adult model is on sale, and say so to the owner.
+-- WHAT COMES BACK: 0036's quote_creative_job and creative_platform_reserve, 0075's route_model, 0125's sellable_models, 0174's
+--   create_creative_job and api_creative_refusal, 0147's api_create_video and 0171's quote_film and start_film, none of which asks
+--   for an age answer, and no hold gate. A requires_adult model is then sold to anyone, and a person who said they are under 18 is
+--   sold everything: apply this only while no requires_adult model is on sale, and say so to the owner.
 -- WHAT IS KEPT: the record. adult_attestations (its rows, its RLS and its append-only triggers) stays as it is: who answered what
 --   must outlive a rollback. Applying 0199 again picks it up as its own.
--- WHAT IS LOST: record_adult_attestation, my_adult_attestation and the four helpers. The app's age question then answers
---   "not available".
+-- WHAT IS LOST: record_adult_attestation, my_adult_attestation, the five helpers, and the hold gate (the trigger function and
+--   adult_attestation_hold_gate on credit_reservations).
+--   The app's age question then answers "not available".
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the five bodies is not 0199's (a later change would be undone).
---   1. Puts the five earlier bodies back, verbatim, with their grants.
---   2. Drops the six 0199 functions that are not the append-only trigger's.
+--   0. REFUSES (changes nothing) if any of the nine bodies is not 0199's (a later change would be undone).
+--   1. Puts the nine earlier bodies back, verbatim, with their grants.
+--   2. Drops the hold gate trigger and the eight 0199 functions that are not the append-only trigger's.
 --   3. Asserts the end state.
 
 begin;
@@ -28,7 +30,11 @@ begin
       ('public.route_model(text, jsonb, text, uuid, text)', '446a8891a780d38237af38e46c24349a'),
       ('public.sellable_models(text, text)', 'baeea1418bed413cab7bcf7bf5113ecd'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '5d373e69b2b33c9a461a245d46c0047f'),
-      ('public.api_creative_refusal(text, text, text)', '689a675e9ff2d1b6df46ccd89f351589')) v(sig, want) loop
+      ('public.api_creative_refusal(text, text, text)', '689a675e9ff2d1b6df46ccd89f351589'),
+      ('public.creative_platform_reserve(uuid, text, numeric)', '8e8e0cc80de8f21793897af0223a7044'),
+      ('public.quote_film(uuid, integer)', 'e67c0d25f9872b6e9ff19e9d06e95261'),
+      ('public.start_film(uuid, text, text)', 'edc65ceb6378e5e3bfe6e4b3c46ef699'),
+      ('public.api_create_video(text, text, jsonb, text, text, text)', '84477b7bff7fe4e2ec50376a4e5bb72e')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0199: % is not 0199''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
@@ -511,6 +517,425 @@ end
 $$;
 revoke all on function public.api_creative_refusal(text, text, text) from public, anon, authenticated, service_role;
 
+-- creative_platform_reserve: 0036's body, verbatim (0036_creative_jobs.sql).
+create or replace function public.creative_platform_reserve(p_org uuid, p_ref text, p_amount numeric)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  saved text := current_setting('request.jwt.claims', true);
+  out_  jsonb;
+begin
+  perform set_config('request.jwt.claims', '', true);
+  begin
+    out_ := public.reserve_credits(p_org, p_ref, p_amount);
+  exception when others then
+    perform set_config('request.jwt.claims', coalesce(saved, ''), true);
+    raise;
+  end;
+  perform set_config('request.jwt.claims', coalesce(saved, ''), true);
+  return out_;
+end
+$$;
+revoke all on function public.creative_platform_reserve(uuid, text, numeric) from public, anon, authenticated, service_role;
+
+-- quote_film: 0171's body, verbatim (0171_films_money.sql).
+create or replace function public.quote_film(p_film uuid, p_version integer) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  org      uuid;
+  f        public.films;
+  q        jsonb;
+  st       jsonb;
+  avail    numeric;
+  active   integer;
+  slots    jsonb;
+  blocked  jsonb := '[]'::jsonb;
+  exempt_  boolean;
+  may      boolean;
+  on_      boolean;
+  lim      jsonb := public.film_money_limits();
+begin
+  if auth.uid() is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  select x.org_id into org from public.films x where x.id = p_film;
+  if org is null or not public.is_org_member(org, 'viewer') then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if not public.is_org_member(org, 'editor') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  select * into f from public.films where id = p_film;
+  if not public.film_is_editable(f.status) then
+    perform public.creative_refuse('film_not_editable', format('a %s film is not quoted again', f.status), 'NS409');
+  end if;
+  if p_version is distinct from f.version then
+    perform public.creative_refuse('film_changed', format('the film is at version %s', f.version), 'NS409');
+  end if;
+  perform public.film_take_rate('quote', (lim ->> 'quotes_per_hour')::integer);
+  q := public.film_price(f);
+  if (q ->> 'priced')::boolean then
+    insert into public.film_quotes (film_id, org_id, version, quote_id, total, created_by, expires_at)
+    values (f.id, org, f.version, q ->> 'quote_id', (q ->> 'total')::numeric, auth.uid(),
+            now() + make_interval(mins => (lim ->> 'quote_minutes')::integer))
+    on conflict (film_id, quote_id) do update set expires_at = excluded.expires_at, total = excluded.total;
+  end if;
+  delete from public.film_quotes where film_id = f.id and (version <> f.version or expires_at <= now());
+
+  exempt_ := public.credits_exempt(org);
+  on_ := public.film_studio_on();
+  st := public.film_settings_of(org);
+  avail := public.film_available(org);
+  active := (select count(*) from public.film_segments s where s.org_id = org and s.status in ('queued', 'running', 'draining'));
+  slots := public.org_run_slots(org);
+  if not on_ then
+    blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'film_studio_disabled'));
+  end if;
+  if (q ->> 'priced')::boolean then
+    if st ->> 'max_credits_per_film' is not null and (q ->> 'total')::numeric > (st ->> 'max_credits_per_film')::numeric then
+      blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'cap_exceeded', 'limit', st -> 'max_credits_per_film'));
+    end if;
+    if not exempt_ and (q ->> 'total')::numeric > avail then
+      blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'insufficient_credits', 'available', avail,
+                                                                 'needed', q -> 'total'));
+    end if;
+  end if;
+  if active >= (st ->> 'max_active_films')::integer then
+    blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'limit_reached', 'active', active,
+                                                               'limit', st -> 'max_active_films'));
+  end if;
+  if not exempt_ and slots is not null and (slots ->> 'active')::integer >= (slots ->> 'limit')::integer then
+    blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'run_slots_full', 'active', slots -> 'active',
+                                                               'limit', slots -> 'limit'));
+  end if;
+  may := public.is_org_member(org, 'admin') and (not exempt_ or public.is_platform_admin());
+  return q || jsonb_build_object(
+    'exempt', exempt_, 'available', avail, 'settings', st, 'active_films', active, 'film_studio_enabled', on_,
+    -- 0034 counts the film's hold as one of the plan's parallel runs for as long as it is open: the app warns before Start.
+    'run_slot', jsonb_build_object('uses_run_slot', not exempt_, 'slots', slots,
+                                   'max_hours', (lim ->> 'unclaimed_hours')::integer + (lim ->> 'deadline_hours')::integer
+                                                + (lim ->> 'grace_hours')::integer),
+    'quote_expires_at', (select x.expires_at from public.film_quotes x where x.film_id = f.id and x.quote_id = q ->> 'quote_id'),
+    'blocked_by', blocked, 'may_start', may,
+    'startable', (q ->> 'priced')::boolean and jsonb_array_length(blocked) = 0 and may,
+    'limits', lim);
+end
+$$;
+revoke all on function public.quote_film(uuid, integer) from public, anon, authenticated, service_role;
+grant execute on function public.quote_film(uuid, integer) to authenticated;
+
+-- start_film: 0171's body, verbatim (0171_films_money.sql).
+create or replace function public.start_film(p_film uuid, p_quote_id text, p_idempotency_key text) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  uid     uuid := auth.uid();
+  org     uuid;
+  f       public.films;
+  s       public.film_segments;
+  q       jsonb;
+  st      jsonb;
+  ln      jsonb;
+  bad     jsonb;
+  sid     uuid := gen_random_uuid();
+  ref     text;
+  exempt_ boolean;
+  total   numeric;
+  hash    text;
+  asm     jsonb;
+  n_takes integer := 0;
+  v       integer;
+  w       text;
+  d       text;
+  msg     text;
+  fq      public.film_quotes;
+  lim     jsonb := public.film_money_limits();
+begin
+  if uid is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  select x.org_id into org from public.films x where x.id = p_film;
+  if org is null or not public.is_org_member(org, 'viewer') then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  exempt_ := public.credits_exempt(org);
+  -- 0020's rule for a paid run; in the exempt organization the platform pays, so only its owner or admin may.
+  if not public.is_org_member(org, 'admin') or (exempt_ and not public.is_platform_admin()) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if p_idempotency_key is null or p_idempotency_key !~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$' then
+    perform public.creative_refuse('invalid_idempotency_key', 'the idempotency key must be 8 to 128 letters, digits or _.:-');
+  end if;
+  if p_quote_id is null or p_quote_id !~ '^fq-[0-9]{1,9}-[0-9a-f]{32}$' then
+    perform public.creative_refuse('invalid_params', 'quote_id must be the quote_id quote_film answered');
+  end if;
+  hash := md5(jsonb_build_object('film', p_film, 'quote', p_quote_id)::text);
+
+  -- One start per organization at a time: the replay lookup, the active-film count and the hold cannot be raced.
+  perform pg_advisory_xact_lock(hashtextextended('film_start:' || org::text, 0));
+  select * into s from public.film_segments where org_id = org and idempotency_key = p_idempotency_key;
+  if found then
+    if s.request_hash <> hash then
+      perform public.creative_refuse('idempotency_conflict', 'this idempotency key was used to start another film or quote', 'NS409');
+    end if;
+    return public.film_segment_json(s) || jsonb_build_object('ok', true, 'replayed', true);
+  end if;
+
+  -- The cheap refusals, before anything is counted or priced.
+  select * into f from public.films where id = p_film for no key update;
+  if not public.film_is_editable(f.status) then
+    perform public.creative_refuse('film_not_startable', format('a %s film cannot be started', f.status), 'NS409');
+  end if;
+  if split_part(p_quote_id, '-', 2)::integer <> f.version then
+    perform public.creative_refuse('film_changed',
+      format('the film was edited after this quote (it is at version %s); quote it again', f.version), 'NS409');
+  end if;
+  if not public.film_studio_on() then
+    perform public.creative_refuse('film_studio_disabled', 'Film Studio is not switched on yet; nothing was held', 'NS409');
+  end if;
+  -- Cheap checks of what pricing would refuse (a model off sale or turned Seedance, a reference or frame that is gone): raised with
+  -- the line's own word, before anything is counted or priced.
+  bad := public.film_precheck(f);
+  if bad is not null then
+    perform public.creative_refuse(bad ->> 'reason', bad ->> 'detail');
+  end if;
+  perform public.film_take_rate('start', (lim ->> 'starts_per_hour')::integer);
+
+  -- Counted: from here every refusal is returned, so the counter commits with it. The stored quote first (no pricing yet).
+  select * into fq from public.film_quotes x where x.film_id = f.id and x.quote_id = p_quote_id and x.version = f.version;
+  if not found then
+    return jsonb_build_object('ok', false, 'reason', 'price_changed', 'code', 'NS409',
+                              'detail', 'this is not a quote of the film as it stands; quote it again');
+  end if;
+  if fq.expires_at <= now() then
+    return jsonb_build_object('ok', false, 'reason', 'quote_expired', 'code', 'NS409',
+                              'detail', 'this quote has expired; quote it again');
+  end if;
+  st := public.film_settings_of(org);
+  if not exempt_ and fq.total > public.film_available(org) then
+    return jsonb_build_object('ok', false, 'reason', 'insufficient_credits', 'code', 'NS402',
+                              'detail', format('available=%s needed=%s', public.film_available(org), fq.total));
+  end if;
+  if st ->> 'max_credits_per_film' is not null and fq.total > (st ->> 'max_credits_per_film')::numeric then
+    return jsonb_build_object('ok', false, 'reason', 'cap_exceeded', 'code', 'NS400',
+      'detail', format('this film costs %s credits and the organization allows %s a film', fq.total, st ->> 'max_credits_per_film'));
+  end if;
+  if (select count(*) from public.film_segments x where x.org_id = org and x.status in ('queued', 'running', 'draining'))
+     >= (st ->> 'max_active_films')::integer then
+    return jsonb_build_object('ok', false, 'reason', 'limit_reached', 'code', 'NS400',
+      'detail', format('at most %s films of this organization run at once; wait for one to finish', st ->> 'max_active_films'));
+  end if;
+
+  -- Then the re-pricing, at today's rates: what was confirmed is what is held, in either direction.
+  q := public.film_price(f);
+  if not (q ->> 'priced')::boolean then
+    bad := q -> 'refusals' -> 0;
+    return jsonb_build_object('ok', false, 'reason', bad ->> 'reason', 'code', 'NS400', 'detail', bad ->> 'detail');
+  end if;
+  total := (q ->> 'total')::numeric;
+  if q ->> 'quote_id' <> p_quote_id then
+    return jsonb_build_object('ok', false, 'reason', 'price_changed', 'code', 'NS409',
+                              'detail', format('the price is now %s credits; quote it again', total));
+  end if;
+
+  -- The hold: 0020's reserve_credits in the admin's own session, before anything is created. Its two refusals (NS402 with available
+  -- and needed; NS429 when the plan's parallel runs are in use) are returned with their codes. Nothing is held in the exempt
+  -- organization or for a total of 0.
+  ref := 'fm-' || replace(sid::text, '-', '');
+  if exempt_ or total = 0 then
+    ref := null;
+  else
+    begin
+      perform public.reserve_credits(org, ref, total);
+    exception when sqlstate 'NS402' or sqlstate 'NS429' or sqlstate '22023' or sqlstate '23505' then
+      get stacked diagnostics w = returned_sqlstate, d = pg_exception_detail, msg = message_text;
+      if w in ('22023', '23505') then
+        -- Not a customer's state (credits, slots) but a refusal of the hold itself: recorded, so someone looks at it.
+        perform public.film_log(f.id, org, null, 'start_refused',
+          jsonb_build_object('reason', 'hold_refused', 'code', w, 'quote_id', p_quote_id, 'credits', total,
+                             'message', left(coalesce(nullif(d, ''), msg), 200)));
+      end if;
+      return jsonb_build_object('ok', false,
+                                'reason', case w when 'NS402' then 'insufficient_credits' when 'NS429' then 'run_slots_full'
+                                                 else 'hold_refused' end,
+                                'code', w, 'detail', coalesce(nullif(d, ''), msg));
+    end;
+  end if;
+
+  select l into asm from jsonb_array_elements(q -> 'lines') l where l ->> 'line' = 'assembly';
+  insert into public.film_segments (id, film_id, org_id, n, purpose, film_version, quote_id, status, credit_ref, exempt,
+                                    confirmed_credits, assembly_minutes, assembly_unit_credits, assembly_confirmed_credits,
+                                    max_attempts, idempotency_key, request_hash, created_by)
+  values (sid, f.id, org, coalesce((select max(x.n) from public.film_segments x where x.film_id = f.id), 0) + 1, 'initial',
+          f.version, p_quote_id, 'queued', ref, exempt_, total, (asm ->> 'quantity')::integer,
+          (asm ->> 'credits_per_unit')::numeric, (asm ->> 'credits')::numeric,
+          (lim ->> 'max_attempts')::integer, p_idempotency_key, hash, uid)
+  returning * into s;
+
+  for ln in select l from jsonb_array_elements(q -> 'lines') l where l ->> 'line' in ('keyframe', 'clip', 'extend', 'narration') loop
+    -- The next version of this scene (or of the film's narration), past every take an earlier segment made.
+    v := coalesce((select max(t.version) from public.film_takes t
+                    where t.film_id = f.id and t.scene_id is not distinct from (ln ->> 'scene_id')::uuid
+                      and t.kind = case when ln ->> 'line' = 'narration' then 'narration' else t.kind end
+                      and t.segment_id is distinct from sid), 0) + 1;
+    insert into public.film_takes (film_id, org_id, scene_id, version, shot_index, kind, attempt, status, model, params, duration_s,
+                                   segment_id, credit_unit, unit_credits, quantity, minimum_credits, confirmed_credits)
+    values (f.id, org, (ln ->> 'scene_id')::uuid, v, (ln ->> 'shot_index')::smallint, ln ->> 'line', 1, 'planned', ln ->> 'model',
+            coalesce(ln -> 'params', '{}'::jsonb), (ln ->> 'duration_s')::numeric, sid, ln ->> 'unit',
+            (ln ->> 'credits_per_unit')::numeric, (ln ->> 'quantity')::numeric, (ln ->> 'minimum')::numeric,
+            (ln ->> 'credits')::numeric);
+    n_takes := n_takes + 1;
+  end loop;
+
+  update public.films set status = 'queued', pause_reason = null, pause_detail = null, updated_at = now() where id = f.id;
+  perform public.film_log(f.id, org, null, 'started',
+    jsonb_build_object('segment_id', sid, 'quote_id', p_quote_id, 'credits', total, 'held', ref is not null, 'exempt', exempt_,
+                       'takes', n_takes, 'version', f.version));
+  return public.film_segment_json(s) || jsonb_build_object('ok', true, 'replayed', false);
+end
+$$;
+revoke all on function public.start_film(uuid, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.start_film(uuid, text, text) to authenticated;
+
+-- api_create_video: 0147's body, verbatim (0147_mcp_free_tier.sql).
+create or replace function public.api_create_video(
+  p_key_hash text, p_channel_id text, p_params jsonb,
+  p_idem_key text default null, p_fingerprint text default null, p_request_id text default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx     jsonb := public.api_begin(p_key_hash, 'videos.create', p_request_id);
+  v_org   uuid;
+  ch      public.channels;
+  v_p     jsonb := coalesce(p_params, '{}'::jsonb);
+  v_busy  integer;
+  v_secs  numeric;
+  v_price bigint;
+  v_spend bigint;
+  acc     public.api_accounts;
+  v_ref   text;
+  v_job   bigint;
+  v_res   jsonb;
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_res := public.api_idem_begin(ctx, p_idem_key, p_fingerprint);
+    if v_res is not null then
+      return public.api_finish(ctx, v_res);
+    end if;
+    v_org := (ctx ->> 'org_id')::uuid;
+
+    select * into ch from public.channels c where c.channel_id = p_channel_id;
+    if ch.channel_id is null or ch.org_id is distinct from v_org then
+      v_res := public.api_err(404, 'channel_not_found', 'No channel with that id in this key''s organization.');
+    elsif upper(btrim(coalesce(ch.status, ''))) <> 'ACTIVE' then
+      v_res := public.api_err(409, 'channel_not_active',
+        'That channel is not active. Connect it to YouTube and activate it in the Command Center first.');
+    elsif jsonb_typeof(v_p) <> 'object'
+       or (v_p - array['topic','niche','duration','language','visual_style',
+                       'video_provider','image_provider']) <> '{}'::jsonb
+       or not public.render_job_params_valid(v_p, 'daily') then
+      v_res := public.api_err(400, 'invalid_params',
+        'Allowed: topic (<=300 chars), niche (<=120), duration (whole seconds, 30-3600), language (<=40), visual_style (<=300), video_provider, image_provider.');
+    end if;
+    if v_res is not null then
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res));
+    end if;
+
+    -- Concurrency, under a per-organization lock so two creates cannot both
+    -- take the last slot.
+    perform pg_advisory_xact_lock(hashtextextended('api_render_jobs:' || v_org::text, 0));
+    select count(*) into v_busy
+      from public.render_jobs j join public.channels c on c.channel_id = j.channel_id
+     where c.org_id = v_org and j.status in ('queued', 'running');
+    if v_busy >= (ctx ->> 'concurrency')::int then
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(429, 'concurrency_limit_exceeded',
+        format('Usage tier %s runs at most %s videos at once. Wait for one to finish.', ctx ->> 'tier', ctx ->> 'concurrency'),
+        jsonb_build_object('retry_after', 60))));
+    end if;
+
+    if not (ctx ->> 'exempt')::boolean then
+      v_secs := coalesce((v_p ->> 'duration')::numeric,
+                         case when jsonb_typeof(ch.agent_config -> 'target_duration_seconds') = 'number'
+                              then (ch.agent_config ->> 'target_duration_seconds')::numeric end);
+      if v_secs is null or v_secs <= 0 then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(400, 'duration_required',
+          'Pass duration (seconds): this channel has no target length to price the video by.')));
+      end if;
+      -- 0041 freezes the length a paid run renders at, whole seconds 30..3600
+      -- (render_jobs_payment_guard). Freeze it here, in the same way, BEFORE
+      -- pricing, so the hold is for the length that runs: a 10-second target
+      -- renders 30 seconds and is priced as 30, and a target read again
+      -- inside the insert cannot differ from the one priced.
+      v_secs := least(greatest(round(v_secs), 30), 3600);
+      v_p := v_p || jsonb_build_object('duration', v_secs::integer);
+      v_price := public.api_video_price(v_secs);
+      if v_price is null then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(503, 'pricing_unavailable',
+          'The API price list is not set up on this deployment; nothing was charged.')));
+      end if;
+
+      acc := public.api_account_lock(v_org);
+      perform public.api_expire_holds_locked(v_org);
+      select * into acc from public.api_accounts where org_id = v_org;
+      v_spend := public.api_month_spend(v_org);
+      if v_spend + v_price > (ctx ->> 'cap_cents')::bigint then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(402, 'monthly_limit_reached',
+          'This video would take the organization past its monthly API spend limit. An owner or admin can raise it in the Developer console: Developers → Usage and billing → Monthly spend limit (up to the usage tier''s cap; paying more into the API balance raises the tier).',
+          jsonb_build_object('limit_cents', (ctx ->> 'cap_cents')::bigint, 'month_spend_cents', v_spend,
+                             'price_cents', v_price))));
+      end if;
+      if ctx ->> 'key_limit_cents' is not null
+         and public.api_month_spend(v_org, (ctx ->> 'key_id')::uuid) + v_price > (ctx ->> 'key_limit_cents')::bigint then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(402, 'key_limit_reached',
+          'This video would take this key past its own monthly spend limit. An owner or admin can raise or remove it in the Developer console: Developers → API keys → Set limit on this key.',
+          jsonb_build_object('limit_cents', (ctx ->> 'key_limit_cents')::bigint, 'price_cents', v_price))));
+      end if;
+      if acc.balance_cents - acc.reserved_cents < v_price then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(402, 'insufficient_balance',
+          'Your API balance does not cover this video. Top up in the Developer console.',
+          jsonb_build_object('price_cents', v_price, 'available_cents', acc.balance_cents - acc.reserved_cents))));
+      end if;
+
+      v_ref := 'ah-' || gen_random_uuid()::text;
+      insert into public.api_holds (ref, org_id, key_id, amount_cents)
+      values (v_ref, v_org, (ctx ->> 'key_id')::uuid, v_price);
+      update public.api_accounts set reserved_cents = reserved_cents + v_price, updated_at = now()
+       where org_id = v_org;
+      perform public.api_log(v_org, 'hold', v_price, v_ref, (ctx ->> 'key_id')::uuid, null, null, null,
+                             format('%s seconds on %s', v_secs, ch.channel_id));
+    end if;
+
+    -- 0019's insert policy, stated as the row itself: a daily job, queued, no
+    -- privacy/resume/repair, filed as the key's creator.
+    insert into public.render_jobs (channel_id, kind, params, requested_by, api_hold_ref)
+    values (ch.channel_id, 'daily', v_p, (ctx ->> 'created_by')::uuid, v_ref)
+    returning id into v_job;
+    if v_ref is not null then
+      update public.api_holds set render_job_id = v_job where ref = v_ref;
+    end if;
+
+    perform public.api_audit(ctx, 'agent.run', ch.channel_id, ch.channel_id,
+      v_p || jsonb_build_object('backend', 'queue', 'job_id', v_job, 'api_hold_ref', v_ref, 'price_cents', v_price));
+
+    v_res := public.api_ok(jsonb_build_object('job_id', v_job, 'channel_id', ch.channel_id, 'status', 'queued',
+                                              'price_cents', v_price), 201);
+    return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res), coalesce(v_price, 0));
+  exception when others then
+    -- Only this block is undone: the request stays counted and is logged (P6).
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+revoke all on function public.api_create_video(text, text, jsonb, text, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.api_create_video(text, text, jsonb, text, text, text) to anon;
+
+-- The hold gate first (it names the trigger function), then the functions. The append-only triggers of the record stay.
+drop trigger if exists adult_attestation_hold_gate on public.credit_reservations;
+drop function if exists public.adult_attestation_refuse_minor();
+drop function if exists public.film_adult_refusals(uuid, uuid);
 drop function if exists public.record_adult_attestation(boolean, text, text);
 drop function if exists public.my_adult_attestation();
 drop function if exists public.adult_attestation_gate(uuid, text);
@@ -527,7 +952,11 @@ begin
       ('public.route_model(text, jsonb, text, uuid, text)', 'e4344e61983e7decb4b1eac73761fbf0'),
       ('public.sellable_models(text, text)', 'ea8add748052456a6ef8898b4c87d610'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d'),
-      ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a')) v(sig, want) loop
+      ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a'),
+      ('public.creative_platform_reserve(uuid, text, numeric)', '4a61076948e0dd8992d37de2a9016607'),
+      ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5'),
+      ('public.start_film(uuid, text, text)', '63510a6d9c456e66f658353bab592d38'),
+      ('public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
       raise exception 'rollback 0199 end state: % is not its earlier body', r.sig;
     end if;
@@ -538,12 +967,21 @@ begin
      or has_function_privilege('anon', 'public.quote_creative_job(uuid, text, text, jsonb)', 'EXECUTE')
      or not has_function_privilege('authenticated', 'public.sellable_models(text, text)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.route_model(text, jsonb, text, uuid, text)', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.api_creative_refusal(text, text, text)', 'EXECUTE') then
+     or has_function_privilege('authenticated', 'public.api_creative_refusal(text, text, text)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.start_film(uuid, text, text)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.quote_film(uuid, integer)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.start_film(uuid, text, text)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.creative_platform_reserve(uuid, text, numeric)', 'EXECUTE')
+     or not has_function_privilege('anon', 'public.api_create_video(text, text, jsonb, text, text, text)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.api_create_video(text, text, jsonb, text, text, text)', 'EXECUTE') then
     raise exception 'rollback 0199 end state: the grants are not the earlier ones';
   end if;
   if to_regprocedure('public.record_adult_attestation(boolean, text, text)') is not null
      or to_regprocedure('public.my_adult_attestation()') is not null
-     or to_regprocedure('public.adult_attestation_gate(uuid, text)') is not null then
+     or to_regprocedure('public.adult_attestation_gate(uuid, text)') is not null
+     or to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null
+     or to_regprocedure('public.adult_attestation_refuse_minor()') is not null
+     or exists (select 1 from pg_trigger where tgname = 'adult_attestation_hold_gate') then
     raise exception 'rollback 0199 end state: a 0199 function is still there';
   end if;
   if to_regclass('public.adult_attestations') is null then

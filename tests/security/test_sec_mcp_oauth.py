@@ -1252,6 +1252,10 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     download = sec_db.MIGRATIONS / "0170_api_download_audit.sql"
     if later.exists() and download.exists():
         sec_db.apply_files(db.dsn, [sec_db.REPO / "docs" / "sql" / "rollback_0170_api_download_audit.sql"])
+    # 0199 replaced 0147's api_create_video (the adult gate), which 0147's drift guard refuses too: off first, on again last.
+    adult = sec_db.MIGRATION_0199.exists()
+    if later.exists() and adult:
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0199])
     if later.exists():
         sec_db.apply_files(db.dsn, [later])
         assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "planned"
@@ -1264,6 +1268,9 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         sec_db.apply_files(db.dsn, [download])
         assert db.su("select position('video.download_request' in prosrc) > 0 from pg_proc "
                      "where oid = 'public.api_request_download(text,text,text,text,text,text)'::regprocedure")[0][0] is True
+    if later.exists() and adult:
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATION_0199])
+        assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 
 # ── Lens-386A: PKCE is checked by the database, a limit of 0 is read-only for the operator too,

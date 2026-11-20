@@ -604,8 +604,10 @@ def rollback_0171_body(override: bool = False) -> str:
 def take_off_0171(conn_or_session) -> None:
     """0171 replaces 0166's films_status_check (adds 'queued'), and 0166's rollback refuses while film_segments exists, so a test that
     replays or rolls back 0166 takes 0171 off first with its own rollback (override on: the lab's segments are not kept) and puts it
-    back with put_back_0171 where the chain goes on."""
+    back with put_back_0171 where the chain goes on. 0199 sits on 0171's quote_film and start_film, and 0171's rollback refuses any
+    other body, so 0199 comes off first (and goes back with put_back_0171)."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0199(conn)
     if has_0171(conn):
         conn.execute(rollback_0171_body(override=True))
 
@@ -614,6 +616,7 @@ def put_back_0171(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0171(conn):
         conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
+    put_back_0199(conn)
 
 
 MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"
@@ -657,9 +660,11 @@ def has_0199(conn_or_session) -> bool:
 
 
 def take_off_0199(conn_or_session) -> None:
-    """0199 (the adult attestation) replaces quote_creative_job() (0036's body), route_model() (0075's), sellable_models() (0125's) and
-    create_creative_job() and api_creative_refusal() (0174's). 0125's and 0174's drift guards and rollbacks refuse any body but their
-    own, so take_off_0125 and take_off_0174 take 0199 off first. Its rollback puts the five earlier bodies back and drops its functions;
+    """0199 (the adult attestation) replaces quote_creative_job() and creative_platform_reserve() (0036's bodies), route_model() (0075's),
+    sellable_models() (0125's), create_creative_job() and api_creative_refusal() (0174's), api_create_video() (0147's) and quote_film()
+    and start_film() (0171's), and adds three gate triggers. 0125's, 0147's, 0171's and 0174's drift guards and rollbacks refuse any
+    body but their own, so take_off_0125, take_off_0171 and take_off_0174 take 0199 off first (a lab that replays 0147 lists it among
+    the later files it undoes). Its rollback puts the nine earlier bodies back and drops its functions and triggers;
     adult_attestations (the record, with its append-only triggers) stays, and put_back_0199 picks it up again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0199(conn):
@@ -668,9 +673,9 @@ def take_off_0199(conn_or_session) -> None:
 
 
 def put_back_0199(conn_or_session) -> None:
-    """0199 again, once both 0125 and 0174 are on (it refuses to apply without either), and only when it is not on already."""
+    """0199 again, once 0125, 0171 and 0174 are on (it refuses to apply without any of them), and only when it is not on already."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if has_0199(conn) or not has_0174(conn):
+    if has_0199(conn) or not has_0174(conn) or not has_0171(conn):
         return
     if not conn.execute("select to_regprocedure('public.model_past_shutdown(jsonb)') is not null").fetchone()[0]:
         return

@@ -57,10 +57,18 @@ T2I = {"prompt": "a lighthouse at dusk"}
 T2V = {"prompt": "a lighthouse at dusk", "duration_s": 4}
 
 
+#: The words the app asks today: command-center/lib/age.ts AGE_TERMS_VERSION, the one version record_adult_attestation accepts.
+TERMS = "2026-11-20"
+#: Accounts whose session token says they signed in with Google (Supabase writes app_metadata.provider; the user cannot edit it).
+GOOGLE = set()
+
+
 def claims(role, uid=None):
     c = {"role": role}
     if uid:
         c["sub"] = uid
+        if uid in GOOGLE:
+            c["app_metadata"] = {"provider": "google", "providers": ["google"]}
     return json.dumps(c)
 
 
@@ -122,9 +130,10 @@ def db():
     d.su(f"insert into public.credit_prices (unit, credits_per_unit, margin) values {PRICES} "
          "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = 0")
     # The answers, each in the person's own session, as the app writes them.
-    d.act("authenticated", U_ADULT, "select public.record_adult_attestation(true, 'adult.v1', 'email_signup')")
-    d.act("authenticated", U_MINOR, "select public.record_adult_attestation(false, 'adult.v1', 'welcome')")
-    d.act("authenticated", U_B, "select public.record_adult_attestation(true, 'adult.v1', 'google')")
+    GOOGLE.add(U_B)
+    d.act("authenticated", U_ADULT, "select public.record_adult_attestation(true, %s, 'email_signup')", [TERMS])
+    d.act("authenticated", U_MINOR, "select public.record_adult_attestation(false, %s, 'welcome')", [TERMS])
+    d.act("authenticated", U_B, "select public.record_adult_attestation(true, %s, 'google')", [TERMS])
     try:
         yield d
     finally:
@@ -138,7 +147,7 @@ def err(fn):
     return e.value.sqlstate, str(e.value).splitlines()[0], (e.value.diag.message_detail or "")
 
 
-def record(db, uid, adult, version="adult.v1", method="create"):
+def record(db, uid, adult, version=TERMS, method="create"):
     return db.act("authenticated", uid, "select public.record_adult_attestation(%s, %s, %s)", [adult, version, method])[0][0]
 
 
@@ -313,7 +322,7 @@ def test_another_person_cannot_write_my_answer(db):
     for role, uid in (("authenticated", U_B), ("authenticated", U_NONE), ("service_role", None)):
         st, _w, _d = err(lambda: db.act(role, uid,
                                          "insert into public.adult_attestations (user_id, adult, terms_version, method) "
-                                         "values (%s, true, 'adult.v1', 'create')", [U_NONE]))
+                                         "values (%s, true, '2026-11-20', 'create')", [U_NONE]))
         assert st == "42501", (role, st)
     # record_adult_attestation has no "who" argument: it writes for the session only.
     out = record(db, U_B, False)
@@ -324,7 +333,7 @@ def test_another_person_cannot_write_my_answer(db):
 def test_anon_gets_nothing(db):
     for q in ("select count(*) from public.adult_attestations",
               "select public.my_adult_attestation()",
-              "select public.record_adult_attestation(true, 'adult.v1', 'create')"):
+              "select public.record_adult_attestation(true, '2026-11-20', 'create')"):
         st, _w, _d = err(lambda: db.act("anon", None, q))
         assert st == "42501", (q, st)
     for fn in ("public.adult_attestation_gate(uuid, text)", "public.adult_attestation_missing(uuid, text)",
@@ -334,7 +343,7 @@ def test_anon_gets_nothing(db):
 
 
 def test_without_a_session_the_calls_say_so(db):
-    for q in ("select public.record_adult_attestation(true, 'adult.v1', 'create')", "select public.my_adult_attestation()"):
+    for q in ("select public.record_adult_attestation(true, '2026-11-20', 'create')", "select public.my_adult_attestation()"):
         st, word, _ = err(lambda: db.act("authenticated", None, q))
         assert (st, word) == ("NS401", "not_signed_in"), q
 
@@ -342,9 +351,9 @@ def test_without_a_session_the_calls_say_so(db):
 def test_malformed_input_is_refused_and_writes_nothing(db):
     uid = str(uuid.uuid4())
     db.su("insert into auth.users (id, email) values (%s, 'bad@x.io')", [uid])
-    for adult, version, method in ((None, "adult.v1", "create"), (True, "Adult V1", "create"), (True, "", "create"),
-                                   (True, "a" * 41, "create"), (True, None, "create"), (True, "adult.v1", "sms"),
-                                   (True, "adult.v1", None), (True, "adult.v1", "Create")):
+    for adult, version, method in ((None, TERMS, "create"), (True, "Adult V1", "create"), (True, "", "create"),
+                                   (True, "a" * 41, "create"), (True, None, "create"), (True, TERMS, "sms"),
+                                   (True, TERMS, None), (True, TERMS, "Create")):
         st, word, _ = err(lambda: record(db, uid, adult, version, method))
         assert (st, word) == ("NS400", "invalid_params"), (adult, version, method)
     assert row(db, uid) == []
@@ -365,20 +374,20 @@ def test_the_record_cannot_be_updated_deleted_or_truncated(db):
         assert (st, word) == ("42501", "adult_attestations is append-only")
     st, word, _ = err(lambda: db.su("truncate public.adult_attestations"))
     assert (st, word) == ("42501", "adult_attestations is append-only")
-    assert row(db, U_MINOR) == [(False, "adult.v1", "welcome")]
+    assert row(db, U_MINOR) == [(False, TERMS, "welcome")]
 
 
 def test_the_first_answer_stands_a_minor_cannot_become_an_adult(db):
-    out = record(db, U_MINOR, True, "adult.v2", "create")
+    out = record(db, U_MINOR, True, TERMS, "create")
     assert out["state"] == "minor" and out["recorded"] is False and out["created_at"]
-    assert row(db, U_MINOR) == [(False, "adult.v1", "welcome")]
+    assert row(db, U_MINOR) == [(False, TERMS, "welcome")]
     assert mine(db, U_MINOR) == {"state": "minor"}
 
 
 def test_the_first_answer_stands_an_adult_cannot_become_a_minor(db):
-    out = record(db, U_ADULT, False, "adult.v2", "create")
+    out = record(db, U_ADULT, False, TERMS, "create")
     assert out["state"] == "adult" and out["recorded"] is False
-    assert row(db, U_ADULT) == [(True, "adult.v1", "email_signup")]
+    assert row(db, U_ADULT) == [(True, TERMS, "email_signup")]
 
 
 def test_a_first_answer_is_recorded_once_and_opens_the_model(db):
@@ -387,9 +396,10 @@ def test_a_first_answer_is_recorded_once_and_opens_the_model(db):
     db.su("insert into public.org_members (org_id, user_id, email, role) values (%s,%s,'new@x.io','editor')", [ORG_A, uid])
     st, word, _ = err(lambda: quote(db, uid, ORG_A, "img-adult"))
     assert word == "adult_attestation_required"
-    first = record(db, uid, True, "adult.v1", "google")
+    GOOGLE.add(uid)
+    first = record(db, uid, True, TERMS, "google")
     assert first["state"] == "adult" and first["recorded"] is True
-    again = record(db, uid, True, "adult.v1", "google")
+    again = record(db, uid, True, TERMS, "google")
     assert again == {**first, "recorded": False}
     assert quote(db, uid, ORG_A, "img-adult")["model"] == "img-adult"
 
@@ -410,9 +420,9 @@ def test_the_api_names_the_remedy(db):
 def test_deleting_the_account_keeps_the_record(db):
     uid = str(uuid.uuid4())
     db.su("insert into auth.users (id, email) values (%s, 'gone@x.io')", [uid])
-    record(db, uid, True, "adult.v1", "email_signup")
+    record(db, uid, True, TERMS, "email_signup")
     db.su("delete from auth.users where id=%s", [uid])   # not blocked, and nothing cascades
-    assert row(db, uid) == [(True, "adult.v1", "email_signup")]
+    assert row(db, uid) == [(True, TERMS, "email_signup")]
 
 
 def _md5(db, sig):
@@ -421,7 +431,16 @@ def _md5(db, sig):
 
 GATED = ("public.quote_creative_job(uuid,text,text,jsonb)", "public.route_model(text,jsonb,text,uuid,text)",
          "public.sellable_models(text,text)", "public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)",
-         "public.api_creative_refusal(text,text,text)")
+         "public.api_creative_refusal(text,text,text)", "public.creative_platform_reserve(uuid,text,numeric)",
+         "public.quote_film(uuid,integer)", "public.start_film(uuid,text,text)",
+         "public.api_create_video(text,text,jsonb,text,text,text)")
+#: The bodies the rollback puts back (0036, 0171, 0171, 0147's), by GATED index.
+EARLIER = {5: "4a61076948e0dd8992d37de2a9016607", 6: "8839e2cb264663acf98c6f49aaaf89a5", 7: "63510a6d9c456e66f658353bab592d38",
+           8: "cba47be1a674f5cea3b5d7443bc31bab"}
+
+
+def gate_triggers(db):
+    return db.su("select tgrelid::regclass::text, tgname from pg_trigger where tgname like 'adult_attestation_%%gate' order by 1")
 
 
 def test_replay_and_rollback_keep_the_record(db):
@@ -436,10 +455,14 @@ def test_replay_and_rollback_keep_the_record(db):
         assert _md5(db, GATED[3]) == "88107b00b0a8c143606ed17f5898c98d", "0174's job start is back"
         assert db.su("select count(*) from public.adult_attestations")[0][0] == rows
         assert db.su("select to_regprocedure('public.record_adult_attestation(boolean, text, text)')")[0][0] is None
+        for i, h in EARLIER.items():
+            assert _md5(db, GATED[i]) == h, GATED[i]
+        assert gate_triggers(db) == [], "the hold gate goes with the rollback"
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
             sec_db.put_back_0199(c)
     assert {s: _md5(db, s) for s in GATED} == before
+    assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate")]
     # The kept rows count again at once.
     assert mine(db, U_MINOR) == {"state": "minor"}
 
@@ -451,3 +474,94 @@ def test_0174_and_0125_refuse_to_replay_over_0199(db):
     assert "0174 found public.create_creative_job" in msg
     st, msg, _ = err(lambda: db.su(sec_db.MIGRATION_0125.read_text(encoding="utf-8")))
     assert "0125 found a sellable_models()" in msg
+    # The Film Studio's money pins its bodies too: it does not replay over the film gate.
+    st, msg, _ = err(lambda: db.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8")))
+    assert "0171 found public.quote_film(uuid, integer) with a body that is not this file's" in msg
+
+
+# ── F4: the session, not the caller, decides the method; only the current words are recorded ─────────────────────────────────
+
+def test_an_old_or_invented_terms_version_is_refused_with_the_remedy(db):
+    uid = str(uuid.uuid4())
+    db.su("insert into auth.users (id, email) values (%s, 'old@x.io')", [uid])
+    for version in ("adult.v1", "v0", "2026-11-19", "2099-01-01"):
+        st, word, detail = err(lambda: record(db, uid, True, version, "welcome"))
+        assert (st, word) == ("NS400", "invalid_params") and "reload the app" in detail, (version, detail)
+    assert row(db, uid) == []
+
+
+def test_google_is_recorded_only_for_a_google_session_and_always_for_one(db):
+    email, goog = str(uuid.uuid4()), str(uuid.uuid4())
+    db.su("insert into auth.users (id, email) values (%s, 'em@x.io'), (%s, 'go@x.io')", [email, goog])
+    st, word, detail = err(lambda: record(db, email, True, TERMS, "google"))
+    assert (st, word) == ("NS400", "invalid_params") and "signed in with Google" in detail
+    assert row(db, email) == []
+    assert record(db, email, True, TERMS, "welcome")["recorded"] is True
+    assert row(db, email) == [(True, TERMS, "welcome")]
+    GOOGLE.add(goog)
+    # A Google sign-in is recorded as google whichever page asked (the route sends google, a direct call may not).
+    assert record(db, goog, False, TERMS, "create")["recorded"] is True
+    assert row(db, goog) == [(False, TERMS, "google")]
+
+
+# ── F3: the hold gate and the creative helper refuse a minor; settling a hold that exists never is ────────────────────────────
+
+def _minor_admin(db, org):
+    uid = str(uuid.uuid4())
+    db.su("insert into auth.users (id, email) values (%s, %s)", [uid, f"{uid[:6]}@minor.io"])
+    db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'admin')", [org, uid, f"{uid[:6]}@minor.io"])
+    return uid
+
+
+def test_a_minor_takes_no_hold_through_reserve_credits(db):
+    uid = _minor_admin(db, ORG_A)
+    record(db, uid, False)
+    before = footprint(db, ORG_A)
+    st, word, _ = err(lambda: db.act("authenticated", uid, "select public.reserve_credits(%s, 'rj-minor-direct', 5)", [ORG_A]))
+    assert (st, word) == ("NS400", "adult_only_service")
+    assert footprint(db, ORG_A) == before
+
+
+def test_a_minor_takes_no_hold_through_the_creative_helper_though_it_clears_the_session(db):
+    uid = _minor_admin(db, ORG_A)
+    record(db, uid, False)
+    before = footprint(db, ORG_A)
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", uid)])
+        with pytest.raises(psycopg.Error) as e:
+            c.execute("select public.creative_platform_reserve(%s, 'cj:minor-helper', 5)", [ORG_A])
+        assert e.value.sqlstate == "NS400" and str(e.value).startswith("adult_only_service")
+        c.rollback()
+    assert footprint(db, ORG_A) == before
+    # An adult's session, and a worker's (no session), still hold through it.
+    for who in (U_ADULT, None):
+        with psycopg.connect(db.dsn, autocommit=False) as c:
+            c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", who) if who else ""])
+            out = c.execute("select public.creative_platform_reserve(%s, %s, 5)", [ORG_A, f"cj:ok-{uuid.uuid4().hex[:8]}"]).fetchone()[0]
+            assert out["reserved"] == 5, (who, out)
+            c.rollback()
+
+
+def test_a_hold_taken_before_the_answer_still_settles_after_it(db):
+    """The worker capturing or releasing an existing hold must never be blocked: a person who held while unanswered and then said
+    they are under 18 is refused new work, not the settlement of the old."""
+    svc = lambda q, p=None: db.act("service_role", None, q, p)
+    for settle in ("capture", "release"):
+        # One organization each: a hold is one of the plan's parallel runs, and the lab's plan allows one.
+        org = str(uuid.uuid4())
+        db.su("insert into public.organizations (id, name, slug) values (%s, %s, %s)", [org, settle, f"org-settle-{settle}"])
+        db.su("select public.grant_credits(%s, 100, 'test')", [org])
+        uid = _minor_admin(db, org)
+        ref = f"rj-before-answer-{settle}"
+        assert db.act("authenticated", uid, "select public.reserve_credits(%s, %s, 5)", [org, ref])[0][0]["reserved"] == 5
+        record(db, uid, False)
+        if settle == "capture":
+            svc("select public.start_credit_reservation(%s, %s)", [ref, org])
+            svc("select public.capture_credits(%s, 3)", [ref])
+        else:
+            svc("select public.release_credits(%s)", [ref])
+        want = "captured" if settle == "capture" else "released"
+        assert db.su("select status from public.credit_reservations where job_id = %s", [ref])[0][0] == want, settle
+        # ... and the minor still takes no new one there.
+        st, word, _ = err(lambda: db.act("authenticated", uid, "select public.reserve_credits(%s, 'rj-after-answer', 5)", [org]))
+        assert word == "adult_only_service", settle

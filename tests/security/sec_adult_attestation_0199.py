@@ -32,6 +32,8 @@ def extend(tables: dict, functions: dict) -> None:
         "adult_attestation_state": SERVICE,
         "adult_attestation_missing": SERVICE,
         "adult_attestation_gate": SERVICE,
+        # Internal: quote_film and start_film read the film's adult refusals through it.
+        "film_adult_refusals": SERVICE,
     })
 
 
@@ -40,5 +42,5 @@ def seed(conn, sc) -> None:
 
     for t in sc.tenants():
         with acting(conn, t.actor, commit=True) as s:
-            out = s.value("select public.record_adult_attestation(true, 'adult.v1', 'email_signup')")
+            out = s.value("select public.record_adult_attestation(true, '2026-11-20', 'email_signup')")
             assert out["state"] == "adult" and out["recorded"] is True, out
