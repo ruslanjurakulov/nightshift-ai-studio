@@ -217,6 +217,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             created_at: { type: "string", format: "date-time" },
             started_at: { type: ["string", "null"], format: "date-time" },
             finished_at: { type: ["string", "null"], format: "date-time" },
+            video_id: { type: ["string", "null"], description: "The video this job made (GET /videos/{id}); null until the run recorded it." },
             error: { type: ["string", "null"], description: "One plain sentence saying why a job failed; never a log." },
             error_code: {
               type: ["string", "null"],
@@ -429,7 +430,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
           },
         },
         get: {
-          summary: "List videos: newest upload first (private uploads included); runs never uploaded come last, in id order",
+          summary: "List videos, newest first",
           parameters: [
             { name: "channel_id", in: "query", schema: { type: "string" } },
             { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },

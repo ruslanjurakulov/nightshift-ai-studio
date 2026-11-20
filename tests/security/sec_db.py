@@ -668,6 +668,24 @@ def put_back_0179(conn_or_session) -> None:
         conn.execute(MIGRATION_0179.read_text(encoding="utf-8"))
 
 
+MIGRATION_0189 = MIGRATIONS / "0189_job_video_and_list_order.sql"
+ROLLBACK_0189 = REPO / "docs" / "sql" / "rollback_0189_job_video_and_list_order.sql"
+
+
+def has_0189(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.render_job_video_id(public.render_jobs)') is not null").fetchone()[0])
+
+
+def take_off_0189(conn_or_session) -> None:
+    """0189 replaces api_get_job() and oauth_get_job() (0111's bodies) and api_list_videos() (0042's). 0111's replay and rollback
+    refuse any other body, so a test that replays or rolls back 0111 takes 0189 off first (inside its own transaction)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0189(conn):
+        text = ROLLBACK_0189.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of

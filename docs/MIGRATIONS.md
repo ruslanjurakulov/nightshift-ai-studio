@@ -1990,3 +1990,16 @@ pictures, an @character's pictures, and a film clip's uploaded first frame.
   body: apply 0179 again and run its Verify query.
 - **Undo.** `docs/sql/rollback_0179_rights_acknowledgement_inputs.sql` (owner-applied): the five earlier bodies back verbatim, the
   three new functions dropped. Roll 0179 back BEFORE 0174: rollback_0174 now refuses while 0179 is on.
+
+## get_job_status names the video; list_videos lists newest first (0189)
+
+`0189_job_video_and_list_order.sql`: through the MCP connector a new video could not be found. `get_job_status` named no video, and
+`api_list_videos` (0042) sorted held runs (no `published_at`) by id after every upload, while a video made through MCP is held for review.
+
+- **Change.** `render_jobs.result_slug` (written once by the queue worker, from the run's result file, when the run succeeded; a
+  browser's insert must leave it empty). `api_get_job` and `oauth_get_job` (0111's bodies, one marked hunk each) answer `video_id`: that
+  slug's video in the job's own channel (an uploaded row before a held one), NULL until recorded. `api_list_videos` (0042's body) orders
+  by `video_listed_at(published_at, held_at)` desc: an unreadable `published_at` is unknown and sorts last, never a guessed date.
+- **Not changed.** Who may see a job or a video, every price, hold and publish rule.
+- **Undo.** `docs/sql/rollback_0189_job_video_and_list_order.sql` (owner-applied): the three earlier bodies back verbatim; the
+  `result_slug` column and its values stay.

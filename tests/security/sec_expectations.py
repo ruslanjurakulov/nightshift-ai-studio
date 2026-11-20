@@ -739,3 +739,9 @@ FUNCTIONS.update({
     "rights_acknowledgement_missing_among": SERVICE,
     "film_acknowledgement_missing": SERVICE,
 })
+
+# Migration 0189 (get_job_status names the video, list_videos newest first): internal helpers, called inside the API functions.
+FUNCTIONS.update({
+    "video_listed_at": SERVICE,
+    "render_job_video_id": SERVICE,
+})

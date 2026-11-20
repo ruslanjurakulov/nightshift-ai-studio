@@ -86,7 +86,7 @@ export interface OauthMode {
 const KEY_INSTRUCTIONS =
   "Nightshift makes faceless YouTube videos. Start with list_channels, then create_video (it costs money from the " +
   "organization's prepaid API balance, priced per minute of requested length with a minimum per video, from " +
-  "the live price list at /docs/api#pricing — say so before calling it). Poll get_job_status until the job succeeds, then list_videos to find the video. publish_video " +
+  "the live price list at /docs/api#pricing — say so before calling it). Poll get_job_status until the job succeeds; its video_id names the video (get_video). publish_video " +
   "cross-posts a finished video that passed review; YouTube uploads are private. " +
   "For a single picture, clip or voice-over from the Studio's models: list_models, then quote_generation (free), tell the person " +
   "the price in credits, and only then create_generation with that price as max_credits and a fresh idempotency_key. Generations " +
@@ -113,7 +113,7 @@ function oauthInstructions(has: (tool: string) => boolean): string {
     );
     if (!has("list_channels")) s.push("Ask the person for the channel id.");
   }
-  if (has("get_job_status")) s.push(has("list_videos") ? "Poll get_job_status until a job succeeds, then list_videos to find the video." : "Poll get_job_status until a job succeeds.");
+  if (has("get_job_status")) s.push(has("list_videos") ? "Poll get_job_status until a job succeeds; its video_id names the video (get_video, or list_videos)." : "Poll get_job_status until a job succeeds.");
   else if (has("list_videos")) s.push("list_videos and get_video show the workspace's videos.");
   if (has("publish_video"))
     s.push(
@@ -310,8 +310,8 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     {
       title: "Get job status",
       description: oauth
-        ? "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, and the credits it holds or was charged."
-        : "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, and what it was charged.",
+        ? "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, the credits it holds or was charged, and video_id: the video it made (get_video), null until the run recorded it."
+        : "A video job's status (queued, running, succeeded, failed, cancelled), a plain error sentence with a stable error_code if it failed, what it was charged, and video_id: the video it made (get_video), null until the run recorded it.",
       // strict, like every tool with arguments: a misspelt argument is refused
       // and named, never silently dropped (list_videos({ channel }) used to list
       // every channel's videos as if no filter had been asked for).
@@ -325,7 +325,7 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     "list_videos",
     {
       title: "List videos",
-      description: "The organization's videos, optionally for one channel: newest upload first (private uploads included); runs that were held for review and never uploaded come last, in id order, not by age. A job's status does not name its video yet, so match a new video by its topic or title.",
+      description: "The organization's videos, newest first (by upload, or by when a run was held for review), optionally for one channel. A succeeded job's get_job_status names its video_id.",
       inputSchema: z
         .object({
           channel_id: z.string().optional(),
