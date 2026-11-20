@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { MEDIA_ASSET_COLUMNS, coerceAssets, parseMediaId } from "@/lib/media";
 import { mediaDir, mediaUrlSecret, withUrls } from "@/lib/server/media";
+import { previewVariantFor } from "@/lib/libraryDownload";
 import { multiRatioExportEnabled } from "@/lib/multiRatioExport/flag";
 import { hiresExportEnabled } from "@/lib/hiresExport/flag";
 import {
@@ -100,6 +101,7 @@ function toEditorAssets(rows: unknown): Record<string, EditorAsset> {
       // cannot serve files — the editor says so instead of a broken player.
       viewUrl: u.viewUrl,
       thumbUrl: u.thumbUrl,
+      preview: previewVariantFor(a) !== null,
     };
   }
   return out;
