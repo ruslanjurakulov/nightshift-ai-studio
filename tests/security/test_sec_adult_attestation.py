@@ -463,7 +463,8 @@ def test_replay_and_rollback_keep_the_record(db):
             sec_db.put_back_0192(c)
     assert {s: _md5(db, s) for s in GATED} == before
     assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate"),
-                                 ("download_requests", "adult_attestation_download_gate")]
+                                 ("download_requests", "adult_attestation_download_gate"),
+                                 ("render_jobs", "adult_attestation_run_gate")]
     # The kept rows count again at once.
     assert mine(db, U_MINOR) == {"state": "minor"}
 

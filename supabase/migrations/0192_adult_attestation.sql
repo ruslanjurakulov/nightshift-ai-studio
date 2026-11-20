@@ -11,7 +11,7 @@
 --   age answer. A checkbox in a browser does not change that (CLAUDE.md rule 3: the browser never decides). The database has to
 --   hold the answer and refuse, before anything is held (rule 6). 0174 is the precedent: an append-only record plus a gate.
 --
--- CHANGE (additive; thirteen function bodies replaced, each with marked 0192 hunks and nothing else changed; two triggers added):
+-- CHANGE (additive; fifteen function bodies replaced, each with marked 0192 hunks and nothing else changed; three triggers added):
 --   adult_attestations   one row per person (user_id = auth.uid() as record_adult_attestation() read it): adult (true = confirmed
 --     18 or older, false = said under 18), terms_version (the words they answered, ^[a-z0-9._-]{1,40}$), method (email_signup,
 --     google, welcome, create), created_at. The FIRST answer stands: a trigger refuses UPDATE, DELETE and TRUNCATE for every role,
@@ -65,8 +65,24 @@
 --   THE DOWNLOAD GATE (adult_attestation_refuse_minor again, BEFORE INSERT on download_requests): a minor buys no download on the
 --     site (request_download, 0094: charged on the spot after this row is written). api_request_download (0170's body, one marked
 --     hunk) answers its own 403 adult_only_service first, before the video, the price and the API hold.
---   oauth_create_video (0094's body, one marked hunk): a minor's connection is answered 403 adult_only_service before the channel,
---     the price and the hold (the hold gate alone surfaced as this function's 500).
+--   oauth_create_video (0094's body, one marked hunk): a minor's connection is answered 403 adult_only_service after a replay of the same
+--     key is answered and before the channel, the price and the hold (the hold gate alone surfaced as this function's 500).
+--   THE RUN GATE (adult_attestation_refuse_minor again, BEFORE INSERT on render_jobs): a queued video run spends a hold that
+--     already exists (0122's payment guard accepts any open, unused rj- hold of the workspace), and the browser inserts it after its
+--     reserve, so a minor could queue a paid run on a colleague's open hold or on one of their own from before they answered. This
+--     refuses any render_jobs row written in a minor's session (Run now, a series episode, an approved storyboard, a scene repair);
+--     the dispatcher, the scheduler and the worker write with no session and pass. A refused row leaves the hold its request took
+--     open until it is released or expires, as after any other refused insert.
+--   workflow_advance_locked (0083's body, three marked hunks): a later step is made AS the member who pressed Run now (r.started_by,
+--     via api_act_as, the claims put back after; a refusal's rollback restores them itself), so create_creative_job's gates read the
+--     confirmer and never the viewer whose page advances the run. A minor viewer advances an adult's run exactly as the adult's own
+--     page would; an adult viewer makes no adults-only step for a confirmer without an answer, nor a paid step for one who said
+--     "under 18" after Run now. Such a refusal fails that step with its own word (adult_only_service / adult_attestation_required),
+--     skips the rest and ends the run as step_failed, like every other step that cannot start: the step's job and hold were never
+--     made, the earlier steps were captured when they finished, so nothing is left held. Only this internal function acts as the
+--     confirmer, and only for their run; create_creative_job called directly still gates its caller.
+--   start_workflow_run (0174's body, one marked hunk): every step's adult problem is refused before step 1 is priced or held
+--     (rule 6; the model named), as film_adult_refusals does for a film. quote_workflow still answers the price; Run now refuses.
 --
 -- A DELETED ACCOUNT. As 0174's record: user_id has no foreign key to auth.users, so deleting an auth user neither cascades into
 --   this table nor is blocked by it, and the row outlives the account (the append-only trigger would refuse a cascade anyway).
@@ -82,19 +98,23 @@
 --       request_character_swap (each holds through creative_platform_reserve)           M: in that helper (section 9)
 --     request_scene_regenerate, request_repurpose, start_series_episode, the storyboard
 --       approval (0057), start_film's hold, a direct reserve_credits                    M: the hold gate (their reserve_credits)
+--     a queued run (Run now's browser insert, a series episode, a storyboard, a repair)  M: the run gate on render_jobs
+--     a workflow (start_workflow_run, each later step in workflow_advance_locked)        M, A: Run now up front; each step as the confirmer
 --     oauth_create_video (0094: the MCP connection's video)                              M: 403 in the body (section 16)
 --     oauth_creative_quote / oauth_creative_create (0191: a connected assistant's Studio) M, A: 403 / 428 (section 13; the job's gate)
 --     request_download (0094, charged on the spot), api_request_download (0170)          M: the download gate / 403 (section 15)
 --   NOT COVERED, said plainly:
---     * In an EXEMPT organization reserve_credits takes no hold, so the hold-gate paths above are not refused there (the film, the
---       creative helper, the video API, the connection's video and both downloads ask regardless).
+--     * In an EXEMPT organization reserve_credits takes no hold, so the hold gate does not see it. The paths that write a render_jobs
+--       row there meet the run gate instead, and the film, the creative helper, a workflow, the video API, the connection's video
+--       and both downloads ask regardless; what is left is repurposing (request_repurpose writes its own request row).
 --     * A download already queued or still downloadable for the organization is answered as that same row, at no charge, before
 --       the download gate (request_download) is reached: nothing new is bought.
---     * A on the hold-gate and creative-helper paths: they choose their own models, which this file does not read. Before a
---       requires_adult model is used by one of them, that path needs the same model check.
+--     * A on the hold-gate, run-gate and creative-helper paths. Most choose their own models; request_character_swap takes a model
+--       the person picks (p_model) and does not ask the model check (BR-832-04: no character-swap model is requires_adult today).
+--       Before a requires_adult model is used by any of them, that path needs the same model check.
 --     * A workflow quote (workflow_quote_steps prices through creative_price): its steps are refused when they are created.
 --     * Open in docs/security/LEDGER.md: the Film Studio screen does not yet name these refusals (BR-832-01), nothing stops a registry
---       change clearing requires_adult (BR-832-02), and the exempt organization above (BR-832-03).
+--       change clearing requires_adult (BR-832-02), the exempt organization above (BR-832-03) and character swap (BR-832-04).
 --     * The two DORMANT requests that start provider work without any hold, the series plan request (0127) and the voice clone
 --       request (0117), are granted to nobody today, so nobody reaches them. The migration that grants either must add this gate
 --       to it (a trigger here would tie 0192 to both files, which the security lab replays and rolls back on their own).
@@ -102,20 +122,21 @@
 -- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space):
 --   quote_creative_job and creative_platform_reserve (0036), route_model (0075), sellable_models (0188), create_creative_job and
 --   api_creative_refusal (0174), api_create_video (0147), quote_film (0171), start_film (0187), oauth_creative_quote and
---   oauth_creative_models (0191), api_request_download (0170) and oauth_create_video (0094); none redefined since. Signatures,
+--   oauth_creative_models (0191), api_request_download (0170), oauth_create_video (0094), workflow_advance_locked (0083) and
+--   start_workflow_run (0174); none redefined since. Signatures,
 --   SECURITY DEFINER (or not), the pinned search_path and the grants stay as they were (restated).
 -- NOT CHANGED: creative_price, creative_route_quote, quote_creative_route, reroute_creative_job, reserve_credits, film_price,
 --   film_precheck, every price, hold and ledger rule, every model's availability.
 --
 -- REPLAY. This file replays safely onto itself. 0188, 0187, 0174, 0171, 0170, 0147, 0125 and 0124 refuse to replay over it (their
---   drift guards accept only their own bodies), but 0036, 0075, 0093, 0094 and 0191 do NOT protect it: re-running one of them after
---   this file SILENTLY puts the old quote_creative_job / creative_platform_reserve (0036), route_model (0075, also
---   create_creative_job and api_creative_refusal), oauth_create_video (0093, 0094) or oauth_creative_quote / oauth_creative_models
---   (0191) back and removes that gate. Undo 0192 first (its rollback), re-run the older file, then apply 0192 again; after any manual replay run the
+--   drift guards accept only their own bodies), but 0036, 0073, 0074, 0075, 0083, 0093, 0094 and 0191 do NOT protect it: re-running
+--   one of them after this file SILENTLY puts the old quote_creative_job / creative_platform_reserve (0036), workflow_advance_locked
+--   (0073, 0074, 0083; 0073 also start_workflow_run), route_model (0075, also create_creative_job and api_creative_refusal),
+--   oauth_create_video (0093, 0094) or oauth_creative_quote / oauth_creative_models (0191) back and removes that gate. Undo 0192 first (its rollback), re-run the older file, then apply 0192 again; after any manual replay run the
 --   Verify query below.
 --
 -- NUMBER. 0192, the next number after 0191 on main (renumbered from the placeholder 0199). Needs 0018, 0020, 0030, 0031, 0035,
---   0036, 0075, 0093, 0094, 0124, 0125, 0147, 0170, 0171, 0174, 0187, 0188 and 0191.
+--   0036, 0073, 0075, 0083, 0093, 0094, 0122, 0124, 0125, 0147, 0170, 0171, 0174, 0187, 0188 and 0191.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
 --   select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc p
@@ -131,21 +152,24 @@
 --                    'public.oauth_creative_quote(text, text, text, jsonb, text)'::regprocedure,
 --                    'public.oauth_creative_models(text, text, text)'::regprocedure,
 --                    'public.api_request_download(text, text, text, text, text, text)'::regprocedure,
---                    'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure);
+--                    'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure,
+--                    'public.workflow_advance_locked(uuid, boolean)'::regprocedure,
+--                    'public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)'::regprocedure);
 --   expected BEFORE quote_creative_job 8494b320cece395444edec700a2f1696 (0036), route_model e4344e61983e7decb4b1eac73761fbf0 (0075),
 --     sellable_models 0ab9e7da07b4347010a887c5118d5150 (0188), create_creative_job 88107b00b0a8c143606ed17f5898c98d (0174),
 --     api_creative_refusal e6ec45d0d912389a05eb2d40261c2c2a (0174), creative_platform_reserve 4a61076948e0dd8992d37de2a9016607 (0036),
 --     quote_film 8839e2cb264663acf98c6f49aaaf89a5 (0171), start_film 5468183a8f24a48f708efcbbf9d2d22c (0187),
 --     api_create_video cba47be1a674f5cea3b5d7443bc31bab (0147), oauth_creative_quote b75707212f0ce249f4f8bce5b1079070 (0191),
 --     oauth_creative_models bf21f463a6465cfbb45e25bef841ed1f (0191), api_request_download b59ca71d0e0379e217e47a6987c9ed0c (0170),
---     oauth_create_video 244a5779e4388525f5f345b59379029f (0094);
+--     oauth_create_video 244a5779e4388525f5f345b59379029f (0094), workflow_advance_locked 2d63f9fb091efa71d8ae466cba0b42db (0083),
+--     start_workflow_run 8b3c4b4afbc19e6f336c09b4692ad7ed (0174);
 --   AFTER d80ebb592f6383c7289952a3411bf758, 63ee303ce0f98a24fafa6bf934578f81, 40f61462ddae2fc0e83a0956f4d8b75b,
 --     a5e00e65d1161bccd2acefb7745e659b, 2553f7ab2715949762b6fc6fd7cf3300, 96d5dd0351ee79ebdbf6b649f92f9e6c,
 --     00846d0622ab379810c633b2446436b0, 595e90f836f992699cf9e920ad646787, b8ca36fa1be8f7a4837f095a6d534631,
 --     e3340606260711781f202aff7abdcdee, beafb530957690f51366c995468ad36f, 4ca4086b260f0cec97edc16acb5e2c6b,
---     4c01906922aa8bb5a2205dd76fbfe992 (this file).
--- Undo: docs/sql/rollback_0192_adult_attestation.sql (owner-applied). It puts the thirteen earlier bodies back and drops the hold
---   and download gate triggers, the two calls and the helpers. It KEEPS the record: adult_attestations (with its append-only triggers) stays, and
+--     0b1807540e03ba06c0d98695a451c147, 553dd9f65b62541fd3653ed55288ae46, 67c4d21342ed9c6c144ec2559d4b34cc (this file).
+-- Undo: docs/sql/rollback_0192_adult_attestation.sql (owner-applied). It puts the fifteen earlier bodies back and drops the hold,
+--   run and download gate triggers, the two calls and the helpers. It KEEPS the record: adult_attestations (with its append-only triggers) stays, and
 --   applying 0192 again picks it up as its own.
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
@@ -189,7 +213,7 @@ begin
   if to_regprocedure('public.film_acknowledgement_missing(public.films, uuid)') is null then
     raise exception '0192 is built on 0187''s start_film: apply 0187_rights_acknowledgement_inputs.sql first';
   end if;
-  -- The thirteen bodies this file replaces: the earlier one, or this file's own (a replay).
+  -- The fifteen bodies this file replaces: the earlier one, or this file's own (a replay).
   for r in select * from (values
       ('public.quote_creative_job(uuid, text, text, jsonb)', '8494b320cece395444edec700a2f1696', 'd80ebb592f6383c7289952a3411bf758', '0036'),
       ('public.route_model(text, jsonb, text, uuid, text)', 'e4344e61983e7decb4b1eac73761fbf0', '63ee303ce0f98a24fafa6bf934578f81', '0075'),
@@ -203,7 +227,9 @@ begin
       ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'b75707212f0ce249f4f8bce5b1079070', 'e3340606260711781f202aff7abdcdee', '0191'),
       ('public.oauth_creative_models(text, text, text)', 'bf21f463a6465cfbb45e25bef841ed1f', 'beafb530957690f51366c995468ad36f', '0191'),
       ('public.api_request_download(text, text, text, text, text, text)', 'b59ca71d0e0379e217e47a6987c9ed0c', '4ca4086b260f0cec97edc16acb5e2c6b', '0170'),
-      ('public.oauth_create_video(text, text, jsonb, text, text)', '244a5779e4388525f5f345b59379029f', '4c01906922aa8bb5a2205dd76fbfe992', '0094')) v(sig, was, now_, src) loop
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '244a5779e4388525f5f345b59379029f', '0b1807540e03ba06c0d98695a451c147', '0094'),
+      ('public.workflow_advance_locked(uuid, boolean)', '2d63f9fb091efa71d8ae466cba0b42db', '553dd9f65b62541fd3653ed55288ae46', '0083'),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '8b3c4b4afbc19e6f336c09b4692ad7ed', '67c4d21342ed9c6c144ec2559d4b34cc', '0174')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
       raise exception '0192 found % with a body that is neither %''s nor 0192''s (md5 %): read the live body first', r.sig, r.src, h;
@@ -245,7 +271,8 @@ create table if not exists public.adult_attestations (
   adult         boolean not null,
   -- The version of the words they answered (command-center names it); bounded, so the record cannot carry free text.
   terms_version text not null,
-  -- Where the question was answered.
+  -- How it was asked: 'google' for an account that signed in with Google (the session's provider, whichever page asked),
+  -- otherwise the page that asked (email_signup, welcome, create).
   method        text not null,
   created_at    timestamptz not null default now(),
   constraint adult_attestations_terms_version_check check (terms_version ~ '^[a-z0-9._-]{1,40}$'),
@@ -411,6 +438,19 @@ create trigger adult_attestation_hold_gate
 -- balance (api_request_download), and both write one download_requests row before the charge. BEFORE INSERT here refuses a person
 -- who said they are under 18 before anything is charged, on the site's path, whose body (0094's) this file cannot replace (the lab
 -- replays 0094). The API path answers its own typed 403 earlier (section 15). The worker updates these rows and has no session.
+drop trigger if exists adult_attestation_run_gate on public.render_jobs;
+-- The run gate: a queued video run spends a hold that already exists (render_jobs_payment_guard accepts any open, unused rj- hold
+-- of the workspace, 0122), and the browser inserts that row itself after its reserve_credits. So the hold gate alone lets a person
+-- who said they are under 18 queue a paid run on a colleague's open hold, or on their own hold taken before they answered. BEFORE
+-- INSERT here refuses them, on every path that writes a job in a person's session: the Command Center's Run now, the video API and
+-- the connection's video (which answer their own typed 403 first), a series episode, an approved storyboard, a scene repair. The
+-- dispatcher, the scheduler and the worker write with no session and pass. The refused row is not written; a hold the person took
+-- for it stays open until it is released or expires, as after any other refused insert (the route does not release on an insert
+-- error today).
+create trigger adult_attestation_run_gate
+  before insert on public.render_jobs
+  for each row execute function public.adult_attestation_refuse_minor();
+
 drop trigger if exists adult_attestation_download_gate on public.download_requests;
 create trigger adult_attestation_download_gate
   before insert on public.download_requests
@@ -1804,12 +1844,6 @@ begin
   begin
     v_org := (ctx ->> 'org_id')::uuid;
     v_grant := (ctx ->> 'grant_id')::uuid;
-    -- 0192: the connection acts as its person. Someone who said they are under 18 gets no video: refused before the channel, the
-    -- price and the hold, as a 403 that says why (the hold gate alone would be caught by this block's "when others" as a 500).
-    if public.adult_attestation_state(auth.uid()) = 'minor' then
-      return public.api_finish(ctx, public.api_err(403, 'adult_only_service',
-        'Nightshift is for adults (18 or older). Nothing was held or charged.'));
-    end if;
     if p_idem_key is not null and p_idem_key !~ '^[A-Za-z0-9_:.-]{1,255}$' then
       return public.api_finish(ctx, public.api_err(400, 'invalid_idempotency_key',
         'idempotency_key: 1-255 characters of A-Z a-z 0-9 _ : . -'));
@@ -1828,6 +1862,13 @@ begin
       return public.api_finish(ctx, public.api_ok(jsonb_build_object('job_id', prior.render_job_id,
         'channel_id', prior.channel_id, 'status', 'queued', 'price_credits', prior.quoted_credits), 200)
         || jsonb_build_object('replayed', true));
+    end if;
+    -- 0192: the connection acts as its person. Someone who said they are under 18 gets no new video: refused after a replay of the
+    -- same key is answered (a job made before the answer is that job, not a false "nothing was held"), and before the channel,
+    -- the price and the hold, as a 403 that says why (the hold gate alone would be caught by this block's "when others" as a 500).
+    if public.adult_attestation_state(auth.uid()) = 'minor' then
+      return public.api_finish(ctx, public.api_err(403, 'adult_only_service',
+        'Nightshift is for adults (18 or older). Nothing was held or charged.'));
     end if;
 
     select * into ch from public.channels c where c.channel_id = p_channel_id;
@@ -1942,7 +1983,369 @@ revoke all on function public.oauth_create_video(text, text, jsonb, text, text) 
 grant execute on function public.oauth_create_video(text, text, jsonb, text, text) to anon;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 17. Privileges
+-- 17. A workflow's later steps: 0083's workflow_advance_locked, three marked hunks (made as the confirmer)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.workflow_advance_locked(p_run uuid, p_strict boolean default false)
+  returns void
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  r        public.workflow_runs;
+  s        public.workflow_run_steps;
+  j        public.creative_jobs;
+  out_     jsonb;
+  params   jsonb;
+  pr       record;
+  src_job  public.creative_jobs;
+  asset    uuid;
+  committed numeric;
+  why_code text;
+  why      text;
+  detail   text;
+  guard    integer := 0;
+  -- BR-L-011: the step could not start for a reason that passes; it waits.
+  wait_    boolean := false;
+  -- 0192: the session's claims while a later step is made as the member who confirmed the run (see below).
+  saved_c  text;  -- 0192
+  saved_s  text;  -- 0192
+  saved_e  text;  -- 0192
+begin
+  select * into r from public.workflow_runs where id = p_run for update;
+  if not found then
+    return;
+  end if;
+  loop
+    guard := guard + 1;
+    exit when guard > 8;
+    exit when r.status <> 'running';
+
+    select * into s from public.workflow_run_steps
+     where run_id = r.id and status in ('pending', 'running')
+     order by step_index limit 1;
+
+    if not found then
+      -- Every step is settled and none failed (a failure ends the run below).
+      update public.workflow_runs
+         set status = 'completed', finished_at = now(), updated_at = now(),
+             charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+       where id = r.id returning * into r;
+      exit;
+    end if;
+
+    if s.status = 'running' then
+      select * into j from public.creative_jobs where id = s.job_id;
+      if j.status = 'completed' then
+        update public.workflow_run_steps
+           set status = 'completed', charged_credits = coalesce(j.charged_credits, 0),
+               finished_at = coalesce(j.finished_at, now())
+         where run_id = s.run_id and step_index = s.step_index;
+        update public.workflow_runs
+           set updated_at = now(),
+               charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+         where id = r.id returning * into r;
+        continue;
+      elsif j.status in ('failed', 'cancelled', 'expired') then
+        update public.workflow_run_steps
+           set status = case when j.status = 'cancelled' then 'cancelled' else 'failed' end,
+               charged_credits = 0, error_code = coalesce(j.error_code, j.status), error = left(j.error, 2000),
+               finished_at = coalesce(j.finished_at, now())
+         where run_id = s.run_id and step_index = s.step_index;
+        -- Later steps were never created, so they never held anything.
+        update public.workflow_run_steps set status = 'skipped'
+         where run_id = r.id and status = 'pending';
+        update public.workflow_runs
+           set status = case when r.cancel_requested_at is not null then 'cancelled' else 'failed' end,
+               error_code = case when r.cancel_requested_at is not null then 'cancelled' else 'step_failed' end,
+               error = format('step %s did not finish (%s); later steps were not started and nothing was held for them',
+                              s.step_index + 1, coalesce(j.error_code, j.status)),
+               finished_at = now(), updated_at = now(),
+               charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+         where id = r.id returning * into r;
+        exit;
+      else
+        exit; -- the job is still being made
+      end if;
+    end if;
+
+    -- s is the next step to start; every step before it has completed.
+    if r.cancel_requested_at is not null then
+      update public.workflow_run_steps set status = 'skipped' where run_id = r.id and status = 'pending';
+      update public.workflow_runs
+         set status = 'cancelled', error_code = 'cancelled', finished_at = now(), updated_at = now(),
+             charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+       where id = r.id returning * into r;
+      exit;
+    end if;
+
+    why_code := null;
+    wait_ := false;
+    if r.created_at < now() - interval '24 hours' then
+      why_code := 'confirmation_expired';
+      why := 'the price was confirmed more than 24 hours ago; run the workflow again to confirm it afresh';
+    end if;
+
+    -- BR-L-006: a later step spends on the confirmation of the member who
+    -- pressed Run now, whoever's page carries the run on. Once that member may
+    -- no longer run things in the run's organization, nothing more starts.
+    if why_code is null and s.step_index > 0
+       and not public.workflow_confirmer_may_spend(r.started_by, r.org_id) then
+      why_code := 'confirmation_revoked';
+      why := 'the member who confirmed this run may no longer run workflows in this organization';
+    end if;
+
+    if why_code is null then
+      -- Fill in the file an earlier step made.
+      params := s.params;
+      for pr in select key, value from jsonb_each(s.params) loop
+        if jsonb_typeof(pr.value) = 'object' and pr.value ? '$step' then
+          asset := null;
+          select cj.* into src_job
+            from public.workflow_run_steps ss
+            join public.creative_jobs cj on cj.id = ss.job_id
+           where ss.run_id = r.id and ss.step_index = (pr.value ->> '$step')::integer
+             and ss.status = 'completed' and cj.org_id = r.org_id;
+          asset := case when found then src_job.result_asset_ids[1] end;
+          if asset is null then
+            why_code := 'missing_output';
+            why := format('step %s made no file for this step to start from', (pr.value ->> '$step')::integer + 1);
+          else
+            params := params || jsonb_build_object(pr.key, asset::text);
+          end if;
+        end if;
+      end loop;
+    end if;
+
+    if why_code is null then
+      -- The steps together may not pass what was confirmed.
+      select coalesce(sum(quoted_credits), 0) into committed
+        from public.workflow_run_steps where run_id = r.id and status in ('running', 'completed');
+      if committed + s.quoted_credits > r.max_credits then
+        why_code := 'over_confirmed_total';
+        why := 'starting this step would pass the total that was confirmed';
+      end if;
+    end if;
+
+    if why_code is null then
+      begin
+        -- 0192: a step spends on the confirmation of the member who pressed Run now (BR-L-006), so it is made AS that member:
+        -- create_creative_job's gates (the adult answer, membership, rights acknowledgements) read the confirmer, never whoever's
+        -- page carries the run on. A minor viewer neither fails an adult's paid run nor, as an adult viewer, makes an adults-only
+        -- step for a member without an answer (or a paid one for a member who answered "under 18" after Run now). Only this
+        -- internal function acts as the confirmer, and only for a run of theirs; a direct create_creative_job is still the caller's.
+        saved_c := current_setting('request.jwt.claims', true);
+        saved_s := current_setting('request.jwt.claim.sub', true);
+        saved_e := current_setting('request.jwt.claim.email', true);
+        perform public.api_act_as(r.started_by);
+        out_ := public.create_creative_job(
+          r.org_id, s.capability, s.model, params, 'exact',
+          'wf:' || r.id::text || ':' || s.step_index::text, s.quoted_credits);
+        -- 0192: the session is the viewer's again (on a refusal the block's rollback puts the claims back by itself).
+        perform set_config('request.jwt.claims', coalesce(saved_c, ''), true);
+        perform set_config('request.jwt.claim.sub', coalesce(saved_s, ''), true);
+        perform set_config('request.jwt.claim.email', coalesce(saved_e, ''), true);
+        if out_ is null or (out_ -> 'job' ->> 'id') is null or (out_ -> 'job' ->> 'org_id')::uuid <> r.org_id then
+          raise exception 'creative job not created' using errcode = 'NS400';
+        end if;
+        -- BR-L-005: a step flips to running in the same transaction that creates
+        -- its job, so its own start is never a replay. A replay means a job was
+        -- made beforehand under this step's key (keys and run ids are readable
+        -- by members): it was not priced against this step's confirmed price and
+        -- is never adopted.
+        if coalesce((out_ ->> 'replay')::boolean, false) then
+          raise exception 'idempotency_conflict' using errcode = 'NS409',
+            detail = 'a job already holds this step''s idempotency key; it was not made by this run';
+        end if;
+        update public.workflow_run_steps
+           set status = 'running', job_id = (out_ -> 'job' ->> 'id')::uuid, started_at = now()
+         where run_id = s.run_id and step_index = s.step_index;
+        -- BR-L-011: a step that waited starts with no stale reason on it.
+        update public.workflow_run_steps set error_code = null, error = null
+         where run_id = s.run_id and step_index = s.step_index and error_code is not null;
+        update public.workflow_runs set updated_at = now() where id = r.id;
+        continue;
+      exception when others then
+        get stacked diagnostics detail = pg_exception_detail;
+        -- A transient failure (SQLSTATE class 40: deadlock victim, serialization
+        -- failure) is not a refusal: raised, nothing is committed, and the step
+        -- is still pending for the next poll. Never a failed, already-paid run.
+        if sqlstate like '40%' then
+          raise;
+        end if;
+        if p_strict and s.step_index = 0 then
+          raise;
+        end if;
+        -- BR-L-011: the plan's parallel runs all in use (NS429, 0034's hold
+        -- trigger) or a balance short for this step (NS402, reserve_credits)
+        -- passes: another job finishes, credits are added. The job and its hold
+        -- were rolled back with this block, so the step waits, holding nothing.
+        wait_ := sqlstate in ('NS429', 'NS402');
+        why_code := case
+          when sqlstate = 'NS402' then 'insufficient_credits'
+          when sqlstate = 'NS429' then 'run_limit_reached'
+          when sqlstate = '42501' then 'forbidden'
+          when sqlstate in ('NS400', 'NS409') and sqlerrm ~ '^[a-z0-9_]{1,64}$' then sqlerrm
+          else 'refused' end;
+        why := left(coalesce(nullif(detail, ''), sqlerrm), 500);
+      end;
+    end if;
+
+    -- BR-L-011: waiting, not failed. The step stays pending with the reason on
+    -- record (written only when it changed, so a polling page does not rewrite
+    -- it), later steps stay pending, and the run stays running. The next
+    -- advance tries again; after 24 hours confirmation_expired (above) ends it.
+    if wait_ then
+      update public.workflow_run_steps set error_code = why_code, error = why
+       where run_id = s.run_id and step_index = s.step_index and status = 'pending'
+         and (error_code is distinct from why_code or error is distinct from why);
+      exit;
+    end if;
+
+    -- This step could not start (or its input is missing): it fails, the run
+    -- with it, and the steps after it are skipped without ever being created.
+    update public.workflow_run_steps
+       set status = 'failed', charged_credits = 0, error_code = why_code, error = why, finished_at = now()
+     where run_id = s.run_id and step_index = s.step_index;
+    update public.workflow_run_steps set status = 'skipped' where run_id = r.id and status = 'pending';
+    update public.workflow_runs
+       set status = 'failed', error_code = 'step_failed',
+           error = format('step %s could not start (%s); later steps were not started and nothing was held for them',
+                          s.step_index + 1, why_code),
+           finished_at = now(), updated_at = now(),
+           charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+     where id = r.id returning * into r;
+    exit;
+  end loop;
+  -- BR-L-011: a step that was waiting and is now skipped (Stop, or a step
+  -- before it failed) never started; it keeps no waiting reason.
+  update public.workflow_run_steps set error_code = null, error = null
+   where run_id = r.id and status = 'skipped' and error_code is not null;
+end
+$$;
+revoke all on function public.workflow_advance_locked(uuid, boolean) from public, anon, authenticated, service_role;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 18. A workflow's Run now: 0174's start_workflow_run, one marked hunk (every step's adult problem first)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.start_workflow_run(
+  p_run uuid,
+  p_workflow uuid,
+  p_version integer,
+  p_inputs jsonb default '{}'::jsonb,
+  p_max_credits numeric default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  uid     uuid := auth.uid();
+  w       public.workflows;
+  prior   public.workflow_runs;
+  vals    jsonb;
+  hash_   text;
+  q       jsonb;
+  total   numeric;
+  acc     public.credit_accounts;
+  st      record;
+begin
+  if uid is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if p_run is null then
+    perform public.creative_refuse('invalid_params', 'a run id is required');
+  end if;
+  select * into w from public.workflows where id = p_workflow;
+  if not found or w.archived_at is not null or not public.is_org_member(w.org_id) then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if not public.is_org_member(w.org_id, 'editor') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- The operator's organization is paid by the platform: only a platform admin
+  -- spends there (create_creative_job asks the same of every step).
+  if public.credits_exempt(w.org_id) and not public.is_platform_admin() then
+    raise exception 'forbidden' using errcode = '42501',
+      detail = 'runs in the operator''s organization are started by a platform admin';
+  end if;
+  if p_max_credits is null or p_max_credits < 0 then
+    perform public.creative_refuse('confirm_price', 'the confirmed total is required');
+  end if;
+
+  -- The account first: every create (and reserve) for this organization queues
+  -- behind it, so a replay of the same run finds the first one's committed rows.
+  perform public.credit_account_lock(w.org_id);
+
+  hash_ := md5(jsonb_build_object('workflow', p_workflow, 'inputs', coalesce(p_inputs, '{}'::jsonb),
+                                  'max', round(p_max_credits, 2)::text)::text);
+  select * into prior from public.workflow_runs where id = p_run;
+  if found then
+    -- The same id under another organization, another workflow, other inputs or
+    -- another confirmed total is a different request: refused without saying
+    -- anything about what it collided with.
+    if prior.org_id <> w.org_id or prior.request_hash is distinct from hash_ then
+      perform public.creative_refuse('idempotency_conflict',
+        'this run id was used for a different request', 'NS409');
+    end if;
+    perform public.workflow_advance_locked(prior.id);
+    return public.workflow_run_json(prior.id) || jsonb_build_object('replay', true);
+  end if;
+
+  if p_version is distinct from w.version then
+    perform public.creative_refuse('workflow_changed',
+      format('the workflow is now version %s, not %s', w.version, p_version), 'NS409');
+  end if;
+
+  vals := public.workflow_bind_inputs(w, p_inputs);
+  q := public.workflow_quote_steps(w, vals);
+  -- 0192: every step's adult problem before step 1 is held (rule 6, as film_adult_refusals for a film): a person who said they are
+  -- under 18 starts nothing (adult_only_service); a step whose model's vendor terms are 18+ needs an adult answer
+  -- (adult_attestation_required, the model named). The later steps ask again when they are made, as the confirmer.
+  for st in select v, ord from jsonb_array_elements(w.steps) with ordinality as t(v, ord) loop
+    perform public.adult_attestation_gate(uid, st.v ->> 'model');
+  end loop;
+  -- 0174: named, before the generic 'unpriced': which steps need the Studio's acknowledgement (workflow_quote_steps).
+  if exists (select 1 from jsonb_array_elements(q -> 'steps') e where e.value ->> 'reason' = 'acknowledgement_required') then
+    perform public.creative_refuse('acknowledgement_required',
+      format('step(s) %s use a model that asks you to confirm your rights to its input; make them in the Studio',
+             (select string_agg(((e.value ->> 'step_index')::integer + 1)::text, ', ') from jsonb_array_elements(q -> 'steps') e
+               where e.value ->> 'reason' = 'acknowledgement_required')));
+  end if;
+  if not (q ->> 'priced')::boolean then
+    perform public.creative_refuse('unpriced',
+      format('step(s) %s cannot be priced, so the workflow has no price',
+             (select string_agg((u.x::integer + 1)::text, ', ') from jsonb_array_elements_text(q -> 'unpriced_steps') u(x))));
+  end if;
+  total := (q ->> 'total')::numeric;
+  if round(p_max_credits, 2) <> round(total, 2) then
+    perform public.creative_refuse('price_changed',
+      format('price=%s confirmed=%s', total, round(p_max_credits, 2)), 'NS409');
+  end if;
+  if not public.credits_exempt(w.org_id) then
+    select * into acc from public.credit_accounts where org_id = w.org_id;
+    if coalesce(acc.balance - acc.reserved, 0) < total then
+      perform public.creative_refuse('insufficient_credits',
+        format('available=%s needed=%s', coalesce(acc.balance - acc.reserved, 0), total), 'NS402');
+    end if;
+  end if;
+
+  insert into public.workflow_runs
+    (id, org_id, workflow_id, workflow_name, workflow_version, inputs, max_credits, request_hash, started_by)
+  values
+    (p_run, w.org_id, w.id, w.name, w.version, vals, round(total, 2), hash_, uid);
+  for st in select v, ord from jsonb_array_elements(w.steps) with ordinality as t(v, ord) loop
+    insert into public.workflow_run_steps (run_id, step_index, org_id, capability, model, params, quoted_credits)
+    values (p_run, st.ord - 1, w.org_id, st.v ->> 'capability', st.v ->> 'model',
+            public.workflow_fill_params(st.v -> 'params', vals),
+            (q -> 'steps' -> (st.ord - 1)::integer ->> 'credits')::numeric);
+  end loop;
+
+  perform public.workflow_advance_locked(p_run, true);
+  return public.workflow_run_json(p_run) || jsonb_build_object('replay', false);
+end
+$$;
+revoke all on function public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) from public, anon, authenticated, service_role;
+grant execute on function public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 19. Privileges
 -- ───────────────────────────────────────────────────────────────────────────
 
 revoke all on function public.adult_attestations_append_only() from public, anon, authenticated, service_role;
@@ -1958,7 +2361,7 @@ grant execute on function public.record_adult_attestation(boolean, text, text) t
 grant execute on function public.my_adult_attestation() to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 18. End state (refuses the whole transaction if any of it is not so)
+-- 20. End state (refuses the whole transaction if any of it is not so)
 -- ───────────────────────────────────────────────────────────────────────────
 
 do $$
@@ -1978,7 +2381,9 @@ begin
       ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'e3340606260711781f202aff7abdcdee'),
       ('public.oauth_creative_models(text, text, text)', 'beafb530957690f51366c995468ad36f'),
       ('public.api_request_download(text, text, text, text, text, text)', '4ca4086b260f0cec97edc16acb5e2c6b'),
-      ('public.oauth_create_video(text, text, jsonb, text, text)', '4c01906922aa8bb5a2205dd76fbfe992')) v(sig, want) loop
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '0b1807540e03ba06c0d98695a451c147'),
+      ('public.workflow_advance_locked(uuid, boolean)', '553dd9f65b62541fd3653ed55288ae46'),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '67c4d21342ed9c6c144ec2559d4b34cc')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
       raise exception '0192 end state: % is not 0192''s body', r.sig;
     end if;
@@ -1998,7 +2403,9 @@ begin
       ('public.adult_attestation_refuse_minor()', false, false),
       ('public.creative_platform_reserve(uuid, text, numeric)', false, false),
       ('public.quote_film(uuid, integer)', true, false),
-      ('public.start_film(uuid, text, text)', true, false)) v(sig, member, svc) loop
+      ('public.start_film(uuid, text, text)', true, false),
+      ('public.workflow_advance_locked(uuid, boolean)', false, false),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', true, false)) v(sig, member, svc) loop
     if exists (select 1 from pg_proc p where p.oid = to_regprocedure(r.sig)
                 and (not p.prosecdef or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp')))
@@ -2045,9 +2452,12 @@ begin
       raise exception '0192 end state: % is not the SECURITY DEFINER callable by anon only that its file left', r.sig;
     end if;
   end loop;
-  -- The hold gate and the download gate: BEFORE INSERT, row level, unconditional, on these two tables, and nowhere else.
+  -- The hold, run and download gates: BEFORE INSERT, row level, unconditional, on these three tables, and nowhere else.
   if (select count(*) from pg_trigger t join pg_proc f on f.oid = t.tgfoid
-       where f.proname = 'adult_attestation_refuse_minor' and not t.tgisinternal) <> 2
+       where f.proname = 'adult_attestation_refuse_minor' and not t.tgisinternal) <> 3
+     or not exists (select 1 from pg_trigger t
+                     where t.tgrelid = 'public.render_jobs'::regclass and t.tgname = 'adult_attestation_run_gate'
+                       and t.tgtype = 7 and t.tgqual is null and t.tgenabled = 'O')
      or not exists (select 1 from pg_trigger t
                      where t.tgrelid = 'public.download_requests'::regclass and t.tgname = 'adult_attestation_download_gate'
                        and t.tgtype = 7 and t.tgqual is null and t.tgenabled = 'O')
@@ -2055,12 +2465,12 @@ begin
                      where t.tgrelid = 'public.credit_reservations'::regclass and t.tgname = 'adult_attestation_hold_gate'
                        and t.tgtype = 7  -- ROW | BEFORE | INSERT
                        and t.tgqual is null and t.tgenabled = 'O') then
-    raise exception '0192 end state: the hold gate (credit_reservations) or the download gate (download_requests) is missing or not BEFORE INSERT';
+    raise exception '0192 end state: the hold, run or download gate (credit_reservations, render_jobs, download_requests) is missing or not BEFORE INSERT';
   end if;
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- Verify (run after applying, AND after any manual replay of 0036, 0075, 0093, 0094 or 0191; every column should read true). A false gate column
+-- Verify (run after applying, AND after any manual replay of 0036, 0073, 0074, 0075, 0083, 0093, 0094 or 0191; every column should read true). A false gate column
 -- means an older file was re-run over this one and the adult gate is gone there: apply 0192 again (see REPLAY above).
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
@@ -2084,6 +2494,12 @@ end $$;
 --     where oid = 'public.api_create_video(text,text,jsonb,text,text,text)'::regprocedure) = 'b8ca36fa1be8f7a4837f095a6d534631'       as video_api_gate,
 --   (select count(*) = 1 from pg_trigger where tgname = 'adult_attestation_hold_gate'
 --     and tgrelid = 'public.credit_reservations'::regclass and tgenabled = 'O')                                          as hold_gate,
+--   (select count(*) = 1 from pg_trigger where tgname = 'adult_attestation_run_gate'
+--     and tgrelid = 'public.render_jobs'::regclass and tgenabled = 'O')                                                  as run_gate,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+--     where oid = 'public.workflow_advance_locked(uuid,boolean)'::regprocedure) = '553dd9f65b62541fd3653ed55288ae46' as workflow_advance_locked_gate,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+--     where oid = 'public.start_workflow_run(uuid,uuid,integer,jsonb,numeric)'::regprocedure) = '67c4d21342ed9c6c144ec2559d4b34cc' as start_workflow_run_gate,
 --   (select count(*) = 1 from pg_trigger where tgname = 'adult_attestation_download_gate'
 --     and tgrelid = 'public.download_requests'::regclass and tgenabled = 'O')                                            as download_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
@@ -2093,7 +2509,7 @@ end $$;
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.api_request_download(text,text,text,text,text,text)'::regprocedure) = '4ca4086b260f0cec97edc16acb5e2c6b' as api_request_download_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.oauth_create_video(text,text,jsonb,text,text)'::regprocedure) = '4c01906922aa8bb5a2205dd76fbfe992' as oauth_create_video_gate,
+--     where oid = 'public.oauth_create_video(text,text,jsonb,text,text)'::regprocedure) = '0b1807540e03ba06c0d98695a451c147' as oauth_create_video_gate,
 --   (select count(*) = 2 from pg_trigger where tgrelid = 'public.adult_attestations'::regclass
 --     and tgname in ('adult_attestations_append_only', 'adult_attestations_no_truncate'))                                 as append_only,
 --   not has_table_privilege('service_role', 'public.adult_attestations', 'INSERT')

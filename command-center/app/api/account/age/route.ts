@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
 import { AGE_PAGE_METHODS, AGE_TERMS_VERSION, coerceAgeState } from "@/lib/age";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,8 @@ export const POST = requireSameOrigin(async (request: Request) => {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
   let body: unknown;
   try {
-    body = await request.json();
+    // Two fields: the default cap is far more than enough, and nothing past it is ever buffered (BR-S-019).
+    body = await parseJsonCapped(request);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400, headers: NO_STORE });
   }

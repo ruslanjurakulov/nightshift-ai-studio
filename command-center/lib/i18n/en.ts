@@ -2431,6 +2431,7 @@ export const en = {
       errors: {
         insufficient_credits: "Not enough credits.",
         master_not_available: "There is no full-quality master for this quality.",
+        adult_only_service: "Nightshift is for adults (18+). You told us you are under 18, so downloads are not available on this account. Nothing was charged. If that answer was a mistake, contact support.",
         unpriced: "This quality is not priced yet.",
         price_changed: "The price changed — check it and confirm again.",
         forbidden: "You don't have access to buy a download here.",

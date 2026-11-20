@@ -2413,6 +2413,7 @@ export const uz: Dictionary = {
       errors: {
         insufficient_credits: "Kredit yetarli emas.",
         master_not_available: "Bu sifat uchun toʻliq sifatli master yoʻq.",
+        adult_only_service: "Nightshift kattalar uchun (18+). Siz 18 yoshga toʻlmaganingizni aytgansiz, shuning uchun bu akkauntda yuklamalar mavjud emas. Hech narsa yechilmadi. Agar javob xato boʻlsa, qoʻllab-quvvatlash xizmatiga yozing.",
         unpriced: "Bu sifat uchun narx hali belgilanmagan.",
         price_changed: "Narx oʻzgardi — tekshirib, qayta tasdiqlang.",
         forbidden: "Bu yerda yuklamani sotib olishga ruxsatingiz yoʻq.",

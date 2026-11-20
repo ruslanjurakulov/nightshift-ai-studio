@@ -177,3 +177,27 @@ def test_a_minor_buys_no_download_through_a_key(conn):
         assert body["status"] == 403 and body["error"]["code"] == "adult_only_service", body
         assert s.value("select count(*) from public.api_holds where org_id = %s", [c.org]) == 0
         assert s.value("select count(*) from public.download_requests where org_id = %s", [c.org]) == 0
+
+
+# ── a refused queued run: what happens to the hold it would have spent (Atlas, round 3) ──
+
+def test_a_refused_queued_run_leaves_its_hold_open_as_any_refused_insert_does_and_it_settles(conn):
+    """The run gate refuses the render_jobs row; the hold the person took before answering is not spent, stays open (the route does
+    not release on an insert error, for any refusal), and is released like any unused hold: never stranded, never captured."""
+    import json as _json
+    with as_superuser(conn, commit=False) as s:
+        s.rows("insert into public.credit_prices (unit, credits_per_unit, margin) values ('job_minimum', 1, 0), ('video_minute', 2, 0) "
+               "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = 0 returning 1")
+        c = customer(s)
+        s.rows("select public.grant_credits(%s, 100, 'lab')", [c.org])
+        ref = "rj-" + uuid.uuid4().hex[:12]
+        api_ok(call(s, c.actor, "select public.reserve_credits(%s, %s, 10)", [c.org, ref]))
+        api_ok(call(s, c.actor, "select public.record_adult_attestation(false, %s, 'welcome')", [TERMS]))
+        out = call(s, c.actor, "insert into public.render_jobs (channel_id, kind, params, requested_by, credit_ref) "
+                               "values (%s, 'daily', %s::jsonb, %s, %s) returning id",
+                   [c.channel, _json.dumps({"topic": "lab", "duration": 60}), c.actor.uid, ref])
+        assert not out.ok and out.error.startswith("adult_only_service"), out
+        assert s.value("select status from public.credit_reservations where job_id = %s", [ref]) == "open"
+        assert s.value("select count(*) from public.credit_transactions where org_id = %s and kind = 'capture'", [c.org]) == 0
+        released = s.value("select public.release_credits(%s)", [ref])
+        assert released == 10 and s.value("select status from public.credit_reservations where job_id = %s", [ref]) == "released"

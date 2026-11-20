@@ -236,6 +236,17 @@ function studioRefusalText(result: Extract<ApiResult, { ok: false }>, origin: st
         `(for example a photo of a person). A connected app cannot give that confirmation for them. Nothing was quoted or charged. ` +
         `The person can make this generation in the Studio at ${origin}/studio, or you can pick another model from list_creative_models.`
       );
+    case "adult_attestation_required":
+      return (
+        `${model === "That model" ? model : `The model ${model}`} is for adults only: its maker's terms require users to be 18 or older, and the person has not ` +
+        `confirmed their age. A connected app cannot confirm it for them. Nothing was quoted or charged. The person can confirm they ` +
+        `are 18 or older once, in the app at ${origin}/studio, and then this works; or you can pick another model from list_creative_models.`
+      );
+    case "adult_only_service":
+      return (
+        `Nightshift is for adults (18 or older), and the person told us they are under 18, so nothing can be made on this account. ` +
+        `Nothing was quoted or charged. If that answer was a mistake, the person can contact support through ${origin}.`
+      );
     case "model_temporarily_off":
       return "That model is switched off for now. Nothing was quoted or charged. Pick another model from list_creative_models, or try again later.";
     case "price_changed":

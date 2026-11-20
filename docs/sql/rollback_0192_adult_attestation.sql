@@ -3,19 +3,21 @@
 --
 -- WHAT COMES BACK: 0036's quote_creative_job and creative_platform_reserve, 0075's route_model, 0188's sellable_models, 0174's
 --   create_creative_job and api_creative_refusal, 0147's api_create_video, 0171's quote_film, 0187's start_film, 0191's
---   oauth_creative_quote and oauth_creative_models, 0170's api_request_download and 0094's oauth_create_video, none of which asks
+--   oauth_creative_quote and oauth_creative_models, 0170's api_request_download, 0094's oauth_create_video, 0083's
+--   workflow_advance_locked and 0174's start_workflow_run, none of which asks
 --   for an age answer, and no hold gate. A requires_adult model is then sold to anyone, and a person who said they are under 18 is
 --   sold everything: apply this only while no requires_adult model is on sale, and say so to the owner.
 -- WHAT IS KEPT: the record. adult_attestations (its rows, its RLS and its append-only triggers) stays as it is: who answered what
 --   must outlive a rollback. Applying 0192 again picks it up as its own.
--- WHAT IS LOST: record_adult_attestation, my_adult_attestation, the five helpers, and the two gates (the trigger function,
---   adult_attestation_hold_gate on credit_reservations and adult_attestation_download_gate on download_requests).
+-- WHAT IS LOST: record_adult_attestation, my_adult_attestation, the five helpers, and the three gates (the trigger function,
+--   adult_attestation_hold_gate on credit_reservations, adult_attestation_run_gate on render_jobs and adult_attestation_download_gate
+--   on download_requests).
 --   The app's age question then answers "not available".
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the thirteen bodies is not 0192's (a later change would be undone).
---   1. Puts the thirteen earlier bodies back, verbatim, with their grants.
---   2. Drops the two gate triggers and the eight 0192 functions that are not the append-only trigger's.
+--   0. REFUSES (changes nothing) if any of the fifteen bodies is not 0192's (a later change would be undone).
+--   1. Puts the fifteen earlier bodies back, verbatim, with their grants.
+--   2. Drops the three gate triggers and the eight 0192 functions that are not the append-only trigger's.
 --   3. Asserts the end state.
 
 begin;
@@ -39,10 +41,12 @@ begin
       ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'e3340606260711781f202aff7abdcdee'),
       ('public.oauth_creative_models(text, text, text)', 'beafb530957690f51366c995468ad36f'),
       ('public.api_request_download(text, text, text, text, text, text)', '4ca4086b260f0cec97edc16acb5e2c6b'),
-      ('public.oauth_create_video(text, text, jsonb, text, text)', '4c01906922aa8bb5a2205dd76fbfe992')) v(sig, want) loop
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '0b1807540e03ba06c0d98695a451c147'),
+      ('public.workflow_advance_locked(uuid, boolean)', '553dd9f65b62541fd3653ed55288ae46'),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '67c4d21342ed9c6c144ec2559d4b34cc')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
-      raise exception 'rollback 0192: % is not 0192''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
+      raise exception 'rollback 0192: % is not 0192''s body (md5 %): if an older file was re-run over it, apply 0192 again first (its REPLAY note), then roll back; if a later file changed it, take that file out first', r.sig, h;
     end if;
   end loop;
 end $$;
@@ -1389,8 +1393,342 @@ $$;
 revoke all on function public.oauth_create_video(text, text, jsonb, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.oauth_create_video(text, text, jsonb, text, text) to anon;
 
--- The two gate triggers first (they name the trigger function), then the functions. The append-only triggers of the record stay.
+-- workflow_advance_locked: 0083's body, verbatim.
+create or replace function public.workflow_advance_locked(p_run uuid, p_strict boolean default false)
+  returns void
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  r        public.workflow_runs;
+  s        public.workflow_run_steps;
+  j        public.creative_jobs;
+  out_     jsonb;
+  params   jsonb;
+  pr       record;
+  src_job  public.creative_jobs;
+  asset    uuid;
+  committed numeric;
+  why_code text;
+  why      text;
+  detail   text;
+  guard    integer := 0;
+  -- BR-L-011: the step could not start for a reason that passes; it waits.
+  wait_    boolean := false;
+begin
+  select * into r from public.workflow_runs where id = p_run for update;
+  if not found then
+    return;
+  end if;
+  loop
+    guard := guard + 1;
+    exit when guard > 8;
+    exit when r.status <> 'running';
+
+    select * into s from public.workflow_run_steps
+     where run_id = r.id and status in ('pending', 'running')
+     order by step_index limit 1;
+
+    if not found then
+      -- Every step is settled and none failed (a failure ends the run below).
+      update public.workflow_runs
+         set status = 'completed', finished_at = now(), updated_at = now(),
+             charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+       where id = r.id returning * into r;
+      exit;
+    end if;
+
+    if s.status = 'running' then
+      select * into j from public.creative_jobs where id = s.job_id;
+      if j.status = 'completed' then
+        update public.workflow_run_steps
+           set status = 'completed', charged_credits = coalesce(j.charged_credits, 0),
+               finished_at = coalesce(j.finished_at, now())
+         where run_id = s.run_id and step_index = s.step_index;
+        update public.workflow_runs
+           set updated_at = now(),
+               charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+         where id = r.id returning * into r;
+        continue;
+      elsif j.status in ('failed', 'cancelled', 'expired') then
+        update public.workflow_run_steps
+           set status = case when j.status = 'cancelled' then 'cancelled' else 'failed' end,
+               charged_credits = 0, error_code = coalesce(j.error_code, j.status), error = left(j.error, 2000),
+               finished_at = coalesce(j.finished_at, now())
+         where run_id = s.run_id and step_index = s.step_index;
+        -- Later steps were never created, so they never held anything.
+        update public.workflow_run_steps set status = 'skipped'
+         where run_id = r.id and status = 'pending';
+        update public.workflow_runs
+           set status = case when r.cancel_requested_at is not null then 'cancelled' else 'failed' end,
+               error_code = case when r.cancel_requested_at is not null then 'cancelled' else 'step_failed' end,
+               error = format('step %s did not finish (%s); later steps were not started and nothing was held for them',
+                              s.step_index + 1, coalesce(j.error_code, j.status)),
+               finished_at = now(), updated_at = now(),
+               charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+         where id = r.id returning * into r;
+        exit;
+      else
+        exit; -- the job is still being made
+      end if;
+    end if;
+
+    -- s is the next step to start; every step before it has completed.
+    if r.cancel_requested_at is not null then
+      update public.workflow_run_steps set status = 'skipped' where run_id = r.id and status = 'pending';
+      update public.workflow_runs
+         set status = 'cancelled', error_code = 'cancelled', finished_at = now(), updated_at = now(),
+             charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+       where id = r.id returning * into r;
+      exit;
+    end if;
+
+    why_code := null;
+    wait_ := false;
+    if r.created_at < now() - interval '24 hours' then
+      why_code := 'confirmation_expired';
+      why := 'the price was confirmed more than 24 hours ago; run the workflow again to confirm it afresh';
+    end if;
+
+    -- BR-L-006: a later step spends on the confirmation of the member who
+    -- pressed Run now, whoever's page carries the run on. Once that member may
+    -- no longer run things in the run's organization, nothing more starts.
+    if why_code is null and s.step_index > 0
+       and not public.workflow_confirmer_may_spend(r.started_by, r.org_id) then
+      why_code := 'confirmation_revoked';
+      why := 'the member who confirmed this run may no longer run workflows in this organization';
+    end if;
+
+    if why_code is null then
+      -- Fill in the file an earlier step made.
+      params := s.params;
+      for pr in select key, value from jsonb_each(s.params) loop
+        if jsonb_typeof(pr.value) = 'object' and pr.value ? '$step' then
+          asset := null;
+          select cj.* into src_job
+            from public.workflow_run_steps ss
+            join public.creative_jobs cj on cj.id = ss.job_id
+           where ss.run_id = r.id and ss.step_index = (pr.value ->> '$step')::integer
+             and ss.status = 'completed' and cj.org_id = r.org_id;
+          asset := case when found then src_job.result_asset_ids[1] end;
+          if asset is null then
+            why_code := 'missing_output';
+            why := format('step %s made no file for this step to start from', (pr.value ->> '$step')::integer + 1);
+          else
+            params := params || jsonb_build_object(pr.key, asset::text);
+          end if;
+        end if;
+      end loop;
+    end if;
+
+    if why_code is null then
+      -- The steps together may not pass what was confirmed.
+      select coalesce(sum(quoted_credits), 0) into committed
+        from public.workflow_run_steps where run_id = r.id and status in ('running', 'completed');
+      if committed + s.quoted_credits > r.max_credits then
+        why_code := 'over_confirmed_total';
+        why := 'starting this step would pass the total that was confirmed';
+      end if;
+    end if;
+
+    if why_code is null then
+      begin
+        out_ := public.create_creative_job(
+          r.org_id, s.capability, s.model, params, 'exact',
+          'wf:' || r.id::text || ':' || s.step_index::text, s.quoted_credits);
+        if out_ is null or (out_ -> 'job' ->> 'id') is null or (out_ -> 'job' ->> 'org_id')::uuid <> r.org_id then
+          raise exception 'creative job not created' using errcode = 'NS400';
+        end if;
+        -- BR-L-005: a step flips to running in the same transaction that creates
+        -- its job, so its own start is never a replay. A replay means a job was
+        -- made beforehand under this step's key (keys and run ids are readable
+        -- by members): it was not priced against this step's confirmed price and
+        -- is never adopted.
+        if coalesce((out_ ->> 'replay')::boolean, false) then
+          raise exception 'idempotency_conflict' using errcode = 'NS409',
+            detail = 'a job already holds this step''s idempotency key; it was not made by this run';
+        end if;
+        update public.workflow_run_steps
+           set status = 'running', job_id = (out_ -> 'job' ->> 'id')::uuid, started_at = now()
+         where run_id = s.run_id and step_index = s.step_index;
+        -- BR-L-011: a step that waited starts with no stale reason on it.
+        update public.workflow_run_steps set error_code = null, error = null
+         where run_id = s.run_id and step_index = s.step_index and error_code is not null;
+        update public.workflow_runs set updated_at = now() where id = r.id;
+        continue;
+      exception when others then
+        get stacked diagnostics detail = pg_exception_detail;
+        -- A transient failure (SQLSTATE class 40: deadlock victim, serialization
+        -- failure) is not a refusal: raised, nothing is committed, and the step
+        -- is still pending for the next poll. Never a failed, already-paid run.
+        if sqlstate like '40%' then
+          raise;
+        end if;
+        if p_strict and s.step_index = 0 then
+          raise;
+        end if;
+        -- BR-L-011: the plan's parallel runs all in use (NS429, 0034's hold
+        -- trigger) or a balance short for this step (NS402, reserve_credits)
+        -- passes: another job finishes, credits are added. The job and its hold
+        -- were rolled back with this block, so the step waits, holding nothing.
+        wait_ := sqlstate in ('NS429', 'NS402');
+        why_code := case
+          when sqlstate = 'NS402' then 'insufficient_credits'
+          when sqlstate = 'NS429' then 'run_limit_reached'
+          when sqlstate = '42501' then 'forbidden'
+          when sqlstate in ('NS400', 'NS409') and sqlerrm ~ '^[a-z0-9_]{1,64}$' then sqlerrm
+          else 'refused' end;
+        why := left(coalesce(nullif(detail, ''), sqlerrm), 500);
+      end;
+    end if;
+
+    -- BR-L-011: waiting, not failed. The step stays pending with the reason on
+    -- record (written only when it changed, so a polling page does not rewrite
+    -- it), later steps stay pending, and the run stays running. The next
+    -- advance tries again; after 24 hours confirmation_expired (above) ends it.
+    if wait_ then
+      update public.workflow_run_steps set error_code = why_code, error = why
+       where run_id = s.run_id and step_index = s.step_index and status = 'pending'
+         and (error_code is distinct from why_code or error is distinct from why);
+      exit;
+    end if;
+
+    -- This step could not start (or its input is missing): it fails, the run
+    -- with it, and the steps after it are skipped without ever being created.
+    update public.workflow_run_steps
+       set status = 'failed', charged_credits = 0, error_code = why_code, error = why, finished_at = now()
+     where run_id = s.run_id and step_index = s.step_index;
+    update public.workflow_run_steps set status = 'skipped' where run_id = r.id and status = 'pending';
+    update public.workflow_runs
+       set status = 'failed', error_code = 'step_failed',
+           error = format('step %s could not start (%s); later steps were not started and nothing was held for them',
+                          s.step_index + 1, why_code),
+           finished_at = now(), updated_at = now(),
+           charged_credits = (select coalesce(sum(charged_credits), 0) from public.workflow_run_steps where run_id = r.id)
+     where id = r.id returning * into r;
+    exit;
+  end loop;
+  -- BR-L-011: a step that was waiting and is now skipped (Stop, or a step
+  -- before it failed) never started; it keeps no waiting reason.
+  update public.workflow_run_steps set error_code = null, error = null
+   where run_id = r.id and status = 'skipped' and error_code is not null;
+end
+$$;
+revoke all on function public.workflow_advance_locked(uuid, boolean) from public, anon, authenticated, service_role;
+
+-- start_workflow_run: 0174's body, verbatim.
+create or replace function public.start_workflow_run(
+  p_run uuid,
+  p_workflow uuid,
+  p_version integer,
+  p_inputs jsonb default '{}'::jsonb,
+  p_max_credits numeric default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  uid     uuid := auth.uid();
+  w       public.workflows;
+  prior   public.workflow_runs;
+  vals    jsonb;
+  hash_   text;
+  q       jsonb;
+  total   numeric;
+  acc     public.credit_accounts;
+  st      record;
+begin
+  if uid is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if p_run is null then
+    perform public.creative_refuse('invalid_params', 'a run id is required');
+  end if;
+  select * into w from public.workflows where id = p_workflow;
+  if not found or w.archived_at is not null or not public.is_org_member(w.org_id) then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if not public.is_org_member(w.org_id, 'editor') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- The operator's organization is paid by the platform: only a platform admin
+  -- spends there (create_creative_job asks the same of every step).
+  if public.credits_exempt(w.org_id) and not public.is_platform_admin() then
+    raise exception 'forbidden' using errcode = '42501',
+      detail = 'runs in the operator''s organization are started by a platform admin';
+  end if;
+  if p_max_credits is null or p_max_credits < 0 then
+    perform public.creative_refuse('confirm_price', 'the confirmed total is required');
+  end if;
+
+  -- The account first: every create (and reserve) for this organization queues
+  -- behind it, so a replay of the same run finds the first one's committed rows.
+  perform public.credit_account_lock(w.org_id);
+
+  hash_ := md5(jsonb_build_object('workflow', p_workflow, 'inputs', coalesce(p_inputs, '{}'::jsonb),
+                                  'max', round(p_max_credits, 2)::text)::text);
+  select * into prior from public.workflow_runs where id = p_run;
+  if found then
+    -- The same id under another organization, another workflow, other inputs or
+    -- another confirmed total is a different request: refused without saying
+    -- anything about what it collided with.
+    if prior.org_id <> w.org_id or prior.request_hash is distinct from hash_ then
+      perform public.creative_refuse('idempotency_conflict',
+        'this run id was used for a different request', 'NS409');
+    end if;
+    perform public.workflow_advance_locked(prior.id);
+    return public.workflow_run_json(prior.id) || jsonb_build_object('replay', true);
+  end if;
+
+  if p_version is distinct from w.version then
+    perform public.creative_refuse('workflow_changed',
+      format('the workflow is now version %s, not %s', w.version, p_version), 'NS409');
+  end if;
+
+  vals := public.workflow_bind_inputs(w, p_inputs);
+  q := public.workflow_quote_steps(w, vals);
+  -- 0174: named, before the generic 'unpriced': which steps need the Studio's acknowledgement (workflow_quote_steps).
+  if exists (select 1 from jsonb_array_elements(q -> 'steps') e where e.value ->> 'reason' = 'acknowledgement_required') then
+    perform public.creative_refuse('acknowledgement_required',
+      format('step(s) %s use a model that asks you to confirm your rights to its input; make them in the Studio',
+             (select string_agg(((e.value ->> 'step_index')::integer + 1)::text, ', ') from jsonb_array_elements(q -> 'steps') e
+               where e.value ->> 'reason' = 'acknowledgement_required')));
+  end if;
+  if not (q ->> 'priced')::boolean then
+    perform public.creative_refuse('unpriced',
+      format('step(s) %s cannot be priced, so the workflow has no price',
+             (select string_agg((u.x::integer + 1)::text, ', ') from jsonb_array_elements_text(q -> 'unpriced_steps') u(x))));
+  end if;
+  total := (q ->> 'total')::numeric;
+  if round(p_max_credits, 2) <> round(total, 2) then
+    perform public.creative_refuse('price_changed',
+      format('price=%s confirmed=%s', total, round(p_max_credits, 2)), 'NS409');
+  end if;
+  if not public.credits_exempt(w.org_id) then
+    select * into acc from public.credit_accounts where org_id = w.org_id;
+    if coalesce(acc.balance - acc.reserved, 0) < total then
+      perform public.creative_refuse('insufficient_credits',
+        format('available=%s needed=%s', coalesce(acc.balance - acc.reserved, 0), total), 'NS402');
+    end if;
+  end if;
+
+  insert into public.workflow_runs
+    (id, org_id, workflow_id, workflow_name, workflow_version, inputs, max_credits, request_hash, started_by)
+  values
+    (p_run, w.org_id, w.id, w.name, w.version, vals, round(total, 2), hash_, uid);
+  for st in select v, ord from jsonb_array_elements(w.steps) with ordinality as t(v, ord) loop
+    insert into public.workflow_run_steps (run_id, step_index, org_id, capability, model, params, quoted_credits)
+    values (p_run, st.ord - 1, w.org_id, st.v ->> 'capability', st.v ->> 'model',
+            public.workflow_fill_params(st.v -> 'params', vals),
+            (q -> 'steps' -> (st.ord - 1)::integer ->> 'credits')::numeric);
+  end loop;
+
+  perform public.workflow_advance_locked(p_run, true);
+  return public.workflow_run_json(p_run) || jsonb_build_object('replay', false);
+end
+$$;
+revoke all on function public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) from public, anon, authenticated, service_role;
+grant execute on function public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated;
+
+-- The three gate triggers first (they name the trigger function), then the functions. The append-only triggers of the record stay.
 drop trigger if exists adult_attestation_hold_gate on public.credit_reservations;
+drop trigger if exists adult_attestation_run_gate on public.render_jobs;
 drop trigger if exists adult_attestation_download_gate on public.download_requests;
 drop function if exists public.adult_attestation_refuse_minor();
 drop function if exists public.film_adult_refusals(uuid, uuid);
@@ -1418,7 +1756,9 @@ begin
       ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'b75707212f0ce249f4f8bce5b1079070'),
       ('public.oauth_creative_models(text, text, text)', 'bf21f463a6465cfbb45e25bef841ed1f'),
       ('public.api_request_download(text, text, text, text, text, text)', 'b59ca71d0e0379e217e47a6987c9ed0c'),
-      ('public.oauth_create_video(text, text, jsonb, text, text)', '244a5779e4388525f5f345b59379029f')) v(sig, want) loop
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '244a5779e4388525f5f345b59379029f'),
+      ('public.workflow_advance_locked(uuid, boolean)', '2d63f9fb091efa71d8ae466cba0b42db'),
+      ('public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)', '8b3c4b4afbc19e6f336c09b4692ad7ed')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
       raise exception 'rollback 0192 end state: % is not its earlier body', r.sig;
     end if;
@@ -1443,7 +1783,7 @@ begin
      or to_regprocedure('public.adult_attestation_gate(uuid, text)') is not null
      or to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null
      or to_regprocedure('public.adult_attestation_refuse_minor()') is not null
-     or exists (select 1 from pg_trigger where tgname in ('adult_attestation_hold_gate', 'adult_attestation_download_gate')) then
+     or exists (select 1 from pg_trigger where tgname in ('adult_attestation_hold_gate', 'adult_attestation_run_gate', 'adult_attestation_download_gate')) then
     raise exception 'rollback 0192 end state: a 0192 function is still there';
   end if;
   if to_regclass('public.adult_attestations') is null then

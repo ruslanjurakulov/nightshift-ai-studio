@@ -45,7 +45,9 @@ REPLACED = {
     "oauth_creative_quote": ("0191_mcp_oauth_creative.sql", "b75707212f0ce249f4f8bce5b1079070", "e3340606260711781f202aff7abdcdee", 1),
     "oauth_creative_models": ("0191_mcp_oauth_creative.sql", "bf21f463a6465cfbb45e25bef841ed1f", "beafb530957690f51366c995468ad36f", 1),
     "api_request_download": ("0170_api_download_audit.sql", "b59ca71d0e0379e217e47a6987c9ed0c", "4ca4086b260f0cec97edc16acb5e2c6b", 1),
-    "oauth_create_video": ("0094_extra_credits_toggle.sql", "244a5779e4388525f5f345b59379029f", "4c01906922aa8bb5a2205dd76fbfe992", 1),
+    "oauth_create_video": ("0094_extra_credits_toggle.sql", "244a5779e4388525f5f345b59379029f", "0b1807540e03ba06c0d98695a451c147", 1),
+    "workflow_advance_locked": ("0083_workflow_wait.sql", "2d63f9fb091efa71d8ae466cba0b42db", "553dd9f65b62541fd3653ed55288ae46", 3),
+    "start_workflow_run": ("0174_rights_acknowledgement.sql", "8b3c4b4afbc19e6f336c09b4692ad7ed", "67c4d21342ed9c6c144ec2559d4b34cc", 1),
 }
 ANON_DOORS = ["public.api_create_video(text, text, jsonb, text, text, text)", "public.oauth_creative_quote(text, text, text, jsonb, text)",
               "public.oauth_creative_models(text, text, text)", "public.api_request_download(text, text, text, text, text, text)",
@@ -54,6 +56,7 @@ NEW_FUNCTIONS = ["adult_attestations_append_only", "model_requires_adult", "adul
                  "adult_attestation_gate", "film_adult_refusals", "adult_attestation_refuse_minor", "record_adult_attestation",
                  "my_adult_attestation"]
 GATE_TRIGGERS = [("adult_attestation_hold_gate", "credit_reservations", None),
+                 ("adult_attestation_run_gate", "render_jobs", None),
                  ("adult_attestation_download_gate", "download_requests", None)]
 AGE_TS = (ROOT / "command-center" / "lib" / "age.ts").read_text(encoding="utf-8")
 METHODS = ["email_signup", "google", "welcome", "create"]
@@ -123,6 +126,7 @@ class BuiltOnTheEarlierBodies(unittest.TestCase):
             "public.quote_film(uuid, integer) to authenticated",
             "public.start_film(uuid, text, text) to authenticated",
             *[f"{s} to anon" for s in ANON_DOORS],
+            "public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated",
         ]))
         for name in [*NEW_FUNCTIONS, *REPLACED]:
             self.assertRegex(M, rf"revoke all on function public\.{name}\([^)]*\) from public, anon")
@@ -235,7 +239,8 @@ class TheRollbackAndTheFile(unittest.TestCase):
             "public.sellable_models(text, text) to authenticated, service_role",
             "public.quote_film(uuid, integer) to authenticated",
             "public.start_film(uuid, text, text) to authenticated",
-            *[f"{s} to anon" for s in ANON_DOORS]]))
+            *[f"{s} to anon" for s in ANON_DOORS],
+            "public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated"]))
         self.assertTrue(ROLLBACK.rstrip().endswith("commit;") and "\nbegin;\n" in ROLLBACK)
         # Outside the earlier bodies it puts back verbatim (0171's quote_film prunes its own old quotes), it deletes nothing.
         own = ROLLBACK
@@ -249,7 +254,7 @@ class TheRollbackAndTheFile(unittest.TestCase):
     def test_the_file_says_how_to_apply_verify_and_undo_and_what_replay_does(self):
         self.assertIn("APPLY AS ONE TRANSACTION", M)
         self.assertIn("set local lock_timeout = '5s';", M)
-        self.assertIn("-- Verify (run after applying, AND after any manual replay of 0036, 0075, 0093, 0094 or 0191", M)
+        self.assertIn("-- Verify (run after applying, AND after any manual replay of 0036, 0073, 0074, 0075, 0083, 0093, 0094 or 0191", M)
         self.assertIn("rollback_0192_adult_attestation.sql", M)
         self.assertIn("A DELETED ACCOUNT", M)
         self.assertIn("It KEEPS the record", M)
@@ -351,6 +356,34 @@ class TheConnectorAndTheDownloads(unittest.TestCase):
             for word in later:
                 self.assertLess(ask, body.index(word), (name, word))
             self.assertIn("public.api_err(403, 'adult_only_service',", body, name)
+
+
+class TheWorkflowsAndTheRuns(unittest.TestCase):
+    """Lens H1 / Breach R2 on #832: a workflow's later steps and a queued run."""
+
+    def test_a_later_step_is_made_as_the_confirmer_and_the_session_is_put_back(self):
+        body = definition(M, "workflow_advance_locked")
+        act = body.index("perform public.api_act_as(r.started_by);")
+        make = body.index("out_ := public.create_creative_job(")
+        back = body.index("perform set_config('request.jwt.claims', coalesce(saved_c, ''), true);")
+        self.assertLess(act, make)
+        self.assertLess(make, back)
+        self.assertLess(back, body.index("if coalesce((out_ ->> 'replay')::boolean, false) then"), "the viewer's session before anything else")
+        for setting in ("request.jwt.claim.sub", "request.jwt.claim.email"):
+            self.assertIn(f"perform set_config('{setting}', ", body)
+        # The confirmer check of BR-L-006 still comes first.
+        self.assertLess(body.index("public.workflow_confirmer_may_spend(r.started_by, r.org_id)"), act)
+
+    def test_run_now_refuses_every_steps_adult_problem_before_anything_is_priced_or_held(self):
+        body = definition(M, "start_workflow_run")
+        ask = body.index("perform public.adult_attestation_gate(uid, st.v ->> 'model');")
+        for later in ("insert into public.workflow_runs", "perform public.workflow_advance_locked(p_run, true);"):
+            self.assertLess(ask, body.index(later), later)
+
+    def test_the_connections_video_answers_a_replay_before_the_minor_refusal(self):
+        body = definition(M, "oauth_create_video")
+        self.assertLess(body.index("select * into prior from public.oauth_runs"),
+                        body.index("if public.adult_attestation_state(auth.uid()) = 'minor' then"))
 
 
 class TheRecordedWords(unittest.TestCase):
