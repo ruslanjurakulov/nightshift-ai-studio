@@ -200,7 +200,7 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   partialMonth: "oyning bir qismi",
   enteredCosts: "Kiritilgan xarajatlar",
   notEntered: "kiritilmagan",
-  monthlyNote: "Operatsion natija = sof daromad − mijozlar xarajati − ichki xarajat − shu oy uchun kiritilgan xarajatlar. Xarajat kiritilmagan oyda natija yoʻq.",
+  monthlyNote: "Operatsion natija = sof daromad − mijozlar xarajati − ichki xarajat − shu oy uchun kiritilgan xarajatlar. Xarajat kiritilmagan oyda natija yoʻq. Davr qisman qamrab olgan oyda ham natija yoʻq.",
   costEntries: "Oylik xarajatlar (egasi kiritadi)",
   category: "Turkum",
   catInfrastructure: "Infratuzilma",
@@ -260,5 +260,8 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   mrrHistory: "MRR: oʻlchangan, keyin prognoz",
   low: "past",
   high: "yuqori",
+  rateLimited: "Bir necha daqiqada juda koʻp oʻzgarish. Kuting, keyin qayta urinib koʻring.",
+  includedAbove: "yuqoridagi qatorga qoʻshilgan",
+  undatedNote: "Pipeline xarajatlarining {n} ta yozuvida oʻqiladigan sana yoʻq: ular shu davrga tegishli boʻlishi mumkin, shuning uchun ichki xarajat va operatsion natija toʻliq emas.",
   drillHint: "Qatoriga oʻtish uchun nuqtani bosing.",
 };

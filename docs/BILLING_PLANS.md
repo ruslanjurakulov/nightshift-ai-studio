@@ -26,43 +26,26 @@ yo'q: raqamni o'zgartirish — SQL'da bitta `update`.
 
 ## 1. Narx taklifi va hisob-kitob
 
-Repodagi haqiqiy iqtisod:
+Tannarx, provayder narxlari, komissiyalar va marja bu hujjatda **saqlanmaydi**:
+repo ochiq, bu raqamlar esa egasining maxfiy ma'lumoti. Ular faqat bazada va
+egasining analitika panelida (owner rolida) hisoblanadi.
 
-| Ko'rsatkich | Qiymat | Qayerdan |
-| :-- | --: | :-- |
-| 1 daqiqa tayyor video | 60 kredit | `credit_prices.video_minute` |
-| 1 daqiqa tannarxi | ≈ $0.20 | 0031 izohi, `unitEconomics` |
-| → 1 kredit tannarxi | ≈ $0.00333 | 0.20 / 60 |
-| 1 kredit chakana (paket) | ≈ $0.01 | Starter 1 000 kredit ≈ 10 USD |
-| Paddle komissiyasi | 5% + $0.50 | har bir to'lov uchun |
+Mijozga ko'rinadigan taklif (0034 shu raqamlar bilan seed qiladi — `plans.monthly_credits`):
 
-Taklif (0034 shu raqamlar bilan seed qiladi — `plans.monthly_credits`):
+| Tarif | Narx / oy | Kredit / oy | ≈ daqiqa video (60 kredit/daqiqa) |
+| :-- | --: | --: | --: |
+| Free | 0 | 100 (bir marta) | ≈ 1.7 |
+| Plus | 19 USD | 2 000 | ≈ 33 |
+| Pro | 49 USD | 6 000 | ≈ 100 |
+| Business | 129 USD | 18 000 | ≈ 300 |
 
-| Tarif | Narx / oy | Kredit / oy | ≈ daqiqa video | 1 kredit narxi | To'liq sarflansa tannarx | Paddle | **Yalpi foyda** |
-| :-- | --: | --: | --: | --: | --: | --: | --: |
-| Free | 0 | 100 (bir marta) | ≈ 1.7 | — | $0.33 (bir marta) | — | marketing xarajati |
-| Plus | 19 USD | 2 000 | ≈ 33 | $0.0095 | $6.67 | $1.45 | **$10.88 (57%)** |
-| Pro | 49 USD | 6 000 | ≈ 100 | $0.0082 | $20.00 | $2.95 | **$26.05 (53%)** |
-| Business | 129 USD | 18 000 | ≈ 300 | $0.0072 | $60.00 | $6.95 | **$62.05 (48%)** |
+Narx qo'yish qoidalari (raqamsiz):
 
-Formula: `foyda = narx − kredit × 0.00333 − (0.05 × narx + 0.50)`.
-
-Nega shunday:
-
-- **Eng yomon holatda ham (kreditlar 100% sarflanganda) har bir tarif ≥ 48%
-  foyda** beradi. Amalda obuna kreditlarining bir qismi davr oxirida yonadi
-  (odatda 20–35%), shuning uchun haqiqiy marja yuqoriroq bo'ladi.
-- Kattaroq tarif — arzonroq kredit (0.95 → 0.82 → 0.72 sent): yuqoriga o'tishga
-  sabab bor, lekin Business'da ham kredit tannarxining 2.1 baravaridan qimmat.
-- **Paket narxlari bilan moslang:** obuna har doim muntazam hajmni sotib olishning
-  eng arzon yo'li bo'lishi kerak, paket esa "moslashuvchanlik uchun ustama".
-  Tavsiya: paketlar ≥ $0.010 / kredit, masalan Starter 1 000 = **12 USD**,
-  Creator 5 000 = **55 USD**, Studio 20 000 = **200 USD**. (Agar hozir 10/45/160
-  USD bo'lsa, Creator paketi 0.9 sent — Plus obunasidan arzon; bu obunani
-  kamroq jozibador qiladi.)
-- Pastki chegara: tarif narxi hech qachon `kredit × 0.00333 + Paddle` dan past
-  bo'lmasin — aks holda to'liq sarflagan mijoz zarar keltiradi. Masalan Plus
-  2 000 kredit uchun break-even ≈ 8.60 USD.
+- Har bir tarif kreditlar **100% sarflangan** eng yomon holatda ham zararsiz
+  bo'lishi kerak; tekshiruv bazadagi tannarx jadvali bilan owner panelida qilinadi.
+- Kattaroq tarif — arzonroq kredit: yuqoriga o'tishga sabab bor.
+- Obuna muntazam hajmni sotib olishning eng arzon yo'li bo'lsin; paket esa
+  moslashuvchanlik uchun biroz qimmatroq.
 
 Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
 (3-bo'lim).

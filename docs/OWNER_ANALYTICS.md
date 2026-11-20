@@ -72,7 +72,7 @@ whole business together for one period; slice d will reuse the margin report's c
 | Figure | Source | When it is unknown |
 | :-- | :-- | :-- |
 | Provider spend | `creative_job_costs.usd_estimate` (priced when the job ran), pipeline `video_costs` | A cost row with no price: counted, never added; the total is a floor and profit is unknown |
-| Balances | `provider_balances`: `api` rows from the balance worker, `manual` rows typed by the owner | No row: "no balance on record". A manual row is badged "entered by owner on <date>" |
+| Balances | `provider_balances` `api` rows from the balance worker; `owner_manual_balances` for what the owner typed (never written to `provider_balances`, which the operator bot and Billing read as the provider's word) | No row: "no balance on record". A manual row is badged "entered by owner on <date>" |
 | Monthly costs | `owner_cost_entries`, typed by the owner per month and category | A month with no entry is "not entered": its operating result is unknown |
 | Gross profit | net revenue (before provider fees) − customer provider spend | Either side unknown |
 | Operating result | gross profit − internal spend − entered costs, per calendar month | Any part unknown |

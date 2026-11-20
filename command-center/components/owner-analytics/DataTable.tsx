@@ -12,6 +12,7 @@ export function DataTable({
   limit,
   showingText,
   emptyText,
+  nullText,
 }: {
   table: Table;
   id: string;
@@ -22,11 +23,13 @@ export function DataTable({
   showingText?: (n: number, total: number) => string;
   /** Said in place of rows when there are none: an empty table with only its header says nothing. */
   emptyText?: string;
+  /** Per column: a more precise word than unknownText for an empty cell there ("not entered"). */
+  nullText?: Array<string | undefined>;
 }) {
   const rows = limit ? table.rows.slice(0, limit) : table.rows;
   if (rows.length === 0 && emptyText) return <p className="oa-empty">{emptyText}</p>;
   const cell = (v: Cell, i: number) => {
-    if (v === null) return <span className="oa-dim">{unknownText}</span>;
+    if (v === null) return <span className="oa-dim">{nullText?.[i] ?? unknownText}</span>;
     if (typeof v === "number") return format?.[i] ? format[i]!(v) : String(v);
     return v;
   };

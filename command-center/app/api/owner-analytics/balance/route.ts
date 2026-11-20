@@ -35,6 +35,7 @@ export const POST = requireSameOrigin(async (request: Request) => {
   const { error } = await supabase.rpc("owner_analytics_balance_enter", { p_provider: provider, p_metric: metric, p_remaining: remaining, p_unit: unit });
   if (error) {
     if (error.code === "NS401") return json({ error: "mfa_required" }, 401);
+    if (error.code === "54000") return json({ error: "rate_limited" }, 429);
     if (error.code === "42501") return json({ error: "forbidden" }, 403);
     if (error.code === "22023") return json({ error: "invalid_request" }, 400);
     return json({ error: "not_saved" }, 503);

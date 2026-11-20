@@ -108,8 +108,11 @@ function costPerPayer(spend: SpendRow[] | null, from: number, to: number, payers
   if (!spend || !enough || payers === 0 || months <= 0) return { value: null, basis: payers };
   let usd = 0;
   for (const r of spend) {
+    if (r.internal) continue;
+    // A cost with no readable date may be inside the window: the per-payer cost is then not measurable.
+    if (r.day === null) return { value: null, basis: payers };
     const t = Date.parse(`${r.day}T00:00:00Z`);
-    if (r.internal || t < from || t >= to) continue;
+    if (t < from || t >= to) continue;
     if (r.unpriced > 0) return { value: null, basis: payers };
     usd += r.usdKnown;
   }

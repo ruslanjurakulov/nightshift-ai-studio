@@ -80,7 +80,7 @@ def test_the_cost_table_and_the_helper_are_closed(conn, sc):
             sel = s.run("select * from public.owner_cost_entries")
             ins = s.run("insert into public.owner_cost_entries (month, category, amount_usd, entered_by) "
                         "values ('2026-10-01', 'tools', 1, %s)", [sc.operator.uid])
-            helper = s.run("select public.owner_analytics_try_instant('2026-01-01')")
+            helper = s.run("select public.owner_costs_write_guard()")
         for out in (sel, ins, helper):
             assert not out.ok and out.sqlstate == "42501", (who.name, out)
 
@@ -89,14 +89,18 @@ def test_an_unpriced_cost_is_counted_never_added_as_zero(conn, sc):
     with world(conn, sc):
         out = _call(conn, sc.operator, SPEND, [FROM, TO])
     assert out.ok, out
-    rows = [r for r in out.rows if r[2] == "oclab"]
+    rows = [r for r in out.rows if r[1] == "creative" and r[2] == "oclab"]
     customer = next(r for r in rows if r[4] is False)
     internal = next(r for r in rows if r[4] is True)
     assert (customer[5], customer[6], customer[7]) == (2, Decimal("0.500000"), 1)
     assert (internal[5], internal[6], internal[7]) == (1, Decimal("0.250000"), 0)
-    pipe = [r for r in out.rows if r[1] == "pipeline" and r[2] == "oclab_tokens"]
-    # The row whose timestamp is not a date is skipped, not an error; the pipeline is internal.
-    assert [(r[4], r[5], float(r[6]), r[7]) for r in pipe] == [(True, 1, 0.1, 0)]
+    pipe = [r for r in out.rows if r[1] == "pipeline" and r[3] == "oclab_tokens"]
+    # The provider is named from the unit as 0106 names it; the pipeline is internal; the row whose date cannot be read is
+    # returned undated (day null), counted, never dropped.
+    assert sorted((str(r[0]), r[2], r[4], r[5], float(r[6]), r[7]) for r in pipe) == [
+        ("2026-10-03", "oclab", True, 1, 0.1, 0),
+        ("None", "oclab", True, 1, 0.0, 1),
+    ]
 
 
 def test_the_owner_enters_costs_and_balances_and_nothing_else_changes(conn, sc):

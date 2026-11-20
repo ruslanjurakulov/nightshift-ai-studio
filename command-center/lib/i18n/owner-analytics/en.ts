@@ -213,7 +213,7 @@ export const ownerAnalyticsEn = {
   partialMonth: "part of the month",
   enteredCosts: "Entered costs",
   notEntered: "not entered",
-  monthlyNote: "Operating result = net revenue − customer spend − internal spend − the costs entered for that month. A month with no entered costs has no result.",
+  monthlyNote: "Operating result = net revenue − customer spend − internal spend − the costs entered for that month. A month with no entered costs has no result. A month the period covers only in part has no result either.",
   costEntries: "Monthly costs (entered by the owner)",
   category: "Category",
   catInfrastructure: "Infrastructure",
@@ -273,6 +273,9 @@ export const ownerAnalyticsEn = {
   mrrHistory: "MRR: measured, then projected",
   low: "low",
   high: "high",
+  rateLimited: "Too many changes in a few minutes. Wait, then try again.",
+  includedAbove: "included in the line above",
+  undatedNote: "{n} pipeline cost row(s) have no readable date: they may belong to this period, so internal spend and the operating result are incomplete.",
   drillHint: "Click a point to jump to its row.",
 };
 

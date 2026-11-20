@@ -2,8 +2,8 @@ import { CardHead, HubFrame, HubState, Kpi, hubContext } from "@/components/owne
 import { Bars } from "@/components/owner-analytics/DrillChart";
 import { DataTable } from "@/components/owner-analytics/DataTable";
 import { BalanceForm, CostEntryForm, DeleteCost } from "@/components/owner-analytics/CostForms";
-import { readBalances, readCostEntries, readSpend } from "@/lib/server/owner-analytics";
-import { readMoneyFor } from "@/lib/server/owner-analytics-data";
+import { readBalances, readCostEntries } from "@/lib/server/owner-analytics";
+import { readMoneyFor, readSpendFor } from "@/lib/server/owner-analytics-data";
 import { grossProfit, monthlyResults, summarizeSpend } from "@/lib/owner-analytics/costs";
 import { costEntriesTable, monthlyTable, spendModelsTable, spendProvidersTable } from "@/lib/owner-analytics/cost-tables";
 import { applyScope } from "@/lib/owner-analytics/money";
@@ -27,7 +27,7 @@ export default async function OwnerAnalyticsCosts({ searchParams }: { searchPara
 
   const [money, spend, balances, entries] = await Promise.all([
     readMoneyFor(sel),
-    readSpend(sel.previous ? sel.previous.from : p.from, p.to),
+    readSpendFor(sel),
     readBalances(),
     readCostEntries(`${(sel.previous ?? p).startDay.slice(0, 7)}-01`, `${p.endDay.slice(0, 7)}-01`),
   ]);
@@ -59,12 +59,31 @@ export default async function OwnerAnalyticsCosts({ searchParams }: { searchPara
       <p className="oa-note">{d.costsOwnerOnly}</p>
       {(money.truncated || spend.truncated) && <p className="oa-note" data-tone="warn">{d.truncated}</p>}
       <section className="oa-grid-kpi" aria-label={d.tabCosts}>
-        <Kpi ctx={ctx} label={d.providerSpend} value={sp.customer.usd} previous={prevSp && prevSp.customer.unpriced === 0 ? prevSp.customer.usd : undefined} previousIncomplete={Boolean(prevSp && prevSp.customer.unpriced > 0)} format={money$} invert badge={sp.customer.unpriced > 0 ? d.incomplete : undefined} />
-        <Kpi ctx={ctx} label={d.internalSpend} value={sp.internal.usd} format={money$} badge={sp.internal.unpriced > 0 ? d.incomplete : undefined} />
+        {/* A change is computed only between two complete figures: a floor against a total is not a trend. */}
+        <Kpi
+          ctx={ctx}
+          label={d.providerSpend}
+          value={sp.customer.usd}
+          previous={prevSp && prevSp.customer.unpriced === 0 && sp.customer.unpriced === 0 ? prevSp.customer.usd : undefined}
+          previousIncomplete={Boolean(prevSp && (prevSp.customer.unpriced > 0 || sp.customer.unpriced > 0))}
+          format={money$}
+          invert
+          badge={sp.customer.unpriced > 0 ? d.incomplete : undefined}
+        />
+        {/* With internal workspaces included they are folded into the line above; a $0 here would look measured. */}
+        <Kpi
+          ctx={ctx}
+          label={d.internalSpend}
+          value={inc ? null : sp.internal.usd}
+          unknownText={d.includedAbove}
+          format={money$}
+          badge={!inc && (sp.internal.unpriced > 0 || sp.undated > 0) ? d.incomplete : undefined}
+        />
         <Kpi ctx={ctx} label={d.net} value={gp.net} previous={prevGp?.net} format={money$} unknownText={d.incomplete} />
         <Kpi ctx={ctx} label={d.grossProfit} value={gp.grossProfit} previous={prevGp?.grossProfit} format={money$} unknownText={d.unknown} note={`${d.fees}: ${d.feesUnknown}`} />
         <Kpi ctx={ctx} label={d.grossMargin} value={gp.margin} previous={prevGp?.margin} format={(n) => pct(n, locale)} unknownText={d.unknown} />
       </section>
+      {sp.undated > 0 && <p className="oa-note" data-tone="warn">{fill(d.undatedNote, { n: n$(sp.undated) })}</p>}
       {sp.customer.unpriced + sp.internal.unpriced > 0 && (
         <p className="oa-note" data-tone="warn">{fill(d.unpricedNote, { n: n$(sp.customer.unpriced + sp.internal.unpriced) })}</p>
       )}
@@ -97,6 +116,7 @@ export default async function OwnerAnalyticsCosts({ searchParams }: { searchPara
           unknownText={d.unknown}
           emptyText={d.noData}
           format={[undefined, undefined, money$, money$, money$, money$, money$]}
+          nullText={[undefined, undefined, undefined, undefined, undefined, d.notEntered, undefined]}
         />
       </section>
 
@@ -113,8 +133,8 @@ export default async function OwnerAnalyticsCosts({ searchParams }: { searchPara
                     <th scope="col">{d.month}</th>
                     <th scope="col">{d.category}</th>
                     <th scope="col" className="oa-num">{d.amount}</th>
-                    <th scope="col">{d.note}</th>
-                    <th scope="col">{d.tableActions}</th>
+                    {!present && <th scope="col">{d.note}</th>}
+                    {!present && <th scope="col">{d.tableActions}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -148,7 +168,7 @@ export default async function OwnerAnalyticsCosts({ searchParams }: { searchPara
               </thead>
               <tbody>
                 {balances.data.map((b) => (
-                  <tr key={`${b.provider}:${b.metric}`}>
+                  <tr key={`${b.provider}:${b.metric}:${b.source}`}>
                     <th scope="row">{b.provider}</th>
                     <td>{b.metric}</td>
                     <td className="oa-num">{b.remaining === null ? d.unknown : num(b.remaining, locale, 2)}</td>
@@ -183,10 +203,12 @@ function costEntryRows(cells: Array<Array<string | number | null>>, entries: Arr
       <th scope="row">{r[0]}</th>
       <td>{r[1]}</td>
       <td className="oa-num">{typeof r[2] === "number" ? money$(r[2]) : r[2]}</td>
-      <td>{r[3] ?? ""}</td>
-      <td>
-        {!present && <DeleteCost id={entries[i].id} />}
-      </td>
+      {!present && <td>{r[3] ?? ""}</td>}
+      {!present && (
+        <td>
+          <DeleteCost id={entries[i].id} />
+        </td>
+      )}
     </tr>
   ));
 }

@@ -43,6 +43,7 @@ export const POST = requireSameOrigin(async (request: Request) => {
   }
   if (res.error) {
     if (res.error.code === "NS401") return json({ error: "mfa_required" }, 401);
+    if (res.error.code === "54000") return json({ error: "rate_limited" }, 429);
     if (res.error.code === "42501") return json({ error: "forbidden" }, 403);
     if (res.error.code === "22023") return json({ error: "invalid_request" }, 400);
     return json({ error: "not_saved" }, 503);
