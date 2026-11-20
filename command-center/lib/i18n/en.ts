@@ -25,6 +25,7 @@ import { modelKeysEn } from "./model-keys/en";
 import { operatorCustomersEn } from "./operator-customers/en";
 import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
+import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { availabilityEn } from "./availability/en";
@@ -90,6 +91,7 @@ export const en = {
   customers: operatorCustomersEn,
   seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,
+  ownerAnalytics: ownerAnalyticsEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
   regionEdit: regionEditEn,
@@ -143,6 +145,7 @@ export const en = {
     providers: "Providers",
     models: "Models",
     margin: "Margin",
+    ownerAnalytics: "Owner analytics",
     customers: "Customers",
     billing: "Billing",
     studio: "Nightshift Studio",
