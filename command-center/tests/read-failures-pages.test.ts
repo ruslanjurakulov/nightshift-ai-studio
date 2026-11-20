@@ -82,7 +82,10 @@ describe("command center: a failed read is unknown, not zeros and not healthy", 
 
   it("failed backend", async () => {
     const html = await render(load);
-    expect(has(html, en.dashboard.unreadable)).toBe(true);
+    expect(has(html, en.dashboard.eventStatusUnavailable)).toBe(true);
+    expect(has(html, en.dashboard.eventStatusScope)).toBe(true);
+    expect(has(html, en.dashboard.eventStatusClear)).toBe(false);
+    expect(has(html, en.dashboard.eventStatusEmpty)).toBe(false);
     expect(has(html, en.common.unknown)).toBe(true);
     expect(has(html, en.dashboard.heroUnknown)).toBe(true);
     // not healthy / active, no fake "nothing produced" / "none" / "no videos yet"
@@ -101,9 +104,11 @@ describe("command center: a failed read is unknown, not zeros and not healthy", 
   it("readable but empty: real zeros, and NOT 'system healthy'", async () => {
     state.client = emptySupabase();
     const html = await render(load);
-    expect(has(html, en.dashboard.noActivity)).toBe(true);
+    expect(has(html, en.dashboard.eventStatusEmpty)).toBe(true);
+    expect(has(html, en.dashboard.eventStatusScope)).toBe(true);
+    expect(has(html, en.dashboard.eventStatusClear)).toBe(false);
     expect(has(html, en.dashboard.systemHealthy)).toBe(false);
-    expect(has(html, en.dashboard.unreadable)).toBe(false);
+    expect(has(html, en.dashboard.eventStatusUnavailable)).toBe(false);
     expect(has(html, en.dashboard.noVideos)).toBe(true); // the genuine empty state stays
     expect(html).not.toContain("data-read-error");
   });

@@ -84,7 +84,7 @@ Ask Sonilo (legal@sonilo.com, info@sonilo.com), in writing: (1) does a credits-b
 
 - **Any separate API terms, API licence or acceptable-use policy.** Section 10 refers to "any additional API terms". `platform.sonilo.com/terms`, `sonilo.com/api-terms` and `sonilo.com/acceptable-use-policy` answer 404; no other address was found.
 - **An enterprise agreement** (the only document that can change the training default).
-- **Whether Uzbekistan can sign up and pay.** No country list was found. The pricing page shows a Stripe prepaid top-up ("Secured by Stripe"; $20 the smallest preset; "Auto top-up: When your balance falls below $5, automatically add $20"). Sign-up, card acceptance and any KYC from Uzbekistan were verified for nothing.
+- **Whether Uzbekistan can sign up and pay.** No country list was found. The pricing page shows a Stripe prepaid top-up ("Secured by Stripe", preset amounts, and an optional auto top-up when the balance falls below a threshold). Sign-up, card acceptance and any KYC from Uzbekistan were verified for nothing.
 - **The result host.** The pages say the file is "hosted on Sonilo storage" and print `cdn.example.com` in every example.
 - **Whether a result link needs the key** (assumed not: "A temporary download URL"; the key is never sent to it).
 - **What a failed generation costs.** The errors page shows one failed task with `"refunded": true`. No page states a rule.
@@ -167,12 +167,12 @@ Operations and legal:
 
 ## Prices (all ESTIMATES, `confirmed: false`)
 
-`platform.sonilo.com/pricing`, read 2026-11-10, each card with "Per-second metering": text-to-music **$0.135 / min ($0.00225 / sec)**, video-to-music **$0.54 / min ($0.009 / sec)**. `llms-full.txt`: "Every generating product has a minimum billable duration (a billing floor)", 10 seconds for both. The account's `discount_factor` ("Multiplier applied to the published per-second cost. 1.0 means no discount") changes it. So a 10 s track is about $0.0225, a 60 s track $0.135, music for a 60 s video $0.54, for a 6-minute video $3.24. "Start with 17 free trials (1-2 per endpoint)": text-to-music "2 calls free, no credit card required", video-to-music "1 call free" (Sonilo's statement). The quality and speed tiers in the registry are placeholders, not a benchmark.
+`platform.sonilo.com/pricing`, read 2026-11-10, each card with "Per-second metering": text-to-music and video-to-music, each priced per minute (video-to-music the dearer); the figures are on the vendor pricing page and in the model registry, not in prose. `llms-full.txt`: "Every generating product has a minimum billable duration (a billing floor)", 10 seconds for both. The account's `discount_factor` ("Multiplier applied to the published per-second cost. 1.0 means no discount") changes it. So a track shorter than 10 s is billed as 10 s. "Start with 17 free trials (1-2 per endpoint)": text-to-music "2 calls free, no credit card required", video-to-music "1 call free" (Sonilo's statement). The quality and speed tiers in the registry are placeholders, not a benchmark.
 
 ## To enable one (owner)
 
 1. Settle the terms (the four questions), in writing.
 2. Create the account, set the repository secret `SONILO_API_KEY`, verify it on the model-keys page (a free account read; nothing is generated).
 3. Write and apply the migration (the list above), take the capability out of `REGISTRY_ONLY_CAPABILITIES`.
-4. `python tools/probe_models.py --dry-run --model sonilo-music`, then the real probe by name. **The first one is expected to fail** with `SPEND MAY HAVE OCCURRED` and the result host in its message: about $0.02 (a 10 s track) if the free trial call is used up, nothing otherwise by Sonilo's statement. The video probe sends a 2-second test pattern and is billed at the 10 s floor, about $0.09.
+4. `python tools/probe_models.py --dry-run --model sonilo-music`, then the real probe by name. **The first one is expected to fail** with `SPEND MAY HAVE OCCURRED` and the result host in its message: one 10 s track if the free trial call is used up, nothing otherwise by Sonilo's statement. The video probe sends a 2-second test pattern and is billed at the 10 s floor.
 5. Pin the exact host in `RESULT_HOSTS`, probe again, compare the reported `duration_seconds` and the usage page with the estimate, then set `confirmed: true`, add the `credit_prices` rows and clear `terms_gate` in a reviewed change.

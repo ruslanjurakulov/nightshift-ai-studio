@@ -492,12 +492,11 @@ The result is a **draft plan** (§6.5 table `studio_plans`, status `draft`). It 
 ### 4.3 Provider choice
 
 - **Recommendation: Gemini (`GEMINI_MODEL_PLANNER`, defaulting to `GEMINI_MODEL` = `gemini-3.6-flash`).** It is the only text LLM wired (`config.py:223-260`), its key is already held as a deployment secret, and the per-stage override pattern is established (`gemini_stages.py:44-95`).
-- Verified price, `ai.google.dev/gemini-api/docs/pricing`, read 2026-11-14:
-  - paid tier **$0.75 / 1M input** and **$3.75 / 1M output** through 2026-12-31;
-  - **doubling to $1.50 and $7.50 from 2027-01-01**.
+- Verified price, `ai.google.dev/gemini-api/docs/pricing`, read 2026-11-14 (the figures live on the vendor pricing page, not in this repository):
+  - a paid-tier rate per 1M input and per 1M output tokens through 2026-12-31;
+  - **both doubling from 2027-01-01**.
 - Alternative, if the owner prefers Anthropic: `claude-sonnet-5-5` (or `claude-haiku-5-5` for cost). Verified at `docs.claude.com` models and pricing, read 2026-11-14:
-  - Sonnet 5.5 costs $2 / $10 per MTok;
-  - Haiku 5.5 costs $0.10 / $0.50 per MTok for prompts up to 100k tokens;
+  - Sonnet 5.5 and Haiku 5.5 are priced per MTok of input and output (Haiku's rate holds for prompts up to 100k tokens; see the vendor pricing page);
   - JSON outputs via `output_config.format` with `type: json_schema`.
 
   Choosing it means a new key and a new integration. No module reads `ANTHROPIC_API_KEY` today, and a test pins that (`tests/test_worker_env_allowlist.py:124-128`). That test must change on purpose.
@@ -520,7 +519,7 @@ The result is a **draft plan** (§6.5 table `studio_plans`, status `draft`). It 
 **Cost estimate.**
 
 - Templates plus a catalog subset plus the user text come to roughly 3-6k input tokens. The output is about 0.5-1k tokens.
-- At the verified Gemini 3.6 Flash prices, that is roughly **$0.006-0.008 per call today** and **$0.012-0.016 from 2027-01-01**.
+- At the verified Gemini 3.6 Flash prices (vendor pricing page, read 2026-11-14), the cost per call is small today and doubles from 2027-01-01; the figures are not kept in this repository.
 - This is an estimate, labelled as such. The real number is what we meter.
 
 **Owner decision (binding).**

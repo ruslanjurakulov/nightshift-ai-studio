@@ -31,7 +31,7 @@ What this module holds to (each has a test in tests/test_social_x.py):
   read-back: finding our own post again means a paid timeline read (X bills reads per resource) that matches on text, which can
   be fooled; a person looking at the timeline cannot. A stale ``processing`` row is failed as ``interrupted`` by the queue
   (0029) and never re-queued. A lost answer on INIT / APPEND / FINALIZE leaves only an unposted upload that X expires.
-* **No link in the post text.** X bills "Post create with a URL" at $0.200 and a plain post at $0.015 (pricing page, read
+* **No link in the post text.** X bills "Post create with a URL" at many times the rate of a plain post (pricing page, read
   2026-10-24, no "as of" date), so ``social_captions.x_caption`` removes links; the app is billed for every post.
 * **Public at once.** X has no draft or private state in this API, like Instagram: the approve-before-publish gate
   (``publish_request_refusal``, CLAUDE.md #2 and #3) is the only control, and it ran just before this.

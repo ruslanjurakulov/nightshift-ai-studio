@@ -15,7 +15,7 @@ appendix}`` and the Developer Terms (``/legal/developer-terms``, effective 2026-
 * Errors come back as plain text or JSON depending on the error ("request
   unauthorized" for a rejected token); the body is read as text and classified by
   status and words, never assumed to be JSON.
-* ``credits`` in the answer is the number of API units charged ($1 = 1,000 units).
+* ``credits`` in the answer is the number of API units charged (prepaid units; see the vendor pricing page).
 
 What is sent is exactly what is priced: the raster 1K model only (``recraftv4_1``,
 ``recraftv4_1_flash``). Vector (SVG) and the 2K "pro" variants are priced apart and

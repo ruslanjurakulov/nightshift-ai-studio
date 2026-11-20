@@ -56,7 +56,7 @@ Sources (`platform.minimax.io`, markdown, read 2026-10-25): `/docs/api-reference
 
 ## Prices (all ESTIMATES, `confirmed: false`, as of 2026-10-25)
 
-`platform.minimax.io/docs/pricing/overview`, pay-as-you-go API only (the video packages do not include H3), USD per second of output: H3 2K $0.13, 768P $0.08; Highspeed 768P $0.06; Lite 768P $0.04, 480P $0.025; Max 768P $0.08, 480P $0.05. Input video is billed per second as well and input pictures past the free quota cost $0.02-0.074 each; neither is sent beyond first and last frame. Rate limit (rate-limits page): Video Generation V2 `MiniMax-H3` 300 RPM, 30 tasks in flight; the other variants are not listed, so the registry allows 2 per organization.
+`platform.minimax.io/docs/pricing/overview`, pay-as-you-go API only (the video packages do not include H3), USD per second of output for H3 (2K, 768P), Highspeed (768P), Lite (768P, 480P) and Max (768P, 480P); the figures are on the vendor pricing page and in the model registry, not in prose. Input video is billed per second as well and input pictures past the free quota cost extra each; neither is sent beyond first and last frame. Rate limit (rate-limits page): Video Generation V2 `MiniMax-H3` 300 RPM, 30 tasks in flight; the other variants are not listed, so the registry allows 2 per organization.
 
 `quality_tier` / `speed_tier` are judgement from the research report (H3 4/3, Highspeed 3/4, Lite 3/4, Max 3/4); no benchmark was read.
 
@@ -64,5 +64,5 @@ Sources (`platform.minimax.io`, markdown, read 2026-10-25): `/docs/api-reference
 
 1. Decide the resale question in writing: ask MiniMax (`contact.nanonoble@minimax.io`, the Terms' contact address) whether a credits product built on this key is an "integrated application" under 7(c) and "your own product" under item 3; read the Service Rules it points to; decide H3 Max separately.
 2. Check Uzbekistan sign-up and payment, set the `MINIMAX_API_KEY` repository secret (never in chat) and a spend cap.
-3. `python tools/probe_models.py --dry-run --model minimax-h3-lite`, then the real probe by naming it (`--all` and the probe workflow with an empty model input skip every gated model): Lite 480p 4 s with two frames is about $0.10 (+ nothing for the pictures), H3 768p 4 s about $0.32.
+3. `python tools/probe_models.py --dry-run --model minimax-h3-lite`, then the real probe by naming it (`--all` and the probe workflow with an empty model input skip every gated model): Lite 480p 4 s with two frames (nothing extra for the pictures), or H3 768p 4 s, each at the registry's price.
 4. Check the real clip host and pixel size of `2k`, re-check the prices, set `confirmed: true`, add the `credit_prices` rows, and clear `terms_gate` in a reviewed change.
