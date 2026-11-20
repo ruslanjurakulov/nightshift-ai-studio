@@ -486,6 +486,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     import sec_owner_analytics_0182
     sec_owner_analytics_0182.seed(conn, sc)
 
+    # Trend templates (0183): tests/security/sec_creative_templates_0183.py — one published template and one draft.
+    import sec_creative_templates_0183
+    sec_creative_templates_0183.seed(conn, sc)
+
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
     with as_superuser(conn, commit=False) as s:

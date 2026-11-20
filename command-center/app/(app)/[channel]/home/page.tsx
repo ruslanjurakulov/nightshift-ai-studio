@@ -8,6 +8,7 @@ import { orgWide } from "@/lib/channels";
 import { createClient } from "@/lib/supabase/server";
 import { heldOnly } from "@/lib/heldVideos";
 import { listWaitingStoryboards } from "@/lib/server/storyboards";
+import { TrendsStrip } from "@/components/trends/TrendsStrip";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,5 +53,6 @@ export default async function HomePage() {
   } else if (ids.length === 0) {
     waiting = { videos: 0, storyboards: 0 };
   }
-  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} />;
+  // Trends (0183): stream S3's strip of the first six templates, in Home's slot (one strip, never a second copy).
+  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} trends={<TrendsStrip />} />;
 }

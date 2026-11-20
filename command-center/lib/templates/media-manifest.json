@@ -1,0 +1,42 @@
+{
+  "before-after-reveal": {
+    "preview": true,
+    "poster": true
+  },
+  "cinematic-intro": {
+    "preview": true,
+    "poster": true
+  },
+  "faceless-story": {
+    "preview": true,
+    "poster": true
+  },
+  "fact-card": {
+    "preview": false,
+    "poster": true
+  },
+  "food-reveal": {
+    "preview": true,
+    "poster": true
+  },
+  "podcast-clip": {
+    "preview": true,
+    "poster": true
+  },
+  "product-ad-vertical": {
+    "preview": true,
+    "poster": true
+  },
+  "promo-poster-square": {
+    "preview": false,
+    "poster": true
+  },
+  "quote-poster": {
+    "preview": false,
+    "poster": true
+  },
+  "travel-montage": {
+    "preview": true,
+    "poster": true
+  }
+}

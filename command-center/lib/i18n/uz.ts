@@ -30,6 +30,7 @@ import { ownerTruthUz } from "./owner-truth/uz";
 import { ownerAnalyticsUz } from "./owner-analytics/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
+import { trendsUz } from "./trends/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
@@ -60,6 +61,8 @@ import { adsFactoryUz } from "./ads-factory/uz";
 export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
+  /** The Trends gallery (migration 0183): ./trends/uz.ts. */
+  trends: trendsUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
