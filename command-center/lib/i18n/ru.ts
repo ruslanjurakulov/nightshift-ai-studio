@@ -70,7 +70,7 @@ export const ru: Dictionary = {
   marketing: marketingRu,
   modelSwitch: modelSwitchRu,
   studioHome: studioHomeRu,
-  home: homeRu,
+  landingHome: homeRu,
   modelBudget: modelBudgetRu,
   planFinder: planFinderRu,
   /** The owner's per-provider ledger on the Billing page: ./billing-ledger/ru.ts. */

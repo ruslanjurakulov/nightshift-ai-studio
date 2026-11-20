@@ -79,7 +79,7 @@ export const en = {
   marketing: marketingEn,
   modelSwitch: modelSwitchEn,
   studioHome: studioHomeEn,
-  home: homeEn,
+  landingHome: homeEn,
   modelBudget: modelBudgetEn,
   /** /pricing's "What does my plan make?": per-plan outputs, the plan finder, the per-item table: ./plan-finder/en.ts. */
   planFinder: planFinderEn,

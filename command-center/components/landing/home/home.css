@@ -1,0 +1,260 @@
+/* The landing page "/" (components/landing/home/HomePage.tsx). Built only on the --ds-* tokens (app/tokens.css): the hero
+   and the closing band are dark in either theme (data-theme-scope="dark"), every other section follows the page's theme.
+   In @layer components, like the rest of the public site's stylesheets, so a utility can still win. */
+@layer components {
+  .hm-root {
+    --hm-gutter: 16px;
+    --hm-max: 1200px;
+    background: var(--ds-bg);
+    color: var(--ds-text);
+  }
+  @media (min-width: 640px) { .hm-root { --hm-gutter: 24px; } }
+  @media (min-width: 1024px) { .hm-root { --hm-gutter: 40px; } }
+
+  .hm-wrap { width: 100%; max-width: calc(var(--hm-max) + 2 * var(--hm-gutter)); margin-inline: auto; padding-inline: var(--hm-gutter); }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .hm-hero {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: flex-end;
+    /* A fixed box before anything loads: the still, the clip and the words never move it (CLS 0). */
+    min-height: max(560px, min(88svh, 860px));
+    overflow: hidden;
+    background: var(--ds-bg);
+    color: var(--ds-text);
+  }
+  .hm-hero-media { position: absolute; inset: 0; z-index: -2; }
+  .hm-hero-still,
+  .hm-hero-media .nx-clip { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 62% 50%; }
+  .hm-hero-media .nx-clip { opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
+  .hm-hero-media[data-live="true"] .nx-clip { opacity: 1; }
+  /* The words sit on the left (the dark side of the planet); the veil keeps them >= 4.5:1 whatever frame is behind. */
+  .hm-hero-veil {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      linear-gradient(90deg, rgb(7 10 20 / 0.92) 0%, rgb(7 10 20 / 0.7) 42%, rgb(7 10 20 / 0.1) 75%),
+      linear-gradient(0deg, rgb(7 10 20 / 0.95) 0%, rgb(7 10 20 / 0) 45%);
+  }
+  @media (max-width: 767px) {
+    .hm-hero-veil { background: linear-gradient(0deg, rgb(7 10 20 / 0.96) 0%, rgb(7 10 20 / 0.82) 45%, rgb(7 10 20 / 0.35) 100%); }
+  }
+  .hm-hero-body { padding-block: 120px 72px; }
+  @media (min-width: 1024px) { .hm-hero-body { padding-block: 160px 112px; } }
+  .hm-eyebrow {
+    margin-bottom: var(--ds-space-4);
+    color: var(--ds-select);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .hm-hero-title {
+    max-width: 16ch;
+    font-size: clamp(2.1rem, 1.2rem + 4.4vw, 4.6rem);
+    color: var(--ds-text);
+  }
+  .hm-hero-lead {
+    max-width: 44ch;
+    margin-top: var(--ds-space-5);
+    color: var(--ds-text-2);
+    font-size: clamp(1rem, 0.95rem + 0.35vw, 1.25rem);
+    line-height: 1.55;
+  }
+  .hm-hero-ctas { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-8); }
+  @media (max-width: 479px) {
+    .hm-hero-ctas > * { flex: 1 1 100%; }
+  }
+  /* On a moving picture a solid surface reads better than a translucent one. */
+  .hm-ghost { --_bg: rgb(15 22 38 / 0.72); --_bg-hover: var(--ds-surface-3); backdrop-filter: blur(8px); }
+  .hm-hero-credit {
+    position: absolute;
+    right: var(--hm-gutter);
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-2);
+    color: var(--ds-text-2);
+    font-size: 0.8125rem;
+  }
+  @media (max-width: 767px) { .hm-hero-credit { display: none; } }
+  .hm-hero .nx-motion { position: absolute; top: 12px; right: var(--hm-gutter); }
+
+  .hm-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--ds-r-pill);
+    border: 1px solid rgb(255 255 255 / 0.35);
+    background: rgb(7 10 20 / 0.72);
+    color: #e6eefc;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* ── Sections ─────────────────────────────────────────────────────────── */
+  .hm-section { padding-block: 72px; }
+  @media (min-width: 1024px) { .hm-section { padding-block: 112px; } }
+  .hm-section + .hm-section { border-top: 1px solid var(--ds-border); }
+  .hm-h2 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 3rem); color: var(--ds-text); max-width: 22ch; }
+  .hm-h2-sm { font-size: 1.25rem; font-weight: 600; color: var(--ds-text); }
+  .hm-h3 { margin-top: var(--ds-space-2); font-size: 1.125rem; font-weight: 600; color: var(--ds-text); }
+  .hm-lead { max-width: 60ch; margin-top: var(--ds-space-4); color: var(--ds-text-2); font-size: 1.0625rem; line-height: 1.6; }
+  .hm-muted { margin-top: var(--ds-space-2); color: var(--ds-muted); line-height: 1.55; }
+  .hm-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-space-2);
+    min-height: 44px;
+    margin-top: var(--ds-space-6);
+    color: var(--ds-accent);
+    font-weight: 600;
+    text-underline-offset: 4px;
+  }
+  .hm-link:hover { color: var(--ds-accent-hover); text-decoration: underline; }
+  .hm-link > svg { width: 18px; height: 18px; }
+
+  /* ── Reel ─────────────────────────────────────────────────────────────── */
+  .hm-reel { padding-bottom: 56px; }
+  .hm-reel-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 46vw);
+    gap: var(--ds-space-3);
+    margin-top: var(--ds-space-6);
+    padding-inline: var(--hm-gutter);
+    padding-bottom: var(--ds-space-2);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--hm-gutter);
+    scrollbar-width: thin;
+  }
+  @media (min-width: 640px) { .hm-reel-row { grid-auto-columns: 220px; } }
+  @media (min-width: 1280px) {
+    .hm-reel-row {
+      grid-auto-flow: row;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      max-width: calc(var(--hm-max) + 2 * var(--hm-gutter));
+      margin-inline: auto;
+      overflow: visible;
+    }
+  }
+  .hm-reel-card { scroll-snap-align: start; }
+  .hm-reel-pic {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--ds-r-panel);
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface-2);
+  }
+  .hm-reel-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .hm-reel-badge { position: absolute; left: 8px; bottom: 8px; }
+
+  /* ── How it works ─────────────────────────────────────────────────────── */
+  .hm-steps { display: grid; gap: var(--ds-space-4); margin-top: var(--ds-space-10); counter-reset: none; }
+  @media (min-width: 768px) { .hm-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .hm-step {
+    position: relative;
+    padding: var(--ds-space-6);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-r-panel);
+    background: var(--ds-surface-1);
+  }
+  .hm-step-head { display: flex; align-items: center; justify-content: space-between; }
+  .hm-step-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--ds-r-key);
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent);
+  }
+  .hm-step-icon > svg { width: 22px; height: 22px; }
+  .hm-step[data-step="idea"] .hm-step-icon { background: color-mix(in srgb, var(--ds-type-text) 16%, transparent); color: var(--ds-type-text); }
+  .hm-step[data-step="create"] .hm-step-icon { background: color-mix(in srgb, var(--ds-type-video) 16%, transparent); color: var(--ds-type-video); }
+  .hm-step[data-step="export"] .hm-step-icon { background: color-mix(in srgb, var(--ds-type-audio) 16%, transparent); color: var(--ds-type-audio); }
+  .hm-step-num { color: var(--ds-muted); font-family: var(--ds-font-display); font-size: 1.5rem; font-weight: 600; }
+  .hm-step-label { margin-top: var(--ds-space-5); color: var(--ds-muted); font-size: 0.8125rem; font-weight: 600; }
+
+  /* ── Models on sale ───────────────────────────────────────────────────── */
+  .hm-model-list { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-8); }
+  .hm-model {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ds-space-2);
+    min-height: 48px;
+    padding: 8px 8px 8px 16px;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-r-pill);
+    background: var(--ds-surface-1);
+  }
+  .hm-model-name { font-weight: 600; color: var(--ds-text); }
+  .hm-model-kinds { display: inline-flex; gap: 4px; }
+  .hm-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--ds-r-pill);
+    background: var(--ds-surface-2);
+    color: var(--ds-text-2);
+    font-size: 0.8125rem;
+  }
+  .hm-kind::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--_k, var(--ds-muted)); }
+  .hm-kind[data-kind="video"] { --_k: var(--ds-type-video); }
+  .hm-kind[data-kind="image"] { --_k: var(--ds-type-image); }
+  .hm-kind[data-kind="voice"] { --_k: var(--ds-type-audio); }
+
+  /* ── MCP ──────────────────────────────────────────────────────────────── */
+  .hm-mcp {
+    position: relative;
+    overflow: hidden;
+    padding: var(--ds-space-8) var(--ds-space-6);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-r-sheet);
+    background:
+      radial-gradient(600px 240px at 100% 0%, var(--ds-accent-soft), transparent 70%),
+      var(--ds-surface-1);
+  }
+  @media (min-width: 768px) { .hm-mcp { padding: var(--ds-space-12); } }
+  .hm-mcp .ds-btn { margin-top: var(--ds-space-6); }
+  .hm-tag {
+    display: inline-flex;
+    margin-bottom: var(--ds-space-4);
+    padding: 2px 10px;
+    border-radius: var(--ds-r-pill);
+    border: 1px solid var(--ds-select);
+    color: var(--ds-select);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  /* ── Pricing (the site's own teaser, components/landing/PriceBlock.tsx) ─ */
+  .hm-pricing { border-top: 1px solid var(--ds-border); }
+
+  /* ── Trust ────────────────────────────────────────────────────────────── */
+  .hm-trust { display: grid; gap: var(--ds-space-4); margin-top: var(--ds-space-8); }
+  @media (min-width: 768px) { .hm-trust { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .hm-trust-item { padding: var(--ds-space-6); border: 1px solid var(--ds-border); border-radius: var(--ds-r-panel); background: var(--ds-surface-1); }
+  .hm-trust-icon { width: 22px; height: 22px; color: var(--ds-success); }
+
+  /* ── Closing band ─────────────────────────────────────────────────────── */
+  .hm-final {
+    background:
+      radial-gradient(900px 360px at 20% 0%, rgb(47 139 255 / 0.22), transparent 70%),
+      radial-gradient(700px 300px at 90% 100%, rgb(200 255 46 / 0.08), transparent 70%),
+      var(--ds-bg);
+    color: var(--ds-text);
+  }
+  .hm-final-body { text-align: left; }
+}
+
+/* Reduced motion: the hero shows its still only (LoopClip never renders a clip), and nothing eases in. */
+@media (prefers-reduced-motion: reduce) {
+  .hm-hero-media .nx-clip { transition: none; }
+}

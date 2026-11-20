@@ -70,7 +70,7 @@ export const uz: Dictionary = {
   marketing: marketingUz,
   modelSwitch: modelSwitchUz,
   studioHome: studioHomeUz,
-  home: homeUz,
+  landingHome: homeUz,
   modelBudget: modelBudgetUz,
   planFinder: planFinderUz,
   /** The per-provider ledger the owner reads on the Billing page: ./billing-ledger/uz.ts. */
