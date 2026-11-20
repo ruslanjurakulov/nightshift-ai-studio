@@ -314,7 +314,9 @@ ON_0153 = (MIGRATION_0155.name, *ON_0155)
 ON_0149 = (MIGRATION_0153.name, *ON_0153)
 #: Migrations written on 0139's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0139 out
 #: leaves these out too, in this order.
-ON_0139 = (MIGRATION_0149.name, *ON_0149)
+#: 0180 (Recraft web_mcp) replaces 0125's sellable_models and 0124's api_creative_model_ok and refuses any other body: it does not sit
+#: on 0139, but every sequence that leaves 0139 out leaves 0125's sitters out, so it is listed here, last.
+ON_0139 = (MIGRATION_0149.name, *ON_0149, "0180_recraft_web_mcp.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -324,7 +326,7 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: out and puts it back still ends on the newest file, as build_sequence() does. 0174 (rights acknowledgement) replaces 0124's
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
-           "0174_rights_acknowledgement.sql", "0179_rights_acknowledgement_inputs.sql", "0180_recraft_web_mcp.sql")
+           "0174_rights_acknowledgement.sql", "0179_rights_acknowledgement_inputs.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -350,6 +352,7 @@ def take_off_0139(session) -> None:
     first with its own rollback, and puts it back with put_back_0139 where the chain goes on. 0149 sits on 0139's creative_price(), and
     0139's rollback refuses any other body, so 0149 comes off first when it is there (and 0153, which sits on 0149's, before it, and
     0155, which sits on 0153's, before that, and 0156 on 0155's before that, and 0159 on 0156's before that)."""
+    take_off_0180(session)
     if has_0149(session) or has_0153(session) or has_0155(session) or has_0156(session) or has_0159(session):
         take_off_0149(session)
     session.conn.execute(rollback_0139_body())
@@ -358,6 +361,7 @@ def take_off_0139(session) -> None:
 def put_back_0139(session) -> None:
     session.conn.execute(MIGRATION_0139.read_text(encoding="utf-8"))
     put_back_0149(session)
+    put_back_0180(session)
 
 
 #: md5 of 0149's creative_price body (white space folded), the way its drift guard reads it.
@@ -684,6 +688,32 @@ def take_off_0189(conn_or_session) -> None:
     if has_0189(conn):
         text = ROLLBACK_0189.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+MIGRATION_0180 = MIGRATIONS / "0180_recraft_web_mcp.sql"
+ROLLBACK_0180 = REPO / "docs" / "sql" / "rollback_0180_recraft_web_mcp.sql"
+
+
+def has_0180(conn_or_session) -> bool:
+    """0180 leaves no function of its own: its sellable_models body names 'web_mcp'."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select position('web_mcp' in prosrc) > 0 from pg_proc "
+                             "where oid = to_regprocedure('public.sellable_models(text, text)')").fetchone()[0] or False)
+
+
+def take_off_0180(conn_or_session) -> None:
+    """0180 replaces sellable_models() (0125's body) and api_creative_model_ok() (0124's); 0125's and 0124's replays and rollbacks
+    refuse any other body, so a test that replays them takes 0180 off first (take_off_0139 does it, as 0125's other sitters)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0180(conn):
+        text = ROLLBACK_0180.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0180(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0180(conn):
+        conn.execute(MIGRATION_0180.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:
