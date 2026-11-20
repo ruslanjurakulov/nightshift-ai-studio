@@ -1342,10 +1342,14 @@ select jsonb_build_object(
 def test_reapplying_the_migration_changes_nothing(db, a):
     fid = db.film(a)
     db.quoted_start(a, fid)
-    before = db.su(SNAPSHOT)[0][0]
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    assert db.su(SNAPSHOT)[0][0] == before
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0187 replaces start_film (0171's drift guard refuses its body): compared on 0171 alone, inside one transaction.
+        sec_db.take_off_0187(c)
+        before = c.execute(SNAPSHOT).fetchone()[0]
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert c.execute(SNAPSHOT).fetchone()[0] == before
+        c.rollback()
 
 
 def test_the_drift_guard_refuses_a_body_or_a_constraint_that_is_not_its_own(db):
@@ -1393,16 +1397,19 @@ def test_the_rollback_refuses_while_a_segment_lives_then_takes_everything_out_an
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0187(c)  # 0187 sits on 0171's start_film; 0171's rollback refuses any other body
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=True))
         assert "film segments are live" in str(e.value)
         c.rollback()
     db.cancel(seg["id"])
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0187(c)
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=False))
         assert "film segments exist and their record would be deleted" in str(e.value)
         c.rollback()
+        sec_db.take_off_0187(c)
         c.execute(sec_db.rollback_0171_body(override=True))
         assert c.execute("select to_regclass('public.film_segments'), to_regclass('public.film_quotes'), "
                          "to_regclass('public.film_studio_settings'), to_regprocedure('public.start_film(uuid, text, text)')").fetchone() \
