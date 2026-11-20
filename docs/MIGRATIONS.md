@@ -2113,6 +2113,25 @@ confirmation (email of 2026-11-17/18), which covers the web studio and our MCP c
 - **Undo.** `docs/sql/rollback_0189_job_video_and_list_order.sql` (owner-applied): the three earlier bodies back verbatim; the
   `result_slug` column and its values stay.
 
+## The probe log names a refused plan (0190)
+
+0190 (`0190_probe_error_plan_required.sql`) is **live on apply**: it replaces ONE check constraint, `model_probe_runs_error_code_check`
+(0035 / 0143), with the same rule plus one word, `plan_required`. No table, column, row, function or grant changes.
+
+- **Why.** A real ElevenLabs call on 2026-11-20 was answered HTTP 402 `paid_plan_required`: a library voice on a free plan. 402 is also
+  ElevenLabs' status for an empty balance, which needs the opposite fix, so the adapter now reads ElevenLabs' own code and raises
+  `E_PLAN_REQUIRED` (`modules/capabilities/base.py` `ERROR_CODES`); `record_model_probe` inserts the code as given, so without 0190 such a
+  probe could not be recorded. Job rows (0036) already take any `^[a-z0-9_]{1,64}$` word; the Studio shows it as its own reason, not
+  "busy". The router's failover (0075 / 0088) does not list it: a plan refusal is never failed over.
+- **Safe to apply.** The new rule accepts every row the old one did. Apply as ONE transaction (`set local lock_timeout`); the last block
+  compares the whole constraint, as Postgres prints it back, to the expected rule.
+- **Undo.** `docs/sql/rollback_0190_probe_error_plan_required.sql` (owner-applied): refuses while the log holds a `plan_required` row, then
+  puts 0143's words back and checks the printed rule the same way.
+- **Numbering.** 0190, assigned at merge after 0189; 0175-0181 are left to the work that reserved them. The numbering tests of 0127, 0131 and 0133 list it as
+  reviewed (it names nothing they pin).
+- **Tests.** `tests/test_probe_error_plan_required_migration.py`; `tests/test_probe_error_vendor_tool_migration.py` now pins the newest
+  check, not 0143, to `ERROR_CODES`.
+
 ## The Studio for a connected assistant (0191)
 
 0191 (`0191_mcp_oauth_creative.sql`) lets an AI assistant the person connected with OAuth (0093) quote and start Studio generations,
@@ -2139,7 +2158,7 @@ spending as its own unticked choice; a connection gets it only when the person t
 - **Replaces** 0093's `oauth_scopes_supported` (`b1cdcf01…` → `3ef7e315…`), `oauth_endpoint_scope` (`ade9dedd…` → `4bc3b07f…`, five
   endpoints added, still no `else`) and `oauth_grant_month_credits` (`6329f5ed…` → `79d0c859…`, generations' holds counted).
 - **Without it.** The five MCP tools answer 503 `api_unavailable` naming 0191; nothing else changes.
-- **Number.** 0191 (0172-0175 are held by open pull requests). Needs 0038, 0062, 0075, 0093, 0124, 0125, 0147.
+- **Number.** 0191, assigned at merge after 0190. Needs 0038, 0062, 0075, 0093, 0124, 0125, 0147.
 - **Undo.** `docs/sql/rollback_0191_mcp_oauth_creative.sql` (owner-applied): refuses while a connection holds `studio:create`, drops
   the doors, puts 0093's three bodies and check back, keeps the record tables.
 - **Tests.** `tests/test_mcp_oauth_creative_migration.py`, `tests/security/test_sec_mcp_oauth_creative.py` (a real PostgreSQL),

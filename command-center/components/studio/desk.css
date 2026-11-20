@@ -214,7 +214,8 @@
   transition: border-color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
 }
 .desk-cast-row:hover { border-color: var(--ns-rule-strong); }
-.desk-cast-row[aria-checked="true"] { border-color: var(--ns-amber-ink); background: var(--ns-select); }
+.desk-cast-row[aria-checked="true"],
+.desk-cast-row[data-checked="true"] { border-color: var(--ns-amber-ink); background: var(--ns-select); }
 
 /* Enhance's size keys: large, the thing being chosen. */
 .desk-size .studio-seg { flex-wrap: wrap; }

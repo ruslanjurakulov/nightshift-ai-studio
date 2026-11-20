@@ -98,3 +98,22 @@ describe("ElevenLabs voice list (v2, paginated)", () => {
     expect(seenUrl).not.toContain(KEY);
   });
 });
+
+describe("ElevenLabs account plan (GET /v1/user/subscription)", () => {
+  it("reads tier: free is free, any other named tier is paid, anything else is unknown", async () => {
+    const { readAccountPlan, ELEVENLABS_SUBSCRIPTION_URL } = await import("../lib/elevenlabsVoices");
+    const answer = (r: Response | Error) => (async (url: string, init: RequestInit) => {
+      expect(url).toBe(ELEVENLABS_SUBSCRIPTION_URL);
+      expect((init.headers as Record<string, string>)["xi-api-key"]).toBe(KEY);
+      if (r instanceof Error) throw r;
+      return r;
+    }) as unknown as typeof fetch;
+    expect(await readAccountPlan(KEY, answer(jsonResponse({ tier: "free" })))).toBe("free");
+    expect(await readAccountPlan(KEY, answer(jsonResponse({ tier: "Free " })))).toBe("free");
+    expect(await readAccountPlan(KEY, answer(jsonResponse({ tier: "starter" })))).toBe("paid");
+    expect(await readAccountPlan(KEY, answer(jsonResponse({ tier: "" })))).toBe("unknown");
+    expect(await readAccountPlan(KEY, answer(jsonResponse({})))).toBe("unknown");
+    expect(await readAccountPlan(KEY, answer(jsonResponse({ detail: { code: "invalid_api_key" } }, 401)))).toBe("unknown");
+    expect(await readAccountPlan(KEY, answer(new TypeError("offline")))).toBe("unknown");
+  });
+});

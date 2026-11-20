@@ -729,7 +729,8 @@ export interface ProviderLedger {
 }
 
 /** Probe failures where the vendor refused the key or the account before any work: nothing was made, nothing billed. */
-const REFUSED_BEFORE_WORK = new Set(["auth", "quota", "rate_limited", "not_configured"]);
+// plan_required (0190): the account's plan refused the request outright, like an empty balance; nothing was made.
+export const REFUSED_BEFORE_WORK: ReadonlySet<string> = new Set(["auth", "quota", "rate_limited", "not_configured", "plan_required"]);
 
 export const utcDayStart = (ms: number): number => Math.floor(ms / DAY_MS) * DAY_MS;
 

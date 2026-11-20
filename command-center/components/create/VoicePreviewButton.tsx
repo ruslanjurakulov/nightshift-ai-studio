@@ -12,6 +12,9 @@ import { isVoiceId } from "@/lib/ttsModels";
  * for once, then polled until the clip exists (about a minute). Preparing a
  * new clip spends the operator's ElevenLabs characters, so only the operator
  * may ask for one; anyone else is told so rather than shown a failure.
+ *
+ * `previewUrl`: the sample ElevenLabs itself publishes for a voice of the account (the Studio's voice list). It is
+ * played as it is, so no clip is looked up or prepared and nothing is spent on the operator's account.
  */
 
 type State = "idle" | "loading" | "preparing" | "playing" | "failed" | "operator_only" | "rate_limited";
@@ -26,7 +29,18 @@ async function signedUrl(voiceId: string): Promise<string | null> {
   return data.ready && data.url ? data.url : null;
 }
 
-export function VoicePreviewButton({ voiceId, channelId }: { voiceId: string; channelId: string | null }) {
+export function VoicePreviewButton({
+  voiceId,
+  channelId,
+  previewUrl,
+  name,
+}: {
+  voiceId: string;
+  channelId: string | null;
+  previewUrl?: string;
+  /** The voice's name, for a button that sits beside many others: "Listen" alone does not say to which. */
+  name?: string;
+}) {
   const { t } = useI18n();
   const [state, setState] = useState<State>("idle");
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -62,6 +76,7 @@ export function VoicePreviewButton({ voiceId, channelId }: { voiceId: string; ch
       return;
     }
     if (!valid || state === "loading" || state === "preparing") return;
+    if (previewUrl && previewUrl.startsWith("https://")) return play(previewUrl);
     setState("loading");
     try {
       const url = await signedUrl(voiceId);
@@ -97,7 +112,7 @@ export function VoicePreviewButton({ voiceId, channelId }: { voiceId: string; ch
         type="button"
         onClick={onClick}
         disabled={!valid || state === "loading" || state === "preparing"}
-        aria-label={label}
+        aria-label={name ? `${label}: ${name}` : label}
         title={label}
         className="btn-sky is-quiet pill inline-flex items-center justify-center gap-2 px-4 py-2 text-xs disabled:opacity-50"
       >

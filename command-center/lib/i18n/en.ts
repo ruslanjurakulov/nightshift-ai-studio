@@ -7,6 +7,7 @@ import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
+import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
@@ -3206,6 +3207,7 @@ export const en = {
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
   rightsAck: rightsAckEn,
+  voiceCatalog: voiceCatalogEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",
@@ -4020,6 +4022,7 @@ export const en = {
     reasons: {
       policy: "The safety check refused this request. Change the description and try again.",
       bad_request: "These settings were not accepted. Change them and try again.",
+      plan: "The provider's plan does not allow this. For speech, pick a premade voice and try again.",
       busy: "The service was busy or too slow. Try again in a few minutes.",
       service: "Something went wrong on our side. Try again, or pick another model.",
       credits: "Credits could not be checked for this generation, so it did not run.",
