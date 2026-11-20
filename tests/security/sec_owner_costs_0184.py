@@ -1,4 +1,4 @@
-"""Security-lab contract for migration 0183 (the owner analytics hub's costs, balances and the owner's monthly cost entries).
+"""Security-lab contract for migration 0184 (the owner analytics hub's costs, balances and the owner's monthly cost entries).
 
 Wired in at the bottom of sec_expectations.py and seeded from sec_scenario.build_scenario(), like sec_owner_analytics_0182.
 """

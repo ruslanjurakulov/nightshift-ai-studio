@@ -166,7 +166,7 @@ export function recentEnough(at: number | null, now: number, minutes = EXPORT_RE
   return at !== null && now - at <= minutes * 60_000 && at <= now + 60_000;
 }
 
-// ── costs (migration 0183) ──────────────────────────────────────────────────
+// ── costs (migration 0184) ──────────────────────────────────────────────────
 
 export const readSpend = cache((from: string, to: string): Promise<Read<SpendRow[]>> =>
   rpc("owner_analytics_provider_spend", { p_from: from, p_to: to }, coerceSpendRows, 50000),

@@ -29,6 +29,7 @@ import { ownerTruthEn } from "./owner-truth/en";
 import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
+import { trendsEn } from "./trends/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -67,6 +68,8 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
+  /** The Trends gallery (migration 0183): ./trends/en.ts. */
+  trends: trendsEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
@@ -152,6 +155,7 @@ export const en = {
     customers: "Customers",
     billing: "Billing",
     studio: "Nightshift Studio",
+    trends: "Trends",
     // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
     brandLook: "Brand look",
     library: "Library",

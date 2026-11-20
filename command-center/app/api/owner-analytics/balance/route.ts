@@ -9,7 +9,7 @@ const NO_STORE = { "cache-control": "no-store" };
 const json = (body: unknown, status: number) => NextResponse.json(body, { status, headers: NO_STORE });
 
 /**
- * The owner types in a provider balance the provider's API does not report (migration 0183). Stored as source = 'manual', so the
+ * The owner types in a provider balance the provider's API does not report (migration 0184). Stored as source = 'manual', so the
  * page never presents it as the provider's own reading. This calls no provider and touches no key.
  */
 export const POST = requireSameOrigin(async (request: Request) => {

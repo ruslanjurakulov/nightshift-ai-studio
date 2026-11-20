@@ -222,3 +222,29 @@ describe("Pixel #810 regressions", () => {
     spy.mockRestore();
   });
 });
+
+describe("the skin (html.ds-skin) leaves no old colour behind", () => {
+  // Names in globals.css's dark block the skin deliberately does not touch: structure (display, folds), effects that are
+  // already neutral or switched off in this look (sheens, glows, shadows), and the media chrome that is black on any picture.
+  const UNTOUCHED = new Set([
+    "--atmos-2", "--backdrop-glow", "--backdrop-video-display", "--cta-glow", "--cta-glow-hover", "--cta-sheen", "--ns-fold",
+    "--ns-section-ground", "--shadow-panel", "--studio-canvas", "--studio-cta-shadow", "--studio-media-chip", "--studio-on-media",
+    "--studio-scrim",
+  ]);
+
+  it("remaps every other role the app's dark theme declares", () => {
+    const globals = readFileSync(path.join(root, "app/globals.css"), "utf8");
+    const at = globals.indexOf(':root[data-theme="dark"],\n[data-theme-scope="dark"] {');
+    const dark = new Set([...globals.slice(at, globals.indexOf("\n}", at)).matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+    const s = css.indexOf(":root.ds-skin.ds-skin,");
+    const skin = new Set([...css.slice(s, css.indexOf("\n}", s)).matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+    const missing = [...dark].filter((n) => !skin.has(n) && !UNTOUCHED.has(n));
+    expect(missing, "a new colour role in globals.css needs a line in the skin (app/tokens.css) or in UNTOUCHED here").toEqual([]);
+  });
+
+  it("is on the root of every page, and reaches the public shell and scoped boxes", () => {
+    const layout = readFileSync(path.join(root, "app/layout.tsx"), "utf8");
+    expect(layout).toMatch(/<html lang=\{locale\} className="ds-skin"/);
+    expect(css).toMatch(/:root\.ds-skin\.ds-skin,\n\.ds-skin :is\(\.st, \.nx-final, \.nx-bar, \.st-auth-aside\),\n\.ds-skin \[data-theme-scope\] \{/);
+  });
+});

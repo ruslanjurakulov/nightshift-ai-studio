@@ -11,7 +11,7 @@ const json = (body: unknown, status: number) => NextResponse.json(body, { status
 const MONTH = /^\d{4}-\d{2}-01$/;
 
 /**
- * Add or delete one of the owner's monthly cost entries (migration 0183). The amount is stored in the database only, read back
+ * Add or delete one of the owner's monthly cost entries (migration 0184). The amount is stored in the database only, read back
  * at runtime by the owner; nothing here logs it. The database checks the owner and the second factor again.
  */
 export const POST = requireSameOrigin(async (request: Request) => {
