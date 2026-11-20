@@ -1,4 +1,4 @@
-/** The 18+ confirmation (migration 0199). English is the source of truth; ru.ts and uz.ts are typed against it. */
+/** The 18+ confirmation (migration 0192). English is the source of truth; ru.ts and uz.ts are typed against it. */
 export const ageEn = {
   title: "Confirm your age",
   body: "Nightshift is for adults (18+). Some of its models are allowed by their makers for adults only. Confirm once; your answer is recorded with the date.",

@@ -315,7 +315,7 @@ export interface StudioModel {
   speedTier?: number | null;
   /** 0052: the model can end an animated picture on a chosen one (spec.end_frame). */
   endFrame?: boolean;
-  /** Registry requires_adult (projected by sellable_models): sold only to a person with an adult attestation (0199). */
+  /** Registry requires_adult (projected by sellable_models): sold only to a person with an adult attestation (0192). */
   adultOnly?: boolean;
   /** Registry inputs.prompt_required: the tools this model needs words for even where the kind's words are optional (MiniMax H3's i2v). */
   wordsRequired?: StudioCapability[];
@@ -399,7 +399,7 @@ export interface StudioModel {
  *    those keys `planned`; model_tier_allowed() exists and nothing calls it). No plan or purchase opens such a model today, so
  *    none is offered for it.
  */
-/** adult_only: the maker's terms are 18+ (registry requires_adult) and this person has not confirmed they are an adult (0199). */
+/** adult_only: the maker's terms are 18+ (registry requires_adult) and this person has not confirmed they are an adult (0192). */
 export type ModelLock = "first_purchase" | "not_on_sale" | "adult_only";
 
 /**

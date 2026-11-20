@@ -1,4 +1,4 @@
--- 0199_adult_attestation.sql — a recorded, server-enforced adult (18+) attestation, and a gate in front of every quote and job.
+-- 0192_adult_attestation.sql — a recorded, server-enforced adult (18+) attestation, and a gate in front of every quote and job.
 --
 -- EVIDENCE:
 --   * The Gemini API terms (and some other vendors' terms) require their users to be 18 or older. The registry now says so per
@@ -11,7 +11,7 @@
 --   age answer. A checkbox in a browser does not change that (CLAUDE.md rule 3: the browser never decides). The database has to
 --   hold the answer and refuse, before anything is held (rule 6). 0174 is the precedent: an append-only record plus a gate.
 --
--- CHANGE (additive; nine function bodies replaced, each with marked 0199 hunks and nothing else changed; one trigger added):
+-- CHANGE (additive; thirteen function bodies replaced, each with marked 0192 hunks and nothing else changed; two triggers added):
 --   adult_attestations   one row per person (user_id = auth.uid() as record_adult_attestation() read it): adult (true = confirmed
 --     18 or older, false = said under 18), terms_version (the words they answered, ^[a-z0-9._-]{1,40}$), method (email_signup,
 --     google, welcome, create), created_at. The FIRST answer stands: a trigger refuses UPDATE, DELETE and TRUNCATE for every role,
@@ -57,6 +57,16 @@
 --     check: before the key and the quote are read, a replay is answered, the start is counted, anything is priced, held or written.
 --   api_create_video (0147's body, one marked hunk): a minor's API key or MCP grant is answered 403 adult_only_service before the
 --     price and the API hold, in an exempt organization too.
+--   oauth_creative_quote (0191's body, one marked hunk): the gate after the price, inside the block whose errors 0191 already maps
+--     through api_creative_refusal, so a connected assistant gets 403 adult_only_service / 428 adult_attestation_required and no
+--     quote is stored. oauth_creative_create spends only a stored quote and calls create_creative_job, which asks again.
+--   oauth_creative_models (0191's body, one marked hunk): an adults-only model stays listed, its spec marked requires_adult: true
+--     (from sellable_models' public spec), exactly as the Studio's list.
+--   THE DOWNLOAD GATE (adult_attestation_refuse_minor again, BEFORE INSERT on download_requests): a minor buys no download on the
+--     site (request_download, 0094: charged on the spot after this row is written). api_request_download (0170's body, one marked
+--     hunk) answers its own 403 adult_only_service first, before the video, the price and the API hold.
+--   oauth_create_video (0094's body, one marked hunk): a minor's connection is answered 403 adult_only_service before the channel,
+--     the price and the hold (the hold gate alone surfaced as this function's 500).
 --
 -- A DELETED ACCOUNT. As 0174's record: user_id has no foreign key to auth.users, so deleting an auth user neither cascades into
 --   this table nor is blocked by it, and the row outlives the account (the append-only trigger would refuse a cascade anyway).
@@ -71,37 +81,41 @@
 --     request_reply_draft, request_editor_export, request_brand_scan,
 --       request_character_swap (each holds through creative_platform_reserve)           M: in that helper (section 9)
 --     request_scene_regenerate, request_repurpose, start_series_episode, the storyboard
---       approval (0057), oauth_create_video, start_film's hold, a direct reserve_credits  M: the hold gate (their reserve_credits)
+--       approval (0057), start_film's hold, a direct reserve_credits                    M: the hold gate (their reserve_credits)
+--     oauth_create_video (0094: the MCP connection's video)                              M: 403 in the body (section 16)
+--     oauth_creative_quote / oauth_creative_create (0191: a connected assistant's Studio) M, A: 403 / 428 (section 13; the job's gate)
+--     request_download (0094, charged on the spot), api_request_download (0170)          M: the download gate / 403 (section 15)
 --   NOT COVERED, said plainly:
---     * oauth_create_video (0094, the MCP connection's video on a paid plan) meets the hold gate inside its own "when others" block,
---       so a minor is answered 500 internal_error rather than 403 (nothing is held or queued). Its body is not replaced here: the
---       security lab replays 0094 on its shared database, which would silently put the ungated body back.
 --     * In an EXEMPT organization reserve_credits takes no hold, so the hold-gate paths above are not refused there (the film, the
---       creative helper and api_create_video ask regardless).
---     * Paid DOWNLOADS (request_download 0094 charges without a hold; api_request_download 0170 holds) deliver a video that already
---       exists and are not gated here.
+--       creative helper, the video API, the connection's video and both downloads ask regardless).
+--     * A download already queued or still downloadable for the organization is answered as that same row, at no charge, before
+--       the download gate (request_download) is reached: nothing new is bought.
 --     * A on the hold-gate and creative-helper paths: they choose their own models, which this file does not read. Before a
 --       requires_adult model is used by one of them, that path needs the same model check.
 --     * A workflow quote (workflow_quote_steps prices through creative_price): its steps are refused when they are created.
+--     * Open in docs/security/LEDGER.md: the Film Studio screen does not yet name these refusals (BR-832-01), nothing stops a registry
+--       change clearing requires_adult (BR-832-02), and the exempt organization above (BR-832-03).
 --     * The two DORMANT requests that start provider work without any hold, the series plan request (0127) and the voice clone
 --       request (0117), are granted to nobody today, so nobody reaches them. The migration that grants either must add this gate
---       to it (a trigger here would tie 0199 to both files, which the security lab replays and rolls back on their own).
+--       to it (a trigger here would tie 0192 to both files, which the security lab replays and rolls back on their own).
 --
 -- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space):
 --   quote_creative_job and creative_platform_reserve (0036), route_model (0075), sellable_models (0188), create_creative_job and
---   api_creative_refusal (0174), api_create_video (0147), quote_film (0171) and start_film (0187); none redefined since. Signatures,
+--   api_creative_refusal (0174), api_create_video (0147), quote_film (0171), start_film (0187), oauth_creative_quote and
+--   oauth_creative_models (0191), api_request_download (0170) and oauth_create_video (0094); none redefined since. Signatures,
 --   SECURITY DEFINER (or not), the pinned search_path and the grants stay as they were (restated).
 -- NOT CHANGED: creative_price, creative_route_quote, quote_creative_route, reroute_creative_job, reserve_credits, film_price,
 --   film_precheck, every price, hold and ledger rule, every model's availability.
 --
--- REPLAY. This file replays safely onto itself. 0188, 0187, 0174, 0171, 0147, 0125 and 0124 refuse to replay over it (their drift
---   guards accept only their own bodies), but 0036 and 0075 do NOT protect it: re-running either after this file SILENTLY puts the old
---   quote_creative_job / creative_platform_reserve / route_model (0075 also create_creative_job and api_creative_refusal) back and
---   removes the gate. Undo 0199 first (its rollback), re-run the older file, then apply 0199 again; after any manual replay run the
+-- REPLAY. This file replays safely onto itself. 0188, 0187, 0174, 0171, 0170, 0147, 0125 and 0124 refuse to replay over it (their
+--   drift guards accept only their own bodies), but 0036, 0075, 0093, 0094 and 0191 do NOT protect it: re-running one of them after
+--   this file SILENTLY puts the old quote_creative_job / creative_platform_reserve (0036), route_model (0075, also
+--   create_creative_job and api_creative_refusal), oauth_create_video (0093, 0094) or oauth_creative_quote / oauth_creative_models
+--   (0191) back and removes that gate. Undo 0192 first (its rollback), re-run the older file, then apply 0192 again; after any manual replay run the
 --   Verify query below.
 --
--- NUMBER. 0199 is a placeholder; it is renumbered at merge. Needs 0018, 0020, 0031, 0035, 0036, 0075, 0124, 0125, 0147, 0171, 0174,
---   0187 and 0188.
+-- NUMBER. 0192, the next number after 0191 on main (renumbered from the placeholder 0199). Needs 0018, 0020, 0030, 0031, 0035,
+--   0036, 0075, 0093, 0094, 0124, 0125, 0147, 0170, 0171, 0174, 0187, 0188 and 0191.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
 --   select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc p
@@ -113,18 +127,26 @@
 --                    'public.creative_platform_reserve(uuid, text, numeric)'::regprocedure,
 --                    'public.quote_film(uuid, integer)'::regprocedure,
 --                    'public.start_film(uuid, text, text)'::regprocedure,
---                    'public.api_create_video(text, text, jsonb, text, text, text)'::regprocedure);
+--                    'public.api_create_video(text, text, jsonb, text, text, text)'::regprocedure,
+--                    'public.oauth_creative_quote(text, text, text, jsonb, text)'::regprocedure,
+--                    'public.oauth_creative_models(text, text, text)'::regprocedure,
+--                    'public.api_request_download(text, text, text, text, text, text)'::regprocedure,
+--                    'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure);
 --   expected BEFORE quote_creative_job 8494b320cece395444edec700a2f1696 (0036), route_model e4344e61983e7decb4b1eac73761fbf0 (0075),
 --     sellable_models 0ab9e7da07b4347010a887c5118d5150 (0188), create_creative_job 88107b00b0a8c143606ed17f5898c98d (0174),
 --     api_creative_refusal e6ec45d0d912389a05eb2d40261c2c2a (0174), creative_platform_reserve 4a61076948e0dd8992d37de2a9016607 (0036),
 --     quote_film 8839e2cb264663acf98c6f49aaaf89a5 (0171), start_film 5468183a8f24a48f708efcbbf9d2d22c (0187),
---     api_create_video cba47be1a674f5cea3b5d7443bc31bab (0147);
---   AFTER ce54b243814e7e8205e8f2c200f05adc, 446a8891a780d38237af38e46c24349a, 0e69dd8226d0ba7ee7f71b5481844488,
---     5d373e69b2b33c9a461a245d46c0047f, 689a675e9ff2d1b6df46ccd89f351589, 8e8e0cc80de8f21793897af0223a7044,
---     e67c0d25f9872b6e9ff19e9d06e95261, 45c36b8ebc8bd71bbf2ebc60243b718b, 84477b7bff7fe4e2ec50376a4e5bb72e (this file).
--- Undo: docs/sql/rollback_0199_adult_attestation.sql (owner-applied). It puts the nine earlier bodies back and drops the hold
---   gate trigger, the two calls and the helpers. It KEEPS the record: adult_attestations (with its append-only triggers) stays, and
---   applying 0199 again picks it up as its own.
+--     api_create_video cba47be1a674f5cea3b5d7443bc31bab (0147), oauth_creative_quote b75707212f0ce249f4f8bce5b1079070 (0191),
+--     oauth_creative_models bf21f463a6465cfbb45e25bef841ed1f (0191), api_request_download b59ca71d0e0379e217e47a6987c9ed0c (0170),
+--     oauth_create_video 244a5779e4388525f5f345b59379029f (0094);
+--   AFTER d80ebb592f6383c7289952a3411bf758, 63ee303ce0f98a24fafa6bf934578f81, 40f61462ddae2fc0e83a0956f4d8b75b,
+--     a5e00e65d1161bccd2acefb7745e659b, 2553f7ab2715949762b6fc6fd7cf3300, 96d5dd0351ee79ebdbf6b649f92f9e6c,
+--     00846d0622ab379810c633b2446436b0, 595e90f836f992699cf9e920ad646787, b8ca36fa1be8f7a4837f095a6d534631,
+--     e3340606260711781f202aff7abdcdee, beafb530957690f51366c995468ad36f, 4ca4086b260f0cec97edc16acb5e2c6b,
+--     4c01906922aa8bb5a2205dd76fbfe992 (this file).
+-- Undo: docs/sql/rollback_0192_adult_attestation.sql (owner-applied). It puts the thirteen earlier bodies back and drops the hold
+--   and download gate triggers, the two calls and the helpers. It KEEPS the record: adult_attestations (with its append-only triggers) stays, and
+--   applying 0192 again picks it up as its own.
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
@@ -135,53 +157,63 @@ declare
   h text;
 begin
   if to_regprocedure('public.is_org_member(uuid, text)') is null then
-    raise exception '0199 needs the organization helpers: apply 0018_organizations.sql first';
+    raise exception '0192 needs the organization helpers: apply 0018_organizations.sql first';
   end if;
   if to_regclass('public.model_registry') is null then
-    raise exception '0199 needs the model registry: apply 0035_model_registry.sql first';
+    raise exception '0192 needs the model registry: apply 0035_model_registry.sql first';
   end if;
   if to_regprocedure('public.creative_refuse(text, text, text)') is null then
-    raise exception '0199 needs the creative jobs: apply 0036_creative_jobs.sql first';
+    raise exception '0192 needs the creative jobs: apply 0036_creative_jobs.sql first';
   end if;
   if to_regprocedure('public.model_past_shutdown(jsonb)') is null then
-    raise exception '0199 needs 0125_model_shutdown.sql: apply it first';
+    raise exception '0192 needs 0125_model_shutdown.sql: apply it first';
   end if;
   if to_regprocedure('public.rights_acknowledgement_missing(uuid, uuid, text, jsonb)') is null then
-    raise exception '0199 needs 0174_rights_acknowledgement.sql: apply it first';
+    raise exception '0192 needs 0174_rights_acknowledgement.sql: apply it first';
   end if;
   if to_regclass('public.credit_reservations') is null then
-    raise exception '0199 needs the credit holds: apply 0020_credits.sql first';
+    raise exception '0192 needs the credit holds: apply 0020_credits.sql first';
   end if;
   if to_regprocedure('public.api_create_video(text, text, jsonb, text, text, text)') is null then
-    raise exception '0199 needs the public API: apply 0031_public_api.sql (and 0147_mcp_free_tier.sql) first';
+    raise exception '0192 needs the public API: apply 0031_public_api.sql (and 0147_mcp_free_tier.sql) first';
   end if;
   if to_regclass('public.film_segments') is null then
-    raise exception '0199 needs the Film Studio''s money: apply 0171_films_money.sql first';
+    raise exception '0192 needs the Film Studio''s money: apply 0171_films_money.sql first';
+  end if;
+  if to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is null then
+    raise exception '0192 needs the connected assistant''s Studio: apply 0191_mcp_oauth_creative.sql first';
+  end if;
+  if to_regclass('public.download_requests') is null then
+    raise exception '0192 needs the paid downloads: apply 0030_paid_downloads.sql first';
   end if;
   if to_regprocedure('public.film_acknowledgement_missing(public.films, uuid)') is null then
-    raise exception '0199 is built on 0187''s start_film: apply 0187_rights_acknowledgement_inputs.sql first';
+    raise exception '0192 is built on 0187''s start_film: apply 0187_rights_acknowledgement_inputs.sql first';
   end if;
-  -- The nine bodies this file replaces: the earlier one, or this file's own (a replay).
+  -- The thirteen bodies this file replaces: the earlier one, or this file's own (a replay).
   for r in select * from (values
-      ('public.quote_creative_job(uuid, text, text, jsonb)', '8494b320cece395444edec700a2f1696', 'ce54b243814e7e8205e8f2c200f05adc', '0036'),
-      ('public.route_model(text, jsonb, text, uuid, text)', 'e4344e61983e7decb4b1eac73761fbf0', '446a8891a780d38237af38e46c24349a', '0075'),
-      ('public.sellable_models(text, text)', '0ab9e7da07b4347010a887c5118d5150', '0e69dd8226d0ba7ee7f71b5481844488', '0188'),
-      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d', '5d373e69b2b33c9a461a245d46c0047f', '0174'),
-      ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a', '689a675e9ff2d1b6df46ccd89f351589', '0174'),
-      ('public.creative_platform_reserve(uuid, text, numeric)', '4a61076948e0dd8992d37de2a9016607', '8e8e0cc80de8f21793897af0223a7044', '0036'),
-      ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5', 'e67c0d25f9872b6e9ff19e9d06e95261', '0171'),
-      ('public.start_film(uuid, text, text)', '5468183a8f24a48f708efcbbf9d2d22c', '45c36b8ebc8bd71bbf2ebc60243b718b', '0187'),
-      ('public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab', '84477b7bff7fe4e2ec50376a4e5bb72e', '0147')) v(sig, was, now_, src) loop
+      ('public.quote_creative_job(uuid, text, text, jsonb)', '8494b320cece395444edec700a2f1696', 'd80ebb592f6383c7289952a3411bf758', '0036'),
+      ('public.route_model(text, jsonb, text, uuid, text)', 'e4344e61983e7decb4b1eac73761fbf0', '63ee303ce0f98a24fafa6bf934578f81', '0075'),
+      ('public.sellable_models(text, text)', '0ab9e7da07b4347010a887c5118d5150', '40f61462ddae2fc0e83a0956f4d8b75b', '0188'),
+      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '88107b00b0a8c143606ed17f5898c98d', 'a5e00e65d1161bccd2acefb7745e659b', '0174'),
+      ('public.api_creative_refusal(text, text, text)', 'e6ec45d0d912389a05eb2d40261c2c2a', '2553f7ab2715949762b6fc6fd7cf3300', '0174'),
+      ('public.creative_platform_reserve(uuid, text, numeric)', '4a61076948e0dd8992d37de2a9016607', '96d5dd0351ee79ebdbf6b649f92f9e6c', '0036'),
+      ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5', '00846d0622ab379810c633b2446436b0', '0171'),
+      ('public.start_film(uuid, text, text)', '5468183a8f24a48f708efcbbf9d2d22c', '595e90f836f992699cf9e920ad646787', '0187'),
+      ('public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab', 'b8ca36fa1be8f7a4837f095a6d534631', '0147'),
+      ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'b75707212f0ce249f4f8bce5b1079070', 'e3340606260711781f202aff7abdcdee', '0191'),
+      ('public.oauth_creative_models(text, text, text)', 'bf21f463a6465cfbb45e25bef841ed1f', 'beafb530957690f51366c995468ad36f', '0191'),
+      ('public.api_request_download(text, text, text, text, text, text)', 'b59ca71d0e0379e217e47a6987c9ed0c', '4ca4086b260f0cec97edc16acb5e2c6b', '0170'),
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '244a5779e4388525f5f345b59379029f', '4c01906922aa8bb5a2205dd76fbfe992', '0094')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
-      raise exception '0199 found % with a body that is neither %''s nor 0199''s (md5 %): read the live body first', r.sig, r.src, h;
+      raise exception '0192 found % with a body that is neither %''s nor 0192''s (md5 %): read the live body first', r.sig, r.src, h;
     end if;
   end loop;
   -- The table this file creates: absent, or this file's own.
   if to_regclass('public.adult_attestations') is not null
      and not exists (select 1 from information_schema.columns
                       where table_schema = 'public' and table_name = 'adult_attestations' and column_name = 'method') then
-    raise exception '0199 found a table public.adult_attestations that is not this file''s (no column method): read it first';
+    raise exception '0192 found a table public.adult_attestations that is not this file''s (no column method): read it first';
   end if;
   -- The functions this file creates: absent, or this file's own bodies (a replay).
   for r in select * from (values
@@ -196,7 +228,7 @@ begin
       ('public.my_adult_attestation()', 'd7f73015d0aceca2a120220b36989b2d')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
-      raise exception '0199 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
+      raise exception '0192 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
     end if;
   end loop;
 end $$;
@@ -221,7 +253,7 @@ create table if not exists public.adult_attestations (
 );
 
 comment on table public.adult_attestations is
-  'Who confirmed they are 18 or older, or said they are not, under which words and where (migration 0199). One row per person, the first answer; append-only; written only by record_adult_attestation(); each person reads only their own row.';
+  'Who confirmed they are 18 or older, or said they are not, under which words and where (migration 0192). One row per person, the first answer; append-only; written only by record_adult_attestation(); each person reads only their own row.';
 
 create or replace function public.adult_attestations_append_only() returns trigger
   language plpgsql set search_path = public, pg_temp as $$
@@ -375,6 +407,15 @@ create trigger adult_attestation_hold_gate
   before insert on public.credit_reservations
   for each row execute function public.adult_attestation_refuse_minor();
 
+-- The download gate: a paid download is charged on the spot (request_download, 0094: a 'capture' with no hold) or held on the API
+-- balance (api_request_download), and both write one download_requests row before the charge. BEFORE INSERT here refuses a person
+-- who said they are under 18 before anything is charged, on the site's path, whose body (0094's) this file cannot replace (the lab
+-- replays 0094). The API path answers its own typed 403 earlier (section 15). The worker updates these rows and has no session.
+drop trigger if exists adult_attestation_download_gate on public.download_requests;
+create trigger adult_attestation_download_gate
+  before insert on public.download_requests
+  for each row execute function public.adult_attestation_refuse_minor();
+
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. The two calls the app makes
 -- ───────────────────────────────────────────────────────────────────────────
@@ -451,7 +492,7 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   q := public.creative_price(p_org, p_capability, p_model, p_params);
-  -- 0199: someone who said they are under 18 is refused every model (adult_only_service); a model whose vendor's terms are 18+
+  -- 0192: someone who said they are under 18 is refused every model (adult_only_service); a model whose vendor's terms are 18+
   -- (spec.requires_adult) is refused to anyone without an adult attestation (adult_attestation_required). After the price, as
   -- 0174 (a model refused anyway never asks), and the quote is raised, so the price is not shown either.
   perform public.adult_attestation_gate(auth.uid(), q ->> 'model');
@@ -486,7 +527,7 @@ declare
   ranked  jsonb;
   top     jsonb;
   reason  text;
-  -- 0199: priced candidates left out because this person has no adult attestation.
+  -- 0192: priced candidates left out because this person has no adult attestation.
   adult_skipped integer := 0;
 begin
   if md not in ('auto', 'cheap', 'fast', 'quality') then
@@ -495,7 +536,7 @@ begin
   if surf not in ('web', 'api', 'mcp') then
     perform public.creative_refuse('invalid_params', 'unknown surface');
   end if;
-  -- 0199: someone who said they are under 18 gets nothing, in any mode (the same word as an exact quote or job).
+  -- 0192: someone who said they are under 18 gets nothing, in any mode (the same word as an exact quote or job).
   if public.adult_attestation_state(auth.uid()) = 'minor' then
     perform public.creative_refuse('adult_only_service', 'this service is for adults (18 or older)');
   end if;
@@ -540,7 +581,7 @@ begin
     if c is null or c <= 0 then
       continue;
     end if;
-    -- 0199: a model whose vendor's terms are 18+ is not a candidate for a person without an adult attestation. The route picks
+    -- 0192: a model whose vendor's terms are 18+ is not a candidate for a person without an adult attestation. The route picks
     -- among the others, and the failover list (stored from these candidates) never reaches it either.
     if public.adult_attestation_missing(auth.uid(), m) then
       adult_skipped := adult_skipped + 1;
@@ -554,7 +595,7 @@ begin
       'speed_tier', case when jsonb_typeof(sp -> 'speed_tier') = 'number'
                          then least(greatest((sp ->> 'speed_tier')::numeric, 0), 5) else 0 end));
   end loop;
-  -- 0199: nothing left but models that need an adult attestation: the remedy is the attestation, not another setting.
+  -- 0192: nothing left but models that need an adult attestation: the remedy is the attestation, not another setting.
   if jsonb_array_length(cands) = 0 and adult_skipped > 0 then
     perform public.creative_refuse('adult_attestation_required',
       format('every model that can make this is for adults only (%s); confirm you are 18 or older in the app', adult_skipped));
@@ -709,7 +750,7 @@ begin
 
   q := public.creative_price(p_org, p_capability, p_model, p_params);
   price := (q ->> 'credits')::numeric;
-  -- 0199: after the price and before 0174's acknowledgement, the ceiling, the hold and the job row: a person who said they are
+  -- 0192: after the price and before 0174's acknowledgement, the ceiling, the hold and the job row: a person who said they are
   -- under 18 is refused every model (adult_only_service), and a requires_adult model is refused to a person without an adult
   -- attestation (adult_attestation_required). The person is auth.uid(): the session, or the key's / grant's person for the API
   -- and MCP (api_act_as). A replay of a job already created was answered above; a routed pick was made without such a model.
@@ -840,7 +881,7 @@ begin
              'default_resolution', m.spec -> 'default_resolution',
              'price_variants_by', m.spec -> 'pricing' -> 'variants' -> 'by',
              'attribution', m.spec -> 'attribution', 'api_exposure', m.spec -> 'api_exposure',
-             -- 0199: the vendor's terms are 18+: still listed (never hidden), and the app marks it "for adults only".
+             -- 0192: the vendor's terms are 18+: still listed (never hidden), and the app marks it "for adults only".
              'requires_adult', case when public.model_requires_adult(m.spec) then true end,
              'limits', m.spec -> 'limits', 'quality_tier', m.spec -> 'quality_tier',
              'speed_tier', m.spec -> 'speed_tier'))
@@ -939,7 +980,7 @@ begin
         when 'source_unavailable' then public.api_err(422, 'source_unavailable', 'A media-library file in the request is not available to this organization.', extra)
         -- 0174: the model needs the person to confirm their rights to an input file; the API has no call for that.
         when 'acknowledgement_required' then public.api_err(428, 'acknowledgement_required', 'This model needs a person to confirm, in the Studio, their rights to the input file (for example the consent of every person shown). Confirm it there, then retry. Nothing was held or charged.', extra)
-        -- 0199: the model's vendor's terms are 18+ and the key's person has not confirmed their age (in the app; the API has no call
+        -- 0192: the model's vendor's terms are 18+ and the key's person has not confirmed their age (in the app; the API has no call
         -- for it), or that person said they are under 18 (nothing is sold to them).
         when 'adult_attestation_required' then public.api_err(428, 'adult_attestation_required', 'This model is for adults only: its provider''s terms require users to be 18 or older. Confirm you are 18 or older in the app, then retry. Nothing was held or charged.', extra)
         when 'adult_only_service' then public.api_err(403, 'adult_only_service', 'Nightshift is for adults (18 or older). Nothing was held or charged.')
@@ -972,7 +1013,7 @@ declare
   saved text := current_setting('request.jwt.claims', true);
   out_  jsonb;
 begin
-  -- 0199: asked HERE, while the caller's session is still in force: below, reserve_credits runs with no claims, so the hold gate
+  -- 0192: asked HERE, while the caller's session is still in force: below, reserve_credits runs with no claims, so the hold gate
   -- on credit_reservations cannot see who is asking. Every hold this helper takes (the Studio, the reply drafts, the editor's paid
   -- export, the brand scan, the character swap) is refused to a person who said they are under 18. A worker has no session and
   -- reads as 'none'.
@@ -1011,7 +1052,7 @@ declare
   may      boolean;
   on_      boolean;
   lim      jsonb := public.film_money_limits();
-  adult_   jsonb;  -- 0199: the film's adult refusals
+  adult_   jsonb;  -- 0192: the film's adult refusals
 begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
@@ -1032,7 +1073,7 @@ begin
   end if;
   perform public.film_take_rate('quote', (lim ->> 'quotes_per_hour')::integer);
   q := public.film_price(f);
-  -- 0199: someone who said they are under 18 is refused the whole film (adult_only_service), and each model of the film whose
+  -- 0192: someone who said they are under 18 is refused the whole film (adult_only_service), and each model of the film whose
   -- vendor's terms are 18+ (spec.requires_adult) is refused, by name, to anyone without an adult attestation
   -- (adult_attestation_required). Said here, in the quote the person reads before Start (rule 6), and such a quote is not one that
   -- can be started: unpriced, no quote_id, so nothing is stored for start_film to accept.
@@ -1132,7 +1173,7 @@ begin
   if not public.is_org_member(org, 'admin') or (exempt_ and not public.is_platform_admin()) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  -- 0199: the quote's adult refusals again, first of all once the caller is known to be the organization's admin: before the key and
+  -- 0192: the quote's adult refusals again, first of all once the caller is known to be the organization's admin: before the key and
   -- the quote are read, a replay is answered, the start is counted, anything is priced, held or written. A person who said they
   -- are under 18 starts nothing; a model of the film that is for adults only needs an adult attestation first.
   bad := public.film_adult_refusals(p_film, uid) -> 0;
@@ -1315,7 +1356,7 @@ begin
       return public.api_finish(ctx, v_res);
     end if;
     v_org := (ctx ->> 'org_id')::uuid;
-    -- 0199: the key acts as its creator, and an MCP grant as its person (api_act_as), so auth.uid() is the person. Someone who said
+    -- 0192: the key acts as its creator, and an MCP grant as its person (api_act_as), so auth.uid() is the person. Someone who said
     -- they are under 18 gets no video: asked before the price and the API hold, and in an exempt organization too (which takes no
     -- hold at all). Answered as a 403 that says why; an error raised inside this block would read as a 500 "retry".
     if public.adult_attestation_state(auth.uid()) = 'minor' then
@@ -1430,7 +1471,478 @@ revoke all on function public.api_create_video(text, text, jsonb, text, text, te
 grant execute on function public.api_create_video(text, text, jsonb, text, text, text) to anon;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 13. Privileges
+-- 13. A connected assistant's Studio quote: 0191's oauth_creative_quote, one marked hunk
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.oauth_creative_quote(p_token_hash text, p_capability text, p_model text, p_params jsonb,
+                                                       p_request_id text default null)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx      jsonb;
+  v_org    uuid;
+  v_grant  uuid;
+  v_cap    text := lower(btrim(coalesce(p_capability, '')));
+  v_model  text := lower(btrim(coalesce(p_model, '')));
+  v_p      jsonb := coalesce(p_params, '{}'::jsonb);
+  v_state  text;
+  v_q      jsonb;
+  v_row    public.oauth_creative_quotes;
+  v_res    jsonb;
+  v_spent  numeric;
+  v_msg    text;
+  v_detail text;
+  v_sql    text;
+begin
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
+    return public.api_err(401, 'invalid_token', 'The access token is missing, expired, revoked or unknown. Reconnect the app.');
+  end if;
+  ctx := public.oauth_ctx(p_token_hash, 'oauth.creative.quote', p_request_id);
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_org := (ctx ->> 'org_id')::uuid;
+    v_grant := (ctx ->> 'grant_id')::uuid;
+    v_res := public.oauth_creative_rate_refusal(v_grant, 'quote');
+    if v_res is not null then
+      return public.api_finish(ctx, v_res, 0);
+    end if;
+    if jsonb_typeof(v_p) <> 'object' or pg_column_size(v_p) > 16384 then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_params', 'params must be a JSON object (at most 16 KB).'), 0);
+    end if;
+    v_state := public.oauth_creative_model_state(v_cap, v_model);
+    if v_state <> 'ok' then
+      return public.api_finish(ctx, public.oauth_creative_state_refusal(v_state, v_model), 0);
+    end if;
+    begin
+      -- The Studio's own price for this workspace: the model, the settings, the source file (this workspace's, live), the
+      -- entitlement. Computed nowhere else.
+      v_q := public.creative_price(v_org, v_cap, v_model, v_p);
+      -- 0192: the Studio's adult gate, for the person who connected the app (oauth_ctx acted as them): someone who said they are
+      -- under 18 is refused every model (adult_only_service), and a model whose vendor's terms are 18+ needs an adult answer
+      -- (adult_attestation_required). After the price, as in the Studio, and raised inside this block, so the answer is
+      -- api_creative_refusal's typed 403 / 428 and no quote is stored for create to spend.
+      perform public.adult_attestation_gate(auth.uid(), v_model);
+      -- A connection's own quotes that ran out are of no use to anyone; a connection holds at most a few live ones (storage is a
+      -- ceiling: 30 quotes a minute of up to 16 KB each would otherwise pile up).
+      delete from public.oauth_creative_quotes q
+       where q.grant_id = v_grant and q.job_id is null and q.expires_at < now();
+      if (select count(*) from public.oauth_creative_quotes q where q.grant_id = v_grant and q.job_id is null)
+         >= (public.oauth_creative_limits() ->> 'open_quotes_max')::integer then
+        return public.api_finish(ctx, public.api_err(429, 'too_many_quotes',
+          'This connection has too many open quotes. Create from one, or wait for them to expire.',
+          jsonb_build_object('retry_after', 60)), 0);
+      end if;
+      -- The tier, resolution and soundtrack the price is for are written into the params, the way create_creative_job writes
+      -- them into the job: what runs is what was shown, even if a model's default changes before create.
+      v_p := v_p || (v_q - array(select k from jsonb_object_keys(v_q) k where k not in ('quality', 'resolution', 'audio')));
+      insert into public.oauth_creative_quotes (grant_id, org_id, capability, model, params, credits, quote, expires_at)
+      values (v_grant, v_org, v_cap, v_model, v_p, (v_q ->> 'credits')::numeric, v_q - 'exempt' - 'preview',
+              now() + make_interval(secs => (public.oauth_creative_limits() ->> 'quote_ttl_seconds')::integer))
+      returning * into v_row;
+      v_spent := public.oauth_grant_month_credits(v_grant);
+      v_res := public.api_ok(public.oauth_creative_quote_json(v_row)
+        || jsonb_build_object('this_connection', jsonb_build_object(
+             'monthly_limit_credits', (ctx ->> 'limit_credits')::numeric)
+           -- Only where create applies the limit: on the credits-exempt workspace it is not a ceiling, so no number is shown as one.
+           || case when public.credits_exempt(v_org) then '{}'::jsonb
+                   else jsonb_build_object('left_this_month_credits', greatest((ctx ->> 'limit_credits')::numeric - v_spent, 0)) end), 201);
+    exception when others then
+      get stacked diagnostics v_msg = message_text, v_detail = pg_exception_detail;
+      v_sql := sqlstate;
+      v_res := public.api_creative_refusal(v_sql, v_msg, v_detail);
+    end;
+    return public.api_finish(ctx, v_res, 0);
+  exception when others then
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'), 0);
+  end;
+end
+$$;
+revoke all on function public.oauth_creative_quote(text, text, text, jsonb, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_creative_quote(text, text, text, jsonb, text) to anon;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 14. A connected assistant's model list: 0191's oauth_creative_models, one marked hunk (listed, marked)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.oauth_creative_models(p_token_hash text, p_capability text default null, p_request_id text default null)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx    jsonb;
+  v_org  uuid;
+  v_cap  text := nullif(lower(btrim(coalesce(p_capability, ''))), '');
+  v_paid boolean;
+  v_list jsonb;
+begin
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
+    return public.api_err(401, 'invalid_token', 'The access token is missing, expired, revoked or unknown. Reconnect the app.');
+  end if;
+  ctx := public.oauth_ctx(p_token_hash, 'oauth.creative.models', p_request_id);
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    if v_cap is not null and not (v_cap = any (public.oauth_creative_capabilities())) then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_params',
+        format('capability must be one of: %s.', array_to_string(public.oauth_creative_capabilities(), ', '))), 0);
+    end if;
+    v_org := (ctx ->> 'org_id')::uuid;
+    v_paid := public.credits_exempt(v_org)
+              or exists (select 1 from public.credit_transactions t where t.org_id = v_org and t.kind = 'purchase');
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'id', s.id, 'name', s.display_name,
+             'capabilities', to_jsonb(array(select c from unnest(s.capabilities) c
+                                             where public.oauth_creative_model_state(c, s.id) = 'ok' order by c)),
+             'availability', s.availability,
+             'spec', jsonb_strip_nulls(jsonb_build_object(
+                       'output', s.spec -> 'output', 'aspect_ratios', s.spec -> 'aspect_ratios',
+                       'image_sizes', s.spec -> 'image_sizes', 'resolutions', s.spec -> 'resolutions',
+                       'durations_s', s.spec -> 'durations_s', 'inputs', s.spec -> 'inputs', 'audio_out', s.spec -> 'audio_out',
+                       -- 0192: an adults-only model is listed (we never pretend a model does not exist) and marked, from
+                       -- sellable_models' own public spec; the quote refuses it to anyone without an adult answer.
+                       'requires_adult', s.spec -> 'requires_adult',
+                       'max_prompt_chars', s.spec #> '{limits,max_prompt_chars}'))) order by s.id), '[]'::jsonb)
+      into v_list
+      from public.sellable_models(v_cap, 'mcp') s
+     where (coalesce(s.entitlement, 'any') = 'any' or (s.entitlement = 'paid' and v_paid))
+       and exists (select 1 from unnest(s.capabilities) c
+                    where (v_cap is null or c = v_cap) and public.oauth_creative_model_state(c, s.id) = 'ok');
+    return public.api_finish(ctx, public.api_ok(jsonb_build_object('capability', v_cap, 'models', v_list)), 0);
+  exception when others then
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'), 0);
+  end;
+end
+$$;
+revoke all on function public.oauth_creative_models(text, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_creative_models(text, text, text) to anon;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 15. The API's paid download: 0170's api_request_download, one marked hunk
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.api_request_download(
+  p_key_hash text, p_video_id text, p_quality text,
+  p_idem_key text default null, p_fingerprint text default null, p_request_id text default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx     jsonb := public.api_begin(p_key_hash, 'downloads.create', p_request_id);
+  v_org   uuid;
+  v_ch    text;
+  q       text := btrim(coalesce(p_quality, ''));
+  m       public.download_masters;
+  r       public.download_requests;
+  why     text;
+  until_  timestamptz;
+  credits numeric;
+  v_price bigint;
+  v_spend bigint;
+  acc     public.api_accounts;
+  v_ref   text;
+  v_res   jsonb;
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_res := public.api_idem_begin(ctx, p_idem_key, p_fingerprint);
+    if v_res is not null then
+      return public.api_finish(ctx, v_res);
+    end if;
+    v_org := (ctx ->> 'org_id')::uuid;
+    -- 0192: the key acts as its creator, and a connection as its person (api_act_as). Someone who said they are under 18 buys no
+    -- download: refused before the video is looked up, the price, the API hold or the request row, as a 403 that says why (an
+    -- error raised inside this block would read as a 500 "retry").
+    if public.adult_attestation_state(auth.uid()) = 'minor' then
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(403, 'adult_only_service',
+        'Nightshift is for adults (18 or older). Nothing was held or charged.')));
+    end if;
+    select c.channel_id into v_ch from public.videos v join public.channels c on c.channel_id = v.channel_id
+     where v.video_id = p_video_id and c.org_id = v_org;
+    if q not in ('720p', '1080p') then
+      v_res := public.api_err(400, 'invalid_params', 'quality must be 720p or 1080p.');
+    elsif v_ch is null then
+      v_res := public.api_err(404, 'video_not_found', 'No video with that id in this key''s organization.');
+    end if;
+    if v_res is not null then
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res));
+    end if;
+
+    -- 0030's lock: the site and the API decide one (org, video, quality) at a time.
+    perform pg_advisory_xact_lock(hashtextextended(format('download:%s:%s:%s', v_org, p_video_id, q), 0));
+    select * into r from public.download_requests d
+     where d.org_id = v_org and d.video_id = p_video_id and d.quality = q
+       and (d.status in ('queued', 'processing') or (d.status = 'ready' and d.expires_at > now()))
+     order by d.id desc limit 1;
+    if r.id is not null then
+      v_res := public.api_ok(jsonb_build_object('id', r.id, 'status', r.status, 'quality', r.quality,
+                                                'price_cents', 0, 'reused', true, 'expires_at', r.expires_at));
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res));
+    end if;
+
+    select * into m from public.download_masters where video_id = p_video_id;
+    if m.video_id is null or least(m.width, m.height) < public.download_quality_side(q) then
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(404, 'no_master',
+        format('No full-quality master for this video at %s. Only videos rendered on the queue worker keep one.', q))));
+    end if;
+
+    if exists (select 1 from public.download_requests d
+                where d.org_id = v_org and d.video_id = p_video_id and d.quality = q
+                  and d.paid_until > now() and d.status <> 'failed') then
+      why := 'redownload';
+      until_ := (select max(d.paid_until) from public.download_requests d
+                  where d.org_id = v_org and d.video_id = p_video_id and d.quality = q and d.status <> 'failed');
+    elsif (ctx ->> 'exempt')::boolean then
+      why := 'exempt';
+      until_ := now() + interval '7 days';
+    else
+      credits := public.download_credits_price(m.duration_seconds, q);
+      select ceil(credits * p.cents)::bigint into v_price from public.api_prices p where p.unit = 'download_cents_per_credit';
+      if v_price is null then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(503, 'pricing_unavailable',
+          format('Downloads in %s are not priced on this deployment; nothing was charged.', q))));
+      end if;
+      until_ := now() + interval '7 days';
+    end if;
+
+    if v_price is not null and v_price > 0 then
+      acc := public.api_account_lock(v_org);
+      perform public.api_expire_holds_locked(v_org);
+      select * into acc from public.api_accounts where org_id = v_org;
+      v_spend := public.api_month_spend(v_org);
+      if v_spend + v_price > (ctx ->> 'cap_cents')::bigint then
+        v_res := public.api_err(402, 'monthly_limit_reached',
+          'This download would take the organization past its monthly API spend limit. An owner or admin can raise it in the Developer console: Developers → Usage and billing → Monthly spend limit (up to the usage tier''s cap; paying more into the API balance raises the tier).',
+          jsonb_build_object('limit_cents', (ctx ->> 'cap_cents')::bigint, 'month_spend_cents', v_spend, 'price_cents', v_price));
+      elsif ctx ->> 'key_limit_cents' is not null
+            and public.api_month_spend(v_org, (ctx ->> 'key_id')::uuid) + v_price > (ctx ->> 'key_limit_cents')::bigint then
+        v_res := public.api_err(402, 'key_limit_reached', 'This download would take this key past its own monthly spend limit. An owner or admin can raise or remove it in the Developer console: Developers → API keys → Set limit on this key.',
+          jsonb_build_object('limit_cents', (ctx ->> 'key_limit_cents')::bigint, 'price_cents', v_price));
+      elsif acc.balance_cents - acc.reserved_cents < v_price then
+        v_res := public.api_err(402, 'insufficient_balance',
+          'Your API balance does not cover this download. Top up in the Developer console.',
+          jsonb_build_object('price_cents', v_price, 'available_cents', acc.balance_cents - acc.reserved_cents));
+      end if;
+      if v_res is not null then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res));
+      end if;
+    end if;
+
+    -- 0030's row, as the site writes it, filed as the key's creator; credits
+    -- charged 0 (the API balance pays, below).
+    insert into public.download_requests
+      (org_id, channel_id, video_id, quality, status, charged, free_reason, paid_until, minutes, requested_by)
+    values
+      (v_org, v_ch, p_video_id, q, 'queued', 0, why, until_, round(m.duration_seconds / 60.0, 4),
+       (ctx ->> 'created_by')::uuid)
+    returning * into r;
+
+    if v_price is not null and v_price > 0 then
+      v_ref := 'ah-' || gen_random_uuid()::text;
+      insert into public.api_holds (ref, org_id, key_id, download_request_id, amount_cents)
+      values (v_ref, v_org, (ctx ->> 'key_id')::uuid, r.id, v_price);
+      update public.api_accounts set reserved_cents = reserved_cents + v_price, updated_at = now()
+       where org_id = v_org;
+      perform public.api_log(v_org, 'hold', v_price, v_ref, (ctx ->> 'key_id')::uuid, null, null, null,
+                             format('download %s of %s', q, p_video_id));
+    end if;
+    -- 0170: the name 0087's audit list has and the site's download route writes; 'video.download' was refused (500).
+    perform public.api_audit(ctx, 'video.download_request', p_video_id, v_ch,
+      jsonb_build_object('download_id', r.id, 'quality', q, 'price_cents', v_price, 'free_reason', why));
+
+    v_res := public.api_ok(jsonb_build_object('id', r.id, 'status', r.status, 'quality', q,
+                                              'price_cents', coalesce(v_price, 0), 'free_reason', why,
+                                              'reused', false), 201);
+    return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res), coalesce(v_price, 0));
+  exception when others then
+    -- Only this block is undone: the request stays counted and is logged (P6).
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+revoke all on function public.api_request_download(text, text, text, text, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.api_request_download(text, text, text, text, text, text) to anon;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 16. The MCP connection's video: 0094's oauth_create_video, one marked hunk
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.oauth_create_video(
+  p_token_hash text, p_channel_id text, p_params jsonb,
+  p_idem_key text default null, p_request_id text default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx     jsonb := public.api_begin(p_token_hash, 'oauth.videos.create', p_request_id);
+  v_org   uuid;
+  v_grant uuid;
+  ch      public.channels;
+  v_p     jsonb := coalesce(p_params, '{}'::jsonb);
+  v_secs  numeric;
+  v_idem  text;
+  v_fp    text;
+  prior   public.oauth_runs;
+  jm      numeric;
+  vm      public.credit_prices;
+  v_price numeric;
+  v_limit numeric;
+  v_spent numeric;
+  acc     public.credit_accounts;
+  v_ref   text;
+  v_job   bigint;
+  v_res   jsonb;
+  v_hold  jsonb;
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_org := (ctx ->> 'org_id')::uuid;
+    v_grant := (ctx ->> 'grant_id')::uuid;
+    -- 0192: the connection acts as its person. Someone who said they are under 18 gets no video: refused before the channel, the
+    -- price and the hold, as a 403 that says why (the hold gate alone would be caught by this block's "when others" as a 500).
+    if public.adult_attestation_state(auth.uid()) = 'minor' then
+      return public.api_finish(ctx, public.api_err(403, 'adult_only_service',
+        'Nightshift is for adults (18 or older). Nothing was held or charged.'));
+    end if;
+    if p_idem_key is not null and p_idem_key !~ '^[A-Za-z0-9_:.-]{1,255}$' then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_idempotency_key',
+        'idempotency_key: 1-255 characters of A-Z a-z 0-9 _ : . -'));
+    end if;
+    v_idem := coalesce(p_idem_key, 'auto-' || gen_random_uuid()::text);
+    v_fp := md5(jsonb_build_object('c', p_channel_id, 'p', v_p)::text);
+
+    -- A retry of the same request waits here, then finds the first one's job.
+    perform pg_advisory_xact_lock(hashtextextended('oauth_run:' || v_grant::text || ':' || v_idem, 0));
+    select * into prior from public.oauth_runs where grant_id = v_grant and idem_key = v_idem;
+    if prior.id is not null then
+      if prior.fingerprint <> v_fp then
+        return public.api_finish(ctx, public.api_err(422, 'idempotency_key_reused',
+          'This idempotency_key was already used with a different request.'));
+      end if;
+      return public.api_finish(ctx, public.api_ok(jsonb_build_object('job_id', prior.render_job_id,
+        'channel_id', prior.channel_id, 'status', 'queued', 'price_credits', prior.quoted_credits), 200)
+        || jsonb_build_object('replayed', true));
+    end if;
+
+    select * into ch from public.channels c where c.channel_id = p_channel_id;
+    if ch.channel_id is null or ch.org_id is distinct from v_org then
+      return public.api_finish(ctx, public.api_err(404, 'channel_not_found', 'No channel with that id in this workspace.'));
+    elsif upper(btrim(coalesce(ch.status, ''))) <> 'ACTIVE' then
+      return public.api_finish(ctx, public.api_err(409, 'channel_not_active',
+        'That channel is not active. Connect it to YouTube and activate it in the Command Center first.'));
+    elsif jsonb_typeof(v_p) <> 'object'
+       or (v_p - array['topic','niche','duration','language','visual_style','video_provider','image_provider']) <> '{}'::jsonb
+       or not public.render_job_params_valid(v_p, 'daily') then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_params',
+        'Allowed: topic (<=300 chars), niche (<=120), duration (whole seconds, 30-3600), language (<=40), visual_style (<=300), video_provider, image_provider.'));
+    end if;
+
+    -- A limit of 0 is a read-only connection, whoever pays: the operator's exempt
+    -- workspace spends nothing, so nothing below would ever count against the
+    -- limit; zero is the one limit that needs no counting (Lens-386A).
+    if (ctx ->> 'exempt')::boolean and (ctx ->> 'limit_credits')::numeric <= 0 then
+      return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
+        'This connection is read-only: its monthly spending limit is 0.',
+        jsonb_build_object('limit_credits', 0, 'spent_credits', 0, 'price_credits', 0)));
+    end if;
+
+    if not (ctx ->> 'exempt')::boolean then
+      -- The length the video renders at, frozen the way the payment guard
+      -- (0041) freezes it, so what is held is what runs.
+      v_secs := coalesce((v_p ->> 'duration')::numeric,
+                         case when jsonb_typeof(ch.agent_config -> 'target_duration_seconds') = 'number'
+                              then (ch.agent_config ->> 'target_duration_seconds')::numeric end);
+      if v_secs is null or v_secs <= 0 then
+        return public.api_finish(ctx, public.api_err(400, 'duration_required',
+          'Pass duration (seconds): this channel has no target length to price the video by.'));
+      end if;
+      v_secs := least(greatest(round(v_secs), 30), 3600);
+      v_p := v_p || jsonb_build_object('duration', v_secs::integer);
+
+      -- The price: the same rows and formula the render_jobs payment guard
+      -- demands the hold cover. No per-minute price = unpriced = refused.
+      select credits_per_unit into jm from public.credit_prices where unit = 'job_minimum';
+      select * into vm from public.credit_prices where unit = 'video_minute';
+      if vm.unit is null or vm.credits_per_unit is null then
+        return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
+          'Video pricing is not set up on this deployment; nothing was held or charged.'));
+      end if;
+      v_price := public.credits_round_up(greatest(coalesce(jm, 0), vm.credits_per_unit * (1 + vm.margin) * v_secs / 60));
+      if v_price is null or v_price <= 0 then
+        return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
+          'Video pricing is not set up on this deployment; nothing was held or charged.'));
+      end if;
+
+      -- Everything below runs under the credit account's row lock, so two calls
+      -- of one connection cannot each pass the limit and jointly exceed it.
+      acc := public.credit_account_lock(v_org);
+      v_limit := (ctx ->> 'limit_credits')::numeric;
+      v_spent := public.oauth_grant_month_credits(v_grant);
+      if v_spent + v_price > v_limit then
+        return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
+          'This video would take this connection past its monthly spending limit.',
+          jsonb_build_object('limit_credits', v_limit, 'spent_credits', v_spent, 'price_credits', v_price)));
+      end if;
+
+      v_ref := 'rj-oa-' || replace(gen_random_uuid()::text, '-', '');
+      begin
+        v_hold := public.reserve_credits(v_org, v_ref, v_price);
+      exception
+        when sqlstate 'NS402' then
+          select * into acc from public.credit_accounts where org_id = v_org;
+          -- 0094: with extra credits off, what a new video can use is the plan
+          -- side only, not balance - held (which counts unspendable pack credits).
+          return public.api_finish(ctx, public.api_err(402, 'insufficient_credits',
+            'The workspace does not have enough credits for this video.',
+            jsonb_build_object('available_credits',
+                                 case when coalesce(acc.use_extra_credits, true)
+                                      then greatest(acc.balance - acc.reserved, 0)
+                                      else public.credit_spendable_internal(v_org) end,
+                               'held_credits', acc.reserved, 'price_credits', v_price)
+            || case when coalesce(acc.use_extra_credits, true) then '{}'::jsonb
+                    else jsonb_build_object('extra_credits_off', true) end));
+        when sqlstate 'NS429' then
+          return public.api_finish(ctx, public.api_err(429, 'run_limit_reached',
+            'The plan\''s limit of videos in progress at once is reached.',
+            jsonb_build_object('retry_after', 60,
+                               'active_runs', (select count(*) from public.credit_reservations r where r.org_id = v_org and r.status = 'open'),
+                               'run_limit', public.entitlement_int_internal(v_org, 'concurrency'))));
+      end;
+    end if;
+
+    insert into public.render_jobs (channel_id, kind, params, requested_by, credit_ref)
+    values (ch.channel_id, 'daily', v_p, (ctx ->> 'created_by')::uuid, v_ref)
+    returning id into v_job;
+
+    insert into public.oauth_runs (grant_id, org_id, idem_key, fingerprint, credit_ref, render_job_id, channel_id, quoted_credits)
+    values (v_grant, v_org, v_idem, v_fp, v_ref, v_job, ch.channel_id, v_price);
+
+    insert into public.app_audit_log (actor_user_id, actor_email, action, target, detail, channel_id)
+    values ((ctx ->> 'created_by')::uuid, nullif(auth.jwt() ->> 'email', ''), 'agent.run', ch.channel_id,
+            v_p || jsonb_build_object('via', 'mcp_oauth', 'grant_id', v_grant, 'job_id', v_job,
+                                      'credit_ref', v_ref, 'price_credits', v_price), ch.channel_id);
+
+    v_res := public.api_ok(jsonb_build_object('job_id', v_job, 'channel_id', ch.channel_id, 'status', 'queued',
+                                              'price_credits', v_price), 201);
+    return public.api_finish(ctx, v_res, 0);
+  exception when others then
+    -- Only this block is undone (the hold with it): nothing is held or queued.
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+revoke all on function public.oauth_create_video(text, text, jsonb, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_create_video(text, text, jsonb, text, text) to anon;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 17. Privileges
 -- ───────────────────────────────────────────────────────────────────────────
 
 revoke all on function public.adult_attestations_append_only() from public, anon, authenticated, service_role;
@@ -1446,7 +1958,7 @@ grant execute on function public.record_adult_attestation(boolean, text, text) t
 grant execute on function public.my_adult_attestation() to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 14. End state (refuses the whole transaction if any of it is not so)
+-- 18. End state (refuses the whole transaction if any of it is not so)
 -- ───────────────────────────────────────────────────────────────────────────
 
 do $$
@@ -1454,17 +1966,21 @@ declare
   r record;
 begin
   for r in select * from (values
-      ('public.quote_creative_job(uuid, text, text, jsonb)', 'ce54b243814e7e8205e8f2c200f05adc'),
-      ('public.route_model(text, jsonb, text, uuid, text)', '446a8891a780d38237af38e46c24349a'),
-      ('public.sellable_models(text, text)', '0e69dd8226d0ba7ee7f71b5481844488'),
-      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '5d373e69b2b33c9a461a245d46c0047f'),
-      ('public.api_creative_refusal(text, text, text)', '689a675e9ff2d1b6df46ccd89f351589'),
-      ('public.creative_platform_reserve(uuid, text, numeric)', '8e8e0cc80de8f21793897af0223a7044'),
-      ('public.quote_film(uuid, integer)', 'e67c0d25f9872b6e9ff19e9d06e95261'),
-      ('public.start_film(uuid, text, text)', '45c36b8ebc8bd71bbf2ebc60243b718b'),
-      ('public.api_create_video(text, text, jsonb, text, text, text)', '84477b7bff7fe4e2ec50376a4e5bb72e')) v(sig, want) loop
+      ('public.quote_creative_job(uuid, text, text, jsonb)', 'd80ebb592f6383c7289952a3411bf758'),
+      ('public.route_model(text, jsonb, text, uuid, text)', '63ee303ce0f98a24fafa6bf934578f81'),
+      ('public.sellable_models(text, text)', '40f61462ddae2fc0e83a0956f4d8b75b'),
+      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', 'a5e00e65d1161bccd2acefb7745e659b'),
+      ('public.api_creative_refusal(text, text, text)', '2553f7ab2715949762b6fc6fd7cf3300'),
+      ('public.creative_platform_reserve(uuid, text, numeric)', '96d5dd0351ee79ebdbf6b649f92f9e6c'),
+      ('public.quote_film(uuid, integer)', '00846d0622ab379810c633b2446436b0'),
+      ('public.start_film(uuid, text, text)', '595e90f836f992699cf9e920ad646787'),
+      ('public.api_create_video(text, text, jsonb, text, text, text)', 'b8ca36fa1be8f7a4837f095a6d534631'),
+      ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'e3340606260711781f202aff7abdcdee'),
+      ('public.oauth_creative_models(text, text, text)', 'beafb530957690f51366c995468ad36f'),
+      ('public.api_request_download(text, text, text, text, text, text)', '4ca4086b260f0cec97edc16acb5e2c6b'),
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '4c01906922aa8bb5a2205dd76fbfe992')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
-      raise exception '0199 end state: % is not 0199''s body', r.sig;
+      raise exception '0192 end state: % is not 0192''s body', r.sig;
     end if;
   end loop;
   -- (signature, authenticated may execute, service_role may execute)
@@ -1490,74 +2006,94 @@ begin
        or has_function_privilege('anon', r.sig, 'EXECUTE')
        or has_function_privilege('service_role', r.sig, 'EXECUTE') is distinct from r.svc
        or has_function_privilege('authenticated', r.sig, 'EXECUTE') is distinct from r.member then
-      raise exception '0199 end state: % is not a SECURITY DEFINER with the pinned search_path and the intended grants', r.sig;
+      raise exception '0192 end state: % is not a SECURITY DEFINER with the pinned search_path and the intended grants', r.sig;
     end if;
   end loop;
   for r in select * from unnest(array['public.api_creative_refusal(text, text, text)', 'public.model_requires_adult(jsonb)']) sig,
                          unnest(array['anon', 'authenticated', 'service_role']) role_ loop
     if has_function_privilege(r.role_, r.sig, 'EXECUTE') then
-      raise exception '0199 end state: % may call %', r.role_, r.sig;
+      raise exception '0192 end state: % may call %', r.role_, r.sig;
     end if;
   end loop;
   if not (select c.relrowsecurity from pg_class c where c.oid = 'public.adult_attestations'::regclass) then
-    raise exception '0199 end state: row level security is off on adult_attestations';
+    raise exception '0192 end state: row level security is off on adult_attestations';
   end if;
   for r in select * from unnest(array['anon', 'authenticated', 'service_role']) role_,
                          unnest(array['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) priv loop
     if has_table_privilege(r.role_, 'public.adult_attestations', r.priv) then
-      raise exception '0199 end state: % may % on adult_attestations (only record_adult_attestation writes)', r.role_, r.priv;
+      raise exception '0192 end state: % may % on adult_attestations (only record_adult_attestation writes)', r.role_, r.priv;
     end if;
   end loop;
   if has_table_privilege('anon', 'public.adult_attestations', 'SELECT') then
-    raise exception '0199 end state: anon may read adult_attestations';
+    raise exception '0192 end state: anon may read adult_attestations';
   end if;
   if (select count(*) from pg_trigger where tgrelid = 'public.adult_attestations'::regclass
         and tgname in ('adult_attestations_append_only', 'adult_attestations_no_truncate') and not tgisinternal) <> 2 then
-    raise exception '0199 end state: an append-only trigger of adult_attestations is missing';
+    raise exception '0192 end state: an append-only trigger of adult_attestations is missing';
   end if;
-  -- The video API is called with the anon key and a key hash (the database checks the key), as 0147 left it.
-  if not has_function_privilege('anon', 'public.api_create_video(text, text, jsonb, text, text, text)', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.api_create_video(text, text, jsonb, text, text, text)', 'EXECUTE')
-     or has_function_privilege('service_role', 'public.api_create_video(text, text, jsonb, text, text, text)', 'EXECUTE')
-     or not (select p.prosecdef from pg_proc p where p.oid = 'public.api_create_video(text, text, jsonb, text, text, text)'::regprocedure) then
-    raise exception '0199 end state: api_create_video is not the SECURITY DEFINER callable by anon only that 0147 left';
-  end if;
-  -- The hold gate: BEFORE INSERT, row level, unconditional, on credit_reservations, and nowhere else.
+  -- The API and connector doors are called with the anon key and a key or token hash (the database checks it), as their files left
+  -- them: SECURITY DEFINER, anon only.
+  for r in select * from unnest(array['public.api_create_video(text, text, jsonb, text, text, text)',
+                                      'public.oauth_creative_quote(text, text, text, jsonb, text)',
+                                      'public.oauth_creative_models(text, text, text)',
+                                      'public.api_request_download(text, text, text, text, text, text)',
+                                      'public.oauth_create_video(text, text, jsonb, text, text)']) sig loop
+    if not has_function_privilege('anon', r.sig, 'EXECUTE')
+       or has_function_privilege('authenticated', r.sig, 'EXECUTE')
+       or has_function_privilege('service_role', r.sig, 'EXECUTE')
+       or not (select p.prosecdef from pg_proc p where p.oid = r.sig::regprocedure) then
+      raise exception '0192 end state: % is not the SECURITY DEFINER callable by anon only that its file left', r.sig;
+    end if;
+  end loop;
+  -- The hold gate and the download gate: BEFORE INSERT, row level, unconditional, on these two tables, and nowhere else.
   if (select count(*) from pg_trigger t join pg_proc f on f.oid = t.tgfoid
-       where f.proname = 'adult_attestation_refuse_minor' and not t.tgisinternal) <> 1
+       where f.proname = 'adult_attestation_refuse_minor' and not t.tgisinternal) <> 2
+     or not exists (select 1 from pg_trigger t
+                     where t.tgrelid = 'public.download_requests'::regclass and t.tgname = 'adult_attestation_download_gate'
+                       and t.tgtype = 7 and t.tgqual is null and t.tgenabled = 'O')
      or not exists (select 1 from pg_trigger t
                      where t.tgrelid = 'public.credit_reservations'::regclass and t.tgname = 'adult_attestation_hold_gate'
                        and t.tgtype = 7  -- ROW | BEFORE | INSERT
                        and t.tgqual is null and t.tgenabled = 'O') then
-    raise exception '0199 end state: the hold gate (adult_attestation_hold_gate on credit_reservations) is missing or not BEFORE INSERT';
+    raise exception '0192 end state: the hold gate (credit_reservations) or the download gate (download_requests) is missing or not BEFORE INSERT';
   end if;
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- Verify (run after applying, AND after any manual replay of 0036 or 0075; every column should read true). A false gate column
--- means an older file was re-run over this one and the adult gate is gone there: apply 0199 again (see REPLAY above).
+-- Verify (run after applying, AND after any manual replay of 0036, 0075, 0093, 0094 or 0191; every column should read true). A false gate column
+-- means an older file was re-run over this one and the adult gate is gone there: apply 0192 again (see REPLAY above).
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.quote_creative_job(uuid,text,text,jsonb)'::regprocedure) = 'ce54b243814e7e8205e8f2c200f05adc'                     as quote_gate,
+--     where oid = 'public.quote_creative_job(uuid,text,text,jsonb)'::regprocedure) = 'd80ebb592f6383c7289952a3411bf758'                     as quote_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.route_model(text,jsonb,text,uuid,text)'::regprocedure) = '446a8891a780d38237af38e46c24349a'                        as route_gate,
+--     where oid = 'public.route_model(text,jsonb,text,uuid,text)'::regprocedure) = '63ee303ce0f98a24fafa6bf934578f81'                        as route_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.sellable_models(text,text)'::regprocedure) = '0e69dd8226d0ba7ee7f71b5481844488'                                  as listed_for_adults,
+--     where oid = 'public.sellable_models(text,text)'::regprocedure) = '40f61462ddae2fc0e83a0956f4d8b75b'                                  as listed_for_adults,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure) = '5d373e69b2b33c9a461a245d46c0047f' as job_gate,
+--     where oid = 'public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure) = 'a5e00e65d1161bccd2acefb7745e659b' as job_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.api_creative_refusal(text,text,text)'::regprocedure) = '689a675e9ff2d1b6df46ccd89f351589'                     as api_answer,
+--     where oid = 'public.api_creative_refusal(text,text,text)'::regprocedure) = '2553f7ab2715949762b6fc6fd7cf3300'                     as api_answer,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.creative_platform_reserve(uuid,text,numeric)'::regprocedure) = '8e8e0cc80de8f21793897af0223a7044'           as helper_gate,
+--     where oid = 'public.creative_platform_reserve(uuid,text,numeric)'::regprocedure) = '96d5dd0351ee79ebdbf6b649f92f9e6c'           as helper_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.quote_film(uuid,integer)'::regprocedure) = 'e67c0d25f9872b6e9ff19e9d06e95261'                                as film_quote_gate,
+--     where oid = 'public.quote_film(uuid,integer)'::regprocedure) = '00846d0622ab379810c633b2446436b0'                                as film_quote_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.start_film(uuid,text,text)'::regprocedure) = '45c36b8ebc8bd71bbf2ebc60243b718b'                              as film_start_gate,
+--     where oid = 'public.start_film(uuid,text,text)'::regprocedure) = '595e90f836f992699cf9e920ad646787'                              as film_start_gate,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.api_create_video(text,text,jsonb,text,text,text)'::regprocedure) = '84477b7bff7fe4e2ec50376a4e5bb72e'       as video_api_gate,
+--     where oid = 'public.api_create_video(text,text,jsonb,text,text,text)'::regprocedure) = 'b8ca36fa1be8f7a4837f095a6d534631'       as video_api_gate,
 --   (select count(*) = 1 from pg_trigger where tgname = 'adult_attestation_hold_gate'
 --     and tgrelid = 'public.credit_reservations'::regclass and tgenabled = 'O')                                          as hold_gate,
+--   (select count(*) = 1 from pg_trigger where tgname = 'adult_attestation_download_gate'
+--     and tgrelid = 'public.download_requests'::regclass and tgenabled = 'O')                                            as download_gate,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+--     where oid = 'public.oauth_creative_quote(text,text,text,jsonb,text)'::regprocedure) = 'e3340606260711781f202aff7abdcdee' as oauth_creative_quote_gate,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+--     where oid = 'public.oauth_creative_models(text,text,text)'::regprocedure) = 'beafb530957690f51366c995468ad36f' as oauth_creative_models_gate,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+--     where oid = 'public.api_request_download(text,text,text,text,text,text)'::regprocedure) = '4ca4086b260f0cec97edc16acb5e2c6b' as api_request_download_gate,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+--     where oid = 'public.oauth_create_video(text,text,jsonb,text,text)'::regprocedure) = '4c01906922aa8bb5a2205dd76fbfe992' as oauth_create_video_gate,
 --   (select count(*) = 2 from pg_trigger where tgrelid = 'public.adult_attestations'::regclass
 --     and tgname in ('adult_attestations_append_only', 'adult_attestations_no_truncate'))                                 as append_only,
 --   not has_table_privilege('service_role', 'public.adult_attestations', 'INSERT')

@@ -1,20 +1,21 @@
--- rollback_0199_adult_attestation.sql — takes migration 0199 (the adult attestation gate) out of the quote and job path.
+-- rollback_0192_adult_attestation.sql — takes migration 0192 (the adult attestation gate) out of the quote and job path.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT COMES BACK: 0036's quote_creative_job and creative_platform_reserve, 0075's route_model, 0188's sellable_models, 0174's
---   create_creative_job and api_creative_refusal, 0147's api_create_video, 0171's quote_film and 0187's start_film, none of which asks
+--   create_creative_job and api_creative_refusal, 0147's api_create_video, 0171's quote_film, 0187's start_film, 0191's
+--   oauth_creative_quote and oauth_creative_models, 0170's api_request_download and 0094's oauth_create_video, none of which asks
 --   for an age answer, and no hold gate. A requires_adult model is then sold to anyone, and a person who said they are under 18 is
 --   sold everything: apply this only while no requires_adult model is on sale, and say so to the owner.
 -- WHAT IS KEPT: the record. adult_attestations (its rows, its RLS and its append-only triggers) stays as it is: who answered what
---   must outlive a rollback. Applying 0199 again picks it up as its own.
--- WHAT IS LOST: record_adult_attestation, my_adult_attestation, the five helpers, and the hold gate (the trigger function and
---   adult_attestation_hold_gate on credit_reservations).
+--   must outlive a rollback. Applying 0192 again picks it up as its own.
+-- WHAT IS LOST: record_adult_attestation, my_adult_attestation, the five helpers, and the two gates (the trigger function,
+--   adult_attestation_hold_gate on credit_reservations and adult_attestation_download_gate on download_requests).
 --   The app's age question then answers "not available".
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the nine bodies is not 0199's (a later change would be undone).
---   1. Puts the nine earlier bodies back, verbatim, with their grants.
---   2. Drops the hold gate trigger and the eight 0199 functions that are not the append-only trigger's.
+--   0. REFUSES (changes nothing) if any of the thirteen bodies is not 0192's (a later change would be undone).
+--   1. Puts the thirteen earlier bodies back, verbatim, with their grants.
+--   2. Drops the two gate triggers and the eight 0192 functions that are not the append-only trigger's.
 --   3. Asserts the end state.
 
 begin;
@@ -26,18 +27,22 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.quote_creative_job(uuid, text, text, jsonb)', 'ce54b243814e7e8205e8f2c200f05adc'),
-      ('public.route_model(text, jsonb, text, uuid, text)', '446a8891a780d38237af38e46c24349a'),
-      ('public.sellable_models(text, text)', '0e69dd8226d0ba7ee7f71b5481844488'),
-      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', '5d373e69b2b33c9a461a245d46c0047f'),
-      ('public.api_creative_refusal(text, text, text)', '689a675e9ff2d1b6df46ccd89f351589'),
-      ('public.creative_platform_reserve(uuid, text, numeric)', '8e8e0cc80de8f21793897af0223a7044'),
-      ('public.quote_film(uuid, integer)', 'e67c0d25f9872b6e9ff19e9d06e95261'),
-      ('public.start_film(uuid, text, text)', '45c36b8ebc8bd71bbf2ebc60243b718b'),
-      ('public.api_create_video(text, text, jsonb, text, text, text)', '84477b7bff7fe4e2ec50376a4e5bb72e')) v(sig, want) loop
+      ('public.quote_creative_job(uuid, text, text, jsonb)', 'd80ebb592f6383c7289952a3411bf758'),
+      ('public.route_model(text, jsonb, text, uuid, text)', '63ee303ce0f98a24fafa6bf934578f81'),
+      ('public.sellable_models(text, text)', '40f61462ddae2fc0e83a0956f4d8b75b'),
+      ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', 'a5e00e65d1161bccd2acefb7745e659b'),
+      ('public.api_creative_refusal(text, text, text)', '2553f7ab2715949762b6fc6fd7cf3300'),
+      ('public.creative_platform_reserve(uuid, text, numeric)', '96d5dd0351ee79ebdbf6b649f92f9e6c'),
+      ('public.quote_film(uuid, integer)', '00846d0622ab379810c633b2446436b0'),
+      ('public.start_film(uuid, text, text)', '595e90f836f992699cf9e920ad646787'),
+      ('public.api_create_video(text, text, jsonb, text, text, text)', 'b8ca36fa1be8f7a4837f095a6d534631'),
+      ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'e3340606260711781f202aff7abdcdee'),
+      ('public.oauth_creative_models(text, text, text)', 'beafb530957690f51366c995468ad36f'),
+      ('public.api_request_download(text, text, text, text, text, text)', '4ca4086b260f0cec97edc16acb5e2c6b'),
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '4c01906922aa8bb5a2205dd76fbfe992')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
-      raise exception 'rollback 0199: % is not 0199''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
+      raise exception 'rollback 0192: % is not 0192''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
     end if;
   end loop;
 end $$;
@@ -946,8 +951,447 @@ $$;
 revoke all on function public.api_create_video(text, text, jsonb, text, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.api_create_video(text, text, jsonb, text, text, text) to anon;
 
--- The hold gate first (it names the trigger function), then the functions. The append-only triggers of the record stay.
+-- oauth_creative_quote: 0191's body, verbatim.
+create or replace function public.oauth_creative_quote(p_token_hash text, p_capability text, p_model text, p_params jsonb,
+                                                       p_request_id text default null)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx      jsonb;
+  v_org    uuid;
+  v_grant  uuid;
+  v_cap    text := lower(btrim(coalesce(p_capability, '')));
+  v_model  text := lower(btrim(coalesce(p_model, '')));
+  v_p      jsonb := coalesce(p_params, '{}'::jsonb);
+  v_state  text;
+  v_q      jsonb;
+  v_row    public.oauth_creative_quotes;
+  v_res    jsonb;
+  v_spent  numeric;
+  v_msg    text;
+  v_detail text;
+  v_sql    text;
+begin
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
+    return public.api_err(401, 'invalid_token', 'The access token is missing, expired, revoked or unknown. Reconnect the app.');
+  end if;
+  ctx := public.oauth_ctx(p_token_hash, 'oauth.creative.quote', p_request_id);
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_org := (ctx ->> 'org_id')::uuid;
+    v_grant := (ctx ->> 'grant_id')::uuid;
+    v_res := public.oauth_creative_rate_refusal(v_grant, 'quote');
+    if v_res is not null then
+      return public.api_finish(ctx, v_res, 0);
+    end if;
+    if jsonb_typeof(v_p) <> 'object' or pg_column_size(v_p) > 16384 then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_params', 'params must be a JSON object (at most 16 KB).'), 0);
+    end if;
+    v_state := public.oauth_creative_model_state(v_cap, v_model);
+    if v_state <> 'ok' then
+      return public.api_finish(ctx, public.oauth_creative_state_refusal(v_state, v_model), 0);
+    end if;
+    begin
+      -- The Studio's own price for this workspace: the model, the settings, the source file (this workspace's, live), the
+      -- entitlement. Computed nowhere else.
+      v_q := public.creative_price(v_org, v_cap, v_model, v_p);
+      -- A connection's own quotes that ran out are of no use to anyone; a connection holds at most a few live ones (storage is a
+      -- ceiling: 30 quotes a minute of up to 16 KB each would otherwise pile up).
+      delete from public.oauth_creative_quotes q
+       where q.grant_id = v_grant and q.job_id is null and q.expires_at < now();
+      if (select count(*) from public.oauth_creative_quotes q where q.grant_id = v_grant and q.job_id is null)
+         >= (public.oauth_creative_limits() ->> 'open_quotes_max')::integer then
+        return public.api_finish(ctx, public.api_err(429, 'too_many_quotes',
+          'This connection has too many open quotes. Create from one, or wait for them to expire.',
+          jsonb_build_object('retry_after', 60)), 0);
+      end if;
+      -- The tier, resolution and soundtrack the price is for are written into the params, the way create_creative_job writes
+      -- them into the job: what runs is what was shown, even if a model's default changes before create.
+      v_p := v_p || (v_q - array(select k from jsonb_object_keys(v_q) k where k not in ('quality', 'resolution', 'audio')));
+      insert into public.oauth_creative_quotes (grant_id, org_id, capability, model, params, credits, quote, expires_at)
+      values (v_grant, v_org, v_cap, v_model, v_p, (v_q ->> 'credits')::numeric, v_q - 'exempt' - 'preview',
+              now() + make_interval(secs => (public.oauth_creative_limits() ->> 'quote_ttl_seconds')::integer))
+      returning * into v_row;
+      v_spent := public.oauth_grant_month_credits(v_grant);
+      v_res := public.api_ok(public.oauth_creative_quote_json(v_row)
+        || jsonb_build_object('this_connection', jsonb_build_object(
+             'monthly_limit_credits', (ctx ->> 'limit_credits')::numeric)
+           -- Only where create applies the limit: on the credits-exempt workspace it is not a ceiling, so no number is shown as one.
+           || case when public.credits_exempt(v_org) then '{}'::jsonb
+                   else jsonb_build_object('left_this_month_credits', greatest((ctx ->> 'limit_credits')::numeric - v_spent, 0)) end), 201);
+    exception when others then
+      get stacked diagnostics v_msg = message_text, v_detail = pg_exception_detail;
+      v_sql := sqlstate;
+      v_res := public.api_creative_refusal(v_sql, v_msg, v_detail);
+    end;
+    return public.api_finish(ctx, v_res, 0);
+  exception when others then
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'), 0);
+  end;
+end
+$$;
+revoke all on function public.oauth_creative_quote(text, text, text, jsonb, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_creative_quote(text, text, text, jsonb, text) to anon;
+
+-- oauth_creative_models: 0191's body, verbatim.
+create or replace function public.oauth_creative_models(p_token_hash text, p_capability text default null, p_request_id text default null)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx    jsonb;
+  v_org  uuid;
+  v_cap  text := nullif(lower(btrim(coalesce(p_capability, ''))), '');
+  v_paid boolean;
+  v_list jsonb;
+begin
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
+    return public.api_err(401, 'invalid_token', 'The access token is missing, expired, revoked or unknown. Reconnect the app.');
+  end if;
+  ctx := public.oauth_ctx(p_token_hash, 'oauth.creative.models', p_request_id);
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    if v_cap is not null and not (v_cap = any (public.oauth_creative_capabilities())) then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_params',
+        format('capability must be one of: %s.', array_to_string(public.oauth_creative_capabilities(), ', '))), 0);
+    end if;
+    v_org := (ctx ->> 'org_id')::uuid;
+    v_paid := public.credits_exempt(v_org)
+              or exists (select 1 from public.credit_transactions t where t.org_id = v_org and t.kind = 'purchase');
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'id', s.id, 'name', s.display_name,
+             'capabilities', to_jsonb(array(select c from unnest(s.capabilities) c
+                                             where public.oauth_creative_model_state(c, s.id) = 'ok' order by c)),
+             'availability', s.availability,
+             'spec', jsonb_strip_nulls(jsonb_build_object(
+                       'output', s.spec -> 'output', 'aspect_ratios', s.spec -> 'aspect_ratios',
+                       'image_sizes', s.spec -> 'image_sizes', 'resolutions', s.spec -> 'resolutions',
+                       'durations_s', s.spec -> 'durations_s', 'inputs', s.spec -> 'inputs', 'audio_out', s.spec -> 'audio_out',
+                       'max_prompt_chars', s.spec #> '{limits,max_prompt_chars}'))) order by s.id), '[]'::jsonb)
+      into v_list
+      from public.sellable_models(v_cap, 'mcp') s
+     where (coalesce(s.entitlement, 'any') = 'any' or (s.entitlement = 'paid' and v_paid))
+       and exists (select 1 from unnest(s.capabilities) c
+                    where (v_cap is null or c = v_cap) and public.oauth_creative_model_state(c, s.id) = 'ok');
+    return public.api_finish(ctx, public.api_ok(jsonb_build_object('capability', v_cap, 'models', v_list)), 0);
+  exception when others then
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'), 0);
+  end;
+end
+$$;
+revoke all on function public.oauth_creative_models(text, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_creative_models(text, text, text) to anon;
+
+-- api_request_download: 0170's body, verbatim.
+create or replace function public.api_request_download(
+  p_key_hash text, p_video_id text, p_quality text,
+  p_idem_key text default null, p_fingerprint text default null, p_request_id text default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx     jsonb := public.api_begin(p_key_hash, 'downloads.create', p_request_id);
+  v_org   uuid;
+  v_ch    text;
+  q       text := btrim(coalesce(p_quality, ''));
+  m       public.download_masters;
+  r       public.download_requests;
+  why     text;
+  until_  timestamptz;
+  credits numeric;
+  v_price bigint;
+  v_spend bigint;
+  acc     public.api_accounts;
+  v_ref   text;
+  v_res   jsonb;
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_res := public.api_idem_begin(ctx, p_idem_key, p_fingerprint);
+    if v_res is not null then
+      return public.api_finish(ctx, v_res);
+    end if;
+    v_org := (ctx ->> 'org_id')::uuid;
+    select c.channel_id into v_ch from public.videos v join public.channels c on c.channel_id = v.channel_id
+     where v.video_id = p_video_id and c.org_id = v_org;
+    if q not in ('720p', '1080p') then
+      v_res := public.api_err(400, 'invalid_params', 'quality must be 720p or 1080p.');
+    elsif v_ch is null then
+      v_res := public.api_err(404, 'video_not_found', 'No video with that id in this key''s organization.');
+    end if;
+    if v_res is not null then
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res));
+    end if;
+
+    -- 0030's lock: the site and the API decide one (org, video, quality) at a time.
+    perform pg_advisory_xact_lock(hashtextextended(format('download:%s:%s:%s', v_org, p_video_id, q), 0));
+    select * into r from public.download_requests d
+     where d.org_id = v_org and d.video_id = p_video_id and d.quality = q
+       and (d.status in ('queued', 'processing') or (d.status = 'ready' and d.expires_at > now()))
+     order by d.id desc limit 1;
+    if r.id is not null then
+      v_res := public.api_ok(jsonb_build_object('id', r.id, 'status', r.status, 'quality', r.quality,
+                                                'price_cents', 0, 'reused', true, 'expires_at', r.expires_at));
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res));
+    end if;
+
+    select * into m from public.download_masters where video_id = p_video_id;
+    if m.video_id is null or least(m.width, m.height) < public.download_quality_side(q) then
+      return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(404, 'no_master',
+        format('No full-quality master for this video at %s. Only videos rendered on the queue worker keep one.', q))));
+    end if;
+
+    if exists (select 1 from public.download_requests d
+                where d.org_id = v_org and d.video_id = p_video_id and d.quality = q
+                  and d.paid_until > now() and d.status <> 'failed') then
+      why := 'redownload';
+      until_ := (select max(d.paid_until) from public.download_requests d
+                  where d.org_id = v_org and d.video_id = p_video_id and d.quality = q and d.status <> 'failed');
+    elsif (ctx ->> 'exempt')::boolean then
+      why := 'exempt';
+      until_ := now() + interval '7 days';
+    else
+      credits := public.download_credits_price(m.duration_seconds, q);
+      select ceil(credits * p.cents)::bigint into v_price from public.api_prices p where p.unit = 'download_cents_per_credit';
+      if v_price is null then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(503, 'pricing_unavailable',
+          format('Downloads in %s are not priced on this deployment; nothing was charged.', q))));
+      end if;
+      until_ := now() + interval '7 days';
+    end if;
+
+    if v_price is not null and v_price > 0 then
+      acc := public.api_account_lock(v_org);
+      perform public.api_expire_holds_locked(v_org);
+      select * into acc from public.api_accounts where org_id = v_org;
+      v_spend := public.api_month_spend(v_org);
+      if v_spend + v_price > (ctx ->> 'cap_cents')::bigint then
+        v_res := public.api_err(402, 'monthly_limit_reached',
+          'This download would take the organization past its monthly API spend limit. An owner or admin can raise it in the Developer console: Developers → Usage and billing → Monthly spend limit (up to the usage tier''s cap; paying more into the API balance raises the tier).',
+          jsonb_build_object('limit_cents', (ctx ->> 'cap_cents')::bigint, 'month_spend_cents', v_spend, 'price_cents', v_price));
+      elsif ctx ->> 'key_limit_cents' is not null
+            and public.api_month_spend(v_org, (ctx ->> 'key_id')::uuid) + v_price > (ctx ->> 'key_limit_cents')::bigint then
+        v_res := public.api_err(402, 'key_limit_reached', 'This download would take this key past its own monthly spend limit. An owner or admin can raise or remove it in the Developer console: Developers → API keys → Set limit on this key.',
+          jsonb_build_object('limit_cents', (ctx ->> 'key_limit_cents')::bigint, 'price_cents', v_price));
+      elsif acc.balance_cents - acc.reserved_cents < v_price then
+        v_res := public.api_err(402, 'insufficient_balance',
+          'Your API balance does not cover this download. Top up in the Developer console.',
+          jsonb_build_object('price_cents', v_price, 'available_cents', acc.balance_cents - acc.reserved_cents));
+      end if;
+      if v_res is not null then
+        return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res));
+      end if;
+    end if;
+
+    -- 0030's row, as the site writes it, filed as the key's creator; credits
+    -- charged 0 (the API balance pays, below).
+    insert into public.download_requests
+      (org_id, channel_id, video_id, quality, status, charged, free_reason, paid_until, minutes, requested_by)
+    values
+      (v_org, v_ch, p_video_id, q, 'queued', 0, why, until_, round(m.duration_seconds / 60.0, 4),
+       (ctx ->> 'created_by')::uuid)
+    returning * into r;
+
+    if v_price is not null and v_price > 0 then
+      v_ref := 'ah-' || gen_random_uuid()::text;
+      insert into public.api_holds (ref, org_id, key_id, download_request_id, amount_cents)
+      values (v_ref, v_org, (ctx ->> 'key_id')::uuid, r.id, v_price);
+      update public.api_accounts set reserved_cents = reserved_cents + v_price, updated_at = now()
+       where org_id = v_org;
+      perform public.api_log(v_org, 'hold', v_price, v_ref, (ctx ->> 'key_id')::uuid, null, null, null,
+                             format('download %s of %s', q, p_video_id));
+    end if;
+    -- 0170: the name 0087's audit list has and the site's download route writes; 'video.download' was refused (500).
+    perform public.api_audit(ctx, 'video.download_request', p_video_id, v_ch,
+      jsonb_build_object('download_id', r.id, 'quality', q, 'price_cents', v_price, 'free_reason', why));
+
+    v_res := public.api_ok(jsonb_build_object('id', r.id, 'status', r.status, 'quality', q,
+                                              'price_cents', coalesce(v_price, 0), 'free_reason', why,
+                                              'reused', false), 201);
+    return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, v_res), coalesce(v_price, 0));
+  exception when others then
+    -- Only this block is undone: the request stays counted and is logged (P6).
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+revoke all on function public.api_request_download(text, text, text, text, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.api_request_download(text, text, text, text, text, text) to anon;
+
+-- oauth_create_video: 0094's body, verbatim.
+create or replace function public.oauth_create_video(
+  p_token_hash text, p_channel_id text, p_params jsonb,
+  p_idem_key text default null, p_request_id text default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx     jsonb := public.api_begin(p_token_hash, 'oauth.videos.create', p_request_id);
+  v_org   uuid;
+  v_grant uuid;
+  ch      public.channels;
+  v_p     jsonb := coalesce(p_params, '{}'::jsonb);
+  v_secs  numeric;
+  v_idem  text;
+  v_fp    text;
+  prior   public.oauth_runs;
+  jm      numeric;
+  vm      public.credit_prices;
+  v_price numeric;
+  v_limit numeric;
+  v_spent numeric;
+  acc     public.credit_accounts;
+  v_ref   text;
+  v_job   bigint;
+  v_res   jsonb;
+  v_hold  jsonb;
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_org := (ctx ->> 'org_id')::uuid;
+    v_grant := (ctx ->> 'grant_id')::uuid;
+    if p_idem_key is not null and p_idem_key !~ '^[A-Za-z0-9_:.-]{1,255}$' then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_idempotency_key',
+        'idempotency_key: 1-255 characters of A-Z a-z 0-9 _ : . -'));
+    end if;
+    v_idem := coalesce(p_idem_key, 'auto-' || gen_random_uuid()::text);
+    v_fp := md5(jsonb_build_object('c', p_channel_id, 'p', v_p)::text);
+
+    -- A retry of the same request waits here, then finds the first one's job.
+    perform pg_advisory_xact_lock(hashtextextended('oauth_run:' || v_grant::text || ':' || v_idem, 0));
+    select * into prior from public.oauth_runs where grant_id = v_grant and idem_key = v_idem;
+    if prior.id is not null then
+      if prior.fingerprint <> v_fp then
+        return public.api_finish(ctx, public.api_err(422, 'idempotency_key_reused',
+          'This idempotency_key was already used with a different request.'));
+      end if;
+      return public.api_finish(ctx, public.api_ok(jsonb_build_object('job_id', prior.render_job_id,
+        'channel_id', prior.channel_id, 'status', 'queued', 'price_credits', prior.quoted_credits), 200)
+        || jsonb_build_object('replayed', true));
+    end if;
+
+    select * into ch from public.channels c where c.channel_id = p_channel_id;
+    if ch.channel_id is null or ch.org_id is distinct from v_org then
+      return public.api_finish(ctx, public.api_err(404, 'channel_not_found', 'No channel with that id in this workspace.'));
+    elsif upper(btrim(coalesce(ch.status, ''))) <> 'ACTIVE' then
+      return public.api_finish(ctx, public.api_err(409, 'channel_not_active',
+        'That channel is not active. Connect it to YouTube and activate it in the Command Center first.'));
+    elsif jsonb_typeof(v_p) <> 'object'
+       or (v_p - array['topic','niche','duration','language','visual_style','video_provider','image_provider']) <> '{}'::jsonb
+       or not public.render_job_params_valid(v_p, 'daily') then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_params',
+        'Allowed: topic (<=300 chars), niche (<=120), duration (whole seconds, 30-3600), language (<=40), visual_style (<=300), video_provider, image_provider.'));
+    end if;
+
+    -- A limit of 0 is a read-only connection, whoever pays: the operator's exempt
+    -- workspace spends nothing, so nothing below would ever count against the
+    -- limit; zero is the one limit that needs no counting (Lens-386A).
+    if (ctx ->> 'exempt')::boolean and (ctx ->> 'limit_credits')::numeric <= 0 then
+      return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
+        'This connection is read-only: its monthly spending limit is 0.',
+        jsonb_build_object('limit_credits', 0, 'spent_credits', 0, 'price_credits', 0)));
+    end if;
+
+    if not (ctx ->> 'exempt')::boolean then
+      -- The length the video renders at, frozen the way the payment guard
+      -- (0041) freezes it, so what is held is what runs.
+      v_secs := coalesce((v_p ->> 'duration')::numeric,
+                         case when jsonb_typeof(ch.agent_config -> 'target_duration_seconds') = 'number'
+                              then (ch.agent_config ->> 'target_duration_seconds')::numeric end);
+      if v_secs is null or v_secs <= 0 then
+        return public.api_finish(ctx, public.api_err(400, 'duration_required',
+          'Pass duration (seconds): this channel has no target length to price the video by.'));
+      end if;
+      v_secs := least(greatest(round(v_secs), 30), 3600);
+      v_p := v_p || jsonb_build_object('duration', v_secs::integer);
+
+      -- The price: the same rows and formula the render_jobs payment guard
+      -- demands the hold cover. No per-minute price = unpriced = refused.
+      select credits_per_unit into jm from public.credit_prices where unit = 'job_minimum';
+      select * into vm from public.credit_prices where unit = 'video_minute';
+      if vm.unit is null or vm.credits_per_unit is null then
+        return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
+          'Video pricing is not set up on this deployment; nothing was held or charged.'));
+      end if;
+      v_price := public.credits_round_up(greatest(coalesce(jm, 0), vm.credits_per_unit * (1 + vm.margin) * v_secs / 60));
+      if v_price is null or v_price <= 0 then
+        return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
+          'Video pricing is not set up on this deployment; nothing was held or charged.'));
+      end if;
+
+      -- Everything below runs under the credit account's row lock, so two calls
+      -- of one connection cannot each pass the limit and jointly exceed it.
+      acc := public.credit_account_lock(v_org);
+      v_limit := (ctx ->> 'limit_credits')::numeric;
+      v_spent := public.oauth_grant_month_credits(v_grant);
+      if v_spent + v_price > v_limit then
+        return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
+          'This video would take this connection past its monthly spending limit.',
+          jsonb_build_object('limit_credits', v_limit, 'spent_credits', v_spent, 'price_credits', v_price)));
+      end if;
+
+      v_ref := 'rj-oa-' || replace(gen_random_uuid()::text, '-', '');
+      begin
+        v_hold := public.reserve_credits(v_org, v_ref, v_price);
+      exception
+        when sqlstate 'NS402' then
+          select * into acc from public.credit_accounts where org_id = v_org;
+          -- 0094: with extra credits off, what a new video can use is the plan
+          -- side only, not balance - held (which counts unspendable pack credits).
+          return public.api_finish(ctx, public.api_err(402, 'insufficient_credits',
+            'The workspace does not have enough credits for this video.',
+            jsonb_build_object('available_credits',
+                                 case when coalesce(acc.use_extra_credits, true)
+                                      then greatest(acc.balance - acc.reserved, 0)
+                                      else public.credit_spendable_internal(v_org) end,
+                               'held_credits', acc.reserved, 'price_credits', v_price)
+            || case when coalesce(acc.use_extra_credits, true) then '{}'::jsonb
+                    else jsonb_build_object('extra_credits_off', true) end));
+        when sqlstate 'NS429' then
+          return public.api_finish(ctx, public.api_err(429, 'run_limit_reached',
+            'The plan\''s limit of videos in progress at once is reached.',
+            jsonb_build_object('retry_after', 60,
+                               'active_runs', (select count(*) from public.credit_reservations r where r.org_id = v_org and r.status = 'open'),
+                               'run_limit', public.entitlement_int_internal(v_org, 'concurrency'))));
+      end;
+    end if;
+
+    insert into public.render_jobs (channel_id, kind, params, requested_by, credit_ref)
+    values (ch.channel_id, 'daily', v_p, (ctx ->> 'created_by')::uuid, v_ref)
+    returning id into v_job;
+
+    insert into public.oauth_runs (grant_id, org_id, idem_key, fingerprint, credit_ref, render_job_id, channel_id, quoted_credits)
+    values (v_grant, v_org, v_idem, v_fp, v_ref, v_job, ch.channel_id, v_price);
+
+    insert into public.app_audit_log (actor_user_id, actor_email, action, target, detail, channel_id)
+    values ((ctx ->> 'created_by')::uuid, nullif(auth.jwt() ->> 'email', ''), 'agent.run', ch.channel_id,
+            v_p || jsonb_build_object('via', 'mcp_oauth', 'grant_id', v_grant, 'job_id', v_job,
+                                      'credit_ref', v_ref, 'price_credits', v_price), ch.channel_id);
+
+    v_res := public.api_ok(jsonb_build_object('job_id', v_job, 'channel_id', ch.channel_id, 'status', 'queued',
+                                              'price_credits', v_price), 201);
+    return public.api_finish(ctx, v_res, 0);
+  exception when others then
+    -- Only this block is undone (the hold with it): nothing is held or queued.
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+revoke all on function public.oauth_create_video(text, text, jsonb, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_create_video(text, text, jsonb, text, text) to anon;
+
+-- The two gate triggers first (they name the trigger function), then the functions. The append-only triggers of the record stay.
 drop trigger if exists adult_attestation_hold_gate on public.credit_reservations;
+drop trigger if exists adult_attestation_download_gate on public.download_requests;
 drop function if exists public.adult_attestation_refuse_minor();
 drop function if exists public.film_adult_refusals(uuid, uuid);
 drop function if exists public.record_adult_attestation(boolean, text, text);
@@ -970,9 +1414,13 @@ begin
       ('public.creative_platform_reserve(uuid, text, numeric)', '4a61076948e0dd8992d37de2a9016607'),
       ('public.quote_film(uuid, integer)', '8839e2cb264663acf98c6f49aaaf89a5'),
       ('public.start_film(uuid, text, text)', '5468183a8f24a48f708efcbbf9d2d22c'),
-      ('public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab')) v(sig, want) loop
+      ('public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab'),
+      ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'b75707212f0ce249f4f8bce5b1079070'),
+      ('public.oauth_creative_models(text, text, text)', 'bf21f463a6465cfbb45e25bef841ed1f'),
+      ('public.api_request_download(text, text, text, text, text, text)', 'b59ca71d0e0379e217e47a6987c9ed0c'),
+      ('public.oauth_create_video(text, text, jsonb, text, text)', '244a5779e4388525f5f345b59379029f')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
-      raise exception 'rollback 0199 end state: % is not its earlier body', r.sig;
+      raise exception 'rollback 0192 end state: % is not its earlier body', r.sig;
     end if;
   end loop;
   if not has_function_privilege('authenticated', 'public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', 'EXECUTE')
@@ -988,18 +1436,18 @@ begin
      or has_function_privilege('authenticated', 'public.creative_platform_reserve(uuid, text, numeric)', 'EXECUTE')
      or not has_function_privilege('anon', 'public.api_create_video(text, text, jsonb, text, text, text)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.api_create_video(text, text, jsonb, text, text, text)', 'EXECUTE') then
-    raise exception 'rollback 0199 end state: the grants are not the earlier ones';
+    raise exception 'rollback 0192 end state: the grants are not the earlier ones';
   end if;
   if to_regprocedure('public.record_adult_attestation(boolean, text, text)') is not null
      or to_regprocedure('public.my_adult_attestation()') is not null
      or to_regprocedure('public.adult_attestation_gate(uuid, text)') is not null
      or to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null
      or to_regprocedure('public.adult_attestation_refuse_minor()') is not null
-     or exists (select 1 from pg_trigger where tgname = 'adult_attestation_hold_gate') then
-    raise exception 'rollback 0199 end state: a 0199 function is still there';
+     or exists (select 1 from pg_trigger where tgname in ('adult_attestation_hold_gate', 'adult_attestation_download_gate')) then
+    raise exception 'rollback 0192 end state: a 0192 function is still there';
   end if;
   if to_regclass('public.adult_attestations') is null then
-    raise exception 'rollback 0199 end state: the record (adult_attestations) is gone';
+    raise exception 'rollback 0192 end state: the record (adult_attestations) is gone';
   end if;
 end $$;
 

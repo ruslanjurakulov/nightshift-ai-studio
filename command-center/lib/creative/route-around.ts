@@ -124,7 +124,7 @@ export async function quoteAround(db: CreativeDb, input: GenerationInput, isBloc
   const open = sellable.filter((m) => !isBlocked(m.id));
   const quotes = new Map<string, Record<string, unknown>>();
   const cands: RouteCandidate[] = [];
-  // 0199: the database refuses an adult-only model (and every model for someone who said they are under 18) at the exact quote,
+  // 0192: the database refuses an adult-only model (and every model for someone who said they are under 18) at the exact quote,
   // which is how route_model excludes them. Those refusals are kept, so the answer names the age, not the country.
   let adultRefusal: CreativeResult | null = null;
   for (const m of open) {

@@ -1,12 +1,12 @@
-"""Security-lab contract for migration 0199 (the adult attestation: an append-only, one-row-per-person record of who confirmed
+"""Security-lab contract for migration 0192 (the adult attestation: an append-only, one-row-per-person record of who confirmed
 they are 18 or older, and a gate in front of every quote and job).
 
 Kept in its own module, like sec_rights_acknowledgement_0174. Two hooks wire it in:
 
   * sec_expectations.py, at the bottom:
-        import sec_adult_attestation_0199; sec_adult_attestation_0199.extend(TABLES, FUNCTIONS)
+        import sec_adult_attestation_0192; sec_adult_attestation_0192.extend(TABLES, FUNCTIONS)
   * sec_scenario.build_scenario(), after the tenants are seeded:
-        sec_adult_attestation_0199.seed(conn, sc)
+        sec_adult_attestation_0192.seed(conn, sc)
 
 The seed writes what production writes: each tenant's member confirms they are an adult through record_adult_attestation(), in
 their own session. The isolation suite then has one row per person to aim at (Person: nobody else reads it, the platform admin

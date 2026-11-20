@@ -1,9 +1,9 @@
-"""Migration 0199 (the adult attestation: an append-only answer per person, and a gate on it), pinned as text.
+"""Migration 0192 (the adult attestation: an append-only answer per person, and a gate on it), pinned as text.
 
 What would break, and which test says so:
 
 * a replaced body drifting from the one it was built on (a price, hold, route order or refusal silently altered): each of the
-  five is the earlier body plus inserted, marked 0199 blocks, and nothing deleted or changed;
+  five is the earlier body plus inserted, marked 0192 blocks, and nothing deleted or changed;
 * the gate moving after the ceiling, the hold or the job row (rule 6), or before an idempotent replay is answered;
 * the router refusing a whole route when another model remains, or ranking differently (only inserts, no ORDER BY changed);
 * a requires_adult model hidden from the list instead of marked (we never pretend a model does not exist);
@@ -27,26 +27,34 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-M = (MIG / "0199_adult_attestation.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0199_adult_attestation.sql").read_text(encoding="utf-8")
+M = (MIG / "0192_adult_attestation.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0192_adult_attestation.sql").read_text(encoding="utf-8")
 SCHEMA = json.loads((ROOT / "schemas" / "model_registry.schema.json").read_text(encoding="utf-8"))
 
-# name -> (the file it was built on, md5 before, md5 after, how many 0199 blocks are inserted)
+# name -> (the file it was built on, md5 before, md5 after, how many 0192 blocks are inserted)
 REPLACED = {
-    "quote_creative_job": ("0036_creative_jobs.sql", "8494b320cece395444edec700a2f1696", "ce54b243814e7e8205e8f2c200f05adc", 1),
-    "route_model": ("0075_model_router.sql", "e4344e61983e7decb4b1eac73761fbf0", "446a8891a780d38237af38e46c24349a", 4),
-    "sellable_models": ("0188_recraft_web_mcp.sql", "0ab9e7da07b4347010a887c5118d5150", "0e69dd8226d0ba7ee7f71b5481844488", 1),
-    "create_creative_job": ("0174_rights_acknowledgement.sql", "88107b00b0a8c143606ed17f5898c98d", "5d373e69b2b33c9a461a245d46c0047f", 1),
-    "api_creative_refusal": ("0174_rights_acknowledgement.sql", "e6ec45d0d912389a05eb2d40261c2c2a", "689a675e9ff2d1b6df46ccd89f351589", 1),
-    "creative_platform_reserve": ("0036_creative_jobs.sql", "4a61076948e0dd8992d37de2a9016607", "8e8e0cc80de8f21793897af0223a7044", 1),
-    "quote_film": ("0171_films_money.sql", "8839e2cb264663acf98c6f49aaaf89a5", "e67c0d25f9872b6e9ff19e9d06e95261", 2),
-    "start_film": ("0187_rights_acknowledgement_inputs.sql", "5468183a8f24a48f708efcbbf9d2d22c", "45c36b8ebc8bd71bbf2ebc60243b718b", 1),
-    "api_create_video": ("0147_mcp_free_tier.sql", "cba47be1a674f5cea3b5d7443bc31bab", "84477b7bff7fe4e2ec50376a4e5bb72e", 1),
+    "quote_creative_job": ("0036_creative_jobs.sql", "8494b320cece395444edec700a2f1696", "d80ebb592f6383c7289952a3411bf758", 1),
+    "route_model": ("0075_model_router.sql", "e4344e61983e7decb4b1eac73761fbf0", "63ee303ce0f98a24fafa6bf934578f81", 4),
+    "sellable_models": ("0188_recraft_web_mcp.sql", "0ab9e7da07b4347010a887c5118d5150", "40f61462ddae2fc0e83a0956f4d8b75b", 1),
+    "create_creative_job": ("0174_rights_acknowledgement.sql", "88107b00b0a8c143606ed17f5898c98d", "a5e00e65d1161bccd2acefb7745e659b", 1),
+    "api_creative_refusal": ("0174_rights_acknowledgement.sql", "e6ec45d0d912389a05eb2d40261c2c2a", "2553f7ab2715949762b6fc6fd7cf3300", 1),
+    "creative_platform_reserve": ("0036_creative_jobs.sql", "4a61076948e0dd8992d37de2a9016607", "96d5dd0351ee79ebdbf6b649f92f9e6c", 1),
+    "quote_film": ("0171_films_money.sql", "8839e2cb264663acf98c6f49aaaf89a5", "00846d0622ab379810c633b2446436b0", 2),
+    "start_film": ("0187_rights_acknowledgement_inputs.sql", "5468183a8f24a48f708efcbbf9d2d22c", "595e90f836f992699cf9e920ad646787", 1),
+    "api_create_video": ("0147_mcp_free_tier.sql", "cba47be1a674f5cea3b5d7443bc31bab", "b8ca36fa1be8f7a4837f095a6d534631", 1),
+    "oauth_creative_quote": ("0191_mcp_oauth_creative.sql", "b75707212f0ce249f4f8bce5b1079070", "e3340606260711781f202aff7abdcdee", 1),
+    "oauth_creative_models": ("0191_mcp_oauth_creative.sql", "bf21f463a6465cfbb45e25bef841ed1f", "beafb530957690f51366c995468ad36f", 1),
+    "api_request_download": ("0170_api_download_audit.sql", "b59ca71d0e0379e217e47a6987c9ed0c", "4ca4086b260f0cec97edc16acb5e2c6b", 1),
+    "oauth_create_video": ("0094_extra_credits_toggle.sql", "244a5779e4388525f5f345b59379029f", "4c01906922aa8bb5a2205dd76fbfe992", 1),
 }
+ANON_DOORS = ["public.api_create_video(text, text, jsonb, text, text, text)", "public.oauth_creative_quote(text, text, text, jsonb, text)",
+              "public.oauth_creative_models(text, text, text)", "public.api_request_download(text, text, text, text, text, text)",
+              "public.oauth_create_video(text, text, jsonb, text, text)"]
 NEW_FUNCTIONS = ["adult_attestations_append_only", "model_requires_adult", "adult_attestation_state", "adult_attestation_missing",
                  "adult_attestation_gate", "film_adult_refusals", "adult_attestation_refuse_minor", "record_adult_attestation",
                  "my_adult_attestation"]
-GATE_TRIGGERS = [("adult_attestation_hold_gate", "credit_reservations", None)]
+GATE_TRIGGERS = [("adult_attestation_hold_gate", "credit_reservations", None),
+                 ("adult_attestation_download_gate", "download_requests", None)]
 AGE_TS = (ROOT / "command-center" / "lib" / "age.ts").read_text(encoding="utf-8")
 METHODS = ["email_signup", "google", "welcome", "create"]
 
@@ -67,7 +75,7 @@ def code(sql: str) -> str:
     return "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
 
 
-def latest(name: str, before: str = "0199") -> tuple:
+def latest(name: str, before: str = "0192") -> tuple:
     out = None
     for p in sorted(MIG.glob("*.sql")):
         if p.name[:4] >= before:
@@ -86,11 +94,11 @@ class BuiltOnTheEarlierBodies(unittest.TestCase):
             ops = [op for op in difflib.SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes() if op[0] != "equal"]
             self.assertEqual([op[0] for op in ops], ["insert"] * blocks, name)
             for _tag, _i1, _i2, j1, j2 in ops:
-                self.assertIn("0199", "\n".join(new[j1:j2]), f"{name}: an inserted block names 0199")
+                self.assertIn("0192", "\n".join(new[j1:j2]), f"{name}: an inserted block names 0192")
 
-    def test_the_earlier_body_is_the_latest_one_before_0199(self):
+    def test_the_earlier_body_is_the_latest_one_before_0192(self):
         for name, (src, *_rest) in REPLACED.items():
-            self.assertEqual(latest(name)[0], src, f"{name} was redefined after {src}: rebuild 0199 on the newer body")
+            self.assertEqual(latest(name)[0], src, f"{name} was redefined after {src}: rebuild 0192 on the newer body")
 
     def test_the_md5_pins_describe_the_bodies(self):
         for name, (src, old, new, _b) in REPLACED.items():
@@ -114,7 +122,7 @@ class BuiltOnTheEarlierBodies(unittest.TestCase):
             "public.my_adult_attestation() to authenticated",
             "public.quote_film(uuid, integer) to authenticated",
             "public.start_film(uuid, text, text) to authenticated",
-            "public.api_create_video(text, text, jsonb, text, text, text) to anon",
+            *[f"{s} to anon" for s in ANON_DOORS],
         ]))
         for name in [*NEW_FUNCTIONS, *REPLACED]:
             self.assertRegex(M, rf"revoke all on function public\.{name}\([^)]*\) from public, anon")
@@ -227,7 +235,7 @@ class TheRollbackAndTheFile(unittest.TestCase):
             "public.sellable_models(text, text) to authenticated, service_role",
             "public.quote_film(uuid, integer) to authenticated",
             "public.start_film(uuid, text, text) to authenticated",
-            "public.api_create_video(text, text, jsonb, text, text, text) to anon"]))
+            *[f"{s} to anon" for s in ANON_DOORS]]))
         self.assertTrue(ROLLBACK.rstrip().endswith("commit;") and "\nbegin;\n" in ROLLBACK)
         # Outside the earlier bodies it puts back verbatim (0171's quote_film prunes its own old quotes), it deletes nothing.
         own = ROLLBACK
@@ -241,8 +249,8 @@ class TheRollbackAndTheFile(unittest.TestCase):
     def test_the_file_says_how_to_apply_verify_and_undo_and_what_replay_does(self):
         self.assertIn("APPLY AS ONE TRANSACTION", M)
         self.assertIn("set local lock_timeout = '5s';", M)
-        self.assertIn("-- Verify (run after applying, AND after any manual replay of 0036 or 0075", M)
-        self.assertIn("rollback_0199_adult_attestation.sql", M)
+        self.assertIn("-- Verify (run after applying, AND after any manual replay of 0036, 0075, 0093, 0094 or 0191", M)
+        self.assertIn("rollback_0192_adult_attestation.sql", M)
         self.assertIn("A DELETED ACCOUNT", M)
         self.assertIn("It KEEPS the record", M)
 
@@ -266,7 +274,7 @@ class TheOtherPaidPaths(unittest.TestCase):
             clause = f"for each row when ({when}) execute" if when else "for each row execute"
             self.assertRegex(c, rf"create trigger {name}\s+before insert on public\.{table}\s+{re.escape(clause)} "
                                 rf"function public\.adult_attestation_refuse_minor\(\);", table)
-        self.assertEqual(len(re.findall(r"create trigger adult_attestation_", c)), 1)
+        self.assertEqual(len(re.findall(r"create trigger adult_attestation_", c)), len(GATE_TRIGGERS))
         # Never on an update, a delete or the ledger: capturing, releasing, refunding or expiring a hold that exists is never refused.
         self.assertNotRegex(c, r"(?i)create trigger adult_attestation_\w+\s+(after|before)\s+(update|delete)")
         self.assertNotRegex(c, r"(?i)create trigger \w+\s+before insert on public\.(credit_transactions|api_holds)")
@@ -312,8 +320,37 @@ class TheOtherPaidPaths(unittest.TestCase):
         self.assertIn("public.api_err(403, 'adult_only_service',", body)
 
     def test_the_header_lists_what_is_not_covered(self):
-        for words in ("NOT COVERED", "oauth_create_video", "EXEMPT organization", "Paid DOWNLOADS", "DORMANT requests"):
+        for words in ("NOT COVERED", "EXEMPT organization", "DORMANT requests", "oauth_creative_quote / oauth_creative_create",
+                      "request_download (0094, charged on the spot), api_request_download (0170)"):
             self.assertIn(words, M)
+
+
+class TheConnectorAndTheDownloads(unittest.TestCase):
+    """Atlas on #832: 0191's connector, the paid downloads and the connection's video."""
+
+    def test_the_connector_quote_asks_after_the_price_inside_the_mapped_block(self):
+        body = definition(M, "oauth_creative_quote")
+        ask = body.index("perform public.adult_attestation_gate(auth.uid(), v_model);")
+        self.assertLess(body.index("v_q := public.creative_price(v_org, v_cap, v_model, v_p);"), ask)
+        self.assertLess(ask, body.index("insert into public.oauth_creative_quotes"), "a refused quote is never stored")
+        # Raised inside the block whose handler answers through api_creative_refusal (typed 403 / 428, never the 500).
+        self.assertLess(ask, body.index("v_res := public.api_creative_refusal(v_sql, v_msg, v_detail);"))
+
+    def test_the_connector_list_marks_rather_than_hides(self):
+        body = definition(M, "oauth_creative_models")
+        self.assertIn("'requires_adult', s.spec -> 'requires_adult',", body)
+        self.assertNotIn("requires_adult", code(body.split("from public.sellable_models(v_cap, 'mcp') s", 1)[1]))
+
+    def test_the_api_download_and_the_connection_video_answer_a_minor_with_a_403_before_any_money(self):
+        for name, later in (("api_request_download", ("download_credits_price(", "insert into public.api_holds",
+                                                       "insert into public.download_requests")),
+                            ("oauth_create_video", ("select * into ch from public.channels", "public.reserve_credits(",
+                                                     "insert into public.render_jobs"))):
+            body = definition(M, name)
+            ask = body.index("if public.adult_attestation_state(auth.uid()) = 'minor' then")
+            for word in later:
+                self.assertLess(ask, body.index(word), (name, word))
+            self.assertIn("public.api_err(403, 'adult_only_service',", body, name)
 
 
 class TheRecordedWords(unittest.TestCase):

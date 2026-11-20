@@ -1,5 +1,5 @@
 /**
- * The adult (18+) attestation (migration 0199): the vendors whose terms are 18+ (registry requires_adult, e.g. the Gemini
+ * The adult (18+) attestation (migration 0192): the vendors whose terms are 18+ (registry requires_adult, e.g. the Gemini
  * API terms) are sold only to a person who confirmed they are 18 or older. The record is the person's own statement,
  * written once by the database for the signed-in user only and never edited; this module only names its states.
  *
@@ -10,7 +10,7 @@ export type AgeState = "adult" | "minor" | "none" | "unknown";
 
 /**
  * The terms text version this app asks people to confirm against; bump it when the 18+ wording changes. COUPLED: the
- * database's record_adult_attestation (migration 0199) accepts exactly this string and refuses any other, so a bump ships
+ * database's record_adult_attestation (migration 0192) accepts exactly this string and refuses any other, so a bump ships
  * with a migration that names the new one, in the same PR.
  */
 export const AGE_TERMS_VERSION = "2026-11-20";

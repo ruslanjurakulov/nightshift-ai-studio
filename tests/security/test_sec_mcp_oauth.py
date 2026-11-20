@@ -1245,6 +1245,11 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     c = connect(db, UA)
     before = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
               db.su("select pepper from public.oauth_settings")[0][0])
+    # 0192 (the adult gate) sits on 0094's oauth_create_video, 0147's api_create_video and 0170's api_request_download. 0093 has no
+    # drift guard and would silently put its own oauth_create_video back; 0147 and 0170 refuse. Off first, on again last.
+    adult = sec_db.MIGRATION_0192.exists()
+    if adult:
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
     after = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
              db.su("select pepper from public.oauth_settings")[0][0])
@@ -1257,10 +1262,6 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     download = sec_db.MIGRATIONS / "0170_api_download_audit.sql"
     if later.exists() and download.exists():
         sec_db.apply_files(db.dsn, [sec_db.REPO / "docs" / "sql" / "rollback_0170_api_download_audit.sql"])
-    # 0199 replaced 0147's api_create_video (the adult gate), which 0147's drift guard refuses too: off first, on again last.
-    adult = sec_db.MIGRATION_0199.exists()
-    if later.exists() and adult:
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0199])
     if later.exists():
         sec_db.apply_files(db.dsn, [later])
         assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "planned"
@@ -1273,8 +1274,10 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         sec_db.apply_files(db.dsn, [download])
         assert db.su("select position('video.download_request' in prosrc) > 0 from pg_proc "
                      "where oid = 'public.api_request_download(text,text,text,text,text,text)'::regprocedure")[0][0] is True
-    if later.exists() and adult:
-        sec_db.apply_files(db.dsn, [sec_db.MIGRATION_0199])
+    if adult:
+        # 0094 sits on 0093's oauth_create_video, and 0192 on 0094's: 0094 again (it has no guard and changes nothing else that
+        # 0093 replaced), then 0192.
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192])
         assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 

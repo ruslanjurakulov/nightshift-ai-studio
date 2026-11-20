@@ -11,7 +11,7 @@ import { useChannelPath } from "@/lib/channels-client";
 const BOX = "flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4";
 
 /**
- * Asked once, of an account with no 18+ record (0199): at /welcome and on the first visit to Create. The answer is the
+ * Asked once, of an account with no 18+ record (0192): at /welcome and on the first visit to Create. The answer is the
  * person's own statement, written by the database for them only and never edited, so the screen says what each answer
  * means BEFORE it is given, and "under 18" (which ends creating on this account) asks once more before it is sent.
  * An unknown state draws nothing: the page never stops anyone on a failed read; the database still refuses.

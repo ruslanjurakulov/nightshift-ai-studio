@@ -184,7 +184,7 @@ export default async function CreatePage({
           : { state: "failed" };
   }
 
-  // 0199: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
+  // 0192: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
   // instead of the composer (the database refuses their quotes too); an unknown state stops no one.
   const age = await readAgeState();
   if (age === "minor") {

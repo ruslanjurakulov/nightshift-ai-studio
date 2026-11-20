@@ -35,10 +35,10 @@ def db():
     dsn = sec_db.build(admin, name)
     import psycopg
 
-    # This lab replays 0188, whose drift guard refuses a sellable_models body it was not written on: 0199 (the adult attestation)
+    # This lab replays 0188, whose drift guard refuses a sellable_models body it was not written on: 0192 (the adult attestation)
     # sits on 0188's, so it is undone first in this database and attacked in its own lab (test_sec_adult_attestation.py).
     with psycopg.connect(dsn, autocommit=True) as c:
-        sec_db.take_off_0199(c)
+        sec_db.take_off_0192(c)
 
     class D:
         def su(self, q, p=None):

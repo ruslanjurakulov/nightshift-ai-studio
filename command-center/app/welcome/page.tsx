@@ -61,7 +61,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
     welcomeCredits = Number.isFinite(amount) && amount > 0 ? amount : null;
   }
 
-  // 0199: the 18+ question, asked once of an account with no record (the Google sign-up path never saw the form's checkbox).
+  // 0192: the 18+ question, asked once of an account with no record (the Google sign-up path never saw the form's checkbox).
   // Someone who said they are under 18 gets the notice instead of a flow whose every way forward is creating.
   const age = await readAgeState();
   if (age === "minor") {

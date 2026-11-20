@@ -743,11 +743,11 @@ import sec_owner_analytics_0182  # noqa: E402
 
 sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 
-# Migration 0199 (the adult attestation: one append-only answer per person, and the quote / route / job gate on it):
-# tests/security/sec_adult_attestation_0199.py
-import sec_adult_attestation_0199  # noqa: E402
+# Migration 0192 (the adult attestation: one append-only answer per person, and the quote / route / job gate on it):
+# tests/security/sec_adult_attestation_0192.py
+import sec_adult_attestation_0192  # noqa: E402
 
-sec_adult_attestation_0199.extend(TABLES, FUNCTIONS)
+sec_adult_attestation_0192.extend(TABLES, FUNCTIONS)
 # Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
 # tests/security/sec_creative_templates_0183.py
 import sec_creative_templates_0183  # noqa: E402

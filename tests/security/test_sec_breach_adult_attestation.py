@@ -1,12 +1,12 @@
-"""Breach, PR #832 (0199 adult attestation): the paths that make a paid job WITHOUT going through create_creative_job.
+"""Breach, PR #832 (0192 adult attestation): the paths that make a paid job WITHOUT going through create_creative_job.
 
-0199 gates quote_creative_job, route_model and create_creative_job. Its own header lists the Film Studio (0171) as "not covered";
+0192 gates quote_creative_job, route_model and create_creative_job. Its own header lists the Film Studio (0171) as "not covered";
 Breach was asked whether that gap only prices or actually CREATES. It creates: start_film holds the credits, writes a queued
 segment and plans every take for the worker, with no adult gate at all. The same is true of the video API (api_create_video,
 the MCP server's create_video), which never touches the creative job path. These tests stay FAILING until those paths ask
 adult_attestation_gate (or an equivalent) before the hold:
 
-  * a person who said they are under 18 starts a whole film (every model: 0199's "adult_only_service" promise)  FAILS
+  * a person who said they are under 18 starts a whole film (every model: 0192's "adult_only_service" promise)  FAILS
   * a person without an attestation starts a film whose key-frame model requires_adult                          FAILS
   * a person who said they are under 18 gets a video job and an API hold through their key                     FAILS
   * the stored "method" is the browser's word, not the session's: a direct RPC records "google" for an email
@@ -87,7 +87,7 @@ def _start_attempt(d, who, fid, qid):
 
 
 def test_a_minor_cannot_start_a_film(films):
-    """0199 says a person who said they are under 18 is refused EVERY model. start_film never asks."""
+    """0192 says a person who said they are under 18 is refused EVERY model. start_film never asks."""
     o = films.new_org()
     for uid in (o.owner, o.admin, o.editor):
         _attest(films, uid, False)

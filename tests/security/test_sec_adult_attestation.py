@@ -1,4 +1,4 @@
-"""The adult attestation (0199), attacked in a real database.
+"""The adult attestation (0192), attacked in a real database.
 
 Some vendors' terms (the Gemini API's among them) require their users to be 18 or older. A model whose registry entry says
 "requires_adult": true reaches model_registry.spec through the sync, and the database then refuses it (NS400
@@ -37,7 +37,7 @@ ORG_A = "aaaaaaaa-0000-0000-0000-0000000001a9"
 ORG_B = "bbbbbbbb-0000-0000-0000-0000000001b9"
 ORG_BROKE = "cccccccc-0000-0000-0000-0000000001c9"
 U_ADULT = str(uuid.UUID(int=0x1A9))   # confirmed 18+
-U_NONE = str(uuid.UUID(int=0x1AA))    # never answered (a Google signup before 0199)
+U_NONE = str(uuid.UUID(int=0x1AA))    # never answered (a Google signup before 0192)
 U_MINOR = str(uuid.UUID(int=0x1AB))   # said under 18
 U_B = str(uuid.UUID(int=0x1B9))       # another organization's adult
 
@@ -446,10 +446,10 @@ def gate_triggers(db):
 def test_replay_and_rollback_keep_the_record(db):
     before = {s: _md5(db, s) for s in GATED}
     rows = db.su("select count(*) from public.adult_attestations")[0][0]
-    db.su(sec_db.MIGRATION_0199.read_text(encoding="utf-8"))
+    db.su(sec_db.MIGRATION_0192.read_text(encoding="utf-8"))
     assert {s: _md5(db, s) for s in GATED} == before
     with psycopg.connect(db.dsn, autocommit=True) as c:
-        sec_db.take_off_0199(c)
+        sec_db.take_off_0192(c)
     try:
         assert _md5(db, GATED[0]) == "8494b320cece395444edec700a2f1696", "0036's quote is back"
         assert _md5(db, GATED[3]) == "88107b00b0a8c143606ed17f5898c98d", "0174's job start is back"
@@ -460,16 +460,17 @@ def test_replay_and_rollback_keep_the_record(db):
         assert gate_triggers(db) == [], "the hold gate goes with the rollback"
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
-            sec_db.put_back_0199(c)
+            sec_db.put_back_0192(c)
     assert {s: _md5(db, s) for s in GATED} == before
-    assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate")]
+    assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate"),
+                                 ("download_requests", "adult_attestation_download_gate")]
     # The kept rows count again at once.
     assert mine(db, U_MINOR) == {"state": "minor"}
 
 
-def test_0174_and_0125_refuse_to_replay_over_0199(db):
-    """0199 is protected from the two files under it that pin their bodies: re-running either would be refused, not silently
-    undo the gate (0036 and 0075 do not protect it: the header says undo 0199 first)."""
+def test_0174_and_0125_refuse_to_replay_over_0192(db):
+    """0192 is protected from the two files under it that pin their bodies: re-running either would be refused, not silently
+    undo the gate (0036 and 0075 do not protect it: the header says undo 0192 first)."""
     st, msg, _ = err(lambda: db.su(sec_db.MIGRATION_0174.read_text(encoding="utf-8")))
     assert "0174 found public.create_creative_job" in msg
     st, msg, _ = err(lambda: db.su(sec_db.MIGRATION_0125.read_text(encoding="utf-8")))

@@ -1,6 +1,6 @@
 import type { AgeDictionary } from "./en";
 
-/** 18+ tasdigʻi (0199-migratsiya). Manba — ./en.ts. */
+/** 18+ tasdigʻi (0192-migratsiya). Manba — ./en.ts. */
 export const ageUz: AgeDictionary = {
   title: "Yoshingizni tasdiqlang",
   body: "Nightshift kattalar (18+) uchun. Ayrim modellardan foydalanishga ularning yaratuvchilari faqat 18 yoshga toʻlganlarga ruxsat beradi. Bir marta tasdiqlang; javob sana bilan saqlanadi.",

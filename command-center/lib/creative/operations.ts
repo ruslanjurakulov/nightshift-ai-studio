@@ -260,9 +260,9 @@ export const CREATIVE_ERRORS = [
   "source_unavailable",
   // 0174: the model requires a rights acknowledgement for an input, and this person has not given it at the current text version.
   "acknowledgement_required",
-  // The model's maker allows it for adults only (registry requires_adult) and this person has no adult attestation (0199).
+  // The model's maker allows it for adults only (registry requires_adult) and this person has no adult attestation (0192).
   "adult_attestation_required",
-  // This person said they are under 18 (0199): the service is 18+, so nothing is quoted or created for them.
+  // This person said they are under 18 (0192): the service is 18+, so nothing is quoted or created for them.
   "adult_only_service",
   "style_unavailable",
   "mode_not_supported",

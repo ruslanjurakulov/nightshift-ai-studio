@@ -8,7 +8,7 @@ const NO_STORE = { "cache-control": "no-store" };
 
 /**
  * POST { adult: boolean, from: "welcome" | "create" } — the person's own 18+ statement, recorded once by the database for the
- * signed-in user only (0199's record_adult_attestation: security definer, auth.uid(), first answer stands). The method is
+ * signed-in user only (0192's record_adult_attestation: security definer, auth.uid(), first answer stands). The method is
  * chosen here, not by the body: an account that signed in with Google is recorded as "google". Nothing else is written,
  * spent or read. GET answers the current state for the page.
  */
@@ -33,7 +33,7 @@ export const POST = requireSameOrigin(async (request: Request) => {
     p_terms_version: AGE_TERMS_VERSION,
     p_method: method,
   });
-  // A database without 0199 cannot record anything: say so, never pretend it was saved.
+  // A database without 0192 cannot record anything: say so, never pretend it was saved.
   if (error) return NextResponse.json({ error: "age_unavailable" }, { status: 503, headers: NO_STORE });
   const state = coerceAgeState(data);
   const recorded = (data as { recorded?: unknown } | null)?.recorded === true;
