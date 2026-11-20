@@ -49,6 +49,12 @@ it("Space pressed before the mount effects ran still plays", async () => {
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true }));
   });
   seen.observe(host, { childList: true, subtree: true });
+  // React's scheduler yields once its 5 ms slice is spent. A fast, idle machine can finish the commit and the passive effects in
+  // one slice, so the press would land after the effects and the test would pass on the buggy code. Every read of the clock
+  // jumps 50 ms until the press, so the scheduler always yields between the commit and the effects.
+  let fake = performance.now();
+  const realNow = performance.now.bind(performance);
+  vi.spyOn(performance, "now").mockImplementation(() => (pressed ? realNow() : (fake += 50)));
   root = createRoot(host);
   root.render(<StudioTimeline filmStudio filmId={FILM} />);
   await vi.waitFor(() => expect(pressed).toBe(true));

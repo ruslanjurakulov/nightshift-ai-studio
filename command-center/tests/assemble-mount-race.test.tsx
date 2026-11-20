@@ -27,6 +27,7 @@ afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   root = host = null;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
@@ -45,6 +46,12 @@ it("a press before the mount effects ran still gets its quote answered", async (
     key.click(); // a microtask after the commit, before the passive-effect task
   });
   seen.observe(host, { childList: true, subtree: true });
+  // React's scheduler yields once its 5 ms slice is spent. A fast, idle machine can finish the commit and the passive effects in
+  // one slice, so the press would land after the effects and the test would pass on the buggy code. Every read of the clock
+  // jumps 50 ms until the press, so the scheduler always yields between the commit and the effects.
+  let fake = performance.now();
+  const realNow = performance.now.bind(performance);
+  vi.spyOn(performance, "now").mockImplementation(() => (pressedBeforeEffects ? realNow() : (fake += 50)));
   root = createRoot(host);
   root.render(<AssemblePanel filmId="f" orgId="o" version={3} editable status="draft" onStarted={() => undefined} />);
   await vi.waitFor(() => expect(pressedBeforeEffects).toBe(true));
