@@ -2016,3 +2016,21 @@ short-form formats that open Create prefilled. Additive: one table, its updated_
 - **Without it.** `/api/templates` answers 503 `not_enabled` and the Trends page says Trends are not available here.
 - Lab: `tests/security/sec_creative_templates_0183.py`, `tests/security/test_sec_creative_templates.py`,
   `tests/security/test_sec_breach_creative_templates.py`. Rollback: `docs/sql/rollback_0183_creative_templates.sql`.
+
+## Owner analytics: costs, balances and the owner's monthly costs (0184)
+
+0184 (`0184_owner_costs.sql`) gives the hub's Costs & profit tab its reads and the owner's two inputs. No value is in the file.
+
+- **Provider spend.** `owner_analytics_provider_spend(from, to)`: `creative_job_costs` (0037) and the pipeline's `video_costs` (0002)
+  by Tashkent day, provider and model — rows, the sum of the priced ones, and how many were unpriced (unknown, never 0). Internal
+  workspaces (0182) and the pipeline are flagged internal.
+- **Balances.** `owner_analytics_balances()`: the newest `provider_balances` row per provider and metric, with `source` (api /
+  manual). `owner_analytics_balance_enter()` stores an owner-typed balance in its own closed table `owner_manual_balances`, never in
+  `provider_balances` (the operator bot's stale/zero alerts and Billing read that as the provider's own word). Nothing calls a provider.
+- **Writes** go through `owner_costs_write_guard()`: owner, 0107's second factor, and 60 writes per 10 minutes (`take_web_rate`).
+- **Monthly costs.** `owner_cost_entries` (closed), written by `owner_analytics_cost_add / _delete`, read by `owner_analytics_costs`.
+- **Provider runway.** `owner_analytics_model_activity(from, to)` (at most 200 days): creative jobs per model and unit — counts by
+  outcome, units, first and last time, and how the newest job ended (status, error_code). Every workspace counts: all spend the
+  provider's balance. Counts only, no amount and no customer.
+- **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
+- Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.

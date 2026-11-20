@@ -71,6 +71,8 @@
 .oa-badge[data-tone="warn"] { color: #ffd23f; border-color: rgba(255, 210, 63, 0.35); }
 
 .oa-card { background: var(--oa-surface); border: 1px solid var(--oa-rule); border-radius: 14px; padding: 14px; min-width: 0; display: grid; gap: 10px; }
+/* A card is a grid: without this a child with an unwrappable table header widens the card past a phone screen. */
+.oa-card > * { min-width: 0; }
 .oa-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .oa-cols { display: grid; gap: 16px; }
 @media (min-width: 1024px) { .oa-cols { grid-template-columns: 1fr 1fr; } }
@@ -155,3 +157,6 @@
 /* A chip inside an export row keeps the chip's look and size: .oa-export a would otherwise win on specificity. */
 .oa-export .oa-chip { min-height: 36px; border-radius: 999px; padding: 6px 12px; }
 .oa-plot { overflow: hidden; }
+.oa-slider select {
+  background: var(--oa-surface); color: var(--oa-ink); border: 1px solid var(--oa-rule); border-radius: 8px; padding: 6px 8px; min-height: 36px;
+}

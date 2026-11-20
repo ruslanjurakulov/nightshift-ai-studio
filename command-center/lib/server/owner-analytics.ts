@@ -5,6 +5,14 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isMissingFunction } from "@/lib/orgs";
 import { coerceMoneyRows, type MoneyRow } from "@/lib/owner-analytics/money";
+import {
+  coerceBalanceRows,
+  coerceCostEntries,
+  coerceSpendRows,
+  type BalanceRow,
+  type CostEntry,
+  type SpendRow,
+} from "@/lib/owner-analytics/costs";
 import { coerceActivityRows, coerceJobRows, coercePeopleRows, type ActivityRow, type JobRow, type PersonRow } from "@/lib/owner-analytics/people";
 
 /**
@@ -157,3 +165,13 @@ export async function lastAuthenticatedAt(): Promise<number | null> {
 export function recentEnough(at: number | null, now: number, minutes = EXPORT_REAUTH_MINUTES): boolean {
   return at !== null && now - at <= minutes * 60_000 && at <= now + 60_000;
 }
+
+// ── costs (migration 0184) ──────────────────────────────────────────────────
+
+export const readSpend = cache((from: string, to: string): Promise<Read<SpendRow[]>> =>
+  rpc("owner_analytics_provider_spend", { p_from: from, p_to: to }, coerceSpendRows, 50000),
+);
+export const readBalances = cache((): Promise<Read<BalanceRow[]>> => rpc("owner_analytics_balances", undefined, coerceBalanceRows, 500));
+export const readCostEntries = cache((fromMonth: string, toMonth: string): Promise<Read<CostEntry[]>> =>
+  rpc("owner_analytics_costs", { p_from_month: fromMonth, p_to_month: toMonth }, coerceCostEntries, 5000),
+);
