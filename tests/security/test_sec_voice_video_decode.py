@@ -32,8 +32,8 @@ def _capture_decode(tmp_path: Path, **kw):
 
     src = tmp_path / "source.mp3"
     src.write_bytes(b"\0" * 10)
-    # The lab runner has no ffmpeg; the decode refuses early without one (pinned below), so the
-    # command it would run is captured with ffmpeg reported present.
+    # Static argv checks: no ffmpeg runs, so the lab runner need not have one (it has none; CI run 44747681313 failed at the
+    # adapter's own "ffmpeg is not on PATH" guard before any argv was built).
     with mock.patch.dict("os.environ", SECRET_ENV, clear=True), mock.patch.object(vv.subprocess, "run", fake_run), \
             mock.patch.object(vv.shutil, "which", lambda name: f"/usr/bin/{name}"):
         vv.decode_to_wav(src, tmp_path / "narration.wav", **kw)
