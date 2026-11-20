@@ -130,6 +130,8 @@ describe("the editor once the server says sizes up to 1080p are sold", () => {
     await press(exportButton());
     expect(posts()).toEqual([{ rev: 1 }]);                                        // the free request, as before the price
     await waitFor(() => expect(screen.getAllByText(te.errors.export_needs_quote).length).toBeGreaterThan(0));
+    // Said as a note beside the price, not as an alarm: nothing failed, the next press is the paid one.
+    for (const el of screen.getAllByText(te.errors.export_needs_quote)) expect(el.closest('[role="alert"]')).toBeNull();
     await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "1 credit" }) }));
     await waitFor(() => expect(exportButton().disabled).toBe(false));
     await press(exportButton());

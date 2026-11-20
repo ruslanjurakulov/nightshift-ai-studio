@@ -1339,8 +1339,12 @@ export function TimelineEditor({
 
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
   const shownTexts = textsAt(model, playhead);
+  // "Exports are sold now" is not a failure: the price and its yes appear right below it, so it is said as a note, not an
+  // alarm, and the next press of Export is the paid one. The refusal that taught it stays the pinned flow.
+  const needsQuote = error === "export_needs_quote" || frameRefusals.some((r) => r.error === "export_needs_quote");
   const errorText =
-    error === "text_empty" ? te.textEmpty : error ? te.errors[error] : null;
+    error === "text_empty" ? te.textEmpty : error && error !== "export_needs_quote" ? te.errors[error] : null;
+  const shownRefusals = frameRefusals.filter((r) => r.error !== "export_needs_quote");
   const exportBlocked = dirty
     ? te.exportNeedsSave
     : active
@@ -1545,9 +1549,14 @@ export function TimelineEditor({
         {quoted && paidChosen.length > 0 ? (
           <HiresExportQuote projectId={projectId} rev={rev} dirty={dirty} frames={paidChosen} onChange={setPaidOk} />
         ) : null}
-        {frameRefusals.length ? (
+        {needsQuote ? (
+          <p role="status" className="m-0 break-words text-sm" data-export-needs-quote="">
+            {te.errors.export_needs_quote}
+          </p>
+        ) : null}
+        {shownRefusals.length ? (
           <div role="alert" className="flex flex-col gap-1 text-sm text-[var(--color-fail)]">
-            {frameRefusals.map((r) => (
+            {shownRefusals.map((r) => (
               <p key={r.frame} className="m-0 break-words">
                 {fmt(te.exportRatios.refused, {
                   name: frameName(r.frame),
