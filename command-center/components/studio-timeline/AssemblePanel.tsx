@@ -80,6 +80,7 @@ export function AssemblePanel({
   // The version on screen, and which quote request is the current one: an answer for an older version or an older press is
   // dropped, so the price the person confirms is always the price of what they see (Breach BR-803-01).
   const versionRef = useRef(version);
+  const starterRef = useRef(starter);
   const quoteSeq = useRef(0);
 
   // A new version of the project is a new price: whatever was quoted is forgotten. Not while a confirmed start is waiting for
@@ -89,7 +90,11 @@ export function AssemblePanel({
   // the first frame, counted that press's quote as one for an older version and put the key back to "Get the price", with the
   // request already sent (the CI flakes on #824).
   useLayoutEffect(() => {
+    // Defence in depth (#835): the mount run is a no-op whatever the effect timing, so a quote already sent for the version on
+    // screen is never counted as stale. Another project (a new starter) still resets, even at the same version number.
+    if (versionRef.current === version && starterRef.current === starter) return;
     versionRef.current = version;
+    starterRef.current = starter;
     quoteSeq.current += 1;
     if (starter.busy) return;
     // A start that went through keeps its "Started" note: starting the project itself bumps the version.
