@@ -273,6 +273,6 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   runwayLowNote: "{n} ta provayder 7 kunlik surʼatda 3 kundan kam vaqtda tugaydi.",
   runwayEmptyNote: "{n} ta provayder balans yetmagani uchun oxirgi vazifani rad etdi.",
   runwayNotEnabled: "Modellar boʻyicha vazifalar soni uchun 0183-migratsiya kerak; xarajat va balanslar usiz koʻrsatilgan.",
-  runwayNone: "Hech bir pullik provayderda hali toʻldirish, balans yoki vazifa yoʻq.",
+  runwayNoProviders: "Hech bir pullik provayderda hali toʻldirish, balans yoki vazifa yoʻq.",
   runwayHorizon: "Toʻldirish 180 kundan eski: unga bogʻliq balanslar nomaʼlum.",
 };

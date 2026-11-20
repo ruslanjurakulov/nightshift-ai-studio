@@ -57,7 +57,7 @@ export default async function OwnerAnalyticsRunway({ searchParams }: { searchPar
           table={runwayProvidersTable(d, rows, nowMs)}
           id="oa-runway-providers"
           unknownText={d.unknown}
-          emptyText={d.runwayNone}
+          emptyText={d.runwayNoProviders}
           format={[undefined, undefined, money$, undefined, money$, money$, money$, money$, money$, days, undefined, undefined]}
         />
       </section>
