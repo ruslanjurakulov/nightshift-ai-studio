@@ -1,4 +1,4 @@
-"""Named attacks on the owner's frozen exchange rates (migration 0184), and what a frozen rate may be.
+"""Named attacks on the owner's frozen exchange rates (migration 0185), and what a frozen rate may be.
 
 Everyone but the platform owner is refused before anything is read (an admin too); anon and the service role cannot execute;
 the table is closed; with 0107's gate on, a password-only owner cannot write. A rate is one per day and currency, setting it

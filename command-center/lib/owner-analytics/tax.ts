@@ -1,5 +1,5 @@
 /**
- * The owner's income register: inputs for an accountant, never a declaration (migration 0184 for the frozen rates). Pure.
+ * The owner's income register: inputs for an accountant, never a declaration (migration 0185 for the frozen rates). Pure.
  *
  * One row per money event in the period — a sale, a refund, a dispute — in the payment's own currency, with its UZS equivalent
  * ONLY where the owner froze a rate for that day and currency. A row without a rate says "no rate stored"; a monthly or

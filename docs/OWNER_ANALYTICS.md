@@ -84,7 +84,7 @@ Alibaba exposes only an account-level billing API. Leonardo's reference page cou
 (`modules/provider_balance.py`) reads ElevenLabs, Leonardo and Runway today. For everyone else, the owner enters a balance by
 hand. Units stay the provider's own and are never converted.
 
-## Tax register (slice f, migration 0184)
+## Tax register (slice f, migration 0185)
 
 Inputs for an accountant, never a declaration — the page, every tax file and the PDF say so. The owner is an individual with
 no registered company; the regime (individual, self-employed, IT Park resident) is the accountant's call.
@@ -93,7 +93,7 @@ no registered company; the regime (individual, self-employed, IT Park resident) 
   currency. Amounts are converted from the provider's minor unit by the currency's ISO 4217 exponent (yen and won have none,
   dinars three); a currency not in the table is unknown, not guessed. Fees read "unknown" (no webhook stores them); customer
   country reads "not recorded". Payment ids are dropped in presentation mode.
-- **UZS.** Only where the owner froze a rate for that day and currency (0184), with the source beside it. A monthly or
+- **UZS.** Only where the owner froze a rate for that day and currency (0185), with the source beside it. A monthly or
   quarterly UZS total is null — "incomplete" — unless every row in it has an amount and a rate.
 - **PDF.** Built on the server (pdf-lib, DejaVu Sans from `command-center/data/fonts`, copied into the runtime image) from the
   same tables as CSV/XLSX. Unknown cells print the unknown word, never 0. A PDF holds at most `PDF_MAX_ROWS` rows; past that

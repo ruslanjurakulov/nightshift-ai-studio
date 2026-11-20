@@ -9,7 +9,7 @@ const NO_STORE = { "cache-control": "no-store" };
 const json = (body: unknown, status: number) => NextResponse.json(body, { status, headers: NO_STORE });
 
 /**
- * Freeze (or remove) one exchange rate for the income register (migration 0184). The owner types it from the source their
+ * Freeze (or remove) one exchange rate for the income register (migration 0185). The owner types it from the source their
  * accountant uses; nothing here fetches a rate. The database checks the owner, the second factor and the rate limit again.
  */
 function realDay(day: string): boolean {

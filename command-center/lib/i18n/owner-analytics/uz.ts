@@ -299,7 +299,7 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   fxSave: "Kursni qayd etish",
   fxFailed: "Kurs saqlanmadi. Hech narsa oʻzgarmadi.",
   fxInvalid: "Oʻtgan kunni, UZS dan boshqa uch harfli valyutani, 0 dan katta kursni va manbani tanlang.",
-  fxNotEnabled: "UZS uchun 0184-migratsiya kerak. U qoʻllanmaguncha toʻlovlar faqat oʻz valyutasida koʻrsatiladi.",
+  fxNotEnabled: "UZS uchun 0185-migratsiya kerak. U qoʻllanmaguncha toʻlovlar faqat oʻz valyutasida koʻrsatiladi.",
   exportPdf: "PDF",
   reportPdf: "Toʻliq hisobot (PDF)",
   pdfPage: "{total} sahifadan {n}",

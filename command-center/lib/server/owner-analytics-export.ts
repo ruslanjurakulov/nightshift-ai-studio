@@ -99,7 +99,7 @@ export async function buildExport(
     const money = await readMoneyFor(sel);
     if (!money.ok) return money;
     const fx = await readFxRates(p.startDay, p.endDay);
-    // Without 0184 the register is still a register, in each payment's own currency: every UZS cell reads "no rate stored",
+    // Without 0185 the register is still a register, in each payment's own currency: every UZS cell reads "no rate stored",
     // and the file says why. A rates read that FAILED is not that: the file would say "no rate stored" of rates that exist.
     if (!fx.ok && fx.reason !== "missing") return fx;
     const rates = fx.ok ? fx.data : [];

@@ -177,7 +177,7 @@ export const readCostEntries = cache((fromMonth: string, toMonth: string): Promi
   rpc("owner_analytics_costs", { p_from_month: fromMonth, p_to_month: toMonth }, coerceCostEntries, 5000),
 );
 
-// ── frozen exchange rates (migration 0184) ──────────────────────────────────
+// ── frozen exchange rates (migration 0185) ──────────────────────────────────
 
 export const readFxRates = cache((fromDay: string, toDay: string): Promise<Read<FxRate[]>> =>
   rpc("owner_analytics_fx_rates", { p_from: fromDay, p_to: toDay }, coerceFxRates, 5000),

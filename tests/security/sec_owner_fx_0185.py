@@ -1,4 +1,4 @@
-"""Security-lab contract for migration 0184 (frozen exchange rates for the owner's income register)."""
+"""Security-lab contract for migration 0185 (frozen exchange rates for the owner's income register)."""
 
 from __future__ import annotations
 

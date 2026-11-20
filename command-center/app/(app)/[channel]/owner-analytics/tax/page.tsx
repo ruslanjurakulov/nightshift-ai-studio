@@ -14,7 +14,7 @@ export const revalidate = 0;
 
 /**
  * Owner analytics — the income register: every sale, refund and dispute in the period, in its own currency, with a UZS
- * equivalent only where the owner froze a rate (migration 0184). Inputs for an accountant; it says so on screen and in every
+ * equivalent only where the owner froze a rate (migration 0185). Inputs for an accountant; it says so on screen and in every
  * file, and it never claims to be a declaration. The owner is an individual with no registered company.
  */
 export default async function OwnerAnalyticsTax({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

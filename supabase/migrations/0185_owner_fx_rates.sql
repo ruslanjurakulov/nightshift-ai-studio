@@ -1,5 +1,5 @@
--- 0184_owner_fx_rates.sql — frozen exchange rates for the owner's income register (inputs for an accountant, in UZS).
--- docs/MIGRATIONS.md "0184", docs/OWNER_ANALYTICS.md "Tax register".
+-- 0185_owner_fx_rates.sql — frozen exchange rates for the owner's income register (inputs for an accountant, in UZS).
+-- docs/MIGRATIONS.md "0185", docs/OWNER_ANALYTICS.md "Tax register".
 --
 -- *** LIVE ON APPLY. *** It adds one table (owner_fx_rates, closed to every API role) and three functions. It replaces nothing and
 -- alters no existing object.
@@ -15,19 +15,19 @@
 -- WHO. Owner only (0182's owner_analytics_is_owner), writes also need 0107's second factor (NS401) and pass a rate limit
 -- (0183's owner_costs_write_guard). Execute granted to `authenticated` only. RLS on, no policy.
 --
--- THE APP WITHOUT THIS FILE. The register lists payments in their own currency and says UZS needs migration 0184.
+-- THE APP WITHOUT THIS FILE. The register lists payments in their own currency and says UZS needs migration 0185.
 --
--- REQUIRES 0182 and 0183 (owner_costs_write_guard). Additive and idempotent. Undo: docs/sql/rollback_0184_owner_fx_rates.sql.
--- NUMBER. 0184, reserved for the owner analytics stream; may be renumbered at merge (live ends at 0174).
+-- REQUIRES 0182 and 0184 (owner_costs_write_guard). Additive and idempotent. Undo: docs/sql/rollback_0185_owner_fx_rates.sql.
+-- NUMBER. 0185, assigned at merge.
 set local lock_timeout = '5s';
 
 do $$
 begin
   if to_regprocedure('public.owner_analytics_is_owner()') is null then
-    raise exception '0184 needs 0182_owner_analytics.sql: apply it first';
+    raise exception '0185 needs 0182_owner_analytics.sql: apply it first';
   end if;
   if to_regprocedure('public.owner_costs_write_guard()') is null then
-    raise exception '0184 needs 0183_owner_costs.sql (owner_costs_write_guard): apply it first';
+    raise exception '0185 needs 0184_owner_costs.sql (owner_costs_write_guard): apply it first';
   end if;
 end $$;
 
@@ -43,7 +43,7 @@ create table if not exists public.owner_fx_rates (
 );
 
 comment on table public.owner_fx_rates is
-  'Migration 0184: exchange rates the owner froze for the income register (UZS per unit of a currency, on a day, from a named source such as the Central Bank of Uzbekistan). Written only by owner_analytics_fx_set / _delete; no API role reads or writes it directly. Never fetched, never guessed.';
+  'Migration 0185: exchange rates the owner froze for the income register (UZS per unit of a currency, on a day, from a named source such as the Central Bank of Uzbekistan). Written only by owner_analytics_fx_set / _delete; no API role reads or writes it directly. Never fetched, never guessed.';
 
 alter table public.owner_fx_rates enable row level security;
 revoke all on table public.owner_fx_rates from public, anon, authenticated, service_role;
@@ -110,11 +110,11 @@ end
 $$;
 
 comment on function public.owner_analytics_fx_set(date, text, numeric, text) is
-  'Migration 0184: the owner freezes one exchange rate (UZS per unit of a currency on a day, and its source); setting it again replaces it. Platform owner only, second factor when 0107''s gate is on, rate limited.';
+  'Migration 0185: the owner freezes one exchange rate (UZS per unit of a currency on a day, and its source); setting it again replaces it. Platform owner only, second factor when 0107''s gate is on, rate limited.';
 comment on function public.owner_analytics_fx_delete(date, text) is
-  'Migration 0184: the owner removes one frozen rate. Platform owner only, second factor when 0107''s gate is on, rate limited.';
+  'Migration 0185: the owner removes one frozen rate. Platform owner only, second factor when 0107''s gate is on, rate limited.';
 comment on function public.owner_analytics_fx_rates(date, date) is
-  'Migration 0184: the frozen rates for a range of days. Platform owner only; read-only.';
+  'Migration 0185: the frozen rates for a range of days. Platform owner only; read-only.';
 
 revoke all on function public.owner_analytics_fx_set(date, text, numeric, text) from public, anon, authenticated, service_role;
 revoke all on function public.owner_analytics_fx_delete(date, text) from public, anon, authenticated, service_role;
@@ -135,24 +135,24 @@ begin
   ] loop
     fn := to_regprocedure(sig);
     if fn is null then
-      raise exception '0184 end state: % does not exist', sig;
+      raise exception '0185 end state: % does not exist', sig;
     end if;
     if not has_function_privilege('authenticated', fn, 'EXECUTE')
        or has_function_privilege('anon', fn, 'EXECUTE')
        or has_function_privilege('service_role', fn, 'EXECUTE') then
-      raise exception '0184 end state: % has the wrong grants', sig;
+      raise exception '0185 end state: % has the wrong grants', sig;
     end if;
     if exists (select 1 from pg_proc p where p.oid = fn
                 and (not p.prosecdef or p.proacl is null
                      or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-      raise exception '0184 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
+      raise exception '0185 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
     end if;
   end loop;
   if not (select relrowsecurity from pg_class where oid = 'public.owner_fx_rates'::regclass)
      or exists (select 1 from unnest(array['anon', 'authenticated', 'service_role']) r,
                               unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) pr
                  where has_table_privilege(r, 'public.owner_fx_rates', pr)) then
-    raise exception '0184 end state: owner_fx_rates is not closed to the API roles';
+    raise exception '0185 end state: owner_fx_rates is not closed to the API roles';
   end if;
 end $$;

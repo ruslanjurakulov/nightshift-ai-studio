@@ -312,7 +312,7 @@ export const ownerAnalyticsEn = {
   fxSave: "Freeze rate",
   fxFailed: "The rate was not saved. Nothing changed.",
   fxInvalid: "Pick a day that has passed, a three-letter currency other than UZS, a rate above 0 and a source.",
-  fxNotEnabled: "UZS needs migration 0184. Until it is applied, payments are listed in their own currency only.",
+  fxNotEnabled: "UZS needs migration 0185. Until it is applied, payments are listed in their own currency only.",
   exportPdf: "PDF",
   reportPdf: "Full report (PDF)",
   pdfPage: "Page {n} of {total}",
