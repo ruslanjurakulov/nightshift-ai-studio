@@ -341,6 +341,7 @@ export const devEn = {
       slug: "What your assistant can do",
       title: "Videos and Studio generations. Reading is free.",
       lead: "Only the tools that spend say so. A video and a download are paid from the API balance, a Studio generation from your workspace’s credits, and every generation is quoted before it starts. The four Studio tools work with an API key that has the Studio permissions.",
+      assistantStudio: "Connected with a sign-in, your assistant can also make Studio pictures and clips, for models that allow it: it lists them, quotes the price in credits, and starts one only after you confirm, within the connection’s monthly limit. A model that needs your confirmation of rights stays in the Studio.",
       table: "Tools",
       cols: { tool: "Tool", what: "What it does", cost: "Cost" },
       free: "Free",

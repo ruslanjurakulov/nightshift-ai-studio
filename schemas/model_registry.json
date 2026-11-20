@@ -1282,6 +1282,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_mcp",
+      "mcp_oauth_exposure": true,
       "limits": {
         "max_prompt_chars": 10000,
         "max_concurrent_per_org": 2
@@ -1356,6 +1357,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_mcp",
+      "mcp_oauth_exposure": true,
       "limits": {
         "max_prompt_chars": 10000,
         "max_concurrent_per_org": 2
