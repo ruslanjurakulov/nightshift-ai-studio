@@ -93,3 +93,14 @@ def test_a_passed_probe_of_the_current_vendor_model_then_a_replay_opens_beta_and
     # Other models were neither raised nor lowered by either apply.
     assert dict(db.su("select id, availability from public.model_registry where id like 'img-%'")) == {
         "img-any": "beta", "img-web": "beta", "img-mcp": "beta", "img-odd": "beta"}
+
+
+def test_a_passed_probe_with_the_terms_gate_still_set_stays_hidden_and_the_apply_does_not_stop(db):
+    # The first live apply (2026-11-20) stopped here: recraft-v4.1 had a passed probe but its terms_gate was still set, and the
+    # hidden -> beta update broke model_registry_terms_before_sale, which rolled 0188 back and held every later migration.
+    db.su("update public.model_registry set spec = spec || '{\"terms_gate\": \"terms_review_required\"}'::jsonb where id = 'recraft-v4.1-flash'")
+    db.su("select public.record_model_probe('recraft-v4.1-flash', 'image.acme', 'recraftv4_1_flash_v2', 't2i', true, null, null, 10, 100, 'lab')")
+    db.su(M.read_text(encoding="utf-8"))
+    av = dict(db.su("select id, availability from public.model_registry where id like 'recraft-%'"))
+    assert av["recraft-v4.1-flash"] == "hidden", av
+    assert "recraft-v4.1-flash" not in sold(db, "web")
