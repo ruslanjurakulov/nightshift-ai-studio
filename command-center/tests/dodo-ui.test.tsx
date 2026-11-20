@@ -69,21 +69,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderPricing(pricing: Pricing) {
+function renderPricing(pricing: Pricing, operator = false) {
   return render(
     <I18nProvider locale="en">
-      <PricingView t={t} locale="en" signedIn={false} rates={null} plans={null} pricing={pricing} />
+      <PricingView t={t} locale="en" signedIn={operator} rates={null} plans={null} pricing={pricing} operator={operator} />
     </I18nProvider>,
   );
 }
 
 describe("/pricing", () => {
-  it("with Dodo: Dodo is the seller, the catalog prices show, the test badge shows, and Paddle is not named", () => {
+  it("with Dodo: Dodo is the seller, the catalog prices show, and Paddle is not named", () => {
     const { container } = renderPricing(dodoPricing(view));
     const text = container.textContent ?? "";
     expect(text).toContain(t.pricing.dodo.paymentsBody);
     expect(text).toContain(t.pricing.dodo.taxNote);
-    expect(text).toContain(t.pricing.sandbox);
+    // Test mode: a visitor is told purchases open soon; only the platform admin sees the badge (tests/pricing-test-mode).
+    expect(text).not.toContain(t.pricing.sandbox);
+    expect(text).toContain(t.pricing.purchasesSoon);
     expect(text).toContain("1,000 credits$10");
     expect(text).toContain("20,000 credits$160");
     expect(text).not.toMatch(/Paddle/);
@@ -92,9 +94,22 @@ describe("/pricing", () => {
     expect(screen.getByText(t.pricing.dodo.linkBuyerTerms).closest("a")?.getAttribute("href")).toBe("https://dodopayments.com/legal/buyer-terms");
   });
 
-  it("with Dodo live: no test badge", () => {
+  it("with Dodo in test mode, for the platform admin: the test badge shows", () => {
+    const { container } = renderPricing(dodoPricing(view), true);
+    expect(container.textContent).toContain(t.pricing.sandbox);
+  });
+
+  it("with Dodo live: no test badge, even for the platform admin", () => {
+    const { container } = renderPricing(dodoPricing(liveView), true);
+    expect(container.textContent).not.toContain(t.pricing.sandbox);
+    expect(container.textContent).not.toContain(t.pricing.purchasesSoon);
+  });
+
+  it("with Dodo live, for a visitor: the Buy key is offered and nothing says purchases open soon", () => {
     const { container } = renderPricing(dodoPricing(liveView));
     expect(container.textContent).not.toContain(t.pricing.sandbox);
+    expect(container.textContent).not.toContain(t.pricing.purchasesSoon);
+    expect(screen.getByRole("link", { name: t.pricing.buySignedOut }).getAttribute("href")).toBe("/login");
   });
 
   it("with Dodo selected but nothing on sale: still names Dodo, never Paddle", () => {

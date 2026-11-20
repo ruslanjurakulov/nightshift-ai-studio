@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Film, ImageOff, Music } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { useLibraryImages, type PickerRecording } from "@/components/studio/useLibraryImages";
+import { useLibraryImages, type LibraryLoadState, type PickerRecording } from "@/components/studio/useLibraryImages";
 
 /** 61.2 -> "1:02" (whole seconds rounded up, as the price counts them). */
 export function clipLength(seconds: number | null): string | null {
@@ -102,6 +102,7 @@ export function SourcePicker({
             {g.sourceChange}
           </button>
         </figcaption>
+        <SelectedSourceRecovery state={state} reload={reload} />
       </figure>
     );
   }
@@ -129,6 +130,7 @@ export function SourcePicker({
             {g.sourceChange}
           </button>
         </div>
+        <SelectedSourceRecovery state={state} reload={reload} />
       </div>
     );
   }
@@ -206,6 +208,23 @@ export function SourcePicker({
   );
 }
 
+/** A saved selection must not hide a failed library read or its recovery action. */
+function SelectedSourceRecovery({ state, reload }: { state: LibraryLoadState; reload: () => Promise<void> }) {
+  const { t } = useI18n();
+  const g = t.gen;
+  if (state === "ready") return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--color-muted)]">
+      <p role="status">{state === "loading" ? g.sourceLoading : state === "failed" ? g.sourceFailed : g.sourceUnavailable}</p>
+      {state === "failed" && (
+        <button type="button" onClick={() => void reload()} className="btn-quiet text-xs">
+          {g.sourceRetry}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RecordingIcon({ r, size = "size-10" }: { r: PickerRecording | undefined; size?: string }) {
   const Icon = r?.kind === "video" ? Film : Music;
   return (
@@ -277,6 +296,7 @@ function RecordingPicker({
             {copy.change}
           </button>
         </div>
+        <SelectedSourceRecovery state={state} reload={reload} />
       </div>
     );
   }

@@ -9,6 +9,8 @@ export const editorExportEn = {
   queuedLine: "Your export is in line. It starts as soon as the server is free.",
   renderingLine: "The server is rendering your video. You can keep editing: this export uses the version you saved.",
   doneLine: "Your video is ready and saved in your library.",
+  linkPending: "Render finished",
+  linkPendingLine: "Rendering is finished. The video link is not available here yet.",
   failedLine: "This export did not finish.",
   elapsed: "Elapsed {time}",
   tookLabel: "Took {time}",

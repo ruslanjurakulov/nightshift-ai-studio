@@ -105,6 +105,45 @@ const en = dictionaries.en;
 const ta = en.captions.animated;
 const radio = (name: string) => screen.getByRole("radio", { name: new RegExp(`^${name}`) }) as HTMLButtonElement;
 
+describe("incomplete caption time edits", () => {
+  it.each([
+    ["cueStart", "", "blur", "1"],
+    ["cueStart", "   ", "blur", "1"],
+    ["cueEnd", "", "blur", "3"],
+    ["cueEnd", "   ", "blur", "3"],
+    ["cueStart", "", "enter", "1"],
+    ["cueStart", "   ", "enter", "1"],
+    ["cueEnd", "", "enter", "3"],
+    ["cueEnd", "   ", "enter", "3"],
+  ] as const)("restores %s from %j on %s without changing captions", (field, value, commit, saved) => {
+    const original = withCues();
+    const before = JSON.stringify(toDoc(original));
+    render(<Host model={original} />);
+    const row = screen.getByRole("textbox", { name: en.captions.cueText.replace("{n}", "1") }).closest("li")!;
+    const input = within(row).getByLabelText(en.captions[field]);
+    fireEvent.change(input, { target: { value } });
+    expect(groups).toHaveLength(0);
+    expect(JSON.stringify(toDoc(seen))).toBe(before);
+    if (commit === "blur") fireEvent.blur(input);
+    else fireEvent.keyDown(input, { key: "Enter" });
+    expect(JSON.stringify(toDoc(seen))).toBe(before);
+    expect(groups).toHaveLength(0);
+    expect(input).toHaveProperty("value", saved);
+    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toHaveLength(0);
+  });
+
+  it("still commits an explicitly typed zero start on Enter", () => {
+    render(<Host />);
+    const row = screen.getByRole("textbox", { name: en.captions.cueText.replace("{n}", "1") }).closest("li")!;
+    const input = within(row).getByLabelText(en.captions.cueStart);
+    fireEvent.change(input, { target: { value: "0" } });
+    expect(captionsOf(seen)!.cues[0].start_s).toBe(1);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(captionsOf(seen)!.cues[0]).toEqual({ id: "cap1", start_s: 0, end_s: 3, text: "Hello there" });
+    expect(groups).toHaveLength(1);
+  });
+});
+
 describe("the style picker", () => {
   it("is there with no transcription set up, and offers plain plus the ten styles", () => {
     render(<Host />);
