@@ -9,7 +9,8 @@ pillow-heif>=0.20.0,<2
 # test_sec_channel_settings.py holds the SQL reading of a spend limit to the worker's own reader (modules/channels.py), which
 # imports config.py, which loads a .env with python-dotenv. Nothing else of the pipeline is imported.
 python-dotenv>=1.0.0  # same floor as requirements.txt
-# test_sec_voice_video_decode.py / _hold_expiry.py (Breach on 0176) import the voice video adapter, whose capability package
-# imports requests, and tests/test_creative_worker.py's fakes, which read deploy/docker-compose.yml with PyYAML.
+# test_sec_voice_video_decode.py drives the voice-video adapter (modules/capabilities, whose base imports requests), and
+# test_sec_voice_video_hold_expiry.py reuses tests/test_creative_worker.py's fakes (which read the compose file with PyYAML).
+# Without them those two Breach tests fail at collection, so the lab cannot prove the fixes they pin.
 requests>=2.33.0  # same floor as requirements.txt
 PyYAML>=6.0
