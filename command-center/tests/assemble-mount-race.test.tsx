@@ -58,3 +58,17 @@ it("a press before the mount effects ran still gets its quote answered", async (
   seen.disconnect();
   await vi.waitFor(() => expect(host?.querySelector('[data-testid="assemble-note"]')?.textContent).toBe(c.quoteFailed));
 });
+
+it("another project at the same version number forgets the old project's quote", async () => {
+  // The version guard must not hide a change of project: the reset also runs when filmId (and so the starter) changes.
+  const { render, screen, fireEvent, waitFor, cleanup } = await import("@testing-library/react");
+  vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+    new Response(JSON.stringify({ quote: { priced: true, total: 16, quote_id: `fq-3-${"b".repeat(32)}`, startable: true, may_start: true, blocked_by: [], refusals: [] } }), { status: url.includes("/quote") ? 200 : 404 })));
+  const panel = (filmId: string) => <AssemblePanel filmId={filmId} orgId="o" version={3} editable status="draft" onStarted={() => undefined} />;
+  const view = render(panel("film-a"));
+  fireEvent.click(screen.getByTestId("assemble-key"));
+  await waitFor(() => expect(screen.getByTestId("assemble-amount").textContent).toMatch(/16/));
+  view.rerender(panel("film-b"));
+  expect(screen.getByTestId("assemble-amount").textContent).toBe(c.getPrice);
+  cleanup();
+});
