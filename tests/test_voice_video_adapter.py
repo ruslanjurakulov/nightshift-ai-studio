@@ -172,6 +172,9 @@ class Tmp(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def req(self, look="dusk", media=None, **over):
+        # A real job always carries the length it was priced on (creative_jobs.quantity): by default the length the
+        # stand-in measurement reads, so the length check passes unless a test says otherwise.
+        over.setdefault("source_seconds", self.seconds.return_value)
         return CapabilityRequest(capability=VOICE_EXPLAINER, look=look,
                                  input_media=tuple(media) if media is not None else (str(self.rec),), **over)
 
@@ -336,6 +339,13 @@ class Submit(Tmp):
             with self.assertRaises(AdapterError) as cm:
                 self.e.adapter().submit(self.req(media=media), vv.RULES_ENGINE)
             self.assertEqual(cm.exception.code, E_BAD_REQUEST, media)
+
+    def test_a_job_without_a_priced_length_is_refused_before_the_transcription(self):
+        # Breach L-2: the decoded length is checked against the length the job was PRICED on; with none, nothing is made.
+        with self.assertRaises(AdapterError) as cm:
+            self.e.adapter().submit(self.req(source_seconds=None), vv.RULES_ENGINE)
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_NOT_CONFIGURED, True))
+        self.assertEqual((self.e.transcribed, self.e.rendered), ([], []))
 
     def test_longer_than_the_engine_holds_is_refused_before_the_transcription(self):
         self.seconds.return_value = 600.5
@@ -1049,8 +1059,9 @@ class Registry(unittest.TestCase):
 # ── the seam and the worker ───────────────────────────────────────────────────
 
 def vv_job(look="dusk", **over):
+    over.setdefault("quantity", "42")
     return job(capability=VOICE_EXPLAINER, requested_model=MODEL, routed_model=MODEL,
-               params={"source_asset_id": SRC, "look": look}, quantity="42", **over)
+               params={"source_asset_id": SRC, "look": look}, **over)
 
 
 def audio_source(mime="audio/mpeg", kind="audio"):
@@ -1221,8 +1232,10 @@ class TheSlot(Tmp):
         ra = ca.RegistryAdapter(e, self.e.adapter(), sync_store={})
         self.vendor = FakeAdapter()
         kw.setdefault("heartbeat_seconds", 0)
+        kw.setdefault("credits", FakeCredits())
+        kw.setdefault("enforce", True)
         return cw.CreativeWorker(q, lambda m: ra if m == e.id else self.vendor, worker_id="w1", out_dir=self.out,
-                                 credits=FakeCredits(), enforce=True, sleep=self.paused.append, media_root=self.media, **kw)
+                                 sleep=self.paused.append, media_root=self.media, **kw)
 
     def test_busy_the_job_is_parked_unsent_vendor_jobs_run_and_it_runs_when_the_slot_frees(self):
         q = SlotQueue([vv_job(), job(id=TJOB)], audio_source())
@@ -1241,6 +1254,33 @@ class TheSlot(Tmp):
         self.assertEqual(len(self.e.rendered), 1)
         self.assertEqual(w._parked, [])
         self.assertFalse(cw._SERIAL_SLOT.locked())
+
+    def test_the_length_checked_is_the_jobs_priced_quantity_not_a_later_reading(self):
+        # Breach L-2: the worker hands the adapter creative_jobs.quantity (the frozen quote). A job with none is not made.
+        q = SlotQueue([vv_job(quantity=None)], audio_source())
+        self.worker(q).run_once()
+        self.assertFalse(q.finished[JOB].get("ok"), q.finished)
+        self.assertEqual(self.e.rendered, [])
+
+    def test_a_parked_job_starts_its_hold_while_it_waits(self):
+        # An unstarted hold lives 3 hours and a parked job can wait longer (Breach H-1): it is started at the park.
+        credits = FakeCredits()
+        q = SlotQueue([vv_job()], audio_source())
+        w = self.worker(q, credits=credits)
+        with cw._SERIAL_SLOT:
+            w.run_once()
+            self.assertEqual(len(w._parked), 1)
+            self.assertEqual([c[0] for c in credits.calls], ["start"], "the hold is started before the wait, not after")
+
+    def test_a_parked_job_whose_hold_is_closed_fails_at_once_even_with_enforcement_off(self):
+        # Breach H-1 and L-1: never a free render after the wait, and the person learns why now, not hours later.
+        q = SlotQueue([vv_job()], audio_source())
+        w = self.worker(q, credits=FakeCredits(amount=None), enforce=False)
+        with cw._SERIAL_SLOT:
+            w.run_once()
+        self.assertEqual(w._parked, [])
+        self.assertEqual(q.finished[JOB]["error_code"], "hold_not_open")
+        self.assertEqual(self.e.rendered, [])
 
     def test_the_slot_is_held_through_the_whole_job_and_released_on_failure(self):
         seen = []
@@ -1380,7 +1420,8 @@ class TheRealEngine(unittest.TestCase):
             shutil.copyfile(audio, src)
             a = vv.VoiceVideoAdapter(env=env, **over)
             self.assertEqual(a.missing(), [])
-            task = a.submit(CapabilityRequest(capability=VOICE_EXPLAINER, look="dusk", input_media=(str(src),)), vv.RULES_ENGINE)
+            task = a.submit(CapabilityRequest(capability=VOICE_EXPLAINER, look="dusk", input_media=(str(src),),
+                                              source_seconds=ve.audio_seconds(src)), vv.RULES_ENGINE)
             (f,) = a.fetch(PollResult(SUCCEEDED, task.outputs), Path(tmp) / "out")
             self.assertGreater(f.stat().st_size, 10_000)
             keep = os.environ.get("NIGHTSHIFT_VOICE_VIDEO_E2E_KEEP")

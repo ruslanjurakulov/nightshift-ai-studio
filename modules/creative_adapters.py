@@ -159,7 +159,8 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         look=_str(p.get("look")) if request.capability in ("relight", "voice_explainer") else None,
         # A voice video (0176): the length the library measured and the job was priced on, so the engine can refuse a
         # file that decodes to another one.
-        source_seconds=request.source_duration_s if request.capability == "voice_explainer" else None,
+        # The length the job was priced on (creative_jobs.quantity, the frozen quote), not a later reading of the library.
+        source_seconds=request.quantity if request.capability == "voice_explainer" else None,
     )
 
 
