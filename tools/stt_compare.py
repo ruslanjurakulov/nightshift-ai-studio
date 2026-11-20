@@ -49,9 +49,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-#: Scribe's price per audio hour (elevenlabs.io/pricing/api read 2026-11-11, registry elevenlabs-scribe-v2): the estimate
-#: printed before anything is sent. Another model may cost something else; the estimate says which model it is for.
-SCRIBE_USD_PER_HOUR = 0.20
 ENGINES = ("whisper", "scribe")
 
 #: Every way an Uzbek Latin apostrophe is typed (oʻ, gʻ, the tutuq belgisi): the modifier letters, the typewriter quote,
@@ -186,13 +183,11 @@ def plan_text(pairs: Sequence[tuple], durations: Sequence[float], engines: Seque
     if "whisper" in engines:
         lines.append("Will run: local Whisper base on this machine (free, CPU).")
     if "scribe" in engines:
-        from modules.capabilities import voice_video as vv  # noqa: PLC0415
-
-        usd = minutes / 60.0 * SCRIBE_USD_PER_HOUR
-        caveat = "" if model == vv.SCRIBE_MODEL else f"; that is {vv.SCRIBE_MODEL}'s price, {model}'s was not read"
+        # The bill is the audio minutes at the account's own ElevenLabs rate; no price is restated here (the vendor's
+        # pricing page and the elevenlabs-scribe-v2 registry entry are the sources), so nothing printed can go stale.
         lines.append(f"Will call: ElevenLabs POST /v1/speech-to-text, model {model}, "
                      f"language {language or 'detected by the vendor'}, once per recording: PAID, "
-                     f"about ${usd:.4f} at ${SCRIBE_USD_PER_HOUR:.2f} an audio hour{caveat}.")
+                     f"{minutes:.1f} audio min billed at the account's ElevenLabs rate.")
         lines.append(f"ELEVENLABS_API_KEY: {'set' if key_set else 'NOT SET'}")
     return "\n".join(lines)
 

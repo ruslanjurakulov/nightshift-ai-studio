@@ -1,5 +1,5 @@
 -- 0176_voice_video.sql — "voice to video" in the Studio: a person's own narration (one library recording) in, a 1080x1920
--- motion-graphics explainer out, drawn by OUR engine on the creative worker (one vendor call: the transcription), sold like every creative job.
+-- motion-graphics explainer out, drawn by OUR engine on the creative worker (no vendor), sold like every creative job.
 --
 -- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It widens two capability CHECKs and replaces seven
 -- functions on their latest bodies, each by the hunks listed below and nothing else. It adds no row: no model, no price, no

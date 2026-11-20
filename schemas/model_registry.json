@@ -6642,7 +6642,7 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
-        "note": "No single vendor price: the worker's CPU (~3.4 s of render per second, docs/VOICE_EXPLAINER.md) plus ElevenLabs Scribe at $0.20 an audio hour = $0.0000556/s (as elevenlabs-scribe-v2). The owner sets the credit price after the probe: docs/sql/price_0176_voice_explainer.sql."
+        "note": "No single vendor price: the worker's CPU (~3.4 s of render per second, docs/VOICE_EXPLAINER.md) plus one ElevenLabs Scribe transcription of the recording (priced as elevenlabs-scribe-v2). The owner sets the credit price after the probe: docs/sql/price_0176_voice_explainer.sql."
       },
       "credit_unit": "model_nightshift_voice_explainer_second",
       "entitlement": null,
