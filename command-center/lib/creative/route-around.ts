@@ -124,15 +124,21 @@ export async function quoteAround(db: CreativeDb, input: GenerationInput, isBloc
   const open = sellable.filter((m) => !isBlocked(m.id));
   const quotes = new Map<string, Record<string, unknown>>();
   const cands: RouteCandidate[] = [];
+  // 0192: the database refuses an adult-only model (and every model for someone who said they are under 18) at the exact quote,
+  // which is how route_model excludes them. Those refusals are kept, so the answer names the age, not the country.
+  let adultRefusal: CreativeResult | null = null;
   for (const m of open) {
     const out = await quote(db, { ...input, mode: "exact", model: m.id });
+    const code = (out.body as { error?: unknown }).error;
+    if (code === "adult_only_service") return out;
+    if (code === "adult_attestation_required") adultRefusal = out;
     const q = out.status === 200 ? (out.body.quote as Record<string, unknown> | undefined) : undefined;
     // route_model's rule: priced for these settings and this organization, above zero, or not a candidate.
     if (!q || typeof q.credits !== "number" || !(q.credits > 0)) continue;
     quotes.set(m.id, q);
     cands.push({ model: m.id, credits: q.credits, qualityTier: m.qualityTier, speedTier: m.speedTier });
   }
-  if (cands.length === 0) return { status: 451, body: { error: "country_blocked" } };
+  if (cands.length === 0) return adultRefusal ?? { status: 451, body: { error: "country_blocked" } };
   const ranked = rankCandidates(cands, mode);
   const top = ranked[0];
   const picked = open.find((m) => m.id === top.model)!;

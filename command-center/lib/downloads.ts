@@ -200,6 +200,7 @@ export function contentDisposition(title: string | null, videoId: string, qualit
 
 export type DownloadError =
   | "insufficient_credits"
+  | "adult_only_service"
   | "master_not_available"
   | "unpriced"
   | "price_changed"
@@ -213,6 +214,8 @@ export function mapDownloadError(error: { code?: string; message?: string } | nu
   error: DownloadError;
   status: number;
 } {
+  // 0192's download gate raises NS400 with its own word: read before the code, which would otherwise read as "unpriced".
+  if (error?.code === "NS400" && (error.message ?? "").trim() === "adult_only_service") return { error: "adult_only_service", status: 403 };
   switch (error?.code) {
     case "NS402":
       return { error: "insufficient_credits", status: 402 };

@@ -663,6 +663,9 @@ export function creditRunError(data: Record<string, unknown>, t: Dictionary, loc
     case "credits_not_enforced":
       text = t.credits.notEnforced;
       break;
+    case "adult_only_service":
+      text = t.creative.errors.adult_only_service;
+      break;
   }
   if (num(data.credits_held) !== null) return `${text ?? t.agents.runFailed} ${t.credits.heldNote}`;
   return text;

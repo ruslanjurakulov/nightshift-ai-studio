@@ -168,6 +168,7 @@ describe("errors and the spent total", () => {
     expect(mapDownloadError({ code: "NS402" })).toEqual({ error: "insufficient_credits", status: 402 });
     expect(mapDownloadError({ code: "NS404" }).error).toBe("master_not_available");
     expect(mapDownloadError({ code: "NS400" }).error).toBe("unpriced");
+    expect(mapDownloadError({ code: "NS400", message: "adult_only_service" }).error).toBe("adult_only_service");
     expect(mapDownloadError({ code: "NS409" }).error).toBe("price_changed");
     expect(mapDownloadError({ code: "42501" }).status).toBe(403);
     expect(mapDownloadError({ code: "PGRST202" }).status).toBe(503);

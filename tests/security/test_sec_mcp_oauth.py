@@ -1245,6 +1245,11 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     c = connect(db, UA)
     before = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
               db.su("select pepper from public.oauth_settings")[0][0])
+    # 0192 (the adult gate) sits on 0094's oauth_create_video, 0147's api_create_video and 0170's api_request_download. 0093 has no
+    # drift guard and would silently put its own oauth_create_video back; 0147 and 0170 refuse. Off first, on again last.
+    adult = sec_db.MIGRATION_0192.exists()
+    if adult:
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
     after = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
              db.su("select pepper from public.oauth_settings")[0][0])
@@ -1269,6 +1274,11 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         sec_db.apply_files(db.dsn, [download])
         assert db.su("select position('video.download_request' in prosrc) > 0 from pg_proc "
                      "where oid = 'public.api_request_download(text,text,text,text,text,text)'::regprocedure")[0][0] is True
+    if adult:
+        # 0094 sits on 0093's oauth_create_video, and 0192 on 0094's: 0094 again (it has no guard and changes nothing else that
+        # 0093 replaced), then 0192.
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192])
+        assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 
 # ── Lens-386A: PKCE is checked by the database, a limit of 0 is read-only for the operator too,

@@ -432,6 +432,9 @@ def test_replay_then_rollback_refuses_while_a_connection_holds_the_permission_th
     name = f"ns_mcp_oacr_rb_{uuid.uuid4().hex[:8]}"
     d = Db(sec_db.build(admin, name))
     try:
+        # 0192 (the adult gate) replaces two of 0191's functions, and 0191 has no guard over its own: off first (0192's header).
+        with psycopg.connect(d.dsn, autocommit=True) as c:
+            sec_db.take_off_0192(c)
         sec_db.apply_files(d.dsn, [MIGRATION])  # a replay changes nothing
         setup(d)
         tok, grant = connection(d, UA, ORG_A)

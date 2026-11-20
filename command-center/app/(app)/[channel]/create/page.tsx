@@ -33,6 +33,9 @@ import { loadEditorProjects } from "@/lib/server/editor";
 import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
+import { AgeGate, MinorNotice } from "@/components/age/AgeGate";
+import { readAgeState } from "@/lib/server/age";
+import { LEGAL } from "@/lib/legal";
 import { CreateScreen } from "@/components/customer/CreateScreen";
 import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
@@ -181,8 +184,20 @@ export default async function CreatePage({
           : { state: "failed" };
   }
 
+  // 0192: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
+  // instead of the composer (the database refuses their quotes too); an unknown state stops no one.
+  const age = await readAgeState();
+  if (age === "minor") {
+    return (
+      <div className="rhythm stagger-enter ns-open">
+        <MinorNotice contactEmail={LEGAL.contactEmail} home />
+      </div>
+    );
+  }
+
   return (
     <div className="rhythm stagger-enter ns-open">
+      {age === "none" && <AgeGate state={age} from="create" contactEmail={LEGAL.contactEmail} home />}
       {/* The overview opens on its own question and the box to write in; the full pages keep their header and switcher. */}
       {desk !== "overview" && <PageHeader icon="studio" title={t.create.title} subtitle={t.desk.blurbs[desk]} />}
       {desk !== "overview" && <DeskBar current={desk} />}

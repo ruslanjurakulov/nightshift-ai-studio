@@ -38,6 +38,10 @@ const ERROR_CODES = [
   "no_model_available",
   // 0174: the model needs a person to confirm their rights to the input in the Studio first; there is no API call for it.
   "acknowledgement_required",
+  // 0192: the model's vendor terms are 18+ and the key's person has not confirmed their age in the app (428), or that person said
+  // they are under 18 and the service is for adults (403).
+  "adult_attestation_required",
+  "adult_only_service",
   "registry_missing",
   "forbidden",
   "invalid_body",

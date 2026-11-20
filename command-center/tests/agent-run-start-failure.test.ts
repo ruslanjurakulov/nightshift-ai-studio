@@ -21,6 +21,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 vi.mock("server-only", () => ({}));
+// The adult answer (0192) is read by the route too; unknown blocks no one, so this file tests what it always did.
+vi.mock("@/lib/server/age", () => ({ readAgeState: async () => "unknown" }));
 
 const HELD = 36;
 const REF = "rj-ref";
