@@ -11,6 +11,7 @@ import { libraryUxUz } from "./library-ux/uz";
 import { assetDownloadUz } from "./asset-download/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ageUz } from "./age/uz";
+import { customerAppUz } from "./customer-app/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
 import { studioTimelineUz } from "./studio-timeline/uz";
@@ -30,6 +31,7 @@ import { ownerTruthUz } from "./owner-truth/uz";
 import { ownerAnalyticsUz } from "./owner-analytics/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
+import { trendsUz } from "./trends/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
@@ -60,12 +62,15 @@ import { adsFactoryUz } from "./ads-factory/uz";
 export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
+  /** The Trends gallery (migration 0183): ./trends/uz.ts. */
+  trends: trendsUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
   assetDownload: assetDownloadUz,
   ownerShell: ownerShellUz,
   age: ageUz,
+  customerApp: customerAppUz,
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
   studioTimeline: studioTimelineUz,
@@ -115,6 +120,7 @@ export const uz: Dictionary = {
     menu: "Menyu",
     command: "Boshqaruv markazi",
     create: "Yaratish",
+    projects: "Loyihalar",
     videos: "Videolar",
     pipeline: "Konveyer",
     agents: "Agentlar",
@@ -143,6 +149,7 @@ export const uz: Dictionary = {
     customers: "Mijozlar",
     billing: "Toʻlovlar",
     studio: "Nightshift Studio",
+    trends: "Trendlar",
     brandLook: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",
@@ -430,7 +437,7 @@ export const uz: Dictionary = {
     stepCreateNeedsChannel: "Toʻliq YouTube video uchun ulangan kanal kerak.",
     open: "Ochish",
     done: "Bajarildi",
-    finish: "Command Center’ga oʻtish",
+    finish: "Bosh sahifaga",
     finishStudio: "Namunangiz bilan Nightshift Studio’ni ochish",
     unavailable: "Ish maydoningizni hozir yuklab boʻlmadi. Birozdan keyin sahifani yangilang.",
     welcomeCredits: "Ish maydoningizda {n} ta bepul kredit bor (≈ bitta Short) — boshlash uchun sovgʻa.",
@@ -3741,6 +3748,7 @@ export const uz: Dictionary = {
       model_not_sellable: "Bu model hozir mavjud emas.",
       model_temporarily_off: "Bu model vaqtincha mavjud emas. Hech narsa yechilmadi. Boshqa modelni tanlang yoki keyinroq urinib koʻring.",
       country_blocked: "Bu model sizning hududingizda mavjud emas. Hech narsa yechilmadi. Roʻyxatdan boshqa modelni tanlang.",
+      prompt_required: "Bu modelga soʻzlar kerak: harakat yoki kadrni tasvirlang, shunda narx chiqadi. Hech narsa yechilmadi.",
       entitlement_required: "Bu model hali tashkilotingiz uchun ochiq emas.",
       unpriced: "Bu modelning hali narxi yoʻq, shuning uchun uni ishlatib boʻlmaydi.",
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
@@ -3942,6 +3950,7 @@ export const uz: Dictionary = {
       no_model: "Hozir buni hech bir model qila olmaydi.",
       need_picture: "Narxni koʻrish uchun rasm tanlang.",
       need_words: "Narxni koʻrish uchun tasvirlab bering.",
+      need_motion_words: "{model} uchun harakat tavsifi kerak: narxni koʻrish uchun kadrda nima boʻlishini yozing.",
       need_recording: "Narxni koʻrish uchun audio yoki video faylni tanlang.",
       need_voice: "Narxni koʻrish uchun ovozni tanlang.",
       need_language: "Narxni koʻrish uchun tilni tanlang.",

@@ -66,3 +66,38 @@ whole business together for one period; slice d will reuse the margin report's c
 - **Credits charged** are unknown, not 0, for jobs that carry no charge (running, or paid from the API balance).
 - **What the audit does not cover.** The export log records files built by the hub. The owner's own session can still call the
   read functions directly through the API; that is the owner reading their own data, and is not a file leaving the building.
+
+## Costs & profit (slice d, migration 0184)
+
+| Figure | Source | When it is unknown |
+| :-- | :-- | :-- |
+| Provider spend | `creative_job_costs.usd_estimate` (priced when the job ran), pipeline `video_costs` | A cost row with no price: counted, never added; the total is a floor and profit is unknown |
+| Balances | `provider_balances` `api` rows from the balance worker; `owner_manual_balances` for what the owner typed (never written to `provider_balances`, which the operator bot and Billing read as the provider's word) | No row: "no balance on record". A manual row is badged "entered by owner on <date>" |
+| Monthly costs | `owner_cost_entries`, typed by the owner per month and category | A month with no entry is "not entered": its operating result is unknown |
+| Gross profit | net revenue (before provider fees) − customer provider spend | Either side unknown |
+| Operating result | gross profit − internal spend − entered costs, per calendar month | Any part unknown |
+
+Balance APIs, checked against official docs on 2026-11-20 (docs only, not called): a balance endpoint is documented for
+ElevenLabs (a character quota, not money), Runway, xAI, BFL, Vidu, Luma (legacy docs), Kling (resource packs), Recraft, Pika and
+fal.ai. None is documented for Gemini/AI Studio, OpenAI, BytePlus ModelArk, MiniMax, LTX, Ideogram, Krea or Replicate.
+Alibaba exposes only an account-level billing API. Leonardo's reference page could not be re-read. The balance worker
+(`modules/provider_balance.py`) reads ElevenLabs, Leonardo and Runway today. For everyone else, the owner enters a balance by
+hand. Units stay the provider's own and are never converted.
+
+## Provider runway (slice d, tab "Provider runway")
+
+Per paid provider and per model: what was spent, what is left, how fast it goes, when it runs out. Owner only.
+
+- **One ledger.** Spent, bought and left come from the Billing page's own `providerLedger()` (command-center/lib/billing.ts):
+  pipeline (`video_costs` × the operator's price per unit), Studio (`creative_job_costs`, the worker's estimate or the
+  registry's list price) and probes (`model_probe_runs`, the vendor's own credits where reported, else the list price). The
+  24-hour and 7-day spend use `providerSpendSince()`, the same rules over a shorter window, so the hub cannot disagree with
+  Billing. Reads, windows and paging are the Billing page's (`lib/server/owner-runway.ts`).
+- **Left.** The provider's own reading (`provider_balances`, with its time) wins. Otherwise top-ups (`provider_topups`) minus
+  spend since the first top-up's day, labelled an estimate with its method. Unknown when a read failed, nothing was topped
+  up, a cost has no price, or more was spent than the top-ups recorded. Spend before the first top-up makes the note
+  "balance before tracking: unknown".
+- **Runs out.** At the 7-day pace, with the range the 24-hour and 7-day paces span; re-run in the browser at an expected
+  daily volume the owner types (a share of the last 7 days). "Low" under 3 days, unless the provider recharges itself.
+  "Empty" when the provider's newest job or probe failed with error_code `quota` (0184's `owner_analytics_model_activity`).
+- **No numbers in the repository.** Prices, top-ups and balances exist only in the database; tests use synthetic fixtures.

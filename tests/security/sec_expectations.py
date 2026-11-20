@@ -743,3 +743,14 @@ sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 import sec_adult_attestation_0199  # noqa: E402
 
 sec_adult_attestation_0199.extend(TABLES, FUNCTIONS)
+# Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
+# tests/security/sec_creative_templates_0183.py
+import sec_creative_templates_0183  # noqa: E402
+
+sec_creative_templates_0183.extend(TABLES, FUNCTIONS)
+
+# Migration 0184 (the owner analytics hub's costs: provider spend, balances, the owner's monthly cost entries):
+# tests/security/sec_owner_costs_0184.py
+import sec_owner_costs_0184  # noqa: E402
+
+sec_owner_costs_0184.extend(TABLES, FUNCTIONS)

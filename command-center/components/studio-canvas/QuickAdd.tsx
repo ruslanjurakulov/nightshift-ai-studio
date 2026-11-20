@@ -15,7 +15,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useShell } from "@/components/shell/ShellContext";
 import { KIND_SPEC, TOOL_KINDS, type CanvasNode, type CanvasState, type PortType, type ToolKind } from "@/lib/studio/canvas";
 import { KIND_ICONS } from "./parts";
-import { inputOf, kindOpen, type JobReading } from "./nodeState";
+import { inputOf, kindOpen, upstreamWords, type JobReading } from "./nodeState";
 import { nodePrefill, toolsFor, useFormToken, type PanelData } from "./Inspector";
 import "@/components/studio/desk.css";
 import "@/components/studio/availability.css";
@@ -169,7 +169,7 @@ export function InlineComposer({
   const input = inputOf(state, node, jobs);
   const [mounted] = useState(() => node.id);
   const prefill = useMemo(
-    () => nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, data.models),
+    () => nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, data.models, upstreamWords(state, node)),
     // The form mounts once per input: later typing lives in the form (and in node.draft through onDraftChange).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mounted, input?.type, input?.assetId],

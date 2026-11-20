@@ -274,6 +274,9 @@ export const CREATIVE_ERRORS = [
   "forbidden",
   "not_found",
   "not_cancellable",
+  // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
+  // create, before anything is held, instead of failing at the adapter after the press.
+  "prompt_required",
   "failed",
 ] as const;
 export type CreativeError = (typeof CREATIVE_ERRORS)[number];

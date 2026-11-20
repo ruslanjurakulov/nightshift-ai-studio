@@ -177,6 +177,7 @@ export const en: LegalTexts = {
                 ["`chronos_locale`", "Remembers the language you chose.", "1 year"],
                 ["`ns_view`", "Remembers whether you chose the Mobile or the Desktop view.", "1 year"],
                 ["`chronos_channel`, `nightshift_org`, `ns_sidebar` (signed in)", "Remember which channel and organization you last viewed and how wide the side menu is.", "1 year"],
+                ["`ns_owner_mode` (platform owner only)", "Remembers whether the platform owner sees the owner sections or the customer view. Ignored for every other account.", "1 year"],
                 ["`ns_oa_present` (platform owner only)", "Remembers that the owner turned on presentation mode, which hides payment ids on the analytics screens.", "12 hours"],
                 ["`ns_auth_pending`, `ns_recovery`, `ns_invite`", "Finish an emailed sign-in link, a password reset or an invitation you opened. Only the pages that need them can read them.", "10 minutes, 15 minutes and 24 hours"],
                 ["`__Host-yt_oauth_nonce`, `ig_oauth_nonce`, `tt_oauth_nonce`, `tt_oauth_pkce` (while you connect an account)", "Protect the connection of your YouTube (or other) account against cross-site request forgery while you are on the consent screen.", "10 minutes"],

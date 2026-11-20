@@ -17,8 +17,14 @@ import {
   signupsTable,
 } from "@/lib/owner-analytics/kpis";
 import { applyScope, summarize } from "@/lib/owner-analytics/money";
-import { readJobs, readPeople, type ReadFailure } from "./owner-analytics";
+import { readCostEntries, readJobs, readPeople, readSpend, type ReadFailure } from "./owner-analytics";
+import { monthlyResults, summarizeSpend } from "@/lib/owner-analytics/costs";
+import { costEntriesTable, monthlyTable, spendModelsTable, spendProvidersTable } from "@/lib/owner-analytics/cost-tables";
+import { tashkentDayStartUtc } from "@/lib/owner-analytics/period";
 import { readActivityFor, readCohortActivity, readMoneyFor } from "./owner-analytics-data";
+import { readRunway } from "./owner-runway";
+import { providerRunways } from "@/lib/owner-analytics/runway";
+import { runwayModelsTable, runwayProvidersTable } from "@/lib/owner-analytics/runway-tables";
 
 /** Every table the hub can export, by the name its export button sends. Anything else is refused before anything is read. */
 export const EXPORTABLE = [
@@ -34,6 +40,12 @@ export const EXPORTABLE = [
   "users.cohorts",
   "users.plan_cohorts",
   "usage.models",
+  "costs.providers",
+  "costs.models",
+  "costs.monthly",
+  "costs.entries",
+  "runway.providers",
+  "runway.models",
 ] as const;
 export type Exportable = (typeof EXPORTABLE)[number];
 export const isExportable = (v: unknown): v is Exportable => typeof v === "string" && (EXPORTABLE as readonly string[]).includes(v);
@@ -69,6 +81,32 @@ export async function buildExport(
     const k = revenueKpis(rows, act, p);
     const prev = sel.previous ? revenueKpis(rows, activity?.previous ? act : null, sel.previous) : null;
     return done(overviewTable(d, k, prev, p, present));
+  }
+  if (what.startsWith("runway.")) {
+    // A runway is measured up to now, whatever period is picked (the page says the same).
+    const nowMs = Date.now();
+    const data = await readRunway(nowMs);
+    if (!data) return { ok: false, reason: "error" };
+    const rows = providerRunways(data);
+    return done(what === "runway.providers" ? runwayProvidersTable(d, rows, nowMs, present) : runwayModelsTable(d, rows, nowMs, present));
+  }
+  if (what.startsWith("costs.")) {
+    const fromMonth = `${p.startDay.slice(0, 7)}-01`;
+    const toMonth = `${p.endDay.slice(0, 7)}-01`;
+    if (what === "costs.entries") {
+      const e = await readCostEntries(fromMonth, toMonth);
+      if (!e.ok) return e;
+      return done(costEntriesTable(d, e.data, p, present));
+    }
+    const spend = await readSpend(p.from, p.to);
+    if (!spend.ok) return spend;
+    const sp = summarizeSpend(applyScope(spend.data, inc), p);
+    if (what === "costs.providers") return done(spendProvidersTable(d, sp, p, present));
+    if (what === "costs.models") return done(spendModelsTable(d, sp, p, present));
+    const [money, e] = await Promise.all([readMoneyFor(sel), readCostEntries(fromMonth, toMonth)]);
+    if (!money.ok) return money;
+    if (!e.ok) return e;
+    return done(monthlyTable(d, monthlyResults(applyScope(money.data, inc), applyScope(spend.data, inc), e.data, p, tashkentDayStartUtc), p, present));
   }
   if (what === "usage.models") {
     const jobs = await readJobs(p.from, p.to);

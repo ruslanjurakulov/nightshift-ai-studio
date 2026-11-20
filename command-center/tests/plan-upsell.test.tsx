@@ -359,8 +359,8 @@ describe("the voice tools in the customer sidebar", () => {
     expect(CUSTOMER_SIDEBAR.tools.find((t) => t.tool === "dub")?.href).toBe("/create?tool=dub");
     expect(en.gen.kinds.voice_change).toBe("Change voice");
     expect(en.gen.kinds.dub).toBe("Dub / translate");
-    // The tools are no longer sidebar rows (they open from Studio home): the Studio entry is lit.
-    expect(sidebarCurrent("/create")).toBe("studio");
+    // The tools are no longer sidebar rows (they open from Create): the Create entry is lit.
+    expect(sidebarCurrent("/create")).toBe("create");
   });
 
   it("every sidebar href is a screen a customer may open", () => {

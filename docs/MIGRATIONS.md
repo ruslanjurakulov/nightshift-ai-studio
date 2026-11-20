@@ -1995,3 +1995,42 @@ its reads. Read-only over existing tables, plus one log of its own.
 - **Without it.** The hub says it needs 0182 and shows no figure; exports are refused.
 - Lab: `tests/security/sec_owner_analytics_0182.py`, `tests/security/test_sec_owner_analytics.py`. Rollback:
   `docs/sql/rollback_0182_owner_analytics.sql`.
+
+## Trend templates: ready formats for the Trends gallery (0183)
+
+0183 (`0183_creative_templates.sql`) gives the Trends gallery (`/{channel}/trends`, `GET /api/templates`) its table: ready
+short-form formats that open Create prefilled. Additive: one table, its updated_at trigger, and a ten-row seed.
+
+- **Who.** RLS on. `anon` and `authenticated` may read **published** rows only. No API role may insert, update or delete; the
+  service key and the SQL editor write.
+- **What a row is.** A format, not content: a prompt with `{placeholders}`, the model it was written for (`model_id`, a foreign key
+  to `model_registry`), the shape (16:9 / 9:16 / 1:1), the length for video (5 or 10 s), a quality tier, director notes, and
+  titles and descriptions in en / ru / uz. A slug must contain a hyphen, so it can never be read as a Studio starter id (those
+  use underscores and share `?template=`).
+- **Availability is never stored.** Whether the template's model is on sale is asked of `sellable_models()` on every request. The
+  API returns `model_status` available / unavailable / unknown, and never names a substitute model.
+- **Media is not in the database.** Preview clips and posters are app files under `command-center/public/templates/<slug>/`,
+  listed in `command-center/lib/templates/media-manifest.json`. A test holds the manifest and the files in step.
+- **Seed.** Ten formats on models on sale when it was written (the MiniMax H3 family, Ideogram). A row is inserted only when its
+  model exists in `model_registry`, and `on conflict (slug) do nothing`, so re-applying never undoes an edit.
+- **Without it.** `/api/templates` answers 503 `not_enabled` and the Trends page says Trends are not available here.
+- Lab: `tests/security/sec_creative_templates_0183.py`, `tests/security/test_sec_creative_templates.py`,
+  `tests/security/test_sec_breach_creative_templates.py`. Rollback: `docs/sql/rollback_0183_creative_templates.sql`.
+
+## Owner analytics: costs, balances and the owner's monthly costs (0184)
+
+0184 (`0184_owner_costs.sql`) gives the hub's Costs & profit tab its reads and the owner's two inputs. No value is in the file.
+
+- **Provider spend.** `owner_analytics_provider_spend(from, to)`: `creative_job_costs` (0037) and the pipeline's `video_costs` (0002)
+  by Tashkent day, provider and model — rows, the sum of the priced ones, and how many were unpriced (unknown, never 0). Internal
+  workspaces (0182) and the pipeline are flagged internal.
+- **Balances.** `owner_analytics_balances()`: the newest `provider_balances` row per provider and metric, with `source` (api /
+  manual). `owner_analytics_balance_enter()` stores an owner-typed balance in its own closed table `owner_manual_balances`, never in
+  `provider_balances` (the operator bot's stale/zero alerts and Billing read that as the provider's own word). Nothing calls a provider.
+- **Writes** go through `owner_costs_write_guard()`: owner, 0107's second factor, and 60 writes per 10 minutes (`take_web_rate`).
+- **Monthly costs.** `owner_cost_entries` (closed), written by `owner_analytics_cost_add / _delete`, read by `owner_analytics_costs`.
+- **Provider runway.** `owner_analytics_model_activity(from, to)` (at most 200 days): creative jobs per model and unit — counts by
+  outcome, units, first and last time, and how the newest job ended (status, error_code). Every workspace counts: all spend the
+  provider's balance. Counts only, no amount and no customer.
+- **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
+- Lab: `tests/security/sec_owner_costs_0184.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0184_owner_costs.sql`.

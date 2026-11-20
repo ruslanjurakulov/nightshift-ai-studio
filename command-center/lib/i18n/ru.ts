@@ -11,6 +11,7 @@ import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ageRu } from "./age/ru";
+import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
@@ -30,6 +31,7 @@ import { ownerTruthRu } from "./owner-truth/ru";
 import { ownerAnalyticsRu } from "./owner-analytics/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
+import { trendsRu } from "./trends/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
@@ -60,12 +62,15 @@ import { adsFactoryRu } from "./ads-factory/ru";
 export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
+  /** The Trends gallery (migration 0183): ./trends/ru.ts. */
+  trends: trendsRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
   assetDownload: assetDownloadRu,
   ownerShell: ownerShellRu,
   age: ageRu,
+  customerApp: customerAppRu,
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
@@ -115,6 +120,7 @@ export const ru: Dictionary = {
     menu: "Меню",
     command: "Центр управления",
     create: "Создать",
+    projects: "Проекты",
     videos: "Видео",
     pipeline: "Конвейер",
     agents: "Агенты",
@@ -143,6 +149,7 @@ export const ru: Dictionary = {
     customers: "Клиенты",
     billing: "Оплата",
     studio: "Nightshift Studio",
+    trends: "Тренды",
     brandLook: "Облик бренда",
     library: "Медиатека",
     styles: "Стили",
@@ -430,7 +437,7 @@ export const ru: Dictionary = {
     stepCreateNeedsChannel: "Для полного видео на YouTube нужен подключённый канал.",
     open: "Открыть",
     done: "Готово",
-    finish: "Перейти в Центр управления",
+    finish: "На главную",
     finishStudio: "Открыть Nightshift Studio с вашим примером",
     unavailable: "Не удалось загрузить рабочее пространство. Обновите страницу через минуту.",
     welcomeCredits: "В вашем рабочем пространстве {n} бесплатных кредитов (≈ один Short) — подарок к старту.",
@@ -3741,6 +3748,7 @@ export const ru: Dictionary = {
       model_not_sellable: "Эта модель сейчас недоступна.",
       model_temporarily_off: "Эта модель временно недоступна. Ничего не списано. Выберите другую модель или попробуйте позже.",
       country_blocked: "Эта модель недоступна в вашем регионе. Ничего не списано. Выберите другую модель из списка.",
+      prompt_required: "Этой модели нужны слова: опишите движение или кадр, и появится цена. Ничего не списано.",
       entitlement_required: "Эта модель пока не открыта для вашей организации.",
       unpriced: "У этой модели ещё нет цены, поэтому её нельзя использовать.",
       capability_not_supported: "Такой вид генерации пока недоступен.",
@@ -3942,6 +3950,7 @@ export const ru: Dictionary = {
       no_model: "Сейчас это не может сделать ни одна модель.",
       need_picture: "Выберите картинку, чтобы увидеть цену.",
       need_words: "Опишите, что нужно, чтобы увидеть цену.",
+      need_motion_words: "{model} нужно описание движения: напишите, что происходит в кадре, чтобы увидеть цену.",
       need_recording: "Выберите аудио или видео, чтобы увидеть цену.",
       need_voice: "Выберите голос, чтобы увидеть цену.",
       need_language: "Выберите язык, чтобы увидеть цену.",
