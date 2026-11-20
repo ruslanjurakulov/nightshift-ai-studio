@@ -3929,6 +3929,7 @@ export const uz: Dictionary = {
       no_model: "Hozir buni hech bir model qila olmaydi.",
       need_picture: "Narxni koʻrish uchun rasm tanlang.",
       need_words: "Narxni koʻrish uchun tasvirlab bering.",
+      need_motion_words: "{model} uchun harakat tavsifi kerak: narxni koʻrish uchun kadrda nima boʻlishini yozing.",
       need_recording: "Narxni koʻrish uchun audio yoki video faylni tanlang.",
       need_voice: "Narxni koʻrish uchun ovozni tanlang.",
       need_language: "Narxni koʻrish uchun tilni tanlang.",

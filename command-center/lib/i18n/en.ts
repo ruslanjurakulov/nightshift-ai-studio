@@ -3947,6 +3947,7 @@ export const en = {
       no_model: "No model can make this right now.",
       need_picture: "Pick a picture to see the price.",
       need_words: "Describe it to see the price.",
+      need_motion_words: "{model} needs a description of the motion: write what happens in the shot to see the price.",
       need_recording: "Pick an audio or video file to see the price.",
       need_voice: "Pick a voice to see the price.",
       need_language: "Pick a language to see the price.",

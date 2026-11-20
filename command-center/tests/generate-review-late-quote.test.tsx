@@ -54,8 +54,9 @@ it.each(["transport aborts", "old response processing completes late"] as const)
       orgId="11111111-1111-4111-8111-111111111111" models={models}
       initial={{ capability: "t2i", model: "synthetic-a", prompt: "Synthetic scene", aspect: "16:9", duration: 5 }}
     /></I18nProvider>);
-    const summary = () => page.getByTestId("gen-review");
-    const value = (label: string) => within(summary()).getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
+    // The price key's name carries the server's quote ("Generate · 9 credits"); on main there is no review summary to read it from.
+    const priced = (n: number) => t.gen.generatePriced.replace("{n}", String(n));
+    const keyName = () => page.container.querySelector('[aria-describedby="gen-status"]')?.getAttribute("aria-label") ?? null;
     const jobAttempts = () => fetcher.mock.calls.filter(([url, init]) => url === "/api/creative/jobs" && init?.method === "POST");
     await tick();
     expect(first).toBe(false);
@@ -65,17 +66,14 @@ it.each(["transport aborts", "old response processing completes late"] as const)
     fireEvent.click(option);
     await tick();
     expect(oldSignal!.aborted).toBe(true);
-    expect(value(t.gen.modelLabel)).toBe("Model B");
-    expect(value(t.gen.review.credits)).toBe("9 credits");
+    expect(keyName()).toBe(priced(9));
     expect(jobAttempts()).toHaveLength(0);
-    observations.push({ stage: "newer model quote", model: value(t.gen.modelLabel), credits: value(t.gen.review.credits) });
+    observations.push({ stage: "newer model quote", key: keyName() });
     if (mode === "old response processing completes late") {
       await act(async () => { completeOld({ quote: { credits: 2 } }); });
     }
-    observations.push({ stage: "old quote settled", model: value(t.gen.modelLabel), credits: value(t.gen.review.credits), oldAborted: oldSignal!.aborted, jobAttempts: jobAttempts().length });
-    console.info("NS-216 synthetic observation", JSON.stringify({ mode, observations }));
+    observations.push({ stage: "old quote settled", key: keyName(), oldAborted: oldSignal!.aborted, jobAttempts: jobAttempts().length });
     expect(jobAttempts()).toHaveLength(0);
-    expect(value(t.gen.modelLabel)).toBe("Model B");
-    expect(value(t.gen.review.credits)).toBe("9 credits");
+    expect(keyName()).toBe(priced(9));
   },
 );

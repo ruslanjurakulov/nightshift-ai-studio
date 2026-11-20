@@ -23,7 +23,7 @@ import { KIND_SPEC, type CanvasNode, type CanvasState, type PortType } from "@/l
 import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
 import type { LibraryPreview } from "@/components/studio/useLibraryImages";
-import { LAMP, inputOf, wireCandidates, type JobReading, type NodeStatus } from "./nodeState";
+import { LAMP, inputOf, upstreamWords, wireCandidates, type JobReading, type NodeStatus } from "./nodeState";
 import { KIND_ICONS, Lamp } from "./parts";
 // The composer's desk layout and its "not available" styles: the same sheets /create loads for it.
 import "@/components/studio/desk.css";
@@ -74,9 +74,12 @@ export function nodePrefill(
   node: CanvasNode,
   input: { type: PortType | null; assetId: string | null; text?: string | null } | null,
   models: readonly StudioModel[],
+  /** The chain's words (nodeState upstreamWords): only an animation starts from them, the other file tools keep their own. */
+  chainWords: string | null = null,
 ): StudioPrefill | null {
   const sourceId = input?.assetId ?? null;
-  const words = node.draft || input?.text || "";
+  const cap0 = startCapability(node, input?.type ?? null);
+  const words = node.draft || input?.text || (cap0 === "i2v" ? chainWords ?? "" : "");
   if (node.kind === "effects" && node.effectId) {
     const effect = EFFECTS.find((e) => e.id === node.effectId);
     const pick = effect ? resolveEffect(effect, models) : null;
@@ -195,7 +198,9 @@ export function Inspector({
 
   const only = toolsFor(node, input?.type ?? null);
   const prefill = useMemo(
-    () => seed.prefill ?? nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, data.models),
+    () =>
+      seed.prefill ??
+      nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, data.models, upstreamWords(state, node)),
     // The form mounts once per seed: later typing lives in the form (and in node.draft through onDraft).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [seed, node.id, node.effectId, input?.type],

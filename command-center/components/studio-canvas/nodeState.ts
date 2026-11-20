@@ -91,6 +91,24 @@ export function inputOf(
   return { from, type, assetId: nodeAsset(from, jobs), text: type === "text" ? from.draft.trim() || null : null };
 }
 
+/**
+ * The nearest words up the chain: the wired node's own words, or its prompt's, a few links back. An Image -> Video node
+ * starts from them (the shot usually describes what the picture was made from), so a model that needs words for
+ * image-to-video (registry inputs.prompt_required) is not pressed empty by default. A start only: the person edits them.
+ */
+export function upstreamWords(state: Pick<CanvasState, "nodes" | "wires">, node: CanvasNode): string | null {
+  let at: CanvasNode | undefined = node;
+  for (let hops = 0; hops < 8 && at; hops++) {
+    const w = wireInto(state, at.id);
+    const from: CanvasNode | undefined = w ? state.nodes.find((n) => n.id === w.from) : undefined;
+    if (!from) return null;
+    const words = from.draft.trim();
+    if (words) return words;
+    at = from;
+  }
+  return null;
+}
+
 /** The canvas nodes that could feed this node's input now (the phone and the inspector wire from this list). */
 export function wireCandidates(state: CanvasState, node: CanvasNode): CanvasNode[] {
   const accepts = KIND_SPEC[node.kind].accepts;

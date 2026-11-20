@@ -478,7 +478,7 @@ export function GeneratePanel({
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
-  const ready = canQuote(form);
+  const ready = canQuote(form, current);
 
   // The phone's sticky Generate dock would cover the length chips on the first view;
   // it rests in the flow until the page is scrolled, then sticks above the tab bar.
@@ -754,8 +754,8 @@ export function GeneratePanel({
   const sourced = needsSource(capability);
   const recorded = needsRecording(capability);
   const filmed = needsVideo(capability);
-  const words = promptRule(capability);
-  const blocked = blockedReason(form, !!effectiveModel);
+  const words = promptRule(capability, current);
+  const blocked = blockedReason(form, !!effectiveModel, current);
   // An AI edit tool nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
   const blockedText = pickedOff
     ? t.modelSwitch.studio.offBody
@@ -763,6 +763,9 @@ export function GeneratePanel({
       ? fmt(t.gen.noLength, { model: current.displayName })
       : blocked === "no_model" && isAiEdit(capability)
       ? t.gen.notAvailableYet
+      : blocked === "need_words" && current && promptRule(capability) === "optional"
+      ? // Optional for the kind, required by this model (registry inputs.prompt_required): say which model and what it needs.
+        fmt(t.gen.blocked.need_motion_words, { model: current.displayName })
       : blocked
         ? t.gen.blocked[blocked]
         : null;

@@ -2347,7 +2347,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
@@ -2446,7 +2447,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
@@ -2545,7 +2547,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
@@ -2644,7 +2647,8 @@
       ],
       "output": "video",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "prompt_required": ["t2v", "i2v"]
       },
       "aspect_ratios": [
         "21:9",
