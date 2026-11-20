@@ -50,7 +50,7 @@ export interface ModelActivity {
   lastAt: string | null;
   lastStatus: string | null;
   lastErrorCode: string | null;
-  /** The model's last completed job, and its last refusal for want of balance — routing failovers included (0183). */
+  /** The model's last completed job, and its last refusal for want of balance — routing failovers included (0184). */
   lastOkAt: string | null;
   lastQuotaAt: string | null;
 }
@@ -114,7 +114,7 @@ export interface RunwayData {
   registry: RegistryPrice[] | null;
   /** The job counts could not be read (a timeout, a refusal): "empty" cannot be detected. */
   activityUnread: boolean;
-  /** Jobs per model since the window start, over 7 days and over 24 hours; null when 0183's function could not be read. */
+  /** Jobs per model since the window start, over 7 days and over 24 hours; null when 0184's function could not be read. */
   activity: { all: ModelActivity[] | null; d7: ModelActivity[] | null; d1: ModelActivity[] | null; missing: boolean };
 }
 
@@ -365,7 +365,7 @@ export function providerRunways(x: RunwayData): ProviderRunway[] {
     const quotaAt = lastQuota !== null && (lastOk === null || Date.parse(lastQuota) > Date.parse(lastOk)) ? lastQuota : null;
     const autoRecharge = st?.auto_recharge_on_provider ?? false;
     const lowDays = st?.low_balance_days ?? LOW_RUNWAY_DAYS;
-    // Without 0183's job counts, unread counts or an unread registry, a refusal for want of balance cannot be seen.
+    // Without 0184's job counts, unread counts or an unread registry, a refusal for want of balance cannot be seen.
     const emptyUnchecked = x.activityUnread || x.activity.missing || x.registry === null;
     const status: RunwayStatus = quotaAt
       ? "empty"

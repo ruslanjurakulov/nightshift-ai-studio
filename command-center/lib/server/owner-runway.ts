@@ -19,9 +19,9 @@ import { coerceModelActivity, type ModelActivity, type RunwayData } from "@/lib/
 
 /**
  * The provider runway's reads: the same tables, windows and paging the Billing page uses (app/(app)/[channel]/billing), so
- * the hub's "left" and "spent" can never disagree with Billing's — plus 0183's owner_analytics_model_activity for jobs per
+ * the hub's "left" and "spent" can never disagree with Billing's — plus 0184's owner_analytics_model_activity for jobs per
  * model and how the newest one ended. Owner only: the caller has passed ownerAccess(); RLS on the provider tables answers
- * the platform operator, and the 0183 function checks the owner again.
+ * the platform operator, and the 0184 function checks the owner again.
  */
 
 const DAY = 86_400_000;

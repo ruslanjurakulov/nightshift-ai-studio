@@ -178,8 +178,8 @@ class Numbering(unittest.TestCase):
         # 0174 (rights acknowledgement: two tables, a model_registry column, four functions, two hunks in 0075's create_creative_job)
         # was reviewed the same way: it reads, replaces and alters nothing of 0131's.
         # 0182 (owner analytics: two closed tables, owner-only read functions, one index on dodo_checkout_nonces; names nothing these pin)
-        # 0183 (owner costs: one closed table, owner-only functions over creative_job_costs, video_costs, provider_balances)
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183")], [], "a later number needs its own review of this file's pins")
+        # 0184 (owner costs: one closed table, owner-only functions over creative_job_costs, video_costs, provider_balances)
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0184")], [], "a later number needs its own review of this file's pins")
         later = next(MIG.glob("0134_*.sql")).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertNotRegex(code(later), r"\balter table\b")

@@ -1,4 +1,4 @@
-"""Named attacks and the arithmetic of the owner analytics hub's costs (migration 0183).
+"""Named attacks and the arithmetic of the owner analytics hub's costs (migration 0184).
 
 The functions read every provider's cost and every balance, and write the owner's own cost entries and manual balances. So:
 everyone but the platform owner is refused (an admin too) before anything is read; anon and the service role cannot execute

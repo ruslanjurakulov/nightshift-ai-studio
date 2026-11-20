@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Owner analytics — costs and profit (migration 0183). Provider spend from what each job's provider cost when it ran, balances
+ * Owner analytics — costs and profit (migration 0184). Provider spend from what each job's provider cost when it ran, balances
  * only where the provider reports one (or the owner typed one in, and it says so), and the owner's own monthly costs. Profit is
  * computed here, at request time, for this screen only: it is never stored, published or logged.
  */
