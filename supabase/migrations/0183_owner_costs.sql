@@ -331,6 +331,80 @@ grant execute on function public.owner_analytics_cost_delete(bigint) to authenti
 grant execute on function public.owner_analytics_costs(date, date) to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- 3b. Provider runway: what each model's jobs did, and how the last one ended
+-- ───────────────────────────────────────────────────────────────────────────
+-- The provider runway view (owner analytics, costs tab) takes what was spent, bought and left from the same ledger the Billing
+-- page uses (command-center/lib/billing.ts). What that ledger cannot say is how many jobs each model ran and whether the
+-- newest one was refused for want of balance: a provider whose last job failed with error_code 'quota' is EMPTY whatever an
+-- estimate says is left. Every workspace's jobs count — the operator's own included — because every one spends the provider's
+-- balance. Counts and the newest job only; no amount, no customer.
+
+create or replace function public.owner_analytics_model_activity(p_from timestamptz, p_to timestamptz)
+  returns table (
+    model           text,
+    unit            text,
+    jobs            bigint,
+    completed       bigint,
+    failed          bigint,
+    quota_failed    bigint,
+    units           numeric,
+    units_counted   bigint,
+    first_at        timestamptz,
+    last_at         timestamptz,
+    last_status     text,
+    last_error_code text
+  )
+  language plpgsql stable security definer set search_path = public, pg_temp
+as $$
+#variable_conflict use_column
+begin
+  if not public.owner_analytics_is_owner() then
+    raise exception 'not available' using errcode = '42501';
+  end if;
+  if p_from is null or p_to is null or p_to <= p_from or p_to - p_from > interval '200 days' then
+    raise exception 'a window is a start before its end, at most 200 days' using errcode = '22023';
+  end if;
+
+  return query
+  with w as (
+    select coalesce(j.routed_model, j.requested_model, 'unknown') as m,
+           coalesce(j.credit_unit, 'unknown') as u,
+           j.status, j.error_code, j.quantity, j.created_at
+      from public.creative_jobs j
+     where j.created_at >= p_from and j.created_at < p_to
+  ),
+  newest as (
+    select distinct on (w.m) w.m, w.status, w.error_code
+      from w
+     order by w.m, w.created_at desc
+  )
+  select w.m, w.u,
+         count(*),
+         count(*) filter (where w.status = 'completed'),
+         count(*) filter (where w.status = 'failed'),
+         count(*) filter (where w.status = 'failed' and w.error_code = 'quota'),
+         coalesce(sum(w.quantity), 0),
+         -- How many jobs said how much they used: a job with no quantity must not read as one that used nothing.
+         count(w.quantity),
+         min(w.created_at),
+         max(w.created_at),
+         n.status,
+         n.error_code
+    from w
+    join newest n on n.m = w.m
+   group by w.m, w.u, n.status, n.error_code
+   order by 1, 2
+   limit 5000;
+end
+$$;
+
+comment on function public.owner_analytics_model_activity(timestamptz, timestamptz) is
+  'Migration 0183: creative jobs in [p_from, p_to) by model and unit — counts by outcome, units used, first and last time — and how the newest job of each model ended (status, error_code). At most 200 days. Platform owner only; read-only.';
+
+revoke all on function public.owner_analytics_model_activity(timestamptz, timestamptz) from public, anon, authenticated, service_role;
+grant execute on function public.owner_analytics_model_activity(timestamptz, timestamptz) to authenticated;
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- 4. End state
 -- ───────────────────────────────────────────────────────────────────────────
 
@@ -345,7 +419,8 @@ begin
     'public.owner_analytics_balance_enter(text, text, double precision, text)',
     'public.owner_analytics_cost_add(date, text, numeric, text)',
     'public.owner_analytics_cost_delete(bigint)',
-    'public.owner_analytics_costs(date, date)'
+    'public.owner_analytics_costs(date, date)',
+    'public.owner_analytics_model_activity(timestamp with time zone, timestamp with time zone)'
   ] loop
     fn := to_regprocedure(sig);
     if fn is null then

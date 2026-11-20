@@ -9,6 +9,7 @@
 begin;
 set local lock_timeout = '5s';
 
+drop function if exists public.owner_analytics_model_activity(timestamptz, timestamptz);
 drop function if exists public.owner_analytics_costs(date, date);
 drop function if exists public.owner_analytics_cost_delete(bigint);
 drop function if exists public.owner_analytics_cost_add(date, text, numeric, text);

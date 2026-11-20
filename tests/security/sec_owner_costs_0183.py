@@ -22,6 +22,7 @@ def extend(tables: dict, functions: dict) -> None:
         "owner_analytics_cost_add": USER,
         "owner_analytics_cost_delete": USER,
         "owner_analytics_costs": USER,
+        "owner_analytics_model_activity": USER,
         "owner_costs_write_guard": SERVICE,
     })
 
