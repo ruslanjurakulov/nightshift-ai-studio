@@ -1602,6 +1602,7 @@ export function TimelineEditor({
               onRetry={() => startFrameExports(isExportFrameChoice(choice) ? [choice] : [])}
               onCheckNow={poll.checkNow}
               quietRetry={draft.resume.kind === "restore"}
+              captions={(captionsOf(model)?.cues.length ?? 0) > 0}
               heading={fmt(te.exportRatios.panelFor, {
                 name: x.frame
                   ? `${frameName(choice)} · ${fmt(te.exportRatios.size, { w: x.frame.width, h: x.frame.height })}`
@@ -1628,6 +1629,7 @@ export function TimelineEditor({
           onRetry={startExport}
           onCheckNow={poll.checkNow}
           quietRetry={draft.resume.kind === "restore"}
+          captions={(captionsOf(model)?.cues.length ?? 0) > 0}
         />
       ) : null}
 

@@ -8,6 +8,7 @@ import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { libraryUxUz } from "./library-ux/uz";
+import { assetDownloadUz } from "./asset-download/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
@@ -59,6 +60,7 @@ export const uz: Dictionary = {
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
+  assetDownload: assetDownloadUz,
   ownerShell: ownerShellUz,
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,

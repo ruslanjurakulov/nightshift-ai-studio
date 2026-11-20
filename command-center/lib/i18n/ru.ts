@@ -8,6 +8,7 @@ import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { libraryUxRu } from "./library-ux/ru";
+import { assetDownloadRu } from "./asset-download/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
@@ -59,6 +60,7 @@ export const ru: Dictionary = {
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
+  assetDownload: assetDownloadRu,
   ownerShell: ownerShellRu,
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
