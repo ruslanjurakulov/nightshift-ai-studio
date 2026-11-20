@@ -126,7 +126,7 @@ the PR that enables them.
 | Google — Imagen 4 | t2i | Yes (docs found, third-party summaries of Gemini API) | https://ai.google.dev/gemini-api/docs (Imagen) | `x-goog-api-key` | Sync | Not wired; ids seen as `imagen-4.0-*-preview-06-06` — **could not confirm current ids**. |
 | Google — Veo | t2v, i2v, native audio | Yes (docs found) | https://ai.google.dev/gemini-api/docs/video | `x-goog-api-key` | Async (`predictLongRunning` → operation poll) | Docs reference `veo-3.1-generate-preview`; our default is **`veo-3.0-generate-preview` (stale)**. |
 | Kling (Kuaishou) | t2v, i2v, extend, lip-sync, effects, Kolors image | Yes (docs found) | https://app.klingai.com/global/dev (keys), https://kling.ai/document-api | **JWT (HS256) signed from Access Key + Secret Key, 30 min expiry** | Async (task → query) | Our generic client sends the key as a plain Bearer → **will not authenticate as written**; default model `kling-v1` is old. Needs its own adapter. |
-| Runway | t2v, i2v (Gen-4 Turbo, Gen-4.5), image, TTS/SFX (seed_audio) | Yes (docs found) | https://docs.dev.runwayml.com, https://dev.runwayml.com/models | Bearer + version header | Async (task poll) | Separate developer credit pool ($0.01/credit per third-party summary — confirm). Not wired. |
+| Runway | t2v, i2v (Gen-4 Turbo, Gen-4.5), image, TTS/SFX (seed_audio) | Yes (docs found) | https://docs.dev.runwayml.com, https://dev.runwayml.com/models | Bearer + version header | Async (task poll) | Separate developer credit pool (credit price per third-party summary — confirm on the vendor pricing page). Not wired. |
 | Luma | t2v, i2v, keyframes, extend (Ray 2 / Ray 2 Flash); Ray 3.x via separate "Agents API" | Yes (docs found) | https://docs.lumalabs.ai/docs/python-video-generation, https://lumalabs.ai/dream-machine/api | Bearer | Async (generation poll) | Not wired. |
 | MiniMax / Hailuo | t2v, i2v, subject ref; TTS; music | Yes (docs found) | https://platform.minimax.io/docs/api-reference/video-generation-i2v, https://www.minimax.io/news/minimax-hailuo-23 | Bearer | Async (task → query → file retrieve) | Docs show `MiniMax-Hailuo-2.3` on `api.minimax.io/v1/video_generation`. Our default `MINIMAX_H3_MODEL="MiniMax-H3"` — **could not verify that this is a video-generation model id**; probe before relying on it. |
 | ByteDance Seedance | t2v, i2v, first/last frame, reference-to-video, optional audio | Yes (BytePlus ModelArk docs found) | https://docs.byteplus.com/en/docs/ModelArk/1587798 | Bearer (ModelArk key) | Async (task) | Our default base URL is **Volcengine China (`ark.cn-beijing.volces.com`)**; international accounts use BytePlus ModelArk. Region/account decision needed. |
@@ -518,10 +518,9 @@ use; `model_registry.entitlement` names the plan entitlement a model needs.
 
 - 1 credit ≈ $0.01 retail (0031's own reasoning); the pipeline sells ~60
   credits per finished minute. Generative video is priced **per second by the
-  provider** and is far more expensive than a pipeline minute: at a
-  third-party-reported $0.05–$0.12 per second (Runway Gen-4 Turbo / 4.5) an
-  8 s clip costs $0.40–$0.96 → **~120–290 credits at the usual ~3× markup**,
-  more than a whole pipeline minute. Premium models cost more. Welcome credits
+  provider** and is far more expensive than a pipeline minute: at the
+  third-party-reported per-second rates (Runway Gen-4 Turbo / 4.5) one 8 s
+  clip, once priced in credits, costs **more than a whole pipeline minute**. Premium models cost more. Welcome credits
   (100) buy very little video → the quote-before-spend UX is mandatory.
 - Every price is **pinned from the vendor's page in the enabling PR** and
   stored with `source_url` + `as_of`; this plan asserts none of them as fact.

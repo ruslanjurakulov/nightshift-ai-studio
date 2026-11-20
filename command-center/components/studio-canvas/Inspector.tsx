@@ -25,6 +25,7 @@ import type { StudioDna } from "@/lib/channel-dna";
 import type { LibraryPreview } from "@/components/studio/useLibraryImages";
 import { LAMP, inputOf, upstreamWords, wireCandidates, type JobReading, type NodeStatus } from "./nodeState";
 import { KIND_ICONS, Lamp } from "./parts";
+import { SceneActionContext } from "./SceneActionContext";
 // The composer's desk layout and its "not available" styles: the same sheets /create loads for it.
 import "@/components/studio/desk.css";
 import "@/components/studio/availability.css";
@@ -311,6 +312,8 @@ export function Inspector({
         )}
 
         {reading?.state === "unknown" && <p className="cv-note is-warn">{c.node.unknown}</p>}
+
+        <SceneActionContext capabilities={only} source={input ? { type: input.type, assetId: input.assetId } : null} />
 
         <section className="cv-form">
           {node.kind === "prompt" ? (

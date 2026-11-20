@@ -27,6 +27,8 @@ import { SEARCH_MAX, cleanSearch, type FolderError } from "@/lib/media-folders";
 import { KIND_ICON } from "./kindIcon";
 import { LibrarySkeleton } from "./LibrarySkeleton";
 import { MediaViewer } from "./MediaViewer";
+import { SavedAssetComparison } from "./SavedAssetComparison";
+import { savedAssetComparisonInput } from "./savedAssetComparisonInput";
 import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
 import type { StudioModel } from "@/lib/creative/studio";
@@ -175,6 +177,13 @@ export function MediaLibrary({
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [comparison, setComparison] = useState<{ ids: readonly [string, string]; origin: string } | null>(null);
+  const compareButton = useRef<HTMLButtonElement>(null);
+  const comparisonRegion = useRef<HTMLDivElement>(null);
+  const closeComparison = useCallback(() => {
+    setComparison(null);
+    focusNext.current = () => compareButton.current?.isConnected && !compareButton.current.disabled ? compareButton.current : selectButton.current;
+  }, []);
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -395,6 +404,21 @@ export function MediaLibrary({
     () => visibleUploads((data?.uploads ?? []).filter((u) => folder === null || u.folderId === folder), view),
     [data, view, folder],
   );
+  const comparisonAllowed = selecting && !viewerId && !dialog && !bulkConfirm && !bulkBusy;
+  const comparisonOrigin = typeof window === "undefined" ? "" : window.location.origin;
+  const compareReady = comparisonAllowed ? savedAssetComparisonInput(shown, [...selected], comparisonOrigin) : null;
+  const comparisonInput = comparison && comparisonAllowed && comparison.ids.every((id) => selected.has(id))
+    ? savedAssetComparisonInput(shown, comparison.ids, comparison.origin) : null;
+  const comparisonOpen = Boolean(comparisonInput?.ok);
+  useEffect(() => {
+    if (!comparison || comparisonOpen) return;
+    // A newly opened viewer/dialog or bulk action owns focus; do not pull it back to Compare.
+    if (viewerId || dialog || bulkConfirm || bulkBusy) setComparison(null);
+    else closeComparison();
+  }, [comparison, comparisonOpen, closeComparison, viewerId, dialog, bulkConfirm, bulkBusy]);
+  useEffect(() => {
+    if (comparisonOpen) comparisonRegion.current?.focus();
+  }, [comparisonOpen]);
   const viewerIndex = viewerId ? shown.findIndex((a) => a.id === viewerId) : -1;
 
   // The open file left the grid (deleted elsewhere, filtered away): the viewer closes.
@@ -422,6 +446,11 @@ export function MediaLibrary({
     if (!selecting || viewerId || dialogOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (comparisonOpen) {
+        e.preventDefault();
+        closeComparison();
+        return;
+      }
       const el = e.target instanceof HTMLElement ? e.target : null;
       if (el && ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)) return;
       if (bulkBusy) return;
@@ -434,7 +463,7 @@ export function MediaLibrary({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selecting, viewerId, dialogOpen, bulkConfirm, bulkBusy, selected.size]);
+  }, [selecting, viewerId, dialogOpen, bulkConfirm, bulkBusy, selected.size, comparisonOpen, closeComparison]);
 
   // A folder that is gone (deleted in another tab): back to All files.
   useEffect(() => {
@@ -1242,6 +1271,13 @@ export function MediaLibrary({
                     </>
                   ) : (
                     <>
+                      <button ref={compareButton} type="button" className="btn-quiet" disabled={!compareReady?.ok}
+                        onClick={() => {
+                          if (!compareReady?.ok) return;
+                          setComparison({ ids: [compareReady.left.id, compareReady.right.id], origin: comparisonOrigin });
+                        }}>
+                        {tm.comparison.action}
+                      </button>
                       {foldersOn && canEditFolders && (
                         <button
                           ref={moveButton}
@@ -1279,6 +1315,13 @@ export function MediaLibrary({
             {/* A phone's bar is fixed above the tab bar: keep the last row of tiles clear of it. */}
             {selecting && <div aria-hidden className="lg:hidden" style={{ height: `calc(${barH + 92}px + env(safe-area-inset-bottom))` }} />}
           </section>
+        </div>
+      )}
+
+      {comparisonInput?.ok && (
+        <div ref={comparisonRegion} tabIndex={-1} data-library-comparison className="min-w-0 outline-none">
+          <SavedAssetComparison left={comparisonInput.left} right={comparisonInput.right}
+            labels={{ ...tm.comparison, version: (n) => fmt(tm.comparison.version, { n }) }} onDismiss={closeComparison} />
         </div>
       )}
 

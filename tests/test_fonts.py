@@ -11,6 +11,10 @@ pinned here is what would otherwise break silently in one language:
   (Needs fontTools AND brotli, which fontTools needs to read .woff2: skipped where
   either is not installed, as in the bot's CI image.)
 * the licence text for every shipped face is in the repo.
+
+Two faces, on purpose: Onest for everything a person reads or presses, and
+Unbounded (SIL OFL 1.1) for display headings only (app/tokens.css .ds-display,
+docs/design/TOKENS.md). A third face fails here.
 """
 
 import re
@@ -38,7 +42,8 @@ def cmap(name):
 class FontFiles(unittest.TestCase):
     def test_every_file_in_the_css_exists(self):
         urls = re.findall(r'url\("(/fonts/[^"]+)"\)', CSS)
-        self.assertEqual(len(urls), 4, urls)
+        # Onest and the display face, Unbounded: four subsets each.
+        self.assertEqual(len(urls), 8, urls)
         for url in urls:
             self.assertTrue((APP / "public" / url.lstrip("/")).is_file(), url)
 
@@ -48,13 +53,18 @@ class FontFiles(unittest.TestCase):
         self.assertLess(latin, 150_000)
         self.assertLess(latin + cyr, 150_000)  # Russian preloads both
 
-    def test_no_second_webfont(self):
+    def test_display_face_is_preloaded_only_where_shown(self):
+        # Unbounded is 50 KB: the root layout must not preload it for every app screen.
+        layout = (APP / "app" / "layout.tsx").read_text(encoding="utf-8")
+        self.assertNotIn("preloadDisplayFont", layout)
+
+    def test_no_third_webfont(self):
         # the wordmark is a vector drawing (components/site/Wordmark.tsx), not a font
         families = set(re.findall(r'font-family: "([^"]+)"', CSS))
-        self.assertEqual(families, {"Onest", "Onest Fallback"})
+        self.assertEqual(families, {"Onest", "Onest Fallback", "Unbounded", "Unbounded Fallback", "Unbounded Fallback Uz"})
 
     def test_licences_are_shipped(self):
-        for name in ("OFL-Onest.txt", "OFL-SofiaSans.txt"):
+        for name in ("OFL-Onest.txt", "OFL-SofiaSans.txt", "OFL-Unbounded.txt"):
             text = (APP / "brand" / "og-fonts" / name).read_text(encoding="utf-8")
             self.assertIn("SIL OPEN FONT LICENSE Version 1.1", text)
 
@@ -74,6 +84,16 @@ class FontCoverage(unittest.TestCase):
 
     def test_tabular_figures(self):
         feats = {fr.FeatureTag for fr in TTFont(str(FONTS / "onest-latin-v1.woff2"))["GSUB"].table.FeatureList.FeatureRecord}
+        self.assertIn("tnum", feats)
+
+    def test_display_face_covers_uzbek_and_has_tabular_digits(self):
+        c = cmap("unbounded-latin-v1.woff2")
+        for ch in "oʻgʻOʻGʻʼ’0123456789":
+            self.assertIn(ord(ch), c, f"U+{ord(ch):04X} {ch!r} missing from the display face's Latin file")
+        c = cmap("unbounded-cyrillic-v1.woff2")
+        for code in list(range(0x410, 0x450)) + [0x401, 0x451]:
+            self.assertIn(code, c, f"U+{code:04X} missing from the display face's Cyrillic file")
+        feats = {fr.FeatureTag for fr in TTFont(str(FONTS / "unbounded-latin-v1.woff2"))["GSUB"].table.FeatureList.FeatureRecord}
         self.assertIn("tnum", feats)
 
     def test_is_a_variable_font_over_the_three_weights_we_use(self):

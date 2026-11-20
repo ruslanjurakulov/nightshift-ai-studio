@@ -453,7 +453,7 @@ class RunwayAdapter(HttpAdapter):
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        #: ``cost.credits`` per task as Runway reported it ($0.01 a credit): printed beside a probe's OK so the registry's
+        #: ``cost.credits`` per task as Runway reported it (credits at the developer portal's rate): printed beside a probe's OK so the registry's
         #: per-second figure can be compared with a real bill before anyone sets pricing.confirmed.
         self.credits_reported: Dict[str, float] = {}
 

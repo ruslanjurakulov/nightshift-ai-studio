@@ -12,6 +12,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { deskHref } from "@/lib/creative/desks";
 import { Wordmark } from "@/components/site/Wordmark";
 import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Button, buttonClass } from "@/components/ds/Button";
 import { newChannelHref } from "@/lib/welcome";
 import { AudioLines, Clapperboard, Image as ImageIcon } from "lucide-react";
 import { createHref } from "@/lib/customer/create";
@@ -166,9 +167,9 @@ export function WelcomeFlow({
             </p>
           )}
           <div className="g5-actions" style={{ justifyContent: "flex-end" }}>
-            <button type="submit" disabled={busy || validateOrgName(name) === null} className="btn-primary disabled:opacity-40">
-              {busy ? t.signup.wsCreating : t.signup.wsCreate}
-            </button>
+            <Button type="submit" variant="primary" loading={busy} busyLabel={t.signup.wsCreating} disabled={validateOrgName(name) === null}>
+              {t.signup.wsCreate}
+            </Button>
           </div>
         </form>
       )}
@@ -191,14 +192,14 @@ export function WelcomeFlow({
                   <p className="g5-row-meta">{t.customerApp.welcome[kind]}</p>
                 </div>
                 {/* A full load: the app's layout reads the workspace just made (its cookie) on the server. It opens a form only. */}
-                <a href={at(createHref(kind))} onClick={rememberAllChannels} className="btn-quiet">
+                <a href={at(createHref(kind))} onClick={rememberAllChannels} className={buttonClass({ variant: "secondary", size: "sm" })}>
                   {t.signup.open} →
                 </a>
               </li>
             ))}
           </ul>
           <div className="g5-actions" style={{ justifyContent: "flex-end" }}>
-            <button type="button" onClick={() => setIndex(index + 1)} className="btn-quiet">
+            <button type="button" onClick={() => setIndex(index + 1)} className={buttonClass({ variant: "quiet" })}>
               {t.signup.skip}
             </button>
           </div>
@@ -232,7 +233,7 @@ export function WelcomeFlow({
                 (contactEmail ? (
                   <a
                     href={`mailto:${contactEmail}?subject=${encodeURIComponent(t.signup.requestSubject)}`}
-                    className="btn-quiet mt-3 inline-flex"
+                    className={buttonClass({ variant: "secondary", size: "sm", className: "mt-3" })}
                   >
                     {t.signup.requestConnection}
                   </a>
@@ -250,7 +251,7 @@ export function WelcomeFlow({
             </button>
             {/* A full load, not a client navigation: the (app) layout must read the new workspace's cookie on the server, and
                 a client transition could replay an answer cached before the workspace existed. */}
-            <a href={next ?? home} onClick={rememberAllChannels} className="btn-primary">
+            <a href={next ?? home} onClick={rememberAllChannels} className={buttonClass({ variant: "primary" })}>
               {next ? t.signup.finishStudio : t.signup.finish}
             </a>
           </div>
@@ -341,7 +342,7 @@ function Item({
       {done ? (
         <StatusLamp tone="ok" label={t.signup.done} />
       ) : href ? (
-        <Link href={href} className="btn-quiet">
+        <Link href={href} className={buttonClass({ variant: "secondary", size: "sm" })}>
           {t.signup.open} →
         </Link>
       ) : (

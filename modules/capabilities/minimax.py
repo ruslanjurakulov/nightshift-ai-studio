@@ -131,7 +131,7 @@ class MiniMaxH3Adapter(SafeResultMixin, HttpAdapter):
     RATIOS = ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16")
     SPECS = {
         "MiniMax-H3": {"resolutions": {"768p": "768P", "2k": "2K"}, "durations": _DURATIONS},
-        # 480P for Highspeed is in the create API's resolution list and on the pricing page ($0.04/s), both read 2026-11-13.
+        # 480P for Highspeed is in the create API's resolution list and on the vendor pricing page, both read 2026-11-13.
         "MiniMax-H3-Highspeed": {"resolutions": {"480p": "480P", "768p": "768P"}, "durations": _DURATIONS},
         "MiniMax-H3-Lite": {"resolutions": {"480p": "480P", "768p": "768P"}, "durations": _DURATIONS},
         "MiniMax-H3-Max": {"resolutions": {"480p": "480P", "768p": "768P"}, "durations": tuple(range(5, 16))},

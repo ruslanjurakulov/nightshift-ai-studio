@@ -13,7 +13,7 @@ Only providers that expose a balance endpoint are read:
   * Runway     — ``GET /v1/organization`` (header ``X-Runway-Version: 2024-11-06``)
     → ``creditBalance``, "the number of credits remaining in the organization
     account" (docs.dev.runwayml.com/api.md, read 2026-11-13). Credits are bought
-    at $0.01 each in Runway's developer portal (guides/pricing, same day).
+    in Runway's developer portal (guides/pricing, same day).
 
 Every other provider has no balance API (Gemini bills through Google Cloud,
 video providers through their own dashboards), so nothing is written for them
