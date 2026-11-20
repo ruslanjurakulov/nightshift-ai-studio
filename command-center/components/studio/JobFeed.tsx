@@ -320,7 +320,8 @@ export function JobFeed({
   );
   const chip = "studio-chip tap";
   // Square keys on the picture: named for screen readers and on hover; 44px on a phone.
-  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11";
+  // 44 px on any touch screen (a tablet is wider than `sm` and still a finger), 36 px under a mouse.
+  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11 pointer-coarse:size-11";
 
   // The one shown large on a monitor or a light table (featuredJob below).
   const featured = variant === "monitor" || variant === "table" ? featuredJob(shown, featuredId) : null;
@@ -997,7 +998,8 @@ function DownloadKey({ assetId, className }: { assetId: string; className: strin
   return (
     <button
       type="button"
-      className={className}
+      // A failure is said in words on the card, not only in a tooltip a phone never shows: the key widens to hold them.
+      className={state === "failed" ? `${className} !inline-flex !w-auto max-w-[16rem] items-center gap-1.5 px-2.5 text-left text-xs font-semibold` : className}
       onClick={() => void save()}
       aria-label={label}
       title={label}
@@ -1006,7 +1008,12 @@ function DownloadKey({ assetId, className }: { assetId: string; className: strin
       data-state={state}
     >
       {state === "failed" ? (
-        <TriangleAlert aria-hidden className="size-4" />
+        <>
+          <TriangleAlert aria-hidden className="size-4 shrink-0" />
+          <span aria-hidden className="min-w-0 break-words" data-testid="result-download-reason">
+            {label}
+          </span>
+        </>
       ) : state === "busy" ? (
         <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" />
       ) : (
