@@ -355,4 +355,10 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   forecastCosts: "Xarajatlar",
   reportFull: "Toʻliq hisobot",
   useValue: "{value} ni olish",
+  runwayNativeNote: "provayderning oʻz birligida pipeline sarfiga nisbatan hisoblangan, Billing sahifasidagidek",
+  runwayPipelineStale: "bu oraliq uchun pipeline xarajati hali koʻchirilmagan",
+  runwayEmptyUnchecked: "provayder balans yetmagani uchun rad etayotganini tekshirib boʻlmadi",
+  runwayPipelineAsOf: "Pipeline xarajati oxirgi tungi koʻchirish holatiga: {when}.",
+  runwaySpendBasis: "Xarajat",
+  runwayBilled: "yetkazib beruvchi hisobi",
 };

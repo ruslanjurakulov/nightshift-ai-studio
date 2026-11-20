@@ -355,4 +355,10 @@ export const ownerAnalyticsRu: OwnerAnalyticsDictionary = {
   forecastCosts: "Расходы",
   reportFull: "Полный отчёт",
   useValue: "Взять {value}",
+  runwayNativeNote: "считается в единицах провайдера по расходу пайплайна, как на Billing",
+  runwayPipelineStale: "расходы пайплайна за это окно ещё не перенесены",
+  runwayEmptyUnchecked: "не удалось проверить, отказывает ли провайдер из-за нехватки баланса",
+  runwayPipelineAsOf: "Расходы пайплайна на момент последнего ночного переноса: {when}.",
+  runwaySpendBasis: "Расход —",
+  runwayBilled: "счёт поставщика",
 };

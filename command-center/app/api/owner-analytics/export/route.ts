@@ -56,8 +56,9 @@ export const POST = requireSameOrigin(async (request: Request) => {
   const audit = await supabase.rpc("owner_analytics_record_export", {
     p_what: what,
     p_format: format,
-    p_from: sel.current.from,
-    p_to: sel.current.to,
+    // A runway file holds up to 180 days to now, whatever period is picked: the audit row says what the file actually covers.
+    p_from: what.startsWith("runway.") ? new Date(Date.now() - 180 * 86_400_000).toISOString() : sel.current.from,
+    p_to: what.startsWith("runway.") ? new Date().toISOString() : sel.current.to,
     p_present: present,
   });
   if (audit.error) {

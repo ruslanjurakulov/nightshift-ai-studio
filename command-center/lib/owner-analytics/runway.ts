@@ -17,6 +17,7 @@ import {
   billingIdFor,
   daysLeft,
   isTracked,
+  providerBurn,
   providerLedger,
   providerSpendSince,
   type BalanceRow,
@@ -49,6 +50,9 @@ export interface ModelActivity {
   lastAt: string | null;
   lastStatus: string | null;
   lastErrorCode: string | null;
+  /** The model's last completed job, and its last refusal for want of balance — routing failovers included (0183). */
+  lastOkAt: string | null;
+  lastQuotaAt: string | null;
 }
 
 const num = (v: unknown): number | null => {
@@ -79,6 +83,8 @@ export function coerceModelActivity(data: unknown): ModelActivity[] {
       lastAt: str(o.last_at),
       lastStatus: str(o.last_status),
       lastErrorCode: str(o.last_error_code),
+      lastOkAt: str(o.last_ok_at),
+      lastQuotaAt: str(o.last_quota_at),
     });
   }
   return out;
@@ -96,6 +102,8 @@ export interface RunwayData {
   settings: BillingSettingsRow[] | null;
   pipelineRows: CostRowLite[];
   pipelineUnread: boolean;
+  /** When the nightly mirror last wrote a pipeline cost row: pipeline spend is known only up to here. */
+  lastSyncMs: number | null;
   pipelineFromMs: number | null;
   studioRows: StudioCostRow[];
   studioUnread: boolean;
@@ -104,6 +112,8 @@ export interface RunwayData {
   probesUnread: boolean;
   probesFromMs: number | null;
   registry: RegistryPrice[] | null;
+  /** The job counts could not be read (a timeout, a refusal): "empty" cannot be detected. */
+  activityUnread: boolean;
   /** Jobs per model since the window start, over 7 days and over 24 hours; null when 0183's function could not be read. */
   activity: { all: ModelActivity[] | null; d7: ModelActivity[] | null; d1: ModelActivity[] | null; missing: boolean };
 }
@@ -128,6 +138,8 @@ export interface ModelRunway {
   lastAt: string | null;
   lastStatus: string | null;
   lastErrorCode: string | null;
+  lastOkAt: string | null;
+  lastQuotaAt: string | null;
 }
 
 export interface ProviderRunway {
@@ -136,6 +148,13 @@ export interface ProviderRunway {
   ledger: ProviderLedger;
   /** Left in USD, the figure the runway is computed from; null when unknown. */
   leftUsd: number | null;
+  /** The provider's own reading in its own unit (credits, tokens…), when it reported one. */
+  leftNative: { amount: number; unit: string } | null;
+  /** The runway is counted in the provider's own unit (its reading against the pipeline's use of that unit), as Billing does. */
+  nativeRunway: boolean;
+  /** What "runs out" divides: left and the 7-day pace, in USD or in the native unit (`nativeRunway`); null when unknown. */
+  left: number | null;
+  perDay7d: number | null;
   /** When the provider's own reading was taken (reported balances only). */
   checkedAt: string | null;
   usd24h: number | null;
@@ -151,8 +170,12 @@ export interface ProviderRunway {
   status: RunwayStatus;
   /** The newest job or probe was refused for want of balance (error_code 'quota'), and when. */
   quotaAt: string | null;
-  /** Spend was recorded before the first top-up: what the balance was before tracking began is not known. */
+  /** Spend was recorded before the first top-up — or the reads do not reach before it — so the balance before tracking is unknown. */
   beforeTrackingUnknown: boolean;
+  /** The 24-hour or 7-day pipeline share is not known yet: the nightly mirror has not written that far. */
+  pipelineStale: boolean;
+  /** "Empty" could not be checked (job counts or the registry unread). */
+  emptyUnchecked: boolean;
   /** The provider recharges itself (provider_billing_settings): no "low" warning. */
   autoRecharge: boolean;
   models: ModelRunway[];
@@ -207,6 +230,8 @@ function modelsOf(p: BilledProvider, x: RunwayData): ModelRunway[] {
         lastAt: null,
         lastStatus: null,
         lastErrorCode: null,
+        lastOkAt: null,
+        lastQuotaAt: null,
       };
       byModel.set(model, r);
     }
@@ -229,6 +254,8 @@ function modelsOf(p: BilledProvider, x: RunwayData): ModelRunway[] {
       r.lastStatus = a.lastStatus;
       r.lastErrorCode = a.lastErrorCode;
     }
+    r.lastOkAt = later(r.lastOkAt, a.lastOkAt);
+    r.lastQuotaAt = later(r.lastQuotaAt, a.lastQuotaAt);
   }
   // Studio cost rows name the vendor's model id; the registry maps it back to the registry model the jobs carry.
   const regOfVendor = (vendorModel: string | null) => reg.find((m) => m.billingId === p.id && vendorModel !== null && m.vendorModels.includes(vendorModel))?.id;
@@ -258,8 +285,11 @@ function modelsOf(p: BilledProvider, x: RunwayData): ModelRunway[] {
       r.lastStatus = pr.ok ? "probe_ok" : "probe_failed";
       r.lastErrorCode = pr.ok ? null : pr.error_code;
     }
+    if (pr.ok) r.lastOkAt = later(r.lastOkAt, pr.created_at);
+    else if (pr.error_code === "quota") r.lastQuotaAt = later(r.lastQuotaAt, pr.created_at);
     const credits = num(pr.vendor_credits);
-    const usd = credits !== null && p.creditUsd ? credits * p.creditUsd : pr.ok ? model.probeUsd : null;
+    // The vendor's own credits with no fixed price are unpriced, as the ledger counts them (probeUse) — not a list price.
+    const usd = credits !== null ? (p.creditUsd ? credits * p.creditUsd : null) : pr.ok ? model.probeUsd : null;
     if (credits === null) r.usd7dEstimate = true;
     if (usd === null) {
       // A refused key made nothing and billed nothing; any other failure may have billed: unknown, never free.
@@ -274,10 +304,14 @@ function modelsOf(p: BilledProvider, x: RunwayData): ModelRunway[] {
 
 /** Spend recorded before the first top-up, in any source: what the balance was before tracking began is unknown. */
 function spentBeforeTracking(p: BilledProvider, x: RunwayData, firstTopupDay: number): boolean {
+  // The reads start at the first top-up's day: whether anything was spent before it was not checked, so it is not known.
+  if (x.sinceMs >= firstTopupDay) return true;
   if (x.pipelineRows.some((r) => p.usage(r) > 0 && Date.parse(r.recorded_at) < firstTopupDay)) return true;
   if (x.studioRows.some((r) => billingIdFor(r.provider, r.vendor_model) === p.id && Date.parse(r.recorded_at) < firstTopupDay)) return true;
   const mine = new Set((x.registry ?? []).filter((m) => m.billingId === p.id).map((m) => m.id));
-  return x.probeRows.some((r) => mine.has(r.model_id) && Date.parse(r.created_at) < firstTopupDay);
+  // A probe the vendor refused before any work (a bad key, no balance) billed nothing.
+  const refused = new Set(["auth", "quota", "rate_limited", "not_configured"]);
+  return x.probeRows.some((r) => mine.has(r.model_id) && Date.parse(r.created_at) < firstTopupDay && !(r.ok === false && refused.has(String(r.error_code))));
 }
 
 export function providerRunways(x: RunwayData): ProviderRunway[] {
@@ -292,46 +326,78 @@ export function providerRunways(x: RunwayData): ProviderRunway[] {
     // A provider nothing touched — no top-up, no reading, no job, no spend — is not a row: thirty empty lines hide the five real ones.
     if (!hasTopup && !hasBalance && models.length === 0 && !(spent && isTracked(p) && ledger.sources.pipeline.rows + ledger.sources.studio.rows + ledger.sources.probes.rows > 0)) continue;
 
+    const st = x.settings?.find((v) => v.provider === p.id) ?? null;
+    // The pipeline's spend reaches only as far as the nightly mirror has written: a window the mirror has not covered is not
+    // a measured $0 for a provider the pipeline uses.
+    const pipelineUser = p.pipeline !== false && isTracked(p);
+    const synced = (from: number) => !pipelineUser || (x.lastSyncMs !== null && x.lastSyncMs >= from);
     const s1 = providerSpendSince(inputs, x.now - DAY);
     const s7 = providerSpendSince(inputs, x.now - 7 * DAY);
-    const burn24h = s1.usd;
-    const burn7d = s7.usd === null ? null : s7.usd / 7;
-    const leftUsd = ledger.remaining.kind === "reported" || ledger.remaining.kind === "estimate" ? ledger.remaining.usd : null;
-    const runsOut = daysLeft(leftUsd, burn7d);
-    const r24 = daysLeft(leftUsd, burn24h);
+    const pipelineStale = !synced(x.now - DAY) || !synced(x.now - 7 * DAY);
+    const usd24h = synced(x.now - DAY) ? s1.usd : null;
+    const usd7d = synced(x.now - 7 * DAY) ? s7.usd : null;
+    const burn24h = usd24h;
+    const burn7d = usd7d === null ? null : usd7d / 7;
+    const rem = ledger.remaining;
+    const leftUsd = rem.kind === "reported" || rem.kind === "estimate" ? rem.usd : null;
+    const leftNative = rem.kind === "reported" ? { amount: rem.amount, unit: rem.unit } : null;
+    // ElevenLabs reports credits with no fixed dollar price: like Billing, its runway is credits left against the pipeline's
+    // characters a day (one credit a character), not unknown.
+    const nativeRunway = leftUsd === null && leftNative !== null && p.id === "elevenlabs" && !x.pipelineUnread && x.pipelineRows.length > 0;
+    const native7 = nativeRunway ? providerBurn(p, x.pipelineRows, null, 7, x.now).unitsPerDay : null;
+    const native1 = nativeRunway ? providerBurn(p, x.pipelineRows, null, 1, x.now).unitsPerDay : null;
+    const left = nativeRunway ? leftNative!.amount : leftUsd;
+    const perDay7d = nativeRunway ? native7 : burn7d;
+    const runsOut = daysLeft(left, perDay7d);
+    const r24 = daysLeft(left, nativeRunway ? native1 : burn24h);
     const rank = (v: number | "never") => (v === "never" ? Infinity : v);
     const runsOutRange: ProviderRunway["runsOutRange"] =
       runsOut === null || r24 === null ? null : rank(runsOut) <= rank(r24) ? [runsOut, r24] : [r24, runsOut];
 
-    // EMPTY: the newest thing this provider did was refused for want of balance.
-    const newest = models.reduce<ModelRunway | null>((a, m) => (m.lastAt && (!a || later(a.lastAt, m.lastAt) === m.lastAt) ? m : a), null);
-    const quotaAt = newest && newest.lastErrorCode === "quota" ? newest.lastAt : null;
-    const autoRecharge = x.settings?.find((st) => st.provider === p.id)?.auto_recharge_on_provider ?? false;
+    // EMPTY: the provider's last refusal for want of balance is newer than anything it last completed (a job, a routed
+    // failover's refusal, or a probe).
+    let lastQuota: string | null = null;
+    let lastOk: string | null = null;
+    for (const m of models) {
+      lastQuota = later(lastQuota, m.lastQuotaAt);
+      lastOk = later(lastOk, m.lastOkAt);
+    }
+    const quotaAt = lastQuota !== null && (lastOk === null || Date.parse(lastQuota) > Date.parse(lastOk)) ? lastQuota : null;
+    const autoRecharge = st?.auto_recharge_on_provider ?? false;
+    const lowDays = st?.low_balance_days ?? LOW_RUNWAY_DAYS;
+    const emptyUnchecked = x.activityUnread || x.registry === null;
     const status: RunwayStatus = quotaAt
       ? "empty"
       : runsOut === null
         ? "unknown"
-        : runsOut !== "never" && runsOut < LOW_RUNWAY_DAYS && !autoRecharge
+        : runsOut !== "never" && runsOut < lowDays && !autoRecharge
           ? "low"
-          : "ok";
+          : emptyUnchecked
+            ? "unknown" // not "ok": whether the provider already refuses for want of balance was not checked
+            : "ok";
 
     out.push({
       id: p.id,
       name: p.name,
       ledger,
       leftUsd,
-      checkedAt: ledger.remaining.kind === "reported" ? ledger.remaining.checkedAt : null,
-      usd24h: s1.usd,
-      usd7d: s7.usd,
+      leftNative,
+      nativeRunway,
+      left,
+      perDay7d,
+      checkedAt: rem.kind === "reported" ? rem.checkedAt : null,
+      usd24h,
+      usd7d,
       burn24h,
       burn7d,
       runsOut,
       runsOutRange,
-      estimate: ledger.runsOutEstimate || ledger.remaining.kind === "estimate" || s7.estimate,
+      estimate: ledger.runsOutEstimate || rem.kind === "estimate" || s7.estimate,
       status,
       quotaAt,
-      beforeTrackingUnknown:
-        ledger.remaining.kind === "estimate" && ledger.bought.state === "ok" && spentBeforeTracking(p, x, ledger.startMs),
+      beforeTrackingUnknown: rem.kind === "estimate" && ledger.bought.state === "ok" && spentBeforeTracking(p, x, ledger.startMs),
+      pipelineStale,
+      emptyUnchecked,
       autoRecharge,
       models,
     });

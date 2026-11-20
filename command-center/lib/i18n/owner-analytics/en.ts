@@ -368,6 +368,12 @@ export const ownerAnalyticsEn = {
   forecastCosts: "Costs",
   reportFull: "Full report",
   useValue: "Use {value}",
+  runwayNativeNote: "counted in the provider's own unit against the pipeline's use, as on Billing",
+  runwayPipelineStale: "pipeline spend not mirrored yet for this window",
+  runwayEmptyUnchecked: "whether the provider already refuses for want of balance could not be checked",
+  runwayPipelineAsOf: "Pipeline spend as of the last nightly mirror: {when}.",
+  runwaySpendBasis: "Spend is",
+  runwayBilled: "the vendor's bill",
 };
 
 export type OwnerAnalyticsDictionary = { [K in keyof typeof ownerAnalyticsEn]: string };

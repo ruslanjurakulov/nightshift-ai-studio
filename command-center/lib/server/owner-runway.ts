@@ -68,7 +68,7 @@ export const readRunway = cache(async (nowMs: number): Promise<RunwayData | null
     timed(supabase.rpc("owner_analytics_model_activity", { p_from: new Date(fromMs).toISOString(), p_to: nowIso })) as unknown as Promise<Rpc>;
 
   const [costs, studio, probes, reg, actAll, act7, act1] = await Promise.all([
-    paged<CostRowLite & { id?: number }>("video_costs", "id,unit,quantity,stage,recorded_at", "recorded_at"),
+    paged<CostRowLite & { id?: number; synced_at?: string | null }>("video_costs", "id,unit,quantity,stage,recorded_at,synced_at", "recorded_at"),
     paged<StudioCostRow & { id?: number }>("creative_job_costs", "id,provider,vendor_model,unit,quantity,usd_estimate,recorded_at", "recorded_at"),
     paged<ProbeRunRow & { id?: number }>("model_probe_runs", `${probeCols},vendor_credits`, "created_at").then((r) =>
       missingColumn(r.error) ? paged<ProbeRunRow & { id?: number }>("model_probe_runs", probeCols, "created_at") : r,
@@ -80,6 +80,12 @@ export const readRunway = cache(async (nowMs: number): Promise<RunwayData | null
   ]);
 
   const act = (r: Rpc): ModelActivity[] | null => (r.error ? null : coerceModelActivity(r.data));
+  // The newest time the nightly mirror wrote a cost row: pipeline spend is only known up to here (Billing shows the same).
+  let lastSyncMs: number | null = null;
+  for (const r of costs.rows) {
+    const t = r.synced_at ? Date.parse(r.synced_at) : NaN;
+    if (Number.isFinite(t) && (lastSyncMs === null || t > lastSyncMs)) lastSyncMs = t;
+  }
   return {
     now: nowMs,
     sinceMs,
@@ -92,6 +98,7 @@ export const readRunway = cache(async (nowMs: number): Promise<RunwayData | null
     settings: readFailed(s) ? null : ((s?.data ?? []) as BillingSettingsRow[]),
     pipelineRows: costs.rows,
     pipelineUnread: Boolean(costs.error),
+    lastSyncMs,
     pipelineFromMs: costs.truncated ? (oldestRowMs(costs.rows) ?? nowMs) : sinceMs,
     studioRows: studio.rows,
     studioUnread: Boolean(studio.error),
@@ -99,6 +106,7 @@ export const readRunway = cache(async (nowMs: number): Promise<RunwayData | null
     probeRows: probes.rows,
     probesUnread: Boolean(probes.error),
     probesFromMs: probes.truncated ? (oldestRowMs(probes.rows.map((x) => ({ recorded_at: x.created_at }))) ?? nowMs) : sinceMs,
+    activityUnread: [actAll, act7, act1].some((r) => r.error !== null && !notThere(r.error)),
     registry: readFailed(reg) || !Array.isArray(reg?.data) ? null : registryPrices(reg.data),
     activity: { all: act(actAll), d7: act(act7), d1: act(act1), missing: notThere(actAll.error) },
   };
