@@ -196,7 +196,9 @@ def test_the_functions_are_definers_with_a_fixed_search_path(conn, sc):
         rows = su.rows("select p.proname, p.prosecdef, p.proconfig from pg_proc p "
                        "where p.pronamespace = 'public'::regnamespace and p.proname like 'owner\\_analytics\\_%%'")
     names = {r[0] for r in rows}
-    assert names == {"owner_analytics_is_owner", "owner_analytics_sales_all", "owner_analytics_internal_org_ids",
+    # Later owner analytics migrations (0183, 0184) add functions under the same prefix: 0182's own set must all exist, and
+    # every function under the prefix, whichever migration made it, is held to the same rule below.
+    assert names >= {"owner_analytics_is_owner", "owner_analytics_sales_all", "owner_analytics_internal_org_ids",
                      "owner_analytics_set_internal", "owner_analytics_internal_list", "owner_analytics_money", "owner_analytics_people",
                      "owner_analytics_activity", "owner_analytics_jobs", "owner_analytics_record_export",
                      "owner_analytics_export_log"}, names
