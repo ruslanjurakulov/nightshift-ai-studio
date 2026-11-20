@@ -326,7 +326,7 @@ export const ownerAnalyticsEn = {
   runwayLowNote: "{n} provider(s) run out in under 3 days at the 7-day pace.",
   runwayEmptyNote: "{n} provider(s) refused the last job for want of balance.",
   runwayNotEnabled: "Job counts per model need migration 0183; spend and balances are shown without them.",
-  runwayNone: "No paid provider has a top-up, a balance or a job yet.",
+  runwayNoProviders: "No paid provider has a top-up, a balance or a job yet.",
   runwayHorizon: "A top-up is older than 180 days: the balances that depend on it are unknown.",
 };
 
