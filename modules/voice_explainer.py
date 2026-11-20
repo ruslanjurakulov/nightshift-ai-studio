@@ -695,7 +695,7 @@ def _frame_count(path: Path) -> Optional[int]:
     try:
         out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
                               "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
-                             capture_output=True, text=True, timeout=120, check=True).stdout.strip()
+                             capture_output=True, text=True, timeout=120, check=True, env=_render_env()).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return None
     return parse_count(out)

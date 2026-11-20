@@ -1183,12 +1183,17 @@ class CreativeWorker:
         org = str(job.get("org_id") or "")
         quoted = float(job.get("quoted_credits") or 0)
         ref = job.get("credit_ref")
-        if credit_rules.is_exempt(org) or quoted <= 0:
+        if credit_rules.is_exempt(org):
+            return
+        if quoted <= 0:
+            # A voice video always costs a paid transcription; a price row of 0 would otherwise skip every check below.
+            if str(job.get("capability") or "") in SERIAL_CAPABILITIES:
+                raise _Refused("not_priced", "this capability has no price, so it cannot run")
             return
         # A serial job (the voice video) can wait hours for the render slot, far past an unstarted hold's 3-hour life, and
         # its work is a paid transcription plus our own render. With enforcement off a vendor job risks minutes; this one
         # would be a free video, so its hold is checked whatever NIGHTSHIFT_CREDITS_ENFORCE says.
-        strict = self.enforce or is_serial(job)
+        strict = self.enforce or str(job.get("capability") or "") in SERIAL_CAPABILITIES
         if not ref:
             if strict:
                 raise _Refused("no_credit_hold", "the job has no credit hold")

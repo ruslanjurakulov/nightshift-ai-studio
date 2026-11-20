@@ -10,6 +10,7 @@ before the length check can refuse it.
 These are static checks of the argv and environment the adapter would run; nothing is decoded, no vendor is called.
 They FAIL on 63423b2 by design and pass once the decode follows the library's rule.
 """
+import shutil
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -93,3 +94,36 @@ def test_no_provider_key_reaches_the_length_probe(tmp_path):
         ve.audio_seconds(wav)
     env = seen["kwargs"].get("env")
     assert env is not None and "ELEVENLABS_API_KEY" not in env
+
+
+def test_the_decode_bounds_the_bytes_a_second_not_only_the_seconds(tmp_path):
+    # Breach BR-VV-R1: -t caps seconds, but a header declaring 655 kHz in 7.1 made ~10 MB of WAV a second.
+    cmd = _capture_decode(tmp_path)["cmd"]
+    fmt = cmd[cmd.index("-af") + 1]
+    assert fmt == vv.NARRATION_FORMAT and cmd.index("-af") > cmd.index("-i")
+    rates = [int(r) for r in fmt.split("sample_rates=")[1].split(":")[0].split("|")]
+    assert max(rates) == 48000 and fmt.endswith("channel_layouts=mono|stereo")
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs the real ffmpeg; the static check above still runs")
+def test_a_tiny_flac_that_declares_a_huge_rate_decodes_within_a_stereo_48k_budget(tmp_path):
+    src = tmp_path / "source.flac"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=655350:cl=7.1", "-t", "3", "-c:a", "flac",
+                    str(src)], check=True)
+    dst = tmp_path / "narration.wav"
+    vv.decode_to_wav(src, dst)
+    assert dst.stat().st_size / 3.0 <= 48000 * 2 * 2 * 1.05
+
+
+def test_no_provider_key_reaches_the_frame_count_probe(tmp_path):
+    # Breach BR-VV-R2: the join check's ffprobe inherited the worker's whole environment.
+    seen = []
+
+    def record(cmd, **kwargs):
+        seen.append(kwargs.get("env"))
+        raise OSError("lab: not started")
+
+    with mock.patch.dict("os.environ", SECRET_ENV, clear=True), mock.patch.object(ve.subprocess, "run", record):
+        assert ve._frame_count(tmp_path / "out.mp4") is None
+    assert seen and all(env is not None and not set(env) & {"ELEVENLABS_API_KEY", "SUPABASE_SERVICE_ROLE_KEY"}
+                        for env in seen)
