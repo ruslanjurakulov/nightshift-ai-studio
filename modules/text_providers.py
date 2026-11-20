@@ -200,6 +200,9 @@ def call(provider: str, prompt: str, *, system: Optional[str] = None, safety_id:
         resp = session.post(url, json=body, headers=headers, timeout=TIMEOUT_S, allow_redirects=False)
     except (_rq.Timeout, _rq.ConnectionError) as exc:
         raise TextProviderError(E_UNAVAILABLE, provider, type(exc).__name__) from None
+    except (_rq.RequestException, UnicodeError) as exc:
+        # Only the class: an InvalidHeader's text holds the header value, i.e. the whole key (a two-line paste; BR-LLM-002).
+        raise TextProviderError(E_BAD_REQUEST, provider, type(exc).__name__) from None
     if not 200 <= resp.status_code < 300:
         raise TextProviderError(classify(provider, resp), provider,
                                 f"HTTP {resp.status_code} {_vendor_text(resp, key)}".strip())
