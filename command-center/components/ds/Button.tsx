@@ -1,7 +1,7 @@
 "use client";
 
-import { forwardRef, useEffect, useId, useState } from "react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 
 /**
  * The design system's keys (app/tokens.css, docs/design/TOKENS.md). No strings live here: every label,
@@ -100,6 +100,26 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
   const [dismissed, setDismissed] = useState(false);
   const open = tooltip && !dismissed && (hovered || focused);
   const busy = loading === true;
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const [nudge, setNudge] = useState(0);
+
+  // A tip centred on a key near the screen's edge would run off it (a 360px phone): measured once it opens, and moved
+  // back inside an 8px margin. Before paint, so it never flashes at the wrong place.
+  useLayoutEffect(() => {
+    const tip = tipRef.current;
+    if (!open || !tip) {
+      setNudge(0);
+      return;
+    }
+    const margin = 8;
+    const rect = tip.getBoundingClientRect();
+    const left = rect.left - nudge;
+    const right = rect.right - nudge;
+    const vw = document.documentElement.clientWidth;
+    setNudge(left < margin ? margin - left : right > vw - margin ? vw - margin - right : 0);
+    // Only when it opens: re-measuring on every nudge would chase its own correction.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -159,7 +179,14 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       }}
     >
       {button}
-      <span className="ds-tip" data-side={tooltipSide} data-open={open ? "true" : "false"} aria-hidden="true">
+      <span
+        ref={tipRef}
+        className="ds-tip"
+        data-side={tooltipSide}
+        data-open={open ? "true" : "false"}
+        aria-hidden="true"
+        style={nudge ? ({ "--_nudge": `${Math.round(nudge)}px` } as CSSProperties) : undefined}
+      >
         {label}
       </span>
     </span>

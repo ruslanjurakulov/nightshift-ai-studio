@@ -177,8 +177,9 @@ describe("site-next.css", () => {
     const globals = readFileSync(join(__dirname, "..", "app/globals.css"), "utf8");
     // The unlayered default beats every layered colour, so the stylesheets here (all in @layer components) never got theirs.
     expect(globals).not.toMatch(/\n\* \{\n  border-color/);
-    expect(globals).toContain(":where(*:not(.st):not(.st *)) {\n  border-color: var(--color-border);\n}");
-    expect(globals).toMatch(/@layer base \{\s*:where\(\.st, \.st \*\) \{\s*border-color: var\(--color-border\);/);
+    // The --ds-* controls (app/tokens.css, layered too) are carved out the same way: their edges are tested in ds-tokens.test.tsx.
+    expect(globals).toContain(":where(*:not(.st):not(.st *):not(.ds-btn, .ds-input, .ds-chip, .ds-toggle, .ds-tip, .ds-spinner)) {\n  border-color: var(--color-border);\n}");
+    expect(globals).toMatch(/@layer base \{\s*:where\(\.st, \.st \*, \.ds-btn, \.ds-input, \.ds-chip, \.ds-toggle, \.ds-tip, \.ds-spinner\) \{\s*border-color: var\(--color-border\);/);
     // Both public stylesheets are layered, which is why the root fix is needed, and neither fakes the colour any more.
     const site = readFileSync(join(__dirname, "..", "components/site/site.css"), "utf8");
     expect(site).toContain("@layer components {");

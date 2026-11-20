@@ -189,3 +189,24 @@ describe("IconButton", () => {
     expect(tip.dataset.open).toBe("false");
   });
 });
+
+describe("Pixel #810 regressions", () => {
+  it("the app's unlayered default border colour never reaches a --ds control (their edges are layered)", () => {
+    const globals = readFileSync(path.join(root, "app/globals.css"), "utf8");
+    const unlayered = globals.match(/^:where\(\*:not\(\.st\)[^\n]*\{/m)?.[0] ?? "";
+    for (const c of ["ds-btn", "ds-input", "ds-chip", "ds-toggle", "ds-tip", "ds-spinner"]) expect(unlayered, c).toContain(`.${c}`);
+    expect(globals).toMatch(/@layer base \{\s*:where\(\.st, \.st \*, \.ds-btn, \.ds-input, \.ds-chip, \.ds-toggle, \.ds-tip, \.ds-spinner\)/);
+  });
+
+  it("a tooltip near the screen's edge is moved back inside it", () => {
+    Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: 360 });
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return (this.classList.contains("ds-tip") ? { left: -7, right: 60, top: 0, bottom: 20, width: 67, height: 20 } : { left: 0, right: 44, top: 0, bottom: 44, width: 44, height: 44 }) as DOMRect;
+    });
+    render(<IconButton label="Settings" icon={<svg aria-hidden="true" />} tooltipSide="bottom" />);
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Settings" }).parentElement as HTMLElement);
+    const tip = document.querySelector(".ds-tip") as HTMLElement;
+    expect(tip.style.getPropertyValue("--_nudge")).toBe("15px");
+    spy.mockRestore();
+  });
+});
