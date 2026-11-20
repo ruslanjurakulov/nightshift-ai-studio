@@ -126,6 +126,7 @@ export const studioTimelineEn = {
     cap_exceeded: "This project costs more than the workspace allows. Nothing was held.",
     other: "The server did not start the project. Nothing was held.",
   },
+  startNoAnswer: "No answer from the server. The start may have gone through: pressing again repeats the same start and never charges twice.",
   addCredits: "Add credits",
   notAdmin: "Only a workspace admin can start a paid project.",
   notEditable: "This project is {status}: it is not priced again.",

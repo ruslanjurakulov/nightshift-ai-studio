@@ -50,13 +50,8 @@ export function AssemblePanel({
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
   const [problem, setProblem] = useState<"quoteFailed" | "notEditableNow" | null>(null);
 
-  // A new version of the project is a new price: whatever was quoted is forgotten. A start that went through is not: its "Started"
-  // note stays, because starting the project itself bumps the version.
-  useEffect(() => {
-    setPhase((p) => (p.at === "started" ? p : { at: "idle" }));
-    setProblem(null);
-  }, [version]);
-
+  const assembleKey = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const quoteRef = useRef<FilmQuote | null>(null);
   const starter = useMemo(
     () =>
@@ -82,7 +77,28 @@ export function AssemblePanel({
     [filmId],
   );
 
+  // The version on screen, and which quote request is the current one: an answer for an older version or an older press is
+  // dropped, so the price the person confirms is always the price of what they see (Breach BR-803-01).
+  const versionRef = useRef(version);
+  const quoteSeq = useRef(0);
+
+  // A new version of the project is a new price: whatever was quoted is forgotten. Not while a confirmed start is waiting for
+  // its answer: the panel stays "starting" with that start's key, so a second start can never be sent under a new key while
+  // the first may still go through (Breach BR-803-02).
+  useEffect(() => {
+    versionRef.current = version;
+    quoteSeq.current += 1;
+    if (starter.busy) return;
+    // A start that went through keeps its "Started" note: starting the project itself bumps the version.
+    setPhase((p) => (p.at === "started" ? p : { at: "idle" }));
+    setProblem(null);
+  }, [version, starter]);
+
   async function quote() {
+    if (starter.busy) return;
+    const seq = ++quoteSeq.current;
+    const asked = version;
+    const stale = () => seq !== quoteSeq.current || asked !== versionRef.current;
     setProblem(null);
     setPhase({ at: "quoting" });
     try {
@@ -94,6 +110,7 @@ export function AssemblePanel({
         body: JSON.stringify({ version }),
       });
       const json: unknown = await res.json().catch(() => null);
+      if (stale()) return;
       if (!res.ok) {
         const e = filmErrorFromResponse(res.status, json).error;
         // Only a missing quote_film (0171 not applied) means pricing is not live; any other refusal is a failed read, said as one.
@@ -110,10 +127,12 @@ export function AssemblePanel({
         setPhase({ at: "idle" });
         return;
       }
+      if (starter.busy) return;
       quoteRef.current = q;
       starter.reset();
       setPhase(q.priced ? { at: "quoted", quote: q } : { at: "unpriced" });
     } catch {
+      if (stale()) return;
       setProblem("quoteFailed");
       setPhase({ at: "idle" });
     }
@@ -152,7 +171,10 @@ export function AssemblePanel({
     quoteRef.current = null;
   }
 
-  const q = phase.at === "quoted" || phase.at === "confirm" || phase.at === "starting" ? phase.quote : null;
+  // After a start with no answer the key reopens the confirmation of the quote it holds, so it shows that quote's credits,
+  // not "Get the price" (Pixel M2).
+  const q =
+    phase.at === "quoted" || phase.at === "confirm" || phase.at === "starting" ? phase.quote : phase.at === "failed" ? quoteRef.current : null;
   const label = assembleLabel(q);
   const blocked = q?.blockedBy ?? [];
   const canStart = Boolean(q && q.startable);
@@ -189,14 +211,24 @@ export function AssemblePanel({
   else if ((phase.at === "quoted" || phase.at === "confirm") && !compact) note = c.priceNote;
   else if (phase.at === "started") note = phase.replayed ? c.replayed : c.started;
   else if (phase.at === "refused") note = c.startFailed[phase.reason];
-  else if (phase.at === "failed") note = c.startFailed.other;
+  // No answer is not a refusal: the start may have gone through, so it never says "nothing was held" (rule 5).
+  else if (phase.at === "failed") note = c.startNoAnswer;
 
   const right =
     phase.at === "quoting" ? c.quoting : phase.at === "starting" ? c.starting : label.kind === "credits" ? fmt(compact ? c.creditsShort : c.credits, { n: label.total }) : c.getPrice;
 
+  // Confirm closes the dialog while the key is disabled ("starting"), so its focus return would drop to the page body: the
+  // panel takes focus instead, and the key takes it back once it is usable (Pixel M1, Lens nit 5).
+  useEffect(() => {
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (!lost || phase.at === "confirm" || phase.at === "idle") return;
+    if (assembleKey.current && !assembleKey.current.disabled) assembleKey.current.focus();
+    else if (phase.at === "starting" || phase.at === "started") panelRef.current?.focus();
+  }, [phase.at]);
+
   return (
-    <div className={compact ? "tl-assemble is-compact" : "tl-assemble"} data-testid="assemble">
-      <button type="button" className="tl-price" onClick={press} onKeyDown={noRepeat} disabled={disabled} aria-busy={phase.at === "quoting" || phase.at === "starting"} data-testid="assemble-key">
+    <div className={compact ? "tl-assemble is-compact" : "tl-assemble"} data-testid="assemble" ref={panelRef} tabIndex={-1}>
+      <button type="button" className="tl-price" ref={assembleKey} onClick={press} onKeyDown={noRepeat} disabled={disabled} aria-busy={phase.at === "quoting" || phase.at === "starting"} data-testid="assemble-key">
         <span>{compact ? c.assembleShort : c.assemble}</span>
         <span data-testid="assemble-amount">{right}</span>
       </button>

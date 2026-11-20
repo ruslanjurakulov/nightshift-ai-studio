@@ -489,7 +489,7 @@ recovered as described under "You lost every device".
 
 | Column | Default | Meaning |
 |---|---|---|
-| `grant_max_per_call` | 100,000 credits | one `owner_grant_credits` call (1 credit is about 1 US cent of vendor cost and about $0.01 retail, so about $1,000; the only cap `grant_credits` has is 100,000,000, about $1,000,000) |
+| `grant_max_per_call` | 100,000 credits | one `owner_grant_credits` call (1 credit is about $0.01 retail, so about $1,000; the only cap `grant_credits` has is 100,000,000, about $1,000,000) |
 | `grant_max_per_24h` | 500,000 credits | all owner grants together, every actor, any rolling 24 h (about $5,000); manual `grant_credits` rows count too |
 | `price_max_change_ratio` | 3 | a price (or its charged figure with margin) may move by at most this factor up or down; a price of 0, a price rising from 0 and any delete need an explicit `p_confirm_big_change` |
 | `recent_mfa_minutes` | 480 | how old the authenticator code may be while the gate is on (5 to 1440) |

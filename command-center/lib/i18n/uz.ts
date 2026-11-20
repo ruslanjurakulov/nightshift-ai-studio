@@ -47,6 +47,7 @@ import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
+import { captionReviewUz } from "./caption-review/uz";
 import { reviewLinkUz, reviewPageUz } from "./review-link/uz";
 import { regionEditUz } from "./region-edit/uz";
 import { imageEditorUz } from "./image-editor/uz";
@@ -495,6 +496,11 @@ export const uz: Dictionary = {
     body2b: "repozitoriy ildizida. Shu paytgacha maʼlumot koʻrsatilmaydi — panel raqamlarni toʻqib chiqarmaydi.",
   },
   dashboard: {
+    eventStatusClear: "Hodisalar: 24 soatda xato qayd etilmagan",
+    eventStatusErrors: "Oxirgi 24 soatda xatolar qayd etilgan",
+    eventStatusUnavailable: "Hodisalar holatini aniqlab boʻlmadi",
+    eventStatusEmpty: "Hali hodisa qayd etilmagan",
+    eventStatusScope: "Qayd etilgan hodisalar asosida. Xizmatlar va Brain holati tekshirilmagan.",
     latestRun: "Oxirgi ishga tushish",
     noRunsYet: "Hali ishga tushirilmagan",
     unreadable: "Serverni oʻqib boʻlmadi",
@@ -892,26 +898,27 @@ export const uz: Dictionary = {
     sPublish: "Chiqarish",
   },
   agents: {
-    title: "Agentlar",
-    subtitle: "Jonli system_events oqimidan olingan — alohida agentlar jadvali yoʻq",
+    title: "Konveyer agentlari",
+    subtitle: "Konveyerning oxirgi qayd etilgan hodisalari. Jarayonlar hozir ishlayotgani tekshirilmagan.",
     seen: "Koʻrilgan agentlar",
-    seenSub: "noyob, soʻnggi oyna",
-    running: "Bajarilmoqda",
-    activeNow: "hozir faol",
-    noneActive: "faoli yoʻq",
-    failed: "Xato",
+    seenSub: "hodisalar tanlanmasidagi alohida agentlar",
+    running: "Oxirgi hodisa: bajarilmoqda",
+    activeNow: "bajarilmoqda deb qayd etilgan",
+    noneActive: "bajarilmoqda deb qayd etilmagan",
+    failed: "Oxirgi hodisa: xato",
     latestFailed: "oxirgi hodisa xato bilan",
-    noneFailing: "nosozlik yoʻq",
+    noneFailing: "xato deb qayd etilmagan",
     scanned: "Koʻrilgan hodisalar",
     scannedSub: "eng soʻnggi 500",
-    roster: "Agentlar roʻyxati",
+    roster: "Hodisalarda qayd etilgan agentlar",
     dbErr: "Maʼlumotlar bazasiga ulanib boʻlmadi. Agentlar roʻyxati hozir mavjud emas.",
-    empty: "Hali agent faolligi yoʻq. Konveyer ishga tushgach, har bir agent bu yerda oxirgi holati bilan paydo boʻladi.",
+    empty: "Bu tanlanmada agent hodisalari yoʻq. Jarayonlarning hozirgi faolligi nomaʼlum.",
     recentEvents: "{n} ta soʻnggi hodisa",
-    currentTask: "Joriy vazifa",
+    currentTask: "Oxirgi qayd etilgan vazifa",
     took: "{d} oldi · ",
     lastSuccess: "Oxirgi muvaffaqiyat",
     lastFailure: "Oxirgi nosozlik",
+    recordedStatus: "Oxirgi qayd etilgan holat: {status}",
     schedTitle: "Jadval va Avtopilot",
     schedHint: "Kanalning kunlik ishga tushishi qachon boʻlishini va avtopilot umuman ishlashini belgilang. Rejalashtirgich buni toʻgʻridan-toʻgʻri kanaldan oʻqiydi — qayta deploy shart emas.",
     schedAutopilot: "Avtopilot",
@@ -3979,6 +3986,8 @@ export const uz: Dictionary = {
     makeSimilarHint: "Bu matnni rasm formasiga rasmning shakli bilan qoʻyadi. Biror narsa yaratilishidan oldin narxini koʻrasiz.",
     describedPicture: "Tasvirlangan rasm",
     emptyTitle: "Generatsiyalaringiz shu yerda chiqadi",
+    videoCancellationUnknown: "Bekor qilish Nightshift’da qayd etilgan. Bu vazifa yozuvi provayder bekor qilganini tasdiqlamaydi.",
+    reloadFeed: "Generatsiyalarni qayta yuklash",
     feedLoading: "Generatsiyalaringiz yuklanmoqda…",
     working: "Ishlanmoqda — oʻzi yangilanadi",
     reasons: {
@@ -4453,6 +4462,7 @@ export const uz: Dictionary = {
     confirmAckHint: "Davom etish uchun katakchani belgilang.",
   },
   media: {
+    comparison: {"action": "Rasmlarni taqqoslash", "title": "Saqlangan rasmlarni taqqoslash", "left": "Birinchi rasm", "right": "Ikkinchi rasm", "unnamed": "Nomsiz rasm", "unavailable": "Oldindan koʻrish mavjud emas", "dismiss": "Taqqoslashni yopish", "version": "Versiya {n}"},
     title: "Mediateka",
     subtitle: "{org} tashkilotining rasmlari, videolari, audiolari va subtitrlari: shu yerda yuklangan yoki Nightshift yaratgan.",
     notEnabled: "Bu joylashuvda mediateka hali yoqilmagan (0038 migratsiyasi qoʻllanmagan).",
@@ -5606,6 +5616,7 @@ export const uz: Dictionary = {
     },
     exportRev: "{rev}-versiya",
     exportPanel: editorExportUz,
+    captionReview: captionReviewUz,
     viewInLibrary: "Mediatekada ochish",
     watch: "Koʻrish",
     deleteProject: "Loyihani oʻchirish",

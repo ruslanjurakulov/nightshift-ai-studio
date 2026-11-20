@@ -26,6 +26,18 @@ import {
 } from "@/lib/films";
 import { FilmErrorNotice } from "@/components/films/FilmErrorNotice";
 
+// Browser UI preference only: no project IDs, records or draft content.
+const PROJECTS_VIEW_KEY = "ns.studio.projects.view.v1";
+type ProjectsView = "open" | "archived";
+function rememberedProjectsView(): ProjectsView {
+  try { return window.localStorage.getItem(PROJECTS_VIEW_KEY) === "archived" ? "archived" : "open"; }
+  catch { return "open"; }
+}
+function rememberProjectsView(view: ProjectsView) {
+  try { window.localStorage.setItem(PROJECTS_VIEW_KEY, view); }
+  catch { /* A blocked browser preference never blocks the list. */ }
+}
+
 export type FilmListInitial = { state: "ok"; films: FilmListItem[] } | { state: "not_available" } | { state: "failed" };
 
 /** The lamp of a project's status: violet only while the machine works, amber never (no person's mark on a list row). */
@@ -56,22 +68,35 @@ export function FilmList({
   const { locale } = useI18n();
   const t = filmStudioStrings(locale);
   const path = useChannelPath();
-  const [view, setView] = useState<"open" | "archived">("open");
+  const [view, setView] = useState<ProjectsView>("open");
   const [state, setState] = useState<FilmListInitial | { state: "loading" } | { state: "error"; error: FilmError }>(initial);
   const [composing, setComposing] = useState(false);
   const newKey = useRef<HTMLButtonElement>(null);
 
-  const load = useCallback(async (which: "open" | "archived") => {
+  const listRequest = useRef(0);
+  const load = useCallback(async (which: ProjectsView) => {
+    const request = ++listRequest.current;
     setState({ state: "loading" });
     const r = await filmsApi().list(which === "archived");
+    if (request !== listRequest.current) return;
     if (r.ok) setState({ state: "ok", films: r.data });
     else if (r.error === "not_available") setState({ state: "not_available" });
     else setState({ state: "error", error: r.error });
   }, []);
 
-  const pick = (which: "open" | "archived") => {
+  useEffect(() => {
+    if (initial.state === "not_available") return;
+    const remembered = rememberedProjectsView();
+    if (remembered === "archived") {
+      setView(remembered);
+      void load(remembered);
+    }
+  }, [initial.state, load]);
+
+  const pick = (which: ProjectsView) => {
     if (which === view) return;
     setView(which);
+    rememberProjectsView(which);
     void load(which);
   };
 

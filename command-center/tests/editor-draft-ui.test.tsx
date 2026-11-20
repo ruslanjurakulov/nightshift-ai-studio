@@ -120,6 +120,8 @@ function mount(
     userId: string | undefined;
     projectId: string;
     rev: number;
+    doc: TimelineDoc;
+    title: string;
     locale: "en" | "ru";
   }> = {},
 ) {
@@ -127,9 +129,9 @@ function mount(
     <I18nProvider locale={over.locale ?? "en"}>
       <TimelineEditor
         projectId={over.projectId ?? PID}
-        title="Trip"
+        title={over.title ?? "Trip"}
         rev={over.rev ?? 1}
-        doc={base()}
+        doc={over.doc ?? base()}
         exports={[]}
         assets={{ [A]: ASSET }}
         videos={[ASSET, OTHER]}
@@ -502,5 +504,102 @@ describe("resuming", () => {
     expect(screen.getByRole("region", { name: ru.editor.draftRegion }).textContent).toContain(
       fmt(ru.editor.draftFound, { when: "" }).split(" ")[0],
     );
+  });
+});
+
+
+describe("session history546", () => {
+  const titleField = () => screen.getByRole("textbox", { name: te.projectTitle });
+  const rename = (title: string) => {
+    fireEvent.change(titleField(), { target: { value: title } });
+    fireEvent.blur(titleField());
+  };
+  it("undoes and redoes a title-only edit with the matching dirty state", () => {
+    mount();
+    fireEvent.change(titleField(), { target: { value: "Trip r" } });
+    rename("Trip renamed");
+    expect(live().textContent).toBe(te.unsaved);
+    fireEvent.click(screen.getByRole("button", { name: te.undo }));
+    expect(titleField()).toHaveProperty("value", "Trip");
+    expect(live().textContent).toBe(te.saved);
+    fireEvent.click(screen.getByRole("button", { name: te.redo }));
+    expect(titleField()).toHaveProperty("value", "Trip renamed");
+    expect(live().textContent).toBe(te.unsaved);
+  });
+  it("supports keyboard history and clears Redo when another title edit replaces that future", () => {
+    mount();
+    rename("First name");
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(titleField()).toHaveProperty("value", "Trip");
+    fireEvent.keyDown(window, { key: "Z", ctrlKey: true, shiftKey: true });
+    expect(titleField()).toHaveProperty("value", "First name");
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    rename("Second name");
+    expect(screen.getByRole("button", { name: te.redo })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: te.undo }));
+    expect(titleField()).toHaveProperty("value", "Trip");
+    expect(live().textContent).toBe(te.saved);
+  });
+  it("restores a draft title and document as one reversible edit", async () => {
+    writeDraft(U1, PID, 1, { title: "Draft title", doc: doubled() });
+    mount();
+    await screen.findByRole("region", { name: te.draftRegion });
+    fireEvent.click(screen.getByRole("button", { name: te.draftRestore }));
+    expect(titleField()).toHaveProperty("value", "Draft title");
+    expect(speed("2×")).toHaveProperty("checked", true);
+    fireEvent.click(screen.getByRole("button", { name: te.undo }));
+    expect(titleField()).toHaveProperty("value", "Trip");
+    expect(speed("1×")).toHaveProperty("checked", true);
+    expect(live().textContent).toBe(te.saved);
+    // Undo back to the persisted project must also remove the consumed local draft.
+    expect(store()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: te.redo }));
+    expect(titleField()).toHaveProperty("value", "Draft title");
+    expect(speed("2×")).toHaveProperty("checked", true);
+  });
+  it("keeps edits made during Save under the returned revision and restores them after refresh", async () => {
+    let release!: (response: Response) => void;
+    fetchMock.mockImplementation((_url: string, init?: RequestInit) => init?.method === "PUT"
+      ? new Promise<Response>((resolve) => { release = resolve; }) : json({ error: "failed" }, 502));
+    const first = mount();
+    rename("Saved title");
+    fireEvent.click(speed("2×"));
+    fireEvent.click(screen.getByRole("button", { name: te.save }));
+    const sent = JSON.parse(String(fetchMock.mock.calls.find(([, init]) => init?.method === "PUT")![1].body));
+    expect(sent.base_rev).toBe(1);
+    expect(sent.title).toBe("Saved title");
+    rename("Newer title");
+    fireEvent.click(speed("0.5×"));
+    await act(async () => release(new Response(JSON.stringify({ id: PID, rev: 2 }), { status: 200 })));
+    expect(live().textContent).toBe(te.unsaved);
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    expect(store(1)).toBeNull();
+    expect(store(2)?.title).toBe("Newer title");
+    first.unmount();
+    fetchMock.mockImplementation((_url: string, init?: RequestInit) => init?.method === "PUT" ? json({ id: PID, rev: 3 }) : json({ error: "failed" }, 502));
+    const refreshed = mount({ rev: 2, title: "Saved title", doc: doubled() });
+    await screen.findByRole("region", { name: te.draftRegion });
+    expect(titleField()).toHaveProperty("value", "Saved title");
+    fireEvent.click(screen.getByRole("button", { name: te.draftRestore }));
+    expect(titleField()).toHaveProperty("value", "Newer title");
+    expect(speed("0.5×")).toHaveProperty("checked", true);
+    fireEvent.click(screen.getByRole("button", { name: te.save }));
+    await waitFor(() => expect(live().textContent).toBe(te.saved));
+    const puts = fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT");
+    const saved = JSON.parse(String(puts.at(-1)![1].body));
+    expect(saved.base_rev).toBe(2);
+    expect(saved.title).toBe("Newer title");
+    fireEvent.click(screen.getByRole("button", { name: te.undo }));
+    expect(titleField()).toHaveProperty("value", "Saved title");
+    expect(live().textContent).toBe(te.unsaved);
+    fireEvent.click(screen.getByRole("button", { name: te.redo }));
+    expect(titleField()).toHaveProperty("value", "Newer title");
+    expect(live().textContent).toBe(te.saved);
+    refreshed.unmount();
+    mount({ rev: 3, title: saved.title, doc: saved.doc });
+    expect(live().textContent).toBe(te.saved);
+    expect(banner()).toBeNull();
+    expect(store(2)).toBeNull();
+    expect(store(3)).toBeNull();
   });
 });

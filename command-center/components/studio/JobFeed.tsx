@@ -110,7 +110,12 @@ export function elapsedSeconds(iso: string, now: number): number | null {
  * On a desk (`capabilities`) only that desk's tools are listed, in the desk's
  * own layout (`variant`); the reads, the polling and every action are the same.
  */
-export function JobFeed({
+export function JobFeed(props: Parameters<typeof ScopedJobFeed>[0]) {
+  // A different feed must not display the previous organization's or desk's cached jobs.
+  return <ScopedJobFeed key={JSON.stringify([props.orgId, props.capabilities ?? []])} {...props} />;
+}
+
+function ScopedJobFeed({
   orgId,
   models = [],
   refreshKey = 0,
@@ -182,6 +187,8 @@ export function JobFeed({
   // The server's clock minus this browser's, from the feed's own answers: the rows' times are the database's.
   const [skew, setSkew] = useState(0);
   const seq = useRef(0);
+  const readRetryPending = useRef(false);
+  const [retryingRead, setRetryingRead] = useState(false);
   const capabilityKey = capabilities ? capabilities.join(",") : "";
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
@@ -211,9 +218,11 @@ export function JobFeed({
       const only = capabilityKey ? `&capability=${encodeURIComponent(capabilityKey)}` : "";
       const res = await fetch(`/api/creative/jobs?org_id=${encodeURIComponent(orgId)}${only}`, { cache: "no-store" });
       const receivedAt = Date.now();
-      const body = (await res.json().catch(() => ({}))) as { jobs?: unknown; error?: unknown };
+      const body = (await res.json()) as { jobs?: unknown; error?: unknown };
       if (mine !== seq.current) return;
       if (res.ok) {
+        // A partial server response is a failed read, not evidence that cached jobs disappeared.
+        if (!Array.isArray(body?.jobs)) throw new Error("Feed response could not be read");
         const list = coerceJobs(body.jobs);
         setJobs(list);
         const working = new Set(list.filter((j) => isActiveStatus(j.status)).map((j) => j.id));
@@ -231,7 +240,7 @@ export function JobFeed({
         setState("ok");
         onLoadedRef.current?.(list);
       } else {
-        setState(body.error === "creative_unavailable" ? "unavailable" : "failed");
+        setState(body?.error === "creative_unavailable" ? "unavailable" : "failed");
         setJobs((j) => j ?? []);
       }
     } catch {
@@ -247,6 +256,7 @@ export function JobFeed({
 
   useEffect(() => {
     void load();
+    return () => { seq.current += 1; };
   }, [load, refreshKey]);
 
   const active = state !== "unavailable" && (jobs ?? []).some((j) => isActiveStatus(j.status));
@@ -618,6 +628,9 @@ export function JobFeed({
     const reasonInFrame = outputKind(job.capability) !== "text";
     return (
       <>
+        {job.status === "cancelled" && (job.capability === "t2v" || job.capability === "i2v") && (
+          <p className="text-xs text-[var(--color-muted)]" role="status">{t.gen.videoCancellationUnknown}</p>
+        )}
         {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
           <p className="text-sm leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
             → {t.gen.languages[job.params.target_language]}
@@ -855,7 +868,7 @@ export function JobFeed({
   const rest = featured ? shown.filter((j) => j.id !== featured.id) : shown;
 
   return (
-    <section className="@container flex min-w-0 flex-col gap-3" aria-labelledby="gen-feed-title" data-variant={variant}>
+    <section className="@container flex min-w-0 flex-col gap-3" aria-labelledby="gen-feed-title" aria-busy={loading} data-variant={variant}>
       <div className="flex items-baseline justify-between gap-3">
         <h2 id="gen-feed-title" className="ns-eyebrow">
           {heading}
@@ -871,10 +884,25 @@ export function JobFeed({
       </div>
 
       {state === "unavailable" ? (
-        <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.gen.unavailable}</p>
+        <p className="studio-field p-4 text-sm text-[var(--color-muted)]" role="status">{t.gen.unavailable}</p>
       ) : (
         <>
-          {state === "failed" && <p className="text-xs text-[var(--color-warn)]">{t.gen.loadFailed}</p>}
+          {state === "failed" && (
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-[var(--color-warn)]">{t.gen.loadFailed}</p>
+              <button type="button" className={chip} disabled={retryingRead} aria-busy={retryingRead}
+                onClick={async () => {
+                  // A read failure must recover the existing jobs, never prefill a new generation.
+                  if (readRetryPending.current) return;
+                  readRetryPending.current = true;
+                  setRetryingRead(true);
+                  try { await load(); }
+                  finally { readRetryPending.current = false; setRetryingRead(false); }
+                }}>
+                {retryingRead ? t.gen.feedLoading : t.gen.reloadFeed}
+              </button>
+            </div>
+          )}
           {loading &&
             (variant === "takes" || variant === "log" ? (
               <div className="flex flex-col gap-2" aria-busy="true" aria-label={t.gen.feedLoading}>

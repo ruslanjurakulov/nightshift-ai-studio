@@ -27,7 +27,7 @@ Both are their makers' own first-party APIs, and both stay terms-gated in `schem
 | Pictures | up to 10 | up to 30 |
 | Sound | keeps the clip's own (`audio: original`) | not kept: `generate_audio: false`, and the picker says "No sound" before anything is asked. The worker does not re-mux the source's track, because the vendor's file is stored byte for byte (its provenance and any mark stay: `docs/AI_DISCLOSURE.md`); adding the sound back as an editor track is a follow-up |
 | Watermark | optional mark off by default, no clause requires it: not sent (`docs/AI_DISCLOSURE.md`) | optional mark off by default, AUP forbids removing identifiers: not sent, file stored as it came |
-| Vendor price (per clip second) | $0.188 at 720p, $0.282 at 1080p (10 s: $1.88 / $2.82); output × 2 with a video input | $0.276 at 720p, $0.68 at 1080p (10 s: $2.76 / $6.80); (in + out) s × W × H × 24 / 1024 tokens, ESTIMATE (the minimum-token table was not read) |
+| Vendor price (per clip second) | per the vendor pricing page (read 2026-11-11); output × 2 with a video input | per the vendor pricing page (read 2026-11-11); (in + out) s × W × H × 24 / 1024 tokens, ESTIMATE (the minimum-token table was not read) |
 | Source | kling.ai/document-api/pricing/base/video | docs.byteplus.com/en/docs/ModelArk/1544106 |
 | Gate | `terms_review_required` (Terms of API Paid Service 3.3) | `written_consent_required` (Customer Agreement 6.2(1), Model Services 4.2.3) |
 | Real people | the consent step below | refused by BytePlus unless each performer is a verified BytePlus asset; **sold only for the organization's own generated clips** (see "Real people") |
@@ -95,13 +95,13 @@ Nothing below is done by this change. In order, per model:
 1. Kling's written answer to the terms letter (sent 2026-11-11) on Terms of API Paid Service 3.3 (offering it to our users).
 2. Buy a video resource package; keep `KLING_API_KEY` as the plain console API key (an `access:secret` pair is the legacy API's and
    is refused); set a spend cap in Kling's console.
-3. Approve one probe (about $0.94 for a 5 s 720p edit) and run it through the worker on an owned clip; confirm the request fields.
+3. Approve one probe (a 5 s 720p edit, priced on the vendor pricing page) and run it through the worker on an owned clip; confirm the request fields.
 4. Set the price: `update public.character_swap_models set credits_per_usd = <n> where model_id = 'kling-4.0-omni-edit';`
    (a `security_events` row of kind `character_swap.settings` records it). Change the registry's `terms_gate` only then.
 
 **Seedance 2.5**
 1. BytePlus's written authorisation (sent 2026-11-11) covering Customer Agreement 6.2(1) and Model Services 4.2.3.
-2. Activate 2.5 (balance > $30, a savings plan or a resource pack); complete enterprise verification (4.2.2 asks the platform to
+2. Activate 2.5 (the console's minimum balance, a savings plan or a resource pack); complete enterprise verification (4.2.2 asks the platform to
    verify end users and keep a takedown process).
 3. Decide on "Advanced Creation Rights" (the Assets API) if performer verification should be offered (follow-up).
 4. Approve one probe on the account's own ModelArk clip, then set the price as above for `seedance-2.5-edit`.
