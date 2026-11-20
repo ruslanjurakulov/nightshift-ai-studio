@@ -4677,6 +4677,7 @@ export const uz: Dictionary = {
     scopeCreate: "Video yaratish. Har biri balansingizdagi kreditlarni ilovadagi narxda sarflaydi.",
     scopePublish: "Tayyor videolarni ulangan akkauntlaringizga yuborish: ilovadagi kabi tekshiruvlar va tasdiqlar bilan.",
     studioOptIn: "Studiyada rasm va kliplar yaratishga ham ruxsat berish (har bir narxni tasdiqlaganingizdan keyin kredit sarflaydi). Belgilamaguningizcha oʻchiq.",
+    studioOnly: "Bu ilova faqat Studiyada yaratishni soʻrayapti. Ruxsat berish uchun belgilang yoki rad eting.",
     scopeStudio: "Studiyada rasm va kliplar yaratish, faqat bunga ruxsat beradigan modellar bilan. Har birida narxni tasdiqlaganingizdan keyin balansingizdagi kreditlar ilovadagi narxda sarflanadi.",
     cannotTitle: "U hech qachon qila olmaydi",
     cannot: "Tarif yoki parolni oʻzgartirish, kredit sotib olish, biror narsani oʻchirish yoki API kalitlaringizni koʻrish.",

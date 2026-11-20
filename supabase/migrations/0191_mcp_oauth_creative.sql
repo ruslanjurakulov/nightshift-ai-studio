@@ -211,6 +211,9 @@ $$;
 -- every permission it supports, so every client asks for this one, and a person who wanted videos only would have had to grant
 -- Studio spending too). Unless the person ticks it, the decision route calls this first. It only REMOVES, only this permission,
 -- only from the signed-in person's own live request, and never empties it: it can narrow a connection, never widen one.
+-- A request that holds studio:create and nothing else cannot be narrowed (Breach re-run on 0191: it answered false, the route went
+-- on, and the unticked permission was granted). That is refused by name, so the approval stops and the page says the remedy: tick
+-- Studio, or deny.
 create or replace function public.oauth_drop_requested_scope(p_secret_hash text, p_scope text) returns boolean
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -221,6 +224,12 @@ begin
   end if;
   if p_scope is distinct from 'studio:create' or coalesce(p_secret_hash, '') !~ '^[0-9a-f]{64}$' then
     return false;
+  end if;
+  if exists (select 1 from public.oauth_auth_requests r
+              where r.secret_hash = p_secret_hash and r.user_id = v_user and r.expires_at >= now()
+                and r.scopes = array[p_scope]) then
+    raise exception 'studio_only' using errcode = '22023',
+      hint = 'this app asked only for Studio generations: tick that choice to allow it, or deny';
   end if;
   update public.oauth_auth_requests r
      set scopes = array_remove(r.scopes, p_scope)

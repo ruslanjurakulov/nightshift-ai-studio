@@ -84,6 +84,12 @@ class EveryModelIsOff(unittest.TestCase):
         self.assertIn("set scopes = array_remove(r.scopes, p_scope)", drop)
         self.assertIn("r.user_id = v_user", drop)
         self.assertIn("cardinality(r.scopes) > 1", drop)
+        # Breach re-run on 0191: a request of studio:create alone cannot be narrowed, so it is refused by name before the update
+        # (it used to answer false and the route granted the unticked permission).
+        self.assertLess(drop.index("r.scopes = array[p_scope]"), drop.index("set scopes = array_remove"))
+        self.assertIn("raise exception 'studio_only' using errcode = '22023'", drop)
+        route = (ROOT / "command-center" / "app" / "oauth" / "decision" / "route.ts").read_text(encoding="utf-8")
+        self.assertLess(route.index('dropped === "studio_only"'), route.index("decideAuthorization("))
         self.assertIn("grant execute on function public.oauth_drop_requested_scope(text, text) to authenticated;", CODE)
 
     def test_the_migration_turns_nothing_on(self):

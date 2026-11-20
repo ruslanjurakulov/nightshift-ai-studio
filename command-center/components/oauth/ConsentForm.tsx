@@ -35,6 +35,8 @@ export interface ConsentText {
   tooManyConnections: string;
   /** Connections approved in a rolling day, revoked ones included (0147). */
   tooManyToday: string;
+  /** 0191: the app asked only for Studio generations and the box was left unticked. */
+  studioOnly?: string;
 }
 
 // A refusal names its remedy (rule 6); anything unknown is the generic "failed".
@@ -48,6 +50,8 @@ function refusalText(error: string | undefined, text: ConsentText): string {
       return text.tooManyConnections;
     case "too_many_connections_today":
       return text.tooManyToday;
+    case "studio_only":
+      return text.studioOnly ?? text.failed;
     default:
       return text.failed;
   }

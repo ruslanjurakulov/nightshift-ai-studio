@@ -18,7 +18,7 @@ const MCP = ORIGIN + "/api/mcp";
 const REDIRECT = "http://127.0.0.1:33418/callback";
 
 const h = vi.hoisted(() => ({ db: null as unknown as import("./helpers/oauth-fake-db").FakeOauthDb, user: { id: "u1" } as { id: string } | null,
-  dropped: [] as string[], dropAnswer: "ok" as "ok" | "absent" | "unavailable" }));
+  dropped: [] as string[], dropAnswer: "ok" as "ok" | "absent" | "studio_only" | "unavailable" }));
 
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
@@ -436,6 +436,17 @@ describe("the consent decision cannot be forged", () => {
     const codes = h.db.codes.size;
     expect((await post("", headers, { request: await pending(), decision: "allow", limit: 5 })).status).toBe(503);
     expect(h.db.codes.size).toBe(codes);                                 // nothing granted
+    h.dropAnswer = "ok";
+  });
+
+  it("an app that asked only for Studio is refused when the box is unticked, and nothing is granted (Breach re-run on 0191)", async () => {
+    const headers = { "content-type": "application/json", origin: ORIGIN };
+    h.dropAnswer = "studio_only";
+    const codes = h.db.codes.size;
+    const res = await post("", headers, { request: await pending(), decision: "allow", limit: 5 });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "studio_only" });
+    expect(h.db.codes.size).toBe(codes);                                 // the decision never ran
     h.dropAnswer = "ok";
   });
 

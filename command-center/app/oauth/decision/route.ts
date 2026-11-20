@@ -61,6 +61,7 @@ export async function POST(request: Request): Promise<Response> {
   if (allow && body.studio !== true) {
     const dropped = await dropStudioScope(secretHash);
     if (dropped === "unavailable") return json({ error: "unavailable" }, 503);
+    if (dropped === "studio_only") return json({ error: "studio_only" }, 409);
   }
   const code = newAuthorizationCode();
   const result = await decideAuthorization({

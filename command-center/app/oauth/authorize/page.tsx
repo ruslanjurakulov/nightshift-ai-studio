@@ -168,6 +168,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
         offerStudio={view.scopes.includes("studio:create")}
         text={{
           studioOptIn: o.studioOptIn,
+          studioOnly: o.studioOnly,
           limitLabel: o.limitLabel,
           limitHint: fmt(o.limitHint, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),
           limitInvalid: fmt(o.limitInvalid, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),

@@ -112,12 +112,14 @@ export async function decideAuthorization(args: {
  * 0191: take studio:create off a pending request the person did not tick it on (the consent page offers it unticked). Only
  * removes, only that one permission, only on the signed-in person's own live request (the database checks all three).
  * "absent" = this database has no 0191, so the request cannot hold the permission and there is nothing to remove.
+ * "studio_only" = the app asked for nothing else, so the request cannot be narrowed: the approval must stop (Breach re-run on 0191).
  */
-export async function dropStudioScope(secretHash: string): Promise<"ok" | "absent" | "unavailable"> {
+export async function dropStudioScope(secretHash: string): Promise<"ok" | "absent" | "studio_only" | "unavailable"> {
   const supabase = await createClient();
   if (!supabase) return "unavailable";
   const { error } = await supabase.rpc("oauth_drop_requested_scope", { p_secret_hash: secretHash, p_scope: "studio:create" });
   if (!error) return "ok";
+  if (error.code === "22023" && error.message === "studio_only") return "studio_only";
   return error.code === "PGRST202" ? "absent" : "unavailable";
 }
 
