@@ -9,8 +9,9 @@
  *   by ±BAND_SPREAD), not a statistical confidence interval, and the page calls it a range of assumptions.
  */
 
-import { MIN_CHURN_BASE } from "./money";
+import { MIN_CHURN_BASE, churn as churnIn, mrrAt } from "./money";
 import type { MoneyRow } from "./money";
+import { tashkentDay } from "./period";
 import type { PersonRow } from "./people";
 import type { CostEntry, SpendRow } from "./costs";
 
@@ -87,8 +88,9 @@ export function project(i: ScenarioInputs, months = 24): Projection {
 
 export interface Measured<T> {
   value: T | null;
-  /** What it rests on: days of history, or people. */
+  /** What it rests on, counted in `unit`. */
   basis: number;
+  unit: "days" | "people" | "subscriptions" | "months";
 }
 
 export interface Baseline {
@@ -97,31 +99,34 @@ export interface Baseline {
   conversion: Measured<number>;
   churn: Measured<number>;
   arpu: Measured<number>;
+  /** Paid subscriptions billed today (a subscription taken back does not count). */
   payers: Measured<number>;
-  /** Customer provider spend per paying workspace per month; null while a cost is unpriced or 0183 is not applied. */
+  /** Customer provider spend per paid subscription per month; null while a cost is unpriced, the read was cut, or 0183 is not applied. */
   costPerPayer: Measured<number>;
   /** The average of the owner's entered monthly costs over the last three months that have entries. */
   fixedMonthly: Measured<number>;
 }
 
 function costPerPayer(spend: SpendRow[] | null, from: number, to: number, payers: number, months: number, enough: boolean): Measured<number> {
-  if (!spend || !enough || payers === 0 || months <= 0) return { value: null, basis: payers };
+  const none: Measured<number> = { value: null, basis: payers, unit: "subscriptions" };
+  if (!spend || !enough || payers === 0 || months <= 0) return none;
   let usd = 0;
   for (const r of spend) {
     if (r.internal) continue;
     // A cost with no readable date may be inside the window: the per-payer cost is then not measurable.
-    if (r.day === null) return { value: null, basis: payers };
+    if (r.day === null) return none;
     const t = Date.parse(`${r.day}T00:00:00Z`);
     if (t < from || t >= to) continue;
-    if (r.unpriced > 0) return { value: null, basis: payers };
+    if (r.unpriced > 0) return none;
     usd += r.usdKnown;
   }
-  return { value: usd / payers / months, basis: payers };
+  return { value: usd / payers / months, basis: payers, unit: "subscriptions" };
 }
 
 function fixedMonthly(costs: CostEntry[] | null, now: Date): Measured<number> {
-  if (!costs) return { value: null, basis: 0 };
-  const thisMonth = now.toISOString().slice(0, 7);
+  if (!costs) return { value: null, basis: 0, unit: "months" };
+  // The owner's months are Tashkent months: in the first hours of one, the month that just ended (Tashkent) is complete.
+  const thisMonth = tashkentDay(now).slice(0, 7);
   const byMonth = new Map<string, number>();
   for (const c of costs) {
     const m = c.month.slice(0, 7);
@@ -129,7 +134,7 @@ function fixedMonthly(costs: CostEntry[] | null, now: Date): Measured<number> {
     byMonth.set(m, (byMonth.get(m) ?? 0) + c.amountUsd);
   }
   const last = [...byMonth.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 3);
-  return { value: last.length ? last.reduce((a, [, v]) => a + v, 0) / last.length : null, basis: last.length };
+  return { value: last.length ? last.reduce((a, [, v]) => a + v, 0) / last.length : null, basis: last.length, unit: "months" };
 }
 
 const DAY = 86_400_000;
@@ -157,39 +162,24 @@ export function baseline(
   const enough = days >= MIN_BASELINE_DAYS;
 
   const paid = cohort.filter((u) => u.firstPaymentAt !== null).length;
-  // Subscribers billed at the window's start, and how many of those were still billed at its end.
-  const covering = (at: number) => {
-    const s = new Set<string>();
-    for (const r of money) {
-      if (r.event !== "sale" || r.kind !== "plan" || r.internal || !r.periodStart || !r.periodEnd) continue;
-      if (Date.parse(r.periodStart) <= at && at < Date.parse(r.periodEnd)) s.add(r.subscriptionRef ?? r.paymentRef);
-    }
-    return s;
-  };
-  const start = covering(from);
-  const end = covering(to - 1);
-  const kept = [...start].filter((s) => end.has(s)).length;
-  const retained = start.size > 0 ? kept / start.size : null;
-  const monthlyChurn = retained !== null && months > 0 ? 1 - Math.pow(retained, 1 / months) : null;
-
-  let usd = 0;
-  const payers = new Set<string>();
-  for (const r of money) {
-    if (r.internal || r.currency !== "USD" || r.amountMinor === null || !inWin(r.at)) continue;
-    if (r.event === "sale") {
-      usd += r.amountMinor / 100;
-      if (r.orgRef) payers.add(r.orgRef);
-    } else if (r.event === "refund" || r.event === "dispute") usd -= r.amountMinor / 100;
-  }
+  // Churn, starting payers and revenue per payer come from the same functions the revenue tab uses (money.ts), so a refunded or
+  // disputed period never keeps anyone subscribed and a yearly plan counts as a twelfth of its price a month. Revenue per payer
+  // is today's MRR divided by today's subscriptions — the figure the measured line ends on — and unknown when that MRR is
+  // incomplete (an amount missing, another currency, a refund of unknown size).
+  const c = churnIn(money, { from: new Date(from).toISOString(), to: new Date(to).toISOString() });
+  const monthlyChurn = c.rate !== null && months > 0 ? 1 - Math.pow(1 - c.rate, 1 / months) : null;
+  const today = mrrAt(money, new Date(to - 1).toISOString());
+  const subs = today.subscribers;
+  const arpu = today.usd !== null && !today.incomplete && subs > 0 ? today.usd / subs : null;
 
   return {
     days,
-    newUsersPerMonth: { value: enough && months > 0 ? cohort.length / months : null, basis: days },
-    conversion: { value: enough && cohort.length >= MIN_CHURN_BASE ? paid / cohort.length : null, basis: cohort.length },
-    churn: { value: enough && start.size >= MIN_CHURN_BASE ? monthlyChurn : null, basis: start.size },
-    arpu: { value: enough && payers.size > 0 && months > 0 ? usd / payers.size / months : null, basis: payers.size },
-    payers: { value: end.size, basis: end.size },
-    costPerPayer: costPerPayer(spend, from, to, payers.size, months, enough),
+    newUsersPerMonth: { value: enough && months > 0 ? cohort.length / months : null, basis: days, unit: "days" },
+    conversion: { value: enough && cohort.length >= MIN_CHURN_BASE ? paid / cohort.length : null, basis: cohort.length, unit: "people" },
+    churn: { value: enough ? monthlyChurn : null, basis: c.base, unit: "subscriptions" },
+    arpu: { value: arpu, basis: subs, unit: "subscriptions" },
+    payers: { value: subs, basis: subs, unit: "subscriptions" },
+    costPerPayer: costPerPayer(spend, from, to, subs, months, enough),
     fixedMonthly: fixedMonthly(costs, now),
   };
 }
