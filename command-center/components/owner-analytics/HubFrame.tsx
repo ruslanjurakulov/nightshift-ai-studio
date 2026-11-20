@@ -51,6 +51,8 @@ export async function HubState({ state, ctx }: { state: Access | ReadFailure; ct
   const text =
     state === "missing"
       ? d.notEnabled
+      : state === "not_configured"
+        ? d.notConfigured
       : state === "signed_out" || state === "session"
         ? d.sessionEnded
         : state === "error"
@@ -102,6 +104,7 @@ export async function HubFrame({ ctx, section, children }: { ctx: HubContext; se
         startDay={sel.current.startDay}
         endDay={sel.current.endDay}
         compare={sel.compare}
+        includeInternal={sel.includeInternal}
         maxDay={tashkentDay(ctx.now)}
       />
       <p className="oa-note">
@@ -114,6 +117,11 @@ export async function HubFrame({ ctx, section, children }: { ctx: HubContext; se
         </p>
       )}
       {ctx.present && <p className="oa-present-banner">{d.presentOn}</p>}
+      {sel.includeInternal && (
+        <p className="oa-note" data-tone="warn" role="status">
+          {d.includedInternal}
+        </p>
+      )}
       {children}
     </div>
   );
@@ -130,6 +138,7 @@ export function Kpi({
   badge,
   unknownText,
   invert,
+  previousIncomplete,
 }: {
   label: string;
   value: number | null;
@@ -141,9 +150,22 @@ export function Kpi({
   unknownText?: string;
   /** For figures where up is bad (refunds, churn). */
   invert?: boolean;
+  /** The previous period's figure is incomplete: no change is computed from it. */
+  previousIncomplete?: boolean;
 }) {
   const ch = ctx.sel.previous && previous !== undefined ? delta(value, previous) : null;
   const dir = ch === null || ch === 0 ? undefined : (ch > 0) !== Boolean(invert) ? "up" : "down";
+  // A previous value measured as 0 is a value: "up from 0" or "no change", never "no previous value".
+  const deltaText =
+    ch !== null
+      ? fill(ctx.d.vsPrevious, { pct: pct(ch, ctx.locale, true) })
+      : previous === 0 && value !== null
+        ? value === 0
+          ? ctx.d.noChange
+          : ctx.d.fromZero
+        : previousIncomplete
+          ? ctx.d.previousIncomplete
+          : ctx.d.noPrevious;
   return (
     <div className="oa-kpi">
       <div className="oa-kpi-label">
@@ -153,9 +175,9 @@ export function Kpi({
       <div className="oa-kpi-value" data-unknown={value === null || undefined}>
         {value === null ? (unknownText ?? ctx.d.unknown) : format(value)}
       </div>
-      {ctx.sel.previous && previous !== undefined && (
+      {ctx.sel.previous && (previous !== undefined || previousIncomplete) && (
         <div className="oa-kpi-delta" data-dir={dir}>
-          {ch === null ? ctx.d.noPrevious : fill(ctx.d.vsPrevious, { pct: pct(ch, ctx.locale, true) })}
+          {deltaText}
         </div>
       )}
       {note && <div className="oa-note">{note}</div>}

@@ -475,6 +475,8 @@ describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => 
   const NAMES = [
     "chronos_locale", "ns_view", "chronos_channel", "nightshift_org", "ns_sidebar", "ns_auth_pending", "ns_recovery", "ns_invite",
     "__Host-yt_oauth_nonce", "ig_oauth_nonce", "tt_oauth_nonce", "tt_oauth_pkce", "__Host-ns_connect_pending", "chronos_theme",
+    // The owner analytics hub's presentation mode (app/api/owner-analytics/present).
+    "ns_oa_present",
   ];
 
   it.each(LOCALES)("%s: the Cookies section lists every cookie and the theme key the code sets, and the page statistics", (locale) => {

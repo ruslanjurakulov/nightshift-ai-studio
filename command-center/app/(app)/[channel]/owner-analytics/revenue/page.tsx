@@ -3,7 +3,7 @@ import { Bars, DrillChart } from "@/components/owner-analytics/DrillChart";
 import { DataTable } from "@/components/owner-analytics/DataTable";
 import { readMoneyFor } from "@/lib/server/owner-analytics-data";
 import { revenueEventsTable, revenueItemsTable, revenueKindsTable, revenueSeriesTable } from "@/lib/owner-analytics/kpis";
-import { moneySeries, summarize } from "@/lib/owner-analytics/money";
+import { applyScope, moneySeries, summarize } from "@/lib/owner-analytics/money";
 import { fill, int, usd } from "@/lib/owner-analytics/format";
 import "../owner-analytics.css";
 
@@ -22,13 +22,14 @@ export default async function OwnerAnalyticsRevenue({ searchParams }: { searchPa
   const money = await readMoneyFor(sel);
   if (!money.ok) return <HubState state={money.reason} ctx={ctx} />;
   const p = sel.current;
-  const s = summarize(money.data, p);
-  const prev = sel.previous ? summarize(money.data, sel.previous) : null;
+  const rows = applyScope(money.data, sel.includeInternal);
+  const s = summarize(rows, p);
+  const prev = sel.previous ? summarize(rows, sel.previous) : null;
   const money$ = (n: number) => usd(n, locale);
   const n$ = (n: number) => int(n, locale);
 
-  const series = moneySeries(money.data, p);
-  const prevSeries = sel.previous ? moneySeries(money.data, sel.previous) : null;
+  const series = moneySeries(rows, p);
+  const prevSeries = sel.previous ? moneySeries(rows, sel.previous) : null;
   const items = revenueItemsTable(d, s, p, present);
   const plans = s.byItem.filter((i) => i.kind === "plan");
   const packs = s.byItem.filter((i) => i.kind === "pack");
@@ -47,13 +48,18 @@ export default async function OwnerAnalyticsRevenue({ searchParams }: { searchPa
             { key: "net", label: d.net, points: series.map((x) => ({ x: x.x, y: x.net })) },
             // The previous period drawn on this period's days, so the two lines share one x-axis.
             ...(prevSeries
-              ? [{ key: "prev", label: `${d.gross} · ${d.previous}`, points: prevSeries.map((x, i) => ({ x: series[i]?.x ?? x.x, y: x.gross })) }]
+              ? [{ key: "prev", label: `${d.gross} · ${d.previous}`, points: prevSeries.slice(0, series.length).map((x, i) => ({ x: series[i].x, y: x.gross })) }]
               : []),
           ]}
         />
-        <DataTable table={revenueSeriesTable(d, money.data, p, present)} id="oa-rev-series" unknownText={d.unknown} format={[undefined, money$, money$, money$]} />
+        <DataTable table={revenueSeriesTable(d, rows, p, present)} id="oa-rev-series" unknownText={d.unknown} format={[undefined, money$, money$, money$]} />
         {s.netBeforeFees.unknownCount > 0 && <p className="oa-note" data-tone="warn">{fill(d.incompleteNote, { n: s.netBeforeFees.unknownCount })}</p>}
         {s.otherCurrency.length > 0 && <p className="oa-note">{fill(d.otherCurrency, { n: s.otherCurrency.reduce((a, o) => a + o.count, 0) })}</p>}
+        {s.uncredited.count > 0 && (
+          <p className="oa-note" data-tone="warn">
+            {fill(d.uncredited, { n: s.uncredited.count, amount: s.uncredited.usd.unknownCount || s.uncredited.otherCurrency ? d.unknown : money$(s.uncredited.usd.usd) })}
+          </p>
+        )}
         {s.internalExcluded > 0 && <p className="oa-note">{fill(d.internalExcluded, { n: s.internalExcluded })}</p>}
       </section>
 
@@ -82,14 +88,14 @@ export default async function OwnerAnalyticsRevenue({ searchParams }: { searchPa
               note: i.kind === "plan" ? `${d.initial} ${i.initial} · ${d.renewal} ${i.renewal} · ${d.chargeUnknown} ${i.chargeUnknown}` : undefined,
             }))}
           />
-          <DataTable table={items} id="oa-rev-items" unknownText="—" format={[undefined, undefined, n$, n$, n$, n$, money$]} />
+          <DataTable table={items} id="oa-rev-items" unknownText={d.unknown} format={[undefined, undefined, n$, n$, n$, n$, money$]} />
         </section>
       </div>
 
       <section className="oa-card">
         <CardHead title={d.salesTable} what="revenue.events" ctx={ctx} />
         <DataTable
-          table={revenueEventsTable(d, money.data, p, present)}
+          table={revenueEventsTable(d, rows, p, present)}
           id="oa-rev-events"
           unknownText={d.unknown}
           limit={200}

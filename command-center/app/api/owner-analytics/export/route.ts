@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSameOrigin } from "@/lib/server/same-origin";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { lastAuthenticatedAt, ownerAccess, presentMode, recentEnough } from "@/lib/server/owner-analytics";
 import { buildExport, isExportable } from "@/lib/server/owner-analytics-export";
@@ -21,18 +21,22 @@ const json = (body: unknown, status: number) => NextResponse.json(body, { status
  * read from the database, as the owner, and returned with no-store: no proxy or browser cache keeps a copy.
  */
 export const POST = requireSameOrigin(async (request: Request) => {
-  let body: { what?: unknown; format?: unknown; query?: unknown };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return json({ error: "invalid_request" }, 400);
-  }
+  // Who is asking comes before anything is parsed: a signed-out caller makes the server do no work.
+  if (!(await getUser())) return json({ error: "unauthorized" }, 401);
   const access = await ownerAccess();
   if (access === "signed_out") return json({ error: "unauthorized" }, 401);
   if (access === "missing") return json({ error: "not_enabled" }, 503);
   if (access === "error" || access === "not_configured") return json({ error: "unavailable" }, 503);
   if (access !== "owner") return json({ error: "forbidden" }, 403);
 
+  let body: { what?: unknown; format?: unknown; query?: unknown };
+  try {
+    const raw: unknown = await request.json();
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return json({ error: "invalid_request" }, 400);
+    body = raw as typeof body;
+  } catch {
+    return json({ error: "invalid_request" }, 400);
+  }
   const { what, format } = body;
   if (!isExportable(what) || (format !== "csv" && format !== "xlsx") || typeof body.query !== "string" || body.query.length > 300) {
     return json({ error: "invalid_request" }, 400);
@@ -50,7 +54,11 @@ export const POST = requireSameOrigin(async (request: Request) => {
     p_to: sel.current.to,
     p_present: present,
   });
-  if (audit.error) return json({ error: audit.error.code === "42501" ? "forbidden" : "not_recorded" }, audit.error.code === "42501" ? 403 : 503);
+  if (audit.error) {
+    // 0107's second-factor gate is on and this session is password-only: the code, not a fresh password, is what is missing.
+    if (audit.error.code === "NS401") return json({ error: "mfa_required" }, 401);
+    return json({ error: audit.error.code === "42501" ? "forbidden" : "not_recorded" }, audit.error.code === "42501" ? 403 : 503);
+  }
 
   const { t } = await getDictionary();
   const built = await buildExport(what, sel, t, present);

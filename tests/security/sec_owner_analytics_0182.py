@@ -18,6 +18,8 @@ def extend(tables: dict, functions: dict) -> None:
     tables.update({
         # Who exported what: RLS on, no policy, no grant. Only owner_analytics_record_export() writes it.
         "owner_analytics_exports": Service(),
+        # The owner's internal / test workspaces: closed like the log; only owner_analytics_set_internal() writes it.
+        "owner_analytics_internal_orgs": Service(),
     })
     functions.update({
         "owner_analytics_is_owner": USER,
@@ -28,6 +30,9 @@ def extend(tables: dict, functions: dict) -> None:
         "owner_analytics_jobs": USER,
         "owner_analytics_record_export": USER,
         "owner_analytics_export_log": USER,
+        "owner_analytics_set_internal": USER,
+        "owner_analytics_internal_list": USER,
+        "owner_analytics_internal_org_ids": SERVICE,
     })
 
 
@@ -38,4 +43,8 @@ def seed(conn, sc) -> None:
 
     with acting(conn, sc.operator, commit=True) as s:
         out = s.run("select public.owner_analytics_record_export('revenue', 'csv', now() - interval '30 days', now(), false)")
+    assert out.ok, out
+    # And one flagged workspace (tenant B's, as a stand-in for a demo account), flagged the same way.
+    with acting(conn, sc.operator, commit=True) as s:
+        out = s.run("select public.owner_analytics_set_internal(%s, true, 'lab: demo workspace')", [sc.bob.org])
     assert out.ok, out

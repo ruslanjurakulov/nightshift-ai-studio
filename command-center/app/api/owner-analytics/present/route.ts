@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSameOrigin } from "@/lib/server/same-origin";
+import { getUser } from "@/lib/supabase/server";
 import { ownerAccess, PRESENT_COOKIE } from "@/lib/server/owner-analytics";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
  * what the database returns — the database never returns an e-mail or a name to the hub in the first place.
  */
 export const POST = requireSameOrigin(async (request: Request) => {
-  if ((await ownerAccess()) !== "owner") {
+  if (!(await getUser()) || (await ownerAccess()) !== "owner") {
     return NextResponse.json({ error: "forbidden" }, { status: 403, headers: { "cache-control": "no-store" } });
   }
   let on = false;

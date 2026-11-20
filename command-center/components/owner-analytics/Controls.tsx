@@ -28,12 +28,14 @@ export function PeriodPicker({
   startDay,
   endDay,
   compare,
+  includeInternal,
   maxDay,
 }: {
   preset: Preset;
   startDay: string;
   endDay: string;
   compare: boolean;
+  includeInternal: boolean;
   /** Today in Tashkent: a custom range cannot end after it. */
   maxDay: string;
 }) {
@@ -99,6 +101,9 @@ export function PeriodPicker({
       <button type="button" className="oa-chip" aria-pressed={compare} onClick={() => go({ compare: compare ? null : "1" })}>
         {d.compare}
       </button>
+      <button type="button" className="oa-chip" aria-pressed={includeInternal} onClick={() => go({ internal: includeInternal ? null : "1" })}>
+        {d.includeInternal}
+      </button>
     </div>
   );
 }
@@ -137,7 +142,7 @@ export function PresentToggle({ on }: { on: boolean }) {
   );
 }
 
-type ExportState = { kind: "idle" } | { kind: "busy" } | { kind: "reauth"; format: "csv" | "xlsx" } | { kind: "failed" };
+type ExportState = { kind: "idle" } | { kind: "busy" } | { kind: "reauth"; format: "csv" | "xlsx" } | { kind: "failed" } | { kind: "mfa" };
 
 /**
  * CSV and XLSX for one table. The file is built on the server from the database, never from what the browser holds, and the
@@ -164,6 +169,10 @@ export function ExportButtons({ what, query, reauthMinutes }: { what: string; qu
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         if (body.error === "reauth_required") {
           setState({ kind: "reauth", format });
+          return;
+        }
+        if (body.error === "mfa_required") {
+          setState({ kind: "mfa" });
           return;
         }
       }
@@ -207,6 +216,11 @@ export function ExportButtons({ what, query, reauthMinutes }: { what: string; qu
       <button type="button" onClick={() => download("xlsx")} disabled={state.kind === "busy"}>
         <Download size={12} aria-hidden /> {d.exportXlsx}
       </button>
+      {state.kind === "mfa" && (
+        <span className="oa-note" data-tone="warn" role="alert">
+          {d.mfaNeeded}
+        </span>
+      )}
       {state.kind === "failed" && (
         <span className="oa-note" data-tone="warn" role="alert">
           {d.exportFailed}

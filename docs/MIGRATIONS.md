@@ -1988,6 +1988,10 @@ its reads. Read-only over existing tables, plus one log of its own.
   `owner_analytics_jobs(from, to)` (grouped counts, credits charged, timed seconds).
 - **Export log.** `owner_analytics_exports` (RLS on, no policy, no grant), written only by `owner_analytics_record_export()` with the
   actor pinned to `auth.uid()`, read by `owner_analytics_export_log()`. The export route records before it builds the file.
+- **Internal / test workspaces.** `owner_analytics_internal_orgs` (closed like the log), set by the owner through
+  `owner_analytics_set_internal(org, on, reason)` and listed by `owner_analytics_internal_list()`. Internal = the default workspace,
+  any workspace owned by a roster account, and any flagged one. Every function returns `internal`; the hub leaves those rows out
+  by default, with a toggle. No workspace id is written in the migration. Granted credits are never revenue.
 - **Without it.** The hub says it needs 0182 and shows no figure; exports are refused.
 - Lab: `tests/security/sec_owner_analytics_0182.py`, `tests/security/test_sec_owner_analytics.py`. Rollback:
   `docs/sql/rollback_0182_owner_analytics.sql`.

@@ -18,6 +18,8 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 export interface PersonRow {
   userRef: string;
   signedUpAt: string;
+  /** The address was confirmed. An unconfirmed signup is an attempt, not a person, and is not counted as a signup. */
+  confirmed: boolean;
   lastSignInAt: string | null;
   locale: string | null;
   acquisition: "referral" | "invite" | null;
@@ -31,6 +33,7 @@ export interface PersonRow {
 export interface ActivityRow {
   day: string;
   userRef: string;
+  internal: boolean;
 }
 export interface JobRow {
   day: string;
@@ -42,6 +45,8 @@ export interface JobRow {
   internal: boolean;
   jobs: number;
   creditsCharged: number;
+  /** Jobs that carry a charge at all; the rest (running, API-paid) are unknown, not free. */
+  creditsCounted: number;
   secondsTotal: number;
   secondsCounted: number;
 }
@@ -57,6 +62,7 @@ export function coercePeopleRows(data: unknown): PersonRow[] {
     out.push({
       userRef,
       signedUpAt,
+      confirmed: r.confirmed === true,
       lastSignInAt: instant(r.last_sign_in_at),
       locale: str(r.locale),
       acquisition: r.acquisition === "referral" || r.acquisition === "invite" ? r.acquisition : null,
@@ -78,7 +84,7 @@ export function coerceActivityRows(data: unknown): ActivityRow[] {
     if (!isObj(r)) continue;
     const day = typeof r.day === "string" ? r.day.slice(0, 10) : "";
     const userRef = str(r.user_ref);
-    if (DAY_RE.test(day) && userRef) out.push({ day, userRef });
+    if (DAY_RE.test(day) && userRef) out.push({ day, userRef, internal: r.internal === true });
   }
   return out;
 }
@@ -101,6 +107,7 @@ export function coerceJobRows(data: unknown): JobRow[] {
       internal: r.internal === true,
       jobs,
       creditsCharged: known(r.credits_charged) ?? 0,
+      creditsCounted: known(r.credits_counted) ?? 0,
       secondsTotal: known(r.seconds_total) ?? 0,
       secondsCounted: known(r.seconds_counted) ?? 0,
     });
@@ -114,7 +121,8 @@ export function rate(part: number, whole: number): number | null {
   return whole >= MIN_RATE_BASE ? part / whole : null;
 }
 
-const within = (iso: string | null, p: Pick<Period, "from" | "to">) => iso !== null && iso >= p.from && iso < p.to;
+const within = (iso: string | null, p: Pick<Period, "from" | "to">) =>
+  iso !== null && Date.parse(iso) >= Date.parse(p.from) && Date.parse(iso) < Date.parse(p.to);
 
 export interface FunnelStep {
   key: "signup" | "project" | "generation" | "export" | "payment";
@@ -125,7 +133,7 @@ export interface FunnelStep {
 
 /** The activation funnel of the people who signed up in the period: how many reached each milestone, at any time since. */
 export function funnel(people: PersonRow[], p: Pick<Period, "from" | "to">): FunnelStep[] {
-  const cohort = people.filter((u) => !u.internal && within(u.signedUpAt, p));
+  const cohort = people.filter((u) => !u.internal && u.confirmed && within(u.signedUpAt, p));
   const n = cohort.length;
   const count = (f: (u: PersonRow) => string | null) => cohort.filter((u) => f(u) !== null).length;
   const steps: Array<[FunnelStep["key"], number]> = [
@@ -142,7 +150,7 @@ export function funnel(people: PersonRow[], p: Pick<Period, "from" | "to">): Fun
 export function signupsByDay(people: PersonRow[], p: Pick<Period, "from" | "to">): Map<string, number> {
   const m = new Map<string, number>();
   for (const u of people) {
-    if (u.internal || !within(u.signedUpAt, p)) continue;
+    if (u.internal || !u.confirmed || !within(u.signedUpAt, p)) continue;
     const d = tashkentDay(new Date(u.signedUpAt));
     m.set(d, (m.get(d) ?? 0) + 1);
   }
@@ -153,7 +161,7 @@ export function signupsByDay(people: PersonRow[], p: Pick<Period, "from" | "to">
 export function countBy(people: PersonRow[], p: Pick<Period, "from" | "to">, f: (u: PersonRow) => string | null) {
   const m = new Map<string | null, number>();
   for (const u of people) {
-    if (u.internal || !within(u.signedUpAt, p)) continue;
+    if (u.internal || !u.confirmed || !within(u.signedUpAt, p)) continue;
     const k = f(u);
     m.set(k, (m.get(k) ?? 0) + 1);
   }
@@ -180,6 +188,7 @@ export interface Engagement {
 export function engagement(activity: ActivityRow[], p: Pick<Period, "startDay" | "endDay" | "days">): Engagement {
   const byDay = new Map<string, Set<string>>();
   for (const a of activity) {
+    if (a.internal) continue;
     let s = byDay.get(a.day);
     if (!s) byDay.set(a.day, (s = new Set()));
     s.add(a.userRef);
@@ -217,24 +226,33 @@ export interface Cohort {
 
 /**
  * Activity retention by signup month: of the people who signed up in month m, the share active in month m + k. Months are
- * Tashkent months. A month after `asOfMonth` is null — it has not happened, so it is not 0%.
+ * Tashkent months. A month after `asOfMonth` is null — it has not happened, so it is not 0% — and so is a month before
+ * `readFromMonth`, the first whole month the activity read covers: activity nobody read is unmeasured, not absent.
  */
-export function signupCohorts(people: PersonRow[], activity: ActivityRow[], asOfMonth: string, maxCohorts = 12): Cohort[] {
+export function signupCohorts(
+  people: PersonRow[],
+  activity: ActivityRow[],
+  asOfMonth: string,
+  readFromMonth: string,
+  maxCohorts = 12,
+): Cohort[] {
   const activeMonths = new Map<string, Set<number>>();
   for (const a of activity) {
+    if (a.internal) continue;
     let s = activeMonths.get(a.userRef);
     if (!s) activeMonths.set(a.userRef, (s = new Set()));
     s.add(monthIndex(a.day.slice(0, 7)));
   }
   const groups = new Map<string, PersonRow[]>();
   for (const u of people) {
-    if (u.internal) continue;
+    if (u.internal || !u.confirmed) continue;
     const m = monthOf(u.signedUpAt);
     const g = groups.get(m) ?? [];
     g.push(u);
     groups.set(m, g);
   }
   const now = monthIndex(asOfMonth);
+  const first = monthIndex(readFromMonth);
   return [...groups.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
     .slice(0, maxCohorts)
@@ -242,6 +260,10 @@ export function signupCohorts(people: PersonRow[], activity: ActivityRow[], asOf
       const start = monthIndex(m);
       const cells: Array<number | null> = [];
       for (let k = 0; start + k <= now && k < 13; k++) {
+        if (start + k < first) {
+          cells.push(null);
+          continue;
+        }
         const n = us.filter((u) => activeMonths.get(u.userRef)?.has(start + k)).length;
         cells.push(n / us.length);
       }
@@ -266,7 +288,16 @@ export function planCohorts(rows: MoneyRow[], asOfMonth: string): Array<Cohort &
     sales.sort((a, b) => (a.at < b.at ? -1 : 1));
     const first = sales[0];
     const key = `${first.item ?? "?"}|${monthOf(first.at)}`;
-    const months = new Set(sales.map((s) => monthIndex(monthOf(s.at))));
+    // A month counts as retained when a paid plan period covers part of it — a yearly subscriber pays once and is retained all
+    // year — or, for a payment with no billed period on record, when it was paid in that month.
+    const months = new Set<number>();
+    for (const s of sales) {
+      if (s.periodStart && s.periodEnd) {
+        const a = monthIndex(monthOf(s.periodStart));
+        const b = monthIndex(monthOf(new Date(Date.parse(s.periodEnd) - 1).toISOString()));
+        for (let m = a; m <= b; m++) months.add(m);
+      } else months.add(monthIndex(monthOf(s.at)));
+    }
     const g = groups.get(key) ?? [];
     g.push(months);
     groups.set(key, g);
@@ -317,6 +348,8 @@ export interface JobSummary {
   avgSeconds: number | null;
   timed: number;
   credits: number;
+  /** Jobs with a charge recorded; when it is 0 the credits figure is unknown, not 0. */
+  creditsCounted: number;
 }
 
 const FAILED = new Set(["failed", "cancelled", "expired"]);
@@ -326,11 +359,12 @@ export function jobsByModel(rows: JobRow[], includeInternal = false): JobSummary
   for (const r of rows) {
     if (r.internal && !includeInternal) continue;
     const key = `${r.model}|${r.kind}`;
-    const s = m.get(key) ?? { model: r.model, kind: r.kind, jobs: 0, succeeded: 0, failed: 0, successRate: null, avgSeconds: null, timed: 0, credits: 0 };
+    const s = m.get(key) ?? { model: r.model, kind: r.kind, jobs: 0, succeeded: 0, failed: 0, successRate: null, avgSeconds: null, timed: 0, credits: 0, creditsCounted: 0 };
     s.jobs += r.jobs;
     if (r.status === "completed") s.succeeded += r.jobs;
     else if (FAILED.has(r.status)) s.failed += r.jobs;
     s.credits += r.creditsCharged;
+    s.creditsCounted += r.creditsCounted;
     s.timed += r.status === "completed" ? r.secondsCounted : 0;
     // Time to result is measured on completed jobs only: a failure's "time" is how long it took to fail.
     s.avgSeconds = r.status === "completed" && r.secondsCounted > 0

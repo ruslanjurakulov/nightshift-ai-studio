@@ -38,7 +38,7 @@ MONEY_COLUMNS = [
     "period_start", "period_end", "subscription_ref", "internal",
 ]
 PEOPLE_COLUMNS = [
-    "user_ref", "signed_up_at", "last_sign_in_at", "locale", "acquisition", "internal", "first_project_at",
+    "user_ref", "signed_up_at", "confirmed", "last_sign_in_at", "locale", "acquisition", "internal", "first_project_at",
     "first_generation_at", "first_export_at", "first_payment_at", "first_plan",
 ]
 CALLS = [
@@ -49,7 +49,11 @@ CALLS = [
     (RECORD, ["revenue", "csv", FROM, TO, False]),
     (LOG, [10]),
 ]
-CALL_IDS = ["money", "people", "activity", "jobs", "record", "log"]
+CALLS += [
+    ("select public.owner_analytics_set_internal(%s, true, 'x')", [DEFAULT_ORG]),
+    ("select * from public.owner_analytics_internal_list()", None),
+]
+CALL_IDS = ["money", "people", "activity", "jobs", "record", "log", "set_internal", "internal_list"]
 
 
 def _ts(month: int, day: int = 10) -> datetime:
@@ -103,6 +107,8 @@ def world(conn):
             su.rows("insert into public.credit_lots (org_id, source, amount, remaining, external_id, subscription_id, plan_id, "
                     "period_start, period_end) values (%s, 'subscription', 10, 10, %s, %s, 'pro', %s, %s) returning 1",
                     [c1, txn, sub, start, start + timedelta(days=30)])
+        su.rows("insert into public.credit_transactions (org_id, kind, amount, balance_after, reserved_after, external_id, note) "
+                "values (%s, 'subscription', 10, 10, 0, 'pay_oalabplan1', 'Dodo pay_oalabplan1: pro plan (new)') returning 1", [c1])
         su.rows("insert into public.api_ledger (org_id, kind, amount_cents, balance_after, reserved_after, external_id) "
                 "values (%s, 'topup', 2000, 2000, 0, 'txn_oalabapi') returning 1", [c2])
         su.conn.execute("set local session_replication_role = origin")
@@ -155,8 +161,9 @@ def test_anon_and_the_service_role_cannot_execute_them(conn, sc, call):
 
 def test_nobody_calls_the_internal_sales_reader_directly(conn, sc):
     for who in (sc.operator, sc.alice.actor, ANON, SERVICE):
-        out = _call(conn, who, "select * from public.owner_analytics_sales_all()")
-        assert not out.ok and out.sqlstate == "42501", (who.name, out)
+        for fn in ("owner_analytics_sales_all", "owner_analytics_internal_org_ids"):
+            out = _call(conn, who, f"select * from public.{fn}()")
+            assert not out.ok and out.sqlstate == "42501", (who.name, fn, out)
 
 
 def test_a_customer_is_refused_before_the_arguments_are_looked_at(conn, sc):
@@ -189,12 +196,13 @@ def test_the_functions_are_definers_with_a_fixed_search_path(conn, sc):
         rows = su.rows("select p.proname, p.prosecdef, p.proconfig from pg_proc p "
                        "where p.pronamespace = 'public'::regnamespace and p.proname like 'owner\\_analytics\\_%%'")
     names = {r[0] for r in rows}
-    assert names == {"owner_analytics_is_owner", "owner_analytics_sales_all", "owner_analytics_money", "owner_analytics_people",
+    assert names == {"owner_analytics_is_owner", "owner_analytics_sales_all", "owner_analytics_internal_org_ids",
+                     "owner_analytics_set_internal", "owner_analytics_internal_list", "owner_analytics_money", "owner_analytics_people",
                      "owner_analytics_activity", "owner_analytics_jobs", "owner_analytics_record_export",
                      "owner_analytics_export_log"}, names
     for name, definer, config in rows:
         assert "search_path=public, pg_temp" in (config or []), name
-        assert definer == (name != "owner_analytics_sales_all"), name
+        assert definer == (name not in ("owner_analytics_sales_all", "owner_analytics_internal_org_ids")), name
 
 
 # ── what the owner reads ────────────────────────────────────────────────────
@@ -213,6 +221,7 @@ def test_the_owner_reads_each_sale_once_and_classified(conn, sc):
                           "pay_oalabinternal"}
     pack, p1, p2, api = sales["pay_oalabpack1"], sales["pay_oalabplan1"], sales["pay_oalabplan2"], sales["txn_oalabapi"]
     assert (pack["kind"], pack["item"], pack["charge"], pack["amount_minor"]) == ("pack", "starter", None, 1500)
+    # The first period says "(new)" in its webhook note; the second has no note, and its earlier billed period proves a renewal.
     assert (p1["kind"], p1["item"], p1["charge"]) == ("plan", "pro", "initial")
     assert (p2["kind"], p2["item"], p2["charge"]) == ("plan", "pro", "renewal")
     assert p1["subscription_ref"] == p2["subscription_ref"] and p1["period_end"] > p1["period_start"]
@@ -254,7 +263,7 @@ def test_the_owner_reads_the_funnel_without_an_address(conn, sc):
     assert p1["first_generation_at"] == _ts(10, 8)
     assert p1["first_payment_at"] == _ts(10, 1) and p1["first_plan"] == "pro"
     assert p2["first_payment_at"] == _ts(10, 3) and p2["first_plan"] is None and p2["first_generation_at"] is None
-    assert p1["acquisition"] is None and p1["internal"] is False
+    assert p1["acquisition"] is None and p1["internal"] is False and p1["confirmed"] is True
     assert people[sc.operator.uid]["internal"] is True
     assert not any("@" in str(v) for row in out.rows for v in row)
 
@@ -266,7 +275,8 @@ def test_activity_counts_a_person_once_a_day_and_leaves_the_roster_out(conn, sc)
     assert out.ok, out
     mine = [r for r in out.rows if str(r[1]) == w["u1"]]
     assert sorted(str(r[0]) for r in mine) == ["2026-10-08", "2026-10-09"]
-    assert not any(str(r[1]) == sc.operator.uid for r in out.rows)
+    assert all(r[2] is False for r in mine)
+    assert all(r[2] is True for r in out.rows if str(r[1]) == sc.operator.uid)
     assert not wide.ok and wide.sqlstate == "22023", wide
 
 
@@ -276,5 +286,74 @@ def test_jobs_are_counted_with_the_time_they_took(conn, sc):
     assert out.ok, out
     rows = {r[4]: r for r in out.rows if r[3] == "m-oalab"}
     done, failed = rows["completed"], rows["failed"]
-    assert (done[7], done[8], float(done[9]), done[10]) == (1, 4, 90.0, 1)
-    assert (failed[7], failed[8]) == (1, 0)
+    assert (done[7], done[8], done[9], float(done[10]), done[11]) == (1, 4, 1, 90.0, 1)
+    # The failed job was never charged: 0 credits, and 0 jobs carrying a charge — not a free job.
+    assert (failed[7], failed[8], failed[9]) == (1, 0, 0)
+
+
+# ── internal / test workspaces ──────────────────────────────────────────────
+
+def test_a_flagged_demo_workspace_is_internal_everywhere_and_unflagging_restores_it(conn, sc):
+    with world(conn) as w:
+        with acting(conn, sc.operator) as s:
+            assert s.run("select public.owner_analytics_set_internal(%s, true, '  ')", [w["c1"]]).sqlstate == "22023"
+            assert s.run("select public.owner_analytics_set_internal(%s, true, 'x')", [str(uuid.uuid4())]).sqlstate == "22023"
+            assert s.run("select public.owner_analytics_set_internal(%s, true, 'Investor demo')", [w["c1"]]).ok
+            sales = s.rows(MONEY, [FROM, TO])
+            people = s.rows(PEOPLE)
+            jobs = s.rows(JOBS, [FROM, TO])
+            listed = s.rows("select org_id, source, reason from public.owner_analytics_internal_list()")
+            assert s.run("select public.owner_analytics_set_internal(%s, false)", [w["c1"]]).ok
+            after = s.rows(MONEY, [FROM, TO])
+    c1 = [r for r in sales if str(r[4]) == w["c1"]]
+    assert c1 and all(r[14] is True for r in c1)
+    assert next(r for r in people if str(r[0]) == w["u1"])[6] is True
+    assert all(r[6] is True for r in jobs if r[3] == "m-oalab")
+    assert (uuid.UUID(w["c1"]), "flag", "Investor demo") in listed
+    assert all(r[14] is False for r in after if str(r[4]) == w["c1"])
+
+
+def test_a_workspace_owned_by_a_roster_account_is_internal_without_a_flag(conn, sc):
+    with world(conn) as w:
+        with as_superuser(conn, commit=False) as su:
+            su.rows("insert into public.app_members (user_id, email, role) values (%s, 'c2-oalab@example.test', 'admin') returning 1",
+                    [w["u2"]])
+            with acting(conn, sc.operator) as s:
+                sales = s.rows(MONEY, [FROM, TO])
+    assert all(r[14] is True for r in sales if str(r[4]) == w["c2"])
+
+
+def test_an_owner_grant_is_never_revenue(conn, sc):
+    with world(conn) as w:
+        with as_superuser(conn, commit=False) as su:
+            su.value("select public.grant_credits(%s, 3000, 'lab: investor demo grant')", [w["c2"]])
+            with acting(conn, sc.operator) as s:
+                rows = s.rows(MONEY, [FROM, TO])
+    assert sorted(r[3] for r in rows if str(r[4]) == w["c2"]) == ["pay_oalabmystery", "pay_oalabmystery", "txn_oalabapi"]
+
+
+def test_a_plan_period_with_no_evidence_is_not_assumed_initial(conn, sc):
+    with world(conn) as w:
+        with as_superuser(conn, commit=False) as su:
+            sub = su.value("insert into public.subscriptions (org_id, provider, provider_subscription_id, plan_id, status) "
+                           "values (%s, 'dodo', 'sub_oalab2', 'pro', 'active') returning id", [w["c2"]])
+            su.conn.execute("set local session_replication_role = replica")
+            su.rows("insert into public.credit_lots (org_id, source, amount, remaining, external_id, subscription_id, plan_id, "
+                    "period_start, period_end) values (%s, 'subscription', 10, 10, 'pay_oalabnonote', %s, 'pro', %s, %s) returning 1",
+                    [w["c2"], sub, _ts(10, 1), _ts(10, 31)])
+            su.conn.execute("set local session_replication_role = origin")
+            _event(su, "dodo", "payment.succeeded", "pay_oalabnonote", w["c2"], 2900, at=_ts(10, 1))
+            rows = _money(conn, sc)
+    row = next(r for r in rows if r["payment_ref"] == "pay_oalabnonote")
+    assert (row["kind"], row["charge"]) == ("plan", None)
+
+
+def test_money_that_arrived_but_was_not_credited_is_its_own_event(conn, sc):
+    with world(conn) as w:
+        with as_superuser(conn, commit=False) as su:
+            _event(su, "dodo", "payment.succeeded", "pay_oalabrejected", w["c2"], 4900, at=_ts(10, 11), status="rejected")
+            # Rejected once, credited on a later delivery: a sale, not uncredited.
+            _event(su, "dodo", "payment.succeeded", "pay_oalabpack1", w["c1"], 1500, at=_ts(10, 2), status="rejected", event="evt-rej")
+            rows = _money(conn, sc)
+    unc = [(r["event"], r["payment_ref"], r["amount_minor"]) for r in rows if r["event"] == "uncredited"]
+    assert unc == [("uncredited", "pay_oalabrejected", 4900)]

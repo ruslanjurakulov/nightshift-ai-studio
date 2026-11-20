@@ -14,7 +14,8 @@ import { bucketFor, tashkentDay, type Bucket, type Period } from "./period";
 
 export const SALE_KINDS = ["plan", "pack", "api_topup", "unknown"] as const;
 export type SaleKind = (typeof SALE_KINDS)[number];
-export type MoneyEvent = "sale" | "refund" | "dispute";
+/** "uncredited": money a provider reported as paid that the webhook did not credit (a plan change, another currency…). */
+export type MoneyEvent = "sale" | "refund" | "dispute" | "uncredited";
 export type Charge = "initial" | "renewal" | null;
 
 export interface MoneyRow {
@@ -57,7 +58,7 @@ export function coerceMoneyRows(data: unknown): MoneyRow[] {
   for (const r of data) {
     if (!isObj(r) || !isInstant(r.at)) continue;
     const event = r.event;
-    if (event !== "sale" && event !== "refund" && event !== "dispute") continue;
+    if (event !== "sale" && event !== "refund" && event !== "dispute" && event !== "uncredited") continue;
     const kind = (SALE_KINDS as readonly unknown[]).includes(r.kind) ? (r.kind as SaleKind) : "unknown";
     const charge = r.charge === "initial" || r.charge === "renewal" ? r.charge : null;
     const paymentRef = str(r.payment_ref);
@@ -95,7 +96,11 @@ function add(a: Amount, r: MoneyRow): void {
   else a.usd += r.amountMinor / 100;
 }
 
-const inWindow = (r: MoneyRow, p: Pick<Period, "from" | "to">) => r.at >= p.from && r.at < p.to;
+// Instants are compared as instants: PostgREST writes "+00:00" and JavaScript ".000Z", and as strings "+" sorts before ".".
+export const inWindow = (r: { at: string }, p: Pick<Period, "from" | "to">) => {
+  const t = Date.parse(r.at);
+  return t >= Date.parse(p.from) && t < Date.parse(p.to);
+};
 const isUsd = (r: MoneyRow) => r.currency === "USD";
 
 export interface ItemSales {
@@ -121,9 +126,13 @@ export interface RevenueSummary {
   byItem: ItemSales[];
   /** Payments in another currency: counted, never added. */
   otherCurrency: Array<{ currency: string; count: number; minor: number | null }>;
-  /** The operator's own workspace: left out of everything above. */
+  /** Internal and test workspaces: left out of everything above (unless the owner chose to include them). */
   internalExcluded: number;
+  /** Paid but not credited by the webhook: real money, kept out of gross so gross stays "what was sold", and stated apart. */
+  uncredited: { count: number; usd: Amount; otherCurrency: number };
   payingOrgs: number;
+  /** Paying workspaces whose payments were in USD: the denominator that matches a USD revenue figure. */
+  payingOrgsUsd: number;
 }
 
 export function summarize(rows: MoneyRow[], p: Pick<Period, "from" | "to">): RevenueSummary {
@@ -139,15 +148,24 @@ export function summarize(rows: MoneyRow[], p: Pick<Period, "from" | "to">): Rev
     byItem: [],
     otherCurrency: [],
     internalExcluded: 0,
+    uncredited: { count: 0, usd: zero(), otherCurrency: 0 },
     payingOrgs: 0,
+    payingOrgsUsd: 0,
   };
   const items = new Map<string, ItemSales>();
   const other = new Map<string, { currency: string; count: number; minor: number | null }>();
   const payers = new Set<string>();
+  const usdPayers = new Set<string>();
   for (const r of rows) {
     if (!inWindow(r, p)) continue;
     if (r.internal) {
       s.internalExcluded++;
+      continue;
+    }
+    if (r.event === "uncredited") {
+      s.uncredited.count++;
+      if (isUsd(r)) add(s.uncredited.usd, r);
+      else s.uncredited.otherCurrency++;
       continue;
     }
     if (!isUsd(r)) {
@@ -169,7 +187,10 @@ export function summarize(rows: MoneyRow[], p: Pick<Period, "from" | "to">): Rev
       add(s.gross, r);
       s.byKind[r.kind].count++;
       add(s.byKind[r.kind].gross, r);
-      if (r.orgRef) payers.add(r.orgRef);
+      if (r.orgRef) {
+        payers.add(r.orgRef);
+        usdPayers.add(r.orgRef);
+      }
       const key = `${r.kind}:${r.item ?? "?"}`;
       const it = items.get(key) ?? { item: r.item ?? "?", kind: r.kind, count: 0, initial: 0, renewal: 0, chargeUnknown: 0, gross: zero() };
       it.count++;
@@ -195,59 +216,101 @@ export function summarize(rows: MoneyRow[], p: Pick<Period, "from" | "to">): Rev
   s.byItem = [...items.values()].sort((a, b) => b.gross.usd - a.gross.usd || b.count - a.count);
   s.otherCurrency = [...other.values()];
   s.payingOrgs = payers.size;
+  s.payingOrgsUsd = usdPayers.size;
   return s;
 }
 
-const MONTH_DAYS = 365.25 / 12;
+/**
+ * How many months a billed period is, by its length: a monthly plan billed for February (28 days) is one month, not 0.92 of one.
+ * A length that is not a recognisable interval is null — that payment makes MRR incomplete rather than a guessed fraction.
+ */
+export function billedMonths(periodStart: string, periodEnd: string): number | null {
+  const days = (Date.parse(periodEnd) - Date.parse(periodStart)) / 86_400_000;
+  if (days >= 27 && days <= 32) return 1;
+  if (days >= 88 && days <= 93) return 3;
+  if (days >= 180 && days <= 186) return 6;
+  if (days >= 360 && days <= 371) return 12;
+  return null;
+}
 
 /**
- * MRR at an instant: every plan payment whose billed period covers `at`, normalised to a month (a yearly plan is a twelfth of
- * its price a month). Gross of tax, as the provider reported it. Null when no plan payment exists at all (nothing measured), so
- * the page says "no subscriptions yet" rather than "$0 MRR"; `incomplete` when a covering payment had no amount or currency.
+ * Payments that were taken back: a dispute, or refunds that add up to the whole sale. Such a period no longer earns, so it is
+ * not MRR and not a retained subscriber. A refund with no amount leaves the payment UNCERTAIN: it may or may not be whole.
+ */
+export function reversals(rows: MoneyRow[]): { full: Set<string>; uncertain: Set<string> } {
+  const sale = new Map<string, number | null>();
+  const back = new Map<string, number | null>();
+  const full = new Set<string>();
+  for (const r of rows) {
+    if (r.event === "sale") sale.set(r.paymentRef, r.amountMinor);
+    else if (r.event === "dispute") full.add(r.paymentRef);
+    else if (r.event === "refund") {
+      const b = back.get(r.paymentRef);
+      back.set(r.paymentRef, b === null || r.amountMinor === null ? null : (b ?? 0) + r.amountMinor);
+    }
+  }
+  const uncertain = new Set<string>();
+  for (const [ref, amount] of back) {
+    if (full.has(ref)) continue;
+    const paid = sale.get(ref);
+    if (amount === null || paid === null || paid === undefined) uncertain.add(ref);
+    else if (amount >= paid) full.add(ref);
+  }
+  return { full, uncertain };
+}
+
+const covers = (r: MoneyRow, at: number) =>
+  r.periodStart !== null && r.periodEnd !== null && Date.parse(r.periodStart) <= at && at < Date.parse(r.periodEnd);
+
+/**
+ * MRR at an instant: every plan payment whose billed period covers `at`, divided by the months that period bills (a yearly
+ * plan is a twelfth of its price a month). Gross of tax, as the provider reported it. A payment that was taken back does not
+ * count. Null when no plan payment exists at all (nothing measured), so the page says "no subscriptions yet" rather than
+ * "$0 MRR"; `incomplete` when a covering payment had no amount, another currency, an interval we cannot read, or a refund of
+ * unknown size.
  */
 export function mrrAt(rows: MoneyRow[], at: string): { usd: number | null; subscribers: number; incomplete: boolean } {
   let usd = 0;
   let any = false;
   let incomplete = false;
   const subs = new Set<string>();
+  const t = Date.parse(at);
+  const rev = reversals(rows);
   for (const r of rows) {
     if (r.event !== "sale" || r.kind !== "plan" || r.internal) continue;
     any = true;
-    if (!r.periodStart || !r.periodEnd || !(r.periodStart <= at && at < r.periodEnd)) continue;
+    if (!covers(r, t) || rev.full.has(r.paymentRef)) continue;
     subs.add(r.subscriptionRef ?? r.paymentRef);
-    if (r.amountMinor === null || !isUsd(r)) {
+    const months = billedMonths(r.periodStart!, r.periodEnd!);
+    if (r.amountMinor === null || !isUsd(r) || months === null || rev.uncertain.has(r.paymentRef)) {
       incomplete = true;
-      continue;
+      if (r.amountMinor === null || !isUsd(r) || months === null) continue;
     }
-    const days = (Date.parse(r.periodEnd) - Date.parse(r.periodStart)) / 86_400_000;
-    if (!(days > 0)) {
-      incomplete = true;
-      continue;
-    }
-    usd += (r.amountMinor / 100) * (MONTH_DAYS / days);
+    usd += r.amountMinor / 100 / months;
   }
   return { usd: any ? usd : null, subscribers: subs.size, incomplete };
 }
 
 /**
- * Subscribers at the start of a window who were still billed at its end; the rest churned. Null when fewer than
- * MIN_CHURN_BASE subscribers were there to start with: a churn rate from three people is a coin toss, and the page says
- * "not enough data" instead.
+ * Subscribers at the start of a window who were still billed at its end; the rest churned. A payment taken back does not
+ * keep anyone subscribed. Null when fewer than MIN_CHURN_BASE subscribers were there to start with: a churn rate from three
+ * people is a coin toss, and the page says "not enough data" instead.
  */
 export const MIN_CHURN_BASE = 5;
 export function churn(rows: MoneyRow[], p: Pick<Period, "from" | "to">): { base: number; churned: number; rate: number | null } {
-  const covering = (at: string) => {
+  const rev = reversals(rows);
+  const covering = (at: number) => {
     const s = new Set<string>();
     for (const r of rows) {
-      if (r.event === "sale" && r.kind === "plan" && !r.internal && r.periodStart && r.periodEnd && r.periodStart <= at && at < r.periodEnd) {
+      if (r.event === "sale" && r.kind === "plan" && !r.internal && !rev.full.has(r.paymentRef) && covers(r, at)) {
         s.add(r.subscriptionRef ?? r.paymentRef);
       }
     }
     return s;
   };
-  const start = covering(p.from);
+  const start = covering(Date.parse(p.from));
   // "Still billed at the end": a period that covers the last instant of the window.
-  const end = covering(new Date(Date.parse(p.to) - 1).toISOString());
+  const end = covering(Date.parse(p.to) - 1);
   let churned = 0;
   for (const s of start) if (!end.has(s)) churned++;
   return { base: start.size, churned, rate: start.size >= MIN_CHURN_BASE ? churned / start.size : null };
@@ -302,6 +365,7 @@ export function moneySeries(rows: MoneyRow[], p: Period): MoneyPoint[] {
     const k = bucketKey(tashkentDay(new Date(r.at)), bucket);
     const a = acc.get(k);
     if (!a) continue;
+    if (r.event === "uncredited") continue;
     if (r.event === "sale") a.gross = a.gross === null || r.amountMinor === null ? null : a.gross + r.amountMinor / 100;
     else a.refunds = a.refunds === null || r.amountMinor === null ? null : a.refunds + r.amountMinor / 100;
   }
@@ -309,4 +373,12 @@ export function moneySeries(rows: MoneyRow[], p: Period): MoneyPoint[] {
     const a = acc.get(x)!;
     return { x, gross: a.gross, refunds: a.refunds, net: a.gross === null || a.refunds === null ? null : a.gross - a.refunds };
   });
+}
+
+/**
+ * The rows a figure is computed from. By default internal and test workspaces stay flagged and every function leaves them out
+ * (and counts what it left out); with `include`, the owner asked to see them, so they are counted like anyone else's.
+ */
+export function applyScope<T extends { internal: boolean }>(rows: T[], include: boolean): T[] {
+  return include ? rows.map((r) => (r.internal ? { ...r, internal: false } : r)) : rows;
 }

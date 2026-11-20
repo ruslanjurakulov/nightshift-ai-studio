@@ -322,15 +322,17 @@ export interface HeatRow {
 /** A cohort heatmap: one hue, light to dark by share. A month that has not happened yet is blank, not 0%. */
 export function CohortHeatmap({
   rows,
-  monthLabel,
+  monthTemplate,
   sizeLabel,
   labels,
 }: {
   rows: HeatRow[];
-  monthLabel: (offset: number) => string;
+  /** "M{n}": a string, not a function, because a server page renders this client component. */
+  monthTemplate: string;
   sizeLabel: string;
   labels: Pick<ChartLabels, "noData">;
 }) {
+  const monthLabel = (i: number) => monthTemplate.replace("{n}", String(i));
   if (rows.length === 0) return <p className="oa-empty">{labels.noData}</p>;
   const width = Math.max(...rows.map((r) => r.cells.length));
   return (

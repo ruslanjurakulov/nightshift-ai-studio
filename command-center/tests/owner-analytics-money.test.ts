@@ -66,6 +66,21 @@ describe("owner analytics revenue", () => {
     expect(m.usd).toBeCloseTo(100, 0);
   });
 
+  it("reads a February month as one month, and a refunded or disputed period as no MRR", async () => {
+    const { billedMonths } = await import("@/lib/owner-analytics/money");
+    expect(billedMonths("2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z")).toBe(1);
+    expect(billedMonths("2026-01-01T00:00:00Z", "2026-01-11T00:00:00Z")).toBeNull();
+    const feb = sale({ at: "2026-02-01T00:00:00Z", kind: "plan", paymentRef: "pay_feb", amountMinor: 2000, periodStart: "2026-02-01T00:00:00Z", periodEnd: "2026-03-01T00:00:00Z", subscriptionRef: "9" });
+    expect(mrrAt([feb], "2026-02-15T00:00:00Z").usd).toBe(20);
+    expect(mrrAt([feb, sale({ at: "2026-02-03T00:00:00Z", event: "dispute", paymentRef: "pay_feb", amountMinor: null })], "2026-02-15T00:00:00Z")).toMatchObject({ usd: 0, subscribers: 0 });
+    expect(mrrAt([feb, sale({ at: "2026-02-03T00:00:00Z", event: "refund", paymentRef: "pay_feb", amountMinor: null })], "2026-02-15T00:00:00Z").incomplete).toBe(true);
+  });
+
+  it("places a row on a period boundary by instant, not by string", () => {
+    const s = summarize([sale({ at: "2026-09-30T19:00:00+00:00" })], OCT);
+    expect(s.sales).toBe(1);
+  });
+
   it("withholds churn from too few subscribers, and LTV when no churn was seen", () => {
     const plan = (ref: string, end: string) =>
       sale({ at: "2026-09-20T00:00:00Z", kind: "plan", periodStart: "2026-09-20T00:00:00Z", periodEnd: end, subscriptionRef: ref });
@@ -75,6 +90,13 @@ describe("owner analytics revenue", () => {
     expect(churn(many, OCT).rate).toBeCloseTo(0.2);
     expect(ltvEstimate(20, 0)).toBeNull();
     expect(ltvEstimate(20, 0.2)).toBeCloseTo(100);
+  });
+
+  it("keeps money that was paid but not credited out of gross, and states it apart", () => {
+    const s = summarize([sale({ at: "2026-10-02T10:00:00Z", event: "uncredited", amountMinor: 4900, kind: "unknown" })], OCT);
+    expect(s.gross.usd).toBe(0);
+    expect(s.uncredited).toEqual({ count: 1, usd: { usd: 49, unknownCount: 0 }, otherCurrency: 0 });
+    expect(moneySeries([sale({ at: "2026-10-02T10:00:00Z", event: "uncredited" })], OCT).find((p) => p.x === "2026-10-02")?.refunds).toBe(0);
   });
 
   it("puts a bucket with an unknown amount at null, and an empty day at 0", () => {
@@ -104,7 +126,7 @@ describe("owner analytics revenue", () => {
 
 function person(p: Partial<PersonRow> & { userRef: string; signedUpAt: string }): PersonRow {
   return {
-    lastSignInAt: null, locale: null, acquisition: null, internal: false, firstProjectAt: null, firstGenerationAt: null,
+    confirmed: true, lastSignInAt: null, locale: null, acquisition: null, internal: false, firstProjectAt: null, firstGenerationAt: null,
     firstExportAt: null, firstPaymentAt: null, firstPlan: null, ...p,
   };
 }
@@ -116,6 +138,16 @@ describe("owner analytics people", () => {
     expect(f.every((s) => s.ofSignups === null)).toBe(true);
   });
 
+  it("does not count an unconfirmed signup, and counts internal people only when asked", async () => {
+    const { applyScope } = await import("@/lib/owner-analytics/money");
+    const rows = [
+      person({ userRef: "u", signedUpAt: "2026-10-02T00:00:00Z", confirmed: false }),
+      person({ userRef: "demo", signedUpAt: "2026-10-02T00:00:00Z", internal: true }),
+    ];
+    expect(funnel(rows, OCT)[0].count).toBe(0);
+    expect(funnel(applyScope(rows, true), OCT)[0].count).toBe(1);
+  });
+
   it("leaves the platform roster out of the funnel", () => {
     const f = funnel([person({ userRef: "op", signedUpAt: "2026-10-02T00:00:00Z", internal: true })], OCT);
     expect(f[0].count).toBe(0);
@@ -123,10 +155,10 @@ describe("owner analytics people", () => {
 
   it("computes DAU, WAU and MAU from people who did something, and says how many days it rests on", () => {
     const act = [
-      { day: "2026-10-31", userRef: "a" },
-      { day: "2026-10-31", userRef: "b" },
-      { day: "2026-10-25", userRef: "c" },
-      { day: "2026-10-05", userRef: "d" },
+      { day: "2026-10-31", userRef: "a", internal: false },
+      { day: "2026-10-31", userRef: "b", internal: false },
+      { day: "2026-10-25", userRef: "c", internal: false },
+      { day: "2026-10-05", userRef: "d", internal: false },
     ];
     const e = engagement(act, OCT);
     expect(e.wau).toBe(3);
@@ -137,8 +169,13 @@ describe("owner analytics people", () => {
   });
 
   it("leaves a cohort month that has not happened blank, not 0%", () => {
-    const c = signupCohorts([person({ userRef: "a", signedUpAt: "2026-10-02T00:00:00Z" })], [{ day: "2026-11-03", userRef: "a" }], "2026-11");
+    const c = signupCohorts([person({ userRef: "a", signedUpAt: "2026-10-02T00:00:00Z" })], [{ day: "2026-11-03", userRef: "a", internal: false }], "2026-11", "2026-01");
     expect(c[0].cells).toEqual([0, 1]);
+  });
+
+  it("leaves a month the activity read never covered blank, not 0%", () => {
+    const c = signupCohorts([person({ userRef: "a", signedUpAt: "2026-06-02T00:00:00Z" })], [{ day: "2026-10-03", userRef: "a", internal: false }], "2026-10", "2026-09");
+    expect(c[0].cells).toEqual([null, null, null, 0, 1]);
   });
 
   it("reads month-2 renewals per first plan, and a return after a gap as a reactivation", () => {
@@ -156,9 +193,9 @@ describe("owner analytics people", () => {
 
   it("measures time to result on completed jobs only", () => {
     const s = jobsByModel([
-      { day: "2026-10-02", kind: "generate", capability: "t2i", model: "m", status: "completed", payer: "credits", internal: false, jobs: 2, creditsCharged: 8, secondsTotal: 60, secondsCounted: 2 },
-      { day: "2026-10-02", kind: "generate", capability: "t2i", model: "m", status: "failed", payer: "credits", internal: false, jobs: 1, creditsCharged: 0, secondsTotal: 600, secondsCounted: 1 },
-      { day: "2026-10-02", kind: "generate", capability: "t2i", model: "m", status: "completed", payer: "credits", internal: true, jobs: 9, creditsCharged: 9, secondsTotal: 9, secondsCounted: 9 },
+      { day: "2026-10-02", kind: "generate", capability: "t2i", model: "m", status: "completed", payer: "credits", internal: false, jobs: 2, creditsCharged: 8, creditsCounted: 2, secondsTotal: 60, secondsCounted: 2 },
+      { day: "2026-10-02", kind: "generate", capability: "t2i", model: "m", status: "failed", payer: "credits", internal: false, jobs: 1, creditsCharged: 0, creditsCounted: 0, secondsTotal: 600, secondsCounted: 1 },
+      { day: "2026-10-02", kind: "generate", capability: "t2i", model: "m", status: "completed", payer: "credits", internal: true, jobs: 9, creditsCharged: 9, creditsCounted: 9, secondsTotal: 9, secondsCounted: 9 },
     ]);
     expect(s[0]).toMatchObject({ jobs: 3, succeeded: 2, failed: 1, avgSeconds: 30, successRate: null, credits: 8 });
   });

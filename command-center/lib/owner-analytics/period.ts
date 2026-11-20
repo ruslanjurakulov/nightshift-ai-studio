@@ -36,6 +36,8 @@ export interface PeriodSelection {
   /** The equal-length window immediately before `current`, or null when comparison is off. */
   previous: Period | null;
   compare: boolean;
+  /** Count internal and test workspaces too (off by default: the owner's own testing is not the business). */
+  includeInternal: boolean;
 }
 
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -148,17 +150,19 @@ export function parseSelection(params: Params, now: Date): PeriodSelection & { f
   const preset = isPreset(raw) ? raw : DEFAULT_PRESET;
   const { period, fellBack } = resolvePeriod(preset, now, { start: one(params.start), end: one(params.end) });
   const compare = one(params.compare) === "1";
-  return { current: period, previous: compare ? previousPeriod(period) : null, compare, fellBack };
+  const includeInternal = one(params.internal) === "1";
+  return { current: period, previous: compare ? previousPeriod(period) : null, compare, includeInternal, fellBack };
 }
 
 /** The query string for a selection, so links and exports carry exactly the period on screen. */
-export function selectionQuery(sel: { current: Period; compare: boolean }): string {
+export function selectionQuery(sel: { current: Period; compare: boolean; includeInternal?: boolean }): string {
   const q = new URLSearchParams({ period: sel.current.preset });
   if (sel.current.preset === "custom") {
     q.set("start", sel.current.startDay);
     q.set("end", sel.current.endDay);
   }
   if (sel.compare) q.set("compare", "1");
+  if (sel.includeInternal) q.set("internal", "1");
   return q.toString();
 }
 

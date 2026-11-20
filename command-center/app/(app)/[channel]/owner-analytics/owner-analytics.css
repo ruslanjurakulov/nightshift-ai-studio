@@ -146,3 +146,6 @@
 }
 .oa-export { flex-wrap: wrap; align-items: center; }
 .oa button:disabled { opacity: 0.55; cursor: not-allowed; }
+.oa-slider input:not([type="range"]) {
+  background: var(--oa-surface); color: var(--oa-ink); border: 1px solid var(--oa-rule); border-radius: 8px; padding: 6px 8px; min-height: 36px; min-width: 0;
+}

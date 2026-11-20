@@ -44,6 +44,18 @@ function failure(error: { code?: string; message?: string }): ReadFailure {
   return "error";
 }
 
+/** PostgREST's max-rows on Supabase (1,000 by default; the dashboard can lower it, never raise it past what we ask). */
+const PAGE = 1000;
+/** Past this the read stops and says so: a page that never finishes is worse than a partial that is labelled one. */
+const TIME_BUDGET_MS = 25_000;
+
+/**
+ * Every row a function returns, page by page. One request gets at most max-rows rows whatever `.range()` asks, so a single
+ * call would hand the page the first 1,000 sales as if they were all of them (CLAUDE.md #5). The functions order their rows
+ * deterministically, the next page starts after the rows actually received (a server capping below PAGE cannot make a short
+ * page look like the end), and only an empty page ends the read. Hitting the function's own ceiling, or the time budget,
+ * comes back `truncated`.
+ */
 async function rpc<T>(
   fn: string,
   args: Record<string, unknown> | undefined,
@@ -52,16 +64,51 @@ async function rpc<T>(
 ): Promise<Read<T[]>> {
   const supabase = await createClient();
   if (!supabase) return { ok: false, reason: "error" };
+  const started = Date.now();
+  const rows: unknown[] = [];
   try {
-    // PostgREST caps a response at its max-rows; ask for the function's own ceiling so a cut is visible as `truncated`.
-    const { data, error } = await supabase.rpc(fn, args).range(0, limit - 1);
-    if (error) return { ok: false, reason: failure(error) };
-    if (!Array.isArray(data)) return { ok: false, reason: "error" };
-    return { ok: true, data: coerce(data), truncated: data.length >= limit };
+    for (;;) {
+      const { data, error } = await supabase.rpc(fn, args).range(rows.length, rows.length + PAGE - 1);
+      if (error) return { ok: false, reason: failure(error) };
+      if (!Array.isArray(data)) return { ok: false, reason: "error" };
+      if (data.length === 0) return { ok: true, data: coerce(rows), truncated: false };
+      rows.push(...data);
+      if (rows.length >= limit || Date.now() - started > TIME_BUDGET_MS) return { ok: true, data: coerce(rows), truncated: true };
+    }
   } catch {
     return { ok: false, reason: "error" };
   }
 }
+
+export interface InternalOrg {
+  orgId: string;
+  name: string;
+  source: "default" | "flag" | "roster";
+  reason: string | null;
+  flaggedAt: string | null;
+}
+
+/** The workspaces the hub leaves out by default, and why. */
+export const readInternalOrgs = cache(async (): Promise<Read<InternalOrg[]>> =>
+  rpc(
+    "owner_analytics_internal_list",
+    undefined,
+    (d) =>
+      (Array.isArray(d) ? d : []).flatMap((r) => {
+        const o = r as Record<string, unknown>;
+        const source = o.source === "default" || o.source === "flag" || o.source === "roster" ? o.source : null;
+        if (typeof o.org_id !== "string" || !source) return [];
+        return [{
+          orgId: o.org_id,
+          name: typeof o.name === "string" ? o.name : "",
+          source,
+          reason: typeof o.reason === "string" ? o.reason : null,
+          flaggedAt: typeof o.flagged_at === "string" ? o.flagged_at : null,
+        }];
+      }),
+    500,
+  ),
+);
 
 export const readMoney = cache((from: string, to: string): Promise<Read<MoneyRow[]>> =>
   rpc("owner_analytics_money", { p_from: from, p_to: to }, coerceMoneyRows, 50000),

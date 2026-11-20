@@ -23,8 +23,9 @@ import {
   type PersonRow,
 } from "./people";
 import { bucketFor, previousPeriod, tashkentDay, type Period } from "./period";
-import { bucketKey, bucketKeys } from "./money";
-import { tashkentDateTime } from "./format";
+import { bucketKey, bucketKeys, inWindow } from "./money";
+import { fill, tashkentDateTime } from "./format";
+import { TIMEZONE } from "./period";
 
 type D = Dictionary["ownerAnalytics"];
 
@@ -45,7 +46,7 @@ export interface RevenueKpis {
 const lastInstant = (p: Pick<Period, "to">) => new Date(Date.parse(p.to) - 1).toISOString();
 
 /** The 30 days that end with the period: churn is quoted monthly, whatever length the period has. */
-function trailingMonth(p: Pick<Period, "to">): Pick<Period, "from" | "to"> {
+export function trailingMonth(p: Pick<Period, "to">): Pick<Period, "from" | "to"> {
   return { from: new Date(Date.parse(p.to) - 30 * 86_400_000).toISOString(), to: p.to };
 }
 
@@ -56,9 +57,11 @@ export function revenueKpis(money: MoneyRow[], activity: ActivityRow[] | null, p
   let activeUsers: number | null = null;
   if (activity) {
     const s = new Set<string>();
-    for (const a of activity) if (a.day >= p.startDay && a.day <= p.endDay) s.add(a.userRef);
+    for (const a of activity) if (!a.internal && a.day >= p.startDay && a.day <= p.endDay) s.add(a.userRef);
     activeUsers = s.size;
   }
+  // Revenue per person is withheld when the revenue under it is incomplete: a floor divided by a count is not an average.
+  const netKnown = summary.netBeforeFees.unknownCount === 0 ? net : null;
   const c = churn(money, trailingMonth(p));
   const perSubscriber = mrr.usd !== null && mrr.subscribers > 0 ? mrr.usd / mrr.subscribers : null;
   return {
@@ -66,8 +69,9 @@ export function revenueKpis(money: MoneyRow[], activity: ActivityRow[] | null, p
     mrr,
     arr: mrr.usd === null ? null : mrr.usd * 12,
     activeUsers,
-    arpu: activeUsers ? net / activeUsers : null,
-    arppu: summary.payingOrgs > 0 ? net / summary.payingOrgs : null,
+    arpu: activeUsers && netKnown !== null ? netKnown / activeUsers : null,
+    // USD revenue over the workspaces that paid in USD: a euro payer is not in the numerator, so not in the denominator.
+    arppu: summary.payingOrgsUsd > 0 && netKnown !== null ? netKnown / summary.payingOrgsUsd : null,
     churn: c,
     ltv: ltvEstimate(perSubscriber, c.rate),
   };
@@ -78,8 +82,8 @@ const kindLabel = (d: D, k: SaleKind) =>
 
 function preamble(d: D, title: string, p: Period, present: boolean): string[] {
   return [
-    `Nightshift — ${title}`,
-    `${d.period}: ${p.startDay} — ${p.endDay} (Asia/Tashkent)`,
+    fill(d.reportTitle, { title }),
+    `${d.period}: ${p.startDay} — ${p.endDay} (${TIMEZONE})`,
     d.timezoneNote,
     ...(present ? [d.presentOn] : []),
   ];
@@ -101,7 +105,7 @@ export function revenueKindsTable(d: D, s: RevenueSummary, p: Period, present: b
   return {
     name: d.byKind,
     preamble: preamble(d, d.byKind, p, present),
-    columns: [d.source, d.sales, `${d.gross} (USD)`],
+    columns: [d.source, d.sales, `${d.gross}, ${d.usd}`],
     rows: (["plan", "pack", "api_topup", "unknown"] as SaleKind[]).map((k) => [kindLabel(d, k), s.byKind[k].count, usdOrNull(s.byKind[k].gross)]),
   };
 }
@@ -110,7 +114,7 @@ export function revenueItemsTable(d: D, s: RevenueSummary, p: Period, present: b
   return {
     name: `${d.planSales} · ${d.packSales}`,
     preamble: preamble(d, `${d.planSales} · ${d.packSales}`, p, present),
-    columns: [d.source, d.item, d.count, d.initial, d.renewal, d.chargeUnknown, `${d.gross} (USD)`],
+    columns: [d.source, d.item, d.count, d.initial, d.renewal, d.chargeUnknown, `${d.gross}, ${d.usd}`],
     rows: s.byItem.map((i) => [
       kindLabel(d, i.kind),
       i.item === "?" ? d.notRecorded : i.item,
@@ -125,9 +129,10 @@ export function revenueItemsTable(d: D, s: RevenueSummary, p: Period, present: b
 
 export function revenueEventsTable(d: D, money: MoneyRow[], p: Period, present: boolean): Table {
   const rows = money
-    .filter((r) => r.at >= p.from && r.at < p.to && !r.internal)
+    .filter((r) => inWindow(r, p) && !r.internal)
     .sort((a, b) => (a.at < b.at ? 1 : -1));
-  const ev = (e: MoneyRow["event"]) => (e === "sale" ? d.eventSale : e === "refund" ? d.eventRefund : d.eventDispute);
+  const ev = (e: MoneyRow["event"]) =>
+    e === "sale" ? d.eventSale : e === "refund" ? d.eventRefund : e === "dispute" ? d.eventDispute : d.eventUncredited;
   const charge = (r: MoneyRow) => (r.kind !== "plan" ? null : r.charge === "initial" ? d.initial : r.charge === "renewal" ? d.renewal : d.chargeUnknown);
   return {
     name: d.salesTable,
@@ -162,16 +167,16 @@ export function overviewTable(d: D, k: RevenueKpis, prev: RevenueKpis | null, p:
     preamble: [...preamble(d, d.tabOverview, p, present), `${d.fees}: ${d.feesUnknown}`],
     columns: ["", d.period, ...(prev ? [d.previous] : [])],
     rows: [
-      row(`${d.gross} (USD)`, s.gross.unknownCount ? null : s.gross.usd, ps && (ps.gross.unknownCount ? null : ps.gross.usd)),
-      row(`${d.refunds} (USD)`, s.refunds.unknownCount ? null : s.refunds.usd, ps && (ps.refunds.unknownCount ? null : ps.refunds.usd)),
-      row(`${d.disputes} (USD)`, s.disputes.unknownCount ? null : s.disputes.usd, ps && (ps.disputes.unknownCount ? null : ps.disputes.usd)),
-      row(`${d.net} (USD)`, s.netBeforeFees.unknownCount ? null : s.netBeforeFees.usd, ps && (ps.netBeforeFees.unknownCount ? null : ps.netBeforeFees.usd)),
+      row(`${d.gross}, ${d.usd}`, s.gross.unknownCount ? null : s.gross.usd, ps && (ps.gross.unknownCount ? null : ps.gross.usd)),
+      row(`${d.refunds}, ${d.usd}`, s.refunds.unknownCount ? null : s.refunds.usd, ps && (ps.refunds.unknownCount ? null : ps.refunds.usd)),
+      row(`${d.disputes}, ${d.usd}`, s.disputes.unknownCount ? null : s.disputes.usd, ps && (ps.disputes.unknownCount ? null : ps.disputes.usd)),
+      row(`${d.net}, ${d.usd}`, s.netBeforeFees.unknownCount ? null : s.netBeforeFees.usd, ps && (ps.netBeforeFees.unknownCount ? null : ps.netBeforeFees.usd)),
       row(d.sales, s.sales, ps?.sales),
-      row(`${d.mrr} (USD)`, k.mrr.usd, prev?.mrr.usd),
-      row(`${d.arr} (USD)`, k.arr, prev?.arr),
-      row(`${d.arpu} (USD)`, k.arpu, prev?.arpu),
-      row(`${d.arppu} (USD)`, k.arppu, prev?.arppu),
-      row(`${d.ltv} (USD, ${d.estimate})`, k.ltv, prev?.ltv),
+      row(`${d.mrr}, ${d.usd}`, k.mrr.usd, prev?.mrr.usd),
+      row(`${d.arr}, ${d.usd}`, k.arr, prev?.arr),
+      row(`${d.arpu}, ${d.usd}`, k.arpu, prev?.arpu),
+      row(`${d.arppu}, ${d.usd}`, k.arppu, prev?.arppu),
+      row(`${d.ltv} , ${d.usd}, ${d.estimate}`, k.ltv, prev?.ltv),
       row(d.subscribers, k.mrr.subscribers, prev?.mrr.subscribers),
       row(d.churn, k.churn.rate, prev?.churn.rate),
     ],
@@ -223,8 +228,8 @@ export function breakdownTable(d: D, people: PersonRow[], p: Period, present: bo
   };
 }
 
-export function cohortTable(d: D, people: PersonRow[], activity: ActivityRow[], p: Period, present: boolean): Table {
-  const cohorts = signupCohorts(people, activity, p.endDay.slice(0, 7));
+export function cohortTable(d: D, people: PersonRow[], activity: ActivityRow[], fromMonth: string, p: Period, present: boolean): Table {
+  const cohorts = signupCohorts(people, activity, p.endDay.slice(0, 7), fromMonth);
   const width = Math.max(0, ...cohorts.map((c) => c.cells.length));
   return {
     name: d.cohorts,
@@ -260,7 +265,8 @@ export function jobsTable(d: D, jobs: JobRow[], p: Period, present: boolean): Ta
       j.jobs,
       j.successRate === null ? null : Math.round(j.successRate * 1000) / 10,
       j.avgSeconds === null ? null : Math.round(j.avgSeconds),
-      round2(j.credits),
+      // No job of this model carried a charge: the credits are unknown, not 0.
+      j.creditsCounted > 0 ? round2(j.credits) : null,
     ]),
   };
 }
