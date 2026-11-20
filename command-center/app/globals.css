@@ -457,12 +457,14 @@
    pages (everything inside .st: PublicShell and AuthShell), whose stylesheets are in @layer components, an unlayered
    `*` made every border colour they declare (the amber edge of the primary key, a field's 3:1 edge) draw in this
    hairline colour. There the default moves into the lowest layer, where anything that names a colour wins; the app
-   keeps exactly the rule it had. */
-:where(*:not(.st):not(.st *)) {
+   keeps exactly the rule it had.
+   The --ds-* controls (app/tokens.css, also in @layer components) are carved out the same way, wherever they sit: their
+   edges (a field's 3:1 edge, an invalid field's red, a chosen chip's lime, the spinner's open ring) are the point of them. */
+:where(*:not(.st):not(.st *):not(.ds-btn, .ds-input, .ds-chip, .ds-toggle, .ds-tip, .ds-spinner)) {
   border-color: var(--color-border);
 }
 @layer base {
-  :where(.st, .st *) {
+  :where(.st, .st *, .ds-btn, .ds-input, .ds-chip, .ds-toggle, .ds-tip, .ds-spinner) {
     border-color: var(--color-border);
   }
 }
