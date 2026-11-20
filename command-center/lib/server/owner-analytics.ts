@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isMissingFunction } from "@/lib/orgs";
 import { coerceMoneyRows, type MoneyRow } from "@/lib/owner-analytics/money";
+import { coerceFxRates, type FxRate } from "@/lib/owner-analytics/tax";
 import {
   coerceBalanceRows,
   coerceCostEntries,
@@ -174,4 +175,10 @@ export const readSpend = cache((from: string, to: string): Promise<Read<SpendRow
 export const readBalances = cache((): Promise<Read<BalanceRow[]>> => rpc("owner_analytics_balances", undefined, coerceBalanceRows, 500));
 export const readCostEntries = cache((fromMonth: string, toMonth: string): Promise<Read<CostEntry[]>> =>
   rpc("owner_analytics_costs", { p_from_month: fromMonth, p_to_month: toMonth }, coerceCostEntries, 5000),
+);
+
+// ── frozen exchange rates (migration 0184) ──────────────────────────────────
+
+export const readFxRates = cache((fromDay: string, toDay: string): Promise<Read<FxRate[]>> =>
+  rpc("owner_analytics_fx_rates", { p_from: fromDay, p_to: toDay }, coerceFxRates, 5000),
 );

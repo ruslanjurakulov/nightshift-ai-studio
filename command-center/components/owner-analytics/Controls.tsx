@@ -150,14 +150,27 @@ export function PresentToggle({ on }: { on: boolean }) {
   );
 }
 
-type ExportState = { kind: "idle" } | { kind: "busy" } | { kind: "reauth"; format: "csv" | "xlsx" } | { kind: "failed" } | { kind: "mfa" };
+type Format = "csv" | "xlsx" | "pdf";
+type ExportState = { kind: "idle" } | { kind: "busy" } | { kind: "reauth"; format: Format } | { kind: "failed" } | { kind: "tooLarge" } | { kind: "mfa" };
 
 /**
  * CSV and XLSX for one table. The file is built on the server from the database, never from what the browser holds, and the
  * server refuses (401 reauth_required) unless the session signed in within the last few minutes; then the owner confirms their
  * password here and the export is tried once more.
  */
-export function ExportButtons({ what, query, reauthMinutes, title }: { what: string; query: string; reauthMinutes: number; title: string }) {
+export function ExportButtons({
+  what,
+  query,
+  reauthMinutes,
+  title,
+  formats = ["csv", "xlsx"],
+}: {
+  what: string;
+  query: string;
+  reauthMinutes: number;
+  title: string;
+  formats?: Array<"csv" | "xlsx" | "pdf">;
+}) {
   const { t } = useI18n();
   const d = t.ownerAnalytics;
   const [state, setState] = useState<ExportState>({ kind: "idle" });
@@ -172,7 +185,7 @@ export function ExportButtons({ what, query, reauthMinutes, title }: { what: str
     requestAnimationFrame(() => csvRef.current?.focus());
   };
 
-  async function download(format: "csv" | "xlsx") {
+  async function download(format: Format) {
     setState({ kind: "busy" });
     try {
       const res = await fetch("/api/owner-analytics/export", {
@@ -192,6 +205,10 @@ export function ExportButtons({ what, query, reauthMinutes, title }: { what: str
           return;
         }
       }
+      if (res.status === 413) {
+        setState({ kind: "tooLarge" });
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
       const blob = await res.blob();
       const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `${what}.${format}`;
@@ -209,7 +226,7 @@ export function ExportButtons({ what, query, reauthMinutes, title }: { what: str
     }
   }
 
-  async function reauth(format: "csv" | "xlsx") {
+  async function reauth(format: Format) {
     setReauthError(null);
     const supabase = createClient();
     if (!supabase) return setReauthError(d.reauthFailed);
@@ -226,27 +243,27 @@ export function ExportButtons({ what, query, reauthMinutes, title }: { what: str
 
   return (
     <div className="oa-export">
-      <button
-        type="button"
-        ref={csvRef}
-        onClick={() => download("csv")}
-        disabled={state.kind === "busy"}
-        aria-label={fill(d.exportFor, { format: d.exportCsv, title })}
-      >
-        <Download size={12} aria-hidden /> {d.exportCsv}
-      </button>
-      <button
-        type="button"
-        onClick={() => download("xlsx")}
-        disabled={state.kind === "busy"}
-        aria-label={fill(d.exportFor, { format: d.exportXlsx, title })}
-      >
-        <Download size={12} aria-hidden /> {d.exportXlsx}
-      </button>
+      {formats.map((f, i) => (
+        <button
+          key={f}
+          type="button"
+          ref={i === 0 ? csvRef : undefined}
+          onClick={() => download(f)}
+          disabled={state.kind === "busy"}
+          aria-label={fill(d.exportFor, { format: f === "csv" ? d.exportCsv : f === "xlsx" ? d.exportXlsx : d.exportPdf, title })}
+        >
+          <Download size={12} aria-hidden /> {f === "csv" ? d.exportCsv : f === "xlsx" ? d.exportXlsx : d.exportPdf}
+        </button>
+      ))}
       {state.kind === "mfa" && (
         <span className="oa-note" data-tone="warn" role="alert">
           {d.mfaNeeded}{" "}
           <Link href={`/login?next=${encodeURIComponent(pathname)}`}>{d.signInAgain}</Link>
+        </span>
+      )}
+      {state.kind === "tooLarge" && (
+        <span className="oa-note" data-tone="warn" role="alert">
+          {d.pdfTooLarge}
         </span>
       )}
       {state.kind === "failed" && (

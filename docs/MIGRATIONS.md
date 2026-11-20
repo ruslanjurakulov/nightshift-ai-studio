@@ -2010,3 +2010,18 @@ its reads. Read-only over existing tables, plus one log of its own.
 - **Monthly costs.** `owner_cost_entries` (closed), written by `owner_analytics_cost_add / _delete`, read by `owner_analytics_costs`.
 - **Who.** Owner only (0182's gate), writes also need 0107's second factor when it is on (NS401). Granted to `authenticated` only.
 - Lab: `tests/security/sec_owner_costs_0183.py`, `tests/security/test_sec_owner_costs.py`. Rollback: `docs/sql/rollback_0183_owner_costs.sql`.
+
+## Owner analytics: frozen exchange rates for the income register (0184)
+
+0184 (`0184_owner_fx_rates.sql`) stores the exchange rates the owner freezes for the hub's Tax register. No rate is in the file,
+and nothing fetches one.
+
+- **Table.** `owner_fx_rates`: one rate per day and currency (UZS per unit, numeric(18,4)), the source the owner names, who
+  entered it and when. RLS on, no policy, closed to every API role.
+- **Functions.** `owner_analytics_fx_set(day, currency, uzs, source)` (setting it again replaces it), `owner_analytics_fx_delete`,
+  `owner_analytics_fx_rates(from, to)` (at most 1100 days). Writes go through 0183's `owner_costs_write_guard()` (owner, 0107's
+  second factor, the shared rate limit). Granted to `authenticated` only.
+- **Without it** the register lists payments in their own currency and every UZS cell reads "no rate stored".
+- **Requires** 0182 and 0183. Lab: `tests/security/sec_owner_fx_0184.py`, `test_sec_owner_fx.py`, `test_sec_breach_owner_fx.py`.
+- **Rollback:** `docs/sql/rollback_0184_owner_fx_rates.sql`. It drops the table and its functions: every frozen rate is lost
+  (files already exported keep the rate they were made with).

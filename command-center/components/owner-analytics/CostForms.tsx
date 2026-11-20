@@ -173,3 +173,49 @@ export function BalanceForm() {
     </form>
   );
 }
+
+export function FxForm({ maxDay, currencies }: { maxDay: string; currencies: string[] }) {
+  const { t } = useI18n();
+  const d = t.ownerAnalytics;
+  const { post, pending, error } = usePost("/api/owner-analytics/fx", d.fxFailed, d.fxInvalid);
+  const [day, setDay] = useState(maxDay);
+  const [currency, setCurrency] = useState(currencies[0] ?? "USD");
+  const [uzs, setUzs] = useState("");
+  const [source, setSource] = useState("CBU");
+  return (
+    <form
+      className="oa-picker"
+      aria-busy={pending || undefined}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const ok = await post({ day, currency: currency.trim().toUpperCase(), uzs: Number(uzs), source });
+        if (ok) setUzs("");
+      }}
+    >
+      <label className="oa-slider">
+        {d.fxDate}
+        <input type="date" value={day} max={maxDay} onChange={(e) => setDay(e.target.value)} required />
+      </label>
+      <label className="oa-slider">
+        {d.currency}
+        <input value={currency} onChange={(e) => setCurrency(e.target.value)} required maxLength={3} autoComplete="off" spellCheck={false} />
+      </label>
+      <label className="oa-slider">
+        {d.fxRate}
+        <input type="number" inputMode="decimal" min={0} step="0.0001" value={uzs} onChange={(e) => setUzs(e.target.value)} required />
+      </label>
+      <label className="oa-slider">
+        {d.fxSource}
+        <input value={source} onChange={(e) => setSource(e.target.value)} required maxLength={120} />
+      </label>
+      <button type="submit" className="oa-chip" disabled={pending}>
+        {d.fxSave}
+      </button>
+      {error && (
+        <p className="oa-note" data-tone="warn" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
