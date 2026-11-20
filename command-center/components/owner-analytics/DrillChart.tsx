@@ -1,7 +1,7 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n/context";
-import { usd, int } from "@/lib/owner-analytics/format";
+import { usd, int, pct } from "@/lib/owner-analytics/format";
 import { BarList, LineChart, type BarDatum, type Series } from "./Charts";
 
 /**
@@ -38,7 +38,7 @@ export function DrillChart({
           row.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
         }}
       />
-      <p className="oa-note">{d.drillHint}</p>
+      {series.some((x) => x.points.some((pt) => pt.y !== null)) && <p className="oa-note">{d.drillHint}</p>}
     </>
   );
 }
@@ -47,6 +47,6 @@ export function Bars({ data, unit }: { data: BarDatum[]; unit: "usd" | "count" |
   const { t, locale } = useI18n();
   const d = t.ownerAnalytics;
   const format =
-    unit === "usd" ? (n: number) => usd(n, locale, true) : unit === "pct" ? (n: number) => `${Math.round(n * 1000) / 10}%` : (n: number) => int(n, locale);
+    unit === "usd" ? (n: number) => usd(n, locale, true) : unit === "pct" ? (n: number) => pct(n, locale) : (n: number) => int(n, locale);
   return <BarList data={data} format={format} labels={{ unknown: d.unknown, noData: d.noData }} />;
 }

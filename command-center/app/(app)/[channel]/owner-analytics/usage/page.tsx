@@ -85,7 +85,7 @@ export default async function OwnerAnalyticsUsage({ searchParams }: { searchPara
         <CardHead title={d.jobsByModel} what="usage.models" ctx={ctx} />
         <DataTable
           table={jobsTable(d, inP(p), p, present)}
-          id="oa-usage-models"
+          id="oa-usage-models" emptyText={d.noData}
           unknownText={d.notEnoughData}
           format={[undefined, undefined, n$, (n) => `${num(n, locale)}%`, (n) => fill(d.seconds, { n: n$(n) }), (n) => num(n, locale, 2)]}
         />

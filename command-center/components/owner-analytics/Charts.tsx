@@ -11,7 +11,10 @@
  *   points, so measured history never wears a confidence interval it does not have.
  */
 
-import { useId, useMemo, useState, type KeyboardEvent, type PointerEvent } from "react";
+import type React from "react";
+import { useI18n } from "@/lib/i18n/context";
+import { pct } from "@/lib/owner-analytics/format";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 export interface SeriesPoint {
   x: string;
@@ -39,7 +42,8 @@ export interface ChartLabels {
   hide: string;
 }
 
-const W = 720;
+/** Drawn at the container's own width (no stretched viewBox): an 11px label must stay 11px on a phone. */
+const DEFAULT_W = 720;
 const H = 240;
 const PAD = { l: 52, r: 12, t: 12, b: 28 };
 
@@ -67,6 +71,15 @@ export function LineChart({
   const id = useId();
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<number | null>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(DEFAULT_W);
+  useEffect(() => {
+    const el = plotRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(240, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const xs = useMemo(() => {
     const seen = new Set<string>();
@@ -174,7 +187,7 @@ export function LineChart({
           })}
         </div>
       )}
-      <div className="oa-plot">
+      <div className="oa-plot" ref={plotRef}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
           role="img"
@@ -184,7 +197,6 @@ export function LineChart({
           onPointerLeave={() => setHover(null)}
           onClick={() => hx && onSelectX?.(hx)}
           onKeyDown={key}
-          preserveAspectRatio="none"
         >
           {ticks.map((t) => (
             <g key={t}>
@@ -249,7 +261,7 @@ export function LineChart({
             className="oa-tooltip"
             role="status"
             style={{ left: `${(xAt(hover) / W) * 100}%` }}
-            data-flip={xAt(hover) > W * 0.6 || undefined}
+            data-flip={xAt(hover) > W * 0.5 || undefined}
           >
             <div className="oa-tooltip-x">{hx}</div>
             {series.map((s, i) => {
@@ -259,7 +271,10 @@ export function LineChart({
               return (
                 <div key={s.key} className="oa-tooltip-row">
                   <span className="oa-dot" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />
-                  <span>{s.label}</span>
+                  <span>
+                    {s.label}
+                    {s.projected ? ` · ${labels.projection}` : ""}
+                  </span>
                   <span className="oa-num">{p.y === null ? labels.unknown : format(p.y)}</span>
                 </div>
               );
@@ -297,17 +312,28 @@ export function BarList({
     <ul className="oa-bars">
       {data.map((d) => (
         <li key={d.key}>
-          <button type="button" className="oa-bar-row" onClick={() => onSelect?.(d.key)} disabled={!onSelect}>
+          <BarRow onSelect={onSelect ? () => onSelect(d.key) : undefined}>
             <span className="oa-bar-label">{d.label}</span>
             <span className="oa-bar-track" aria-hidden>
               {d.value !== null && <span className="oa-bar-fill" style={{ width: `${Math.max(0, (d.value / max) * 100)}%` }} />}
             </span>
             <span className="oa-num">{d.value === null ? labels.unknown : format(d.value)}</span>
             {d.note && <span className="oa-bar-note">{d.note}</span>}
-          </button>
+          </BarRow>
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A row is a button only when it leads somewhere; otherwise it is plain content, not a disabled control. */
+function BarRow({ onSelect, children }: { onSelect?: () => void; children: React.ReactNode }) {
+  return onSelect ? (
+    <button type="button" className="oa-bar-row" onClick={onSelect}>
+      {children}
+    </button>
+  ) : (
+    <div className="oa-bar-row">{children}</div>
   );
 }
 
@@ -332,6 +358,8 @@ export function CohortHeatmap({
   sizeLabel: string;
   labels: Pick<ChartLabels, "noData">;
 }) {
+  const { locale } = useI18n();
+  const percent = (v: number) => pct(v, locale);
   const monthLabel = (i: number) => monthTemplate.replace("{n}", String(i));
   if (rows.length === 0) return <p className="oa-empty">{labels.noData}</p>;
   const width = Math.max(...rows.map((r) => r.cells.length));
@@ -361,10 +389,11 @@ export function CohortHeatmap({
                   <td
                     key={i}
                     className="oa-num oa-heat-cell"
-                    style={{ background: `color-mix(in srgb, #2f8bff ${Math.round(12 + v * 78)}%, transparent)` }}
-                    title={`${r.label} · ${monthLabel(i)}: ${(v * 100).toFixed(0)}%`}
+                    // Capped at 62% blue so the ink on the fullest cell keeps at least 4.5:1.
+                    style={{ background: `color-mix(in srgb, #2f8bff ${Math.round(10 + v * 52)}%, transparent)` }}
+                    title={`${r.label} · ${monthLabel(i)}: ${percent(v)}`}
                   >
-                    {(v * 100).toFixed(0)}%
+                    {percent(v)}
                   </td>
                 );
               })}

@@ -104,7 +104,7 @@ export default async function OwnerAnalyticsUsers({ searchParams }: { searchPara
               : []),
           ]}
         />
-        <DataTable table={signupsTable(d, people, p, present)} id="oa-users-signups" unknownText={d.unknown} />
+        <DataTable table={signupsTable(d, people, p, present)} id="oa-users-signups" emptyText={d.noData} unknownText={d.unknown} />
       </section>
 
       <div className="oa-cols">
@@ -119,13 +119,13 @@ export default async function OwnerAnalyticsUsers({ searchParams }: { searchPara
               note: s.ofSignups === null ? (s.key === "signup" ? undefined : fill(d.notEnoughDataN, { n: steps[0].count })) : pct(s.ofSignups, locale),
             }))}
           />
-          <DataTable table={funnelTable(d, people, p, present)} id="oa-users-funnel" unknownText={d.notEnoughData} />
+          <DataTable table={funnelTable(d, people, p, present)} id="oa-users-funnel" emptyText={d.noData} unknownText={d.notEnoughData} />
         </section>
         <section className="oa-card">
           <CardHead title={d.byLocale} what="users.locale" ctx={ctx} note={d.countryNote} />
-          <DataTable table={breakdownTable(d, people, p, present, "locale")} id="oa-users-locale" unknownText={d.unknown} />
+          <DataTable table={breakdownTable(d, people, p, present, "locale")} id="oa-users-locale" emptyText={d.noData} unknownText={d.unknown} />
           <CardHead title={d.byAcquisition} what="users.acquisition" ctx={ctx} note={d.acqNote} />
-          <DataTable table={breakdownTable(d, people, p, present, "acquisition")} id="oa-users-acq" unknownText={d.unknown} />
+          <DataTable table={breakdownTable(d, people, p, present, "acquisition")} id="oa-users-acq" emptyText={d.noData} unknownText={d.unknown} />
         </section>
       </div>
 
@@ -140,7 +140,7 @@ export default async function OwnerAnalyticsUsers({ searchParams }: { searchPara
               labels={{ noData: d.noData }}
             />
             <p className="oa-note">{fill(d.cohortsUnread, { month: cohortRead.fromMonth })}</p>
-            <DataTable table={cohortTable(d, people, cohortAct, cohortRead.fromMonth, p, present)} id="oa-users-cohorts" unknownText="" />
+            <DataTable table={cohortTable(d, people, cohortAct, cohortRead.fromMonth, p, present)} id="oa-users-cohorts" emptyText={d.noData} unknownText={d.notRead} />
           </>
         ) : (
           <p className="oa-note">{d.readFailed}</p>
@@ -155,7 +155,7 @@ export default async function OwnerAnalyticsUsers({ searchParams }: { searchPara
           sizeLabel={d.cohortSize}
           labels={{ noData: d.noData }}
         />
-        <DataTable table={planCohortTable(d, sales, p, present)} id="oa-users-plancohorts" unknownText="" />
+        <DataTable table={planCohortTable(d, sales, p, present)} id="oa-users-plancohorts" emptyText={d.noData} unknownText={d.notRead} />
       </section>
     </HubFrame>
   );

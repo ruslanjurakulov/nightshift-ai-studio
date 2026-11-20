@@ -51,7 +51,7 @@ export const ownerAnalyticsEn = {
   incompleteNote: "{n} item(s) had no amount reported, so this total is a floor, not the whole.",
   estimate: "estimate",
   projection: "projection",
-  noData: "Nothing in this period.",
+  noData: "Nothing in this period. Try a longer period.",
   daysOfData: "{n} days of data",
   internalExcluded: "{n} payment(s) from the operator's own workspace are left out.",
   otherCurrency: "{n} payment(s) in another currency are counted but not added: there is no stored exchange rate.",
@@ -189,6 +189,10 @@ export const ownerAnalyticsEn = {
   churnNote: "Subscribers billed 30 days before the period's end who were no longer billed at its end.",
   notConfigured: "This deployment has no database configured, so there is nothing to measure.",
   eventUncredited: "Paid, not credited",
+  notRead: "not read",
+  presentFailed: "Presentation mode did not change. Try again.",
+  exportFor: "{format}: {title}",
+  tableActions: "Action",
   drillHint: "Click a point to jump to its row.",
 };
 

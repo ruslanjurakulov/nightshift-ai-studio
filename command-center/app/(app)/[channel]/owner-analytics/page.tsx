@@ -94,12 +94,12 @@ export default async function OwnerAnalyticsOverview({ searchParams }: { searchP
             { key: "refunds", label: d.refunds, points: series.map((p) => ({ x: p.x, y: p.refunds })) },
           ]}
         />
-        <DataTable table={table} id="oa-overview-series" unknownText={d.unknown} format={[undefined, money$, money$, money$]} />
+        <DataTable table={table} id="oa-overview-series" emptyText={d.noData} unknownText={d.unknown} format={[undefined, money$, money$, money$]} />
       </section>
 
       <section className="oa-card">
         <CardHead title={d.tabOverview} what="overview.kpis" ctx={ctx} note={`${d.fees}: ${d.feesUnknown}`} />
-        <DataTable table={overviewTable(d, k, prev, sel.current, ctx.present)} id="oa-overview-kpis" unknownText={d.unknown} />
+        <DataTable table={overviewTable(d, k, prev, sel.current, ctx.present)} id="oa-overview-kpis" emptyText={d.noData} unknownText={d.unknown} />
       </section>
 
       {internal && internal.ok && <InternalOrgs rows={internal.data} />}

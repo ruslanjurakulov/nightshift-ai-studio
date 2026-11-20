@@ -5,7 +5,8 @@
  * publishes or writes anything but the export log (an export is recorded before its file is built, server-side).
  */
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Download, Presentation, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -115,6 +116,7 @@ export function PresentToggle({ on }: { on: boolean }) {
   const [pending, start] = useTransition();
   const [failed, setFailed] = useState(false);
   return (
+    <span className="oa-picker">
     <button
       type="button"
       className="oa-chip"
@@ -139,6 +141,12 @@ export function PresentToggle({ on }: { on: boolean }) {
     >
       <Presentation size={14} aria-hidden /> {d.present}
     </button>
+      {failed && (
+        <span className="oa-note" data-tone="warn" role="alert">
+          {d.presentFailed}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -149,12 +157,20 @@ type ExportState = { kind: "idle" } | { kind: "busy" } | { kind: "reauth"; forma
  * server refuses (401 reauth_required) unless the session signed in within the last few minutes; then the owner confirms their
  * password here and the export is tried once more.
  */
-export function ExportButtons({ what, query, reauthMinutes }: { what: string; query: string; reauthMinutes: number }) {
+export function ExportButtons({ what, query, reauthMinutes, title }: { what: string; query: string; reauthMinutes: number; title: string }) {
   const { t } = useI18n();
   const d = t.ownerAnalytics;
   const [state, setState] = useState<ExportState>({ kind: "idle" });
   const [password, setPassword] = useState("");
   const [reauthError, setReauthError] = useState<string | null>(null);
+  const csvRef = useRef<HTMLButtonElement>(null);
+  const pathname = usePathname();
+  // Closing the prompt puts focus back where the owner was, not on the page body.
+  const close = () => {
+    setState({ kind: "idle" });
+    setPassword("");
+    requestAnimationFrame(() => csvRef.current?.focus());
+  };
 
   async function download(format: "csv" | "xlsx") {
     setState({ kind: "busy" });
@@ -210,15 +226,27 @@ export function ExportButtons({ what, query, reauthMinutes }: { what: string; qu
 
   return (
     <div className="oa-export">
-      <button type="button" onClick={() => download("csv")} disabled={state.kind === "busy"}>
+      <button
+        type="button"
+        ref={csvRef}
+        onClick={() => download("csv")}
+        disabled={state.kind === "busy"}
+        aria-label={fill(d.exportFor, { format: d.exportCsv, title })}
+      >
         <Download size={12} aria-hidden /> {d.exportCsv}
       </button>
-      <button type="button" onClick={() => download("xlsx")} disabled={state.kind === "busy"}>
+      <button
+        type="button"
+        onClick={() => download("xlsx")}
+        disabled={state.kind === "busy"}
+        aria-label={fill(d.exportFor, { format: d.exportXlsx, title })}
+      >
         <Download size={12} aria-hidden /> {d.exportXlsx}
       </button>
       {state.kind === "mfa" && (
         <span className="oa-note" data-tone="warn" role="alert">
-          {d.mfaNeeded}
+          {d.mfaNeeded}{" "}
+          <Link href={`/login?next=${encodeURIComponent(pathname)}`}>{d.signInAgain}</Link>
         </span>
       )}
       {state.kind === "failed" && (
@@ -227,7 +255,15 @@ export function ExportButtons({ what, query, reauthMinutes }: { what: string; qu
         </span>
       )}
       {state.kind === "reauth" && (
-        <div className="oa-reauth" role="dialog" aria-modal="false" aria-label={d.confirm}>
+        <div
+          className="oa-reauth"
+          role="dialog"
+          aria-modal="false"
+          aria-label={d.confirm}
+          onKeyDown={(ev) => {
+            if (ev.key === "Escape") close();
+          }}
+        >
           <p className="oa-note">{fill(d.exportReauth, { n: reauthMinutes })}</p>
           <form
             onSubmit={(ev) => {
@@ -253,7 +289,7 @@ export function ExportButtons({ what, query, reauthMinutes }: { what: string; qu
             )}
             <div className="oa-export">
               <button type="submit">{d.confirm}</button>
-              <button type="button" onClick={() => setState({ kind: "idle" })}>
+              <button type="button" onClick={close}>
                 <X size={12} aria-hidden /> {d.cancel}
               </button>
             </div>

@@ -46,6 +46,12 @@ export async function hubContext(params: Params): Promise<{ access: Access; ctx:
  * What the page says when it shows no figures. A customer who types the URL learns nothing but "not available": no title, no
  * description of what the page holds (the same as the margin page).
  */
+/** The page the owner is on, for "sign in again and come back here". Only a path of ours: never a full URL. */
+async function currentPath(): Promise<string> {
+  const path = await getChannelPath();
+  return path("owner-analytics");
+}
+
 export async function HubState({ state, ctx }: { state: Access | ReadFailure; ctx: HubContext }) {
   const { d } = ctx;
   const text =
@@ -58,7 +64,7 @@ export async function HubState({ state, ctx }: { state: Access | ReadFailure; ct
         : state === "error"
           ? d.readFailed
           : d.forbidden;
-  const showChrome = state === "missing" || state === "error" || state === "session";
+  const showChrome = state === "missing" || state === "error" || state === "session" || state === "signed_out";
   return (
     <div className="oa" role={state === "error" ? "alert" : undefined}>
       {showChrome && <h1>{d.title}</h1>}
@@ -69,7 +75,7 @@ export async function HubState({ state, ctx }: { state: Access | ReadFailure; ct
             {state === "error" ? (
               <RetryButton label={d.retry} />
             ) : (
-              <Link href="/login" className="oa-chip">
+              <Link href={`/login?next=${encodeURIComponent(await currentPath())}`} className="oa-chip">
                 {d.signInAgain}
               </Link>
             )}
@@ -192,7 +198,7 @@ export function CardHead({ title, what, ctx, note }: { title: string; what?: str
         <h2>{title}</h2>
         {note && <p className="oa-note">{note}</p>}
       </div>
-      {what && <ExportButtons what={what} query={ctx.query} reauthMinutes={EXPORT_REAUTH_MINUTES} />}
+      {what && <ExportButtons what={what} query={ctx.query} reauthMinutes={EXPORT_REAUTH_MINUTES} title={title} />}
     </div>
   );
 }

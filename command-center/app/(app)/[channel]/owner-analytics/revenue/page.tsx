@@ -52,7 +52,7 @@ export default async function OwnerAnalyticsRevenue({ searchParams }: { searchPa
               : []),
           ]}
         />
-        <DataTable table={revenueSeriesTable(d, rows, p, present)} id="oa-rev-series" unknownText={d.unknown} format={[undefined, money$, money$, money$]} />
+        <DataTable table={revenueSeriesTable(d, rows, p, present)} id="oa-rev-series" emptyText={d.noData} unknownText={d.unknown} format={[undefined, money$, money$, money$]} />
         {s.netBeforeFees.unknownCount > 0 && <p className="oa-note" data-tone="warn">{fill(d.incompleteNote, { n: s.netBeforeFees.unknownCount })}</p>}
         {s.otherCurrency.length > 0 && <p className="oa-note">{fill(d.otherCurrency, { n: s.otherCurrency.reduce((a, o) => a + o.count, 0) })}</p>}
         {s.uncredited.count > 0 && (
@@ -75,7 +75,7 @@ export default async function OwnerAnalyticsRevenue({ searchParams }: { searchPa
               note: `${d.sales}: ${n$(s.byKind[k].count)}${prev ? ` · ${d.previous}: ${n$(prev.byKind[k].count)}` : ""}`,
             }))}
           />
-          <DataTable table={revenueKindsTable(d, s, p, present)} id="oa-rev-kinds" unknownText={d.unknown} format={[undefined, n$, money$]} />
+          <DataTable table={revenueKindsTable(d, s, p, present)} id="oa-rev-kinds" emptyText={d.noData} unknownText={d.unknown} format={[undefined, n$, money$]} />
         </section>
         <section className="oa-card">
           <CardHead title={`${d.planSales} · ${d.packSales}`} what="revenue.items" ctx={ctx} />
@@ -88,7 +88,7 @@ export default async function OwnerAnalyticsRevenue({ searchParams }: { searchPa
               note: i.kind === "plan" ? `${d.initial} ${i.initial} · ${d.renewal} ${i.renewal} · ${d.chargeUnknown} ${i.chargeUnknown}` : undefined,
             }))}
           />
-          <DataTable table={items} id="oa-rev-items" unknownText={d.unknown} format={[undefined, undefined, n$, n$, n$, n$, money$]} />
+          <DataTable table={items} id="oa-rev-items" emptyText={d.noData} unknownText={d.unknown} format={[undefined, undefined, n$, n$, n$, n$, money$]} />
         </section>
       </div>
 
@@ -96,7 +96,7 @@ export default async function OwnerAnalyticsRevenue({ searchParams }: { searchPa
         <CardHead title={d.salesTable} what="revenue.events" ctx={ctx} />
         <DataTable
           table={revenueEventsTable(d, rows, p, present)}
-          id="oa-rev-events"
+          id="oa-rev-events" emptyText={d.noData}
           unknownText={d.unknown}
           limit={200}
           showingText={(n, total) => fill(d.showingRows, { n: n$(n), total: n$(total) })}

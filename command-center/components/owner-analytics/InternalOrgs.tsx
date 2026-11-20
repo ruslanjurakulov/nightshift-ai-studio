@@ -56,6 +56,14 @@ export function InternalOrgs({ rows }: { rows: InternalOrgView[] }) {
       </div>
       <div className="oa-table-wrap">
         <table>
+          <thead>
+            <tr>
+              <th scope="col">{d.workspaceId}</th>
+              <th scope="col">{d.source}</th>
+              <th scope="col">{d.reason}</th>
+              <th scope="col">{d.tableActions}</th>
+            </tr>
+          </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.orgId}>

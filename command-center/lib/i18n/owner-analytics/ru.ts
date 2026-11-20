@@ -44,7 +44,7 @@ export const ownerAnalyticsRu: OwnerAnalyticsDictionary = {
   incompleteNote: "У {n} записей сумма не указана, поэтому итог — нижняя граница, а не весь объём.",
   estimate: "оценка",
   projection: "прогноз",
-  noData: "За этот период ничего нет.",
+  noData: "За этот период ничего нет. Попробуйте период длиннее.",
   daysOfData: "данных за {n} дн.",
   internalExcluded: "Не учтено платежей из собственного пространства оператора: {n}.",
   otherCurrency: "Платежей в другой валюте: {n}. Они посчитаны, но не сложены: сохранённого курса нет.",
@@ -176,5 +176,9 @@ export const ownerAnalyticsRu: OwnerAnalyticsDictionary = {
   churnNote: "Подписчики, оплаченные за 30 дней до конца периода, но уже не оплаченные в его конце.",
   notConfigured: "У этого развёртывания не настроена база данных, поэтому измерять нечего.",
   eventUncredited: "Оплачено, не зачислено",
+  notRead: "не читалось",
+  presentFailed: "Режим показа не переключился. Повторите.",
+  exportFor: "{format}: {title}",
+  tableActions: "Действие",
   drillHint: "Нажмите на точку, чтобы перейти к строке.",
 };
