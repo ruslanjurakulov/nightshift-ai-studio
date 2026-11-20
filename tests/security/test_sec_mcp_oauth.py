@@ -523,10 +523,13 @@ def test_authorize_requires_pkce_s256_and_a_well_formed_challenge(db):
 def test_unknown_scopes_are_dropped_and_empty_means_all_offered(db):
     cid = client(db)
     assert begin(db, UA, cid, scope="videos:read nonsense admin")[0]["scopes"] == ["videos:read"]
-    # 0176 adds studio:create to what is offered; the consent screen shows it on its own line like the other three.
-    everything = ["videos:create", "videos:publish", "videos:read"] + (["studio:create"] if (sec_db.MIGRATIONS / "0176_mcp_oauth_creative.sql").exists() else [])
-    assert sorted(begin(db, UA, cid, scope=None)[0]["scopes"]) == sorted(everything)
-    assert sorted(begin(db, UA, cid, scope="offline_access")[0]["scopes"]) == sorted(everything)
+    # Asking for nothing (or nothing known) is 0093's three. 0176's studio:create spends credits on generations, so it is granted
+    # only to a client that asks for it by name, never by default (Lens on 0176).
+    three = ["videos:create", "videos:publish", "videos:read"]
+    assert sorted(begin(db, UA, cid, scope=None)[0]["scopes"]) == three
+    assert sorted(begin(db, UA, cid, scope="offline_access")[0]["scopes"]) == three
+    if (sec_db.MIGRATIONS / "0176_mcp_oauth_creative.sql").exists():
+        assert "studio:create" in begin(db, UA, cid, scope="videos:read studio:create")[0]["scopes"]
 
 
 def test_the_consent_screen_data_names_the_workspace_and_the_limits(db):

@@ -36,6 +36,11 @@ begin
   if h is distinct from '79d0c8598db85481dcb63b906cdd576d' then
     raise exception 'rollback 0176: public.oauth_grant_month_credits(uuid) is not 0176''s body (md5 %): read the live body first', h;
   end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)');
+  if h is distinct from '5c12979d1937b35b5ca8fc353087d4f8' then
+    raise exception 'rollback 0176: public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) is not 0176''s body (md5 %): read the live body first', h;
+  end if;
   if exists (select 1 from public.oauth_grants g where 'studio:create' = any (g.scopes)) then
     raise exception 'rollback 0176: % connection(s) hold the studio:create permission; disconnect them first (Developers → Connected apps)',
       (select count(*) from public.oauth_grants g where 'studio:create' = any (g.scopes));
@@ -54,6 +59,87 @@ drop function if exists public.oauth_creative_state_refusal(text, text);
 drop function if exists public.oauth_creative_model_state(text, text);
 drop function if exists public.oauth_creative_limits();
 drop function if exists public.oauth_creative_capabilities();
+
+-- oauth_begin_authorization: 0147's body, verbatim (0147_mcp_free_tier.sql).
+create or replace function public.oauth_begin_authorization(
+  p_client_id uuid, p_redirect_uri text, p_code_challenge text, p_method text, p_state text,
+  p_scope text, p_resource text, p_secret_hash text
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user   uuid := auth.uid();
+  c        public.oauth_clients;
+  v_org    uuid;
+  v_scopes text[];
+  lim      jsonb := public.oauth_limits();
+  v_plan   text;
+  v_name   text;
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  select * into c from public.oauth_clients where client_id = p_client_id;
+  if c.client_id is null then
+    return jsonb_build_object('ok', false, 'error', 'unknown_client');
+  end if;
+  -- Exact string match against what the client registered; until it matches,
+  -- nothing is ever sent to the URI.
+  if p_redirect_uri is null or not (p_redirect_uri = any (c.redirect_uris)) then
+    return jsonb_build_object('ok', false, 'error', 'redirect_mismatch');
+  end if;
+  if coalesce(p_method, '') <> 'S256' then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_request',
+      'description', 'PKCE with code_challenge_method=S256 is required.');
+  end if;
+  if coalesce(p_code_challenge, '') !~ '^[A-Za-z0-9_-]{43}$' then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_request',
+      'description', 'code_challenge must be the base64url SHA-256 of the verifier.');
+  end if;
+  if p_state is not null and (char_length(p_state) > 512 or p_state ~ '[[:cntrl:]]') then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_request', 'description', 'state is too long.');
+  end if;
+  if coalesce(p_resource, '') !~ '^https?://[^[:space:]#]{1,255}$' then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'invalid_target', 'description', 'resource must be the MCP server URL.');
+  end if;
+  if coalesce(p_secret_hash, '') !~ '^[0-9a-f]{64}$' then
+    return jsonb_build_object('ok', false, 'error', 'server_error');
+  end if;
+
+  -- Unknown scope words are ignored (RFC 6749 3.3: the server may grant less);
+  -- nothing asked for means everything the server offers.
+  v_scopes := array(select s from unnest(public.oauth_scopes_supported()) s
+                     where p_scope is not null and s = any (string_to_array(btrim(p_scope), ' ')));
+  if cardinality(v_scopes) = 0 then
+    v_scopes := public.oauth_scopes_supported();
+  end if;
+
+  v_org := public.oauth_workspace(v_user);
+  if v_org is null then
+    return jsonb_build_object('ok', false, 'redirect_ok', true, 'error', 'no_workspace');
+  end if;
+  select o.name into v_name from public.organizations o where o.id = v_org;
+  v_plan := public.org_plan_internal(v_org);
+
+  -- 0147: every plan may approve, Free included. `entitled` below stays true for the consent page's shape.
+
+  delete from public.oauth_auth_requests where expires_at < now();
+  delete from public.oauth_auth_requests where id in (
+    select id from public.oauth_auth_requests where user_id = v_user order by created_at desc
+     offset (lim ->> 'max_pending_requests')::int - 1);
+  insert into public.oauth_auth_requests
+    (secret_hash, user_id, org_id, client_id, redirect_uri, code_challenge, state, scopes, resource)
+  values (p_secret_hash, v_user, v_org, c.client_id, p_redirect_uri, p_code_challenge, p_state, v_scopes, p_resource);
+
+  return jsonb_build_object('ok', true, 'entitled', true, 'client_name', c.client_name,
+    'redirect_uri', p_redirect_uri, 'workspace_name', v_name, 'plan', v_plan, 'scopes', to_jsonb(v_scopes),
+    'default_limit_credits', (lim ->> 'default_limit_credits')::numeric,
+    'max_limit_credits', (lim ->> 'max_limit_credits')::numeric,
+    'exempt', public.credits_exempt(v_org));
+end
+$$;
+
+revoke all on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) to authenticated;
 
 create or replace function public.oauth_scopes_supported() returns text[]
   language sql immutable set search_path = public, pg_temp as $$

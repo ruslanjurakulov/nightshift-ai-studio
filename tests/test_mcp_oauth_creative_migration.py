@@ -152,7 +152,18 @@ class TheDoors(unittest.TestCase):
         for sig, _e in DOORS.values():
             self.assertIn(f"revoke all on function {sig} from public, anon, authenticated, service_role;", CODE)
             self.assertIn(f"grant execute on function {sig} to anon;", CODE)
-        self.assertEqual(len(re.findall(r"^grant ", CODE, re.M)), len(DOORS))
+        # The doors are anon's; the one other grant is 0147's own, restated for the replaced oauth_begin_authorization.
+        self.assertEqual(len(re.findall(r"^grant execute on function .* to anon;$", CODE, re.M)), len(DOORS))
+        self.assertEqual(re.findall(r"^grant (?!execute on function public\.oauth_creative_|execute on function public\.oauth_media_list).*$", CODE, re.M),
+                         ["grant execute on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) to authenticated;"])
+
+    def test_the_consent_default_is_still_0093s_three_and_the_rollback_restores_0147s_body(self):
+        new = body("oauth_begin_authorization")
+        self.assertIn("-- 0176", new)
+        rb = (ROOT / "docs" / "sql" / "rollback_0176_mcp_oauth_creative.sql").read_text(encoding="utf-8")
+        m147 = (ROOT / "supabase" / "migrations" / "0147_mcp_free_tier.sql").read_text(encoding="utf-8")
+        pick = lambda text: re.search(r"^create or replace function public\.oauth_begin_authorization\(.*?^\$\$;$", text, re.S | re.M).group(0)
+        self.assertEqual(pick(rb), pick(m147))
 
     def test_the_allow_list_is_0093s_plus_the_five_doors_behind_studio_create(self):
         new = set(re.findall(r"when '([a-z.]+)' then '([a-z:]+)'", body("oauth_endpoint_scope")))
