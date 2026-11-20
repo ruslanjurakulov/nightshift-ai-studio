@@ -62,6 +62,7 @@ export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "minimax-h3-lite": "MiniMax H3 Lite",
   "minimax-h3-max": "MiniMax H3 Max",
   "minimax-hailuo-2.3": "MiniMax Hailuo 2.3",
+  "nightshift-voice-explainer": "Nightshift Voice Video",
   "openai-gpt-image-2": "OpenAI GPT Image 2",
   "openai-gpt-image-2.5-flare": "OpenAI GPT Image 2.5 Flare",
   "openai-gpt-image-2.5-sunburst": "OpenAI GPT Image 2.5 Sunburst",

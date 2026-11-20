@@ -8,14 +8,25 @@
 #
 # See docs/WORKER_VPS.md. The toolchain mirrors the `make-video` job of
 # .github/workflows/daily_video.yml: Python 3.11, ffmpeg, ImageMagick with the
-# same one-line policy fix, DejaVu fonts, requirements.txt. No Node: the
-# workflow does not install Remotion either.
+# same one-line policy fix, DejaVu fonts, requirements.txt.
+#
+# Node 22 and the Remotion engine (video-engine/, with its own headless Chrome)
+# are here for ONE consumer: the Studio's voice video (migration 0176,
+# modules/capabilities/voice_video.py), which the creative worker renders on
+# this machine. The pipeline's Remotion path (modules/remotion_renderer.py)
+# stays off unless CHRONOS_REMOTION=1, exactly as before: installing the engine
+# switches nothing on. Node comes from the same pinned image the Command
+# Center is built from (command-center/Dockerfile), never a download script.
 #
 # NO SECRET IS EVER BUILT INTO THIS IMAGE. Keys, the YouTube token(s) and the
 # OAuth client secret arrive at runtime through --env-file; the worker writes
 # the token files for one job and deletes them after it. .dockerignore keeps
 # .env, youtube_token*.json and client_secret.json out of the build context,
 # and the check below fails the build if one slipped through anyway.
+
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+
+FROM ${NODE_IMAGE} AS node
 
 FROM python:3.11-slim-bookworm@sha256:2333bd330d12de02514770b3585cad313644316047cdee24a7acfdece6de6efb
 
@@ -27,8 +38,16 @@ ENV PYTHONUNBUFFERED=1 \
 # The workflow's "Install system dependencies" step. MoviePy's TextClip hands
 # ImageMagick `label:@/tmp/…`, which the shipped policy.xml forbids; re-enable
 # just that one path read, exactly as the workflow does (see its comment).
+# The second line is what Remotion's headless Chrome needs on Debian (remotion.dev/docs/miscellaneous/linux-dependencies,
+# read 2026-11-14), as the runtime libraries (libgbm1, libxkbcommon0) rather than the -dev packages that page names (headers
+# nobody compiles against here), and libstdc++ for Node; fonts-inter is the face the voice video is drawn in
+# (video-engine/src/explainer/looks.ts: Inter first, DejaVu after it), and fontconfig's fc-match is how the worker checks
+# that Chrome will find it (modules/capabilities/voice_video.py missing()): the Studio's render is never quietly set in
+# the fallback face.
 RUN apt-get update -qq \
- && apt-get install -y --no-install-recommends ffmpeg imagemagick fonts-dejavu ca-certificates \
+ && apt-get install -y --no-install-recommends ffmpeg imagemagick fonts-dejavu fonts-inter fontconfig ca-certificates \
+      libnss3 libdbus-1-3 libatk1.0-0 libasound2 libxrandr2 libxkbcommon0 libxfixes3 libxcomposite1 libxdamage1 \
+      libgbm1 libcups2 libcairo2 libpango-1.0-0 libatk-bridge2.0-0 libstdc++6 \
  && for p in /etc/ImageMagick-6/policy.xml /etc/ImageMagick-7/policy.xml; do \
       if [ -f "$p" ]; then sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' "$p"; fi; \
     done \
@@ -48,7 +67,8 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
 # run (after the script and the voice are already paid for). Downloaded into a
 # scratch cache here, before COPY . . so a code change does not repeat it, and
 # moved into the run user's cache below. The check fails the build if the
-# download or the load does not work.
+# download or the load does not work. (The Studio's voice video does not use it:
+# its words come from ElevenLabs speech-to-text, modules/capabilities/voice_video.py.)
 RUN XDG_CACHE_HOME=/opt/whisper-cache python -c "import whisper; whisper.load_model('base'); print('whisper base cached')" \
  && chmod -R a+rX /opt/whisper-cache
 # requirements.txt includes pillow-heif (HEIC photos in the media library, 0044):
@@ -56,7 +76,38 @@ RUN XDG_CACHE_HOME=/opt/whisper-cache python -c "import whisper; whisper.load_mo
 # check below fails the build if the decoder cannot be imported.
 RUN python -c "import pillow_heif; print('pillow-heif', pillow_heif.__version__, 'libheif', pillow_heif.libheif_version())"
 
+# Node 22 (npm and npx with it) from the pinned image, then the engine's dependencies from its lockfile and Remotion's own
+# headless Chrome (into video-engine/node_modules/.remotion), before COPY . . so a code change does not repeat them. The
+# checks fail the build if Node cannot run or the browser was not fetched: the voice video's "configured" check reads the
+# same things at run time (modules/capabilities/voice_video.py), and a worker without them refuses the job before it renders.
+# node_modules stays root's and is never part of the recursive chown / chmod below (a few hundred MB written again as a
+# second layer); the rare file a package ships unreadable to others is fixed here, in this layer, so uid 1000 can read it.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+ && node --version && npm --version
+COPY video-engine/package.json video-engine/package-lock.json /app/video-engine/
+RUN cd /app/video-engine \
+ && npm ci --no-audit --no-fund \
+ && npx remotion browser ensure \
+ && test -d node_modules/remotion && test -d node_modules/.remotion \
+ && find node_modules \( ! -perm -o+r -o \( -type d ! -perm -o+x \) \) ! -type l -exec chmod go+rX {} + \
+ && npm cache clean --force
+
 COPY . .
+
+# Remotion bundles the composition with webpack before every render and caches the result in
+# video-engine/node_modules/.cache/webpack (no setting moves it; @remotion/bundler webpack-cache.js). Root-owned, the
+# creative worker (uid 1000) could not write it, so every voice video bundled from scratch. The cache is warmed here once
+# and only that folder is handed to uid 1000. Its key is the webpack config, not the render's output or public dir
+# (checked with two bundles into different folders: one cache entry), so a render reads this one. A pre-built bundle
+# (`remotion render <bundle>`) is not used: it fixes the public dir at build time, and each render brings its own narration.
+RUN cd /app/video-engine \
+ && npx remotion bundle src/index.ts --out-dir /tmp/remotion-warm --log=error \
+ && rm -rf /tmp/remotion-warm \
+ && test -d node_modules/.cache/webpack \
+ && chown -R 1000:1000 node_modules/.cache
 
 # Refuse to ship a credential, even one .dockerignore missed.
 RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_secret*.json' -o -name '.env' \) | grep -q .; then \
@@ -66,9 +117,10 @@ RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_sec
  && mkdir -p /home/nightshift/.cache \
  && mv /opt/whisper-cache/whisper /home/nightshift/.cache/whisper \
  && chown -R nightshift:nightshift /home/nightshift/.cache \
+ && python tools/generate_assets.py \
  && mkdir -p output history logs assets downloads \
- && chown -R nightshift:nightshift /app \
- && chmod -R go+rX,go-w /app \
+ && find /app -path /app/video-engine/node_modules -prune -o -exec chown -h nightshift:nightshift {} + \
+ && find /app -path /app/video-engine/node_modules -prune -o ! -type l -exec chmod go+rX,go-w {} + \
  && chmod 700 output history logs \
  && mkdir -p /app/media /app/media-staging \
  && chown 1000:1000 /app/media /app/media-staging

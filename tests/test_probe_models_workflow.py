@@ -75,6 +75,9 @@ class ProbeWorkflowShapeTests(unittest.TestCase):
     def test_every_adapter_can_find_a_key(self):
         env = probe_step()["env"]
         for key, cls in ADAPTERS.items():
+            # The voice video (0176) needs the ElevenLabs key for its transcription as well as the engine; on this runner its
+            # probe still answers not_configured before any paid call (no engine here), and the real probe runs on the worker
+            # (docs/VOICE_EXPLAINER.md, "Opening it").
             self.assertTrue(any(n in env for n in cls.key_env), f"{key}: map one of {cls.key_env}")
         self.assertIn("SUPABASE_SERVICE_KEY", env)
         self.assertIn("SUPABASE_URL", env)

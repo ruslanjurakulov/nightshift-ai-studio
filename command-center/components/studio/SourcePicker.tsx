@@ -18,7 +18,8 @@ export function clipLength(seconds: number | null): string | null {
  * removal starts from (or an animation ends on) — or, with
  * `media="recording"`, the ONE audio or video file a voice change or a dub
  * starts from (migration 0050), or with `media="video"` the ONE video a video
- * upscale starts from (0052). Once picked it
+ * upscale starts from (0052), or with `media="audio"` the ONE audio recording a
+ * voice video is drawn over (0176). Once picked it
  * shows large with "Change"; the list comes back only when asked. The pick is
  * only an id: the database refuses (source_unavailable) one that is not a
  * live file of the right kind of this organization when it prices the job,
@@ -43,8 +44,8 @@ export function SourcePicker({
   libraryHref: string;
   /** In the Studio's narrow composer column: four across at every width. */
   compact?: boolean;
-  /** What the tool starts from: a picture (0046), a recording (0050) or a video (0052). */
-  media?: "picture" | "recording" | "video";
+  /** What the tool starts from: a picture (0046), a recording (0050), a video (0052) or an audio recording only (0176). */
+  media?: "picture" | "recording" | "video" | "audio";
   /** A recording or video tool's longest clip, to grey out longer ones (the database still decides). */
   maxSeconds?: number | null;
   /** The list's accessible name when a form has two pickers (an animation's end frame). */
@@ -55,7 +56,8 @@ export function SourcePicker({
   const { state, images, recordings, reload } = useLibraryImages(orgId);
   const [browsing, setBrowsing] = useState(false);
   const chosen = value && media === "picture" ? images.find((i) => i.id === value) : undefined;
-  const files = media === "video" ? recordings.filter((r) => r.kind === "video") : recordings;
+  const files =
+    media === "video" ? recordings.filter((r) => r.kind === "video") : media === "audio" ? recordings.filter((r) => r.kind === "audio") : recordings;
   const chosenRec = value && media !== "picture" ? files.find((r) => r.id === value) : undefined;
   // A picture handed in from a result that finished after the library was
   // read ("Use as picture"): read the library once more to show it.
@@ -73,6 +75,7 @@ export function SourcePicker({
         state={state}
         recordings={files}
         video={media === "video"}
+        audio={media === "audio"}
         value={value}
         chosen={chosenRec}
         browsing={browsing}
@@ -247,6 +250,7 @@ function RecordingPicker({
   state,
   recordings,
   video,
+  audio = false,
   value,
   chosen,
   browsing,
@@ -260,6 +264,8 @@ function RecordingPicker({
   recordings: PickerRecording[];
   /** Videos only (0052's upscale): its own words, and limits in seconds. */
   video: boolean;
+  /** Audio only (0176's voice video): its own words, so the list never promises a video it then refuses. */
+  audio?: boolean;
   value: string | null;
   chosen: PickerRecording | undefined;
   browsing: boolean;
@@ -274,7 +280,9 @@ function RecordingPicker({
   const kindName = (r: PickerRecording | undefined) => (r?.kind === "video" ? g.recordingVideo : g.recordingAudio);
   const copy = video
     ? { label: g.videoLabel, pick: g.videoPick, empty: g.videoEmpty, chosen: g.videoChosen, change: g.videoChange }
-    : { label: g.recordingLabel, pick: g.recordingPick, empty: g.recordingEmpty, chosen: g.recordingChosen, change: g.recordingChange };
+    : audio
+      ? { label: g.narrationLabel, pick: g.narrationPick, empty: g.narrationEmpty, chosen: g.recordingChosen, change: g.recordingChange }
+      : { label: g.recordingLabel, pick: g.recordingPick, empty: g.recordingEmpty, chosen: g.recordingChosen, change: g.recordingChange };
   // A video tool's limit is seconds long (0052); a voice tool's is minutes.
   const tooLongText = (max: number) =>
     video ? fmt(g.videoTooLong, { n: max }) : fmt(g.recordingTooLong, { n: Math.round(max / 60) });

@@ -534,7 +534,7 @@ export async function getCreativeJob(caller: ApiCaller, jobId: string): Promise<
  */
 export const API_CREATIVE_CAPABILITIES = [
   "t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe",
-  "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg",
+  "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "voice_explainer",
 ] as const satisfies readonly CreativeCapability[];
 
 /**

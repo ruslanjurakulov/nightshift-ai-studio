@@ -15,8 +15,9 @@ Two planners fill the scenes, and the caller picks one; neither stands in for th
   the rules planner (CLAUDE.md rule 4).
 
 This module spends nothing and talks to no provider by itself: transcription and the
-model are passed in (tools/voice_to_video.py wires them). It is not a run kind yet: no
-credit hold, no queue job, no upload. That is the next slice (docs/VOICE_EXPLAINER.md).
+model are passed in. Two callers wire it: tools/voice_to_video.py (the operator's command)
+and modules/capabilities/voice_video.py (the Studio's paid creative job, migration 0176,
+rules planner only; docs/VOICE_EXPLAINER.md).
 """
 
 from __future__ import annotations
@@ -73,6 +74,14 @@ class ExplainerError(ValueError):
 
 class PlanRejected(ExplainerError):
     """The model's plan does not fit the catalogue. Never replaced by the rules planner."""
+
+
+class RenderFailed(ExplainerError):
+    """Remotion ran and did not produce the video. Not the recording's fault: a paid caller words it as the engine's."""
+
+
+class RenderTimeout(RenderFailed):
+    """The render ran out of time and was stopped (a busy or too small machine, not a bad recording)."""
 
 
 @dataclass(frozen=True)
@@ -489,8 +498,9 @@ def build_props(*, look: str, duration_s: float, words: Sequence[Word], scenes: 
 def audio_seconds(path: Path) -> float:
     """The recording's length from ffprobe. Unreadable is a refusal, never 'some length'."""
     try:
-        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-                             capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+        out = subprocess.run(["ffprobe", "-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration",
+                              "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, timeout=60, check=True, env=tool_env()).stdout.strip()
     except (OSError, subprocess.SubprocessError) as e:
         raise ExplainerError(f"cannot read {path} with ffprobe ({type(e).__name__}): is it an audio file?") from None
     d = _num(out)
@@ -539,12 +549,24 @@ def plan_chunks(scenes: Sequence[Mapping], duration_s: float, fps: int, *, targe
     return chunks
 
 
+#: The whole render's budget (bundle, chunks, sound, join), scaled with the recording: the paid adapter
+#: (modules/capabilities/voice_video.py) and tools/voice_to_video.py use the same one, so a length the Studio sells is a
+#: length the tool can render too (a flat 1800 s could not finish 600 s, measured on #769).
+RENDER_TIMEOUT_FLOOR_S = 600
+RENDER_TIMEOUT_PER_SECOND = 6
+
+
+def render_timeout_s(duration_s: float) -> float:
+    return RENDER_TIMEOUT_FLOOR_S + RENDER_TIMEOUT_PER_SECOND * float(duration_s or 0)
+
+
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
            browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
-           chunk_s: float = CHUNK_S, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
+           tmp_dir: Optional[Path] = None, chunk_s: float = CHUNK_S,
+           on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
     """Render the props with Remotion. ``files`` maps each public path the props name
     (narration, music, effects) to the file on disk; they are copied into a private
-    public dir for this render only. Raises ExplainerError with Remotion's last lines.
+    public dir for this render only. Raises RenderFailed (RenderTimeout) with Remotion's last lines.
 
     The project is bundled once (webpack runs in its own short process, so no render holds it). A video up to two
     chunks long is then one render, sound included. A longer one renders its picture in scene-aligned chunks without
@@ -554,7 +576,11 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
     the pictures without re-encoding and encodes the sound once, as a single render does (AAC, 320 kb/s, 48 kHz). The
     result must have exactly the composition's frame count, or it is refused and deleted.
 
-    ``on_spawn`` receives every child process (the bundler, each Remotion render, ffmpeg) right after it starts, so a
+    ``tmp_dir``: where this render's scratch goes (the public dir, the props, the bundle and Remotion's own TMPDIR)
+    instead of the system's. The creative worker's /tmp is a tmpfs, so a ten-minute render's audio and bundle there would
+    count against the container's memory limit; it passes the job's own folder on the media volume.
+
+    ``on_spawn`` receives every child process (the bundler, each Remotion render, ffmpeg, ffprobe) right after it starts, so a
     caller that is stopped can kill its process group; None does nothing.
 
     Why not each chunk's own sound: Remotion mixes an effect that starts at or before a chunk's first frame
@@ -572,7 +598,11 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
     # A file left from an earlier run must not pass as this run's output.
     out_path.unlink(missing_ok=True)
     deadline = _now() + timeout_s
-    with tempfile.TemporaryDirectory(prefix="explainer-") as tmp:
+    env = _render_env()
+    if tmp_dir is not None:
+        Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+        env["TMPDIR"] = str(Path(tmp_dir).resolve())
+    with tempfile.TemporaryDirectory(prefix="explainer-", dir=str(tmp_dir) if tmp_dir is not None else None) as tmp:
         pub = (Path(tmp) / "public").resolve()
         pub.mkdir()
         for name, src in files.items():
@@ -587,14 +617,14 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
         bundle = Path(tmp) / "bundle"
         try:
             _run(["npx", "remotion", "bundle", "src/index.ts", f"--out-dir={bundle}", f"--public-dir={pub}", "--log=error"],
-                 engine_dir, deadline, timeout_s, "bundling", on_spawn)
+                 engine_dir, deadline, timeout_s, "bundling", on_spawn, env)
             common = ["--log=error"]
             if browser:
                 common.append(f"--browser-executable={browser}")
 
             def remotion(out: Path, *extra: str, what: str, props_path: Path = props_file, tabs: int = concurrency) -> None:
                 _run(["npx", "remotion", "render", str(bundle), COMPOSITION, str(out), f"--props={props_path}", *extra,
-                      f"--concurrency={int(tabs)}", *common], engine_dir, deadline, timeout_s, what, on_spawn)
+                      f"--concurrency={int(tabs)}", *common], engine_dir, deadline, timeout_s, what, on_spawn, env)
                 if not out.exists() or out.stat().st_size == 0:
                     raise ExplainerError(f"Remotion wrote nothing for {what}")
 
@@ -617,9 +647,9 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
                 _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(vlist), "-i", str(sound),
                       "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
                       "-movflags", "+faststart", str(out_path.resolve())],
-                     engine_dir, deadline, timeout_s, "joining the chunks", on_spawn)
+                     engine_dir, deadline, timeout_s, "joining the chunks", on_spawn, env)
                 want = total_frames(props["duration_s"], props["fps"])
-                got = _frame_count(out_path)
+                got = _frame_count(out_path, on_spawn=on_spawn, env=env)
                 if got != want:
                     raise ExplainerError(f"the joined video has {got} frames, the composition has {want}: not delivered")
         except ExplainerError:
@@ -635,15 +665,15 @@ def _now() -> float:
 
 
 def _run(cmd: List[str], cwd: Path, deadline: float, timeout_s: float, what: str,
-         on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> None:
+         on_spawn: Optional[Callable[[subprocess.Popen], None]] = None, env: Optional[dict] = None) -> None:
     """One step of a render, in its own process group with the trimmed environment, inside the render's overall time.
     On a timeout the whole tree goes (npx, node, the headless Chrome), so nothing keeps writing after the caller was
     told the render failed."""
     left = deadline - _now()
     if left <= 0:
-        raise ExplainerError(f"the render took longer than {timeout_s:.0f} s and was stopped (before {what})")
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=_render_env(),
-                            start_new_session=True)
+        raise RenderTimeout(f"the render took longer than {timeout_s:.0f} s and was stopped (before {what})")
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            env=env if env is not None else _render_env(), start_new_session=True)
     if on_spawn is not None:
         try:
             on_spawn(proc)
@@ -655,20 +685,40 @@ def _run(cmd: List[str], cwd: Path, deadline: float, timeout_s: float, what: str
         stdout, stderr = proc.communicate(timeout=left)
     except subprocess.TimeoutExpired:
         _kill_group(proc)
-        raise ExplainerError(f"the render took longer than {timeout_s:.0f} s and was stopped ({what})") from None
+        raise RenderTimeout(f"the render took longer than {timeout_s:.0f} s and was stopped ({what})") from None
     if proc.returncode != 0:
         tail = "\n".join((stderr or stdout or "").strip().splitlines()[-8:])
-        raise ExplainerError(f"{'Remotion' if cmd[0] == 'npx' else cmd[0]} failed {what} (exit {proc.returncode}): {tail}")
+        raise RenderFailed(f"{'Remotion' if cmd[0] == 'npx' else cmd[0]} failed {what} (exit {proc.returncode}): {tail}")
 
 
-def _frame_count(path: Path) -> Optional[int]:
+#: Seconds ffprobe may take to count a joined video's packets (it reads the whole file: ten minutes is a few seconds).
+FRAME_COUNT_TIMEOUT_S = 120
+
+
+def _frame_count(path: Path, *, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None,
+                 env: Optional[dict] = None) -> Optional[int]:
+    """The joined video's frame count, or None when it cannot be read (then it is refused, never assumed). Run like every
+    other step of the render: the trimmed environment (no provider key reaches ffprobe), its own process group, and
+    handed to ``on_spawn`` so a stop of the worker can kill it."""
     try:
-        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
-                              "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
-                             capture_output=True, text=True, timeout=120, check=True).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+        proc = subprocess.Popen(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
+                                 "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                env=env if env is not None else _render_env(), start_new_session=True)
+    except OSError:
         return None
-    return parse_count(out)
+    if on_spawn is not None:
+        try:
+            on_spawn(proc)
+        except BaseException:
+            _kill_group(proc)
+            raise
+    try:
+        stdout, _stderr = proc.communicate(timeout=FRAME_COUNT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc)
+        return None
+    return parse_count(stdout) if proc.returncode == 0 else None
 
 
 def parse_count(text: str) -> Optional[int]:
@@ -685,6 +735,12 @@ _RENDER_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "NODE_OPTIONS", 
 
 def _render_env() -> dict:
     return {k: v for k, v in os.environ.items() if k in _RENDER_ENV_KEYS}
+
+
+def tool_env() -> dict:
+    """The environment for ffmpeg / ffprobe on a recording: the same trimmed one the render gets, so no provider key or
+    service key ever reaches a process that reads a member's file (Breach M-1)."""
+    return _render_env()
 
 
 def _kill_group(proc) -> None:

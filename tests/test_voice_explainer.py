@@ -210,6 +210,15 @@ class TwinWithTypeScript(unittest.TestCase):
 
 
 class Cli(unittest.TestCase):
+    def test_the_tool_renders_with_the_same_length_scaled_budget_as_the_paid_adapter(self):
+        # Breach L-3: a flat 1800 s could not finish a 600 s recording; the tool and the Studio share one budget.
+        from modules.capabilities import voice_video as vv
+        self.assertGreaterEqual(ve.render_timeout_s(ve.MAX_SECONDS), 2700)
+        self.assertEqual(vv.RENDER_TIMEOUT_FLOOR_S + vv.RENDER_TIMEOUT_PER_SECOND * 100, ve.render_timeout_s(100))
+        src = (ROOT / "tools" / "voice_to_video.py").read_text(encoding="utf-8")
+        self.assertIn("timeout_s=ve.render_timeout_s(duration)", src)
+
+
     def test_a_missing_recording_or_too_long_one_is_refused_before_anything_runs(self):
         with TemporaryDirectory() as d:
             rc = voice_to_video.main(["--audio", str(Path(d) / "none.mp3"), "--out", str(Path(d) / "o.mp4")])
@@ -300,7 +309,9 @@ class ReviewFindings(unittest.TestCase):
             with mock.patch("shutil.which", return_value="/usr/bin/npx"), \
                     mock.patch("subprocess.Popen", return_value=Hung()) as popen, \
                     mock.patch("os.killpg") as killpg, \
-                    self.assertRaisesRegex(ve.ExplainerError, "longer than"):
+                    self.assertRaisesRegex(ve.RenderTimeout, "longer than"):
+                # RenderTimeout, not merely ExplainerError: the voice video reads it as "try again later" (unavailable),
+                # every other engine failure as the engine's fault (bad_response).
                 ve.render({}, out, files={}, engine_dir=engine, timeout_s=1)
             self.assertTrue(popen.call_args.kwargs["start_new_session"])
             self.assertNotIn("GEMINI_API_KEY", popen.call_args.kwargs["env"])
@@ -381,6 +392,48 @@ class Chunks(unittest.TestCase):
         for bad in ("", "N/A", "912,13", "-1", None):
             self.assertIsNone(ve.parse_count(bad))
 
+    def test_the_frame_count_runs_like_every_other_step_of_the_render(self):
+        # ffprobe gets the trimmed environment (no provider key), its own process group, and the caller's on_spawn, so a
+        # stop of the worker kills it like the rest of the render; its csv answer is still read by parse_count.
+        import os
+        import subprocess
+        from unittest import mock
+
+        seen = {}
+
+        class Probe:
+            pid = 7
+            returncode = 0
+
+            def __init__(self, cmd, **kw):
+                seen.update(cmd=cmd, **kw)
+
+            def communicate(self, timeout=None):
+                seen["timeout"] = timeout
+                return "912,\n", ""
+
+        spawned = []
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "x" * 30, "PATH": "/usr/bin"}), \
+                mock.patch("subprocess.Popen", Probe):
+            self.assertEqual(ve._frame_count(Path("o.mp4"), on_spawn=spawned.append), 912)
+        self.assertEqual(seen["cmd"][0], "ffprobe")
+        self.assertNotIn("GEMINI_API_KEY", seen["env"])
+        self.assertTrue(seen["start_new_session"])
+        self.assertEqual(seen["timeout"], ve.FRAME_COUNT_TIMEOUT_S)
+        self.assertEqual(len(spawned), 1)
+
+        class Hung(Probe):
+            def communicate(self, timeout=None):
+                raise subprocess.TimeoutExpired("ffprobe", timeout)
+
+        class Failed(Probe):
+            returncode = 1
+
+        for proc in (Hung, Failed):
+            with self.subTest(proc.__name__), mock.patch("subprocess.Popen", proc), mock.patch("os.killpg") as killpg:
+                self.assertIsNone(ve._frame_count(Path("o.mp4")), "unknown, never a guess")
+                self.assertEqual(killpg.called, proc is Hung)
+
     def test_the_frame_count_matches_the_composition(self):
         self.assertEqual(ve.total_frames(30.384, 30), 912)
         self.assertEqual(ve.total_frames(10, 30), 300)
@@ -420,7 +473,7 @@ class ChunkedRender(unittest.TestCase):
         (engine / "node_modules").mkdir(parents=True)
         out = Path(d.name) / "o.mp4"
         with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Done), \
-                mock.patch.object(ve, "_frame_count", return_value=frames):
+                mock.patch.object(ve, "_frame_count", return_value=frames) as self.frame_count:
             try:
                 ve.render(self.PROPS, out, files={}, engine_dir=engine, on_spawn=on_spawn)
                 err = None
@@ -468,11 +521,72 @@ class ChunkedRender(unittest.TestCase):
         self.assertEqual(len(seen), len(calls))
         self.assertEqual(len(seen), 6)
         self.assertEqual(len({id(p) for p in seen}), 6)
+        # The frame count (ffprobe, mocked here) is the seventh process: it gets the same on_spawn and the trimmed env.
+        kw = self.frame_count.call_args.kwargs
+        self.assertIsNotNone(kw["on_spawn"])
+        self.assertNotIn("GEMINI_API_KEY", kw["env"])
 
     def test_without_on_spawn_nothing_changes(self):
         calls, out, err = self.run_render(ve.total_frames(121.536, 30))
         self.assertIsNone(err)
         self.assertTrue(out.exists())
+
+    def test_a_deadline_already_past_before_a_later_chunk_is_a_timeout_and_that_chunk_never_starts(self):
+        from unittest import mock
+
+        clock = [0.0]
+        started = []
+
+        class Slow:
+            pid = 1
+            returncode = 0
+
+            def __init__(self, cmd, **kw):
+                started.append(cmd)
+                for a in cmd:
+                    if a.endswith((".mp4", ".wav")) and cmd[0] == "npx":
+                        Path(a).write_bytes(b"x")
+
+            def communicate(self, timeout=None):
+                clock[0] += 6.0   # each step takes 6 s of a 10 s budget
+                return "", ""
+
+        d = TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        engine = Path(d.name) / "engine"
+        (engine / "node_modules").mkdir(parents=True)
+        out = Path(d.name) / "o.mp4"
+        with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Slow), \
+                mock.patch.object(ve, "_now", side_effect=lambda: clock[0]), \
+                self.assertRaisesRegex(ve.RenderTimeout, r"longer than 10 s and was stopped \(before chunk 2/3"):
+            ve.render(self.PROPS, out, files={}, engine_dir=engine, timeout_s=10)
+        # The bundle and the first chunk ran; the second was never started once no time was left.
+        self.assertEqual([c[2] for c in started], ["bundle", "render"])
+        self.assertFalse(out.exists())
+
+    def test_a_step_that_fails_is_a_render_failure_never_a_timeout(self):
+        from unittest import mock
+
+        class Fails:
+            pid = 1
+            returncode = 1
+
+            def __init__(self, cmd, **kw):
+                pass
+
+            def communicate(self, timeout=None):
+                return "", "Error: something broke\nat /srv/x.tsx"
+
+        d = TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        engine = Path(d.name) / "engine"
+        (engine / "node_modules").mkdir(parents=True)
+        with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Fails):
+            with self.assertRaises(ve.RenderFailed) as cm:
+                ve.render(self.PROPS, Path(d.name) / "o.mp4", files={}, engine_dir=engine)
+        self.assertNotIsInstance(cm.exception, ve.RenderTimeout)
+        self.assertIn("failed bundling (exit 1)", str(cm.exception))
+        self.assertIn("something broke", str(cm.exception), "the tail goes to the caller (the operator's log)")
 
     def test_a_short_video_is_bundled_and_rendered_once_with_its_sound(self):
         self.PROPS = {"fps": 30, "duration_s": 20.0, "scenes": sc(0, 5, 10), "sound_only": False}

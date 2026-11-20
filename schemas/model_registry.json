@@ -6603,6 +6603,70 @@
         "input_video": "generated",
         "input_image": "generated"
       }
+    },
+    {
+      "id": "nightshift-voice-explainer",
+      "display_name": "Nightshift Voice Video",
+      "provider": "nightshift",
+      "adapter": "video.voice_explainer",
+      "vendor_model": "voice-explainer-rules-2",
+      "capabilities": [
+        "voice_explainer"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "explainer_looks": [
+        "dusk",
+        "midnight",
+        "golden",
+        "neon",
+        "paper"
+      ],
+      "audio_out": true,
+      "async": false,
+      "api_documented": {
+        "url": "https://www.remotion.dev/docs/cli/render",
+        "checked_at": "2026-11-14",
+        "source": "own_engine",
+        "evidence": "modules/voice_explainer.py renders the VoiceExplainer composition (video-engine/src/explainer) with `npx remotion render` on the creative worker; the words come from ONE ElevenLabs call, POST v1/speech-to-text (model_id scribe_v2, timestamps_granularity word), as for elevenlabs-scribe-v2 (docs/VOICE_EXPLAINER.md).",
+        "note": "Rules planner only (deterministic, no model call). 1080x1920, 30 fps, word-timed captions, a whoosh on every cut; the person's narration is the soundtrack. vendor_model rules-2 = this engine with scribe_v2 (rules-1 was local Whisper base)."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "No single vendor price: the worker's CPU (~3.4 s of render per second, docs/VOICE_EXPLAINER.md) plus one ElevenLabs Scribe transcription of the recording (priced as elevenlabs-scribe-v2). The owner sets the credit price after the probe: docs/sql/price_0176_voice_explainer.sql."
+      },
+      "credit_unit": "model_nightshift_voice_explainer_second",
+      "entitlement": null,
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025') §2.B: the transcription is an ElevenLabs Service inside a product we sell; Free, Starter, Creator and Pro customers may not do that. Needs Scale or higher.",
+        "OEM Terms §2.B(a), as for every ElevenLabs entry (elevenlabs-scribe-v2 included): no Making Available a Service to a third party 'who will itself Make Available' it. Hence api_exposure web_only: the web Studio only, never the API or the MCP Studio tools.",
+        "The owner confirms the plan and clears terms_gate (docs/VOICE_EXPLAINER.md, Opening it); that does not open the API. Offering this model to the API / MCP is the owner's own explicit act: a reviewed change of api_exposure to any, never a default."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 600
+      },
+      "quality_tier": 3,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "voice_explainer",
+        "prompt": "Hello from Nightshift. This is a short test of the voice video.",
+        "input_audio": "speech",
+        "look": "dusk"
+      }
     }
   ]
 }

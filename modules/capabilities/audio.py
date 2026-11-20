@@ -28,9 +28,12 @@ from modules import tts_languages
 from modules.capabilities.base import (
     CAPTIONS,
     DUB,
+    E_AUTH,
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
     E_POLICY,
+    E_QUOTA,
+    E_RATE_LIMITED,
     E_UNAVAILABLE,
     FAILED,
     PENDING,
@@ -296,6 +299,66 @@ class ElevenLabsDubbingAdapter(_ElevenLabs):
         raise AdapterError(E_BAD_RESPONSE, f"poll: unknown dub status {str(status)[:40]!r}")
 
 
+# ── speech-to-text, shared by captions (0072) and the voice video (0176) ─────
+
+#: The vendor's speech-to-text endpoint (POST, multipart ``file``).
+SCRIBE_PATH = "/v1/speech-to-text"
+
+
+def scribe_form(vendor_model: str, language: Optional[str] = None) -> Dict[str, str]:
+    """The form both Scribe callers send: word timestamps only. Speaker labels and audio-event tags are not asked for
+    (only words become captions or scenes); the spoken language only when someone named one, else the vendor detects it."""
+    form = {"model_id": vendor_model, "timestamps_granularity": "word", "diarize": "false", "tag_audio_events": "false"}
+    if language:
+        form["language_code"] = language
+    return form
+
+
+_VENDOR_WORD = re.compile(r"^[a-z_]{1,60}$")
+
+#: ElevenLabs' own words for a refusal -> ours. The HTTP status alone cannot tell them apart (CLAUDE.md rule 6): a 429 is
+#: "slow down" (rate / concurrency: retry) or "busy" (retry), a 401 is a wrong key or, in the legacy shape, an account out of
+#: characters (``quota_exceeded``), and the two need opposite fixes.
+ELEVENLABS_CODES = {
+    "invalid_api_key": E_AUTH,
+    "missing_api_key": E_AUTH,
+    "payment_required": E_QUOTA,
+    "insufficient_credits": E_QUOTA,
+    "quota_exceeded": E_QUOTA,
+    "paid_plan_required": E_QUOTA,
+    "rate_limit_exceeded": E_RATE_LIMITED,
+    "concurrent_limit_exceeded": E_RATE_LIMITED,
+    "too_many_concurrent_requests": E_RATE_LIMITED,
+    "system_busy": E_UNAVAILABLE,
+    # Malformed requests. Whose fix that is depends on who made the file: a person's upload (captions) or the worker's own
+    # copy (the voice video, which reads every bad_request as its own failure: modules/capabilities/voice_video.py).
+    "invalid_audio_format": E_BAD_REQUEST,
+    "request_too_large": E_BAD_REQUEST,
+}
+
+
+def elevenlabs_error_word(text: str) -> Optional[str]:
+    """The vendor's word for a refusal: ``detail.code`` (the current shape), else the legacy ``detail.status``, else
+    ``detail.type``, preferring one this module knows. Only a lower-case word is ever read: ``detail.message`` is vendor
+    text and is never quoted from here."""
+    try:
+        body = json.loads(text or "")
+    except (TypeError, ValueError):
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, dict):
+        return None
+    words = [v.strip().lower() for v in (detail.get(k) for k in ("code", "status", "type")) if isinstance(v, str)]
+    words = [w for w in words if _VENDOR_WORD.match(w)]
+    return next((w for w in words if w in ELEVENLABS_CODES), words[0] if words else None)
+
+
+def elevenlabs_error_code(status: int, text: str) -> Optional[str]:
+    """Our error code for an ElevenLabs refusal by its own word, or None (then the HTTP status decides)."""
+    word = elevenlabs_error_word(text)
+    return ELEVENLABS_CODES.get(word) if word else None
+
+
 # ── captions (migration 0072) ───────────────────────────────────────────────
 
 class ElevenLabsScribeAdapter(_ElevenLabs):
@@ -332,13 +395,9 @@ class ElevenLabsScribeAdapter(_ElevenLabs):
         if bad:
             raise AdapterError(E_BAD_REQUEST, "; ".join(bad))
         name, mime = _recording(request.input_media[0])
-        form = {"model_id": vendor_model, "timestamps_granularity": "word",
-                "diarize": "false", "tag_audio_events": "false"}
-        if lang:
-            form["language_code"] = lang
         with open(request.input_media[0], "rb") as fh:
-            body = self._call("POST", f"{self.base_url}/v1/speech-to-text", what="transcribe",
-                              files={"file": (name, fh, mime)}, data=form)
+            body = self._call("POST", f"{self.base_url}{SCRIBE_PATH}", what="transcribe",
+                              files={"file": (name, fh, mime)}, data=scribe_form(vendor_model, lang))
         try:
             language, words = caption_words.words_from_vendor(body)
         except caption_words.CaptionsError as e:

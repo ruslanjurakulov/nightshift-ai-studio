@@ -21,7 +21,7 @@ import { MODEL_ID_RE } from "@/lib/models-admin";
 
 // ── tasks ───────────────────────────────────────────────────────────────────
 
-/** The registry's capabilities (0100's model_registry_capabilities_check). */
+/** The registry's capabilities (0176's model_registry_capabilities_check: 0100's and voice_explainer). */
 export const REGISTRY_CAPABILITIES = [
   "t2i",
   "edit",
@@ -42,6 +42,7 @@ export const REGISTRY_CAPABILITIES = [
   "video_edit",
   "video_reframe",
   "video_remove_bg",
+  "voice_explainer",
 ] as const;
 export type RegistryCapability = (typeof REGISTRY_CAPABILITIES)[number];
 
@@ -70,6 +71,8 @@ export const TASKS = [
   { id: "captions", caps: ["captions"] },
   // The video ops (0100): change a video by words, change its shape, take its background out.
   { id: "video_edit", caps: ["video_edit", "video_reframe", "video_remove_bg"] },
+  // Voice to video (0176): a video drawn over one of the library's recordings, by our own engine.
+  { id: "voice_video", caps: ["voice_explainer"] },
 ] as const satisfies readonly { id: string; caps: readonly RegistryCapability[] }[];
 export type TaskId = (typeof TASKS)[number]["id"];
 
@@ -118,6 +121,7 @@ const CAP_INPUTS: Record<RegistryCapability, readonly InputKind[]> = {
   video_edit: ["video", "text"],
   video_reframe: ["video"],
   video_remove_bg: ["video"],
+  voice_explainer: ["audio"],
 };
 
 /**
@@ -152,6 +156,8 @@ export const RECORDING_MIME = [
 ] as const;
 /** dub and captions also take these two (0072). */
 export const RECORDING_EXTRA_MIME = ["audio/aac", "audio/webm"] as const;
+/** A voice video starts from audio only (0176's source check). */
+export const NARRATION_MIME = ["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/flac", "audio/aac", "audio/webm"] as const;
 
 const MIME_LABEL: Record<string, string> = {
   "image/jpeg": "JPEG",
@@ -185,6 +191,7 @@ const SOURCE_LIMITS: Partial<Record<RegistryCapability, { seconds?: number; mb?:
   video_edit: { mb: 25 },
   video_reframe: { mb: 25 },
   video_remove_bg: { mb: 25 },
+  voice_explainer: { seconds: 600, mb: 200 },
 };
 
 export type SourceKind = "picture" | "video" | "recording";
@@ -223,6 +230,9 @@ export function sourceRule(cap: RegistryCapability, modelMaxSeconds: number | nu
   } else if (cap === "dub" || cap === "captions") {
     kind = "recording";
     mimes = [...RECORDING_MIME, ...RECORDING_EXTRA_MIME];
+  } else if (cap === "voice_explainer") {
+    kind = "recording";
+    mimes = NARRATION_MIME;
   } else {
     return null;
   }

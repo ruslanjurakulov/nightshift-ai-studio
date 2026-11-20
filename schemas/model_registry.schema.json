@@ -13,8 +13,10 @@
     "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
-    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "music", "video_music", "video_character_swap"]},
+    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "music", "video_music", "video_character_swap", "voice_explainer"]},
     "relight_look": {"enum": ["soft", "warm", "cool", "golden_hour", "dramatic", "studio"]},
+    "explainer_look": {"enum": ["dusk", "midnight", "golden", "neon", "paper"]},
+    "probe_look": {"enum": ["soft", "warm", "cool", "golden_hour", "dramatic", "studio", "dusk", "midnight", "golden", "neon", "paper"]},
     "upscale_target": {"enum": ["720p", "1k", "2k", "4k"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},
     "aspect": {"type": "string", "pattern": "^[0-9]{1,2}:[0-9]{1,2}$"},
@@ -65,6 +67,7 @@
         "upscale_targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/upscale_target"}},
         "end_frame": {"type": "boolean"},
         "relight_looks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relight_look"}},
+        "explainer_looks": {"description": "The looks a voice_explainer model draws a video in (migration 0176: creative_price sells only a look listed here; a change of the list clears the model's proof).", "type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/explainer_look"}},
         "character_swap": {
           "description": "The vendor's own input limits for a video_character_swap entry (migration 0137, docs/CHARACTER_STUDIO.md). The worker refuses an input outside them before any paid call; the database refuses a length outside input_seconds when it quotes.",
           "type": "object",
@@ -97,7 +100,7 @@
           "properties": {
             "url": {"$ref": "#/$defs/https_url"},
             "checked_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
-            "source": {"enum": ["vendor_sdk", "vendor_docs_search", "third_party"]},
+            "source": {"description": "Where the call is documented: the vendor's SDK, its docs (searched), a third party, or own_engine: the platform's own renderer in this repository (url: the framework it runs on; a vendor call it makes on the way, such as the voice video's transcription, is named in evidence).", "enum": ["vendor_sdk", "vendor_docs_search", "third_party", "own_engine"]},
             "evidence": {"type": "string", "minLength": 10, "maxLength": 400},
             "note": {"type": "string", "maxLength": 300}
           }
@@ -204,7 +207,7 @@
             "input_video": {"enum": ["generated"]},
             "end_frame": {"enum": ["generated"]},
             "upscale_target": {"$ref": "#/$defs/upscale_target"},
-            "look": {"$ref": "#/$defs/relight_look"}
+            "look": {"$ref": "#/$defs/probe_look"}
           }
         }
       }
