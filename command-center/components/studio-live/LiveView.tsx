@@ -260,14 +260,14 @@ export function LiveView({ filmStudio, target }: { filmStudio: boolean; target: 
   const { t } = useI18n();
   const c = t.studioLive;
   const narrow = useNarrow();
-  const shown = filmStudio || target?.kind === "run" ? target : null;
+  const run = target?.kind === "run" || target?.kind === "window";
+  const shown = filmStudio || run ? target : null;
   const { load, stale, retry } = useLiveGraph(shown);
   const [selected, setSelected] = useState<string | null>(null);
   const graph = load.state === "ready" ? load.graph : null;
   const names = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, nodeName(t, n)])), [graph, t]);
   const words = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, c.status[n.status]])), [graph, c]);
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
-  const run = target?.kind === "run";
 
   let body: React.ReactNode;
   if (!target) body = <p className="lv-muted" data-testid="live-notfound">{c.notFound}</p>;
@@ -297,7 +297,7 @@ export function LiveView({ filmStudio, target }: { filmStudio: boolean; target: 
       <header className="lv-head">
         <h1>{run ? c.runTitle : (load.state === "ready" && load.film?.film.view.film.title) || c.filmTitle}</h1>
         <p className="lv-muted">{c.readOnly}</p>
-        {run ? <p className="lv-muted" data-testid="live-run-window">{c.runWindow}</p> : null}
+        {run ? <p className="lv-muted" data-testid="live-run-window">{target?.kind === "window" ? c.runWindowSince : c.runWindow}</p> : null}
         <p className="sr-only" role="status" aria-live="polite">
           {stale ? c.stale : graph?.settled ? c.settled : ""}
         </p>

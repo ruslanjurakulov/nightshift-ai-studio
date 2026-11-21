@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { startPolling, type PollVerdict } from "@/lib/studio/timeline";
 import { coerceFilmLive, coerceRunLive, filmGraph, runGraph, type FilmReading, type LiveGraph } from "@/lib/studio/liveGraph";
 
-export type LiveTarget = { kind: "film"; id: string } | { kind: "run"; id: string };
+/** A project, a queue-backend run (render_jobs id), or an Actions-backend run: its channel and the moment it was dispatched. */
+export type LiveTarget = { kind: "film"; id: string } | { kind: "run"; id: string } | { kind: "window"; channel: string; since: string };
 
 export type LiveLoad =
   | { state: "loading" }
@@ -20,7 +21,9 @@ const POLL_MS = 6000;
 const TERMINAL: LiveLoad["state"][] = ["notFound", "expired", "unavailable"];
 
 function urlOf(t: LiveTarget): string {
-  return t.kind === "film" ? `/api/films/${encodeURIComponent(t.id)}/live` : `/api/agent/runs/${encodeURIComponent(t.id)}`;
+  if (t.kind === "film") return `/api/films/${encodeURIComponent(t.id)}/live`;
+  if (t.kind === "run") return `/api/agent/runs/${encodeURIComponent(t.id)}`;
+  return `/api/agent/runs/window?channel=${encodeURIComponent(t.channel)}&since=${encodeURIComponent(t.since)}`;
 }
 
 async function readLive(t: LiveTarget): Promise<LiveLoad> {
@@ -40,7 +43,7 @@ async function readLive(t: LiveTarget): Promise<LiveLoad> {
     return film ? { state: "ready", graph: filmGraph(film), film } : { state: "error" };
   }
   const run = coerceRunLive(json);
-  return run.job ? { state: "ready", graph: runGraph(run), film: null } : { state: "error" };
+  return run.job || run.window ? { state: "ready", graph: runGraph(run), film: null } : { state: "error" };
 }
 
 /**
@@ -56,7 +59,7 @@ export function useLiveGraph(target: LiveTarget | null) {
   shown.current = load;
   // Which plan, and which effect run, a read belongs to: an answer for the previous plan must never show for the new one.
   const gen = useRef(0);
-  const key = target ? `${target.kind}:${target.id}` : null;
+  const key = target ? (target.kind === "window" ? `window:${target.channel}:${target.since}` : `${target.kind}:${target.id}`) : null;
 
   const accept = useCallback((next: LiveLoad, from: number) => {
     if (from !== gen.current) return;

@@ -107,7 +107,10 @@ describe("success is unchanged", () => {
     useActions();
     const res = await post(keyed);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, backend: "actions", credits_reserved: HELD });
+    const body = await res.json();
+    // The live view's handoff (/studio?view=live&channel=&since=): the channel and the moment just before the dispatch.
+    expect(body).toEqual({ ok: true, backend: "actions", credits_reserved: HELD, channel_id: expect.any(String), dispatched_at: expect.any(String) });
+    expect(Number.isNaN(Date.parse(body.dispatched_at))).toBe(false);
     expect(h.dispatch).toHaveBeenCalledTimes(1);
   });
 });

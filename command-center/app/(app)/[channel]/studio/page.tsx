@@ -54,8 +54,17 @@ export default async function StudioPage({
     // the browser through the read-only live routes; the server only says whether projects are open for this viewer.
     const filmStudio = await filmStudioOpen();
     const film = parseFilmId(sp.film);
-    const run = typeof sp.run === "string" && /^[1-9][0-9]{0,15}$/.test(sp.run) ? sp.run : null;
-    const target = film ? { kind: "film" as const, id: film } : run ? { kind: "run" as const, id: run } : null;
+    const run = typeof sp.run === "string" && /^[1-9][0-9]{0,14}$/.test(sp.run) ? sp.run : null;
+    // The Actions backend gives no run id: its run is the channel's events since the dispatch (/api/agent/run's dispatched_at).
+    const channel = typeof sp.channel === "string" && /^[0-9a-f-]{36}$/i.test(sp.channel) ? sp.channel : null;
+    const since = typeof sp.since === "string" && Number.isFinite(Date.parse(sp.since)) ? sp.since : null;
+    const target = film
+      ? { kind: "film" as const, id: film }
+      : run
+        ? { kind: "run" as const, id: run }
+        : channel && since
+          ? { kind: "window" as const, channel, since }
+          : null;
     return <LiveView filmStudio={filmStudio} target={target} />;
   }
   if (sp.view === "timeline") {

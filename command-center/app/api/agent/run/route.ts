@@ -303,6 +303,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   }
 
   try {
+    // The Actions run carries no id back, and its events carry none either: the Studio's live view finds this run's events by the
+    // channel and this moment (/studio?view=live&channel=&since=), taken before the dispatch so its first event is never earlier.
+    const dispatchedAt = new Date().toISOString();
     await dispatchDailyVideo(channelId, { ...opts, creditRef: creditRef ?? undefined });
     // Audit the on-demand run against its channel (best-effort, never throws).
     // Record only the non-default controls the operator actually set.
@@ -326,7 +329,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
       channelId,
       detail,
     });
-    return NextResponse.json({ ok: true, backend: "actions", credits_reserved: creditsHeld });
+    return NextResponse.json({ ok: true, backend: "actions", credits_reserved: creditsHeld, channel_id: channelId, dispatched_at: dispatchedAt });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_dispatch_failed";
     const status =

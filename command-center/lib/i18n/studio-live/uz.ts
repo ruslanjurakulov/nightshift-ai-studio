@@ -15,6 +15,7 @@ export const studioLiveUz: StudioLiveDictionary = {
   unavailable: "Bu serverda jonli koʻrinish hozircha mavjud emas. Hech narsa oʻqilmadi.",
   closed: "Bu ish maydoni uchun loyihalar hali ochilmagan.",
   runWindow: "Bosqichlar ushbu kanal ishga tushirish davomida yozgan voqealardan olingan.",
+  runWindowSince: "Bosqichlar ushbu kanal ishga tushirilgandan beri yozgan voqealardan olingan. Voqea kelmasa, ishga tushirish hali boshlanmagan boʻlishi mumkin.",
   settled: "Barcha qadamlar tugadi. Koʻrinish yangilanishni toʻxtatdi.",
   readOnly: "Bu koʻrinish faqat oʻqiydi. Bu yerda hech qanday qadam boshlanmaydi, takrorlanmaydi va pul yechilmaydi.",
   kinds: {

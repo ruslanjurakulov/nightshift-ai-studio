@@ -361,6 +361,11 @@ export interface RunJob {
 export interface RunReading {
   /** Null: the run's row could not be read (another backend, or not this person's channel): the stages are unknown. */
   job: RunJob | null;
+  /**
+   * The Actions backend has no row: the run is the channel's events since the moment it was dispatched (`since`), read at `now`.
+   * Set instead of `job`; it ends at its upload, at a failed stage, or once the workflow's own time limit has passed with neither.
+   */
+  window?: { since: string; now: string } | null;
   /** Null: the events could not be read, so no stage is claimed either way. */
   events: RunEvent[] | null;
 }
@@ -369,6 +374,8 @@ export interface RunReading {
 export function coerceRunLive(raw: unknown): RunReading {
   const r = rec(raw);
   const j = r ? rec(r.job) : null;
+  const w = r ? rec(r.window) : null;
+  const window = w && str(w.since) && str(w.now) ? { since: str(w.since)!, now: str(w.now)! } : null;
   const job: RunJob | null = j && str(j.status) ? { status: str(j.status)!, startedAt: str(j.startedAt), finishedAt: str(j.finishedAt), error: str(j.error) } : null;
   const events = r && Array.isArray(r.events)
     ? r.events
@@ -376,8 +383,11 @@ export function coerceRunLive(raw: unknown): RunReading {
         .filter((e): e is Record<string, unknown> => !!e && !!str(e.ts) && !!str(e.event))
         .map((e) => ({ ts: str(e.ts)!, event: str(e.event)!, status: str(e.status), agent: str(e.agent), privacy: str(e.privacy) }))
     : null;
-  return { job, events };
+  return { job, events, window };
 }
+
+/** daily_video.yml's video job stops at 60 minutes; a dispatch can wait for a runner before that. Past this, a run with no last event ended. */
+export const RUN_WINDOW_LIMIT_MS = 90 * 60 * 1000;
 
 /** Which events speak for which stage, in pipeline order (main.py and modules/event_log.py name them). */
 const RUN_STAGES: { kind: RunNodeKind; start: string[]; done: string[]; failAgents: string[]; failEvents: string[] }[] = [
@@ -396,8 +406,13 @@ const JOB_TERMINAL = new Set(["completed", "failed", "cancelled", "canceled", "s
 
 export function runGraph(r: RunReading): LiveGraph {
   const events = [...(r.events ?? [])].sort((a, b) => a.ts.localeCompare(b.ts));
-  const readable = r.job !== null && r.events !== null;
-  const ended = r.job ? JOB_TERMINAL.has(r.job.status) : false;
+  const win = !r.job && r.window ? r.window : null;
+  const readable = (r.job !== null || win !== null) && r.events !== null;
+  const stageFailed = events.some((e) => RUN_STAGES.some((st) => st.failEvents.includes(e.event) || (e.event === "agent.failed" && !!e.agent && st.failAgents.includes(e.agent))));
+  const uploaded = events.some((e) => e.event === "video.published" || e.event === "upload.completed" || e.event === "publish.held");
+  const timedOut = win ? Date.parse(win.now) - Date.parse(win.since) > RUN_WINDOW_LIMIT_MS : false;
+  const ended = r.job ? JOB_TERMINAL.has(r.job.status) : win ? stageFailed || uploaded || timedOut : false;
+  const jobStatus = r.job ? r.job.status : win ? (stageFailed || timedOut ? (uploaded && !stageFailed ? "completed" : "failed") : uploaded ? "completed" : "running") : null;
   let reachedLater = false;
   const statuses: { kind: RunNodeKind; status: LiveStatus; at: string | null; privacy: string | null }[] = [];
   for (let i = RUN_STAGES.length - 1; i >= 0; i--) {
@@ -407,8 +422,9 @@ export function runGraph(r: RunReading): LiveGraph {
     );
     const last = mine[mine.length - 1];
     let status: LiveStatus;
-    if (!readable || !r.job) status = "unknown";
-    else if (!last) status = reachedLater ? "unknown" : ended ? (r.job.status === "completed" || r.job.status === "succeeded" ? "unknown" : "skipped") : "waiting";
+    if (!readable || !jobStatus) status = "unknown";
+    // A run that timed out with no last event did not tell us what happened after: the steps it never reached are not known.
+    else if (!last) status = reachedLater ? "unknown" : ended ? (jobStatus === "completed" || jobStatus === "succeeded" || (timedOut && !stageFailed) ? "unknown" : "skipped") : "waiting";
     else if (st.failEvents.includes(last.event) || last.event === "agent.failed") status = "failed";
     else if (st.done.includes(last.event)) status = "done";
     else status = ended ? "stopped" : "working";

@@ -133,7 +133,7 @@ describe("a channel run", () => {
 
   it("a malformed answer has no job: unknown, never waiting", () => {
     expect(coerceRunLive({ events: [] }).job).toBeNull();
-    expect(coerceRunLive(null)).toEqual({ job: null, events: null });
+    expect(coerceRunLive(null)).toEqual({ job: null, events: null, window: null });
   });
 
   it("a running run: done, working and waiting stages come from their own events", () => {
@@ -177,5 +177,34 @@ describe("a channel run", () => {
     expect(g.nodes.find((n) => n.id === "upload")).toMatchObject({ status: "done", privacy: "private" });
     const unrecorded = runGraph({ job: { status: "completed", startedAt: "t0", finishedAt: "t9", error: null }, events: [ev("2026-11-21T00:00:08Z", "upload.completed")] });
     expect(unrecorded.nodes.find((n) => n.id === "upload")?.privacy).toBeNull();
+  });
+
+  describe("on the Actions backend (no row: the channel's events since the dispatch)", () => {
+    const win = (minutes: number) => ({ since: "2026-11-21T00:00:00.000Z", now: new Date(Date.parse("2026-11-21T00:00:00.000Z") + minutes * 60000).toISOString() });
+
+    it("a running dispatch lights stages from its events, and the rest wait", () => {
+      const g = runGraph({ job: null, window: win(10), events: [ev("2026-11-21T00:02:00Z", "topic.selected"), ev("2026-11-21T00:03:00Z", "script.started")] });
+      expect(stages(g)).toMatchObject({ topic: "done", script: "working", render: "waiting" });
+      expect(g.settled).toBe(false);
+    });
+
+    it("the upload ends it, and says private only as recorded", () => {
+      const g = runGraph({ job: null, window: win(40), events: [ev("2026-11-21T00:38:00Z", "video.published", { privacy: "private" })] });
+      expect(g.nodes.find((n) => n.id === "upload")).toMatchObject({ status: "done", privacy: "private" });
+      expect(g.settled).toBe(true);
+    });
+
+    it("past the workflow's time limit with no last event: the running stage stopped and the rest are not known", () => {
+      const g = runGraph({ job: null, window: win(120), events: [ev("2026-11-21T00:20:00Z", "render.started")] });
+      const s = stages(g);
+      expect(s.render).toBe("stopped");
+      expect(s.upload).toBe("unknown");
+      expect(g.settled).toBe(true);
+    });
+
+    it("no events at all yet is waiting, not done or failed", () => {
+      const g = runGraph({ job: null, window: win(1), events: [] });
+      expect(new Set(Object.values(stages(g)))).toEqual(new Set(["waiting"]));
+    });
   });
 });

@@ -13,6 +13,7 @@ export const studioLiveEn = {
   unavailable: "Live view is not available on this server yet. Nothing was read.",
   closed: "Projects are not open yet for this workspace.",
   runWindow: "Stages come from the events this channel recorded while the run was running.",
+  runWindowSince: "Stages come from the events this channel recorded since this run was started. If none arrive, the run may not have begun yet.",
   settled: "Every step has finished. The view stopped reading.",
   readOnly: "This view only reads. Nothing here starts, repeats or charges a step.",
   kinds: {
