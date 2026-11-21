@@ -11,7 +11,8 @@ const readStudioModels = vi.fn();
 const loadOperatorPreviewModels = vi.fn();
 const isOperator = vi.fn();
 vi.mock("@/lib/server/creative", () => ({ readStudioModels, loadOperatorPreviewModels }));
-vi.mock("@/lib/auth/org-roles", () => ({ isOperator }));
+// The previews follow the account in view (the owner's User account sees what a customer sees), not the bare role.
+vi.mock("@/lib/server/owner-view", () => ({ viewingAsOperator: isOperator }));
 vi.mock("@/lib/channel-tokens", () => ({ isOperatorOrg: (id: string | null) => id === "op-org" }));
 const readCustomerModels = vi.fn();
 vi.mock("@/lib/server/model-discovery", () => ({ readCustomerModels }));

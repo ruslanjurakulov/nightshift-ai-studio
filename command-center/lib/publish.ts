@@ -195,7 +195,7 @@ export const PUBLISH_REASONS = [
   "published_unexpectedly",
   "duplicate_post",
   "credits_exhausted",
-  // Instagram API with Unified Login (0197, modules/social_publish.py).
+  // Instagram API with Unified Login (0198, modules/social_publish.py).
   "instagram_reconnect",
   "ig_permission_missing",
   "limit_unreadable",

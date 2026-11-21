@@ -17,6 +17,7 @@ import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
+import { studioLiveEn } from "./studio-live/en";
 import { ownerSafetyEn } from "./owner-safety/en";
 import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
@@ -34,6 +35,7 @@ import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
+import { ownerConsoleEn } from "./owner-console/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -74,6 +76,8 @@ export const en = {
   presets: presetsEn,
   /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/en.ts. */
+  ownerConsole: ownerConsoleEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
@@ -85,6 +89,7 @@ export const en = {
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
+  studioLive: studioLiveEn,
   ownerSafety: ownerSafetyEn,
   confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,
@@ -2582,7 +2587,7 @@ export const en = {
       no_account: "{platform} did not return an account for this sign-in. Nothing was stored.",
       exchange_rejected: "{platform} rejected the sign-in code. Try connecting again.",
       unavailable: "Could not check your organization. Nothing was stored — try again.",
-      needs_migration: "{platform} needs a database update on this deployment (migration 0197) before it can be connected. Nothing was stored.",
+      needs_migration: "{platform} needs a database update on this deployment (migration 0198) before it can be connected. Nothing was stored.",
       failed: "Connecting failed. Nothing was stored — try again.",
     },
   },

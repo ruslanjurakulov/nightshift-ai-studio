@@ -1,13 +1,13 @@
--- rollback_0197_instagram_unified_login.sql — takes migration 0197 (Instagram through Unified Login) out.
+-- rollback_0198_instagram_unified_login.sql — takes migration 0198 (Instagram through Unified Login) out.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT COMES BACK: 0028's store_social_account, verbatim, with its grant. The Command Center then answers an Instagram
---   connect with "needs a database update (0197)" (0028 refuses the auth_flow / config_id keys), and stores nothing.
+--   connect with "needs a database update (0198)" (0028 refuses the auth_flow / config_id keys), and stores nothing.
 -- WHAT IS KEPT: the three columns and their values (auth_flow, client_business_id, config_id). They are ids, not secrets;
 --   dropping them would turn every Unified Login connection back into one that reads "reconnect needed". Drop them by
 --   hand only if you mean exactly that.
 --
--- 0. REFUSES (changes nothing) if store_social_account is not 0197's body.
+-- 0. REFUSES (changes nothing) if store_social_account is not 0198's body.
 
 begin;
 set local lock_timeout = '5s';
@@ -16,8 +16,8 @@ do $$
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = to_regprocedure('public.store_social_account(uuid, text, text, text, jsonb)'))
-     is distinct from '335207050f927819279176f9b0ebd8b3' then
-    raise exception 'rollback_0197: store_social_account is not 0197''s body; read the live body first';
+     is distinct from '98389e1ed76eaad14a6a64059dbb130d' then
+    raise exception 'rollback_0198: store_social_account is not 0198''s body; read the live body first';
   end if;
 end $$;
 
@@ -160,7 +160,7 @@ begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = 'public.store_social_account(uuid, text, text, text, jsonb)'::regprocedure)
      is distinct from 'ac6b096b2d1eb2db6af1f695b797d173' then
-    raise exception 'rollback_0197 end state: store_social_account is not 0028''s body';
+    raise exception 'rollback_0198 end state: store_social_account is not 0028''s body';
   end if;
 end $$;
 

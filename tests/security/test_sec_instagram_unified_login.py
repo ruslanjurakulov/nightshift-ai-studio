@@ -1,4 +1,4 @@
-"""Migration 0197 (Instagram API with Unified Login) against a real Postgres.
+"""Migration 0198 (Instagram API with Unified Login) against a real Postgres.
 
 What must hold:
 * an Instagram connect is a Unified Login one with its configuration id, or it is refused (an old Instagram Login token
@@ -88,7 +88,7 @@ def test_another_org_connecting_the_same_account_gets_its_own_row_and_never_touc
 
 
 def test_an_old_instagram_login_row_is_kept_as_it_was(conn, sc):
-    # The lab's seeded rows stand for connections made before 0197: still there, still 'connected' in the table, and
+    # The lab's seeded rows stand for connections made before 0198: still there, still 'connected' in the table, and
     # marked only by the absence of 'unified_login' (the Command Center shows "reconnect needed"; the worker refuses).
     with as_superuser(conn, commit=False) as s:
         rows = s.rows("select auth_flow, config_id, client_business_id, status from public.social_accounts "

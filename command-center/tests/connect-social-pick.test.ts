@@ -188,7 +188,7 @@ describe("confirm", () => {
     ]);
     expect(JSON.stringify(s.audits)).not.toMatch(/SECRET/);
   });
-  it("Instagram before 0197: the store's refusal reads as a setup gap with its remedy, not a generic failure", async () => {
+  it("Instagram before 0198: the store's refusal reads as a setup gap with its remedy, not a generic failure", async () => {
     const handle = await held("instagram");
     s.storeResult = "needs_migration";
     expect((await confirmSocialPick({ userId: "u1", handle, platform: "instagram" })).result).toBe("not_configured");

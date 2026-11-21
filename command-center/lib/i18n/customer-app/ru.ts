@@ -3,9 +3,6 @@ import type { CustomerAppDictionary } from "./en";
 /** Приложение клиента после входа: верхняя панель, режим владельца, Главная, экран «Создать», Режиссёр и Тренды. Источник — ./en.ts. */
 export const customerAppRu: CustomerAppDictionary = {
   shell: {
-    ownerMode: "Режим владельца",
-    ownerModeHint: "Показать разделы владельца и операций",
-    ownerModeFailed: "Не удалось переключить режим владельца. Попробуйте ещё раз.",
     newProject: "Новый проект",
     search: "Поиск",
     breadcrumb: "Где вы сейчас",

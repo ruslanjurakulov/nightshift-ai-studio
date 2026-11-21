@@ -11,7 +11,7 @@ newer main that had no registry yet. A
 change that reorders a read, drops a field, adds a call or alters a refusal word fails here. Regenerating the file
 after a deliberate behaviour change is a decision to review, not a way to make this pass.
 
-Regenerated once, deliberately, for Instagram API with Unified Login (migration 0197): only the ig_ scenarios changed, and
+Regenerated once, deliberately, for Instagram API with Unified Login (migration 0198): only the ig_ scenarios changed, and
 only by graph.instagram.com/v23.0 -> graph.facebook.com/v27.0, the content_publishing_limit read before staging, the
 store.social_account_flow read in connect, the poll sleep 10 s -> 60 s, and tokens.set_status(expired) after error 190.
 Every outcome, row and refusal word stayed the same.

@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { getChannelScope } from "@/lib/channels-server";
 import { channelInScope } from "@/lib/channels";
-import { isOperator, requireOrgRole } from "@/lib/auth/org-roles";
+import { requireOrgRole } from "@/lib/auth/org-roles";
+import { viewingAsOperator } from "@/lib/server/owner-view";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { ErrorState } from "@/components/ReadError";
@@ -61,7 +62,8 @@ export default async function StoryboardPage({ params }: { params: Promise<{ id:
   // asked only of someone who may do it, and only when it is approved.
   const reopen: ReopenState | null =
     storyboard.status === "approved" && access.ok ? await readReopenState(supabase, storyboard.id) : null;
-  const operator = await isOperator();
+  // The phone tab bar is the customer frame's; the owner's User account has it too (lib/server/owner-view).
+  const asOperator = await viewingAsOperator();
 
   return (
     <div className="rhythm stagger-enter">
@@ -74,7 +76,7 @@ export default async function StoryboardPage({ params }: { params: Promise<{ id:
         quote={quote}
         canRun={access.ok}
         backHref={path("/videos")}
-        bottomBar={!operator}
+        bottomBar={!asOperator}
         reopen={reopen}
       />
     </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { registryPrices } from "@/lib/billing";
 import { providerRunways, runsOutAt, type ModelActivity, type RunwayData } from "@/lib/owner-analytics/runway";
+import { paymentPlan } from "@/lib/owner-analytics/payment-plan";
 import { runwayProvidersTable } from "@/lib/owner-analytics/runway-tables";
 import { ownerAnalyticsEn as d } from "@/lib/i18n/owner-analytics/en";
 
@@ -120,6 +121,12 @@ describe("provider runway", () => {
     const r = minimax(data({ lastSyncMs: NOW - 2 * DAY }));
     expect(r.usd24h).toBeNull();
     expect(r.pipelineStale).toBe(true);
+  });
+
+  it("has no 14-day pace when the nightly mirror is overdue, so a stale ledger never reads as a slow, safe pace", () => {
+    const r = minimax(data({ lastSyncMs: NOW - 10 * DAY }));
+    expect(r.perDay14d).toBeNull();
+    expect(paymentPlan([r], NOW).unknown.map((l) => l.reason)).toEqual(["unknown"]);
   });
 
   it("re-runs the runway at an expected volume", () => {

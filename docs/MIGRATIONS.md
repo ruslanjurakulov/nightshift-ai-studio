@@ -2227,9 +2227,27 @@ Nano Banana for footage. So 0192's model check never saw it, and a member who ne
   puts the old `creative_route_quote` back.
 - **Undo.** `docs/sql/rollback_0196_adult_attestation_google_runs.sql` (owner-applied): the five earlier bodies and 0192's run gate.
 
-## Instagram through Unified Login (0197)
+## Owner Brain facts: people and plans, system health (0197)
 
-0197 (`0197_instagram_unified_login.sql`). Instagram now connects through Meta's "Instagram API with Unified Login": the
+0197 (`0197_owner_brain_facts.sql`) gives the owner's Nightshift AI and the Owner Console two read-only, owner-only summaries,
+each one JSON object. No table, no write, no value in the file.
+
+- `owner_brain_people()`: confirmed signups (1/7/30 days), last sign-ins (a floor), paying workspaces by plan, past due,
+  cancelling, canceled in 30 days, and the 20 newest plan changes by workspace name. Internal and owner-flagged workspaces
+  (0182) are excluded.
+- `owner_brain_health()`: per channel the newest run evidence, failures in 24 h / 7 days, held videos and the YouTube token's
+  stored/verified state (never token bytes); creative and render queues (queued, oldest, running, stuck, failed); workers and
+  their staleness; the doctor's verdict; alerts; the nightly mirror's time; provider readings' times. CI and deploys are not in
+  the database, and the JSON says so.
+- **Who.** Platform owner only (0182's gate) and 0107's second factor when it is on (NS401): unlike the hub's reads, these are
+  what the owner's AI hands a model. Execute granted to `authenticated` only.
+- Revenue and providers are not repeated: the app reads 0182's `owner_analytics_money` and 0184 / the Billing ledger.
+- Lab: `tests/security/sec_owner_brain_0197.py`, `tests/security/test_sec_owner_brain.py`. Rollback:
+  `docs/sql/rollback_0197_owner_brain_facts.sql` (nothing stored, nothing lost).
+
+## Instagram through Unified Login (0198)
+
+0198 (`0198_instagram_unified_login.sql`). Instagram now connects through Meta's "Instagram API with Unified Login": the
 Facebook login dialog with a configuration id (`INSTAGRAM_CONFIG_ID`), one code exchange at graph.facebook.com, a Business
 Integration System User token that does not expire by default, and publishing on graph.facebook.com. The old Instagram Login
 tokens do not work there.
@@ -2243,5 +2261,5 @@ tokens do not work there.
   its `config_id`; the three keys are refused for TikTok. The binding is unchanged: the unique key is (org, platform, account), so
   another organization connecting the same IG account gets its own row and token and never touches the first.
 - **Before it is applied** the Command Center still lists accounts (every Instagram row then reads "reconnect needed") and an
-  Instagram connect answers "needs a database update (0197)"; nothing is stored.
-- **Undo.** `docs/sql/rollback_0197_instagram_unified_login.sql` (owner-applied): 0028's `store_social_account`; the columns stay.
+  Instagram connect answers "needs a database update (0198)"; nothing is stored.
+- **Undo.** `docs/sql/rollback_0198_instagram_unified_login.sql` (owner-applied): 0028's `store_social_account`; the columns stay.

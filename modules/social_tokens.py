@@ -8,7 +8,7 @@ place in the pipeline that touches them, and it keeps them in memory only.
 
 Refresh rules (official docs):
 
-* Instagram API with Unified Login (migration 0197) — the stored token is a
+* Instagram API with Unified Login (migration 0198) — the stored token is a
   Business Integration System User token. It does not expire by default and
   Meta documents NO refresh endpoint for it, so there is nothing to refresh:
   the 60-day ``ig_refresh_token`` path of the old Instagram Login is gone. The

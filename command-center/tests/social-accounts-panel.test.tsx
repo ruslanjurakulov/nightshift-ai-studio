@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The Channels page's connected accounts after the move to Instagram API with Unified Login (0197): an Instagram row
+ * The Channels page's connected accounts after the move to Instagram API with Unified Login (0198): an Instagram row
  * connected the old way still says "connected" in the table, but its token can never post again, so the panel shows it
  * as "reconnect needed" with the remedy. It is kept, never hidden or deleted. TikTok rows are unaffected.
  */
