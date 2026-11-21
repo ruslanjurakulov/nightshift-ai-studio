@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { NotConfigured } from "@/components/NotConfigured";
 import { StudioCanvas } from "@/components/studio-canvas/StudioCanvas";
 import { StudioTimeline } from "@/components/studio-timeline/StudioTimeline";
+import { LiveView } from "@/components/studio-live/LiveView";
 import { parseFilmId } from "@/lib/films";
 import { VideosShelf } from "@/components/studio-hub/VideosShelf";
 import { ProjectsShelf } from "@/components/studio-hub/ProjectsShelf";
@@ -48,6 +49,15 @@ export default async function StudioPage({
   const sp = await searchParams;
   if (sp.shelf !== undefined) return await ShelfView({ shelf: shelfFromQuery(sp.shelf) });
   if (!isSupabaseConfigured) return <NotConfigured />;
+  if (sp.view === "live") {
+    // The live view of one plan (S5's handoff opens it): a project (?film=) or a channel video run (?run=, a render_jobs id). It reads in
+    // the browser through the read-only live routes; the server only says whether projects are open for this viewer.
+    const filmStudio = await filmStudioOpen();
+    const film = parseFilmId(sp.film);
+    const run = typeof sp.run === "string" && /^[1-9][0-9]{0,15}$/.test(sp.run) ? sp.run : null;
+    const target = film ? { kind: "film" as const, id: film } : run ? { kind: "run" as const, id: run } : null;
+    return <LiveView filmStudio={filmStudio} target={target} />;
+  }
   if (sp.view === "timeline") {
     // The Timeline reads one project through /api/films (RLS, film_json) in the browser; the server only says whether the section is
     // open for this viewer, so a switched-off workspace sees "not open yet" and no project is read at all.

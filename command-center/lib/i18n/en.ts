@@ -17,6 +17,7 @@ import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
+import { studioLiveEn } from "./studio-live/en";
 import { ownerSafetyEn } from "./owner-safety/en";
 import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
@@ -85,6 +86,7 @@ export const en = {
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
+  studioLive: studioLiveEn,
   ownerSafety: ownerSafetyEn,
   confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,

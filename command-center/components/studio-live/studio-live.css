@@ -1,0 +1,55 @@
+/* The Studio's live view (LiveView.tsx): the canvas's tokens (.cv-root), a read-only board, and a list at phone width. */
+.lv-root { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 16px; background: var(--canvas); color: var(--text); }
+.lv-head { display: grid; gap: 4px; }
+.lv-head h1 { margin: 0; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.lv-muted { margin: 0; font-size: 13px; color: var(--dim); }
+.lv-stale { margin: 0; font-size: 13px; color: var(--caution); }
+.lv-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 0; flex: 1; }
+.lv-main.has-details { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+.lv-board { position: relative; min-height: 520px; height: calc(100dvh - 220px); border: 1px solid var(--rule); border-radius: 14px; background: var(--console); overflow: hidden; }
+.lv-handle { opacity: 0; pointer-events: none; }
+
+.lv-card {
+  display: grid; gap: 8px; width: 200px; min-height: 76px; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--rule); border-radius: 12px; background: var(--key); color: var(--text);
+  transition: border-color 280ms ease, box-shadow 280ms ease, background-color 280ms ease, transform 280ms ease;
+}
+.lv-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.lv-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; font-size: 14px; }
+.lv-card-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-card.is-working { border-color: var(--run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--run) 22%, transparent), 0 0 18px -6px var(--run-glow); transform: translateY(-1px); }
+.lv-card.is-done { border-color: color-mix(in srgb, var(--go) 55%, var(--rule)); }
+.lv-card.is-failed { border-color: var(--tally); background: color-mix(in srgb, var(--tally) 8%, var(--key)); }
+.lv-card.is-unknown, .lv-card.is-stopped { border-style: dashed; }
+.lv-card.is-none, .lv-card.is-skipped { opacity: 0.6; }
+.lv-card.is-selected { outline: 2px solid var(--sel, var(--run)); outline-offset: 1px; }
+
+.lv-board .react-flow__edge-path { stroke: var(--rule-strong, var(--rule)); stroke-width: 1.5; transition: stroke 280ms ease; }
+.lv-board .lv-edge.is-done .react-flow__edge-path { stroke: color-mix(in srgb, var(--go) 60%, var(--rule)); }
+.lv-board .lv-edge.is-live .react-flow__edge-path { stroke: var(--run); stroke-dasharray: 6 6; animation: lv-flow 1s linear infinite; }
+@keyframes lv-flow { to { stroke-dashoffset: -12; } }
+
+.lv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lv-list .lv-card { width: 100%; min-height: 56px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+
+.lv-details { display: grid; align-content: start; gap: 10px; padding: 14px; border: 1px solid var(--rule); border-radius: 14px; background: var(--console); min-width: 0; }
+.lv-details-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lv-details-head h2 { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.lv-fail { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--tally-soft); color: var(--text); font-size: 13px; }
+.lv-fail p { margin: 0; }
+.lv-text { margin: 0; font-size: 13px; white-space: pre-wrap; max-height: 280px; overflow: auto; }
+.lv-media { width: 100%; max-height: 320px; border-radius: 10px; background: var(--film, #000); object-fit: contain; }
+.lv-audio { width: 100%; }
+.lv-final { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+@media (max-width: 760px) {
+  .lv-root { padding: 12px 16px; }
+  .lv-main.has-details { grid-template-columns: minmax(0, 1fr); }
+  .lv-details { order: -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv-card, .lv-board .react-flow__edge-path { transition: none; }
+  .lv-card.is-working { transform: none; }
+  .lv-board .lv-edge.is-live .react-flow__edge-path { animation: none; }
+}
