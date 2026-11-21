@@ -694,7 +694,9 @@ class CaddyReloadStepTests(unittest.TestCase):
                 removed.add(line[1:])
                 continue
             name, _, value = line.partition(" ")
-            sent[name] = value.strip("`\"")
+            # `?Name` is a default (set only when the app sent none): Caddy still sends it on every page that has
+            # no stricter value of its own, so it is part of the contract under its plain name.
+            sent[name.removeprefix("?")] = value.strip("`\"")
         # A header sent per path (Permissions-Policy: the editor page's microphone, see CaddyMicrophoneTests)
         # is set by one-line, deferred `header @matcher >Name value` directives outside the block.
         for m in re.finditer(r"^\theader @\w+ >(\S+) (.+)$", self.caddyfile, re.M):

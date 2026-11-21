@@ -26,7 +26,11 @@
 		# are not served by this box.
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
+		# `?` = only when the app sent none. This block deletes headers, which makes
+		# Caddy defer it and overwrite upstream values: a plain set here replaced the
+		# app's `no-referrer` on pages whose URL is the secret (/r/<token>, /i/<token>,
+		# /auth/*, signed media). tests/security/test_sec_link_leak_caddy.py.
+		?Referrer-Policy "strict-origin-when-cross-origin"
 		# What server and framework answered is nobody's business.
 		-Server
 		-X-Powered-By
@@ -93,8 +97,16 @@
 		lb_try_interval 250ms
 	}
 
+	# The access log must not become a store of live links: review/invite path
+	# tokens and token_hash/code/t/sig/token query values are redacted before
+	# the line is written (one regexp, so it also works on Caddy 2.10).
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "(/[ri]/)[^/?#]+|([?&](?:token_hash|code|t|sig|token)=)[^&#]*" "${1}${2}REDACTED"
+			}
+		}
 	}
 }
