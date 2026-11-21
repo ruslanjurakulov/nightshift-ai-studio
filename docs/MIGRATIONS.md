@@ -2370,3 +2370,25 @@ Rollback: `docs/sql/rollback_0202_channel_research.sql`.
 - **Requires** 0182, 0107, 0036 (`creative_refuse`); the route also needs 0199 (`ai_chat_owner_settings`, the owner's model).
 - Lab: `tests/security/sec_owner_ai_0203.py`, `tests/security/test_sec_owner_ai.py`. Rollback:
   `docs/sql/rollback_0203_owner_ai_turns.sql` (drops the log).
+
+## Instagram through Unified Login (0204)
+
+0204 (`0204_instagram_unified_login.sql`). Instagram now connects through Meta's "Instagram API with Unified Login": the
+Facebook login dialog with a configuration id (`INSTAGRAM_CONFIG_ID`), one code exchange at graph.facebook.com, a Business
+Integration System User token that does not expire by default, and publishing on graph.facebook.com. The old Instagram Login
+tokens do not work there.
+
+- **Adds** `social_accounts.auth_flow` (`unified_login`, or NULL), `client_business_id` and `config_id` (ids, not secrets; readable
+  by the organization's members like `external_id`). No token column; tokens stay in Vault exactly as 0028.
+- **Old connections are kept.** No row is updated or deleted. An Instagram row whose `auth_flow` is not `unified_login` is an old
+  Instagram Login connection: the Command Center shows "reconnect needed" and does not offer it as a publish target, and the
+  queue worker refuses it as `instagram_reconnect`. Reconnecting the same account through Unified Login updates that row.
+- **Replaces** 0028's `store_social_account` (marked hunks only): an Instagram connect must carry `auth_flow = 'unified_login'` and
+  its `config_id`; the three keys are refused for TikTok. The binding is unchanged: the unique key is (org, platform, account), so
+  another organization connecting the same IG account gets its own row and token and never touches the first.
+- **Replaces** 0042's `api_list_connected_accounts` (one marked hunk, md5-guarded; only where the public API is applied): the public
+  API and the MCP tools report an old Instagram Login row as `connected: false`, like the Command Center.
+- **Before it is applied** the Command Center still lists accounts (every Instagram row then reads "reconnect needed") and an
+  Instagram connect answers "needs a database update (0204)"; nothing is stored.
+- **Undo.** `docs/sql/rollback_0204_instagram_unified_login.sql` (owner-applied): 0028's `store_social_account` and 0042's
+  `api_list_connected_accounts`; the columns stay.

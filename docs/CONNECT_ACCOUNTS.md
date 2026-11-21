@@ -85,7 +85,8 @@ Existing actions only: `channel.youtube.connect`, `channel.youtube.connect_faile
   `https://<domain>/api/oauth/instagram/callback`,
   `https://<domain>/api/oauth/tiktok/callback`.
 - Env names: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
-  `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `TIKTOK_CLIENT_KEY`,
+  `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_CONFIG_ID` and
+  `INSTAGRAM_UNIFIED_ORGS` (Instagram API with Unified Login, docs/SOCIAL_SETUP.md), `TIKTOK_CLIENT_KEY`,
   `TIKTOK_CLIENT_SECRET`, `APP_ORIGIN` (self-hosted), and for the operator's own
   workspace `GITHUB_SECRETS_TOKEN` / `GITHUB_SECRETS_REPO`.
 - A Google OAuth app that is not verified for the YouTube scopes is limited to

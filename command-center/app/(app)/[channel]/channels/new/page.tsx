@@ -12,7 +12,7 @@ import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast, requireRole } from "@/lib/auth/roles";
 import { ConnectStart } from "@/components/channels/ConnectStart";
 import { isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
-import { isSocialConfigured } from "@/lib/server/social-oauth";
+import { socialConnectOpen } from "@/lib/server/social-oauth";
 import { isConnectPlatform, parseConnectWord } from "@/lib/connect-picker";
 
 export const dynamic = "force-dynamic";
@@ -63,8 +63,8 @@ export default async function NewChannelPage({
         canSocial={canSocial}
         configured={{
           youtube: isGoogleOAuthConfigured,
-          instagram: isSocialConfigured("instagram"),
-          tiktok: isSocialConfigured("tiktok"),
+          instagram: socialConnectOpen("instagram", org.supported ? (org.current?.id ?? null) : null),
+          tiktok: socialConnectOpen("tiktok", org.supported ? (org.current?.id ?? null) : null),
         }}
         result={connectResult}
         niche={prefill.niche}

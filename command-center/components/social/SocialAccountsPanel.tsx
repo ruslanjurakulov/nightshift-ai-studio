@@ -12,6 +12,7 @@ import {
   PLATFORM_PERMISSIONS_URL,
   SOCIAL_PLATFORMS,
   accountLabel,
+  accountView,
   socialPanelActions,
   type SocialAccount,
   type SocialPlatform,
@@ -130,13 +131,19 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
                               {a.username && a.display_name ? `@${a.username} · ` : ""}
                               {a.connected_at ? fmt(ts.since, { when: relativeTime(a.connected_at, locale) }) : ""}
                             </div>
+                            {accountView(a) === "reconnect" && <div className="g2-warn text-[13px]">{ts.instagramReconnect}</div>}
                           </div>
                         </div>
                         <div className="g2-actions">
-                          <StatusLamp
-                            tone={a.status === "connected" ? "ok" : a.status === "expired" ? "warn" : "fail"}
-                            label={a.status === "connected" ? ts.connected : a.status === "expired" ? ts.expired : ts.error}
-                          />
+                          {(() => {
+                            const v = accountView(a);
+                            return (
+                              <StatusLamp
+                                tone={v === "connected" ? "ok" : v === "expired" || v === "reconnect" ? "warn" : "fail"}
+                                label={v === "connected" ? ts.connected : v === "expired" || v === "reconnect" ? ts.expired : ts.error}
+                              />
+                            );
+                          })()}
                           {actions.disconnect && (
                             <button
                               type="button"
@@ -185,6 +192,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
           >
             {PLATFORM_PERMISSIONS_URL[disconnected].replace(/^https:\/\//, "")}
           </a>
+          {disconnected === "instagram" && <> {ts.instagramRemoveHint}</>}
         </p>
       )}
       {error && <p className="g2-fail tnum">{fmt(ts.disconnectFailed, { error })}</p>}

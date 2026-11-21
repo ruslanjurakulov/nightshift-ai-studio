@@ -14,6 +14,8 @@ from modules import social_publish as sp
 from modules import social_tokens as st
 
 TOKEN = "IGQVJ-secret-access-token"
+#: content_publishing_limit's answer with room left (the shape Meta documents: data[0].quota_usage, data[0].config).
+LIMIT_OK = {"data": [{"quota_usage": 3, "config": {"quota_total": 50, "quota_duration": 86400}}]}
 
 
 class Resp:
@@ -50,7 +52,8 @@ class FakeHTTP:
 
 
 class FakeStore:
-    def __init__(self, *, refusal=None, video=None, short=None, http=None):
+    def __init__(self, *, refusal=None, video=None, short=None, http=None, flow="unified_login"):
+        self._flow = flow
         self._refusal = refusal
         self._video = video
         self._short = short
@@ -73,6 +76,11 @@ class FakeStore:
 
     def short_of(self, video_id):
         return self._short
+
+    def social_account_flow(self, account_id):
+        if isinstance(self._flow, Exception):
+            raise self._flow
+        return self._flow
 
     def disclosure_events(self, video_id):
         return [{"event": "video.ai_disclosure", "ts": "2026-10-19T10:00:00", "metadata": {"signals": {
@@ -114,7 +122,7 @@ class FakeTokens(st.SocialTokenClient):
         pass
 
     def set_status(self, account_id, status):
-        pass
+        self.statuses = getattr(self, "statuses", []) + [(account_id, status)]
 
 
 def req(platform="instagram"):
@@ -217,6 +225,7 @@ class InstagramFlowTests(Base):
     def test_container_poll_publish_and_permalink(self):
         g = sp.IG_GRAPH
         http = FakeHTTP({
+            ("GET", f"{g}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
             ("POST", f"{g}/17841400000/media_publish"): [Resp(200, {"id": "MEDIA1"})],
             ("POST", f"{g}/17841400000/media"): [Resp(200, {"id": "CONT1"})],
             ("GET", f"{g}/CONT1"): [Resp(200, {"status_code": "IN_PROGRESS"}), Resp(200, {"status_code": "FINISHED"})],
@@ -236,14 +245,146 @@ class InstagramFlowTests(Base):
 
     def test_platform_error_recorded_without_body_or_token(self):
         g = sp.IG_GRAPH
-        http = FakeHTTP({("POST", f"{g}/17841400000/media"): [
-            Resp(400, {"error": {"message": f"bad token {TOKEN}", "code": 190}})]})
+        http = FakeHTTP({
+            ("GET", f"{g}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
+            ("POST", f"{g}/17841400000/media"): [Resp(400, {"error": {"message": f"bad token {TOKEN}", "code": 190}})]})
         store = FakeStore(video=self.video, http=http)
-        self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "failed")
+        tokens = FakeTokens("instagram")
+        self.assertEqual(self.run_req(store, tokens, http=http), "failed")
         self.assertEqual(store.final["reason"], "token_expired")
         self.assertIn("HTTP 400", store.final["error"])
         self.assertNotIn(TOKEN, store.final["error"])
         self.assertEqual(store.staged, store.unstaged)
+        # Error 190 = a dead token: the account is marked for a reconnect, once, and nothing is retried.
+        self.assertEqual(tokens.statuses, [("acc1", "expired")])
+        self.assertEqual(sum(1 for c in http.calls if c[1].endswith("/media")), 1)
+
+
+class InstagramUnifiedLoginTests(Base):
+    """Instagram API with Unified Login (0204): graph.facebook.com, the publishing limit read first, config_issue as a
+    partial success, an old Instagram Login row refused with its remedy, a missing permission named."""
+
+    G = sp.IG_GRAPH
+
+    def http(self, limit=None, publish=None, media=None):
+        g = self.G
+        return FakeHTTP({
+            ("GET", f"{g}/17841400000/content_publishing_limit"): [limit or Resp(200, LIMIT_OK)],
+            ("POST", f"{g}/17841400000/media_publish"): [publish or Resp(200, {"id": "MEDIA1"})],
+            ("POST", f"{g}/17841400000/media"): [media or Resp(200, {"id": "CONT1"})],
+            ("GET", f"{g}/CONT1"): [Resp(200, {"status_code": "FINISHED"})],
+            ("GET", f"{g}/MEDIA1"): [Resp(200, {"permalink": "https://www.instagram.com/reel/abc/"})],
+        })
+
+    def test_the_host_is_graph_facebook_com_v27(self):
+        self.assertEqual(sp.IG_GRAPH, "https://graph.facebook.com/v27.0")
+
+    def test_the_limit_is_read_before_anything_is_staged_or_created(self):
+        http = self.http()
+        store = FakeStore(video=self.video, http=http)
+        self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "published")
+        method, url, kw = http.calls[0]
+        self.assertEqual((method, url), ("GET", f"{self.G}/17841400000/content_publishing_limit"))
+        self.assertEqual(kw["params"]["fields"], "quota_usage,config")
+        self.assertIsNone(store.final["reason"])          # a clean success has no reason word
+
+    def test_a_used_up_limit_stops_before_the_upload(self):
+        http = self.http(limit=Resp(200, {"data": [{"quota_usage": 50, "config": {"quota_total": 50}}]}))
+        store = FakeStore(video=self.video, http=http)
+        self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "failed")
+        self.assertEqual(store.final["reason"], "publish_limit_reached")
+        self.assertIn("50 of 50", store.final["error"])
+        self.assertEqual((store.staged, [c for c in http.calls if c[0] == "POST"]), ([], []))
+
+    def test_a_limit_that_cannot_be_read_is_not_guessed(self):
+        for answer in (Resp(500, {"error": {"code": 1}}), Resp(200, {"data": []}),
+                       Resp(200, {"data": [{"quota_usage": 2}]}), Resp(200, {"data": [{"quota_usage": True,
+                                                                                         "config": {"quota_total": 50}}]})):
+            with self.subTest(answer=answer._body):
+                http = self.http(limit=answer)
+                store = FakeStore(video=self.video, http=http)
+                self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "failed")
+                self.assertEqual(store.final["reason"], "limit_unreadable")
+                self.assertEqual((store.staged, [c for c in http.calls if c[0] == "POST"]), ([], []))
+
+    def test_config_issue_is_a_partial_success_not_a_clean_one(self):
+        http = self.http(publish=Resp(200, {"id": "MEDIA1", "config_issue": "CAPTION_NOT_ATTACHED"}))
+        store = FakeStore(video=self.video, http=http)
+        self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "published")
+        self.assertEqual(store.final["status"], "published")
+        self.assertEqual(store.final["result_id"], "MEDIA1")
+        self.assertEqual(store.final["reason"], "published_partially")
+        self.assertIn("CAPTION_NOT_ATTACHED", store.final["error"])
+
+    def test_config_issue_shapes(self):
+        self.assertIsNone(sp.ig_config_issue({"id": "1"}))
+        self.assertEqual(sp.ig_config_issue({"config_issue": ["CAPTION_NOT_ATTACHED", "USER_TAGGING_FAILURE"]}),
+                         "CAPTION_NOT_ATTACHED, USER_TAGGING_FAILURE")
+        self.assertEqual(sp.ig_config_issue({"config_issue": {"issue": "USER_TAGGING_FAILURE"}}), "USER_TAGGING_FAILURE")
+        # Present but not readable: still not a clean success.
+        self.assertEqual(sp.ig_config_issue({"config_issue": f"<b>{TOKEN}</b>"}), "unknown")
+
+    def test_an_old_instagram_login_row_is_refused_with_its_remedy_and_nothing_is_sent(self):
+        for flow in (None, "instagram_login"):
+            with self.subTest(flow=flow):
+                http = self.http()
+                store = FakeStore(video=self.video, http=http, flow=flow)
+                self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "refused")
+                self.assertEqual(store.final["reason"], "instagram_reconnect")
+                self.assertEqual((http.calls, store.staged), ([], []))
+
+    def test_an_unreadable_connection_record_is_not_used_on_a_guess(self):
+        http = self.http()
+        store = FakeStore(video=self.video, http=http, flow=RuntimeError("social_accounts (auth flow): HTTP 500"))
+        self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "failed")
+        self.assertEqual(http.calls, [])
+
+    def test_a_missing_permission_is_named_not_a_generic_failure(self):
+        for code in (10, 200, 299):
+            with self.subTest(code=code):
+                http = self.http(media=Resp(400, {"error": {"code": code, "message": "(#10) not allowed"}}))
+                store = FakeStore(video=self.video, http=http)
+                tokens = FakeTokens("instagram")
+                self.assertEqual(self.run_req(store, tokens, http=http), "failed")
+                self.assertEqual(store.final["reason"], "ig_permission_missing")
+                self.assertEqual(getattr(tokens, "statuses", []), [])   # a permission is not a dead token
+
+    def test_the_status_poll_is_about_once_a_minute_for_at_most_five(self):
+        self.assertEqual((sp.IG_POLL_SECONDS, sp.IG_MAX_WAIT_SECONDS), (60.0, 300.0))
+        http = FakeHTTP({
+            ("GET", f"{self.G}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
+            ("POST", f"{self.G}/17841400000/media"): [Resp(200, {"id": "CONT1"})],
+            ("GET", f"{self.G}/CONT1"): [Resp(200, {"status_code": "IN_PROGRESS"})],
+        })
+        store = FakeStore(video=self.video, http=http)
+        self.assertEqual(self.run_req(store, FakeTokens("instagram"), http=http), "failed")
+        self.assertEqual(store.final["reason"], "timeout")
+        self.assertEqual(sum(1 for c in http.calls if c[1].endswith("/CONT1")), 6)   # at 0, 60 ... 300 s
+        self.assertFalse(any(c[1].endswith("/media_publish") for c in http.calls))
+
+    def test_the_store_reads_the_flow_and_a_database_before_0204_reads_as_old(self):
+        class S:
+            def __init__(self, status, body):
+                self.status, self.body, self.params = status, body, None
+
+            def get(self, url, params=None, **kw):
+                self.params = params
+                return Resp(self.status, self.body)
+        cases = ((200, [{"auth_flow": "unified_login"}], "unified_login"), (200, [{"auth_flow": None}], None),
+                 (200, [], None), (400, {"code": "42703"}, None), (400, {"code": "PGRST204"}, None))
+        for status, body, want in cases:
+            session = S(status, body)
+            store = sp.PublishStore("https://x.supabase.co", "svc", session=session)
+            self.assertEqual(store.social_account_flow("acc1"), want, (status, body))
+            self.assertEqual(session.params["id"], "eq.acc1")
+        for status, body in ((500, {}), (400, {"code": "22P02"})):
+            with self.assertRaises(RuntimeError):
+                sp.PublishStore("https://x.supabase.co", "svc", session=S(status, body)).social_account_flow("acc1")
+
+    def test_new_reason_words_reach_the_panel(self):
+        ts = (Path(__file__).resolve().parent.parent / "command-center" / "lib" / "publish.ts").read_text(encoding="utf-8")
+        for word in sp.IG_REASONS:
+            self.assertIn(f'  "{word}",', ts, word)
 
 
 class TiktokFlowTests(Base):
