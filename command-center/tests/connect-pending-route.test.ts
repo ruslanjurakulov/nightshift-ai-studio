@@ -75,7 +75,7 @@ describe("POST /api/connect/pending", () => {
     const h = pending.createPending({
       userId: "u1",
       orgId: "3f2b8c1e-8d4a-4b7e-9a51-0c2d6e7f8a90",
-      grant: { platform: "tiktok", accessToken: "a", refreshToken: null, accessExpiresIn: null, refreshExpiresIn: null, scopes: [], profile: { externalId: "1", username: null, displayName: null, avatarUrl: null } },
+      grant: { platform: "tiktok", accessToken: "a", refreshToken: null, accessExpiresIn: null, refreshExpiresIn: null, scopes: [], profiles: [{ externalId: "1", username: null, displayName: null, avatarUrl: null }] },
     });
     const res = await post({ action: "cancel" });
     expect(res.headers.getSetCookie().join("\n")).toMatch(/ns_connect_pending=;/);

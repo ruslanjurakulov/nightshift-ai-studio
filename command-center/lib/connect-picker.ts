@@ -42,6 +42,7 @@ export const CONNECT_WORDS = [
   "not_business",
   "exchange_rejected",
   "unavailable",
+  "needs_migration",
   "expired",
   "failed",
 ] as const;
@@ -108,7 +109,7 @@ export interface SocialCandidateView {
 /** What the pick screen is handed. Never carries a token or the pending id. */
 export type PickView =
   | { platform: "youtube"; candidates: YoutubeCandidateView[]; expiresAt: number }
-  | { platform: "instagram" | "tiktok"; account: SocialCandidateView; expiresAt: number };
+  | { platform: "instagram" | "tiktok"; accounts: SocialCandidateView[]; expiresAt: number };
 
 const YT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 

@@ -2226,3 +2226,22 @@ Nano Banana for footage. So 0192's model check never saw it, and a member who ne
   `creative_route_quote` (one marked hunk each), and points 0192's run gate at its own function. Replaying 0075 over it silently
   puts the old `creative_route_quote` back.
 - **Undo.** `docs/sql/rollback_0196_adult_attestation_google_runs.sql` (owner-applied): the five earlier bodies and 0192's run gate.
+
+## Instagram through Unified Login (0197)
+
+0197 (`0197_instagram_unified_login.sql`). Instagram now connects through Meta's "Instagram API with Unified Login": the
+Facebook login dialog with a configuration id (`INSTAGRAM_CONFIG_ID`), one code exchange at graph.facebook.com, a Business
+Integration System User token that does not expire by default, and publishing on graph.facebook.com. The old Instagram Login
+tokens do not work there.
+
+- **Adds** `social_accounts.auth_flow` (`unified_login`, or NULL), `client_business_id` and `config_id` (ids, not secrets; readable
+  by the organization's members like `external_id`). No token column; tokens stay in Vault exactly as 0028.
+- **Old connections are kept.** No row is updated or deleted. An Instagram row whose `auth_flow` is not `unified_login` is an old
+  Instagram Login connection: the Command Center shows "reconnect needed" and does not offer it as a publish target, and the
+  queue worker refuses it as `instagram_reconnect`. Reconnecting the same account through Unified Login updates that row.
+- **Replaces** 0028's `store_social_account` (marked hunks only): an Instagram connect must carry `auth_flow = 'unified_login'` and
+  its `config_id`; the three keys are refused for TikTok. The binding is unchanged: the unique key is (org, platform, account), so
+  another organization connecting the same IG account gets its own row and token and never touches the first.
+- **Before it is applied** the Command Center still lists accounts (every Instagram row then reads "reconnect needed") and an
+  Instagram connect answers "needs a database update (0197)"; nothing is stored.
+- **Undo.** `docs/sql/rollback_0197_instagram_unified_login.sql` (owner-applied): 0028's `store_social_account`; the columns stay.

@@ -162,6 +162,7 @@ export const en: LegalTexts = {
             ],
           },
           "You can revoke Nightshift’s access to your Google account at any time at [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions). To delete your account and the data we hold, email {contactEmail}.",
+          "For an Instagram account connected to Nightshift — how to remove our access in Meta and what we delete — see [Data deletion](/data-deletion).",
         ],
       },
       {
@@ -443,6 +444,56 @@ export const en: LegalTexts = {
         id: "contact",
         heading: "16. Contact",
         body: ["{legalName}, {country}. Email: {contactEmail}."],
+      },
+    ],
+  },
+  dataDeletion: {
+    title: "Data deletion",
+    summary:
+      "How to remove Nightshift's access to an Instagram account you connected, how to disconnect it in Nightshift, and how to ask us to delete what we hold.",
+    sections: [
+      {
+        id: "remove-in-meta",
+        heading: "1. Remove Nightshift in Meta",
+        body: [
+          "An Instagram account is connected to Nightshift through a Meta business portfolio. To take our access away on Meta's side:",
+          {
+            list: [
+              "In Meta Business Settings ([business.facebook.com/settings](https://business.facebook.com/settings)), open Integrations → Connected apps, choose Nightshift and remove it.",
+              "Or remove Nightshift from the apps connected to your account in your Instagram or Facebook settings.",
+            ],
+          },
+          "From that moment the token Nightshift holds for the account stops working, and Nightshift can no longer post to it or read it.",
+        ],
+      },
+      {
+        id: "disconnect-in-nightshift",
+        heading: "2. Disconnect it in Nightshift",
+        body: [
+          "On the Channels page, under Connected accounts, press Disconnect next to the account (an owner, admin or editor of the workspace can). The stored token is destroyed in our encrypted store (Supabase Vault) at once, and nothing more is posted to the account. Do this as well as step 1: either one alone stops Nightshift from acting for the account.",
+        ],
+      },
+      {
+        id: "request",
+        heading: "3. Ask us to delete your data",
+        body: [
+          "Email {contactEmail} and say which Instagram account and which Nightshift account or workspace it was connected to. We may ask you to confirm the request from the email address of that Nightshift account, so that nobody else can have your data deleted.",
+        ],
+      },
+      {
+        id: "what-we-delete",
+        heading: "4. What we delete, and when",
+        body: [
+          {
+            list: [
+              "The account's access token, kept only in Supabase Vault: destroyed at once when you disconnect, and with a deletion request if it is still there.",
+              "The connected-account record: the Instagram account id, username, name and picture, who connected it and when, and the Meta business portfolio and configuration ids it was connected with.",
+              "The record of posts Nightshift sent to the account (what was sent, when, and the post id or error Instagram returned).",
+              "Nightshift does not read Instagram insights or messages today, so none are stored for the account.",
+            ],
+          },
+          "These are deleted within 30 days of a verified deletion request, as our [Privacy Policy](/privacy) states for account data. Audit records of who connected or disconnected an account are kept as long as the Nightshift account exists, as section 8 of the Privacy Policy says, because they are the record of who authorised an action.",
+        ],
       },
     ],
   },

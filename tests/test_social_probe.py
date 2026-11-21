@@ -12,7 +12,7 @@ from pathlib import Path
 
 from modules import social_probe as pr
 from modules import social_publish as sp
-from tests.test_social_publish import Base, FakeHTTP, FakeStore, FakeTokens, Resp
+from tests.test_social_publish import LIMIT_OK, Base, FakeHTTP, FakeStore, FakeTokens, Resp
 
 TT = sp.TT_API
 
@@ -244,6 +244,7 @@ class InTheWorker(Base):
                 "data": {"privacy_level_options": ["SELF_ONLY"], "max_video_post_duration_sec": 600},
                 "error": {"code": "ok"}})],
             ("POST", f"{TT}/video/init/"): [Resp(500, {"error": {"code": "stop_here"}})],
+            ("GET", f"{sp.IG_GRAPH}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
             ("POST", f"{sp.IG_GRAPH}/17841400000/media"): [Resp(500, {"error": {"code": 1}})],
         })
         store = FakeStore(video=self.video, http=http)

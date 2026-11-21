@@ -48,12 +48,26 @@ as ``quota_exceeded``.
 
 Platform references (official docs):
 
-* Instagram API with Instagram Login — content publishing (Reels):
+* Instagram API with Unified Login — content publishing (Reels), on
+  graph.facebook.com with the connection's Business Integration System User
+  token (migration 0197; Scout, Meta's docs read 2026-11-21):
   https://developers.facebook.com/docs/instagram-platform/content-publishing/
+  GET /<IG_ID>/content_publishing_limit?fields=quota_usage,config FIRST: Meta's
+  own pages disagree on the 24-hour limit (50 or 100), so it is read, never
+  hard-coded, and a read that fails stops the request (``limit_unreadable``);
   POST /<IG_ID>/media (media_type=REELS, video_url, caption) → container id;
-  GET /<container>?fields=status_code until FINISHED;
-  POST /<IG_ID>/media_publish (creation_id) → media id;
-  GET /<media>?fields=permalink. Instagram fetches ``video_url`` itself, so
+  GET /<container>?fields=status_code about once a minute, at most 5 minutes;
+  POST /<IG_ID>/media_publish (creation_id) → media id, and possibly a
+  ``config_issue`` (CAPTION_NOT_ATTACHED, USER_TAGGING_FAILURE): the post
+  exists but is incomplete, recorded as published with the reason
+  ``published_partially``, never as a clean success;
+  GET /<media>?fields=permalink. A connection made with the old Instagram
+  Login (no ``auth_flow`` on its row) is refused before anything is staged
+  (``instagram_reconnect``): its token is not one graph.facebook.com accepts.
+  Error 190 marks the account expired (reconnect), once; error 10 or 200-299
+  is ``ig_permission_missing`` (a permission missing from the grant or the
+  configuration, or an account that is not Business / Creator).
+  Instagram fetches ``video_url`` itself, so
   the master is staged in a private Supabase Storage bucket and handed over
   as a short-lived signed URL, deleted afterwards.
   Reels: 3 s – 15 min, ≤ 300 MB, aspect ratio between 0.01:1 and 10:1.
@@ -93,7 +107,7 @@ from modules import social_tokens
 
 logger = logging.getLogger(__name__)
 
-IG_GRAPH = "https://graph.instagram.com/v23.0"
+IG_GRAPH = "https://graph.facebook.com/v27.0"
 TT_API = "https://open.tiktokapis.com/v2/post/publish"
 STAGING_BUCKET = "publish-staging"
 STAGING_URL_SECONDS = 3600
@@ -139,6 +153,22 @@ _YT_AUTH = {"authError", "unauthorized", "forbidden_token"}
 
 POLL_SECONDS = 10.0
 MAX_WAIT_SECONDS = 20 * 60.0
+#: Instagram's container status: "query ... about once per minute, for no more than 5 minutes" (Meta). A container that is
+#: not FINISHED by then is left unpublished (Meta expires it after 24 hours), so a timeout can never post twice.
+IG_POLL_SECONDS = 60.0
+IG_MAX_WAIT_SECONDS = 5 * 60.0
+
+#: The closed words Instagram adds to ``publish_requests.reason`` (sentences in en / ru / uz: command-center/lib/publish.ts).
+IG_REASON_RECONNECT = "instagram_reconnect"
+IG_REASON_PERMISSION = "ig_permission_missing"
+IG_REASON_LIMIT_UNREADABLE = "limit_unreadable"
+IG_REASON_LIMIT_REACHED = "publish_limit_reached"
+REASON_PARTIAL = "published_partially"
+IG_REASONS = (IG_REASON_RECONNECT, IG_REASON_PERMISSION, IG_REASON_LIMIT_UNREADABLE, IG_REASON_LIMIT_REACHED,
+              REASON_PARTIAL)
+#: The auth_flow a usable Instagram row carries (0197).
+IG_AUTH_FLOW = "unified_login"
+_IG_PERMISSION_CODES = {10} | set(range(200, 300))
 
 
 class PublishStop(Exception):
@@ -232,6 +262,21 @@ class PublishStore:
             raise RuntimeError(f"videos (made for kids): HTTP {r.status_code}")
         rows = r.json() or []
         return rows[0] if rows and isinstance(rows[0], dict) else {}
+
+    def social_account_flow(self, account_id: str) -> Optional[str]:
+        """The account's ``auth_flow`` (migration 0197): 'unified_login' for an Instagram connection made through Unified
+        Login, None for an old Instagram Login one -- and None when the database has no such column yet (before 0197
+        nothing else could be stored). Any other failure raises: an Instagram token is not used on a guess."""
+        r = self.http().get(f"{self.url}/rest/v1/social_accounts", params={
+            "select": "auth_flow", "id": f"eq.{account_id}", "limit": "1"}, headers=self._h(), timeout=self._timeout)
+        if r.status_code == 400 and _pgrst_code(r) in ("42703", "PGRST204"):
+            return None
+        if r.status_code >= 300:
+            raise RuntimeError(f"social_accounts (auth flow): HTTP {r.status_code}")
+        rows = r.json() or []
+        row = rows[0] if rows and isinstance(rows[0], dict) else {}
+        flow = row.get("auth_flow")
+        return flow if isinstance(flow, str) and flow else None
 
     def disclosure_events(self, video_id: str) -> list:
         """The video's recorded ``video.ai_disclosure`` events (newest first), or
@@ -493,19 +538,77 @@ def _ig_error(what: str, r) -> PublishStop:
         parts.append(f"code {code}")
     if isinstance(sub, int):
         parts.append(f"subcode {sub}")
-    reason = "token_expired" if code == 190 else "rate_limited" if code in (4, 9, 17, 32, 613) else "platform_error"
+    if code == 190:
+        reason = "token_expired"
+    elif code in (4, 9, 17, 32, 613):
+        reason = "rate_limited"
+    elif isinstance(code, int) and code in _IG_PERMISSION_CODES:
+        # A permission missing from the grant or from the configuration, or (#10) an account that is not a Business
+        # or Creator account: named, with its remedy, never a generic platform error.
+        reason = IG_REASON_PERMISSION
+    else:
+        reason = "platform_error"
     return failed(reason, f"instagram {what}: {', '.join(parts)}")
+
+
+_CONFIG_WORD = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
+def ig_config_issue(body: Mapping) -> Optional[str]:
+    """What ``media_publish`` reported as ``config_issue``, as our own short words, or None when it reported none. The
+    field's exact shape is not documented beyond its values (CAPTION_NOT_ATTACHED, USER_TAGGING_FAILURE), so a string, a
+    list of strings and an object holding them are read; anything present but unreadable is "unknown" -- a reported issue
+    is never dropped into a clean success."""
+    raw = body.get("config_issue") if isinstance(body, Mapping) else None
+    if raw is None or raw == "" or raw == [] or raw == {}:
+        return None
+    found = []
+
+    def take(v):
+        if isinstance(v, str) and _CONFIG_WORD.match(v.strip()) and v.strip() not in found:
+            found.append(v.strip())
+        elif isinstance(v, (list, tuple)):
+            for x in v[:10]:
+                take(x)
+        elif isinstance(v, Mapping):
+            for x in list(v.values())[:10]:
+                take(x)
+    take(raw)
+    return ", ".join(found[:5]) if found else "unknown"
 
 
 class InstagramAdapter:
     def __init__(self, http, store: PublishStore, *, sleep: Callable[[float], None] = time.sleep,
-                 heartbeat: Callable[[], None] = lambda: None, poll_seconds: float = POLL_SECONDS,
-                 max_wait: float = MAX_WAIT_SECONDS):
+                 heartbeat: Callable[[], None] = lambda: None, poll_seconds: float = IG_POLL_SECONDS,
+                 max_wait: float = IG_MAX_WAIT_SECONDS):
         self.http, self.store, self.sleep, self.heartbeat = http, store, sleep, heartbeat
         self.poll_seconds, self.max_wait = poll_seconds, max_wait
 
+    def check_limit(self, tok: social_tokens.SocialToken) -> None:
+        """Meta's 24-hour publishing limit for this account, read BEFORE anything is staged or created. The figure is
+        Meta's (its pages disagree on 50 or 100), never ours; an answer that does not state both numbers stops the
+        request, because posting on a guess could be refused after the upload, or count against a limit we cannot see."""
+        r = self.http.get(f"{IG_GRAPH}/{tok.external_id}/content_publishing_limit", params={
+            "fields": "quota_usage,config", "access_token": tok.access_token}, timeout=30)
+        if r.status_code >= 300:
+            stop = _ig_error("publishing limit", r)
+            if stop.reason == "platform_error":
+                stop = failed(IG_REASON_LIMIT_UNREADABLE, stop.detail)
+            raise stop
+        data = _json(r).get("data")
+        row = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else {}
+        used = row.get("quota_usage")
+        cfg = row.get("config") if isinstance(row.get("config"), dict) else {}
+        total = cfg.get("quota_total")
+        if isinstance(used, bool) or isinstance(total, bool) or not isinstance(used, int) or not isinstance(total, int) \
+                or used < 0 or total <= 0:
+            raise failed(IG_REASON_LIMIT_UNREADABLE, "instagram publishing limit: the answer did not state the usage and the limit")
+        if used >= total:
+            raise failed(IG_REASON_LIMIT_REACHED, f"instagram publishing limit: {used} of {total} used in the last 24 hours")
+
     def publish(self, tok: social_tokens.SocialToken, path: Path, caption: str, staging_name: str,
                 ai_generated: bool = False) -> dict:
+        self.check_limit(tok)
         self.store.stage(path, staging_name)
         try:
             video_url = self.store.sign(staging_name)
@@ -514,8 +617,10 @@ class InstagramAdapter:
                 "share_to_feed": "true", "access_token": tok.access_token,
             }
             if ai_generated:
-                # Instagram's self-disclosure of AI use (an optional container parameter). Sent only when the
-                # label is true: an absent field is the unlabelled post every Reel has always been.
+                # Instagram's self-disclosure of AI use. Sent only when the label is true: an absent field is the
+                # unlabelled post every Reel has always been. Meta's Unified Login pages (read 2026-11-21) do not list
+                # this parameter; it is kept because dropping it would silently remove the AI label from labelled
+                # posts (a behaviour change, CLAUDE.md #4). UNVERIFIED on graph.facebook.com.
                 data["is_ai_generated"] = "true"
             r = self.http.post(f"{IG_GRAPH}/{tok.external_id}/media", data=data, timeout=60)
             if r.status_code >= 300:
@@ -545,9 +650,11 @@ class InstagramAdapter:
                 "creation_id": container, "access_token": tok.access_token}, timeout=60)
             if p.status_code >= 300:
                 raise _ig_error("publish", p)
-            media_id = str(_json(p).get("id") or "")
+            body = _json(p)
+            media_id = str(body.get("id") or "")
             if not media_id:
                 raise failed("platform_error", "instagram publish: no media id returned")
+            issue = ig_config_issue(body)
             url = None
             try:
                 g = self.http.get(f"{IG_GRAPH}/{media_id}", params={
@@ -556,7 +663,10 @@ class InstagramAdapter:
                 url = link if link.startswith("https://") else None
             except Exception:
                 url = None
-            return {"result_id": media_id, "result_url": url, "privacy": None}
+            out = {"result_id": media_id, "result_url": url, "privacy": None}
+            if issue:
+                out["partial"] = f"instagram config_issue: {issue}"
+            return out
         finally:
             self.store.unstage(staging_name)
 
@@ -889,12 +999,31 @@ class _SocialAccountPublisher:
 class InstagramPublisher(_SocialAccountPublisher):
     platform = "instagram"
 
+    def connect(self) -> None:
+        super().connect()
+        ctx = self.ctx
+        # An old Instagram Login connection holds a token graph.facebook.com does not accept: refused before anything is
+        # staged, with the remedy (reconnect), and the row is left as it is (kept until the person reconnects).
+        try:
+            flow = ctx.store.social_account_flow(self.tok.account_id)
+        except Exception as e:
+            raise failed("worker_error", f"could not read how the Instagram account was connected ({type(e).__name__})") from None
+        if flow != IG_AUTH_FLOW:
+            raise refused(IG_REASON_RECONNECT, "connected with the old Instagram login; connect Instagram again")
+
     def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
         ctx = self.ctx
         staging = f"{ctx.request.get('org_id') or 'org'}/{ctx.request.get('id')}.mp4"
         # PostSpec.ai_generated -> the container's ``is_ai_generated`` (InstagramAdapter sends it only when true).
-        return InstagramAdapter(ctx.http, ctx.store, sleep=ctx.sleep, heartbeat=ctx.heartbeat).publish(
-            self.tok, path, post.caption, staging, ai_generated=post.ai_generated)
+        try:
+            return InstagramAdapter(ctx.http, ctx.store, sleep=ctx.sleep, heartbeat=ctx.heartbeat).publish(
+                self.tok, path, post.caption, staging, ai_generated=post.ai_generated)
+        except PublishStop as e:
+            if e.reason == "token_expired":
+                # Error 190: the token is dead (the app was removed, or the IG account moved). Marked once so the
+                # Command Center asks to reconnect; nothing retries it.
+                ctx.tokens.set_status(self.tok.account_id, "expired")
+            raise
 
 
 class TiktokPublisher(_SocialAccountPublisher):
@@ -1066,6 +1195,10 @@ def _record_result(store, rid, worker_id: str, result) -> str:
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     fields = _result_fields(result)
     base = {"status": "published", "reason": None, "error": None, "finished_at": now}
+    partial = result.get("partial") if isinstance(result, Mapping) else None
+    if isinstance(partial, str) and partial:
+        # The post exists but the platform says part of it did not attach: published, never as a clean success.
+        base = {**base, "reason": REASON_PARTIAL, "error": partial[:500]}
     text = (f"the post was made (id {fields['result_id']}) but recording it failed; check the account before sending again"
             if fields["result_id"] else "the post was made but recording it failed; check the account before sending again")
     unconfirmed = {"status": "failed", "reason": "publish_unconfirmed", "error": text, "finished_at": now}

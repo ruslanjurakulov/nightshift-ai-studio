@@ -11,7 +11,7 @@ import { StatusPill } from "@/components/ui";
 import { PlatformLogo } from "@/components/social/PlatformLogo";
 import { DownloadMenu, type DownloadMenuProps } from "@/components/videos/DownloadMenu";
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
-import { accountLabel, type SocialAccount } from "@/lib/social-accounts";
+import { accountLabel, isPublishable, type SocialAccount } from "@/lib/social-accounts";
 import {
   PUBLISH_REQUEST_COLUMNS,
   coercePublishRequests,
@@ -161,6 +161,12 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
             </a>
           )}
         </div>
+        {r.status === "published" && reason === "published_partially" && (
+          <span className="text-[var(--color-warn)]">
+            {tp.reasons.published_partially}
+            {r.error ? ` — ${r.error}` : ""}
+          </span>
+        )}
         {(r.status === "failed" || r.status === "refused") && (
           <span>
             {reason ? tp.reasons[reason] : tp.reasons.worker_error}
@@ -278,7 +284,9 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
           accounts.map((a) => {
             const last = latest.get(a.id);
             const live = last ? isLive(last.status) : false;
-            const disabled = !editor || Boolean(blocker) || a.status !== "connected" || live || sending;
+            // An old Instagram Login row reads "connected" in the table but can never post (0197): not offered.
+            const usable = isPublishable(a);
+            const disabled = !editor || Boolean(blocker) || !usable || live || sending;
             return (
               <li key={a.id} className="flex items-start gap-3">
                 <input
@@ -294,11 +302,11 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
                   <div className="flex items-center gap-1.5 text-sm">
                     <ChannelAvatar url={a.avatar_url} />
                     <span className="truncate">{accountLabel(a)}</span>
-                    {a.status === "connected" && (
+                    {usable && (
                       <CheckCircle2 size={14} style={{ color: "var(--color-ok)" }} aria-hidden />
                     )}
                   </div>
-                  {a.status !== "connected" && (
+                  {!usable && (
                     <div className="text-xs text-[var(--color-warn)]">{tp.reconnect}</div>
                   )}
                   {a.platform === "tiktok" && !last && (

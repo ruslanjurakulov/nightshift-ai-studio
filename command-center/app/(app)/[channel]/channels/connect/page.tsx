@@ -10,7 +10,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { PENDING_COOKIE, readPending } from "@/lib/server/connect-pending";
 import { linkedYoutubeChannels } from "@/lib/server/connect-youtube";
 import { fetchSocialAccounts } from "@/lib/server/social-accounts";
-import { accountLabel } from "@/lib/social-accounts";
+import { accountLabel, isPublishable } from "@/lib/social-accounts";
 import { safeImageUrl, type PickView } from "@/lib/connect-picker";
 
 export const dynamic = "force-dynamic";
@@ -47,17 +47,18 @@ export default async function ConnectPickPage() {
       };
     } else {
       const { rows } = await fetchSocialAccounts(orgId);
-      const p = grant.profile;
+      const platform = grant.platform;
       view = {
-        platform: grant.platform,
+        platform,
         expiresAt: held.expiresAt,
-        account: {
+        accounts: grant.profiles.map((p) => ({
           externalId: p.externalId,
           name: accountLabel({ display_name: p.displayName, username: p.username, external_id: p.externalId }),
           username: p.username,
           avatarUrl: safeImageUrl(p.avatarUrl),
-          connected: rows.some((r) => r.platform === grant.platform && r.external_id === p.externalId && r.status !== "revoked"),
-        },
+          // An old Instagram Login row of the same account counts as not connected: confirming replaces it.
+          connected: rows.some((r) => r.platform === platform && r.external_id === p.externalId && isPublishable(r)),
+        })),
       };
     }
   }

@@ -25,6 +25,8 @@ vi.mock("@/lib/server/social-accounts", () => ({
 
 process.env.INSTAGRAM_APP_ID = "1234567890";
 process.env.INSTAGRAM_APP_SECRET = "ig-secret";
+process.env.INSTAGRAM_CONFIG_ID = "987654321012345";
+process.env.INSTAGRAM_UNIFIED_ORGS = "3f2b8c1e-8d4a-4b7e-9a51-0c2d6e7f8a90";
 process.env.TIKTOK_CLIENT_KEY = "ttkey";
 process.env.TIKTOK_CLIENT_SECRET = "tt-secret";
 delete process.env.APP_ORIGIN;
@@ -74,6 +76,43 @@ describe("start", () => {
     const res = await startSocialConnect(new Request("https://nightshift-ai.studio/api/oauth/instagram/start"), "instagram");
     expect(location(res).searchParams.get("social")).toBe("not_configured");
     process.env.INSTAGRAM_APP_SECRET = saved;
+  });
+  it("fails early, before the login, when INSTAGRAM_CONFIG_ID is missing", async () => {
+    const saved = process.env.INSTAGRAM_CONFIG_ID;
+    delete process.env.INSTAGRAM_CONFIG_ID;
+    const res = await startSocialConnect(new Request("https://nightshift-ai.studio/api/oauth/instagram/start"), "instagram");
+    expect(location(res).host).toBe("nightshift-ai.studio");
+    expect(location(res).searchParams.get("social")).toBe("not_configured");
+    process.env.INSTAGRAM_CONFIG_ID = saved;
+  });
+  it("Instagram is open only to the allowlisted workspaces (the Meta app is Unpublished): others fail early, at start and callback", async () => {
+    const saved = process.env.INSTAGRAM_UNIFIED_ORGS;
+    for (const list of ["", OTHER, "not-a-uuid"]) {
+      process.env.INSTAGRAM_UNIFIED_ORGS = list;
+      const start = await startSocialConnect(new Request("https://nightshift-ai.studio/api/oauth/instagram/start"), "instagram");
+      expect(location(start).host).toBe("nightshift-ai.studio");
+      expect(location(start).searchParams.get("social")).toBe("not_configured");
+      const f = vi.spyOn(globalThis, "fetch");
+      const cb = await finishSocialConnect(
+        callback("instagram", { code: "c", state: encodeSocialState({ org: ORG, nonce: NONCE }) }, `ig_oauth_nonce=${NONCE}`),
+        "instagram",
+      );
+      expect(location(cb).searchParams.get("social")).toBe("not_configured");
+      expect(f).not.toHaveBeenCalled(); // no code exchange for a workspace that is not let in
+      f.mockRestore();
+    }
+    // TikTok is not behind it.
+    const tt = await startSocialConnect(new Request("https://nightshift-ai.studio/api/oauth/tiktok/start"), "tiktok");
+    expect(location(tt).host).toBe("www.tiktok.com");
+    process.env.INSTAGRAM_UNIFIED_ORGS = saved;
+  });
+  it("sends Instagram to the Facebook login dialog with the configuration, the nonce in state, and no scope", async () => {
+    const res = await startSocialConnect(new Request("https://nightshift-ai.studio/api/oauth/instagram/start"), "instagram");
+    const loc = location(res);
+    expect(loc.origin + loc.pathname).toBe("https://www.facebook.com/dialog/oauth");
+    expect(loc.searchParams.get("config_id")).toBe("987654321012345");
+    expect(loc.searchParams.has("scope")).toBe(false);
+    expect(res.headers.getSetCookie().join("\n")).toMatch(/ig_oauth_nonce=[^;]+;.*Path=\/api\/oauth\/instagram/);
   });
   it("401s a signed-out caller", async () => {
     state.user = null;
@@ -144,6 +183,48 @@ describe("callback", () => {
     });
     // Nothing secret in the redirect.
     expect(res.headers.get("location")).not.toMatch(/act\.x|rft\.y/);
+  });
+  it("connects one Instagram account: one exchange, the two /me reads, stored with its portfolio and configuration", async () => {
+    const f = vi.spyOn(globalThis, "fetch");
+    f.mockResolvedValueOnce(Response.json({ access_token: "EAAB-bisu-token", token_type: "bearer" }));
+    f.mockResolvedValueOnce(Response.json({ client_business_id: "555" }));
+    f.mockResolvedValueOnce(Response.json({ data: [{ id: "17841400000000001", username: "brand" }] }));
+    const res = await finishSocialConnect(callback("instagram", { code: "c", state: good() }, `ig_oauth_nonce=${NONCE}`), "instagram");
+    expect(location(res).searchParams.get("social")).toBe("connected");
+    expect(state.stored).toEqual([
+      {
+        orgId: ORG,
+        platform: "instagram",
+        accessToken: "EAAB-bisu-token",
+        refreshToken: null,
+        profile: { externalId: "17841400000000001", username: "brand", displayName: null, avatarUrl: null },
+        // No scopes are claimed: the exchange returned none.
+        scopes: [],
+        // No expiry stated: stored as null, never a number.
+        accessExpiresIn: null,
+        refreshExpiresIn: null,
+        instagram: { clientBusinessId: "555", configId: "987654321012345" },
+      },
+    ]);
+    expect(res.headers.get("location")).not.toMatch(/EAAB/);
+  });
+  it("several Instagram accounts go to the pick screen even from the Channels page, and nothing is stored", async () => {
+    const f = vi.spyOn(globalThis, "fetch");
+    f.mockResolvedValueOnce(Response.json({ access_token: "EAAB-bisu-token" }));
+    f.mockResolvedValueOnce(Response.json({ client_business_id: "555" }));
+    f.mockResolvedValueOnce(Response.json({ data: [{ id: "17841400000000001" }, { id: "17841400000000002" }] }));
+    const res = await finishSocialConnect(callback("instagram", { code: "c", state: good() }, `ig_oauth_nonce=${NONCE}`), "instagram");
+    expect(location(res).pathname).toBe("/all-channels/channels/connect");
+    expect(res.headers.getSetCookie().join("\n")).toMatch(/ns_connect_pending=/);
+    expect(state.stored).toHaveLength(0);
+  });
+  it("a cancel on Facebook's screen is 'denied' and stores nothing", async () => {
+    const res = await finishSocialConnect(
+      callback("instagram", { error: "access_denied", error_reason: "user_denied", state: good() }, `ig_oauth_nonce=${NONCE}`),
+      "instagram",
+    );
+    expect(location(res).searchParams.get("social")).toBe("denied");
+    expect(state.stored).toHaveLength(0);
   });
   it("refuses a grant without the publish scope", async () => {
     const f = vi.spyOn(globalThis, "fetch");

@@ -11,7 +11,7 @@ const grant = {
   accessExpiresIn: 86400,
   refreshExpiresIn: 31536000,
   scopes: ["user.info.basic"],
-  profile: { externalId: "oid", username: null, displayName: "Brand", avatarUrl: null },
+  profiles: [{ externalId: "oid", username: null, displayName: "Brand", avatarUrl: null }],
 };
 const ORG = "3f2b8c1e-8d4a-4b7e-9a51-0c2d6e7f8a90";
 const OTHER_ORG = "11111111-2222-4333-8444-555555555555";

@@ -29,8 +29,15 @@ import { OAUTH_PUBLIC_PATHS, WELL_KNOWN_PATHS } from "@/lib/oauth/config";
  */
 export const REFUND_PATH = "/refund";
 
-/** Always public: the legal pages Google's and Paddle's reviewers and users must be able to read. */
-export const LEGAL_PATHS = ["/privacy", "/terms", REFUND_PATH] as const;
+/**
+ * Data deletion instructions (app/data-deletion/page.tsx): the URL Meta's App Settings ask for before the Instagram
+ * connect can go live. Public and uncounted, like /refund (it is not in SITEMAP_PATHS, which must equal the page-view
+ * counter's closed SQL list).
+ */
+export const DATA_DELETION_PATH = "/data-deletion";
+
+/** Always public: the legal pages Google's, Paddle's and Meta's reviewers and users must be able to read. */
+export const LEGAL_PATHS = ["/privacy", "/terms", REFUND_PATH, DATA_DELETION_PATH] as const;
 
 /** Always public: what a credit pack costs. Paddle's reviewers read it signed
  *  out, and a signed-in user sees the same page (plus the live credit rates).
@@ -342,6 +349,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "roadmap",
   // The Refund Policy (REFUND_PATH): a channel of that id would be shadowed by it.
   "refund",
+  // The data deletion instructions (DATA_DELETION_PATH): a channel of that id would be shadowed by it.
+  "data-deletion",
   // The referral programme's terms (REFERRAL_PATH): a channel of that id would be shadowed by it.
   "referral",
   // The public /trust page (TRUST_PATH): a channel of that id would be shadowed by it.

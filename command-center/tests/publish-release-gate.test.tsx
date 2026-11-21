@@ -77,7 +77,7 @@ vi.mock("@/lib/auth/org-roles", () => ({ isOperator: async () => false, isPlatfo
 vi.mock("@/lib/server/channel-tokens", () => ({ fetchTokenStatuses: async () => null }));
 vi.mock("@/lib/server/google-oauth", () => ({ YOUTUBE_OAUTH_SCOPES: [], isGoogleOAuthConfigured: false }));
 vi.mock("@/lib/server/social-accounts", () => ({ fetchSocialAccounts: async () => ({ rows: [], available: false }) }));
-vi.mock("@/lib/server/social-oauth", () => ({ isSocialConfigured: () => false }));
+vi.mock("@/lib/server/social-oauth", () => ({ isSocialConfigured: () => false, socialConnectOpen: () => false }));
 vi.mock("@/lib/server/style-kits", () => ({ loadStyleContext: async () => null }));
 vi.mock("@/lib/server/channel-dna", () => ({ loadDnaCharacters: async () => ({ byChannel: new Map(), available: false }) }));
 

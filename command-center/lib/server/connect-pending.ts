@@ -55,6 +55,14 @@ export interface YoutubeGrant {
   language: string | null;
 }
 
+/** What an Instagram (Unified Login) connection stores beside its token (migration 0197). */
+export interface InstagramConnection {
+  /** The client's business portfolio id, or null when Meta returned none. */
+  clientBusinessId: string | null;
+  /** The Unified Login configuration the token was issued under. */
+  configId: string;
+}
+
 export interface SocialGrant {
   platform: SocialPlatform;
   accessToken: string;
@@ -62,7 +70,10 @@ export interface SocialGrant {
   accessExpiresIn: number | null;
   refreshExpiresIn: number | null;
   scopes: string[];
-  profile: SocialProfile;
+  /** Every account the authorisation acts for, never empty: one for TikTok, one or more for an Instagram
+   *  business portfolio. The confirm names which one; the server checks it against this list. */
+  profiles: SocialProfile[];
+  instagram?: InstagramConnection;
 }
 
 export type PendingGrant = YoutubeGrant | SocialGrant;

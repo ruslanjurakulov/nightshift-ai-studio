@@ -87,29 +87,25 @@ class RecordingClient(st.SocialTokenClient):
 ENV = {"TIKTOK_CLIENT_KEY": "k", "TIKTOK_CLIENT_SECRET": "s"}
 
 
-class InstagramRefreshTests(unittest.TestCase):
-    def test_fresh_token_is_used_as_is(self):
-        c = RecordingClient()
-        tok = token("instagram", access_expires_at=NOW + timedelta(days=40), connected_at=NOW - timedelta(days=20))
-        self.assertIs(st.ensure_fresh(tok, c, http=FakeHTTP(), env=ENV, now=NOW), tok)
-        self.assertEqual(c.rotated, [])
+class InstagramUnifiedLoginTokenTests(unittest.TestCase):
+    """Unified Login (0197): a Business Integration System User token that does not expire by default and has no
+    refresh endpoint. Nothing is ever called to refresh it; only a stated expiry that has passed stops it."""
 
-    def test_refreshes_near_expiry_and_stores_it(self):
+    def test_no_expiry_stated_is_used_as_is_and_nothing_is_called(self):
         c = RecordingClient()
-        http = FakeHTTP(Resp(200, {"access_token": "IGQ-new-token", "token_type": "bearer", "expires_in": 5184000}))
+        tok = token("instagram", access_expires_at=None, connected_at=NOW - timedelta(days=400))
+        self.assertIs(st.ensure_fresh(tok, c, http=FakeHTTP(), env=ENV, now=NOW), tok)
+        self.assertEqual((c.rotated, c.statuses), ([], []))
+
+    def test_close_to_a_stated_expiry_is_not_refreshed_the_old_way(self):
+        # The old Instagram Login refreshed a token with < 10 days left via graph.instagram.com/refresh_access_token.
+        # That endpoint is not for this token: a call to it would be a call that cannot work.
+        c = RecordingClient()
+        http = FakeHTTP()
         tok = token("instagram", access_expires_at=NOW + timedelta(days=3), connected_at=NOW - timedelta(days=57))
-        fresh = st.ensure_fresh(tok, c, http=http, env=ENV, now=NOW)
-        self.assertEqual(fresh.access_token, "IGQ-new-token")
-        self.assertEqual(fresh.access_expires_at, NOW + timedelta(seconds=5184000))
-        self.assertEqual(c.rotated, [fresh])
-        method, url, kw = http.calls[0]
-        self.assertEqual((method, url), ("GET", st.IG_REFRESH_URL))
-        self.assertEqual(kw["params"]["grant_type"], "ig_refresh_token")
-
-    def test_not_refreshed_when_younger_than_24h(self):
-        c = RecordingClient()
-        tok = token("instagram", access_expires_at=NOW + timedelta(days=3), connected_at=NOW - timedelta(hours=2))
-        self.assertIs(st.ensure_fresh(tok, c, http=FakeHTTP(), env=ENV, now=NOW), tok)
+        self.assertIs(st.ensure_fresh(tok, c, http=http, env=ENV, now=NOW), tok)
+        self.assertEqual((http.calls, c.rotated), ([], []))
+        self.assertFalse(hasattr(st, "IG_REFRESH_URL"))
 
     def test_expired_marks_account_and_raises_without_token(self):
         c = RecordingClient()

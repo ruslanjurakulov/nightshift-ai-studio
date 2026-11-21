@@ -8,11 +8,14 @@ place in the pipeline that touches them, and it keeps them in memory only.
 
 Refresh rules (official docs):
 
-* Instagram API with Instagram Login — the stored token is a LONG-LIVED user
-  token (60 days). It can be refreshed once it is at least 24 hours old and
-  not yet expired; the refreshed token is valid for another 60 days.
-  ``GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token``
-  https://developers.facebook.com/docs/instagram-platform/reference/refresh_access_token/
+* Instagram API with Unified Login (migration 0197) — the stored token is a
+  Business Integration System User token. It does not expire by default and
+  Meta documents NO refresh endpoint for it, so there is nothing to refresh:
+  the 60-day ``ig_refresh_token`` path of the old Instagram Login is gone. The
+  token dies when the client removes the app or moves the IG account; the
+  publishing call then answers error 190, and the account is marked
+  ``expired`` ("reconnect") once, with no retry loop
+  (``modules/social_publish.py``). A stored expiry that has passed is believed.
 * X (API v2, OAuth 2.0 with PKCE) — the access token lasts two hours; with the ``offline.access`` scope a refresh token is
   issued. ``POST https://api.x.com/2/oauth2/token`` form-encoded ``grant_type=refresh_token``, ``refresh_token`` and, for a
   public client, ``client_id`` (a confidential client sends ``Authorization: Basic`` instead). The page does NOT say whether
@@ -42,7 +45,6 @@ from typing import Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
-IG_REFRESH_URL = "https://graph.instagram.com/refresh_access_token"
 TT_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 X_TOKEN_URL = "https://api.x.com/2/oauth2/token"
 
@@ -51,10 +53,6 @@ TIKTOK_CLIENT_SECRET_ENV = "TIKTOK_CLIENT_SECRET"
 X_CLIENT_ID_ENV = "X_CLIENT_ID"
 X_CLIENT_SECRET_ENV = "X_CLIENT_SECRET"
 
-#: Refresh an Instagram token when it has less than this left.
-IG_REFRESH_WINDOW = timedelta(days=10)
-#: Instagram refuses to refresh a token younger than this.
-IG_MIN_AGE = timedelta(hours=24)
 #: Refresh a TikTok access token when it has less than this left.
 TT_REFRESH_WINDOW = timedelta(minutes=10)
 #: Refresh an X access token (two hours) when it has less than this left.
@@ -179,16 +177,6 @@ class SocialTokenClient:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _needs_instagram_refresh(tok: SocialToken, now: datetime) -> bool:
-    if tok.access_expires_at is None:
-        return False  # unknown expiry: use it; a 190 error will say otherwise
-    if tok.access_expires_at <= now:
-        return False  # expired: cannot be refreshed
-    if tok.access_expires_at - now > IG_REFRESH_WINDOW:
-        return False
-    return tok.connected_at is None or now - tok.connected_at >= IG_MIN_AGE
 
 
 def _needs_tiktok_refresh(tok: SocialToken, now: datetime) -> bool:
@@ -368,32 +356,12 @@ def ensure_fresh(tok: SocialToken, client: SocialTokenClient, *, http=None,
     http = http or client._session()
 
     if tok.platform == "instagram":
+        # Unified Login: no refresh exists. No expiry stated (the default) = use it; a dead token is the publishing
+        # call's error 190, which marks the account. A stated expiry that has passed is believed.
         if tok.access_expires_at is not None and tok.access_expires_at <= now:
             client.set_status(tok.account_id, "expired")
             raise SocialTokenError(f"instagram account {tok.account_id}: token expired; reconnect it")
-        if not _needs_instagram_refresh(tok, now):
-            return tok
-        try:
-            r = http.get(IG_REFRESH_URL, params={"grant_type": "ig_refresh_token",
-                                                 "access_token": tok.access_token}, timeout=20)
-        except Exception as e:
-            logger.warning("instagram account %s: refresh failed (%s); using the current token",
-                           tok.account_id, type(e).__name__)
-            return tok
-        status = getattr(r, "status_code", 0)
-        if status >= 300:
-            logger.warning("instagram account %s: refresh refused (HTTP %s); using the current token",
-                           tok.account_id, status)
-            return tok
-        body = r.json() or {}
-        new = str(body.get("access_token") or "").strip()
-        if not new:
-            return tok
-        expires = body.get("expires_in")
-        fresh = replace(tok, access_token=new,
-                        access_expires_at=now + timedelta(seconds=int(expires)) if isinstance(expires, (int, float)) else None)
-        client.rotate(fresh)
-        return fresh
+        return tok
 
     if tok.platform == "tiktok":
         if not _needs_tiktok_refresh(tok, now):

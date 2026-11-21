@@ -13,6 +13,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const YT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** An Instagram / TikTok account id, the same alphabet social_accounts.external_id allows (0028). */
+const SOCIAL_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
 /** HTTP status per answer. Nothing but our own word is ever in the body. */
 const STATUS: Record<ConfirmResult, number> = {
@@ -42,7 +44,7 @@ function answer(result: ConfirmResult, extra: Record<string, unknown> = {}) {
 /**
  * The pick screen's one write.
  *
- * POST `{ action: "confirm", platform, channel_id? }` or `{ action: "cancel" }`.
+ * POST `{ action: "confirm", platform, channel_id?, external_id? }` or `{ action: "cancel" }`.
  *
  * The browser names only WHICH of the listed accounts it means. The
  * authorisation itself (the token, the list Google returned) is held on the
@@ -63,7 +65,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const read = await readJsonBodyCapped(request, SMALL_BODY_BYTES);
   if (!read.ok || !read.value || typeof read.value !== "object")
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
-  const body = read.value as { action?: unknown; platform?: unknown; channel_id?: unknown };
+  const body = read.value as { action?: unknown; platform?: unknown; channel_id?: unknown; external_id?: unknown };
 
   if (body.action === "cancel") {
     dropUserPending(user.id);
@@ -82,7 +84,13 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     return answer(out.result, out.channelId ? { channel_id: out.channelId } : {});
   }
   if (isSocialPlatform(body.platform)) {
-    const out = await confirmSocialPick({ userId: user.id, handle, platform: body.platform });
+    let externalId: string | undefined;
+    if (body.external_id !== undefined) {
+      const id = typeof body.external_id === "string" ? body.external_id.trim() : "";
+      if (!SOCIAL_ID_RE.test(id)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
+      externalId = id;
+    }
+    const out = await confirmSocialPick({ userId: user.id, handle, platform: body.platform, externalId });
     return answer(out.result);
   }
   return NextResponse.json({ error: "bad_request" }, { status: 400 });

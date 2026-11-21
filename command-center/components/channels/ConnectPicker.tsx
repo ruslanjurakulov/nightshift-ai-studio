@@ -160,37 +160,47 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
 
   const platform = view.platform;
   const platformName = platform === "instagram" ? tc.instagram : tc.tiktok;
-  const a = view.account;
+  const many = view.accounts.length > 1;
+  const anyConnected = view.accounts.some((a) => a.connected);
   return (
     <section className="ns-desk g2-desk g2-connect" aria-labelledby="connect-pick-title">
       <header>
         <h2 id="connect-pick-title" className="g2-h2">
-          {fmt(tp.socialTitle, { platform: platformName })}
+          {platform === "instagram" ? tp.instagramTitle : fmt(tp.socialTitle, { platform: platformName })}
         </h2>
-        <p className="g2-sub">{tp.socialLead}</p>
+        <p className="g2-sub">{platform === "instagram" ? tp.instagramLead : tp.socialLead}</p>
       </header>
 
-      <div className="g2-pick-row">
-        <ChannelMark name={a.name} thumbnail={a.avatarUrl} />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <PlatformLogo platform={platform} size={16} />
-            <span className="truncate text-[17px] font-semibold">{a.name}</span>
-          </div>
-          {a.username && <div className="tnum truncate text-[13px] text-[var(--color-muted)]">@{a.username}</div>}
-        </div>
-        <button
-          type="button"
-          className="btn-primary g2-pick-btn"
-          disabled={busy !== null || done}
-          onClick={() => confirm(a.externalId, { platform })}
-        >
-          {busy ? tp.connecting : a.connected ? tp.reconnect : tp.confirm}
-        </button>
-      </div>
+      <ul className="g2-pick-list" aria-label={fmt(tp.socialListLabel, { platform: platformName })}>
+        {view.accounts.map((a) => (
+          <li key={a.externalId} className="g2-pick-row">
+            <ChannelMark name={a.name} thumbnail={a.avatarUrl} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <PlatformLogo platform={platform} size={16} />
+                <span className="truncate text-[17px] font-semibold">{a.name}</span>
+              </div>
+              {a.username && a.name !== `@${a.username}` && (
+                <div className="tnum truncate text-[13px] text-[var(--color-muted)]">@{a.username}</div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn-primary g2-pick-btn"
+              disabled={busy !== null || done}
+              onClick={() => confirm(a.externalId, { platform, external_id: a.externalId })}
+            >
+              {busy === a.externalId ? tp.connecting : a.connected ? tp.reconnect : tp.confirm}
+            </button>
+          </li>
+        ))}
+      </ul>
 
-      {a.connected && <p className="g2-note">{tp.socialAlready}</p>}
-      <p className="g2-note">{fmt(tp.switchHint, { platform: platformName })}</p>
+      {anyConnected && <p className="g2-note">{tp.socialAlready}</p>}
+      {many && <p className="g2-note">{tp.instagramAgain}</p>}
+      <p className="g2-note">
+        {platform === "instagram" ? tp.instagramSwitchHint : fmt(tp.switchHint, { platform: platformName })}
+      </p>
       {errorLine}
       {actions(platform, fmt(tp.anotherAccount, { platform: platformName }))}
     </section>

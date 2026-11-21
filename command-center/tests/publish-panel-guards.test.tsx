@@ -43,6 +43,7 @@ const account = (platform: "instagram" | "tiktok"): SocialAccount => ({
   connected_at: null,
   connected_by_email: null,
   revoked_at: null,
+  auth_flow: platform === "instagram" ? "unified_login" : null,
 });
 
 const request = (over: Partial<PublishRequestRow> = {}): PublishRequestRow => ({
@@ -132,6 +133,35 @@ describe("TikTok: the unaudited-app error", () => {
     panel("en", { requests: [request({ reason: "something_else" })] });
     expect(screen.getByText(dictionaries.en.publish.reasons.worker_error)).toBeTruthy();
     expect(screen.queryByText(dictionaries.en.publish.reasons.tiktok_unaudited)).toBeNull();
+  });
+});
+
+describe("Instagram through Unified Login (0197)", () => {
+  it.each(LOCALES)("%s: an old Instagram Login account is shown as needing a reconnect and cannot be ticked", (locale) => {
+    const old = { ...account("instagram"), auth_flow: null };
+    panel(locale, { accounts: [old] });
+    expect(screen.getByText(dictionaries[locale].publish.reconnect)).toBeTruthy();
+    expect((screen.getByRole("checkbox", { name: "@night.owl" }) as HTMLInputElement).disabled).toBe(true);
+  });
+  it("a Unified Login account can be ticked", () => {
+    panel("en", { accounts: [account("instagram")] });
+    expect((screen.getByRole("checkbox", { name: "@night.owl" }) as HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByText(dictionaries.en.publish.reconnect)).toBeNull();
+  });
+  it.each(LOCALES)("%s: a partial post reads as partial, with the worker's detail, never as a clean success", (locale) => {
+    const detail = "instagram config_issue: CAPTION_NOT_ATTACHED";
+    panel(locale, {
+      accounts: [account("instagram")],
+      requests: [request({ platform: "instagram", status: "published", reason: "published_partially", error: detail, result_id: "M1" })],
+    });
+    expect(screen.getByText(`${dictionaries[locale].publish.reasons.published_partially} — ${detail}`)).toBeTruthy();
+  });
+  it.each(LOCALES)("%s: a missing permission is named with its remedy, not the generic platform failure", (locale) => {
+    panel(locale, { accounts: [account("instagram")], requests: [request({ platform: "instagram", reason: "ig_permission_missing" })] });
+    const sentence = dictionaries[locale].publish.reasons.ig_permission_missing;
+    expect(screen.getByText(sentence)).toBeTruthy();
+    expect(sentence).toMatch({ en: /Meta configuration/, ru: /конфигурацию Meta/, uz: /Meta konfiguratsiyasi/ }[locale]);
+    expect(screen.queryByText(dictionaries[locale].publish.reasons.platform_error)).toBeNull();
   });
 });
 
