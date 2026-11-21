@@ -24,10 +24,6 @@ vi.mock("@/lib/server/owner-console", () => ({
 }));
 const u = vi.hoisted(() => ({ meta: { full_name: "Aziz Karimov" } as Record<string, unknown> | null }));
 vi.mock("@/lib/supabase/server", () => ({ getUser: async () => (u.meta === null ? null : { id: "u1", user_metadata: u.meta }) }));
-// The live cards stream in on their own (tests/owner-ai-redesign.test.tsx); here the slot is a marker so the page's own
-// markup is what is checked.
-vi.mock("../app/owner/ai/_kpis", () => ({ OwnerAiKpis: () => <div data-testid="kpis-slot" /> }));
-
 const a = en.ownerConsole.assistant;
 
 describe("/owner/ai", () => {
@@ -38,13 +34,15 @@ describe("/owner/ai", () => {
     s.owner = true;
   });
 
-  it("draws the chat panel with its rules and no figure of its own, and says it cannot act", async () => {
+  it("draws only the chat: no live cards, no figure, and one line saying it cannot act", async () => {
     const { default: Page } = await import("../app/owner/ai/page");
     const html = renderToStaticMarkup((await Page()) as ReactElement).replace(/&#x27;/g, "'");
     expect(html).toContain(a.noActions);
-    expect(html).toContain(a.suggest[0]);
     expect(html).toContain('maxLength="2000"');
-    expect(html).toContain("kpis-slot");
+    expect(html).toContain(`<h1 class="chat-title">${a.ai}</h1>`);
+    // The cards moved to the Overview (owner decision 2026-11-21): nothing of them may come back to the chat.
+    expect(html).not.toContain("ai-kpi");
+    expect(html).not.toContain(a.kpi.title);
     expect(html).not.toMatch(/\$\d/);
   });
 

@@ -4,10 +4,10 @@ import type { ownerAssistantEn } from "./assistant-en";
 export const ownerAssistantUz: typeof ownerAssistantEn = {
   greeting: "Salom, {name}",
   greetingNoName: "Salom",
-  subtitle: "Pul, odamlar, provayderlar yoki tizim holati haqida soʻrang. Javoblar faqat platformaning oʻz koʻrsatkichlaridan olinadi.",
   newChat: "Yangi suhbat",
-  mic: "Ovoz bilan soʻrash",
-  soon: "tez orada",
+  regenerate: "Qayta javob berish",
+  good: "Yaxshi javob",
+  bad: "Yomon javob",
   keys: "Enter — yuborish, Shift+Enter — yangi qator",
   counter: "{n} / {max}",
   kpi: {
@@ -42,14 +42,6 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
   copyFailed: "Nusxalab boʻlmadi. Matnni belgilab, qoʻlda nusxalang.",
   linksRemoved: "Javobdan provayderlarning oʻz sahifalariga tegishli boʻlmagan havola yoki hisob raqami olib tashlandi ([⚠]). Faqat provayderning oʻz sahifasida, «Provayderlar va toʻlovlar» boʻlimidan toʻlang.",
   asOf: "Koʻrsatkichlar {time} holatiga koʻra (Toshkent vaqti)",
-  empty: "Hali savol yoʻq.",
-  suggestions: "Sinab koʻring",
-  suggest: [
-    "Hozir qaysi API uchun toʻlash kerak va keyingi 10 kunga qancha?",
-    "Bu hafta nechta odam roʻyxatdan oʻtdi va nechtasi toʻlaydi?",
-    "Hozir biror narsa qotib qolganmi yoki xato beryaptimi?",
-    "Bu hafta qaytarishlarni chegirganda qancha ishladik?",
-  ],
   tooLong: "Savol {n} belgidan qisqa boʻlsin.",
   clear: "Suhbatni tozalash",
   errors: {

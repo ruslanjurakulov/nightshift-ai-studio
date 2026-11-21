@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 /**
- * The redesigned /owner/ai: four live cards and a chat. What would break:
+ * The owner's four live cards (now on the Overview, /owner) and the owner's Nightshift AI chat in the shared shell. What would break:
  *  - a card that shows 0 (or a half sum) when its source is missing — "nobody signed up" read from a renamed column (rule 5);
  *  - "today" counted on the server's UTC day instead of the owner's Tashkent day;
  *  - today's revenue read before the second-factor check (0182's money read has none of its own);
  *  - a failed read drawn as "unknown" with no way to ask again, or a migration gap drawn as a retry that can never work;
  *  - Enter not sending, Shift+Enter sending, a send button that looks the same enabled and disabled;
  *  - a named refusal from the route shown without its remedy, or a retry offered where retrying cannot help;
- *  - the voice button doing anything.
+ *  - a microphone or an attach "+" that does nothing shown at all (never show what is not available);
+ *  - Regenerate asking anything but the same question through the same route, or dropping the old answer when it fails;
+ *  - a thumb sending anything anywhere (it is local state until a store exists);
+ *  - the aurora not marking that an answer is on its way.
  * Every fetch is mocked: no test here calls the route, let alone a paid model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,7 +36,7 @@ vi.mock("@/lib/server/owner-analytics", () => ({ readMoney: h.readMoney }));
 
 const { AiKpiCards, AiKpiSkeleton, AiKpiUnavailable } = await import("../components/owner-console/AiKpiCards");
 const { OwnerAssistant, sendsOnKey, COUNTER_FROM } = await import("../components/owner-console/OwnerAssistant");
-const { OwnerAiKpis } = await import("../app/owner/ai/_kpis");
+const { OwnerAiKpis } = await import("../app/owner/_kpis");
 
 const c = en.ownerConsole;
 const a = c.assistant;
@@ -225,24 +228,40 @@ describe("the chat", () => {
     cleanup();
     vi.unstubAllGlobals();
   });
-  const mount = () => render(<OwnerAssistant a={a} verifyHref="/verify" signInHref="/login" />);
+  const GREETING = "Salom, Aziz";
+  const mount = () => render(<OwnerAssistant a={a} greeting={GREETING} verifyHref="/verify" signInHref="/login" />);
   const reply = (status: number, body: unknown) => fetchMock.mockResolvedValueOnce({ ok: status < 400, status, json: async () => body });
   const box = () => screen.getByLabelText(a.label) as HTMLTextAreaElement;
   const send = () => screen.getByRole("button", { name: a.ask }) as HTMLButtonElement;
+  const shell = () => document.querySelector(".chat-shell") as HTMLElement;
+  const askByTyping = async (q: string) => {
+    fireEvent.change(box(), { target: { value: q } });
+    await act(async () => {
+      fireEvent.keyDown(box(), { key: "Enter" });
+    });
+  };
 
-  it("starts empty with every suggestion as a card with its icon, and a send button that is off until there is a question", () => {
+  it("starts empty with the mark and the greeting only, and a send button that is off until there is a question", () => {
     mount();
-    expect(screen.getByText(a.empty)).toBeTruthy();
-    for (const s of a.suggest) {
-      const card = screen.getByRole("button", { name: s });
-      expect(card.className).toContain("ai-suggest-card");
-      expect(card.querySelector("svg")).not.toBeNull();
-    }
+    const empty = document.querySelector(".chat-empty") as HTMLElement;
+    expect(empty.querySelector("svg")).not.toBeNull();
+    expect(empty.textContent).toBe(GREETING);
+    // Nothing else in the empty state: no explanation box, no suggestion cards.
+    expect(document.querySelectorAll(".chat-thread button")).toHaveLength(0);
     expect(send().disabled).toBe(true);
     fireEvent.change(box(), { target: { value: "  " } });
     expect(send().disabled).toBe(true);
     fireEvent.change(box(), { target: { value: "How are we?" } });
     expect(send().disabled).toBe(false);
+  });
+
+  it("shows no microphone, no attach and no history button: only the title, new chat and send", () => {
+    mount();
+    const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent);
+    expect(names.sort()).toEqual([a.ask, a.newChat].sort());
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(a.ai);
+    // New chat has nothing to clear yet.
+    expect((screen.getByRole("button", { name: a.newChat }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("sends on Enter, not on Shift+Enter, and never mid-composition", () => {
@@ -252,10 +271,11 @@ describe("the chat", () => {
     expect(sendsOnKey({ key: "a", shiftKey: false })).toBe(false);
   });
 
-  it("shows the question as the owner's bubble, the thinking state, then the answer with its as-of line", async () => {
+  it("shows the question as the owner's bubble, the thinking dots and the aurora, then the answer with its as-of line", async () => {
     let resolve!: (v: unknown) => void;
     fetchMock.mockReturnValueOnce(new Promise((r) => (resolve = r)));
     mount();
+    expect(shell().dataset.state).toBe("idle");
     fireEvent.change(box(), { target: { value: "Which API must I pay?" } });
     fireEvent.keyDown(box(), { key: "Enter", shiftKey: true });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -263,17 +283,96 @@ describe("the chat", () => {
       fireEvent.keyDown(box(), { key: "Enter" });
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/brain/owner/turn");
     expect(screen.getByRole("status").textContent).toBe(a.asking);
-    expect(document.querySelector(".ai-typing")).not.toBeNull();
+    expect(document.querySelector(".chat-typing")).not.toBeNull();
+    expect(shell().dataset.state).toBe("thinking");
     expect((screen.getByRole("button", { name: a.asking }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => {
       resolve({ ok: true, status: 200, json: async () => ({ answer: "Pay Voice Co by 24 Nov (estimated).", draft: null, removed_links: 0, as_of: AS_OF }) });
     });
-    expect(document.querySelector(".ai-bubble-you")?.textContent).toBe("Which API must I pay?");
-    expect(document.querySelector(".ai-answer")?.textContent).toBe("Pay Voice Co by 24 Nov (estimated).");
+    expect(document.querySelector(".chat-bubble-you")?.textContent).toBe("Which API must I pay?");
+    expect(document.querySelector(".chat-answer")?.textContent).toBe("Pay Voice Co by 24 Nov (estimated).");
     expect(screen.getByText("Figures as of 2026-11-21 08:00 (Tashkent)")).toBeTruthy();
     expect(box().value).toBe("");
-    expect(document.querySelector(".ai-typing")).toBeNull();
+    expect(document.querySelector(".chat-typing")).toBeNull();
+    expect(shell().dataset.state).toBe("idle");
+  });
+
+  it("keeps what was typed when the send fails", async () => {
+    reply(503, { error: "unavailable" });
+    mount();
+    await askByTyping("Half a thought");
+    expect(box().value).toBe("Half a thought");
+  });
+
+  it("puts Copy, Regenerate, Good and Bad under the answer, each named by its own tooltip", async () => {
+    reply(200, { answer: "All good.", as_of: AS_OF });
+    mount();
+    await askByTyping("Status?");
+    for (const name of [a.copy, a.regenerate, a.good, a.bad]) {
+      const b = screen.getByRole("button", { name });
+      expect(b.getAttribute("data-tip")).toBe(name);
+    }
+  });
+
+  it("keeps a thumb in this tab only: it toggles, the other thumb clears it, and nothing is sent", async () => {
+    reply(200, { answer: "All good.", as_of: AS_OF });
+    mount();
+    await askByTyping("Status?");
+    const up = screen.getByRole("button", { name: a.good });
+    const down = screen.getByRole("button", { name: a.bad });
+    fireEvent.click(up);
+    expect(up.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(down);
+    expect(up.getAttribute("aria-pressed")).toBe("false");
+    expect(down.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(down);
+    expect(down.getAttribute("aria-pressed")).toBe("false");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("regenerates by asking the same question through the same route, without the replaced answer as history", async () => {
+    reply(200, { answer: "First.", as_of: AS_OF });
+    reply(200, { answer: "Second.", as_of: AS_OF });
+    reply(200, { answer: "Second, again.", as_of: AS_OF });
+    mount();
+    await askByTyping("One?");
+    await askByTyping("Two?");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: a.regenerate })));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/brain/owner/turn");
+    const body = JSON.parse(fetchMock.mock.calls[2][1].body);
+    expect(body.question).toBe("Two?");
+    expect(body.history).toEqual([{ q: "One?", a: "First." }]);
+    const answers = [...document.querySelectorAll(".chat-answer")].map((n) => n.textContent);
+    expect(answers).toEqual(["First.", "Second, again."]);
+    // Only the last answer can be regenerated.
+    expect(screen.getAllByRole("button", { name: a.regenerate })).toHaveLength(1);
+  });
+
+  it("keeps the old answer when a regenerate fails, and its retry regenerates again", async () => {
+    reply(200, { answer: "Kept.", as_of: AS_OF });
+    reply(503, { error: "unavailable" });
+    reply(200, { answer: "Fresh.", as_of: AS_OF });
+    mount();
+    await askByTyping("Q?");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: a.regenerate })));
+    expect(screen.getByRole("alert").textContent).toContain(a.errors.unavailable);
+    expect(document.querySelector(".chat-answer")?.textContent).toBe("Kept.");
+    // The question is not drawn twice.
+    expect(document.querySelectorAll(".chat-bubble-you")).toHaveLength(1);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: a.retry })));
+    expect([...document.querySelectorAll(".chat-answer")].map((n) => n.textContent)).toEqual(["Fresh."]);
+  });
+
+  it("starts a new chat from the header", async () => {
+    reply(200, { answer: "All good.", as_of: AS_OF });
+    mount();
+    await askByTyping("Status?");
+    fireEvent.click(screen.getByRole("button", { name: a.newChat }));
+    expect(document.querySelector(".chat-answer")).toBeNull();
+    expect(document.querySelector(".chat-greeting")?.textContent).toBe(GREETING);
   });
 
   const refusals: Array<[string, number, Record<string, unknown>, string, "retry" | "verify" | "none"]> = [
@@ -288,13 +387,13 @@ describe("the chat", () => {
     it(`says the remedy for ${name}, with ${way === "none" ? "no retry" : way}`, async () => {
       reply(status, body);
       mount();
-      await act(async () => fireEvent.click(screen.getByRole("button", { name: a.suggest[0] })));
+      await askByTyping("Which API must I pay?");
       const alert = screen.getByRole("alert");
       expect(alert.textContent).toContain(message);
       expect(alert.querySelector(`a[href="/verify"]`) !== null).toBe(way === "verify");
       expect(screen.queryByRole("button", { name: a.retry }) !== null).toBe(way === "retry");
       // The question that failed stays on screen as the owner's bubble, so the retry has something to point at.
-      expect(document.querySelector(".ai-bubble-you")?.textContent).toBe(a.suggest[0]);
+      expect(document.querySelector(".chat-bubble-you")?.textContent).toBe("Which API must I pay?");
     });
   }
 
@@ -302,10 +401,10 @@ describe("the chat", () => {
     reply(503, { error: "unavailable" });
     reply(200, { answer: "All good.", as_of: AS_OF });
     mount();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: a.suggest[2] })));
+    await askByTyping("Is anything stuck?");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: a.retry })));
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).question).toBe(a.suggest[2]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).question).toBe("Is anything stuck?");
     expect(screen.getByText("All good.")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -313,25 +412,30 @@ describe("the chat", () => {
   it("shows the character counter only near the 2000 limit, and flags it at the limit", () => {
     mount();
     fireEvent.change(box(), { target: { value: "x".repeat(COUNTER_FROM - 1) } });
-    expect(document.getElementById("owner-ai-count")?.textContent).toBe("");
+    expect(document.getElementById("owner-ai-q-count")?.textContent).toBe("");
     fireEvent.change(box(), { target: { value: "x".repeat(COUNTER_FROM) } });
-    expect(document.getElementById("owner-ai-count")?.textContent).toBe(`${COUNTER_FROM} / 2000`);
+    expect(document.getElementById("owner-ai-q-count")?.textContent).toBe(`${COUNTER_FROM} / 2000`);
     fireEvent.change(box(), { target: { value: "x".repeat(2000) } });
-    expect(document.getElementById("owner-ai-count")?.hasAttribute("data-full")).toBe(true);
+    expect(document.getElementById("owner-ai-q-count")?.hasAttribute("data-full")).toBe(true);
   });
 
-  it("has a voice button that says it is coming soon and does nothing", () => {
+  it("keeps the disclaimer as one muted line under the composer", () => {
     mount();
-    const mic = screen.getByRole("button", { name: `${a.mic} (${a.soon})` });
-    expect(mic.getAttribute("aria-disabled")).toBe("true");
-    expect(mic.getAttribute("data-tip")).toBe(a.soon);
-    fireEvent.click(mic);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("keeps the disclaimer as one line under the composer", () => {
-    mount();
-    const line = document.querySelector("form .ai-disclaimer");
+    const line = document.querySelector("form .chat-disclaimer");
     expect(line?.textContent).toContain(a.noActions);
+  });
+});
+
+describe("the reply-language rule", () => {
+  it("is in both the owner's and the customer's Nightshift AI prompt, word for word", async () => {
+    const { REPLY_LANGUAGE_RULE } = await import("../lib/brain/reply-language");
+    const { OWNER_AI_SYSTEM } = await import("../lib/owner-console/ai-prompt");
+    const { SYSTEM_PROMPT } = await import("../lib/brain/prompt");
+    expect(REPLY_LANGUAGE_RULE).toMatch(/language of the message/);
+    expect(REPLY_LANGUAGE_RULE).toMatch(/even when it differs from the app's language/);
+    expect(OWNER_AI_SYSTEM).toContain(REPLY_LANGUAGE_RULE);
+    expect(SYSTEM_PROMPT).toContain(REPLY_LANGUAGE_RULE);
+    // The old owner rule answered in the UI locale: an Uzbek question in the English console came back in English.
+    expect(OWNER_AI_SYSTEM).not.toContain("Answer in the owner's language (LANGUAGE)");
   });
 });

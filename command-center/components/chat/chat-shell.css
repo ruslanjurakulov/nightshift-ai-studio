@@ -1,0 +1,234 @@
+/* The shared Nightshift AI chat shell (ChatShell.tsx). Black in both themes, like the reference phone chats: the shell sets its own
+   tokens, so anything a caller nests inside (a draft, an error, a .btn-quiet) is drawn dark too and never a light card on black.
+   Contrast on #000: --color-fg 18.1:1, --color-muted (#a1a1aa) 8.3:1, both above WCAG AA for small text. */
+
+.chat-shell {
+  --color-bg: #000;
+  --color-fg: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-panel: #121214;
+  --color-panel-2: #232327;
+  --color-border: #34343a;
+  --color-hover: #1d1d21;
+  --chat-focus: #8ab4ff;
+  color-scheme: dark;
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--chat-offset, 0px));
+  background: #000;
+  color: var(--color-fg);
+}
+
+/* ── the glow: idle is deep blue at the bottom; while an answer is on its way a green-teal aurora fades in and drifts ── */
+.chat-glow { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.chat-glow span { position: absolute; inset: 0; will-change: opacity, transform; transition: opacity 900ms ease; }
+.chat-glow-idle {
+  background:
+    radial-gradient(120% 55% at 50% 112%, rgb(37 70 190 / 0.55), transparent 70%),
+    radial-gradient(70% 35% at 15% 105%, rgb(60 40 170 / 0.3), transparent 70%);
+}
+.chat-glow-think {
+  opacity: 0;
+  background:
+    radial-gradient(110% 55% at 35% 108%, rgb(16 185 129 / 0.45), transparent 70%),
+    radial-gradient(90% 50% at 80% 104%, rgb(20 184 166 / 0.4), transparent 70%),
+    radial-gradient(60% 30% at 50% 100%, rgb(56 189 248 / 0.25), transparent 70%);
+}
+.chat-shell[data-state="thinking"] .chat-glow-idle { opacity: 0.35; }
+.chat-shell[data-state="thinking"] .chat-glow-think { opacity: 1; animation: chat-aurora 6s ease-in-out infinite alternate; }
+@keyframes chat-aurora {
+  from { transform: translate3d(-4%, 0, 0) scale(1); }
+  to { transform: translate3d(4%, -3%, 0) scale(1.08); }
+}
+
+/* ── header ── */
+.chat-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  background: linear-gradient(to bottom, #000 60%, transparent);
+}
+.chat-title { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; }
+
+/* ── thread ── */
+.chat-thread {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0.5rem 1rem 1rem;
+}
+.chat-log { flex: 1; display: flex; flex-direction: column; gap: 1.75rem; }
+.chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem; min-height: 40dvh; text-align: center; }
+.chat-greeting {
+  margin: 0;
+  font-size: clamp(1.9rem, 7vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  background: linear-gradient(90deg, #8ab4ff, #c4b5fd 55%, #f4f4f5);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* Forced colours drop the gradient fill: the greeting must not vanish with it. */
+@media (forced-colors: active) {
+  .chat-greeting { background: none; color: CanvasText; }
+}
+.chat-turn { display: flex; flex-direction: column; gap: 1rem; }
+.chat-msg { display: flex; gap: 0.75rem; min-width: 0; }
+.chat-msg-you { justify-content: flex-end; }
+.chat-bubble-you {
+  margin: 0;
+  max-width: min(85%, 36rem);
+  padding: 0.65rem 1.1rem;
+  border-radius: 1.4rem;
+  background: var(--color-panel-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.chat-avatar { flex-shrink: 0; margin-top: 0.1rem; border-radius: 0.45rem; }
+.chat-ai-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 0.6rem; }
+.chat-answer { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font-size: 1rem; }
+.chat-acts { display: flex; gap: 0.15rem; margin-left: -0.5rem; }
+.chat-note { margin: 0; font-size: 0.85rem; color: var(--color-muted); }
+
+.chat-typing { display: flex; align-items: center; gap: 0.35rem; min-height: 1.75rem; }
+.chat-typing span { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #5eead4; animation: chat-dot 1.2s ease-in-out infinite; }
+.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-dot { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+
+/* ── icon buttons: copy, regenerate, thumbs, new chat ── */
+.chat-act {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.chat-act:hover:not(:disabled) { background: var(--color-hover); color: var(--color-fg); }
+.chat-act[aria-pressed="true"] { color: var(--color-fg); background: var(--color-panel-2); }
+.chat-act:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-act[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.4rem;
+  background: var(--color-fg);
+  color: #000;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.chat-act[data-tip]:hover::after,
+.chat-act[data-tip]:focus-visible::after { opacity: 1; }
+/* The new-chat tip opens toward the page, not past the right edge. */
+.chat-head .chat-act[data-tip]::after { left: auto; right: 0; transform: none; }
+
+/* ── composer: a floating pill at the bottom ── */
+.chat-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem 0.75rem max(0.75rem, env(safe-area-inset-bottom));
+}
+.chat-pill {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.4rem 0.4rem 0.4rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1.75rem;
+  background: rgb(28 28 32 / 0.92);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.chat-pill:focus-within { border-color: var(--chat-focus); outline: 2px solid var(--chat-focus); outline-offset: 1px; }
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.5rem;
+  max-height: 200px;
+  resize: none;
+  overflow-y: auto;
+  border: 0;
+  padding: 0.5rem 0;
+  background: transparent;
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 1rem; /* 16px: below it iOS zooms the page on focus. */
+  line-height: 1.5;
+}
+.chat-input::placeholder { color: var(--color-muted); }
+/* The ring is drawn on the pill around it (focus-within). */
+.chat-input:focus, .chat-input:focus-visible { outline: none; }
+.chat-counter { align-self: center; font-size: 0.75rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.chat-counter:empty { display: none; }
+.chat-counter[data-full] { color: #fbbf24; font-weight: 600; }
+.chat-send {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: #f4f4f5;
+  color: #000;
+  cursor: pointer;
+}
+.chat-send:hover:not(:disabled) { background: #fff; }
+/* Disabled is a different button, not a faded one: a hollow ring with a muted arrow, so "can't send yet" reads at a glance. */
+.chat-send:disabled { background: transparent; border-color: var(--color-border); color: var(--color-muted); cursor: not-allowed; }
+.chat-act:focus-visible,
+.chat-send:focus-visible,
+.chat-shell .btn-quiet:focus-visible {
+  outline: 2px solid var(--chat-focus);
+  outline-offset: 2px;
+}
+.chat-disclaimer { margin: 0; text-align: center; font-size: 0.72rem; line-height: 1.4; color: var(--color-muted); }
+.chat-keys { display: none; }
+@media (min-width: 40rem) {
+  .chat-keys { display: inline; }
+  .chat-keys::before { content: "· "; }
+  .chat-head { padding: 0.75rem 1.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-glow span { transition: none; }
+  .chat-shell[data-state="thinking"] .chat-glow-think { animation: none; }
+  .chat-typing span { animation: none; opacity: 0.8; }
+  .chat-act[data-tip]::after { transition: none; }
+}

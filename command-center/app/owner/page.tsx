@@ -1,12 +1,15 @@
+import { Suspense } from "react";
 import { getDictionary } from "@/lib/i18n/server";
+import { AiKpiSkeleton } from "@/components/owner-console/AiKpiCards";
 import { OwnerPage, OwnerTools } from "@/components/owner-console/OwnerPage";
-import { AsOf, Count, FactValue, FactsUnavailable, Gap, Kpi, Kpis, Tag } from "@/components/owner-console/OwnerFacts";
+import { Count, FactValue, FactsUnavailable, Gap, Kpi, Kpis, Tag } from "@/components/owner-console/OwnerFacts";
 import { ownerSection } from "@/lib/owner-console/nav";
 import { block, healthView, peopleView } from "@/lib/owner-console/facts-view";
 import { fill, int, pct, usd } from "@/lib/owner-analytics/format";
 import { mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { requireOwnerConsole } from "@/lib/server/owner-console";
 import { loadOwnerFacts } from "./_facts";
+import { OwnerAiKpis } from "./_kpis";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +43,13 @@ export default async function OwnerConsoleOverview() {
   return (
     <OwnerPage title={c.sections.overview.title} subtitle={c.sections.overview.subtitle}>
       <div className="oc-stack">
-        <AsOf iso={facts.as_of} f={f} />
+        {/* The live cards, first on the page (they moved here from the chat, which holds no figure). Only in this branch: when the
+            facts did not load, FactsUnavailable above already says why and the way out, and a second card saying it again is noise. */}
+        <Suspense fallback={<AiKpiSkeleton a={c.assistant} />}>
+          <OwnerAiKpis c={c} locale={locale} verifyHref={mfaVerifyUrl("/owner")} />
+        </Suspense>
+        {/* No second "as of" line here: the cards above end with the same facts build's as-of, and two identical lines stacked read
+            as two different times. */}
         <Kpis label={c.sections.overview.title}>
           <Kpi label={f.kpi.signups7d}>{p ? <Count n={p.signups.d7} f={f} format={n} /> : <Gap why={people.ok ? "" : people.why} f={f} inline />}</Kpi>
           <Kpi label={f.kpi.paying}>{p ? <Count n={p.payingTotal} f={f} format={n} /> : <Gap why={people.ok ? "" : people.why} f={f} inline />}</Kpi>

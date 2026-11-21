@@ -3,13 +3,14 @@ import { readMoney } from "@/lib/server/owner-analytics";
 import { aiKpis, tashkentDayStart, type MoneyRead } from "@/lib/owner-console/ai-kpis";
 import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
 import { AiKpiCards, AiKpiUnavailable } from "@/components/owner-console/AiKpiCards";
-import { loadOwnerFacts } from "../_facts";
+import { loadOwnerFacts } from "./_facts";
 
 const DAY = 86_400_000;
 
 /**
- * The live cards' reads, streamed in under a skeleton so the chat is usable while they load. The owner's facts are the same build
- * the Overview, Health and Providers pages draw from; today's revenue is Owner Analytics' own money read for today's window.
+ * The four live cards at the top of the Overview, streamed in under a skeleton so the rest of the page does not wait for today's
+ * money read. The owner's facts are the same (React-cached) build the Overview, Health and Providers pages draw from; today's
+ * revenue is Owner Analytics' own money read for today's window.
  */
 export async function OwnerAiKpis({ c, locale, verifyHref, nowMs = Date.now() }: { c: OwnerConsoleDictionary; locale: string; verifyHref: string; nowMs?: number }) {
   const load = await loadOwnerFacts();

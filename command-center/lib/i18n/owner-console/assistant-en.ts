@@ -2,11 +2,11 @@
 export const ownerAssistantEn = {
   greeting: "Hello, {name}",
   greetingNoName: "Hello",
-  subtitle: "Ask about money, people, providers or system health. Answers come only from the platform's own figures.",
   noActions: "Answers and drafts only: nothing here pays, changes a price or a plan, edits a user or publishes.",
   newChat: "New chat",
-  mic: "Ask by voice",
-  soon: "coming soon",
+  regenerate: "Regenerate",
+  good: "Good answer",
+  bad: "Bad answer",
   keys: "Enter to send, Shift+Enter for a new line",
   counter: "{n} / {max}",
   kpi: {
@@ -40,14 +40,6 @@ export const ownerAssistantEn = {
   copyFailed: "Couldn't copy. Select the text and copy it by hand.",
   linksRemoved: "A link or account number that is not one of the providers' own pages was removed from this answer ([⚠]). Pay only on the provider's own page, from Providers & payments.",
   asOf: "Figures as of {time} (Tashkent)",
-  empty: "No question yet.",
-  suggestions: "Try",
-  suggest: [
-    "Which API must I pay now, and how much for the next 10 days?",
-    "How many people signed up this week, and how many pay?",
-    "Is anything stuck or failing right now?",
-    "How much did we earn this week, net of refunds?",
-  ],
   tooLong: "Keep the question under {n} characters.",
   clear: "Clear the conversation",
   errors: {
