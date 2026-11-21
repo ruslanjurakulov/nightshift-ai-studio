@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-import { callChatModel, chatModelConfigured } from "@/lib/server/ai-chat/llm";
+import { callChatModel, chatModelConfigured } from "@/lib/server/brain/llm";
 
 const KEY = "sk-test-secret-value-1234567890";
 const reply = (status: number, body: unknown) =>

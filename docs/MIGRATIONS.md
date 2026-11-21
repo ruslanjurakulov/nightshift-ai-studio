@@ -2186,22 +2186,26 @@ that fails one is left as it is, with a NOTICE naming the fix. Order: probe (Act
 No price is written. Keys: GitHub secrets `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, shipped to the worker by `deploy_web.yml`.
 Rollback: `docs/sql/rollback_0195_open_llm_describe.sql`.
 
-## Nightshift AI, the Studio's planning chat (0197)
+## Nightshift AI: the Studio's assistant (0197)
 
-0197 (`0197_studio_ai_chat.sql`, number provisional until merge) is the database half of the chat in docs/studio/AI_CHAT.md.
+0197 (`0197_studio_ai_chat.sql`; the number is provisional until merge) is the database half of Nightshift AI and the Nightshift Brain. The product contract is in docs/studio/NIGHTSHIFT_AI.md, and operating notes are in docs/studio/AI_CHAT.md.
 
-- **Tables.** RLS is on for all four.
-  - `ai_chat_sessions` and `ai_chat_messages`: readable by their author only, written only by the functions.
-  - `ai_chat_calls`: metering with no text, closed to every API role.
-  - `ai_chat_limits`: one row, per_org_daily 40 and max_input_chars 2000, closed.
+- **Tables.** RLS is on for all six.
+  - `ai_chat_sessions`: slots, step, BRIEF, card and handoff. Readable by its author only.
+  - `ai_chat_messages`: readable by its author only.
+  - `ai_chat_settings`: the owner's model and limits. Closed.
+  - `ai_chat_plan_caps`: creator 30, pro 100, studio 300. Free has no row. Closed.
+  - `ai_chat_calls`: metering, with no text. Closed. It also counts a free workspace's lifetime trial (`trial_messages`, 3).
+  - `ai_chat_pilot_orgs`: workspaces the owner pilots, at Business's cap. Closed.
 - **Functions.**
-  - `ai_chat_start(org, channel, model)`: a member of the channel's own workspace.
-  - `ai_chat_reserve_turn(session, text)`: the daily cap under the workspace's advisory lock, before any vendor call. A refusal writes nothing.
-  - `ai_chat_finish_turn(call, …)`: once, by the caller who reserved the turn.
-  - `ai_chat_quota(org)`: the member's own workspace.
-  - `ai_chat_set_limits` and `ai_chat_usage`: the owner only.
-  - `ai_chat_used(org)`: internal.
-- **Not changed.** Every price, hold, credit, create and publish rule. The chat only links to Run now.
-- **Without it.** The panel says the chat is not set up on this database; nothing else changes.
-- **Lab.** `tests/security/sec_ai_chat_0197.py` and `tests/security/test_sec_ai_chat.py`, covering the cap, the race for the last turn, isolation, single finish and the closed tables.
-- **Rollback.** `docs/sql/rollback_0197_studio_ai_chat.sql` drops the conversations and the metering.
+  - `ai_chat_start(org, channel?)`: editor or above, on a plan with a cap or with trial messages left, at most 50 a day per person.
+  - `ai_chat_reserve_turn(session, text, retry)`: the plan cap, a per-person cap and a platform cap, under locks, before any vendor call. A refusal writes nothing.
+  - `ai_chat_finish_turn(…)`: once per call, by its caller; unreported tokens stay NULL, and counts are bounded.
+  - `ai_chat_save_brief`: the author's own draft.
+  - `ai_chat_record_handoff`: a film or channel of the workspace's own. It starts nothing, and it closes the conversation. It reads a run's `credit_ref` from the job and a film's `scene_map` from its scenes; nothing the browser sends for them is kept.
+  - `ai_chat_quota`.
+  - Owner-only: `ai_chat_set_model`, `ai_chat_set_plan_cap`, `ai_chat_set_limits`, `ai_chat_set_pilot`, `ai_chat_owner_settings` and `ai_chat_usage`.
+- **Not changed.** Every price, hold, credit, create, film and publish rule. A long plan opens Run now. A short plan is a film draft (`create_film_draft`/`save_film`), started only by the person through `/api/films/<id>/start`.
+- **Without it.** The panel says "not set up on this database".
+- **Lab.** `tests/security/sec_ai_chat_0197.py`, `test_sec_ai_chat.py` and `test_sec_breach_0197.py`.
+- **Rollback.** `docs/sql/rollback_0197_studio_ai_chat.sql`.

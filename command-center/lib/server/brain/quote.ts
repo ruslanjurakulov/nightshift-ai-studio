@@ -4,7 +4,7 @@ import { frozenRunDurationS, isCreditExempt, runDurationS } from "@/lib/credits"
 import { resolveRunBackend } from "@/lib/runBackend";
 import { estimateForChannel, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
 import { readUsageSummary } from "@/lib/server/usage";
-import type { Quote, Spendable } from "@/lib/ai-chat/logic";
+import type { Quote, Spendable } from "@/lib/brain/logic";
 
 /**
  * The prices the chat shows are the Run now form's own: the same estimator (estimateForChannel over credit_rates), the same length
@@ -33,7 +33,9 @@ export async function chatPricing(
   ]);
   if (acct.failed) return { ok: true, spendable: "unknown", quote };
   const available = acct.account?.available ?? 0;
-  // 0094: with extra credits off, what a run can use is less than the balance.
-  const spendable = usage.state === "ok" && !usage.value.extraEnabled ? Math.min(available, usage.value.spendableNow) : available;
+  // 0094: with extra credits off, what a run can use is less than the balance. A failed usage read is not "extra on": the
+  // spendable figure is then unknown, so nothing reads as "fits" on a guess (Lens on 0197).
+  if (usage.state !== "ok") return { ok: true, spendable: "unknown", quote };
+  const spendable = !usage.value.extraEnabled ? Math.min(available, usage.value.spendableNow) : available;
   return { ok: true, spendable, quote };
 }

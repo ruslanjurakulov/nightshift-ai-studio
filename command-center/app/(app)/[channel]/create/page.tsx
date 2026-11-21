@@ -37,8 +37,6 @@ import { AgeGate, MinorNotice } from "@/components/age/AgeGate";
 import { readAgeState } from "@/lib/server/age";
 import { LEGAL } from "@/lib/legal";
 import { CreateScreen } from "@/components/customer/CreateScreen";
-import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
-import { aiChatEnv, aiChatOpenFor } from "@/lib/ai-chat/flag";
 import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { SLUG_RE, cleanLinkPrompt, isCreateKind } from "@/lib/customer/create";
@@ -203,10 +201,6 @@ export default async function CreatePage({
       {/* The overview opens on its own question and the box to write in; the full pages keep their header and switcher. */}
       {desk !== "overview" && <PageHeader icon="studio" title={t.create.title} subtitle={t.desk.blurbs[desk]} />}
       {desk !== "overview" && <DeskBar current={desk} />}
-      {/* Nightshift AI (0197): off unless NIGHTSHIFT_AI_CHAT opens it for this workspace; it needs one channel to price a run for. */}
-      {desk === "overview" && !pendingNonce && scopedChannel && genOrgId && aiChatOpenFor(genOrgId, aiChatEnv()) && (
-        <AiChatPanel key={scopedChannel.channel_id} channelId={scopedChannel.channel_id} channelSlug={channelSlug(scopedChannel, channels)} />
-      )}
       {/* The sprint's Create screen is the overview, except for the public home page's file hand-off, which StudioHome
           carries (it asks whether to use the kept file). Template links (?template=<slug>, no ?tool=) and Home's
           ?kind=&prompt= only fill its form: it is priced by the server and nothing starts before the press. */}

@@ -6,6 +6,9 @@
  * Anything else reads as off: a typo never opens a feature that spends the platform's money.
  */
 
+/** The switch, named once for the deploy scan (tests/test_switch_reachability.py): set in deploy/.env.web.example and deploy_web.yml. */
+export const AI_CHAT_FLAG = "NIGHTSHIFT_AI_CHAT";
+
 export type AiChatMode = "off" | "orgs" | "on";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,4 +38,12 @@ export function aiChatOpenFor(orgId: string | null | undefined, env: Record<stri
   if (mode === "on") return true;
   if (mode === "orgs") return aiChatOrgs(env).has(orgId.toLowerCase());
   return false;
+}
+
+/**
+ * The landing page's idea (S4) arrives as `?ai=new&idea=1`. Where the panel is closed for this workspace it would sit unread behind a
+ * panel that is not there, so the Studio sends it to Create's own idea box instead (`/create?idea=1`, lib/site/idea-handoff).
+ */
+export function ideaNeedsCreate(sp: Record<string, string | string[] | undefined>, panelOpen: boolean): boolean {
+  return !panelOpen && sp.ai === "new" && sp.idea === "1";
 }

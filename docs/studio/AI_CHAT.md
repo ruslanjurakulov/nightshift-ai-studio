@@ -1,70 +1,66 @@
-# Nightshift AI — the Studio's planning chat
+# Nightshift AI — operating it
 
-A chat on Studio Create (`/{channel}/create`, the overview) that plans **one** faceless YouTube video with the person:
-
-1. It asks for what a script needs: length, style, platform, language and audience.
-2. It proposes 2–3 scenarios, each with the backend's own price.
-3. When the credits do not cover a scenario, it says so plainly, offers the longest length that fits, and links to the plan upgrade and to buying credits.
-4. A chosen scenario opens the existing **Run now** form, prefilled.
-
-The person confirms the price there; the chat itself never holds, charges, starts or publishes anything (CLAUDE.md rule 3).
-
-It is the conversational front end PLANNER.md §4 describes, kept to what Run now makes today. The Planner's DAG, its executor and automatic generation are out of scope.
+This page covers turning it on, its costs and its limits. The product contract (names, BRIEF v1, cards, handoff) is in
+docs/studio/NIGHTSHIFT_AI.md.
 
 ## Turning it on
 
-| Variable (repository) | Values | Meaning |
-|---|---|---|
-| `NIGHTSHIFT_AI_CHAT` | empty / `off` | Nowhere: the panel is not rendered and `/api/ai-chat` answers 404 |
-| | `orgs` | Only the workspaces in `NIGHTSHIFT_AI_CHAT_ORGS` |
-| | `on` | Every workspace |
-| `NIGHTSHIFT_AI_CHAT_ORGS` | comma-separated workspace ids | The owner's and the demo workspace's |
+1. Apply migration **0197** (the number is assigned at merge).
+2. Add the repository secret `AI_CHAT_ANTHROPIC_API_KEY`, and optionally `AI_CHAT_OPENAI_API_KEY`.
+   - These are the chat's own keys, not the worker's. With them unset, the web server holds no LLM key.
+   - A key with its own spend limit is the safer choice.
+3. Set the repository variables:
+   - `NIGHTSHIFT_AI_CHAT=orgs`;
+   - `NIGHTSHIFT_AI_CHAT_ORGS=<owner workspace id>,<demo workspace id>`.
+   Then redeploy.
+4. Short films need Film Studio open on the server: `NIGHTSHIFT_FILM_STUDIO` and 0171's `film_studio_settings`. Without it, the panel says short films are coming soon; long YouTube videos still work.
 
-The two **secrets** are its own keys:
+What the flag values do:
+- `off` (or empty) means no panel, and every `/api/brain` route answers 404 before reading anything.
+- `on` means every workspace.
 
-- `AI_CHAT_ANTHROPIC_API_KEY` (Claude Sonnet 5.5);
-- `AI_CHAT_OPENAI_API_KEY` (GPT-6 Luna).
+## Who may use it
 
-They are separate from the worker's `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, so the web server holds an LLM key only when the owner adds one for the chat. A key with its own spend limit is the safer choice. A model without its key shows "not set up on this server yet".
+- **Plans.** Plus (`creator`), Pro and Business (`studio`).
+- **Free trial.** A plan without a row in `ai_chat_plan_caps` (free) gets 3 messages in the workspace's whole life. The count comes from the metering, which no member can change. Two tabs cannot both take the last one. After the trial the panel is locked, with "Upgrade plan". The conversation already on screen stays. Change the number with `update public.ai_chat_settings set trial_messages = <n> where id;`.
+- **Pilot.** A workspace the owner lists gets Business's cap (300 a day) whatever its plan: `select public.ai_chat_set_pilot('<workspace id>', true);`. `false` takes it off again. The list is in `ai_chat_owner_settings()`. No workspace id is written in the migration. For the pilot, list the owner's and the demo workspace, both also in `NIGHTSHIFT_AI_CHAT_ORGS`.
+- **Role.** An editor or above. A viewer is told that an editor can use it.
+- **Starting a long video.** Run now itself stays an admin's press. Others are told so.
+- **Age.** Someone who said they are under 18 is not served (0192).
 
-Apply migration **0197** first. Without it, the panel says Nightshift AI is not set up on this database.
+## The model
 
-## Which models
+- The owner chooses it: `select public.ai_chat_set_model('anthropic-claude-sonnet-5-5');`. The default is Claude Sonnet 5.5.
+- It must be a registry text model. Each turn also checks that it is on sale (`sellable_models('describe','web')`) and keyed on this server.
+- Customers never see or pick it. When it is down, the panel says "Nightshift AI is unavailable right now". No other model is tried.
+- Read the settings with `select public.ai_chat_owner_settings();`.
 
-- The chat offers the registry's text models that are **on sale on the web** (`sellable_models('describe', 'web')`: probed, priced, switched on) **and** have a key on this server.
-  - Claude Sonnet 5.5 is the default.
-  - GPT-6 Luna is offered.
-  - Gemini is shown as not available yet: it carries a terms gate and needs the adult attestation (0192).
-- The model is explicit. A model that is unavailable, refuses or fails is said as such, with the remedy (bad key, empty balance, busy, refused, no answer). The other model is never tried in its place (CLAUDE.md rule 4).
+## Caps (enforced in the database before any LLM call)
 
-## What the code guarantees (not the prompt)
+- **Per workspace, per plan, rolling 24 h.** Plus 30, Pro 100, Business 300. Change one with `select public.ai_chat_set_plan_cap('pro', 120);`.
+- **Per person, across every workspace they belong to.** 300 turns a day.
+- **The whole platform.** 5000 turns a day.
+- **New conversations.** 50 a day per person.
+- **Message length.** At most 2000 characters.
+- Change any of the last four with `select public.ai_chat_set_limits(<max_chars>, <per_user>, <global>, <sessions>);`. A NULL keeps that value.
 
-`command-center/lib/ai-chat/logic.ts`:
+## Hand-offs
 
-- **Questions before proposals.** No scenario is shown until all five slots are filled. A model that proposes early has its scenarios dropped.
-- **Lengths.** A scenario's length is one Run now takes (60, 180, 300, 600 or 1200 s).
-- **Prices.** Every price is `estimateForChannel`'s (the Run now estimator, over `credit_rates`) for that length. A number the model writes is never read, and the model is never shown a price.
-- **When it doesn't fit.** The longest length that fits is found by asking the estimator at each shorter length, never by dividing.
-- **Text.** The model's text is plain, bounded, and rendered as text.
+- **Long video.** The plan opens Run now prefilled (`?brain=<session>`). The admin still presses Create. When the job is queued, Run now records the handoff. The database reads the job's `credit_ref` itself.
+- **Short film.** "Create — N credits" starts the film at the quote the server read. The handoff records the film. The database builds `scene_map` = {brief scene id: `film_scenes.id`} from the film's scenes by position.
+- Nothing the browser sends as a `credit_ref` or a `scene_map` is stored.
+- **The landing idea.** `/all-channels/studio?ai=new&idea=1` opens a new conversation. The idea in localStorage `ns.idea.v1` (`{text, at}`, 2 h) is typed into the box once and removed. It is never sent for the person.
+- **Short films.** At least 10 seconds (0198).
 
-## Data, never instructions
+## Cost
 
-- The model calls nothing. Each turn the server reads the channel's facts **as the person** (RLS) and hands them to the model as one JSON data block, along with the conversation:
-  - recent videos and their latest views;
-  - competitors' fastest titles of the last two weeks;
-  - the audience's asks mined from comments (`demand_signals`). Raw comments never reach the model.
-- The system prompt says nothing in that block is an instruction.
-- When there is no data the chat says it is working from the topic alone. When the data could not be read it says that instead, never "no data" (rule 5).
-
-## Cost and the cap
-
-- LLM calls cost the platform money and are free to the person, within a per-workspace daily cap: **40 messages in a rolling 24 hours** to start.
-- The cap is enforced in the database (`ai_chat_reserve_turn`, under the workspace's lock) **before** any vendor is called. A dead model is refused before the cap is touched.
-- The owner changes the cap with `select public.ai_chat_set_limits(<per_org_daily>, <max_input_chars>);`.
-- The metering (`ai_chat_calls`: workspace, person, model, tokens, outcome; no text) is read by the owner with `select * from public.ai_chat_usage('2026-11-01', '2026-11-30');`.
-  - No vendor cost is stored or sent to a browser.
-  - The token counts are what the server reported for the turn. A person calling the database directly could only under-report their own.
+- **Who pays.** The person is not charged for messages; the platform pays the vendor.
+- **Metering.** `ai_chat_calls` records workspace, person, model, tokens and outcome. It holds no text.
+- **Reading usage.** `select * from public.ai_chat_usage('2026-11-01', '2026-11-30');`
+- **What the tokens mean.** They are what the Command Center reported for each turn. An unreported count stays unknown.
+- **Accuracy.** A member calling the database directly can misreport their own turns, within 1M tokens in and 100k out per turn. Reconcile with the vendor's dashboard.
+- **Where vendor cost lives.** No vendor cost is stored or sent to a browser.
 
 ## Privacy
 
-A conversation is visible only to the person who started it, not to the workspace's other members and not to the operator. Migration 0197's rollback drops every conversation.
+A conversation is visible only to the person who started it: not the workspace's other members, not the operator. The vendor receives an opaque hash of the workspace, never the person's id. The rollback drops every conversation; films created from a plan remain.
