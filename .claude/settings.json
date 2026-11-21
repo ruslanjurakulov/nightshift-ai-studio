@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch"
+      "WebFetch",
+      "mcp__Remote_Desktop_Commander"
+    ],
+    "ask": [
+       
     ]
   }
 }
