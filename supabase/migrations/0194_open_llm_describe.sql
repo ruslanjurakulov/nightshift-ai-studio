@@ -82,8 +82,8 @@ begin
       why := 'carries blocked_countries (0142)';
     elsif public.model_past_shutdown(r.spec) then
       why := 'past its announced shutdown date (0125)';
-    elsif not exists (select 1 from public.credit_prices where unit = r.credit_unit) then
-      why := format('no credit_prices row for %s: the owner sets the price first', r.credit_unit);
+    elsif not exists (select 1 from public.credit_prices where unit = r.credit_unit and credits_per_unit > 0) then
+      why := format('no credit_prices row above 0 for %s: the owner sets the price first', r.credit_unit);
     end if;
 
     if why is not null then

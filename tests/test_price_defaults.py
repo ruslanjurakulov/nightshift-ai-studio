@@ -56,7 +56,7 @@ EXPECTED_ESTIMATES = {
 
 #: Chargeable units left without a price ON PURPOSE, each with the reason.
 UNPRICED_ON_PURPOSE = {
-    # S10 (2026-11-20): hidden until a probe passes; the owner sets these rows in the database only (0188 / 0190 open a model
+    # S10 (2026-11-20): hidden until a probe passes; the owner sets these rows in the database only (0193 / 0194 open a model
     # only once its rows exist), so no price file in the repository names them.
     "model_openai_gpt_image_2_6_sunburst_image": "priced in the database only (S10); hidden until then",
     "model_openai_gpt_image_2_6_sunburst_image_low": "priced in the database only (S10); hidden until then",

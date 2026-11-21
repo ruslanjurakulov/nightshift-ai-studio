@@ -35,7 +35,7 @@ WEB_ONLY = {
 #: The only entries still offered to the API, and why they were not changed here.
 STILL_ANY = {
     # The OpenAI image rows left this list on 2026-11-20: web_only (Studio only) until the web+MCP exposure is reviewed for them
-    # (migration 0188's header).
+    # (migration 0193's header).
     "luma-ray-3.2": "Luma's terms were not re-read on 2026-11-11",
     "seedance-1.5-pro": "past its shutdown (2026-11-11): not sold at all",
 }
