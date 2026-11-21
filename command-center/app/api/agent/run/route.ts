@@ -5,7 +5,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isSupabaseConfigured } from "@/lib/config";
-import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
+import { buildRenderJobInsert, isRunConfigured, resolveRunBackend, runGoogleStages } from "@/lib/runBackend";
 import { creditsEnforced, reserveRunCredits, runCreditRefFor } from "@/lib/server/credits";
 import { dispatchOutcome, insertOutcome, startFailureBody } from "@/lib/server/run-start";
 import { runVoiceProblem } from "@/lib/server/run-voice";
@@ -200,6 +200,13 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (body.made_for_kids != null && body.made_for_kids !== true)
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const madeForKids = body.made_for_kids === true;
+  // 0196: a run spends on Google (runGoogleStages: the research and the script are always Gemini's), whose terms are 18+, so it
+  // needs an adult answer, as a Google model does in the Studio. Asked here, before anything is held or dispatched: the Actions
+  // dispatch writes no row for the database's run gate to see. An unknown answer blocks no one, as the minor check above.
+  const googleStages = runGoogleStages("daily", { video_provider: videoProvider || undefined, image_provider: imageProvider || undefined });
+  const age = await readAgeState();
+  if (age === "none" && googleStages.length > 0)
+    return NextResponse.json({ error: "adult_attestation_required", google_stages: googleStages }, { status: 428 });
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
 

@@ -3379,6 +3379,7 @@ export const uz: Dictionary = {
     runLimit: "Tarifingiz bir vaqtda {n} ta videoni ishga tushiradi va shuncha ish allaqachon bajarilmoqda. Bittasi tugagach, buni ishga tushiring yoki koʻproq parallel ish uchun tarifni oshiring.",
     runLimitShort: "Tarifingizdagi barcha parallel ishlar band. Bittasi tugagach, buni ishga tushiring.",
     notEnforced: "Ushbu tashkilot ishga tushirishlari kreditlar bilan toʻlanadi, lekin bu serverda kreditlar yoqilmagan. Dasturchiga kreditlarni yoqishni ayting.",
+    adultRequired: "Video Google Gemini yordamida tayyorlanadi (tadqiqot va ssenariy), Google shartlari esa faqat kattalar uchun (18+). «Yaratish» sahifasining yuqorisidagi oynada yoshingizni tasdiqlang va qayta ishga tushiring. Hech narsa boshlanmadi va yechilmadi.",
     estimateUnavailable: "Bu ishga tushirish narxini hozircha baholab boʻlmaydi, shuning uchun kreditlar yoqilganda u boshlanmaydi.",
     unavailable: "Kreditlar yoqilgan, lekin bu bazada mavjud emas (0020 migratsiyasi qoʻllanganmi?).",
     readFailedRun: "Kreditlar maʼlumotini hozir oʻqib boʻlmadi, shuning uchun ishga tushirish boshlanmadi va hech narsa band qilinmadi. Birozdan keyin qayta urinib koʻring.",

@@ -781,6 +781,7 @@ def test_the_real_connected_app_video_call_obeys_the_switch(oauth_db):
         su.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, 'oa@lab.test', now())", [uid])
         su.execute("insert into public.organizations (id, name, slug) values (%s, 'OA', 'oa-usage')", [org])
         su.execute("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'oa@lab.test', 'owner')", [org, uid])
+        sec_db.attest_adults(su, uid)   # 0196: the connection's video spends on Google
         su.execute("select public.upsert_subscription(%s, 'sub_oausageaaaaaaaaaa', 'ctm_oausageaaaaaaaaaa', 'pro', null, 'active', "
                    "now() - interval '5 days', now() + interval '25 days', false, null, now())", [org])
         su.execute("select public.grant_subscription_credits(%s, 'sub_oausageaaaaaaaaaa', 'pro', now() - interval '5 days', "
@@ -923,6 +924,7 @@ def test_the_connected_app_figures_are_what_it_can_spend_and_unchanged_when_the_
         su.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, 'oafig@lab.test', now())", [uid])
         su.execute("insert into public.organizations (id, name, slug) values (%s, 'OAF', 'oaf-usage')", [org])
         su.execute("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'oafig@lab.test', 'owner')", [org, uid])
+        sec_db.attest_adults(su, uid)   # 0196: the connection's video spends on Google
         su.execute("select public.upsert_subscription(%s, 'sub_oafigaaaaaaaaaaaa', 'ctm_oafigaaaaaaaaaaaa', 'pro', null, 'active', "
                    "now() - interval '5 days', now() + interval '25 days', false, null, now())", [org])
         su.execute("select public.grant_subscription_credits(%s, 'sub_oafigaaaaaaaaaaaa', 'pro', now() - interval '5 days', "

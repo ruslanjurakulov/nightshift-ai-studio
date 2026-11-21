@@ -66,10 +66,36 @@ describe("Run now and the adult answer", () => {
     expect(h.insert).not.toHaveBeenCalled();
   });
 
-  it.each(["adult", "none", "unknown"] as const)("does not refuse on the answer when it is %s", async (age) => {
+  it.each(["adult", "none", "unknown"] as const)("does not refuse with adult_only_service when the answer is %s", async (age) => {
     h.age = age;
     const res = await post();
     expect((await res.clone().json().catch(() => ({}))).error).not.toBe("adult_only_service");
+  });
+
+  it("0196: refuses a person with no answer with adult_attestation_required (the run spends on Google), before anything is held", async () => {
+    h.age = "none";
+    const res = await post();
+    expect(res.status).toBe(428);
+    expect(await res.json()).toMatchObject({ error: "adult_attestation_required", google_stages: ["text"] });
+    expect(h.reserve).not.toHaveBeenCalled();
+    expect(h.dispatch).not.toHaveBeenCalled();
+    expect(h.insert).not.toHaveBeenCalled();
+  });
+
+  it("0196: an adult (the demo and owner accounts once they answered) runs as before", async () => {
+    h.age = "adult";
+    const res = await post();
+    expect(res.status).toBe(200);
+    expect(h.dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("0196: the remedy is in every language and names Create", async () => {
+    const { creditRunError } = await import("../lib/credits");
+    for (const [loc, d] of Object.entries(dictionaries)) {
+      const text = creditRunError({ error: "adult_attestation_required" }, d, loc);
+      expect(text, loc).toBe(d.credits.adultRequired);
+      expect(text!.length, loc).toBeGreaterThan(40);
+    }
   });
 
   it("names the reason in every language instead of a generic failure", () => {
