@@ -63,16 +63,25 @@ export function Kpi({ label, children, hint }: { label: string; children: React.
   );
 }
 
-export function Kpis({ children, label }: { children: React.ReactNode; label: string }) {
+/** A group of tiles. A <dl> has no role, so a label would be ignored: the heading above a group names it. */
+export function Kpis({ children }: { children: React.ReactNode; label?: string }) {
   return (
-    <dl className="oc-kpis" aria-label={label}>
+    <dl className="oc-kpis">
       {children}
     </dl>
   );
 }
 
-/** A block the database could not give: the reason, and nothing drawn in its place. */
-export function Gap({ why, f }: { why: string; f: F }) {
+/** A block the database could not give: the reason, and nothing drawn in its place. Inside a tile it is quiet and not announced
+ *  (eight tiles would repeat one reason as eight live regions); on its own it is a status line. */
+export function Gap({ why, f, inline = false }: { why: string; f: F; inline?: boolean }) {
+  if (inline) {
+    return (
+      <span className="oc-fact">
+        <Tag state="unknown" f={f} /> <span className="oc-why">{whyText(why, f)}</span>
+      </span>
+    );
+  }
   return (
     <p className="oc-note" role="status">
       <Tag state="unknown" f={f} /> {whyText(why, f)}

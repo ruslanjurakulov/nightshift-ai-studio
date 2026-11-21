@@ -32,7 +32,7 @@ export default async function OwnerConsoleHealth() {
     <section className="oc-card" aria-label={label}>
       <h3 className="m-0 text-sm font-semibold">{label}</h3>
       <Kpis label={label}>
-        <Kpi label={hz.queued} hint={q.oldestQueuedAt === null ? undefined : <>{hz.oldest}: {when(q.oldestQueuedAt, f)}</>}>
+        <Kpi label={hz.queued} hint={q.oldestQueuedAt === null || q.queued === 0 ? undefined : <>{hz.oldest}: {when(q.oldestQueuedAt, f)}</>}>
           <Count n={q.queued} f={f} format={n} />
         </Kpi>
         <Kpi label={hz.running}><Count n={q.running} f={f} format={n} /></Kpi>
@@ -81,7 +81,7 @@ export default async function OwnerConsoleHealth() {
                           <span>
                             {w.id} <span className="oc-why">{[w.kind, w.state].filter(Boolean).join(" · ")}</span>
                           </span>
-                          <span className={w.stale ? "oc-flag" : "oc-why"}>
+                          <span className={w.stale ? "oc-why oc-warn" : "oc-why"}>
                             {w.stale === null ? <Tag state="unknown" f={f} /> : w.stale ? hz.stale : hz.fresh} · {when(w.updatedAt, f)}
                           </span>
                         </li>
@@ -106,7 +106,7 @@ export default async function OwnerConsoleHealth() {
                               {channelNeedsLook(ch) && <span className="oc-flag"> · {hz.needsLook}</span>}
                             </div>
                           </td>
-                          <td>{when(ch.lastRunAt, f)}</td>
+                          <td className="oc-nowrap">{when(ch.lastRunAt, f)}</td>
                           <td><Count n={ch.failures24h} f={f} format={n} /></td>
                           <td><Count n={ch.failures7d} f={f} format={n} /></td>
                           <td><Count n={ch.held} f={f} format={n} /></td>

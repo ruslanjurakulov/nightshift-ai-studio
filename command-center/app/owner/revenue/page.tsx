@@ -37,7 +37,12 @@ export default async function OwnerConsoleRevenue() {
         ) : (
           <>
             <AsOf iso={rev.as_of} f={f} />
-            <Kpis label={r.title}>
+            {rev.value.truncated && (
+              <p className="oc-note" data-tone="warn" role="status">
+                {r.truncated}
+              </p>
+            )}
+            <Kpis>
               <Kpi label={r.net7}><FactValue fact={rev.value.net_before_fees_7d} f={f} format={money} /></Kpi>
               <Kpi label={r.net30}><FactValue fact={rev.value.net_before_fees_30d} f={f} format={money} /></Kpi>
               <Kpi label={f.kpi.mrr}><FactValue fact={rev.value.mrr} f={f} format={money} /></Kpi>
@@ -51,11 +56,6 @@ export default async function OwnerConsoleRevenue() {
               <Kpi label={r.payingWorkspaces}><span className="oc-val">{n(rev.value.paying_workspaces_30d)}</span></Kpi>
               <Kpi label={r.otherCurrency}><span className="oc-val">{n(rev.value.other_currency_payments_30d)}</span></Kpi>
             </Kpis>
-            {rev.value.truncated && (
-              <p className="oc-note" data-tone="warn" role="status">
-                {r.truncated}
-              </p>
-            )}
             <p className="oc-note">{r.note}</p>
           </>
         )}

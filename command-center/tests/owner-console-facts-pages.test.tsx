@@ -175,7 +175,8 @@ describe("owner console pages from the owner's facts", () => {
   it("providers: the plan links to the provider's own page safely, keeps native units, and pays nothing", async () => {
     const out = await html(await pages.providers());
     expect(out).toContain('href="https://vendor.example/billing" target="_blank" rel="noopener noreferrer"');
-    expect(out).toContain("9,000 in credits");
+    expect(out).toContain("9,000 credits");
+    expect(out).toContain(en.ownerConsole.facts.providers.newTab);
     expect(out).not.toContain("$9,000");
     expect(out).toContain(en.ownerConsole.facts.providers.reason.empty);
     expect(out).toContain(en.ownerConsole.facts.providers.noMinimum);

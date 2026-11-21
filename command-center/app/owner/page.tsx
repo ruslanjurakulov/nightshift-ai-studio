@@ -42,13 +42,13 @@ export default async function OwnerConsoleOverview() {
       <div className="oc-stack">
         <AsOf iso={facts.as_of} f={f} />
         <Kpis label={c.sections.overview.title}>
-          <Kpi label={f.kpi.signups7d}>{p ? <Count n={p.signups.d7} f={f} format={n} /> : <Gap why={people.ok ? "" : people.why} f={f} />}</Kpi>
-          <Kpi label={f.kpi.paying}>{p ? <Count n={p.payingTotal} f={f} format={n} /> : <Gap why={people.ok ? "" : people.why} f={f} />}</Kpi>
+          <Kpi label={f.kpi.signups7d}>{p ? <Count n={p.signups.d7} f={f} format={n} /> : <Gap why={people.ok ? "" : people.why} f={f} inline />}</Kpi>
+          <Kpi label={f.kpi.paying}>{p ? <Count n={p.payingTotal} f={f} format={n} /> : <Gap why={people.ok ? "" : people.why} f={f} inline />}</Kpi>
           <Kpi label={f.kpi.net30d}>
-            {rev ? <FactValue fact={rev.net_before_fees_30d} f={f} format={money} /> : <Gap why={facts.revenue.state === "unknown" ? facts.revenue.why : ""} f={f} />}
+            {rev ? <FactValue fact={rev.net_before_fees_30d} f={f} format={money} /> : <Gap why={facts.revenue.state === "unknown" ? facts.revenue.why : ""} f={f} inline />}
           </Kpi>
-          <Kpi label={f.kpi.mrr}>{rev ? <FactValue fact={rev.mrr} f={f} format={money} /> : <Gap why={facts.revenue.state === "unknown" ? facts.revenue.why : ""} f={f} />}</Kpi>
-          <Kpi label={f.kpi.churn}>{rev ? <FactValue fact={rev.monthly_churn_30d} f={f} format={(v) => pct(v, locale)} /> : <Gap why={facts.revenue.state === "unknown" ? facts.revenue.why : ""} f={f} />}</Kpi>
+          <Kpi label={f.kpi.mrr}>{rev ? <FactValue fact={rev.mrr} f={f} format={money} /> : <Gap why={facts.revenue.state === "unknown" ? facts.revenue.why : ""} f={f} inline />}</Kpi>
+          <Kpi label={f.kpi.churn}>{rev ? <FactValue fact={rev.monthly_churn_30d} f={f} format={(v) => pct(v, locale)} /> : <Gap why={facts.revenue.state === "unknown" ? facts.revenue.why : ""} f={f} inline />}</Kpi>
           <Kpi label={f.kpi.due} hint={plan && plan.unknown.length > 0 ? `${f.providers.unknown}: ${plan.unknown.length}` : undefined}>
             {plan ? (
               plan.due.length + plan.unknown.length + plan.fine.length === 0 ? (
@@ -60,12 +60,12 @@ export default async function OwnerConsoleOverview() {
                 </span>
               )
             ) : (
-              <Gap why={facts.providers.state === "unknown" ? facts.providers.why : ""} f={f} />
+              <Gap why={facts.providers.state === "unknown" ? facts.providers.why : ""} f={f} inline />
             )}
           </Kpi>
-          <Kpi label={f.kpi.critical}>{h ? <Count n={h.alerts.critical} f={f} format={n} /> : <Gap why={health.ok ? "" : health.why} f={f} />}</Kpi>
+          <Kpi label={f.kpi.critical}>{h ? <Count n={h.alerts.critical} f={f} format={n} /> : <Gap why={health.ok ? "" : health.why} f={f} inline />}</Kpi>
           <Kpi label={f.kpi.doctor}>
-            {h ? <span className={h.doctor.verdict === "fail" ? "oc-flag-fail" : undefined}>{f.doctor[h.doctor.verdict]}</span> : <Gap why={health.ok ? "" : health.why} f={f} />}
+            {h ? <span className={h.doctor.verdict === "fail" ? "oc-flag-fail" : undefined}>{f.doctor[h.doctor.verdict]}</span> : <Gap why={health.ok ? "" : health.why} f={f} inline />}
           </Kpi>
         </Kpis>
         <OwnerTools section={ownerSection("overview")} c={c} note={f.moreTools} />
