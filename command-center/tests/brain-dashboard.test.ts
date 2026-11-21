@@ -226,3 +226,11 @@ describe("coerceChannel: numbers from another YouTube account", () => {
     expect(r).toMatchObject({ state: "no_data", channelId: "ch", remedy: "channel_mismatch" });
   });
 });
+
+describe("coerceChannel: a failed refresh beside the last good numbers", () => {
+  it("an ok answer with remedy_code retry keeps its numbers and says the refresh did not finish", () => {
+    const r = coerceChannel("ch", { status: "ok", fetched_at: "2026-11-20T09:00:00Z", remedy_code: "retry", data: { channel: { title: "C", view_count: 10 } } }, null);
+    expect(r).toMatchObject({ state: "ok", views: 10, remedy: "retry" });
+    expect(coerceChannel("ch", { status: "ok", fetched_at: null, data: { channel: {} } }, null)).toMatchObject({ remedy: null });
+  });
+});

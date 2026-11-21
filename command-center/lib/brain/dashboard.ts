@@ -261,11 +261,12 @@ export type ChannelStatus = "ok" | "no_data" | "not_connected" | "refreshing" | 
  * S10's stable remedy codes. The page words each one in en/ru/uz itself: the envelope's `remedy` text is English-only
  * and meant for the chat, so it is never shown. An unknown code is null (the state's own sentence stands).
  */
-export type RemedyCode = "reconnect" | "support" | "channel_mismatch";
+export type RemedyCode = "reconnect" | "support" | "channel_mismatch" | "retry";
 /**
  * docs/studio/RESEARCH_TOOLS.md (#851) lists budget, quota, connect, not_configured, auth, reconnect, channel_mismatch,
  * not_found, retry. Only the ones whose fix the card's state sentence does not already say get their own line; two
- * spellings of "reconnect" and two of "ask support" each read the same. retry is about competitors, not the own channel.
+ * spellings of "reconnect" and two of "ask support" each read the same. retry ends any failed refresh, the own channel's
+ * included (S10): it rides on an "ok" answer too, beside the last good numbers.
  */
 const REMEDY_OF: Record<string, RemedyCode> = {
   reconnect: "reconnect",
@@ -273,7 +274,13 @@ const REMEDY_OF: Record<string, RemedyCode> = {
   auth: "support",
   not_configured: "support",
   channel_mismatch: "channel_mismatch",
+  retry: "retry",
 };
+
+function remedyOf(env: Record<string, unknown>): RemedyCode | null {
+  const code = env.remedy_code;
+  return typeof code === "string" && Object.hasOwn(REMEDY_OF, code) ? REMEDY_OF[code] : null;
+}
 
 export interface ChannelUpload {
   videoId: string;
@@ -301,6 +308,8 @@ export type ChannelRead =
       state: "ok";
       channelId: string;
       fetchedAt: string | null;
+      /** The last refresh failed (retry); the numbers shown are the last good ones, with their own fetched time. */
+      remedy: RemedyCode | null;
       title: string | null;
       /** null with subscribersHidden: YouTube hides the count. null alone: not reported. */
       subscribers: number | null;
@@ -336,9 +345,7 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
   if (st === "not_enabled") return { state: "not_enabled" };
   const fetchedAt = str(env.fetched_at);
   if (st !== "ok") {
-    const code = env.remedy_code;
-    const remedy = typeof code === "string" && Object.hasOwn(REMEDY_OF, code) ? REMEDY_OF[code] : null;
-    return { state: st, channelId, fetchedAt, remedy };
+    return { state: st, channelId, fetchedAt, remedy: remedyOf(env) };
   }
   const d = obj(env.data) ?? {};
   // S10 (0199): the channel's counters are nested under data.channel (null when nothing is cached yet).
@@ -372,6 +379,7 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
     state: "ok",
     channelId,
     fetchedAt: str(ch?.fetched_at) ?? fetchedAt,
+    remedy: remedyOf(env),
     title: str(ch?.title),
     subscribers: ch?.subscribers_hidden === true ? null : num(ch?.subscriber_count),
     subscribersHidden: ch?.subscribers_hidden === true,
