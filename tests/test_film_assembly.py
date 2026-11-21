@@ -221,8 +221,10 @@ def fake_render(length_s, w, h):
     """A render that writes a file the fake probe reads back as (length_s, w, h, sound)."""
     calls = []
 
-    def render(norm, resolver, out, **kw):
+    def render(norm, resolver, out, timings=None, **kw):
         calls.append(kw)
+        if timings is not None:       # as render_backend reports a full-quality render
+            timings.mode, timings.intermediate = "sequential", "fast"
         Path(out).write_bytes(b"\0" * 64)
         return out
     return render, calls, (lambda p: fa.Probed(length_s, w, h, True))
@@ -269,25 +271,39 @@ class Base(unittest.TestCase):
 # ── the flag ─────────────────────────────────────────────────────────────────
 
 class FlagTest(Base):
-    def test_a_workspace_the_database_does_not_enable_is_never_assembled(self):
+    def test_a_workspace_the_database_does_not_enable_is_recorded_at_zero_and_never_assembled(self):
         f = self.film()
-        for env, orgs in (({}, {ORG}), ({fa.ENABLE_ENV: "off"}, {ORG}), ({fa.ENABLE_ENV: "on"}, set()),
-                          ({fa.ENABLE_ENV: "on"}, {OTHER_ORG})):
+        for orgs in (set(), {OTHER_ORG}):
             db = f.db()
             db.enabled_orgs = orgs
-            out = run(db, self.root, deps=self.fake_deps(db, env=env))
-            self.assertFalse(out.ok)
-            self.assertEqual(out.reason, "assembly_not_enabled", (env, orgs))
-            self.assertEqual(self.render_calls, [], env)
-            # Nothing read, nothing begun: the only write is the failure, charged 0.
-            self.assertEqual([c for c in db.calls if c[0] != "org_enabled"], [("record", False, None)], env)
+            out = run(db, self.root, deps=self.fake_deps(db))
+            self.assertEqual((out.ok, out.reason, out.recorded), (False, "assembly_not_enabled", True), orgs)
+            self.assertEqual(self.render_calls, [])
+            # The database said false: that is a decision, recorded at 0. Nothing begun, nothing rendered.
+            self.assertEqual([c for c in db.calls if c[0] != "org_enabled"], [("record", False, None)])
             self.assertEqual(db.seg["assembly"]["charged_credits"], 0.0)
 
-    def test_the_kill_switch_is_read_before_the_database(self):
+    def test_the_kill_switch_off_stops_before_the_database_and_records_nothing(self):
+        f = self.film()
+        for env in ({}, {fa.ENABLE_ENV: "off"}, {fa.ENABLE_ENV: "1"}):
+            db = f.db()
+            with self.assertRaises(fa.AssemblyDisabled):
+                run(db, self.root, deps=self.fake_deps(db, env=env))
+            self.assertEqual(db.calls, [], env)
+            self.assertEqual(self.render_calls, [])
+            self.assertEqual(db.seg["assembly"]["status"], "running")
+
+    def test_a_flag_the_database_cannot_answer_assembles_nothing_and_records_nothing(self):
         f = self.film()
         db = f.db()
-        run(db, self.root, deps=self.fake_deps(db, env={}))
-        self.assertNotIn(("org_enabled", ORG), db.calls)
+
+        def unanswered(org):
+            raise fa.DbUnavailable("film_studio_on_for did not answer")
+        db.org_enabled = unanswered
+        with self.assertRaises(fa.DbUnavailable):
+            run(db, self.root, deps=self.fake_deps(db))
+        self.assertEqual(db.records(), [])
+        self.assertEqual(self.render_calls, [])
 
     def test_the_enabled_workspace_is_assembled(self):
         f = self.film()
@@ -467,22 +483,35 @@ class RestStoreTest(unittest.TestCase):
         with self.assertRaises(fa.DbUnavailable):
             st.record(SEG, "w-1", True, NARR)
 
-    def test_a_4xx_with_the_databases_word_is_a_refusal(self):
-        st, _ = self.store({"film_record_assembly": (409, {"message": "lease_lost"})})
-        with self.assertRaises(fa.DbRefused) as cm:
-            st.record(SEG, "w-1", True, NARR)
-        self.assertEqual(cm.exception.word, "lease_lost")
+    def test_a_4xx_with_the_databases_code_and_word_is_a_refusal(self):
+        for body in ({"code": "NS409", "message": "lease_lost"}, {"code": "P0001", "message": "lease_lost"}):
+            st, _ = self.store({"film_record_assembly": (400, body)})
+            with self.assertRaises(fa.DbRefused) as cm:
+                st.record(SEG, "w-1", True, NARR)
+            self.assertEqual(cm.exception.word, "lease_lost")
+
+    def test_a_gateway_4xx_without_the_databases_word_is_not_a_refusal(self):
+        for status, body in ((429, {"message": "API rate limit exceeded"}),
+                             (401, {"code": "PGRST301", "message": "JWT expired"}),
+                             (404, {"code": "PGRST202", "message": "Could not find the function"}),
+                             (400, {"code": "NS409", "message": "Not a machine word"})):
+            st, _ = self.store({"film_record_assembly": (status, body)})
+            with self.assertRaises(fa.DbUnavailable, msg=(status, body)):
+                st.record(SEG, "w-1", True, NARR)
 
     def test_no_answer_at_all_is_not_a_refusal(self):
         st, _ = self.store({"film_begin_assembly": OSError("connection reset")})
         with self.assertRaises(fa.DbUnavailable):
             st.begin(SEG, "w-1")
 
-    def test_the_flag_function_missing_means_not_enabled(self):
-        self.assertFalse(self.store({"film_studio_on_for": (404, {"message": "Could not find the function"})})[0]
-                         .org_enabled(ORG))
-        self.assertFalse(self.store({"film_studio_on_for": (200, "true")})[0].org_enabled(ORG))
+    def test_the_flag_is_only_ever_a_plain_true_or_false_from_the_database(self):
         self.assertTrue(self.store({"film_studio_on_for": (200, True)})[0].org_enabled(ORG))
+        self.assertFalse(self.store({"film_studio_on_for": (200, False)})[0].org_enabled(ORG))
+        # Missing (its migration not applied), a string, a null, a refusal: no answer, never "on".
+        for a in ((404, {"code": "PGRST202", "message": "Could not find the function"}), (200, "true"), (200, None),
+                  (400, {"code": "NS400", "message": "invalid_params"})):
+            with self.assertRaises(fa.DbUnavailable, msg=a):
+                self.store({"film_studio_on_for": a})[0].org_enabled(ORG)
 
     def test_a_large_film_reads_its_files_in_small_requests(self):
         st, http = self.store({})
@@ -509,6 +538,24 @@ class FindingsTest(Base):
             run(db, self.root, deps=self.fake_deps(db))
         self.assertEqual(db.seg["assembly"]["status"], "running")
         self.assertNotIn(("record", False, None), db.calls)
+
+    def test_a_lost_answer_from_register_asset_keeps_the_rendered_film_and_the_assembly_running(self):
+        import requests
+        for err in (requests.ReadTimeout("read timed out"), requests.ConnectionError("connection reset")):
+            f = self.film()
+            db = f.db()
+            stored = fake_store_file(db, self.root)
+
+            def flaky(path, **kw):
+                stored(path, **kw)        # the row is written; the answer is lost on the way back
+                raise err
+            with self.assertRaises(fa.DbUnavailable, msg=type(err).__name__):
+                run(db, self.root, deps=self.fake_deps(db, store_file=flaky))
+            self.assertEqual(db.records(), [], "a lost answer was recorded as the film's failure")
+            self.assertEqual(db.seg["assembly"]["status"], "running")
+            again = run(db, self.root, deps=self.fake_deps(db))
+            self.assertTrue(again.ok and not again.rendered, again)
+            self.assertEqual(len(db.records()), 1)
 
     def test_a_5xx_on_begin_records_nothing(self):
         f = self.film()
@@ -606,6 +653,46 @@ class FindingsTest(Base):
 
 
 # ── captions ─────────────────────────────────────────────────────────────────
+
+@unittest.skipUnless(FFMPEG and FFPROBE, "ffmpeg is not installed")
+class RenderBackendReportsTheEncodeTest(Base):
+    """The assembly refuses anything but the fast encode, so render_backend must say which one it used on every path."""
+
+    def render(self, **patches):
+        from modules import render_backend as rb
+        f = DiskFilm(self.root, scenes=1, seconds=3)
+        cut = ft.build_cut(f.film, fa._with_versions(f.scenes, f.takes), f.takes, f.assets,
+                           {"asset_id": NARR, "segments": f.takes[-1]["params"]["segments"]}, None)
+        rows = [{"id": k, **v} for k, v in f.assets.items()]
+        from modules import editor_export, timeline as tl
+        resolver = editor_export.build_resolver(rows, self.root, has_audio=lambda p, m: False)
+        timings = rb.RenderTimings()
+        work = self.root / "w"
+        work.mkdir()
+        with mock.patch.multiple(rb, **patches) if patches else mock.patch.object(rb, "logger"):
+            fa.render_strict(tl.load(cut.doc), resolver, str(work / "o.mp4"), ffmpeg=FFMPEG, workdir=str(work), jobs=1,
+                             timeout_s=300, timings=timings)
+        return timings
+
+    def test_a_render_with_room_reports_the_fast_encode(self):
+        self.assertEqual(self.render().intermediate, "fast")
+
+    def test_a_short_disk_reports_the_compact_encode(self):
+        self.assertEqual(self.render(_free_mb=lambda p: 0.0).intermediate, "compact")
+
+    def test_a_failed_encode_redone_compact_reports_it(self):
+        from modules import render_backend as rb
+        real = rb._run_sequential
+        calls = {"n": 0}
+
+        def first_fails(tasks):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("an encode failed")
+            return real(tasks)
+        t = self.render(_run_sequential=first_fails)
+        self.assertEqual((t.mode, t.intermediate), ("fallback", "compact"))
+
 
 class CaptionTest(unittest.TestCase):
     SEGS = [{"start_s": 0.25, "end_s": 2.5}, {"start_s": 3.25, "end_s": 5.5}]

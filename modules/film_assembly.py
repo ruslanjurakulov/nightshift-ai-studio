@@ -122,6 +122,12 @@ class _LeaseLost(Exception):
     pass
 
 
+class AssemblyDisabled(RuntimeError):
+    """This worker's kill switch is off. Not a decision about the film: nothing is recorded, and the assembly stays
+    running until a worker with the switch on calls again or 0171's deadline ends it at 0. The film worker does not
+    begin an assembly while the switch is off (docs/studio/NIGHTSHIFT_AI.md)."""
+
+
 @dataclass(frozen=True)
 class AssemblyOutcome:
     ok: bool
@@ -271,13 +277,25 @@ class AssemblyStore:
         except Exception as e:  # noqa: BLE001 — requests' errors are not imported here; none of them is a decision
             raise DbUnavailable(f"{path}: {type(e).__name__}") from None
 
-    @staticmethod
-    def _word(r) -> str:
+    #: SQLSTATEs a database function refuses with (0036's creative_refuse: NS400/NS402/NS409/NS429; raise exception:
+    #: P0001; and 0171's not_found P0002, forbidden 42501, invalid 22023). A gateway's own 4xx (Kong's 429, a JWT 401,
+    #: PostgREST's PGRST* codes) is not a decision about this film (Sentinel R2).
+    _DB_CODES = ("P0001", "P0002", "42501", "22023")
+    _WORD = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+
+    @classmethod
+    def _word(cls, r) -> str:
+        """The database's machine word, or "" when the body is not a database function's refusal."""
         try:
             body = r.json()
         except ValueError:
             return ""
-        return str(body.get("message") or "") if isinstance(body, dict) else ""
+        if not isinstance(body, dict):
+            return ""
+        code, word = str(body.get("code") or ""), str(body.get("message") or "")
+        if not (code.startswith("NS") or code in cls._DB_CODES) or not cls._WORD.match(word):
+            return ""
+        return word
 
     def _get(self, table: str, params: Mapping[str, str]) -> List[dict]:
         r = self._send("GET", table, params=dict(params), headers=self.media._h())
@@ -304,11 +322,16 @@ class AssemblyStore:
             raise DbUnavailable(f"{name}: not JSON") from None
 
     def org_enabled(self, org_id: str) -> bool:
-        """S6's ``film_studio_on_for(org)``: True only when it exists and answers exactly true."""
+        """S6's ``film_studio_on_for(org)``: True only when it answers exactly true, False only when it answers
+        exactly false (the database's decision). Missing (its migration not applied), refused or any other answer is
+        no decision: :class:`DbUnavailable`, nothing is assembled and nothing recorded (Sentinel R3)."""
         try:
-            return self._call("film_studio_on_for", {"p_org": org_id}, missing_ok=True) is True
-        except DbRefused:
-            return False
+            answer = self._call("film_studio_on_for", {"p_org": org_id}, missing_ok=True)
+        except DbRefused as e:
+            raise DbUnavailable(f"film_studio_on_for refused ({e.word})") from None
+        if answer is True or answer is False:
+            return answer
+        raise DbUnavailable("film_studio_on_for did not answer true or false (is its migration applied?)")
 
     def heartbeat(self, segment_id: str, worker: str) -> bool:
         return self._call("film_heartbeat_segment", {"p_segment": segment_id, "p_worker": worker}) is True
@@ -472,6 +495,12 @@ def _transient_store_error(e: BaseException) -> bool:
     decision about this film (a quota refusal or a bad row is, and fails the assembly)."""
     if isinstance(e, (ConnectionError, TimeoutError)):
         return True
+    try:
+        import requests  # noqa: PLC0415 — media_library's REST layer lets requests' own errors through (Sentinel R1)
+        if isinstance(e, requests.exceptions.RequestException):
+            return True
+    except ImportError:
+        pass
     return isinstance(e, RuntimeError) and bool(_HTTP_5XX.search(str(e)))
 
 
@@ -505,7 +534,7 @@ def assemble_segment(segment: Mapping, *, worker_id: str, store: AssemblyStore, 
     try:
         # Before any row is read or anything rendered: switched off, or a workspace the database does not enable.
         if not enabled(deps.env):
-            raise AssemblyFailed("assembly_not_enabled", f"film assembly is switched off on this worker ({ENABLE_ENV})")
+            raise AssemblyDisabled(f"film assembly is switched off on this worker ({ENABLE_ENV})")
         if not store.org_enabled(org):
             raise AssemblyFailed("assembly_not_enabled", "Film Studio is not switched on for this workspace")
         try:
@@ -536,6 +565,9 @@ def assemble_segment(segment: Mapping, *, worker_id: str, store: AssemblyStore, 
                                segment=rec)
     except _LeaseLost:
         return _lost(store, seg_id, registered)
+    except AssemblyDisabled:
+        logger.warning("film assembly %s: switched off on this worker (%s); nothing recorded", seg_id, ENABLE_ENV)
+        raise
     except AssemblyFailed as e:
         return _fail(store, seg_id, worker_id, e.reason, e.detail, sha, registered)
     except DbUnavailable:
@@ -663,8 +695,7 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
         return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": False, "captions_asset_id": vtt_id}
 
     need = disk_needed_mb(width, height, cut.length_s)
-    work.parent.mkdir(parents=True, exist_ok=True)
-    have = deps.free_mb(work.parent)
+    have = deps.free_mb(Path(media_root))
     if have is None or have < need:
         have_txt = "unknown" if have is None else f"{have:.0f} MB"
         raise AssemblyFailed("disk_low", f"the media volume has {have_txt} free and this film needs {need:.0f} MB to "
@@ -689,7 +720,7 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
                              "server is less busy") from None
     except Exception as e:  # noqa: BLE001
         raise AssemblyFailed("render_failed", f"the render failed ({type(e).__name__}): retry the assembly") from None
-    if timings.mode == "fallback" or timings.intermediate == "compact":
+    if timings.mode == "fallback" or timings.intermediate != "fast":
         # render_backend redid the segments with the compact encode (a second lossy generation) instead of failing.
         raise AssemblyFailed("render_degraded", "the render could only finish with the lower-quality segment encode "
                              "(the disk filled up, or an encode failed): free space on the media volume and retry the "
@@ -774,6 +805,6 @@ def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> 
                              "above the 50 MB a review object may be: shorten the film")
 
 
-__all__ = ["AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "DbRefused", "DbUnavailable", "Deps", "REASONS",
+__all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "DbRefused", "DbUnavailable", "Deps", "REASONS",
            "assemble_segment", "cached_words", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
            "master_asset_id", "render_strict", "store_caption", "vtt_text", "whisper_words"]

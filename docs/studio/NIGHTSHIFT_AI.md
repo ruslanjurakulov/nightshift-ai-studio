@@ -50,13 +50,18 @@ the two, and it rests on 0171 as written.
    it calls `film_record_assembly(ok=true)`.
    **Every decision is recorded before the call returns.** A refusal, a bad output, or an unexpected exception (which is
    then re-raised) is recorded as `film_record_assembly(false)`, at 0. `outcome.recorded` says whether this call recorded.
-   Three things are not decisions and are not recorded:
-   - **The database did not answer.** No answer, a timeout, a 5xx, or a body that is not PostgREST's raises
-     `DbUnavailable` (a `ConnectionError`) and leaves the assembly `running`. That applies to the success record too, so
-     a paid, rendered film is never thrown away over a 503. Only a 4xx carrying the database's machine word is a refusal.
+   Four things are not decisions and are not recorded:
+   - **The database did not answer.** That covers no answer, a timeout (`requests`' own errors included, during
+     `register_asset` too), a 5xx, and a 4xx that is not a database function's refusal (Kong's 429, a JWT 401,
+     PostgREST's `PGRST*`). Each raises `DbUnavailable` (a `ConnectionError`) and leaves the assembly `running`, so a
+     paid, rendered film is never thrown away over a lost answer. A refusal is only a 4xx whose `code` is the
+     database's (`NS…`, `P0001`, `P0002`, `42501`, `22023`) and whose `message` is a machine word.
+   - **This worker's kill switch is off** (`AssemblyDisabled`). S6 does not begin an assembly while it is off; if
+     one is running, it waits for a worker with the switch on, or 0171's deadline ends it at 0.
    - **The lease was lost** (`outcome.reason = 'lease_lost'`: the new holder records).
    - **The assembly is not running** (`not_running`: there is nothing to record).
-   S6 settles a returned outcome, and on `DbUnavailable` it settles nothing and lets the next claim retry.
+   S6 settles a returned outcome. On `DbUnavailable` or `AssemblyDisabled` it settles nothing and lets the next claim
+   retry.
 4. **S6 then settles** with `film_settle_segment(seg, worker, 'completed' if outcome.ok else outcome.reason)`. The
    assembly never settles.
 5. **Crash recovery.** If S6 re-claims a segment whose `assembly_status` is still `running`, it calls `assemble_segment`
@@ -121,13 +126,15 @@ Each of these fails the assembly at 0, by name, with the remedy in `detail`. A s
 There is one allowlist, the database's: `public.film_studio_on_for(p_org uuid)` from S6's migration (0198 provisional).
 It is true when the global Film Studio switch and the organization's own `film_studio_enabled` are both on. It is STABLE
 and granted to service_role only. S6's claim already requires it; the assembly reads the same function again as a
-defensive check.
-- If the function is missing (its migration is not applied) or answers anything but `true`, the organization is not
-  assembled.
-- `NIGHTSHIFT_FILM_ASSEMBLY=on` is only an environment kill-switch on the worker, off by default. It is read before the
-  database.
-- A segment that either check stops is recorded as failed at 0 (`assembly_not_enabled`), before any row is read or
-  anything rendered, so its hold is released at the settle.
+defensive check, before any row is read or anything is rendered.
+- **An explicit `false`** is the database's decision. The assembly is recorded as failed at 0
+  (`assembly_not_enabled`), so its hold is released at the settle.
+- **A missing function** (its migration not applied), a refusal, or an answer that is not a plain boolean is no
+  answer. The call raises `DbUnavailable`: nothing is assembled and nothing is recorded (Sentinel R3), because a
+  configuration gap must not cost a paid film.
+- **`NIGHTSHIFT_FILM_ASSEMBLY=on`** is only the worker's kill switch, off by default. It is read before the database
+  (`AssemblyDisabled`, above), and is wired like every other media-worker switch: `deploy/.env.worker.example` and
+  `deploy_web.yml`'s worker env, from the repository variable of the same name.
 
 ### Money
 

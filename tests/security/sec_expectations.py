@@ -771,6 +771,8 @@ FUNCTIONS.update({
     "rights_acknowledgement_subjects": SERVICE,
     "rights_acknowledgement_missing_among": SERVICE,
     "film_acknowledgement_missing": SERVICE,
+    # 0200 (Film Studio P4b): the assembly worker's orphan discard, service role only (docs/studio/NIGHTSHIFT_AI.md).
+    "film_discard_unrecorded_assembly": SERVICE,
 })
 
 # Migration 0189 (get_job_status names the video, list_videos newest first): internal helpers, called inside the API functions.

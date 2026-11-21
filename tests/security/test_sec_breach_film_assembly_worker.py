@@ -78,7 +78,8 @@ def test_br_p4b_01_a_render_that_outlives_the_segment_leaves_no_unpaid_film_in_t
     film, seg = assembling(db, a, root)
     sid = seg["id"]
 
-    def slow(norm, resolver, out, **kw):
+    def slow(norm, resolver, out, timings=None, **kw):
+        timings.mode, timings.intermediate = "sequential", "fast"
         db.su("update public.film_segments set deadline_at = now() - interval '30 days' where id = %s", [sid])
         assert db.svc("select public.film_expire_segments()") >= 1
         Path(out).write_bytes(b"\0" * 64)
@@ -125,7 +126,8 @@ def test_br_p4b_02_a_stale_holder_finishing_late_does_not_fail_the_new_holders_p
     w1_in, w1_go = threading.Event(), threading.Event()
     w1 = {}
 
-    def w1_render(norm, resolver, out, **kw):
+    def w1_render(norm, resolver, out, timings=None, **kw):
+        timings.mode, timings.intermediate = "sequential", "fast"
         w1_in.set()
         assert w1_go.wait(30)
         Path(out).write_bytes(b"\0" * 64)
@@ -144,7 +146,8 @@ def test_br_p4b_02_a_stale_holder_finishing_late_does_not_fail_the_new_holders_p
     seg2 = db.claim("w-2")
     assert seg2 is not None and seg2["id"] == sid and seg2["worker_id"] == "w-2"
 
-    def w2_render(norm, resolver, out, **kw):
+    def w2_render(norm, resolver, out, timings=None, **kw):
+        timings.mode, timings.intermediate = "sequential", "fast"
         Path(out).write_bytes(b"\0" * 64)
         w1_go.set()
         t1.join(30)          # w-1 finishes (and cleans up) while w-2's render is still "running"
@@ -274,10 +277,13 @@ def test_an_enabled_org_id_in_the_handed_segment_does_not_assemble_another_works
 def test_the_kill_switch_off_assembles_nothing_even_for_an_enabled_org(db, a, root):
     film, seg = assembling(db, a, root)
     render.calls = 0
-    out = run(db, seg, root, env={})          # NIGHTSHIFT_FILM_ASSEMBLY unset; the org is enabled in the database
-    assert (out.ok, out.reason) == (False, "assembly_not_enabled") and render.calls == 0
-    assert Decimal(str(seg_json(db, seg["id"])["assembly"]["charged_credits"])) == 0
-    db.settle(seg["id"], out.reason)
+    # NIGHTSHIFT_FILM_ASSEMBLY unset; the org is enabled in the database. The worker's switch is not a decision about the film
+    # (Sentinel R3): nothing renders and nothing is recorded; the assembly stays running for a worker with the switch on.
+    with pytest.raises(fa.AssemblyDisabled):
+        run(db, seg, root, env={})
+    assert render.calls == 0
+    assert seg_json(db, seg["id"])["assembly"]["status"] == "running"
+    close(db, seg["id"], "w-1")
 
 
 def test_a_forged_worker_id_cannot_record_a_success_or_a_failure(db, a, root):
@@ -345,3 +351,25 @@ def test_a_take_file_or_a_pre_claim_file_cannot_be_handed_in_as_the_master(db, a
         assert "invalid_params" in str(e.value) or e.value.sqlstate in ("22023", "P0001"), str(e.value)
     assert segment_row(db, sid)[1] == "running"
     close(db, sid, "w-1")
+
+
+def test_sentinel_r1_a_lost_answer_from_register_asset_keeps_the_paid_film_and_charges_it_once(db, a, root):
+    """Sentinel R1: register_asset wrote the master, then the answer was lost (requests' ReadTimeout, an OSError, not the builtin
+    ConnectionError). That is no decision: nothing is recorded, the master stays live, and the retry records it without rendering."""
+    import requests
+    film, seg = assembling(db, a, root)
+
+    def lost_answer(path, **kw):
+        store_file(path, **kw)
+        raise requests.ReadTimeout("read timed out")
+    render.calls = 0
+    with pytest.raises(fa.DbUnavailable):
+        run(db, seg, root, store_file=lost_answer)
+    assert segment_row(db, seg["id"])[1] == "running"
+    masters = registered_masters(db, seg["id"])
+    assert len(masters) == 1 and masters[0][1], masters        # the paid film was not discarded
+    again = run(db, seg, root)
+    assert again.ok and again.rendered is False and render.calls == 1
+    settled = db.settle(seg["id"], "completed")
+    assert Decimal(str(settled["captured_credits"])) == takes_charged(db, seg["id"]) + ASSEMBLY_CHARGE
+    assert len(db.ledger(a.org, "capture")) == 1
