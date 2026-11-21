@@ -33,7 +33,9 @@ import {
   claimPending,
   createPending,
   finishPending,
+  markPendingUsed,
   pendingCookieOptions,
+  readPending,
   releasePending,
 } from "@/lib/server/connect-pending";
 import { CONNECT_PICK_PATH, PICK_FLAG, connectBackPath, safeImageUrl, type ConfirmResult } from "@/lib/connect-picker";
@@ -65,12 +67,15 @@ function cookiePath(platform: SocialPlatform): string {
 
 /** Where a refusal goes: the Channels page for the classic connect, the Add
  *  channel screen when the connect started there (`pick`). */
-function back(origin: string, platform: SocialPlatform, result: SocialResult, pick = false): NextResponse {
+function back(origin: string, platform: SocialPlatform, result: SocialResult, pick = false, spend = true): NextResponse {
   const to = pick && result !== "connected" ? connectBackPath(platform, result) : socialReturnPath(platform, result);
   const res = NextResponse.redirect(`${origin}${to}`);
-  // Spent either way: a nonce is good for one callback.
-  res.cookies.set(NONCE_COOKIE[platform], "", { path: cookiePath(platform), maxAge: 0 });
-  if (platform === "tiktok") res.cookies.set(PKCE_COOKIE, "", { path: cookiePath(platform), maxAge: 0 });
+  // Spent either way: a nonce is good for one callback -- but only by a callback that proved it holds it (spend).
+  // A request without the matching state is not this flow's callback and must not end the person's real one.
+  if (spend) {
+    res.cookies.set(NONCE_COOKIE[platform], "", { path: cookiePath(platform), maxAge: 0 });
+    if (platform === "tiktok") res.cookies.set(PKCE_COOKIE, "", { path: cookiePath(platform), maxAge: 0 });
+  }
   return res;
 }
 
@@ -126,11 +131,14 @@ export async function finishSocialConnect(request: Request, platform: SocialPlat
   // Started from the Add channel screen: hold the grant for the confirm screen.
   const pick = state?.pick === true;
 
-  // A declined consent comes back as ?error=... (both platforms).
-  if (url.searchParams.get("error")) return back(origin, platform, "denied", pick);
-
+  // State and nonce first, then anything else the query says. A cross-site link to this callback (?error=x, or a
+  // code with someone else's state) carries no matching state, so it is refused WITHOUT spending the person's nonce
+  // cookie: it cannot cancel a connect they have in progress (Breach L2, both platforms).
   if (!state || !nonceMatches(readCookie(request, NONCE_COOKIE[platform]), state.nonce))
-    return back(origin, platform, "bad_state", pick);
+    return back(origin, platform, "bad_state", pick, false);
+
+  // A declined consent comes back as ?error=... (both platforms), with our own state.
+  if (url.searchParams.get("error")) return back(origin, platform, "denied", pick);
 
   const org = await editableOrg();
   if (!org.ok) return back(origin, platform, org.result, pick);
@@ -263,11 +271,13 @@ export async function confirmSocialPick(opts: {
   /** What the screen the person pressed was showing; must be what is held. */
   platform: SocialPlatform;
   externalId?: string;
-}): Promise<{ result: ConfirmResult; platform: SocialPlatform | null }> {
+}): Promise<{ result: ConfirmResult; platform: SocialPlatform | null; remaining?: number }> {
   const org = await editableOrg();
   if (!org.ok) return { result: org.result === "unavailable" ? "unavailable" : "forbidden", platform: null };
-  const claim = claimPending(opts.handle, { userId: opts.userId, orgId: org.orgId });
-  if (!claim) return { result: "expired", platform: null };
+  const who = { userId: opts.userId, orgId: org.orgId };
+  const claim = claimPending(opts.handle, who);
+  // Held but taken by a confirm in flight (two taps, two tabs): one at a time, and the other is told so.
+  if (!claim) return { result: readPending(opts.handle, who) ? "busy" : "expired", platform: null };
   const handle = opts.handle as string;
   const grant = claim.grant;
   if (grant.platform === "youtube" || grant.platform !== opts.platform) {
@@ -280,10 +290,12 @@ export async function confirmSocialPick(opts: {
     finishPending(handle);
     return { result: "not_configured", platform: grant.platform };
   }
+  const used = new Set(grant.used ?? []);
+  const left = grant.profiles.filter((p) => !used.has(p.externalId));
   const profile = opts.externalId
-    ? grant.profiles.find((p) => p.externalId === opts.externalId)
-    : grant.profiles.length === 1
-      ? grant.profiles[0]
+    ? left.find((p) => p.externalId === opts.externalId)
+    : left.length === 1
+      ? left[0]
       : undefined;
   if (!profile) {
     // Not one of the offered accounts: refused, and the held grant stays for a real pick.
@@ -307,8 +319,10 @@ export async function confirmSocialPick(opts: {
       target: accountId ?? undefined,
       detail: { platform: grant.platform, result, flow: "pick", org_id: org.orgId, external_id: profile.externalId },
     });
-    if (result === "connected" || result === "forbidden") finishPending(handle);
-    else releasePending(handle);
+    // Connected: that account is used, and the hold stays (until its TTL) for the others of the same sign-in.
+    const remaining = result === "connected" ? markPendingUsed(handle, profile.externalId) : 0;
+    if (result === "forbidden") finishPending(handle);
+    else if (result !== "connected") releasePending(handle);
     const mapped: ConfirmResult =
       result === "connected"
         ? "connected"
@@ -319,7 +333,7 @@ export async function confirmSocialPick(opts: {
             : result === "needs_migration"
               ? "not_configured"
               : "failed";
-    return { result: mapped, platform: grant.platform };
+    return { result: mapped, platform: grant.platform, ...(result === "connected" ? { remaining } : {}) };
   } catch {
     releasePending(handle);
     return { result: "failed", platform: grant.platform };

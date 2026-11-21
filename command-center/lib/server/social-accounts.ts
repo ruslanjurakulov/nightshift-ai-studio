@@ -35,7 +35,7 @@ export async function storeSocialAccount(opts: {
   scopes: string[];
   accessExpiresIn: number | null;
   refreshExpiresIn: number | null;
-  /** Instagram only: the Unified Login connection's portfolio and configuration (0198 refuses an Instagram
+  /** Instagram only: the Unified Login connection's portfolio and configuration (0205 refuses an Instagram
    *  connect without them). */
   instagram?: InstagramConnection;
 }): Promise<{ result: SocialResult; accountId: string | null }> {
@@ -90,7 +90,7 @@ export async function revokeSocialAccount(
   }
 }
 
-/** 42703 (undefined column) / PGRST204: 0198's auth_flow is not there yet. */
+/** 42703 (undefined column) / PGRST204: 0205's auth_flow is not there yet. */
 function missingColumn(error: { code?: string | null } | null): boolean {
   return Boolean(error && (error.code === "42703" || error.code === "PGRST204"));
 }
@@ -98,7 +98,7 @@ function missingColumn(error: { code?: string | null } | null): boolean {
 type Read = { data: unknown; error: { code?: string | null } | null };
 
 /**
- * Read social_accounts with 0198's column, or, on a database that has not applied 0198, without it. The
+ * Read social_accounts with 0205's column, or, on a database that has not applied 0205, without it. The
  * fallback is honest rather than generous: with no auth_flow every Instagram row is an old Instagram Login
  * connection (coerceSocialAccounts reads the missing field as null), so it shows as "reconnect needed" instead of
  * hiding every account, TikTok's included, behind "not set up".

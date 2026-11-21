@@ -24,11 +24,20 @@ export function creativeDb(supabase: SupabaseClient): CreativeDb {
       return { data, error };
     },
     async readJob(id) {
-      const { data, error } = await supabase.from("creative_jobs").select(JOB_COLUMNS).eq("id", id).maybeSingle();
+      // A Film Studio take's job (payer 'film', migration 0171) is the film's record, not a generation the person made here: it
+      // has no price of its own (the film's hold pays) and is cancelled with its film, so it reads as missing, like 0198's
+      // cancel_creative_job answers it.
+      const { data, error } = await supabase
+        .from("creative_jobs")
+        .select(JOB_COLUMNS)
+        .eq("id", id)
+        .neq("payer", "film")
+        .maybeSingle();
       return { data, error };
     },
     async listJobs(orgId, limit, capabilities) {
-      let query = supabase.from("creative_jobs").select(JOB_COLUMNS).eq("org_id", orgId);
+      // Never a film take's job: it would read as a 0-credit generation (rule 5) and offer a Cancel that is not the person's.
+      let query = supabase.from("creative_jobs").select(JOB_COLUMNS).eq("org_id", orgId).neq("payer", "film");
       // A Studio desk asks for its own tools: filtered in the query, so its newest
       // jobs are not crowded out of the page by another desk's.
       if (capabilities && capabilities.length > 0) query = query.in("capability", [...capabilities]);
@@ -43,6 +52,9 @@ export function creativeDb(supabase: SupabaseClient): CreativeDb {
         .select("started_at,finished_at")
         .eq("org_id", orgId)
         .eq("status", "completed")
+        // Not a film take's job: its time is not one generation's. A narration voices every scene in one job, and a clip's job
+        // runs on through the last-frame extraction and the library store, so either would stretch this model's estimate.
+        .neq("payer", "film")
         .not("started_at", "is", null)
         .not("finished_at", "is", null)
         .or(`routed_model.eq."${model}",and(routed_model.is.null,requested_model.eq."${model}")`)

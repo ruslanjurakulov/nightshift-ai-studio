@@ -2587,7 +2587,7 @@ export const en = {
       no_account: "{platform} did not return an account for this sign-in. Nothing was stored.",
       exchange_rejected: "{platform} rejected the sign-in code. Try connecting again.",
       unavailable: "Could not check your organization. Nothing was stored — try again.",
-      needs_migration: "{platform} needs a database update on this deployment (migration 0198) before it can be connected. Nothing was stored.",
+      needs_migration: "{platform} needs a database update on this deployment (migration 0205) before it can be connected. Nothing was stored.",
       failed: "Connecting failed. Nothing was stored — try again.",
     },
   },

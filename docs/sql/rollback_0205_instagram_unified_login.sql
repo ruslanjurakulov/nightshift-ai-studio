@@ -1,13 +1,15 @@
--- rollback_0198_instagram_unified_login.sql — takes migration 0198 (Instagram through Unified Login) out.
+-- rollback_0205_instagram_unified_login.sql — takes migration 0205 (Instagram through Unified Login) out.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK: 0028's store_social_account, verbatim, with its grant. The Command Center then answers an Instagram
---   connect with "needs a database update (0198)" (0028 refuses the auth_flow / config_id keys), and stores nothing.
+-- WHAT COMES BACK: 0028's store_social_account and 0042's api_list_connected_accounts, verbatim, with their grants. The Command Center then answers an Instagram
+--   connect with "needs a database update (0205)" (0028 refuses the auth_flow / config_id keys), and stores nothing.
 -- WHAT IS KEPT: the three columns and their values (auth_flow, client_business_id, config_id). They are ids, not secrets;
 --   dropping them would turn every Unified Login connection back into one that reads "reconnect needed". Drop them by
 --   hand only if you mean exactly that.
+-- REDEPLOYING the old Command Center after this rollback leaves auth_flow = 'unified_login' on the rows reconnected through
+--   Unified Login: the old worker would then use those tokens on graph.instagram.com and fail until a 190 marks them expired.
 --
--- 0. REFUSES (changes nothing) if store_social_account is not 0198's body.
+-- 0. REFUSES (changes nothing) if store_social_account is not 0205's body.
 
 begin;
 set local lock_timeout = '5s';
@@ -16,8 +18,13 @@ do $$
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = to_regprocedure('public.store_social_account(uuid, text, text, text, jsonb)'))
-     is distinct from '98389e1ed76eaad14a6a64059dbb130d' then
-    raise exception 'rollback_0198: store_social_account is not 0198''s body; read the live body first';
+     is distinct from '4971ea1fb121bdfb0eb6b94f1954ca57' then
+    raise exception 'rollback_0205: store_social_account is not 0205''s body; read the live body first';
+  end if;
+  if to_regprocedure('public.api_list_connected_accounts(text, text)') is not null
+     and (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+           where oid = 'public.api_list_connected_accounts(text, text)'::regprocedure) is distinct from '0e31510702e902f7f03fe9816dd2b5fd' then
+    raise exception 'rollback_0205: api_list_connected_accounts is not 0205''s body; read the live body first';
   end if;
 end $$;
 
@@ -155,12 +162,55 @@ $$;
 revoke all on function public.store_social_account(uuid, text, text, text, jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.store_social_account(uuid, text, text, text, jsonb) to authenticated;
 
+do $outer$
+begin
+  if to_regprocedure('public.api_list_connected_accounts(text, text)') is null then
+    return;
+  end if;
+  execute $ddl$
+create or replace function public.api_list_connected_accounts(p_key_hash text, p_request_id text default null) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx jsonb := public.api_begin(p_key_hash, 'accounts.list', p_request_id);
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    return public.api_finish(ctx, public.api_ok(jsonb_build_object('accounts',
+      coalesce((select jsonb_agg(jsonb_build_object('platform', 'youtube', 'channel_id', c.channel_id,
+                  'name', coalesce(nullif(c.credential_ref ->> 'youtube_title', ''), c.name),
+                  'connected', public.publish_channel_connected(c.channel_id)) order by c.channel_id)
+                  from public.channels c where c.org_id = (ctx ->> 'org_id')::uuid), '[]'::jsonb)
+      || coalesce((select jsonb_agg(jsonb_build_object('platform', s.platform, 'account_id', s.id,
+                  'name', coalesce(s.display_name, s.username, s.platform), 'username', s.username,
+                  'connected', s.status = 'connected') order by s.platform, s.created_at)
+                  from public.social_accounts s
+                 where s.org_id = (ctx ->> 'org_id')::uuid and s.status <> 'revoked'), '[]'::jsonb))));
+  exception when others then
+    -- Only this block is undone: the request stays counted and is logged (P6).
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+$ddl$;
+  execute 'revoke all on function public.api_list_connected_accounts(text, text) from public, anon, authenticated, service_role';
+  execute 'grant execute on function public.api_list_connected_accounts(text, text) to anon';
+end
+$outer$;
+
 do $$
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = 'public.store_social_account(uuid, text, text, text, jsonb)'::regprocedure)
      is distinct from 'ac6b096b2d1eb2db6af1f695b797d173' then
-    raise exception 'rollback_0198 end state: store_social_account is not 0028''s body';
+    raise exception 'rollback_0205 end state: store_social_account is not 0028''s body';
+  end if;
+  if to_regprocedure('public.api_list_connected_accounts(text, text)') is not null
+     and (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+           where oid = 'public.api_list_connected_accounts(text, text)'::regprocedure) is distinct from '84514536a7fb15db21bae3c735de942b' then
+    raise exception 'rollback_0205 end state: api_list_connected_accounts is not 0042''s body';
   end if;
 end $$;
 

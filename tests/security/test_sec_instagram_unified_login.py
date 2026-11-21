@@ -1,4 +1,4 @@
-"""Migration 0198 (Instagram API with Unified Login) against a real Postgres.
+"""Migration 0205 (Instagram API with Unified Login) against a real Postgres.
 
 What must hold:
 * an Instagram connect is a Unified Login one with its configuration id, or it is refused (an old Instagram Login token
@@ -88,7 +88,7 @@ def test_another_org_connecting_the_same_account_gets_its_own_row_and_never_touc
 
 
 def test_an_old_instagram_login_row_is_kept_as_it_was(conn, sc):
-    # The lab's seeded rows stand for connections made before 0198: still there, still 'connected' in the table, and
+    # The lab's seeded rows stand for connections made before 0205: still there, still 'connected' in the table, and
     # marked only by the absence of 'unified_login' (the Command Center shows "reconnect needed"; the worker refuses).
     with as_superuser(conn, commit=False) as s:
         rows = s.rows("select auth_flow, config_id, client_business_id, status from public.social_accounts "
@@ -114,3 +114,28 @@ def test_anon_and_the_browser_cannot_read_a_token_or_widen_the_grant(conn, sc):
             "has_table_privilege('authenticated', 'public.social_accounts', 'UPDATE'), "
             "has_table_privilege('authenticated', 'public.social_account_secrets', 'SELECT')")[0]
     assert grants == (False, False, False)
+
+
+def test_the_public_api_reports_an_old_instagram_row_as_not_connected_and_a_unified_one_as_connected(conn, sc):
+    """Lens M1: api_list_connected_accounts (0042's body) said connected = status = 'connected', so the public API and the
+    MCP tools called an old Instagram Login row connected. 0205's hunk: an Instagram row is connected only with
+    auth_flow = 'unified_login'. TikTok is unchanged."""
+    from sec_db import ANON
+
+    def listed():
+        with acting(conn, ANON) as s:
+            out = s.run("select public.api_list_connected_accounts(%s, null)", [sc.bob.api_key_hash])
+        assert out.ok, out
+        body = out.rows[0][0]
+        accounts = (body.get("data") or body).get("accounts") if isinstance(body, dict) else None
+        assert isinstance(accounts, list), body
+        return {a["account_id"]: a["connected"] for a in accounts if a.get("account_id")}
+
+    assert listed()[sc.bob.social_account] is False
+    with as_superuser(conn, commit=False) as s:
+        s.rows("update public.social_accounts set auth_flow = 'unified_login', config_id = '987654321' where id = %s returning 1",
+               [sc.bob.social_account])
+        out = s.run("select public.api_list_connected_accounts(%s, null)", [sc.bob.api_key_hash])
+        body = out.rows[0][0]
+        accounts = (body.get("data") or body).get("accounts")
+        assert {a["account_id"]: a["connected"] for a in accounts if a.get("account_id")}[sc.bob.social_account] is True

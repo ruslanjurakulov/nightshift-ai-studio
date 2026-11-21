@@ -37,7 +37,7 @@ export const connectPickerEn = {
     exchange_rejected: "The sign-in code was rejected. Try connecting again.",
     unavailable: "Could not check your workspace. Nothing was added. Try again.",
     expired: "That sign-in has expired. Connect again.",
-    needs_migration: "This server's database needs an update (migration 0198) before {platform} can be connected. Nothing was added.",
+    needs_migration: "This server's database needs an update (migration 0205) before {platform} can be connected. Nothing was added.",
     failed: "Connecting failed. Nothing was added. Try again.",
   },
   pick: {
@@ -66,7 +66,8 @@ export const connectPickerEn = {
     switchHint: "{platform} connects the account you are signed in to there. To use a different one, switch accounts on {platform} first.",
     instagramTitle: "Choose your Instagram account",
     instagramLead: "These are the Instagram professional accounts you shared on Facebook's screen. Pick the one to add; nothing is saved until you do.",
-    instagramAgain: "To add another account, connect again: each confirm adds one.",
+    instagramAgain: "Each press adds one account. The others stay on this list, so you can add them from this same sign-in for 10 minutes, without signing in to Facebook again.",
+    addedOne: "Account added. Add another from the list, or open Channels.",
     instagramSwitchHint: "To use another business portfolio or account, connect again and choose it on Facebook's screen.",
     socialListLabel: "{platform} accounts on this sign-in",
     expiredTitle: "This sign-in has expired",

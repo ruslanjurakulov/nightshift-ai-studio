@@ -51,7 +51,8 @@ export default async function ConnectPickPage() {
       view = {
         platform,
         expiresAt: held.expiresAt,
-        accounts: grant.profiles.map((p) => ({
+        // Accounts already confirmed from this sign-in leave the list (connect-pending markPendingUsed).
+        accounts: grant.profiles.filter((p) => !(grant.used ?? []).includes(p.externalId)).map((p) => ({
           externalId: p.externalId,
           name: accountLabel({ display_name: p.displayName, username: p.username, external_id: p.externalId }),
           username: p.username,

@@ -1309,7 +1309,7 @@ class DarkMeansUnreachable(unittest.TestCase):
 
 
 class PageReelsPlanIsAPlanOnly(unittest.TestCase):
-    """The Page Reels connect is planned, not built (migration 0198's PR): the permissions it would ask for are pinned,
+    """The Page Reels connect is planned, not built (migration 0205's PR): the permissions it would ask for are pinned,
     it would read its OWN app env names (one Meta app for both use cases is unverified), and nothing reads them yet."""
 
     def test_graph_version_matches_instagram(self):

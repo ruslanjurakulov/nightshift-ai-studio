@@ -446,7 +446,6 @@ export const uz: LegalTexts = {
           {
             list: [
               "Meta Business Settings’da ([business.facebook.com/settings](https://business.facebook.com/settings)) «Integrations» → «Connected apps»ni oching, Nightshift’ni tanlang va olib tashlang.",
-              "Yoki Instagram yoki Facebook sozlamalarida akkauntingizga ulangan ilovalar orasidan Nightshift’ni olib tashlang.",
             ],
           },
           "Shu daqiqadan Nightshift akkaunt uchun saqlagan token ishlamay qoladi va Nightshift unga endi joylay olmaydi ham, uni oʻqiy olmaydi ham.",

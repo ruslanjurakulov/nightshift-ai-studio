@@ -138,10 +138,17 @@ class Db:
                     [org, u, f"{role}{n}@money.lab", role])
         if credits:
             self.su("select public.grant_credits(%s, %s, 'test')", [org, credits])
+        self.film_org_on(org)
         o = Org(org, *people)
         if image:
             o.image = self.asset(org)
         return o
+
+    def film_org_on(self, org):
+        """0198: Film Studio is switched on per organization too (default off), the way the owner does it from the SQL editor. A
+        database without 0198 has no such switch, and the platform's switch alone decides there."""
+        if self.su("select to_regprocedure('public.set_org_film_studio_enabled(uuid, boolean)') is not null")[0][0]:
+            assert self.su("select public.set_org_film_studio_enabled(%s, true)", [org])[0][0]["ok"] is True
 
     def key(self) -> str:
         self.keys += 1
@@ -813,7 +820,9 @@ def test_two_films_at_once_are_refused_by_the_default_limit_and_the_cap_refuses_
     db.quoted_start(o, f1)
     assert [r["reason"] for r in db.quote(o.editor, f2)["blocked_by"]] == ["limit_reached", "run_slots_full"]
     assert refused(db.start(o.admin, f2, q2)) == ("limit_reached", "NS400")
-    db.su("insert into public.org_film_settings (org_id, max_credits_per_film, max_active_films) values (%s, 48, 2)", [o.org])
+    db.su("insert into public.org_film_settings (org_id, max_credits_per_film, max_active_films) values (%s, 48, 2) "
+          "on conflict (org_id) do update set max_credits_per_film = excluded.max_credits_per_film, "
+          "max_active_films = excluded.max_active_films", [o.org])
     assert refused(db.start(o.admin, f2, q2)) == ("cap_exceeded", "NS400")
     db.su("update public.org_film_settings set max_credits_per_film = 49 where org_id = %s", [o.org])
     # The plan's one parallel run (0034) is the film already running: reserve_credits refuses the second hold.
@@ -1035,7 +1044,14 @@ def test_the_files_a_lost_take_registered_are_not_kept_in_the_library(db, a):
         assert db.su("select status, charge_basis from public.film_takes where id = %s", [clip])[0] == ("failed", "worker_lost_not_charged")
         assert db.su("select deleted_at is not null from public.media_assets where id = %s", [made])[0][0] is True
     finally:
-        db.su("delete from public.creative_jobs where id = %s", [job])  # P3 writes these; the lab keeps none (the rollback test)
+        # P3 writes these; the lab keeps none (the rollback test). Since 0198 ending the take ends its job, which logs an event:
+        # the append-only trigger is lifted inside this one transaction only, the way the owner erases (docs/FILM_STUDIO.md).
+        with psycopg.connect(db.dsn, autocommit=False) as c:
+            c.execute("alter table public.creative_job_events disable trigger creative_job_events_append_only")
+            c.execute("delete from public.creative_job_events where job_id = %s", [job])
+            c.execute("alter table public.creative_job_events enable trigger creative_job_events_append_only")
+            c.execute("delete from public.creative_jobs where id = %s", [job])
+            c.commit()
 
 
 def test_a_rejected_result_handed_in_again_answers_as_its_rejection(db, a):

@@ -88,7 +88,7 @@ ENV = {"TIKTOK_CLIENT_KEY": "k", "TIKTOK_CLIENT_SECRET": "s"}
 
 
 class InstagramUnifiedLoginTokenTests(unittest.TestCase):
-    """Unified Login (0198): a Business Integration System User token that does not expire by default and has no
+    """Unified Login (0205): a Business Integration System User token that does not expire by default and has no
     refresh endpoint. Nothing is ever called to refresh it; only a stated expiry that has passed stops it."""
 
     def test_no_expiry_stated_is_used_as_is_and_nothing_is_called(self):

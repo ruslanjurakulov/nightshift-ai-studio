@@ -55,6 +55,8 @@ const IG_AUTHORIZE = "https://www.facebook.com/dialog/oauth";
 const IG_GRAPH = `https://graph.facebook.com/${INSTAGRAM_GRAPH_VERSION}`;
 /** The most IG accounts one connection is read for: a hostile or odd answer cannot fill the server's memory. */
 const IG_MAX_ACCOUNTS = 50;
+/** The most pages of /me/assigned_instagram_accounts followed (a paging loop cannot run for ever). */
+const IG_MAX_PAGES = 10;
 /** A Meta id: digits only (the configuration id, the business portfolio id, an IG account id). */
 const META_ID_RE = /^[0-9]{1,64}$/;
 const TT_AUTHORIZE = "https://www.tiktok.com/v2/auth/authorize/";
@@ -299,22 +301,41 @@ function metaGet(path: string, fields: string, accessToken: string): Promise<Res
  *  `no_account` (the person picked none, or the portfolio has none). */
 export async function fetchInstagramAccounts(accessToken: string): Promise<InstagramAccounts> {
   const me = await jsonOrThrow(await metaGet("me", "client_business_id", accessToken));
-  const biz = me.client_business_id != null ? String(me.client_business_id) : "";
-  const list = await jsonOrThrow(await metaGet("me/assigned_instagram_accounts", "id,username", accessToken));
-  const data = Array.isArray(list.data) ? list.data : [];
+  const biz = typeof me.client_business_id === "string" ? me.client_business_id : "";
   const accounts: SocialProfile[] = [];
   const seen = new Set<string>();
-  for (const raw of data) {
-    if (!raw || typeof raw !== "object") continue;
-    const r = raw as Record<string, unknown>;
-    const externalId = r.id != null ? String(r.id) : "";
-    if (!META_ID_RE.test(externalId) || seen.has(externalId)) continue;
-    seen.add(externalId);
-    accounts.push({ externalId, username: cut(r.username, 100), displayName: null, avatarUrl: null });
-    if (accounts.length >= IG_MAX_ACCOUNTS) break;
+  let page = await jsonOrThrow(await metaGet("me/assigned_instagram_accounts", "id,username", accessToken));
+  for (let pages = 1; ; pages++) {
+    const data = Array.isArray(page.data) ? page.data : [];
+    for (const raw of data) {
+      if (!raw || typeof raw !== "object") continue;
+      const r = raw as Record<string, unknown>;
+      // A JSON string only: an IG id is 17+ digits, which a JSON number cannot hold exactly (Breach I3).
+      const externalId = typeof r.id === "string" ? r.id : "";
+      if (!META_ID_RE.test(externalId) || seen.has(externalId)) continue;
+      seen.add(externalId);
+      accounts.push({ externalId, username: cut(r.username, 100), displayName: null, avatarUrl: null });
+      if (accounts.length >= IG_MAX_ACCOUNTS) break;
+    }
+    // Meta pages the list (paging.next, a full URL). Followed only on graph.facebook.com over https, so an answer
+    // cannot send the token anywhere else, and only until the cap.
+    const next = nextPage(page.paging);
+    if (!next || accounts.length >= IG_MAX_ACCOUNTS || pages >= IG_MAX_PAGES) break;
+    page = await jsonOrThrow(await fetch(next, { cache: "no-store" }));
   }
   if (accounts.length === 0) throw new SocialOAuthError("no_account");
   return { clientBusinessId: META_ID_RE.test(biz) ? biz : null, accounts };
+}
+
+function nextPage(paging: unknown): URL | null {
+  const raw = paging && typeof paging === "object" ? (paging as Record<string, unknown>).next : null;
+  if (typeof raw !== "string" || raw.length > 4096) return null;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" && u.host === "graph.facebook.com" && !u.username && !u.password ? u : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface TiktokGrant {

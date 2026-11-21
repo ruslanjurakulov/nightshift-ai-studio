@@ -2569,7 +2569,7 @@ export const uz: Dictionary = {
       no_account: "{platform} bu kirish uchun akkaunt qaytarmadi. Hech narsa saqlanmadi.",
       exchange_rejected: "{platform} kirish kodini rad etdi. Qayta ulab koʻring.",
       unavailable: "Tashkilotingizni tekshirib boʻlmadi. Hech narsa saqlanmadi — qayta urinib koʻring.",
-      needs_migration: "{platform}ni ulash uchun bu serverda maʼlumotlar bazasini yangilash kerak (0198-migratsiya). Hech narsa saqlanmadi.",
+      needs_migration: "{platform}ni ulash uchun bu serverda maʼlumotlar bazasini yangilash kerak (0205-migratsiya). Hech narsa saqlanmadi.",
       failed: "Ulash muvaffaqiyatsiz. Hech narsa saqlanmadi — qayta urinib koʻring.",
     },
   },

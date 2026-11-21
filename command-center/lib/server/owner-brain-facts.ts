@@ -6,7 +6,10 @@ import { readRunway } from "@/lib/server/owner-runway";
 import { HISTORY_FROM } from "@/lib/owner-analytics/kpis";
 import { churn, mrrAt, summarize, type Amount } from "@/lib/owner-analytics/money";
 import { providerRunways } from "@/lib/owner-analytics/runway";
-import { paymentPlan, PLAN_DAYS, type PaymentPlan } from "@/lib/owner-analytics/payment-plan";
+import { paymentPlan, PLAN_DAYS } from "@/lib/owner-analytics/payment-plan";
+import type { Fact, OwnerFacts } from "@/lib/owner-console/facts-types";
+
+export type { Fact, OwnerFacts };
 
 /**
  * The owner's facts for Nightshift Brain: one compact JSON object about the whole system, built on the server for the platform
@@ -34,7 +37,6 @@ export class SecondFactorRequiredError extends Error {
   }
 }
 
-export type Fact<T> = { state: "measured" | "estimated"; value: T; as_of: string } | { state: "unknown"; why: string };
 
 const DAY = 86_400_000;
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -60,37 +62,6 @@ async function rpcJson(name: "owner_brain_people" | "owner_brain_health"): Promi
   return { state: "measured", value: doc, as_of: typeof doc.as_of === "string" ? doc.as_of : new Date().toISOString() };
 }
 
-export interface OwnerFacts {
-  version: 1;
-  as_of: string;
-  people: Fact<Record<string, unknown>>;
-  health: Fact<Record<string, unknown>>;
-  revenue: Fact<{
-    net_before_fees_7d: Fact<number>;
-    net_before_fees_30d: Fact<number>;
-    sales_30d: number;
-    refunds_30d: number;
-    disputes_30d: number;
-    paying_workspaces_30d: number;
-    mrr: Fact<number>;
-    monthly_churn_30d: Fact<number>;
-    other_currency_payments_30d: number;
-    note: string;
-  }>;
-  providers: Fact<{
-    plan: PaymentPlan;
-    providers: Array<{
-      id: string;
-      name: string;
-      status: string;
-      left: Fact<number>;
-      unit: string;
-      per_day_14d: Fact<number>;
-      runs_out_on: string | null;
-      top_up_url: string | null;
-    }>;
-  }>;
-}
 
 /** The owner's facts. Throws OwnerOnlyError for anyone but the platform owner — before anything is read. */
 export const buildOwnerFacts = cache(async (nowMs: number = Date.now()): Promise<OwnerFacts> => {
@@ -101,7 +72,9 @@ export const buildOwnerFacts = cache(async (nowMs: number = Date.now()): Promise
   const supabase = await createClient();
   if (supabase) {
     const { data: aalOk, error: aalError } = await supabase.rpc("admin_aal_ok");
-    if (aalError || aalOk !== true) throw new SecondFactorRequiredError();
+    // A failed check is "couldn't check, retry", not "verify your code": an owner who already verified must not be sent in a loop.
+    if (aalError) throw new Error("second factor check failed");
+    if (aalOk !== true) throw new SecondFactorRequiredError();
   }
   const asOf = new Date(nowMs).toISOString();
   const tomorrow = new Date(nowMs + DAY).toISOString();
@@ -135,6 +108,7 @@ export const buildOwnerFacts = cache(async (nowMs: number = Date.now()): Promise
         mrr: m.usd === null ? { state: "unknown", why: "no subscription yet" } : m.incomplete ? { state: "unknown", why: "a subscription payment had no amount, another currency or a refund of unknown size" } : { state: "measured", value: r2(m.usd), as_of: asOf },
         monthly_churn_30d: c.rate === null ? { state: "unknown", why: `fewer than 5 subscribers at the start of the window (${c.base})` } : { state: "measured", value: r2(c.rate), as_of: asOf },
         other_currency_payments_30d: s30.otherCurrency.reduce((n, o) => n + o.count, 0),
+        truncated: money.truncated,
         note: `USD, net of refunds and disputes, before provider fees (not stored). Internal and demo workspaces excluded.${money.truncated ? " The read was cut: figures may be understated." : ""}`,
       },
     };

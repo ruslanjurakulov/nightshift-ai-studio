@@ -50,7 +50,7 @@ Platform references (official docs):
 
 * Instagram API with Unified Login — content publishing (Reels), on
   graph.facebook.com with the connection's Business Integration System User
-  token (migration 0198; Scout, Meta's docs read 2026-11-21):
+  token (migration 0205; Scout, Meta's docs read 2026-11-21):
   https://developers.facebook.com/docs/instagram-platform/content-publishing/
   GET /<IG_ID>/content_publishing_limit?fields=quota_usage,config FIRST: Meta's
   own pages disagree on the 24-hour limit (50 or 100), so it is read, never
@@ -166,7 +166,7 @@ IG_REASON_LIMIT_REACHED = "publish_limit_reached"
 REASON_PARTIAL = "published_partially"
 IG_REASONS = (IG_REASON_RECONNECT, IG_REASON_PERMISSION, IG_REASON_LIMIT_UNREADABLE, IG_REASON_LIMIT_REACHED,
               REASON_PARTIAL)
-#: The auth_flow a usable Instagram row carries (0198).
+#: The auth_flow a usable Instagram row carries (0205).
 IG_AUTH_FLOW = "unified_login"
 _IG_PERMISSION_CODES = {10} | set(range(200, 300))
 
@@ -264,8 +264,8 @@ class PublishStore:
         return rows[0] if rows and isinstance(rows[0], dict) else {}
 
     def social_account_flow(self, account_id: str) -> Optional[str]:
-        """The account's ``auth_flow`` (migration 0198): 'unified_login' for an Instagram connection made through Unified
-        Login, None for an old Instagram Login one -- and None when the database has no such column yet (before 0198
+        """The account's ``auth_flow`` (migration 0205): 'unified_login' for an Instagram connection made through Unified
+        Login, None for an old Instagram Login one -- and None when the database has no such column yet (before 0205
         nothing else could be stored). Any other failure raises: an Instagram token is not used on a guess."""
         r = self.http().get(f"{self.url}/rest/v1/social_accounts", params={
             "select": "auth_flow", "id": f"eq.{account_id}", "limit": "1"}, headers=self._h(), timeout=self._timeout)

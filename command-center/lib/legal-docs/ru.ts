@@ -446,7 +446,6 @@ export const ru: LegalTexts = {
           {
             list: [
               "В настройках компании Meta ([business.facebook.com/settings](https://business.facebook.com/settings)) откройте «Интеграции» → «Подключённые приложения», выберите Nightshift и удалите его.",
-              "Или удалите Nightshift из приложений, подключённых к вашему аккаунту, в настройках Instagram или Facebook.",
             ],
           },
           "С этого момента токен, который Nightshift хранит для аккаунта, перестаёт работать, и Nightshift больше не может ни публиковать в аккаунт, ни читать его.",

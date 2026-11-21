@@ -241,6 +241,14 @@ describe("ConnectPicker: an Instagram business portfolio with several accounts",
       external_id: "17841400000000002",
     });
   });
+  it("after one of several is added, it stays on the pick screen, says so, and offers Channels (Lens M2)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, result: "connected", remaining: 1 }));
+    render(withI18n(<ConnectPicker view={ig()} />));
+    fireEvent.click(screen.getByRole("button", { name: tc.pick.confirm }));
+    await waitFor(() => expect(screen.getByText(tc.pick.addedOne)).toBeTruthy());
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: tc.pick.openChannels })).toBeTruthy();
+  });
   it.each(["en", "ru", "uz"] as const)("passes axe in %s", async (locale) => {
     const { container } = render(withI18n(<ConnectPicker view={ig()} />, locale));
     expect(await violations(container)).toEqual([]);

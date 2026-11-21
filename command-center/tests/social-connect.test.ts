@@ -149,6 +149,22 @@ describe("callback", () => {
     expect(loc.searchParams.get("social")).toBe("denied");
     expect(res.headers.getSetCookie().join("\n")).toMatch(/ig_oauth_nonce=;/);
   });
+  it.each(["instagram", "tiktok"] as const)(
+    "%s: a cross-site ?error= without our state is refused and does NOT clear the person's nonce (Breach L2)",
+    async (platform) => {
+      const cookie = `${platform === "instagram" ? "ig" : "tt"}_oauth_nonce=${NONCE}`;
+      const forged: Record<string, string>[] = [{ error: "access_denied" }, { error: "x", state: encodeSocialState({ org: ORG, nonce: "z".repeat(32) }) }];
+      for (const q of forged) {
+        const res = await finishSocialConnect(callback(platform, q, cookie), platform);
+        expect(location(res).searchParams.get("social")).toBe("bad_state");
+        expect(res.headers.getSetCookie().join("\n")).not.toMatch(/_oauth_nonce=;/);
+      }
+      // With our own state the decline is honoured, and the nonce is spent.
+      const ok = await finishSocialConnect(callback(platform, { error: "access_denied", state: good() }, cookie), platform);
+      expect(location(ok).searchParams.get("social")).toBe("denied");
+      expect(ok.headers.getSetCookie().join("\n")).toMatch(/_oauth_nonce=;/);
+    },
+  );
   it("refuses TikTok without the PKCE verifier cookie", async () => {
     const res = await finishSocialConnect(callback("tiktok", { code: "c", state: good() }, `tt_oauth_nonce=${NONCE}`), "tiktok");
     expect(location(res).searchParams.get("social")).toBe("bad_state");

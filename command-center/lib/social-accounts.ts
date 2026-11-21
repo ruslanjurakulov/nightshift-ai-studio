@@ -20,7 +20,7 @@ export function isSocialPlatform(v: unknown): v is SocialPlatform {
 
 export type SocialAccountStatus = "connected" | "expired" | "error" | "revoked";
 
-/** How an Instagram connection signed in (migration 0198). */
+/** How an Instagram connection signed in (migration 0205). */
 export type SocialAuthFlow = "unified_login" | null;
 
 /** One row of social_accounts, as RLS hands it to an organization member. */
@@ -38,7 +38,7 @@ export interface SocialAccount {
   connected_by_email: string | null;
   revoked_at: string | null;
   /** 'unified_login' for an Instagram connection made through Unified Login; null for TikTok, for an old
-   *  Instagram Login connection, and for every row while 0198 is not applied. */
+   *  Instagram Login connection, and for every row while 0205 is not applied. */
   auth_flow: SocialAuthFlow;
 }
 
@@ -46,8 +46,8 @@ export interface SocialAccount {
  *  is not shipped to a browser by accident. */
 export const SOCIAL_ACCOUNT_COLUMNS =
   "id, org_id, platform, external_id, username, display_name, avatar_url, status, scopes, connected_at, connected_by_email, revoked_at, auth_flow";
-/** The same without 0198's column, for a database that has not applied it yet. Every Instagram row read this
- *  way is an old Instagram Login connection (a Unified Login one cannot be stored before 0198). */
+/** The same without 0205's column, for a database that has not applied it yet. Every Instagram row read this
+ *  way is an old Instagram Login connection (a Unified Login one cannot be stored before 0205). */
 export const SOCIAL_ACCOUNT_COLUMNS_0028 =
   "id, org_id, platform, external_id, username, display_name, avatar_url, status, scopes, connected_at, connected_by_email, revoked_at";
 
@@ -171,7 +171,7 @@ export function parseSocialResult(raw: string | null | undefined): SocialResult 
 export function socialStoreErrorResult(error: { code?: string | null; message?: string | null }): SocialResult {
   if (isMissingFunction({ code: error.code ?? "", message: error.message ?? "" })) return "not_available";
   if (error.code === "42501") return "forbidden";
-  // 0028's store_social_account, before 0198: it refuses auth_flow / config_id as unknown keys. The remedy is
+  // 0028's store_social_account, before 0205: it refuses auth_flow / config_id as unknown keys. The remedy is
   // the migration, not another try.
   if (error.code === "22023" && (error.message ?? "").includes("meta has an unknown key")) return "needs_migration";
   return "failed";

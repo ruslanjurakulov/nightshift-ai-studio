@@ -23,9 +23,9 @@ yozuvi chiqadi — sahifa buzilmaydi.
 2. Supabase → **SQL Editor** → `supabase/migrations/0028_social_accounts.sql`
    faylining butun matnini qo'yib, **Run** bosing. Fayl oxiridagi "Verify"
    so'rovini ishga tushirsangiz, barcha ustunlar `true` bo'lishi kerak.
-3. Instagram (Unified Login) uchun: `supabase/migrations/0198_instagram_unified_login.sql`
+3. Instagram (Unified Login) uchun: `supabase/migrations/0205_instagram_unified_login.sql`
    ni ham xuddi shunday ishga tushiring (0028 dan keyin). Usiz Instagram ulash
-   "maʼlumotlar bazasini yangilash kerak (0198)" deb javob beradi va hech narsa
+   "maʼlumotlar bazasini yangilash kerak (0205)" deb javob beradi va hech narsa
    saqlamaydi.
 
 ---
@@ -91,20 +91,36 @@ Rasmiy hujjatlar (2026-11-21 da o'qilgan; ishlatishdan oldin qayta o'qing):
   **App roles → Roles → Add People**.
 - Ularning akkauntlariga haqiqiy Reels joylash ishlaydi.
 
-### Review (App Review) — hamma uchun ochish
+### App Review — hamma uchun ochish
 
-- **App Review → Permissions and features**: yuqoridagi beshta ruxsat uchun
-  **Advanced Access** so'rang (screencast: Nightshift'da ulash → video →
-  "Platformalarga joylash" → Instagram'da post).
+Configuration hozirgidek qoladi (development rejimi, faqat egasi uchun; beshta
+ruxsat — izohlar, xabarlar va statistika yo'l xaritasi uchun tanlangan). Kod
+ham shu beshtani kutadi. Lekin **review'ga yuboriladigan ro'yxat boshqa**: Meta
+faqat haqiqatan ishlatilayotgan ruxsatni tasdiqlaydi.
+
+**Birinchi (minimal) topshiriq — faqat ikkita ruxsat**, har biri o'zining haqiqiy
+foydalanish holati bilan:
+
+| Ruxsat | Nightshift'da nima qiladi (screencast'da ko'rsating) |
+|---|---|
+| `instagram_basic` | Foydalanuvchi Facebook ekranida bergan Instagram akkauntlari ro'yxatini ko'rsatadi (ulash → akkauntni tanlash ekrani). |
+| `instagram_content_publish` | Foydalanuvchi o'zi aniq yuborgan Reel'ni joylaydi ("Platformalarga joylash" → akkauntni belgilash → **Yuborish** → Instagram'da post). Avtomatik joylash yo'q. |
+
+- `instagram_manage_insights` — faqat Instagram statistikasini o'qiydigan ekran
+  chiqqandan keyin qo'shiladi (hozir bunday ekran yo'q).
+- `instagram_manage_comments` va `instagram_manage_messages` — keyingi alohida
+  topshiriqda, izohlar va xabarlar funksiyalari mavjud bo'lganda.
 - **Business verification** talab qilinishi mumkin.
-- Tasdiqlangach ilovani **Live** rejimiga o'tkazing va `INSTAGRAM_UNIFIED_ORGS`
-  cheklovini olib tashlash haqida alohida qaror qiling (kod o'zgarishi).
+- Tasdiqlangach, ilovani **Live** rejimiga o'tkazishdan **oldin** configuration
+  ruxsatlarini tasdiqlanganlarga qisqartiring (ledger'dagi "before Live" qatori).
+  Keyin `INSTAGRAM_UNIFIED_ORGS` cheklovini olib tashlash haqida alohida qaror
+  qiling (kod o'zgarishi).
 
 ### Eski ulanishlar
 
 - Eski "Instagram Login" bilan ulangan akkauntlar o'chirilmaydi, lekin ular
   **"Qayta ulash kerak"** deb ko'rinadi va ularga hech narsa joylanmaydi
-  (migratsiya `0198`). Har biri Instagram'ni qayta ulab, o'sha akkauntni
+  (migratsiya `0205`). Har biri Instagram'ni qayta ulab, o'sha akkauntni
   tanlashi kerak — shunda eski yozuv yangisiga aylanadi.
 
 ### Cheklovlar (bilib qo'ying)

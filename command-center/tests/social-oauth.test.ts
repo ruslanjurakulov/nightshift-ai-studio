@@ -162,6 +162,36 @@ describe("exchange errors never carry a token or body", () => {
     expect(urls.every((u) => u.origin === "https://graph.facebook.com")).toBe(true);
     f.mockRestore();
   });
+  it("accepts IG ids only as JSON strings: a number (which cannot hold 17 digits exactly) is dropped", async () => {
+    const f = vi.spyOn(globalThis, "fetch");
+    f.mockResolvedValueOnce(Response.json({ client_business_id: "555" }));
+    f.mockResolvedValueOnce(Response.json({ data: [{ id: 17841400000000001 }, { id: "17841400000000002" }] }));
+    const got = await mod.fetchInstagramAccounts("tok");
+    expect(got.accounts.map((a) => a.externalId)).toEqual(["17841400000000002"]);
+    f.mockRestore();
+  });
+  it("follows paging.next on graph.facebook.com only, up to the cap", async () => {
+    const f = vi.spyOn(globalThis, "fetch");
+    f.mockResolvedValueOnce(Response.json({ client_business_id: "555" }));
+    f.mockResolvedValueOnce(
+      Response.json({ data: [{ id: "17841400000000001" }], paging: { next: "https://graph.facebook.com/v27.0/me/assigned_instagram_accounts?after=A&access_token=tok" } }),
+    );
+    f.mockResolvedValueOnce(Response.json({ data: [{ id: "17841400000000002" }], paging: { next: "https://evil.example/steal?access_token=tok" } }));
+    const got = await mod.fetchInstagramAccounts("tok");
+    expect(got.accounts.map((a) => a.externalId)).toEqual(["17841400000000001", "17841400000000002"]);
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(f.mock.calls.every((c) => new URL(String(c[0])).host === "graph.facebook.com")).toBe(true);
+    f.mockRestore();
+    // A next link that is not https, or carries credentials, is not followed either.
+    for (const next of ["http://graph.facebook.com/v27.0/x", "https://u:p@graph.facebook.com/v27.0/x", "https://graph.facebook.com.evil.example/x"]) {
+      const g = vi.spyOn(globalThis, "fetch");
+      g.mockResolvedValueOnce(Response.json({}));
+      g.mockResolvedValueOnce(Response.json({ data: [{ id: "17841400000000001" }], paging: { next } }));
+      await mod.fetchInstagramAccounts("tok");
+      expect(g).toHaveBeenCalledTimes(2);
+      g.mockRestore();
+    }
+  });
   it("no assigned account is no_account; no portfolio id is null, not guessed", async () => {
     const f = vi.spyOn(globalThis, "fetch");
     f.mockResolvedValueOnce(Response.json({}));
@@ -226,7 +256,7 @@ describe("pure helpers", () => {
     expect(pure.socialStoreErrorResult({ code: "42501", message: "token abc" })).toBe("forbidden");
     expect(pure.socialStoreErrorResult({ code: "PGRST202" })).toBe("not_available");
     expect(pure.socialStoreErrorResult({ code: "22023" })).toBe("failed");
-    // 0028's store_social_account, before 0198: the remedy is the migration, not another try.
+    // 0028's store_social_account, before 0205: the remedy is the migration, not another try.
     expect(pure.socialStoreErrorResult({ code: "22023", message: "meta has an unknown key" })).toBe("needs_migration");
   });
 });

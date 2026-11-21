@@ -34,7 +34,7 @@ export const connectPickerUz: ConnectPickerDictionary = {
     exchange_rejected: "Kirish kodi rad etildi. Qayta ulab koʻring.",
     unavailable: "Ish maydoningizni tekshirib boʻlmadi. Hech narsa qoʻshilmadi. Qayta urining.",
     expired: "Bu kirish muddati tugadi. Qayta ulang.",
-    needs_migration: "{platform}ni ulashdan oldin bu server maʼlumotlar bazasini yangilash kerak (0198-migratsiya). Hech narsa qoʻshilmadi.",
+    needs_migration: "{platform}ni ulashdan oldin bu server maʼlumotlar bazasini yangilash kerak (0205-migratsiya). Hech narsa qoʻshilmadi.",
     failed: "Ulab boʻlmadi. Hech narsa qoʻshilmadi. Qayta urining.",
   },
   pick: {
@@ -63,7 +63,8 @@ export const connectPickerUz: ConnectPickerDictionary = {
     switchHint: "{platform} oʻsha yerda kirgan akkauntingizni ulaydi. Boshqasini ishlatish uchun avval {platform}’da akkauntni almashtiring.",
     instagramTitle: "Instagram akkauntingizni tanlang",
     instagramLead: "Bular Facebook ekranida ulashgan Instagram professional akkauntlaringiz. Qaysi birini qoʻshishni tanlang; tanlamaguningizcha hech narsa saqlanmaydi.",
-    instagramAgain: "Yana bir akkaunt qoʻshish uchun qayta ulang: har bir tasdiq bittasini qoʻshadi.",
+    instagramAgain: "Har bir bosish bitta akkaunt qoʻshadi. Qolganlari shu roʻyxatda qoladi: ularni 10 daqiqa ichida shu kirishdan, Facebook’ga qayta kirmasdan qoʻshishingiz mumkin.",
+    addedOne: "Akkaunt qoʻshildi. Roʻyxatdan yana birini qoʻshing yoki “Kanallar”ni oching.",
     instagramSwitchHint: "Boshqa biznes portfel yoki akkauntni ishlatish uchun qayta ulang va uni Facebook ekranida tanlang.",
     socialListLabel: "Bu kirishdagi {platform} akkauntlari",
     expiredTitle: "Kirish muddati tugadi",

@@ -460,7 +460,6 @@ export const en: LegalTexts = {
           {
             list: [
               "In Meta Business Settings ([business.facebook.com/settings](https://business.facebook.com/settings)), open Integrations → Connected apps, choose Nightshift and remove it.",
-              "Or remove Nightshift from the apps connected to your account in your Instagram or Facebook settings.",
             ],
           },
           "From that moment the token Nightshift holds for the account stops working, and Nightshift can no longer post to it or read it.",

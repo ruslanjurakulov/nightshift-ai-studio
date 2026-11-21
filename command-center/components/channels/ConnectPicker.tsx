@@ -39,6 +39,8 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
   const [cancelling, setCancelling] = useState(false);
   // The channel exists but its connection was not saved: nothing more to pick.
   const [done, setDone] = useState(false);
+  // One account of a several-account sign-in was added; the rest of the list stays to pick from.
+  const [addedOne, setAddedOne] = useState(false);
 
   const addPath = path("/channels/new");
 
@@ -66,8 +68,13 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "confirm", ...body }),
       });
-      const data = (await res.json().catch(() => ({}))) as { result?: ConfirmResult };
+      const data = (await res.json().catch(() => ({}))) as { result?: ConfirmResult; remaining?: unknown };
       const result = data.result;
+      if (result === "connected" && body.platform !== "youtube" && typeof data.remaining === "number" && data.remaining > 0) {
+        setAddedOne(true);
+        router.refresh();
+        return;
+      }
       if (result === "connected") {
         router.push(
           body.platform === "youtube"
@@ -196,8 +203,18 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
         ))}
       </ul>
 
+      {addedOne && (
+        <div className="flex flex-col items-start gap-2">
+          <p className="g2-ok" role="status">
+            {tp.addedOne}
+          </p>
+          <Link href={`${path("/channels")}?social=connected&platform=${encodeURIComponent(platform)}`} className="btn-quiet">
+            {tp.openChannels}
+          </Link>
+        </div>
+      )}
       {anyConnected && <p className="g2-note">{tp.socialAlready}</p>}
-      {many && <p className="g2-note">{tp.instagramAgain}</p>}
+      {(many || addedOne) && <p className="g2-note">{tp.instagramAgain}</p>}
       <p className="g2-note">
         {platform === "instagram" ? tp.instagramSwitchHint : fmt(tp.switchHint, { platform: platformName })}
       </p>

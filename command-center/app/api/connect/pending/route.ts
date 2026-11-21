@@ -35,9 +35,9 @@ const STATUS: Record<ConfirmResult, number> = {
 /** Answers after which the held authorisation is gone (or never will work). */
 const TERMINAL: ReadonlySet<ConfirmResult> = new Set(["connected", "created_not_connected", "expired", "forbidden"]);
 
-function answer(result: ConfirmResult, extra: Record<string, unknown> = {}) {
+function answer(result: ConfirmResult, extra: Record<string, unknown> = {}, keepHold = false) {
   const res = NextResponse.json({ ok: result === "connected" || result === "created_not_connected", result, ...extra }, { status: STATUS[result] });
-  if (TERMINAL.has(result)) res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0, secure: true });
+  if (TERMINAL.has(result) && !keepHold) res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0, secure: true });
   return res;
 }
 
@@ -91,7 +91,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
       externalId = id;
     }
     const out = await confirmSocialPick({ userId: user.id, handle, platform: body.platform, externalId });
-    return answer(out.result);
+    // Accounts of the same sign-in still to pick: the handle cookie stays, so the pick screen lists them.
+    const remaining = out.result === "connected" ? (out.remaining ?? 0) : 0;
+    return answer(out.result, out.result === "connected" ? { remaining } : {}, remaining > 0);
   }
   return NextResponse.json({ error: "bad_request" }, { status: 400 });
 });

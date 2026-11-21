@@ -55,7 +55,7 @@ export interface YoutubeGrant {
   language: string | null;
 }
 
-/** What an Instagram (Unified Login) connection stores beside its token (migration 0198). */
+/** What an Instagram (Unified Login) connection stores beside its token (migration 0205). */
 export interface InstagramConnection {
   /** The client's business portfolio id, or null when Meta returned none. */
   clientBusinessId: string | null;
@@ -74,6 +74,10 @@ export interface SocialGrant {
    *  business portfolio. The confirm names which one; the server checks it against this list. */
   profiles: SocialProfile[];
   instagram?: InstagramConnection;
+  /** The externalIds already confirmed from this hold (markPendingUsed). The hold lives on, until its TTL, for the
+   *  others: Meta's behaviour when the same portfolio is authorised a second time is unverified (it may end the first
+   *  token), so a person adds every account of one sign-in without signing in again. */
+  used?: string[];
 }
 
 export type PendingGrant = YoutubeGrant | SocialGrant;
@@ -173,6 +177,27 @@ export function claimPending(
 /** The confirm succeeded or can never succeed: the record (and its token) is gone. */
 export function finishPending(handle: string): void {
   records().delete(keyOf(handle));
+}
+
+/**
+ * One account of a held Instagram / TikTok grant was stored: mark it used and free the record for the next confirm.
+ * When nothing is left to pick the record is gone, as after finishPending. Returns how many accounts are still
+ * pickable. The TTL is not extended: the hold still ends ten minutes after the sign-in.
+ */
+export function markPendingUsed(handle: string, externalId: string): number {
+  const map = records();
+  const e = map.get(keyOf(handle));
+  if (!e || e.grant.platform === "youtube") {
+    map.delete(keyOf(handle));
+    return 0;
+  }
+  const used = new Set(e.grant.used ?? []);
+  used.add(externalId);
+  e.grant.used = [...used];
+  const left = e.grant.profiles.filter((p) => !used.has(p.externalId)).length;
+  if (left === 0) map.delete(keyOf(handle));
+  else e.busy = false;
+  return left;
 }
 
 /** The confirm failed in a way worth retrying: the record stays for another try. */

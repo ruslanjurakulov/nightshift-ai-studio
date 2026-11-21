@@ -139,7 +139,7 @@ describe("confirm", () => {
   }
   it("stores the held grant through the existing helper and audits it by the existing action", async () => {
     const handle = await held();
-    expect(await confirmSocialPick({ userId: "u1", handle, platform: "tiktok" })).toEqual({ result: "connected", platform: "tiktok" });
+    expect(await confirmSocialPick({ userId: "u1", handle, platform: "tiktok" })).toEqual({ result: "connected", platform: "tiktok", remaining: 0 });
     expect(s.stored[0]).toMatchObject({ orgId: ORG, platform: "tiktok", accessToken: "act.SECRET", refreshToken: "rft.SECRET" });
     expect(s.audits.map((a) => a.action)).toEqual(["social.tiktok.connect"]);
     expect(JSON.stringify(s.audits)).not.toMatch(/SECRET/);
@@ -174,8 +174,24 @@ describe("confirm", () => {
     expect(await confirmSocialPick({ userId: "u1", handle, platform: "instagram", externalId: "17841400000000002" })).toEqual({
       result: "connected",
       platform: "instagram",
+      // The other account of the same sign-in stays pickable (Lens M2).
+      remaining: 1,
     });
-    expect(s.stored).toEqual([
+    // It is listed, and only it: the used one is refused, the other connects with the same held token.
+    const after = pending.readPending(handle, { userId: "u1", orgId: ORG });
+    expect(after?.grant.platform === "instagram" && after.grant.used).toEqual(["17841400000000002"]);
+    expect((await confirmSocialPick({ userId: "u1", handle, platform: "instagram", externalId: "17841400000000002" })).result).toBe("not_in_list");
+    expect(await confirmSocialPick({ userId: "u1", handle, platform: "instagram", externalId: "17841400000000001" })).toMatchObject({
+      result: "connected",
+      remaining: 0,
+    });
+    expect(s.stored.map((x) => (x as { profile: { externalId: string }; accessToken: string }).profile.externalId)).toEqual([
+      "17841400000000002",
+      "17841400000000001",
+    ]);
+    expect(new Set(s.stored.map((x) => (x as { accessToken: string }).accessToken))).toEqual(new Set(["IGlong-SECRET"]));
+    expect(pending.readPending(handle, { userId: "u1", orgId: ORG })).toBeNull();
+    expect(s.stored.slice(0, 1)).toEqual([
       expect.objectContaining({
         platform: "instagram",
         accessToken: "IGlong-SECRET",
@@ -188,7 +204,7 @@ describe("confirm", () => {
     ]);
     expect(JSON.stringify(s.audits)).not.toMatch(/SECRET/);
   });
-  it("Instagram before 0198: the store's refusal reads as a setup gap with its remedy, not a generic failure", async () => {
+  it("Instagram before 0205: the store's refusal reads as a setup gap with its remedy, not a generic failure", async () => {
     const handle = await held("instagram");
     s.storeResult = "needs_migration";
     expect((await confirmSocialPick({ userId: "u1", handle, platform: "instagram" })).result).toBe("not_configured");
