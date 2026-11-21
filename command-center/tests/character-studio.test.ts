@@ -100,6 +100,8 @@ const POSTS = EVERY.slice(2);
 
 beforeEach(() => {
   process.env.NIGHTSHIFT_CHARACTER_STUDIO = "on";
+  // The likeness policy (lib/likeness-policy.ts) sits in front of the studio's own switch; these tests are about the studio.
+  process.env.NIGHTSHIFT_LIKENESS_FEATURES = "on";
   h.user = { id: "u1" };
   h.current = { id: ORG };
   h.rpc = {};
@@ -109,6 +111,30 @@ beforeEach(() => {
 });
 afterEach(() => {
   delete process.env.NIGHTSHIFT_CHARACTER_STUDIO;
+  delete process.env.NIGHTSHIFT_LIKENESS_FEATURES;
+});
+
+describe("the likeness policy (payment terms: no real-person swap)", () => {
+  const POLICY: [string, () => Promise<Response>][] = EVERY.filter(([n]) => !n.includes("cancel"));
+
+  it.each(POLICY)("%s refuses with feature_unavailable_policy while the policy is unset, with the studio on, and asks the database nothing", async (_n, call) => {
+    for (const v of [undefined, "", "off", "1", "true"]) {
+      if (v === undefined) delete process.env.NIGHTSHIFT_LIKENESS_FEATURES;
+      else process.env.NIGHTSHIFT_LIKENESS_FEATURES = v;
+      expect(await json(await call())).toEqual({ status: 403, body: { error: "feature_unavailable_policy" } });
+    }
+    // No session read, no quote, no consent row, no request_character_swap: nothing could be held.
+    expect(h.getUser).toBe(0);
+    expect(h.calls).toEqual([]);
+  });
+
+  it("cancel still reaches the database with the policy off: a job queued before the switch went off gets its hold back", async () => {
+    delete process.env.NIGHTSHIFT_LIKENESS_FEATURES;
+    h.rpc.cancel_character_swap = { data: { id: JOB, status: "cancelled", replayed: false }, error: null };
+    const res = await cancel.POST(req(`/api/character-studio/swaps/${JOB}/cancel`, "POST", {}), ctx(JOB));
+    expect(res.status).toBe(200);
+    expect(rpcs().map((c) => c.name)).toEqual(["cancel_character_swap"]);
+  });
 });
 
 describe("the switch", () => {

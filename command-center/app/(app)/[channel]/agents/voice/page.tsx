@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { customVoiceEnabled } from "@/lib/custom-voice";
+import { likenessFeaturesAllowed } from "@/lib/likeness-policy";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
@@ -22,7 +23,8 @@ export const revalidate = 0;
  * it runs in the browser with the signed-in person's own session: the page reads and writes nothing itself.
  */
 export default async function CustomVoicePage() {
-  if (!customVoiceEnabled()) notFound();
+  // Two switches: the feature deployed, and the payment terms allowing voice cloning at all (lib/likeness-policy.ts).
+  if (!customVoiceEnabled() || !likenessFeaturesAllowed()) notFound();
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
   const { selection, channels } = await getChannelContext();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { rejectCrossOrigin } from "@/lib/server/same-origin";
-import { NO_STORE, characterStudioGate, csFail, readStudioBody, resolveStudioOrg, studioRefusal } from "@/lib/server/character-studio";
+import { NO_STORE, characterStudioGate, csFail, readStudioBody, resolveStudioOrg, studioPolicyRefusal, studioRefusal } from "@/lib/server/character-studio";
 import { CONSENT_VERSION, DECLARATIONS, characterStudioEnabled, isModel, parseId } from "@/lib/characterStudio/model";
 
 export const runtime = "nodejs";
@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
  * this page shows (CONSENT_VERSION); the request that follows must name the consent it returns.
  */
 export async function POST(request: Request) {
+  const policy = studioPolicyRefusal();
+  if (policy) return policy;
   if (!characterStudioEnabled()) return csFail("not_found", 404);
   const cross = rejectCrossOrigin(request);
   if (cross) return cross;

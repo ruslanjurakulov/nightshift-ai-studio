@@ -14,6 +14,7 @@
  */
 
 import { extraOffFields } from "@/lib/credits";
+import { POLICY_REFUSAL_STATUS, isLikenessCapability, likenessFeaturesAllowed } from "@/lib/likeness-policy";
 
 export type DbError = { code?: string; message?: string; details?: string | null; hint?: string | null };
 export type DbAnswer = { data: unknown; error: DbError | null };
@@ -277,6 +278,8 @@ export const CREATIVE_ERRORS = [
   // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
   // create, before anything is held, instead of failing at the adapter after the press.
   "prompt_required",
+  // lib/likeness-policy.ts: the tool re-voices or replaces a real person, which the payment providers' terms do not allow us to sell.
+  "feature_unavailable_policy",
   "failed",
 ] as const;
 export type CreativeError = (typeof CREATIVE_ERRORS)[number];
@@ -605,7 +608,17 @@ export function parseGenerationInput(
  * pick the model: the answer names it (`routed_model`, `display_name`), says
  * why (`route_reason`) and is that model's own quote.
  */
+/**
+ * Here, not in a route, because every door (the web routes, region edit, the agent's quote) reaches the database through quote() and
+ * createGeneration(): a check in one route would leave the others selling a dub. Before the RPC, so nothing is quoted or held.
+ */
+function likenessPolicyFail(capability: string): CreativeResult | null {
+  return isLikenessCapability(capability) && !likenessFeaturesAllowed() ? fail(POLICY_REFUSAL_STATUS, "feature_unavailable_policy") : null;
+}
+
 export async function quote(db: CreativeDb, input: GenerationInput): Promise<CreativeResult> {
+  const refused = likenessPolicyFail(input.capability);
+  if (refused) return refused;
   const { data, error } =
     input.mode === "exact"
       ? await db.rpc("quote_creative_job", {
@@ -635,6 +648,8 @@ export async function quote(db: CreativeDb, input: GenerationInput): Promise<Cre
  * never charged. A replayed idempotency key answers the first job (200).
  */
 export async function createGeneration(db: CreativeDb, input: GenerationInput): Promise<CreativeResult> {
+  const refused = likenessPolicyFail(input.capability);
+  if (refused) return refused;
   if (input.maxCredits === null) return fail(400, "confirm_price");
   const { data, error } = await db.rpc("create_creative_job", {
     p_org: input.orgId,

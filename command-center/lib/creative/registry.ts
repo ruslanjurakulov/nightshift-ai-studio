@@ -11,6 +11,7 @@ import {
   type RelightLook,
   type UpscaleTarget,
 } from "@/lib/creative/operations";
+import { isLikenessCapability, likenessFeaturesAllowed } from "@/lib/likeness-policy";
 
 /**
  * The models a signed-in user may be offered, read under their own session
@@ -244,6 +245,22 @@ export function coerceSellableModels(rows: unknown): SellableModel[] {
   return out;
 }
 
+/**
+ * A tool the likeness policy keeps off (lib/likeness-policy.ts: dub re-voices real speakers in their own voice) is taken out of the
+ * list a customer sees while the policy is off, so no screen offers what quote() and createGeneration() would refuse. A model left
+ * with no other tool is dropped. Today every dub model is also terms-gated, so sellable_models() returns none: this keeps it that way
+ * on the screen if a gate is cleared before the payment terms are.
+ */
+export function withoutLikenessTools(models: SellableModel[], allowed: boolean = likenessFeaturesAllowed()): SellableModel[] {
+  if (allowed) return models;
+  const out: SellableModel[] = [];
+  for (const m of models) {
+    const capabilities = m.capabilities.filter((c) => !isLikenessCapability(c));
+    if (capabilities.length > 0) out.push(capabilities.length === m.capabilities.length ? m : { ...m, capabilities });
+  }
+  return out;
+}
+
 /** The one call this module makes; a session client satisfies it. */
 export interface RpcClient {
   rpc(
@@ -272,7 +289,7 @@ export async function readSellableModels(
       if (error.code === "42501") return { status: "signed_out", models: [] };
       return { status: "error", models: [] };
     }
-    return { status: "ok", models: coerceSellableModels(data) };
+    return { status: "ok", models: withoutLikenessTools(coerceSellableModels(data)) };
   } catch {
     return { status: "error", models: [] };
   }

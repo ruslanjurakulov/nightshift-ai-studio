@@ -134,7 +134,11 @@ describe("flag off (unset)", () => {
 });
 
 describe("flag on (1)", () => {
-  beforeEach(() => vi.stubEnv("CUSTOM_VOICE_ENABLED", "1"));
+  // The likeness policy (lib/likeness-policy.ts) must be on as well, or the page stays dark whatever this flag says.
+  beforeEach(() => {
+    vi.stubEnv("CUSTOM_VOICE_ENABLED", "1");
+    vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "on");
+  });
 
   it("a signed-out visitor still goes to sign-in, not to the page", async () => {
     const r = await visit("/chronos/agents/voice");
@@ -156,12 +160,27 @@ describe("flag on (1)", () => {
   });
 });
 
+describe("flag on, likeness policy off (payment terms: no voice cloning)", () => {
+  beforeEach(() => {
+    vi.stubEnv("CUSTOM_VOICE_ENABLED", "1");
+    vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "");
+  });
+
+  it("the page is still the public 404 with no Supabase call, and the page itself reads nothing", async () => {
+    auth.user = { id: "u1" };
+    const r = await visit("/chronos/agents/voice");
+    expect(r.notFound).toBe(true);
+    expect(auth.created).toBe(0);
+    await expect(CustomVoicePage()).rejects.toMatchObject({ digest: expect.stringContaining("404") });
+  });
+});
+
 describe("where it is linked from", () => {
   const read = (...p: string[]) => readFileSync(join(__dirname, "..", ...p), "utf8");
 
-  it("the agents page links to it only inside the flag", () => {
+  it("the agents page links to it only inside the flag and the likeness policy", () => {
     const src = read("app", "(app)", "[channel]", "agents", "page.tsx");
-    expect(src).toMatch(/customVoiceEnabled\(\) && \(\s*<p>\s*<Link href=\{\(await getChannelPath\(\)\)\("agents\/voice"\)\}/);
+    expect(src).toMatch(/customVoiceEnabled\(\) && likenessFeaturesAllowed\(\) && \(\s*<p>\s*<Link href=\{\(await getChannelPath\(\)\)\("agents\/voice"\)\}/);
   });
 
   it("no navigation list, sitemap or section list names it", () => {
