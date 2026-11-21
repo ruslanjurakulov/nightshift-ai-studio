@@ -111,7 +111,8 @@ describe("/api/brain/turn", () => {
 
   it("asks the kind first as a card, stores the card and the BRIEF", async () => {
     const d = await (await turn()).json();
-    expect(d.card).toMatchObject({ slot: "kind", options: ["Long", "Short", "Not sure"] });
+    // The kind question's options are the server's own (i18n), whatever the model offered: only what can be made here.
+    expect(d.card).toMatchObject({ slot: "kind", options: ["A long YouTube video", "A short film or ad"] });
     const fin = called("ai_chat_finish_turn")[0][1] as Record<string, unknown>;
     expect(fin).toMatchObject({ p_outcome: "ok", p_tokens_in: 10, p_step: "asking" });
     expect((fin.p_card as { slot: string }).slot).toBe("kind");

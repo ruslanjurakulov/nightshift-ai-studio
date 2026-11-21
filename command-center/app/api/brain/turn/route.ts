@@ -16,6 +16,7 @@ import {
   nextSlot,
   plain,
   priceLong,
+  isSmallTalk,
   readModelAnswer,
   readScenario,
   readSlots,
@@ -25,6 +26,8 @@ import {
   type Scenario,
 } from "@/lib/brain/logic";
 import { SYSTEM_PROMPT, dataBlock } from "@/lib/brain/prompt";
+import { getDictionaryFor } from "@/lib/i18n";
+import { isLocale } from "@/lib/i18n/core";
 import { callChatModel } from "@/lib/server/brain/llm";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
@@ -99,14 +102,23 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   const facts = await readChannelFacts(supabase, s.channel_id, ch.state === "ok" ? ch.name : "");
   const history = ((hist.data ?? []) as { role: "user" | "assistant"; content: string }[]).reverse();
   const locale = await getLocale().catch(() => "en");
-  const llm = await callChatModel(model.id, SYSTEM_PROMPT, dataBlock({ history, slots: prev, askNext: nextSlot(prev), facts, locale }),
+  // A short film is offered only where it can be made (Pixel M6 on 0198: no dead option); the kind card's options are ours.
+  const shortAvailable = (await filmGate()).ok;
+  const words = getDictionaryFor(isLocale(locale) ? locale : "en").aiChat;
+  const llm = await callChatModel(model.id, SYSTEM_PROMPT, dataBlock({ history, slots: prev, askNext: nextSlot(prev), facts, locale, shortAvailable }),
                                   { endUser: await vendorUser(s.org_id) });
   if (!llm.ok) {
     await finish(llm.error === "not_configured" ? "not_configured" : "vendor_error", llm.tokensIn, llm.tokensOut);
     // The reason names the remedy for the owner; the panel says only "unavailable right now" to a customer (the model is hidden).
     return brainJson({ error: "model_failed", reason: llm.error, quota }, 502);
   }
-  const answer = readModelAnswer(llm.text, prev, crypto.randomUUID());
+  const said = retry ? [...history].reverse().find((m) => m.role === "user")?.content ?? "" : text;
+  const answer = readModelAnswer(llm.text, prev, crypto.randomUUID(), {
+    freezeSlots: isSmallTalk(said),
+    shortAvailable,
+    kindOptions: shortAvailable ? [words.kindLong, words.kindShort] : [words.kindLong],
+    identityReply: words.identityReply,
+  });
   if (!answer) {
     await finish("invalid_output", llm.tokensIn, llm.tokensOut);
     return brainJson({ error: "model_answer_invalid", quota }, 502);

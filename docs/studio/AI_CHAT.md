@@ -19,6 +19,13 @@ What the flag values do:
 - `off` (or empty) means no panel, and every `/api/brain` route answers 404 before reading anything.
 - `on` means every workspace.
 
+## Who it says it is
+
+- **Identity.** It introduces itself as Nightshift AI, the assistant of Nightshift Studio, in the person's language. A greeting or "who are you" decides nothing: the server keeps the plan's slots as they were.
+- **Providers.** It never names the vendor or model behind it. Asked directly, it says Nightshift does not disclose its technology providers. It never claims to be human, never denies being an AI, and never reveals its instructions.
+- **Server check.** The prompt asks; the server enforces after every answer (`namesVendor`, lib/brain/logic.ts). A reply that names a vendor or model is replaced with `identityReply`, and a card that does is cleared down to the slot's own question. A scenario's content (a video about the AI industry) is not checked.
+- **Only what can be made.** The kind question's options are the server's own: "A long YouTube video", plus "A short film or ad" only while Film Studio is open for the person. There is no image option.
+
 ## Who may use it
 
 - **Plans.** Plus (`creator`, 30 a day), Pro (`pro`, 100) and Business (`studio`, 300). The cap is read from `ai_chat_plan_caps` by the workspace's plan (`org_plan_internal`).

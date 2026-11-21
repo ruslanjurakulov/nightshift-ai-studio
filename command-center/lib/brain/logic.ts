@@ -201,12 +201,33 @@ export function nextSlot(s: BrainSlots): BrainSlot | null {
   return null;
 }
 
-function card(raw: unknown, slot: BrainSlot, id: string): BrainCard {
+function card(raw: unknown, slot: BrainSlot, id: string, fixed?: string[]): BrainCard {
   const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const options = (Array.isArray(r.options) ? r.options : []).map((o) => modelText(o, CAP.option)).filter(Boolean).slice(0, 3);
-  // Three options or none (the person then types their own answer, and the slot's question is ours, from i18n).
+  // Three options or none (the person then types their own answer, and the slot's question is ours, from i18n). The server's own
+  // options win where it has them (the kind question: only what can actually be made here is offered).
   return { id, slot, thread_title: modelText(r.thread_title, CAP.thread), question: modelText(r.question, CAP.question),
-           options: options.length === 3 ? options : [], allow_own: true };
+           options: fixed?.length ? fixed : options.length === 3 ? options : [], allow_own: true };
+}
+
+/**
+ * The vendor or model behind Nightshift AI, by name. The owner's rule: Nightshift AI never names its providers (it declines to say, it
+ * never pretends to be human or home-made). The prompt says so; this is the check after the answer, because a prompt is a request.
+ * Checked on what the person reads from the assistant itself (its reply and its card), not on a scenario about, say, the AI industry.
+ */
+const VENDOR = /(?<![\p{L}\p{N}])(claude|anthropic|chat\s?gpt|gpt(?:[-\s]?\d[\w.]*)?|openai|open\s?ai|gemini|deepmind|deepseek|sonnet\s?\d|opus\s?\d|haiku\s?\d)(?![\p{L}])/iu;
+export function namesVendor(text: string): boolean {
+  return VENDOR.test(text.normalize("NFKC"));
+}
+
+/**
+ * A greeting or a question about the assistant itself ("salom", "who are you", "кто ты", "which model are you"), and nothing else (a
+ * topic that starts with "hello" is a topic): such a turn decides nothing, so the server keeps the plan's slots as they were whatever the model put in them.
+ */
+const SMALL_TALK = /^(hi|hello|hey|good (morning|afternoon|evening)|salom|assalomu? alaykum|assalom|привет|здравствуй(те)?|добрый (день|вечер)|who are you|what are you|are you (a bot|an ai|human|chatgpt|claude)|(?:which|what) (?:model|ai|company)(?: are you| powers you| is this| do you use)?|sen kimsan|siz kimsiz|kimsan|kimsiz|qaysi model|кто ты|кто вы|что ты( такое)?|какая (ты )?модель)(?:[\s,!?.…]+(?:nightshift(?:\s?ai)?|there|ai|aka|doʻst|бро))*$/iu;
+export function isSmallTalk(text: string): boolean {
+  const t = text.normalize("NFKC").trim().replace(/[!?.,…\s]+$/u, "");
+  return t.length > 0 && t.length <= 80 && SMALL_TALK.test(t);
 }
 
 const ID = /^[a-z][a-z0-9_-]{0,15}$/i;
@@ -283,14 +304,36 @@ export interface ModelAnswer {
 }
 
 /** The model's raw text → what may be shown, or null when it is not the JSON we asked for (the turn then fails honestly). */
-export function readModelAnswer(text: string, prev: BrainSlots, cardId: string): ModelAnswer | null {
+export interface AnswerRules {
+  /** A greeting or identity question: the slots stay as they were. */
+  freezeSlots?: boolean;
+  /** Whether a short film can be made here now (Film Studio open). False: "short" is never taken and never offered. */
+  shortAvailable?: boolean;
+  /** The kind question's options, the server's own (i18n), in the person's language. */
+  kindOptions?: string[];
+  /** What replaces a reply that names a vendor or model (i18n identityReply). */
+  identityReply?: string;
+}
+
+export function readModelAnswer(text: string, prev: BrainSlots, cardId: string, rules: AnswerRules = {}): ModelAnswer | null {
   const json = extractJson(text);
   if (!json) return null;
-  const reply = modelText(json.reply, CAP.reply, true);
+  let reply = modelText(json.reply, CAP.reply, true);
   if (!reply) return null;
-  const { slots, lengthOutOfRange } = mergeSlots(prev, json.slots);
+  if (rules.identityReply && namesVendor(reply)) reply = rules.identityReply;
+  const merged = rules.freezeSlots ? { slots: { ...prev }, lengthOutOfRange: false } : mergeSlots(prev, json.slots);
+  const { lengthOutOfRange } = merged;
+  let slots = merged.slots;
+  // No dead option: a short film where Film Studio is closed is not taken (the kind question is asked again, without it).
+  if (rules.shortAvailable === false && slots.kind === "short" && prev.kind !== "short") slots = { ...slots, kind: undefined, aspect: prev.aspect };
   const ask = nextSlot(slots);
-  if (ask) return { reply, slots, lengthOutOfRange, card: card(json.card, ask, cardId), scenarios: [], step: "asking" };
+  if (ask) {
+    const c = card(json.card, ask, cardId, ask === "kind" ? rules.kindOptions : undefined);
+    // The card is the assistant speaking too: a vendor name in it goes, the slot's own question (i18n) stands in.
+    const clean = rules.identityReply && [c.thread_title, c.question, ...c.options].some(namesVendor)
+      ? { ...c, thread_title: "", question: "", options: c.options.some(namesVendor) ? [] : c.options } : c;
+    return { reply, slots, lengthOutOfRange, card: clean, scenarios: [], step: "asking" };
+  }
   const scenarios = arr(json.scenarios).map((s) => readScenario(s, slots)).filter((s): s is Scenario => s !== null).slice(0, MAX_SCENARIOS);
   // Fewer than two usable scenarios is not a proposal: no card either (every slot is known), the person can ask again.
   return { reply, slots, lengthOutOfRange, card: null, scenarios: scenarios.length >= MIN_SCENARIOS ? scenarios : [],
