@@ -75,7 +75,7 @@ export const en = {
   presets: presetsEn,
   /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
-  /** Channel research (migration 0199): ./research/en.ts. */
+  /** Channel research (migration 0200): ./research/en.ts. */
   research: researchEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */

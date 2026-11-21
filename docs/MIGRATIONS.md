@@ -2227,9 +2227,9 @@ Nano Banana for footage. So 0192's model check never saw it, and a member who ne
   puts the old `creative_route_quote` back.
 - **Undo.** `docs/sql/rollback_0196_adult_attestation_google_runs.sql` (owner-applied): the five earlier bodies and 0192's run gate.
 
-## Channel research on our own YouTube data (0199)
+## Channel research on our own YouTube data (0200)
 
-0199 (`0199_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
+0200 (`0200_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
 (`docs/studio/RESEARCH_TOOLS.md`). It is built on our own YouTube Data API calls, never on vidIQ (whose terms forbid redistribution).
 It adds six closed tables (RLS on, no policy, no grant, the service key included): `research_competitors` (up to 20 per channel,
 `pending` until the worker resolves the reference with `channels.list`, then `resolved` or `not_found`), `research_channel_cache` and
@@ -2251,4 +2251,4 @@ draft channel (never confirmed against YouTube) and readers answer `not_connecte
 channel's own analytics and uploads are hidden and purged; competitor status gains `own_channel`. One organization may spend at
 most 300 of the 1,500 daily units (the worker's constant), and `RESEARCH_SEARCH_SHARED_UNITS` (default 0) makes each search also
 take shared units.
-Rollback: `docs/sql/rollback_0199_channel_research.sql`.
+Rollback: `docs/sql/rollback_0200_channel_research.sql`.

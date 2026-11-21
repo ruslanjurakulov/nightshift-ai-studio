@@ -1,4 +1,4 @@
-"""Breach on 0199 (channel research, PR #851): the attacks that went past the contract tests in test_sec_research.py.
+"""Breach on 0200 (channel research, PR #851): the attacks that went past the contract tests in test_sec_research.py.
 
 The worker is driven for real here: modules/channel_research.process_request runs against the lab database through the same service
 functions it calls in production (LabStore below), and against a fake YouTube that behaves as the real one does on the point that
@@ -12,7 +12,7 @@ FAILING NOW (real holes, kept failing until fixed):
                       (rule 2), so this is every customer's unreleased video list.
   * BR-R-002 (medium) a third party's free text (a channel or video title, chosen by whoever owns that channel, and ranked into any
                       organization's topic search) reaches the readers under plain keys (title, handle), not under untrusted_*: the
-                      Studio chat cannot tell it from data by key, which is the convention 0199 itself sets for comments.
+                      Studio chat cannot tell it from data by key, which is the convention 0200 itself sets for comments.
   * BR-R-003 (medium) one organization may spend the project's whole research day (ORG_DAILY_UNITS == DAILY_UNITS), and removing and
                       re-adding a competitor queues a new request inside the one-hour rule each time, re-buying statistics fetched
                       seconds before. Every other tenant's research then ends budget_exhausted.

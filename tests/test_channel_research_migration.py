@@ -1,4 +1,4 @@
-"""Static pins on migration 0199 (channel research). The behaviour is proven against a real Postgres in
+"""Static pins on migration 0200 (channel research). The behaviour is proven against a real Postgres in
 tests/security/test_sec_research.py; these keep the file's shape from drifting in review.
 
 What would break without these:
@@ -18,8 +18,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MIG = ROOT / "supabase" / "migrations" / "0199_channel_research.sql"
-ROLLBACK = ROOT / "docs" / "sql" / "rollback_0199_channel_research.sql"
+MIG = ROOT / "supabase" / "migrations" / "0200_channel_research.sql"
+ROLLBACK = ROOT / "docs" / "sql" / "rollback_0200_channel_research.sql"
 
 READERS = ("research_own_channel", "research_competitors_view", "research_topic_channels", "research_comment_themes")
 WRITERS = ("research_request_refresh", "research_add_competitor", "research_remove_competitor")
@@ -92,7 +92,7 @@ class ChannelResearchMigration(unittest.TestCase):
         for word in ("ratio", "outlier", "velocity", "sentiment", "engagement", "per_subscriber", "views_per", "score", "rate"):
             # Whole words or name parts only ("migration" is not a ratio, take_web_rate is the rate limiter).
             hit = re.search(rf"(?<![a-z_]){word}(?![a-z_])", lowered.replace("take_web_rate", ""))
-            self.assertIsNone(hit, f"{word!r} in 0199")
+            self.assertIsNone(hit, f"{word!r} in 0200")
         # No arithmetic between two counts: a division sign next to a count column would be a derived number.
         self.assertNotRegex(lowered, r"(view|subscriber|like|comment)_count\s*[/*]")
 
@@ -105,7 +105,7 @@ class ChannelResearchMigration(unittest.TestCase):
         self.assertIn("alter table public.youtube_quota_ledger drop constraint if exists youtube_quota_ledger_source_check;", self.src)
         self.assertIn("check (source in ('visibility', 'research', 'research_search'))", self.src)
         overload = self.fns["youtube_quota_take"]
-        self.assertEqual(len(overload), 1, "0199 defines only the six-argument overload")
+        self.assertEqual(len(overload), 1, "0200 defines only the six-argument overload")
         self.assertIn("p_source text", overload[0])
         self.assertIn("not in ('research', 'research_search')", overload[0])
         # 0116's five-argument function is not redefined or dropped here.

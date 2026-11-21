@@ -65,7 +65,7 @@ function errorText(r: R, a: Answer, max = 20): string {
 }
 
 /**
- * Channel research (migration 0199): four panels, each with its own loading, empty, not-connected, refreshing, budget, error and
+ * Channel research (migration 0200): four panels, each with its own loading, empty, not-connected, refreshing, budget, error and
  * not-enabled state. Every number is YouTube's own (or Nightshift's own count of the channel's comments, labelled so); nothing on
  * this screen is computed from two numbers. Viewers' words are drawn as text nodes only. The buttons write a row through a route and
  * stop: the worker makes the YouTube calls, so a press shows "asked", never a result it did not get.
@@ -99,7 +99,7 @@ export function ResearchBoard(props: ResearchBoardProps) {
 
   const ctx: Ctx = { r, locale, nowMs: props.nowMs, channel: props.channel, slug: props.slug, canEdit: props.canEdit };
   const panels = [props.own, props.competitors, props.topic, props.themes];
-  // 0199 not applied here: one note for the page, not four identical panels.
+  // 0200 not applied here: one note for the page, not four identical panels.
   if (panels.every((p) => p.status === "not_enabled")) {
     return (
       <div className="flex flex-col gap-6" data-testid="research-board">

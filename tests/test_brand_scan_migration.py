@@ -163,9 +163,9 @@ class Numbering(unittest.TestCase):
         # the same way: model_registry availability / entitlement only, no price, function, table or grant; they name nothing these pin.
         # 0196 (a video run on Google needs an adult answer: two functions, 0192's run gate re-pointed, one hunk each in 0192's route_model,
         # api_create_video, oauth_create_video and 0187's reroute_creative_job) was reviewed the same way: it names nothing of 0131's or 0133's.
-        # 0199 (channel research: six new closed tables, its own functions, a youtube_quota_take overload and the ledger's source CHECK
+        # 0200 (channel research: six new closed tables, its own functions, a youtube_quota_take overload and the ledger's source CHECK
         # extended) was reviewed the same way: it replaces and alters nothing these pin.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0199")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0200")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)

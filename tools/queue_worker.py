@@ -61,7 +61,7 @@ ledger, reads the privacy BACK from YouTube, and records only what YouTube repor
 closed word when it is not. The step is OFF unless ``NIGHTSHIFT_VISIBILITY_PUBLISH=on`` (it is the only code in this repository that
 changes an existing video's privacy; a channel's own switch, default off, is the second lock).
 
-Channel research (migration 0199, ``modules/channel_research.py``): between render jobs the worker also deletes research rows older
+Channel research (migration 0200, ``modules/channel_research.py``): between render jobs the worker also deletes research rows older
 than 30 days (YouTube's limit on stored data about channels that did not authorize us; at most every ten minutes) and claims at most
 one ``research_requests`` row (a person pressed Refresh or added a competitor on ``/{channel}/research``). It is the only place the
 research feature calls YouTube: public statistics with the platform's ``YOUTUBE_DATA_API_KEY``, the customer's own channel and its
@@ -733,7 +733,7 @@ class Worker:
         # Publish when approved (migration 0116): makes an approved video public on a channel that switched it on, between
         # render jobs. None = off (the default: NIGHTSHIFT_VISIBILITY_PUBLISH).
         self.visibility = visibility
-        # Channel research (migration 0199): the 30-day purge and one research request between render jobs. None = off.
+        # Channel research (migration 0200): the 30-day purge and one research request between render jobs. None = off.
         self.research = research
         # Series planning (migration 0120, modules/series_plan_worker.py): a ``series_plan`` job is planned here, in this process,
         # and never reaches main.py. None = this worker does not know the kind (a worker built without it keeps the old refusal).
@@ -1751,7 +1751,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             url, key, worker_id=args.worker_id,
             credentials=lambda cid: youtube_publish_credentials(cid, os.environ, token_client))
         logger.info("publish when approved: ON (ceiling %s YouTube units a day)", visibility.ceiling)
-    # Channel research (migration 0199): reads only, every call counted in the quota ledger first. Built always, so a request is
+    # Channel research (migration 0200): reads only, every call counted in the quota ledger first. Built always, so a request is
     # ended honestly (not_configured, naming the secret) on a server without YOUTUBE_DATA_API_KEY instead of waiting forever.
     research = channel_research.ResearchService(
         url, key, worker_id=args.worker_id,

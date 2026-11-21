@@ -1,6 +1,6 @@
 import type { ResearchDictionary } from "./en";
 
-/** Kanal tadqiqoti (migratsiya 0199). Matn manbasi — ./en.ts. */
+/** Kanal tadqiqoti (migratsiya 0200). Matn manbasi — ./en.ts. */
 export const researchUz: ResearchDictionary = {
   title: "Tadqiqot",
   subtitle: "Kanalingiz, solishtiradigan kanallaringiz va tomoshabinlar nimani soʻrayotgani — YouTubeʼning oʻz raqamlari boʻyicha.",

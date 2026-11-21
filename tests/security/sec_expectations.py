@@ -787,8 +787,8 @@ import sec_public_models_0193  # noqa: E402
 
 sec_public_models_0193.extend(TABLES, FUNCTIONS)
 
-# Migration 0199 (channel research: closed caches and queue, member readers/writers, worker functions):
-# tests/security/sec_research_0199.py
-import sec_research_0199  # noqa: E402
+# Migration 0200 (channel research: closed caches and queue, member readers/writers, worker functions):
+# tests/security/sec_research_0200.py
+import sec_research_0200  # noqa: E402
 
-sec_research_0199.extend(TABLES, FUNCTIONS)
+sec_research_0200.extend(TABLES, FUNCTIONS)

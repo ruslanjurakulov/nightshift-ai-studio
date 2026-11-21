@@ -1,6 +1,6 @@
 # Research tools for the Studio chat ("Nightshift AI")
 
-The contract between the chat and channel research (migration 0199, `supabase/migrations/0199_channel_research.sql`). The page
+The contract between the chat and channel research (migration 0200, `supabase/migrations/0200_channel_research.sql`). The page
 `/{channel}/research` reads the same functions, so the chat and the page can never disagree about a number.
 
 The data is our **own** YouTube Data API and YouTube Analytics API calls, made by the queue worker
@@ -25,7 +25,7 @@ service key: every function checks the channel's organization and the caller's r
 `p_channel` is the channel's id (`channels.channel_id`, what the URL's channel resolves to), never a YouTube id.
 
 A channel the caller cannot see raises `not_found` (SQLSTATE `P0002`), exactly like a channel that does not exist; a signed-out
-caller, or a viewer calling a writer, gets `forbidden` (`42501`). When 0199 is not applied the RPC answers PGRST202 / 42883: the
+caller, or a viewer calling a writer, gets `forbidden` (`42501`). When 0200 is not applied the RPC answers PGRST202 / 42883: the
 chat says "research is not switched on here yet" (the page's `not_enabled`).
 
 ## What a reader answers

@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Add a competitor (research_add_competitor, migration 0199). The reference stays "pending" until the worker asks YouTube which
+ * Add a competitor (research_add_competitor, migration 0200). The reference stays "pending" until the worker asks YouTube which
  * channel it names; a name YouTube does not know reads "not found". The database parses the reference and keeps only the part that
  * names a channel: nothing typed here is ever fetched as a link.
  */

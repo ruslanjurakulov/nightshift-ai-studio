@@ -1,5 +1,5 @@
 /**
- * Channel research (migration 0199): the shapes the four reader functions answer, read defensively.
+ * Channel research (migration 0200): the shapes the four reader functions answer, read defensively.
  *
  * Pure (no React, no database): the page, the API routes and the tests share it. Every number is the API's own or null; nothing
  * here computes a metric from two of them (no ratio, no score, no sum across channels). A value that is not a whole, non-negative
@@ -247,7 +247,7 @@ export function parseThemes(d: unknown): ThemesData | null {
   };
 }
 
-/** The panel a read becomes when the function itself is missing (0199 not applied) or the read failed. */
+/** The panel a read becomes when the function itself is missing (0200 not applied) or the read failed. */
 export function unreadPanel<T>(missing: boolean): Panel<T> {
   return { status: missing ? "not_enabled" : "error", fetchedAt: null, source: "youtube", data: null, remedyCode: null, lastRequest: null };
 }

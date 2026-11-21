@@ -1,4 +1,4 @@
-"""Channel research — the worker's side of migration 0199.
+"""Channel research — the worker's side of migration 0200.
 
 A person pressed Refresh (or added a competitor) on ``/{channel}/research``, or the Studio chat called the writer for them; the
 database wrote one ``research_requests`` row and stopped (rule 3). The queue worker (``tools/queue_worker.py``) claims those rows
@@ -18,7 +18,7 @@ with the service key and hands each to :func:`process_request`, the only place t
 Public calls use the platform's API key (``YOUTUBE_DATA_API_KEY``), sent as the ``X-Goog-Api-Key`` header so it is never part of
 a URL that an exception could quote. A missing key ends the request ``failed`` / ``not_configured`` and the page names the secret.
 
-Every call is counted BEFORE it is made (``youtube_quota_take`` with the research sources, migration 0199): 1,500 shared units and
+Every call is counted BEFORE it is made (``youtube_quota_take`` with the research sources, migration 0200): 1,500 shared units and
 30 search calls a Pacific day project-wide, three searches per organization. A refused take ends the request
 ``budget_exhausted``; what was already stored stays (it is real, and dated).
 
@@ -49,7 +49,7 @@ ANALYTICS_API = "https://youtubeanalytics.googleapis.com/v2/reports"
 #: Only Google's token endpoint ever receives a refresh token from here, whatever a token file says its token_uri is.
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
-#: The closed error words; tests/test_channel_research.py pins this equal to 0199's research_error_words().
+#: The closed error words; tests/test_channel_research.py pins this equal to 0200's research_error_words().
 ERROR_WORDS = (
     "not_configured", "quota", "auth", "not_found", "scope_missing", "token_expired", "channel_mismatch",
     "rate_limited", "platform_error", "budget", "not_connected", "interrupted", "worker_error",
@@ -311,11 +311,11 @@ def privacy_of(item: Mapping) -> Optional[str]:
     return value if value in ("public", "unlisted", "private") else None
 
 
-# ── Supabase (the service key; only 0199's functions) ────────────────────────
+# ── Supabase (the service key; only 0200's functions) ────────────────────────
 
 
 class ResearchStore:
-    """The queue and the caches, over PostgREST function calls. The service key has no table privilege on them (0199)."""
+    """The queue and the caches, over PostgREST function calls. The service key has no table privilege on them (0200)."""
 
     def __init__(self, url: str, service_key: str, *, session=None, timeout: float = 30.0):
         self.url = (url or "").rstrip("/")
@@ -339,7 +339,7 @@ class ResearchStore:
         if r.status_code == 404:
             if name not in self._warned_404:
                 self._warned_404.add(name)
-                logger.warning("research: the database function %s answered 404 (migration 0199 not applied, or the API schema "
+                logger.warning("research: the database function %s answered 404 (migration 0200 not applied, or the API schema "
                                "cache is stale): research requests wait until it exists", name)
             return None
         if r.status_code >= 300:
