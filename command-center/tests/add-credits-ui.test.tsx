@@ -35,7 +35,8 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { DodoBuyCredits } from "@/components/credits/DodoBuyCredits";
 import { DodoPurchaseHistory } from "@/components/credits/DodoPurchaseHistory";
-import { DODO_CATALOG_PACKS, dodoView, packBonusPercent, resolveDodoServer } from "@/lib/dodo";
+import { dodoView, resolveDodoServer } from "@/lib/dodo";
+import type { GenerationRates } from "@/lib/plans";
 import { coercePurchaseRows, purchaseItem, purchaseStatus, type DodoHistoryRead } from "@/lib/dodo-history";
 
 const t = dictionaries.en;
@@ -49,6 +50,7 @@ const ENV = {
   DODO_METADATA_SECRET: "cc-metadata-secret-0123456789abcdef-xyz",
 };
 const view = dodoView(resolveDodoServer(ENV))!;
+const RATES: GenerationRates = { image: 10, shortVideo: { credits: 40, seconds: 5 }, videoMinute: null };
 const packsOnly = dodoView(resolveDodoServer({ ...ENV, DODO_PRODUCT_AMOUNT: "" }))!;
 
 let fetchCalls: { url: string; body: unknown }[] = [];
@@ -67,10 +69,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderSheet(v = view) {
+function renderSheet(v = view, rates: GenerationRates | null = null) {
   return render(
     <I18nProvider locale="en">
-      <DodoBuyCredits view={v} balance={100} />
+      <DodoBuyCredits view={v} balance={100} rates={rates} />
     </I18nProvider>,
   );
 }
@@ -78,61 +80,90 @@ function renderSheet(v = view) {
 const sheet = () => document.querySelector("[data-add-credits]") as HTMLElement;
 const creditsToAdd = () => (document.querySelector("[data-credits-to-add]") as HTMLElement).textContent;
 const totalText = () => (document.querySelector("[data-total]") as HTMLElement).textContent;
+const perCredit = () => (document.querySelector("[data-per-credit]") as HTMLElement).textContent;
 const input = () => screen.getByLabelText(ac.customLabel) as HTMLInputElement;
 const submitKey = () => within(sheet()).getByRole("button", { name: new RegExp(`^(${ac.submit}|${ac.processing})`) }) as HTMLButtonElement;
 
 describe("the Add credits sheet", () => {
-  it("opens on the one-time tab with $10 chosen: 1,000 credits, $10.00, and the bounds shown", () => {
+  it("opens on the one-time tab with ONLY the credit field and slider: no fixed 1,000/5,000/20,000 buttons, no pack cards", () => {
     renderSheet();
     expect(screen.getByRole("heading", { name: ac.title })).toBeTruthy();
     expect(screen.getByRole("tab", { name: ac.tabOnce }).getAttribute("aria-selected")).toBe("true");
-    const presets = within(sheet()).getAllByRole("button", { pressed: false }).concat(within(sheet()).getAllByRole("button", { pressed: true }));
-    expect(presets.map((b) => b.textContent).sort()).toEqual(["$10", "$100", "$20", "$50"]);
-    expect(creditsToAdd()).toContain("1,000");
-    expect(totalText()).toBe("$10.00");
-    expect(sheet().textContent).toContain("Minimum $5, maximum $300");
+    expect(within(sheet()).queryAllByRole("button", { pressed: true }).concat(within(sheet()).queryAllByRole("button", { pressed: false }))).toEqual([]);
+    expect(screen.queryAllByRole("listitem")).toEqual([]);
+    expect(screen.queryAllByRole("button", { name: new RegExp(`^${t.creditsPage.buy}`) })).toEqual([]);
+    expect(screen.getByRole("slider", { name: ac.sliderLabel })).toBeTruthy();
+    expect([creditsToAdd(), perCredit(), totalText()]).toEqual(["5,000", "$0.009", "$45.00"]);
+    expect(sheet().textContent).toContain("Minimum 1,000 credits. One purchase is up to 125,000 credits ($1,000).");
     expect(sheet().textContent).toContain(ac.taxNote);
   });
 
-  it("follows a preset and a typed amount live, in exactly the webhook's arithmetic", () => {
-    renderSheet();
-    fireEvent.click(within(sheet()).getByRole("button", { name: "$50" }));
-    expect([creditsToAdd(), totalText()]).toEqual(["5,000", "$50.00"]);
-    expect(within(sheet()).getByRole("button", { name: "$50" }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.change(input(), { target: { value: "25.5" } });
-    expect([creditsToAdd(), totalText()]).toEqual(["2,550", "$25.50"]);
-    fireEvent.change(input(), { target: { value: "300" } });
-    expect([creditsToAdd(), totalText()]).toEqual(["30,000", "$300.00"]);
+  it("updates total, price per credit and the estimate live as the person types or drags, at the volume rates", () => {
+    renderSheet(view, RATES);
+    const cases: [string, string, string, string][] = [
+      ["1000", "1,000", "$0.010", "$10.00"],
+      ["4999", "4,999", "$0.010", "$49.99"],
+      ["5,000", "5,000", "$0.009", "$45.00"],
+      ["19999", "19,999", "$0.009", "$179.99"],
+      ["20 000", "20,000", "$0.008", "$160.00"],
+      ["125000", "125,000", "$0.008", "$1,000.00"],
+    ];
+    for (const [value, credits, rate, total] of cases) {
+      fireEvent.change(input(), { target: { value } });
+      expect([creditsToAdd(), perCredit(), totalText()], value).toEqual([credits, rate, total]);
+    }
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "20000" } });
+    expect([input().value, totalText()]).toEqual(["20000", "$160.00"]);
+    // The "≈ N images / N s video" estimate is the Credits page's own helper (Equivalents), on the typed count:
+    // 20,000 credits at 10 per image = 2,000 images; 40 per 5 s clip = 500 clips.
+    const eq = () => (sheet().querySelector("[data-equivalents]") as HTMLElement).textContent ?? "";
+    expect(eq()).toContain("2,000");
+    expect(eq()).toContain("500");
+    fireEvent.change(input(), { target: { value: "1000" } });
+    expect(eq()).toContain("100");
   });
 
-  it("says what is wrong with an amount, and the key cannot be pressed", () => {
+  it("above one purchase's $1,000 cap: no price, no checkout key, a contact-us mail link instead", () => {
+    renderSheet();
+    fireEvent.change(input(), { target: { value: "125001" } });
+    const contact = document.querySelector("[data-topup-contact]") as HTMLElement;
+    expect(contact).toBeTruthy();
+    expect(within(contact).getByRole("link", { name: ac.contactLink }).getAttribute("href")).toBe("mailto:ruslan@nightshift-ai.studio");
+    expect(within(sheet()).queryByRole("button", { name: new RegExp(`^${ac.submit}`) })).toBeNull();
+    expect(document.querySelector("[data-total]")).toBeNull();
+    expect(fetchCalls).toEqual([]);
+  });
+
+  it("says what is wrong with a credit count, and the key cannot be pressed", () => {
     renderSheet();
     const cases: [string, string][] = [
-      ["4.99", "The minimum is $5."],
-      ["300.01", "The maximum is $300 per payment."],
-      ["25.555", ac.invalid.format],
+      ["999", "The minimum is 1,000 credits."],
+      ["5000.5", ac.invalid.format],
+      ["1000,5", ac.invalid.format],
+      ["-5000", ac.invalid.format],
+      ["1e4", ac.invalid.format],
       ["", ac.invalid.empty],
     ];
     for (const [value, message] of cases) {
       fireEvent.change(input(), { target: { value } });
       expect(screen.getByRole("alert").textContent).toBe(message);
       expect(submitKey().disabled).toBe(true);
-      expect([creditsToAdd(), totalText()]).toEqual(["—", "—"]);
+      expect([creditsToAdd(), perCredit(), totalText()]).toEqual(["—", "—", "—"]);
       expect(input().getAttribute("aria-invalid")).toBe("true");
     }
     fireEvent.click(submitKey());
     expect(fetchCalls).toEqual([]);
   });
 
-  it("asks our server for the typed cents only, and says Processing… while it waits", async () => {
+  it("asks our server for the credit count only (never a price), and says Processing… while it waits", async () => {
     let release: (r: Response) => void = () => {};
     answer = () => new Promise<Response>((resolve) => (release = resolve));
     renderSheet();
-    fireEvent.change(input(), { target: { value: "25.50" } });
+    fireEvent.change(input(), { target: { value: "7500" } });
     await act(async () => {
       fireEvent.click(submitKey());
     });
-    expect(fetchCalls).toEqual([{ url: "/api/billing/dodo/checkout", body: { kind: "amount", usd_cents: 2550, return_path: "/my-channel/credits" } }]);
+    expect(fetchCalls).toEqual([{ url: "/api/billing/dodo/checkout", body: { kind: "credits", credits: 7500, return_path: "/my-channel/credits" } }]);
     expect(submitKey().textContent).toContain(ac.processing);
     expect(submitKey().disabled).toBe(true);
     // A second press while it is opening opens nothing more.
@@ -185,35 +216,16 @@ describe("the Add credits sheet", () => {
     for (const lang of [dictionaries.ru.addCredits, dictionaries.uz.addCredits]) expect(JSON.stringify(lang)).not.toMatch(/кошел|hamyon/i);
   });
 
-  it("keeps the packs as the better-value cards, each with the extra credits the catalogs give", () => {
-    const { container } = renderSheet();
-    expect(container.textContent).toContain(ac.packsTitle);
-    expect(container.textContent).toContain("+11% credits");
-    expect(container.textContent).toContain("+25% credits");
-    expect(DODO_CATALOG_PACKS.map((p) => packBonusPercent(p))).toEqual([null, 11, 25]);
-    expect(container.textContent).toContain(ac.packsLead);
-    expect(sheet().textContent).toContain(ac.ratePacks);
-    // Only the cards with a bonus claim one: Starter is the typed rate.
-    const cards = screen.getAllByRole("listitem");
-    expect(cards.map((c) => /\+\d+% credits/.test(c.textContent ?? ""))).toEqual([false, true, true]);
-    // Buying a pack still names the pack, never an amount.
-    expect(screen.getAllByRole("button", { name: new RegExp(t.creditsPage.buy) })).toHaveLength(3);
+  it("keeps the test-mode chip while Dodo is in test mode", () => {
+    renderSheet();
+    expect(screen.getByText(t.creditsPage.testMode)).toBeTruthy();
   });
 
-  it("claims no better value where no pack gives one: Starter alone, or no packs at all", () => {
-    const starterOnly = dodoView(resolveDodoServer({ ...ENV, DODO_PRODUCT_CREATOR: "", DODO_PRODUCT_STUDIO: "" }))!;
-    const { container } = renderSheet(starterOnly);
-    expect(container.textContent).not.toContain(ac.packsTitle);
-    expect(container.textContent).not.toContain(ac.packsLead);
-    expect(sheet().textContent).not.toContain(ac.ratePacks);
-    expect(container.textContent).not.toMatch(/\+\d+% credits/);
-    expect(screen.getByRole("heading", { name: t.creditsPage.packsTitle })).toBeTruthy();
-    cleanup();
-    const noPacks = dodoView(resolveDodoServer({ ...ENV, DODO_PRODUCT_STARTER: "", DODO_PRODUCT_CREATOR: "", DODO_PRODUCT_STUDIO: "" }))!;
-    const second = renderSheet(noPacks);
-    expect(second.container.textContent).not.toContain(ac.ratePacks);
-    expect(second.container.textContent).not.toContain(ac.packsTitle);
-    expect(second.container.textContent).toContain(ac.rate.replace("{n}", "100"));
+  it("states the three volume rates in every language, with Uzbek apostrophes as ʻ/ʼ", () => {
+    renderSheet();
+    expect(sheet().textContent).toContain(ac.tiers);
+    for (const lang of ["en", "ru", "uz"] as const) expect(dictionaries[lang].addCredits.tiers).toMatch(/0\.010[\s\S]*0\.009[\s\S]*0\.008/);
+    expect(JSON.stringify(dictionaries.uz.addCredits)).not.toMatch(/[A-Za-z]'/);
   });
 
   it("tells the buyer not to change the amount on Dodo's page", () => {
@@ -221,11 +233,11 @@ describe("the Add credits sheet", () => {
     expect(sheet().textContent).toContain(ac.keepAmount);
   });
 
-  it("is not there without the PWYW product: the panel is the packs, as before, with no bonus chips", () => {
-    const { container } = renderSheet(packsOnly);
+  it("is not there without the PWYW product: the panel is the packs, as before", () => {
+    renderSheet(packsOnly);
     expect(document.querySelector("[data-add-credits]")).toBeNull();
     expect(screen.getByRole("heading", { name: t.creditsPage.packsTitle })).toBeTruthy();
-    expect(container.textContent).not.toContain("+11%");
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
   });
 
   it("is written in all three languages", () => {
@@ -264,6 +276,9 @@ describe("the purchase history", () => {
     expect(rows[0].credits).toBe(2500);
     expect(purchaseItem("pack:mega")).toBeNull();
     expect(purchaseItem("pack:amount_0100")).toBeNull();
+    // A credit-count order reads as a custom purchase of its recorded cents.
+    expect(purchaseItem("pack:credits_20000_16000")).toEqual({ kind: "amount", cents: 16000 });
+    expect(purchaseItem("pack:credits_020000_16000")).toBeNull();
     expect(purchaseStatus(1080, 0, true, false)).toBe("refund_recorded");
     expect(purchaseStatus(null, 500, false, false)).toBe("refund_recorded");
     expect(purchaseStatus(1080, 1080, false, true)).toBe("chargeback");

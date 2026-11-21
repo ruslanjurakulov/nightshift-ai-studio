@@ -16,12 +16,13 @@ export const dynamic = "force-dynamic";
 /**
  * Buy a credit pack or subscribe to a plan through Dodo Payments. POST
  * `{ kind: "pack" | "plan", id, return_path }` — OUR id ("starter", "pro"),
- * never a product id — or `{ kind: "amount", usd_cents, return_path }` for the
- * "Add credits" sheet's typed amount: a JSON integer of US cents inside
- * DODO_AMOUNT's bounds ($5 to $300), refused otherwise. The cents are signed
- * into the metadata (`pack:amount_<cents>`) and set as the Pay What You Want
- * line's price; the webhook credits the signed cents at its own rate, and only
- * when Dodo reports exactly that amount paid. The browser never names credits.
+ * never a product id — or `{ kind: "credits", credits, return_path }` for the
+ * "Add credits" sheet: a JSON integer of credits, at least 1 000 and at most
+ * $1 000 worth (lib/topup.ts), refused otherwise. The server prices it, and the
+ * order (`pack:credits_<n>_<cents>`) is recorded in the nonce row and signed
+ * into the metadata before Dodo is called; the cents are set as the Pay What You
+ * Want line's price. The webhook grants the recorded credits only when Dodo
+ * reports exactly the recorded cents paid. The browser never names a price.
  *
  * Dark unless PAYMENTS_PROVIDER is `dodo`: until then it answers 404 before it
  * reads the session, so nothing about the Paddle path changes. With it, the

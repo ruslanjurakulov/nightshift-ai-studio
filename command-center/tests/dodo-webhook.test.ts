@@ -32,6 +32,8 @@ import {
 } from "../../supabase/functions/_shared/dodo";
 import { CREDIT_PACKS as PADDLE_WEBHOOK_PACKS } from "../../supabase/functions/_shared/paddle";
 import { DODO_AMOUNT as APP_AMOUNT, DODO_CATALOG_PACKS as APP_PACKS, DODO_CATALOG_PLAN_PRICES as APP_PLAN_PRICES, dodoItemKey } from "@/lib/dodo";
+import { TOPUP as APP_TOPUP, topupItemKey, topupQuote } from "@/lib/topup";
+import { TOPUP as WEBHOOK_TOPUP, dodoTopupFromItem } from "../../supabase/functions/_shared/dodo";
 
 // The Dodo webhook's logic (supabase/functions/_shared/dodo.ts) is runtime-neutral, so it is tested here with the
 // Command Center's tooling, the same way as Paddle's. The payloads below are built from the field lists and the
@@ -1045,6 +1047,96 @@ describe("the REST store", () => {
 // ───────────────────────────────────────────────────────────────────────────
 
 const PAY_AMT = "pay_TypedAMOUNT00000000001";
+
+// ───────────────────────────────────────────────────────────────────────────
+// A credit-count order (owner decision 2026-11-21): the checkout records `pack:credits_<n>_<cents>` in the nonce row and the
+// signed metadata; what would break without these is credits granted for a different amount than was paid, an order granted
+// twice, or a buyer on a static PWYW link choosing their own price.
+// ───────────────────────────────────────────────────────────────────────────
+
+const PAY_ORDER = "pay_CreditORDER0000000001";
+
+/** payment.succeeded for an order of `credits` at its server price, tax-exclusive by default (+ $2.00 tax). */
+function orderPayment(credits: number, overrides: Record<string, unknown> = {}, signedItem?: string) {
+  const q = topupQuote(credits);
+  if (!q.ok) throw new Error("test order must be priceable");
+  return payment({
+    payment_id: PAY_ORDER,
+    total_amount: q.cents + 200,
+    tax: 200,
+    metadata: signedMeta(ORG, USER, signedItem ?? topupItemKey(q)),
+    product_cart: [{ product_id: PDT_AMOUNT, quantity: 1 }],
+    ...overrides,
+  });
+}
+
+describe("a credit-count order", () => {
+  it("is the same offer on both sides (the app's price table equals the webhook's bounds table)", () => {
+    expect({ minCredits: APP_TOPUP.minCredits, maxCents: APP_TOPUP.maxCents, tiers: APP_TOPUP.tiers }).toEqual(WEBHOOK_TOPUP);
+    expect(dodoTopupFromItem("pack:credits_5000_4500")).toEqual({ credits: 5000, cents: 4500 });
+    expect(dodoTopupFromItem("pack:credits_125000_100000")).toEqual({ credits: 125000, cents: 100000 });
+    // Non-canonical, below the minimum, over the cap, or cheaper than the lowest rate: not an order.
+    for (const bad of ["pack:credits_999_999", "pack:credits_125001_100001", "pack:credits_05000_4500", "pack:credits_20000_1", "pack:credits_5000", "plan:credits_5000_4500", null])
+      expect(dodoTopupFromItem(bad), String(bad)).toBeNull();
+  });
+
+  it("grants exactly the recorded credits when the paid amount matches: 20,000 credits for $160.00 + tax", async () => {
+    const store = new FakeStore();
+    const res = await deliver(store, orderPayment(20000), { taxMode: "exclusive" });
+    expect(res.status).toBe(200);
+    expect(store.credited.get(PAY_ORDER)).toEqual({ org: ORG, credits: 20000 });
+    expect([...store.events.values()][0]).toMatchObject({ status: "processed", credits: 20000, amountMinor: 16200, currency: "USD" });
+    expect([...store.nonces.values()][0].key).toBe(`${ORG}|${USER}|pack:credits_20000_16000`);
+  });
+
+  it("refuses and records why when the paid amount is not the recorded one (a buyer-chosen PWYW price)", async () => {
+    for (const paid of [1000, 15999, 16001, 100000]) {
+      const store = new FakeStore();
+      const res = await deliver(store, orderPayment(20000, { total_amount: paid + 200, tax: 200 }));
+      expect(res.status).toBe(200);
+      expect(store.credited.size).toBe(0);
+      const row = [...store.events.values()][0];
+      expect(row.status).toBe("rejected");
+      expect(row.detail).toContain("signed amount is 16000");
+      expect(store.nonces.size).toBe(0);
+    }
+  });
+
+  it("refuses a payment in another currency", async () => {
+    const store = new FakeStore();
+    await deliver(store, orderPayment(5000, { currency: "EUR" }));
+    expect(store.credited.size).toBe(0);
+    expect([...store.events.values()][0].status).toBe("rejected");
+  });
+
+  it("a replay grants once: the same webhook again, the same payment under a new id, the same order paid twice", async () => {
+    const store = new FakeStore();
+    await deliver(store, orderPayment(5000), { id: "msg_ord_1" });
+    expect((await deliver(store, orderPayment(5000), { id: "msg_ord_1" })).body).toMatchObject({ duplicate: true });
+    await deliver(store, orderPayment(5000), { id: "msg_ord_2" });
+    await deliver(store, orderPayment(5000, { payment_id: "pay_SecondORDERpayment0001" }), { id: "msg_ord_3" });
+    expect(total(store)).toBe(5000);
+    expect(store.events.get("msg_ord_3")?.detail).toContain("nonce consumed");
+  });
+
+  it("an order edited in the metadata (more credits under our signature) names no organization", async () => {
+    const store = new FakeStore();
+    const meta = { ...signedMeta(ORG, USER, "pack:credits_1000_1000"), nightshift_item: "pack:credits_125000_1000" };
+    await deliver(store, orderPayment(1000, { metadata: meta }));
+    expect(store.credited.size).toBe(0);
+    expect([...store.events.values()][0]).toMatchObject({ status: "rejected", orgId: null });
+  });
+
+  it("legacy orders in flight still fulfil: a typed-dollar amount and a fixed pack", async () => {
+    const legacy = new FakeStore();
+    await deliver(legacy, payment({ payment_id: PAY_AMT, total_amount: 2700, tax: 200, metadata: signedMeta(ORG, USER, "pack:amount_2500"), product_cart: [{ product_id: PDT_AMOUNT, quantity: 1 }] }));
+    expect(legacy.credited.get(PAY_AMT)).toEqual({ org: ORG, credits: 2500 });
+    const pack = new FakeStore();
+    await deliver(pack, payment());
+    expect(pack.credited.size).toBe(1);
+    expect([...pack.events.values()][0].status).toBe("processed");
+  });
+});
 
 /** payment.succeeded for a typed $25.00, tax-exclusive by default: $25.00 + $2.00 tax. */
 function amountPayment(cents = 2500, overrides: Record<string, unknown> = {}, signedCents: number | string = cents) {

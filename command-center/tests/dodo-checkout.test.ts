@@ -77,8 +77,9 @@ const { PLAN_ENV, planMatrix } = await import("@/lib/plans");
 const { buyAccess, paddleClient, paddleConfig, CREDIT_PACKS } = await import("@/lib/paddle");
 const checkout = await import("../app/api/billing/dodo/checkout/route");
 const invoice = await import("../app/api/billing/dodo/invoice/route");
-const { DODO_AMOUNT, dodoAmountInBounds, parseDodoAmount } = await import("@/lib/dodo");
-const { dodoAmountFromItem } = await import("../../supabase/functions/_shared/dodo");
+const { dodoItemKey } = await import("@/lib/dodo");
+const { TOPUP_MAX_CREDITS, parseCreditsText, topupQuote } = await import("@/lib/topup");
+const { dodoTopupFromItem } = await import("../../supabase/functions/_shared/dodo");
 const { fetchDodoInvoicePdf } = await import("@/lib/server/dodo-api");
 const portal = await import("../app/api/billing/portal/route");
 
@@ -577,50 +578,64 @@ describe("the return from Dodo's checkout", () => {
 const PDT_AMOUNT = "pdt_PWYWamount0000000000";
 const SELLING_AMOUNT = { ...SELLING, DODO_PRODUCT_AMOUNT: PDT_AMOUNT };
 
-describe("a typed amount: the bounds and the rate", () => {
-  it("are $5 to $300 at 1 credit per US cent, in whole cents", () => {
-    expect([DODO_AMOUNT.minCents, DODO_AMOUNT.maxCents, DODO_AMOUNT.creditsPerCent]).toEqual([500, 30000, 1]);
-    expect([499, 500, 30000, 30001].map(dodoAmountInBounds)).toEqual([false, true, true, false]);
-    for (const bad of [2500.5, Number.NaN, Infinity, "2500", null, undefined, -500, 1e21]) expect(dodoAmountInBounds(bad)).toBe(false);
+describe("a credit count: the server's price (topupQuote), pinned at every tier edge and the cap", () => {
+  it("prices exactly today's pack rates per credit, in integer cents rounded half up", () => {
+    const cents = (n: unknown) => {
+      const q = topupQuote(n);
+      return q.ok ? q.cents : q.reason;
+    };
+    expect(cents(999)).toBe("below");
+    expect(cents(1000)).toBe(1000); // $10.00
+    expect(cents(4999)).toBe(4999); // $49.99 at 1.0¢
+    expect(cents(5000)).toBe(4500); // $45.00 at 0.9¢
+    expect(cents(19999)).toBe(17999); // 17 999.1¢ -> $179.99
+    expect(cents(20000)).toBe(16000); // $160.00 at 0.8¢
+    expect(cents(125000)).toBe(100000); // $1 000.00, the cap
+    expect(cents(125001)).toBe("above");
+    expect(TOPUP_MAX_CREDITS).toBe(125000);
+    // Round half up, not banker's: 5 005 × 0.9¢ = 4 504.5¢ -> 4 505¢.
+    expect(cents(5005)).toBe(4505);
   });
 
-  it("reads what a person types into exactly the cents that will be charged, never rounding", () => {
-    expect(parseDodoAmount("25")).toEqual({ ok: true, cents: 2500 });
-    expect(parseDodoAmount("$25.5")).toEqual({ ok: true, cents: 2550 });
-    expect(parseDodoAmount(" 19.99 ")).toEqual({ ok: true, cents: 1999 });
-    expect(parseDodoAmount("25,50")).toEqual({ ok: true, cents: 2550 });
-    expect(parseDodoAmount("5")).toEqual({ ok: true, cents: 500 });
-    expect(parseDodoAmount("300.00")).toEqual({ ok: true, cents: 30000 });
-    expect(parseDodoAmount("")).toEqual({ ok: false, reason: "empty" });
-    expect(parseDodoAmount("4.99")).toEqual({ ok: false, reason: "below" });
-    expect(parseDodoAmount("300.01")).toEqual({ ok: false, reason: "above" });
-    for (const bad of ["25.555", "1e3", "-25", "25 USD", "0x20", "２５", "25..5", ".5"]) expect(parseDodoAmount(bad)).toEqual({ ok: false, reason: "format" });
+  it("refuses anything that is not a whole, non-negative JSON number of credits", () => {
+    for (const bad of [5000.5, "5000", -5000, -1, Number.NaN, Infinity, 1e21, Number.MAX_SAFE_INTEGER + 1, null, undefined, {}, [5000]])
+      expect(topupQuote(bad).ok, String(bad)).toBe(false);
+    expect(topupQuote(Number.MAX_SAFE_INTEGER)).toEqual({ ok: false, reason: "above" });
+    expect(topupQuote(0)).toEqual({ ok: false, reason: "below" });
   });
 
-  it("accepts only a JSON integer of cents inside the bounds from the browser", () => {
-    expect(parseCheckoutItem({ kind: "amount", usd_cents: 2500 })).toEqual({ kind: "amount", usdCents: 2500 });
+  it("reads what a person types only as a whole number (a decimal is refused, never re-read as a bigger count)", () => {
+    expect(["5000", " 5 000 ", "5,000", "125,000", "5 000"].map(parseCreditsText)).toEqual([5000, 5000, 5000, 125000, 5000]);
+    for (const bad of ["5000.5", "1000,5", "50,00", "-5000", "1e4", "５０００", "", "abc"]) expect(parseCreditsText(bad), bad).toBeNull();
+  });
+
+  it("takes only the credit count from the browser; a price, cents or id beside it makes the request malformed", () => {
+    expect(parseCheckoutItem({ kind: "credits", credits: 5000 })).toEqual({ kind: "credits", credits: 5000, usdCents: 4500 });
     for (const bad of [
-      { kind: "amount", usd_cents: 499 },
-      { kind: "amount", usd_cents: 30001 },
-      { kind: "amount", usd_cents: 2500.5 },
-      { kind: "amount", usd_cents: "2500" },
-      { kind: "amount", usd_cents: null },
-      { kind: "amount" },
-      { kind: "amount", usd_cents: 2500, id: "starter" },
-      { kind: "amount", amount: 2500 },
+      { kind: "credits", credits: 999 },
+      { kind: "credits", credits: 125001 },
+      { kind: "credits", credits: 5000.5 },
+      { kind: "credits", credits: "5000" },
+      { kind: "credits" },
+      { kind: "credits", credits: 5000, usd_cents: 1 },
+      { kind: "credits", credits: 5000, id: "starter" },
+      // The typed-dollar path is no longer sold (minimum 1 000 credits).
+      { kind: "amount", usd_cents: 2500 },
     ])
       expect(parseCheckoutItem(bad), JSON.stringify(bad)).toBeNull();
+    expect(dodoItemKey({ kind: "credits", credits: 125000, usdCents: 100000 })).toBe("pack:credits_125000_100000");
+    // The nonce table's item check (0146) must accept the longest order the cap allows.
+    expect("pack:credits_125000_100000").toMatch(/^(pack|plan):[a-z][a-z0-9_]{0,30}$/);
   });
 
   it("is on sale only with its own product id, which no pack or plan may share", () => {
     expect(resolveDodoServer(SELLING_AMOUNT)!.amountProduct).toBe(PDT_AMOUNT);
     expect(resolveDodoServer({ ...SELLING, DODO_PRODUCT_AMOUNT: PDT.starter })!.amountProduct).toBeNull();
     expect(resolveDodoServer({ ...SELLING, DODO_PRODUCT_AMOUNT: "pri_paddle123456" })!.amountProduct).toBeNull();
-    // Only the amount product configured: Dodo still sells (the typed amount), and the view says so without any id.
     const onlyAmount = resolveDodoServer({ DODO_PAYMENTS_API_KEY: KEY, DODO_METADATA_SECRET: DODO_ENV.DODO_METADATA_SECRET, DODO_PRODUCT_AMOUNT: PDT_AMOUNT })!;
     const view = dodoView(onlyAmount)!;
     expect(view.packs).toEqual([]);
-    expect(view.amount).toEqual({ minCents: 500, maxCents: 30000, creditsPerCent: 1, presetsCents: [1000, 2000, 5000, 10000] });
+    expect(view.amount).toEqual({ minCredits: 1000, maxCredits: 125000, maxCents: 100000, contactEmail: "ruslan@nightshift-ai.studio" });
     expect(JSON.stringify(view)).not.toContain("pdt_");
     expect(dodoBuyAccess(h.orgId, "owner", view)).toBe("allowed");
     expect(dodoBuyAccess(h.orgId, "editor", view)).toBe("admin_only");
@@ -628,22 +643,22 @@ describe("a typed amount: the bounds and the rate", () => {
   });
 });
 
-describe("POST /api/billing/dodo/checkout with a typed amount", () => {
-  it("charges exactly the signed cents on the PWYW product, quantity 1, and signs the amount into the item and the nonce", async () => {
+describe("POST /api/billing/dodo/checkout with a credit count", () => {
+  it("prices the count on the server, records the order (nonce row) BEFORE Dodo, and charges exactly that on the PWYW line", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
     setEnv(SELLING_AMOUNT);
-    const res = await buy({ kind: "amount", usd_cents: 2550, return_path: "/all-channels/credits", credits: 999999, product_id: PDT.starter });
+    const res = await buy({ kind: "credits", credits: 19999, return_path: "/all-channels/credits", product_id: PDT.starter });
     expect(res.status).toBe(200);
     const body = sentBody();
     const meta = body.metadata as Record<string, string>;
-    expect(body.product_cart).toEqual([{ product_id: PDT_AMOUNT, quantity: 1, amount: 2550 }]);
-    expect(meta.nightshift_item).toBe("pack:amount_2550");
-    expect(h.rpcCalls).toEqual([{ fn: "dodo_issue_checkout_nonce", args: { p_org: h.orgId, p_item: "pack:amount_2550" } }]);
-    // What the webhook will read back from it: our signature, over these cents.
+    expect(body.product_cart).toEqual([{ product_id: PDT_AMOUNT, quantity: 1, amount: 17999 }]);
+    expect(meta.nightshift_item).toBe("pack:credits_19999_17999");
+    expect(h.rpcCalls).toEqual([{ fn: "dodo_issue_checkout_nonce", args: { p_org: h.orgId, p_item: "pack:credits_19999_17999" } }]);
+    // What the webhook will read back from it: our signature, over the recorded credits and cents.
     const verified = await verifyDodoMetadata(meta, dodoMetadataKey(DODO_ENV.DODO_METADATA_SECRET)!);
-    expect(verified).toMatchObject({ status: "valid", item: "pack:amount_2550" });
-    expect(dodoAmountFromItem((verified as { item: string }).item)).toBe(2550);
+    expect(verified).toMatchObject({ status: "valid", item: "pack:credits_19999_17999" });
+    expect(dodoTopupFromItem((verified as { item: string }).item)).toEqual({ credits: 19999, cents: 17999 });
     // Back to the packs panel, which waits for the balance.
     expect(String(body.return_url)).toMatch(/&dodo=return&item=pack$/);
     expect(String(body.cancel_url)).toMatch(/&dodo=cancelled&item=pack$/);
@@ -658,11 +673,14 @@ describe("POST /api/billing/dodo/checkout with a typed amount", () => {
     expect(sentBody().product_cart).toEqual([{ product_id: PDT.starter, quantity: 1 }]);
   });
 
-  it("refuses an amount out of bounds or not a whole number of cents, before a nonce or Dodo", async () => {
+  it("refuses a count below the minimum, over the $1 000 cap, or not a whole number, before a nonce or Dodo", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     setEnv(SELLING_AMOUNT);
-    for (const usd_cents of [0, 499, 30001, 2500.5, "2500", -2500, 1e12])
-      expect((await buy({ kind: "amount", usd_cents, return_path: "/a/credits" })).status, String(usd_cents)).toBe(400);
+    for (const credits of [0, 999, 125001, 5000.5, "5000", -5000, 1e12])
+      expect((await buy({ kind: "credits", credits, return_path: "/a/credits" })).status, String(credits)).toBe(400);
+    // The typed-dollar kind is no longer sold, and a price sent beside the count is refused, not ignored.
+    expect((await buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" })).status).toBe(400);
+    expect((await buy({ kind: "credits", credits: 5000, usd_cents: 1, return_path: "/a/credits" })).status).toBe(400);
     expect(h.rpcCalls).toEqual([]);
     expect(fetchCalls).toHaveLength(0);
   });
@@ -670,7 +688,7 @@ describe("POST /api/billing/dodo/checkout with a typed amount", () => {
   it("is not on sale without DODO_PRODUCT_AMOUNT: 404, no nonce, no Dodo call", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     setEnv(SELLING);
-    const res = await buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" });
+    const res = await buy({ kind: "credits", credits: 5000, return_path: "/a/credits" });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "not_on_sale" });
     expect(h.rpcCalls).toEqual([]);
@@ -680,7 +698,7 @@ describe("POST /api/billing/dodo/checkout with a typed amount", () => {
   it("keeps every bar of the pack path: signed out, not owner/admin, exempt, test mode for a workspace not on the list", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     setEnv(SELLING_AMOUNT);
-    const ask = () => buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" });
+    const ask = () => buy({ kind: "credits", credits: 5000, return_path: "/a/credits" });
     h.user = null;
     expect((await ask()).status).toBe(401);
     h.user = { id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" };
@@ -696,7 +714,7 @@ describe("POST /api/billing/dodo/checkout with a typed amount", () => {
 
   it("answers 404 while PAYMENTS_PROVIDER is not dodo", async () => {
     setEnv(SELLING_AMOUNT);
-    expect((await buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" })).status).toBe(404);
+    expect((await buy({ kind: "credits", credits: 5000, return_path: "/a/credits" })).status).toBe(404);
     expect(fetchCalls).toHaveLength(0);
   });
 });
