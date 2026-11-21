@@ -38,6 +38,9 @@ const AUTH_CALLS = [
   "runApi(",             // the public API: a bearer key, checked by api_auth
   "apiCaller(",          // the MCP endpoint's key check
   "verifyMedia(",        // the signed media link's HMAC
+  "activeSession(",      // the accounts kept on this device (lib/server/device-accounts): getUser at the auth server, then that session
+  "refreshParked(",      // a parked account's switch: its stored refresh token, answered (or refused) by the auth server, and the account it returns must be the slot's
+  "revokeParked(",       // a parked account's sign-out: the same refresh at the auth server first; a token it refuses does nothing
 ];
 
 /** Routes allowed to carry no check of their own, and why. */

@@ -43,6 +43,11 @@ export type PublicDictionary = {
     | "title" | "subtitle" | "codeLabel" | "codePh" | "factorLabel" | "factorFallback" | "submit" | "submitting" | "loading"
     | "wrongCode" | "expired" | "rateLimited" | "noFactor" | "failed" | "unavailable" | "retry" | "signOut" | "signingOut"
   >;
+  /** The sign-in page's "continue as" for the accounts kept on this device (components/auth/SavedAccounts.tsx). */
+  deviceAccounts: Pick<
+    Dictionary["deviceAccounts"],
+    "savedTitle" | "continueAs" | "signInAgain" | "expired" | "failed" | "unavailable" | "mismatch" | "working" | "logOutOf" | "logOut"
+  >;
   /** The error screen (components/feedback/ErrorScreen), shown by app/error.tsx on any page. */
   ux: Pick<Dictionary["ux"], "errorTitle" | "errorBody" | "errorRetry" | "errorHome" | "errorRef">;
 };
@@ -67,6 +72,18 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     signup: t.signup,
     recovery: t.recovery,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
+    deviceAccounts: {
+      savedTitle: t.deviceAccounts.savedTitle,
+      continueAs: t.deviceAccounts.continueAs,
+      signInAgain: t.deviceAccounts.signInAgain,
+      expired: t.deviceAccounts.expired,
+      failed: t.deviceAccounts.failed,
+      unavailable: t.deviceAccounts.unavailable,
+      mismatch: t.deviceAccounts.mismatch,
+      working: t.deviceAccounts.working,
+      logOutOf: t.deviceAccounts.logOutOf,
+      logOut: t.deviceAccounts.logOut,
+    },
     mfa: {
       title: t.mfa.title,
       subtitle: t.mfa.subtitle,

@@ -1,5 +1,6 @@
 import { SOLUTIONS_PATH, SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { OAUTH_PUBLIC_PATHS, WELL_KNOWN_PATHS } from "@/lib/oauth/config";
+import { DEVICE_ACCOUNTS_API } from "@/lib/device-accounts";
 
 /**
  * Which URLs a signed-out visitor may see, and what the auth gate does with
@@ -410,6 +411,17 @@ export function isResetPasswordPath(pathname: string): boolean {
   return normalize(pathname) === RESET_PASSWORD_PATH;
 }
 
+/**
+ * The accounts kept in this browser (app/api/account/accounts, lib/device-accounts.ts): answered signed out too, because
+ * the sign-in page offers "continue as" for a parked account and "Add account" leaves the browser signed out on purpose.
+ * Each route decides for itself (same-origin, the slot, the auth server's answer); none acts on the active session's
+ * behalf without it. Exactly this path and the paths under it.
+ */
+export function isDeviceAccountsPath(pathname: string): boolean {
+  const p = normalize(pathname);
+  return p === DEVICE_ACCOUNTS_API || p.startsWith(`${DEVICE_ACCOUNTS_API}/`);
+}
+
 export function isHandleCheckPath(pathname: string): boolean {
   return normalize(pathname) === HANDLE_CHECK_PATH;
 }
@@ -463,6 +475,7 @@ export function gateDecision(pathname: string, signedIn: boolean, search: string
   // The sign-up form's username check works signed out; it is a route handler
   // that authenticates nothing and says one boolean (see HANDLE_CHECK_PATH).
   if (isHandleCheckPath(pathname)) return "pass";
+  if (isDeviceAccountsPath(pathname)) return "pass";
   if (isAlwaysPublicPath(pathname)) return "pass";
   // /studio: the marketing page signed out; signed in it is the old section link and goes on (middleware channelRedirect).
   if (normalize(pathname) === STUDIO_PAGE_PATH) return signedIn ? "app" : "pass";

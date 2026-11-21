@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Activity, Coins, Gift, Inbox, LogOut, Settings, Tv, X } from "lucide-react";
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
+import { DeviceAccounts } from "@/components/account/DeviceAccounts";
 import { useShell } from "@/components/shell/ShellContext";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
@@ -197,7 +198,10 @@ export function AccountMenu({
             </button>
           </header>
 
-          {/* The platform owner's two accounts, first in the menu as a messenger lists them (decided on the server: ownerSwitch). */}
+          {/* The accounts kept on this device, first, as a messenger lists them; each switch is the server's (lib/device-accounts.ts). */}
+          <DeviceAccounts enabled={open} onSignOutCurrent={signOut} />
+
+          {/* The platform owner's two views of their own account (decided on the server: ownerSwitch), only under the owner's account. */}
           {ownerSwitch && <AccountSwitcher current={operatorFrame ? "owner" : "user"} onDone={() => close(false)} inMenu />}
 
           {state === "failed" && (

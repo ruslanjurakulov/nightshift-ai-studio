@@ -36,6 +36,7 @@ import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { trendsUz } from "./trends/uz";
 import { ownerConsoleUz } from "./owner-console/uz";
+import { deviceAccountsUz } from "./device-accounts/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
@@ -70,6 +71,7 @@ export const uz: Dictionary = {
   trends: trendsUz,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/uz.ts. */
   ownerConsole: ownerConsoleUz,
+  deviceAccounts: deviceAccountsUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
