@@ -4,10 +4,10 @@ vi.mock("server-only", () => ({}));
 const h = vi.hoisted(() => ({ user: vi.fn(), client: vi.fn(), admin: vi.fn(), rate: vi.fn(), rpc: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ getUser: h.user, createClient: h.client }));
 vi.mock("@/lib/auth/org-roles", () => ({ isPlatformAdmin: h.admin }));
-vi.mock("@/lib/orgs-server", () => ({ getOrgContext: vi.fn() }));
+vi.mock("@/lib/orgs-server", async () => ({ getOrgContext: async () => (await import("./films-fixtures")).ORG_CONTEXT }));
 vi.mock("@/lib/server/web-rate", async (orig) => ({ ...(await orig<typeof import("../lib/server/web-rate")>()), takeWebRate: h.rate }));
 
-const { FILM } = await import("./films-fixtures");
+const { FILM, withOrgSwitch } = await import("./films-fixtures");
 const startRoute = await import("../app/api/films/[id]/start/route");
 
 const QID = `fq-3-${"c".repeat(32)}`;
@@ -30,7 +30,8 @@ beforeEach(() => {
   h.admin.mockReset().mockResolvedValue(false);
   h.rate.mockReset().mockResolvedValue("ok");
   h.rpc.mockReset();
-  h.client.mockReset().mockResolvedValue({ rpc: h.rpc, from: vi.fn() });
+  // The open workspace is switched on (0198): these tests are about what comes after the gate.
+  h.client.mockReset().mockResolvedValue({ rpc: h.rpc, from: withOrgSwitch(() => { throw new Error("no table read here"); }) });
 });
 afterEach(() => vi.unstubAllEnvs());
 

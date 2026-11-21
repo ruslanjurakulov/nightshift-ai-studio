@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { FILM_SAVE_RATE } from "@/lib/server/web-rate";
-import { NO_STORE, filmFail, filmGate, filmRate, filmRefusal, readFilmBody } from "@/lib/server/films";
+import { NO_STORE, filmFail, filmGateFor, filmRate, filmRefusal, readFilmBody } from "@/lib/server/films";
 import { parseFilmId } from "@/lib/films";
 import { coerceQuote } from "@/lib/studio/timeline";
 
@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
  * Until 0171 is applied the function does not exist and this answers `not_available` (503): the Timeline then shows no number at all.
  */
 export const POST = requireSameOrigin(async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await filmGate();
-  if (!gate.ok) return gate.response;
   const { id } = await params;
+  const gate = await filmGateFor(id);
+  if (!gate.ok) return gate.response;
   const filmId = parseFilmId(id);
   if (!filmId) return filmFail("not_found", 404);
   const b = await readFilmBody(request, 1_000);

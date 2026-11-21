@@ -20,6 +20,9 @@ import { isOperatorOrg } from "@/lib/channel-tokens";
 import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { withPreviews } from "@/lib/creative/studio";
+import { NightshiftAiPanel } from "@/components/brain/NightshiftAiPanel";
+import { aiChatEnv, aiChatOpenFor, ideaNeedsCreate } from "@/lib/brain/flag";
+import { redirect } from "next/navigation";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
 import { filmStudioListed, filmStudioMode, filmStudioOpen } from "@/lib/server/films";
@@ -52,8 +55,11 @@ export default async function StudioPage({
   if (sp.view === "live") {
     // The live view of one plan (S5's handoff opens it): a project (?film=) or a channel video run (?run=, a render_jobs id). It reads in
     // the browser through the read-only live routes; the server only says whether projects are open for this viewer.
-    const filmStudio = await filmStudioOpen();
     const film = parseFilmId(sp.film);
+    // The section is open by the open workspace's switch. A named project's own workspace is checked by the live routes it reads
+    // (filmGateFor: a 404, which the view shows as its "not found, pick another" state). Asking it here instead would turn a stale
+    // film id (kept in this browser from another workspace) into "projects are switched off for this workspace", which is false.
+    const filmStudio = await filmStudioOpen();
     const run = typeof sp.run === "string" && /^[1-9][0-9]{0,14}$/.test(sp.run) ? sp.run : null;
     // The Actions backend gives no run id: its run is the channel's events since the dispatch (/api/agent/run's dispatched_at).
     // channels.channel_id is a slug (0001), not a uuid.
@@ -73,14 +79,19 @@ export default async function StudioPage({
   if (sp.view === "timeline") {
     // The Timeline reads one project through /api/films (RLS, film_json) in the browser; the server only says whether the section is
     // open for this viewer, so a switched-off workspace sees "not open yet" and no project is read at all.
+    const timelineFilm = parseFilmId(sp.film) ?? null;
+    // As for the live view: the open workspace decides the section; the project's own workspace is /api/films/[id]'s (filmGateFor), whose
+    // 404 is the Timeline's "not found" state with a way on. The Canvas/Timeline links carry a film id from localStorage, which is per
+    // browser, not per workspace.
     const filmStudio = await filmStudioOpen();
-    return <StudioTimeline filmStudio={filmStudio} filmId={parseFilmId(sp.film) ?? null} />;
+    return <StudioTimeline filmStudio={filmStudio} filmId={timelineFilm} />;
   }
 
   const { selection, channels } = await getChannelContext();
   const scopedChannel = isScoped(selection) ? channels.find((c) => c.channel_id === selection) : undefined;
   const org = await getOrgContext();
   const orgId = org.supported && org.current ? org.current.id : null;
+  if (ideaNeedsCreate(sp, !!orgId && aiChatOpenFor(orgId, aiChatEnv()))) redirect((await getChannelPath())("/create?idea=1"));
   const [models, plans, switchedOff] = orgId
     ? await Promise.all([loadStudioModels(orgId), loadUpsellCatalog(orgId), loadSwitchedOffModels()])
     : [[], null, [] as string[]];
@@ -90,9 +101,10 @@ export default async function StudioPage({
   const dna = await channelDnaForCreate(scopedChannel);
   const [user, slug, filmOpen] = await Promise.all([getUser(), getChannelSlug(), filmStudioOpen()]);
   // The admins-only beta is drawn only in the Owner account, like its nav entry; the Timeline's own link stays on the real role.
-  const filmStudio = filmOpen && filmStudioListed(filmStudioMode(), asOperator);
+  // Under `on`, filmOpen already is the open workspace's own switch (filmStudioOpen reads it), so it is the workspace answer too.
+  const filmStudio = filmOpen && filmStudioListed(filmStudioMode(), asOperator, filmOpen);
 
-  return (
+  const canvas = (
     <StudioCanvas
       data={{
         orgId,
@@ -106,6 +118,24 @@ export default async function StudioPage({
       channel={slug}
       filmStudio={filmStudio}
     />
+  );
+  // Nightshift AI (0199, docs/studio/NIGHTSHIFT_AI.md): docked on the left of the canvas, only where NIGHTSHIFT_AI_CHAT opens it.
+  if (!orgId || !aiChatOpenFor(orgId, aiChatEnv())) return canvas;
+  const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
+  const brain = one(sp.brain);
+  return (
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
+      <NightshiftAiPanel
+        channelId={scopedChannel?.channel_id ?? null}
+        channelSlug={slug}
+        initialSession={one(sp.ai) === "new" ? null : brain && /^[0-9a-f-]{36}$/i.test(brain) ? brain : null}
+        // The landing page's idea (S4): ?ai=new&idea=1 opens a new conversation with it typed in, never sent.
+        fresh={one(sp.ai) === "new"}
+        takeIdea={one(sp.ai) === "new" && one(sp.idea) === "1"}
+        initialPrompt={(one(sp.prompt) ?? "").slice(0, 2000) || null}
+      />
+      <div className="min-w-0">{canvas}</div>
+    </div>
   );
 }
 

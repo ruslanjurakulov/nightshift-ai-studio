@@ -780,6 +780,8 @@ FUNCTIONS.update({
     "rights_acknowledgement_subjects": SERVICE,
     "rights_acknowledgement_missing_among": SERVICE,
     "film_acknowledgement_missing": SERVICE,
+    # 0200 (Film Studio P4b): the assembly worker's orphan discard, service role only (docs/studio/NIGHTSHIFT_AI.md).
+    "film_discard_unrecorded_assembly": SERVICE,
 })
 
 # Migration 0189 (get_job_status names the video, list_videos newest first): internal helpers, called inside the API functions.
@@ -797,6 +799,11 @@ sec_public_models_0193.extend(TABLES, FUNCTIONS)
 import sec_owner_brain_0197  # noqa: E402
 
 sec_owner_brain_0197.extend(TABLES, FUNCTIONS)
+
+# Migration 0199 (Nightshift AI, the Studio's planning chat): tests/security/sec_ai_chat_0199.py
+import sec_ai_chat_0199  # noqa: E402
+
+sec_ai_chat_0199.extend(TABLES, FUNCTIONS)
 
 # Migration 0201 (the customer's Nightshift Brain dashboard facts): tests/security/sec_brain_org_facts_0201.py
 import sec_brain_org_facts_0201  # noqa: E402

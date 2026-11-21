@@ -45,7 +45,7 @@ import { FlashNotice } from "@/components/account/FlashNotice";
 import { SkipLink } from "@/components/shell/SkipLink";
 import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 import { characterStudioEnabled } from "@/lib/characterStudio/model";
-import { filmStudioListed, filmStudioMode } from "@/lib/server/films";
+import { filmStudioListed, filmStudioMode, filmStudioViewerOn } from "@/lib/server/films";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { isPlatformOwner } from "@/lib/server/owner-view";
@@ -159,6 +159,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // When the balance was read, so the header's live store (lib/credits-live) never trades a fresher reading of its own for this one.
   let creditsReadAt: string | null = null;
   let plan: AccountPlan | null = null;
+  // Film Studio under `on` is listed by the open workspace's own switch (org_film_settings, 0198), in the every-channel roll-up too:
+  // the pages and routes behind the entry check that workspace. Started here beside the reads below; it never rejects (an unknown
+  // switch is "off").
+  const filmMode = filmStudioMode();
+  const filmOrgOnRead = filmStudioViewerOn(filmMode);
   // Which Studio tools have a model on sale (lib/server/tool-availability.ts): the sidebar, the desk bar, Home and Presets mark the
   // rest "Not available yet" instead of linking to a form that has nothing to pick. Started here so it runs beside the credit reads
   // below (it never rejects: a failure is "unknown"); one read, shared with the page (React cache).
@@ -179,6 +184,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     plan = { kind: "exempt" };
   }
   const tools = await toolsRead;
+  const filmOrgOn = await filmOrgOnRead;
   // The DB-IP credit (docs/GEO_BLOCK.md), once for the whole signed-in app: since the availability marks above, every page's shell is
   // shaped by the country filter (readStudioModels -> hideBlockedModelsHere), not only the few pages that drew it. It renders nothing
   // while no model has a country list.
@@ -226,7 +232,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
         {/* Drawn as the account in view: the owner's User account lists only what a customer's would (Film Studio's admins-only
             beta included); every page and route still checks the real role. */}
-        <ShellProvider operator={frame} ownerSwitch={ownerAccount} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmStudioMode(), frame) }} tools={tools}>
+        <ShellProvider operator={frame} ownerSwitch={ownerAccount} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmMode, frame, filmOrgOn) }} tools={tools}>
         <SidebarProvider initialCollapsed={!frame && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}

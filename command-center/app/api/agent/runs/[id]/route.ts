@@ -85,6 +85,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     {
       job: { id: job.id, status: job.status, startedAt: job.started_at, finishedAt: job.finished_at, error: job.errorCode },
       events,
+      // The read stops at MAX_EVENTS in time order: the newest of a very long run would be missing, and the Activity panel says so.
+      events_cut: Array.isArray(events) && events.length >= MAX_EVENTS,
       hold: await readRunHold(supabase, creditRef),
       video,
     },
