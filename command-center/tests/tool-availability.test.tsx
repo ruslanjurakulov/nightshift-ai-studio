@@ -258,11 +258,9 @@ describe("the create overview", () => {
     const modes = screen.getByTestId("studio-modes");
     const youtube = within(modes).getByRole("radio", { name: new RegExp(t.studioHome.modes.youtube) });
     expect(youtube.getAttribute("aria-checked")).toBe("true");
-    const image = within(modes).getByRole("radio", { name: new RegExp(t.studioHome.modes.image) });
-    expect(image.getAttribute("aria-disabled")).toBe("true");
-    expect(image.textContent).toContain(t.availability.notYet);
-    fireEvent.click(image);
-    expect(image.getAttribute("aria-checked")).toBe("false");
+    // Kinds with nothing on sale are not drawn in the picker (L1-01), only the open one is.
+    expect(within(modes).queryByRole("radio", { name: new RegExp(t.studioHome.modes.image) })).toBeNull();
+    expect(modes.textContent).not.toContain(t.availability.notYet);
     // Only the YouTube examples are left: one for a picture would fill a box that cannot be sent.
     const left = CREATIVE_EXAMPLES.filter((e) => !e.capability).length;
     expect(left).toBeGreaterThan(0);

@@ -25,7 +25,7 @@ export const roadmapEn = {
       title: "Powerful, modern video AI models",
       body: "video from text and from images, video editing, character swap, each through its own maker’s API",
     },
-    { id: "create", title: "Image, voice and music generation" },
+    { id: "create", title: "Image, voice and music generation", body: "create pictures, voices and music from a short description and use them in your video" },
     { id: "ads", title: "Ads factory", body: "scan your site and get ads made to match your brand" },
     { id: "gallery", title: "Sample gallery", body: "see what each model makes, and try it with one button" },
     {

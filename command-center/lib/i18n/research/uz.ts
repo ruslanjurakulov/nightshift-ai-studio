@@ -4,7 +4,7 @@ import type { ResearchDictionary } from "./en";
 export const researchUz: ResearchDictionary = {
   title: "Tadqiqot",
   subtitle: "Kanalingiz, solishtiradigan kanallaringiz va tomoshabinlar nimani soʻrayotgani — YouTubeʼning oʻz raqamlari boʻyicha.",
-  pickChannel: "Tadqiq qilish uchun bitta kanalni tanlang (yuqori chapdagi almashtirgich).",
+  pickChannel: "Tadqiq qilish uchun bitta kanalni tanlang (yuqori oʻngdagi almashtirgich).",
   notEnabled: "Bu ish maydoni uchun tadqiqot hali yoqilmagan. Uni platforma operatori yoqadi.",
   readFailed: "Oʻqib boʻlmadi. Birozdan keyin qayta urinib koʻring.",
   viewerOnly: "Bu roʻyxatni faqat muharrirlar va administratorlar yangilay yoki oʻzgartira oladi.",

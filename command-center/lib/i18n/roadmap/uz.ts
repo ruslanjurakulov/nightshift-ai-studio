@@ -24,7 +24,7 @@ export const roadmapUz: RoadmapDictionary = {
       title: "Kuchli va zamonaviy video AI modellar",
       body: "matndan va rasmdan video, videoni tahrirlash, qahramonni almashtirish, har biri oʻz yaratuvchisining API’si orqali",
     },
-    { id: "create", title: "Rasm, ovoz va musiqa yaratish" },
+    { id: "create", title: "Rasm, ovoz va musiqa yaratish", body: "qisqa tavsifdan rasm, ovoz va musiqa yaratib, ularni videongizda ishlatish" },
     { id: "ads", title: "Reklama fabrikasi", body: "saytingizni skanerlab brendingizga mos reklama tayyorlash" },
     { id: "gallery", title: "Namunalar galereyasi", body: "har bir model natijasini koʻrib, bir tugma bilan sinab koʻrish" },
     {
