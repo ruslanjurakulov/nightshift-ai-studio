@@ -153,11 +153,31 @@ describe("turnsFromMessages", () => {
 });
 
 describe("relativeTime", () => {
-  it("says the time relative to now, in the page's language", () => {
-    const now = Date.parse("2026-11-21T12:00:00Z");
-    expect(relativeTime("2026-11-21T11:55:00Z", "en", now)).toBe("5 minutes ago");
-    expect(relativeTime("2026-11-20T12:00:00Z", "en", now)).toBe("yesterday");
-    expect(relativeTime("not a date", "en", now)).toBe("");
+  const now = Date.parse("2026-11-21T12:00:00Z");
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  const S = 1000, MIN = 60 * S, HOUR = 60 * MIN, DAY = 24 * HOUR;
+  const cases = [30 * S, 18 * MIN, 5 * HOUR, 26 * HOUR, 3 * DAY, 10 * DAY];
+  const L = { en: h, ru: ru.ownerConsole.assistant.history, uz: uz.ownerConsole.assistant.history };
+
+  it("reads from the dictionary: exact strings in each language", () => {
+    expect(cases.map((c) => relativeTime(ago(c), L.en, now))).toEqual(["just now", "18 min ago", "5 h ago", "yesterday", "3 days ago", "11 Nov"]);
+    expect(cases.map((c) => relativeTime(ago(c), L.ru, now))).toEqual(["только что", "18 мин назад", "5 ч назад", "вчера", "3 дн. назад", "11 нояб."]);
+    expect(cases.map((c) => relativeTime(ago(c), L.uz, now))).toEqual(["hozirgina", "18 daqiqa oldin", "5 soat oldin", "kecha", "3 kun oldin", "11 noy"]);
+  });
+
+  it("never prints a minus sign, and never English words in uz or ru (the Intl fallback bug)", () => {
+    for (const lang of ["ru", "uz"] as const)
+      for (const c of cases) {
+        const out = relativeTime(ago(c), L[lang], now);
+        expect(out).not.toContain("-");
+        expect(out).not.toMatch(/\b(ago|min|hours?|days?|yesterday|just|now|last|week)\b/i);
+      }
+    for (const c of [...cases, -5 * MIN]) expect(relativeTime(ago(c), L.en, now)).not.toContain("-");
+  });
+
+  it("treats a stamp ahead of the clock as just now, and bad input as empty", () => {
+    expect(relativeTime(ago(-5 * MIN), L.uz, now)).toBe("hozirgina");
+    expect(relativeTime("not a date", L.en, now)).toBe("");
   });
 });
 

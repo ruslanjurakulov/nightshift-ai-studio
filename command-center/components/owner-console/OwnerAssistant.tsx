@@ -112,7 +112,6 @@ export function OwnerAssistant({
   verifyHref,
   signInHref,
   history = false,
-  locale = "en",
 }: {
   a: A;
   greeting: string;
@@ -354,7 +353,6 @@ export function OwnerAssistant({
     <ChatHistoryFrame
       labels={a.history}
       source={source}
-      locale={locale}
       storageKey="ns.owner-ai.history-collapsed"
       activeId={activeId}
       busy={pending || opening}

@@ -51,39 +51,31 @@ export interface ChatHistoryLabels {
   close: string;
   collapse: string;
   expand: string;
+  /** Relative times come from the dictionary, not Intl: browsers have no (or partial) "uz" data and fell back to English with a minus sign. */
+  justNow: string;
+  /** "{n}" is replaced in the three below. */
+  minutesAgo: string;
+  hoursAgo: string;
+  yesterday: string;
+  daysAgo: string;
+  /** Twelve short month names, January first, for the date shown once a chat is a week old. */
+  months: readonly string[];
 }
 
 const TITLE_MAX = 60;
 
-export function relativeTime(iso: string, locale: string, now = Date.now()): string {
+export function relativeTime(iso: string, l: ChatHistoryLabels, now = Date.now()): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return "";
-  const s = Math.round((ms - now) / 1000);
-  const abs = Math.abs(s);
-  const steps: [number, Intl.RelativeTimeFormatUnit][] = [
-    [60, "second"],
-    [3600, "minute"],
-    [86400, "hour"],
-    [604800, "day"],
-    [2629800, "week"],
-    [31557600, "month"],
-  ];
-  let unit: Intl.RelativeTimeFormatUnit = "year";
-  let div = 31557600;
-  let prev = 1;
-  for (const [limit, u] of steps) {
-    if (abs < limit) {
-      unit = u;
-      div = prev;
-      break;
-    }
-    prev = limit;
-  }
-  try {
-    return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(Math.round(s / div), unit);
-  } catch {
-    return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(Math.round(s / div), unit);
-  }
+  // A stamp slightly ahead of this clock (skew) is "just now", never a negative count.
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 60) return l.justNow;
+  if (s < 3600) return l.minutesAgo.replace("{n}", String(Math.floor(s / 60)));
+  if (s < 86400) return l.hoursAgo.replace("{n}", String(Math.floor(s / 3600)));
+  if (s < 2 * 86400) return l.yesterday;
+  if (s < 7 * 86400) return l.daysAgo.replace("{n}", String(Math.floor(s / 86400)));
+  const d = new Date(ms);
+  return `${d.getDate()} ${l.months[d.getMonth()] ?? ""}`.trim();
 }
 
 function readCollapsed(key: string): boolean {
@@ -109,7 +101,6 @@ const focusables = (root: HTMLElement) =>
 export function ChatHistoryFrame({
   labels: l,
   source,
-  locale,
   storageKey,
   activeId,
   busy,
@@ -121,7 +112,6 @@ export function ChatHistoryFrame({
 }: {
   labels: ChatHistoryLabels;
   source: ChatHistorySource;
-  locale: string;
   storageKey: string;
   activeId: string | null;
   /** An answer is on its way: switching chats now would draw it into the wrong one. */
@@ -410,7 +400,7 @@ export function ChatHistoryFrame({
                       >
                         <span className="chat-history-title">{title}</span>
                         <time className="chat-history-time" dateTime={i.updatedAt}>
-                          {relativeTime(i.updatedAt, locale)}
+                          {relativeTime(i.updatedAt, l)}
                         </time>
                       </button>
                       <div className="chat-history-menu" data-history-menu>
