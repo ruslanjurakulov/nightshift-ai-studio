@@ -100,7 +100,12 @@
   overflow-wrap: anywhere;
   line-height: 1.5;
 }
-.chat-avatar { flex-shrink: 0; margin-top: 0.1rem; border-radius: 0.45rem; }
+/* The bare folded-ribbon N (no tile), white on the black chat. Wordmark reads --wm-h for its height and --ns-fold for the
+   fold shadow, which must be black under a white N. The glow is a static drop-shadow, so it needs no reduced-motion rule.
+   27px ~ the first answer line (16px x 1.65), so the N sits level with it. */
+.chat-empty-mark, .chat-avatar { color: #fff; --ns-fold: #000; }
+.chat-empty-mark { --wm-h: clamp(60px, 8vw, 72px); filter: drop-shadow(0 0 22px rgba(255, 255, 255, 0.22)); }
+.chat-avatar { --wm-h: 27px; flex-shrink: 0; margin-top: 0; }
 .chat-ai-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 0.6rem; }
 .chat-answer { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font-size: 1rem; }
 .chat-acts { display: flex; gap: 0.15rem; margin-left: -0.5rem; }

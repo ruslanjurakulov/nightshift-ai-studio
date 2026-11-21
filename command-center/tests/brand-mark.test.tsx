@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { BRAND_MARK_ART } from "@/components/site/brandMarkArt";
 
 /**
@@ -126,5 +127,22 @@ describe("brand kit", () => {
     const svg = read("app/icon.svg");
     expect(svg).toContain('fill="#030303"');
     expect(svg).not.toContain("<circle");
+  });
+});
+
+describe("bare mark (chat)", () => {
+  it("draws the N with no black tile behind it, and stays decorative", () => {
+    const { container } = render(<Wordmark mark />);
+    const svg = container.querySelector("svg")!;
+    // The tile is a top-level <rect>; the fold shadows' rects live inside clipped groups and masks.
+    expect(svg.querySelectorAll(":scope > rect")).toHaveLength(0);
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+    expect(svg.querySelector("path")).not.toBeNull();
+  });
+
+  it("is what the chat uses, not the tiled BrandMark", () => {
+    const src = read("components/chat/ChatShell.tsx");
+    expect(src).toContain("<Wordmark mark");
+    expect(src).not.toMatch(/BrandMark/);
   });
 });

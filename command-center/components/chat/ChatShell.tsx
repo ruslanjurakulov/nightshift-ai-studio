@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, Check, Copy, RefreshCw, SquarePen, ThumbsDown, ThumbsUp } from "lucide-react";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import "./chat-shell.css";
 
 /**
@@ -181,7 +181,7 @@ export function ChatShell({
         <div role="log" aria-live="polite" className="chat-log">
           {empty ? (
             <div className="chat-empty">
-              <BrandMark size={56} className="chat-empty-mark" />
+              <Wordmark mark className="chat-empty-mark" />
               <p className="chat-greeting">{l.greeting}</p>
             </div>
           ) : (
@@ -192,7 +192,7 @@ export function ChatShell({
                   <p className="chat-bubble-you">{t.q}</p>
                 </div>
                 <div className="chat-msg chat-msg-ai">
-                  <BrandMark size={28} className="chat-avatar" />
+                  <Wordmark mark className="chat-avatar" />
                   <div className="chat-ai-body">
                     <p className="sr-only">{l.ai}</p>
                     <p className="chat-answer">{t.a}</p>
@@ -233,7 +233,7 @@ export function ChatShell({
             )}
             {pending && (
               <div className="chat-msg chat-msg-ai">
-                <BrandMark size={28} className="chat-avatar" />
+                <Wordmark mark className="chat-avatar" />
                 <div className="chat-typing" aria-hidden>
                   <span />
                   <span />
