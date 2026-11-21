@@ -42,7 +42,7 @@ listed as unknown, never as fine. Days are UTC calendar days.
 
 ## Owner AI (/owner/ai)
 
-`POST /api/brain/owner/turn` answers one owner question from the facts above, with the chat model the owner chose (0198's
+`POST /api/brain/owner/turn` answers one owner question from the facts above, with the chat model the owner chose (0199's
 `ai_chat_owner_settings`, through S5's `callChatModel`). It is not the Studio's planning chat.
 
 - **Order.** Same-origin POST → signed in → platform owner (404 otherwise, before anything is read) → the chosen model is on sale and

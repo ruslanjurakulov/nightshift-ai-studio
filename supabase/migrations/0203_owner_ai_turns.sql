@@ -3,8 +3,8 @@
 -- *** LIVE ON APPLY. *** One closed table and two functions. Nothing replaced, nothing backfilled.
 --
 -- WHY. The owner's Nightshift AI (/owner/ai, /api/brain/owner/turn) sends the owner's facts and question to the chat model the
--- owner chose (0198's ai_chat_settings). Every call is real vendor spend, so a turn is reserved in the database BEFORE the vendor is
--- called, under a lock, against a rolling 24-hour cap — the same rule as the customer chat (0198), owner-scoped: 0198's
+-- owner chose (0199's ai_chat_settings). Every call is real vendor spend, so a turn is reserved in the database BEFORE the vendor is
+-- called, under a lock, against a rolling 24-hour cap — the same rule as the customer chat (0199), owner-scoped: 0199's
 -- ai_chat_reserve_turn is a workspace session's meter and must not be reused for platform data. A stolen owner session, a stuck
 -- client or a retry loop meets the cap, not an open tap.
 --

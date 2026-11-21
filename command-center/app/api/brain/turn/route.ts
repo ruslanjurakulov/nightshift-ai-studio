@@ -12,10 +12,11 @@ import {
   HISTORY_TURNS,
   buildBrief,
   filmFromBrief,
-  modelText,
   nextSlot,
   plain,
   priceLong,
+  isSmallTalk,
+  unsafeBrief,
   readModelAnswer,
   readScenario,
   readSlots,
@@ -25,10 +26,12 @@ import {
   type Scenario,
 } from "@/lib/brain/logic";
 import { SYSTEM_PROMPT, dataBlock } from "@/lib/brain/prompt";
+import { getDictionaryFor } from "@/lib/i18n";
+import { isLocale } from "@/lib/i18n/core";
 import { callChatModel } from "@/lib/server/brain/llm";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
-import { brainJson, channelOrg, chosenModelState, dbRefusal, notFound } from "@/lib/server/brain/session";
+import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -50,9 +53,9 @@ export const dynamic = "force-dynamic";
  * here holds credits, starts anything or publishes (CLAUDE.md rule 3): the person's Create is the film route's or Run now's own.
  */
 
-type Session = { id: string; org_id: string; channel_id: string | null; model: string; slots: unknown; step: string; card: unknown; brief: unknown };
+type Session = { id: string; org_id: string; channel_id: string | null; slots: unknown; step: string; card: unknown; brief: unknown };
 
-const SESSION_COLS = "id,org_id,channel_id,model,slots,step,card,brief";
+const SESSION_COLS = "id,org_id,channel_id,slots,step,card,brief";
 
 async function loadSession(supabase: SupabaseClient, id: unknown): Promise<{ ok: true; s: Session } | { ok: false; res: Response }> {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, res: brainJson({ error: "bad_request" }, 400) };
@@ -68,12 +71,42 @@ async function vendorUser(orgId: string): Promise<string> {
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
-async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry = false): Promise<Response> {
-  const model = await chosenModelState(supabase, s.model);
+/** A turn the person is not charged for (not_sent, a safety refusal): the reserve counted it, the finished call does not. */
+function uncharged(q: { used: number; limit: number | null; trial_left: number | null }) {
+  return { used: Math.max(0, q.used - 1), limit: q.limit, trial_left: q.trial_left === null ? null : q.trial_left + 1 };
+}
+
+const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
+/** The greeting's first card is not stored (nothing is written for a greeting): answered by this id while no kind is decided. */
+const FIRST_CARD = "kind-first";
+
+/** What can be made here, in the person's language: a long video needs a channel, a short film needs Film Studio open. */
+async function kindChoices(s: Session) {
+  const locale = await getLocale().catch(() => "en");
+  const words = getDictionaryFor(isLocale(locale) ? locale : "en").aiChat;
+  const open = (await filmGate()).ok;
+  return { words, open, kindOptions: [...(s.channel_id ? [words.kindLong] : []), ...(open ? [words.kindShort] : [])] };
+}
+
+async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry = false, requestId: string | null = null): Promise<Response> {
+  // The owner's model as it is now (0199 hands a member only a reference to it, never the id).
+  const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
+  if (q0.error) return dbRefusal(q0.error) ?? brainJson({ error: "unavailable" }, 503);
+  const model = await chosenModelState(supabase, modelFromRef((q0.data as { model_ref?: unknown } | null)?.model_ref));
   if (!model.ok) return brainJson({ error: "unavailable" }, 503);
   if (model.state !== "available" || !model.id) return brainJson({ error: "model_unavailable", reason: model.state }, 409);
 
-  const reserve = await supabase.rpc("ai_chat_reserve_turn", { p_session: s.id, p_text: retry ? "" : text, p_retry: retry });
+  const prev0 = readSlots(s.slots);
+  const { words: words0, open, kindOptions } = await kindChoices(s);
+  if (!prev0.kind && kindOptions.length === 0) return brainJson({ error: "channel_required" }, 400);
+  // A greeting or "who are you" before anything is decided: Nightshift AI's own answer and the first question, from i18n. No vendor
+  // call, no turn, nothing written (Lens on 0199: a "salom" cost a turn; Breach: a not_sent that stores is a free write).
+  if (!retry && !prev0.kind && isSmallTalk(text)) {
+    const first: BrainCard = { id: FIRST_CARD, slot: "kind", thread_title: "", question: "", allow_own: true, options: kindOptions };
+    return brainJson({ reply: words0.identityReply, slots: prev0, step: "asking", card: first, scenarios: [], brief: buildBrief(s.id, prev0, null, "drafting") });
+  }
+
+  const reserve = await supabase.rpc("ai_chat_reserve_turn", { p_session: s.id, p_text: retry ? "" : text, p_retry: retry, p_request_id: requestId });
   if (reserve.error) return dbRefusal(reserve.error) ?? brainJson({ error: "unavailable" }, 503);
   const r = reserve.data as { call_id: string; used: number; limit: number | null; trial_left?: number | null };
   const quota = { used: r.used, limit: r.limit, trial_left: typeof r.trial_left === "number" ? r.trial_left : null };
@@ -85,31 +118,68 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
       p_brief: extra?.brief ?? null, p_card: extra?.card ?? null,
     });
 
-  // From here a turn was taken: whatever happens, it ends with a recorded outcome (Lens on 0198: a throw left it pending forever).
+  // From here a turn was taken: whatever happens, it ends with a recorded outcome (Lens on 0199: a throw left it pending forever).
+  // Until the vendor is called, a failure is not_sent: it costs nothing and the person is not charged a turn for it.
+  let called = false;
+  // not_sent is refused for a call older than 2 minutes: then the turn is recorded as a failure rather than left pending.
+  const finishUnsent = async () => {
+    const r = await finish("not_sent", null, null);
+    if (r.error) await finish("vendor_error", null, null);
+  };
   try {
   const [ch, hist] = await Promise.all([
     s.channel_id ? channelOrg(supabase, s.channel_id) : Promise.resolve({ state: "none" as const }),
     supabase.from("ai_chat_messages").select("role,content").eq("session_id", s.id).order("id", { ascending: false }).limit(HISTORY_TURNS),
   ]);
   if (hist.error || ch.state === "failed") {
-    await finish("vendor_error", null, null);
-    return brainJson({ error: "unavailable", quota }, 503);
+    await finishUnsent();
+    return brainJson({ error: "unavailable", quota: uncharged(quota) }, 503);
   }
   const prev = readSlots(s.slots);
   const facts = await readChannelFacts(supabase, s.channel_id, ch.state === "ok" ? ch.name : "");
   const history = ((hist.data ?? []) as { role: "user" | "assistant"; content: string }[]).reverse();
   const locale = await getLocale().catch(() => "en");
-  const llm = await callChatModel(model.id, SYSTEM_PROMPT, dataBlock({ history, slots: prev, askNext: nextSlot(prev), facts, locale }),
-                                  { endUser: await vendorUser(s.org_id) });
+  // A short film is offered only where it can be made (Pixel M6 on 0199: no dead option); the kind card's options are ours.
+  const shortAvailable = open;
+  const words = words0;
+  called = true;
+  // Room for two or three whole scenarios on every turn: the answer to the last question is the one that proposes them.
+  const llm = await callChatModel(model.id, SYSTEM_PROMPT, dataBlock({ history, slots: prev, askNext: nextSlot(prev), facts, locale, shortAvailable }),
+                                  { endUser: await vendorUser(s.org_id), size: "proposal" });
   if (!llm.ok) {
-    await finish(llm.error === "not_configured" ? "not_configured" : "vendor_error", llm.tokensIn, llm.tokensOut);
+    if (llm.error === "vendor_refused") {
+      // The vendor's own safety refusal: said as that, not "unavailable", not retried, and not charged to the person.
+      await finish("vendor_refused", llm.tokensIn, llm.tokensOut);
+      return brainJson({ error: "content_refused", quota: uncharged(quota) }, 422);
+    }
+    if (llm.error === "not_configured") {
+      await finish("not_configured", null, null);
+      return brainJson({ error: "model_failed", reason: llm.error, quota: uncharged(quota) }, 502);
+    }
+    if (llm.error === "output_too_long") {
+      await finish("output_too_long", llm.tokensIn, llm.tokensOut);
+      return brainJson({ error: "output_too_long", quota }, 502);
+    }
+    await finish("vendor_error", llm.tokensIn, llm.tokensOut);
     // The reason names the remedy for the owner; the panel says only "unavailable right now" to a customer (the model is hidden).
     return brainJson({ error: "model_failed", reason: llm.error, quota }, 502);
   }
-  const answer = readModelAnswer(llm.text, prev, crypto.randomUUID());
+  const said = retry ? [...history].reverse().find((m) => m.role === "user")?.content ?? "" : text;
+  const answer = readModelAnswer(llm.text, prev, crypto.randomUUID(), {
+    freezeSlots: isSmallTalk(said),
+    shortAvailable,
+    longAvailable: !!s.channel_id,
+    kindOptions,
+    identityReply: words.identityReply,
+  });
   if (!answer) {
     await finish("invalid_output", llm.tokensIn, llm.tokensOut);
     return brainJson({ error: "model_answer_invalid", quota }, 502);
+  }
+  if (answer.refused) {
+    // The plan's own safety rule (the prompt's "refused"): our words in the person's language, no scenarios, no turn charged.
+    await finish("refused", llm.tokensIn, llm.tokensOut);
+    return brainJson({ error: "content_refused", quota: uncharged(quota) }, 422);
   }
   const brief = buildBrief(s.id, answer.slots, null, "drafting");
   const payload = answer.step === "proposing"
@@ -125,8 +195,8 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   });
   } catch {
     // The vendor may or may not have been paid: the outcome is a failure with unknown tokens, never "pending" or "ok".
-    await finish("vendor_error", null, null).then(() => undefined, () => undefined);
-    return brainJson({ error: "unavailable", quota }, 503);
+    await (called ? finish("vendor_error", null, null) : finishUnsent()).then(() => undefined, () => undefined);
+    return brainJson({ error: "unavailable", quota: called ? quota : uncharged(quota) }, 503);
   }
 }
 
@@ -134,7 +204,7 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
 async function choose(supabase: SupabaseClient, s: Session, index: unknown): Promise<Response> {
   if (s.step !== "proposing" && s.step !== "ready") return brainJson({ error: "nothing_to_choose" }, 409);
   if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index > 2) return brainJson({ error: "bad_request" }, 400);
-  const { data: msgs, error } = await supabase.from("ai_chat_messages").select("payload").eq("session_id", s.id).eq("role", "assistant")
+  const { data: msgs, error } = await supabase.from("ai_chat_messages").select("id,payload").eq("session_id", s.id).eq("role", "assistant")
     .order("id", { ascending: false }).limit(1);
   if (error) return brainJson({ error: "unavailable" }, 503);
   const slots = readSlots(s.slots);
@@ -142,6 +212,11 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   // A stored scenario is data too (its author could have written it directly): read through the same rules again.
   const chosen: Scenario | null = readScenario(raw, slots);
   if (!chosen || nextSlot(slots) !== null) return brainJson({ error: "nothing_to_choose" }, 409);
+  // The floor under the prompt's and the vendors' safety rules (lib/brain/logic unsafeBrief): nothing of it is priced or drafted.
+  if (unsafeBrief(buildBrief(s.id, slots, chosen, "ready"))) return brainJson({ error: "content_refused" }, 422);
+  // One draft per proposal and scenario: a re-proposal is a new key, so choosing "the first one" again is not a conflict with the
+  // draft of an earlier, different first one (Lens on 0199).
+  const proposal = String((msgs?.[0] as { id?: number } | undefined)?.id ?? "0");
 
   if (slots.kind === "long") {
     if (!s.channel_id) return brainJson({ error: "channel_required" }, 400);
@@ -160,8 +235,8 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   const film = filmFromBrief(draftBrief);
   if (!film) return brainJson({ error: "nothing_to_choose" }, 409);
   const created = await supabase.rpc("create_film_draft", {
-    p_org: s.org_id, p_channel: s.channel_id, p_source_kind: "storyboard", p_source_text: film.sourceText || draftBrief.title,
-    p_settings: film.settings, p_idempotency_key: `brain-${s.id}-${index}`.slice(0, 80),
+    p_org: s.org_id, p_channel: s.channel_id, p_source_kind: "script", p_source_text: film.sourceText || draftBrief.title,
+    p_settings: film.settings, p_idempotency_key: `brain-${s.id}-${proposal}-${index}`.slice(0, 80),
   });
   if (created.error) return brainJson({ error: "film_refused", reason: plain(created.error.message, 64) }, 409);
   const f = (created.data as { film?: { id?: string; version?: number } } | null)?.film;
@@ -175,7 +250,8 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     : quote.exempt ? { state: "exempt" }
     : quote.priced && quote.total !== null
       ? { state: "priced", total_credits: quote.total, spendable: quote.available ?? "unknown",
-          fits: quote.startable, shorter: null }
+          // Short of credits is "does not fit" (Shorten / Upgrade / Top up); any other block is said by its own reason on the card.
+          fits: !quote.blockedBy.includes("insufficient_credits"), shorter: null }
       : { state: "unpriced" };
   const brief: Brief = { ...draftBrief, price };
   const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: brief, p_step: "ready" });
@@ -189,7 +265,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
 }
 
 export async function POST(request: Request) {
-  // Off is off: nothing is read, not even the session (Breach on 0198: a 401/403 would say the feature exists).
+  // Off is off: nothing is read, not even the session (Breach on 0199: a 401/403 would say the feature exists).
   if (aiChatMode(aiChatEnv()) === "off") return notFound();
   const cross = rejectCrossOrigin(request);
   if (cross) return cross;
@@ -200,6 +276,8 @@ export async function POST(request: Request) {
   const body = await readJsonBodyCapped(request, SMALL_BODY_BYTES);
   if (!body.ok) return brainJson({ error: body.reason === "too_large" ? "payload_too_large" : "bad_request" }, body.reason === "too_large" ? 413 : 400);
   const b = (body.value ?? {}) as Record<string, unknown>;
+  // The browser's id for this press: a network retry of the same press is a duplicate, never a second message (0199).
+  const requestId = typeof b.request_id === "string" && REQUEST_ID.test(b.request_id) ? b.request_id : null;
   // 0192: someone who said they are under 18 is not served, as on Run now.
   if ((await readAgeState()) === "minor") return brainJson({ error: "adult_only_service" }, 403);
 
@@ -223,7 +301,7 @@ export async function POST(request: Request) {
     if (!aiChatOpenFor(orgId, aiChatEnv())) return notFound();
     const quota = await supabase.rpc("ai_chat_quota", { p_org: orgId });
     if (quota.error) return dbRefusal(quota.error) ?? brainJson({ error: "unavailable" }, 503);
-    const model = await chosenModelState(supabase, (quota.data as { model?: unknown })?.model);
+    const model = await chosenModelState(supabase, modelFromRef((quota.data as { model_ref?: unknown })?.model_ref));
     if (!model.ok) return brainJson({ error: "unavailable" }, 503);
     if (model.state !== "available") return brainJson({ error: "model_unavailable", reason: model.state }, 409);
     const started = await supabase.rpc("ai_chat_start", { p_org: orgId, p_channel: channelId });
@@ -233,9 +311,10 @@ export async function POST(request: Request) {
     if (!prompt.trim()) return brainJson({ session: { id: sid } });
     const loaded = await loadSession(supabase, sid);
     if (!loaded.ok) return loaded.res;
-    const res = await runTurn(supabase, loaded.s, prompt);
+    const res = await runTurn(supabase, loaded.s, prompt, false, requestId);
     const d = await res.json();
-    return brainJson({ ...d, session: { id: sid } }, res.status);
+    // A duplicate names the conversation the first copy went to: that one, not the empty one just started.
+    return brainJson({ ...d, session: d.error === "duplicate_request" && d.session?.id ? d.session : { id: sid } }, res.status);
   }
 
   const loaded = await loadSession(supabase, b.session);
@@ -246,17 +325,21 @@ export async function POST(request: Request) {
 
   if (b.action === "turn") {
     if (typeof b.text !== "string") return brainJson({ error: "bad_request" }, 400);
-    return runTurn(supabase, s, b.text);
+    return runTurn(supabase, s, b.text, false, requestId);
   }
   if (b.action === "retry") return runTurn(supabase, s, "", true);
   if (b.action === "answer") {
-    const c = (s.card ?? null) as BrainCard | null;
+    // The greeting's first card is not stored: it is answered by its fixed id while no kind is decided, with today's options.
+    const first = b.card === FIRST_CARD && !readSlots(s.slots).kind
+      ? ({ id: FIRST_CARD, slot: "kind", thread_title: "", question: "", allow_own: true, options: (await kindChoices(s)).kindOptions } as BrainCard) : null;
+    const c = first ?? ((s.card ?? null) as BrainCard | null);
     if (!c || b.card !== c.id) return brainJson({ error: "card_changed" }, 409);
-    const own = typeof b.own === "string" ? modelText(b.own, 600) : "";
+    // The person's own words are theirs: bounded by the message limit (the database checks it), never trimmed of a "price" or a link.
+    const own = typeof b.own === "string" ? plain(b.own, 4000, true) : "";
     const pick = typeof b.choice === "number" && Number.isInteger(b.choice) ? c.options[b.choice - 1] : undefined;
     const text = own || pick;
     if (!text) return brainJson({ error: "bad_request" }, 400);
-    return runTurn(supabase, s, text);
+    return runTurn(supabase, s, text, false, requestId);
   }
   if (b.action === "choose") return choose(supabase, s, b.index);
   if (b.action === "handoff") {

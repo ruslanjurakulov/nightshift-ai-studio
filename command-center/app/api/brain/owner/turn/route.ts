@@ -16,6 +16,10 @@ export const dynamic = "force-dynamic";
 /** A question plus six prior turns at their caps, in 2-byte Cyrillic, with room for the JSON: (2000 + 1200) × 7 × 2 ≈ 45 KB. */
 const BODY_BYTES = 64_000;
 
+/** Headroom over the reply the prompt asks for (1200 + 2000 characters of Cyrillic and the JSON around them): a reply cut at the
+ *  limit is a failure (output_too_long), never a shorter answer. */
+const OWNER_OUTPUT_TOKENS = 3000;
+
 /** The vendor gets an opaque id for abuse tracing (as S5's chat does), never the person's database key. */
 async function vendorUser(userId: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`nightshift-owner:${userId}`));
@@ -29,7 +33,7 @@ async function vendorUser(userId: string): Promise<string> {
  * Order, and why:
  *  1. Same-origin POST, a signed-in user, and the platform owner (0182) — anyone else gets the plain 404 before anything is read,
  *     so the route's existence says nothing.
- *  2. The owner's chosen model (0198 ai_chat_owner_settings), on sale and keyed on this server — or the reason it is not. Never
+ *  2. The owner's chosen model (0199 ai_chat_owner_settings), on sale and keyed on this server — or the reason it is not. Never
  *     another model (rule 4).
  *  3. The owner's facts, built server side (second factor enforced there). The browser never sends a figure.
  *  4. A turn reserved in the database under the daily cap (0203) BEFORE the vendor is called; finished with how it ended.
@@ -55,7 +59,7 @@ export async function POST(request: Request) {
   const settings = await supabase.rpc("ai_chat_owner_settings");
   if (settings.error) {
     const code = (settings.error as { code?: string }).code;
-    if (code === "42883" || code === "PGRST202") return brainJson({ error: "not_enabled", needs: "0198" }, 503);
+    if (code === "42883" || code === "PGRST202") return brainJson({ error: "not_enabled", needs: "0199" }, 503);
     return brainJson({ error: "unavailable" }, 503);
   }
   const model = await chosenModelState(supabase, (settings.data as { model?: unknown } | null)?.model);
@@ -95,11 +99,11 @@ export async function POST(request: Request) {
     }
   };
 
-  // Everything after the reserve is guarded (as S5's chat is, after Lens on 0198): a throw must still finish the turn, never
+  // Everything after the reserve is guarded (as S5's chat is, after Lens on 0199): a throw must still finish the turn, never
   // leave it "reserved" with a bare 500.
   try {
     const locale = await getLocale().catch(() => "en");
-    const llm = await callChatModel(model.id, OWNER_AI_SYSTEM, ownerUserBlock({ facts, question, history, locale }), { endUser: await vendorUser(user.id) });
+    const llm = await callChatModel(model.id, OWNER_AI_SYSTEM, ownerUserBlock({ facts, question, history, locale }), { endUser: await vendorUser(user.id), maxOutputTokens: OWNER_OUTPUT_TOKENS });
     if (!llm.ok) {
       await finish(false, llm.error, llm.tokensIn, llm.tokensOut);
       // The failure names its remedy (rule 6): the page says "top up the chat model's provider" for vendor_quota, and so on.

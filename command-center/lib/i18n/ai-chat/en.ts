@@ -1,4 +1,4 @@
-/** Nightshift AI, the Studio's assistant (migration 0198, app/api/brain; docs/studio/NIGHTSHIFT_AI.md). ru.ts and uz.ts follow this shape. */
+/** Nightshift AI, the Studio's assistant (migration 0199, app/api/brain; docs/studio/NIGHTSHIFT_AI.md). ru.ts and uz.ts follow this shape. */
 export const aiChatEn = {
   title: "Nightshift AI",
   subtitle:
@@ -39,6 +39,10 @@ export const aiChatEn = {
   priceExempt: "Not charged in this workspace",
   priceUnpriced: "No price for this yet",
   priceFailed: "The price could not be read. Choose again to retry.",
+  identityReply: "I’m Nightshift AI, the assistant of Nightshift Studio. We don’t disclose which technology providers we use. What video shall we make today?",
+  kindLong: "A long YouTube video",
+  kindShort: "A short film or ad",
+  charCount: "{n} / {max}",
   chooseAgain: "To create this film, choose its scenario again above.",
   signIn: "Sign in",
   balanceUnknown: "Your balance could not be read. It is checked again before anything starts.",
@@ -66,6 +70,8 @@ export const aiChatEn = {
     film_refused: "The film draft could not be saved from this plan. Choose again, or ask Nightshift AI to change it.",
     film_not_started: "The film did not start: {reason}. Nothing was charged.",
     not_enabled: "Nightshift AI isn’t available in this workspace yet. Please check back later.",
+    content_refused: "Nightshift AI can’t plan that. It doesn’t make sexual content, real people or anyone’s face, graphic violence, self-harm, misleading claims, or characters and music that belong to someone else. Try another idea.",
+    output_too_long: "That plan was too long to finish. Ask for fewer or shorter scenes, or a shorter video.",
     channel_required: "Open a channel first: Nightshift AI plans videos for one channel at a time.",
     nothing_to_choose: "That plan is no longer on screen. Ask Nightshift AI for new scenarios.",
     adult_only_service: "Nightshift is for adults (18+).",

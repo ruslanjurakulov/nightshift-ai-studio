@@ -1,4 +1,4 @@
-"""Named attacks on Nightshift AI's database half (migration 0198).
+"""Named attacks on Nightshift AI's database half (migration 0199).
 
 What would break, and which test says so:
 * the plan is the gate: a workspace on a plan without the Brain (free) has a lifetime trial of a few messages, taken once even when
@@ -41,6 +41,12 @@ def _trial(su, n: int) -> None:
     su.rows("update public.ai_chat_settings set trial_messages = %s where id returning 1", [n])
 
 
+def _free(su, org: str, on: bool = True) -> None:
+    """The workspace on Free (its subscription lapsed), or back on its paid plan."""
+    su.rows("update public.subscriptions set status = %s where org_id = %s returning 1", ["canceled" if on else "active", org])
+    assert (_plan(su, org) == "free") == on
+
+
 def test_a_plan_without_the_brain_cannot_start_or_take_a_turn_once_its_trial_is_spent(conn, sc):
     with as_superuser(conn, commit=False) as su:
         _cap(su, _plan(su, sc.alice.org), None)
@@ -56,7 +62,7 @@ def test_a_plan_without_the_brain_cannot_start_or_take_a_turn_once_its_trial_is_
 
 def test_the_trial_is_a_lifetime_count_not_a_daily_one(conn, sc):
     with as_superuser(conn, commit=False) as su:
-        _cap(su, _plan(su, sc.alice.org), None)
+        _free(su, sc.alice.org)
         _trial(su, 3)
         # The seed's one turn counts; an old turn counts as much as today's (it is the workspace's whole life).
         su.rows("update public.ai_chat_calls set created_at = now() - interval '400 days' where org_id = %s returning 1", [sc.alice.org])
@@ -74,6 +80,7 @@ def test_the_trial_is_a_lifetime_count_not_a_daily_one(conn, sc):
             out = s.run("select public.ai_chat_start(%s, %s)", [sc.alice.org, sc.alice.channel])
             assert not out.ok and out.error == "chat_plan_required", out
         # A paid plan's daily cap replaces the trial; the trial is not added on top of it.
+        _free(su, sc.alice.org, False)
         _cap(su, _plan(su, sc.alice.org), 1000)
         with acting(conn, sc.alice.actor) as s:
             q = s.value("select public.ai_chat_quota(%s)", [sc.alice.org])
@@ -87,7 +94,7 @@ def test_the_last_trial_message_is_taken_once_under_a_race(conn, sc):
         plan = _plan(su, sc.bob.org)
         had = su.value("select per_day from public.ai_chat_plan_caps where plan_id = %s", [plan])
         had_trial = su.value("select trial_messages from public.ai_chat_settings where id")
-        _cap(su, plan, None)
+        _free(su, sc.bob.org)
         _trial(su, su.value("select count(*) from public.ai_chat_calls where org_id = %s", [sc.bob.org]) + 1)
     results: list = []
 
@@ -110,7 +117,7 @@ def test_the_last_trial_message_is_taken_once_under_a_race(conn, sc):
             # Only the race's own calls: the seed's row is another test's fixture.
             su.rows("delete from public.ai_chat_calls where org_id = %s and not (id = any(%s::uuid[])) returning 1",
                     [sc.bob.org, kept])
-            _cap(su, plan, had)
+            _free(su, sc.bob.org, False)
             _trial(su, had_trial)
 
 
@@ -357,3 +364,34 @@ def test_a_handoff_reads_the_runs_hold_and_the_films_scene_map_from_the_database
             h = s.value("select handoff from public.ai_chat_sessions where id = %s", [sc.alice.ai_chat_session])
         # By position, not by insert order: the brief's first scene is the film's position 1.
         assert h["scene_map"] == {"s1": str(ids[1]), "s2": str(ids[0])}, h
+
+
+def test_the_creator_plan_is_plus_and_gets_plus_cap(conn, sc):
+    """plan_id 'creator' is the product's "Plus" (0034's plans; the Command Center names it Plus): 30 turns a day as seeded,
+    read from ai_chat_plan_caps, not a number in code."""
+    with as_superuser(conn, commit=False) as su:
+        assert _plan(su, sc.alice.org) == "creator"  # an active subscription, as the owner's test customer has
+        assert su.value("select per_day from public.ai_chat_plan_caps where plan_id = 'creator'") == 30
+        with acting(conn, sc.alice.actor) as s:
+            q = s.value("select public.ai_chat_quota(%s)", [sc.alice.org])
+            assert q["limit"] == 30 and q["trial_left"] is None, q
+        assert su.value("select public.ai_chat_cap(%s)", [sc.alice.org]) == 30
+
+
+def test_a_paid_plan_without_a_cap_row_is_refused_never_free_and_never_unlimited(conn, sc):
+    """A plan nobody priced the Brain for (a new plan id with no ai_chat_plan_caps row) is "not on this plan": no Free trial
+    handed to it, no unlimited, a named refusal."""
+    with as_superuser(conn, commit=False) as su:
+        _cap(su, "creator", None)
+        _trial(su, 3)
+        with acting(conn, sc.alice.actor) as s:
+            q = s.value("select public.ai_chat_quota(%s)", [sc.alice.org])
+            assert q["limit"] is None and q["trial_left"] == 0, q
+            out = s.run("select public.ai_chat_start(%s, %s)", [sc.alice.org, sc.alice.channel])
+            assert not out.ok and out.sqlstate == "NS402" and out.error == "chat_plan_required", out
+            out = s.run(RESERVE, [sc.alice.ai_chat_session, "free turn?"])
+            assert not out.ok and out.sqlstate == "NS402" and out.error == "chat_plan_required", out
+        # A subscription to a plan id the plans table does not know cannot exist (0034's foreign key): there is no unknown plan
+        # to misread.
+        out = su.run("update public.subscriptions set plan_id = 'lab_unknown' where org_id = %s", [sc.alice.org])
+        assert not out.ok and out.sqlstate == "23503", out

@@ -87,6 +87,7 @@ def test_only_a_platform_owner_or_admin_starts_a_film_in_the_exempt_organization
     db.su("insert into public.app_members (user_id, email, role) values (%s, %s, 'owner')", [platform, f"{platform[:8]}@exempt.lab"])
     try:
         db.asset(EXEMPT_ORG)
+        db.film_org_on(EXEMPT_ORG)
 
         class Who:
             org, editor, admin = EXEMPT_ORG, member, member

@@ -47,6 +47,7 @@ describe("the panel's failures", () => {
   it("says the remedy for each refusal the route gives", () => {
     expect(failureText(a, 409, { error: "model_unavailable", reason: "not_configured" }).message).toBe(a.errors.model_unavailable.not_configured);
     expect(failureText(a, 502, { error: "model_failed", reason: "vendor_quota" }).message).toBe(a.errors.model_failed.vendor_quota);
+    expect(failureText(a, 502, { error: "model_failed", reason: "output_too_long" }).message).toBe(a.errors.model_failed.output_too_long);
     expect(failureText(a, 429, { error: "daily_cap", limit: 200 }).message).toContain("200");
     expect(failureText(a, 503, { error: "not_enabled", needs: "0203" }).message).toContain("0203");
     expect(failureText(a, 401, { error: "second_factor" })).toEqual({ message: a.errors.second_factor, verify: true });

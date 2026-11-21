@@ -504,9 +504,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Owner FX rates (0185): tests/security/sec_owner_fx_0185.py — one frozen rate, set by the owner.
     import sec_owner_fx_0185
     sec_owner_fx_0185.seed(conn, sc)
-    # Nightshift AI (0198): tests/security/sec_ai_chat_0198.py — one conversation of one message each for Alice and Bob.
-    import sec_ai_chat_0198
-    sec_ai_chat_0198.seed(conn, sc)
+    # Nightshift AI (0199): tests/security/sec_ai_chat_0199.py — one conversation of one message each for Alice and Bob.
+    import sec_ai_chat_0199
+    sec_ai_chat_0199.seed(conn, sc)
 
     # The owner's Nightshift AI (0203): tests/security/sec_owner_ai_0203.py — one finished turn by the owner, for the closed-table attacks.
     import sec_owner_ai_0203

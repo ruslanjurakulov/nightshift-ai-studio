@@ -24,8 +24,8 @@ or, when the owner asks for something to send or keep (an e-mail to a vendor, a 
 Keep the whole reply short: it must fit one response.`;
 
 export const QUESTION_MAX = 2000;
-// The reply must fit the chat adapter's output budget (lib/server/brain/llm.ts, 1600 tokens): a reply cut at the limit is a
-// failure, not a shorter answer. 1200 + 2000 characters of Cyrillic stays under it with the JSON around it.
+// The reply must fit the route's output budget (3000 tokens, passed to lib/server/brain/llm.ts): a reply cut at the limit is a
+// failure (output_too_long), never a shorter answer. 1200 + 2000 characters of Cyrillic stays well under it with the JSON around it.
 export const ANSWER_MAX = 1200;
 export const DRAFT_MAX = 2000;
 export const HISTORY_TURNS = 6;

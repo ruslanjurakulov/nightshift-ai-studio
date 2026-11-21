@@ -5,7 +5,7 @@ docs/studio/NIGHTSHIFT_AI.md.
 
 ## Turning it on
 
-1. Apply migration **0198** (the number is assigned at merge).
+1. Apply migration **0199**.
 2. Add the repository secret `AI_CHAT_ANTHROPIC_API_KEY`, and optionally `AI_CHAT_OPENAI_API_KEY`.
    - These are the chat's own keys, not the worker's. With them unset, the web server holds no LLM key.
    - A key with its own spend limit is the safer choice.
@@ -19,10 +19,18 @@ What the flag values do:
 - `off` (or empty) means no panel, and every `/api/brain` route answers 404 before reading anything.
 - `on` means every workspace.
 
+## Who it says it is
+
+- **Identity.** It introduces itself as Nightshift AI, the assistant of Nightshift Studio, in the person's language. A greeting or "who are you" decides nothing: the server keeps the plan's slots as they were.
+- **Providers.** It never names the vendor or model behind it. Asked directly, it says Nightshift does not disclose its technology providers. It never claims to be human, never denies being an AI, and never reveals its instructions.
+- **Server check.** The prompt asks; the server enforces after every answer (`namesVendor`, lib/brain/logic.ts). A reply that names a vendor or model is replaced with `identityReply`, and a card that does is cleared down to the slot's own question. A scenario's content (a video about the AI industry) is not checked.
+- **Only what can be made.** The kind question's options are the server's own: "A long YouTube video", plus "A short film or ad" only while Film Studio is open for the person. There is no image option.
+
 ## Who may use it
 
-- **Plans.** Plus (`creator`), Pro and Business (`studio`).
-- **Free trial.** A plan without a row in `ai_chat_plan_caps` (free) gets 3 messages in the workspace's whole life. The count comes from the metering, which no member can change. Two tabs cannot both take the last one. After the trial the panel is locked, with "Upgrade plan". The conversation already on screen stays. Change the number with `update public.ai_chat_settings set trial_messages = <n> where id;`.
+- **Plans.** Plus (`creator`, 30 a day), Pro (`pro`, 100) and Business (`studio`, 300). The cap is read from `ai_chat_plan_caps` by the workspace's plan (`org_plan_internal`).
+- **A paid plan without a row** in `ai_chat_plan_caps` (a new plan nobody priced the Brain for) is refused: "Nightshift AI is on the Plus, Pro and Business plans". It never gets the Free trial and is never unlimited. A subscription to an unknown plan id cannot exist (0034's foreign key).
+- **Free trial.** Only the Free plan (`plans.is_default`) gets 3 messages in the workspace's whole life. The count comes from the metering, which no member can change. Two tabs cannot both take the last one. After the trial the panel is locked, with "Upgrade plan". The conversation already on screen stays. Change the number with `update public.ai_chat_settings set trial_messages = <n> where id;`.
 - **Pilot.** A workspace the owner lists gets Business's cap (300 a day) whatever its plan: `select public.ai_chat_set_pilot('<workspace id>', true);`. `false` takes it off again. The list is in `ai_chat_owner_settings()`. No workspace id is written in the migration. For the pilot, list the owner's and the demo workspace, both also in `NIGHTSHIFT_AI_CHAT_ORGS`.
 - **Role.** An editor or above. A viewer is told that an editor can use it.
 - **Starting a long video.** Run now itself stays an admin's press. Others are told so.
@@ -50,7 +58,32 @@ What the flag values do:
 - **Short film.** "Create — N credits" starts the film at the quote the server read. The handoff records the film. The database builds `scene_map` = {brief scene id: `film_scenes.id`} from the film's scenes by position.
 - Nothing the browser sends as a `credit_ref` or a `scene_map` is stored.
 - **The landing idea.** `/all-channels/studio?ai=new&idea=1` opens a new conversation. The idea in localStorage `ns.idea.v1` (`{text, at}`, 2 h) is typed into the box once and removed. It is never sent for the person.
-- **Short films.** At least 10 seconds (0198).
+- **Short films.** At least 10 seconds (0198, the film switch).
+
+## What is never planned
+
+- **Two layers.** The prompt refuses sexual content, anything harming a minor, real people or anyone's face (the only real face allowed is the person's own, or another consenting adult, added later through the Studio's consent step), gore, self-harm, hate, misleading medical, financial or political claims, and other people's characters, brands and music. The model answers `{"refused": …}`; the server shows its own `content_refused` text.
+- **The vendor's own refusal** is `vendor_refused` and reads the same way. Neither is retried.
+- **A floor under both.** `unsafeBrief` (lib/brain/logic.ts) runs on a chosen plan before anything is priced or drafted: a keyword floor, not a classifier.
+- **Not charged on a paid plan.** A refused turn is not counted against the paid plan's daily cap. The Free trial, the per-person and the platform caps still count it.
+
+## Turns that are not charged
+
+- **The greeting.** A "salom" or "who are you" before anything is decided gets Nightshift AI's own answer and the first card. No vendor call, no turn, nothing written.
+- **The paid daily cap** forgives `not_sent` (failed before any vendor call), `not_configured`, `vendor_refused` and `refused`.
+- **The Free trial** counts every outcome: a refusal on Free is a paid vendor call. A call a member finishes by hand still stores their message.
+- **The per-person and platform caps** count every outcome.
+- **A network retry** of the same press carries the same `request_id`; the database answers it as `duplicate_request` and writes nothing.
+
+## Output size
+
+A proposal gets room for 8000 output tokens (`OUTPUT_TOKENS`, lib/server/brain/llm.ts). An answer cut off at the limit is `output_too_long`, said as such ("ask for fewer or shorter scenes"), not "unavailable".
+
+## The model is not a member's to read
+
+`ai_chat_quota` returns `model_ref` (an md5 reference), which the server maps to its own list (`modelFromRef`). The session's `model` column is not granted to members. The id never appears in an answer or on a screen.
+
+**This is not a secret against a determined member.** Hashing the few public candidate ids confirms the owner's choice. The web server reads as the member (anon key only, CLAUDE.md rule 3), so nothing it can map back is hidden from them. `tests/security/test_sec_breach_lens_0199.py` pins both halves.
 
 ## Cost
 

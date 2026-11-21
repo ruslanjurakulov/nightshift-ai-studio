@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import { CHAT_MODELS, chatModelConfigured, isChatModelId, type ChatModelId } from "@/lib/server/brain/llm";
 
 /** Shared pieces of the /api/brain routes: refusals, the owner-chosen model's state, a channel's workspace. */
@@ -13,7 +14,7 @@ export function brainJson(body: unknown, status = 200) {
 
 export const notFound = () => brainJson({ error: "not_found" }, 404);
 
-/** A refusal raised by 0198's functions (creative_refuse: the code is the message, the SQLSTATE NSxxx), named for the panel. */
+/** A refusal raised by 0199's functions (creative_refuse: the code is the message, the SQLSTATE NSxxx), named for the panel. */
 export function dbRefusal(error: { code?: string; message?: string; details?: string } | null) {
   if (!error) return null;
   if (error.code === "PGRST202" || error.code === "PGRST205" || error.code === "42P01" || error.code === "42883") return brainJson({ error: "not_enabled" }, 503);
@@ -26,12 +27,30 @@ export function dbRefusal(error: { code?: string; message?: string; details?: st
   if (code === "chat_unavailable") return brainJson({ error: "unavailable" }, 503);
   if (code === "message_too_long" || code === "invalid_params") return brainJson({ error: code }, 400);
   if (code === "session_closed") return brainJson({ error: "session_closed" }, 409);
+  if (code === "duplicate_request") {
+    // The conversation the first copy of this press went to (a retried Start must find it, not the empty one it just made).
+    const sid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(error.details ?? "") ? error.details : null;
+    return brainJson(sid ? { error: "duplicate_request", session: { id: sid } } : { error: "duplicate_request" }, 409);
+  }
+  if (code === "nothing_to_retry") return brainJson({ error: "nothing_to_retry" }, 409);
   if (code === "session_not_found" || code === "channel_not_found" || code === "call_not_found") return notFound();
   if (code === "forbidden") return brainJson({ error: "forbidden" }, 403);
   return brainJson({ error: "unavailable" }, 503);
 }
 
 export type ModelState = "available" | "not_on_sale" | "not_configured" | "unknown_model";
+
+/**
+ * The owner's model from ai_chat_quota's model_ref (md5 of a prefix and the id): a member never reads the id itself (it names the
+ * vendor), and the server maps the reference back to one of its own models. An unknown reference is no model, never another one.
+ */
+export function modelFromRef(ref: unknown): ChatModelId | null {
+  if (typeof ref !== "string" || !/^[0-9a-f]{32}$/.test(ref)) return null;
+  for (const id of Object.keys(CHAT_MODELS)) {
+    if (createHash("md5").update(`nightshift-chat-model:${id}`).digest("hex") === ref && isChatModelId(id)) return id;
+  }
+  return null;
+}
 
 /** The owner's chosen model: on sale on the web (sellable_models, describe) AND keyed on this server, or why not. Never another. */
 export async function chosenModelState(supabase: SupabaseClient, model: unknown): Promise<{ ok: true; id: ChatModelId | null; state: ModelState } | { ok: false }> {

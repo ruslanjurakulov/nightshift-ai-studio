@@ -29,7 +29,9 @@ type State =
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
 type Problem = { text: string; retry: (() => void) | null } | null;
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
-const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden"];
+const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long"];
+/** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
+const pressId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
 export function NightshiftAiPanel({ channelId, channelSlug, initialSession, initialPrompt, fresh = false, takeIdea = false }: {
   channelId: string | null;
@@ -134,6 +136,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     if (e === "message_too_long") return fmt(c.errors.message_too_long, { max: load.state === "ready" ? load.plan.max_input_chars : 2000 });
     if (e === "short_not_available") return c.shortComingSoon;
     if (e === "channel_required") return c.errors.channel_required;
+    if (e === "content_refused") return c.errors.content_refused;
+    if (e === "output_too_long") return c.errors.output_too_long;
     if (e === "nothing_to_choose") return c.errors.nothing_to_choose;
     if (e === "film_refused") return c.errors.film_refused;
     if (e === "not_enabled") return c.errors.not_enabled;
@@ -169,6 +173,12 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     try {
       if (label) setMessages((m) => [...m, { key: `u${Date.now()}`, role: "user", content: label }]);
       const { res, d } = await post(body);
+      if (res.status === 409 && d.error === "duplicate_request") {
+        // That press already went through (a network retry): show what the server has, add nothing.
+        const sid = (d.session as { id?: string } | undefined)?.id ?? session;
+        if (sid) await loadSession(sid);
+        return;
+      }
       if (!res.ok) {
         if (d.error === "chat_daily_cap") setCapped(true);
         const sid = (d.session as { id?: string } | undefined)?.id ?? session;
@@ -195,7 +205,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     const words = raw.trim();
     if (!words || capped) return;
     setText("");
-    const body = session ? { action: "turn", session, text: words } : { action: "start", channel: channelId, prompt: words };
+    const request_id = pressId();
+    const body = session ? { action: "turn", session, text: words, request_id } : { action: "start", channel: channelId, prompt: words, request_id };
     void run(words, body, () => send(words));
   };
   const answer = (choice: number | null) => {
@@ -203,7 +214,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     const label = choice ? card.options[choice - 1] : own.trim();
     if (!label) return;
     setOwn("");
-    const body = { action: "answer", session, card: card.id, ...(choice ? { choice } : { own: label }) };
+    const body = { action: "answer", session, card: card.id, request_id: pressId(), ...(choice ? { choice } : { own: label }) };
     void run(label, body, () => answer(choice));
   };
   const choose = async (index: number) => {
@@ -238,7 +249,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
       });
       const d = (await res.json().catch(() => ({}))) as { start?: { ok?: boolean; reason?: string } };
       if (!res.ok || !d.start?.ok) {
-        setProblem({ text: d.start?.reason ? fmt(c.errors.film_not_started, { reason: d.start.reason }) : c.errors.unavailable, retry: null });
+        // The film route's own reason, in the person's language (never a raw code): the Studio timeline's words for it.
+        const reasons = t.studioTimeline.startFailed as Record<string, string>;
+        const reason = d.start?.reason;
+        // An own key only ("constructor" is not a reason).
+        setProblem({ text: reason ? (Object.prototype.hasOwnProperty.call(reasons, reason) ? reasons[reason] : reasons.other) : c.errors.unavailable, retry: null });
         return;
       }
       await post({ action: "handoff", session, handoff: { kind: "film", film_id: film.id } });
@@ -382,8 +397,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                 <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); send(text); }}>
                   <label className="sr-only" htmlFor="ns-ai-input">{c.placeholder}</label>
                   <textarea id="ns-ai-input" className="studio-field min-h-[5rem] w-full p-3 text-base" value={text} maxLength={load.plan.max_input_chars}
-                            placeholder={c.placeholder} disabled={disabled} onChange={(e) => setText(e.target.value)}
+                            placeholder={c.placeholder} disabled={disabled} onChange={(e) => setText(e.target.value)} aria-describedby="ns-ai-count"
                             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(text); } }} />
+                  {/* The limit is shown, never applied silently (Lens on 0199). */}
+                  <p id="ns-ai-count" className="self-end text-xs text-[var(--color-muted)]">{fmt(c.charCount, { n: Array.from(text).length, max: load.plan.max_input_chars })}</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="submit" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-40" disabled={disabled || !text.trim()}>{busy ? c.sending : c.send}</button>
                     {load.plan.limit !== null && load.plan.used !== null && (
@@ -459,7 +476,22 @@ function ReadyBlock({ brief, film, channelSlug, lengthLabel, busy, canRun, onCre
             <p className="text-xs text-[var(--color-muted)]">{c.createHint}</p>
           </>
         ) : (
-          <p className="text-sm">{film.quote.refusal ? fmt(c.errors.film_not_started, { reason: film.quote.refusal }) : c.priceUnpriced}</p>
+          <div className="flex flex-col gap-2" role="note">
+            {/* Why it cannot start, in the person's language: the Studio timeline's words for each block (never a raw code). */}
+            <p className="text-sm">{film.quote.blocked_by.length
+              ? (Object.prototype.hasOwnProperty.call(t.studioTimeline.blocked, film.quote.blocked_by[0])
+                  ? (t.studioTimeline.blocked as Record<string, string>)[film.quote.blocked_by[0]] : t.studioTimeline.blocked.other)
+              : c.priceUnpriced}</p>
+            {film.quote.blocked_by.includes("insufficient_credits") && (
+              <>
+                <p className="text-sm">{c.shortenFilm}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#plans`}>{c.upgrade}</Link>
+                  <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#topups`}>{c.topUp}</Link>
+                </div>
+              </>
+            )}
+          </div>
         )
       )}
     </section>

@@ -1,6 +1,6 @@
 import type { AiChatDictionary } from "./en";
 
-/** Nightshift AI, Studiya yordamchisi (0198-migratsiya). Manba — ./en.ts. */
+/** Nightshift AI, Studiya yordamchisi (0199-migratsiya). Manba — ./en.ts. */
 export const aiChatUz: AiChatDictionary = {
   title: "Nightshift AI",
   subtitle:
@@ -41,6 +41,10 @@ export const aiChatUz: AiChatDictionary = {
   priceExempt: "Bu ish maydonida yechilmaydi",
   priceUnpriced: "Bunga hali narx yoʻq",
   priceFailed: "Narxni oʻqib boʻlmadi. Qayta urinish uchun yana tanlang.",
+  identityReply: "Men Nightshift AI — Nightshift Studio yordamchisiman. Qaysi texnologiya provayderlaridan foydalanishimizni oshkor qilmaymiz. Bugun qanday video tayyorlaymiz?",
+  kindLong: "Uzun YouTube video",
+  kindShort: "Qisqa film yoki reklama",
+  charCount: "{n} / {max}",
   chooseAgain: "Bu filmni yaratish uchun yuqoridagi ssenariyni qayta tanlang.",
   signIn: "Kirish",
   balanceUnknown: "Balansingizni oʻqib boʻlmadi. U ishga tushirishdan oldin yana tekshiriladi.",
@@ -68,6 +72,8 @@ export const aiChatUz: AiChatDictionary = {
     film_refused: "Bu rejadan film qoralamasini saqlab boʻlmadi. Yana tanlang yoki Nightshift AIʼdan uni oʻzgartirishni soʻrang.",
     film_not_started: "Film boshlanmadi: {reason}. Hech narsa yechilmadi.",
     not_enabled: "Nightshift AI bu ish maydonida hozircha mavjud emas. Keyinroq qayta urinib koʻring.",
+    content_refused: "Nightshift AI buni rejalashtira olmaydi. U behayo kontent, haqiqiy odamlar yoki birovning yuzi, shafqatsizlik, oʻziga zarar yetkazish, chalgʻituvchi daʼvolar hamda boshqalarga tegishli qahramonlar va musiqani yaratmaydi. Boshqa gʻoyani sinab koʻring.",
+    output_too_long: "Reja juda uzun boʻlib ketdi. Kamroq yoki qisqaroq sahnalar yoxud qisqaroq video soʻrang.",
     channel_required: "Avval kanalni oching: Nightshift AI videolarni bir vaqtda bitta kanal uchun rejalashtiradi.",
     nothing_to_choose: "Bu reja endi ekranda yoʻq. Nightshift AIʼdan yangi ssenariylar soʻrang.",
     adult_only_service: "Nightshift kattalar (18+) uchun.",

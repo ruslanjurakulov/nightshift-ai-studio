@@ -54,7 +54,7 @@ describe("the run hand-off", () => {
   });
 });
 
-describe("a short film's minimum is 10 seconds (0198)", () => {
+describe("a short film's minimum is 10 seconds (0198, the film switch)", () => {
   it("accepts 10 s and refuses 9 s", () => {
     expect(FILM.targetMin).toBe(10);
     expect(filmLength(10)).toBe(10);

@@ -76,7 +76,11 @@ export interface LiveGraph {
   /** A channel run's live facts next to its (possibly lagging) stages: undefined = not asked, null = asked and not known. */
   workflow?: WorkflowStatus | null;
   hold?: HoldStatus | null;
+  /** The video this run made (lib/server/run-video.ts): its page holds "Publish to platforms". null = none readable yet. */
+  video?: RunVideoRef | null;
 }
+
+export type RunVideoRef = { id: string; state: "held" | "uploaded" };
 
 /** GitHub's status of a dispatched Run now's job (lib/server/github-runs.ts), as the route answers it. */
 export type WorkflowStatus =
@@ -393,6 +397,14 @@ export interface RunReading {
   events: RunEvent[] | null;
   workflow?: WorkflowStatus | null;
   hold?: HoldStatus | null;
+  video?: RunVideoRef | null;
+}
+
+function coerceVideo(v: unknown): RunVideoRef | null {
+  const r = rec(v);
+  const id = r ? str(r.id) : null;
+  const state = r ? oneOf(r.state, ["held", "uploaded"] as const) : null;
+  return id && id.length <= 128 && state ? { id, state } : null;
 }
 
 function coerceWorkflow(v: unknown): WorkflowStatus | null {
@@ -426,7 +438,8 @@ export function coerceRunLive(raw: unknown): RunReading {
   // Absent from the answer: not asked (an older route); present and unreadable: asked and not known.
   const workflow = r && "workflow" in r ? coerceWorkflow(r.workflow) : undefined;
   const hold = r && "hold" in r ? coerceHold(r.hold) : undefined;
-  return { job, events, window, workflow, hold };
+  const video = r && "video" in r ? coerceVideo(r.video) : undefined;
+  return { job, events, window, workflow, hold, video };
 }
 
 /** daily_video.yml's video job stops at 60 minutes; a dispatch can wait for a runner before that. Past this, a run with no last event ended. */
@@ -505,6 +518,7 @@ export function runGraph(r: RunReading): LiveGraph {
     settled: ended && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown"),
     ...(r.workflow !== undefined ? { workflow: r.workflow } : {}),
     ...(r.hold !== undefined ? { hold: r.hold } : {}),
+    ...(r.video !== undefined ? { video: r.video } : {}),
   };
 }
 

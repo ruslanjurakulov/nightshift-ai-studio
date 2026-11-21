@@ -151,9 +151,9 @@ describe("the model", () => {
     expect(s.rpcCalls.map((c) => c.name)).not.toContain("owner_ai_reserve_turn");
   });
 
-  it("without 0198 the route says which migration it needs", async () => {
+  it("without 0199 the route says which migration it needs", async () => {
     s.rpc.ai_chat_owner_settings = { data: null, error: { code: "PGRST202" } };
-    expect(await call()).toMatchObject({ status: 503, body: { error: "not_enabled", needs: "0198" } });
+    expect(await call()).toMatchObject({ status: 503, body: { error: "not_enabled", needs: "0199" } });
   });
 
   it("the turn is reserved before the vendor is called, and the cap stops it", async () => {
@@ -202,6 +202,8 @@ describe("after the reserve", () => {
     const id = s.llmCalls[0].opts.endUser as string;
     expect(id).toMatch(/^[0-9a-f]{32}$/);
     expect(id).not.toContain("owner-1");
+    // Its own output budget, above the reply the prompt asks for: a cut reply is output_too_long, never a shorter answer.
+    expect(s.llmCalls[0].opts.maxOutputTokens).toBe(3000);
   });
 });
 

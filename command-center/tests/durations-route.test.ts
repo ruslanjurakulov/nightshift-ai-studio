@@ -34,13 +34,15 @@ function table(name: string) {
   const q = {
     select: () => q,
     eq: (col: string, v: unknown) => (filters.push(["eq", col, v]), q),
+    neq: (col: string, v: unknown) => (filters.push(["neq", col, v]), q),
     not: (col: string, op: string, v: unknown) => (filters.push(["not", col, `${op}.${String(v)}`]), q),
     or: (expr: string) => (filters.push(["or", "", expr]), q),
     order: () => q,
     limit: async (n: number) => {
       if (h.error) return { data: null, error: h.error };
       const org = filters.find(([k, c]) => k === "eq" && c === "org_id")?.[2];
-      const visible = h.rows.filter((r) => h.memberOf.has(r.org_id) && r.org_id === org);
+      const visible = h.rows.filter((r) => h.memberOf.has(r.org_id) && r.org_id === org)
+        .filter((r) => filters.every(([k, c, v]) => k !== "neq" || (r as Record<string, unknown>)[c] !== v));
       return { data: visible.slice(0, n), error: null };
     },
   };
