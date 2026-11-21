@@ -119,7 +119,8 @@ describe("the model's words never carry a price or a link", () => {
   });
   it("text is bounded by code points and loses invisible marks", () => {
     expect(Array.from(plain("😀".repeat(10), 5))).toHaveLength(5);
-    expect(plain("a​b‮c⁦d", 20)).toBe("a b c d");
+    // Format marks render as nothing, so they go as nothing (never a space that would split "Cl\u200baude" past a check).
+    expect(plain("a​b‮c⁦d", 20)).toBe("abcd");
   });
 });
 

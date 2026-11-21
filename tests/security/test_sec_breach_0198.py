@@ -300,7 +300,7 @@ def test_forged_brief_card_and_payload_are_size_bounded(conn, sc):
 def test_quota_names_no_other_workspace_and_no_cost(conn, sc):
     with acting(conn, sc.alice.actor) as s:
         q = s.value("select public.ai_chat_quota(%s)", [sc.alice.org])
-        assert set(q) <= {"used", "limit", "trial_left", "max_input_chars", "model"}, q
+        assert set(q) <= {"used", "limit", "trial_left", "max_input_chars", "model_ref"}, q
         assert not s.run("select public.ai_chat_quota(%s)", [sc.bob.org]).ok
         assert not s.run("select public.ai_chat_used(%s)", [sc.bob.org]).ok
         assert not s.run("select public.ai_chat_cap(%s)", [sc.bob.org]).ok

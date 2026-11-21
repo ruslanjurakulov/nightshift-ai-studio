@@ -60,6 +60,31 @@ What the flag values do:
 - **The landing idea.** `/all-channels/studio?ai=new&idea=1` opens a new conversation. The idea in localStorage `ns.idea.v1` (`{text, at}`, 2 h) is typed into the box once and removed. It is never sent for the person.
 - **Short films.** At least 10 seconds (0198).
 
+## What is never planned
+
+- **Two layers.** The prompt refuses sexual content, anything harming a minor, real people or anyone's face (the only real face allowed is the person's own, or another consenting adult, added later through the Studio's consent step), gore, self-harm, hate, misleading medical, financial or political claims, and other people's characters, brands and music. The model answers `{"refused": …}`; the server shows its own `content_refused` text.
+- **The vendor's own refusal** is `vendor_refused` and reads the same way. Neither is retried.
+- **A floor under both.** `unsafeBrief` (lib/brain/logic.ts) runs on a chosen plan before anything is priced or drafted: a keyword floor, not a classifier.
+- **Not charged on a paid plan.** A refused turn is not counted against the paid plan's daily cap. The Free trial, the per-person and the platform caps still count it.
+
+## Turns that are not charged
+
+- **The greeting.** A "salom" or "who are you" before anything is decided gets Nightshift AI's own answer and the first card. No vendor call, no turn, nothing written.
+- **The paid daily cap** forgives `not_sent` (failed before any vendor call), `not_configured`, `vendor_refused` and `refused`.
+- **The Free trial** counts every outcome: a refusal on Free is a paid vendor call. A call a member finishes by hand still stores their message.
+- **The per-person and platform caps** count every outcome.
+- **A network retry** of the same press carries the same `request_id`; the database answers it as `duplicate_request` and writes nothing.
+
+## Output size
+
+A proposal gets room for 8000 output tokens (`OUTPUT_TOKENS`, lib/server/brain/llm.ts). An answer cut off at the limit is `output_too_long`, said as such ("ask for fewer or shorter scenes"), not "unavailable".
+
+## The model is not a member's to read
+
+`ai_chat_quota` returns `model_ref` (an md5 reference), which the server maps to its own list (`modelFromRef`). The session's `model` column is not granted to members. The id never appears in an answer or on a screen.
+
+**This is not a secret against a determined member.** Hashing the few public candidate ids confirms the owner's choice. The web server reads as the member (anon key only, CLAUDE.md rule 3), so nothing it can map back is hidden from them. `tests/security/test_sec_breach_lens_0198.py` pins both halves.
+
 ## Cost
 
 - **Who pays.** The person is not charged for messages; the platform pays the vendor.

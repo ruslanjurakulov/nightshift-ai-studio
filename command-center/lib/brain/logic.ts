@@ -95,12 +95,34 @@ export const HISTORY_TURNS = 12;
 // a number or a URL read other than it is).
 const INVISIBLE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f؜​-‏\u2028\u2029‪-‮⁠-⁤⁦-⁩﻿]/g;
 
+const FORMAT = /[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0\uFE00-\uFE0F\u{E0000}-\u{E007F}]/gu;
+
+/**
+ * For the CHECKS only, never for what is shown: look-alike Cyrillic and Greek letters folded to Latin ("Сlaude", "ΟpenAI", "nudе"),
+ * and a run of single letters with separators between them closed up ("C l a u d e", "n.a.k.e.d"). A check runs on the text as it
+ * is AND on this copy, so Russian and Uzbek words are still matched as themselves.
+ */
+const CONFUSABLE: Record<string, string> = {
+  а: "a", в: "b", е: "e", ё: "e", к: "k", м: "m", н: "h", о: "o", р: "p", с: "c", т: "t", у: "y", х: "x", і: "i", ї: "i", ј: "j", ѕ: "s", ԁ: "d", ӏ: "l",
+  А: "A", В: "B", Е: "E", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T", У: "Y", Х: "X", І: "I", Ј: "J", Ѕ: "S",
+  α: "a", ε: "e", ι: "i", κ: "k", ν: "v", ο: "o", ρ: "p", τ: "t", υ: "u", χ: "x",
+  Α: "A", Β: "B", Ε: "E", Ζ: "Z", Η: "H", Ι: "I", Κ: "K", Μ: "M", Ν: "N", Ο: "O", Ρ: "P", Τ: "T", Υ: "Y", Χ: "X",
+};
+export function foldForCheck(text: string): string {
+  const base = text.normalize("NFKC").replace(FORMAT, "");
+  // Only inside words that also have Latin letters: an all-Cyrillic word is Russian or Uzbek and stays itself.
+  const latinised = base.replace(/[\p{L}]+/gu, (w) => (/[a-z]/i.test(w) ? Array.from(w, (ch) => CONFUSABLE[ch] ?? ch).join("") : w));
+  return latinised.replace(/(?<![\p{L}])\p{L}(?:[\s.\-_*·•|/]+\p{L}(?![\p{L}])){2,}/gu, (run) => run.replace(/[^\p{L}]/gu, ""));
+}
+
 /** Plain text: invisible characters out, whitespace folded, bounded by CODE POINTS so a cut never leaves half an emoji (which the
  *  database refuses as JSON). Never HTML, never markdown: React renders it as text. */
 export function plain(v: unknown, max: number, multiline = false): string {
   if (typeof v !== "string") return "";
   // Lone surrogates (half an emoji) are as unstorable as a cut one.
-  const whole = v.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "");
+  // Format characters that render as nothing (zero-width, soft hyphen, bidi marks, variation selectors, tags) go entirely, never as a
+  // space: "Cl\u200baude" and "cr\u00adedits" are the words they look like (Breach on 0198).
+  const whole = v.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "").replace(FORMAT, "");
   const stripped = whole.replace(INVISIBLE, " ");
   const folded = multiline
     ? whole.replace(/\r\n?/g, "\n").replace(INVISIBLE, (c) => (c === "\n" ? "\n" : " ")).replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim()
@@ -111,13 +133,23 @@ export function plain(v: unknown, max: number, multiline = false): string {
 
 // A link or a price in the model's words would read as Nightshift's own next to the real price (a comment can steer the model).
 const LINK = /\[([^\]]{0,200})\]\([^)]*\)|\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+\.(?:com|net|org|io|ru|uz|me|app|link|xyz|ly)\/\S*/gi;
+// Every apostrophe a "soʻm" is typed with, and letters in any script (\w is ASCII: "300 кредитов" left "…ов", Lens on 0198).
+const AP = "[ʻʼ'’‘`]";
+const UNIT = String.raw`(?:usd|eur|uzs|rub|dollars?|euros?|so${AP}?m|сўм|сум(?:ы|ов|а|ах)?|рубл\p{L}*|руб\.?|долл\p{L}*|(?:credits?|кредит\p{L}*|kredit\p{L}*)(?!\s+roll))`;
+const SCALE = String.raw`(?:k|тыс\.?|тысяч\p{L}*|ming|mln|million\p{L}*|млн\.?|миллион\p{L}*)`;
+// Word numbers next to a unit. Not "on" (English): Uzbek "oʻn" (ten) only with its apostrophe (Lens on 0198: "living on credit").
+const WORDNUM = String.raw`(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|thousand|nol|bir|ikki|uch|to${AP}rt|besh|o${AP}n|yigirma|o${AP}ttiz|qirq|ellik|yuz|ming|ноль|один|два|три|четыре|пять|десять|пятнадцать|двадцать|тридцать|сорок|пятьдесят|сто|двести|триста|пятьсот|тысяч\p{L}*)`;
 const MONEY = new RegExp(
   [
-    String.raw`[$€£¥₽]\s?\d[\d\s.,]*`,
-    String.raw`\d[\d\s.,]*\s?(?:usd|eur|uzs|rub|dollars?|euros?|so[ʻ'’]?m|сум|руб\w*|долл\w*)`,
-    String.raw`\d[\d\s.,]*\s?(?:credits?|кредит\w*|kredit\w*)`,
-    String.raw`\d+\s?%\s?(?:off|discount|скидк\w*|chegirma\w*)`,
-    String.raw`(?:free|бесплатн\w*|bepul)\s+(?:credits?|кредит\w*|kredit\w*)`,
+    String.raw`[$€£¥₽]\s?\d[\d\s.,]*${SCALE}?`,
+    String.raw`\d[\d\s.,]*\s?[$€£¥₽]`,
+    String.raw`(?<![\p{L}])(?:usd|eur|uzs|rub|so${AP}?m|сўм|сум|руб\.?)\s?\d[\d\s.,]*${SCALE}?`,
+    String.raw`\d[\d\s.,]*\s?${SCALE}?\s?(?:ta\s)?${UNIT}(?![\p{L}])`,
+    String.raw`(?<![\p{L}])${WORDNUM}(?:[\s-]+${WORDNUM})*\s+(?:ta\s)?${UNIT}(?![\p{L}])`,
+    String.raw`\d+\s?%\s?(?:off|discount|скидк\p{L}*|chegirma\p{L}*)`,
+    // "Free" only as a price claim, next to what would be priced (Lens on 0198: "living for free in Tokyo" is a topic).
+    String.raw`(?<![\p{L}])(?:free|бесплатн\p{L}*|bepul)\s+(?:credits?|кредит\p{L}*|kredit\p{L}*|plan|trial|тариф\p{L}*|tarif\p{L}*|video|видео)`,
+    String.raw`(?:credits?|кредит\p{L}*|kredit\p{L}*|plan|тариф\p{L}*|tarif\p{L}*)\s+(?:is\s+|are\s+)?(?:free|бесплатн\p{L}*|bepul)(?![\p{L}])`,
   ].join("|"),
   "giu",
 );
@@ -125,7 +157,12 @@ const MONEY = new RegExp(
 /** The model's words with every link and every price/credit/discount claim removed (shown as "…"). Plain and bounded too. */
 export function modelText(v: unknown, max: number, multiline = false): string {
   const t = plain(v, max * 2, multiline);
-  return plain(t.replace(LINK, (_m, label) => (label ? String(label) : "…")).replace(MONEY, "…"), max, multiline);
+  const out = t.replace(LINK, (_m, label) => (label ? String(label) : "…")).replace(MONEY, "…");
+  // A price spelt with look-alike letters ("5 credіts"): the folded copy still names one, so the words go as a whole.
+  MONEY.lastIndex = 0;
+  const hidden = MONEY.test(foldForCheck(out));
+  MONEY.lastIndex = 0;
+  return plain(hidden ? foldForCheck(out).replace(MONEY, "…") : out, max, multiline);
 }
 
 /** The nearest length Run now takes. */
@@ -215,9 +252,16 @@ function card(raw: unknown, slot: BrainSlot, id: string, fixed?: string[]): Brai
  * never pretends to be human or home-made). The prompt says so; this is the check after the answer, because a prompt is a request.
  * Checked on what the person reads from the assistant itself (its reply and its card), not on a scenario about, say, the AI industry.
  */
-const VENDOR = /(?<![\p{L}\p{N}])(claude|anthropic|chat\s?gpt|gpt(?:[-\s]?\d[\w.]*)?|openai|open\s?ai|gemini|deepmind|deepseek|sonnet\s?\d|opus\s?\d|haiku\s?\d)(?![\p{L}])/iu;
+// Names that are only ever the vendor or its products, with Uzbek's own endings ("Мен Клодман": I am Claude). Claude is also a
+// first name: not with the famous ones after it.
+const VENDOR = /(?<![\p{L}\p{N}])(claude(?:man|men|miz|ning|dan)?(?!\s+(?:monet|debussy|lelouch|chabrol|bernard|van\s+damme|l[ée]vi|fran[çc]ois))|anthropic|chat\s?gpt|gpt(?:[-\s]?\d[\w.]*)?|openai|open\s?ai|deepmind|deepseek|клод(?:ман|мен|миз|нинг|дан)?(?!\s+(?:моне|дебюсси))|антропик\p{L}*|чат\s?-?\s?гпт|чатгпт|гпт(?:[-\s]?\d)?|опенаи|опен\s?эй\s?ай)(?![\p{L}])/iu;
+// Words that are also ordinary ones (a zodiac sign, a poem): a vendor only when the assistant is speaking about itself.
+const VENDOR_SELF = /(?:i am|i'm|i use|i run on|powered by|based on|built (?:on|by|with)|made by|my model|model is|я\s|основан\p{L}*\s+на|работаю\s+на|модел\p{L}*|men\s|asosida|modeli?m?)[^.!?\n]{0,40}(?<![\p{L}])(gemini|bard|sonnet\s?\d|opus\s?\d|haiku\s?\d|джемини|гемини)(?![\p{L}])/iu;
 export function namesVendor(text: string): boolean {
-  return VENDOR.test(text.normalize("NFKC"));
+  const folded = foldForCheck(text);
+  return VENDOR.test(text) || VENDOR.test(folded) || VENDOR_SELF.test(text) || VENDOR_SELF.test(folded)
+    // Spelt with separators inside a whole word ("Anth-ropic", "open_ai"): the strongest names, letters only.
+    || /anthropic|openai|chatgpt|deepseek|deepmind/i.test(folded.replace(/[^\p{L}]/gu, ""));
 }
 
 /**
@@ -295,6 +339,8 @@ export function readScenario(raw: unknown, slots: BrainSlots): Scenario | null {
 }
 
 export interface ModelAnswer {
+  /** The plan's own safety rule refused the request (the prompt's "refused"): the server answers with its own words. */
+  refused?: boolean;
   reply: string;
   slots: BrainSlots;
   lengthOutOfRange: boolean;
@@ -309,6 +355,8 @@ export interface AnswerRules {
   freezeSlots?: boolean;
   /** Whether a short film can be made here now (Film Studio open). False: "short" is never taken and never offered. */
   shortAvailable?: boolean;
+  /** Whether a long video can be made here (the conversation has a channel). False: "long" is never taken. */
+  longAvailable?: boolean;
   /** The kind question's options, the server's own (i18n), in the person's language. */
   kindOptions?: string[];
   /** What replaces a reply that names a vendor or model (i18n identityReply). */
@@ -318,6 +366,9 @@ export interface AnswerRules {
 export function readModelAnswer(text: string, prev: BrainSlots, cardId: string, rules: AnswerRules = {}): ModelAnswer | null {
   const json = extractJson(text);
   if (!json) return null;
+  if (json.refused === true || (typeof json.refused === "string" && json.refused.trim() !== "")) {
+    return { refused: true, reply: "", slots: { ...prev }, lengthOutOfRange: false, card: null, scenarios: [], step: "asking" };
+  }
   let reply = modelText(json.reply, CAP.reply, true);
   if (!reply) return null;
   if (rules.identityReply && namesVendor(reply)) reply = rules.identityReply;
@@ -326,6 +377,7 @@ export function readModelAnswer(text: string, prev: BrainSlots, cardId: string, 
   let slots = merged.slots;
   // No dead option: a short film where Film Studio is closed is not taken (the kind question is asked again, without it).
   if (rules.shortAvailable === false && slots.kind === "short" && prev.kind !== "short") slots = { ...slots, kind: undefined, aspect: prev.aspect };
+  if (rules.longAvailable === false && slots.kind === "long" && prev.kind !== "long") slots = { ...slots, kind: undefined, aspect: prev.aspect };
   const ask = nextSlot(slots);
   if (ask) {
     const c = card(json.card, ask, cardId, ask === "kind" ? rules.kindOptions : undefined);
@@ -352,6 +404,40 @@ export function extractJson(text: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A FLOOR, not a filter: words that are never made into a picture or a clip here, checked on a chosen plan before any draft is saved
+ * (the prompt's safety rules and the vendors' own come first; this catches what got past both). Sexual content, gore, self-harm,
+ * deepfakes and famous people, and a few well-known characters someone else owns. Any script, letter boundaries both sides.
+ */
+const UNSAFE = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(?:` +
+    [
+      String.raw`nudes?|nudit\p{L}*|nudist\p{L}*|naked\p{L}*|topless|porn\p{L}*|sex|sexual\p{L}*|sexy|erotic\p{L}*|nsfw|onlyfans|fetish\p{L}*|lingerie`,
+      // "голы" alone is football goals (Lens on 0198): the adjective's own endings only.
+      String.raw`гол(?:ый|ая|ое|ые|ую|ой|ым|ыми|ых)|голышом|раздет\p{L}*|порн\p{L}*|секс(?:уальн\p{L}*|и)?|эрот\p{L}*`,
+      String.raw`yalang${AP}?och\p{L}*|яланғоч\p{L}*|яланг[ʻʼ'’‘]?оч\p{L}*|porno\p{L}*|shahvoniy\p{L}*|erotik\p{L}*`,
+      String.raw`gory|gore[-\s]?fest|dismember\p{L}*|decapitat\p{L}*|behead\p{L}*|расчлен\p{L}*|обезглав\p{L}*`,
+      String.raw`suicid\p{L}*|self[-\s]?harm\p{L}*|самоубийств\p{L}*|суицид\p{L}*|o${AP}?z\s+joniga\s+qasd`,
+      String.raw`deepfake\p{L}*|deepfeyk\p{L}*|дипфейк\p{L}*|celebrit\p{L}*|знаменитост\p{L}*|mashhur\s+(?:odam|aktyor|xonanda)\p{L}*`,
+      String.raw`mickey\s+mouse|spider[-\s]?man|batman|superman|pikachu|harry\s+potter|darth\s+vader|super\s+mario|elsa\s+(?:from\s+)?frozen`,
+    ].join("|") +
+    String.raw`)(?![\p{L}\p{N}])`,
+  "iu",
+);
+export function unsafeText(text: string): boolean {
+  const base = text.normalize("NFKC").replace(FORMAT, "");
+  return UNSAFE.test(base) || UNSAFE.test(foldForCheck(base));
+}
+/** Every text of a chosen plan that becomes a picture, a clip or a spoken line. */
+export function unsafeBrief(b: Brief): boolean {
+  const parts: string[] = [b.title ?? "", b.idea ?? "", b.story?.logline ?? "", b.story?.conflict ?? ""];
+  for (const c of b.characters ?? []) parts.push(c.name, c.description, c.image_prompt);
+  for (const l of b.locations ?? []) parts.push(l.name, l.description, l.image_prompt);
+  for (const s of b.scenes ?? []) parts.push(s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line));
+  for (const ch of b.chapters ?? []) parts.push(ch.title, ...ch.beats.map((x) => x.text));
+  return parts.some((p) => typeof p === "string" && unsafeText(p));
 }
 
 /** The BRIEF v1 the canvas draws, from the slots and (once chosen) one scenario. */

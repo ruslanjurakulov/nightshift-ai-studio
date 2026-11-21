@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 vi.mock("server-only", () => ({}));
+import { createHash } from "node:crypto";
+const ref = (id: string) => createHash("md5").update(`nightshift-chat-model:${id}`).digest("hex");
 
 const ORG = "11111111-2222-3333-4444-555555555555";
 const SESSION = "aaaaaaaa-0000-0000-0000-000000000001";
@@ -46,6 +48,8 @@ const client = {
     rpc(fn, args);
     if (fn === "sellable_models") return { data: state.onSale.map((id) => ({ id })), error: null };
     if (fn === "ai_chat_reserve_turn") return state.reserve;
+    // The owner's model reaches the server only as a reference (0198): never the id a member could read.
+    if (fn === "ai_chat_quota") return { data: { used: 3, limit: 30, model_ref: ref("anthropic-claude-sonnet-5-5") }, error: null };
     if (fn === "create_film_draft") return { data: { film: { id: FILM, version: 1 } }, error: null };
     if (fn === "save_film") return { data: { film: { id: FILM, version: 2 } }, error: null };
     if (fn === "quote_film") return { data: { priced: true, total: 240, quote_id: `fq-2-${"a".repeat(32)}`, startable: true, available: 500 }, error: null };
@@ -136,7 +140,7 @@ describe("/api/brain/turn", () => {
     expect(d.brief.price).toMatchObject({ state: "priced", total_credits: 240, fits: true });
     expect(d.film).toEqual({ id: FILM, version: 2 });
     expect(d.quote.quote_id).toMatch(/^fq-/);
-    expect(called("create_film_draft")[0][1]).toMatchObject({ p_org: ORG, p_source_kind: "storyboard" });
+    expect(called("create_film_draft")[0][1]).toMatchObject({ p_org: ORG, p_source_kind: "script" });
     const names = rpc.mock.calls.map((c) => c[0]);
     expect(names).not.toContain("start_film");
     expect(names).not.toContain("reserve_credits");
@@ -165,5 +169,84 @@ describe("/api/brain/turn", () => {
     expect((await post({ action: "answer", session: SESSION, card: "q-0", choice: 1 })).status).toBe(409);
     await post({ action: "answer", session: SESSION, card: "q-1", choice: 2 });
     expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_text: "Short" });
+  });
+
+  // ── Lens behaviour-gap round on 0198 ─────────────────────────────────────────────────────────────────────────────────
+  it("a greeting before anything is decided is answered by Nightshift itself: no vendor call, no turn charged", async () => {
+    const d = await (await post({ action: "turn", session: SESSION, text: "salom" })).json();
+    expect(llm).not.toHaveBeenCalled();
+    expect(d.reply).toMatch(/Nightshift AI/);
+    expect(d.card).toMatchObject({ slot: "kind", options: ["A long YouTube video", "A short film or ad"] });
+    // Nothing is written for a greeting: no turn reserved, nothing finished (a stored not_sent was a free write, Breach on 0198).
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(called("ai_chat_finish_turn")).toHaveLength(0);
+    expect(d.card.id).toBe("kind-first");
+  });
+
+  it("the greeting's first card is answered by its fixed id while no kind is decided, and only then", async () => {
+    await post({ action: "answer", session: SESSION, card: "kind-first", choice: 2 });
+    expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_text: "A short film or ad" });
+    state.session = { ...state.session!, slots: { kind: "long" } };
+    expect((await post({ action: "answer", session: SESSION, card: "kind-first", choice: 1 })).status).toBe(409);
+  });
+
+  it("the vendor's safety refusal is said as such, not 'unavailable', and not charged", async () => {
+    state.llm = { ok: false, error: "vendor_refused", tokensIn: 5, tokensOut: 0 };
+    const res = await turn();
+    expect(res.status).toBe(422);
+    const d = await res.json();
+    expect(d.error).toBe("content_refused");
+    expect(d.quota.used).toBe(2);
+    expect(called("ai_chat_finish_turn")[0][1]).toMatchObject({ p_outcome: "vendor_refused" });
+  });
+
+  it("the plan's own refusal ({refused}) gives our words, no scenarios, no turn charged", async () => {
+    state.llm = { ok: true, text: JSON.stringify({ refused: "real person" }), tokensIn: 10, tokensOut: 3 };
+    const res = await turn();
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: "content_refused" });
+    expect(called("ai_chat_finish_turn")[0][1]).toMatchObject({ p_outcome: "refused" });
+  });
+
+  it("an answer cut off at the output limit is its own error, and the proposal size is asked for", async () => {
+    state.llm = { ok: false, error: "output_too_long", tokensIn: 900, tokensOut: 8000 };
+    const res = await turn();
+    expect(await res.json()).toMatchObject({ error: "output_too_long" });
+    expect(called("ai_chat_finish_turn")[0][1]).toMatchObject({ p_outcome: "output_too_long", p_tokens_out: 8000 });
+    expect((llm.mock.calls[0] as unknown[])[3]).toMatchObject({ size: "proposal" });
+  });
+
+  it("the press id reaches the database (a network retry is a duplicate there), and a duplicate is 409", async () => {
+    await post({ action: "turn", session: SESSION, text: "a video like this", request_id: "press-12345678" });
+    expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_request_id: "press-12345678" });
+    state.reserve = { data: null, error: { code: "NS409", message: "duplicate_request" } };
+    const res = await post({ action: "turn", session: SESSION, text: "a video like this", request_id: "press-12345678" });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "duplicate_request" });
+    expect(llm).toHaveBeenCalledTimes(1);
+  });
+
+  it("a short draft is created as a script (create_film_draft takes topic|script), keyed by the proposal and the scenario", async () => {
+    state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing" };
+    state.payload = { scenarios: [scen(), scen()] };
+    await post({ action: "choose", session: SESSION, index: 1 });
+    const args = called("create_film_draft")[0][1] as Record<string, unknown>;
+    expect(args.p_source_kind).toBe("script");
+    expect(String(args.p_idempotency_key)).toMatch(/^brain-[0-9a-f-]+-\d+-1$/);
+  });
+
+  it("a chosen plan that hits the safety floor is refused before anything is drafted or priced", async () => {
+    state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing" };
+    state.payload = { scenarios: [scen({ scenes: [{ title: "a", duration_s: 30, visual_prompt: "a naked celebrity" }, { title: "b", duration_s: 30, visual_prompt: "v" }] }), scen()] };
+    const res = await post({ action: "choose", session: SESSION, index: 0 });
+    expect(res.status).toBe(422);
+    expect(called("create_film_draft")).toHaveLength(0);
+    expect(called("quote_film")).toHaveLength(0);
+  });
+
+  it("the person's own answer is kept whole: no 'price' or link is cut out of their words", async () => {
+    state.session = { ...state.session!, card: { id: "q-1", slot: "audience", options: ["a", "b", "c"] } };
+    await post({ action: "answer", session: SESSION, card: "q-1", own: "kids who saved 500 credits at https://x.y" });
+    expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_text: "kids who saved 500 credits at https://x.y" });
   });
 });

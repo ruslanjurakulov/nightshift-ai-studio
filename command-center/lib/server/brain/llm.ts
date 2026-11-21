@@ -41,7 +41,7 @@ export function isChatModelId(v: unknown): v is ChatModelId {
   return typeof v === "string" && Object.prototype.hasOwnProperty.call(CHAT_MODELS, v);
 }
 
-export type LlmFailure = "not_configured" | "vendor_auth" | "vendor_quota" | "vendor_rate_limited" | "vendor_refused" | "vendor_error" | "timeout";
+export type LlmFailure = "not_configured" | "vendor_auth" | "vendor_quota" | "vendor_rate_limited" | "vendor_refused" | "vendor_error" | "timeout" | "output_too_long";
 
 export type LlmResult =
   | { ok: true; text: string; tokensIn: number | null; tokensOut: number | null }
@@ -51,8 +51,9 @@ export function chatModelConfigured(id: ChatModelId, keys: ChatKeys = chatKeysFr
   return Boolean(keyFor(id, keys));
 }
 
-const MAX_OUTPUT_TOKENS = 1600;
-const TIMEOUT_MS = 45_000;
+/** A question card is short; two or three whole scenarios (ru and uz run longer than en) are not (Lens on 0198: 1600 cut them off). */
+export const OUTPUT_TOKENS = { card: 1_600, proposal: 8_000 } as const;
+const TIMEOUT_MS = { card: 45_000, proposal: 150_000 } as const;
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
 
 function failure(status: number, body: string): LlmFailure {
@@ -66,14 +67,16 @@ export async function callChatModel(
   id: ChatModelId,
   system: string,
   user: string,
-  opts: { fetchImpl?: typeof fetch; keys?: ChatKeys; endUser?: string } = {},
+  opts: { fetchImpl?: typeof fetch; keys?: ChatKeys; endUser?: string; size?: keyof typeof OUTPUT_TOKENS } = {},
 ): Promise<LlmResult> {
   const wire = CHAT_MODELS[id];
   const key = keyFor(id, opts.keys ?? chatKeysFromEnv());
   if (!key) return { ok: false, error: "not_configured", tokensIn: null, tokensOut: null };
   const doFetch = opts.fetchImpl ?? fetch;
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  const size = opts.size ?? "card";
+  const MAX_OUTPUT_TOKENS = OUTPUT_TOKENS[size];
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS[size]);
   try {
     const req: { url: string; headers: Record<string, string>; body: Record<string, unknown> } =
       wire.provider === "anthropic"
@@ -116,7 +119,8 @@ export async function callChatModel(
     const tokensOut = num(usage.output_tokens);
     if (wire.provider === "anthropic") {
       if (data.stop_reason === "refusal") return { ok: false, error: "vendor_refused", tokensIn, tokensOut };
-      if (data.stop_reason === "max_tokens") return { ok: false, error: "vendor_error", tokensIn, tokensOut };
+      // Cut off: its own failure, said as such (a half JSON is not "the vendor is down").
+      if (data.stop_reason === "max_tokens") return { ok: false, error: "output_too_long", tokensIn, tokensOut };
       const text = (Array.isArray(data.content) ? data.content : [])
         .flatMap((b) => (b && typeof b === "object" && (b as Record<string, unknown>).type === "text" && typeof (b as Record<string, unknown>).text === "string" ? [(b as { text: string }).text] : []))
         .join("\n");
@@ -124,7 +128,7 @@ export async function callChatModel(
     }
     if (data.status === "incomplete") {
       const reason = (data.incomplete_details as Record<string, unknown> | undefined)?.reason;
-      return { ok: false, error: reason === "content_filter" ? "vendor_refused" : "vendor_error", tokensIn, tokensOut };
+      return { ok: false, error: reason === "content_filter" ? "vendor_refused" : reason === "max_output_tokens" ? "output_too_long" : "vendor_error", tokensIn, tokensOut };
     }
     let refused = false;
     const texts: string[] = [];

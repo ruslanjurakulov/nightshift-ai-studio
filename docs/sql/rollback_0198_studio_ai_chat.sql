@@ -11,7 +11,7 @@ drop function if exists public.ai_chat_quota(uuid);
 drop function if exists public.ai_chat_record_handoff(uuid, jsonb);
 drop function if exists public.ai_chat_save_brief(uuid, jsonb, text);
 drop function if exists public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb);
-drop function if exists public.ai_chat_reserve_turn(uuid, text, boolean);
+drop function if exists public.ai_chat_reserve_turn(uuid, text, boolean, text);
 drop function if exists public.ai_chat_start(uuid, text);
 drop function if exists public.ai_chat_used(uuid);
 drop function if exists public.ai_chat_cap(uuid);

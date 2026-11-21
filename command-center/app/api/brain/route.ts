@@ -3,7 +3,7 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
 import { aiChatEnv, aiChatMode, aiChatOpenFor } from "@/lib/brain/flag";
 import { readSlots } from "@/lib/brain/logic";
-import { brainJson, channelOrg, chosenModelState, dbRefusal, notFound } from "@/lib/server/brain/session";
+import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,8 +47,8 @@ export async function GET(request: Request) {
   ]);
   if (sessions.error) return dbRefusal(sessions.error) ?? brainJson({ error: "unavailable" }, 503);
   if (quota.error) return dbRefusal(quota.error) ?? brainJson({ error: "unavailable" }, 503);
-  const q = quota.data as { used?: number; limit?: number | null; trial_left?: number | null; max_input_chars?: number; model?: unknown };
-  const model = await chosenModelState(supabase, q.model);
+  const q = quota.data as { used?: number; limit?: number | null; trial_left?: number | null; max_input_chars?: number; model_ref?: unknown };
+  const model = await chosenModelState(supabase, modelFromRef(q.model_ref));
   const latest = (sessions.data ?? [])[0] ?? null;
   return brainJson({
     // limit null: no Brain on this plan; trial_left then says how many of its lifetime trial messages remain (0 = the upgrade).
