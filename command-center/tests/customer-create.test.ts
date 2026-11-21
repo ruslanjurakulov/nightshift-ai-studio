@@ -109,9 +109,12 @@ describe("the Director is prompt guidance", () => {
 
 describe("Owner mode", () => {
   it("is a viewing preference the cookie can only narrow for the operator, never grant to anyone else", () => {
-    expect(ownerFrame(true, undefined)).toBe(true);
-    expect(ownerFrame(true, "off")).toBe(false);
-    expect(ownerFrame(true, "on")).toBe(true);
+    expect(ownerFrame(true, undefined, true)).toBe(true);
+    expect(ownerFrame(true, "off", true)).toBe(false);
+    expect(ownerFrame(true, "on", true)).toBe(true);
+    // An admin who is not the owner has no User account: an "off" left by the old toggle never strands them as a customer.
+    expect(ownerFrame(true, "off")).toBe(true);
+    expect(ownerFrame(true, "off", false)).toBe(true);
     expect(ownerFrame(false, "on")).toBe(false);
     expect(ownerFrame(false, undefined)).toBe(false);
   });

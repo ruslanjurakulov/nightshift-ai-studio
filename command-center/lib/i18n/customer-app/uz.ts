@@ -3,9 +3,6 @@ import type { CustomerAppDictionary } from "./en";
 /** Kirgandan keyingi mijoz ilovasi: yuqori panel, egasi rejimi, Bosh sahifa, «Yaratish» ekrani, Rejissyor va Trendlar. Manba — ./en.ts. */
 export const customerAppUz: CustomerAppDictionary = {
   shell: {
-    ownerMode: "Ega rejimi",
-    ownerModeHint: "Egasi va operatsiya boʻlimlarini koʻrsatish",
-    ownerModeFailed: "Ega rejimini almashtirib boʻlmadi. Qayta urinib koʻring.",
     newProject: "Yangi loyiha",
     search: "Qidiruv",
     breadcrumb: "Siz qayerdasiz",
