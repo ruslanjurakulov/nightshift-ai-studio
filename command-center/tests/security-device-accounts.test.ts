@@ -58,6 +58,8 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => h.active,
+  // The held client (activeSession) is the same fake client; its cookie writes are applied by commit(), a no-op here.
+  createHeldClient: async () => ({ client: await (await import("@/lib/supabase/server")).createClient(), commit: () => undefined }),
   createClient: async () => ({
     auth: {
       getUser: async () => ({ data: { user: h.active }, error: h.active ? null : { status: 400, message: "no user" } }),
@@ -391,7 +393,7 @@ describe("FIXED [was L2] a parked token is ended before it is overwritten or dro
   it("a switch to a slot that already is the active account ends that duplicate and answers {same:true}", async () => {
     park(1, A, "victim.a@lab.test", "rt-dup-a");
     h.refresh.set("rt-dup-a", { user: { id: A, email: "victim.a@lab.test" } });
-    expect(await (await SWITCH(post(SWITCH_URL, at(1)))).json()).toEqual({ same: true });
+    expect(await (await SWITCH(post(SWITCH_URL, at(1)))).json()).toMatchObject({ same: true });
     expect(slotOf(1)).toBeNull();
     expect(h.refreshCalls).toEqual(["rt-dup-a"]); // the ACTIVE session is not touched
     expect(h.jar.get("sb-lab-auth-token")?.value).toBe("active-session");
@@ -782,7 +784,7 @@ describe("REFUSED: cross-account leakage after a switch", () => {
     h.jar.set("nightshift_org", { name: "nightshift_org", value: "org-of-a" });
     park(1, B, "b@lab.test", "rt-b");
     h.refresh.set("rt-b", { user: { id: B, email: "b@lab.test" } });
-    expect(await (await SWITCH(post(SWITCH_URL, at(1)))).json()).toEqual({ to: HOME });
+    expect(await (await SWITCH(post(SWITCH_URL, at(1)))).json()).toMatchObject({ to: HOME });
     expect(h.jar.get("chronos_channel")?.value).toBe("all-channels");
     expect(h.jar.has("nightshift_org")).toBe(false);
   });
@@ -797,7 +799,7 @@ describe("REFUSED: cross-account leakage after a switch", () => {
     park(1, B, "b@lab.test", "rt-b");
     h.refresh.set("rt-b", { user: { id: B, email: "b@lab.test" } });
     const res = await SWITCH(post(SWITCH_URL, { ...at(1), uid: X, to: "https://evil.example", refresh_token: "rt-attacker" }));
-    expect(await res.json()).toEqual({ to: HOME });
+    expect(await res.json()).toMatchObject({ to: HOME });
     expect(h.refreshCalls).toEqual(["rt-b", "rt-active-SECRET"]);
   });
 
@@ -813,7 +815,7 @@ describe("REFUSED: AAL", () => {
   it("an aal1 session of an account with a factor lands on ITS code page; without factors in the answer, Home still meets the middleware", async () => {
     park(1, B, "b@lab.test", "rt-b");
     h.refresh.set("rt-b", { user: { id: B, email: "b@lab.test", factors: [{ status: "verified", factor_type: "totp" }] }, aal: "aal1" });
-    expect(await (await SWITCH(post(SWITCH_URL, at(1)))).json()).toEqual({ to: `/login/verify?next=${encodeURIComponent(HOME)}` });
+    expect(await (await SWITCH(post(SWITCH_URL, at(1)))).json()).toMatchObject({ to: `/login/verify?next=${encodeURIComponent(HOME)}` });
     expect(paths.gateDecision(HOME, true)).not.toBe("pass");
   });
 

@@ -51,8 +51,9 @@ export const POST = requireSameOrigin(async (request: Request) => {
   }
   // An old copy of the active account is ended and its slot reused, rather than taking a second one.
   const own = [...parked].find(([, p]) => p.uid === active.user.id);
+  let unrevoked = 0;
   if (own) {
-    await revokeParked(own[1].rt);
+    if ((await revokeParked(own[1].rt)) === "not_revoked") unrevoked += 1;
     parked.delete(own[0]);
   }
   const slot = own?.[0] ?? freeSlot(parked);
@@ -65,5 +66,5 @@ export const POST = requireSameOrigin(async (request: Request) => {
   await writeParked(slot, fresh.kind === "ok" ? parkedNow : { ...parkedNow, stale: true });
   await clearActiveCookies();
   await resetWorkspaceCookies();
-  return NextResponse.json({ to: ADD_ACCOUNT_LOGIN }, { headers: NO_STORE });
+  return NextResponse.json({ to: ADD_ACCOUNT_LOGIN, unrevoked }, { headers: NO_STORE });
 });

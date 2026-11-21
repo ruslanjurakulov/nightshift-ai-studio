@@ -129,10 +129,32 @@ def _live_md5(session, signature: str):
     return row[0] if row else None
 
 
+MIGRATION_0204 = MIGRATIONS / "0204_account_switch_audit.sql"
+ROLLBACK_0204 = REPO / "docs" / "sql" / "rollback_0204_account_switch_audit.sql"
+
+
+def take_off_0204(session) -> None:
+    """0204 (account switch audit) sits on 0145's audit_action_allowed(): its own rollback puts 0145's body back and drops
+    audit_account_switch, so 0145's rollback (which refuses any other body) can run. Put back with put_back_0204."""
+    if session.conn.execute("select to_regprocedure('public.audit_account_switch(uuid)') is not null").fetchone()[0]:
+        text = ROLLBACK_0204.read_text(encoding="utf-8")
+        session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0204(session) -> None:
+    """0204 again, once 0145 is back and 0204 is not on already."""
+    if session.conn.execute("select to_regprocedure('public.audit_account_switch(uuid)') is not null").fetchone()[0]:
+        return
+    if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)') is not null").fetchone()[0]:
+        text = MIGRATION_0204.read_text(encoding="utf-8")
+        session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
 def take_off_0145(session) -> None:
     """0145 replaces render_job_params_valid() on 0122's body, audit_action_allowed() on 0117's, approve_video_publish() on 0116's and 0076's render_jobs_insert policy, and
     adds set_video_made_for_kids(); 0122, 0117 and their rollbacks refuse any other body. Taken off with its own rollback when it is there
     (the columns stay, as the rollback keeps them); put back with put_back_0145."""
+    take_off_0204(session)
     if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)') is not null").fetchone()[0]:
         text = ROLLBACK_0145.read_text(encoding="utf-8")
         session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -145,12 +167,15 @@ def put_back_0145(session) -> None:
         return
     if all(_live_md5(session, sig) == h for sig, h in _BEFORE_0145.items()):
         session.conn.execute(MIGRATION_0145.read_text(encoding="utf-8"))
+        put_back_0204(session)
 
 
 ROLLBACK_0164 = REPO / "docs" / "sql" / "rollback_0164_public_site_stats.sql"
 #: 0164 (the site's live counters) refuses to apply without 0112's videos.cut_sha256 and 0116's video_visibility_requests: a base
 #: built without either leaves it out too (name prefix), and take_off_0164 takes it off the full chain before comparing to it.
 NEEDS_0112_0116 = ("0164_",)
+#: 0204 (account switch audit) puts 0145's audit list back with one action more: a base built without 0145 leaves it out too.
+NEEDS_0145 = ("0204_",)
 
 
 def take_off_0164(session) -> None:

@@ -49,9 +49,9 @@ export const POST = requireSameOrigin(async (request: Request) => {
   if (active.kind === "unavailable") return fail("auth_unavailable", 503);
   if (active.kind === "ok" && active.user.id === target.uid) {
     // A leftover copy of the account already in use: its own session is ended, the copy removed, and nothing reloads.
-    await revokeParked(target.rt);
+    const revoked = (await revokeParked(target.rt)) !== "not_revoked";
     await writeParked(slot, null);
-    return NextResponse.json({ same: true }, { headers: NO_STORE });
+    return NextResponse.json({ same: true, revoked }, { headers: NO_STORE });
   }
 
   const fresh = await refreshParked(target.rt);
@@ -83,14 +83,16 @@ export const POST = requireSameOrigin(async (request: Request) => {
     await writeParked(slot, null);
   }
   // No account kept twice: other copies of either account are ended and removed.
+  let unrevoked = 0;
   for (const [other, p] of parked) {
     if (other === slot) continue;
     if (p.uid === fresh.user.id || (active.kind === "ok" && p.uid === active.user.id)) {
-      await revokeParked(p.rt);
+      if ((await revokeParked(p.rt)) === "not_revoked") unrevoked += 1;
       await writeParked(other, null);
     }
   }
   await resetWorkspaceCookies();
   await auditSwitch(fresh.session, active.kind === "ok" ? active.user.id : null);
-  return NextResponse.json({ to: landingAfterSwitch(fresh.session, fresh.user) }, { headers: NO_STORE });
+  // `unrevoked`: copies removed here whose session the auth server could not be asked to end (said, never hidden).
+  return NextResponse.json({ to: landingAfterSwitch(fresh.session, fresh.user), unrevoked }, { headers: NO_STORE });
 });

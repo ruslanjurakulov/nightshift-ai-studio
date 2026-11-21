@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { createClient as createStatelessClient, type Session, type User } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createHeldClient } from "@/lib/supabase/server";
 import { SESSION_COOKIE_MAX_AGE_SECONDS } from "@/lib/supabase/cookie-options";
 import { hasVerifiedTotpFactor, mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE } from "@/lib/channels";
@@ -176,16 +176,26 @@ const statusOf = (error: unknown): number | null => {
 /** Refused for good (the token or session is over), as opposed to "try again" (rate limit, timeout, outage). */
 const refusedForGood = (status: number | null) => status !== null && (status === 400 || status === 401 || status === 403 || status === 404);
 
-/** The active account as the auth server confirms it right now (getUser), or why it cannot say. */
+/**
+ * The active account as the auth server confirms it right now (getUser), or why it cannot say.
+ *
+ * Read through a client whose cookie writes are HELD: reading an expired access token makes auth-js refresh it, and a failed
+ * refresh deletes the session. Those writes reach the response only when the answer is a confirmed account, so an outage
+ * (or a rate limit) can neither be read as "nobody is signed in" nor delete the active cookie behind a 503.
+ */
 export async function activeSession(): Promise<ActiveResult> {
-  const supabase = await createClient();
-  if (!supabase) return { kind: "unavailable" };
+  const held = await createHeldClient();
+  if (!held) return { kind: "unavailable" };
+  const supabase = held.client;
   try {
-    const { data: s } = await supabase.auth.getSession();
+    const { data: s, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) return refusedForGood(statusOf(sessionError)) ? { kind: "none" } : { kind: "unavailable" };
     if (!s.session || !s.session.refresh_token) return { kind: "none" };
     const { data: u, error } = await supabase.auth.getUser();
     if (error) return refusedForGood(statusOf(error)) ? { kind: "none" } : { kind: "unavailable" };
     if (!u.user) return { kind: "none" };
+    // A refresh made while reading is the newest session: it goes to the browser, or the cookie would hold a spent token.
+    held.commit();
     return { kind: "ok", user: u.user, session: s.session };
   } catch {
     return { kind: "unavailable" };

@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   audits: [] as Array<Record<string, unknown>>,
   auditError: null as null | { code: string; message: string },
   getUserError: null as null | { status: number },
+  getSessionError: null as null | { status: number },
 }));
 
 function jwt(aal: string) {
@@ -52,11 +53,16 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => h.active,
+  // The held client (activeSession) is the same fake client; its cookie writes are applied by commit(), a no-op here.
+  createHeldClient: async () => ({ client: await (await import("@/lib/supabase/server")).createClient(), commit: () => undefined }),
   createClient: async () => ({
     auth: {
       getUser: async () =>
         h.getUserError ? { data: { user: null }, error: h.getUserError } : { data: { user: h.active }, error: h.active ? null : { status: 400, message: "no user" } },
-      getSession: async () => ({ data: { session: h.active ? { access_token: jwt("aal2"), refresh_token: h.activeRt } : null } }),
+      getSession: async () =>
+        h.getSessionError
+          ? { data: { session: null }, error: h.getSessionError }
+          : { data: { session: h.active ? { access_token: jwt("aal2"), refresh_token: h.activeRt } : null }, error: null },
       setSession: async (s: { access_token: string; refresh_token: string }) => {
         if (h.setSessionFails) return { error: { message: "nope" } };
         h.setSession.push(s);
@@ -134,6 +140,7 @@ beforeEach(() => {
   h.audits = [];
   h.auditError = null;
   h.getUserError = null;
+  h.getSessionError = null;
   h.refresh.set("rt-active", { user: { id: A, email: "owner@lab.test" }, aal: "aal2" });
   h.jar.set("sb-lab-auth-token", { name: "sb-lab-auth-token", value: "active-session" });
 });
@@ -201,7 +208,7 @@ describe("POST switch", () => {
     h.refresh.set("rt-b", { user: { id: B, email: "b@lab.test" } });
     const res = await SWITCH(sw(1));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ to: "/all-channels" });
+    expect(await res.json()).toMatchObject({ to: "/all-channels" });
     expect(h.setSession).toEqual([expect.objectContaining({ refresh_token: "rt-b-rotated" })]);
     expect(slotOf(1)).toMatchObject({ uid: A, rt: "rt-active-rotated" });
     expect(h.signOuts).toBe(0);
@@ -245,11 +252,11 @@ describe("POST switch", () => {
   it("sends a password-only session of an account with an authenticator to the code page for THAT account", async () => {
     park(1, B, "b@lab.test", "rt-b");
     h.refresh.set("rt-b", { user: { id: B, email: "b@lab.test", factors: [{ status: "verified", factor_type: "totp" }] }, aal: "aal1" });
-    expect(await (await SWITCH(sw(1))).json()).toEqual({ to: "/login/verify?next=%2Fall-channels" });
+    expect(await (await SWITCH(sw(1))).json()).toMatchObject({ to: "/login/verify?next=%2Fall-channels" });
     // The same account with its code already given goes straight home; one without a factor too.
     park(1, B, "b@lab.test", "rt-b2");
     h.refresh.set("rt-b2", { user: { id: B, email: "b@lab.test", factors: [{ status: "verified", factor_type: "totp" }] }, aal: "aal2" });
-    expect(await (await SWITCH(sw(1))).json()).toEqual({ to: "/all-channels" });
+    expect(await (await SWITCH(sw(1))).json()).toMatchObject({ to: "/all-channels" });
   });
 
   it("records account.switch with the two user ids only", async () => {
@@ -274,7 +281,7 @@ describe("POST add", () => {
   it("parks the active account without ending its session, clears the active cookie, and sends the browser to sign in", async () => {
     const res = await ADD(post("/api/account/accounts/add", {}));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ to: "/login?add=1" });
+    expect(await res.json()).toMatchObject({ to: "/login?add=1" });
     expect(slotOf(1)).toMatchObject({ uid: A, rt: "rt-active-rotated" });
     expect(h.jar.has("sb-lab-auth-token")).toBe(false);
     expect(h.signOuts).toBe(0);
@@ -368,6 +375,18 @@ describe("what the reviews found (Lens, Breach)", () => {
     expect(h.jar.has("sb-lab-auth-token")).toBe(true);
   });
 
+  it("reads a failed refresh of the active session (outage, rate limit) as 'unknown', never as 'nobody signed in'", async () => {
+    park(1, B, "b@lab.test", "rt-b");
+    h.refresh.set("rt-b", { user: { id: B, email: "b@lab.test" } });
+    for (const status of [503, 429]) {
+      h.getSessionError = { status };
+      expect((await SWITCH(sw(1))).status, String(status)).toBe(503);
+      expect(slotOf(1)).toMatchObject({ uid: B, rt: "rt-b" });
+      expect(h.setSession).toHaveLength(0);
+      expect(h.jar.has("sb-lab-auth-token")).toBe(true);
+    }
+  });
+
   it("reads a rate limit as 'try again', never as 'session ended'", async () => {
     park(1, B, "b@lab.test", "rt-b");
     h.refresh.set("rt-b", { status: 429 });
@@ -428,5 +447,17 @@ describe("what the reviews found (Lens, Breach)", () => {
     h.jar.set(lib.parkedCookieName(2), { name: lib.parkedCookieName(2), value: "tampered" });
     await LIST();
     expect(h.jar.has(lib.parkedCookieName(2))).toBe(false);
+  });
+});
+
+describe("Sentinel's follow-ups", () => {
+  it("says how many removed copies could not be ended at the auth server (never a quiet drop)", async () => {
+    park(1, B, "b@lab.test", "rt-b");
+    park(2, A, "owner@lab.test", "rt-old-a");
+    h.refresh.set("rt-b", { user: { id: B, email: "b@lab.test" } });
+    h.refresh.set("rt-old-a", { throws: true });
+    const res = await SWITCH(sw(1));
+    expect(await res.json()).toMatchObject({ unrevoked: 1 });
+    expect(slotOf(2)).toBeNull();
   });
 });

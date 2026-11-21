@@ -124,7 +124,7 @@ export function switchAccount(row: Row): Promise<ActionResult> {
       holdBrowserRefresh();
       const { status, json } = await post(DEVICE_ACCOUNTS_SWITCH, { slot: row.slot, nonce: row.nonce });
       if (status !== 200) return { ok: false, problem: problemFor(status, json?.error) };
-      if (json?.same === true) return { ok: true, same: true };
+      if (json?.same === true) return { ok: true, same: true, notRevoked: json.revoked === false };
       await leaveTo(json);
       return { ok: true };
     } catch {

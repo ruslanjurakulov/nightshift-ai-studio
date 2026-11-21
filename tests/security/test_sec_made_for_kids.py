@@ -344,7 +344,7 @@ def test_the_rollback_restores_what_0145_replaced_and_the_migration_applies_agai
     base = f"ns_mfk_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0145_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0145_", *sec_db.NEEDS_0145))])
         import psycopg
 
         with psycopg.connect(base_dsn, autocommit=True) as b:

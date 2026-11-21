@@ -791,3 +791,6 @@ sec_public_models_0193.extend(TABLES, FUNCTIONS)
 import sec_owner_brain_0197  # noqa: E402
 
 sec_owner_brain_0197.extend(TABLES, FUNCTIONS)
+
+# Migration 0204 (account switch audit): the signed-in person records their own arrival, nobody else may call it.
+FUNCTIONS.update({"audit_account_switch": USER})

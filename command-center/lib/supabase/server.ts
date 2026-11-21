@@ -39,3 +39,26 @@ export async function getUser() {
   } = await supabase.auth.getUser();
   return user;
 }
+
+/**
+ * A server client whose cookie writes are HELD until `commit()`: for a read whose side effects (an access token refreshed,
+ * or a session deleted after a failed refresh) must reach the browser only once the caller knows the answer is good
+ * (lib/server/device-accounts.ts activeSession). Never committed, the request's cookies are left exactly as they came.
+ */
+export async function createHeldClient() {
+  if (!isSupabaseConfigured) return null;
+  const cookieStore = await cookies();
+  const held: { name: string; value: string; options: Parameters<typeof hardenSessionCookie>[0] }[] = [];
+  const client = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    cookies: {
+      getAll: () => cookieStore.getAll(),
+      setAll: (list) => {
+        held.push(...list);
+      },
+    },
+  });
+  const commit = () => {
+    for (const c of held) cookieStore.set(c.name, c.value, hardenSessionCookie(c.options));
+  };
+  return { client, commit };
+}
