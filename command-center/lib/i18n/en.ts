@@ -11,6 +11,7 @@ import { rightsAckEn } from "./rights-acknowledgement/en";
 import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
+import { brainDashEn } from "./brain-dashboard/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ageEn } from "./age/en";
 import { aiChatEn } from "./ai-chat/en";
@@ -90,6 +91,7 @@ export const en = {
   effects: effectsEn,
   libraryUx: libraryUxEn,
   assetDownload: assetDownloadEn,
+  brainDash: brainDashEn,
   ownerShell: ownerShellEn,
   age: ageEn,
   /** Nightshift AI, the Studio's planning chat: ./ai-chat/en.ts. */
@@ -193,6 +195,7 @@ export const en = {
     organization: "Settings",
     credits: "Credits",
     usage: "Usage",
+    brain: "Nightshift Brain",
     security: "Security",
     onboarding: "Getting Started",
     approvals: "Approvals",

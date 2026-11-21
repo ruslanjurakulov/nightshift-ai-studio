@@ -805,6 +805,11 @@ import sec_ai_chat_0199  # noqa: E402
 
 sec_ai_chat_0199.extend(TABLES, FUNCTIONS)
 
+# Migration 0201 (the customer's Nightshift Brain dashboard facts): tests/security/sec_brain_org_facts_0201.py
+import sec_brain_org_facts_0201  # noqa: E402
+
+sec_brain_org_facts_0201.extend(TABLES, FUNCTIONS)
+
 # Migration 0202 (channel research: closed caches and queue, member readers/writers, worker functions):
 # tests/security/sec_research_0202.py
 import sec_research_0202  # noqa: E402
