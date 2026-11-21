@@ -1,4 +1,4 @@
--- 0196_brain_org_facts.sql: what the customer's Nightshift Brain dashboard
+-- 0201_brain_org_facts.sql: what the customer's Nightshift Brain dashboard
 -- and the Nightshift AI's customer facts read about ONE organization.
 -- (Stream S2. Atlas renumbers this file at merge.)
 --
@@ -24,9 +24,13 @@
 --   (tests/security/test_brain_org_facts.py).
 --
 -- WHO MAY CALL IT
---   A signed-in member of p_org (viewer and up). Anyone else, including a
---   member of another organization, gets null: the same answer as an org
---   that does not exist, so it cannot be used to probe. anon has no grant.
+--   A signed-in member of p_org (viewer and up), through is_org_member (0018),
+--   which also lets a platform owner/admin through, exactly as RLS already
+--   shows them every org. Anyone else, including a member of another
+--   organization, gets null: the same answer as an org that does not exist,
+--   so it cannot be used to probe. anon and the service key have no grant.
+--   A caller (S5's Nightshift AI) passes the session's own open org, never a
+--   number from a prompt.
 --
 -- Additive: one new function, no table, no change to any existing object.
 

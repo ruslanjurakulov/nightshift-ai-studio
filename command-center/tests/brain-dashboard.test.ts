@@ -104,3 +104,41 @@ describe("freshness and the spark line", () => {
     expect(sparkPoints(days([0, 5, 10]))).toEqual([0, 0.5, 1]);
   });
 });
+
+import { coerceChannel } from "@/lib/brain/dashboard";
+
+describe("the channel card reads S10's envelope as it comes", () => {
+  const env = (status: string, data: unknown = {}) => ({ status, fetched_at: "2026-11-21T11:00:00Z", source: "youtube", data });
+
+  it("a hidden subscriber count is hidden, not 0; unknown counts stay null; uploads sort by views, unknown last", () => {
+    const r = coerceChannel("ch", env("ok", {
+      title: "My channel", subscriber_count: null, subscribers_hidden: true, view_count: 1200, video_count: null,
+      uploads: [{ video_id: "a", view_count: null }, { video_id: "b", view_count: 50 }, { video_id: "c", view_count: 900 }],
+    }), null);
+    expect(r.state).toBe("ok");
+    if (r.state !== "ok") return;
+    expect(r.subscribersHidden).toBe(true);
+    expect(r.subscribers).toBeNull();
+    expect(r.videoCount).toBeNull();
+    expect(r.topUploads.map((u) => u.videoId)).toEqual(["c", "b", "a"]);
+    expect(r.analytics).toBeNull();
+    expect(r.themes).toEqual([]);
+  });
+
+  it("every other status is carried as such with its fetch time, and not_enabled / junk never read as an empty channel", () => {
+    expect(coerceChannel("ch", env("budget_exhausted"), null)).toMatchObject({ state: "budget_exhausted", fetchedAt: "2026-11-21T11:00:00Z" });
+    expect(coerceChannel("ch", env("not_connected"), null).state).toBe("not_connected");
+    expect(coerceChannel("ch", env("not_enabled"), null).state).toBe("not_enabled");
+    expect(coerceChannel("ch", { status: "whatever" }, null).state).toBe("failed");
+    expect(coerceChannel("ch", null, null).state).toBe("failed");
+  });
+
+  it("themes are labels with counts, capped, only from an ok themes answer", () => {
+    const own = env("ok", { view_count: 1 });
+    const themes = env("ok", { questions: [{ text: "When is part 2?", count: 4 }], groups: [{ label: "music", count: 3 }, { nope: 1 }] });
+    const r = coerceChannel("ch", own, themes);
+    expect(r.state === "ok" && r.themes).toEqual([{ label: "When is part 2?", count: 4 }, { label: "music", count: 3 }]);
+    const r2 = coerceChannel("ch", own, env("refreshing"));
+    expect(r2.state === "ok" && r2.themes).toEqual([]);
+  });
+});

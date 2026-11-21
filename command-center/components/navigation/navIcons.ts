@@ -20,7 +20,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   settings: Settings,
   design: SwatchBook,
   command: LayoutDashboard,
-  // The customer's Nightshift Brain dashboard (0196): what the Brain knows about the workspace.
+  // The customer's Nightshift Brain dashboard (0201): what the Brain knows about the workspace.
   brain: Brain,
   // The customer rail's Create (the sprint IA): sparkles, as Krea and Higgsfield mark the make-something screen.
   create: Sparkles,

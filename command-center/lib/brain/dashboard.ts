@@ -2,7 +2,7 @@
  * The customer's Nightshift Brain dashboard, the pure half: client-safe and
  * unit-tested (tests/brain-dashboard.test.ts).
  *
- * It shapes what brain_org_facts (migration 0196) returns for ONE organization
+ * It shapes what brain_org_facts (migration 0201) returns for ONE organization
  * and works out the few figures the page shows on top of it. Every figure
  * keeps the line between "measured" and "assumed" (CLAUDE.md rule 5):
  *
@@ -224,22 +224,109 @@ export type BrainFactsRead =
   | { state: "not_found" }
   | { state: "failed" };
 
-/** The channel section's read (S10's research readers). Statuses are S10's words, said as such, never as "0". */
+/** The channel section's read (S10's research readers, docs/studio/RESEARCH_TOOLS.md). Statuses are S10's own words, said
+ *  as such, never as "0". There is no growth series in v1: YouTube's policies forbid deriving one from snapshots, so none is
+ *  drawn (S10, 21 Nov). */
+export type ChannelStatus = "ok" | "no_data" | "not_connected" | "refreshing" | "budget_exhausted" | "not_enabled";
+
+export interface ChannelUpload {
+  videoId: string;
+  title: string | null;
+  publishedAt: string | null;
+  views: number | null;
+}
+
+export interface ChannelTheme {
+  /** A question or a repeated-word group, grouped by Nightshift from comments: viewers' words, shown as plain text. */
+  label: string;
+  count: number | null;
+}
+
 export type ChannelRead =
-  | { state: "not_available" }
-  | { state: "not_connected" }
-  | { state: "no_data"; fetchedAt: string | null }
-  | { state: "refreshing"; fetchedAt: string | null }
-  | { state: "budget_exhausted"; fetchedAt: string | null }
+  | { state: "not_enabled" }
+  /** All channels is open and the workspace has several: the card asks for one instead of adding them up. */
+  | { state: "pick_channel" }
+  | { state: "no_channel" }
   | { state: "failed" }
+  | { state: Exclude<ChannelStatus, "ok" | "not_enabled">; channelId: string; fetchedAt: string | null; remedy: string | null }
   | {
       state: "ok";
+      channelId: string;
       fetchedAt: string | null;
-      /** null = YouTube hides the count; undefined never reaches the page. */
+      title: string | null;
+      /** null with subscribersHidden: YouTube hides the count. null alone: not reported. */
       subscribers: number | null;
       subscribersHidden: boolean;
       views: number | null;
-      growth: DayPoint[];
-      topVideos: { videoId: string; title: string | null; views: number | null }[];
-      themes: string[];
+      videoCount: number | null;
+      topUploads: ChannelUpload[];
+      /** The 28-day Analytics block (OAuth owners only); null when YouTube did not give one. It lags ~48 h. */
+      analytics: { views: number | null; minutesWatched: number | null; subsGained: number | null; subsLost: number | null; fetchedAt: string | null } | null;
+      themes: ChannelTheme[];
+      themesStatus: ChannelStatus | null;
     };
+
+const CHANNEL_STATUSES: readonly ChannelStatus[] = ["ok", "no_data", "not_connected", "refreshing", "budget_exhausted", "not_enabled"];
+
+function status(v: unknown): ChannelStatus | null {
+  return typeof v === "string" && (CHANNEL_STATUSES as readonly string[]).includes(v) ? (v as ChannelStatus) : null;
+}
+
+function firstArray(o: Record<string, unknown> | null, keys: string[]): unknown[] {
+  for (const k of keys) if (o && Array.isArray(o[k])) return o[k] as unknown[];
+  return [];
+}
+
+/**
+ * research_own_channel's envelope ({status, fetched_at, source, data, remedy?}) as the card reads it, with
+ * research_comment_themes' beside it. Anything that is not the envelope is "failed", never an empty channel.
+ */
+export function coerceChannel(channelId: string, own: unknown, themes: unknown): ChannelRead {
+  const env = obj(own);
+  const st = status(env?.status);
+  if (!env || !st) return { state: "failed" };
+  if (st === "not_enabled") return { state: "not_enabled" };
+  const fetchedAt = str(env.fetched_at);
+  if (st !== "ok") return { state: st, channelId, fetchedAt, remedy: str(env.remedy) };
+  const d = obj(env.data) ?? {};
+  const uploads = firstArray(d, ["uploads", "recent_uploads", "videos"]).flatMap((u) => {
+    const o = obj(u);
+    const id = str(o?.video_id);
+    return o && id ? [{ videoId: id, title: str(o.title), publishedAt: str(o.published_at), views: num(o.view_count) }] : [];
+  });
+  // The most-watched of the recent uploads first; an upload whose count is unknown goes last, never as 0.
+  uploads.sort((a, b) => (b.views ?? -1) - (a.views ?? -1));
+  const an = obj(d.analytics);
+  const tEnv = obj(themes);
+  const tStatus = status(tEnv?.status);
+  const td = tStatus === "ok" ? (obj(tEnv?.data) ?? {}) : null;
+  const themeRows: ChannelTheme[] = td
+    ? [...firstArray(td, ["questions"]), ...firstArray(td, ["groups", "word_groups", "themes"])].flatMap((g) => {
+        const o = obj(g);
+        const label = str(o?.label) ?? str(o?.text) ?? str(o?.word) ?? str(o?.question);
+        return label ? [{ label: label.slice(0, 80), count: num(o?.count) }] : [];
+      })
+    : [];
+  return {
+    state: "ok",
+    channelId,
+    fetchedAt,
+    title: str(d.title) ?? str(d.channel_title),
+    subscribers: num(d.subscriber_count),
+    subscribersHidden: d.subscribers_hidden === true,
+    views: num(d.view_count),
+    videoCount: num(d.video_count),
+    topUploads: uploads.slice(0, 5),
+    analytics: an
+      ? {
+          views: num(an.views),
+          minutesWatched: num(an.estimated_minutes_watched),
+          subsGained: num(an.subscribers_gained),
+          subsLost: num(an.subscribers_lost),
+          fetchedAt: str(an.fetched_at),
+        }
+      : null,
+    themes: themeRows.slice(0, 8),
+    themesStatus: tStatus,
+  };
+}

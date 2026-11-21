@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Clock3, RefreshCw } from "lucide-react";
@@ -108,44 +108,105 @@ function Note({ tone = "muted", children }: { tone?: "muted" | "warn" | "fail"; 
   );
 }
 
+/** "Ask for fresh numbers": one request row (S10's research_request_refresh) and nothing else; the reading is the worker's. */
+function RefreshKey({ channelId }: { channelId: string }) {
+  const { t } = useI18n();
+  const tc = t.brainDash.channel;
+  const router = useRouter();
+  const busy = useRef(false);
+  const [state, setState] = useState<"idle" | "busy" | "asked" | "budget" | "failed">("idle");
+  async function ask() {
+    if (busy.current) return;
+    busy.current = true;
+    setState("busy");
+    try {
+      const res = await fetch("/api/brain/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel_id: channelId }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { status?: string };
+      setState(!res.ok ? "failed" : body.status === "budget_exhausted" ? "budget" : "asked");
+      if (res.ok) router.refresh();
+    } catch {
+      setState("failed");
+    } finally {
+      busy.current = false;
+    }
+  }
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1.5">
+      <button type="button" className="btn-quiet min-h-11 text-sm" onClick={() => void ask()} aria-busy={state === "busy"} data-refresh={state}>
+        <RefreshCw aria-hidden className={`size-4 ${state === "busy" ? "motion-safe:animate-spin" : ""}`} />
+        {tc.refresh}
+      </button>
+      <span role="status" aria-live="polite" className="text-xs text-[var(--color-muted)]">
+        {state === "asked" ? tc.refreshAsked : state === "budget" ? tc.budget : state === "failed" ? tc.refreshFailed : ""}
+      </span>
+    </div>
+  );
+}
+
 function ChannelCard({ read, now }: { read: ChannelRead; now: number }) {
   const { t, locale } = useI18n();
   const td = t.brainDash;
   const tc = td.channel;
-  const { n } = useFormat(locale);
+  const { n, date } = useFormat(locale);
   const fetchedAt = "fetchedAt" in read ? read.fetchedAt : null;
+  const channelId = "channelId" in read ? read.channelId : null;
+  const missing = (v: number | null) => (v === null ? td.unknown : n(v));
   return (
-    <Card title={tc.title} right={"fetchedAt" in read ? <Fetched iso={fetchedAt} now={now} /> : null}>
+    <Card title={read.state === "ok" && read.title ? `${tc.title} · ${read.title}` : tc.title} right={"fetchedAt" in read ? <Fetched iso={fetchedAt} now={now} /> : null}>
       {read.state === "ok" ? (
         <>
-          <div className="grid grid-cols-2 gap-4">
-            <Figure label={tc.subscribers} value={read.subscribersHidden ? td.hidden : read.subscribers === null ? td.unknown : n(read.subscribers)} />
-            <Figure label={tc.views} value={read.views === null ? td.unknown : n(read.views)} />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <Figure label={tc.subscribers} value={read.subscribersHidden ? td.hidden : missing(read.subscribers)} />
+            <Figure label={tc.views} value={missing(read.views)} />
+            <Figure label={tc.videoCount} value={missing(read.videoCount)} />
           </div>
-          {read.growth.length > 1 ? <Spark daily={read.growth} label={tc.growth} /> : null}
-          {read.topVideos.length ? (
+          {read.analytics ? (
+            <div className="flex flex-col gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3" data-analytics="">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="t-label">{tc.analytics}</span>
+                {read.analytics.fetchedAt ? (
+                  <span className="text-xs text-[var(--color-muted)]">{fmt(tc.dataThrough, { date: date(read.analytics.fetchedAt) })}</span>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Figure label={tc.views} value={missing(read.analytics.views)} />
+                <Figure label={tc.minutesWatched} value={missing(read.analytics.minutesWatched)} />
+                <Figure
+                  label={tc.subsChange}
+                  value={`${missing(read.analytics.subsGained)} / ${missing(read.analytics.subsLost)}`}
+                />
+              </div>
+            </div>
+          ) : null}
+          {read.topUploads.length ? (
             <div className="flex flex-col gap-1">
               <div className="t-label">{tc.topVideos}</div>
               <ol className="m-0 flex list-none flex-col gap-1 p-0">
-                {read.topVideos.slice(0, 5).map((v) => (
+                {read.topUploads.map((v) => (
                   <li key={v.videoId} className="flex min-w-0 justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate">{v.title ?? v.videoId}</span>
-                    <span className="shrink-0 tabular-nums text-[var(--color-muted)]">{v.views === null ? td.unknown : n(v.views)}</span>
+                    <span className="shrink-0 tabular-nums text-[var(--color-muted)]">{missing(v.views)}</span>
                   </li>
                 ))}
               </ol>
             </div>
           ) : null}
           {read.themes.length ? (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <div className="t-label">{tc.themes}</div>
               <ul className="m-0 flex flex-wrap gap-1.5 p-0">
-                {read.themes.slice(0, 8).map((th) => (
-                  <li key={th} className="list-none rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs">
-                    {th}
+                {read.themes.map((th) => (
+                  <li key={th.label} className="list-none rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs">
+                    {th.label}
+                    {th.count !== null ? <span className="ml-1 tabular-nums text-[var(--color-muted)]">{n(th.count)}</span> : null}
                   </li>
                 ))}
               </ul>
+              <p className="m-0 text-xs text-[var(--color-muted)]">{tc.themesSource}</p>
             </div>
           ) : null}
         </>
@@ -159,9 +220,14 @@ function ChannelCard({ read, now }: { read: ChannelRead; now: number }) {
         <Note>{tc.noData}</Note>
       ) : read.state === "failed" ? (
         <Note tone="fail">{td.readFailed}</Note>
+      ) : read.state === "pick_channel" ? (
+        <Note>{tc.pickChannel}</Note>
+      ) : read.state === "no_channel" ? (
+        <Note>{tc.noChannel}</Note>
       ) : (
         <Note>{tc.waiting}</Note>
       )}
+      {channelId && read.state !== "not_connected" ? <RefreshKey channelId={channelId} /> : null}
       <p className="m-0 text-xs text-[var(--color-muted)]">{tc.lag}</p>
     </Card>
   );
@@ -309,7 +375,7 @@ function MemoryCard({ facts }: { facts: BrainFacts }) {
 
 /**
  * The Nightshift Brain dashboard. It only reads: the facts the server read
- * as the person (brain_org_facts, 0196) and the channel's research reading.
+ * as the person (brain_org_facts, 0201) and the channel's research reading.
  * "Try again" re-reads the page; nothing here renders, charges or publishes.
  */
 export function BrainDashboard({
@@ -353,7 +419,11 @@ export function BrainDashboard({
             {td.retention.soon}
           </span>
         </header>
-        <p className="m-0 text-sm text-[var(--color-muted)]">{td.retention.body}</p>
+        <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-sm text-[var(--color-muted)]">
+          <li>{td.retention.published}</li>
+          <li>{td.retention.unpublished}</li>
+          <li>{td.retention.memory}</li>
+        </ul>
       </section>
     </div>
   );
