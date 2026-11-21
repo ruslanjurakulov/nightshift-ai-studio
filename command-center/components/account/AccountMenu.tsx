@@ -198,7 +198,7 @@ export function AccountMenu({
           </header>
 
           {/* The platform owner's two accounts, first in the menu as a messenger lists them (decided on the server: ownerSwitch). */}
-          {ownerSwitch && <AccountSwitcher current={operatorFrame ? "owner" : "user"} onDone={() => close(false)} />}
+          {ownerSwitch && <AccountSwitcher current={operatorFrame ? "owner" : "user"} onDone={() => close(false)} inMenu />}
 
           {state === "failed" && (
             <p role="status" className="text-xs text-[var(--color-warn)]">

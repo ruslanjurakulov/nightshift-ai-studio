@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ShieldCheck, UserRound } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -18,12 +18,14 @@ export type AccountKind = "user" | "owner";
  * opens that account's first screen. It changes what is drawn, never what anyone may open: every owner route still checks
  * the role on the server. A refused or failed switch leaves everything as it was and says so.
  */
-export function AccountSwitcher({ current, onDone }: { current: AccountKind; onDone?: () => void }) {
+export function AccountSwitcher({ current, onDone, inMenu = false }: { current: AccountKind; onDone?: () => void; inMenu?: boolean }) {
   const { t } = useI18n();
   const s = t.ownerConsole.switcher;
   const router = useRouter();
   const [busy, setBusy] = useState<AccountKind | null>(null);
-  const [failed, setFailed] = useState(false);
+  // What the failure says: a refusal (403) is not fixed by trying again; anything else may be.
+  const [failed, setFailed] = useState<null | "refused" | "retry">(null);
+  const headingId = useId();
 
   async function choose(kind: AccountKind) {
     if (busy) return;
@@ -34,20 +36,24 @@ export function AccountSwitcher({ current, onDone }: { current: AccountKind; onD
       return;
     }
     setBusy(kind);
-    setFailed(false);
+    setFailed(null);
     try {
       const res = await fetch("/api/account/owner-mode", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ on: kind === "owner" }),
       });
+      if (res.status === 403) {
+        setFailed("refused");
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
       onDone?.();
       // "/" lands the User account on its workspace's Home (app/(app)/[channel]/page.tsx); the Owner account opens the console.
       router.push(kind === "owner" ? OWNER_CONSOLE : "/");
       router.refresh();
     } catch {
-      setFailed(true);
+      setFailed("retry");
     } finally {
       setBusy(null);
     }
@@ -59,11 +65,11 @@ export function AccountSwitcher({ current, onDone }: { current: AccountKind; onD
   ];
 
   return (
-    <div className="acct-switch" data-testid="account-switcher">
-      <p className="acct-switch-h" id="acct-switch-h">
+    <div className="acct-switch" data-testid="account-switcher" data-in-menu={inMenu ? "true" : undefined}>
+      <p className="acct-switch-h" id={headingId}>
         {s.title}
       </p>
-      <ul role="list" aria-labelledby="acct-switch-h" className="acct-switch-list">
+      <ul role="list" aria-labelledby={headingId} className="acct-switch-list">
         {rows.map(({ kind, label, hint, Icon }) => {
           const on = kind === current;
           return (
@@ -73,7 +79,8 @@ export function AccountSwitcher({ current, onDone }: { current: AccountKind; onD
                 className="acct-switch-row"
                 aria-current={on ? "true" : undefined}
                 aria-busy={busy === kind}
-                disabled={busy !== null}
+                // aria-disabled, not disabled: a disabled button drops keyboard focus to the page while it switches.
+                aria-disabled={busy !== null}
                 onClick={() => choose(kind)}
                 data-account={kind}
               >
@@ -97,7 +104,7 @@ export function AccountSwitcher({ current, onDone }: { current: AccountKind; onD
       </ul>
       {failed && (
         <p role="alert" className="acct-switch-err">
-          {s.failed}
+          {failed === "refused" ? s.refused : s.failed}
         </p>
       )}
     </div>

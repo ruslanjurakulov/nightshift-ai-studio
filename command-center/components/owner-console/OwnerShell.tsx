@@ -32,10 +32,23 @@ export function OwnerShell({ email, children }: { email: string | null; children
   const current = currentOwnerSection(pathname);
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const row = useRef<HTMLElement>(null);
+
+  // On a phone the current section can sit past the edge of the scrolling row: bring it into view (instantly, so reduced
+  // motion needs nothing of its own).
+  useEffect(() => {
+    row.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [current]);
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    // Escape returns focus to the button that opened it (an outside click closes without moving focus).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      button.current?.focus();
+    };
     const onDown = (e: PointerEvent) => menu.current && !menu.current.contains(e.target as Node) && setOpen(false);
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown);
@@ -61,7 +74,7 @@ export function OwnerShell({ email, children }: { email: string | null; children
   return (
     <div className="oc-root">
       <SkipLink />
-      <aside className="oc-side" aria-label={c.navLabel}>
+      <aside className="oc-side">
         <div className="oc-brand">
           <span className="oc-mark" aria-hidden>
             N
@@ -89,10 +102,13 @@ export function OwnerShell({ email, children }: { email: string | null; children
           </span>
           <div className="relative" ref={menu}>
             <button
+              ref={button}
               type="button"
               className="oc-acct"
               aria-expanded={open}
-              aria-haspopup="true"
+              aria-haspopup="dialog"
+              aria-controls="oc-acct-pop"
+              aria-label={`${c.switcher.title}: ${c.switcher.owner}`}
               onClick={() => setOpen((o) => !o)}
               data-testid="owner-account-button"
             >
@@ -100,13 +116,13 @@ export function OwnerShell({ email, children }: { email: string | null; children
               <ChevronDown aria-hidden className="size-4" />
             </button>
             {open && (
-              <div className="oc-pop">
+              <div className="oc-pop" id="oc-acct-pop" role="dialog" aria-label={c.switcher.title}>
                 <AccountSwitcher current="owner" onDone={() => setOpen(false)} />
               </div>
             )}
           </div>
         </div>
-        <nav aria-label={c.navLabel} className="oc-top-nav">
+        <nav aria-label={c.navLabel} className="oc-top-nav" ref={row}>
           <ul role="list" className="oc-nav-row">
             {links}
           </ul>

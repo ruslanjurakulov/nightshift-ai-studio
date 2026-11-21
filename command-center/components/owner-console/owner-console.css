@@ -5,7 +5,10 @@
   background: var(--color-bg);
   color: var(--color-fg);
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, …): a plain 1fr grows to the scrolling section row's max-content width and the whole page scrolls sideways.
+     align-content: start keeps the phone header its own height instead of stretching it to fill the screen. */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
 }
 @media (min-width: 64rem) {
   .oc-root { grid-template-columns: 15rem minmax(0, 1fr); }
@@ -50,8 +53,11 @@
     border-right: 1px solid var(--color-border);
     background: var(--color-panel);
     overflow-y: auto;
+    overflow-x: hidden;
   }
 }
+/* Sidebar labels wrap: Russian and Uzbek section names are longer than the rail. The phone row keeps one line. */
+.oc-side .oc-link { white-space: normal; line-height: 1.25; }
 .oc-brand { display: flex; align-items: center; gap: 0.55rem; padding: 0.25rem 0.5rem; min-width: 0; }
 .oc-mark {
   display: inline-grid;
@@ -130,7 +136,12 @@
   background: var(--color-panel);
   box-shadow: var(--shadow-elevated, 0 12px 32px rgb(0 0 0 / 0.25));
 }
-.oc-top-nav { overflow-x: auto; scrollbar-width: none; }
+.oc-top-nav {
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* An edge fade says the row goes on. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+}
 .oc-top-nav::-webkit-scrollbar { display: none; }
 .oc-nav-row { list-style: none; margin: 0; padding: 0 0.75rem 0.5rem; display: flex; gap: 0.25rem; width: max-content; }
 .oc-nav-row .oc-link { min-height: 44px; }
@@ -167,6 +178,8 @@
 
 /* ── the account switcher (avatar menu and console) ── */
 .acct-switch { display: flex; flex-direction: column; gap: 0.35rem; }
+/* In the avatar menu it sits above the plan figures: a rule keeps the two apart. */
+.acct-switch[data-in-menu="true"] { padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-border); }
 .acct-switch-h { margin: 0; padding: 0 0.25rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted); }
 .acct-switch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .acct-switch-row {
@@ -183,9 +196,9 @@
   text-align: left;
   cursor: pointer;
 }
-.acct-switch-row:hover:not(:disabled) { background: var(--color-hover); }
+.acct-switch-row:hover:not([aria-disabled="true"]) { background: var(--color-hover); }
 .acct-switch-row[aria-current="true"] { background: var(--color-active, var(--color-panel-2)); }
-.acct-switch-row:disabled { cursor: progress; opacity: 0.75; }
+.acct-switch-row[aria-disabled="true"] { cursor: progress; opacity: 0.75; }
 .acct-switch-ic {
   display: inline-grid;
   place-items: center;
