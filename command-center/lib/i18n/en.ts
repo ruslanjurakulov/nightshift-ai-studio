@@ -2512,6 +2512,7 @@ export const en = {
       video_not_found: "The video no longer exists.",
       not_uploaded: "Refused: the video has not passed the publish gate and approvals.",
       gate_blocked: "Refused: the publish gate blocked this video.",
+      gate_unknown: "Refused: no publish gate verdict is stored for this video. That is unknown, not a pass, so it is not sent.",
       not_approved: "Refused: the video is not approved yet.",
       rejected: "Refused: the video was rejected in review.",
       awaiting_two_person: "Refused: this channel needs a second person's approval for this video first.",
