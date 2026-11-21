@@ -19,6 +19,7 @@ export const aiChatEn = {
   factsUnknown: "The channel's data could not be read this time, so these ideas come from the topic alone.",
   scenarioFacts: "{len} · scenes: {scenes} · characters: {characters}",
   chooseThis: "Choose this one",
+  chooseThisNamed: "Choose: {title}",
   slotQuestions: {
     kind: "A long YouTube video for your channel, or a short Studio film or ad?",
     target_seconds: "How long should it be?",
