@@ -153,17 +153,17 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Home, Nightshift Brain, Create, Trends, Projects and Library, and the account foot: no wall of tools", () => {
+  it("shows Home, Create, Trends, Projects, Nightshift Brain and Library, and the account foot: no wall of tools", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.brain, en.nav.create, en.nav.trends, en.nav.projects, en.nav.library]);
+    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.create, en.nav.trends, en.nav.projects, en.nav.brain, en.nav.library]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "/chronos/home",
-      "/chronos/brain",
       "/chronos/create",
       "/chronos/trends",
       "/chronos/studio?shelf=projects",
+      "/chronos/brain",
       "/chronos/library",
     ]);
     // The desks and the per-screen rows are nodes on the Studio canvas now (components/studio-canvas).

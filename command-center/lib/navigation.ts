@@ -280,12 +280,13 @@ export const PROJECTS = "/studio?shelf=projects";
  */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
   { href: CUSTOMER_HOME, key: "home" },
-  // Nightshift Brain (0201): the customer's channel, credits and forecast, projects and memory on one screen. A desktop
-  // rail entry; the phone's bottom bar keeps its five (BOTTOM_ORDER) and reaches it from the avatar menu.
-  { href: "/brain", key: "brain" },
   { href: "/create", key: "create" },
   { href: TRENDS, key: "trends" },
   { href: PROJECTS, key: "projects" },
+  // Nightshift Brain (0201): the customer's channel, credits and forecast, projects and memory on one screen. After the
+  // Studio entries (the owner's order: Home, Nightshift AI, Studio, Brain, the rest). A desktop rail entry; the phone's
+  // bottom bar keeps its five (BOTTOM_ORDER) and reaches it from the avatar menu.
+  { href: "/brain", key: "brain" },
   { href: "/library", key: "library" },
 ];
 
