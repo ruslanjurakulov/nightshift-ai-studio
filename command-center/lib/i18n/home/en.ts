@@ -19,6 +19,16 @@ export const homeEn = {
     lead: "Write an idea. Nightshift turns it into pictures, clips, voice and a finished video, with the price on the button before anything starts.",
     primary: "Start creating",
     secondary: "See how it works",
+    /** The "Write your idea" box (components/landing/home/IdeaBox.tsx). Nothing runs before the person presses send in the Studio. */
+    idea: {
+      label: "Your idea",
+      placeholder: "A 60-second video about the night markets of Samarkand, told by a calm narrator",
+      submit: "Bring it to the Studio",
+      note: "Nothing runs and nothing is charged here. Once you are signed in, your idea waits in the Studio and you press send yourself.",
+      empty: "Write a few words first.",
+      /** {n} characters of {max}: shown only near the limit. */
+      count: "{n} of {max}",
+    },
     reelLabel: "Made in Nightshift Studio",
     reelNote: "Every piece here was made in our own Studio, with the models that made it named under it.",
     /** Joins the last two model names in a credit: "Ideogram 4.5 and MiniMax H3". */

@@ -73,6 +73,46 @@
   @media (max-width: 479px) {
     .hm-hero-ctas > * { flex: 1 1 100%; }
   }
+  /* The "Write your idea" box (IdeaBox.tsx): a solid surface on the moving picture, the field and the primary key on one row from
+     640 px, stacked below it. Its height is fixed by the field's rows, so hydration never moves the hero (CLS 0). */
+  .hm-idea { display: grid; gap: var(--ds-space-2); max-width: 44rem; margin-top: var(--ds-space-8); }
+  .hm-idea-label { color: var(--ds-text); font-size: 0.9375rem; font-weight: 600; }
+  .hm-idea-row {
+    display: grid;
+    gap: var(--ds-space-2);
+    padding: var(--ds-space-2);
+    border: 1px solid var(--ds-border-strong);
+    border-radius: var(--ds-r-panel);
+    background: rgb(15 22 38 / 0.86);
+    backdrop-filter: blur(10px);
+  }
+  .hm-idea-row:focus-within { border-color: var(--ds-focus); box-shadow: 0 0 0 1px var(--ds-focus); }
+  @media (min-width: 640px) { .hm-idea-row { grid-template-columns: minmax(0, 1fr) auto; align-items: end; } }
+  .hm-idea-field {
+    width: 100%;
+    min-width: 0;
+    min-height: calc(2 * 1.5em + 2 * var(--ds-space-3));
+    padding: var(--ds-space-3);
+    resize: none;
+    border: 0;
+    border-radius: var(--ds-r-key);
+    background: transparent;
+    color: var(--ds-text);
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .hm-idea-field::placeholder { color: var(--ds-text-2); opacity: 0.85; }
+  /* The row draws the focus ring; the field's own outline would double it. */
+  .hm-idea-field:focus-visible { outline: none; }
+  .hm-idea-field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--ds-danger); }
+  .hm-idea-go { white-space: nowrap; }
+  @media (max-width: 639px) { .hm-idea-go { width: 100%; justify-content: center; } }
+  .hm-idea-problem { color: #ffb4bd; font-size: 0.875rem; font-weight: 600; }
+  .hm-idea-note { max-width: 40em; color: var(--ds-text-2); font-size: 0.875rem; line-height: 1.5; }
+  .hm-idea-count { color: var(--ds-text); font-variant-numeric: tabular-nums; }
+  .hm-idea-more { display: inline-block; margin-top: var(--ds-space-4); color: var(--ds-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
   /* On a moving picture a solid surface reads better than a translucent one. */
   .hm-ghost { --_bg: rgb(15 22 38 / 0.72); --_bg-hover: var(--ds-surface-3); backdrop-filter: blur(8px); }
   .hm-hero-credit {
