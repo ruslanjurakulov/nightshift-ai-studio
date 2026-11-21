@@ -1782,8 +1782,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     series_plans=series_plans,
                     switches=switches,
                     comments=comments,
-                    visibility=visibility,
-                    research=research)
+                    research=research,
+                    visibility=visibility)
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, job limit %ss; a customer "
                 "organization's job runs only on its own open hold)",

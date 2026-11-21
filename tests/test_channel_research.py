@@ -399,7 +399,7 @@ class WiredIntoTheQueueWorker(unittest.TestCase):
         src = (ROOT / "tools" / "queue_worker.py").read_text(encoding="utf-8")
         loop = src[src.index("def run_forever"):src.index("def _publish_one")]
         self.assertLess(loop.index("self._research_one()"), loop.index("self.client.claim("))
-        self.assertIn("research=research)", src)
+        self.assertIn("research=research,", src)
         # The channel's own token is resolved the way a render run resolves it, and nowhere else in this feature.
         self.assertIn("credentials=lambda cid: youtube_publish_credentials(cid, os.environ, token_client))", src)
 

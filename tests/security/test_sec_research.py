@@ -63,8 +63,9 @@ def ok(result):
 def test_a_member_reads_and_others_get_the_missing_answer(conn, sc):
     alice, bob = sc.alice, sc.bob
     with scratch(conn) as s:
-        out = ok(s.call(alice.actor, "select public.research_competitors_view(%s)", [alice.channel]))
+        out = ok(s.call(alice.actor, "select public.research_topic_channels(%s, 'never searched')", [alice.channel]))
         assert out["status"] == "no_data" and out["source"] == "youtube"
+        assert ok(s.call(alice.actor, "select public.research_competitors_view(%s)", [alice.channel]))["status"] == "refreshing"
         for reader in ("research_own_channel(%s)", "research_competitors_view(%s)", "research_topic_channels(%s, 'space')",
                        "research_comment_themes(%s, 28)"):
             theirs = s.call(bob.actor, f"select public.{reader}", [alice.channel])
@@ -108,7 +109,8 @@ def test_a_duplicate_press_finds_the_open_request(conn, sc):
         again = ok(s.call(alice.actor, "select public.research_request_refresh(%s, 'own_channel')", [alice.channel]))
         assert first["status"] == "queued" and again["status"] == "already_queued"
         assert again["request_id"] == first["request_id"]
-        assert s.owner("select count(*) from public.research_requests where channel_id = %s", [alice.channel]) == 1
+        assert s.owner("select count(*) from public.research_requests where channel_id = %s and kind = 'own_channel'",
+                       [alice.channel]) == 1
         view = ok(s.call(alice.actor, "select public.research_own_channel(%s)", [alice.channel]))
         assert view["status"] == "refreshing"
 
@@ -126,13 +128,16 @@ def test_three_topic_searches_a_day_per_organization(conn, sc):
 def test_competitor_lifecycle_and_the_thirty_day_rule(conn, sc):
     alice = sc.alice
     with scratch(conn) as s:
+        # The scenario's seeded requests are older: out of the way, so the claim below is this test's.
+        s.owner("update public.research_requests set status = 'done', finished_at = now() where status in ('queued', 'running')")
         added = ok(s.call(alice.actor, "select public.research_add_competitor(%s, %s)",
                           [alice.channel, f"https://www.youtube.com/channel/{COMP}"]))
         assert added["ok"] and added["status"] == "pending" and added["request_id"]
         assert ok(s.call(alice.actor, "select public.research_add_competitor(%s, %s)", [alice.channel, COMP]))["already"] is True
         assert ok(s.call(alice.actor, "select public.research_add_competitor(%s, 'just a name')", [alice.channel]))["error"] == "invalid_ref"
         claimed = ok(s.call(SERVICE, "select public.research_claim_request('lab-worker')"))
-        assert claimed["kind"] == "competitors" and claimed["competitors"][0]["input_ref"] == COMP
+        assert claimed["kind"] == "competitors" and claimed["channel_id"] == alice.channel
+        assert COMP in [c["input_ref"] for c in claimed["competitors"]]
         assert ok(s.call(SERVICE, "select public.research_resolve_competitor(%s, %s)", [added["id"], COMP])) == "resolved"
         rows = [{"youtube_channel_id": COMP, "title": "Rival", "handle": "@rival", "subscriber_count": 999,
                  "subscribers_hidden": True, "view_count": 1234, "video_count": 7, "uploads_playlist_id": "UUabcdefghijklmnopqrstuv"}]
@@ -144,16 +149,18 @@ def test_competitor_lifecycle_and_the_thirty_day_rule(conn, sc):
 
         view = ok(s.call(alice.actor, "select public.research_competitors_view(%s)", [alice.channel]))
         assert view["status"] == "ok"
-        ch = view["data"]["competitors"][0]["channel"]
+        mine = next(c for c in view["data"]["competitors"] if c["id"] == added["id"])
+        ch = mine["channel"]
         # Hidden is hidden: the number YouTube would not show is not stored, and a missing like count is null, never 0.
         assert ch["subscribers_hidden"] is True and ch["subscriber_count"] is None and ch["view_count"] == 1234
-        assert view["data"]["competitors"][0]["videos"][0]["like_count"] is None
+        assert mine["videos"][0]["like_count"] is None
 
         # 31 days on: the reader shows nothing (even before the purge), and the purge deletes it.
         s.owner("update public.research_channel_cache set fetched_at = now() - interval '31 days' where youtube_channel_id = %s", [COMP])
         s.owner("update public.research_video_cache set fetched_at = now() - interval '31 days' where video_id = %s", [VIDEO])
         stale = ok(s.call(alice.actor, "select public.research_competitors_view(%s)", [alice.channel]))
-        assert stale["data"]["competitors"][0]["channel"] is None and stale["data"]["competitors"][0]["videos"] == []
+        gone = next(c for c in stale["data"]["competitors"] if c["id"] == added["id"])
+        assert gone["channel"] is None and gone["videos"] == []
         purged = ok(s.call(SERVICE, "select public.research_purge_stale()"))
         assert purged["channels"] >= 1 and purged["videos"] >= 1
         assert s.owner("select count(*) from public.research_channel_cache where youtube_channel_id = %s", [COMP]) == 0
@@ -174,7 +181,8 @@ def test_another_organizations_competitor_id_removes_nothing(conn, sc):
 def test_twenty_competitors_at_most(conn, sc):
     alice = sc.alice
     with scratch(conn) as s:
-        for i in range(20):
+        have = s.owner("select count(*) from public.research_competitors where channel_id = %s", [alice.channel])
+        for i in range(20 - have):
             assert ok(s.call(alice.actor, "select public.research_add_competitor(%s, %s)", [alice.channel, f"@rival{i:02d}"]))["ok"]
         out = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@onetoomany')", [alice.channel]))
         assert out["ok"] is False and out["error"] == "limit_reached"
@@ -213,6 +221,7 @@ def test_comment_themes_return_audience_words_only_as_untrusted(conn, sc):
 def test_own_channel_needs_a_connection_first(conn, sc):
     alice = sc.alice
     with scratch(conn) as s:
+        s.owner("delete from public.research_own_analytics where channel_id = %s", [alice.channel])
         s.owner("delete from public.channel_token_refs where channel_id = %s", [alice.channel])
         s.owner("update public.channel_credentials set status = 'not_connected' where channel_id = %s", [alice.channel])
         out = ok(s.call(alice.actor, "select public.research_request_refresh(%s, 'own_channel')", [alice.channel]))

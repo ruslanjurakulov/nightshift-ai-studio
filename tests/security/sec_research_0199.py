@@ -50,3 +50,27 @@ def extend(tables: dict, functions: dict) -> None:
         "research_min_interval": SERVICE,
         "research_clean": SERVICE,
     })
+
+
+def seed(conn, sc) -> None:
+    """Each tenant's research as production leaves it: a competitor added the only way one can be (the member's own
+    research_add_competitor, which also queues the resolution request), and the caches, topic result and analytics row the worker
+    writes. The cache rows are written by the database owner (the worker's functions need a claimed request, and the shared
+    scenario's queue is asserted elsewhere)."""
+    from sec_db import acting, as_superuser
+
+    for t in sc.tenants():
+        with acting(conn, t.actor, commit=True) as s:
+            out = s.value("select public.research_add_competitor(%s, %s)", [t.channel, f"@seeded-{t.key}"])
+        assert out and out.get("ok"), out
+    with as_superuser(conn) as s:
+        for i, t in enumerate(sc.tenants()):
+            yid = f"UCseed{t.key}" + "x" * 17
+            s.rows("insert into public.research_channel_cache (youtube_channel_id, title, view_count) values (%s, %s, 1) "
+                   "on conflict do nothing returning 1", [yid, f"Seed {t.key}"])
+            s.rows("insert into public.research_video_cache (video_id, youtube_channel_id, title, view_count) values (%s, %s, 'v', 1) "
+                   "on conflict do nothing returning 1", [f"seedvideo{i:02d}", yid])
+            s.rows("insert into public.research_topic_results (org_id, topic_norm, youtube_channel_ids) values (%s, 'seed topic', %s) "
+                   "on conflict do nothing returning 1", [t.org, [yid]])
+            s.rows("insert into public.research_own_analytics (channel_id, period_days, youtube_channel_id, views) values (%s, 28, %s, 1) "
+                   "on conflict do nothing returning 1", [t.channel, yid])
