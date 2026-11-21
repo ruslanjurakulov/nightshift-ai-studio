@@ -259,8 +259,10 @@ body .app-shell.atmos {
   font-size: 1rem;
 }
 .ns-field::placeholder { color: var(--color-muted); }
-.ns-field:hover { border-color: var(--ns-act); }
-.ns-field:focus-visible { outline: 3px solid var(--ns-focus); outline-offset: 2px; }
+.ns-field:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--ns-act); }
+.ns-field:focus-visible:not(:disabled):not([aria-disabled="true"]) { outline: 3px solid var(--ns-focus); outline-offset: 2px; }
+.ns-field:disabled,
+.ns-field[aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; }
 .ns-open .ns-empty { padding-block: 40px; }
 
 /* ── Open sections that still use the older Panel (heading + rule) ─────────── */
