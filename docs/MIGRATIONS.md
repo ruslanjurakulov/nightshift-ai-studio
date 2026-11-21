@@ -2227,9 +2227,27 @@ Nano Banana for footage. So 0192's model check never saw it, and a member who ne
   puts the old `creative_route_quote` back.
 - **Undo.** `docs/sql/rollback_0196_adult_attestation_google_runs.sql` (owner-applied): the five earlier bodies and 0192's run gate.
 
-## Nightshift AI: the Studio's assistant (0209)
+## Owner Brain facts: people and plans, system health (0197)
 
-0209 (`0209_studio_ai_chat.sql`; the number is provisional until merge) is the database half of Nightshift AI and the Nightshift Brain. The product contract is in docs/studio/NIGHTSHIFT_AI.md, and operating notes are in docs/studio/AI_CHAT.md.
+0197 (`0197_owner_brain_facts.sql`) gives the owner's Nightshift AI and the Owner Console two read-only, owner-only summaries,
+each one JSON object. No table, no write, no value in the file.
+
+- `owner_brain_people()`: confirmed signups (1/7/30 days), last sign-ins (a floor), paying workspaces by plan, past due,
+  cancelling, canceled in 30 days, and the 20 newest plan changes by workspace name. Internal and owner-flagged workspaces
+  (0182) are excluded.
+- `owner_brain_health()`: per channel the newest run evidence, failures in 24 h / 7 days, held videos and the YouTube token's
+  stored/verified state (never token bytes); creative and render queues (queued, oldest, running, stuck, failed); workers and
+  their staleness; the doctor's verdict; alerts; the nightly mirror's time; provider readings' times. CI and deploys are not in
+  the database, and the JSON says so.
+- **Who.** Platform owner only (0182's gate) and 0107's second factor when it is on (NS401): unlike the hub's reads, these are
+  what the owner's AI hands a model. Execute granted to `authenticated` only.
+- Revenue and providers are not repeated: the app reads 0182's `owner_analytics_money` and 0184 / the Billing ledger.
+- Lab: `tests/security/sec_owner_brain_0197.py`, `tests/security/test_sec_owner_brain.py`. Rollback:
+  `docs/sql/rollback_0197_owner_brain_facts.sql` (nothing stored, nothing lost).
+
+## Nightshift AI: the Studio's assistant (0198)
+
+0198 (`0198_studio_ai_chat.sql`) is the database half of Nightshift AI and the Nightshift Brain. The product contract is in docs/studio/NIGHTSHIFT_AI.md, and operating notes are in docs/studio/AI_CHAT.md.
 
 - **Tables.** RLS is on for all six.
   - `ai_chat_sessions`: slots, step, BRIEF, card and handoff. Readable by its author only.
@@ -2248,5 +2266,5 @@ Nano Banana for footage. So 0192's model check never saw it, and a member who ne
   - Owner-only: `ai_chat_set_model`, `ai_chat_set_plan_cap`, `ai_chat_set_limits`, `ai_chat_set_pilot`, `ai_chat_owner_settings` and `ai_chat_usage`.
 - **Not changed.** Every price, hold, credit, create, film and publish rule. A long plan opens Run now. A short plan is a film draft (`create_film_draft`/`save_film`), started only by the person through `/api/films/<id>/start`.
 - **Without it.** The panel says "not set up on this database".
-- **Lab.** `tests/security/sec_ai_chat_0209.py`, `test_sec_ai_chat.py` and `test_sec_breach_0209.py`.
-- **Rollback.** `docs/sql/rollback_0209_studio_ai_chat.sql`.
+- **Lab.** `tests/security/sec_ai_chat_0198.py`, `test_sec_ai_chat.py` and `test_sec_breach_0198.py`.
+- **Rollback.** `docs/sql/rollback_0198_studio_ai_chat.sql`.

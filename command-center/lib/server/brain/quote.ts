@@ -34,7 +34,7 @@ export async function chatPricing(
   if (acct.failed) return { ok: true, spendable: "unknown", quote };
   const available = acct.account?.available ?? 0;
   // 0094: with extra credits off, what a run can use is less than the balance. A failed usage read is not "extra on": the
-  // spendable figure is then unknown, so nothing reads as "fits" on a guess (Lens on 0209).
+  // spendable figure is then unknown, so nothing reads as "fits" on a guess (Lens on 0198).
   if (usage.state !== "ok") return { ok: true, spendable: "unknown", quote };
   const spendable = !usage.value.extraEnabled ? Math.min(available, usage.value.spendableNow) : available;
   return { ok: true, spendable, quote };

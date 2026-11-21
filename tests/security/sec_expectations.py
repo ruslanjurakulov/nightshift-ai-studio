@@ -787,7 +787,12 @@ import sec_public_models_0193  # noqa: E402
 
 sec_public_models_0193.extend(TABLES, FUNCTIONS)
 
-# Migration 0209 (Nightshift AI, the Studio's planning chat): tests/security/sec_ai_chat_0209.py
-import sec_ai_chat_0209  # noqa: E402
+# Migration 0197 (the owner's facts for Nightshift Brain: people and plans, system health): tests/security/sec_owner_brain_0197.py
+import sec_owner_brain_0197  # noqa: E402
 
-sec_ai_chat_0209.extend(TABLES, FUNCTIONS)
+sec_owner_brain_0197.extend(TABLES, FUNCTIONS)
+
+# Migration 0198 (Nightshift AI, the Studio's planning chat): tests/security/sec_ai_chat_0198.py
+import sec_ai_chat_0198  # noqa: E402
+
+sec_ai_chat_0198.extend(TABLES, FUNCTIONS)

@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SecurityBoard } from "@/components/security/SecurityBoard";
 import { OwnerSecurityPanel } from "@/components/security/OwnerSecurityPanel";
 import { getDictionary } from "@/lib/i18n/server";
-import { isOperator } from "@/lib/auth/org-roles";
+import { viewingAsOperator } from "@/lib/server/owner-view";
 import { createClient } from "@/lib/supabase/server";
 import { ownerRpcOn } from "@/lib/server/owner-rpc";
 import { readOwnerSecurity, readOwnerSecurityEvents } from "@/lib/server/owner-reads";
@@ -27,7 +27,8 @@ export const revalidate = 0;
  */
 export default async function SecurityPage() {
   const { t } = await getDictionary();
-  const showOwner = ownerRpcOn() && (await isOperator());
+  // Drawn only in the Owner account: the owner's User account sees the page a customer sees (lib/server/owner-view).
+  const showOwner = ownerRpcOn() && (await viewingAsOperator());
   const supabase = showOwner ? await createClient() : null;
   const [security, events] = supabase
     ? await Promise.all([readOwnerSecurity(supabase), readOwnerSecurityEvents(supabase, 30)])

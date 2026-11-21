@@ -1,6 +1,6 @@
--- 0209_studio_ai_chat.sql — Nightshift AI (the Studio's assistant; its server side is "Nightshift Brain", docs/studio/NIGHTSHIFT_AI.md):
+-- 0198_studio_ai_chat.sql — Nightshift AI (the Studio's assistant; its server side is "Nightshift Brain", docs/studio/NIGHTSHIFT_AI.md):
 -- where its conversations and their BRIEF live, who may use it and how much, the model the owner chose, and the metering the owner
--- reads. The number is provisional (assigned at merge).
+-- reads. Number 0198, assigned at merge (after 0197, the owner's Brain facts).
 --
 -- WHY A MIGRATION. The Brain is the Command Center's first call to a text LLM, and every call costs the platform money: the person is
 -- not charged for it (the owner's decision, 2026-11-21), so the only brakes are who may use it (paid plans) and a daily cap per
@@ -32,23 +32,23 @@
 --   Run now form; a short one is saved as a film DRAFT (create_film_draft / save_film, 0166) and priced and started only by the
 --   person through the film routes (quote_film / start_film, 0171). Nothing here publishes.
 --
--- Undo: docs/sql/rollback_0209_studio_ai_chat.sql (owner-applied; it drops the conversations).
+-- Undo: docs/sql/rollback_0198_studio_ai_chat.sql (owner-applied; it drops the conversations).
 
 -- APPLY AS ONE TRANSACTION.
 
 do $$
 begin
   if to_regprocedure('public.is_org_member(uuid, text)') is null then
-    raise exception '0209 needs is_org_member (0018)';
+    raise exception '0198 needs is_org_member (0018)';
   end if;
   if to_regprocedure('public.owner_analytics_is_owner()') is null then
-    raise exception '0209 needs owner_analytics_is_owner (0182)';
+    raise exception '0198 needs owner_analytics_is_owner (0182)';
   end if;
   if to_regprocedure('public.creative_refuse(text, text, text)') is null then
-    raise exception '0209 needs creative_refuse (0036)';
+    raise exception '0198 needs creative_refuse (0036)';
   end if;
   if to_regprocedure('public.org_plan_internal(uuid)') is null or to_regprocedure('public.credits_exempt(uuid)') is null then
-    raise exception '0209 needs org_plan_internal (0034) and credits_exempt (0020)';
+    raise exception '0198 needs org_plan_internal (0034) and credits_exempt (0020)';
   end if;
 end $$;
 
@@ -56,7 +56,7 @@ create table if not exists public.ai_chat_settings (
   id               boolean primary key default true check (id),
   model            text not null default 'anthropic-claude-sonnet-5-5' check (model ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),
   max_input_chars  integer not null default 2000 check (max_input_chars between 100 and 4000),
-  -- Beyond the plan's cap per workspace (Breach on 0209: one account can belong to several workspaces): a person's own turns across
+  -- Beyond the plan's cap per workspace (Breach on 0198: one account can belong to several workspaces): a person's own turns across
   -- every workspace, and the whole platform's, in a rolling 24 hours. The last brake on the platform's LLM spend.
   per_user_daily   integer not null default 300 check (per_user_daily between 0 and 100000),
   global_daily     integer not null default 5000 check (global_daily between 0 and 1000000),
@@ -207,7 +207,7 @@ $$;
 
 -- The cap, then the person's message and a pending call. Under the workspace's own lock, so two tabs (or two servers) cannot both
 -- take the last turn. Refused turns write nothing. The plan is read now, not at the session's start: a downgrade takes effect at once.
--- p_retry: the same message again after a failed answer (Lens on 0209: a retry stored the message twice). It takes a turn (the
+-- p_retry: the same message again after a failed answer (Lens on 0198: a retry stored the message twice). It takes a turn (the
 -- vendor is called again) but adds no message: the last one must be the person's own, unanswered.
 create or replace function public.ai_chat_reserve_turn(p_session uuid, p_text text, p_retry boolean default false) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -564,12 +564,12 @@ begin
      or has_table_privilege('authenticated', 'public.ai_chat_plan_caps', 'SELECT')
      or has_table_privilege('authenticated', 'public.ai_chat_settings', 'SELECT')
      or has_table_privilege('anon', 'public.ai_chat_sessions', 'SELECT') then
-    raise exception '0209 end state: an API role can reach a chat table directly';
+    raise exception '0198 end state: an API role can reach a chat table directly';
   end if;
   if has_function_privilege('anon', 'public.ai_chat_reserve_turn(uuid, text, boolean)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.ai_chat_used(uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.ai_chat_cap(uuid)', 'EXECUTE') then
-    raise exception '0209 end state: a chat function is callable by the wrong role';
+    raise exception '0198 end state: a chat function is callable by the wrong role';
   end if;
 end $$;
 

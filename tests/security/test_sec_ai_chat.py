@@ -1,4 +1,4 @@
-"""Named attacks on Nightshift AI's database half (migration 0209).
+"""Named attacks on Nightshift AI's database half (migration 0198).
 
 What would break, and which test says so:
 * the plan is the gate: a workspace on a plan without the Brain (free) has a lifetime trial of a few messages, taken once even when

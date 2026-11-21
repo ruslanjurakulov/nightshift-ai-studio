@@ -5,7 +5,7 @@ docs/studio/NIGHTSHIFT_AI.md.
 
 ## Turning it on
 
-1. Apply migration **0209** (the number is assigned at merge).
+1. Apply migration **0198** (the number is assigned at merge).
 2. Add the repository secret `AI_CHAT_ANTHROPIC_API_KEY`, and optionally `AI_CHAT_OPENAI_API_KEY`.
    - These are the chat's own keys, not the worker's. With them unset, the web server holds no LLM key.
    - A key with its own spend limit is the safer choice.

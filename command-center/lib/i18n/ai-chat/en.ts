@@ -1,4 +1,4 @@
-/** Nightshift AI, the Studio's assistant (migration 0209, app/api/brain; docs/studio/NIGHTSHIFT_AI.md). ru.ts and uz.ts follow this shape. */
+/** Nightshift AI, the Studio's assistant (migration 0198, app/api/brain; docs/studio/NIGHTSHIFT_AI.md). ru.ts and uz.ts follow this shape. */
 export const aiChatEn = {
   title: "Nightshift AI",
   subtitle:

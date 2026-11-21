@@ -504,9 +504,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Owner FX rates (0185): tests/security/sec_owner_fx_0185.py — one frozen rate, set by the owner.
     import sec_owner_fx_0185
     sec_owner_fx_0185.seed(conn, sc)
-    # Nightshift AI (0209): tests/security/sec_ai_chat_0209.py — one conversation of one message each for Alice and Bob.
-    import sec_ai_chat_0209
-    sec_ai_chat_0209.seed(conn, sc)
+    # Nightshift AI (0198): tests/security/sec_ai_chat_0198.py — one conversation of one message each for Alice and Bob.
+    import sec_ai_chat_0198
+    sec_ai_chat_0198.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
