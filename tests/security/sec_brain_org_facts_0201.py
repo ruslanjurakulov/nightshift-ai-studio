@@ -1,4 +1,4 @@
-"""Security-lab contract for migration 0202 (brain_org_facts: the customer's Nightshift Brain dashboard).
+"""Security-lab contract for migration 0201 (brain_org_facts: the customer's Nightshift Brain dashboard).
 
 Wired in at the bottom of sec_expectations.py, like the other per-migration files.
 

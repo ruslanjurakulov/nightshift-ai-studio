@@ -1,6 +1,6 @@
--- 0202_brain_org_facts.sql: what the customer's Nightshift Brain dashboard
+-- 0201_brain_org_facts.sql: what the customer's Nightshift Brain dashboard
 -- and the Nightshift AI's customer facts read about ONE organization.
--- (Stream S2. Atlas renumbers this file at merge.)
+-- (Stream S2; number 0201 assigned by Atlas.)
 --
 -- WHAT IT ADDS
 --   brain_org_facts(p_org) jsonb   one compact, read-only answer for the
@@ -24,7 +24,7 @@
 --   No other organization's rows, no vendor cost (video_costs, provider
 --   usage), no price list, no margin. Only what this organization was charged
 --   in credits, which is already on its own Credits page. A lab test pins it
---   (tests/security/test_brain_org_facts.py).
+--   (tests/security/test_sec_brain_org_facts.py).
 --
 -- WHO MAY CALL IT
 --   A signed-in member of p_org (viewer and up), through is_org_member (0018),

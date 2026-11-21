@@ -5,10 +5,10 @@ import { coerceFacts, type BrainFactsRead } from "@/lib/brain/dashboard";
 export type { BrainFactsRead };
 
 /**
- * brain_org_facts (migration 0202) for one organization, read as the signed-in
+ * brain_org_facts (migration 0201) for one organization, read as the signed-in
  * person: the database answers only for an org they are a member of (anyone
  * else gets null, read here as not_found). Four outcomes that never blur:
- * the facts; "not available" (0202 not applied: the page says so); "could not
+ * the facts; "not available" (0201 not applied: the page says so); "could not
  * read" (a retry, no figure); and not found.
  */
 

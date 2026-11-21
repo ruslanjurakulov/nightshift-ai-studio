@@ -1,4 +1,4 @@
-"""0202: brain_org_facts(p_org) answers for the caller's OWN organization and nothing else.
+"""0201: brain_org_facts(p_org) answers for the caller's OWN organization and nothing else.
 
 It feeds the customer's Nightshift Brain dashboard and the Nightshift AI's customer facts, so a leak here
 would put one tenant's spend, videos or memory in another tenant's chat. These prove, against a real
@@ -16,6 +16,7 @@ Postgres:
 from __future__ import annotations
 
 import json
+import pathlib
 import uuid
 
 from sec_db import ANON, SERVICE, acting
@@ -138,3 +139,20 @@ def test_production_refs_are_named_by_their_tool(conn, sc):
     for tool in set(refs.values()):
         assert float(got.get(tool, 0)) >= 1.0, f"{tool} not tagged: {got}"
     assert "other" not in got or float(got["other"]) == 0.0, got
+
+
+def test_the_rollback_takes_the_function_out_and_0201_applies_again(conn, sc):
+    """docs/sql/rollback_0201_brain_org_facts.sql is what the owner pastes to undo 0201: it must leave no brain_org_facts behind
+    (its own end-state check says so), and 0201 must apply again on top of it. Inside this test's transaction, rolled back."""
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    rollback = (repo / "docs" / "sql" / "rollback_0201_brain_org_facts.sql").read_text(encoding="utf-8")
+    migration = (repo / "supabase" / "migrations" / "0201_brain_org_facts.sql").read_text(encoding="utf-8")
+    gone = "select to_regprocedure('public.brain_org_facts(uuid)') is null"
+    assert conn.execute(gone).fetchone()[0] is False
+    conn.execute(rollback)
+    assert conn.execute(gone).fetchone()[0] is True
+    conn.execute(migration)
+    assert conn.execute(gone).fetchone()[0] is False
+    # The grant comes back with it: authenticated may call it, anon may not.
+    assert conn.execute("select has_function_privilege('authenticated', 'public.brain_org_facts(uuid)', 'execute')").fetchone()[0]
+    assert not conn.execute("select has_function_privilege('anon', 'public.brain_org_facts(uuid)', 'execute')").fetchone()[0]

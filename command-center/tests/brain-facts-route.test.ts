@@ -56,7 +56,7 @@ describe("GET /api/brain/facts", () => {
     expect(await res.json()).toEqual({ state: "failed" });
   });
 
-  it("not a member (null) is 404; 0202 not applied is 503; any other error is 502", async () => {
+  it("not a member (null) is 404; 0201 not applied is 503; any other error is 502", async () => {
     h.rpc.mockResolvedValueOnce({ data: null, error: null });
     expect((await GET()).status).toBe(404);
     h.rpc.mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
