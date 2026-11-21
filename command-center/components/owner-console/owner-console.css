@@ -245,13 +245,253 @@
 .oc-nowrap { white-space: nowrap; }
 .oc-warn { color: var(--color-warn); }
 
-/* The owner's Nightshift AI. */
-.oc-ai-turn { display: flex; flex-direction: column; gap: 0.3rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-border); }
-.oc-ai-turn:last-child { border-bottom: 0; padding-bottom: 0; }
-.oc-ai-who { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--color-muted); }
-.oc-ai-q, .oc-ai-a { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The owner's Nightshift AI: live cards, a chat thread and a composer that stays at the bottom of the screen. */
 .oc-ai-draft { border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-panel-2); padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .oc-ai-draft-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 0.9rem; }
 .oc-ai-error { border: 1px solid var(--color-warn); border-radius: 0.6rem; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.oc-ai-input { width: 100%; resize: vertical; min-height: 5rem; border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-bg); color: var(--color-fg); padding: 0.6rem; font: inherit; }
-.oc-ai-input:focus-visible { outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }
+
+/* Live cards: two across on a phone (four stacked would push the chat off the first screen), four across on a desktop. */
+.ai-kpis-wrap { display: flex; flex-direction: column; gap: 0.4rem; }
+.ai-kpis { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+@media (min-width: 64rem) {
+  .ai-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+}
+.ai-kpi {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.8rem;
+  background: var(--color-panel);
+}
+@media (min-width: 40rem) {
+  .ai-kpi { padding: 0.9rem 1rem; }
+}
+.ai-kpi[data-tone="warn"] { border-color: var(--color-warn); }
+.ai-kpi[data-tone="fail"] { border-color: var(--color-fail); }
+.ai-kpi-label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; line-height: 1.3; color: var(--color-muted); }
+.ai-kpi-ic {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-panel-2);
+  color: var(--color-fg);
+}
+.ai-kpi[data-tone="warn"] .ai-kpi-ic { color: var(--color-warn); }
+.ai-kpi[data-tone="fail"] .ai-kpi-ic { color: var(--color-fail); }
+.ai-kpi-body { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; min-width: 0; }
+.ai-kpi-val { font-size: 1.35rem; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ai-kpi-runway { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.ai-kpi-name { font-size: 1.05rem; }
+.ai-kpi-sub { font-size: 0.78rem; color: var(--color-muted); }
+.ai-kpi-hint { margin: 0; font-size: 0.75rem; color: var(--color-muted); }
+.ai-kpi-retry { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.25rem; }
+.ai-kpi-down { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.85rem 1rem; border: 1px solid var(--color-warn); border-radius: 0.8rem; background: var(--color-panel); }
+.ai-skel { display: block; border-radius: 0.4rem; background: var(--color-panel-2); animation: ai-pulse 1.4s ease-in-out infinite; }
+.ai-skel-val { width: 60%; height: 1.4rem; }
+.ai-skel-tag { width: 4rem; height: 0.9rem; border-radius: 999px; }
+@keyframes ai-pulse { 50% { opacity: 0.45; } }
+.ai-spin { animation: ai-spin 0.9s linear infinite; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+
+/* The chat. */
+.ai-chat { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; }
+.ai-chat-bar { display: flex; justify-content: flex-end; }
+.ai-new { display: inline-flex; align-items: center; gap: 0.4rem; }
+.ai-thread { display: flex; flex-direction: column; gap: 1rem; }
+.ai-log { display: flex; flex-direction: column; gap: 1.25rem; }
+.ai-turn { display: flex; flex-direction: column; gap: 0.75rem; }
+.ai-msg { display: flex; gap: 0.6rem; min-width: 0; }
+.ai-msg-you { justify-content: flex-end; }
+.ai-bubble { margin: 0; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.ai-bubble-you {
+  max-width: min(85%, 40rem);
+  padding: 0.6rem 0.9rem;
+  border-radius: 1.1rem 1.1rem 0.3rem 1.1rem;
+  background: var(--color-panel-2);
+  color: var(--color-fg);
+}
+.ai-bubble-ai {
+  max-width: min(100%, 46rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.95rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.3rem 1.1rem 1.1rem 1.1rem;
+  background: var(--color-panel);
+  white-space: normal;
+}
+.ai-who { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--color-muted); }
+.ai-answer { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--ns-cta-bg, var(--color-primary));
+  color: var(--ns-cta-fg, var(--color-on-accent));
+}
+.ai-typing { flex-direction: row; align-items: center; gap: 0.3rem; padding: 0.85rem 1rem; }
+.ai-typing span { width: 0.45rem; height: 0.45rem; border-radius: 999px; background: var(--color-muted); animation: ai-dot 1.2s ease-in-out infinite; }
+.ai-typing span:nth-child(2) { animation-delay: 0.15s; }
+.ai-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ai-dot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.ai-error { border-radius: 0.8rem; background: var(--color-panel); }
+.ai-error-ic { flex-shrink: 0; margin-top: 0.2rem; color: var(--color-warn); }
+
+/* Empty state: a short line and the suggestions as equal cards — one column on a phone, two from a tablet up. */
+.ai-empty { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; padding: 0.5rem 0 0; text-align: center; }
+.ai-empty-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--ns-cta-bg, var(--color-primary));
+  color: var(--ns-cta-fg, var(--color-on-accent));
+}
+.ai-empty-tx { margin: 0; color: var(--color-muted); }
+.ai-suggest-h { align-self: stretch; text-align: start; margin-top: 0.5rem; }
+.ai-suggest { list-style: none; margin: 0; padding: 0; align-self: stretch; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+@media (min-width: 40rem) {
+  .ai-suggest { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.ai-suggest li { display: flex; }
+.ai-suggest-card {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-height: 4.25rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.8rem;
+  background: var(--color-panel);
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.ai-suggest-card:hover:not(:disabled) { background: var(--color-hover); border-color: var(--color-muted); }
+.ai-suggest-card:disabled { cursor: not-allowed; opacity: 0.6; }
+.ai-suggest-ic {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  background: var(--color-panel-2);
+  color: var(--color-fg);
+}
+.ai-suggest-tx { min-width: 0; overflow-wrap: anywhere; padding-top: 0.2rem; }
+
+/* The composer stays at the bottom of the screen while the thread scrolls under it; the fade keeps text from showing through. */
+.ai-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 1rem 0 max(0.75rem, env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, transparent, var(--color-bg) 1rem);
+}
+.ai-composer-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.6rem 0.5rem 0.95rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1.1rem;
+  background: var(--color-panel);
+  box-shadow: var(--shadow-elevated, 0 8px 24px rgb(0 0 0 / 0.18));
+}
+.ai-composer-box:focus-within { border-color: var(--ns-focus, var(--color-primary)); outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 1px; }
+.ai-input {
+  width: 100%;
+  min-height: 1.6rem;
+  max-height: 200px;
+  resize: none;
+  overflow-y: auto;
+  border: 0;
+  padding: 0.2rem 0;
+  background: transparent;
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 1rem; /* 16px: below it iOS zooms the page on focus. */
+  line-height: 1.5;
+}
+.ai-input::placeholder { color: var(--color-muted); }
+/* The ring is drawn on the box around it (focus-within), so the field itself has none of its own. */
+.ai-input:focus, .ai-input:focus-visible { outline: none; }
+.ai-composer-row { display: flex; align-items: center; gap: 0.5rem; }
+.ai-counter { margin-left: auto; font-size: 0.75rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.ai-counter[data-full] { color: var(--color-warn); font-weight: 600; }
+.ai-icon-btn,
+.ai-send {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font: inherit;
+}
+.ai-icon-btn { background: transparent; color: var(--color-muted); }
+.ai-icon-btn[aria-disabled="true"] { cursor: not-allowed; }
+/* The "coming soon" tip: on hover and on keyboard focus, so it is not a mouse-only message. */
+.ai-icon-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.4rem;
+  background: var(--color-fg);
+  color: var(--color-bg);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.ai-icon-btn[data-tip]:hover::after,
+.ai-icon-btn[data-tip]:focus-visible::after { opacity: 1; }
+.ai-send { background: var(--ns-cta-bg, var(--color-primary)); color: var(--ns-cta-fg, var(--color-on-accent)); cursor: pointer; }
+.ai-send:hover:not(:disabled) { filter: brightness(1.1); }
+/* Disabled is a different shape of button, not a faded one: a hollow ring with the muted icon, so "can't send yet" reads at a glance. */
+.ai-send:disabled { background: var(--color-panel-2); border-color: var(--color-border); color: var(--color-muted); cursor: not-allowed; }
+.ai-icon-btn:focus-visible,
+.ai-send:focus-visible,
+.ai-suggest-card:focus-visible,
+.ai-kpi-retry:focus-visible {
+  outline: 2px solid var(--ns-focus, var(--color-primary));
+  outline-offset: 2px;
+}
+.ai-disclaimer { margin: 0; text-align: center; font-size: 0.75rem; line-height: 1.4; color: var(--color-muted); }
+.ai-keys { display: none; }
+@media (min-width: 40rem) {
+  .ai-keys { display: inline; }
+  .ai-keys::before { content: "· "; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-skel, .ai-spin, .ai-typing span { animation: none; }
+  .ai-typing span { opacity: 0.7; }
+  .ai-suggest-card, .ai-icon-btn[data-tip]::after { transition: none; }
+}

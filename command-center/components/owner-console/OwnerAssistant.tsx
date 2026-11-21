@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Activity, ArrowUp, Mic, RotateCcw, Sparkles, TrendingUp, TriangleAlert, Users, Wallet, type LucideIcon } from "lucide-react";
 import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
 
 /**
- * The owner's Nightshift AI. A form that asks /api/brain/owner/turn and draws the answer; it holds no figure of its own (the server
- * builds the facts and the model answers from them). The conversation lives in this tab only: nothing is stored, and a reload
+ * The owner's Nightshift AI, drawn as a chat. It asks /api/brain/owner/turn and draws the answer; it holds no figure of its own (the
+ * server builds the facts and the model answers from them). The conversation lives in this tab only: nothing is stored, and a reload
  * starts afresh. Nothing here acts: an answer is text, a draft is text to copy.
  */
 
@@ -20,12 +21,21 @@ interface Turn {
 /** retry: whether asking again can help (a daily cap, a missing key or migration will refuse again). */
 type Failure = { message: string; verify?: boolean; clear?: boolean; signIn?: boolean; retry?: boolean };
 
-const QUESTION_MAX = 2000;
+export const QUESTION_MAX = 2000;
+/** The counter appears only near the limit: a number under every keystroke is noise until it matters. */
+export const COUNTER_FROM = 1800;
+/** The box grows with the question up to about eight lines, then scrolls inside itself. */
+const BOX_MAX_PX = 200;
+/** One icon per suggestion, by position (money, people, health, revenue); a suggestion past the list gets the spark. */
+const SUGGEST_ICONS: LucideIcon[] = [Wallet, Users, Activity, TrendingUp];
+
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
 const tashkent = (iso: string) => {
   const ms = Date.parse(iso);
   return Number.isNaN(ms) ? null : new Date(ms + 5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 };
+// The server render has no layout to measure; the browser measures before paint so the box never flashes at the wrong height.
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /** The server's refusal, said with its remedy in the owner's language. Unknown codes get the generic line, never the raw code. */
 export function failureText(a: A, status: number, body: Record<string, unknown> | null): Failure {
@@ -45,6 +55,15 @@ export function failureText(a: A, status: number, body: Record<string, unknown> 
   return { message: a.errors.other, retry: true };
 }
 
+/** Enter sends; Shift+Enter is a new line; a key that ends an IME composition (Uzbek/Russian layouts on some phones) never sends. */
+export function sendsOnKey(e: { key: string; shiftKey: boolean; isComposing?: boolean }): boolean {
+  return e.key === "Enter" && !e.shiftKey && !e.isComposing;
+}
+
+function reducedMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref: string; signInHref: string }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
@@ -54,6 +73,7 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
   const [copied, setCopied] = useState<number | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  const tail = useRef<HTMLDivElement>(null);
   // A ref, not state: two presses before the re-render must not both pass (each would be a paid turn).
   const inFlight = useRef(false);
 
@@ -62,6 +82,20 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
     const id = setTimeout(() => setCopied(null), 2000);
     return () => clearTimeout(id);
   }, [copied]);
+
+  useIsoLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, BOX_MAX_PX)}px`;
+  }, [question]);
+
+  // The newest exchange (or the "thinking" bubble, or the error) is brought into view: with a sticky composer the owner would
+  // otherwise ask, and the answer would land below the fold.
+  useEffect(() => {
+    if (turns.length === 0 && !pending && !failure) return;
+    tail.current?.scrollIntoView?.({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+  }, [turns.length, pending, failure]);
 
   function clearAll() {
     setTurns([]);
@@ -125,60 +159,106 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
     }
   }
 
-  return (
-    <div className="oc-stack">
-      <section className="oc-card">
-        <p className="m-0">{a.intro}</p>
-        <p className="oc-note">{a.noActions}</p>
-      </section>
+  const empty = turns.length === 0 && !pending && !lastAsked;
+  const canSend = !pending && question.trim() !== "";
+  const near = question.length >= COUNTER_FROM;
 
-      <section className="oc-card" aria-label={a.ai}>
-        <div role="log" aria-live="polite" className="oc-stack">
-          {turns.length === 0 ? (
-            <div className="oc-stack">
-              <p className="oc-note">{a.empty}</p>
-              <p className="oc-note">{a.suggestions}:</p>
-              <ul role="list" className="m-0 flex list-none flex-col gap-2 p-0">
-                {a.suggest.map((s) => (
-                  <li key={s}>
-                    <button type="button" className="btn-quiet justify-start py-2 text-start disabled:cursor-not-allowed disabled:opacity-40" disabled={pending} onClick={() => ask(s)}>
-                      {s}
-                    </button>
-                  </li>
-                ))}
+  return (
+    <div className="ai-chat">
+      {turns.length > 0 && !failure?.clear && (
+        <div className="ai-chat-bar">
+          <button type="button" className="btn-quiet ai-new" disabled={pending} onClick={clearAll}>
+            <RotateCcw aria-hidden size={14} />
+            {a.newChat}
+          </button>
+        </div>
+      )}
+
+      <section className="ai-thread" aria-label={a.ai}>
+        <div role="log" aria-live="polite" className="ai-log">
+          {empty ? (
+            <div className="ai-empty">
+              <span className="ai-empty-mark" aria-hidden>
+                <Sparkles size={20} />
+              </span>
+              <p className="ai-empty-tx">{a.empty}</p>
+              <h2 className="oc-h2 ai-suggest-h">{a.suggestions}</h2>
+              <ul role="list" className="ai-suggest">
+                {a.suggest.map((s, i) => {
+                  const Icon = SUGGEST_ICONS[i] ?? Sparkles;
+                  return (
+                    <li key={s}>
+                      <button type="button" className="ai-suggest-card" disabled={pending} onClick={() => ask(s)}>
+                        <span className="ai-suggest-ic" aria-hidden>
+                          <Icon size={18} />
+                        </span>
+                        <span className="ai-suggest-tx">{s}</span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ) : (
             turns.map((t, i) => (
-              <article key={i} className="oc-ai-turn">
-                <p className="oc-ai-who">{a.you}</p>
-                <p className="oc-ai-q">{t.q}</p>
-                <p className="oc-ai-who">{a.ai}</p>
-                <p className="oc-ai-a">{t.a}</p>
-                {t.draft && (
-                  <div className="oc-ai-draft">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="m-0 min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">
-                        {t.draft.title ? `${a.draft}: ${t.draft.title}` : a.draft}
-                      </h3>
-                      <button type="button" className="btn-quiet" onClick={() => copy(i, t.draft!.title ? `${t.draft!.title}\n\n${t.draft!.body}` : t.draft!.body)}>
-                        {copied === i ? a.copied : a.copy}
-                      </button>
-                    </div>
-                    <pre className="oc-ai-draft-body">{t.draft.body}</pre>
+              <article key={i} className="ai-turn">
+                <div className="ai-msg ai-msg-you">
+                  <p className="sr-only">{a.you}</p>
+                  <p className="ai-bubble ai-bubble-you">{t.q}</p>
+                </div>
+                <div className="ai-msg ai-msg-ai">
+                  <span className="ai-avatar" aria-hidden>
+                    <Sparkles size={16} />
+                  </span>
+                  <div className="ai-bubble ai-bubble-ai">
+                    <p className="ai-who">{a.ai}</p>
+                    <p className="ai-answer">{t.a}</p>
+                    {t.draft && (
+                      <div className="oc-ai-draft">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="m-0 min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">{t.draft.title ? `${a.draft}: ${t.draft.title}` : a.draft}</h3>
+                          <button type="button" className="btn-quiet" onClick={() => copy(i, t.draft!.title ? `${t.draft!.title}\n\n${t.draft!.body}` : t.draft!.body)}>
+                            {copied === i ? a.copied : a.copy}
+                          </button>
+                        </div>
+                        <pre className="oc-ai-draft-body">{t.draft.body}</pre>
+                      </div>
+                    )}
+                    {t.removedLinks > 0 && (
+                      <p className="oc-note" data-tone="warn">
+                        {a.linksRemoved}
+                      </p>
+                    )}
+                    {t.asOf && tashkent(t.asOf) && <p className="oc-asof">{fill(a.asOf, { time: tashkent(t.asOf)! })}</p>}
                   </div>
-                )}
-                {t.removedLinks > 0 && (
-                  <p className="oc-note" data-tone="warn">
-                    {a.linksRemoved}
-                  </p>
-                )}
-                {t.asOf && tashkent(t.asOf) && <p className="oc-asof">{fill(a.asOf, { time: tashkent(t.asOf)! })}</p>}
+                </div>
               </article>
             ))
           )}
         </div>
-        {/* Outside the log: a busy live region holds its updates back, so this would never be heard inside it. */}
+
+        {/* Outside the log: the question in flight (or the one that failed) and the "thinking" bubble are not answers, and a busy
+            live region would hold the status back anyway. */}
+        {lastAsked && (
+          <div className="ai-turn" data-pending={pending || undefined}>
+            <div className="ai-msg ai-msg-you">
+              <p className="sr-only">{a.you}</p>
+              <p className="ai-bubble ai-bubble-you">{lastAsked}</p>
+            </div>
+            {pending && (
+              <div className="ai-msg ai-msg-ai">
+                <span className="ai-avatar" aria-hidden>
+                  <Sparkles size={16} />
+                </span>
+                <div className="ai-bubble ai-bubble-ai ai-typing" aria-hidden>
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <p className="sr-only" role="status">
           {pending ? a.asking : ""}
         </p>
@@ -188,8 +268,11 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
           </p>
         )}
         {failure && (
-          <div className="oc-ai-error" role="alert">
-            <p className="m-0">{failure.message}</p>
+          <div className="oc-ai-error ai-error" role="alert">
+            <p className="m-0 flex items-start gap-2">
+              <TriangleAlert aria-hidden size={16} className="ai-error-ic" />
+              <span>{failure.message}</span>
+            </p>
             <div className="oc-actions">
               {failure.verify ? (
                 <a className="btn-quiet" href={verifyHref}>
@@ -206,7 +289,7 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
               ) : (
                 failure.retry &&
                 lastAsked && (
-                  <button type="button" className="btn-quiet disabled:cursor-not-allowed disabled:opacity-40" disabled={pending} onClick={() => ask(lastAsked)}>
+                  <button type="button" className="btn-quiet" disabled={pending} onClick={() => ask(lastAsked)}>
                     {a.retry}
                   </button>
                 )
@@ -214,49 +297,60 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
             </div>
           </div>
         )}
+        <div ref={tail} aria-hidden />
       </section>
 
       <form
-        className="oc-card"
+        className="ai-composer"
         onSubmit={(e) => {
           e.preventDefault();
           void ask(question, true);
         }}
       >
-        <label htmlFor="owner-ai-q" className="text-sm font-semibold">
+        <label htmlFor="owner-ai-q" className="sr-only">
           {a.label}
         </label>
-        <textarea
-          id="owner-ai-q"
-          ref={box}
-          className="oc-ai-input"
-          rows={3}
-          maxLength={QUESTION_MAX}
-          value={question}
-          placeholder={a.placeholder}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              void ask(question, true);
-            }
-          }}
-        />
-        <div className="oc-actions">
-          <button type="submit" className="btn-primary disabled:cursor-not-allowed disabled:opacity-40" disabled={pending || question.trim() === ""}>
-            {pending ? a.asking : a.ask}
-          </button>
-          {turns.length > 0 && !failure?.clear && (
+        <div className="ai-composer-box">
+          <textarea
+            id="owner-ai-q"
+            ref={box}
+            className="ai-input"
+            rows={1}
+            maxLength={QUESTION_MAX}
+            value={question}
+            placeholder={a.placeholder}
+            aria-describedby="owner-ai-keys owner-ai-count"
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (sendsOnKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })) {
+                e.preventDefault();
+                void ask(question, true);
+              }
+            }}
+          />
+          <div className="ai-composer-row">
+            {/* Voice is not built: the button says so (focusable, with its reason in the name), and does nothing. */}
             <button
               type="button"
-              className="btn-quiet disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={pending}
-              onClick={clearAll}
+              className="ai-icon-btn"
+              aria-disabled="true"
+              aria-label={`${a.mic} (${a.soon})`}
+              data-tip={a.soon}
+              onClick={(e) => e.preventDefault()}
             >
-              {a.clear}
+              <Mic aria-hidden size={18} />
             </button>
-          )}
+            <span id="owner-ai-count" className="ai-counter" data-full={question.length >= QUESTION_MAX || undefined}>
+              {near ? fill(a.counter, { n: question.length, max: QUESTION_MAX }) : ""}
+            </span>
+            <button type="submit" className="ai-send" aria-label={pending ? a.asking : a.ask} disabled={!canSend}>
+              <ArrowUp aria-hidden size={18} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
+        <p className="ai-disclaimer">
+          {a.noActions} <span id="owner-ai-keys" className="ai-keys">{a.keys}</span>
+        </p>
       </form>
     </div>
   );

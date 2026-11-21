@@ -22,6 +22,11 @@ vi.mock("@/lib/server/owner-console", () => ({
     if (!s.owner) throw new Error("NEXT_NOT_FOUND");
   },
 }));
+const u = vi.hoisted(() => ({ meta: { full_name: "Aziz Karimov" } as Record<string, unknown> | null }));
+vi.mock("@/lib/supabase/server", () => ({ getUser: async () => (u.meta === null ? null : { id: "u1", user_metadata: u.meta }) }));
+// The live cards stream in on their own (tests/owner-ai-redesign.test.tsx); here the slot is a marker so the page's own
+// markup is what is checked.
+vi.mock("../app/owner/ai/_kpis", () => ({ OwnerAiKpis: () => <div data-testid="kpis-slot" /> }));
 
 const a = en.ownerConsole.assistant;
 
@@ -33,13 +38,25 @@ describe("/owner/ai", () => {
     s.owner = true;
   });
 
-  it("draws the panel with its rules and no figure, and says it cannot act", async () => {
+  it("draws the chat panel with its rules and no figure of its own, and says it cannot act", async () => {
     const { default: Page } = await import("../app/owner/ai/page");
     const html = renderToStaticMarkup((await Page()) as ReactElement).replace(/&#x27;/g, "'");
     expect(html).toContain(a.noActions);
     expect(html).toContain(a.suggest[0]);
     expect(html).toContain('maxLength="2000"');
+    expect(html).toContain("kpis-slot");
     expect(html).not.toMatch(/\$\d/);
+  });
+
+  it("greets the owner by first name, and with a plain hello when there is no name (never by an address)", async () => {
+    const { default: Page } = await import("../app/owner/ai/page");
+    const html = renderToStaticMarkup((await Page()) as ReactElement);
+    expect(html).toContain(">Hello, Aziz<");
+    u.meta = { full_name: "owner@example.com" };
+    const plain = renderToStaticMarkup((await Page()) as ReactElement);
+    expect(plain).toContain(`>${a.greetingNoName}<`);
+    expect(plain).not.toContain("example.com");
+    u.meta = { full_name: "Aziz Karimov" };
   });
 });
 
