@@ -266,7 +266,8 @@ export async function exchangeInstagramCode(opts: { code: string; origin: string
   url.searchParams.set("code", opts.code);
   // Must equal the login's byte for byte, or Meta refuses the code.
   url.searchParams.set("redirect_uri", socialRedirectUri("instagram", opts.origin));
-  const body = await jsonOrThrow(await fetch(url, { cache: "no-store" }));
+  // Every Graph call refuses a redirect: a 3xx would otherwise be followed and another host's JSON read as Meta's answer (Breach #862).
+  const body = await jsonOrThrow(await fetch(url, { cache: "no-store", redirect: "error" }));
   const accessToken = typeof body.access_token === "string" ? body.access_token : "";
   if (!accessToken) throw new SocialOAuthError("failed");
   return { accessToken, expiresIn: statedLifetime(body.expires_in) };
@@ -294,7 +295,7 @@ function metaGet(path: string, fields: string, accessToken: string): Promise<Res
   const url = new URL(`${IG_GRAPH}/${path}`);
   url.searchParams.set("fields", fields);
   url.searchParams.set("access_token", accessToken);
-  return fetch(url, { cache: "no-store" });
+  return fetch(url, { cache: "no-store", redirect: "error" });
 }
 
 /** The business portfolio and the IG accounts assigned to the connection's system user. Zero accounts is
@@ -321,7 +322,7 @@ export async function fetchInstagramAccounts(accessToken: string): Promise<Insta
     // cannot send the token anywhere else, and only until the cap.
     const next = nextPage(page.paging);
     if (!next || accounts.length >= IG_MAX_ACCOUNTS || pages >= IG_MAX_PAGES) break;
-    page = await jsonOrThrow(await fetch(next, { cache: "no-store" }));
+    page = await jsonOrThrow(await fetch(next, { cache: "no-store", redirect: "error" }));
   }
   if (accounts.length === 0) throw new SocialOAuthError("no_account");
   return { clientBusinessId: META_ID_RE.test(biz) ? biz : null, accounts };

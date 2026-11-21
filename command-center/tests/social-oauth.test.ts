@@ -132,6 +132,20 @@ describe("exchange errors never carry a token or body", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("https://nightshift-ai.studio/api/oauth/instagram/callback");
     f.mockRestore();
   });
+  it("refuses a redirect on every Graph call (the exchange, /me and its paging), so a 3xx is never followed to another host", async () => {
+    const f = vi.spyOn(globalThis, "fetch");
+    f.mockResolvedValueOnce(Response.json({ access_token: "EAAB-bisu" }));
+    await mod.exchangeInstagramCode({ code: "c", origin: "https://nightshift-ai.studio" });
+    f.mockResolvedValueOnce(Response.json({ client_business_id: "77" }));
+    f.mockResolvedValueOnce(
+      Response.json({ data: [{ id: "101", username: "a" }], paging: { next: "https://graph.facebook.com/v27.0/me/assigned_instagram_accounts?after=x" } }),
+    );
+    f.mockResolvedValueOnce(Response.json({ data: [{ id: "102", username: "b" }] }));
+    await mod.fetchInstagramAccounts("EAAB-bisu");
+    expect(f.mock.calls.length).toBeGreaterThanOrEqual(4);
+    for (const call of f.mock.calls) expect((call[1] as RequestInit | undefined)?.redirect).toBe("error");
+    f.mockRestore();
+  });
   it("reads a missing, 0 or odd expires_in as 'no expiry stated' (null), never as a number", async () => {
     for (const expires_in of [undefined, 0, -5, "5184000", null, Number.NaN]) {
       const f = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({ access_token: "EAAB-bisu", expires_in }));
