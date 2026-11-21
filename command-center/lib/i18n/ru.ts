@@ -39,6 +39,7 @@ import { presetsRu } from "./presets/ru";
 import { trendsRu } from "./trends/ru";
 import { startBoxRu } from "./start-box/ru";
 import { ownerConsoleRu } from "./owner-console/ru";
+import { researchRu } from "./research/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
@@ -75,6 +76,7 @@ export const ru: Dictionary = {
   startBox: startBoxRu,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/ru.ts. */
   ownerConsole: ownerConsoleRu,
+  research: researchRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
@@ -165,6 +167,7 @@ export const ru: Dictionary = {
     billing: "Оплата",
     studio: "Nightshift Studio",
     trends: "Тренды",
+    research: "Исследование",
     brandLook: "Облик бренда",
     library: "Медиатека",
     styles: "Стили",

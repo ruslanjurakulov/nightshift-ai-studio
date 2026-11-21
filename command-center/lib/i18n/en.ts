@@ -39,6 +39,7 @@ import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
 import { startBoxEn } from "./start-box/en";
 import { ownerConsoleEn } from "./owner-console/en";
+import { researchEn } from "./research/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -83,6 +84,8 @@ export const en = {
   startBox: startBoxEn,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/en.ts. */
   ownerConsole: ownerConsoleEn,
+  /** Channel research (migration 0202): ./research/en.ts. */
+  research: researchEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
@@ -177,6 +180,7 @@ export const en = {
     billing: "Billing",
     studio: "Nightshift Studio",
     trends: "Trends",
+    research: "Research",
     // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
     brandLook: "Brand look",
     library: "Library",

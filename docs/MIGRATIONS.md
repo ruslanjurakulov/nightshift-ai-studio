@@ -2319,3 +2319,41 @@ Nightshift AI one read-only JSON answer about ONE organization. No table, no wri
 - Lab: `tests/security/sec_brain_org_facts_0201.py`, `tests/security/test_sec_brain_org_facts.py`,
   `tests/security/test_sec_brain_org_facts_breach.py`. Rollback: `docs/sql/rollback_0201_brain_org_facts.sql` (nothing stored,
   nothing lost).
+
+## Channel research on our own YouTube data (0202)
+
+0202 (`0202_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
+(`docs/studio/RESEARCH_TOOLS.md`). It is built on our own YouTube Data API calls, never on vidIQ (whose terms forbid redistribution).
+It adds six closed tables (RLS on, no policy, no grant, the service key included): `research_competitors` (up to 20 per channel,
+`pending` until the worker resolves the reference with `channels.list`, then `resolved` or `not_found`), `research_channel_cache` and
+`research_video_cache` (the API's numbers as returned; a hidden subscriber count is `subscribers_hidden` with a NULL count),
+`research_topic_results` (per organization), `research_own_analytics` (the customer's own YouTube Analytics totals) and
+`research_requests` (the queue: one open request per channel, kind and topic). Readers (`research_own_channel`,
+`research_competitors_view`, `research_topic_channels`, `research_comment_themes`) and writers (`research_request_refresh`,
+`research_add_competitor`, `research_remove_competitor`) are member-scoped security-definer functions; the worker's functions are the
+service key's only. YouTube's 30-day limit on non-authorized data: every reader ignores a row older than 30 days and
+`research_purge_stale()` (called by the worker every cycle) deletes it. `youtube_quota_ledger`'s source CHECK is extended (dropped and
+re-added) with `research` and `research_search`, and a six-argument `youtube_quota_take(..., p_source)` writes only those; 0116's
+five-argument one is untouched. Nothing runs until the worker has `YOUTUBE_DATA_API_KEY` (a GitHub secret, shipped by
+`deploy_web.yml`); without it a request ends `failed` / `not_configured` and the page names the secret.
+Fix round (PR #851): a seventh closed table, `research_own_videos`, holds a channel's own uploads read with its own token
+(private and unlisted included), readable only through `research_own_channel`; only a video YouTube reports public also reaches
+the shared `research_video_cache`, and a public lookup's complete batch removes cached videos that went private. Writers refuse a
+draft channel (never confirmed against YouTube) and readers answer `not_connected` for it; youtube-sourced answers carry
+`untrusted_strings: true`; flagged comments are never sampled; resolved competitors are re-resolved after 30 days; a disconnected
+channel's own analytics and uploads are hidden and purged; competitor status gains `own_channel`. One organization may spend at
+most 300 of the 1,500 daily units (the worker's constant), and `RESEARCH_SEARCH_SHARED_UNITS` (default 0) makes each search also
+take shared units.
+Second fix round: the claim ends a request whose channel is no longer confirmed `not_connected` before anything is spent, and no
+follow-up is queued for such a channel; a follow-up compares the competitors the claim handed out (`research_requests.
+claimed_competitor_ids`) and is asked for by whoever added the late one; every `channels.list` answer refreshes a resolved
+competitor's `resolved_at`, and the 30-day reset queues one competitors request per affected confirmed channel; a complete batch
+removes only rows older than its fetch's start, and an empty own playlist clears the stored list; own numbers read from another
+YouTube account than the channel's current one are not shown (`channel_mismatch`); the competitors status CHECK is swapped in
+place (guarded), so a database that ran an earlier draft gains `own_channel`.
+Third fix round: a forHandle lookup that YouTube refuses with an HTTP 400 is recorded on that competitor (new columns
+`last_error`, `last_error_at`, `lookup_failures`; worker function `research_competitor_lookup_failed`) and the refresh goes on; three
+in a row make it `invalid_ref` (the status CHECK is swapped again, guarded). Handles are parsed with YouTube's alphabet only. A
+`channels.list` answer re-confirms an @handle competitor only while it still carries that handle; the 30-day reset skips a channel
+with a running competitors request; the claim returns the request's `started_at`, the cutoff a complete batch uses.
+Rollback: `docs/sql/rollback_0202_channel_research.sql`.
