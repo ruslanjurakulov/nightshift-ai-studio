@@ -21,7 +21,7 @@ import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { withPreviews } from "@/lib/creative/studio";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
-import { filmStudioOpen } from "@/lib/server/films";
+import { filmStudioListed, filmStudioMode, filmStudioOpen } from "@/lib/server/films";
 import { STUDIO_SHELVES, shelfFromQuery, type StudioShelf } from "@/lib/studioRoutes";
 import "@/components/studio-hub/studio-hub.css";
 
@@ -66,7 +66,9 @@ export default async function StudioPage({
   const asOperator = await viewingAsOperator();
   const previews = asOperator && isOperatorOrg(orgId) && orgId ? await loadOperatorPreviewModels(orgId) : [];
   const dna = await channelDnaForCreate(scopedChannel);
-  const [user, slug, filmStudio] = await Promise.all([getUser(), getChannelSlug(), filmStudioOpen()]);
+  const [user, slug, filmOpen] = await Promise.all([getUser(), getChannelSlug(), filmStudioOpen()]);
+  // The admins-only beta is drawn only in the Owner account, like its nav entry; the Timeline's own link stays on the real role.
+  const filmStudio = filmOpen && filmStudioListed(filmStudioMode(), asOperator);
 
   return (
     <StudioCanvas

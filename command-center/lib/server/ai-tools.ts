@@ -3,7 +3,7 @@ import { loadSellableModels } from "@/lib/creative/registry";
 import { IMPROVE_STUDIO_TOOLS, sellableToolList } from "@/lib/creative/improve";
 import { withPreviews, type StudioModel } from "@/lib/creative/studio";
 import { loadOperatorPreviewModels, loadStudioModels } from "@/lib/server/creative";
-import { isOperator } from "@/lib/auth/org-roles";
+import { viewingAsOperator } from "@/lib/server/owner-view";
 import { isOperatorOrg } from "@/lib/channel-tokens";
 
 /**
@@ -35,7 +35,7 @@ export async function loadImproveModels(orgId: string | null): Promise<StudioMod
   try {
     const models = await loadStudioModels();
     // Asked only for the operator's own organization, like the create page: one call fewer for everyone else.
-    const previews = orgId && isOperatorOrg(orgId) && (await isOperator()) ? await loadOperatorPreviewModels(orgId) : [];
+    const previews = orgId && isOperatorOrg(orgId) && (await viewingAsOperator()) ? await loadOperatorPreviewModels(orgId) : [];
     const tools = new Set<string>(IMPROVE_STUDIO_TOOLS);
     return withPreviews(models, previews).filter((m) => m.capabilities.some((c) => tools.has(c)));
   } catch {

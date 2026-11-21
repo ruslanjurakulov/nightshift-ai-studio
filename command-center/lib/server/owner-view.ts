@@ -16,7 +16,7 @@ import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 export const viewingAsOperator = cache(async (): Promise<boolean> => {
   const operator = await isOperator();
   if (!operator) return false;
-  return ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value);
+  return ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value, await isPlatformOwner());
 });
 
 /**

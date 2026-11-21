@@ -39,6 +39,7 @@ import { LEGAL } from "@/lib/legal";
 import { CreateScreen } from "@/components/customer/CreateScreen";
 import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
+import { isPlatformOwner } from "@/lib/server/owner-view";
 import { SLUG_RE, cleanLinkPrompt, isCreateKind } from "@/lib/customer/create";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -97,7 +98,7 @@ export default async function CreatePage({
   // How the page is DRAWN (lib/owner-mode): the owner's console keeps its overview (the Assistant, the side panels); the
   // customer's frame — a customer, or the owner with Owner mode off — gets the Create screen. Permissions keep `operator`.
   // Only the operator's cookie is ever read: for anyone else the frame is the customer's whatever it says.
-  const frame = operator && ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value);
+  const frame = operator && ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value, await isPlatformOwner());
   // 0139: the platform operator, in the operator's own organization only, may also try a hidden model marked operator_preview. The
   // database answers no rows to anyone else; asking only here keeps every customer's page exactly as it was (one call fewer, too).
   // Only the generate panel gets them: the Assistant's plans and the automatic pick stay on the models that are on sale.

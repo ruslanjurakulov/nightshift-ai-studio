@@ -143,10 +143,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const sidebarCollapsed = isSidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
   // Owner mode (lib/owner-mode.ts): which frame the operator is DRAWN in. The cookie counts only once the server said
   // "operator"; the redirects above already used the real role, so every operator URL keeps working in either frame.
-  const frame = ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value);
   // The account switcher (User / Owner) is the platform OWNER's: an admin who is not the owner has no Owner account, and a
   // customer is never asked (no lookup). Decided by the database's own answer (lib/server/owner-view), never by the cookie.
   const ownerAccount = operator ? await isPlatformOwner() : false;
+  const frame = ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value, ownerAccount);
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database

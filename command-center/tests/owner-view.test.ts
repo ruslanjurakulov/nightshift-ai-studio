@@ -33,6 +33,14 @@ describe("viewingAsOperator", () => {
     expect(await (await load()).viewingAsOperator()).toBe(false);
   });
 
+  it("keeps an admin who is not the owner in the operator's view, even with an old 'off' cookie (no switch to come back)", async () => {
+    h.cookie = "off";
+    for (const access of ["denied", "error", "missing"]) {
+      h.access = access;
+      expect(await (await load()).viewingAsOperator(), access).toBe(true);
+    }
+  });
+
   it("never draws the operator's view for a customer, whatever cookie they set", async () => {
     h.operator = false;
     h.cookie = "on";

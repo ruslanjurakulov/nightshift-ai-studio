@@ -25,7 +25,15 @@ const ICONS: Record<OwnerSectionKey, typeof Users> = {
  * below `lg` a top bar with the same sections as a scrolling row and the switcher behind the account button. Every
  * destination is a plain link (keyboard and middle-click work); the current one carries aria-current.
  */
-export function OwnerShell({ email, children }: { email: string | null; children: React.ReactNode }) {
+export function OwnerShell({
+  email,
+  account = "owner",
+  children,
+}: {
+  email: string | null;
+  account?: "user" | "owner";
+  children: React.ReactNode;
+}) {
   const { t } = useI18n();
   const c = t.ownerConsole;
   const pathname = usePathname() ?? "/owner";
@@ -88,7 +96,7 @@ export function OwnerShell({ email, children }: { email: string | null; children
         </nav>
         <div className="oc-foot">
           {email && <p className="oc-email">{email}</p>}
-          <AccountSwitcher current="owner" />
+          <AccountSwitcher current={account} />
         </div>
       </aside>
 
@@ -117,7 +125,7 @@ export function OwnerShell({ email, children }: { email: string | null; children
             </button>
             {open && (
               <div className="oc-pop" id="oc-acct-pop" role="dialog" aria-label={c.switcher.title}>
-                <AccountSwitcher current="owner" onDone={() => setOpen(false)} />
+                <AccountSwitcher current={account} onDone={() => setOpen(false)} />
               </div>
             )}
           </div>

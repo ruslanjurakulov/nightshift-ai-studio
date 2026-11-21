@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/config";
 import { getUser } from "@/lib/supabase/server";
@@ -10,8 +10,8 @@ import { AppProviders } from "@/components/AppProviders";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
 import { AdminMfaBanner } from "@/components/security/AdminMfaBanner";
 import { OwnerShell } from "@/components/owner-console/OwnerShell";
-import { OWNER_CONSOLE } from "@/lib/owner-mode";
-import { PATH_HEADER } from "@/lib/channels";
+import { OWNER_CONSOLE, OWNER_MODE_COOKIE } from "@/lib/owner-mode";
+import { PATH_HEADER, SEARCH_HEADER } from "@/lib/channels";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -36,8 +36,10 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
   // The second factor is the admin's rule, and the platform owner is an admin: when the database has said "owner", that is
   // the answer even if the separate admin lookup failed — otherwise a failed lookup would let the owner in without the code.
   const mfa = await currentMfaAction(user, lookup.operator || access === "owner");
-  const path = (await headers()).get(PATH_HEADER) ?? OWNER_CONSOLE;
-  if (mfa === "challenge") redirect(mfaVerifyUrl(path));
+  const headerStore = await headers();
+  const path = headerStore.get(PATH_HEADER) ?? OWNER_CONSOLE;
+  // The query survives the code: /owner/revenue?period=… comes back to the same view, as the app's layout does it.
+  if (mfa === "challenge") redirect(mfaVerifyUrl(`${path}${headerStore.get(SEARCH_HEADER) ?? ""}`));
   if (mfa === "enrol_only") redirect(ENROL_PATH);
 
   const { t } = await getDictionary();
@@ -46,7 +48,9 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
   if (access !== "owner") {
     // Only an operator ever hears why: the database could not be asked, or it has no owner check yet. Anyone else (or an
     // operator the database answered "no" for: an admin) gets the 404 and learns nothing.
-    if (lookup.operator && (access === "missing" || access === "error")) {
+    // A database blip that failed BOTH lookups is "can't check, retry", not "this does not exist": the platform owner whose
+    // phone lost the network must not be told the console is gone. Fail closed all the same: nothing of the console is drawn.
+    if ((lookup.operator && (access === "missing" || access === "error")) || (lookup.failed && access === "error")) {
       const c = t.ownerConsole;
       return (
         <AppProviders locale={locale}>
@@ -69,7 +73,9 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
 
   return (
     <AppProviders locale={locale}>
-      <OwnerShell email={user.email ?? null}>
+      {/* The switcher shows the device's saved choice, not an assumed "Owner": opened from a bookmark in the User account,
+          pressing Owner saves the choice, so the console's tool links open in the Owner frame too. */}
+      <OwnerShell email={user.email ?? null} account={(await cookies()).get(OWNER_MODE_COOKIE)?.value === "off" ? "user" : "owner"}>
         <AdminMfaBanner action={mfa} t={t.mfa} path={path} />
         {children}
       </OwnerShell>
