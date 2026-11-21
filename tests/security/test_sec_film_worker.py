@@ -379,3 +379,169 @@ def test_the_rollback_puts_the_earlier_bodies_back_and_0198_applies_again(db, a)
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         assert c.execute("select public.film_studio_on_for(%s)", [a.org]).fetchone()[0] is True
         c.rollback()
+
+
+# ── Sentinel's pins on #853 (the credit queue, the lease's jobs, ending a take, "off", cancel, notify, the voice) ──
+
+LIVE_JOB = ("queued", "running", "provider_pending", "processing", "rendering")
+
+
+def submitted_job(db, a, worker="w-1", task="lab-task-7"):
+    """A started film whose key frame's job is at the vendor (a task id stored) under ``worker``'s lease."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim(worker)
+    kf = db.takes(seg["id"])[0][0]
+    db.begin(kf, worker)
+    j = take_job(db, kf, worker)["job_id"]
+    assert db.svc("select public.advance_creative_job(%s, %s, 'submitting')", [j, worker]) is True
+    assert db.svc("select public.advance_creative_job(%s, %s, 'submitted', %s)", [j, worker, task]) is True
+    return fid, seg, kf, j
+
+
+def live(db, take):
+    return db.su("select count(*) from public.creative_jobs where film_take_id = %s and status = any(%s)", [take, list(LIVE_JOB)])[0][0]
+
+
+def test_a_a_deploy_never_lets_the_credit_queue_end_a_paid_film_task(db, a):
+    """Lens's reaper probe, pinned. The film worker stops (a deploy): the segment's lease and the job's heartbeat lapse together.
+    The credit worker's routine claim runs first; it must leave the film job alone, so the film's next claim polls the SAME task id
+    and no attempt 2 (a second paid vendor call) is ever planned."""
+    _fid, seg, kf, j = submitted_job(db, a)
+    db.su("update public.film_segments set heartbeat_at = now() - interval '11 minutes' where id = %s", [seg["id"]])
+    db.su("update public.creative_jobs set heartbeat_at = now() - interval '11 minutes' where id = %s", [j])
+    db.svc("select count(*) from public.claim_creative_job('creative-1')")
+    assert db.su("select status, worker_id, provider_task_id from public.creative_jobs where id = %s", [j])[0] == \
+        ("provider_pending", "w-1", "lab-task-7")
+    assert db.claim("w-2")["id"] == seg["id"]
+    again = take_job(db, kf, "w-2")
+    assert (again["job_status"], again["job_worker"], again["provider_task_id"]) == ("provider_pending", "w-2", "lab-task-7")
+    assert db.su("select count(*) from public.film_takes where segment_id = %s and attempt = 2", [seg["id"]])[0][0] == 0
+    assert db.su("select count(*) from public.notifications where ref = %s", [str(j)])[0][0] == 0
+
+
+def test_a_a_job_requeued_and_taken_back_is_never_swept_by_the_credit_queue(db, a):
+    """A requeue resets 0036's attempts to 0; the takeback does not restore them. The credit sweep must not touch the job at all."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim("w-1")
+    kf = db.takes(seg["id"])[0][0]
+    db.begin(kf, "w-1")
+    j = take_job(db, kf, "w-1")["job_id"]
+    assert db.svc("select public.advance_creative_job(%s, 'w-1', 'requeue')", [j]) is True
+    assert take_job(db, kf, "w-1")["job_status"] == "running"
+    db.su("update public.creative_jobs set heartbeat_at = now() - interval '11 minutes' where id = %s", [j])
+    db.svc("select count(*) from public.claim_creative_job('creative-1')")
+    assert db.su("select status, worker_id from public.creative_jobs where id = %s", [j])[0] == ("running", "w-1")
+
+
+def test_b_after_the_reclaim_the_old_worker_cannot_attach_files_to_the_job(db, a):
+    _fid, seg, kf, j = submitted_job(db, a)
+    assert db.svc("select public.advance_creative_job(%s, 'w-1', 'processing')", [j]) is True
+    res = db.asset(a.org, "image", "image/png", provenance={"job_id": str(j), "film_take_id": str(kf)})
+    db.su("update public.film_segments set heartbeat_at = now() - interval '11 minutes' where id = %s", [seg["id"]])
+    assert db.claim("w-2")["id"] == seg["id"]
+    assert db.su("select worker_id from public.creative_jobs where id = %s", [j])[0][0] == "w-2"  # moved at the claim
+    assert db.svc("select public.attach_creative_job_assets(%s, 'w-1', array[%s::uuid])", [j, res]) is False
+    assert db.svc("select public.attach_creative_job_assets(%s, 'w-2', array[%s::uuid])", [j, res]) is True
+
+
+def test_c_a_clip_rejected_as_too_short_ends_its_job(db, a):
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    takes = db.takes(seg["id"])
+    kf, clip = takes[0][0], takes[1][0]
+    db.make(a, kf, "keyframe")
+    db.begin(clip)
+    j = take_job(db, clip)["job_id"]
+    short = db.asset(a.org, "video", "video/mp4", duration=2, provenance={"job_id": str(j), "film_take_id": str(clip)})
+    out = db.succeed(clip, 2, short)
+    assert out["accepted"] is False and out.get("retry_take_id")
+    assert db.su("select status, error_code from public.creative_jobs where id = %s", [j])[0] == ("failed", "output_too_short")
+    assert db.su("select count(*) from public.notifications where ref = %s", [str(j)])[0][0] == 0
+
+
+def test_c_a_settled_segment_leaves_no_live_take_job(db, a):
+    """A completed take whose job was never finished (the worker's finish call lost) is ended by the settle."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    kf = db.takes(seg["id"])[0][0]
+    db.begin(kf)
+    j = take_job(db, kf)["job_id"]
+    db.succeed(kf, None, db.output(a.org, kf, "image", "image/png"))
+    assert live(db, kf) == 1
+    assert db.settle(seg["id"], "takes_failed")["settled"] is True
+    assert live(db, kf) == 0
+    assert db.su("select error_code from public.creative_jobs where id = %s", [j])[0][0] == "segment_settled"
+
+
+def test_c_and_l2_a_failed_and_retried_take_ends_its_job_and_notifies_nobody(db, a):
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    kf = db.takes(seg["id"])[0][0]
+    db.begin(kf)
+    j = take_job(db, kf)["job_id"]
+    out = db.fail(kf, "provider_error", code="provider_error")
+    assert out.get("retry_take_id")
+    assert db.su("select status from public.creative_jobs where id = %s", [j])[0][0] == "failed"
+    assert db.svc("select public.advance_creative_job(%s, 'w-1', 'submitting')", [j]) is False
+    assert db.su("select count(*) from public.notifications where ref = %s", [str(j)])[0][0] == 0
+
+
+def test_d_l9_switched_off_a_task_at_the_vendor_is_still_polled_and_nothing_new_begins(db, a):
+    _fid, seg, kf, j = submitted_job(db, a)
+    clip = db.takes(seg["id"])[1][0]
+    try:
+        db.su("select public.set_org_film_studio_enabled(%s, false)", [a.org])
+        db.su("update public.film_segments set heartbeat_at = now() - interval '11 minutes' where id = %s", [seg["id"]])
+        assert db.claim("w-2")["id"] == seg["id"]  # a running segment is re-claimed, off or not
+        again = take_job(db, kf, "w-2")
+        assert (again["ok"], again["provider_task_id"], again["job_worker"]) == (True, "lab-task-7", "w-2")
+        assert err(lambda: db.begin(clip, "w-2")) == ("NS409", "film_studio_disabled")
+        assert db.su("select status from public.film_takes where id = %s", [clip])[0][0] == "planned"
+    finally:
+        db.su("select public.set_org_film_studio_enabled(%s, true)", [a.org])
+
+
+def test_d_a_queued_segment_of_an_org_switched_off_is_still_not_claimed(db, a):
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    try:
+        db.su("select public.set_org_film_studio_enabled(%s, false)", [a.org])
+        assert db.claim() is None and db.segment(seg["id"])[0] == "queued"
+    finally:
+        db.su("select public.set_org_film_studio_enabled(%s, true)", [a.org])
+
+
+@pytest.mark.parametrize("who", ["viewer", "editor", "admin", "owner"])
+def test_n1_a_member_cannot_cancel_a_film_take_job(db, a, who):
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    kf = db.takes(seg["id"])[0][0]
+    db.begin(kf)
+    j = take_job(db, kf)["job_id"]
+    user = getattr(a, who)
+    assert err(lambda: db.one("authenticated", user, "select public.cancel_creative_job(%s::uuid)", [j])) == ("P0002", "not_found")
+    assert db.su("select status, worker_id from public.creative_jobs where id = %s", [j])[0] == ("running", "w-1")
+    assert db.svc("select public.advance_creative_job(%s, 'w-1', 'submitting')", [j]) is True
+
+
+def test_l6_a_narration_in_a_voice_still_testing_is_refused_and_writes_no_job(db, a):
+    voice = "VoiceLabTesting00001"
+    db.su("insert into public.user_voice_refs (user_id) values (%s) on conflict (user_id) do nothing", [a.admin])
+    ref = db.su("select owner_ref from public.user_voice_refs where user_id = %s", [a.admin])[0][0]
+    db.su("insert into public.voice_profiles (user_id, org_id, owner_ref, name, status, provider, provider_voice_id) "
+          "values (%s, %s, %s, 'Lab voice', 'testing', 'elevenlabs', %s)", [a.admin, a.org, ref, voice])
+    from test_sec_films_money import SETTINGS
+    fid = db.film(a, settings={**SETTINGS, "voice": {"source": "creative_tts", "model": "tts-a", "voice_id": voice}})
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    narr = [t[0] for t in db.takes(seg["id"]) if t[1] == "narration"][0]
+    db.begin(narr)
+    out = take_job(db, narr)
+    assert (out["ok"], out["reason"]) == (False, "voice_not_found")
+    assert db.su("select count(*) from public.creative_jobs where film_take_id = %s", [narr])[0][0] == 0

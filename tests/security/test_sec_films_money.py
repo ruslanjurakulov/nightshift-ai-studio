@@ -1044,7 +1044,14 @@ def test_the_files_a_lost_take_registered_are_not_kept_in_the_library(db, a):
         assert db.su("select status, charge_basis from public.film_takes where id = %s", [clip])[0] == ("failed", "worker_lost_not_charged")
         assert db.su("select deleted_at is not null from public.media_assets where id = %s", [made])[0][0] is True
     finally:
-        db.su("delete from public.creative_jobs where id = %s", [job])  # P3 writes these; the lab keeps none (the rollback test)
+        # P3 writes these; the lab keeps none (the rollback test). Since 0198 ending the take ends its job, which logs an event:
+        # the append-only trigger is lifted inside this one transaction only, the way the owner erases (docs/FILM_STUDIO.md).
+        with psycopg.connect(db.dsn, autocommit=False) as c:
+            c.execute("alter table public.creative_job_events disable trigger creative_job_events_append_only")
+            c.execute("delete from public.creative_job_events where job_id = %s", [job])
+            c.execute("alter table public.creative_job_events enable trigger creative_job_events_append_only")
+            c.execute("delete from public.creative_jobs where id = %s", [job])
+            c.commit()
 
 
 def test_a_rejected_result_handed_in_again_answers_as_its_rejection(db, a):

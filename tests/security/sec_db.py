@@ -845,8 +845,10 @@ def has_0198(conn_or_session) -> bool:
 def take_off_0198(conn_or_session) -> None:
     """0198 (Film Studio's switch per organization, the take's creative job) replaces quote_film() and start_film() (0192's bodies) and
     film_claim_segment() (0171's). 0192's and 0171's drift guards and rollbacks refuse any other body, so take_off_0192 takes 0198 off
-    first (take_off_0187 and take_off_0171 reach it through it). Its rollback keeps org_film_settings.film_studio_enabled, which
-    put_back_0198 picks up again as its own."""
+    first (take_off_0187 and take_off_0171 reach it through it). It also replaces 0171's film_fail_locked, film_begin_take and
+    film_settle_locked (whose rollback refuses them), 0036's claim_creative_job and cancel_creative_job and 0064's notify trigger:
+    a lab that rolls back or replays 0036, 0064 or 0171 takes 0198 off first. Its rollback keeps
+    org_film_settings.film_studio_enabled, which put_back_0198 picks up again as its own."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0198(conn):
         text = ROLLBACK_0198.read_text(encoding="utf-8")

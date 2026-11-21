@@ -59,13 +59,13 @@ IDLE_MAX_SECONDS = 60.0
 
 def enabled(env: Mapping[str, str]) -> bool:
     """Exactly ``on`` (as every other worker switch here): anything else is off, never a quiet guess."""
-    return str(env.get(FLAG, "") or "").strip() == "on"
+    return fo.switch_on(env, FLAG)
 
 
 def assembly_missing(env: Mapping[str, str]) -> Optional[str]:
     """Why no segment may be claimed here, or None: the assembly's switch and the assembly session's module, both needed to finish a
     film this worker would start."""
-    if str(env.get(ASSEMBLY_FLAG, "") or "").strip() != "on":
+    if not fo.switch_on(env, ASSEMBLY_FLAG):
         return f"{ASSEMBLY_FLAG} is not 'on'"
     try:
         importlib.import_module("modules.film_assembly")

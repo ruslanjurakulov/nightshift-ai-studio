@@ -698,6 +698,79 @@ class Assembly(unittest.TestCase):
         self.assertGreater(beats[0], 0)
 
 
+class SentinelPins(unittest.TestCase):
+    """Sentinel's triage of #853: L4, L5, L7 and D on the Python side."""
+
+    def test_l7_a_switch_with_trailing_whitespace_reads_the_same_here_and_in_the_cli(self):
+        from tools import film_worker as fw
+        for value in ("on ", " on", "on\r", "on\n"):
+            self.assertTrue(fo.switch_on({"X": value}, "X"), repr(value))
+            self.assertTrue(fw.enabled({"NIGHTSHIFT_FILM_WORKER": value}), repr(value))
+            h = Harness(env={"NIGHTSHIFT_FILM_ASSEMBLY": value})
+            self.assertEqual(h.run().result, "settled", repr(value))  # claimed, so it also assembles
+            self.assertEqual(h.db.settles, ["completed"], repr(value))
+        self.assertFalse(fo.switch_on({"X": "ON"}, "X"))
+
+    def test_l4_the_database_out_of_reach_during_the_assembly_records_no_failure(self):
+        def down(seg, **k):
+            raise fo.FilmUnavailable("film_heartbeat_segment: ConnectionError")
+
+        h = Harness(assemble=down)
+        out = h.run()
+        self.assertEqual((out.result, out.reason), ("left", "assembly_db_unavailable"))
+        self.assertEqual((h.db.count("record_assembly"), h.db.settles), (0, []))
+
+    def test_l4_a_lease_lost_during_the_assembly_is_not_the_assemblys_failure(self):
+        def lost(seg, **k):
+            raise fo.FilmRefused("lease_lost")
+
+        h = Harness(assemble=lost)
+        out = h.run()
+        self.assertEqual((out.result, out.reason), ("left", "lease_lost"))
+        self.assertEqual((h.db.count("record_assembly"), h.db.settles), (0, []))
+
+    def test_l5_a_creative_job_call_out_of_reach_leaves_the_segment(self):
+        h = Harness()
+
+        def down(*a, **k):
+            raise cw.CreativeFunctionMissing("advance_creative_job: HTTP 404")
+
+        h.db.advance_job = down
+        out = h.run()
+        self.assertEqual((out.result, out.reason), ("left", "db_unavailable"))
+        self.assertEqual(h.db.settles, [])
+
+    def test_d_switched_off_at_begin_stops_and_settles_and_fails_nothing(self):
+        h = Harness()
+        real = h.db.begin_take
+
+        def begin(take, worker):
+            if h.db._t(take)["kind"] == "clip":
+                raise fo.FilmRefused("film_studio_disabled")
+            return real(take, worker)
+
+        h.db.begin_take = begin
+        h.run()
+        self.assertEqual(h.db.settles, ["film_studio_off"])
+        self.assertFalse([f for f in h.db.failed if f[0] == "clip"])
+
+    def test_d_switched_off_before_the_job_ends_the_take_with_the_switchs_word_not_provider_error(self):
+        h = Harness()
+        real = h.db.take_job
+
+        def job(take, worker):
+            if h.db._t(take)["kind"] == "clip":
+                raise fo.FilmRefused("film_studio_disabled")
+            return real(take, worker)
+
+        h.db.take_job = job
+        h.run()
+        clip_fails = [f for f in h.db.failed if f[0] == "clip"]
+        self.assertEqual([f[2] for f in clip_fails], ["film_studio_off"])
+        self.assertNotIn("provider_error", [f[2] for f in h.db.failed])
+        self.assertEqual(h.db.settles, ["film_studio_off"])
+
+
 class Secrets(unittest.TestCase):
     def test_a_secret_in_a_provider_message_reaches_no_log_and_no_stored_error(self):
         err = Err("unavailable", f"upstream said Authorization: Bearer {SECRET}")

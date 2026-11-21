@@ -229,8 +229,13 @@ by 0171 when a lease or the deadline runs out.
 | `worker_lost` | Our worker stopped; nothing was charged. | Start again. |
 | `film_studio_off` | Switched off during the run. | Contact support. |
 
-`film_studio_off` is the settle reason (`films.pause_reason`) when the platform's or the organization's switch went off between two
-takes; the takes that had not begun are skipped.
+`film_studio_off` is the settle reason (`films.pause_reason`) when the platform's or the organization's switch went off during the
+run: nothing new begins (the database refuses `film_begin_take` and a new `film_take_job` with `film_studio_disabled`), a take that
+was about to be sent ends with `error_code = film_studio_off`, and the takes that had not begun are skipped. A task already at the
+vendor is still polled to its end, and a running segment may still be re-claimed for that.
+
+A take's creative job (`payer = 'film'`) is never shown in the Studio's job feed, never listed by the credit worker's queue, never
+cancellable by a member (`not_found`), notifies nobody, and ends when its take ends.
 
 ### Where an assembly failure shows
 

@@ -83,6 +83,14 @@ _VOICE_VENDOR_CODES = frozenset({"voice_not_found", "invalid_voice_id"})
 
 #: The assembly session's own switch (modules/film_assembly.py): only `on` begins an assembly.
 ASSEMBLY_FLAG = "NIGHTSHIFT_FILM_ASSEMBLY"
+
+
+def switch_on(env: Mapping[str, str], name: str) -> bool:
+    """A worker switch is on when it says exactly ``on`` (surrounding whitespace aside, as an env file may leave it). The one reading
+    of every switch here: the CLI's "may I claim" and the driver's "may I assemble" must never disagree (Lens L7: with ``"on "`` one
+    claimed and spent every take, and the other refused the assembly)."""
+    return str(env.get(name, "") or "").strip() == "on"
+
 #: The order takes run in: a clip needs its key frame (and may end on the next scene's), the narration comes last.
 PHASE = {"keyframe": 0, "clip": 1, "extend": 1, "narration": 2}
 #: What each take's file is.
@@ -398,9 +406,10 @@ class FilmOrchestrator:
                     return DriveOutcome(sid, "left", "lease_lost")
                 logger.warning("segment %s: refused (%s); left for the sweep", sid, r.word)
                 return DriveOutcome(sid, "left", r.word)
-            except FilmUnavailable as e:
-                # Nothing can be recorded now: the lease lapses and the next claim resumes (a stored task id is polled).
-                logger.warning("segment %s: %s; left for the next claim", sid, e)
+            except (FilmUnavailable, cw.CreativeUnavailable) as e:
+                # Nothing can be recorded now (0171's calls or 0036's job calls out of reach): the lease lapses and the next claim
+                # resumes (a stored task id is polled). CreativeFunctionMissing is a CreativeUnavailable.
+                logger.warning("segment %s: %s; left for the next claim", sid, type(e).__name__)
                 return DriveOutcome(sid, "left", "db_unavailable")
             finally:
                 self._lease = None
@@ -449,13 +458,18 @@ class FilmOrchestrator:
                 if r.word == "not_running":  # drained, or past its deadline: nothing new begins
                     stopped = stopped or "deadline"
                     break
+                if r.word == "film_studio_disabled":  # switched off since the last look: nothing new begins (0198)
+                    stopped = "film_studio_off"
+                    break
                 if r.word == "take_not_planned":
                     continue
                 raise
             if began.get("began") is False:
                 # 0171 settled the segment itself (the hold is gone, or a refund waits on it): nothing more to do here.
                 return DriveOutcome(sid, "settled_by_db", str(began.get("reason") or ""))
-            self._run_take(seg, take, lease)
+            if self._run_take(seg, take, lease) == "film_studio_off":
+                stopped = "film_studio_off"
+                break
         return self._finish(sid, stopped)
 
     def _next_take(self, takes: Sequence[Mapping[str, Any]], scenes: Mapping[str, Mapping[str, Any]],
@@ -514,7 +528,7 @@ class FilmOrchestrator:
         clips = any(t["kind"] in ("clip", "extend") and t["status"] == "completed" for t in live)
         if stopped is None and live and clips and all(t["status"] == "completed" for t in live):
             installed = self._assemble is not None or self._assembly_module() is not None
-            if installed and str(self.env.get(ASSEMBLY_FLAG, "") or "") != "on":
+            if installed and not switch_on(self.env, ASSEMBLY_FLAG):
                 # The assembly is installed but switched off: it is not begun, and the segment is left as it is (its takes are
                 # made). 0171 settles it: the claim after its last lease, or the sweep at the deadline plus the grace.
                 logger.warning("segment %s: every take is made, but %s is not 'on': the assembly is not begun", sid, ASSEMBLY_FLAG)
@@ -564,7 +578,9 @@ class FilmOrchestrator:
         try:
             out = assemble(dict(seg), worker_id=self.worker_id, db=self.db, media_root=self.media_root, tools=self.tools)
         except Exception as e:
-            if _assembly_raised(e, mod, "DbUnavailable"):
+            if isinstance(e, FilmRefused) and e.word == "lease_lost":
+                raise  # not the assembly's failure: this worker no longer holds the segment
+            if isinstance(e, (FilmUnavailable, cw.CreativeUnavailable)) or _assembly_raised(e, mod, "DbUnavailable"):
                 # The database gave no decision: nothing was recorded and the assembly is still running. Nothing is settled here;
                 # a later claim runs the assembly again (S11's contract).
                 logger.warning("segment %s: the assembly could not reach the database; left for the next claim", sid)
@@ -605,6 +621,11 @@ class FilmOrchestrator:
         except FilmRefused as r:
             if r.word == "lease_lost":
                 raise
+            if r.word == "film_studio_disabled":
+                # Switched off between film_begin_take and the job (0198 refuses a new job): the take ends with the switch's own
+                # word, never as a provider error, and the run stops (rule 6: the remedy is the switch, not a retry).
+                self._fail(tid, None, "film_studio_off", "Film Studio was switched off before this take was sent")
+                return "film_studio_off"
             return self._fail(tid, None, film_error_code(r.word), f"the take's job could not be made ({r.word})")
         if tj.get("ok") is not True:
             reason = str(tj.get("reason") or "bad_request")

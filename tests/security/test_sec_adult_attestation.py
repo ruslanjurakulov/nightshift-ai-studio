@@ -494,7 +494,8 @@ def test_0174_and_0125_refuse_to_replay_over_0192(db):
     assert "0125 found a sellable_models()" in msg
     # The Film Studio's money pins its bodies too: it does not replay over the film gate.
     st, msg, _ = err(lambda: db.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8")))
-    assert "0171 found public.quote_film(uuid, integer) with a body that is not this file's" in msg
+    # 0198 replaces 0171 bodies too (film_fail_locked comes first in 0171's own list), so the refusal may name one of those.
+    assert msg.startswith("0171 found public.") and "with a body that is not this file's" in msg, msg
 
 
 # ── F4: the session, not the caller, decides the method; only the current words are recorded ─────────────────────────────────

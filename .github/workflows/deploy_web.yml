@@ -418,6 +418,8 @@ jobs:
           # The film worker's switch (tools/film_worker.py): `on` = remote-deploy.sh starts or recreates
           # film-worker, anything else = it is removed. A word, not a secret; the worker reads it as well.
           WORKERENV_NIGHTSHIFT_FILM_WORKER: ${{ vars.NIGHTSHIFT_FILM_WORKER }}
+          # The film assembly's switch: off unless exactly `on`; without it the film worker claims nothing.
+          WORKERENV_NIGHTSHIFT_FILM_ASSEMBLY: ${{ vars.NIGHTSHIFT_FILM_ASSEMBLY }}
           # Models, hosts, per-run and per-day USD caps and unit prices: variables only
           # (deploy/.env.worker.example, "Models, hosts and caps" and "Spend").
           WORKERENV_GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}

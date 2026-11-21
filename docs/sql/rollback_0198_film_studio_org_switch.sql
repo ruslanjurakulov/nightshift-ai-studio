@@ -1,17 +1,19 @@
--- rollback_0198_film_studio_org_switch.sql — takes migration 0198 (Film Studio's switch per organization, the take's creative job)
--- out. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
+-- rollback_0198_film_studio_org_switch.sql — takes migration 0198 (Film Studio's switch per organization, the take's creative job,
+-- the credit queue's film rule) out. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK: 0192's quote_film and start_film and 0171's film_claim_segment, verbatim: the platform's switch alone decides
---   again, for every organization at once. 0166's film_limits and films_format_check: a film targets 60-1200 s again (REFUSED while
---   any film targets less than 60 s: edit or archive those first).
+-- WHAT COMES BACK, verbatim: 0192's quote_film and start_film; 0171's film_claim_segment, film_fail_locked, film_begin_take and
+--   film_settle_locked; 0036's claim_creative_job and cancel_creative_job; 0064's creative_jobs_notify trigger WHEN; 0166's
+--   film_limits and films_format_check: a film targets 60-1200 s again (REFUSED while any film targets less than 60 s: edit or
+--   archive those first). The platform's switch alone decides again, for every organization at once, and the credit queue again
+--   sweeps and claims payer 'film' jobs: stop the film worker (NIGHTSHIFT_FILM_WORKER off) and let its segments settle first.
 -- WHAT IS KEPT: org_film_settings.film_studio_enabled (who was switched on is a record; with the earlier bodies nothing reads it), and
 --   every creative job and take a worker wrote through film_take_job (they are the record of what ran and what it cost).
 -- WHAT IS LOST: film_studio_on_for, set_org_film_studio_enabled, film_take_inputs and film_take_job. The film worker
---   (tools/film_worker.py) then cannot make a take: switch NIGHTSHIFT_FILM_WORKER off first.
+--   (tools/film_worker.py) then cannot make a take.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the four bodies is not 0198's (a later change would be undone), or a film targets < 60 s.
---   1. Puts the four earlier bodies and 0166's check back, verbatim, with their grants.
+--   0. REFUSES (changes nothing) if any of the nine bodies is not 0198's (a later change would be undone), or a film targets < 60 s.
+--   1. Puts the nine earlier bodies, 0064's trigger and 0166's check back, verbatim, with their grants.
 --   2. Drops the four 0198 functions.
 --   3. Asserts the end state.
 
@@ -26,8 +28,13 @@ begin
   for r in select * from (values
       ('public.quote_film(uuid, integer)', '99d01240ed2df7fb002f674df8891608'),
       ('public.start_film(uuid, text, text)', '7971355d754165affaf3e08904b4b078'),
-      ('public.film_claim_segment(text, interval)', '41debe4563fc9f8b58dd6d3082ad7e24'),
-      ('public.film_limits()', 'dd9419b91f777a78d0d2b28539b2fb8a')) v(sig, want) loop
+      ('public.film_claim_segment(text, interval)', '40db385bb4e3893e1085ee38dcd6f49b'),
+      ('public.film_limits()', 'dd9419b91f777a78d0d2b28539b2fb8a'),
+      ('public.claim_creative_job(text, interval)', '3ca4da96aabe145b34a0275ed4d1c841'),
+      ('public.cancel_creative_job(uuid)', '2720d62c17ae26bce439a28280964575'),
+      ('public.film_fail_locked(uuid, text, text, text, numeric)', '0676b7e0f3e3549348044a8915a246cc'),
+      ('public.film_begin_take(uuid, text)', 'ab9ec7bc2c1e94bfa4835bea2e9f5be4'),
+      ('public.film_settle_locked(uuid, uuid, text)', '7caa68e2b6698c81e34c4f965950adf9')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0198: % is not 0198''s body (md5 %): if an older file was re-run over it, apply 0198 again first, then roll back; if a later file changed it, take that file out first', r.sig, h;
@@ -398,9 +405,7 @@ $$;
 revoke all on function public.film_claim_segment(text, interval) from public, anon, authenticated, service_role;
 grant execute on function public.film_claim_segment(text, interval) to service_role;
 
--- The members' read of the kept column goes with it: the column is a record, not a thing the app shows any more.
-revoke select (film_studio_enabled) on public.org_film_settings from authenticated;
--- film_limits and films_format_check: 0166's, verbatim (0166_films_core.sql).
+-- film_limits: 0166's body, verbatim (0166_films_core.sql).
 create or replace function public.film_limits() returns jsonb
   language sql immutable set search_path = public, pg_temp as $$
   select jsonb_build_object(
@@ -413,6 +418,298 @@ create or replace function public.film_limits() returns jsonb
     'creates_per_hour', 30, 'saves_per_hour', 240, 'archives_per_hour', 60)
 $$;
 revoke all on function public.film_limits() from public, anon, authenticated, service_role;
+
+-- claim_creative_job: 0036's body, verbatim (0036_creative_jobs.sql).
+create or replace function public.claim_creative_job(
+  p_worker text, p_stale_after interval default interval '10 minutes'
+) returns setof public.creative_jobs
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  c record;
+  s record;
+  v_id uuid;
+  w text := left(btrim(coalesce(p_worker, '')), 120);
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'creative jobs are claimed by the platform''s worker only' using errcode = '42501';
+  end if;
+  if w = '' then
+    raise exception 'p_worker is required' using errcode = '22023';
+  end if;
+
+  for c in
+    select id, org_id from public.creative_jobs
+     where status in ('running', 'provider_pending', 'processing', 'rendering')
+       and coalesce(heartbeat_at, started_at, created_at) < now() - p_stale_after
+     order by org_id, id
+  loop
+    -- Account first, then the job, re-checked under its lock (a heartbeat
+    -- may have arrived since the scan).
+    perform public.credit_account_lock(c.org_id);
+    select id, attempts, max_attempts, provider_task_id, submit_started_at into s
+      from public.creative_jobs
+     where id = c.id
+       and status in ('running', 'provider_pending', 'processing', 'rendering')
+       and coalesce(heartbeat_at, started_at, created_at) < now() - p_stale_after
+     for update skip locked;
+    if not found then
+      continue;
+    end if;
+    if s.submit_started_at is not null and s.provider_task_id is null then
+      perform public.creative_end_locked(s.id, 'failed', 'submit_interrupted',
+        'the worker stopped while submitting to the provider; it is never submitted twice, and the credits were released');
+    elsif s.attempts >= s.max_attempts then
+      perform public.creative_end_locked(s.id, 'failed', 'worker_lost',
+        format('worker lost (no heartbeat) on the last of %s attempts; the credits were released', s.max_attempts));
+    else
+      update public.creative_jobs
+         set status = 'queued', worker_id = null, updated_at = now()
+       where id = s.id;
+      perform public.creative_job_log(s.id, c.org_id,
+        'requeued', 'queued', jsonb_build_object('reason', 'no heartbeat'));
+    end if;
+  end loop;
+
+  perform public.creative_expire_locked(null);
+
+  select q.id into v_id
+    from public.creative_jobs q
+   where q.status = 'queued'
+   order by (q.provider_task_id is null), q.created_at, q.id
+   for update skip locked
+   limit 1;
+  if v_id is null then
+    return;
+  end if;
+
+  return query
+    update public.creative_jobs j
+       set status = case when j.provider_task_id is not null then 'provider_pending' else 'running' end,
+           worker_id = w, attempts = j.attempts + 1,
+           started_at = coalesce(j.started_at, now()), heartbeat_at = now(), updated_at = now()
+     where j.id = v_id
+    returning j.*;
+  perform public.creative_job_log(v_id, (select org_id from public.creative_jobs where id = v_id),
+    'claimed', (select status from public.creative_jobs where id = v_id),
+    jsonb_build_object('worker', w));
+end
+$$;
+revoke all on function public.claim_creative_job(text, interval) from public, anon, authenticated, service_role;
+grant execute on function public.claim_creative_job(text, interval) to service_role;
+
+-- cancel_creative_job: 0036's body, verbatim (0036_creative_jobs.sql).
+create or replace function public.cancel_creative_job(p_job uuid) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  j public.creative_jobs;
+begin
+  if auth.uid() is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  select * into j from public.creative_jobs where id = p_job;
+  -- Another organization's job reads as missing, not as forbidden: ids never
+  -- confirm what exists elsewhere.
+  if not found or not public.is_org_member(j.org_id) then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  perform public.credit_account_lock(j.org_id);
+  select * into j from public.creative_jobs where id = p_job for update;
+  if j.status in ('cancelled', 'failed', 'expired', 'completed') then
+    return jsonb_build_object('job', public.creative_job_json(j), 'released', 0,
+                              'already', true);
+  end if;
+  if not (j.status = 'queued' and j.provider_task_id is null and j.submit_started_at is null)
+     and not (j.status = 'running' and j.submit_started_at is null) then
+    perform public.creative_refuse('not_cancellable',
+      'the provider is already working on this job', 'NS409');
+  end if;
+  perform public.creative_end_locked(p_job, 'cancelled', 'cancelled', 'cancelled by a member');
+  select * into j from public.creative_jobs where id = p_job;
+  return jsonb_build_object('job', public.creative_job_json(j), 'already', false);
+end
+$$;
+revoke all on function public.cancel_creative_job(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.cancel_creative_job(uuid) to authenticated;
+
+-- film_fail_locked: 0171's body, verbatim (0171_films_money.sql).
+create or replace function public.film_fail_locked(p_take uuid, p_failure text, p_code text, p_error text, p_units_done numeric)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  t      public.film_takes;
+  s      public.film_segments;
+  nt     public.film_takes;
+  bill   text;
+  charge numeric := 0;
+  basis  text;
+begin
+  select * into t from public.film_takes where id = p_take;
+  select * into s from public.film_segments where id = t.segment_id;
+  -- M1: what a failed take delivered is not the organization's to keep: the files its creative job registered and the files whose
+  -- provenance names it are soft-deleted with the failure, in this transaction, within film_discard_assets' guard.
+  perform public.film_discard_assets(t.org_id, t.id, null, null);
+  if t.attempt < 1 + (public.film_money_limits() ->> 'retries_per_take')::integer
+     and s.status = 'running' and (s.deadline_at is null or now() <= s.deadline_at) and p_failure <> 'worker_lost' then
+    update public.film_takes
+       set status = 'superseded', charged_credits = 0, charge_basis = 'retried_not_charged', error_code = p_code, error = p_error,
+           updated_at = now(), finished_at = now()
+     where id = t.id
+    returning * into t;
+    insert into public.film_takes (film_id, org_id, scene_id, version, shot_index, kind, parent_take_id, attempt, status, model, params,
+                                   duration_s, first_frame_asset_id, last_frame_asset_id, reference_asset_ids, reshoot, segment_id,
+                                   credit_unit, unit_credits, quantity, minimum_credits, confirmed_credits)
+    values (t.film_id, t.org_id, t.scene_id, t.version, t.shot_index, t.kind, t.parent_take_id, t.attempt + 1, 'planned', t.model,
+            t.params, t.duration_s, t.first_frame_asset_id, t.last_frame_asset_id, t.reference_asset_ids, t.reshoot, t.segment_id,
+            t.credit_unit, t.unit_credits, t.quantity, t.minimum_credits, t.confirmed_credits)
+    returning * into nt;
+    perform public.film_log(t.film_id, t.org_id, t.scene_id, 'take_retried',
+      jsonb_build_object('take_id', t.id, 'retry_take_id', nt.id, 'kind', t.kind, 'failure', p_failure, 'error_code', p_code,
+                         'charged', 0));
+    return public.film_take_money_json(t) || jsonb_build_object('retry_take_id', nt.id);
+  end if;
+  -- A take that delivers nothing is charged nothing, as the Studio charges a failed job nothing; the basis records what the vendor
+  -- is known to have billed the platform, which the platform absorbs (see the header).
+  if p_failure = 'moderated' then
+    bill := public.film_moderation_billing(t.model);
+    basis := case bill when 'billed' then 'moderated_vendor_billed' when 'not_billed' then 'moderated_vendor_not_billed'
+                       else 'moderated_vendor_billing_unknown' end;
+  elsif p_failure = 'worker_lost' then
+    basis := 'worker_lost_not_charged';
+  elsif t.kind = 'narration' and coalesce(p_units_done, 0) > 0 then
+    -- Part of the text was voiced, but a narration with a hole in it is thrown away: nothing was delivered.
+    basis := 'partial_not_delivered';
+  else
+    basis := 'failed_not_charged';
+  end if;
+  update public.film_takes
+     set status = 'failed', charged_credits = charge, charge_basis = basis, error_code = p_code, error = p_error,
+         updated_at = now(), finished_at = now()
+   where id = t.id
+  returning * into t;
+  perform public.film_log(t.film_id, t.org_id, t.scene_id, 'take_failed',
+    jsonb_build_object('take_id', t.id, 'kind', t.kind, 'failure', p_failure, 'error_code', p_code,
+                       'confirmed', t.confirmed_credits, 'charged', charge, 'basis', basis, 'units_done', p_units_done));
+  return public.film_take_money_json(t);
+end
+$$;
+revoke all on function public.film_fail_locked(uuid, text, text, text, numeric) from public, anon, authenticated, service_role;
+
+-- film_begin_take: 0171's body, verbatim (0171_films_money.sql).
+create or replace function public.film_begin_take(p_take uuid, p_worker text) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  t   public.film_takes := public.film_lock_take(p_take, p_worker);
+  s   public.film_segments;
+  why text;
+begin
+  select * into s from public.film_segments where id = t.segment_id;
+  if t.status = 'running' then
+    return public.film_take_money_json(t) || jsonb_build_object('began', true);
+  end if;
+  if s.status <> 'running' then
+    perform public.creative_refuse('not_running', format('the segment is %s: nothing new begins', s.status), 'NS409');
+  end if;
+  if s.deadline_at is not null and now() > s.deadline_at then
+    perform public.creative_refuse('not_running', 'the segment is past its deadline: settle it', 'NS409');
+  end if;
+  if t.status <> 'planned' then
+    perform public.creative_refuse('take_not_planned', format('the take is %s', t.status), 'NS409');
+  end if;
+  if s.credit_ref is not null then
+    if not exists (select 1 from public.credit_reservations r where r.job_id = s.credit_ref and r.status = 'open') then
+      why := 'hold_lost';
+    elsif exists (select 1 from public.credit_refund_recoveries r
+                   where r.org_id = s.org_id and r.collected + r.lapsed < r.owed and s.credit_ref = any (r.holds)) then
+      why := 'refund_pending';
+    end if;
+  end if;
+  if why is not null then
+    perform public.film_cancel_segment(s.id, why);
+    select * into t from public.film_takes where id = p_take;
+    return coalesce(public.film_take_money_json(t), jsonb_build_object('id', p_take))
+           || jsonb_build_object('began', false, 'reason', why);
+  end if;
+  update public.film_takes set status = 'running', started_at = now(), updated_at = now() where id = t.id returning * into t;
+  return public.film_take_money_json(t) || jsonb_build_object('began', true);
+end
+$$;
+revoke all on function public.film_begin_take(uuid, text) from public, anon, authenticated, service_role;
+grant execute on function public.film_begin_take(uuid, text) to service_role;
+
+-- film_settle_locked: 0171's body, verbatim (0171_films_money.sql).
+create or replace function public.film_settle_locked(p_film uuid, p_segment uuid, p_reason text) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  s       public.film_segments;
+  why     text;
+  owed    numeric;
+  got     numeric := 0;
+  status_ text;
+  ran     boolean;
+  removed uuid[] := '{}';
+begin
+  select * into s from public.film_segments where id = p_segment and film_id = p_film;
+  if s.status in ('settled', 'released') then
+    return public.film_segment_json(s);
+  end if;
+  why := coalesce(s.settle_reason, p_reason);
+  update public.film_takes
+     set status = 'skipped', charged_credits = 0, charge_basis = 'not_started', updated_at = now(), finished_at = now()
+   where segment_id = s.id and status in ('planned', 'queued');
+  if s.assembly_status = 'planned' then
+    update public.film_segments set assembly_status = 'skipped', assembly_charged_credits = 0 where id = s.id;
+  end if;
+  select * into s from public.film_segments where id = s.id;
+  owed := (select coalesce(sum(t.charged_credits), 0) from public.film_takes t where t.segment_id = s.id)
+          + coalesce(s.assembly_charged_credits, 0);
+  if owed > s.confirmed_credits then
+    raise exception 'film_settle_locked: charges % exceed the confirmed % of segment %', owed, s.confirmed_credits, s.id;
+  end if;
+  ran := owed > 0 or s.assembly_status = 'completed'
+         or exists (select 1 from public.film_takes t where t.segment_id = s.id and t.status = 'completed');
+  if s.credit_ref is not null then
+    if owed > 0 then
+      got := public.capture_credits(s.credit_ref, owed, false);
+    else
+      perform public.release_credits(s.credit_ref);
+    end if;
+  end if;
+  status_ := case when got > 0 then 'settled' else 'released' end;
+  update public.film_segments
+     set status = status_, captured_credits = got, settled_at = now(), settle_reason = why, worker_id = null, updated_at = now()
+   where id = s.id
+  returning * into s;
+  if not ran then
+    -- Nothing was charged and nothing was made: the film goes back to its storyboard, editable and startable again. The takes that
+    -- never began (skipped, all at 0) go, so 0166's save_film can delete their scenes; one a creative job names stays (that job's
+    -- record). The started and segment_settled events keep what happened.
+    with d as (
+      delete from public.film_takes t
+       where t.segment_id = s.id and t.status = 'skipped' and t.creative_job_id is null
+         and not exists (select 1 from public.creative_jobs j where j.film_take_id = t.id)
+      returning t.id)
+    select coalesce(array_agg(d.id order by d.id), '{}'::uuid[]) into removed from d;
+    update public.films
+       set status = 'draft', pause_reason = case when why = 'cancelled' then null else why end, pause_detail = null,
+           updated_at = now()
+     where id = p_film;
+  else
+    update public.films
+       set status = case when why = 'completed' then 'ready' when why = 'cancelled' then 'cancelled' else 'paused' end,
+           pause_reason = case when why in ('completed', 'cancelled') then null else why end,
+           pause_detail = null, updated_at = now()
+     where id = p_film;
+  end if;
+  perform public.film_log(p_film, s.org_id, null, 'segment_settled',
+    jsonb_build_object('segment_id', s.id, 'reason', why, 'confirmed', s.confirmed_credits, 'charged', owed, 'captured', got,
+                       'exempt', s.exempt, 'back_to_draft', not ran, 'takes_removed', cardinality(removed),
+                       'removed_take_ids', to_jsonb(removed))
+    || case when s.credit_ref is not null and got < owed then jsonb_build_object('not_captured', owed - got) else '{}'::jsonb end);
+  return public.film_segment_json(s);
+end
+$$;
+revoke all on function public.film_settle_locked(uuid, uuid, text) from public, anon, authenticated, service_role;
+
 alter table public.films drop constraint if exists films_format_check;
 alter table public.films add constraint films_format_check
   check (language in ('en', 'ru', 'uz')
@@ -420,6 +717,16 @@ alter table public.films add constraint films_format_check
          and target_seconds between 60 and 1200
          and (resolution is null or resolution in ('480p', '720p', '768p', '1080p', '2k', '4k')));
 
+-- creative_jobs_notify: 0064's WHEN, verbatim (0064_notifications.sql).
+drop trigger if exists creative_jobs_notify on public.creative_jobs;
+create trigger creative_jobs_notify
+  after update of status on public.creative_jobs
+  for each row
+  when (new.status in ('completed', 'failed', 'expired') and old.status is distinct from new.status)
+  execute function public.notify_creative_job_ended();
+
+-- The members' read of the kept column goes with it: the column is a record, not a thing the app shows any more.
+revoke select (film_studio_enabled) on public.org_film_settings from authenticated;
 drop function if exists public.film_take_job(uuid, text);
 drop function if exists public.film_take_inputs(public.film_takes);
 drop function if exists public.set_org_film_studio_enabled(uuid, boolean);
@@ -434,7 +741,12 @@ begin
       ('public.quote_film(uuid, integer)', '00846d0622ab379810c633b2446436b0'),
       ('public.start_film(uuid, text, text)', '595e90f836f992699cf9e920ad646787'),
       ('public.film_claim_segment(text, interval)', 'fddd014f8cbcb72603da0b792cc0d31a'),
-      ('public.film_limits()', '9ddbb45ad45efa76265b4f1b22c048bb')) v(sig, want) loop
+      ('public.film_limits()', '9ddbb45ad45efa76265b4f1b22c048bb'),
+      ('public.claim_creative_job(text, interval)', '37d708494c1cf39578b0988d58e7f932'),
+      ('public.cancel_creative_job(uuid)', '3d7c99b7d355194102fb5982747ccad5'),
+      ('public.film_fail_locked(uuid, text, text, text, numeric)', '5c479bb1bff1c0e6218ef9424ddeca49'),
+      ('public.film_begin_take(uuid, text)', '3f949fee189a8ef37ef776e5a30ec182'),
+      ('public.film_settle_locked(uuid, uuid, text)', '19938f367460c80103dc97eb7f1fee35')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0198 end state: % is not the earlier body (md5 %)', r.sig, h;
@@ -444,6 +756,10 @@ begin
      or to_regprocedure('public.set_org_film_studio_enabled(uuid, boolean)') is not null
      or to_regprocedure('public.film_studio_on_for(uuid)') is not null then
     raise exception 'rollback 0198 end state: a 0198 function is still there';
+  end if;
+  if exists (select 1 from pg_trigger g where g.tgrelid = 'public.creative_jobs'::regclass and g.tgname = 'creative_jobs_notify'
+                and pg_get_triggerdef(g.oid) like '%payer%') then
+    raise exception 'rollback 0198 end state: creative_jobs_notify is not 0064''s';
   end if;
 end $$;
 
