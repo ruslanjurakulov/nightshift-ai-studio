@@ -69,6 +69,8 @@ export interface LiveEdge {
 export interface LiveGraph {
   nodes: LiveNode[];
   edges: LiveEdge[];
+  /** What happened, in order: the plan's own event log (film_events, or the run's system_events). Undefined = not read. */
+  activity?: Activity | null;
   /** A run's own failure code (render_jobs.error's code), shown for the whole run: many failures belong to no stage (Lens M4). */
   runError?: string | null;
   /** Every step is done, failed, skipped, stopped or not in the plan: polling can stop. */
@@ -120,6 +122,69 @@ export interface FilmReading {
   errors: TakeErrors;
   /** films.pause_reason: where the worker records why a segment's assembly failed (S6's contract). */
   pauseReason?: string | null;
+  /** film_json's events (0166 film_events, the newest 50) as raw rows: filmGraph numbers their scenes. */
+  rawEvents?: { rows: Record<string, unknown>[]; total: number | null } | null;
+}
+
+/* ------------------------------------------------------------------ activity --------------------------------------------------- */
+
+/**
+ * One line of the Activity panel: an event word the plan's own log recorded, when, and for which scene. `detail` is never shown as
+ * text (film_json sends it, with credits and a basis, and the panel never renders it): only a take's kind is kept, when it is a
+ * plain word. An event the view has no sentence for is shown as its code, never re-worded.
+ */
+export interface ActivityItem {
+  id: string;
+  at: string;
+  word: string;
+  scene: number | null;
+  /** keyframe | clip | narration | ... (film takes), or null. */
+  kind: string | null;
+}
+export interface Activity {
+  /** Oldest first. */
+  items: ActivityItem[];
+  /** How many events the log holds in all, when it says (film_json's events_total); null = not said. */
+  total: number | null;
+  /** The reader stopped at its limit, so the newest events of a run may be missing (the run routes' events_cut). */
+  cut?: boolean;
+}
+
+const KIND_WORD = /^[a-z][a-z_]{0,30}$/;
+
+function filmActivity(raw: { rows: Record<string, unknown>[]; total: number | null }, sceneNo: Map<string, number>): Activity {
+  const items: ActivityItem[] = [];
+  for (const e of raw.rows) {
+    const id = typeof e.id === "number" || typeof e.id === "string" ? String(e.id) : null;
+    const word = str(e.event);
+    const at = str(e.created_at);
+    if (!id || !word || !at || !Number.isFinite(Date.parse(at))) continue;
+    const d = rec(e.detail);
+    const kind = d && typeof d.kind === "string" && KIND_WORD.test(d.kind) ? d.kind : null;
+    const sceneId = str(e.scene_id);
+    items.push({ id: `f:${id}`, at, word, scene: sceneId ? sceneNo.get(sceneId) ?? null : null, kind });
+  }
+  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
+  return { items, total: raw.total };
+}
+
+/**
+ * A run's events as Activity lines. system_events carry no id, so a line's key is its time, word and agent, with a count only among
+ * identical ones: an event that syncs late with an earlier time must not shift every later key (Lens). The run routes answer the
+ * whole window each time, so a run's lines are replaced, not gathered.
+ */
+export function runActivity(events: RunEvent[] | null, cut = false): Activity | null {
+  if (events === null) return null;
+  const seen = new Map<string, number>();
+  const items = [...events]
+    .sort((a, b) => a.ts.localeCompare(b.ts))
+    .map((e) => {
+      const base = `${e.ts}|${e.event}|${e.agent ?? ""}`;
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      return { id: `r:${base}|${n}`, at: e.ts, word: e.event, scene: null, kind: null };
+    });
+  return { items, total: null, cut };
 }
 
 /**
@@ -158,7 +223,17 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     if ("confirmed_credits" in o || "charged_credits" in o) money.set(id, { held: num(o.confirmed_credits), charged: num(o.charged_credits) });
   }
   const filmRow = rec(rec(r.film)?.film);
-  return { film, segments, money, errors, pauseReason: filmRow ? str(filmRow.pause_reason) : null };
+  const fj = rec(r.film);
+  const rows = fj && Array.isArray(fj.events) ? (fj.events.map(rec).filter(Boolean) as Record<string, unknown>[]) : null;
+  const total = fj ? num(fj.events_total) : null;
+  return {
+    film,
+    segments,
+    money,
+    errors,
+    pauseReason: filmRow ? str(filmRow.pause_reason) : null,
+    rawEvents: rows ? { rows, total } : null,
+  };
 }
 
 const BEFORE_WORK = new Set(["draft", "planning", "planned", "queued"]);
@@ -364,7 +439,8 @@ export function filmGraph(r: FilmReading): LiveGraph {
   edges.push({ from: "assembly", to: "final" });
 
   const settled = ["ready", "failed", "cancelled", "archived"].includes(fs) && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown");
-  return { nodes, edges, settled };
+  const sceneNo = new Map(scenes.map((s, i) => [s.id, i + 1]));
+  return { nodes, edges, settled, activity: r.rawEvents ? filmActivity(r.rawEvents, sceneNo) : r.rawEvents === null ? null : undefined };
 }
 
 /* ------------------------------------------------------------------ runs ------------------------------------------------------ */
@@ -398,6 +474,8 @@ export interface RunReading {
   workflow?: WorkflowStatus | null;
   hold?: HoldStatus | null;
   video?: RunVideoRef | null;
+  /** The route stopped at its event limit (newest events may be missing). */
+  eventsCut?: boolean;
 }
 
 function coerceVideo(v: unknown): RunVideoRef | null {
@@ -439,7 +517,7 @@ export function coerceRunLive(raw: unknown): RunReading {
   const workflow = r && "workflow" in r ? coerceWorkflow(r.workflow) : undefined;
   const hold = r && "hold" in r ? coerceHold(r.hold) : undefined;
   const video = r && "video" in r ? coerceVideo(r.video) : undefined;
-  return { job, events, window, workflow, hold, video };
+  return { job, events, window, workflow, hold, video, ...(r?.events_cut === true ? { eventsCut: true } : {}) };
 }
 
 /** daily_video.yml's video job stops at 60 minutes; a dispatch can wait for a runner before that. Past this, a run with no last event ended. */
@@ -519,6 +597,7 @@ export function runGraph(r: RunReading): LiveGraph {
     ...(r.workflow !== undefined ? { workflow: r.workflow } : {}),
     ...(r.hold !== undefined ? { hold: r.hold } : {}),
     ...(r.video !== undefined ? { video: r.video } : {}),
+    activity: runActivity(r.events, r.eventsCut === true),
   };
 }
 

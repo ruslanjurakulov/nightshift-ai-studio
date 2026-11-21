@@ -23,6 +23,7 @@ import type { RunDna } from "@/lib/channel-dna";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Check, ChevronDown } from "lucide-react";
+import { brainSessionFromUrl, recordRunHandoff } from "@/lib/brain/handoff";
 import "@/components/create/flow.css";
 
 const CUSTOM_VOICE = "__custom__";
@@ -363,6 +364,9 @@ export function CreateStudio({
         }
         // A started run (a replay of one included) ends the draft: it is not offered back for a second video.
         if (draftScope) clearDraft(draftStore(), draftScope);
+        // Opened from a Nightshift AI plan: tell that conversation which job it became (the run is already queued; best effort).
+        const brain = typeof window !== "undefined" ? brainSessionFromUrl(window.location.search) : null;
+        if (brain && typeof fields.channel_id === "string") void recordRunHandoff(brain, fields.channel_id, (data as { job_id?: unknown }).job_id);
         setReplayed(answer.outcome === "replay");
         setPhase("queued");
         return;
