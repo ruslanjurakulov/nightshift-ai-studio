@@ -73,6 +73,55 @@
   @media (max-width: 479px) {
     .hm-hero-ctas > * { flex: 1 1 100%; }
   }
+  /* The "Write your idea" box (IdeaBox.tsx): a solid surface on the moving picture, the field and the primary key on one row from
+     640 px, stacked below it. Its height is fixed by the field's rows, so hydration never moves the hero (CLS 0). */
+  .hm-idea { display: grid; gap: var(--ds-space-2); max-width: 44rem; margin-top: var(--ds-space-8); }
+  .hm-idea-label { color: var(--ds-text); font-size: 0.9375rem; font-weight: 600; }
+  .hm-idea-row {
+    display: grid;
+    gap: var(--ds-space-2);
+    padding: var(--ds-space-2);
+    border: 1px solid var(--ds-border-strong);
+    border-radius: var(--ds-r-panel);
+    background: rgb(15 22 38 / 0.86);
+    backdrop-filter: blur(10px);
+  }
+  /* Only the field's focus: the button draws its own ring, and two would show at once. */
+  .hm-idea-row:has(.hm-idea-field:focus-visible) { border-color: var(--ds-focus); box-shadow: 0 0 0 1px var(--ds-focus); }
+  @media (min-width: 640px) { .hm-idea-row { grid-template-columns: minmax(0, 1fr) auto; align-items: end; } }
+  .hm-idea-field {
+    width: 100%;
+    min-width: 0;
+    min-height: calc(2 * 1.5em + 2 * var(--ds-space-3));
+    padding: var(--ds-space-3);
+    resize: none;
+    border: 0;
+    border-radius: var(--ds-r-key);
+    background: transparent;
+    color: var(--ds-text);
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .hm-idea-field::placeholder { color: var(--ds-text-2); opacity: 0.85; }
+  .hm-idea-field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--ds-danger); }
+  .hm-idea-go { white-space: nowrap; }
+  /* Leaving for sign-up: seen on a touch screen too, where no cursor shows it. */
+  .hm-idea-go[aria-busy="true"] { opacity: 0.7; }
+  @media (max-width: 639px) {
+    .hm-idea-go { width: 100%; justify-content: center; }
+    /* A phone wraps the example to three lines; two cut it mid-word. Still a fixed height: nothing moves on hydration. */
+    .hm-idea-field { min-height: calc(3 * 1.5em + 2 * var(--ds-space-3)); }
+  }
+  /* Lighter than --ds-danger, which falls to 4.3:1 on the brightest hero frame; this holds >= 7.6:1 on any of them (Pixel). */
+  .hm-idea-problem { color: #ffb4bd; font-size: 0.875rem; font-weight: 600; }
+  /* 32em keeps the note inside the veil's dark part at 1024-1279 px, where 40em reached bright frames at 2.85:1 (Pixel). */
+  .hm-idea-note { max-width: 32em; color: var(--ds-text-2); font-size: 0.875rem; line-height: 1.5; }
+  .hm-idea-count { color: var(--ds-text); font-variant-numeric: tabular-nums; }
+  .hm-idea-count[data-full] { color: var(--ds-warning, var(--ds-text)); font-weight: 600; }
+  /* A 44 px tap target, as the button it replaced was. */
+  .hm-idea-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: var(--ds-space-2); color: var(--ds-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
   /* On a moving picture a solid surface reads better than a translucent one. */
   .hm-ghost { --_bg: rgb(15 22 38 / 0.72); --_bg-hover: var(--ds-surface-3); backdrop-filter: blur(8px); }
   .hm-hero-credit {
@@ -392,5 +441,7 @@
   background: var(--ds-bg);
   color: var(--ds-text);
 }
+/* Unlayered: the global :focus-visible is, and a layered `outline: none` lost to it (a second ring inside the row's). The row draws it. */
+.hm-idea-field:focus-visible { outline: none; }
 /* The pricing teaser's heading in the display face, like every other section title on the page. */
 .hm-pricing h2 { font-family: var(--ds-font-display); font-weight: 600; letter-spacing: -0.02em; }

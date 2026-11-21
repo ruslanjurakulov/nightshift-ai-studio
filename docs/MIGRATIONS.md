@@ -2186,6 +2186,47 @@ that fails one is left as it is, with a NOTICE naming the fix. Order: probe (Act
 No price is written. Keys: GitHub secrets `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, shipped to the worker by `deploy_web.yml`.
 Rollback: `docs/sql/rollback_0195_open_llm_describe.sql`.
 
+## The adult (18+) attestation and its gates (0192)
+
+0192 (`0192_adult_attestation.sql`) records each person's own answer to "are you 18 or older?" once, and refuses paid work on it in the
+database. Some vendors' terms are 18+ (the Gemini API's among them): the registry says so per model (`requires_adult`).
+
+- **The record.** `adult_attestations`: one row per person, the first answer stands (a trigger refuses UPDATE, DELETE and TRUNCATE for
+  every role), written only by `record_adult_attestation(adult, terms_version, method)` for the session. The session decides the
+  method (`google` only for a Google sign-in), and only the app's current terms version is accepted (`AGE_TERMS_VERSION`,
+  `command-center/lib/age.ts`, coupled by a test). `my_adult_attestation()` answers `adult | minor | none`.
+- **The rule.** Someone who said they are under 18 gets nothing paid (`adult_only_service`, 403 on the API). A `requires_adult`
+  model needs an adult answer (`adult_attestation_required`, 428, with the remedy: confirm on Create).
+- **Where it is asked.** The Studio's quote, router and job; films (`quote_film` names the refusal, `start_film` raises it first);
+  workflows (Run now up front; each later step is made as the member who confirmed the run); `creative_platform_reserve`; a hold
+  gate on `credit_reservations`, a run gate on `render_jobs`, a download gate on `download_requests`; the video API, the MCP
+  connection's video, the connector's Studio quote and list (adults-only models stay listed, marked), the API's download. The 0192
+  header lists every path and what is not covered; the open items are LEDGER BR-832-01…05.
+- **Replaces** fifteen bodies (each with marked hunks; the header names each before/after md5). Replaying 0036, 0073, 0074, 0075,
+  0083, 0093, 0094 or 0191 over it silently removes a gate: undo 0192 first, re-run, apply it again, run its Verify query.
+- **Undo.** `docs/sql/rollback_0192_adult_attestation.sql` (owner-applied): the fifteen earlier bodies, the three triggers dropped,
+  the record kept.
+
+## A video run on Google needs an adult answer (0196)
+
+0196 (`0196_adult_attestation_google_runs.sql`; 0194 and 0195 are held by #821). A video run never names a registry model: the
+pipeline calls Gemini by vendor id for every text stage (`modules/gemini_client.py`, `config.GEMINI_MODEL`), and optionally Veo and
+Nano Banana for footage. So 0192's model check never saw it, and a member who never answered could spend on Google through Run now.
+
+- **The rule.** `render_run_google_stages(kind, params)`: `text` on every daily run and series plan; `video` for `video_provider`
+  `veo`; `image` for `image_provider` `nano-banana`; a repair, an unknown kind or an odd provider shape counts as Google (fail
+  closed). `command-center/lib/runBackend.ts` `runGoogleStages()` is the same rule for the Actions dispatch (a test compares them).
+- **Where.** The run gate on `render_jobs` now refuses `adult_attestation_required` to a person in whose session the row is written
+  who has no adult answer (a minor still gets `adult_only_service`); the scheduler, the dispatcher and the worker write with no
+  session and pass. `/api/agent/run` asks before it holds or dispatches. The video API and the MCP connection's video answer a typed
+  428 (after the request's own checks, before the price and the hold). The router's answer, and the routed quote a person reads
+  (`creative_route_quote`), carry `adult_skipped`; a failover (`reroute_creative_job`) skips an adults-only candidate the requester
+  has no adult answer for.
+- **Replaces** 0192's `route_model`, `api_create_video`, `oauth_create_video`, 0187's `reroute_creative_job` and 0075's
+  `creative_route_quote` (one marked hunk each), and points 0192's run gate at its own function. Replaying 0075 over it silently
+  puts the old `creative_route_quote` back.
+- **Undo.** `docs/sql/rollback_0196_adult_attestation_google_runs.sql` (owner-applied): the five earlier bodies and 0192's run gate.
+
 ## Channel research on our own YouTube data (0199)
 
 0199 (`0199_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
