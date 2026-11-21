@@ -33,6 +33,8 @@ export const brainDashRu: BrainDashDictionary = {
     themesSource: "Сгруппировано Nightshift по комментариям зрителей.",
     mentions: "упоминаний: {n}",
     refreshRecent: "Данные обновлялись в течение последнего часа, поэтому новый запрос не отправлен.",
+    refreshRecentUntil: "Данные свежие. Запросить снова можно после: {time}",
+    privacy: { unlisted: "по ссылке", private: "приватное" },
     refreshForbidden: "Запросить свежие данные может только редактор или владелец этого пространства.",
     questions: "Вопросы",
     topVideos: "Лучшие видео",

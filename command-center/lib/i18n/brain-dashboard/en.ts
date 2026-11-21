@@ -37,6 +37,8 @@ export const brainDashEn = {
     themesSource: "Grouped by Nightshift from viewers' comments.",
     mentions: "{n} mentions",
     refreshRecent: "These numbers were refreshed within the last hour, so nothing new was asked.",
+    refreshRecentUntil: "These numbers are fresh. You can ask again after: {time}",
+    privacy: { unlisted: "unlisted", private: "private" },
     refreshForbidden: "Only an editor or owner of this workspace can ask for fresh numbers.",
     questions: "Questions",
     topVideos: "Top videos",

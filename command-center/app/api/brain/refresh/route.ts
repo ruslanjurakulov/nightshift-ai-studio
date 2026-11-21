@@ -41,11 +41,16 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     if (error.code === "42501") return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
     return NextResponse.json({ error: "failed" }, { status: 502, headers: NO_STORE });
   }
-  const out = (data ?? {}) as { ok?: unknown; status?: unknown; error?: unknown };
-  if (out.ok === false)
+  const out = (data ?? {}) as { ok?: unknown; status?: unknown; error?: unknown; next_at?: unknown };
+  if (out.ok === false) {
+    // A draft channel (rule 7) has nothing to read yet: the remedy is connecting it, not waiting for tomorrow.
+    if (out.error === "not_connected") return NextResponse.json({ error: "not_connected" }, { status: 409, headers: NO_STORE });
     return NextResponse.json({ error: out.error === "daily_limit" ? "daily_limit" : "failed" }, { status: 429, headers: NO_STORE });
+  }
   const status = (STATUSES as readonly unknown[]).includes(out.status) ? (out.status as (typeof STATUSES)[number]) : null;
   if (!status) return NextResponse.json({ error: "failed" }, { status: 502, headers: NO_STORE });
-  return NextResponse.json({ status }, { headers: NO_STORE });
+  // "recent" names when a new refresh is allowed (S10); passed on only when it is a real timestamp.
+  const nextAt = status === "recent" && typeof out.next_at === "string" && !Number.isNaN(Date.parse(out.next_at)) ? out.next_at : null;
+  return NextResponse.json(nextAt ? { status, next_at: nextAt } : { status }, { headers: NO_STORE });
 });
 

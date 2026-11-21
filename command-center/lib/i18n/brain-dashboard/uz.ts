@@ -33,6 +33,8 @@ export const brainDashUz: BrainDashDictionary = {
     themesSource: "Nightshift tomoshabinlar izohlaridan guruhlagan.",
     mentions: "tilga olingan: {n}",
     refreshRecent: "Raqamlar soʻnggi bir soat ichida yangilangan, shuning uchun yangi soʻrov yuborilmadi.",
+    refreshRecentUntil: "Raqamlar yangi. Qayta soʻrash mumkin boʻlgan vaqt: {time}",
+    privacy: { unlisted: "havola orqali", private: "shaxsiy" },
     refreshForbidden: "Yangi raqamlarni faqat bu ish maydonining muharriri yoki egasi soʻrashi mumkin.",
     questions: "Savollar",
     topVideos: "Eng yaxshi videolar",

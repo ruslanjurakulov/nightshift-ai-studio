@@ -184,3 +184,24 @@ describe("YouTube Analytics' window", () => {
     expect(dataThroughDay(null)).toBeNull();
   });
 });
+
+describe("coerceChannel: the channel's own uploads", () => {
+  it("keeps privacy_status so a member sees which top video is private or unlisted; anything else is null", () => {
+    const own = {
+      status: "ok",
+      fetched_at: "2026-11-21T11:00:00Z",
+      data: {
+        channel: { title: "C" },
+        recent_videos: [
+          { video_id: "a", title: "A", view_count: 9, privacy_status: "private" },
+          { video_id: "b", title: "B", view_count: 5, privacy_status: "public" },
+          { video_id: "c", title: "C", view_count: 1, privacy_status: "secret" },
+        ],
+      },
+    };
+    const r = coerceChannel("ch", own, null);
+    expect(r.state).toBe("ok");
+    if (r.state !== "ok") return;
+    expect(r.topUploads.map((u) => [u.videoId, u.privacy])).toEqual([["a", "private"], ["b", "public"], ["c", null]]);
+  });
+});

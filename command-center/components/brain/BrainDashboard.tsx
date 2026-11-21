@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatNumber } from "@/lib/number-format";
-import { formatDay } from "@/lib/date-format";
+import { formatDay, formatDayTime } from "@/lib/date-format";
 import { pluralText, type PluralForms } from "@/lib/plural";
 import { StateBlock } from "@/components/states/StateBlock";
 import {
@@ -127,11 +127,12 @@ function Note({ tone = "muted", children }: { tone?: "muted" | "warn" | "fail"; 
 
 /** "Ask for fresh numbers": one request row (S10's research_request_refresh) and nothing else; the reading is the worker's. */
 function RefreshKey({ channelId, canRefresh }: { channelId: string; canRefresh: boolean }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const tc = t.brainDash.channel;
   const router = useRouter();
   const busy = useRef(false);
-  const [state, setState] = useState<"idle" | "busy" | "asked" | "recent" | "limit" | "forbidden" | "failed">("idle");
+  const [state, setState] = useState<"idle" | "busy" | "asked" | "recent" | "limit" | "forbidden" | "not_connected" | "failed">("idle");
+  const [nextAt, setNextAt] = useState<string | null>(null);
   async function ask() {
     if (busy.current) return;
     busy.current = true;
@@ -142,11 +143,15 @@ function RefreshKey({ channelId, canRefresh }: { channelId: string; canRefresh: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel_id: channelId }),
       });
-      const body = (await res.json().catch(() => ({}))) as { status?: string; error?: string };
+      const body = (await res.json().catch(() => ({}))) as { status?: string; error?: string; next_at?: string };
+      setNextAt(typeof body.next_at === "string" ? body.next_at : null);
       setState(
         res.ok
           ? body.status === "recent" ? "recent" : "asked"
-          : body.error === "daily_limit" ? "limit" : body.error === "forbidden" ? "forbidden" : "failed",
+          : body.error === "daily_limit" ? "limit"
+          : body.error === "forbidden" ? "forbidden"
+          : body.error === "not_connected" ? "not_connected"
+          : "failed",
       );
       if (res.ok) router.refresh();
     } catch {
@@ -158,11 +163,13 @@ function RefreshKey({ channelId, canRefresh }: { channelId: string; canRefresh: 
   // Below editor the route refuses (S10's 42501), so the key is not offered; the sentence says who can ask.
   if (!canRefresh) return <p className="m-0 text-xs text-[var(--color-muted)]">{tc.refreshForbidden}</p>;
   // A request is open (or the numbers are fresh): a second press would only return the same answer.
-  const settled = state === "asked" || state === "recent" || state === "limit" || state === "forbidden";
-  const bad = state === "failed" || state === "limit" || state === "forbidden";
+  const settled = state === "asked" || state === "recent" || state === "limit" || state === "forbidden" || state === "not_connected";
+  const bad = state === "failed" || state === "limit" || state === "forbidden" || state === "not_connected";
+  const next = nextAt && !Number.isNaN(Date.parse(nextAt)) ? formatDayTime(new Date(nextAt), locale) : null;
   const message =
     state === "asked" ? tc.refreshAsked
-    : state === "recent" ? tc.refreshRecent
+    : state === "recent" ? (next ? fmt(tc.refreshRecentUntil, { time: next }) : tc.refreshRecent)
+    : state === "not_connected" ? tc.notConnected
     : state === "limit" ? tc.budget
     : state === "forbidden" ? tc.refreshForbidden
     : state === "failed" ? tc.refreshFailed
@@ -263,7 +270,12 @@ function ChannelCard({ read, now, canRefresh }: { read: ChannelRead; now: number
                 {read.topUploads.map((v) => (
                   <li key={v.videoId} className="flex min-w-0 justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate" title={v.title ?? v.videoId}>{v.title ?? v.videoId}</span>
-                    <span className="shrink-0 tabular-nums text-[var(--color-muted)]">
+                    {v.privacy && v.privacy !== "public" ? (
+                      <span className="shrink-0 rounded-full border border-[var(--color-border)] px-1.5 text-[11px] text-[var(--color-muted)]" data-privacy={v.privacy}>
+                        {tc.privacy[v.privacy]}
+                      </span>
+                    ) : null}
+                    <span className="ml-auto shrink-0 tabular-nums text-[var(--color-muted)]">
                       {v.views === null ? td.unknown : viewsText(t.brainDash.projects.views, v.views, locale)}
                     </span>
                   </li>

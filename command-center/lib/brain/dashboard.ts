@@ -262,6 +262,8 @@ export interface ChannelUpload {
   title: string | null;
   publishedAt: string | null;
   views: number | null;
+  /** S10 lists the channel's own uploads, private and unlisted included; a member sees which is which. Null before that field. */
+  privacy: "public" | "unlisted" | "private" | null;
 }
 
 export interface ChannelTheme {
@@ -322,7 +324,9 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
   const uploads = firstArray(d, ["recent_videos"]).flatMap((u) => {
     const o = obj(u);
     const id = str(o?.video_id);
-    return o && id ? [{ videoId: id, title: str(o.title), publishedAt: str(o.published_at), views: num(o.view_count) }] : [];
+    const p = o?.privacy_status;
+    const privacy: ChannelUpload["privacy"] = p === "public" || p === "unlisted" || p === "private" ? p : null;
+    return o && id ? [{ videoId: id, title: str(o.title), publishedAt: str(o.published_at), views: num(o.view_count), privacy }] : [];
   });
   // The most-watched of the recent uploads first; an upload whose count is unknown goes last, never as 0.
   uploads.sort((a, b) => (b.views ?? -1) - (a.views ?? -1));
