@@ -169,6 +169,8 @@ export function StartBox({
       {START_TABS.map((k, i) => {
         const Icon = k === "create" ? Clapperboard : Wand2;
         const closed = tabClosed(k);
+        // Not on sale: not drawn at all (a tab that only says "Not available yet" is a dead end in front of a customer).
+        if (closed) return null;
         return (
           <button
             key={k}
@@ -263,6 +265,8 @@ export function StartBox({
             {MAKE_CHOICES.map((m, i) => {
               const Icon = MAKE_ICON[m];
               const closed = m !== "channel" && kindClosed(m);
+              // Nothing on sale for this kind: not drawn; the roving-focus skip below already steps over it.
+              if (closed) return null;
               return (
                 <button
                   key={m}

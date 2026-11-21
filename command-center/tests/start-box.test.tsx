@@ -513,32 +513,19 @@ describe("StartBox", () => {
     expect(chip.contains(reason)).toBe(false);
   });
 
-  it("a kind or the edit tab with nothing on sale says \"Not available yet\", does nothing, and the arrow keys step over it", () => {
+  it("a kind or the edit tab with nothing on sale is not drawn at all, and the arrow keys never land on a missing one", () => {
     draw(true, undefined, "en", { available: { video: true, image: false, audio: false, edit: false } });
-    for (const k of ["image", "audio"]) {
-      const chip = screen.getByTestId(`start-kind-${k}`);
-      expect(chip.getAttribute("aria-disabled")).toBe("true");
-      expect(chip.textContent).toContain(`· ${en.startBox.notYet}`);
-      fireEvent.click(chip);
-      expect(chip.getAttribute("aria-checked")).toBe("false");
-    }
-    const video = screen.getByTestId("start-kind-video");
-    expect(video.getAttribute("aria-disabled")).toBeNull();
-    fireEvent.keyDown(video, { key: "ArrowRight" });
+    for (const k of ["image", "audio"]) expect(screen.queryByTestId(`start-kind-${k}`)).toBeNull();
+    expect(screen.queryByTestId("start-tab-edit")).toBeNull();
+    expect(screen.getByTestId("start").textContent).not.toContain(en.startBox.notYet);
+    fireEvent.keyDown(screen.getByTestId("start-kind-video"), { key: "ArrowRight" });
     expect(document.activeElement).toBe(screen.getByTestId("start-format-channel"));
-    const edit = screen.getByTestId("start-tab-edit");
-    expect(edit.getAttribute("aria-disabled")).toBe("true");
-    expect(edit.textContent).toContain(en.startBox.notYet);
-    fireEvent.click(edit);
-    expect(edit.getAttribute("aria-selected")).toBe("false");
-    fireEvent.keyDown(screen.getByTestId("start-tab-create"), { key: "ArrowRight" });
-    expect(edit.getAttribute("aria-selected")).toBe("false");
   });
 
-  it("Video with nothing on sale: the box opens on the first kind that has something", () => {
+  it("Video with nothing on sale: the box opens on the first kind that has something, and Video is not drawn", () => {
     draw(true, undefined, "en", { available: { video: false, image: true, audio: null, edit: null } });
     expect(screen.getByTestId("start-kind-image").getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByTestId("start-kind-video").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("start-kind-video")).toBeNull();
   });
 
   it("unknown availability (null) keeps every choice usable and claims nothing", () => {
