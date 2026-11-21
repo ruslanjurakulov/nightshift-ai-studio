@@ -1,3 +1,5 @@
+import { ownerFactsEn } from "./facts-en";
+
 /** The Owner Console (/owner) and the account switcher (User / Owner). */
 export const ownerConsoleEn = {
   title: "Owner Console",
@@ -50,6 +52,7 @@ export const ownerConsoleEn = {
   needsMigration: "The Owner Console needs migration 0182 (owner analytics) on this database to confirm the owner. An administrator can apply it.",
   checkFailed: "Couldn't confirm your access just now. This is on our side.",
   retry: "Try again",
+  facts: ownerFactsEn,
   switcher: {
     title: "Switch account",
     user: "User",

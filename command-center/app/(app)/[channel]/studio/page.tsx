@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { NotConfigured } from "@/components/NotConfigured";
 import { StudioCanvas } from "@/components/studio-canvas/StudioCanvas";
 import { StudioTimeline } from "@/components/studio-timeline/StudioTimeline";
+import { LiveView } from "@/components/studio-live/LiveView";
 import { parseFilmId } from "@/lib/films";
 import { VideosShelf } from "@/components/studio-hub/VideosShelf";
 import { ProjectsShelf } from "@/components/studio-hub/ProjectsShelf";
@@ -48,6 +49,27 @@ export default async function StudioPage({
   const sp = await searchParams;
   if (sp.shelf !== undefined) return await ShelfView({ shelf: shelfFromQuery(sp.shelf) });
   if (!isSupabaseConfigured) return <NotConfigured />;
+  if (sp.view === "live") {
+    // The live view of one plan (S5's handoff opens it): a project (?film=) or a channel video run (?run=, a render_jobs id). It reads in
+    // the browser through the read-only live routes; the server only says whether projects are open for this viewer.
+    const filmStudio = await filmStudioOpen();
+    const film = parseFilmId(sp.film);
+    const run = typeof sp.run === "string" && /^[1-9][0-9]{0,14}$/.test(sp.run) ? sp.run : null;
+    // The Actions backend gives no run id: its run is the channel's events since the dispatch (/api/agent/run's dispatched_at).
+    // channels.channel_id is a slug (0001), not a uuid.
+    const channel = typeof sp.channel === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(sp.channel) ? sp.channel : null;
+    const since = typeof sp.since === "string" && Number.isFinite(Date.parse(sp.since)) ? sp.since : null;
+    const target = film
+      ? { kind: "film" as const, id: film }
+      : run
+        ? { kind: "run" as const, id: run }
+        : channel && since
+          ? { kind: "window" as const, channel, since, hold: typeof sp.hold === "string" && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(sp.hold) ? sp.hold : null }
+          : null;
+    // ?brain=<conversation> with no plan named: the conversation's brief as a draft, followed live once it is handed off.
+    const brain = !target && typeof sp.brain === "string" && /^[0-9a-f-]{36}$/i.test(sp.brain) ? sp.brain : null;
+    return <LiveView filmStudio={filmStudio} target={target} brain={brain} />;
+  }
   if (sp.view === "timeline") {
     // The Timeline reads one project through /api/films (RLS, film_json) in the browser; the server only says whether the section is
     // open for this viewer, so a switched-off workspace sees "not open yet" and no project is read at all.

@@ -22,6 +22,8 @@ name: Deploy web
 # Actions secrets (step "Build the worker env"; docs/DEPLOY_AX42.md, g).
 # While NIGHTSHIFT_CREATIVE_WORKER is `on` as well, it also starts the creative
 # worker (creative_jobs, migration 0036); otherwise that one is removed.
+# While NIGHTSHIFT_FILM_WORKER is `on` as well, it also starts the film worker
+# (Film Studio segments, migrations 0171 and 0198); otherwise that one is removed.
 # Two small workers have a switch and an env file each, and neither is the
 # pipeline worker's: while NIGHTSHIFT_NOTIFY_WORKER is `on` the customer
 # Telegram sender (notify-worker, /opt/nightshift/.env.notify, step "Build the
@@ -413,6 +415,11 @@ jobs:
           # on too), and a server still on the previous remote-deploy.sh
           # accepts it as a key of .env.worker.example at the deployed commit.
           WORKERENV_NIGHTSHIFT_CREATIVE_WORKER: ${{ vars.NIGHTSHIFT_CREATIVE_WORKER }}
+          # The film worker's switch (tools/film_worker.py): `on` = remote-deploy.sh starts or recreates
+          # film-worker, anything else = it is removed. A word, not a secret; the worker reads it as well.
+          WORKERENV_NIGHTSHIFT_FILM_WORKER: ${{ vars.NIGHTSHIFT_FILM_WORKER }}
+          # The film assembly's switch: off unless exactly `on`; without it the film worker claims nothing.
+          WORKERENV_NIGHTSHIFT_FILM_ASSEMBLY: ${{ vars.NIGHTSHIFT_FILM_ASSEMBLY }}
           # Models, hosts, per-run and per-day USD caps and unit prices: variables only
           # (deploy/.env.worker.example, "Models, hosts and caps" and "Spend").
           WORKERENV_GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
@@ -505,6 +512,7 @@ jobs:
           WORKERENV_CHRONOS_GEMINI_STRUCTURED_OUTPUT: ${{ vars.CHRONOS_GEMINI_STRUCTURED_OUTPUT }}
           WORKERENV_NIGHTSHIFT_AVATAR_CHARACTER_PROMPT: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_PROMPT }}
           WORKERENV_NIGHTSHIFT_AVATAR_CHARACTER_REF: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_REF }}
+          WORKERENV_NIGHTSHIFT_LIVE_EVENTS: ${{ vars.NIGHTSHIFT_LIVE_EVENTS }}
         run: python3 deploy/build-worker-env.py "$PAYLOAD"
 
       # The customer Telegram sender (docs/NOTIFY_TELEGRAM_SETUP.md), only while

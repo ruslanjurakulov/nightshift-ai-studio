@@ -137,12 +137,13 @@ ro'yxatdan o'tishda @username). Ishlashi uchun Supabase'da quyidagilar kerak:
 
 1. **Redirect URLs** (2-bo'lim) ro'yxatida `https://nightshift-ai.studio/auth/callback`
    bo'lishi shart — tiklash xati ham shu manzilga qaytadi (`?next=/reset-password`).
-2. **Authentication → Emails → Templates → Reset Password**: standart shablon
-   (`{{ .ConfirmationURL }}`) xatni **so'ragan brauzerda** ochilganda ishlaydi (PKCE).
-   Havola boshqa brauzerda (masalan telefonda) ochilishi uchun shablondagi havolani
-   `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
-   ga almashtiring: u holda sayt avval "Siz shu hisobmisiz?" qadamini ko'rsatadi
-   (birovning havolasi sizni uning hisobiga kiritib yubormaydi).
+2. **Authentication → Emails → Templates → Reset Password** (shuningdek Confirm signup va
+   Change Email): standart shablon `{{ .ConfirmationURL }}` qolsin. U PKCE bilan ishlaydi:
+   havola faqat xatni **so'ragan brauzerda** ochiladi, boshqa joyda ko'chirilgan havola hech
+   narsa bermaydi. ⚠️ Shablonni `token_hash` variantiga (`{{ .SiteURL }}/auth/callback?token_hash=…`)
+   **almashtirmang**: unda havolani ko'rgan har qanday odam istalgan brauzerda "Davom etish"ni
+   bosib sessiya oladi, tiklash havolasi bo'lsa esa hisobni egallab oladi (Breach, 21-noyabr).
+   Magic Link shablonida havola bo'lmasin (ilova magic link ishlatmaydi).
 3. **Authentication → Sign In / Providers → Email**: "Secure email change" **ON**
    (yangi email o'zgarishi eski va yangi manzilga yuborilgan havolalar ochilgandan
    keyingina kuchga kiradi); "Secure password change" ni **ON** qoldiring (parolni
