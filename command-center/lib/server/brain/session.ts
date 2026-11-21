@@ -13,7 +13,7 @@ export function brainJson(body: unknown, status = 200) {
 
 export const notFound = () => brainJson({ error: "not_found" }, 404);
 
-/** A refusal raised by 0197's functions (creative_refuse: the code is the message, the SQLSTATE NSxxx), named for the panel. */
+/** A refusal raised by 0209's functions (creative_refuse: the code is the message, the SQLSTATE NSxxx), named for the panel. */
 export function dbRefusal(error: { code?: string; message?: string; details?: string } | null) {
   if (!error) return null;
   if (error.code === "PGRST202" || error.code === "PGRST205" || error.code === "42P01" || error.code === "42883") return brainJson({ error: "not_enabled" }, 503);

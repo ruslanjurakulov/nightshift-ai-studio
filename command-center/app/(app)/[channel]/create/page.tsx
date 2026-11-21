@@ -17,6 +17,7 @@ import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
 import { cleanLinkWords, parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
+import { IDEA_PARAM } from "@/lib/site/idea-handoff";
 import { NONCE_RE } from "@/lib/site/pending-attachment";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
@@ -167,7 +168,9 @@ export default async function CreatePage({
   // Unreadable is unknown, never a zero; the operator's own organization is not charged.
   let credits: CreditsReading = { state: "unknown" };
   let projects: ProjectsReading = { state: "not_available" };
-  const createScreen = desk === "overview" && !pendingNonce && !frame;
+  // The landing's idea box kept the visitor's words in this browser (lib/site/idea-handoff.ts): the composer takes them once.
+  const ideaPickup = one(q[IDEA_PARAM]) === "1";
+  const createScreen = desk === "overview" && !pendingNonce && !ideaPickup && !frame;
   if (desk === "overview" && !createScreen && org.supported && org.current) {
     const orgId = org.current.id;
     const supabase = await createClient();
@@ -243,6 +246,7 @@ export default async function CreatePage({
           // The public home page's composer kept a file in this browser for this link (lib/site/pending-attachment.ts): the box asks
           // whether to use it. Its words are cleaned and bounded as any link's; the tool's own limit applies once the tool is known.
           pending={pendingNonce ? { nonce: pendingNonce, words: cleanLinkWords(one(q.prompt)) } : null}
+          idea={ideaPickup}
         />
       )}
       {desk === "effects" &&

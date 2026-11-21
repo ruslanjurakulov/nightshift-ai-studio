@@ -80,7 +80,7 @@ export interface Brief extends Partial<Omit<Scenario, "target_seconds">> {
   voice: { mode: "off" | "clip_audio" | "pipeline" };
   music: { mode: "off" };
   price?: BriefPrice;
-  // credit_ref and scene_map are read by the database from the job and the film (0197), never sent by the browser.
+  // credit_ref and scene_map are read by the database from the job and the film (0209), never sent by the browser.
   handoff: null | { kind: "film"; film_id: string; scene_map?: Record<string, string> }
     | { kind: "run"; channel_id: string; dispatched_at?: string; job_id?: string; credit_ref?: string };
 }
@@ -91,7 +91,7 @@ export const MAX_SCENARIOS = 3;
 export const MIN_SCENARIOS = 2;
 export const HISTORY_TURNS = 12;
 
-// Control characters, bidi overrides and isolates, zero-width marks, LRM/RLM/ALM and the BOM (Breach on 0197: these make a title,
+// Control characters, bidi overrides and isolates, zero-width marks, LRM/RLM/ALM and the BOM (Breach on 0209: these make a title,
 // a number or a URL read other than it is).
 const INVISIBLE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f؜​-‏\u2028\u2029‪-‮⁠-⁤⁦-⁩﻿]/g;
 

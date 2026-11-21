@@ -7,7 +7,6 @@ import type { PricingTeaser } from "@/lib/landing";
 import type { PriceRates } from "@/lib/site/price-check";
 import type { PublicModel } from "@/lib/public-models";
 import { posterSrcSet } from "@/lib/site/renditions";
-import { showcasePoster } from "@/lib/showcase/items";
 import { buttonClass } from "@/components/ds/button-class";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { MotionToggle } from "@/components/site/MotionToggle";
@@ -17,7 +16,8 @@ import { GoogleData } from "@/components/landing/Landing";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import type { PackExpiry } from "@/lib/plans";
 import { HERO_JOB, PIECE_SIZE, reelItem, studioPieces } from "@/components/landing/home/home-reel";
-import { StudioClip } from "@/components/site/StudioClip";
+import { StudioClip, TemplateClip } from "@/components/site/StudioClip";
+import { IdeaBox } from "@/components/landing/home/IdeaBox";
 import "@/components/landing/home/home.css";
 
 /** The hero picture's widths, as the browser should choose them: the whole screen. */
@@ -108,15 +108,10 @@ function Hero({ t }: { t: Dictionary }) {
           {h.title}
         </h1>
         <p className="hm-hero-lead">{h.lead}</p>
-        <div className="hm-hero-ctas">
-          <Link href="/signup" className={buttonClass({ variant: "primary", size: "lg" })}>
-            {h.primary}
-            <ArrowRight aria-hidden />
-          </Link>
-          <a href="#how" className={buttonClass({ variant: "secondary", size: "lg", className: "hm-ghost" })}>
-            {h.secondary}
-          </a>
-        </div>
+        <IdeaBox copy={h.idea} />
+        <a href="#how" className="hm-idea-more">
+          {h.secondary}
+        </a>
       </div>
       {item && (
         <p className="hm-hero-credit">
@@ -146,12 +141,12 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
         {pieces.map((p) => {
           const size = PIECE_SIZE[p.aspect];
           return (
-            <li key={p.slug} className="hm-reel-card" data-aspect={p.aspect} data-piece={p.slug}>
+            <li key={p.id} className="hm-reel-card" data-aspect={p.aspect} data-piece={p.id}>
               <figure>
                 <div className="hm-reel-pic" data-clip={p.kind === "video" ? "sample" : undefined}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={showcasePoster(p.slug)}
+                    src={p.poster}
                     width={size.width}
                     height={size.height}
                     alt={h.ai}
@@ -159,14 +154,16 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
                     decoding="async"
                     className="hm-reel-still"
                   />
-                  {p.kind === "video" && <StudioClip slug={p.slug} captionsLabel={h.captions} />}
+                  {p.kind === "video" && p.media.type === "studio" && <StudioClip slug={p.media.slug} captionsLabel={h.captions} />}
+                  {p.media.type === "sample" && <ShowcaseClip jobId={p.media.jobId} together />}
+                  {p.media.type === "template" && <TemplateClip slug={p.media.slug} />}
                   {/* The picture's description already says it is AI-generated; the badge is for the eye. */}
                   <span className="hm-badge hm-reel-badge" aria-hidden="true">
                     {h.ai}
                   </span>
                 </div>
                 <figcaption className="hm-reel-cap">
-                  <span className="hm-reel-title">{p.title[locale]}</span>
+                  <span className="hm-reel-title">{p.title ? p.title[locale] : h.reelTitles[p.titleKey as keyof typeof h.reelTitles]}</span>
                   <span className="hm-reel-credit">{credit(h, p.models)}</span>
                 </figcaption>
               </figure>

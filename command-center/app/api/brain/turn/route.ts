@@ -85,7 +85,7 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
       p_brief: extra?.brief ?? null, p_card: extra?.card ?? null,
     });
 
-  // From here a turn was taken: whatever happens, it ends with a recorded outcome (Lens on 0197: a throw left it pending forever).
+  // From here a turn was taken: whatever happens, it ends with a recorded outcome (Lens on 0209: a throw left it pending forever).
   try {
   const [ch, hist] = await Promise.all([
     s.channel_id ? channelOrg(supabase, s.channel_id) : Promise.resolve({ state: "none" as const }),
@@ -189,7 +189,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
 }
 
 export async function POST(request: Request) {
-  // Off is off: nothing is read, not even the session (Breach on 0197: a 401/403 would say the feature exists).
+  // Off is off: nothing is read, not even the session (Breach on 0209: a 401/403 would say the feature exists).
   if (aiChatMode(aiChatEnv()) === "off") return notFound();
   const cross = rejectCrossOrigin(request);
   if (cross) return cross;

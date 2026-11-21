@@ -27,7 +27,7 @@ vi.mock("next/link", () => ({
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { HomePage } from "@/components/landing/home/HomePage";
-import { HERO_JOB, reelItem, studioPieces } from "@/components/landing/home/home-reel";
+import { HERO_JOB, REEL, reelItem, studioPieces } from "@/components/landing/home/home-reel";
 import { SHOWCASE_ITEMS } from "@/lib/showcase/items";
 import { REGISTRY_NAMES } from "@/lib/creative/model-names";
 import { existsSync } from "node:fs";
@@ -67,9 +67,51 @@ describe("the landing's pictures are our own Studio's", () => {
     for (const id of it.modelIds) expect(REGISTRY_NAMES[id], `${id} is not a registry id`).toBeTruthy();
   });
 
-  it("the reel is every Studio piece, in the list's order, language-duo first", () => {
-    expect(studioPieces().map((p) => p.slug)).toEqual(SHOWCASE_ITEMS.map((x) => x.slug));
-    expect(studioPieces()[0].slug).toBe("language-duo");
+  it("every reel entry resolves to a piece: nothing in REEL is silently left out, none repeats, none is the hero", () => {
+    const pieces = studioPieces();
+    expect(pieces.length).toBe(REEL.length);
+    const ids = pieces.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).not.toContain(HERO_JOB);
+    expect(ids[0]).toBe("de53f364-eaf7-4cd1-8d44-7b56b21b03b6");
+    expect(pieces.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it.each(REEL.filter((r) => r.from === "sample").map((r) => [(r as { jobId: string }).jobId] as const))(
+    "sample %s is a real Studio job (lib/site/showcase.json) with its own small clip files and a registry-named model",
+    (jobId) => {
+      const e = SHOWCASE_ENTRIES.find((x) => x.jobId === jobId);
+      expect(e, "not in lib/site/showcase.json").toBeTruthy();
+      expect(e?.kind).toBe("video");
+      expect(SHOWCASE_FILES[jobId]?.clip, "not wired in showcase-assets.ts").toBeTruthy();
+      // The small renditions the reel plays (LoopClip together = the 640 files) and its small poster, on disk.
+      const dir = path.join(process.cwd(), "components/site/showcase", jobId);
+      for (const file of ["clip-sm.mp4", "clip-sm.webm", "poster-sm.webp"]) expect(existsSync(path.join(dir, file)), file).toBe(true);
+      expect(REGISTRY_NAMES[e!.modelId], `${e!.modelId} is not a registry id`).toBeTruthy();
+    },
+  );
+
+  it.each(REEL.filter((r) => r.from === "template").map((r) => [(r as { slug: string }).slug, r] as const))(
+    "template %s: its preview and poster ship (public/templates, the manifest) and the registry names its model",
+    (slug, r) => {
+      const root = process.cwd();
+      expect(existsSync(path.join(root, "public/templates", slug, "preview.mp4")), "preview").toBe(true);
+      expect(existsSync(path.join(root, "public/templates", slug, "poster.webp")), "poster").toBe(true);
+      const manifest = JSON.parse(readFileSync(path.join(root, "lib/templates/media-manifest.json"), "utf8"));
+      expect(manifest[slug]).toEqual({ preview: true, poster: true });
+      for (const id of (r as { modelIds: readonly string[] }).modelIds) expect(REGISTRY_NAMES[id], id).toBeTruthy();
+      // The model credited is the one the template seeds (0183/0186): its preview was made with the template's own model.
+      const seeds = ["0183_creative_templates.sql", "0186_viral_templates.sql"].map((m) => readFileSync(path.join(root, "..", "supabase", "migrations", m), "utf8")).join("\n");
+      const seed = seeds.slice(seeds.indexOf(`('${slug}',`), seeds.indexOf(`('${slug}',`) + 4000);
+      expect(seed).toContain(`'${(r as { modelIds: readonly string[] }).modelIds[0]}', '9:16'`);
+    },
+  );
+
+  it.each(LOCALES.map((l) => l.code))("%s: every reel title the data does not carry is in the dictionary, and no title is orphaned", (code) => {
+    const titles = dictionaries[code].landingHome.hero.reelTitles as Record<string, string>;
+    const keys = REEL.flatMap((r) => (r.from === "studio" ? [] : [r.key]));
+    for (const k of keys) expect(titles[k]?.trim(), `${code}.${k}`).toBeTruthy();
+    expect(Object.keys(titles).sort()).toEqual([...keys].sort());
   });
 
   it("imports no stock clip (components/site/clip-assets.ts is Pexels footage)", () => {
@@ -85,22 +127,25 @@ describe("the landing's pictures are our own Studio's", () => {
   it.each(LOCALES.map((l) => l.code))("%s: every piece is labelled AI-generated and credits the model that made it", (code) => {
     const { container } = page(code);
     const h = dictionaries[code].landingHome.hero;
+    const pieces = studioPieces();
     const cards = [...container.querySelectorAll(".hm-reel-card")] as HTMLElement[];
-    expect(cards.length).toBe(SHOWCASE_ITEMS.length);
+    expect(cards.length).toBe(pieces.length);
     cards.forEach((card, i) => {
-      const it = SHOWCASE_ITEMS[i];
-      expect(card.dataset.piece).toBe(it.slug);
+      const p = pieces[i];
+      expect(card.dataset.piece).toBe(p.id);
       expect(within(card).getByText(h.ai)).toBeTruthy();
       const credit = card.querySelector(".hm-reel-credit")?.textContent ?? "";
-      for (const id of it.modelIds) expect(credit).toContain(REGISTRY_NAMES[id]);
+      for (const m of p.models) expect(credit).toContain(m);
       expect(credit.startsWith(h.credit.split("{model}")[0])).toBe(true);
-      expect(card.querySelector(".hm-reel-title")?.textContent).toBe(it.title[code]);
+      const title = p.title ? p.title[code] : (h.reelTitles as Record<string, string>)[p.titleKey!];
+      expect(card.querySelector(".hm-reel-title")?.textContent).toBe(title);
       const img = card.querySelector("img") as HTMLImageElement;
-      expect(img.getAttribute("src")).toBe(`/showcase/${it.slug}.webp`);
+      // (jsdom's image imports carry no URL, so a sample's poster is checked on disk above, not here.)
+      if (p.media.type !== "sample") expect(img.getAttribute("src")).toBe(p.poster);
       expect(img.getAttribute("loading")).toBe("lazy");
       // The figcaption carries the title; the picture says only what the eye gets from the badge, so nothing is read twice.
       expect(img.getAttribute("alt")).toBe(h.ai);
-      expect(card.querySelector("[data-clip]") !== null).toBe(it.kind === "video");
+      expect(card.querySelector("[data-clip]") !== null).toBe(p.kind === "video");
     });
   });
 
@@ -119,17 +164,20 @@ describe("the landing's pictures are our own Studio's", () => {
   it("no clip is drawn while motion is not allowed (jsdom has no matchMedia): the poster is the picture", () => {
     const { container } = page("en");
     expect(container.querySelectorAll(".hm-reel-card video").length).toBe(0);
-    expect(container.querySelectorAll(".hm-reel-card img").length).toBe(SHOWCASE_ITEMS.length);
+    expect(container.querySelectorAll(".hm-reel-card img").length).toBe(studioPieces().length);
   });
 });
 
 describe("the hero", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, with both calls to action", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, then the idea box and the way to how it works", (code) => {
     const { container } = page(code);
     const h = dictionaries[code].landingHome.hero;
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(h.title);
     const hero = within(container.querySelector(".hm-hero") as HTMLElement);
-    expect(hero.getByRole("link", { name: new RegExp(h.primary) }).getAttribute("href")).toBe("/signup");
+    // The idea box is the first call to action: a labelled field and one button, in the visitor's language.
+    expect(hero.getByLabelText(h.idea.label).tagName).toBe("TEXTAREA");
+    expect(hero.getByRole("button", { name: new RegExp(h.idea.submit) })).toBeTruthy();
+    expect(hero.getByText(h.idea.note)).toBeTruthy();
     expect(hero.getByRole("link", { name: h.secondary }).getAttribute("href")).toBe("#how");
   });
 

@@ -235,6 +235,9 @@ export function mapRegenError(error: DbError): { status: number; body: Record<st
     return { status: 409, body: { error: "price_required", credits: detailNumber(error.details, "credits") } };
   if (code === "22023" && ["invalid_scene", "invalid_source", "invalid_prompt", "invalid_idempotency_key"].includes(msg))
     return { status: 400, body: { error: msg } };
+  // The render_jobs run gate's words (0192/0196), named rather than "failed": the repair's run uses Gemini, whose terms are 18+.
+  if (msg === "adult_attestation_required") return { status: 428, body: { error: msg } };
+  if (msg === "adult_only_service") return { status: 403, body: { error: msg } };
   if (code === "42P01" || code === "42883" || code === "PGRST202" || code === "PGRST205" || /does not exist|could not find/i.test(msg))
     return { status: 503, body: { error: "regen_unavailable" } };
   return { status: 502, body: { error: "regen_failed" } };
@@ -280,6 +283,10 @@ export function regenErrorText(body: Record<string, unknown> | null, t: T): stri
       return t.errors.invalidPrompt;
     case "regen_unavailable":
       return t.errors.notInstalled;
+    case "adult_attestation_required":
+      return t.errors.adultRequired;
+    case "adult_only_service":
+      return t.errors.adultOnly;
     default:
       return t.errors.failed;
   }

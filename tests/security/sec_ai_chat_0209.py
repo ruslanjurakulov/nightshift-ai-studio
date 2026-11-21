@@ -1,4 +1,4 @@
-"""Security-lab contract and seed for migration 0197 (Nightshift AI / Nightshift Brain).
+"""Security-lab contract and seed for migration 0209 (Nightshift AI / Nightshift Brain).
 
 Alice and Bob each own one conversation with one message. The lab's workspaces are on the free plan, which has no Nightshift AI, so
 the seed writes them as the database owner (the only shortcut taken); test_sec_ai_chat.py grants a plan cap inside its own rolled-back

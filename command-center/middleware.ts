@@ -22,6 +22,7 @@ import {
   isWelcomePath,
 } from "@/lib/public-paths";
 import { authorizeReturnPath } from "@/lib/oauth/authorize";
+import { studioNext } from "@/lib/safe-redirect";
 import { hardenSessionCookie } from "@/lib/supabase/cookie-options";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
@@ -280,7 +281,12 @@ async function gate(request: NextRequest): Promise<NextResponse> {
     if (decision === "to-login" && request.nextUrl.pathname === "/oauth/authorize") {
       url.search = `?next=${encodeURIComponent(authorizeReturnPath(request.nextUrl.search))}`;
     }
-    const redirect = NextResponse.redirect(url);
+    // Signed in on /login or /signup with a Studio form to come back to (the landing's idea box, a sample's "Try this prompt"):
+    // the static landing cannot know who is signed in, so it always links through sign-up, and "/" would lose the form. Only the
+    // one Studio shape sign-up itself carries passes (lib/safe-redirect.ts studioNext), so this is no open redirect; the Studio
+    // URL then goes through this gate, the second-factor check included, like any other.
+    const studioBack = decision === "to-home" ? studioNext(request.nextUrl.searchParams.get("next")) : null;
+    const redirect = NextResponse.redirect(studioBack ? new URL(studioBack, request.nextUrl.origin) : url);
     // An API-shaped URL is answered by how it was asked for (above), so its redirect varies the same way.
     if (apiPath) redirect.headers.set("Vary", VARY_FETCH);
     return redirect;

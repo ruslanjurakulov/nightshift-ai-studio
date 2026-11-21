@@ -60,10 +60,12 @@ describe("the SQL this is a port of", () => {
   const latest = files.filter((f) => readFileSync(join(dir, f), "utf8").includes("create or replace function public.route_model(")).at(-1)!;
   const sql = readFileSync(join(dir, latest), "utf8").replace(/\s+/g, " ");
 
-  it("is still migration 0075's route_model (as 0192 re-states it, the 18+ exclusion added), with the order this port copies", () => {
-    // 0192 replaced the body with 0075's plus marked blocks that skip an adult-only candidate; the order is unchanged.
-    expect(latest).toBe("0192_adult_attestation.sql");
+  it("is still migration 0075's route_model (as 0192 and 0196 re-state it, the 18+ exclusion added), with the order this port copies", () => {
+    // 0192 replaced the body with 0075's plus marked blocks that skip an adult-only candidate, and 0196 added only the count of
+    // those it skipped (adult_skipped) to the answer; the order is unchanged.
+    expect(latest).toBe("0196_adult_attestation_google_runs.sql");
     expect(sql).toContain("if public.adult_attestation_missing(auth.uid(), m) then");
+    expect(sql).toContain("'adult_skipped', adult_skipped,");
     for (const piece of [
       "order by x.k1, x.k2, x.k3, x.k4, x.e ->> 'model'",
       "case md when 'cheap' then (e ->> 'credits')::numeric when 'fast' then -(e ->> 'speed_tier')::numeric when 'quality' then -(e ->> 'quality_tier')::numeric else case when (e ->> 'quality_tier')::numeric >= 4 then 0 else 1 end end as k1",

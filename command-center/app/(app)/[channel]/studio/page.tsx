@@ -86,7 +86,7 @@ export default async function StudioPage({
       filmStudio={filmStudio}
     />
   );
-  // Nightshift AI (0197, docs/studio/NIGHTSHIFT_AI.md): docked on the left of the canvas, only where NIGHTSHIFT_AI_CHAT opens it.
+  // Nightshift AI (0209, docs/studio/NIGHTSHIFT_AI.md): docked on the left of the canvas, only where NIGHTSHIFT_AI_CHAT opens it.
   if (!orgId || !aiChatOpenFor(orgId, aiChatEnv())) return canvas;
   const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
   const brain = one(sp.brain);

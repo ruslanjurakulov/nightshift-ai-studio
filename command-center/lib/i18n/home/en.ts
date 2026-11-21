@@ -19,12 +19,36 @@ export const homeEn = {
     lead: "Write an idea. Nightshift turns it into pictures, clips, voice and a finished video, with the price on the button before anything starts.",
     primary: "Start creating",
     secondary: "See how it works",
+    /** The "Write your idea" box (components/landing/home/IdeaBox.tsx). Nothing runs before the person presses send in the Studio. */
+    idea: {
+      label: "Your idea",
+      placeholder: "A 60-second video about the night markets of Samarkand, told by a calm narrator",
+      submit: "Bring it to the Studio",
+      note: "Nothing runs and nothing is charged here. Once you are signed in, your idea waits in the Studio and you press send yourself.",
+      empty: "Write a few words first.",
+      /** {n} characters of {max}: shown only near the limit. */
+      count: "{n} of {max}",
+    },
     reelLabel: "Made in Nightshift Studio",
     reelNote: "Every piece here was made in our own Studio, with the models that made it named under it.",
     /** Joins the last two model names in a credit: "Ideogram 4.5 and MiniMax H3". */
     and: "and",
     /** {model}: the registry display name of the model that made the piece (lib/creative/model-names.ts). */
     credit: "Made with {model} in Nightshift Studio",
+    /** The reel's titles for pieces whose data carries none (components/landing/home/home-reel.ts REEL keys). */
+    reelTitles: {
+      whaleCity: "A whale over the city at sunset",
+      lighthouse: "A storm wave hits the lighthouse",
+      snowGlobe: "A neon city in a snow globe",
+      giantSneaker: "A giant sneaker lands in the rain",
+      oldCity: "An old city at golden hour",
+      coastRoad: "A road along the ocean cliffs",
+      scaleShock: "Something enormous beneath the boat",
+      drones: "Drones over a neon highway",
+      stormJar: "A storm in a jar",
+      samarkand: "Samarkand, from the sky to the table",
+      aboveClouds: "Sunrise above the clouds",
+    },
     /** The captions track's name (language-duo's spoken lines are English). */
     captions: "English",
     ai: "AI-generated",

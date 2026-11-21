@@ -54,6 +54,30 @@ import { isTtsModel, isVoiceId } from "./ttsModels";
 export { IMAGE_PROVIDERS };
 
 /**
+ * Which stages of a video run go to Google, whose terms are 18+ (migration 0196). THE SAME RULE as the database's
+ * render_run_google_stages(kind, params), which the render_jobs run gate reads; this copy is for the Actions dispatch, which
+ * writes no row (tests/test_adult_attestation_google_runs_migration.py pins that both name the same providers).
+ *  - text: every daily run and series plan. The pipeline's only text client is Gemini (modules/gemini_client.py; config.py
+ *    GEMINI_MODEL and its GEMINI_MODEL_* stage variables), and no channel or run field picks another.
+ *  - video: params.video_provider "veo"; image: params.image_provider "nano-banana".
+ *  - a repair re-renders with the scene's own generator, not read here: counted as Google (fails closed).
+ * The runner's footage defaults (CHRONOS_VIDEO_PROVIDER / CHRONOS_IMAGE_PROVIDER) cannot change the verdict: text is Google on
+ * every run.
+ */
+export const GOOGLE_VIDEO_PROVIDERS = ["veo"] as const;
+export const GOOGLE_IMAGE_PROVIDERS = ["nano-banana"] as const;
+export type GoogleStage = "text" | "repair" | "unknown" | "video" | "image";
+export function runGoogleStages(kind: string, params: Record<string, unknown>): GoogleStage[] {
+  const out: GoogleStage[] = [kind === "daily" || kind === "series_plan" ? "text" : kind === "repair" ? "repair" : "unknown"];
+  const odd = (v: unknown) => v !== undefined && v !== null && typeof v !== "string";
+  const v = params.video_provider;
+  const i = params.image_provider;
+  if ((typeof v === "string" && (GOOGLE_VIDEO_PROVIDERS as readonly string[]).includes(v)) || odd(v)) out.push("video");
+  if ((typeof i === "string" && (GOOGLE_IMAGE_PROVIDERS as readonly string[]).includes(i)) || odd(i)) out.push("image");
+  return out;
+}
+
+/**
  * The render_jobs row for a "Run now" in queue mode: exactly the inputs the
  * Actions dispatch forwards, trimmed and capped the same way, and nothing else.
  *

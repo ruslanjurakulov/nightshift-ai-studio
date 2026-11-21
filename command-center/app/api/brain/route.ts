@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       return q.order("updated_at", { ascending: false }).limit(1);
     })(),
     requireOrgRole({ orgId }, "editor"),
-    // Run now is an admin's act: a long plan's hand-off says so to anyone else (Lens on 0197: a dead end otherwise).
+    // Run now is an admin's act: a long plan's hand-off says so to anyone else (Lens on 0209: a dead end otherwise).
     requireOrgRole({ orgId }, "admin"),
   ]);
   if (sessions.error) return dbRefusal(sessions.error) ?? brainJson({ error: "unavailable" }, 503);

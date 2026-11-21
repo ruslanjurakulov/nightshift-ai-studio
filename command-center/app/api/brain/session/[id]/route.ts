@@ -22,7 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .select("id,org_id,channel_id,step,slots,brief,card,handoff,updated_at").eq("id", id).maybeSingle();
   if (error) return brainJson({ error: "unavailable" }, 503);
   if (!s || !aiChatOpenFor(s.org_id, aiChatEnv())) return notFound();
-  // The newest 200, in order (Lens on 0197: oldest-first dropped the latest turns). A failed read is an error, never "empty".
+  // The newest 200, in order (Lens on 0209: oldest-first dropped the latest turns). A failed read is an error, never "empty".
   const m = await supabase.from("ai_chat_messages").select("id,role,content,payload,created_at").eq("session_id", id)
     .order("id", { ascending: false }).limit(200);
   if (m.error) return brainJson({ error: "unavailable" }, 503);
