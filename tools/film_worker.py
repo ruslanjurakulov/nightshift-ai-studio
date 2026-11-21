@@ -7,7 +7,12 @@
 What one segment does is ``modules/film_orchestrator.py``. This file wires it up:
 
 * OFF unless ``NIGHTSHIFT_FILM_WORKER=on`` in this process's environment: anything else (empty, off, a typo) claims nothing and
-  sweeps nothing, and the loop only waits for a stop. The database has its own two switches as well (0171's platform switch and 0198's
+  sweeps nothing, and the loop only waits for a stop;
+* and it CLAIMS nothing unless the assembly can run too: ``NIGHTSHIFT_FILM_ASSEMBLY=on`` and ``modules.film_assembly`` importable. A
+  segment claimed without them would have its takes made and charged, then wait for an assembly that cannot happen until its leases
+  run out and 0171 settles it as worker_lost: a customer charged for takes that never became a film. So it fails early (CLAUDE.md
+  #6): one line names what is missing, and the worker only sweeps. A queued segment is never claimed, so the sweep's unclaimed-hours
+  rule settles it at 0 and its hold goes back; The database has its own two switches as well (0171's platform switch and 0198's
   per organization), both off by default; this flag only decides whether this process works at all;
 * the service key comes from the env file (``SUPABASE_URL`` / ``SUPABASE_SERVICE_KEY``), never a flag, and is never printed;
 * the provider adapters are the creative worker's (``NIGHTSHIFT_CREATIVE_ADAPTERS``, ``module:function``): the same resolver, so a take
@@ -25,6 +30,7 @@ SIGTERM (``docker stop``) stops between calls: a take waiting on its provider le
 from __future__ import annotations
 
 import argparse
+import importlib
 import logging
 import os
 import signal
@@ -43,6 +49,7 @@ from modules import film_orchestrator as fo  # noqa: E402
 logger = logging.getLogger("film_worker")
 
 FLAG = "NIGHTSHIFT_FILM_WORKER"
+ASSEMBLY_FLAG = fo.ASSEMBLY_FLAG
 #: 0171's switch-on gate: the sweep runs at least every 15 minutes.
 MAX_EXPIRE_EVERY_SECONDS = 900
 DEFAULT_EXPIRE_EVERY_SECONDS = 300
@@ -53,6 +60,22 @@ IDLE_MAX_SECONDS = 60.0
 def enabled(env: Mapping[str, str]) -> bool:
     """Exactly ``on`` (as every other worker switch here): anything else is off, never a quiet guess."""
     return str(env.get(FLAG, "") or "").strip() == "on"
+
+
+def assembly_missing(env: Mapping[str, str]) -> Optional[str]:
+    """Why no segment may be claimed here, or None: the assembly's switch and the assembly session's module, both needed to finish a
+    film this worker would start."""
+    if str(env.get(ASSEMBLY_FLAG, "") or "").strip() != "on":
+        return f"{ASSEMBLY_FLAG} is not 'on'"
+    try:
+        importlib.import_module("modules.film_assembly")
+    except ModuleNotFoundError as e:
+        if e.name == "modules.film_assembly":
+            return "modules.film_assembly is not installed"
+        return f"modules.film_assembly does not import ({type(e).__name__})"
+    except Exception as e:  # noqa: BLE001 — any import failure means the assembly cannot run
+        return f"modules.film_assembly does not import ({type(e).__name__})"
+    return None
 
 
 def make_scrubber(env) -> Callable[[str], str]:
@@ -123,6 +146,15 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
     if not url or not key:
         logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in the worker's env file: the film segments live in Supabase")
         return 2
+    missing = assembly_missing(env)
+    if missing:
+        # Claims nothing; still sweeps, so a segment that waits is settled (at 0 when it never ran) and its hold released.
+        logger.warning("%s: no film segment is claimed until the assembly can run; only the sweep runs", missing)
+        db = make_db(url, key)
+        sweep_once(db)
+        if not args.once:
+            sweeper(db, stop, expire_every(env))
+        return 0
     spec = str(env.get(cw.ADAPTERS_ENV, "") or "").strip()
     if not spec:
         logger.error("%s is not set: no provider adapters, so no take could be made; nothing is claimed", cw.ADAPTERS_ENV)

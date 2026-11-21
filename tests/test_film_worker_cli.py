@@ -43,12 +43,12 @@ class FakeOrch:
 class Cli(unittest.TestCase):
     def env(self, **over):
         self.tmp = tempfile.TemporaryDirectory()
-        base = {"NIGHTSHIFT_FILM_WORKER": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": KEY,
+        base = {"NIGHTSHIFT_FILM_WORKER": "on", "NIGHTSHIFT_FILM_ASSEMBLY": "on", "SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SERVICE_KEY": KEY,
                 "NIGHTSHIFT_CREATIVE_ADAPTERS": "tests.test_film_worker_cli:resolver", "NIGHTSHIFT_MEDIA_DIR": self.tmp.name}
         base.update(over)
         return {k: v for k, v in base.items() if v is not None}
 
-    def run_main(self, env, **kw):
+    def run_main(self, env, assembly=True, **kw):
         made = []
 
         def make_db(url, key):
@@ -56,8 +56,18 @@ class Cli(unittest.TestCase):
             made.append(db)
             return db
 
+        real_import = fw.importlib.import_module
+
+        def imp(name, *a, **k):
+            if name == "modules.film_assembly":
+                if not assembly:
+                    raise ModuleNotFoundError("No module named 'modules.film_assembly'", name="modules.film_assembly")
+                return object()
+            return real_import(name, *a, **k)
+
         with self.assertLogs("film_worker", level=logging.INFO) as logs, \
-                mock.patch("modules.media_library.find_tools", return_value=object()):
+                mock.patch("modules.media_library.find_tools", return_value=object()), \
+                mock.patch.object(fw.importlib, "import_module", side_effect=imp):
             rc = fw.main(["--once", "--worker-id", "w-test"], env, make_db=make_db,
                          make_orchestrator=lambda db, *a, **k: FakeOrch(db), stop=threading.Event(), **kw)
         return rc, made, "\n".join(logs.output)
@@ -80,7 +90,8 @@ class Cli(unittest.TestCase):
 
     def test_without_ffmpeg_nothing_is_claimed(self):
         with self.assertLogs("film_worker", level=logging.INFO) as logs, \
-                mock.patch("modules.media_library.find_tools", return_value=None):
+                mock.patch("modules.media_library.find_tools", return_value=None), \
+                mock.patch.object(fw, "assembly_missing", return_value=None):
             rc = fw.main(["--once"], self.env(), make_db=lambda u, k: self.fail("no db without ffmpeg"),
                          make_orchestrator=lambda *a, **k: None, stop=threading.Event())
         self.assertEqual(rc, 2)
@@ -91,6 +102,19 @@ class Cli(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(made[0].calls, ["expire", "claim"])
         self.assertNotIn(KEY, out)
+
+    def test_with_the_assembly_switched_off_nothing_is_claimed_and_only_the_sweep_runs(self):
+        for value in (None, "", "off", "ON"):
+            rc, made, out = self.run_main(self.env(NIGHTSHIFT_FILM_ASSEMBLY=value))
+            self.assertEqual(rc, 0, value)
+            self.assertEqual(made[0].calls, ["expire"], value)  # never film_claim_segment
+            self.assertIn("NIGHTSHIFT_FILM_ASSEMBLY is not 'on'", out)
+            self.assertNotIn(KEY, out)
+
+    def test_without_the_assembly_module_nothing_is_claimed(self):
+        rc, made, out = self.run_main(self.env(), assembly=False)
+        self.assertEqual((rc, made[0].calls), (0, ["expire"]))
+        self.assertIn("modules.film_assembly is not installed", out)
 
     def test_the_sweep_runs_at_least_every_fifteen_minutes(self):
         self.assertEqual(fw.expire_every({}), 300)

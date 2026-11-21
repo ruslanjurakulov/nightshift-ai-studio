@@ -636,6 +636,22 @@ class Assembly(unittest.TestCase):
         self.assertEqual(h.db.count("settle"), 0)
         self.assertEqual(h.assembled, [])
 
+    def test_a_claimed_segment_whose_assembly_switch_flips_off_mid_run_follows_the_existing_path(self):
+        env = {"NIGHTSHIFT_FILM_ASSEMBLY": "on"}
+        h = Harness(env=env)
+        orig = h.db.begin_take
+
+        def begin(take, worker):
+            out = orig(take, worker)
+            env["NIGHTSHIFT_FILM_ASSEMBLY"] = "off"  # turned off while the takes run
+            return out
+
+        h.db.begin_take = begin
+        out = h.run()
+        self.assertEqual((out.result, out.reason), ("left", "assembly_switched_off"))
+        self.assertTrue(all(t["status"] == "completed" for t in h.db.takes_))
+        self.assertEqual((h.db.count("begin_assembly"), h.db.count("settle")), (0, 0))
+
     def test_an_assembly_that_says_it_is_disabled_is_not_settled(self):
         class AssemblyDisabled(RuntimeError):
             pass

@@ -98,6 +98,11 @@ pay everything), `segment_skipped` (a segment the claim or the sweep could not t
 
 ### The assembly handoff
 
+**Both switches, or no claim.** `tools/film_worker.py` claims a segment only while `NIGHTSHIFT_FILM_WORKER=on` **and**
+`NIGHTSHIFT_FILM_ASSEMBLY=on` **and** `modules.film_assembly` imports. Otherwise it logs one line naming what is missing and only
+runs `film_expire_segments`: a queued film is never claimed, so its hold is never started, and the sweep settles it at 0 after 3
+hours (`worker_unavailable`, back to draft). The checks below are the same rule again, for a segment claimed before a switch moved.
+
 1. When every take is completed and at least one clip exists, the worker decides, in this order:
    - `modules.film_assembly` is **not installed** on the worker: it calls `film_begin_assembly`, records the assembly as failed
      (`film_record_assembly(segment, worker, false, null)`) and settles with `assembly_unavailable`.
