@@ -90,6 +90,66 @@ Copy: every string in `lib/i18n/{en,ru,uz}.ts` (CLAUDE.md), grouped in a new `li
 does for `ai-chat`. Op summaries are built from templates plus validated parameters, never from model text. Russian and
 Uzbek run longer; layout is tested at 390 px in uz.
 
+## 2b. Studio layout: cards above, one long video stream below
+
+Owner decision. **Top:** the canvas of cards connected by threads, which is the live graph (`lib/studio/liveGraph.ts`)
+together with the canvas editor's per-node generations (`lib/studio/canvas.ts`, `components/studio-canvas/nodeState.ts`).
+**Bottom:** one long horizontal video stream, which is the project's editor document (`modules/timeline.py`). It stays
+docked under the canvas at all times. At 390 px it sits below the list of cards.
+
+**"+" on a card.** Every card that holds a picture, clip or video, and the latest video, shows a small "+". Pressing it
+creates a new card, wired to the parent by a thread. The new card offers:
+- the type: image, video, voice or music;
+- the model: only models that are on sale. The source is `sellable_models(capability, 'web')` through
+  `lib/creative/registry.ts`. The `public_models_on_sale()` function (0193) is not usable here: it returns display names
+  only, with no id, and is meant for the signed-out landing page.
+- a prompt or topic;
+- an optional reference, which is the parent card's output;
+- the aspect and length.
+
+The card shows the server's quote. The person presses Generate, and the existing creative-job path runs: quote, then
+`create_creative_job` with `max_credits` and an idempotency key, then the hold, then capture on success or release on
+failure. Nothing is spent from the browser.
+
+**The ready video joins the end of the stream.** At Generate, the server records an `append_clip` op in the state
+`waiting_job`, bound to that job's id. `append_clip` is free and can be undone. When the job succeeds, the op becomes
+`ready`. A ready op is applied by `apply_ready_appends(project)`. It runs under the project's row lock with 0054's save
+rules, as the person, on the panel's next read (while the canvas is open, every 6 s, as `useLiveGraph.ts:20` polls).
+- The clip goes at the end of the V track, from 0 to the asset's measured length. A file with no measured length is
+  refused with a reason, never placed with a guessed length (rule 5).
+- No database trigger edits the document. A failed edit inside a trigger would roll back the job's own finish.
+- So "automatically" means: on the next open of the project. When the canvas is closed at that moment, the Activity line
+  says "added when you opened the project".
+
+**Images, order and the log.** An image becomes a still clip only when the person drags it to the stream or presses "Add
+to stream". Dragging a clip to a new place in the stream is a `reorder` op. Every append and every move is a line in the
+Activity log, with its own Undo (§3, §5).
+
+**Nightshift AI.** On a request such as "add a 5 s drone shot after scene 3", the AI proposes the new card or cards and an
+`append_clip` op with `after_clip_id`. Cards that spend still need the person's Generate press (§4).
+
+**What exists on main, and what is new.**
+
+| Part | On main | Evidence |
+| :-- | :-- | :-- |
+| Live graph and the read-only live view, with "Open in Timeline" on the final card | yes | `lib/studio/liveGraph.ts`, `components/studio-live/LiveView.tsx:357-363` |
+| A "+" on a card's output that opens the next steps and gives the card a composer with the backend quote, hold and idempotent create | yes | `components/studio-canvas/QuickAdd.tsx:1-30` (the composer is `GeneratePanel`) |
+| Card kinds | partly | the kinds are `prompt, image, video, animate, effects, enhance, voice, asset` (`canvas.ts:19-22`). **There is no `music` kind**: it is new, on top of the existing `music` capability |
+| Saving the canvas | browser only | the layout is in localStorage "until a studio_layouts table exists" (`canvas.ts:314-319`). **New**: a stored link from a canvas to its editor project |
+| Studio Timeline for films (lanes built from `film_json`, plus Assemble) | yes | `components/studio-timeline/StudioTimeline.tsx`, `AssemblePanel.tsx` |
+| Editor timeline strip, export and "Open in editor" | yes | `components/editor/TimelineStrip.tsx`, `TimelineEditor.tsx`, 0054/0132/0136, `SendToEditor.tsx` |
+| The docked stream under the canvas, bound to `editor_projects` | **new** | for a film, the first stream can be seeded from `film_timeline.build_cut`, which already outputs an editor document (`modules/film_timeline.py:1-10`). That this seeding works end to end is **UNVERIFIED** |
+| `append_clip`, `apply_ready_appends`, drag-to-reorder recorded as ops, cards proposed by the AI | **new** | §3, §6 |
+
+**Size and phase.** This is the core interaction, so it is recommended as **P0**, ahead of smart captions. It splits into
+three PRs:
+- the docked stream and the canvas-to-project link (M);
+- `append_clip` with the job binding, plus drag-to-reorder as ops (M);
+- the `music` card kind (S).
+
+The AI-proposed cards come in P3. Whether the existing strip component can be reused inside the canvas layout without a
+rewrite is **UNVERIFIED** (Pixel and Forge to check).
+
 ## 3. The edit-operation model (`edit_ops`, version 1)
 
 A closed, versioned list. An unknown `type`, an unknown field or an out-of-range value is refused, never coerced. Every op
@@ -109,6 +169,7 @@ on media-worker). There is no second renderer.
 | `remove_pauses` | `min_gap_s 0.2-3, keep_s 0.05-0.3, source: transcript/audio, range?` | `transcript` needs a word track; `audio` uses the existing browser analyser (`editorSilence.ts`) | no | a list of cuts, each one toggleable | inverse of the cuts kept |
 | `remove_breaths` | as above | **breath detection is not built**: today this is "quiet below threshold" only, and the card says so | no | cuts | inverse |
 | `reorder` | `clip_id, to_index` | V track only | no | clip order | inverse |
+| `append_clip` | `asset_id, after_clip_id?, creative_job_id?` | the org's live video (or still) with a measured length; waits on its job when given (§2b) | no | V clip at the end, or after the named clip | inverse |
 | `place_broll` | `asset_id, at_s, duration_s, fit` | the org's live video/image (0054 check); ≤ 4 overlay videos | no | full-frame overlay, original sound kept | inverse |
 | `generate_broll` | `prompt ≤ 2000, duration_s, aspect, model_id?` | model on sale (`sellable_models`), never replaced | **yes** (t2v/i2v creative job) | job → library asset → `place_broll` | removes the placement; credits stay spent, the file stays in the library |
 | `captions` | `on, preset: highlight/karaoke/clean/minimal, track_id` | track of this org and this source | no | `captions.style.preset` + cues | inverse |
@@ -268,7 +329,7 @@ without the other. A spending op's job continues on the worker; its idempotency 
 - `edit_sessions` (id, org_id, project_id → editor_projects, source: canvas_final/timeline/library, source_asset_id,
   brain_session_id null, created_by, created_at).
 - `edit_ops` (id, session_id, org_id, seq, op_version, type CHECK closed list, params jsonb, proposed_by ai/person,
-  state CHECK proposed/applied/rejected/conflict/undone/running/failed, base_rev, result_rev, patch, inverse, footprint,
+  state CHECK proposed/waiting_job/ready/applied/rejected/conflict/undone/running/failed, base_rev, result_rev, patch, inverse, footprint,
   creative_job_id null, error_code, decided_by, decided_at).
 - `edit_op_events` (op_id, org_id, event, actor, at, detail jsonb): insert-only, no update or delete, like
   `review_intents` (`0004_review.sql:47`), because it is the record of who asked.
@@ -306,6 +367,7 @@ LLM within Brain caps (platform-paid, metered in `ai_chat_calls`).
 
 | Phase | Builds | Size |
 | :-- | :-- | :-- |
+| P0 Layout: cards above, stream below | §2b: docked stream + canvas↔project link, `append_clip` with job binding, reorder as ops, `music` card | M+M+S (3 PRs) |
 | P1 Smart captions + pause removal | Scout S-ASR-1; word timing in the document; correction UI; vocabulary; span tags; tag-driven emphasis; `remove_pauses` from transcript gaps; the panel shell and `edit_ops` (migration a+b) | L (3-4 PRs) |
 | P2 Colour and loudness presets | `color_preset`, `normalise_speech`, `music_duck`, title/stat cards | M |
 | P3 AI edit mode + Activity | Brain edit mode, proposals, conflicts, per-op undo, "Edit with AI" wherever a video appears; the unified Activity panel, plus the missing events (§5: brief turns, channel-run captions) each as its own small PR | L |
