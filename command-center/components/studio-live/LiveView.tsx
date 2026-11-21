@@ -438,18 +438,19 @@ export function LiveView({
   // switch the previous plan's reading is still on screen, and its lines must never land under the new plan (Lens HIGH).
   const planKey = target ? (target.kind === "window" ? `window:${target.channel}:${target.since}` : `${target.kind}:${target.id}`) : null;
   const reading = !draft && load.state === "ready" && load.key === planKey ? load.graph.activity ?? null : null;
-  const [gathered, setGathered] = useState<{ key: string | null; items: ActivityItem[] }>({ key: null, items: [] });
+  const [gathered, setGathered] = useState<{ key: string | null; items: ActivityItem[]; total: number | null }>({ key: null, items: [], total: null });
   useEffect(() => {
     if (!reading || !planKey) return;
     setGathered((prev) => {
       const byId = new Map(run || prev.key !== planKey ? [] : prev.items.map((it) => [it.id, it] as const));
       for (const it of reading.items) byId.set(it.id, it);
       const items = [...byId.values()].sort((x, y) => utc(x.at).getTime() - utc(y.at).getTime() || x.id.localeCompare(y.id));
-      return { key: planKey, items };
+      // The total is stored with the lines it counts, so "N not shown" never pairs a new total with the previous lines.
+      return { key: planKey, items, total: reading.total };
     });
   }, [reading, planKey, run]);
   const activity: Activity | null =
-    reading && gathered.key === planKey ? { items: gathered.items, total: reading.total, cut: reading.cut } : null;
+    reading && gathered.key === planKey ? { items: gathered.items, total: gathered.total, cut: reading.cut } : null;
   // Closing the details gives focus back to the step it was opened from, not to the page (Pixel M2). The card is focused before the
   // panel unmounts: focusing it after, the browser has already dropped focus to <body>.
   const close = () => {

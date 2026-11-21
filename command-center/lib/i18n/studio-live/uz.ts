@@ -99,7 +99,7 @@ export const studioLiveUz: StudioLiveDictionary = {
     title: "Faollik",
     empty: "Hozircha hech narsa yozilmagan.",
     notReportedFilm: "Xabar qilinmaydi: qadam boshlanishi, musiqa va yigʻish ichidagi qadamlar.",
-    notReportedRun: "Tayyor render, tayyor yuklash va nashr oldidan tekshiruvning toʻxtatish yoki bloklash qarori sinxronlashdan keyin keladi.",
+    notReportedRun: "Render va yuklash natijalari hamda tekshiruvning toʻxtatish yoki bloklash qarori faqat keyingi sinxronlashdan keyin chiqadi.",
     earlier: "{n} ta voqea koʻrsatilmadi.",
     cut: "Ishga tushirish jurnali bu koʻrinish oʻqiydiganidan uzunroq: eng yangi voqealar boʻlmasligi mumkin.",
     step: "Qadam",

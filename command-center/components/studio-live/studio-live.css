@@ -1,6 +1,9 @@
 /* The Studio's live view (LiveView.tsx): the canvas's tokens (.cv-root), a read-only board, and a list at phone width. */
 /* Content height, not the canvas's fixed one: at phone width the list would spill past the background (Pixel M3). */
-.lv-root { height: auto; min-height: 100%; display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 16px; background: var(--canvas); color: var(--text); }
+.lv-root { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--canvas); color: var(--text); }
+/* Content height, not the canvas deck's fixed one. The canvas sets it as .cv-root and, below 1024px, .cv-root:not(.is-flow): this
+   must out-rank both, or the list overflows a short root and the Activity log paints over it (Pixel HIGH). */
+.cv-root.lv-root, .cv-root.lv-root:not(.is-flow) { height: auto; }
 .lv-head { display: grid; gap: 4px; }
 .lv-head h1 { margin: 0; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
 .lv-muted { margin: 0; font-size: 13px; color: var(--dim); }
@@ -78,6 +81,7 @@
   .lv-details { order: -1; }
   /* Activity follows the list and clears the tab bar itself: the list's own padding would leave a gap (Pixel). */
   .lv-main.has-activity .lv-list { padding-bottom: 0; }
+  .lv-main { flex: none; }
   .lv-activity { margin-bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 

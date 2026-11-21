@@ -4,10 +4,9 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import type { Activity, ActivityItem } from "@/lib/studio/liveGraph";
 import { utc } from "@/lib/studio/utc";
+import { formatDayTime } from "@/lib/date-format";
 
 type T = ReturnType<typeof useI18n>["t"];
-
-
 
 /** A take's step name, as the board names it: "Scene 3 · picture", "Voice". Anything else is "A step", never a guess. */
 function stepName(t: T, it: ActivityItem): string {
@@ -45,7 +44,8 @@ export function ActivityPanel({ activity, run }: { activity: Activity; run: bool
   const when = (d: Date) =>
     d.toDateString() === today
       ? d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      : d.toLocaleString(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      : // Uzbek month names from the app's own table: stock Intl prints "M11" for uz (Pixel).
+        formatDayTime(d, locale);
   return (
     <section className="lv-activity" aria-labelledby="lv-activity-title" data-testid="live-activity">
       <h2 id="lv-activity-title">{a.title}</h2>
