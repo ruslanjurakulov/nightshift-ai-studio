@@ -17,6 +17,10 @@ Rule 2 of CLAUDE.md is untouched: none of these publishes anything. A finished f
 
 ## Before you start
 
+The assembly is a separate PR (#845, `modules/film_assembly.py` and its migration, placeholder 0200). Until it is merged and its
+migration applied, no film can be finished: the worker claims nothing even with every switch below on.
+
+
 0198 must be live. The deploy applies new migrations after a merge. Check it in the Supabase SQL editor; both columns must be `true`:
 
 ```sql
@@ -102,7 +106,12 @@ dc logs --tail 50 film-worker     # "film worker … started", and no "no film s
 
 ## 4. Check that a demo film can start
 
-These are not switches, but each one blocks a start:
+These are not switches, but each one blocks a start or a finished film:
+
+- The `film_assembly_minute` row exists in `credit_prices`. The assembly is priced from it.
+- The media volume has room for the master: about 9 MB per second of 1080p film, so about 0.5 GB for a 60 s demo and about 5.4 GB
+  for a 10-minute film. With less, the assembly fails as `disk_low` and says so.
+- The worker image was built from `Dockerfile.worker`, which caches the Whisper model that the captions use.
 
 - Every model the film's scenes use must be sellable and available, exactly as for a Studio job.
 - The organization needs the quoted credits. One hold, `fm-<segment id>`, is taken at start.
