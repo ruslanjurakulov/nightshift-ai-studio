@@ -165,10 +165,11 @@ class Numbering(unittest.TestCase):
         # extended) was reviewed the same way: it replaces and alters nothing these pin.
         # 0205 (publish to platforms: replaces only publish_request_refusal, which none of these pins name; reads
         # videos.gate_verdict) was reviewed the same way.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205")
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0209")
         # 0199 (Nightshift AI: new ai_chat_* tables and their functions; replaces no body, names nothing these pin) was
         # reviewed the same way.
         # 0203 (the owner AI's turn log: one closed table and two owner-only functions; replaces nothing) was reviewed the same way.
+        # 0209 (the owner AI's chat history: owner_ai_* tables and owner-only functions; names nothing these pin) likewise.
         # 0204 (Instagram through Unified Login: three columns on social_accounts, store_social_account on 0028's body) was reviewed
         # against these pins: it names nothing of this file's.
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")

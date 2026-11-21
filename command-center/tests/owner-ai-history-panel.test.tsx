@@ -215,7 +215,7 @@ describe("the history panel", () => {
     mount();
     expect(panel().getByLabelText(h.loading).getAttribute("aria-busy")).toBe("true");
     await act(async () => resolve(json(200, LIST)));
-    expect((await row("Which API must I pay?")).textContent).toBe("Which API must I pay?2 minutes ago");
+    expect((await row("Which API must I pay?")).textContent).toBe("Which API must I pay?2 min ago");
     expect((await row("Signups this week")).textContent).toBe("Signups this week3 days ago");
     expect(rows()).toEqual(["Which API must I pay?", "Signups this week"]);
     expect(calls()).toEqual([["/api/brain/owner/history", "GET"]]);
