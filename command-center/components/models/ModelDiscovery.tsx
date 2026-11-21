@@ -31,6 +31,7 @@ import {
   rateText,
   dayOf,
   sortModels,
+  groupByOutput,
   sourceRule,
   taskCounts,
   tasksOf,
@@ -168,15 +169,10 @@ export function ModelDiscovery({
   const [closedOpen, setClosedOpen] = useState(
     () => !operator && (!models.some(usable) || models.some((m) => m.id === initialModel && !usable(m))),
   );
-  const groups = useMemo(() => {
-    const order: (OutputKind | null)[] = [...OUTPUT_KINDS, null];
-    return order
-      .map((kind) => ({ kind, items: open.filter((m) => m.spec.output === kind) }))
-      .filter((g) => g.items.length > 0);
-  }, [open]);
+  const groups = useMemo(() => groupByOutput(open), [open]);
 
   function renderGroup(kind: OutputKind | null, items: DiscoveryModel[], title?: string) {
-    const name = title ?? (kind ? c.outputs[kind] : c.any);
+    const name = title ?? (kind ? c.groupOutputs[kind] : c.any);
     return (
       <section key={title ?? kind ?? "other"} aria-label={`${name} · ${items.length}`}>
         {!title && (
