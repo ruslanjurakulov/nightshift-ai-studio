@@ -15,6 +15,92 @@ body .app-shell.atmos {
     radial-gradient(860px 520px at 98% -10%, var(--ns-cool), transparent 60%),
     var(--color-bg);
 }
+/* ── The signed-in app in dark: neutral near-black, not navy (owner, 21 Nov: "the background does not fit"; the chat shell's
+   black, components/chat/chat-shell.css). The surfaces are set once here, on the shell only: the public pages and the light theme
+   keep app/tokens.css as it is. A var() resolves where it is declared, so the skin's remap (tokens.css, on :root) is declared again
+   on the shell, or every --color-* would still read the root's navy. Light mode: the remap points at the same --ds-* values the
+   root has, so nothing there changes.
+   Contrast on --surface-1 (#131315): --ds-text #ededef 15.9:1, --ds-text-2 #a1a1aa 7.2:1, --ds-muted #909099 5.9:1; on
+   --surface-3 (#26262a) the muted is 4.8:1. The strong border #6b6b74 is 3.6:1 on --surface-0 (non-text >= 3:1). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-shell {
+    --surface-0: #0b0b0c;
+    --surface-1: #131315;
+    --surface-2: #1a1a1d;
+    --surface-3: #26262a;
+    --surface-light: rgb(255 255 255 / 0.055);
+    --ds-bg: var(--surface-0);
+    --ds-surface-1: var(--surface-1);
+    --ds-surface-2: var(--surface-2);
+    --ds-surface-3: var(--surface-3);
+    --ds-border: rgb(255 255 255 / 0.1);
+    --ds-border-strong: #6b6b74;
+    --ds-text: #ededef;
+    --ds-text-2: #a1a1aa;
+    --ds-muted: #909099;
+    --ds-hover: rgb(255 255 255 / 0.06);
+    --ds-veil-rgb: 11, 11, 12;
+    --ds-elev-3: 0 0 0 1px rgb(255 255 255 / 0.06), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+  }
+}
+:root[data-theme="dark"] .app-shell {
+  --surface-0: #0b0b0c;
+  --surface-1: #131315;
+  --surface-2: #1a1a1d;
+  --surface-3: #26262a;
+  --surface-light: rgb(255 255 255 / 0.055);
+  --ds-bg: var(--surface-0);
+  --ds-surface-1: var(--surface-1);
+  --ds-surface-2: var(--surface-2);
+  --ds-surface-3: var(--surface-3);
+  --ds-border: rgb(255 255 255 / 0.1);
+  --ds-border-strong: #6b6b74;
+  --ds-text: #ededef;
+  --ds-text-2: #a1a1aa;
+  --ds-muted: #909099;
+  --ds-hover: rgb(255 255 255 / 0.06);
+  --ds-veil-rgb: 11, 11, 12;
+  --ds-elev-3: 0 0 0 1px rgb(255 255 255 / 0.06), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+}
+.ds-skin .app-shell {
+  --ns-ground: var(--ds-bg);
+  --ns-console: var(--ds-surface-1);
+  --ns-key: var(--ds-surface-2);
+  --ns-key-hi: var(--ds-surface-3);
+  --ns-rule: var(--ds-border);
+  --ns-rule-strong: var(--ds-border-strong);
+  --ns-text: var(--ds-text);
+  --ns-text-dim: var(--ds-text-2);
+  --ns-hover: var(--ds-hover);
+  --ns-lift: var(--ds-elev-3);
+  --ns-lamp-off: var(--ds-border-strong);
+  --st-focus-gap: var(--ds-bg);
+  --color-bg: var(--ds-bg);
+  --color-panel: var(--ds-surface-1);
+  --color-panel-2: var(--ds-surface-2);
+  --color-border: var(--ds-border);
+  --color-fg: var(--ds-text);
+  --color-muted: var(--ds-text-2);
+  --color-hover: var(--ds-hover);
+  --color-idle: var(--ds-muted);
+  --shadow-elevated: var(--ds-elev-3);
+  --backdrop-base: var(--ds-bg);
+  --veil-rgb: var(--ds-veil-rgb);
+  --backdrop-dim: color-mix(in srgb, var(--ds-bg) 62%, transparent);
+  --ns-grid: color-mix(in srgb, var(--ds-text) 4.5%, transparent);
+  --grid-line: color-mix(in srgb, var(--ds-text) 3.5%, transparent);
+  --shell-bg: var(--ds-surface-1);
+  --shell-border: var(--ds-border);
+  --studio-field: var(--ds-surface-2);
+  --studio-raised: var(--ds-surface-1);
+  --studio-dock-bg: color-mix(in srgb, var(--ds-surface-1) 94%, transparent);
+}
+/* The room in dark: one very soft white light from the top, no coloured glow. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body .app-shell.atmos { background: radial-gradient(1100px 520px at 50% -14%, var(--surface-light), transparent 70%), var(--surface-0); }
+}
+:root[data-theme="dark"] body .app-shell.atmos { background: radial-gradient(1100px 520px at 50% -14%, var(--surface-light), transparent 70%), var(--surface-0); }
+
 .app-shell main { position: relative; isolation: isolate; }
 .app-shell main::before {
   content: "";

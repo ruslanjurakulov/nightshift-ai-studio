@@ -41,6 +41,7 @@ import { checkAttachment, discardPending, indexedDbStore, takePending, type Atta
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
 import { StartBox, type StartChannel } from "@/components/prompt/StartBox";
+import { StudioHeroFan } from "@/components/studio/StudioHero";
 import type { StartAvailable } from "@/lib/start-box";
 import { KIND_TOOL, type CreateKind } from "@/lib/customer/create";
 import { formatMediaBytes } from "@/lib/media";
@@ -682,9 +683,13 @@ export function StudioHome({
 
   return (
     <div ref={homeRef} className="sh" style={dock} data-testid="studio-home">
-      <div className="sh-head">
-        <h1 className="sh-title">{th.title}</h1>
-        <p className="sh-lead">{th.lead}</p>
+      {/* The hero: our own templates' posters fanned over the headline, the start box under them (the competitor review, 21 Nov). */}
+      <div className="sh-hero">
+        <StudioHeroFan />
+        <div className="sh-head">
+          <h1 className="sh-title">{th.title}</h1>
+          <p className="sh-lead">{th.lead}</p>
+        </div>
       </div>
 
       {/* The start box: Nightshift AI, the edit desk, a channel video, or this page's own box below (filled, never sent). */}
@@ -818,19 +823,8 @@ export function StudioHome({
         <ul className="sh-pages">
           {STUDIO_MODES.map((m) => {
             const Icon = DESK_ICONS[m];
-            if (!modeOpen(tools, m)) {
-              return (
-                <li key={m}>
-                  <span className="sh-page av-closed" data-unavailable="true">
-                    <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate">{th.advanced.pages[m]}</span>
-                      <span className="av-tag truncate">{t.availability.notYet}</span>
-                    </span>
-                  </span>
-                </li>
-              );
-            }
+            // Not on sale: not drawn (L1-01, as the chips above): a "Not available yet" row is a dead end in front of a customer.
+            if (!modeOpen(tools, m)) return null;
             return (
               <li key={m}>
                 <Link href={path(deskHref(m))} className="sh-page">

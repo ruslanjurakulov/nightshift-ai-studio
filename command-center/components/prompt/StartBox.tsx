@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { AudioLines, Clapperboard, Image as ImageIcon, Sparkles, Tv, Wand2 } from "lucide-react";
 import { PromptBox } from "@/components/prompt/PromptBox";
+import { TemplateTileFace } from "@/components/prompt/TemplateTile";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { useTemplates } from "@/components/trends/useTemplates";
@@ -24,7 +25,7 @@ import {
   type StartFormat,
   type StartTab,
 } from "@/lib/start-box";
-import { templateCreateHref, type TemplateDto } from "@/lib/templates/trends";
+import { templateCreateHref } from "@/lib/templates/trends";
 import "@/components/prompt/start-box.css";
 
 /** A verified channel a channel video can be made for (rule 7: a typed name never runs). */
@@ -467,7 +468,7 @@ function TemplateLibrary() {
                 <li key={tpl.slug}>
                   {tpl.model_status === "unavailable" ? (
                     <div className="sb-card" data-template={tpl.slug} data-model-status="unavailable">
-                      <CardFace tpl={tpl} kindLabel={s.kind[tpl.kind]} />
+                      <TemplateTileFace tpl={tpl} kindLabel={s.kind[tpl.kind]} />
                       <span className="sb-card-note" data-tone="warn">
                         {tt.modelUnavailable}{" "}
                         <Link href={path("/models")} className="tap-link sb-link">
@@ -483,7 +484,7 @@ function TemplateLibrary() {
                       data-template={tpl.slug}
                       data-model-status={tpl.model_status}
                     >
-                      <CardFace tpl={tpl} kindLabel={s.kind[tpl.kind]} />
+                      <TemplateTileFace tpl={tpl} kindLabel={s.kind[tpl.kind]} />
                       {tpl.model_status === "unknown" && <span className="sb-card-note">{tt.modelUnknown}</span>}
                     </Link>
                   )}
@@ -510,29 +511,5 @@ function TemplateLibrary() {
       </div>
       {body}
     </section>
-  );
-}
-
-/** A card's poster and words, the same whether it links or not. */
-function CardFace({ tpl, kindLabel }: { tpl: TemplateDto; kindLabel: string }) {
-  const { t, fmt } = useI18n();
-  const meta = [kindLabel, tpl.aspect, tpl.duration_s ? fmt(t.trends.seconds, { n: tpl.duration_s }) : null].filter(Boolean).join(" · ");
-  return (
-    <>
-      <span className="sb-card-media" data-kind={tpl.kind} aria-hidden>
-        {tpl.poster_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a static poster under /public/templates, already sized.
-          <img src={tpl.poster_url} alt="" loading="lazy" decoding="async" />
-        ) : tpl.kind === "video" ? (
-          <Clapperboard className="size-5" strokeWidth={1.75} />
-        ) : (
-          <ImageIcon className="size-5" strokeWidth={1.75} />
-        )}
-      </span>
-      <span className="sb-card-body">
-        <span className="sb-card-title">{tpl.title}</span>
-        <span className="sb-card-meta">{meta}</span>
-      </span>
-    </>
   );
 }

@@ -3,7 +3,9 @@
    follow app/tokens.css. Nothing here animates except colour, and only through --ds-dur-*, which reduced motion zeroes.
    Every key is at least 44 px tall; nothing is wider than the box at 360 px. */
 
-.sb-wrap { display: flex; flex-direction: column; gap: var(--ds-space-8); width: 100%; max-width: 860px; margin-inline: auto; min-width: 0; }
+/* The box keeps its 860 px reading width; the gallery under it takes the page's width, so its pictures can be big (4-5 across at 1440). */
+.sb-wrap { display: flex; flex-direction: column; gap: var(--ds-space-8); width: 100%; margin-inline: auto; min-width: 0; }
+.sb-wrap > :not(.sb-library) { width: 100%; max-width: 860px; margin-inline: auto; }
 
 .sb { display: flex; flex-direction: column; gap: var(--ds-space-2); min-width: 0; }
 .sb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -120,46 +122,70 @@
 .sb-lead { margin: var(--ds-space-1) 0 0; color: var(--ds-text-2); font-size: 0.8125rem; line-height: 1.5; }
 .sb-group { display: flex; flex-direction: column; gap: var(--ds-space-2); min-width: 0; }
 .sb-h3 { margin: 0; color: var(--ds-text-2); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
-.sb-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; }
+/* Media first (the owner's ask, 21 Nov, after the competitor review): each template is its own picture at its own shape, a masonry of
+   columns sized by the gallery's width, not the window's (the Studio's side rail takes part of it). 2 on a phone, 4-5 at 1440. */
+.sb-library { container-type: inline-size; }
+.sb-cards { columns: 2; column-gap: 12px; margin: 0; padding: 0; list-style: none; }
+@container (min-width: 560px) { .sb-cards { columns: 3; } }
+@container (min-width: 820px) { .sb-cards { columns: 4; } }
+@container (min-width: 1080px) { .sb-cards { columns: 5; } }
+.sb-cards > li { break-inside: avoid; margin-bottom: 12px; }
 .sb-card {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ds-space-3);
+  flex-direction: column;
+  gap: var(--ds-space-2);
   width: 100%;
-  min-height: 64px;
-  padding: var(--ds-space-2);
-  border: 1px solid var(--ds-border);
   border-radius: var(--ds-r-panel);
-  background: var(--ds-surface-1);
   color: var(--ds-text);
   text-align: start;
   text-decoration: none;
   cursor: pointer;
-  transition: border-color var(--ds-dur-press) var(--ds-ease-out), background-color var(--ds-dur-press) var(--ds-ease-out);
 }
-.sb-card:hover { border-color: var(--ds-border-strong); background: var(--ds-surface-2); }
-.sb-card-media {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 48px;
-  height: 48px;
+/* The global ring is 3 px; on a picture it also needs the gap, or it disappears into a bright frame. */
+.sb-card:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 3px; }
+.sb-card-frame {
+  position: relative;
+  display: block;
+  width: 100%;
   overflow: hidden;
-  border-radius: var(--ds-r-chip);
-  background: var(--ds-surface-3);
-  color: var(--ds-type-video);
+  border-radius: var(--ds-r-panel);
+  background: var(--ds-surface-2);
+  /* A hairline so a dark poster still has an edge on the near-black page. */
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
 }
+.sb-card-media { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ds-type-video); }
 .sb-card-media[data-kind="image"] { color: var(--ds-type-image); }
-.sb-card-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.sb-card-body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 0; }
-.sb-card-title { font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.sb-card-meta { color: var(--ds-text-2); font-size: 0.75rem; }
-/* The model's availability, under the poster and title: a whole line, never squeezed beside them. */
-.sb-card-note { flex-basis: 100%; color: var(--ds-text-2); font-size: 0.75rem; line-height: 1.4; }
+.sb-card-media img,
+.sb-card-video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+.sb-card-media img { transition: transform 400ms var(--ds-ease-out); }
+/* The clip fades in over the poster only once it is really drawing frames; until then (and paused) the poster is what shows. */
+.sb-card-video { opacity: 0; transition: opacity 240ms var(--ds-ease-out); }
+.sb-card-frame[data-live] .sb-card-video { opacity: 1; }
+a.sb-card:hover .sb-card-media img { transform: scale(1.03); }
+@media (prefers-reduced-motion: reduce) {
+  .sb-card-media img, .sb-card-video { transition: none; }
+  a.sb-card:hover .sb-card-media img { transform: none; }
+}
+/* Title and "Video · 9:16 · 10 s" over the picture's foot, on a gradient dark enough for white text over any poster (>= 4.5:1 at
+   the text's band: the band is at least 72% black). */
+.sb-card-body {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 40px 12px 10px;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.86), rgb(0 0 0 / 0.72) 58%, transparent);
+  color: #fafafa;
+}
+.sb-card-title { font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sb-card-meta { color: #d4d4d8; font-size: 0.75rem; }
+/* The model's availability, under the picture: a whole line, never over it. */
+.sb-card-note { color: var(--ds-text-2); font-size: 0.75rem; line-height: 1.4; padding-inline: 2px; }
 .sb-card-note[data-tone="warn"] { color: var(--ds-warning, var(--ds-text)); }
 div.sb-card { cursor: default; }
-div.sb-card:hover { border-color: var(--ds-border); background: var(--ds-surface-1); }
-.sb-card-skel { min-height: 64px; border-style: dashed; background: var(--ds-surface-1); cursor: default; }
+.sb-card-skel { aspect-ratio: 9 / 16; border: 1px dashed var(--ds-border); background: var(--ds-surface-1); cursor: default; }
+.sb-cards > .sb-card-skel:nth-child(2n) { aspect-ratio: 16 / 9; }
 .sb-state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); margin: 0; color: var(--ds-text-2); font-size: 0.875rem; }
 .sb-state p { margin: 0; }
