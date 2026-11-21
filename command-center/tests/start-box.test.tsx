@@ -29,8 +29,10 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { StartBox } from "@/components/prompt/StartBox";
 import { TOPIC_MAX } from "@/lib/home";
 import { IDEA_KEY } from "@/lib/site/idea-handoff";
-import { TEMPLATE_CATEGORIES, type TemplateDto } from "@/lib/templates/trends";
+import { TEMPLATE_CATEGORIES, templateCreateHref, type TemplateDto } from "@/lib/templates/trends";
+import { dictionaries } from "@/lib/i18n";
 import {
+  EDIT_WORDS_MAX,
   PURPOSE_CATEGORIES,
   START_FORMATS,
   START_TABS,
@@ -42,6 +44,7 @@ import {
 } from "@/lib/start-box";
 import { aiChatEnv, aiChatMode, aiChatOpenFor, aiChatOrgs } from "@/lib/nightshift-ai-flag";
 
+const en = dictionaries.en;
 const ORG = "11111111-2222-4333-8444-555555555555";
 const OTHER = "99999999-2222-4333-8444-555555555555";
 const ctx = (channel: string | null = "my-channel") => ({ path: (s: string) => `/my-channel${s}`, channel, language: "English" as const });
@@ -79,13 +82,15 @@ describe("where the send key goes: every tab × Agent (open/closed, on/off) × f
     expect(on).toEqual(off);
   });
 
-  it("AI film and Ad go to Create's box through the idea pickup; an image template to its picture box", () => {
+  it("Agent off: Create's box for the kind through the idea pickup, the fallback the same kind with the words in the address", () => {
     for (const format of ["film", "ad"] as const) {
       const r = startRoute({ tab: "create", agent: false, agentOpen: true, format, kind: "video" }, "words", ctx());
-      expect(r).toMatchObject({ via: "idea", href: "/my-channel/create?idea=1" });
+      expect(r).toEqual({ via: "idea", href: "/my-channel/create?idea=1", fallback: "/my-channel/create?kind=video&prompt=words" });
     }
-    const img = startRoute({ tab: "create", agent: false, agentOpen: false, format: "film", kind: "image" }, "words", ctx());
-    expect(img.href).toBe("/my-channel/create?idea=1&kind=image");
+    for (const kind of ["image", "audio"] as const) {
+      const r = startRoute({ tab: "create", agent: false, agentOpen: false, format: "film", kind }, "words", ctx());
+      expect(r).toEqual({ via: "idea", href: `/my-channel/create?idea=1&kind=${kind}`, fallback: `/my-channel/create?kind=${kind}&prompt=words` });
+    }
   });
 
   it("Channel video goes to the channel's run form with the topic, cut to TOPIC_MAX and said so", () => {
@@ -221,6 +226,7 @@ describe("StartBox", () => {
   it("submitting starts nothing: it keeps the words and goes, with no POST, no quote, no agent call", async () => {
     draw();
     await screen.findByText("T story-one");
+    fireEvent.click(screen.getByTestId("start-agent"));
     fireEvent.change(screen.getByTestId("start-field"), { target: { value: "A lighthouse keeper" } });
     fireEvent.click(screen.getByTestId("start-submit"));
     expect(assign).toHaveBeenCalledWith("/my-channel/studio?ai=new&idea=1&format=film");
@@ -258,13 +264,34 @@ describe("StartBox", () => {
     expect(screen.queryByTestId("start-formats")).toBeNull();
   });
 
-  it("the format chip is a radio group with arrow keys", () => {
+  it("Agent off: Video | Image | Audio | Channel video, a radio group with arrow keys; each kind opens its own box", () => {
     draw();
     const radios = within(screen.getByRole("radiogroup")).getAllByRole("radio");
-    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["true", "false", "false"]);
+    expect(radios.map((r) => r.textContent)).toEqual(["Video", "Image", "Audio", "Channel video"]);
+    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["true", "false", "false", "false"]);
+    // AI film and Ad shape only Nightshift AI's questions: where they would change nothing, they are not drawn.
+    expect(screen.queryByTestId("start-format-film")).toBeNull();
+    expect(screen.queryByTestId("start-format-ad")).toBeNull();
     fireEvent.keyDown(radios[0], { key: "ArrowLeft" });
-    expect(radios[2].getAttribute("aria-checked")).toBe("true");
-    expect(document.activeElement).toBe(radios[2]);
+    expect(radios[3].getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(radios[3]);
+    fireEvent.click(screen.getByTestId("start-kind-audio"));
+    fireEvent.change(screen.getByTestId("start-field"), { target: { value: "Welcome to our channel" } });
+    fireEvent.click(screen.getByTestId("start-submit"));
+    expect(assign).toHaveBeenCalledWith("/my-channel/create?idea=1&kind=audio");
+  });
+
+  it("Agent on: AI film | Ad | Channel video, and the note says the format shapes its questions", () => {
+    draw();
+    fireEvent.click(screen.getByTestId("start-agent"));
+    const radios = within(screen.getByRole("radiogroup")).getAllByRole("radio");
+    expect(radios.map((r) => r.textContent)).toEqual(["AI film", "Ad", "Channel video"]);
+    expect(screen.queryByTestId("start-kind-video")).toBeNull();
+    expect(screen.getByText(/shaped by the format you chose/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("start-format-ad"));
+    fireEvent.change(screen.getByTestId("start-field"), { target: { value: "A bakery ad" } });
+    fireEvent.click(screen.getByTestId("start-submit"));
+    expect(assign).toHaveBeenCalledWith("/my-channel/studio?ai=new&idea=1&format=ad");
   });
 
   it("a closed Agent is disabled with its reason in words, cannot be switched on, and never sends to ai=new", () => {
@@ -281,11 +308,14 @@ describe("StartBox", () => {
     expect(assign.mock.calls[0][0]).not.toContain("ai=");
   });
 
-  it("an open Agent is a real toggle: off, the same box goes to Create instead", () => {
+  it("an open Agent starts OFF (S5's reader is not on main yet): a person turns it on, and off again goes to Create", () => {
     draw(true);
     const chip = screen.getByTestId("start-agent");
-    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    expect(chip.getAttribute("aria-disabled")).toBeNull();
     expect(screen.queryByTestId("start-agent-reason")).toBeNull();
+    fireEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(chip);
     expect(chip.getAttribute("aria-pressed")).toBe("false");
     fireEvent.change(screen.getByTestId("start-field"), { target: { value: "An idea" } });
@@ -333,17 +363,57 @@ describe("StartBox", () => {
     }
   });
 
-  it("a template only fills the box: no request, no navigation; an empty purpose is not drawn", async () => {
+  it("a template card is a link to the template's own Create address (model, shape and length come with it), never a fill", async () => {
     draw();
-    const card = await screen.findByRole("button", { name: "Put “T story-one” in the box" });
+    const card = await screen.findByRole("link", { name: "Open “T story-one” in Create" });
+    expect(card.getAttribute("href")).toBe(`/my-channel${templateCreateHref("story-one")}`);
     expect(screen.getByText("Storytelling")).toBeTruthy();
     expect(screen.getByText("Brand assets")).toBeTruthy();
     expect(screen.queryByText("Marketing")).toBeNull();
-    const before = calls.length;
-    fireEvent.click(card);
-    expect((screen.getByTestId("start-field") as HTMLTextAreaElement).value).toBe("A {thing} for story-one");
-    expect(calls.length).toBe(before);
-    expect(assign).not.toHaveBeenCalled();
+    expect(screen.getByText("Open a template: its model, shape and length come with it.")).toBeTruthy();
+    // A plain link: nothing here reads the template or fills the box (the Create page does, once it is open).
+    expect(card.tagName).toBe("A");
+    onlyTemplateReads();
+  });
+
+  it("a card says its model's status as the Trends gallery does: unavailable offers no link to Create, unknown says so", async () => {
+    templatesResponse = async () =>
+      new Response(
+        JSON.stringify({
+          templates: [
+            { ...tpl("gone-one", "story"), model_status: "unavailable" },
+            { ...tpl("maybe-one", "story"), model_status: "unknown" },
+            { ...tpl("sold-one", "story"), model_status: "available" },
+          ],
+        }),
+        { status: 200 },
+      );
+    draw();
+    await screen.findByText("T gone-one");
+    const gone = document.querySelector('[data-template="gone-one"]') as HTMLElement;
+    expect(gone.tagName).toBe("DIV");
+    expect(gone.textContent).toContain(en.trends.modelUnavailable);
+    expect(within(gone).getByRole("link").getAttribute("href")).toBe("/my-channel/models");
+    const maybe = document.querySelector('[data-template="maybe-one"]') as HTMLElement;
+    expect(maybe.getAttribute("href")).toBe("/my-channel/create?template=maybe-one");
+    expect(maybe.textContent).toContain(en.trends.modelUnknown);
+    const sold = document.querySelector('[data-template="sold-one"]') as HTMLElement;
+    expect(sold.getAttribute("href")).toBe("/my-channel/create?template=sold-one");
+    expect(sold.textContent).not.toContain(en.trends.modelUnknown);
+  });
+
+  it("AI edit takes what a video edit takes (500): the field's limit and counter follow the tab, and a longer draft is said", () => {
+    draw();
+    const field = () => screen.getByTestId("start-field") as HTMLTextAreaElement;
+    expect(field().maxLength).toBe(2000);
+    fireEvent.change(field(), { target: { value: "w".repeat(620) } });
+    fireEvent.click(screen.getByTestId("start-tab-edit"));
+    expect(field().maxLength).toBe(EDIT_WORDS_MAX);
+    expect(screen.getByTestId("start-count").textContent).toBe(` 620 of ${EDIT_WORDS_MAX}`);
+    expect(screen.getByTestId("start-edit-cut").textContent).toContain(String(EDIT_WORDS_MAX));
+    fireEvent.change(field(), { target: { value: "w".repeat(350) } });
+    expect(screen.getByTestId("start-count").textContent).toBe(` 350 of ${EDIT_WORDS_MAX}`);
+    expect(screen.queryByTestId("start-edit-cut")).toBeNull();
   });
 
   it("templates: loading, then failed with a retry that only reads again, then empty — never a zero", async () => {
@@ -365,7 +435,9 @@ describe("StartBox", () => {
 
   it("speaks Uzbek", async () => {
     draw(true, null, "uz");
-    expect(screen.getByTestId("start-tab-create").textContent).toContain("Video yaratish");
-    expect(screen.getByTestId("start-format-film").textContent).toBe("AI film");
+    expect(screen.getByTestId("start-tab-create").textContent).toContain("Yaratish");
+    expect(screen.getByTestId("start-kind-image").textContent).toBe("Rasm");
+    fireEvent.click(screen.getByTestId("start-agent"));
+    expect(screen.getByTestId("start-format-ad").textContent).toBe("Reklama");
   });
 });

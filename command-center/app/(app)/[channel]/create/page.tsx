@@ -14,7 +14,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
-import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
+import { prefillFromQuery, withPreviews, type StudioPrefill } from "@/lib/creative/studio";
 import { cleanLinkWords, parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
 import { IDEA_PARAM } from "@/lib/site/idea-handoff";
@@ -40,10 +40,17 @@ import { LEGAL } from "@/lib/legal";
 import { CreateScreen } from "@/components/customer/CreateScreen";
 import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
-import { SLUG_RE, cleanLinkPrompt, isCreateKind } from "@/lib/customer/create";
+import { KIND_TOOL, SLUG_RE, cleanLinkPrompt, drawsCreateScreen, isCreateKind } from "@/lib/customer/create";
 import { aiChatEnv, aiChatOpenFor } from "@/lib/nightshift-ai-flag";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** `?kind=video&prompt=…` as a form for StudioHome (CreateScreen reads the two itself); null without both. */
+function kindPrefill(kind: string | undefined, prompt: string | undefined, aspect: string | null | undefined): StudioPrefill | null {
+  const words = cleanLinkPrompt(prompt);
+  if (!isCreateKind(kind) || !words) return null;
+  return { capability: KIND_TOOL[kind], model: "", prompt: words, aspect: aspect ?? "16:9", duration: 5 };
+}
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -169,9 +176,11 @@ export default async function CreatePage({
   // Unreadable is unknown, never a zero; the operator's own organization is not charged.
   let credits: CreditsReading = { state: "unknown" };
   let projects: ProjectsReading = { state: "not_available" };
-  // The landing's idea box kept the visitor's words in this browser (lib/site/idea-handoff.ts): the composer takes them once.
+  // The landing's idea box or the start box kept the words in this browser (lib/site/idea-handoff.ts): the screen's box takes them
+  // once. It does not choose the screen: a customer sent with `?idea=1` gets the same Create screen as one sent with the words in
+  // the address (the storage-refused fallback), and the owner's frame keeps the overview, whose box takes them the same way.
   const ideaPickup = one(q[IDEA_PARAM]) === "1";
-  const createScreen = desk === "overview" && !pendingNonce && !ideaPickup && !frame;
+  const createScreen = drawsCreateScreen({ desk, pendingFile: !!pendingNonce, ownerFrame: !!frame });
   if (desk === "overview" && !createScreen && org.supported && org.current) {
     const orgId = org.current.id;
     const supabase = await createClient();
@@ -190,8 +199,10 @@ export default async function CreatePage({
 
   // The start box at the top of the Studio start: the Agent chip's answer is the server's flag, and a channel video
   // goes to the open channel when YouTube has answered for it, else the first that has (rule 7).
+  // Not when this page was opened by a box with words for it (`?idea=1`, the home page's file): a second, empty start box above the
+  // filled composer would read as "type it again".
   const start =
-    desk === "overview" && !createScreen
+    desk === "overview" && !createScreen && !ideaPickup && !pendingNonce
       ? await (async () => {
           const runnable = runnableChannels(channels);
           const target = runnable.find((c) => c.channel_id === scopedChannel?.channel_id) ?? runnable[0];
@@ -236,6 +247,7 @@ export default async function CreatePage({
             bottomBar={!frame}
             initialKind={isCreateKind(one(q.kind)) ? (one(q.kind) as "video" | "image" | "audio") : "video"}
             initialPrompt={cleanLinkPrompt(one(q.prompt))}
+            idea={ideaPickup}
             templateSlug={(() => {
               const slug = one(q.template);
               return typeof slug === "string" && SLUG_RE.test(slug) ? slug : null;
@@ -254,7 +266,9 @@ export default async function CreatePage({
           defaultStyleKitId={startKit}
           dna={dna.studio}
           bottomBar={!frame}
-          initial={initial}
+          // The owner's frame reached by a kind link (`?kind=&prompt=`, the start box's storage-refused fallback): its words fill the
+          // kind's box here too, so both ways in open the same, filled screen.
+          initial={initial ?? kindPrefill(one(q.kind), one(q.prompt), dna.studio?.aspect)}
           credits={credits}
           projects={projects}
           assistant={assistant}
@@ -262,7 +276,7 @@ export default async function CreatePage({
           // whether to use it. Its words are cleaned and bounded as any link's; the tool's own limit applies once the tool is known.
           pending={pendingNonce ? { nonce: pendingNonce, words: cleanLinkWords(one(q.prompt)) } : null}
           idea={ideaPickup}
-          ideaKind={one(q.kind) === "image" ? "image" : "video"}
+          ideaKind={isCreateKind(one(q.kind)) ? (one(q.kind) as "video" | "image" | "audio") : "video"}
           start={start}
         />
       )}

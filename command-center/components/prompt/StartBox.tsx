@@ -2,15 +2,26 @@
 
 import Link from "next/link";
 import { useId, useRef, useState, type KeyboardEvent } from "react";
-import { Clapperboard, Image as ImageIcon, Sparkles, Wand2 } from "lucide-react";
+import { AudioLines, Clapperboard, Image as ImageIcon, Sparkles, Tv, Wand2 } from "lucide-react";
 import { PromptBox } from "@/components/prompt/PromptBox";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { useTemplates } from "@/components/trends/useTemplates";
-import { IDEA_MAX, ideaWords, stashIdea } from "@/lib/site/idea-handoff";
+import { ideaWords, stashIdea } from "@/lib/site/idea-handoff";
 import { TOPIC_MAX, defaultLanguage } from "@/lib/home";
-import { START_FORMATS, START_TABS, groupTemplates, startRoute, topicCut, type StartFormat, type StartTab } from "@/lib/start-box";
-import type { TemplateDto, TemplateKind } from "@/lib/templates/trends";
+import { CREATE_KINDS, type CreateKind } from "@/lib/customer/create";
+import {
+  START_FORMATS,
+  START_TABS,
+  groupTemplates,
+  overLimit,
+  startRoute,
+  topicCut,
+  wordsLimit,
+  type StartFormat,
+  type StartTab,
+} from "@/lib/start-box";
+import { templateCreateHref, type TemplateDto } from "@/lib/templates/trends";
 import "@/components/prompt/start-box.css";
 
 /** A verified channel a channel video can be made for (rule 7: a typed name never runs). */
@@ -25,24 +36,26 @@ function rovingIndex(key: string, at: number, n: number): number {
   return -1;
 }
 
-function smooth(): ScrollBehavior {
-  try {
-    return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-  } catch {
-    return "auto";
-  }
-}
+/** With Agent off, what the words become: one of Create's kinds, or a channel video. */
+type MakeChoice = CreateKind | "channel";
+const MAKE_CHOICES: readonly MakeChoice[] = [...CREATE_KINDS, "channel"];
+const MAKE_ICON = { video: Clapperboard, image: ImageIcon, audio: AudioLines, channel: Tv } as const;
 
 /**
- * "The big prompt box": Home's and the Studio start's one place to begin. Two tabs (make a video, or change one with AI), an Agent
- * chip for Nightshift AI and a format chip, and the Trends templates under it grouped by what they are for.
+ * "The big prompt box": Home's and the Studio start's one place to begin. Two tabs (make something, or change a video with AI), an
+ * Agent chip for Nightshift AI, one row of choices, and the Trends templates under it grouped by what they are for.
+ *
+ * The row shows only choices that change where the words go. Agent off: Video | Image | Audio (Create's own kinds, Home's old
+ * choice) | Channel video. Agent on: AI film | Ad | Channel video, the format Nightshift AI's questions are shaped by. AI film and
+ * Ad mean nothing to Create, so they are not drawn where they would change nothing.
  *
  * The send key is a link and nothing more (CLAUDE.md rule 3): it opens Create, the edit desk, the channel's run form or Nightshift
  * AI with the words filled in (lib/start-box.ts startRoute), and the place it opens shows the price; nothing here posts, quotes or
  * starts anything. The words ride in this browser (lib/site/idea-handoff.ts), not the address.
  *
- * The Agent chip is on only when the SERVER's flag opens Nightshift AI for this workspace (`agentOpen`, lib/nightshift-ai-flag.ts);
- * closed, it is drawn disabled with the reason in words, never a toggle that pretends. The plan plays no part: a free workspace
+ * The Agent chip can be switched on only when the SERVER's flag opens Nightshift AI for this workspace (`agentOpen`,
+ * lib/nightshift-ai-flag.ts); closed, it is drawn disabled with the reason in words, never a toggle that pretends. It starts OFF even
+ * when open: S5's page that reads the words arrives with PR #843 (lib/start-box.ts AI_PARAM), and a person turns it on on purpose. The plan plays no part: a free workspace
  * gets its trial messages and the upgrade offer inside the panel itself.
  *
  * A full page load, not a client push: the places it opens take the kept words once, on mount, and a push to the page already
@@ -58,25 +71,24 @@ export function StartBox({
   agentOpen: boolean;
   /** The channel a channel video is for; null = none connected and verified (the key then leads to connecting one). */
   channel: StartChannel | null;
-  /** On the Studio start: fill this page's own clip or picture box rather than loading the page again. */
-  fillHere?: (words: string, kind: TemplateKind) => void;
+  /** On the Studio start: fill this page's own box for the kind rather than loading the page again. */
+  fillHere?: (words: string, kind: CreateKind) => void;
 }) {
   const { t, locale, fmt } = useI18n();
   const s = t.startBox;
+  const kinds = t.customerApp.kinds;
   const path = useChannelPath();
   const uid = useId();
-  const field = useRef<HTMLTextAreaElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const formatRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [tab, setTab] = useState<StartTab>("create");
-  // On by default where it is open: that is the point of the chip. Closed, it can never be on.
-  const [agentOn, setAgentOn] = useState(agentOpen);
+  // Off until a person turns it on, even where it is open (see above). Closed, it can never be on.
+  const [agentOn, setAgentOn] = useState(false);
   const [format, setFormat] = useState<StartFormat>("film");
-  const [kind, setKind] = useState<TemplateKind>("video");
+  const [kind, setKind] = useState<CreateKind>("video");
   const [words, setWords] = useState("");
   const [leaving, setLeaving] = useState(false);
   const [refused, setRefused] = useState(false);
-  const [filled, setFilled] = useState("");
 
   const choice = { tab, agent: agentOn, agentOpen, format, kind };
   const route = startRoute(choice, words, { path, channel: channel?.slug ?? null, language: defaultLanguage(locale) });
@@ -84,6 +96,10 @@ export function StartBox({
   const mode: "edit" | "agent" | "channel" | "connect" | "create" =
     tab === "edit" ? "edit" : viaAgent ? "agent" : route.via === "connect" ? "connect" : route.via === "topic" ? "channel" : "create";
   const cut = mode === "channel" && topicCut(words);
+  const max = wordsLimit(tab);
+  // Typed on the create tab, then switched to edit: the field cannot take them back, so the cut is said before the press.
+  const editCut = tab === "edit" && overLimit(tab, words);
+  const make: MakeChoice = format === "channel" ? "channel" : kind;
 
   function go() {
     if (leaving) return;
@@ -110,17 +126,14 @@ export function StartBox({
     }
   }
 
-  function pick(tpl: TemplateDto) {
-    setWords(tpl.prompt.slice(0, IDEA_MAX));
-    setKind(tpl.kind);
-    setTab("create");
-    // A template is a prompt for Create's clip or picture box, not a channel topic: "Channel video" would send it to the run form.
+  function pickMake(m: MakeChoice) {
+    if (m === "channel") {
+      setFormat("channel");
+      return;
+    }
+    setKind(m);
+    // Leaving "Channel video" for a kind: the Agent's format starts again at its first.
     if (format === "channel") setFormat("film");
-    setRefused(false);
-    setFilled(fmt(s.library.filled, { title: tpl.title }));
-    const el = field.current;
-    el?.scrollIntoView?.({ behavior: smooth(), block: "center" });
-    el?.focus({ preventScroll: true });
   }
 
   const tabs = (
@@ -189,32 +202,65 @@ export function StartBox({
             {s.agent.hint}
           </span>
         )}
-        <div role="radiogroup" aria-label={s.formatLabel} className="sb-formats" data-testid="start-formats">
-          {START_FORMATS.map((f, i) => (
-            <button
-              key={f}
-              ref={(el) => {
-                formatRefs.current[i] = el;
-              }}
-              type="button"
-              role="radio"
-              aria-checked={format === f}
-              tabIndex={format === f ? 0 : -1}
-              className="sb-chip"
-              data-testid={`start-format-${f}`}
-              onClick={() => setFormat(f)}
-              onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
-                const to = rovingIndex(e.key, i, START_FORMATS.length);
-                if (to < 0) return;
-                e.preventDefault();
-                setFormat(START_FORMATS[to]);
-                formatRefs.current[to]?.focus();
-              }}
-            >
-              {s.formats[f]}
-            </button>
-          ))}
-        </div>
+        {viaAgent ? (
+          <div role="radiogroup" aria-label={s.formatLabel} className="sb-formats" data-testid="start-formats" data-group="agent">
+            {START_FORMATS.map((f, i) => (
+              <button
+                key={f}
+                ref={(el) => {
+                  formatRefs.current[i] = el;
+                }}
+                type="button"
+                role="radio"
+                aria-checked={format === f}
+                tabIndex={format === f ? 0 : -1}
+                className="sb-chip"
+                data-testid={`start-format-${f}`}
+                onClick={() => setFormat(f)}
+                onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
+                  const to = rovingIndex(e.key, i, START_FORMATS.length);
+                  if (to < 0) return;
+                  e.preventDefault();
+                  setFormat(START_FORMATS[to]);
+                  formatRefs.current[to]?.focus();
+                }}
+              >
+                {s.formats[f]}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div role="radiogroup" aria-label={kinds.label} className="sb-formats" data-testid="start-formats" data-group="make">
+            {MAKE_CHOICES.map((m, i) => {
+              const Icon = MAKE_ICON[m];
+              return (
+                <button
+                  key={m}
+                  ref={(el) => {
+                    formatRefs.current[i] = el;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={make === m}
+                  tabIndex={make === m ? 0 : -1}
+                  className="sb-chip"
+                  data-testid={m === "channel" ? "start-format-channel" : `start-kind-${m}`}
+                  onClick={() => pickMake(m)}
+                  onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
+                    const to = rovingIndex(e.key, i, MAKE_CHOICES.length);
+                    if (to < 0) return;
+                    e.preventDefault();
+                    pickMake(MAKE_CHOICES[to]);
+                    formatRefs.current[to]?.focus();
+                  }}
+                >
+                  <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.9} />
+                  {m === "channel" ? s.formats.channel : kinds[m]}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     ) : (
       // The edit tab takes no format and no agent: its words go to the edit desk. An empty row keeps the key on the right.
@@ -222,7 +268,7 @@ export function StartBox({
     );
 
   const placeholder =
-    mode === "edit" ? s.placeholder.edit : mode === "agent" ? s.placeholder.agent : format === "channel" ? s.placeholder.channel : s.placeholder[format];
+    mode === "edit" ? s.placeholder.edit : format === "channel" ? s.placeholder.channel : mode === "agent" ? s.placeholder[format] : s.placeholder[kind];
   const submit =
     mode === "edit" ? s.submit.edit : mode === "agent" ? s.submit.agent : mode === "connect" ? s.submit.connect : mode === "channel" ? s.submit.channel : s.submit.create;
   const note =
@@ -239,6 +285,11 @@ export function StartBox({
           {fmt(s.topicCut, { max: TOPIC_MAX })}
         </p>
       )}
+      {editCut && (
+        <p className="sb-line" role="status" data-testid="start-edit-cut">
+          {fmt(s.editCut, { max })}
+        </p>
+      )}
       {refused && (
         <p className="sb-line sb-problem" role="alert" data-testid="start-refused">
           {s.storageRefused}
@@ -248,17 +299,16 @@ export function StartBox({
   );
 
   return (
-    <div className="sb-wrap" data-testid="start-box">
+    <div className="sb-wrap" data-testid="start">
       <PromptBox
         value={words}
         onChange={(v) => {
           setWords(v);
-          if (!v.trim()) setKind("video");
           if (refused) setRefused(false);
         }}
         onSubmit={go}
         copy={{ label: s.label[tab], placeholder, submit, note, empty: s.empty, count: s.count }}
-        max={IDEA_MAX}
+        max={max}
         busy={leaving}
         onBack={() => setLeaving(false)}
         allowEmpty={mode === "connect"}
@@ -268,25 +318,26 @@ export function StartBox({
         header={tabs}
         chips={chips}
         after={after}
-        fieldRef={field}
         fieldProps={{ id: `${uid}-field` }}
         rowProps={{ id: `${uid}-panel`, role: "tabpanel", "aria-labelledby": `${uid}-tab-${tab}` }}
       />
-      <p className="sr-only" aria-live="polite" data-testid="start-filled">
-        {filled}
-      </p>
-      <TemplateLibrary onPick={pick} />
+      <TemplateLibrary />
     </div>
   );
 }
 
 /**
- * The Trends templates (GET /api/templates, migration 0183) under the box, grouped by purpose (lib/start-box.ts). A read only:
- * picking one fills the box and nothing else. Loading, failed, not switched on and empty each say so; none of them reads as "0".
+ * The Trends templates (GET /api/templates, migration 0183) under the box, grouped by purpose (lib/start-box.ts). A read only.
+ * A card is a link to the template's own Create address (templateCreateHref, as the Trends gallery's TrendCard): that page reads
+ * the template and fills its form with the model, shape, length and quality and shows the {placeholders}. Pasting the prompt into
+ * this box instead lost all four. A model measured as not on sale offers no link (rule 4: no other model is named in its place),
+ * and an unknown availability says so and keeps the link: Create decides. Loading, failed, not switched on and empty each say so;
+ * none of them reads as "0".
  */
-function TemplateLibrary({ onPick }: { onPick: (t: TemplateDto) => void }) {
+function TemplateLibrary() {
   const { t, locale, fmt } = useI18n();
   const s = t.startBox.library;
+  const tt = t.trends;
   const path = useChannelPath();
   const { state, retry } = useTemplates(locale);
   const titleId = useId();
@@ -332,30 +383,28 @@ function TemplateLibrary({ onPick }: { onPick: (t: TemplateDto) => void }) {
             <ul className="sb-cards">
               {g.templates.map((tpl) => (
                 <li key={tpl.slug}>
-                  <button
-                    type="button"
-                    className="sb-card"
-                    onClick={() => onPick(tpl)}
-                    aria-label={fmt(s.use, { title: tpl.title })}
-                    data-template={tpl.slug}
-                  >
-                    <span className="sb-card-media" data-kind={tpl.kind} aria-hidden>
-                      {tpl.poster_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- a static poster under /public/templates, already sized.
-                        <img src={tpl.poster_url} alt="" loading="lazy" decoding="async" />
-                      ) : tpl.kind === "video" ? (
-                        <Clapperboard className="size-5" strokeWidth={1.75} />
-                      ) : (
-                        <ImageIcon className="size-5" strokeWidth={1.75} />
-                      )}
-                    </span>
-                    <span className="sb-card-body">
-                      <span className="sb-card-title">{tpl.title}</span>
-                      <span className="sb-card-meta">
-                        {s.kind[tpl.kind]} · {tpl.aspect}
+                  {tpl.model_status === "unavailable" ? (
+                    <div className="sb-card" data-template={tpl.slug} data-model-status="unavailable">
+                      <CardFace tpl={tpl} kindLabel={s.kind[tpl.kind]} />
+                      <span className="sb-card-note" data-tone="warn">
+                        {tt.modelUnavailable}{" "}
+                        <Link href={path("/models")} className="tap-link sb-link">
+                          {tt.seeModels}
+                        </Link>
                       </span>
-                    </span>
-                  </button>
+                    </div>
+                  ) : (
+                    <Link
+                      href={path(templateCreateHref(tpl.slug))}
+                      className="sb-card"
+                      aria-label={fmt(s.use, { title: tpl.title })}
+                      data-template={tpl.slug}
+                      data-model-status={tpl.model_status}
+                    >
+                      <CardFace tpl={tpl} kindLabel={s.kind[tpl.kind]} />
+                      {tpl.model_status === "unknown" && <span className="sb-card-note">{tt.modelUnknown}</span>}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
@@ -379,5 +428,29 @@ function TemplateLibrary({ onPick }: { onPick: (t: TemplateDto) => void }) {
       </div>
       {body}
     </section>
+  );
+}
+
+/** A card's poster and words, the same whether it links or not. */
+function CardFace({ tpl, kindLabel }: { tpl: TemplateDto; kindLabel: string }) {
+  const { t, fmt } = useI18n();
+  const meta = [kindLabel, tpl.aspect, tpl.duration_s ? fmt(t.trends.seconds, { n: tpl.duration_s }) : null].filter(Boolean).join(" · ");
+  return (
+    <>
+      <span className="sb-card-media" data-kind={tpl.kind} aria-hidden>
+        {tpl.poster_url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a static poster under /public/templates, already sized.
+          <img src={tpl.poster_url} alt="" loading="lazy" decoding="async" />
+        ) : tpl.kind === "video" ? (
+          <Clapperboard className="size-5" strokeWidth={1.75} />
+        ) : (
+          <ImageIcon className="size-5" strokeWidth={1.75} />
+        )}
+      </span>
+      <span className="sb-card-body">
+        <span className="sb-card-title">{tpl.title}</span>
+        <span className="sb-card-meta">{meta}</span>
+      </span>
+    </>
   );
 }

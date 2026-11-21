@@ -41,7 +41,7 @@ import { checkAttachment, discardPending, indexedDbStore, takePending, type Atta
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
 import { StartBox, type StartChannel } from "@/components/prompt/StartBox";
-import type { TemplateKind } from "@/lib/templates/trends";
+import { KIND_TOOL, type CreateKind } from "@/lib/customer/create";
 import { formatMediaBytes } from "@/lib/media";
 import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
@@ -127,8 +127,8 @@ export function StudioHome({
   pending?: { nonce: string; words: string } | null;
   /** `?idea=1`: the landing's idea box kept the visitor's words in this browser (lib/site/idea-handoff.ts); the box takes them once. */
   idea?: boolean;
-  /** `?idea=1&kind=image`: the start box sent an image template's words, so they fill the picture box, not the clip box. */
-  ideaKind?: TemplateKind;
+  /** `?idea=1&kind=image|audio`: the start box sent the words for that kind, so they fill its box, not the clip box. */
+  ideaKind?: CreateKind;
   /** The start box at the top (components/prompt/StartBox.tsx): whether the server's flag opens Nightshift AI here, and the channel; null = none. */
   start?: { agentOpen: boolean; channel: StartChannel | null } | null;
 }) {
@@ -262,10 +262,10 @@ export function StudioHome({
     toComposer();
   };
 
-  /** Words handed to this page (the landing's idea, the start box above): the clip box, or the picture box for an image template. */
-  const fillWords = (words: string, kind: TemplateKind, auto = false) => {
-    const tool: StudioCapability = kind === "image" ? "t2i" : "t2v";
-    fill(form(tool, { prompt: attachWords(tool, words) }), kind === "image" ? "image" : "video", auto);
+  /** Words handed to this page (the landing's idea, the start box above): the box of the kind they were sent for (Create's own map). */
+  const fillWords = (words: string, kind: CreateKind, auto = false) => {
+    const tool = KIND_TOOL[kind];
+    fill(form(tool, { prompt: attachWords(tool, words) }), undefined, auto);
   };
 
   /** A fresh box for mode `m`, with the words typed so far where its first tool takes words (Enhance starts from a file). */
