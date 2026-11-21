@@ -10,8 +10,8 @@
 import type { Dictionary } from "@/lib/i18n";
 import type { Table } from "./export";
 import { fill, tashkentDateTime } from "./format";
-import { known, type MoneyRow } from "./money";
-import { inWindow } from "./money";
+import { known, inWindow, summarize, type MoneyRow } from "./money";
+import { monthsOf, type CostEntry } from "./costs";
 import { TIMEZONE, tashkentDay, type Period } from "./period";
 
 type D = Dictionary["ownerAnalytics"];
@@ -160,22 +160,134 @@ export const monthlyTotals = (rows: RegisterRow[]) => groupTotals(rows, (r) => r
 export const quarterlyTotals = (rows: RegisterRow[]) =>
   groupTotals(rows, (r) => `${r.day.slice(0, 4)}-Q${Math.floor((Number(r.day.slice(5, 7)) - 1) / 3) + 1}`);
 
-function preamble(d: D, title: string, p: Period, present: boolean): string[] {
+/** Why expenses are not a number: each is a different fix for the owner, so none is folded into "unknown". */
+export type ExpensesGap = "partial" | "missing" | "unread";
+
+export interface PeriodTotals {
+  /** Sales less refunds and disputes (USD, before provider fees); null when a payment behind it has no amount. */
+  income: number | null;
+  /** Payments in another currency: not added, so a non-zero count makes `income` a floor. */
+  incomeOtherCurrency: number;
+  incomeUnknownRows: number;
+  /** The owner's entered monthly costs for the period's months; null unless every month is whole and has an entry. */
+  expenses: number | null;
+  expensesGap: ExpensesGap | null;
+  /** Months (YYYY-MM) with no entry, when that is the gap. */
+  missingMonths: string[];
+  /** Income less expenses: null unless both are known. */
+  beforeTax: number | null;
+}
+
+const lastDayOf = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+};
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The three period totals. `money` is already scoped (internal rows out). `entries` null = the read failed or 0184 is missing.
+ * Costs are entered per whole month, so a period that cuts a month has no honest expense figure (the costs tab says the same).
+ */
+export function periodTotals(money: MoneyRow[], entries: CostEntry[] | null, p: Period): PeriodTotals {
+  const s = summarize(money, p);
+  // The register lists paid-but-uncredited money as income, so the total does too: both must add up to the same rows.
+  const unknownRows = s.netBeforeFees.unknownCount + s.uncredited.usd.unknownCount;
+  const income = unknownRows === 0 ? r2(s.netBeforeFees.usd + s.uncredited.usd.usd) : null;
+  const incomeOtherCurrency = s.otherCurrency.reduce((a, c) => a + c.count, 0) + s.uncredited.otherCurrency;
+
+  let expenses: number | null = null;
+  let expensesGap: ExpensesGap | null = null;
+  const missingMonths: string[] = [];
+  if (entries === null) expensesGap = "unread";
+  else {
+    const months = monthsOf(p);
+    const partial = months.some((m) => p.startDay > `${m}-01` || p.endDay < lastDayOf(m));
+    if (partial) expensesGap = "partial";
+    else {
+      let sum = 0;
+      for (const m of months) {
+        const mine = entries.filter((e) => e.month.slice(0, 7) === m);
+        if (mine.length === 0) missingMonths.push(m);
+        else sum += mine.reduce((a, e) => a + e.amountUsd, 0);
+      }
+      if (missingMonths.length > 0) expensesGap = "missing";
+      else expenses = r2(sum);
+    }
+  }
+  return {
+    income,
+    incomeOtherCurrency,
+    incomeUnknownRows: unknownRows,
+    expenses,
+    expensesGap,
+    missingMonths,
+    beforeTax: income !== null && expenses !== null ? r2(income - expenses) : null,
+  };
+}
+
+const states = (d: D, t: PeriodTotals) => ({
+  income: t.income === null ? d.taxStateUnknown : t.incomeOtherCurrency > 0 ? d.taxStateIncomplete : d.taxStateMeasured,
+  expenses: t.expenses === null ? d.taxStateUnknown : d.taxStateEstimated,
+  beforeTax: t.beforeTax === null ? d.taxStateUnknown : t.incomeOtherCurrency > 0 ? d.taxStateIncomplete : d.taxStateEstimated,
+});
+
+/** The totals as a table (page cards and the "tax.totals" file): a null cell is unknown, never 0. */
+export function totalsSummaryTable(d: D, t: PeriodTotals, p: Period, present: boolean): Table {
+  const st = states(d, t);
+  return {
+    name: d.taxTotalsTitle,
+    preamble: [...preamble(d, d.taxTotalsTitle, p, present), ...totalsNotes(d, t)],
+    columns: [d.taxTotalsTitle, `${d.amount}, ${d.usd}`, d.taxState, d.source],
+    rows: [
+      [d.taxIncome, t.income, st.income, d.taxIncomeSource],
+      [d.taxExpenses, t.expenses, st.expenses, d.taxExpensesSource],
+      [d.taxBeforeTax, t.beforeTax, st.beforeTax, d.taxBeforeTaxSource],
+    ],
+  };
+}
+
+/** Why a total is unknown or partial, as sentences (page and files say the same things). */
+export function totalsNotes(d: D, t: PeriodTotals): string[] {
+  const out: string[] = [];
+  if (t.incomeUnknownRows > 0) out.push(fill(d.taxIncomeUnknownRows, { n: String(t.incomeUnknownRows) }));
+  if (t.incomeOtherCurrency > 0) out.push(fill(d.taxIncomeOtherCurrency, { n: String(t.incomeOtherCurrency) }));
+  if (t.expensesGap === "partial") out.push(d.taxExpensesPartial);
+  if (t.expensesGap === "missing") out.push(fill(d.taxExpensesMissing, { months: t.missingMonths.join(", ") }));
+  if (t.expensesGap === "unread") out.push(d.taxExpensesUnread);
+  if (t.beforeTax === null) out.push(d.taxBeforeTaxUnknown);
+  return out;
+}
+
+/** One line per total for a file's header: a file read without the page must still say what the figures are and are not. */
+function totalsLines(d: D, t: PeriodTotals): string[] {
+  const st = states(d, t);
+  const v = (n: number | null, s: string) => (n === null ? s : `${n.toFixed(2)} ${d.usd} (${s})`);
+  return [
+    `${d.taxIncome}: ${v(t.income, st.income)}`,
+    `${d.taxExpenses}: ${v(t.expenses, st.expenses)}`,
+    `${d.taxBeforeTax}: ${v(t.beforeTax, st.beforeTax)}`,
+    ...totalsNotes(d, t),
+  ];
+}
+
+function preamble(d: D, title: string, p: Period, present: boolean, totals?: PeriodTotals): string[] {
   return [
     fill(d.reportTitle, { title }),
     `${d.period}: ${p.startDay} — ${p.endDay} (${TIMEZONE})`,
+    d.taxCompanyLine,
     d.taxNotADeclaration,
     d.taxFxNote,
+    ...(totals ? totalsLines(d, totals) : []),
     ...(present ? [d.presentOn] : []),
   ];
 }
 
-export function registerTable(d: D, rows: RegisterRow[], p: Period, present: boolean): Table {
+export function registerTable(d: D, rows: RegisterRow[], p: Period, present: boolean, totals?: PeriodTotals): Table {
   const ev = (e: RegisterRow["event"]) =>
     e === "sale" ? d.eventSale : e === "refund" ? d.eventRefund : e === "dispute" ? d.eventDispute : d.eventUncredited;
   return {
     name: d.taxRegister,
-    preamble: preamble(d, d.taxRegister, p, present),
+    preamble: preamble(d, d.taxRegister, p, present, totals),
     columns: [
       d.date,
       d.event,
@@ -209,7 +321,7 @@ export function registerTable(d: D, rows: RegisterRow[], p: Period, present: boo
   };
 }
 
-export function totalsTable(d: D, totals: RegisterTotal[], name: string, p: Period, present: boolean): Table {
+export function totalsTable(d: D, totals: RegisterTotal[], name: string, p: Period, present: boolean, summary?: PeriodTotals): Table {
   const rows: Table["rows"] = [];
   for (const t of totals) {
     for (const c of t.byCurrency) {
@@ -221,7 +333,7 @@ export function totalsTable(d: D, totals: RegisterTotal[], name: string, p: Peri
   }
   return {
     name,
-    preamble: preamble(d, name, p, present),
+    preamble: preamble(d, name, p, present, summary),
     columns: [d.taxPeriodKey, d.currency, d.count, d.netTax, d.uzsAmount, d.rowsWithoutRate],
     rows,
   };

@@ -21,7 +21,7 @@ import { readCostEntries, readFxRates, readJobs, readPeople, readSpend, type Rea
 import { monthlyResults, summarizeSpend } from "@/lib/owner-analytics/costs";
 import { costEntriesTable, monthlyTable, spendModelsTable, spendProvidersTable } from "@/lib/owner-analytics/cost-tables";
 import { tashkentDayStartUtc } from "@/lib/owner-analytics/period";
-import { monthlyTotals, quarterlyTotals, registerRows, registerTable, totalsTable } from "@/lib/owner-analytics/tax";
+import { monthlyTotals, periodTotals, quarterlyTotals, registerRows, registerTable, totalsSummaryTable, totalsTable } from "@/lib/owner-analytics/tax";
 import { readActivityFor, readCohortActivity, readMoneyFor } from "./owner-analytics-data";
 import { readRunway } from "./owner-runway";
 import { providerRunways } from "@/lib/owner-analytics/runway";
@@ -45,6 +45,7 @@ export const EXPORTABLE = [
   "costs.models",
   "costs.monthly",
   "costs.entries",
+  "tax.totals",
   "tax.register",
   "tax.monthly",
   "tax.quarterly",
@@ -103,11 +104,17 @@ export async function buildExport(
     // and the file says why. A rates read that FAILED is not that: the file would say "no rate stored" of rates that exist.
     if (!fx.ok && fx.reason !== "missing") return fx;
     const rates = fx.ok ? fx.data : [];
-    const rows = registerRows(applyScope(money.data, inc), rates, p);
+    const scoped = applyScope(money.data, inc);
+    const rows = registerRows(scoped, rates, p);
+    // The same totals the page shows, from the same function; a failed costs read makes expenses unknown, never 0.
+    const entries = await readCostEntries(`${p.startDay.slice(0, 7)}-01`, `${p.endDay.slice(0, 7)}-01`);
+    const totals = periodTotals(scoped, entries.ok ? entries.data : null, p);
     const table =
-      what === "tax.register"
-        ? registerTable(d, rows, p, present)
-        : totalsTable(d, what === "tax.monthly" ? monthlyTotals(rows) : quarterlyTotals(rows), what === "tax.monthly" ? d.monthlyTotals : d.quarterlyTotals, p, present);
+      what === "tax.totals"
+        ? totalsSummaryTable(d, totals, p, present)
+        : what === "tax.register"
+          ? registerTable(d, rows, p, present, totals)
+          : totalsTable(d, what === "tax.monthly" ? monthlyTotals(rows) : quarterlyTotals(rows), what === "tax.monthly" ? d.monthlyTotals : d.quarterlyTotals, p, present, totals);
     // A cut read of money or rates is said in the file itself: a row whose rate was not read would otherwise say "no rate stored".
     if (money.truncated || (fx.ok && fx.truncated)) table.preamble = [...(table.preamble ?? []), d.truncated];
     if (!fx.ok) table.preamble = [...(table.preamble ?? []), d.fxNotEnabled];
