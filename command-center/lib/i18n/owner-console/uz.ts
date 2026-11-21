@@ -1,3 +1,4 @@
+import { ownerAssistantUz } from "./assistant-uz";
 import type { OwnerConsoleDictionary } from "./en";
 import { ownerFactsUz } from "./facts-uz";
 
@@ -54,6 +55,7 @@ export const ownerConsoleUz: OwnerConsoleDictionary = {
   checkFailed: "Kirish huquqingizni hozir tasdiqlab boʻlmadi. Muammo bizning tomonda.",
   retry: "Qayta urinish",
   facts: ownerFactsUz,
+  assistant: ownerAssistantUz,
   switcher: {
     title: "Hisobni almashtirish",
     user: "Foydalanuvchi",

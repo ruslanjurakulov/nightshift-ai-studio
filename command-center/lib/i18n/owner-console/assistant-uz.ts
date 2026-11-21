@@ -1,0 +1,53 @@
+import type { ownerAssistantEn } from "./assistant-en";
+
+/** Eganing Nightshift AI yordamchisi (/owner/ai). Matn manbai — ./assistant-en.ts. */
+export const ownerAssistantUz: typeof ownerAssistantEn = {
+  intro: "Foydalanuvchilar va tariflar, tushum, qaysi provayderga qachon toʻlash yoki tizim holati haqida soʻrang. Javoblar faqat platformaning oʻz koʻrsatkichlaridan olinadi va har bir koʻrsatkich oʻlchangan, taxminiy yoki nomaʼlum ekanini aytadi.",
+  noActions: "Faqat javob va qoralamalar: bu yerda hech narsa toʻlanmaydi, narx yoki tarif oʻzgarmaydi, foydalanuvchi tahrirlanmaydi va hech narsa eʼlon qilinmaydi.",
+  label: "Savolingiz",
+  placeholder: "Bu hafta qaysi API uchun toʻlashim kerak?",
+  ask: "Soʻrash",
+  asking: "Oʻylayapman…",
+  you: "Siz",
+  ai: "Nightshift AI",
+  draft: "Qoralama",
+  copy: "Nusxalash",
+  copied: "Nusxalandi",
+  copyFailed: "Nusxalab boʻlmadi. Matnni belgilab, qoʻlda nusxalang.",
+  asOf: "Koʻrsatkichlar {time} holatiga (Toshkent)",
+  empty: "Hali savol yoʻq.",
+  suggestions: "Sinab koʻring",
+  suggest: [
+    "Hozir qaysi API uchun toʻlash kerak va keyingi 10 kunga qancha?",
+    "Bu hafta nechta odam roʻyxatdan oʻtdi va nechtasi toʻlaydi?",
+    "Hozir biror narsa qotib qolganmi yoki xato beryaptimi?",
+  ],
+  tooLong: "Savol {n} belgidan qisqa boʻlsin.",
+  clear: "Suhbatni tozalash",
+  errors: {
+    model_unavailable: {
+      not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",
+      not_on_sale: "Tanlangan chat modeli modellar reyestrida oʻchirilgan. Uni yoqing yoki sozlamalarda boshqa model tanlang.",
+      unknown_model: "Tanlangan chat modelidan bu konsol foydalana olmaydi. Sozlamalarda boshqa model tanlang.",
+    },
+    model_failed: {
+      vendor_auth: "Chat modeli provayderi kalitni rad etdi. Serverdagi kalitni almashtiring.",
+      vendor_quota: "Chat modeli provayderidagi hisobda balans tugagan. Uni provayder sahifasida toʻldiring va qayta soʻrang.",
+      vendor_rate_limited: "Chat modeli provayderi hozir soʻrovlarni cheklayapti. Bir daqiqa kutib, qayta soʻrang.",
+      vendor_refused: "Model bunga javob berishdan bosh tortdi. Savolni boshqacha tuzing.",
+      vendor_error: "Chat modeli provayderida xato yuz berdi. Bir daqiqadan keyin qayta soʻrang.",
+      timeout: "Model juda uzoq javob berdi. Qayta soʻrang yoki torroq savol bering.",
+      bad_answer: "Model javobi kutilgan koʻrinishda kelmadi. Qayta soʻrang.",
+      not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",
+    },
+    daily_cap: "Bugungi {limit} ta savol chegarasi tugadi. U keyingi 24 soat ichida boʻshaydi.",
+    second_factor: "Buning uchun ikkinchi omil kerak. Uni tasdiqlab, qayta soʻrang.",
+    not_enabled: "Ega AI yordamchisi uchun hali qoʻllanmagan maʼlumotlar bazasi migratsiyasi ({n}) kerak.",
+    unavailable: "Hozir javob berib boʻlmadi. Muammo bizning tomonda. Qayta soʻrang.",
+    network: "Serverga ulanib boʻlmadi. Aloqani tekshirib, qayta soʻrang.",
+    session: "Sessiya tugadi. Qayta kiring.",
+    other: "Javob berib boʻlmadi. Qayta soʻrang.",
+  },
+  verify: "Tasdiqlash",
+  retry: "Qayta soʻrash",
+};
