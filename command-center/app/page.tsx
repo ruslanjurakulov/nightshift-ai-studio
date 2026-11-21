@@ -3,13 +3,10 @@ import { redirect } from "next/navigation";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
-import { packExpiry } from "@/lib/plans";
 import { sitePlanMatrix, sitePricing } from "@/lib/server/payments";
 import { planValue } from "@/lib/server/plans";
 import { readPublicPlanCatalog } from "@/lib/server/public-catalog";
-import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import {
-  SHOWCASE,
   jsonLdScript,
   moneyAnchor,
   pricingTeaser,
@@ -17,15 +14,19 @@ import {
   shareMetadata,
   siteGraphJsonLd,
   softwareApplicationJsonLd,
-  visibleShowcase,
 } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
-import { readPublicSiteStats } from "@/lib/server/public-stats";
 import { PublicShell } from "@/components/legal/PublicShell";
-import { Landing } from "@/components/landing/Landing";
+import { HomePage } from "@/components/landing/home/HomePage";
 import { faqForSale, landingFaqItems } from "@/components/landing/Faq";
 import { faqPageJsonLd } from "@/lib/studio-page";
+import { packExpiry } from "@/lib/plans";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
+import { readPublicModelsOnSale } from "@/lib/server/public-models";
+import { priceRatesFrom } from "@/lib/site/price-check";
+import { mcpOauthLive } from "@/lib/mcp-oauth";
+import { preloadDisplayFont } from "@/components/site/fonts";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
@@ -57,15 +58,16 @@ export default async function Home() {
   if (await getUser()) redirect(`/${ALL_CHANNELS_SLUG}`);
 
   const { t, locale } = await getDictionary();
+  preloadDisplayFont(locale);
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
   // Plans (0034) come from the public price list in the database. The landing
-  // is signed out by now, so all three are the shared public reads: bounded,
-  // kept and run together (BR-L-047, BR-L-101). The live counters (0164) are the same kind of read, and null while hidden.
-  const [catalogRead, apiPrices, siteRates, liveStats] = await Promise.all([
+  // is signed out by now, so all of these are the shared public reads: bounded,
+  // kept and run together (BR-L-047, BR-L-101). The models on sale (0193) are the same kind of read, and null when unreadable.
+  const [catalogRead, apiPrices, siteRates, models] = await Promise.all([
     readPublicPlanCatalog(),
     readPublicApiPrices(),
     readPublicCreditRates(),
-    readPublicSiteStats(),
+    readPublicModelsOnSale(),
   ]);
   // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
   const catalog = planValue(catalogRead);
@@ -77,7 +79,6 @@ export default async function Home() {
     description: t.landing.meta.description,
     url: runtimeSiteOrigin(),
   });
-
   // The questions the page itself shows (Faq.tsx), as the same plain text, so the structured answer cannot differ from the visible one.
   const expiry = packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS);
   const dodo = Boolean(resolved.dodo);
@@ -89,15 +90,15 @@ export default async function Home() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       {graphLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(graphLd) }} />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(faqLd) }} />
-      <Landing
+      <HomePage
         t={t}
         locale={locale}
         pricing={pricing}
-        anchor={anchor}
-        showcase={visibleShowcase(SHOWCASE)}
+        rates={priceRatesFrom(anchor)}
+        models={models}
+        oauthLive={mcpOauthLive()}
         expiry={expiry}
         dodo={dodo}
-        liveStats={liveStats}
       />
     </PublicShell>
   );

@@ -475,7 +475,7 @@ export function SolutionRows({ pages }: { pages: Dictionary["site"]["solutions"]
 
 /** The Google data statement OAuth reviewers read: it sits in the FAQ's left
  *  column, under the questions' title, rather than as a section of its own. */
-function GoogleData({ t }: { t: Dictionary }) {
+export function GoogleData({ t }: { t: Dictionary }) {
   const d = t.landing.data;
   return (
     <aside id="google-data" aria-labelledby="data-title" className="nx-data">

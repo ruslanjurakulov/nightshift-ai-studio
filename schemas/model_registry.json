@@ -455,6 +455,7 @@
       },
       "quality_tier": 4,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
@@ -533,6 +534,7 @@
       },
       "quality_tier": 3,
       "speed_tier": 5,
+      "requires_adult": true,
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
@@ -616,6 +618,7 @@
       },
       "quality_tier": 5,
       "speed_tier": 2,
+      "requires_adult": true,
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
@@ -696,6 +699,7 @@
       },
       "quality_tier": 3,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "expand",
         "prompt": "extend the scene",
@@ -769,6 +773,7 @@
       },
       "quality_tier": 3,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "relight",
         "prompt": "warm light",
@@ -834,6 +839,7 @@
       },
       "quality_tier": 3,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "erase",
         "prompt": "the brightest spot",
@@ -893,6 +899,7 @@
       },
       "quality_tier": 3,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "describe",
         "prompt": "describe the probe frame",
@@ -2204,6 +2211,7 @@
       },
       "quality_tier": 5,
       "speed_tier": 2,
+      "requires_adult": true,
       "probe": {
         "capability": "i2v",
         "prompt": "slow push in",
@@ -2292,6 +2300,7 @@
       },
       "quality_tier": 4,
       "speed_tier": 3,
+      "requires_adult": true,
       "probe": {
         "capability": "i2v",
         "prompt": "slow push in",
@@ -2378,6 +2387,7 @@
       },
       "quality_tier": 3,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "i2v",
         "prompt": "slow push in",
@@ -5892,6 +5902,7 @@
       },
       "quality_tier": 4,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "t2v",
         "prompt": "a boat at dawn",
@@ -5982,6 +5993,7 @@
       },
       "quality_tier": 4,
       "speed_tier": 4,
+      "requires_adult": true,
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",

@@ -158,9 +158,10 @@ class Numbering(unittest.TestCase):
         # 0190 (the probe log's plan_required word: one check constraint on model_probe_runs) was reviewed the same way: names nothing these pin.
         # 0192 (the adult attestation: adult_attestations, two calls, its helpers and hold gate, marked hunks in quote_creative_job,
         # route_model, sellable_models, create_creative_job, api_creative_refusal, creative_platform_reserve, quote_film, start_film and api_create_video) was reviewed the same way: nothing of 0131's or 0133's.
-        # 0193 (OpenAI GPT Image on sale once verified and priced) and 0194 (Describe on Claude and GPT, the same shape) were reviewed
+        # 0193 (the public names of the models on sale: one new read-only function over sellable_models; alters nothing, names nothing these pin)
+        # 0194 (OpenAI GPT Image on sale once verified and priced) and 0195 (Describe on Claude and GPT, the same shape) were reviewed
         # the same way: model_registry availability / entitlement only, no price, function, table or grant; they name nothing these pin.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)

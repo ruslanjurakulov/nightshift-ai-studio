@@ -778,3 +778,8 @@ FUNCTIONS.update({
     "video_listed_at": SERVICE,
     "render_job_video_id": SERVICE,
 })
+
+# Migration 0193 (the names of the models on sale, read signed out by the landing page): tests/security/sec_public_models_0193.py
+import sec_public_models_0193  # noqa: E402
+
+sec_public_models_0193.extend(TABLES, FUNCTIONS)

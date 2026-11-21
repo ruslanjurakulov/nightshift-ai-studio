@@ -1,4 +1,4 @@
--- 0193_open_openai_image.sql — put on sale (beta) the OpenAI GPT Image models that a real probe has verified and the owner has priced.
+-- 0194_open_openai_image.sql — put on sale (beta) the OpenAI GPT Image models that a real probe has verified and the owner has priced.
 --
 -- *** LIVE ON APPLY. *** It sets model_registry.availability to beta and model_registry.entitlement to NULL for the OpenAI GPT Image
 -- models that pass every gate below, and writes NOTHING else: no credit_prices row, no function, policy, grant, trigger or constraint.
@@ -26,8 +26,8 @@
 -- organization (tiers are `planned`), so a beta model with models_image:premium could be bought by nobody. The reviewed file
 -- (schemas/model_registry.json) carries the same NULL, so `tools/probe_models.py --sync` keeps it.
 --
--- Idempotent: a replay finds the models already beta and changes nothing. Rollback: docs/sql/rollback_0193_open_openai_image.sql
--- (owner-applied: hidden again). NUMBER: reserved 0193 for the investor sprint (stream S10); Atlas may renumber it.
+-- Idempotent: a replay finds the models already beta and changes nothing. Rollback: docs/sql/rollback_0194_open_openai_image.sql
+-- (owner-applied: hidden again). NUMBER: reserved 0194 for the investor sprint (stream S10); Atlas may renumber it.
 
 set local lock_timeout = '5s';
 
@@ -35,7 +35,7 @@ do $$
 begin
   if to_regclass('public.model_registry') is null or to_regclass('public.credit_prices') is null
      or to_regprocedure('public.sellable_models(text, text)') is null then
-    raise exception '0193 needs 0020 (credit_prices) and 0035 (model_registry, sellable_models): apply them first';
+    raise exception '0194 needs 0020 (credit_prices) and 0035 (model_registry, sellable_models): apply them first';
   end if;
 end $$;
 
@@ -57,11 +57,11 @@ declare
   opened  text[] := '{}';
 begin
   if not exists (select 1 from public.model_registry) then
-    raise notice '0193: model_registry is empty (not synced yet): nothing opened';
+    raise notice '0194: model_registry is empty (not synced yet): nothing opened';
     return;
   end if;
   if to_regprocedure('public.model_past_shutdown(jsonb)') is null or to_regprocedure('public.model_is_available(text)') is null then
-    raise exception '0193 needs 0124 (model_is_available) and 0125 (model_past_shutdown): apply them first';
+    raise exception '0194 needs 0124 (model_is_available) and 0125 (model_past_shutdown): apply them first';
   end if;
 
   for m in select * from jsonb_array_elements(models) loop
@@ -97,7 +97,7 @@ begin
     end if;
 
     if why is not null then
-      raise notice '0193: % left as it is: %', m ->> 'id', why;
+      raise notice '0194: % left as it is: %', m ->> 'id', why;
       continue;
     end if;
 
@@ -108,21 +108,21 @@ begin
     opened := opened || r.id;
   end loop;
 
-  raise notice '0193: on sale (beta or already ga): %', case when opened = '{}' then 'none' else array_to_string(opened, ', ') end;
+  raise notice '0194: on sale (beta or already ga): %', case when opened = '{}' then 'none' else array_to_string(opened, ', ') end;
 
   -- End state: every model opened here is listed by the Studio's catalog (unless the owner's switch has it off, 0124), and never by
   -- the API or MCP.
   foreach q in array opened loop
     select * into r from public.model_registry where id = q;
     if r.availability not in ('beta', 'ga') or r.entitlement is not null then
-      raise exception '0193 end state: % is not on sale as this file says', q;
+      raise exception '0194 end state: % is not on sale as this file says', q;
     end if;
     if public.model_is_available(q) and not exists (select 1 from public.sellable_models(null, 'web') s where s.id = q) then
-      raise exception '0193 end state: % is on sale but sellable_models does not list it', q;
+      raise exception '0194 end state: % is on sale but sellable_models does not list it', q;
     end if;
     if exists (select 1 from public.sellable_models(null, 'api') s where s.id = q)
        or exists (select 1 from public.sellable_models(null, 'mcp') s where s.id = q) then
-      raise exception '0193 end state: % is offered through the API or MCP', q;
+      raise exception '0194 end state: % is offered through the API or MCP', q;
     end if;
   end loop;
 end $$;

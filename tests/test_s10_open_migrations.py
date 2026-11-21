@@ -1,4 +1,4 @@
-"""0193 (OpenAI GPT Image) and 0194 (Describe on Claude / GPT) open a model only when it is priced above zero.
+"""0194 (OpenAI GPT Image) and 0195 (Describe on Claude / GPT) open a model only when it is priced above zero.
 
 sellable_models lists a unit only when credits_per_unit > 0. A gate that accepted a zero row would open the model, then fail its
 own end-state check with "on sale but sellable_models does not list it", which names the wrong fix (Lens, 2026-11-21).

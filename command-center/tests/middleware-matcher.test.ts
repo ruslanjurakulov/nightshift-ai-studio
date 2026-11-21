@@ -254,6 +254,28 @@ describe("the real static files stay public", () => {
     }
   });
 
+  it("a showcase file is public only as /showcase/<hyphenated-slug>.mp4, .webp or .vtt", () => {
+    expect(runs("/showcase/registan-dusk.mp4")).toBe(false);
+    expect(runs("/showcase/language-duo.vtt")).toBe(false);
+    expect(runs("/showcase/registan-dusk.webp")).toBe(false);
+    for (const p of [
+      "/showcase/registan-dusk.mp4x",
+      "/showcase/registan-dusk.webp/providers",
+      "/showcase/registan.mp4",
+      "/showcase/a/registan-dusk.mp4",
+      "/showcase/Registan-Dusk.mp4",
+      "/showcase/registan-dusk.png",
+      "/showcase/language-duo.vtt.mp4x",
+      "/showcase/language-duo.vttx",
+      "/showcase/a/language-duo.vtt",
+      "/showcase/duo.vtt",
+      "/chronos/showcase/registan-dusk.mp4",
+      "/showcase",
+    ]) {
+      expect(runs(p), p).toBe(true);
+    }
+  });
+
   it("an excluded name is excluded only as the whole path", () => {
     for (const name of ["favicon.ico", "icon.png", "apple-icon.png", "og.png"]) {
       expect(runs(`/${name}`), name).toBe(false);

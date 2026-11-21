@@ -1,4 +1,4 @@
--- 0194_open_llm_describe.sql — put on sale (beta) the Studio's "Describe" on Claude Sonnet 5.5 and on GPT-6 Luna, once each has been
+-- 0195_open_llm_describe.sql — put on sale (beta) the Studio's "Describe" on Claude Sonnet 5.5 and on GPT-6 Luna, once each has been
 -- verified by a real probe and priced by the owner.
 --
 -- *** LIVE ON APPLY. *** It sets model_registry.availability to beta (entitlement NULL) for the two describe models below when they
@@ -24,7 +24,7 @@
 --   * spec.api_exposure web_only (the Studio only); not past a shutdown (0125); not `disabled`; no blocked_countries (0142);
 --   * a credit_prices row for the model's unit.
 --
--- Idempotent. Rollback: docs/sql/rollback_0194_open_llm_describe.sql (owner-applied: hidden again). NUMBER: 0194 for the investor
+-- Idempotent. Rollback: docs/sql/rollback_0195_open_llm_describe.sql (owner-applied: hidden again). NUMBER: 0195 for the investor
 -- sprint (stream S10); Atlas may renumber it.
 
 set local lock_timeout = '5s';
@@ -33,7 +33,7 @@ do $$
 begin
   if to_regclass('public.model_registry') is null or to_regclass('public.credit_prices') is null
      or to_regprocedure('public.sellable_models(text, text)') is null then
-    raise exception '0194 needs 0020 (credit_prices) and 0035 (model_registry, sellable_models): apply them first';
+    raise exception '0195 needs 0020 (credit_prices) and 0035 (model_registry, sellable_models): apply them first';
   end if;
 end $$;
 
@@ -53,11 +53,11 @@ declare
   opened  text[] := '{}';
 begin
   if not exists (select 1 from public.model_registry) then
-    raise notice '0194: model_registry is empty (not synced yet): nothing opened';
+    raise notice '0195: model_registry is empty (not synced yet): nothing opened';
     return;
   end if;
   if to_regprocedure('public.model_past_shutdown(jsonb)') is null or to_regprocedure('public.model_is_available(text)') is null then
-    raise exception '0194 needs 0124 (model_is_available) and 0125 (model_past_shutdown): apply them first';
+    raise exception '0195 needs 0124 (model_is_available) and 0125 (model_past_shutdown): apply them first';
   end if;
 
   for m in select * from jsonb_array_elements(models) loop
@@ -87,7 +87,7 @@ begin
     end if;
 
     if why is not null then
-      raise notice '0194: % left as it is: %', m ->> 'id', why;
+      raise notice '0195: % left as it is: %', m ->> 'id', why;
       continue;
     end if;
 
@@ -98,19 +98,19 @@ begin
     opened := opened || r.id;
   end loop;
 
-  raise notice '0194: on sale (beta or already ga): %', case when opened = '{}' then 'none' else array_to_string(opened, ', ') end;
+  raise notice '0195: on sale (beta or already ga): %', case when opened = '{}' then 'none' else array_to_string(opened, ', ') end;
 
   foreach q in array opened loop
     select * into r from public.model_registry where id = q;
     if r.availability not in ('beta', 'ga') or r.entitlement is not null then
-      raise exception '0194 end state: % is not on sale as this file says', q;
+      raise exception '0195 end state: % is not on sale as this file says', q;
     end if;
     if public.model_is_available(q) and not exists (select 1 from public.sellable_models(null, 'web') s where s.id = q) then
-      raise exception '0194 end state: % is on sale but sellable_models does not list it', q;
+      raise exception '0195 end state: % is on sale but sellable_models does not list it', q;
     end if;
     if exists (select 1 from public.sellable_models(null, 'api') s where s.id = q)
        or exists (select 1 from public.sellable_models(null, 'mcp') s where s.id = q) then
-      raise exception '0194 end state: % is offered through the API or MCP', q;
+      raise exception '0195 end state: % is offered through the API or MCP', q;
     end if;
   end loop;
 end $$;

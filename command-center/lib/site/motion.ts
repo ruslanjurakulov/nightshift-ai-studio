@@ -77,8 +77,13 @@ export function useMotionPaused(): boolean {
  * no clip plays, but the posters drift and the light moves, and a pointer must still be able to stop them.
  */
 const TAP_AREAS = "[data-clip], .nx-drift-pic, .nx-sh, .nx-lit, .st-auth-aside, .nx-auth-band";
-/** What a tap in such an area belongs to rather than to the switch: a control, the composer's form, or anything focusable. */
-const CONTROLS = "a, button, input, select, textarea, label, summary, form, [role='button'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
+/**
+ * What a tap in such an area belongs to rather than to the switch: a control, the composer's form, or anything focusable. Except a
+ * row that is focusable only so a keyboard can scroll it (`data-scroll-region`, the landing's reel): it is not a control, and
+ * counting it as one took the pointer's pause away from every clip in it. The links and buttons inside it still count.
+ */
+const CONTROLS =
+  "a, button, input, select, textarea, label, summary, form, [role='button'], [contenteditable='true'], [tabindex]:not([tabindex='-1']):not([data-scroll-region])";
 
 /** When the last tap flipped the switch (ms), so the second click of a double-click can take it back. */
 let lastFlip = 0;
