@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function OwnerConsoleAi() {
   await requireOwnerConsole();
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const a = t.ownerConsole.assistant;
   const name = firstNameOf((await getUser())?.user_metadata);
   return (
@@ -25,6 +25,9 @@ export default async function OwnerConsoleAi() {
         greeting={name ? fill(a.greeting, { name }) : a.greetingNoName}
         verifyHref={mfaVerifyUrl("/owner/ai")}
         signInHref={`/login?next=${encodeURIComponent("/owner/ai")}`}
+        // Only after requireOwnerConsole(): the history panel is drawn for the owner alone (its route 404s anyone else too).
+        history
+        locale={locale}
       />
     </div>
   );
