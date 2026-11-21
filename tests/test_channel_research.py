@@ -441,21 +441,42 @@ class FixRound(unittest.TestCase):
             {"id": "c1", "input_ref": "@x", "ref_kind": "handle", "status": "resolved", "youtube_channel_id": UC1,
              "channel_fetched_at": "2026-11-21T11:30:00+00:00", "videos_fetched_at": None, "uploads_playlist_id": "UUa"}]},
             session, store)
-        self.assertEqual(store.videos, [{"youtube_channel_id": UC1, "complete": True}])
+        self.assertEqual(len(store.videos), 1)
+        marker = store.videos[0]
+        self.assertEqual((marker["youtube_channel_id"], marker["complete"]), (UC1, True))
+        # The fetch's start time: only rows older than it may be removed.
+        self.assertTrue(datetime.fromisoformat(marker["fetched_since"]))
 
-    def test_one_bad_handle_does_not_fail_the_request(self):
+    def test_a_missing_handle_is_not_found_and_the_loop_goes_on(self):
         def channels(params):
-            if params.get("forHandle") == "@bad":
-                return Resp(400, {"error": {"errors": [{"reason": "invalidParameter"}]}})
+            if params.get("forHandle") == "@gone":
+                return Resp(404, {"error": {"errors": [{"reason": "channelNotFound"}]}})
             return Resp(200, {"items": [channel_item(UC1)]})
 
         session = FakeSession({"/channels": channels, "/playlistItems": Resp(200, {"items": []})})
         store = FakeStore()
         status = run({"id": 3, "kind": "competitors", "org_id": "o", "competitors": [
-            {"id": "c1", "input_ref": "@bad", "ref_kind": "handle", "status": "pending"},
+            {"id": "c1", "input_ref": "@gone", "ref_kind": "handle", "status": "pending"},
             {"id": "c2", "input_ref": "@good", "ref_kind": "handle", "status": "pending"}]}, session, store)
         self.assertEqual(status, "done")
         self.assertEqual(store.resolved, [("c1", None), ("c2", UC1)])
+
+    def test_a_400_on_a_handle_says_nothing_about_the_channel(self):
+        # Lens M2: an unexplained 400 is not "no such channel": the competitor stays pending and the request names the error.
+        session = FakeSession({"/channels": Resp(400, {"error": {"errors": [{"reason": "invalidParameter"}]}})})
+        store = FakeStore()
+        status = run({"id": 3, "kind": "competitors", "org_id": "o", "competitors": [
+            {"id": "c1", "input_ref": "@odd", "ref_kind": "handle", "status": "pending"}]}, session, store)
+        self.assertEqual(status, "failed")
+        self.assertEqual(store.resolved, [])
+        self.assertEqual(store.finished[-1][1:3], ("failed", "platform_error"))
+
+    def test_an_empty_own_playlist_replaces_the_stored_list(self):
+        routes = OwnChannel().routes()
+        session, store = FakeSession(routes), FakeStore()
+        run({"id": 11, "kind": "own_channel", "org_id": "o", "channel_id": "chan-a"}, session, store,
+            credentials=lambda cid: (OwnChannel().token_json(), OwnChannel().ctx()))
+        self.assertEqual(store.videos, [{"own_request_id": 11, "complete": True}])
 
     def test_a_400_is_auth_only_when_the_reason_says_key(self):
         self.assertEqual(cr.error_word(400, {"error": {"errors": [{"reason": "invalidParameter"}]}}), "platform_error")

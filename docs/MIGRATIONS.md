@@ -2269,4 +2269,11 @@ draft channel (never confirmed against YouTube) and readers answer `not_connecte
 channel's own analytics and uploads are hidden and purged; competitor status gains `own_channel`. One organization may spend at
 most 300 of the 1,500 daily units (the worker's constant), and `RESEARCH_SEARCH_SHARED_UNITS` (default 0) makes each search also
 take shared units.
+Second fix round: the claim ends a request whose channel is no longer confirmed `not_connected` before anything is spent, and no
+follow-up is queued for such a channel; a follow-up compares the competitors the claim handed out (`research_requests.
+claimed_competitor_ids`) and is asked for by whoever added the late one; every `channels.list` answer refreshes a resolved
+competitor's `resolved_at`, and the 30-day reset queues one competitors request per affected confirmed channel; a complete batch
+removes only rows older than its fetch's start, and an empty own playlist clears the stored list; own numbers read from another
+YouTube account than the channel's current one are not shown (`channel_mismatch`); the competitors status CHECK is swapped in
+place (guarded), so a database that ran an earlier draft gains `own_channel`.
 Rollback: `docs/sql/rollback_0200_channel_research.sql`.

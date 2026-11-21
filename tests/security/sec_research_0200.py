@@ -54,6 +54,7 @@ def extend(tables: dict, functions: dict) -> None:
         "research_channel_confirmed": SERVICE,
         "research_draft_answer": SERVICE,
         "research_own_videos_json": SERVICE,
+        "research_current_youtube_id": SERVICE,
     })
 
 

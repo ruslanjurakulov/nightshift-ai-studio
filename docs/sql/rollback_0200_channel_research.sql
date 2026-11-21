@@ -42,7 +42,9 @@ drop function if exists public.research_min_interval(text);
 drop function if exists public.research_clean(text, integer);
 drop function if exists public.research_channel_confirmed(text);
 drop function if exists public.research_draft_answer(text);
+drop function if exists public.research_own_videos_json(text, integer, text);
 drop function if exists public.research_own_videos_json(text, integer);
+drop function if exists public.research_current_youtube_id(text);
 
 drop table if exists public.research_requests;
 drop table if exists public.research_own_analytics;

@@ -75,8 +75,10 @@ export function ResearchBoard(props: ResearchBoardProps) {
   const r = t.research;
   const router = useRouter();
   const [, startTransition] = useTransition();
+  // A pending competitor is only being checked while a request is open; one that nobody asked about yet (after the 30-day reset,
+  // say) is not polled for.
   const refreshing = [props.own, props.competitors, props.topic].some((p) => p.status === "refreshing")
-    || (props.competitors.data?.competitors ?? []).some((c) => c.status === "pending");
+    || (asked(props.competitors) && (props.competitors.data?.competitors ?? []).some((c) => c.status === "pending"));
 
   const [gaveUp, setGaveUp] = useState(false);
 
@@ -129,6 +131,12 @@ export function ResearchBoard(props: ResearchBoardProps) {
       <Attribution r={r} />
     </div>
   );
+}
+
+/** Is a request open for this panel (asked, not yet answered)? */
+function asked(panel: Panel<unknown>): boolean {
+  const s = panel.lastRequest?.status;
+  return s === "queued" || s === "running";
 }
 
 interface Ctx {
@@ -472,7 +480,9 @@ function CompetitorsPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<CompetitorsDa
                   </div>
                   <RemoveButton ctx={ctx} id={c.id} name={name} />
                 </div>
-                {c.status === "pending" && <p role="status" className="m-0 text-sm">{r.competitors.pending}</p>}
+                {c.status === "pending" && (asked(panel)
+                  ? <p role="status" className="m-0 text-sm">{r.competitors.pending}</p>
+                  : <p className="m-0 text-sm text-[var(--color-muted)]">{r.competitors.notAsked}</p>)}
                 {c.status === "not_found" && <p className="m-0 text-sm text-[var(--color-warn)]">{r.competitors.notFound}</p>}
                 {c.status === "own_channel" && <p className="m-0 text-sm text-[var(--color-warn)]">{r.competitors.ownChannel}</p>}
                 {c.status === "resolved" && (c.channel ? (

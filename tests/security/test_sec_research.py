@@ -280,10 +280,15 @@ def test_a_complete_public_list_removes_a_video_that_went_private(conn, sc):
         rows = [{"video_id": VIDEO, "youtube_channel_id": COMP, "title": "was public"},
                 {"video_id": "otherVideo1", "youtube_channel_id": COMP, "title": "still public"}]
         assert ok(s.call(SERVICE, "select public.research_store_videos(%s::jsonb)", [json.dumps(rows)])) == 2
-        again = [rows[1], {"youtube_channel_id": COMP, "complete": True}]
+        # Fetched an hour ago; a third row was written by another worker after this fetch began.
+        s.owner("update public.research_video_cache set fetched_at = now() - interval '1 hour' where youtube_channel_id = %s", [COMP])
+        s.owner("insert into public.research_video_cache (video_id, youtube_channel_id, title, fetched_at) "
+                "values ('newerVideo1', %s, 'newer', now() + interval '1 minute')", [COMP])
+        since = s.owner("select (now() - interval '1 second')::text")
+        again = [rows[1], {"youtube_channel_id": COMP, "complete": True, "fetched_since": since}]
         ok(s.call(SERVICE, "select public.research_store_videos(%s::jsonb)", [json.dumps(again)]))
         assert s.owner("select array_agg(video_id order by video_id) from public.research_video_cache where youtube_channel_id = %s",
-                       [COMP]) == ["otherVideo1"]
+                       [COMP]) == ["newerVideo1", "otherVideo1"]
 
 
 def test_own_uploads_stay_with_the_channel_and_only_public_ones_are_shared(conn, sc):
@@ -359,3 +364,69 @@ def test_removing_is_rate_limited_like_adding(conn, sc):
         answers = [ok(s.call(alice.actor, "select public.research_remove_competitor(%s, gen_random_uuid())", [alice.channel]))
                    for _ in range(41)]
         assert answers[-1] == {"ok": False, "error": "rate_limited"}
+
+
+# ── second fix round (PR #851) ──────────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_list_in_use_is_reconfirmed_and_a_reset_one_is_asked_again(conn, sc):
+    """Lens M1: a channels.list answer refreshes resolved_at; the 30-day reset queues the re-resolution it needs."""
+    alice = sc.alice
+    with scratch(conn) as s:
+        _quiet(s)
+        used = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@inuse')", [alice.channel]))
+        idle = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@idle')", [alice.channel]))
+        s.owner("update public.research_competitors set status = 'resolved', youtube_channel_id = %s, resolved_at = now() - interval '40 days' "
+                "where id = %s", [COMP, used["id"]])
+        s.owner("update public.research_competitors set status = 'resolved', youtube_channel_id = %s, resolved_at = now() - interval '40 days' "
+                "where id = %s", [COMP2, idle["id"]])
+        _quiet(s)
+        ok(s.call(SERVICE, "select public.research_store_channels(%s::jsonb)", [json.dumps([{"youtube_channel_id": COMP, "title": "x"}])]))
+        ok(s.call(SERVICE, "select public.research_purge_stale()"))
+        assert s.owner("select status from public.research_competitors where id = %s", [used["id"]]) == "resolved"
+        assert s.owner("select status from public.research_competitors where id = %s", [idle["id"]]) == "pending"
+        assert s.owner("select count(*) from public.research_requests where channel_id = %s and kind = 'competitors' and status = 'queued'",
+                       [alice.channel]) == 1
+        view = ok(s.call(alice.actor, "select public.research_competitors_view(%s)", [alice.channel]))
+        assert view["status"] == "refreshing" and view["last_request"]["status"] == "queued"
+
+
+def test_a_follow_up_is_asked_for_by_whoever_added_the_late_competitor(conn, sc):
+    alice = sc.alice
+    with scratch(conn) as s:
+        _quiet(s)
+        first = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@early')", [alice.channel]))
+        claimed = ok(s.call(SERVICE, "select public.research_claim_request('lab-worker')"))
+        assert claimed["id"] == first["request_id"]
+        late = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@late')", [alice.channel]))
+        s.owner("update public.research_requests set requested_by = null where id = %s", [claimed["id"]])
+        ok(s.call(SERVICE, "select public.research_resolve_competitor(%s, %s)", [first["id"], COMP]))
+        assert ok(s.call(SERVICE, "select public.research_finish_request(%s, 'lab-worker', 'done', null, 1)", [claimed["id"]]))
+        who = s.owner("select requested_by::text from public.research_requests where channel_id = %s and kind = 'competitors' "
+                      "and status = 'queued'", [alice.channel])
+        assert who == alice.actor.uid and late["ok"]
+
+
+def test_own_numbers_from_another_youtube_account_are_not_shown(conn, sc):
+    alice = sc.alice
+    with scratch(conn) as s:
+        s.owner("update public.channels set credential_ref = jsonb_set(credential_ref, '{youtube_channel_id}', to_jsonb(%s::text)) "
+                "where channel_id = %s", [COMP, alice.channel])
+        s.owner("delete from public.research_own_analytics where channel_id = %s", [alice.channel])
+        s.owner("insert into public.research_own_analytics (channel_id, period_days, youtube_channel_id, views) values (%s, 28, %s, 77)",
+                [alice.channel, COMP2])
+        out = ok(s.call(alice.actor, "select public.research_own_channel(%s)", [alice.channel]))
+        assert out["status"] == "no_data" and out["remedy_code"] == "channel_mismatch" and out["data"] is None
+        s.owner("update public.research_own_analytics set youtube_channel_id = %s where channel_id = %s", [COMP, alice.channel])
+        assert ok(s.call(alice.actor, "select public.research_own_channel(%s)", [alice.channel]))["status"] == "ok"
+
+
+def test_an_empty_own_playlist_clears_the_stored_list(conn, sc):
+    alice = sc.alice
+    with scratch(conn) as s:
+        _quiet(s)
+        rid = ok(s.call(alice.actor, "select public.research_request_refresh(%s, 'own_channel')", [alice.channel]))["request_id"]
+        assert ok(s.call(SERVICE, "select public.research_claim_request('lab-worker')"))["id"] == rid
+        assert s.owner("select count(*) from public.research_own_videos where channel_id = %s", [alice.channel]) >= 1
+        ok(s.call(SERVICE, "select public.research_store_videos(%s::jsonb)", [json.dumps([{"own_request_id": rid, "complete": True}])]))
+        assert s.owner("select count(*) from public.research_own_videos where channel_id = %s", [alice.channel]) == 0

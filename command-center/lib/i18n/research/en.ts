@@ -96,6 +96,7 @@ export const researchEn = {
     count: "{n} of {max}",
     empty: "No competitors yet. Add the channels you want to compare with.",
     pending: "Checking with YouTube…",
+    notAsked: "Not checked yet. Press Refresh to check it.",
     notFound: "YouTube does not know this channel.",
     remove: "Remove",
     removeAria: "Remove {name}",

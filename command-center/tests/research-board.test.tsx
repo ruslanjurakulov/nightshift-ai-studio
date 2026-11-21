@@ -172,8 +172,15 @@ describe("competitors", () => {
                  view_count: 10, video_count: 1, fetched_at: "2026-11-21T10:00:00Z" } },
   ] });
 
-  it("shows pending as checking and not found honestly", () => {
+  it("a pending competitor nobody asked about says to press Refresh, not that it is being checked", () => {
     show(props({ competitors: parsePanel(list, parseCompetitors) }));
+    const box = screen.getByTestId("research-competitors");
+    expect(within(box).getByText(en.competitors.notAsked)).toBeTruthy();
+    expect(within(box).queryByText(en.competitors.pending)).toBeNull();
+  });
+
+  it("shows pending as checking and not found honestly", () => {
+    show(props({ competitors: parsePanel({ ...list, last_request: { status: "queued", error_code: null } }, parseCompetitors) }));
     const box = screen.getByTestId("research-competitors");
     expect(within(box).getByText(en.competitors.pending)).toBeTruthy();
     expect(within(box).getByText(en.competitors.notFound)).toBeTruthy();

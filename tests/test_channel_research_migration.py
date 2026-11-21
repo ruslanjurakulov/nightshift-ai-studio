@@ -162,7 +162,7 @@ class ChannelResearchMigration(unittest.TestCase):
         # BR-R-001: own uploads have their own, channel-scoped table, and only a public one reaches the shared cache.
         store = self.fns["research_store_videos"][0]
         self.assertIn("delete from pg_temp.research_tmp_videos where privacy_status is distinct from 'public'", store)
-        self.assertIn("research_own_videos_json(p_channel, 10)", self.fns["research_own_channel"][0])
+        self.assertIn("research_own_videos_json(p_channel, 10, a.youtube_channel_id)", self.fns["research_own_channel"][0])
         self.assertNotIn("research_videos_json(a.youtube_channel_id", self.fns["research_own_channel"][0])
         # BR-R-005: flagged comments never sampled.
         self.assertIn("x.flagged_injection is not true", self.fns["research_comment_themes"][0])
@@ -174,6 +174,21 @@ class ChannelResearchMigration(unittest.TestCase):
         # The customer-facing remedies do not name the operator's secret.
         self.assertNotIn("YOUTUBE_DATA_API_KEY", self.fns["research_remedy"][0])
         self.assertIn("take_web_rate('research_competitor_remove', 40, 3600)", self.fns["research_remove_competitor"][0])
+
+    def test_second_fix_round_pins(self):
+        claim = self.fns["research_claim_request"][0]
+        self.assertIn("exit when public.research_channel_confirmed(r.channel_id);", claim)
+        self.assertIn("set status = 'not_connected', error_code = 'not_connected'", claim)
+        finish = self.fns["research_finish_request"][0]
+        self.assertIn("public.research_channel_confirmed(r.channel_id)", finish)
+        self.assertIn("claimed_competitor_ids", finish)
+        self.assertIn("late.added_by", finish)
+        self.assertIn("alter table public.research_competitors drop constraint if exists research_competitors_status_check;", self.src)
+        self.assertIn("insert into public.research_requests", self.fns["research_purge_stale"][0])
+        self.assertIn("set resolved_at = now()", self.fns["research_store_channels"][0])
+        self.assertIn("v.fetched_at < c.since", self.fns["research_store_videos"][0])
+        self.assertIn("clock_timestamp()", self.fns["research_add_competitor"][0])
+        self.assertIn("research_current_youtube_id(p_channel)", self.fns["research_own_channel"][0])
 
 
 if __name__ == "__main__":

@@ -98,6 +98,7 @@ export const researchUz: ResearchDictionary = {
     count: "{n} / {max}",
     empty: "Hali raqiblar yoʻq. Solishtirmoqchi boʻlgan kanallarni qoʻshing.",
     pending: "YouTubeʼda tekshirilmoqda…",
+    notAsked: "Hali tekshirilmagan. Tekshirish uchun «Yangilash»ni bosing.",
     notFound: "YouTube bunday kanalni bilmaydi.",
     remove: "Olib tashlash",
     removeAria: "Olib tashlash: {name}",

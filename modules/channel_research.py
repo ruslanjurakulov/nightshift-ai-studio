@@ -429,14 +429,16 @@ def _chunks(items: Sequence[str], n: int = 50) -> Iterable[List[str]]:
 
 def _uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, youtube_channel_id: str) -> None:
     """A channel's newest PUBLIC uploads and their statistics, with the platform's key: 2 units. The batch is marked complete, so a
-    cached video the public lookup no longer returns (it went private, or was deleted) is removed from the shared cache."""
+    cached video the public lookup no longer returns (it went private, or was deleted) is removed from the shared cache: only rows
+    written before this fetch began, so another worker's newer rows for the channel stay."""
+    since = datetime.now(timezone.utc).isoformat()
     spend.take()
     ids = yt.upload_ids(playlist_id)
     rows = []
     if ids:
         spend.take()
         rows = [r for r in (video_row(i) for i in yt.videos(ids)) if r and r["youtube_channel_id"] == youtube_channel_id]
-    store.store_videos(rows + [{"youtube_channel_id": youtube_channel_id, "complete": True}])
+    store.store_videos(rows + [{"youtube_channel_id": youtube_channel_id, "complete": True, "fetched_since": since}])
 
 
 def _own_uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, token: str, request_id) -> None:
@@ -445,6 +447,8 @@ def _own_uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, toke
     spend.take()
     ids = yt.upload_ids(playlist_id, token=token)
     if not ids:
+        # Nothing uploaded (any more): the stored list is replaced by nothing, not left as it was.
+        store.store_videos([{"own_request_id": request_id, "complete": True}])
         return
     spend.take()
     rows = []
@@ -543,8 +547,9 @@ def _competitors(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, now: 
             try:
                 items = yt.channels(handle=str(c.get("input_ref") or ""))
             except Stop as e:
-                # One handle YouTube will not look up is that competitor's answer, not the whole request's.
-                if e.code == "not_found" or (e.code == "platform_error" and e.http == 400):
+                # Only YouTube saying "no such channel" (404 / a gone reason) is that competitor's answer. Any other refusal, a 400
+                # included, says nothing about the channel: it stays pending and the request ends with the error's own remedy.
+                if e.code == "not_found":
                     store.resolve(str(c["id"]), None)
                     continue
                 raise

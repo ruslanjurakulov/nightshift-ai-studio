@@ -98,6 +98,7 @@ export const researchRu: ResearchDictionary = {
     count: "{n} из {max}",
     empty: "Конкурентов пока нет. Добавьте каналы, с которыми хотите сравнивать.",
     pending: "Проверяем в YouTube…",
+    notAsked: "Ещё не проверено. Нажмите «Обновить», чтобы проверить.",
     notFound: "YouTube не знает такого канала.",
     remove: "Удалить",
     removeAria: "Удалить {name}",

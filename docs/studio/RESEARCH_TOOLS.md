@@ -52,7 +52,8 @@ title) was written by whoever owns that YouTube channel, and ranks into anyone's
 **Draft channels.** A channel YouTube never confirmed (rule 7: no `verified_at` + `youtube_channel_id` in its `credential_ref`, not
 the operator's `default`, and no live YouTube connection) gets `status: "not_connected"`, `data: null`, `remedy_code: "connect"`,
 `remedy: "Connect the channel to YouTube first."` from every reader, and every writer refuses it with
-`{ok: false, error: "not_connected", remedy_code: "connect"}`. Nothing is fetched or searched for a draft.
+`{ok: false, error: "not_connected", remedy_code: "connect"}`. Nothing is fetched or searched for a draft, and a request queued before the channel stopped being confirmed ends
+`not_connected` when the worker reaches it, without spending anything.
 
 `status` is decided in this order: a request still open is `refreshing` (any data already there is included); fresh data is
 `ok`; otherwise what the last request ended as (`not_connected`, `budget_exhausted`), else `no_data`. `remedy` is attached
@@ -78,11 +79,15 @@ remedy next to the numbers.
   the channel's own YouTube Analytics report for the last 28 days, read with the channel's own token. `recent_videos` are the
   channel's **own** uploads read with its own token, so they include private and unlisted ones (`privacy_status`
   `public|unlisted|private`, or `null` when YouTube did not say): they are shown only to that channel's members and never reach
-  another organization. Say which are private when you list them. The whole answer is `not_connected` while the channel is not
+  another organization. Say which are private when you list them. If the stored numbers were read with a token that reached a
+different YouTube account than the one the channel is confirmed as now, the answer is `no_data` with `remedy_code:
+"channel_mismatch"` and nothing of them is shown. The whole answer is `not_connected` while the channel is not
   connected to YouTube (its analytics are not shown, and the purge deletes them).
 * **Competitors**: `{max: 20, competitors: [{id, input_ref, status: pending|resolved|not_found|own_channel, youtube_channel_id,
-  channel, videos}]}`. `pending` means YouTube has not been asked yet which channel the reference names (and, after 30 days, that it
-  is being asked again); `not_found` means YouTube knows no such channel; `own_channel` means the @handle turned out to be this
+  channel, videos}]}`. `pending` means YouTube has not answered yet which channel the reference names. Tell "asked" from "not asked
+  yet" by `last_request`: while it is `queued` or `running` the reference is being checked; otherwise say "not checked yet" and offer a
+  refresh. A resolved competitor is re-confirmed whenever YouTube answers for it; one nobody refreshed for 30 days is reset to
+  `pending` and a refresh is queued for it automatically; `not_found` means YouTube knows no such channel; `own_channel` means the @handle turned out to be this
   channel itself, which is not compared. Say exactly that; such a competitor has no numbers. `videos` are **public videos only**
   (read with the platform's key); one that went private or was deleted disappears on the next refresh.
 * **Channels on a topic**: `{topic, channels: [...], recent_topics: [{topic, fetched_at}]}`. `channels` is in **YouTube's search
@@ -125,6 +130,9 @@ organization): nothing is queued; say when the numbers are from. A competitors r
 still pending, and a competitor added while a refresh is running is queued for the next round automatically. Refusals:
 `{ok: false, error}` with `rate_limited`, `daily_limit` (three topic searches per organization per Pacific day), `invalid_topic`,
 `not_connected` (own channel not connected, or a draft channel for any kind), `no_competitors`, `invalid_kind`.
+
+A refresh that fails on a lookup YouTube refused without saying the channel does not exist (an HTTP 400) ends `failed` with
+`remedy_code: "retry"`; the competitor stays `pending` rather than being called "not found".
 
 `research_remove_competitor(p_channel, p_id)` answers `{ok: true, removed: true|false}` (an id that is not this channel's removes
 nothing and answers `false`), or `{ok: false, error: "rate_limited"}`: removing is limited like adding, 40 per person per hour.
