@@ -953,7 +953,7 @@ class StateStore:
         Command Center needs to avoid showing one channel another's activity.
         """
         with self.conn:
-            self.conn.execute(
+            cur = self.conn.execute(
                 """
                 INSERT INTO system_events
                     (event, ts, video_id, job_id, agent, status, duration_ms, metadata, channel_id)
@@ -961,6 +961,13 @@ class StateStore:
                 """,
                 (event, ts, video_id, job_id, agent, status, duration_ms, metadata, channel_id),
             )
+        # The row's id is part of its Supabase event_key (supabase_sync._event_row): the live copy needs it.
+        return cur.lastrowid
+
+    def get_event(self, event_id: int) -> dict | None:
+        """One event row exactly as ``list_events`` returns it, so its Supabase copy is the nightly mirror's row."""
+        row = self.conn.execute("SELECT * FROM system_events WHERE id = ?", (event_id,)).fetchone()
+        return dict(row) if row else None
 
     def list_events(
         self,

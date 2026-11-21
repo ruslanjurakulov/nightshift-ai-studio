@@ -21,6 +21,13 @@ Event names follow a `noun.verb` convention (`topic.selected`, `render.progress`
 `upload.completed`, `feedback.applied`, ...). The common ones are exported as
 constants below; callers may also pass any string.
 
+Live copy: where the runner has Supabase credentials (SUPABASE_URL and SUPABASE_SERVICE_KEY, as daily_video.yml's
+run step has), each event is also upserted into Supabase's `system_events` as it happens, so the Studio's live view
+sees a run's stages while it runs instead of after the nightly mirror. It is the mirror's own row and `event_key`
+(`supabase_sync._event_row`), so the mirror later finds it there and changes nothing. It is best-effort: a short
+timeout, one warning, and after the first failure no further attempt in this process. `NIGHTSHIFT_LIVE_EVENTS=off`
+switches it off.
+
 Storage note: `emit()` opens a short-lived StateStore per call when one isn't
 injected. The event volume is low (a dozen or so per video run, a handful per
 poll), so this is simpler and safer than sharing a long-lived connection across
@@ -31,6 +38,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -318,6 +326,51 @@ def _sanitize(metadata: dict | None) -> str | None:
         return json.dumps({"_unserializable": repr(safe)}, ensure_ascii=False)
 
 
+#: A slow Supabase must not slow the run: a dozen events per run, each waiting this long at most, once.
+_LIVE_TIMEOUT_S = 3
+#: Turned off for the rest of the process by the first failure (or when there is nothing to send to).
+_live_state: dict = {"sync": None, "off": False}
+
+
+def _reset_live_sync() -> None:
+    """Tests only: forget the process's live-copy client and its failure."""
+    _live_state["sync"] = None
+    _live_state["off"] = False
+
+
+def _live_copy(store, event_id) -> None:
+    """Send one stored event to Supabase's system_events, as the nightly mirror would. Never raises.
+
+    A swallowed error here is acceptable only because the event is already in the local store, and the nightly mirror
+    (tools/run_intelligence_poll.py → SupabaseSync.mirror_from_store) sends that same row under the same event_key
+    later. Nothing is lost by failing; only the live view waits. Anywhere that is not true, this must not be copied.
+    """
+    if _live_state["off"] or not isinstance(event_id, int):
+        return
+    if os.environ.get("NIGHTSHIFT_LIVE_EVENTS", "").strip().lower() in ("off", "0", "false", "no"):
+        return
+    try:
+        sync = _live_state["sync"]
+        if sync is None:
+            from modules.supabase_sync import SupabaseSync
+
+            sync = SupabaseSync()
+            if not sync.enabled:
+                _live_state["off"] = True
+                return
+            _live_state["sync"] = sync
+        row = store.get_event(event_id)
+        if not row:
+            return
+        sent = sync.upsert("system_events", [sync._event_row(row)], on_conflict="event_key", timeout=_LIVE_TIMEOUT_S)
+        if sent != 1:
+            _live_state["off"] = True
+            logger.warning("Live event copy to Supabase failed (%s); the nightly mirror will send this run's events", sync.last_failure)
+    except Exception as e:
+        _live_state["off"] = True
+        logger.warning("Live event copy to Supabase errored (%s); the nightly mirror will send this run's events", type(e).__name__)
+
+
 def emit(
     event: str,
     *,
@@ -345,20 +398,22 @@ def emit(
         ts = datetime.utcnow().isoformat()
         payload = _sanitize(metadata)
         if store is not None:
-            store.record_event(
+            event_id = store.record_event(
                 event=event, ts=ts, video_id=video_id, job_id=job_id,
                 agent=agent, status=status, duration_ms=duration_ms, metadata=payload,
                 channel_id=channel_id,
             )
+            _live_copy(store, event_id)
             return True
         from modules.state_store import StateStore
 
         with StateStore() as own_store:
-            own_store.record_event(
+            event_id = own_store.record_event(
                 event=event, ts=ts, video_id=video_id, job_id=job_id,
                 agent=agent, status=status, duration_ms=duration_ms, metadata=payload,
                 channel_id=channel_id,
             )
+            _live_copy(own_store, event_id)
         return True
     except Exception as e:
         logger.warning("Failed to record event %r (%s: %s) — continuing", event, type(e).__name__, e)
