@@ -350,6 +350,7 @@ jobs:
           WORKERENV_YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
           WORKERENV_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           WORKERENV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          WORKERENV_YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
           WORKERENV_TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           WORKERENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           WORKERENV_MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
@@ -429,6 +430,7 @@ jobs:
           # Models, hosts, per-run and per-day USD caps and unit prices: variables only
           # (deploy/.env.worker.example, "Models, hosts and caps" and "Spend").
           WORKERENV_GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          WORKERENV_RESEARCH_SEARCH_SHARED_UNITS: ${{ vars.RESEARCH_SEARCH_SHARED_UNITS }}
           WORKERENV_EDGE_TTS_VOICE: ${{ vars.EDGE_TTS_VOICE }}
           WORKERENV_MINIMAX_BASE_URL: ${{ vars.MINIMAX_BASE_URL }}
           WORKERENV_CHRONOS_MINIMAX_BROLL_MAX_CLIPS: ${{ vars.CHRONOS_MINIMAX_BROLL_MAX_CLIPS }}

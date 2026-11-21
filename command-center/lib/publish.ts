@@ -156,7 +156,7 @@ export const PUBLISH_REASONS = [
   "video_not_found",
   "not_uploaded",
   "gate_blocked",
-  // 0206: no stored gate verdict for the video. Unknown, never a pass (CLAUDE.md rules 2 and 5).
+  // 0205: no stored gate verdict for the video. Unknown, never a pass (CLAUDE.md rules 2 and 5).
   "gate_unknown",
   "not_approved",
   "rejected",

@@ -1,16 +1,16 @@
--- Rollback of 0206_publish_refusal_gate_verdict.sql (owner-applied, one transaction): puts back 0029's publish_request_refusal
+-- Rollback of 0205_publish_refusal_gate_verdict.sql (owner-applied, one transaction): puts back 0029's publish_request_refusal
 -- exactly, so a video with no stored gate verdict passes again (the BR-LIVE-04 gap returns). Only that function changes.
 begin;
 
--- Only 0206's own body is taken back: a later file that replaced the function again must be undone first (Breach).
+-- Only 0205's own body is taken back: a later file that replaced the function again must be undone first (Breach).
 do $$
 declare
   h text;
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = to_regprocedure('public.publish_request_refusal(text)');
-  if h is distinct from '45401beb71dc3f42949e9268f9280af0' then
-    raise exception 'rollback_0206 found publish_request_refusal with a body that is not 0206''s (md5 %): undo the later file first', h;
+  if h is distinct from 'f0acca6099e0c627c029a003e4fa4eb4' then
+    raise exception 'rollback_0205 found publish_request_refusal with a body that is not 0205''s (md5 %): undo the later file first', h;
   end if;
 end $$;
 

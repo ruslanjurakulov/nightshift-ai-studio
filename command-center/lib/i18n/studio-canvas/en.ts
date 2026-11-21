@@ -142,7 +142,7 @@ export const studioCanvasEn = {
   timelineSoon: "The timeline comes with scene-by-scene projects",
   mapMin: "Minimize map",
   mapMax: "Expand map",
-  rail: { label: "Studio navigation", command: "Command", studio: "Studio", inbox: "Inbox", analytics: "Analytics", admin: "Admin", home: "Home", channels: "Channels", credits: "Credits", settings: "Settings" },
+  rail: { label: "Studio navigation", command: "Command", studio: "Studio", inbox: "Inbox", analytics: "Analytics", admin: "Admin", home: "Home", channels: "Channels", credits: "Credits", settings: "Settings", brain: "Brain", nightshiftAi: "AI" },
   add: {
     title: "Add node",
     close: "Close",

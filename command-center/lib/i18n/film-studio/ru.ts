@@ -47,6 +47,7 @@ export const filmStudioRu: FilmStudioDictionary = {
     lengthLabel: "Целевая длина",
     minutes: "{n} мин",
     seconds: "{n} с",
+    minutesAndSeconds: "{minutes} мин {seconds} с",
     languageLabel: "Язык видео",
     languageHint: "На этом языке будут озвучка и субтитры. Язык интерфейса задаётся отдельно.",
     formatLabel: "Формат",

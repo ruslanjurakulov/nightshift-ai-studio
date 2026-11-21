@@ -860,7 +860,7 @@ def test_publishing_with_a_token_works_and_never_needs_the_apis_idempotency_tabl
 def test_parallel_publishes_of_one_video_to_one_target_make_one_live_request(db):
     # Without an idempotency key the unique index on live requests is the only guard: 8 parallel
     # calls (a retry storm) leave one queued request and answer the rest already_sending.
-    # 0206: an uploaded video carries the gate's stored verdict (0112 videos.gate_verdict), the one publish_request_refusal reads.
+    # 0205: an uploaded video carries the gate's stored verdict (0112 videos.gate_verdict), the one publish_request_refusal reads.
     db.su("insert into public.videos (video_id, channel_id, title, slug, review_state, published_at, publish_state, gate_verdict) "
           "values ('vid-pub','chan-a','VP','sl-pub','approved', now(), 'uploaded', '{\"allowed\": true, \"blocks\": []}'::jsonb)")
     db.su("insert into public.system_events (event_key, event, ts, video_id, channel_id) values ('pub-ok','publish.allowed', now(), 'vid-pub','chan-a')")

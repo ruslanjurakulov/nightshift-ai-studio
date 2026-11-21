@@ -1,4 +1,4 @@
--- 0206_publish_refusal_gate_verdict.sql — a missing publish-gate verdict refuses a cross-post; it never passes.
+-- 0205_publish_refusal_gate_verdict.sql — a missing publish-gate verdict refuses a cross-post; it never passes.
 --
 -- WHY. publish_request_refusal (0029) decides whether "Publish to platforms" may send a video: the insert trigger of
 -- publish_requests records a refused row with its reason, and the queue worker asks it again right before anything leaves the
@@ -21,7 +21,7 @@
 --
 -- Requires 0029 (the function) and 0112 (videos.gate_verdict). The body is replaced only if it is 0029's or this file's (md5 of
 -- the whitespace-normalised body); anything else stops the file: read the live body first.
--- Undo: docs/sql/rollback_0206_publish_refusal_gate_verdict.sql (owner-applied).
+-- Undo: docs/sql/rollback_0205_publish_refusal_gate_verdict.sql (owner-applied).
 -- APPLY AS ONE TRANSACTION.
 
 set local lock_timeout = '5s';
@@ -31,16 +31,16 @@ declare
   h text;
 begin
   if to_regprocedure('public.publish_request_refusal(text)') is null then
-    raise exception '0206 needs publish_request_refusal: apply 0029 first';
+    raise exception '0205 needs publish_request_refusal: apply 0029 first';
   end if;
   if not exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'videos' and column_name = 'gate_verdict') then
-    raise exception '0206 needs videos.gate_verdict: apply 0112 first';
+    raise exception '0205 needs videos.gate_verdict: apply 0112 first';
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = to_regprocedure('public.publish_request_refusal(text)');
-  if h is null or h <> all (array['154901c2887c305f6ea132f33959ee45', '45401beb71dc3f42949e9268f9280af0']) then
-    raise exception '0206 found publish_request_refusal with a body that is neither 0029''s nor 0206''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['154901c2887c305f6ea132f33959ee45', 'f0acca6099e0c627c029a003e4fa4eb4']) then
+    raise exception '0205 found publish_request_refusal with a body that is neither 0029''s nor 0205''s (md5 %): read the live body first', h;
   end if;
 end $$;
 
@@ -67,7 +67,7 @@ begin
   if gate = 'publish.blocked' then
     return 'gate_blocked';
   end if;
-  -- 0206: the gate's verdict as the pipeline stores it on the video (0112 videos.gate_verdict, held_video.gate_verdict). The
+  -- 0205: the gate's verdict as the pipeline stores it on the video (0112 videos.gate_verdict, held_video.gate_verdict). The
   -- event above carries no video_id (main.py emits publish.allowed/blocked with the channel only), so it never matched: a video
   -- with no verdict at all passed. No stored verdict is unknown, never a pass (CLAUDE.md rules 2 and 5).
   if (v.gate_verdict -> 'allowed') = 'false'::jsonb

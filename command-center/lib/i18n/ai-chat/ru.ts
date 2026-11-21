@@ -21,6 +21,7 @@ export const aiChatRu: AiChatDictionary = {
   factsUnknown: "Данные канала сейчас не удалось прочитать, поэтому идеи основаны только на теме.",
   scenarioFacts: "{len} · сцен: {scenes} · персонажей: {characters}",
   chooseThis: "Выбрать этот",
+  chooseThisNamed: "Выбрать этот: {title}",
   slotQuestions: {
     kind: "Длинное видео для YouTube-канала или короткий фильм / реклама в Студии?",
     target_seconds: "Какой длины?",

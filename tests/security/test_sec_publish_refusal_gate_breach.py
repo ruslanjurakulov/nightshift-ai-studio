@@ -1,4 +1,4 @@
-"""Breach on 0206 (publish_request_refusal reads videos.gate_verdict): the attacks that would make a video with no, or a
+"""Breach on 0205 (publish_request_refusal reads videos.gate_verdict): the attacks that would make a video with no, or a
 forged, gate verdict pass "Publish to platforms".
 
 What would break without these:

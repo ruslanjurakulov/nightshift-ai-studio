@@ -1,4 +1,4 @@
-"""Migration 0206: "Publish to platforms" refuses a video whose publish-gate verdict is missing; it never passes (BR-LIVE-04).
+"""Migration 0205: "Publish to platforms" refuses a video whose publish-gate verdict is missing; it never passes (BR-LIVE-04).
 
 What would break without these (each in a real database):
 
@@ -19,8 +19,8 @@ import sec_db
 from sec_db import SERVICE, as_superuser
 from test_sec_approve_video import VID, acting, uploaded
 
-MIGRATION = sec_db.REPO / "supabase" / "migrations" / "0206_publish_refusal_gate_verdict.sql"
-ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0206_publish_refusal_gate_verdict.sql"
+MIGRATION = sec_db.REPO / "supabase" / "migrations" / "0205_publish_refusal_gate_verdict.sql"
+ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0205_publish_refusal_gate_verdict.sql"
 REFUSAL = "select public.publish_request_refusal(%s)"
 BLOCKED = {"allowed": False, "blocks": ["rights"], "warnings": [], "checks_run": ["rights"]}
 ALLOWED = {"allowed": True, "blocks": [], "warnings": [], "checks_run": ["rights", "facts"]}
@@ -112,7 +112,7 @@ def test_applying_again_changes_nothing_and_the_rollback_puts_back_0029(conn, sc
         assert su.value("select has_function_privilege('service_role', %s::regprocedure, 'EXECUTE')", [sig]) is True
 
 
-def test_the_rollback_takes_back_only_0206s_own_body(conn):
+def test_the_rollback_takes_back_only_0205s_own_body(conn):
     """Breach (hardening): applied after a later file replaced the function again, an unguarded rollback would silently undo that
     file and reopen BR-LIVE-04. It refuses instead."""
     rollback = "\n".join(ln for ln in ROLLBACK.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))

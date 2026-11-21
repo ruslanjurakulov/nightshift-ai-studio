@@ -507,6 +507,13 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Nightshift AI (0199): tests/security/sec_ai_chat_0199.py — one conversation of one message each for Alice and Bob.
     import sec_ai_chat_0199
     sec_ai_chat_0199.seed(conn, sc)
+    # Channel research (0202): tests/security/sec_research_0202.py — a competitor per tenant and the worker's cache rows.
+    import sec_research_0202
+    sec_research_0202.seed(conn, sc)
+
+    # The owner's Nightshift AI (0203): tests/security/sec_owner_ai_0203.py — one finished turn by the owner, for the closed-table attacks.
+    import sec_owner_ai_0203
+    sec_owner_ai_0203.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
