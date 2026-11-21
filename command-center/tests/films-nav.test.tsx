@@ -256,20 +256,19 @@ describe("the workspace switch under `on` (org_film_settings, 0198)", () => {
     await expect(Canvas({ params: Promise.resolve({ id: FILM_ID }) })).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
-  it("the Studio's live and timeline views of a project say closed when its workspace is off", async () => {
+  it("the Studio's live and timeline views follow the open workspace; a project's own workspace is left to its routes", async () => {
     const { default: StudioPage } = await import("../app/(app)/[channel]/studio/page");
     const FILM_ID = "0f000000-0000-4000-8000-00000000000f";
     const open = async (sp: Record<string, string>) =>
       ((await StudioPage({ searchParams: Promise.resolve(sp) })) as ReactElement<{ filmStudio: boolean }>).props.filmStudio;
     for (const view of ["live", "timeline"]) {
-      // The open workspace off.
+      // The open workspace off: closed, whatever the project.
       h.client.mockResolvedValue(switchClient(() => rows([ORG_A, false])).client);
       expect(await open({ view, film: FILM_ID }), view).toBe(false);
-      // The open workspace on, the project's own off.
-      h.client.mockResolvedValue(switchClient(() => rows([ORG_A, true], [ORG_B, false]), () => ({ data: { org_id: ORG_B }, error: null })).client);
-      expect(await open({ view, film: FILM_ID }), view).toBe(false);
-      // Both on.
-      h.client.mockResolvedValue(switchClient(() => rows([ORG_A, true], [ORG_B, true]), () => ({ data: { org_id: ORG_B }, error: null })).client);
+      // The open workspace on, a stale project id from another workspace that is off: the section is open (no false "switched off for
+      // this workspace"); /api/films/[id] answers 404 for the project, which the view shows as "not found" with a way on.
+      const s = switchClient(() => rows([ORG_A, true], [ORG_B, false]), () => ({ data: { org_id: ORG_B }, error: null }));
+      h.client.mockResolvedValue(s.client);
       expect(await open({ view, film: FILM_ID }), view).toBe(true);
     }
   });

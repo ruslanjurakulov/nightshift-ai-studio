@@ -22,7 +22,7 @@ import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { withPreviews } from "@/lib/creative/studio";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
-import { filmStudioListed, filmStudioMode, filmStudioOpen, filmStudioOpenFor } from "@/lib/server/films";
+import { filmStudioListed, filmStudioMode, filmStudioOpen } from "@/lib/server/films";
 import { STUDIO_SHELVES, shelfFromQuery, type StudioShelf } from "@/lib/studioRoutes";
 import "@/components/studio-hub/studio-hub.css";
 
@@ -53,8 +53,10 @@ export default async function StudioPage({
     // The live view of one plan (S5's handoff opens it): a project (?film=) or a channel video run (?run=, a render_jobs id). It reads in
     // the browser through the read-only live routes; the server only says whether projects are open for this viewer.
     const film = parseFilmId(sp.film);
-    // A named project is open only when its own workspace is switched on too (filmStudioOpenFor).
-    const filmStudio = film ? await filmStudioOpenFor(film) : await filmStudioOpen();
+    // The section is open by the open workspace's switch. A named project's own workspace is checked by the live routes it reads
+    // (filmGateFor: a 404, which the view shows as its "not found, pick another" state). Asking it here instead would turn a stale
+    // film id (kept in this browser from another workspace) into "projects are switched off for this workspace", which is false.
+    const filmStudio = await filmStudioOpen();
     const run = typeof sp.run === "string" && /^[1-9][0-9]{0,14}$/.test(sp.run) ? sp.run : null;
     // The Actions backend gives no run id: its run is the channel's events since the dispatch (/api/agent/run's dispatched_at).
     // channels.channel_id is a slug (0001), not a uuid.
@@ -75,7 +77,10 @@ export default async function StudioPage({
     // The Timeline reads one project through /api/films (RLS, film_json) in the browser; the server only says whether the section is
     // open for this viewer, so a switched-off workspace sees "not open yet" and no project is read at all.
     const timelineFilm = parseFilmId(sp.film) ?? null;
-    const filmStudio = timelineFilm ? await filmStudioOpenFor(timelineFilm) : await filmStudioOpen();
+    // As for the live view: the open workspace decides the section; the project's own workspace is /api/films/[id]'s (filmGateFor), whose
+    // 404 is the Timeline's "not found" state with a way on. The Canvas/Timeline links carry a film id from localStorage, which is per
+    // browser, not per workspace.
+    const filmStudio = await filmStudioOpen();
     return <StudioTimeline filmStudio={filmStudio} filmId={timelineFilm} />;
   }
 
