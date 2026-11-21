@@ -46,11 +46,31 @@ export interface BriefCharacter { id: string; name: string; description: string;
 export interface BriefLocation { id: string; name: string; description: string; image_prompt: string; asset_id: string | null }
 export interface BriefProp { id: string; name: string; description: string }
 export interface BriefChapter { id: string; title: string; start_s: number; beats: { at_s: number; text: string }[] }
+export type ShortAct = 1 | 2 | 3;
 export interface BriefScene {
   id: string; n: number; title: string; duration_s: number; visual_prompt: string;
   dialogue: { character_id: string; line: string }[];
   character_ids: string[]; location_id: string | null; prop_ids: string[];
   keyframe_model: string | null; clip_model: string | null;
+  // Short film / ad only (absent on a long video): which act the scene belongs to, its beat, and the target length of one shot in
+  // it. shot_s is the plan's pacing target, not a measurement; null when the model gave none (rule 5: no default dressed as a plan).
+  act?: ShortAct; beat?: string; shot_s?: number | null;
+}
+
+/**
+ * Short film / ad only: the structure the most-watched AI shorts share (Atlas's analysis of 8 top reels, 21 Nov). The failures in
+ * that set were gag montages with no goal and slow wide openers, so a short proposal without a hook in its first second, one
+ * protagonist with a goal, three acts and a decided ending is not a proposal (readModelAnswer drops it).
+ */
+export interface ShortStructure {
+  /** What is seen and heard in the first second of scene 1. */
+  hook: { seen: string; heard: string };
+  protagonist: { character_id: string; goal: string };
+  stakes: string;
+  /** The sacrifice or twist. */
+  turn: string;
+  /** "cliffhanger" ends on an open question for a next part (an episodic series); "payoff" closes the story. */
+  ending: { type: "payoff" | "cliffhanger"; text: string };
 }
 
 /** One proposed scenario: everything of the BRIEF the model writes. */
@@ -58,6 +78,7 @@ export interface Scenario {
   title: string; idea: string; story: { logline: string; conflict: string };
   chapters: BriefChapter[]; characters: BriefCharacter[]; locations: BriefLocation[]; props: BriefProp[]; scenes: BriefScene[];
   target_seconds: number;
+  structure?: ShortStructure;
 }
 
 export type BriefPrice =
@@ -87,6 +108,8 @@ export interface Brief extends Partial<Omit<Scenario, "target_seconds">> {
 
 export const CAP = { reply: 900, thread: 80, question: 200, option: 160, title: 120, idea: 300, logline: 300, style: 120, audience: 120,
   name: 80, description: 400, imagePrompt: 600, beat: 240, line: 300, chapters: 20, beats: 12, characters: 8, locations: 8, props: 12 } as const;
+/** A short's target shot length, seconds: action beats cut at 0.5–1.2 s, the rest at about 2–3.5 s (the same analysis). */
+export const SHOT = { min: 0.5, max: 4 } as const;
 export const MAX_SCENARIOS = 3;
 export const MIN_SCENARIOS = 2;
 export const HISTORY_TURNS = 12;
@@ -279,8 +302,42 @@ const sid = (v: unknown, fallback: string) => (typeof v === "string" && ID.test(
 const arr = (v: unknown) => (Array.isArray(v) ? v : []);
 const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
-/** One proposed scenario, validated as BRIEF parts; null when it is not usable for this kind. */
-export function readScenario(raw: unknown, slots: BrainSlots): Scenario | null {
+function act(v: unknown): ShortAct | undefined {
+  const n = num(v);
+  return n === 1 || n === 2 || n === 3 ? n : undefined;
+}
+
+/** A short's shot target within SHOT and within its scene, to 0.1 s; null when the model gave none. */
+function shotSeconds(v: unknown, sceneS: number): number | null {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : null;
+  if (n === null || n <= 0) return null;
+  return Math.round(Math.min(sceneS, SHOT.max, Math.max(SHOT.min, n)) * 10) / 10;
+}
+
+/**
+ * The short-film structure, or null when it is not one: no hook, no protagonist (a known character) with a goal, no ending type, or
+ * scenes that are not three acts in order starting with act 1 (the hook is the first second of scene 1, so scene 1 must open act 1).
+ */
+export function readStructure(raw: unknown, scenes: BriefScene[], characterIds: Set<string>): ShortStructure | null {
+  const r = obj(raw);
+  const hook = { seen: modelText(obj(r.hook).seen, CAP.beat), heard: modelText(obj(r.hook).heard, CAP.beat) };
+  const who = sid(obj(r.protagonist).character_id, "");
+  const goal = modelText(obj(r.protagonist).goal, CAP.beat);
+  const type = obj(r.ending).type;
+  if (!hook.seen || !characterIds.has(who) || !goal || (type !== "payoff" && type !== "cliffhanger")) return null;
+  const acts = scenes.map((s) => s.act);
+  if (acts[0] !== 1 || acts.some((a, i) => a === undefined || (i > 0 && a < acts[i - 1]!))) return null;
+  if (!acts.includes(2) || !acts.includes(3)) return null;
+  return { hook, protagonist: { character_id: who, goal }, stakes: modelText(r.stakes, CAP.beat), turn: modelText(r.turn, CAP.beat),
+           ending: { type, text: modelText(obj(r.ending).text, CAP.beat) } };
+}
+
+/**
+ * One proposed scenario, validated as BRIEF parts; null when it is not usable for this kind. `requireStructure` (a fresh short
+ * proposal) also refuses a short without its structure; a stored scenario re-read later (choose, the session view) is read without
+ * it, so a proposal saved before the structure existed can still be chosen.
+ */
+export function readScenario(raw: unknown, slots: BrainSlots, opts: { requireStructure?: boolean } = {}): Scenario | null {
   const r = obj(raw);
   const title = modelText(r.title, CAP.title);
   const idea = modelText(r.idea, CAP.idea);
@@ -311,9 +368,13 @@ export function readScenario(raw: unknown, slots: BrainSlots): Scenario | null {
     const dur = Math.round(num(o.duration_s) ?? 0);
     const visual = modelText(o.visual_prompt, FILM.promptMax, true);
     if (!visual) return null;
+    const duration_s = slots.kind === "short" ? Math.min(FILM.sceneMax, Math.max(FILM.sceneMin, dur || 6)) : Math.max(1, dur || 10);
+    // A long video's scenes are informational (Run now cuts its own), so they carry none of a short's structure.
+    const short = slots.kind === "short"
+      ? { act: act(o.act), beat: modelText(o.beat, CAP.beat), shot_s: shotSeconds(o.shot_s, duration_s) } : {};
     return {
       id: `s${i + 1}`, n: i + 1, title: modelText(o.title, CAP.title),
-      duration_s: slots.kind === "short" ? Math.min(FILM.sceneMax, Math.max(FILM.sceneMin, dur || 6)) : Math.max(1, dur || 10),
+      duration_s,
       visual_prompt: visual,
       dialogue: slots.kind === "short"
         ? arr(o.dialogue).slice(0, 6).map((d) => ({ character_id: sid(obj(d).character_id, ""), line: modelText(obj(d).line, CAP.line) }))
@@ -324,9 +385,13 @@ export function readScenario(raw: unknown, slots: BrainSlots): Scenario | null {
       prop_ids: arr(o.prop_ids).map((x) => sid(x, "")).filter((x) => known.p.has(x)),
       // The model never picks a model: a film's defaults are the Studio's, and a named one is checked by save_film anyway.
       keyframe_model: null, clip_model: null,
+      ...short,
     };
   }).filter((s): s is BriefScene => s !== null);
   if (slots.kind === "short" && scenes.length === 0) return null;
+  // The kind check is belt and braces: a long video's scenes carry no act, so readStructure would refuse them anyway.
+  const structure = slots.kind === "short" ? readStructure(r.structure, scenes, known.c) : null;
+  if (opts.requireStructure && slots.kind === "short" && !structure) return null;
   // A short film's length is what its scenes add up to, within a film's bounds; a long video's is the length the person chose.
   const sum = scenes.reduce((a, s) => a + s.duration_s, 0);
   const target_seconds = slots.kind === "short"
@@ -335,6 +400,7 @@ export function readScenario(raw: unknown, slots: BrainSlots): Scenario | null {
   return {
     title, idea, story: { logline: modelText(obj(r.story).logline, CAP.logline), conflict: modelText(obj(r.story).conflict, CAP.logline) },
     chapters, characters, locations, props, scenes, target_seconds,
+    ...(structure ? { structure } : {}),
   };
 }
 
@@ -386,7 +452,8 @@ export function readModelAnswer(text: string, prev: BrainSlots, cardId: string, 
       ? { ...c, thread_title: "", question: "", options: c.options.some(namesVendor) ? [] : c.options } : c;
     return { reply, slots, lengthOutOfRange, card: clean, scenarios: [], step: "asking" };
   }
-  const scenarios = arr(json.scenarios).map((s) => readScenario(s, slots)).filter((s): s is Scenario => s !== null).slice(0, MAX_SCENARIOS);
+  // A fresh short proposal must carry its structure (hook, protagonist, three acts, ending); a long video has its own pipeline.
+  const scenarios = arr(json.scenarios).map((s) => readScenario(s, slots, { requireStructure: true })).filter((s): s is Scenario => s !== null).slice(0, MAX_SCENARIOS);
   // Fewer than two usable scenarios is not a proposal: no card either (every slot is known), the person can ask again.
   return { reply, slots, lengthOutOfRange, card: null, scenarios: scenarios.length >= MIN_SCENARIOS ? scenarios : [],
            step: scenarios.length >= MIN_SCENARIOS ? "proposing" : "asking" };
@@ -435,8 +502,11 @@ export function unsafeBrief(b: Brief): boolean {
   const parts: string[] = [b.title ?? "", b.idea ?? "", b.story?.logline ?? "", b.story?.conflict ?? ""];
   for (const c of b.characters ?? []) parts.push(c.name, c.description, c.image_prompt);
   for (const l of b.locations ?? []) parts.push(l.name, l.description, l.image_prompt);
-  for (const s of b.scenes ?? []) parts.push(s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line));
+  for (const s of b.scenes ?? []) parts.push(s.title, s.visual_prompt, s.beat ?? "", ...s.dialogue.map((d) => d.line));
   for (const ch of b.chapters ?? []) parts.push(ch.title, ...ch.beats.map((x) => x.text));
+  // The hook becomes part of scene 1's clip prompt (filmFromBrief), so it passes the same floor.
+  const st = b.structure;
+  if (st) parts.push(st.hook.seen, st.hook.heard, st.protagonist.goal, st.stakes, st.turn, st.ending.text);
   return parts.some((p) => typeof p === "string" && unsafeText(p));
 }
 
@@ -453,7 +523,8 @@ export function buildBrief(sessionId: string, slots: BrainSlots, chosen: Scenari
     handoff: null,
   };
   if (chosen) Object.assign(b, { title: chosen.title, idea: chosen.idea, story: chosen.story, chapters: chosen.chapters,
-                                 characters: chosen.characters, locations: chosen.locations, props: chosen.props, scenes: chosen.scenes });
+                                 characters: chosen.characters, locations: chosen.locations, props: chosen.props, scenes: chosen.scenes },
+                          chosen.structure ? { structure: chosen.structure } : {});
   if (price) b.price = price;
   return b;
 }
@@ -465,10 +536,14 @@ export function filmFromBrief(b: Brief): { settings: Record<string, unknown>; sc
   const names = new Map((b.characters ?? []).map((c) => [c.id, c.name]));
   const describe = (ids: string[]) => ids.map((id) => (b.characters ?? []).find((c) => c.id === id)).filter(Boolean)
     .map((c) => `${c!.name}: ${c!.description || c!.image_prompt}`).join(". ");
-  const scenes = b.scenes.map((s) => {
+  // The hook is the first second of scene 1, so it leads scene 1's clip prompt: a slow establishing shot there is the failure the
+  // structure exists to prevent, and the video model reads the start of a prompt first.
+  const hook = b.structure?.hook;
+  const opening = hook ? [`Opening second: ${hook.seen}`, hook.heard ? `Heard: ${hook.heard}` : ""].filter(Boolean).join(". ") : "";
+  const scenes = b.scenes.map((s, i) => {
     const loc = (b.locations ?? []).find((l) => l.id === s.location_id);
     const lines = s.dialogue.map((d) => `${names.get(d.character_id) ?? "A character"} says: "${d.line}"`).join(" ");
-    const prompt = [s.visual_prompt, describe(s.character_ids), loc ? `Setting: ${loc.name}. ${loc.description}` : "", lines, b.style ? `Style: ${b.style}` : ""]
+    const prompt = [i === 0 ? opening : "", s.visual_prompt, describe(s.character_ids), loc ? `Setting: ${loc.name}. ${loc.description}` : "", lines, b.style ? `Style: ${b.style}` : ""]
       .filter(Boolean).join("\n");
     return { title: s.title, narration: "", visual_prompt: plain(prompt, FILM.promptMax, true), planned_seconds: s.duration_s };
   });

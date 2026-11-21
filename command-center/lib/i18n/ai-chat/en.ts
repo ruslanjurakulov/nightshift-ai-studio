@@ -18,6 +18,10 @@ export const aiChatEn = {
   factsNone: "This channel has no statistics, competitor or comment data yet, so these ideas come from the topic alone.",
   factsUnknown: "The channel's data could not be read this time, so these ideas come from the topic alone.",
   scenarioFacts: "{len} · scenes: {scenes} · characters: {characters}",
+  scenarioHook: "First second: {hook}",
+  scenarioGoal: "Goal: {goal}",
+  endingPayoff: "Ends with a payoff",
+  endingCliffhanger: "Ends on a cliffhanger for a next part",
   chooseThis: "Choose this one",
   chooseThisNamed: "Choose this one: {title}",
   slotQuestions: {

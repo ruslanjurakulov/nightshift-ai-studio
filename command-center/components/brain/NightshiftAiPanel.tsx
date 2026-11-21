@@ -368,6 +368,13 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                         <h3 className="text-sm font-semibold text-[var(--color-fg)]">{s.title}</h3>
                         <p className="text-sm">{s.idea}</p>
                         {s.story?.conflict && <p className="text-xs text-[var(--color-muted)]">{s.story.conflict}</p>}
+                        {s.structure && (
+                          <>
+                            <p className="text-xs">{fmt(c.scenarioHook, { hook: s.structure.hook.seen })}</p>
+                            <p className="text-xs">{fmt(c.scenarioGoal, { goal: s.structure.protagonist.goal })}</p>
+                            <p className="text-xs text-[var(--color-muted)]">{s.structure.ending.type === "cliffhanger" ? c.endingCliffhanger : c.endingPayoff}</p>
+                          </>
+                        )}
                         <p className="text-xs text-[var(--color-muted)]">
                           {fmt(c.scenarioFacts, { len: lengthLabel(s.target_seconds), scenes: s.scenes.length, characters: s.characters.length })}
                         </p>

@@ -20,6 +20,10 @@ export const aiChatRu: AiChatDictionary = {
   factsNone: "У этого канала пока нет статистики, данных о конкурентах и комментариях, поэтому идеи основаны только на теме.",
   factsUnknown: "Данные канала сейчас не удалось прочитать, поэтому идеи основаны только на теме.",
   scenarioFacts: "{len} · сцен: {scenes} · персонажей: {characters}",
+  scenarioHook: "Первая секунда: {hook}",
+  scenarioGoal: "Цель: {goal}",
+  endingPayoff: "Заканчивается развязкой",
+  endingCliffhanger: "Заканчивается на интриге для следующей части",
   chooseThis: "Выбрать этот",
   chooseThisNamed: "Выбрать этот: {title}",
   slotQuestions: {

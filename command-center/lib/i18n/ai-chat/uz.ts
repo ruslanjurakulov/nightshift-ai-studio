@@ -20,6 +20,10 @@ export const aiChatUz: AiChatDictionary = {
   factsNone: "Bu kanalda hali statistika, raqobatchilar yoki izohlar haqida maʼlumot yoʻq, shuning uchun gʻoyalar faqat mavzuga asoslangan.",
   factsUnknown: "Kanal maʼlumotlarini bu safar oʻqib boʻlmadi, shuning uchun gʻoyalar faqat mavzuga asoslangan.",
   scenarioFacts: "{len} · {scenes} ta sahna · {characters} ta qahramon",
+  scenarioHook: "Birinchi soniya: {hook}",
+  scenarioGoal: "Maqsad: {goal}",
+  endingPayoff: "Yakuni: hikoya oʻz yechimiga yetadi",
+  endingCliffhanger: "Yakuni: keyingi qism uchun ochiq savol bilan tugaydi",
   chooseThis: "Shuni tanlash",
   chooseThisNamed: "Shuni tanlash: {title}",
   slotQuestions: {

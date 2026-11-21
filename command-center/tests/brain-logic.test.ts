@@ -24,10 +24,14 @@ const scen = (o: Record<string, unknown> = {}) => ({
   locations: [{ id: "l1", name: "Dune", description: "red dunes", image_prompt: "dunes" }],
   props: [{ id: "p1", name: "Sword", description: "curved" }],
   chapters: [{ id: "ch1", title: "Ambush", start_s: 0, beats: [{ at_s: 0, text: "Riders appear" }] }],
+  // A fresh short proposal needs its structure (tests/brain-short-structure.test.ts); a long one ignores it.
+  structure: { hook: { seen: "an arrow hits the lead camel", heard: "a shout" }, protagonist: { character_id: "c1", goal: "save the caravan" },
+               stakes: "s", turn: "t", ending: { type: "payoff", text: "e" } },
   scenes: [
-    { title: "One", duration_s: 30, visual_prompt: "riders on dunes", character_ids: ["c1", "ghost"], location_id: "l1", prop_ids: ["p1"],
+    { title: "One", duration_s: 30, act: 1, visual_prompt: "riders on dunes", character_ids: ["c1", "ghost"], location_id: "l1", prop_ids: ["p1"],
       dialogue: [{ character_id: "c1", line: "Hold the line!" }, { character_id: "ghost", line: "boo" }] },
-    { title: "Two", duration_s: 30, visual_prompt: "the clash" },
+    { title: "Two", duration_s: 15, act: 2, visual_prompt: "the clash" },
+    { title: "Three", duration_s: 15, act: 3, visual_prompt: "the caravan rides on" },
   ],
   ...o,
 });

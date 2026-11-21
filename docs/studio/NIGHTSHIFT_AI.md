@@ -65,9 +65,18 @@ The BRIEF is stored per conversation and returned by `GET /api/brain/session/<se
       "dialogue": [{ "character_id": "c1", "line": "" }],   // short only: spoken by the video model inside the clip (see Voice)
       "character_ids": ["c1"], "location_id": "l1", "prop_ids": [],
       "keyframe_model": null,      // short: a model id the server checked is on sale (t2i/edit); null = the film's default
-      "clip_model": null           // short: a model id the server checked is on sale (i2v); null = the film's default
+      "clip_model": null,          // short: a model id the server checked is on sale (i2v); null = the film's default
+      "act": 1,                    // short only (absent on long): 1 setup | 2 conflict and climax | 3 resolution
+      "beat": "",                  // short only: the one-line beat that moves the protagonist's goal forward
+      "shot_s": 2.5                // short only: target length of one shot, 0.5..4 s and ≤ duration_s; null = the model gave none
     }
   ],
+  "structure": {                   // short only (absent on long and on proposals stored before it existed)
+    "hook": { "seen": "", "heard": "" },               // the first second of scene 1; leads scene 1's clip prompt
+    "protagonist": { "character_id": "c1", "goal": "" },
+    "stakes": "", "turn": "",                          // turn = the sacrifice or the twist
+    "ending": { "type": "payoff", "text": "" }         // payoff | cliffhanger (a next part, for a series)
+  },
   "voice": { "mode": "off" },      // off | clip_audio (short: the video model speaks `dialogue`) | pipeline (long: Run now's own voice)
   "music": { "mode": "off" },      // off | library (asset_id) — no music generation before the event
   "price": {                       // ATTACHED BY THE SERVER, never by the model; absent until the backend computed it
@@ -88,6 +97,12 @@ The BRIEF is stored per conversation and returned by `GET /api/brain/session/<se
 - A length that the target path does not take is refused.
 - Counts are capped: scenes ≤ 60 (film_limits), characters ≤ 8, locations ≤ 8, props ≤ 12, chapters ≤ 20, beats ≤ 12 per chapter.
 - Text is capped at: title 120, idea 300, visual_prompt 2000 (film_limits.max_prompt_chars), line 300, beat 240.
+- **Short film structure** (from Atlas's analysis of the most-watched AI shorts, 21 Nov). A freshly proposed short scenario is
+  dropped unless it has a hook (`structure.hook.seen`), a protagonist who is one of its characters with a goal, an ending type, and
+  scenes whose `act` runs 1 → 2 → 3 in order with scene 1 in act 1. A stored proposal is re-read without this rule, so one saved
+  before the structure existed can still be chosen. Structure text passes the same safety floor as the scenes.
+- **Content language.** The model is given `content_language` (the person's choice for this video, `null` until chosen) and writes
+  the scenario in it; `app_language` (the UI locale) never fills the language and never decides the content's language.
 
 ## Limits that shape the BRIEF (from the database, not this file)
 
