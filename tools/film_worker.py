@@ -148,7 +148,8 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
         return 2
     missing = assembly_missing(env)
     if missing:
-        # Claims nothing; still sweeps, so a segment that waits is settled (at 0 when it never ran) and its hold released.
+        # Deliberately NOT fully idle: the sweep never claims and never spends. It only runs 0171's rules, so a queued segment nobody
+        # can assemble is settled at 0 after the unclaimed hours and its fm- hold released, instead of holding a customer's credits open.
         logger.warning("%s: no film segment is claimed until the assembly can run; only the sweep runs", missing)
         db = make_db(url, key)
         sweep_once(db)

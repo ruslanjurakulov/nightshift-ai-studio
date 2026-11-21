@@ -286,3 +286,22 @@ describe("the browser's calls", () => {
     expect(readFileSync(join(root, "lib/server/films.ts"), "utf8")).toContain('import { createClient, getUser } from "@/lib/supabase/server"');
   });
 });
+
+describe("film target lengths (0198: 10-1200 s)", () => {
+  it("offers only lengths the database accepts, including 15 and 30 s for ads", async () => {
+    const { TARGET_SECONDS, CREATE_LIMITS } = await import("@/lib/films");
+    for (const s of TARGET_SECONDS) {
+      expect(Number.isInteger(s)).toBe(true);
+      expect(s).toBeGreaterThanOrEqual(CREATE_LIMITS.target_seconds_min);
+      expect(s).toBeLessThanOrEqual(CREATE_LIMITS.target_seconds_max);
+    }
+    expect(TARGET_SECONDS).toEqual(expect.arrayContaining([15, 30, 60]));
+  });
+
+  it("reads seconds under a minute, minutes on the minute, m:ss otherwise", async () => {
+    const { targetLabel } = await import("@/lib/films");
+    expect(targetLabel(15)).toEqual({ unit: "s", n: 15 });
+    expect(targetLabel(300)).toEqual({ unit: "min", n: 5 });
+    expect(targetLabel(90)).toEqual({ unit: "clock", n: 90 });
+  });
+});

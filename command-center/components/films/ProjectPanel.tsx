@@ -4,12 +4,12 @@ import { useId, useState } from "react";
 import { X } from "lucide-react";
 import { fmt } from "@/lib/i18n";
 import type { FilmStudioDictionary } from "@/lib/i18n/film-studio";
+import { lengthText as lengthFor } from "@/components/films/lengthText";
 import {
   FILM_ASPECTS,
   FILM_LANGUAGES,
   REF_KINDS,
-  TARGET_MINUTES,
-  clock,
+  TARGET_SECONDS,
   type Film,
   type FilmAspect,
   type FilmLanguage,
@@ -58,7 +58,7 @@ export function ProjectPanel({
   const id = useId();
   const has = (code: Problem["code"]) => problems.some((p) => p.code === code);
   // A saved target that is not one of the offered lengths (another client set it) stays selectable as itself.
-  const minutes = [...new Set<number>([...TARGET_MINUTES.map((m) => m * 60), settings.targetSeconds])].sort((a, b) => a - b);
+  const lengths = [...new Set<number>([...TARGET_SECONDS, settings.targetSeconds])].sort((a, b) => a - b);
 
   return (
     <>
@@ -90,9 +90,9 @@ export function ProjectPanel({
               disabled={readOnly}
               onChange={(e) => onSettings({ targetSeconds: Number(e.target.value) }, "target")}
             >
-              {minutes.map((s) => (
+              {lengths.map((s) => (
                 <option key={s} value={s}>
-                  {s % 60 === 0 ? fmt(t.create.minutes, { n: s / 60 }) : clock(s)}
+                  {lengthFor(t, s)}
                 </option>
               ))}
             </select>
