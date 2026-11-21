@@ -46,6 +46,11 @@ def test_a_blocked_verdict_refuses_gate_blocked_and_an_allowed_one_passes(conn, 
                           ({"allowed": True, "blocks": ["facts"]}, "gate_blocked"),
                           ({"allowed": "true", "blocks": []}, "gate_unknown"),
                           ({"blocks": []}, "gate_unknown"),
+                          # Breach (hardening): a blocks list that is not a list is not a readable verdict.
+                          ({"allowed": True, "blocks": "rights"}, "gate_unknown"),
+                          ({"allowed": True, "blocks": None}, "gate_unknown"),
+                          ({"allowed": True, "blocks": {"rights": 1}}, "gate_unknown"),
+                          ({"allowed": True}, None),
                           (ALLOWED, None)):
         with as_superuser(conn, commit=False) as su:
             _video(su, sc.bob.channel, verdict)
@@ -105,3 +110,14 @@ def test_applying_again_changes_nothing_and_the_rollback_puts_back_0029(conn, sc
             assert s.value(REFUSAL, [VID]) == "gate_unknown"
         assert su.value("select has_function_privilege('authenticated', %s::regprocedure, 'EXECUTE')", [sig]) is False
         assert su.value("select has_function_privilege('service_role', %s::regprocedure, 'EXECUTE')", [sig]) is True
+
+
+def test_the_rollback_takes_back_only_0206s_own_body(conn):
+    """Breach (hardening): applied after a later file replaced the function again, an unguarded rollback would silently undo that
+    file and reopen BR-LIVE-04. It refuses instead."""
+    rollback = "\n".join(ln for ln in ROLLBACK.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
+    with as_superuser(conn, commit=False) as su:
+        su.conn.execute("create or replace function public.publish_request_refusal(p_video_id text) returns text "
+                        "language sql stable security definer set search_path = '' as $$ select 'a later file''s'::text $$")
+        out = su.run(rollback)
+        assert not out.ok and "undo the later file first" in str(out)

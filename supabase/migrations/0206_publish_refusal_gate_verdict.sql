@@ -39,7 +39,7 @@ begin
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = to_regprocedure('public.publish_request_refusal(text)');
-  if h is null or h <> all (array['154901c2887c305f6ea132f33959ee45', '99441560eed6436c1aa18409618901bd']) then
+  if h is null or h <> all (array['154901c2887c305f6ea132f33959ee45', '45401beb71dc3f42949e9268f9280af0']) then
     raise exception '0206 found publish_request_refusal with a body that is neither 0029''s nor 0206''s (md5 %): read the live body first', h;
   end if;
 end $$;
@@ -74,7 +74,9 @@ begin
      or (jsonb_typeof(v.gate_verdict -> 'blocks') = 'array' and jsonb_array_length(v.gate_verdict -> 'blocks') > 0) then
     return 'gate_blocked';
   end if;
-  if (v.gate_verdict -> 'allowed') is distinct from 'true'::jsonb then
+  -- A blocks list that is present but not a list is not a verdict anyone can read (Breach, hardening): unknown, not a pass.
+  if (v.gate_verdict -> 'allowed') is distinct from 'true'::jsonb
+     or (v.gate_verdict ? 'blocks' and jsonb_typeof(v.gate_verdict -> 'blocks') <> 'array') then
     return 'gate_unknown';
   end if;
   if v.review_state = 'rejected' then

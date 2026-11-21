@@ -2,6 +2,18 @@
 -- exactly, so a video with no stored gate verdict passes again (the BR-LIVE-04 gap returns). Only that function changes.
 begin;
 
+-- Only 0206's own body is taken back: a later file that replaced the function again must be undone first (Breach).
+do $$
+declare
+  h text;
+begin
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
+    from pg_proc p where p.oid = to_regprocedure('public.publish_request_refusal(text)');
+  if h is distinct from '45401beb71dc3f42949e9268f9280af0' then
+    raise exception 'rollback_0206 found publish_request_refusal with a body that is not 0206''s (md5 %): undo the later file first', h;
+  end if;
+end $$;
+
 create or replace function public.publish_request_refusal(p_video_id text) returns text
   language plpgsql stable security definer set search_path = '' as $$
 declare
