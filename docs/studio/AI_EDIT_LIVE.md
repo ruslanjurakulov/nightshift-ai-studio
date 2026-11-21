@@ -262,6 +262,10 @@ quiet re-run on Whisper `base`.
 **The language is locked.** It is never decided by detection, segment by segment.
 - **Where it comes from:** the project's language (a film's own language, 0166), else the channel's
   (`ChannelContext.language`, `modules/channels.py:185`), else the person's explicit choice.
+- **Never the interface language.** The site's UI locale (en/ru/uz) is about the person reading the app, not the
+  content: an Uzbek speaker may make an English video for an English audience. The UI locale must never be read as,
+  or defaulted into, the content/ASR language (owner, 21 Nov). Likewise Nightshift AI may chat in the person's own
+  language while the video's language is a separate, explicit setting.
 - **How it is used:** it is sent as the language parameter. Both adapters already send one when it is given:
   `language_code` (`modules/capabilities/audio.py:429`; `modules/capabilities/transcribe.py:1-30`).
 - **Auto-detect is a suggestion, not a setting.** It is run only when no language is known, and then only as "this
