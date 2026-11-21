@@ -1,4 +1,5 @@
 import type { OwnerConsoleDictionary } from "./en";
+import { ownerFactsUz } from "./facts-uz";
 
 /** Ega konsoli (/owner) va hisob almashtirgich. Matn manbasi — ./en.ts. */
 export const ownerConsoleUz: OwnerConsoleDictionary = {
@@ -52,6 +53,7 @@ export const ownerConsoleUz: OwnerConsoleDictionary = {
   needsMigration: "Egani tasdiqlash uchun konsolga bu bazada 0182-migratsiya (ega analitikasi) kerak. Uni administrator qoʻllashi mumkin.",
   checkFailed: "Kirish huquqingizni hozir tasdiqlab boʻlmadi. Muammo bizning tomonda.",
   retry: "Qayta urinish",
+  facts: ownerFactsUz,
   switcher: {
     title: "Hisobni almashtirish",
     user: "Foydalanuvchi",
