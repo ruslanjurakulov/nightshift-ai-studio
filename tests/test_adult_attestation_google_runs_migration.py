@@ -164,9 +164,21 @@ class TheGates(unittest.TestCase):
         self.assertIn("'adult_skipped', adult_skipped,", definition(M, "route_model"))
 
     def test_the_dispatch_asks_before_it_holds(self):
-        ask = ROUTE.index('return NextResponse.json({ error: "adult_attestation_required", google_stages: googleStages }, { status: 428 });')
+        ask = ROUTE.index("runAgeRefusal(await readAgeAnswer(), backend)")
         self.assertLess(ask, ROUTE.index("await reserveRunCredits("))
         self.assertLess(ask, ROUTE.index("await dispatchDailyVideo("))
+
+    def test_a_storyboard_approval_asks_before_it_quotes_holds_or_dispatches(self):
+        # On Actions approve_storyboard writes no render_jobs row, so the run gate never sees it: the route asks, by Run now's rule.
+        src = (ROOT / "command-center" / "app" / "api" / "storyboards" / "[id]" / "approve" / "route.ts").read_text(encoding="utf-8")
+        ask = src.index("runAgeRefusal(await readAgeAnswer(), backend)")
+        for later in ("await quoteStoryboard(", 'supabase.rpc("approve_storyboard', "await dispatchDailyVideo("):
+            self.assertLess(ask, src.index(later), later)
+
+    def test_both_dispatching_routes_share_one_rule(self):
+        age = (ROOT / "command-center" / "lib" / "age.ts").read_text(encoding="utf-8")
+        self.assertIn("export function runAgeRefusal(", age)
+        self.assertIn('if (answer === "unknown" && backend === "actions") return { error: "age_unavailable", status: 503 };', age)
 
 
 if __name__ == "__main__":

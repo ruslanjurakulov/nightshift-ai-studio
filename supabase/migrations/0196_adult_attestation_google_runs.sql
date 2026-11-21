@@ -30,7 +30,8 @@
 --     as it skips one they gave no rights acknowledgement for.
 --
 -- WHICH RUNS ARE ASKED, and how: Run now on the queue (the browser's insert) and on Actions (/api/agent/run asks first: the dispatch
---   writes no row); a series episode, an approved storyboard, a scene repair (their render_jobs rows); the video API and the MCP
+--   writes no row); a series episode, a scene repair and, on the queue, an approved storyboard (their render_jobs rows; on Actions
+--   the approval writes none, so /api/storyboards/[id]/approve asks first, by the same rule as Run now); the video API and the MCP
 --   connection's video (typed 428). The scheduled daily run is written with no session and is never refused here. A hold the person
 --   took before the refused insert stays open until it is released or expires, as after any refused insert; /api/agent/run asks
 --   before it reserves, so Run now takes none.
