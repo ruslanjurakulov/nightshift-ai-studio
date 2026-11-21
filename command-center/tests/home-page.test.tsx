@@ -26,7 +26,8 @@ vi.mock("next/link", () => ({
 }));
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
-import { HomePage } from "@/components/landing/home/HomePage";
+import { HomePage, RIBBON_MIN_PER_HALF, ribbonRepeats } from "@/components/landing/home/HomePage";
+import { setMotionPaused } from "@/lib/site/motion";
 import { HERO_JOB, REEL, reelItem, studioPieces } from "@/components/landing/home/home-reel";
 import { SHOWCASE_ITEMS } from "@/lib/showcase/items";
 import { REGISTRY_NAMES } from "@/lib/creative/model-names";
@@ -230,6 +231,86 @@ describe("the model strip is the database's list or nothing", () => {
     expect(items[0].querySelector("[data-adult-only]")?.textContent).toBe(m.adultOnly);
     expect(m.adultOnly).toContain("18+");
     expect(items[1].querySelector("[data-adult-only]")).toBeNull();
+  });
+
+  // The ribbon (owner, 2026-11-22: "the models used to move as a ribbon with a nice background").
+  const THREE = [
+    { name: "Model A", kinds: ["video"], adultOnly: false },
+    { name: "Model B", kinds: ["image"], adultOnly: true },
+    { name: "Model C", kinds: ["image", "video"], adultOnly: false },
+  ] satisfies Parameters<typeof HomePage>[0]["models"];
+
+  it("moves as a ribbon on a dark band, the list once for a screen reader and the seamless repeats hidden", () => {
+    const { container } = page("en", { models: THREE });
+    const band = container.querySelector("section.hm-models .hm-ribbon") as HTMLElement;
+    expect(band).toBeTruthy();
+    // Dark in either theme, like the old strip's band.
+    expect(band.getAttribute("data-theme-scope")).toBe("dark");
+    const lists = band.querySelectorAll(".hm-ribbon-track > ul");
+    expect(lists).toHaveLength(2);
+    // What would break: a screen reader hearing each model 2k times, or not at all.
+    expect(lists[0].getAttribute("aria-hidden")).toBeNull();
+    expect(lists[1].getAttribute("aria-hidden")).toBe("true");
+    const named = screen.getAllByRole("list", { name: dictionaries.en.landingHome.models.listLabel });
+    expect(named).toHaveLength(1);
+    expect(named[0]).toBe(lists[0]);
+    expect(within(named[0]).getAllByRole("listitem")).toHaveLength(THREE.length);
+    // Role queries skip aria-hidden subtrees: the repeats' chips are not in the accessibility tree at all.
+    expect(screen.queryAllByRole("listitem").filter((li) => li.closest(".hm-ribbon"))).toHaveLength(THREE.length);
+  });
+
+  it("repeats the list into two equal halves at least RIBBON_MIN_PER_HALF chips wide, so a short list leaves no gap in the loop", () => {
+    const { container } = page("en", { models: THREE });
+    const k = ribbonRepeats(THREE.length);
+    expect(k * THREE.length).toBeGreaterThanOrEqual(RIBBON_MIN_PER_HALF);
+    const names = [...container.querySelectorAll(".hm-ribbon-track .hm-model-name")].map((n) => n.textContent);
+    // 2k copies in order: sliding the track by half (CSS translateX(-50%)) lands on the same chip.
+    expect(names).toEqual(Array.from({ length: 2 * k }, () => THREE.map((m) => m.name)).flat());
+    const band = container.querySelector(".hm-ribbon") as HTMLElement;
+    expect(band.style.getPropertyValue("--hm-rb-n")).toBe(String(k * THREE.length));
+    // The repeats keep each chip's words (kinds, 18+), so the moving band looks the same all along.
+    expect(container.querySelectorAll(".hm-ribbon-track [data-adult-only]")).toHaveLength(2 * k);
+    expect(ribbonRepeats(1)).toBe(RIBBON_MIN_PER_HALF);
+    expect(ribbonRepeats(RIBBON_MIN_PER_HALF + 3)).toBe(1);
+  });
+
+  it("has no visible pause button: one keyboard pause key, the page's own switch (ClipPause, hidden until focused)", () => {
+    const { container } = page("en", { models: THREE });
+    const keys = container.querySelectorAll(".hm-ribbon button");
+    expect(keys).toHaveLength(1);
+    expect(keys[0].classList.contains("nx-clip-pause")).toBe(true);
+    expect(keys[0].textContent).toBe(dictionaries.en.site.fx.pause);
+  });
+
+  it("a tap on the moving band pauses it (a touch screen has no hover to stop it, WCAG 2.2.2)", () => {
+    const { container } = page("en", { models: THREE });
+    setMotionPaused(false);
+    // The band's ClipPause mounts the page's one delegated listener (useMotionTap), so a real click reaches motionTap.
+    const lead = container.querySelector("section.hm-models .hm-lead")!;
+    lead.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, detail: 1 }));
+    expect(document.documentElement.getAttribute("data-motion"), "a tap outside the band is not a pause").toBeNull();
+    container.querySelector(".hm-ribbon .hm-model-name")!.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, detail: 1 }));
+    expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    setMotionPaused(false);
+  });
+
+  it("the stylesheet slides only after load, stops on hover, focus and the page switch, and sits still in a wrapped row under reduced motion", () => {
+    const css = readFileSync(path.join(process.cwd(), "components/landing/home/home.css"), "utf8");
+    // What follows a block's opening, up to the next at-rule (`^[^@]*`): the rules that really sit inside that block.
+    const after = (open: string) => {
+      expect(css.indexOf(open), open).toBeGreaterThanOrEqual(0);
+      return css.slice(css.indexOf(open) + open.length);
+    };
+    const noPref = after("@media (prefers-reduced-motion: no-preference) {\n    /* After load");
+    expect(noPref).toMatch(/^[^@]*html\[data-fx="on"\] \.hm-ribbon-track \{ animation: hm-ribbon /);
+    expect(noPref).toMatch(/^[^@]*\.hm-ribbon:hover \.hm-ribbon-track,\s*\.hm-ribbon:focus-within \.hm-ribbon-track \{ animation-play-state: paused; \}/);
+    expect(css).toContain('html[data-motion="paused"] .hm-ribbon-track { animation-play-state: paused !important; }');
+    expect(css).toContain("@keyframes hm-ribbon { to { transform: translateX(-50%); } }");
+    // The only animation of the track is inside the no-preference block: reduced motion never moves it.
+    expect(css.match(/animation: hm-ribbon/g)).toHaveLength(1);
+    const reduce = after("@media (prefers-reduced-motion: reduce) {\n    .hm-ribbon-track");
+    expect(reduce).toMatch(/^[^@]*\.hm-model-list \{ flex-wrap: wrap; padding: 0; \}/);
+    expect(reduce).toMatch(/^[^@]*\.hm-model-list\[data-copy="repeat"\] \{ display: none; \}/);
   });
 
   it("parses the 0193 answer: names once, codes to words, unknown codes dropped, junk refused", () => {

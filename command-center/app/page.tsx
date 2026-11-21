@@ -26,7 +26,6 @@ import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { readPublicModelsOnSale } from "@/lib/server/public-models";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { mcpOauthLive } from "@/lib/mcp-oauth";
-import { preloadDisplayFont } from "@/components/site/fonts";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
@@ -58,7 +57,6 @@ export default async function Home() {
   if (await getUser()) redirect(`/${ALL_CHANNELS_SLUG}`);
 
   const { t, locale } = await getDictionary();
-  preloadDisplayFont(locale);
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
   // Plans (0034) come from the public price list in the database. The landing
   // is signed out by now, so all of these are the shared public reads: bounded,
