@@ -42,7 +42,7 @@ NEW = {
     "film_studio_on_for": "e5397c4d359a3113825272463fe93c06",
     "set_org_film_studio_enabled": "7b56b06164a91b5651172470088e867a",
     "film_take_inputs": "c8dc8dfa8b68639a5fd00be52b235ee9",
-    "film_take_job": "8f3c00302f86b7bf435088951cc04979",
+    "film_take_job": "54be9b34b17b2e99bc891036fbc2be01",
 }
 
 
@@ -168,6 +168,18 @@ class Migration0198(unittest.TestCase):
         self.assertIn("d not like '%target_seconds >= 60)%' and d not like '%target_seconds >= 10)%'", M0198)
         self.assertIn("and target_seconds between 60 and 1200", ROLLBACK)
         self.assertIn("film(s) target less than 60 s", ROLLBACK)
+
+    def test_film_studio_on_for_keeps_the_shape_the_assembly_session_calls(self):
+        """S11's assembly (PR #845) calls it over PostgREST with the service key: name, the one uuid parameter p_org, boolean,
+        STABLE, executable by service_role only. Changing any of these breaks that caller."""
+        defn = definition(M0198, "film_studio_on_for")
+        head = defn.split("as $$", 1)[0]
+        self.assertTrue(head.startswith("create or replace function public.film_studio_on_for(p_org uuid) returns boolean\n"), head)
+        self.assertRegex(head, r"\blanguage sql stable security definer set search_path = public, pg_temp\b")
+        self.assertIn("revoke all on function public.film_studio_on_for(uuid) from public, anon, authenticated, service_role;", M0198)
+        self.assertIn("grant execute on function public.film_studio_on_for(uuid) to service_role;", M0198)
+        self.assertEqual(len(re.findall(r"grant execute on function public\.film_studio_on_for\(", M0198)), 1)
+        self.assertIn("or has_function_privilege('authenticated', 'public.film_studio_on_for(uuid)', 'execute')", M0198)
 
     def test_the_rollback_puts_the_earlier_bodies_back_verbatim(self):
         for name, (_src, was, now, _a, _b) in REPLACED.items():

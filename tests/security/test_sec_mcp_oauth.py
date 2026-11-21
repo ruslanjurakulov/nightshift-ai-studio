@@ -1249,7 +1249,8 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     # drift guard and would silently put its own oauth_create_video back; 0147 and 0170 refuse. Off first, on again last.
     adult = sec_db.MIGRATION_0192.exists()
     if adult:
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0192])
+        # 0198 sits on 0192's film bodies, and 0192's rollback refuses them: off first, on again after 0192.
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
     after = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
              db.su("select pepper from public.oauth_settings")[0][0])
@@ -1277,7 +1278,8 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     if adult:
         # 0094 sits on 0093's oauth_create_video, and 0192 on 0094's: 0094 again (it has no guard and changes nothing else that
         # 0093 replaced), then 0192.
-        sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192])
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192,
+                                    sec_db.MIGRATION_0198])
         assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 

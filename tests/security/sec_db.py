@@ -344,6 +344,9 @@ ON_0139 = (*ON_0139, "0191_mcp_oauth_creative.sql")
 #: both, so that every sequence that leaves out 0125 or a file on it leaves 0192 out too. It also sits on 0174, so it is listed again
 #: at the end of ON_0124 (a sequence that puts both lists back applies it once, last).
 ON_0139 = (*ON_0139, "0192_adult_attestation.sql")
+#: 0198 (Film Studio's switch per organization) replaces 0192's quote_film and start_film and refuses to apply without 0192: after it
+#: in both lists, for the same reason.
+ON_0139 = (*ON_0139, "0198_film_studio_org_switch.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -354,7 +357,7 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
            "0174_rights_acknowledgement.sql", "0187_rights_acknowledgement_inputs.sql", "0191_mcp_oauth_creative.sql",
-           "0192_adult_attestation.sql")
+           "0192_adult_attestation.sql", "0198_film_studio_org_switch.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names

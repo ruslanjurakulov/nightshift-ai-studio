@@ -106,7 +106,7 @@ begin
       ('public.film_studio_on_for(uuid)', 'e5397c4d359a3113825272463fe93c06'),
       ('public.set_org_film_studio_enabled(uuid, boolean)', '7b56b06164a91b5651172470088e867a'),
       ('public.film_take_inputs(public.film_takes)', 'c8dc8dfa8b68639a5fd00be52b235ee9'),
-      ('public.film_take_job(uuid, text)', '8f3c00302f86b7bf435088951cc04979')) v(sig, want) loop
+      ('public.film_take_job(uuid, text)', '54be9b34b17b2e99bc891036fbc2be01')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
       raise exception '0198 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
@@ -205,8 +205,9 @@ $$;
 --   narration  tts of the film's language with the voice priced; the scenes' texts are returned for the worker to voice, one scene
 --              at a time on the film's clock (docs/FILM_STUDIO.md, P4a), and are never stored on the job.
 -- A missing input answers {ok: false, reason: 'input_missing'} and writes nothing: the worker fails the take (bad_request).
--- Called again for a take that has its job, it answers that job as it stands (replayed: true), so a worker that restarted resumes
--- the same job and never makes a second one (creative_jobs_film_take_key and film_takes_job_key also say so).
+-- Called again for a take that has its job, it answers that job (replayed: true), handed to this worker when it is still live, so a
+-- worker that took over resumes the same job and never makes a second one (creative_jobs_film_take_key and film_takes_job_key also
+-- say so).
 create or replace function public.film_take_job(p_take uuid, p_worker text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -238,6 +239,14 @@ begin
       into narr from public.film_scenes x where x.film_id = t.film_id;
   end if;
   if t.creative_job_id is not null then
+    -- A worker that took over the segment's lease (its predecessor died) takes over the take's live job with it: 0036's calls
+    -- (advance, attach, finish) check the job's worker id. A job the creative queue handed back ('queued') is taken back as its
+    -- claim would (polled when it has a task id). A job that ended stays ended.
+    update public.creative_jobs
+       set worker_id = w, heartbeat_at = now(), updated_at = now(),
+           status = case when status = 'queued' then case when provider_task_id is not null then 'provider_pending' else 'running' end
+                         else status end
+     where id = t.creative_job_id and status in ('queued', 'running', 'provider_pending', 'processing');
     select * into j from public.creative_jobs where id = t.creative_job_id;
     return jsonb_build_object('ok', true, 'replayed', true, 'job_id', j.id, 'job_status', j.status, 'capability', j.capability,
                               'params', j.params, 'provider_task_id', j.provider_task_id,
@@ -774,7 +783,7 @@ begin
       ('public.film_studio_on_for(uuid)', 'e5397c4d359a3113825272463fe93c06'),
       ('public.set_org_film_studio_enabled(uuid, boolean)', '7b56b06164a91b5651172470088e867a'),
       ('public.film_take_inputs(public.film_takes)', 'c8dc8dfa8b68639a5fd00be52b235ee9'),
-      ('public.film_take_job(uuid, text)', '8f3c00302f86b7bf435088951cc04979'),
+      ('public.film_take_job(uuid, text)', '54be9b34b17b2e99bc891036fbc2be01'),
       ('public.quote_film(uuid, integer)', '99d01240ed2df7fb002f674df8891608'),
       ('public.start_film(uuid, text, text)', '7971355d754165affaf3e08904b4b078'),
       ('public.film_claim_segment(text, interval)', '41debe4563fc9f8b58dd6d3082ad7e24'),

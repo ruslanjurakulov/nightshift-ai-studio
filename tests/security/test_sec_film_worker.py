@@ -164,6 +164,16 @@ def test_the_setter_refuses_everyone_but_a_platform_owner_and_writes_security_ev
     assert err(lambda: org_switch(db, str(uuid.uuid4()), True))[0] == "P0002"
 
 
+def test_film_studio_on_for_is_the_shape_its_callers_use(db):
+    """The assembly session calls it through PostgREST with the service key: frozen name, (p_org uuid) -> boolean, STABLE."""
+    row = db.su("select pg_get_function_arguments(p.oid), pg_get_function_result(p.oid), p.provolatile from pg_proc p "
+                "where p.oid = 'public.film_studio_on_for(uuid)'::regprocedure")[0]
+    assert row == ("p_org uuid", "boolean", "s")
+    grants = db.su("select has_function_privilege(r, 'public.film_studio_on_for(uuid)', 'execute') from unnest(array['service_role', "
+                   "'authenticated', 'anon']) r")
+    assert [g[0] for g in grants] == [True, False, False]
+
+
 def test_a_member_reads_the_switch_but_nobody_writes_the_row_directly(db, a):
     assert db.one("authenticated", a.viewer, "select film_studio_enabled from public.org_film_settings where org_id = %s", [a.org]) is True
     for role, user in (("authenticated", a.owner), ("service_role", None)):
@@ -302,6 +312,26 @@ def test_a_clip_starts_from_the_key_frame_its_segment_made_and_records_it(db, a)
     # The second scene continues from the first scene's last frame: nothing until that shot made one.
     db.begin(clip2)
     assert take_job(db, clip2)["reason"] == "input_missing"
+
+
+def test_a_worker_that_takes_over_the_lease_takes_over_the_live_job(db, a):
+    """0036's calls check the job's worker id: without this, a worker that resumed a dead one's take could neither store nor
+    finish it, and the take would end as worker_lost after three leases."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim("w-1")
+    kf = db.takes(seg["id"])[0][0]
+    db.begin(kf, "w-1")
+    first = take_job(db, kf, "w-1")
+    assert db.svc("select public.advance_creative_job(%s, 'w-1', 'submitting')", [first["job_id"]]) is True
+    assert db.svc("select public.advance_creative_job(%s, 'w-1', 'submitted', 'lab-task-7')", [first["job_id"]]) is True
+    db.su("update public.film_segments set heartbeat_at = now() - interval '11 minutes' where id = %s", [seg["id"]])
+    assert db.claim("w-2")["id"] == seg["id"]
+    again = take_job(db, kf, "w-2")
+    assert (again["replayed"], again["job_id"], again["job_worker"], again["provider_task_id"]) == (True, first["job_id"], "w-2",
+                                                                                                    "lab-task-7")
+    assert db.svc("select public.advance_creative_job(%s, 'w-2', 'processing')", [first["job_id"]]) is True
+    assert db.svc("select public.advance_creative_job(%s, 'w-1', 'requeue')", [first["job_id"]]) is False  # the old worker is out
 
 
 def test_a_take_job_never_follows_an_input_the_caller_names(db, a):
