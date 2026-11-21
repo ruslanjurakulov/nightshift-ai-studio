@@ -24,6 +24,8 @@ export const siteEn = {
     api: "API",
     signIn: "Sign in",
     start: "Start free",
+    /** A signed-in visitor's one header key, in place of Sign in and Start free: it opens their app. */
+    openApp: "Open app",
     menu: "Menu",
     menuClose: "Close menu",
   },

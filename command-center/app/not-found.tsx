@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PublicShell } from "@/components/legal/PublicShell";
+import { SessionSwap } from "@/components/legal/SessionSwap";
+import { APP_HOME } from "@/lib/session-hint";
 import { getDictionary } from "@/lib/i18n/server";
 import { formatTimecode } from "@/components/ui/Timecode";
 
@@ -52,9 +54,19 @@ export default async function NotFound() {
             <Link href="/solutions" className="st-link">
               {t.site.nav.solutions}
             </Link>
-            <Link href="/login" className="st-link">
-              {t.site.nav.signIn}
-            </Link>
+            {/* Signed in, the way on is the app, not a sign-in form (components/legal/SessionSwap). */}
+            <SessionSwap
+              signedOut={
+                <Link href="/login" className="st-link">
+                  {t.site.nav.signIn}
+                </Link>
+              }
+              signedIn={
+                <a href={APP_HOME} className="st-link">
+                  {t.site.nav.openApp}
+                </a>
+              }
+            />
           </nav>
         </div>
         <div className="st-slate-screen" aria-hidden>
