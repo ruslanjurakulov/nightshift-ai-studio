@@ -118,7 +118,9 @@ describe("a panel without numbers says why", () => {
     expect(screen.getByTestId("research-own").textContent).toContain(en.remedy.quota);
     cleanup();
     show(props({ own: auth }));
-    expect(screen.getByTestId("research-own").textContent).toContain("YOUTUBE_DATA_API_KEY");
+    // The customer's copy names support, never the operator's secret.
+    expect(screen.getByTestId("research-own").textContent).toContain(en.remedy.auth);
+    expect(document.body.textContent).not.toContain("YOUTUBE_DATA_API_KEY");
   });
 
   it("not enabled and a failed read are said plainly, and offer no button", () => {
@@ -126,7 +128,25 @@ describe("a panel without numbers says why", () => {
     const own = screen.getByTestId("research-own");
     expect(within(own).getByText(en.status.not_enabled)).toBeTruthy();
     expect(within(own).queryByRole("button")).toBeNull();
-    expect(within(screen.getByTestId("research-competitors")).getByRole("alert").textContent).toBe(en.status.error);
+    expect(within(screen.getByTestId("research-competitors")).getByText(en.status.error)).toBeTruthy();
+    // One alert for the page, with a way to try again, not one per panel.
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts.length).toBe(1);
+    fireEvent.click(within(alerts[0]).getByRole("button", { name: en.tryAgain }));
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("a database without 0199 gets one note for the page, naming who turns it on", () => {
+    show(props({ own: unreadPanel(true), competitors: unreadPanel(true), topic: unreadPanel(true), themes: unreadPanel(true) }));
+    expect(screen.getByText(en.notEnabled)).toBeTruthy();
+    expect(screen.queryByTestId("research-own")).toBeNull();
+  });
+
+  it("Refresh is disabled, and looks it, while a refresh is running", () => {
+    show(props({ own: parsePanel({ ...ownOk, status: "refreshing" }, parseOwn) }));
+    const b = within(screen.getByTestId("research-own")).getByRole("button", { name: /Refresh/ }) as HTMLButtonElement;
+    expect(b.disabled).toBe(true);
+    expect(b.className).toContain("disabled:opacity-50");
   });
 
   it("refreshing says it is refreshing, with the numbers it already has", () => {
@@ -213,6 +233,60 @@ describe("refresh and topic search", () => {
     const links = within(screen.getByTestId("research-topic")).getAllByRole("link").filter((a) => a.getAttribute("href")?.startsWith("https://"));
     expect(links.map((a) => a.textContent)).toEqual(["Second by views", "Bigger"]);
     expect(links[0].getAttribute("href")).toBe(`https://www.youtube.com/channel/${UC}`);
+  });
+});
+
+describe("fix round", () => {
+  it("own uploads say their visibility, and competitors say public videos only", () => {
+    const own = parsePanel({ ...ownOk, data: { ...(ownOk.data as Record<string, unknown>), recent_videos: [
+      { video_id: "abcdefghijk", title: "Draft", privacy_status: "private", view_count: 0 },
+      { video_id: "bbcdefghijk", title: "Out", view_count: 3 }] } }, parseOwn);
+    const list = answer("ok", { max: 20, competitors: [{ id: "33333333-3333-4333-8333-333333333333", input_ref: UC, status: "resolved",
+      videos: [], channel: { youtube_channel_id: UC, title: "Rival", subscriber_count: 1, subscribers_hidden: false, view_count: 1, video_count: 1 } }] });
+    show(props({ own, competitors: parsePanel(list, parseCompetitors) }));
+    expect(screen.getAllByTestId("research-privacy").map((x) => x.textContent)).toEqual([en.own.privacy.private, en.own.privacy.unknown]);
+    expect(screen.getByText(en.competitors.publicOnly)).toBeTruthy();
+  });
+
+  it("a count the themes answer did not carry reads not reported, never 0, and counts are plural-aware", () => {
+    const themes = parsePanel({ status: "ok", fetched_at: null, source: "nightshift", data: { period_days: 28,
+      questions: { samples: [] }, words: [] } }, parseThemes);
+    show(props({ themes }));
+    const box = screen.getByTestId("research-themes");
+    expect(within(box).getAllByText(en.notReported).length).toBe(2);
+    expect(box.textContent).not.toMatch(/\b0 comments/);
+    cleanup();
+    const one = parsePanel({ status: "ok", fetched_at: null, source: "nightshift", data: { period_days: 28, total_comments: 1,
+      questions: { count: 5, samples: [] }, words: [] } }, parseThemes);
+    show(props({ themes: one }), "ru");
+    expect(screen.getByTestId("research-themes").textContent).toContain("Прочитан 1 комментарий");
+    expect(screen.getByTestId("research-themes").textContent).toContain("В 5 комментариях есть вопрос");
+  });
+
+  it("an own @handle reads as the channel itself; a pending one shows its reference once", () => {
+    const list = answer("ok", { max: 20, competitors: [
+      { id: "11111111-1111-4111-8111-111111111111", input_ref: "@mine", status: "own_channel", channel: null, videos: [] },
+      { id: "22222222-2222-4222-8222-222222222222", input_ref: "@waiting", status: "pending", channel: null, videos: [] }] });
+    show(props({ competitors: parsePanel(list, parseCompetitors) }));
+    const box = screen.getByTestId("research-competitors");
+    expect(within(box).getByText(en.competitors.ownChannel)).toBeTruthy();
+    expect(within(box).getAllByText("@waiting").length).toBe(1);
+  });
+
+  it("a topic with nothing yet says to press Search", () => {
+    show(props({ topic: parsePanel(answer("no_data", { topic: "deep sea", channels: [], recent_topics: [] }), parseTopic), topicQuery: "deep sea" }));
+    expect(screen.getByText(en.topic.noDataYet)).toBeTruthy();
+  });
+
+  it("a failed add is announced and tied to the input", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => json({ error: "invalid_ref" }, 400)));
+    show(props());
+    const input = screen.getByLabelText(en.competitors.label);
+    fireEvent.change(input, { target: { value: "nonsense" } });
+    fireEvent.click(screen.getByRole("button", { name: en.competitors.add }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(en.errors.invalid_ref));
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(screen.getByRole("alert").id);
   });
 });
 

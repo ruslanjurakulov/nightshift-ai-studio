@@ -8,7 +8,8 @@ export default async function Loading() {
   return (
     <div className="rhythm">
       <PageHeader icon="research" title={t.research.title} subtitle={t.research.subtitle} />
-      <div className="flex flex-col gap-6" aria-busy="true">
+      <div className="flex flex-col gap-6" aria-busy="true" role="status">
+        <span className="sr-only">{t.research.loading}</span>
         {panels.map((title) => (
           <section key={title} className="section-card flex flex-col gap-3" aria-label={title}>
             <h2 className="t-panel m-0">{title}</h2>

@@ -2243,4 +2243,12 @@ service key's only. YouTube's 30-day limit on non-authorized data: every reader 
 re-added) with `research` and `research_search`, and a six-argument `youtube_quota_take(..., p_source)` writes only those; 0116's
 five-argument one is untouched. Nothing runs until the worker has `YOUTUBE_DATA_API_KEY` (a GitHub secret, shipped by
 `deploy_web.yml`); without it a request ends `failed` / `not_configured` and the page names the secret.
+Fix round (PR #851): a seventh closed table, `research_own_videos`, holds a channel's own uploads read with its own token
+(private and unlisted included), readable only through `research_own_channel`; only a video YouTube reports public also reaches
+the shared `research_video_cache`, and a public lookup's complete batch removes cached videos that went private. Writers refuse a
+draft channel (never confirmed against YouTube) and readers answer `not_connected` for it; youtube-sourced answers carry
+`untrusted_strings: true`; flagged comments are never sampled; resolved competitors are re-resolved after 30 days; a disconnected
+channel's own analytics and uploads are hidden and purged; competitor status gains `own_channel`. One organization may spend at
+most 300 of the 1,500 daily units (the worker's constant), and `RESEARCH_SEARCH_SHARED_UNITS` (default 0) makes each search also
+take shared units.
 Rollback: `docs/sql/rollback_0199_channel_research.sql`.

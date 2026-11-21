@@ -9,6 +9,7 @@ import { relativeTime, parseStoredTime } from "@/lib/format";
 import { formatNumber } from "@/lib/number-format";
 import { formatDay } from "@/lib/date-format";
 import { channelPath } from "@/lib/channels";
+import { pluralText } from "@/lib/plural";
 import {
   lastFailed,
   type ChannelStats,
@@ -77,22 +78,49 @@ export function ResearchBoard(props: ResearchBoardProps) {
   const refreshing = [props.own, props.competitors, props.topic].some((p) => p.status === "refreshing")
     || (props.competitors.data?.competitors ?? []).some((c) => c.status === "pending");
 
+  const [gaveUp, setGaveUp] = useState(false);
+
   // While the worker is fetching, look again every few seconds, and stop after a few minutes (a request the worker never picks up
-  // is still shown as "refreshing" by the database; the page does not poll forever for it).
+  // is still shown as "refreshing" by the database; the page does not poll forever for it, and says so when it stops).
   useEffect(() => {
     if (!refreshing) return;
     let n = 0;
     const id = setInterval(() => {
       n += 1;
-      if (n > 40) return clearInterval(id);
+      if (n > 40) {
+        clearInterval(id);
+        setGaveUp(true);
+        return;
+      }
       if (document.visibilityState === "visible") startTransition(() => router.refresh());
     }, 8000);
     return () => clearInterval(id);
   }, [refreshing, router]);
 
   const ctx: Ctx = { r, locale, nowMs: props.nowMs, channel: props.channel, slug: props.slug, canEdit: props.canEdit };
+  const panels = [props.own, props.competitors, props.topic, props.themes];
+  // 0199 not applied here: one note for the page, not four identical panels.
+  if (panels.every((p) => p.status === "not_enabled")) {
+    return (
+      <div className="flex flex-col gap-6" data-testid="research-board">
+        <p className="g3-note" role="status">{r.notEnabled}</p>
+        <Attribution r={r} />
+      </div>
+    );
+  }
+  const anyError = panels.some((p) => p.status === "error");
   return (
     <div className="flex flex-col gap-6" data-testid="research-board">
+      {/* One alert for the page; each panel then says quietly what it could not read. */}
+      {anyError && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-[var(--color-fail)]">
+          <span>{r.pageError}</span>
+          <button type="button" className="btn-sky pill min-h-[44px] px-4 py-2 text-sm" onClick={() => startTransition(() => router.refresh())}>
+            {r.tryAgain}
+          </button>
+        </div>
+      )}
+      {refreshing && gaveUp && <p role="status" className="g3-note">{r.stillWaiting}</p>}
       {!props.canEdit && <p className="g3-note">{r.viewerOnly}</p>}
       <OwnPanel ctx={ctx} panel={props.own} />
       <CompetitorsPanel ctx={ctx} panel={props.competitors} />
@@ -142,12 +170,12 @@ function StatusNote({ ctx, panel, empty }: { ctx: Ctx; panel: Panel<unknown>; em
   const remedy = panel.remedyCode ? r.remedy[panel.remedyCode] : null;
   if (panel.status === "refreshing") return <p role="status" className="m-0 text-sm">{r.refreshing}</p>;
   if (panel.status === "not_enabled") return <p className="m-0 text-sm">{r.status.not_enabled}</p>;
-  if (panel.status === "error") return <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">{r.status.error}</p>;
+  if (panel.status === "error") return <p className="m-0 text-sm text-[var(--color-fail)]">{r.status.error}</p>;
   if (panel.status === "not_connected") {
     return (
       <div className="flex flex-col gap-2 text-sm">
         <p className="m-0">{r.status.not_connected}</p>
-        <p className="m-0 text-[var(--color-muted)]">{r.remedy.connect}</p>
+        <p className="m-0 text-[var(--color-muted)]">{remedy ?? r.remedy.connect}</p>
         <Link href={channelPath(ctx.slug, "/channels")} className="btn-sky pill min-h-[44px] self-start px-4 py-2 text-sm">
           {r.connectCta}
         </Link>
@@ -209,13 +237,14 @@ function RefreshButton({ ctx, kind, panelTitle, disabled }: { ctx: Ctx; kind: Re
     <div className="flex flex-col items-end gap-1">
       <button
         type="button"
-        className="btn-sky pill min-h-[44px] px-4 py-2 text-sm"
+        className={`btn-sky pill min-h-[44px] px-4 py-2 text-sm ${DISABLED}`}
         disabled={off}
+        aria-busy={busy || undefined}
         aria-label={fmt(ctx.r.refreshAria, { panel: panelTitle })}
         title={!ctx.canEdit ? ctx.r.viewerOnly : undefined}
         onClick={() => void press()}
       >
-        {ctx.r.refresh}
+        {busy ? ctx.r.refreshPending : ctx.r.refresh}
       </button>
       {message && (
         <p role="status" className={`m-0 max-w-[18rem] text-right text-xs ${message.tone === "ok" ? "text-[var(--color-muted)]" : "text-[var(--color-fail)]"}`}>
@@ -225,6 +254,9 @@ function RefreshButton({ ctx, kind, panelTitle, disabled }: { ctx: Ctx; kind: Re
     </div>
   );
 }
+
+/** A disabled control must look disabled, not merely refuse the press. */
+const DISABLED = "disabled:cursor-not-allowed disabled:opacity-50";
 
 function StatGrid({ items }: { items: { label: string; value: ReactNode }[] }) {
   return (
@@ -251,7 +283,7 @@ function ChannelStatsGrid({ ctx, c }: { ctx: Ctx; c: ChannelStats }) {
   );
 }
 
-function VideoList({ ctx, videos }: { ctx: Ctx; videos: VideoStats[] }) {
+function VideoList({ ctx, videos, own = false }: { ctx: Ctx; videos: VideoStats[]; own?: boolean }) {
   const { r } = ctx;
   return (
     <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -273,6 +305,7 @@ function VideoList({ ctx, videos }: { ctx: Ctx; videos: VideoStats[] }) {
               <div className="flex gap-1"><dt>{r.video.views}</dt><dd className="m-0"><Count ctx={ctx} value={v.viewCount} /></dd></div>
               <div className="flex gap-1"><dt>{r.video.likes}</dt><dd className="m-0"><Count ctx={ctx} value={v.likeCount} /></dd></div>
               <div className="flex gap-1"><dt>{r.video.comments}</dt><dd className="m-0"><Count ctx={ctx} value={v.commentCount} /></dd></div>
+              {own && <div><dd className="m-0" data-testid="research-privacy">{r.own.privacy[v.privacyStatus ?? "unknown"]}</dd></div>}
             </dl>
           </li>
         );
@@ -293,7 +326,7 @@ function OwnPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<OwnData> }) {
       actions={
         <>
           <Fetched ctx={ctx} at={panel.fetchedAt} />
-          {enabled && <RefreshButton ctx={ctx} kind="own_channel" panelTitle={r.own.title} disabled={panel.status === "not_connected"} />}
+          {enabled && <RefreshButton ctx={ctx} kind="own_channel" panelTitle={r.own.title} disabled={panel.status === "not_connected" || panel.status === "refreshing"} />}
         </>
       }
     >
@@ -315,7 +348,8 @@ function OwnPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<OwnData> }) {
       {d && d.recentVideos.length > 0 ? (
         <div className="flex flex-col gap-1">
           <h3 className="m-0 text-sm font-semibold">{r.own.latest}</h3>
-          <VideoList ctx={ctx} videos={d.recentVideos} />
+          <p className="m-0 text-xs text-[var(--color-muted)]">{r.own.latestHint}</p>
+          <VideoList ctx={ctx} videos={d.recentVideos} own />
         </div>
       ) : null}
       {(!d || panel.status !== "ok") && <StatusNote ctx={ctx} panel={panel} />}
@@ -355,15 +389,17 @@ function AddCompetitorForm({ ctx, full, max }: { ctx: Ctx; full: boolean; max: n
           spellCheck={false}
           placeholder={ctx.r.competitors.placeholder}
           disabled={!ctx.canEdit || full}
+          aria-invalid={message?.tone === "fail" || undefined}
+          aria-describedby={message ? `${id}-msg` : undefined}
           onChange={(e) => setRef(e.target.value)}
         />
-        <button type="submit" className="btn-sky is-solid pill min-h-[44px] px-5 py-2 text-sm" disabled={!ctx.canEdit || full || busy || !ref.trim()}>
+        <button type="submit" className={`btn-sky is-solid pill min-h-[44px] px-5 py-2 text-sm ${DISABLED}`} aria-busy={busy || undefined} disabled={!ctx.canEdit || full || busy || !ref.trim()}>
           {busy ? ctx.r.competitors.adding : ctx.r.competitors.add}
         </button>
       </div>
       {full && <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(ctx.r.errors.limit_reached, { max })}</p>}
       {message && (
-        <p role="status" className={`m-0 text-sm ${message.tone === "ok" ? "text-[var(--color-muted)]" : "text-[var(--color-fail)]"}`}>{message.text}</p>
+        <p id={`${id}-msg`} role={message.tone === "ok" ? "status" : "alert"} className={`m-0 text-sm ${message.tone === "ok" ? "text-[var(--color-muted)]" : "text-[var(--color-fail)]"}`}>{message.text}</p>
       )}
     </form>
   );
@@ -386,8 +422,9 @@ function RemoveButton({ ctx, id, name }: { ctx: Ctx; id: string; name: string })
     <span className="flex flex-col items-end gap-1">
       <button
         type="button"
-        className="btn-sky ghost pill min-h-[44px] px-4 py-2 text-sm"
+        className={`btn-sky ghost pill min-h-[44px] px-4 py-2 text-sm ${DISABLED}`}
         disabled={!ctx.canEdit || busy}
+        aria-busy={busy || undefined}
         aria-label={fmt(ctx.r.competitors.removeAria, { name })}
         onClick={() => void press()}
       >
@@ -411,7 +448,7 @@ function CompetitorsPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<CompetitorsDa
       actions={
         <>
           <Fetched ctx={ctx} at={panel.fetchedAt} />
-          {enabled && list.length > 0 && <RefreshButton ctx={ctx} kind="competitors" panelTitle={r.competitors.title} />}
+          {enabled && list.length > 0 && <RefreshButton ctx={ctx} kind="competitors" panelTitle={r.competitors.title} disabled={panel.status === "refreshing" || panel.status === "not_connected"} />}
         </>
       }
     >
@@ -419,7 +456,9 @@ function CompetitorsPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<CompetitorsDa
         {fmt(r.competitors.hint, { max })} {enabled && <span className="tabular-nums">{fmt(r.competitors.count, { n: list.length, max })}</span>}
       </p>
       <LastFailed ctx={ctx} panel={panel} />
-      {enabled && <AddCompetitorForm ctx={ctx} full={list.length >= max} max={max} />}
+      {list.length > 0 && panel.status !== "ok" && <StatusNote ctx={ctx} panel={panel} />}
+      {enabled && panel.status !== "not_connected" && <AddCompetitorForm ctx={ctx} full={list.length >= max} max={max} />}
+      {list.length > 0 && <p className="m-0 text-xs text-[var(--color-muted)]">{r.competitors.publicOnly}</p>}
       {list.length > 0 ? (
         <ul className="m-0 flex list-none flex-col gap-4 p-0">
           {list.map((c) => {
@@ -429,12 +468,13 @@ function CompetitorsPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<CompetitorsDa
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="m-0 break-words font-semibold" dir="auto">{name}</p>
-                    <p className="m-0 break-all text-xs text-[var(--color-muted)]">{c.channel?.handle ?? c.inputRef}</p>
+                    {c.channel && <p className="m-0 break-all text-xs text-[var(--color-muted)]">{c.channel.handle ?? c.inputRef}</p>}
                   </div>
                   <RemoveButton ctx={ctx} id={c.id} name={name} />
                 </div>
                 {c.status === "pending" && <p role="status" className="m-0 text-sm">{r.competitors.pending}</p>}
                 {c.status === "not_found" && <p className="m-0 text-sm text-[var(--color-warn)]">{r.competitors.notFound}</p>}
+                {c.status === "own_channel" && <p className="m-0 text-sm text-[var(--color-warn)]">{r.competitors.ownChannel}</p>}
                 {c.status === "resolved" && (c.channel ? (
                   <>
                     <ChannelStatsGrid ctx={ctx} c={c.channel} />
@@ -491,7 +531,7 @@ function TopicPanel({ ctx, panel, topicQuery }: { ctx: Ctx; panel: Panel<TopicDa
   return (
     <Card testid="research-topic" title={r.topic.title} source={r.sourceYoutube} actions={<Fetched ctx={ctx} at={panel.fetchedAt} />}>
       <p className="m-0 text-sm text-[var(--color-muted)]">{r.topic.hint}</p>
-      {enabled && (
+      {enabled && panel.status !== "not_connected" && (
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-2">
           <label htmlFor={id} className="text-sm font-medium">{r.topic.label}</label>
           <div className="flex flex-wrap gap-2">
@@ -504,12 +544,12 @@ function TopicPanel({ ctx, panel, topicQuery }: { ctx: Ctx; panel: Panel<TopicDa
               disabled={!ctx.canEdit}
               onChange={(e) => setValue(e.target.value)}
             />
-            <button type="submit" className="btn-sky is-solid pill min-h-[44px] px-5 py-2 text-sm" disabled={!ctx.canEdit || busy || value.trim().length < 2}>
+            <button type="submit" className={`btn-sky is-solid pill min-h-[44px] px-5 py-2 text-sm ${DISABLED}`} aria-busy={busy || undefined} disabled={!ctx.canEdit || busy || value.trim().length < 2}>
               {busy ? r.topic.searching : r.topic.search}
             </button>
           </div>
           {message && (
-            <p role="status" className={`m-0 text-sm ${message.tone === "ok" ? "text-[var(--color-muted)]" : "text-[var(--color-fail)]"}`}>{message.text}</p>
+            <p role={message.tone === "ok" ? "status" : "alert"} className={`m-0 text-sm ${message.tone === "ok" ? "text-[var(--color-muted)]" : "text-[var(--color-fail)]"}`}>{message.text}</p>
           )}
         </form>
       )}
@@ -549,7 +589,7 @@ function TopicPanel({ ctx, panel, topicQuery }: { ctx: Ctx; panel: Panel<TopicDa
           )}
         </div>
       ) : topicQuery || panel.status !== "ok" ? (
-        <StatusNote ctx={ctx} panel={panel} empty={topicQuery ? r.status.no_data : r.topic.empty} />
+        <StatusNote ctx={ctx} panel={panel} empty={topicQuery ? r.topic.noDataYet : r.topic.empty} />
       ) : (
         <p className="m-0 text-sm text-[var(--color-muted)]">{r.topic.empty}</p>
       )}
@@ -571,6 +611,12 @@ function Samples({ samples }: { samples: CommentSample[] }) {
   );
 }
 
+/** One of Nightshift's own counts in a sentence ("12 comments read"), plural-aware; "not reported" when the answer had none. */
+function NightshiftCount({ ctx, forms, value }: { ctx: Ctx; forms: R["themes"]["total"]; value: number | null }) {
+  if (value === null) return <span className="text-[var(--color-muted)]">{ctx.r.notReported}</span>;
+  return <>{pluralText(forms, value, ctx.locale).replace(String(value), formatNumber(value, ctx.locale, 0))}</>;
+}
+
 function ThemesPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<ThemesData> }) {
   const { r } = ctx;
   const d = panel.data;
@@ -585,10 +631,10 @@ function ThemesPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<ThemesData> }) {
       <p className="m-0 text-sm text-[var(--color-muted)]">{fmt(r.themes.hint, { n: days })}</p>
       {d && panel.status === "ok" ? (
         <>
-          <p className="m-0 text-sm tabular-nums">{fmt(r.themes.total, { n: formatNumber(d.totalComments, ctx.locale, 0) })}</p>
+          <p className="m-0 text-sm tabular-nums"><NightshiftCount ctx={ctx} forms={r.themes.total} value={d.totalComments} /></p>
           <div className="flex flex-col gap-2">
             <h3 className="m-0 text-sm font-semibold">{r.themes.questions}</h3>
-            <p className="m-0 text-sm text-[var(--color-muted)]">{fmt(r.themes.questionsCount, { n: formatNumber(d.questions.count, ctx.locale, 0) })}</p>
+            <p className="m-0 text-sm text-[var(--color-muted)]"><NightshiftCount ctx={ctx} forms={r.themes.questionsCount} value={d.questions.count} /></p>
             <Samples samples={d.questions.samples} />
           </div>
           {d.words.length > 0 && (
@@ -599,7 +645,7 @@ function ThemesPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<ThemesData> }) {
                   <li key={w.untrustedWord} className="flex flex-col gap-1">
                     <p className="m-0 text-sm">
                       <span className="font-semibold" dir="auto">{w.untrustedWord}</span>{" "}
-                      <span className="text-[var(--color-muted)]">{fmt(r.themes.mentions, { n: formatNumber(w.count, ctx.locale, 0) })}</span>
+                      <span className="text-[var(--color-muted)]"><NightshiftCount ctx={ctx} forms={r.themes.mentions} value={w.count} /></span>
                     </p>
                     <Samples samples={w.samples} />
                   </li>

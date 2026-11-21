@@ -51,6 +51,8 @@ export interface VideoStats {
   viewCount: number | null;
   likeCount: number | null;
   commentCount: number | null;
+  /** The channel's own uploads only (their own token sees private ones); null = not reported, or a public lookup. */
+  privacyStatus: "public" | "unlisted" | "private" | null;
 }
 
 export interface OwnData {
@@ -69,7 +71,7 @@ export interface OwnData {
 export interface Competitor {
   id: string;
   inputRef: string;
-  status: "pending" | "resolved" | "not_found";
+  status: "pending" | "resolved" | "not_found" | "own_channel";
   channel: ChannelStats | null;
   videos: VideoStats[];
 }
@@ -94,9 +96,10 @@ export interface CommentSample {
 
 export interface ThemesData {
   periodDays: number;
-  totalComments: number;
-  questions: { count: number; samples: CommentSample[] };
-  words: { untrustedWord: string; count: number; samples: CommentSample[] }[];
+  /** Nightshift's own counts; null when the answer did not carry one (never read as 0). */
+  totalComments: number | null;
+  questions: { count: number | null; samples: CommentSample[] };
+  words: { untrustedWord: string; count: number | null; samples: CommentSample[] }[];
 }
 
 type Obj = Record<string, unknown>;
@@ -153,6 +156,7 @@ export function parseVideo(v: unknown): VideoStats | null {
     viewCount: count(o.view_count),
     likeCount: count(o.like_count),
     commentCount: count(o.comment_count),
+    privacyStatus: o.privacy_status === "public" || o.privacy_status === "unlisted" || o.privacy_status === "private" ? o.privacy_status : null,
   };
 }
 
@@ -209,7 +213,7 @@ export function parseCompetitors(d: unknown): CompetitorsData | null {
     const c = obj(raw);
     const id = c ? str(c.id, 40) : null;
     const st = c?.status;
-    if (!c || !id || (st !== "pending" && st !== "resolved" && st !== "not_found")) continue;
+    if (!c || !id || (st !== "pending" && st !== "resolved" && st !== "not_found" && st !== "own_channel")) continue;
     competitors.push({ id, inputRef: str(c.input_ref, 64) ?? "", status: st, channel: parseChannel(c.channel), videos: videos(c.videos) });
   }
   return { competitors, max: count(o.max) ?? 20 };
@@ -234,12 +238,12 @@ export function parseThemes(d: unknown): ThemesData | null {
   const q = obj(o.questions);
   return {
     periodDays: count(o.period_days) ?? 28,
-    totalComments: count(o.total_comments) ?? 0,
-    questions: { count: count(q?.count) ?? 0, samples: samples(q?.samples) },
+    totalComments: count(o.total_comments),
+    questions: { count: count(q?.count), samples: samples(q?.samples) },
     words: arr(o.words)
       .map((w) => obj(w))
       .filter((w): w is Obj => w !== null && typeof w.untrusted_word === "string")
-      .map((w) => ({ untrustedWord: String(w.untrusted_word).slice(0, 40), count: count(w.count) ?? 0, samples: samples(w.samples) })),
+      .map((w) => ({ untrustedWord: String(w.untrusted_word).slice(0, 40), count: count(w.count), samples: samples(w.samples) })),
   };
 }
 
