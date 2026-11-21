@@ -1,4 +1,5 @@
 import type { OwnerConsoleDictionary } from "./en";
+import { ownerFactsRu } from "./facts-ru";
 
 /** Консоль владельца (/owner) и переключатель аккаунтов. Источник текста — ./en.ts. */
 export const ownerConsoleRu: OwnerConsoleDictionary = {
@@ -52,6 +53,7 @@ export const ownerConsoleRu: OwnerConsoleDictionary = {
   needsMigration: "Чтобы подтвердить владельца, консоли нужна миграция 0182 (аналитика владельца). Её может применить администратор.",
   checkFailed: "Не удалось подтвердить доступ. Проблема на нашей стороне.",
   retry: "Повторить",
+  facts: ownerFactsRu,
   switcher: {
     title: "Сменить аккаунт",
     user: "Пользователь",
