@@ -6,7 +6,7 @@
  * outright when storage is off, and an empty box that sends anyway. The signed-in redirect is tests/idea-handoff-middleware.test.ts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { IDEA_HREF, IDEA_KEY, IDEA_MAX, IDEA_NEXT, IDEA_TTL_MS, ideaWords, stashIdea, takeIdea } from "@/lib/site/idea-handoff";
 import { afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { IdeaBox } from "@/components/landing/home/IdeaBox";
@@ -150,5 +150,26 @@ describe("the box", () => {
     expect(screen.queryByTestId("idea-count")).toBeNull();
     fireEvent.change(screen.getByTestId("idea-field"), { target: { value: "x".repeat(IDEA_MAX - 10) } });
     expect(screen.getByTestId("idea-count").textContent).toContain(`${IDEA_MAX - 10} of ${IDEA_MAX}`);
+  });
+});
+
+describe("the box, coming back", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  it("Back from sign-up (a page kept in the back/forward cache) can send again, never a dead button", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    render(<IdeaBox copy={homeEn.hero.idea} />);
+    fireEvent.change(screen.getByTestId("idea-field"), { target: { value: "first" } });
+    fireEvent.click(screen.getByTestId("idea-submit"));
+    fireEvent.click(screen.getByTestId("idea-submit"));
+    expect(assign).toHaveBeenCalledTimes(1);
+    const e = new Event("pageshow") as PageTransitionEvent;
+    Object.defineProperty(e, "persisted", { value: true });
+    act(() => void window.dispatchEvent(e));
+    fireEvent.click(screen.getByTestId("idea-submit"));
+    expect(assign).toHaveBeenCalledTimes(2);
   });
 });

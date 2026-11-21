@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowRight } from "lucide-react";
 import { buttonClass } from "@/components/ds/button-class";
 import { fmt } from "@/lib/i18n/core";
@@ -29,6 +29,15 @@ export function IdeaBox({ copy }: { copy: IdeaBoxCopy }) {
   const [problem, setProblem] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const length = Array.from(text).length;
+
+  // Back from sign-up out of the back/forward cache keeps this state: without this the button would ignore every press after.
+  useEffect(() => {
+    const back = (e: PageTransitionEvent) => {
+      if (e.persisted) setLeaving(false);
+    };
+    window.addEventListener("pageshow", back);
+    return () => window.removeEventListener("pageshow", back);
+  }, []);
 
   function go(e?: FormEvent) {
     e?.preventDefault();
@@ -90,7 +99,7 @@ export function IdeaBox({ copy }: { copy: IdeaBoxCopy }) {
       <p id={`${id}-n`} className="hm-idea-note">
         {copy.note}
         {length >= COUNT_FROM ? (
-          <span className="hm-idea-count" data-testid="idea-count">
+          <span className="hm-idea-count" data-testid="idea-count" aria-live="polite" data-full={length >= IDEA_MAX ? "" : undefined}>
             {" "}
             {fmt(copy.count, { n: length, max: IDEA_MAX })}
           </span>
