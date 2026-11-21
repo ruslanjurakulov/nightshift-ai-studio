@@ -502,9 +502,6 @@ jobs:
           # 1440p and 4K exports, the media worker's side (docs/HIRES_EXPORT.md): the same repository variable as the web's. Empty = off, and
           # a paid export that reaches the worker is failed at once (hires_off) with its credits released. This change does not set it.
           WORKERENV_NIGHTSHIFT_HIRES_EXPORT: ${{ vars.NIGHTSHIFT_HIRES_EXPORT }}
-          # Film Studio assembly, the media worker's kill switch (docs/studio/NIGHTSHIFT_AI.md). Empty = off: a handed-over segment is
-          # recorded as failed at 0 and its hold released. Which workspaces is film_studio_on_for in the database. This change does not set it.
-          WORKERENV_NIGHTSHIFT_FILM_ASSEMBLY: ${{ vars.NIGHTSHIFT_FILM_ASSEMBLY }}
           WORKERENV_NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}
           # The owner's model switch (migration 0124, docs/MODEL_SWITCH.md): the SAME repository variable the Command Center reads
