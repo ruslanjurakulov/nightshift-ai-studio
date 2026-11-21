@@ -4,7 +4,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { isCreditExempt } from "@/lib/credits";
 import { readCreditAccount } from "@/lib/server/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
-import { isSocialConfigured } from "@/lib/server/social-oauth";
+import { socialConnectOpen } from "@/lib/server/social-oauth";
 import { accountPlan, creditsSpent, type AccountPlan, type AccountSummary } from "@/lib/account";
 import { planValue, readBillingSummary } from "@/lib/server/plans";
 
@@ -63,7 +63,7 @@ export async function GET() {
   }
 
   const accounts = await readConnectedAccounts().catch(() => []);
-  const connectable = { instagram: isSocialConfigured("instagram"), tiktok: isSocialConfigured("tiktok") };
+  const connectable = { instagram: socialConnectOpen("instagram", current?.id ?? null), tiktok: socialConnectOpen("tiktok", current?.id ?? null) };
   const body: AccountSummary = { email: user.email ?? null, plan, credits, accounts, connectable };
   return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
 }

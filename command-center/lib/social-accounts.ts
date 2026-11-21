@@ -20,6 +20,9 @@ export function isSocialPlatform(v: unknown): v is SocialPlatform {
 
 export type SocialAccountStatus = "connected" | "expired" | "error" | "revoked";
 
+/** How an Instagram connection signed in (migration 0204). */
+export type SocialAuthFlow = "unified_login" | null;
+
 /** One row of social_accounts, as RLS hands it to an organization member. */
 export interface SocialAccount {
   id: string;
@@ -34,12 +37,41 @@ export interface SocialAccount {
   connected_at: string | null;
   connected_by_email: string | null;
   revoked_at: string | null;
+  /** 'unified_login' for an Instagram connection made through Unified Login; null for TikTok, for an old
+   *  Instagram Login connection, and for every row while 0204 is not applied. */
+  auth_flow: SocialAuthFlow;
 }
 
 /** The columns the Command Center reads — never `*`, so a column added later
  *  is not shipped to a browser by accident. */
 export const SOCIAL_ACCOUNT_COLUMNS =
+  "id, org_id, platform, external_id, username, display_name, avatar_url, status, scopes, connected_at, connected_by_email, revoked_at, auth_flow";
+/** The same without 0204's column, for a database that has not applied it yet. Every Instagram row read this
+ *  way is an old Instagram Login connection (a Unified Login one cannot be stored before 0204). */
+export const SOCIAL_ACCOUNT_COLUMNS_0028 =
   "id, org_id, platform, external_id, username, display_name, avatar_url, status, scopes, connected_at, connected_by_email, revoked_at";
+
+/**
+ * An Instagram connection made with the old "Instagram API with Instagram Login". Its token is a 60-day
+ * Instagram user token that graph.facebook.com does not accept, so it can never publish again: it is shown as
+ * "reconnect needed", is not offered as a publish target, and the worker refuses it (modules/social_publish.py).
+ * The row is kept, not deleted, until the person reconnects through Unified Login, which turns it into a new one.
+ */
+export function needsInstagramReconnect(a: Pick<SocialAccount, "platform" | "auth_flow" | "status">): boolean {
+  return a.platform === "instagram" && a.status !== "revoked" && a.auth_flow !== "unified_login";
+}
+
+/** What the account panel and the publish list show: a stored status, or "reconnect" for an old Instagram row. */
+export type SocialAccountView = SocialAccountStatus | "reconnect";
+
+export function accountView(a: Pick<SocialAccount, "platform" | "auth_flow" | "status">): SocialAccountView {
+  return a.status === "connected" && needsInstagramReconnect(a) ? "reconnect" : a.status;
+}
+
+/** Usable for publishing right now: connected, and not an old Instagram Login row. */
+export function isPublishable(a: Pick<SocialAccount, "platform" | "auth_flow" | "status">): boolean {
+  return accountView(a) === "connected";
+}
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v ? v : null;
@@ -84,6 +116,7 @@ export function coerceSocialAccounts(data: unknown): SocialAccount[] {
       connected_at: str(r.connected_at),
       connected_by_email: str(r.connected_by_email),
       revoked_at: str(r.revoked_at),
+      auth_flow: r.auth_flow === "unified_login" ? "unified_login" : null,
     });
   }
   return out;
@@ -121,6 +154,7 @@ export const SOCIAL_RESULTS = [
   "no_account",
   "exchange_rejected",
   "unavailable",
+  "needs_migration",
   "failed",
 ] as const;
 export type SocialResult = (typeof SOCIAL_RESULTS)[number];
@@ -132,11 +166,14 @@ export function parseSocialResult(raw: string | null | undefined): SocialResult 
   return (SOCIAL_RESULTS as readonly string[]).includes(v) ? (v as SocialResult) : null;
 }
 
-/** Map a store_social_account error to a result word. Reads the SQLSTATE and
- *  nothing else; nothing from the error reaches the browser. */
+/** Map a store_social_account error to a result word. Reads the SQLSTATE (and, for 0028's refusal of the
+ *  Unified Login keys, its fixed message); nothing from the error reaches the browser. */
 export function socialStoreErrorResult(error: { code?: string | null; message?: string | null }): SocialResult {
   if (isMissingFunction({ code: error.code ?? "", message: error.message ?? "" })) return "not_available";
   if (error.code === "42501") return "forbidden";
+  // 0028's store_social_account, before 0204: it refuses auth_flow / config_id as unknown keys. The remedy is
+  // the migration, not another try.
+  if (error.code === "22023" && (error.message ?? "").includes("meta has an unknown key")) return "needs_migration";
   return "failed";
 }
 
@@ -170,12 +207,15 @@ export function toConnectedAccounts(rows: SocialAccount[]): ConnectedSocialAccou
       id: r.id,
       name: accountLabel(r),
       avatarUrl: r.avatar_url,
-      connected: r.status === "connected",
+      connected: isPublishable(r),
     }));
 }
 
 /** Where access is removed on the platform's side after a disconnect. */
 export const PLATFORM_PERMISSIONS_URL: Record<SocialPlatform, string> = {
-  instagram: "https://www.instagram.com/accounts/manage_access/",
+  // A Unified Login connection is an app connected to the client's business portfolio: it is removed in
+  // Meta Business Settings → Integrations → Connected apps (docs/SOCIAL_SETUP.md). The deep link to that tab
+  // is not documented, so this opens Business Settings and the notice names the tab.
+  instagram: "https://business.facebook.com/settings",
   tiktok: "https://www.tiktok.com/setting/security",
 };

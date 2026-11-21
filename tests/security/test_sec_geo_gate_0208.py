@@ -24,6 +24,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 import uuid
 
@@ -50,6 +51,8 @@ def unit_of(mid):
 # (id, extra spec, credit rows {unit: credits})
 MODELS = [
     ("img-plain", {}, {unit_of("img-plain"): 3}),
+    # A second ungated model at the same price: the failover's next candidate after a gated one (M2).
+    ("img-plain2", {}, {unit_of("img-plain2"): 3}),
     ("img-sized", {"image_sizes": ["1K", "2K", "4K"],
                    "pricing": {"unit": "image", "variants": {"by": "image_size", "prices": {"1K": 0.04, "2K": 0.08, "4K": 0.12}}}},
      # The base row lists the model (sellable_models); the sizes price it. 4K has no row: unpriced, never the base rate.
@@ -113,7 +116,9 @@ def db():
     d.su("select public.grant_credits(%s, 1000, 'test')", [ORG])
     # The day a gated model opens (see the module's docstring): 0142's CHECK is dropped in this throwaway database only.
     d.su("alter table public.model_registry drop constraint if exists model_registry_countries_before_sale")
-    rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": "image.acme", "capabilities": ["t2i"],
+    # img-sized also edits, so a region edit can be priced by size (M1).
+    rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": "image.acme",
+             "capabilities": ["t2i", "edit"] if m == "img-sized" else ["t2i"],
              "credit_unit": unit_of(m), "entitlement": "any", "spec": {"vendor_model": "acme-" + m, "output": "image", **extra}}
             for m, extra, _p in MODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
@@ -288,6 +293,79 @@ def test_size_a_job_carries_the_size_it_was_priced_at(db):
     assert row == ("2K", unit_of("img-sized") + "_2k", 8.0)
 
 
+def _body(path, name):
+    text = path.read_text(encoding="utf-8")
+    return re.search(r"(?ms)^create or replace function public\.%s\(.*?^\$\$;\n" % name, text).group(0)
+
+
+def test_region_edit_a_size_priced_model_runs_at_a_listed_size_and_is_refused_at_an_unlisted_one(db):
+    aid = str(uuid.uuid4())
+    db.act("service_role", None,
+           "select public.register_asset(%s, %s, 'image', 'image/png', 1000, %s, 'generated', p_width => 640, p_height => 480, "
+           "p_provenance => %s::jsonb, p_parent_asset_id => null)",
+           [aid, ORG, uuid.uuid4().hex * 2, json.dumps({"job_id": "seed"})])
+    regions = [{"id": "r1", "name": "Sky", "rect": {"x": 0, "y": 0, "w": 32, "h": 32}, "prompt": "dusk"}]
+
+    def params(size=None):
+        p = {"source_asset_id": aid, "regions": regions, "region_feather": 4}
+        return {**p, "image_size": size} if size else p
+
+    def q(p):
+        return db.act("authenticated", U_A, "select public.quote_creative_job(%s,'edit','img-sized',%s::jsonb)", [ORG, json.dumps(p)])[0][0]
+
+    got = q(params("2K"))
+    assert (got["unit"], got["image_size"]) == (unit_of("img-sized") + "_2k", "2K")
+    _n[0] += 1
+    job = db.act("authenticated", U_A, "select public.create_creative_job(%s,'edit','img-sized',%s::jsonb,'exact',%s,1000)",
+                 [ORG, json.dumps(params("2K")), f"geo-{_n[0]}"])[0][0]
+    drain(db)
+    assert db.su("select params ->> 'image_size', credit_unit from public.creative_jobs where id = %s",
+                 [job["job"]["id"]])[0] == ("2K", unit_of("img-sized") + "_2k")
+    for p in (params("512"),     # a size this model does not list
+              params("8K"),      # not a size at all
+              params()):         # no size: never the base row
+        assert err(lambda: q(p)) == ("NS400", "invalid_params"), p
+    # Before 0208's hunk in creative_regions_problem (0126's body) the listed size was refused as well: no region edit could run on
+    # such a model at all.
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(_body(sec_db.MIGRATIONS / "0126_region_edit_run.sql", "creative_regions_problem"))
+        assert "image_size does not apply to an edit with regions" == c.execute(
+            "select public.creative_params_problem('edit', %s::jsonb)", [json.dumps(params("2K"))]).fetchone()[0]
+        c.rollback()
+
+
+def test_failover_skips_a_country_gated_candidate_and_moves_on_to_the_next(db):
+    def svc(qry, p=None):
+        return db.act("service_role", None, qry, p)
+    drain(db)
+    _n[0] += 1
+    jid = db.act("authenticated", U_A, "select public.create_creative_job(%s,'t2i','img-plain',%s::jsonb,'exact',%s,1000)",
+                 [ORG, json.dumps(T2I), f"geo-{_n[0]}"])[0][0]["job"]["id"]
+    assert svc("select id::text from public.claim_creative_job('rr')")[0][0] == jid
+    # A routed job whose failover list puts a gated model (cheaper, so it is a candidate) before an ungated one.
+    db.su("update public.creative_jobs set mode = 'auto', routing = '{\"surface\": \"web\"}'::jsonb, "
+          "routed_credits = coalesce(routed_credits, quoted_credits) where id = %s", [jid])
+    db.su("insert into public.creative_job_routes (job_id, candidates, tried) values (%s, %s::jsonb, %s::jsonb) "
+          "on conflict (job_id) do update set candidates = excluded.candidates, tried = excluded.tried",
+          [jid, json.dumps([{"model": GID, "credits": 2}, {"model": "img-plain2", "credits": 3}]), json.dumps(["img-plain"])])
+    call = "select public.reroute_creative_job(%s, 'rr', 'unreachable')"
+    # 0196's body, the one 0208 replaces: the gate's NS400 on the routed_model update aborted the whole failover.
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(_body(sec_db.MIGRATIONS / "0196_adult_attestation_google_runs.sql", "reroute_creative_job"))
+        c.execute("select set_config('request.jwt.claims', %s, true)", [claims("service_role")])
+        c.execute("set local role service_role")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(call, [jid])
+        assert e.value.sqlstate == "NS400" and "country_unverified" in str(e.value)
+        c.rollback()
+    out = svc(call, [jid])[0][0]
+    assert out["model"] == "img-plain2", out
+    row = db.su("select routed_model, fallback_from from public.creative_jobs where id = %s", [jid])[0]
+    assert row == ("img-plain2", "img-plain")
+    assert db.su("select tried from public.creative_job_routes where job_id = %s", [jid])[0][0] == ["img-plain", "img-plain2"]
+    svc("select public.finish_creative_job(%s,'rr',false,null,null,'test_drain','drained')", [jid])
+
+
 def test_rollback_and_replay(db):
     mig = sec_db.MIGRATION_0208.read_text(encoding="utf-8")
     q = ("select (select count(*) from pg_trigger where tgrelid = 'public.creative_jobs'::regclass and tgname = 'creative_jobs_geo_gate'), "
@@ -299,6 +377,10 @@ def test_rollback_and_replay(db):
         c.execute(sec_db.rollback_0208_body())
         assert c.execute(q).fetchone() == (0, sec_db.CREATIVE_PRICE_0159)
         assert c.execute("select to_regprocedure('public.geo_claim_country()') is null").fetchone()[0]
+        # 0126's region check and 0196's failover are back too.
+        assert c.execute("select array_agg(md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) order by proname) from pg_proc where oid in "
+                         "('public.creative_regions_problem(jsonb)'::regprocedure, 'public.reroute_creative_job(uuid,text,text)'::regprocedure)"
+                         ).fetchone()[0] == ["5603be6af36c813d2799eb581bb971cd", "4e43d78523acacf10799497afef0d39a"]
         c.execute(sec_db.rollback_0208_body())                           # twice: harmless
         c.execute(mig)
         assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0208)

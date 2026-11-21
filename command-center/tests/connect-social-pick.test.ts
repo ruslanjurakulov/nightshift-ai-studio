@@ -27,6 +27,8 @@ vi.mock("@/lib/server/social-accounts", () => ({
 
 process.env.INSTAGRAM_APP_ID = "1234567890";
 process.env.INSTAGRAM_APP_SECRET = "ig-secret";
+process.env.INSTAGRAM_CONFIG_ID = "987654321012345";
+process.env.INSTAGRAM_UNIFIED_ORGS = "3f2b8c1e-8d4a-4b7e-9a51-0c2d6e7f8a90";
 process.env.TIKTOK_CLIENT_KEY = "ttkey";
 process.env.TIKTOK_CLIENT_SECRET = "tt-secret";
 delete process.env.APP_ORIGIN;
@@ -52,11 +54,12 @@ function fakeTiktok() {
   f.mockResolvedValueOnce(Response.json({ data: { user: { open_id: "oid-1", display_name: "Brand", avatar_url: "https://p.tiktokcdn.com/a.jpg" } } }));
   return f;
 }
-function fakeInstagram() {
+/** Unified Login: one exchange (a BISU token, no expiry stated), then the portfolio, then the assigned accounts. */
+function fakeInstagram(accounts: { id: string; username?: string }[] = [{ id: "17841400000000000", username: "brand" }]) {
   const f = vi.spyOn(globalThis, "fetch");
-  f.mockResolvedValueOnce(Response.json({ data: [{ access_token: "IGshort", user_id: 17841400000000000, permissions: "instagram_business_basic,instagram_business_content_publish" }] }));
-  f.mockResolvedValueOnce(Response.json({ access_token: "IGlong", expires_in: 5184000 }));
-  f.mockResolvedValueOnce(Response.json({ user_id: "17841400000000000", username: "brand", name: "Brand", account_type: "BUSINESS", profile_picture_url: "https://x.cdninstagram.com/p.jpg" }));
+  f.mockResolvedValueOnce(Response.json({ access_token: "IGlong-SECRET", token_type: "bearer" }));
+  f.mockResolvedValueOnce(Response.json({ client_business_id: "555" }));
+  f.mockResolvedValueOnce(Response.json({ data: accounts }));
   return f;
 }
 const handleOf = (r: Response) => /ns_connect_pending=([^;]+)/.exec(cookies(r))?.[1];
@@ -102,7 +105,7 @@ describe("callback (pick flow): hold, do not store", () => {
     expect(s.stored).toEqual([]);
     expect(`${res.headers.get("location")}\n${cookies(res)}`).not.toMatch(/SECRET|IGlong|IGshort/);
     const held = pending.readPending(handleOf(res), { userId: "u1", orgId: ORG });
-    expect(held?.grant.platform === platform && held.grant.profile.externalId).toBe(externalId);
+    expect(held?.grant.platform === platform && held.grant.profiles.map((p) => p.externalId)).toEqual([externalId]);
   });
   it("never keeps an avatar that is not an https picture", async () => {
     const f = fakeTiktok();
@@ -111,7 +114,7 @@ describe("callback (pick flow): hold, do not store", () => {
     f.mockResolvedValueOnce(Response.json({ data: { user: { open_id: "o", display_name: "B", avatar_url: "javascript:alert(1)" } } }));
     const res = await finishSocialConnect(cb("tiktok", `tt_oauth_nonce=${NONCE}; tt_oauth_pkce=V`), "tiktok");
     const held = pending.readPending(handleOf(res), { userId: "u1", orgId: ORG });
-    expect(held?.grant.platform === "tiktok" && held.grant.profile.avatarUrl).toBeNull();
+    expect(held?.grant.platform === "tiktok" && held.grant.profiles[0].avatarUrl).toBeNull();
   });
   it("still refuses a bad nonce and returns to the Add channel screen", async () => {
     const res = await finishSocialConnect(cb("tiktok", `tt_oauth_nonce=${"m".repeat(32)}; tt_oauth_pkce=V`), "tiktok");
@@ -136,7 +139,7 @@ describe("confirm", () => {
   }
   it("stores the held grant through the existing helper and audits it by the existing action", async () => {
     const handle = await held();
-    expect(await confirmSocialPick({ userId: "u1", handle, platform: "tiktok" })).toEqual({ result: "connected", platform: "tiktok" });
+    expect(await confirmSocialPick({ userId: "u1", handle, platform: "tiktok" })).toEqual({ result: "connected", platform: "tiktok", remaining: 0 });
     expect(s.stored[0]).toMatchObject({ orgId: ORG, platform: "tiktok", accessToken: "act.SECRET", refreshToken: "rft.SECRET" });
     expect(s.audits.map((a) => a.action)).toEqual(["social.tiktok.connect"]);
     expect(JSON.stringify(s.audits)).not.toMatch(/SECRET/);
@@ -156,6 +159,55 @@ describe("confirm", () => {
     s.role = { ok: false, status: 403, error: "forbidden" };
     expect((await confirmSocialPick({ userId: "u1", handle: again, platform: "tiktok" })).result).toBe("forbidden");
     expect(s.stored).toEqual([]);
+  });
+  it("Instagram: several accounts are held, and only one of THEM can be confirmed, by its id", async () => {
+    fakeInstagram([{ id: "17841400000000001", username: "first" }, { id: "17841400000000002", username: "second" }]);
+    const res = await finishSocialConnect(cb("instagram", `ig_oauth_nonce=${NONCE}`), "instagram");
+    const handle = handleOf(res);
+    const read = pending.readPending(handle, { userId: "u1", orgId: ORG });
+    expect(read?.grant.platform === "instagram" && read.grant.profiles.map((p) => p.externalId)).toEqual(["17841400000000001", "17841400000000002"]);
+    // No id with several held: the server does not pick for the person.
+    expect((await confirmSocialPick({ userId: "u1", handle, platform: "instagram" })).result).toBe("not_in_list");
+    // An id that was not offered is refused, and the held grant stays for a real pick.
+    expect((await confirmSocialPick({ userId: "u1", handle, platform: "instagram", externalId: "17841499999999999" })).result).toBe("not_in_list");
+    expect(s.stored).toEqual([]);
+    expect(await confirmSocialPick({ userId: "u1", handle, platform: "instagram", externalId: "17841400000000002" })).toEqual({
+      result: "connected",
+      platform: "instagram",
+      // The other account of the same sign-in stays pickable (Lens M2).
+      remaining: 1,
+    });
+    // It is listed, and only it: the used one is refused, the other connects with the same held token.
+    const after = pending.readPending(handle, { userId: "u1", orgId: ORG });
+    expect(after?.grant.platform === "instagram" && after.grant.used).toEqual(["17841400000000002"]);
+    expect((await confirmSocialPick({ userId: "u1", handle, platform: "instagram", externalId: "17841400000000002" })).result).toBe("not_in_list");
+    expect(await confirmSocialPick({ userId: "u1", handle, platform: "instagram", externalId: "17841400000000001" })).toMatchObject({
+      result: "connected",
+      remaining: 0,
+    });
+    expect(s.stored.map((x) => (x as { profile: { externalId: string }; accessToken: string }).profile.externalId)).toEqual([
+      "17841400000000002",
+      "17841400000000001",
+    ]);
+    expect(new Set(s.stored.map((x) => (x as { accessToken: string }).accessToken))).toEqual(new Set(["IGlong-SECRET"]));
+    expect(pending.readPending(handle, { userId: "u1", orgId: ORG })).toBeNull();
+    expect(s.stored.slice(0, 1)).toEqual([
+      expect.objectContaining({
+        platform: "instagram",
+        accessToken: "IGlong-SECRET",
+        refreshToken: null,
+        accessExpiresIn: null,
+        scopes: [],
+        profile: expect.objectContaining({ externalId: "17841400000000002", username: "second" }),
+        instagram: { clientBusinessId: "555", configId: "987654321012345" },
+      }),
+    ]);
+    expect(JSON.stringify(s.audits)).not.toMatch(/SECRET/);
+  });
+  it("Instagram before 0204: the store's refusal reads as a setup gap with its remedy, not a generic failure", async () => {
+    const handle = await held("instagram");
+    s.storeResult = "needs_migration";
+    expect((await confirmSocialPick({ userId: "u1", handle, platform: "instagram" })).result).toBe("not_configured");
   });
   it("lets a failed store be tried again and says unavailable when the table is missing", async () => {
     const handle = await held();

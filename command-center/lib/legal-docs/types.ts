@@ -50,4 +50,9 @@ export interface LegalTexts {
    * and adds no promise the Terms do not make.
    */
   refund: LegalDocument;
+  /**
+   * Data deletion instructions (/data-deletion): what Meta's App Settings ask for as a "data deletion instructions
+   * URL" for the Instagram connect. It makes no promise the Privacy Policy does not (the 30 days are its section 8).
+   */
+  dataDeletion: LegalDocument;
 }

@@ -193,15 +193,15 @@ describe("ConnectPicker: Instagram and TikTok confirm", () => {
   const social = (connected: boolean): PickView => ({
     platform: "tiktok",
     expiresAt: Date.now() + 60_000,
-    account: { externalId: "oid-1", name: "Brand", username: null, avatarUrl: null, connected },
+    accounts: [{ externalId: "oid-1", name: "Brand", username: null, avatarUrl: null, connected }],
   });
-  it("shows the one authorised account and confirms it with the platform only", async () => {
+  it("shows the one authorised account and confirms it by its id", async () => {
     const f = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, result: "connected" }));
     render(withI18n(<ConnectPicker view={social(false)} />));
     expect(screen.getByText("Brand")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: tc.pick.confirm }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/all-channels/channels?social=connected&platform=tiktok"));
-    expect(JSON.parse(String((f.mock.calls[0][1] as RequestInit).body))).toEqual({ action: "confirm", platform: "tiktok" });
+    expect(JSON.parse(String((f.mock.calls[0][1] as RequestInit).body))).toEqual({ action: "confirm", platform: "tiktok", external_id: "oid-1" });
   });
   it("says reconnecting renews an account that is already connected", () => {
     render(withI18n(<ConnectPicker view={social(true)} />));
@@ -214,6 +214,43 @@ describe("ConnectPicker: Instagram and TikTok confirm", () => {
   });
   it.each(["en", "ru", "uz"] as const)("passes axe in %s", async (locale) => {
     const { container } = render(withI18n(<ConnectPicker view={social(true)} />, locale));
+    expect(await violations(container)).toEqual([]);
+  });
+});
+
+describe("ConnectPicker: an Instagram business portfolio with several accounts", () => {
+  const ig = (): PickView => ({
+    platform: "instagram",
+    expiresAt: Date.now() + 60_000,
+    accounts: [
+      { externalId: "17841400000000001", name: "@first", username: "first", avatarUrl: null, connected: false },
+      { externalId: "17841400000000002", name: "@second", username: "second", avatarUrl: null, connected: true },
+    ],
+  });
+  it("lists every account and confirms the one pressed, by its id", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, result: "connected" }));
+    render(withI18n(<ConnectPicker view={ig()} />));
+    expect(screen.getByRole("heading", { name: tc.pick.instagramTitle })).toBeTruthy();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText(tc.pick.instagramAgain)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: tc.pick.reconnect }));
+    await waitFor(() => expect(f).toHaveBeenCalled());
+    expect(JSON.parse(String((f.mock.calls[0][1] as RequestInit).body))).toEqual({
+      action: "confirm",
+      platform: "instagram",
+      external_id: "17841400000000002",
+    });
+  });
+  it("after one of several is added, it stays on the pick screen, says so, and offers Channels (Lens M2)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, result: "connected", remaining: 1 }));
+    render(withI18n(<ConnectPicker view={ig()} />));
+    fireEvent.click(screen.getByRole("button", { name: tc.pick.confirm }));
+    await waitFor(() => expect(screen.getByText(tc.pick.addedOne)).toBeTruthy());
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: tc.pick.openChannels })).toBeTruthy();
+  });
+  it.each(["en", "ru", "uz"] as const)("passes axe in %s", async (locale) => {
+    const { container } = render(withI18n(<ConnectPicker view={ig()} />, locale));
     expect(await violations(container)).toEqual([]);
   });
 });

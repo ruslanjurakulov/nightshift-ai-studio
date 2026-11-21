@@ -32,7 +32,7 @@ vi.mock("@/components/navigation/NavigationProvider", () => ({
   useNavigation: () => ({ canGoBack: () => false, goBack: vi.fn(), channelName: () => null, showChannel: false }),
 }));
 vi.mock("@/components/NotificationsCenter", () => ({ NotificationsCenter: () => null }));
-vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
+vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}`, useChannelSlug: () => "chronos" }));
 vi.mock("@/components/feedback/ToastProvider", () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), show: vi.fn(), dismiss: vi.fn() }),
 }));

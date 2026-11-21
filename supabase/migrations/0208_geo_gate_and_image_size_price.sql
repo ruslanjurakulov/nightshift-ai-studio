@@ -52,8 +52,12 @@
 -- REPLACES (md5 drift guard, white space folded): creative_params_problem (0156) before 25ee9cc62a27ad3a19e71008b04f3f36, after
 --   7ccde072309a637d9b07e59f1be45d20; creative_price (0159) before dafc5edae0000e741ac1b19bd0075790, after f61aaddd5686045961addd6f14a02c32.
 --   The lab chain: sec_db.take_off_0159 takes this file off first (0159's and 0156's rollbacks refuse any other body).
--- NUMBER. 0208 provisional (0203 #857, 0204 #859, 0205 #862, 0206 #873, 0207 reserved for BR-LIVE-05). Needs 0035, 0036, 0101's
---   pattern (request.headers), 0156, 0159, pgcrypto (Supabase: schema extensions) and Supabase Vault.
+--   creative_regions_problem (0126) before 5603be6af36c813d2799eb581bb971cd, after bcf4c3e85a977c984ab53a9f00a4cfb6 (B3: a region
+--   edit may name image_size, so a model sold by size can run one); reroute_creative_job (0196) before 4e43d78523acacf10799497afef0d39a,
+--   after 7ebae97d8b932edbf565a394c5b9ca56 (C: a candidate the country gate refuses is skipped; before, the trigger's NS400 on the
+--   routed_model update aborted the whole failover, every later candidate with it).
+-- NUMBER. 0208 provisional (0203 #857, 0204 #859, 0205 #873; 0206 and 0207 reserved). Needs 0035, 0036, 0101's pattern
+--   (request.headers), 0126, 0156, 0159, 0196, pgcrypto (Supabase: schema extensions) and Supabase Vault.
 -- Rollback: docs/sql/rollback_0208_geo_gate_and_image_size_price.sql (owner-applied).
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
@@ -71,12 +75,16 @@ begin
   if to_regclass('vault.decrypted_secrets') is null then
     raise exception '0208 needs Supabase Vault (vault.decrypted_secrets): enable the vault extension, then run this file again';
   end if;
-  if to_regprocedure('extensions.hmac(text, text, text)') is null and to_regprocedure('public.hmac(text, text, text)') is null then
+  -- Either schema (Supabase puts pgcrypto in extensions); one coalesce, so tests/test_migration_prerequisites.py does not read
+  -- public.hmac as an object an earlier migration must create (an extension's function is not one).
+  if coalesce(to_regprocedure('extensions.hmac(text, text, text)'), to_regprocedure('public.hmac(text, text, text)')) is null then
     raise exception '0208 needs pgcrypto''s hmac(text, text, text) in schema extensions (Supabase) or public: enable pgcrypto first';
   end if;
   for r in select * from (values
       ('public.creative_params_problem(text, jsonb)', '25ee9cc62a27ad3a19e71008b04f3f36', '7ccde072309a637d9b07e59f1be45d20', '0156'),
-      ('public.creative_price(uuid, text, text, jsonb)', 'dafc5edae0000e741ac1b19bd0075790', 'f61aaddd5686045961addd6f14a02c32', '0159')) v(sig, was, now_, src) loop
+      ('public.creative_price(uuid, text, text, jsonb)', 'dafc5edae0000e741ac1b19bd0075790', 'f61aaddd5686045961addd6f14a02c32', '0159'),
+      ('public.creative_regions_problem(jsonb)', '5603be6af36c813d2799eb581bb971cd', 'bcf4c3e85a977c984ab53a9f00a4cfb6', '0126'),
+      ('public.reroute_creative_job(uuid, text, text)', '4e43d78523acacf10799497afef0d39a', '7ebae97d8b932edbf565a394c5b9ca56', '0196')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
       raise exception '0208 found % with a body that is neither %''s nor 0208''s (md5 %): read the live body first', r.sig, r.src, h;
@@ -84,11 +92,21 @@ begin
   end loop;
 end $$;
 
--- A missing key is not an error (nothing on sale needs it), but it is said, with the remedy.
+-- A missing key is not an error (nothing on sale needs it), but it is said, with the remedy. So is a Google model with no country
+-- list: the gate acts only on a row whose spec carries blocked_countries, and the list reaches the database only through the registry
+-- sync (python tools/probe_models.py --sync, which calls sync_model_registry). Until it has run, a Google row is not gated at all: 0142 keeps it off sale, but nothing here does.
 do $$
+declare
+  n bigint;
 begin
   if not exists (select 1 from vault.decrypted_secrets where name = 'nightshift_geo_claim_key') then
     raise notice '0208: no Vault secret nightshift_geo_claim_key yet: every job on a model with a country list is refused until the owner creates it (see the header)';
+  end if;
+  select count(*) into n from public.model_registry r
+   where r.provider = 'google'
+     and coalesce(r.spec -> 'blocked_countries', 'null'::jsonb) in ('null'::jsonb, '[]'::jsonb);
+  if n > 0 then
+    raise notice '0208: % google row(s) in model_registry have no blocked_countries: the registry sync has not run since the list was added, so the country gate does not act on them; run python tools/probe_models.py --sync first (docs/GEO_BLOCK.md, opening steps)', n;
   end if;
 end $$;
 
@@ -908,6 +926,218 @@ $$;
 revoke all on function public.creative_price(uuid, text, text, jsonb) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- B3. A region edit at a size: 0126's creative_regions_problem, one marked hunk (0208)
+-- ───────────────────────────────────────────────────────────────────────────
+
+-- 0126's closed list of a region edit's params refused image_size, so a model sold by size (creative_price refuses one with no
+-- size) could never run a region edit at all, and lib/regionEdit/run.ts had no size to send.
+create or replace function public.creative_regions_problem(p_params jsonb)
+  returns text
+  language plpgsql immutable set search_path = public, pg_temp as $$
+declare
+  k    text;
+  r    jsonb;
+  c    jsonb;
+  i    integer := 0;
+  ids  text[] := '{}';
+  -- Control characters, the Unicode line / paragraph separators (U+2028, U+2029) and NEL (U+0085): one line of plain text.
+  ctl  constant text := '[[:cntrl:]' || chr(133) || chr(8232) || chr(8233) || ']';
+begin
+  -- A region edit takes the picture, its regions, the edge blend, the render tier (which only prices the model's own tiers) and the
+  -- picture size (0208: the value is creative_params_problem's, the model's list creative_price's) and nothing else: a setting that would be silently ignored is refused.
+  for k in select jsonb_object_keys(p_params) loop
+    if k not in ('source_asset_id', 'quality', 'regions', 'region_feather',
+                 -- 0208
+                 'image_size') then
+      return format('%s does not apply to an edit with regions', k);
+    end if;
+  end loop;
+  if p_params ? 'region_feather' and not public.creative_json_int(p_params -> 'region_feather', 2, 8) then
+    return 'region_feather must be a whole number from 2 to 8';
+  end if;
+  if not p_params ? 'regions' then
+    return 'region_feather needs regions';
+  end if;
+  if jsonb_typeof(p_params -> 'regions') is distinct from 'array'
+     or jsonb_array_length(p_params -> 'regions') not between 1 and 5 then
+    return 'regions must be a list of 1 to 5 regions';
+  end if;
+  for r in select x.value from jsonb_array_elements(p_params -> 'regions') x loop
+    i := i + 1;
+    if jsonb_typeof(r) <> 'object' then
+      return format('region %s must be an object', i);
+    end if;
+    for k in select jsonb_object_keys(r) loop
+      if k not in ('id', 'name', 'rect', 'prompt') then
+        return format('region %s: unknown field %s', i, k);
+      end if;
+    end loop;
+    if jsonb_typeof(r -> 'id') is distinct from 'string' or (r ->> 'id') !~ '^[a-z0-9][a-z0-9_-]{0,31}$' then
+      return format('region %s: id must be 1 to 32 characters of a-z, 0-9, _ or -', i);
+    end if;
+    if (r ->> 'id') = any (ids) then
+      return format('region %s: id is used twice', i);
+    end if;
+    ids := ids || (r ->> 'id');
+    if jsonb_typeof(r -> 'name') is distinct from 'string'
+       or char_length(btrim(r ->> 'name')) = 0 or char_length(r ->> 'name') > 60 or (r ->> 'name') ~ ctl then
+      return format('region %s: name must be 1 to 60 characters of plain text on one line', i);
+    end if;
+    if jsonb_typeof(r -> 'prompt') is distinct from 'string' or char_length(btrim(r ->> 'prompt')) = 0 then
+      return format('region %s: words are required', i);
+    end if;
+    if char_length(r ->> 'prompt') > 1000 or (r ->> 'prompt') ~ ctl then
+      return format('region %s: words must be plain text on one line of at most 1000 characters', i);
+    end if;
+    c := r -> 'rect';
+    if jsonb_typeof(c) is distinct from 'object' then
+      return format('region %s: rect must be an object with x, y, w and h', i);
+    end if;
+    for k in select jsonb_object_keys(c) loop
+      if k not in ('x', 'y', 'w', 'h') then
+        return format('region %s: rect has x, y, w and h only', i);
+      end if;
+    end loop;
+    if not public.creative_json_int(c -> 'x', 0, 32768) or not public.creative_json_int(c -> 'y', 0, 32768)
+       or not public.creative_json_int(c -> 'w', 16, 32768) or not public.creative_json_int(c -> 'h', 16, 32768) then
+      return format('region %s: x and y are whole pixels from 0, w and h whole pixels from 16', i);
+    end if;
+    if (c ->> 'x')::numeric + (c ->> 'w')::numeric > 32768 or (c ->> 'y')::numeric + (c ->> 'h')::numeric > 32768 then
+      return format('region %s: the rectangle is larger than any picture', i);
+    end if;
+  end loop;
+  return null;
+end
+$$;
+
+revoke all on function public.creative_regions_problem(jsonb) from public, anon, authenticated, service_role;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- C. The failover: 0196's reroute_creative_job, one marked hunk (0208)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.reroute_creative_job(p_job uuid, p_worker text, p_code text)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  w     text := left(btrim(coalesce(p_worker, '')), 120);
+  code  text := lower(btrim(coalesce(p_code, '')));
+  org   uuid;
+  j     public.creative_jobs;
+  tried jsonb;
+  rr    public.creative_job_routes;
+  surf  text;
+  q0    numeric;
+  cq    numeric;
+  cand  jsonb;
+  m     text;
+  q     jsonb;
+  price numeric;
+  jparams jsonb;
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'creative jobs are run by the platform''s worker only' using errcode = '42501';
+  end if;
+  -- Only a failure that PROVES no vendor task exists (header, BR-L-019):
+  -- never 'unavailable' (a timeout or a 5xx: the vendor may be billing), never
+  -- a refusal of the request itself (policy, bad_request). Anything else
+  -- returns before the row is touched: its submit_started_at stands.
+  if code not in ('unreachable', 'rate_limited', 'quota', 'auth', 'not_configured', 'not_found',
+                  'adapter_missing') then
+    return null;
+  end if;
+  select org_id into org from public.creative_jobs where id = p_job;
+  if org is null then
+    return null;
+  end if;
+  perform public.credit_account_lock(org);
+  select * into j from public.creative_jobs where id = p_job for update;
+  if j.worker_id is distinct from w or j.status <> 'running' or j.provider_task_id is not null then
+    return null;
+  end if;
+  -- exact never fails over: the person's model, or nothing.
+  if j.mode = 'exact' or j.routing is null then
+    return null;
+  end if;
+  select * into rr from public.creative_job_routes where job_id = p_job for update;
+  if not found then
+    return null;
+  end if;
+  tried := rr.tried;
+  if jsonb_array_length(tried) >= 3 then
+    return null;
+  end if;
+  surf := coalesce(j.routing ->> 'surface', 'web');
+  q0 := coalesce(rr.quality_tier, 0);
+  for cand in select t.e from jsonb_array_elements(rr.candidates)
+                             with ordinality t(e, n) order by t.n loop
+    m := cand ->> 'model';
+    continue when m is null or tried ? m;
+    cq := coalesce((cand ->> 'quality_tier')::numeric, 0);
+    continue when j.mode = 'quality' and cq <> q0;
+    continue when j.mode = 'auto' and cq < q0;
+    continue when not exists (select 1 from public.sellable_models(j.capability, surf) s where s.id = m);
+    -- 0187: a failover never sends an input to a model that would have refused it at create_creative_job: a candidate that
+    -- requires a rights acknowledgement the job's requester has not given for every input (rights_acknowledgement_missing:
+    -- the source and end files, the style kit's and the mentioned @characters' pictures) is skipped. A job with no requester
+    -- has nobody who could have acknowledged, so every such candidate is skipped (fail closed).
+    continue when public.rights_acknowledgement_missing(j.org_id, j.requested_by, m, j.params) is not null;
+    -- 0196: nor to a model whose vendor's terms are 18+ when the job's requester has no adult answer (adult_attestation_missing,
+    -- 0192): create_creative_job would have refused it. A job with no requester skips every such candidate (fail closed).
+    continue when public.adult_attestation_missing(j.requested_by, m);
+    begin
+      -- The job's own params: the settings the person's quote priced.
+      q := public.creative_price(j.org_id, j.capability, m, j.params);
+    exception when sqlstate 'NS400' then
+      continue;
+    end;
+    price := (q ->> 'credits')::numeric;
+    continue when price is null or price <= 0 or price > j.quoted_credits;
+    -- No dearer than the hold, which is the quote (BR-L-020).
+    -- The variant this model is priced at is what the worker sends (0060 / 0070).
+    jparams := j.params;
+    if q ? 'quality' then
+      jparams := jparams || jsonb_build_object('quality', q ->> 'quality');
+    end if;
+    if q ? 'resolution' then
+      jparams := jparams || jsonb_build_object('resolution', q ->> 'resolution');
+    end if;
+    if q ? 'audio' then
+      jparams := jparams || jsonb_build_object('audio', (q ->> 'audio')::boolean);
+    end if;
+    -- The row describes the model that runs now: its price, unit and quantity
+    -- (BR-L-024). submit_started_at is cleared ONLY here, where no task can
+    -- exist: the worker submits a new one to the new model.
+    -- 0208: moving the job onto m fires creative_jobs_geo_gate, and the worker has no visitor whose country a web request vouched
+    -- for: a model with a country list refuses (NS400). That candidate is skipped like any other refusal above, never an error that
+    -- aborts the whole failover and with it every candidate after it (the update rolls back with its block).
+    begin
+      update public.creative_jobs
+         set fallback_from = j.routed_model, fallback_reason = 'unavailable', routed_model = m,
+             routed_credits = price, params = jparams, submit_started_at = null,
+             credit_unit = coalesce(q ->> 'unit', j.credit_unit),
+             quantity = coalesce((q ->> 'quantity')::numeric, j.quantity),
+             heartbeat_at = now(), updated_at = now()
+       where id = p_job;
+    exception when sqlstate 'NS400' then
+      continue;
+    end;
+    -- The real reason is the platform's: it stays in the platform-only route
+    -- row, and the member-readable row and log say only 'unavailable'.
+    update public.creative_job_routes r
+       set tried = r.tried || to_jsonb(m), reasons = r.reasons || to_jsonb(code)
+     where r.job_id = p_job;
+    perform public.creative_job_log(p_job, j.org_id, 'rerouted', 'running',
+      jsonb_build_object('from', j.routed_model, 'to', m, 'code', 'unavailable', 'credits', price));
+    -- The worker sends exactly these params to the new model.
+    return jsonb_build_object('model', m, 'credits', price, 'params', jparams);
+  end loop;
+  return null;
+end
+$$;
+-- create or replace keeps 0196's grants (service_role only); the end state below checks that no other API role may call it.
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- End state (refuses the whole transaction if any of it is not so)
 -- ───────────────────────────────────────────────────────────────────────────
 
@@ -919,7 +1149,9 @@ begin
       ('public.creative_params_problem(text, jsonb)', '7ccde072309a637d9b07e59f1be45d20'),
       ('public.creative_price(uuid, text, text, jsonb)', 'f61aaddd5686045961addd6f14a02c32'),
       ('public.geo_claim_country()', 'add85b6752c03be6882a59a0ff8017ba'),
-      ('public.creative_jobs_geo_gate()', '71468a6f60d2659cd44199a3c834dc69')) v(sig, want) loop
+      ('public.creative_jobs_geo_gate()', '71468a6f60d2659cd44199a3c834dc69'),
+      ('public.creative_regions_problem(jsonb)', 'bcf4c3e85a977c984ab53a9f00a4cfb6'),
+      ('public.reroute_creative_job(uuid, text, text)', '7ebae97d8b932edbf565a394c5b9ca56')) v(sig, want) loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(r.sig)) is distinct from r.want then
       raise exception '0208 end state: % is not 0208''s body', r.sig;
     end if;
@@ -931,7 +1163,8 @@ begin
   end if;
   for r in select * from unnest(array['public.geo_claim_country()', 'public.creative_jobs_geo_gate()',
                                       'public.creative_price(uuid, text, text, jsonb)',
-                                      'public.creative_params_problem(text, jsonb)']) sig,
+                                      'public.creative_params_problem(text, jsonb)',
+                                      'public.creative_regions_problem(jsonb)']) sig,
                          unnest(array['anon', 'authenticated', 'service_role']) role_ loop
     if has_function_privilege(r.role_, r.sig, 'EXECUTE') then
       raise exception '0208 end state: % may call %', r.role_, r.sig;
@@ -946,6 +1179,17 @@ begin
      or public.creative_params_problem('t2i', '{"prompt": "x", "image_size": "8K"}'::jsonb) is null
      or public.creative_params_problem('t2v', '{"prompt": "x", "duration_s": 4, "image_size": "1K"}'::jsonb) is null then
     raise exception '0208 end state: creative_params_problem does not read image_size as this file says';
+  end if;
+  if public.creative_params_problem('edit', '{"source_asset_id": "00000000-0000-0000-0000-000000000001", "image_size": "2K",
+        "regions": [{"id": "a", "name": "a", "rect": {"x": 0, "y": 0, "w": 16, "h": 16}, "prompt": "x"}]}'::jsonb) is not null
+     or public.creative_params_problem('edit', '{"source_asset_id": "00000000-0000-0000-0000-000000000001", "image_size": "8K",
+        "regions": [{"id": "a", "name": "a", "rect": {"x": 0, "y": 0, "w": 16, "h": 16}, "prompt": "x"}]}'::jsonb) is null then
+    raise exception '0208 end state: a region edit does not read image_size as this file says';
+  end if;
+  if has_function_privilege('anon', 'public.reroute_creative_job(uuid, text, text)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.reroute_creative_job(uuid, text, text)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.reroute_creative_job(uuid, text, text)', 'EXECUTE') then
+    raise exception '0208 end state: reroute_creative_job is not callable by the worker (service_role) only';
   end if;
 end $$;
 

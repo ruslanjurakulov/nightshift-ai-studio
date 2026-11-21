@@ -23,69 +23,119 @@ yozuvi chiqadi — sahifa buzilmaydi.
 2. Supabase → **SQL Editor** → `supabase/migrations/0028_social_accounts.sql`
    faylining butun matnini qo'yib, **Run** bosing. Fayl oxiridagi "Verify"
    so'rovini ishga tushirsangiz, barcha ustunlar `true` bo'lishi kerak.
+3. Instagram (Unified Login) uchun: `supabase/migrations/0204_instagram_unified_login.sql`
+   ni ham xuddi shunday ishga tushiring (0028 dan keyin). Usiz Instagram ulash
+   "maʼlumotlar bazasini yangilash kerak (0204)" deb javob beradi va hech narsa
+   saqlamaydi.
 
 ---
 
-## 1. Instagram (Meta ilovasi)
+## 1. Instagram (Meta ilovasi) — Instagram API with Unified Login
 
-Ishlatiladigan API: **Instagram API with Instagram Login** (Facebook sahifasi
-kerak emas). Faqat **Business** yoki **Creator** (professional) Instagram
-akkauntlari ulanadi — shaxsiy akkaunt ulanmaydi, foydalanuvchi uni Instagram
-ilovasida *Settings → Account type and tools → Switch to professional account*
-orqali professionalga o'tkazishi kerak.
+Ishlatiladigan API: **Instagram API with Unified Login** (2026-11 dan; eski
+"Instagram API with Instagram Login" endi ishlatilmaydi). Foydalanuvchi
+Facebook orqali kiradi, **biznes portfel**ni, so'ng uning bir yoki bir nechta
+Instagram **professional** (Business yoki Creator) akkauntini tanlaydi. Har bir
+portfel — o'z tokeniga ega alohida ulanish. Token **Business Integration System
+User** tokeni: odatda **muddati yo'q** va uni yangilash (refresh) endpointi
+yo'q — eski 60 kunlik yangilash endi yo'q.
 
-Rasmiy hujjatlar:
-- https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login
+Rasmiy hujjatlar (2026-11-21 da o'qilgan; ishlatishdan oldin qayta o'qing):
+- https://developers.facebook.com/docs/instagram-platform/
 - https://developers.facebook.com/docs/instagram-platform/content-publishing/
-- https://developers.facebook.com/docs/instagram-platform/reference/refresh_access_token/
 
 ### Qadamlar
 
-1. https://developers.facebook.com/apps → **Create app**.
-   - Use case: **"Manage messaging & content on Instagram"** (Instagram use case).
-   - App type so'ralsa: **Business**.
-2. Ilova ichida **Instagram → API setup with Instagram login** bo'limini oching.
-3. **"Set up Instagram business login"** → **Business login settings**:
-   - **OAuth redirect URIs** ga aynan shuni qo'shing:
-     ```
-     https://nightshift-ai.studio/api/oauth/instagram/callback
-     ```
-     (Boshqa domen ishlatsangiz: `https://<DOMAIN>/api/oauth/instagram/callback`.
-     Oxirida `/` bo'lmasin — bir harf farq qilsa ham Meta rad etadi.)
-4. Ruxsatlar (permissions), aynan shu ikkitasi:
-   - `instagram_business_basic`
-   - `instagram_business_content_publish`
-5. Shu sahifadagi **Instagram app ID** va **Instagram app secret** ni oling
-   (diqqat: bu Facebook "App ID" emas, Instagram bo'limidagi alohida ID/secret).
-6. **App settings → Basic**: Privacy Policy URL
-   (`https://nightshift-ai.studio/privacy`), Terms URL
-   (`https://nightshift-ai.studio/terms`), ilova ikonkasi va kategoriyasini
-   to'ldiring — review uchun shart.
+1. **Ilova biznes portfelga tegishli bo'lsin.** https://developers.facebook.com/apps →
+   **Create app** → tur: **Business**, ilovani o'zingizning **Meta Business portfolio**ga
+   biriktiring.
+2. **Use case** qo'shing: **Instagram API with Unified Login** (Instagram use case).
+3. **Configuration yarating** (Use cases → Instagram → **Configurations → Create**):
+   - Token turi: **System user access token**, muddati: **Never** (hech qachon).
+   - **Instagram account** talab qilinsin.
+   - Ruxsatlar, aynan shu beshtasi (reklama ruxsatlarini qo'shmang):
+     `instagram_basic`, `instagram_content_publish`, `instagram_manage_comments`,
+     `instagram_manage_messages`, `instagram_manage_insights`
+     (oxirgisi Meta'ning standart ro'yxatida yo'q — qo'lda qo'shing).
+   - Configuration ro'yxatda **"Instagram Login Compatible"** yorlig'i bilan
+     ko'rinishi kerak.
+4. Configuration'ning **ID** sini (config_id) nusxalang → GitHub **Repository
+   variable** `INSTAGRAM_CONFIG_ID` ga qo'ying (bu maxfiy emas — u kirish
+   havolasida ochiq yuradi; shuning uchun *secret* emas, *variable*).
+5. **Valid OAuth Redirect URIs** ga aynan shuni qo'shing (bir harf farq qilsa ham
+   Meta rad etadi, oxirida `/` bo'lmasin):
+   ```
+   https://nightshift-ai.studio/api/oauth/instagram/callback
+   ```
+6. **App settings → Basic**: **App ID** → `INSTAGRAM_APP_ID`, **App secret** →
+   `INSTAGRAM_APP_SECRET` (GitHub *secret*). Diqqat: endi bu Meta ilovasining
+   o'z App ID / secret'i, Instagram bo'limidagi alohida ID emas.
+7. Shu sahifada: Privacy Policy URL (`https://nightshift-ai.studio/privacy`),
+   Terms URL (`https://nightshift-ai.studio/terms`) va **User data deletion →
+   Data deletion instructions URL**:
+   ```
+   https://nightshift-ai.studio/data-deletion
+   ```
+   (sahifa ochiq, kirishsiz ochiladi; ilova ikonkasi va kategoriyasini ham
+   to'ldiring — review uchun shart).
+8. **Qaysi ish maydonlari ulay oladi:** ilova **Unpublished** (development)
+   rejimida ekan, faqat ilovada roli bor odamlar kira oladi. Shuning uchun
+   Instagram ulash faqat GitHub **Repository variable** `INSTAGRAM_UNIFIED_ORGS`
+   da yozilgan tashkilotlar (UUID, vergul bilan) uchun ochiq; bo'sh bo'lsa —
+   hech kim uchun. Qolganlar "Instagram: hozircha mavjud emas" ni ko'radi.
+   Bu tekshiruv serverda (start va callback'da) ham bor.
 
-### Review'dan oldin nima ishlaydi
+### Review'dan oldin nima ishlaydi (Standard Access)
 
-- Ilova **Development** rejimida bo'lganda faqat ilovaga rol berilgan
-  odamlar ulana oladi: **App roles → Roles → Add People → Instagram Tester**.
-  Tester o'z Instagram ilovasida (yoki instagram.com → *Settings → Apps and
-  websites → Tester invites*) taklifni qabul qilishi kerak.
-- Testerlar o'z akkauntiga haqiqiy post (Reels) joylay oladi.
+- Faqat ilovada **roli bor** odamlar (Admin, Developer, Tester) ulana oladi —
+  **App roles → Roles → Add People**.
+- Ularning akkauntlariga haqiqiy Reels joylash ishlaydi.
 
-### Review (App Review) — hamma uchun ochish
+### App Review — hamma uchun ochish
 
-- **App Review → Permissions and features**: `instagram_business_basic` va
-  `instagram_business_content_publish` uchun **Advanced Access** so'rang.
-- Screencast (ekran yozuvi) kerak: Nightshift'da akkaunt ulash → video
-  tayyorlash → "Platformalarga joylash" → Instagram'da post chiqqanini
-  ko'rsating.
-- **Business verification** (kompaniya hujjatlari) talab qilinishi mumkin.
-- Tasdiqlangach ilovani **Live** rejimiga o'tkazing.
+Configuration hozirgidek qoladi (development rejimi, faqat egasi uchun; beshta
+ruxsat — izohlar, xabarlar va statistika yo'l xaritasi uchun tanlangan). Kod
+ham shu beshtani kutadi. Lekin **review'ga yuboriladigan ro'yxat boshqa**: Meta
+faqat haqiqatan ishlatilayotgan ruxsatni tasdiqlaydi.
+
+**Birinchi (minimal) topshiriq — faqat ikkita ruxsat**, har biri o'zining haqiqiy
+foydalanish holati bilan:
+
+| Ruxsat | Nightshift'da nima qiladi (screencast'da ko'rsating) |
+|---|---|
+| `instagram_basic` | Foydalanuvchi Facebook ekranida bergan Instagram akkauntlari ro'yxatini ko'rsatadi (ulash → akkauntni tanlash ekrani). |
+| `instagram_content_publish` | Foydalanuvchi o'zi aniq yuborgan Reel'ni joylaydi ("Platformalarga joylash" → akkauntni belgilash → **Yuborish** → Instagram'da post). Avtomatik joylash yo'q. |
+
+- `instagram_manage_insights` — faqat Instagram statistikasini o'qiydigan ekran
+  chiqqandan keyin qo'shiladi (hozir bunday ekran yo'q).
+- `instagram_manage_comments` va `instagram_manage_messages` — keyingi alohida
+  topshiriqda, izohlar va xabarlar funksiyalari mavjud bo'lganda.
+- **Business verification** talab qilinishi mumkin.
+- Tasdiqlangach, ilovani **Live** rejimiga o'tkazishdan **oldin** configuration
+  ruxsatlarini tasdiqlanganlarga qisqartiring (ledger'dagi "before Live" qatori).
+  Keyin `INSTAGRAM_UNIFIED_ORGS` cheklovini olib tashlash haqida alohida qaror
+  qiling (kod o'zgarishi).
+
+### Eski ulanishlar
+
+- Eski "Instagram Login" bilan ulangan akkauntlar o'chirilmaydi, lekin ular
+  **"Qayta ulash kerak"** deb ko'rinadi va ularga hech narsa joylanmaydi
+  (migratsiya `0204`). Har biri Instagram'ni qayta ulab, o'sha akkauntni
+  tanlashi kerak — shunda eski yozuv yangisiga aylanadi.
 
 ### Cheklovlar (bilib qo'ying)
 
-- Token 60 kun amal qiladi; worker uni avtomatik yangilaydi (kamida 24 soatlik
-  va muddati o'tmagan token). 60 kun ichida umuman ishlatilmasa, qayta ulash
-  kerak bo'ladi.
-- Instagram API orqali bir akkauntga 24 soatda ko'pi bilan 100 ta post.
+- Token muddati yo'q va yangilanmaydi. U mijoz ilovani olib tashlaganda
+  (**Business Settings → Integrations → Connected apps**) yoki Instagram
+  akkaunti boshqa portfelga ko'chganda o'ladi; shunda worker akkauntni
+  "qayta ulash kerak" deb belgilaydi (xato 190), qayta urinmaydi.
+- 24 soatlik post limiti Meta'ning o'z sahifalarida turlicha (50 yoki 100):
+  worker har safar post oldidan `content_publishing_limit` ni o'qiydi; o'qib
+  bo'lmasa, taxmin qilmaydi — to'xtaydi.
+- Caption yoki teg qo'shilmay qolsa (`config_issue`), post "qisman joylandi"
+  deb ko'rsatiladi, toza muvaffaqiyat deb emas.
+- Ruxsat yetishmasa (xato 10 / 200–299) sahifada aniq yoziladi: qayta ulang va
+  hamma ruxsatni bering, yoki configuration'ga ruxsatni qo'shing.
 - Video Instagram serveriga **ochiq URL** orqali yuklanadi — worker Supabase
   Storage'dan qisqa muddatli imzolangan (signed) havola beradi.
 
@@ -156,8 +206,10 @@ Repository secrets** (yoki `production` Environment secrets) ga qo'shing:
 
 | Nomi | Qayerdan | Kim ishlatadi |
 |---|---|---|
-| `INSTAGRAM_APP_ID` | Meta → Instagram → API setup with Instagram login | web (Command Center) |
-| `INSTAGRAM_APP_SECRET` | o'sha joy | web |
+| `INSTAGRAM_APP_ID` | Meta ilovasi → App settings → Basic → App ID | web (Command Center) |
+| `INSTAGRAM_APP_SECRET` | o'sha joy → App secret | web |
+| `INSTAGRAM_CONFIG_ID` (**variable**, secret emas) | Use cases → Instagram → Configurations → ID | web |
+| `INSTAGRAM_UNIFIED_ORGS` (**variable**) | Instagram ulash ochiq bo'lgan tashkilot UUID'lari (vergul bilan); bo'sh = hech kim | web |
 | `TIKTOK_CLIENT_KEY` | TikTok → app → Client key | web **va** worker |
 | `TIKTOK_CLIENT_SECRET` | TikTok → app → Client secret | web **va** worker |
 
@@ -180,7 +232,8 @@ tugmasi chiqadi.
 3. TikTok uchun ham xuddi shunday.
 4. **Uzish** tugmasi tokenni Vault'dan o'chiradi. Platforma tomonida ham
    ruxsatni olib tashlang:
-   - Instagram: https://www.instagram.com/accounts/manage_access/
+   - Instagram: Meta **Business Settings → Integrations → Connected apps**
+     (https://business.facebook.com/settings) → Nightshift → olib tashlash.
    - TikTok: *Settings and privacy → Security → Apps and services*.
 
 Xatolar sahifada qisqa so'z bilan ko'rsatiladi (masalan "Barcha ruxsatlar
@@ -273,7 +326,10 @@ oldin qayta o'qing).
 
 1. **Meta Business portfolio** va **Meta developer ilovasi** (https://developers.facebook.com/apps → Create app, tur:
    **Business**). Ilovaga **Facebook Login** (yoki "Facebook Login for Business") use case'ini qo'shing. Instagram
-   ilovasi bilan bitta ilova bo'lishi mumkin (ruxsatlar alohida so'raladi) — bu taxmin, tekshirilmagan.
+   (Unified Login) ilovasi bilan bitta ilova bo'la oladimi — **tekshirilmagan**; ikkinchi Meta ilovasi kerak bo'lishi
+   mumkin. Shuning uchun reja `INSTAGRAM_*` kalitlarini qayta ishlatmaydi: o'z nomlari `FACEBOOK_APP_ID`,
+   `FACEBOOK_APP_SECRET`, `FACEBOOK_CONFIG_ID` bo'ladi (hozircha hech narsa ularni o'qimaydi —
+   `modules/social_facebook.py`).
 2. Ruxsatlar (permissions), aynan shular: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`.
 3. Foydalanuvchi — sahifada `CREATE_CONTENT` vazifasi bor odam bo'lishi kerak; tokenlar **Page access token** bo'ladi
    (uzoq muddatli foydalanuvchi tokenidan `/{app-scoped-user-id}/accounts` orqali olinadi; Meta: bunday Page token'ning

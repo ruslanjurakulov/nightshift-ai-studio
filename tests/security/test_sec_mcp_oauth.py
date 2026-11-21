@@ -860,8 +860,9 @@ def test_publishing_with_a_token_works_and_never_needs_the_apis_idempotency_tabl
 def test_parallel_publishes_of_one_video_to_one_target_make_one_live_request(db):
     # Without an idempotency key the unique index on live requests is the only guard: 8 parallel
     # calls (a retry storm) leave one queued request and answer the rest already_sending.
-    db.su("insert into public.videos (video_id, channel_id, title, slug, review_state, published_at, publish_state) "
-          "values ('vid-pub','chan-a','VP','sl-pub','approved', now(), 'uploaded')")
+    # 0205: an uploaded video carries the gate's stored verdict (0112 videos.gate_verdict), the one publish_request_refusal reads.
+    db.su("insert into public.videos (video_id, channel_id, title, slug, review_state, published_at, publish_state, gate_verdict) "
+          "values ('vid-pub','chan-a','VP','sl-pub','approved', now(), 'uploaded', '{\"allowed\": true, \"blocks\": []}'::jsonb)")
     db.su("insert into public.system_events (event_key, event, ts, video_id, channel_id) values ('pub-ok','publish.allowed', now(), 'vid-pub','chan-a')")
     db.su("insert into public.channels (channel_id, name, niche, status, org_id, agent_config, credential_ref) values "
           "('chan-a2','A2','tech','ACTIVE',%s,'{}','{\"verified_at\":\"2026-09-01\"}')", [ORG_A])
@@ -1253,7 +1254,8 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     adult = sec_db.MIGRATION_0192.exists()
     if adult:
         # 0196 sits on 0192's video bodies and 0198 on its film bodies, and 0192's rollback refuses them: off first, on again after.
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196, sec_db.ROLLBACK_0192])
+        # 0208 sits on 0196's reroute_creative_job: off before 0196, on after it.
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0208, sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196, sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
     after = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
              db.su("select pepper from public.oauth_settings")[0][0])
@@ -1282,7 +1284,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         # 0094 sits on 0093's oauth_create_video, and 0192 on 0094's: 0094 again (it has no guard and changes nothing else that
         # 0093 replaced), then 0192.
         sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192,
-                                    sec_db.MIGRATION_0196, sec_db.MIGRATION_0198])
+                                    sec_db.MIGRATION_0196, sec_db.MIGRATION_0198, sec_db.MIGRATION_0208])
         assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 

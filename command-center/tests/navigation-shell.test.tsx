@@ -25,7 +25,11 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
 vi.mock("@/components/navigation/NavigationProvider", () => ({
   useNavigation: () => ({ canGoBack: () => false, goBack: vi.fn(), channelName: () => null, showChannel: false }),
 }));
-vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
+vi.mock("@/lib/channels-client", () => ({
+  useChannelPath: () => (p: string) => `/chronos${p}`,
+  // The slug the URL names, as the real hook reads it: "all-channels" is the roll-up, anything else one channel.
+  useChannelSlug: () => pathname.split("/")[1] || "all-channels",
+}));
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
@@ -38,13 +42,17 @@ import { ShellProvider } from "@/components/shell/ShellContext";
 import {
   CUSTOMER_RAIL,
   CUSTOMER_SIDEBAR,
+  CUSTOMER_TABBAR,
   NAV_ITEMS,
+  NO_NAV_FEATURES,
   RAIL_HIDDEN_KEYS,
   STUDIO_TOOLS,
+  customerRail,
   navGroupsFor,
   navShown,
   sectionAllowed,
   sidebarCurrent,
+  studioTilesFor,
 } from "@/lib/navigation";
 import { COMPOSER_CAPABILITIES, prefillFromQuery } from "@/lib/creative/studio";
 import { DESKS } from "@/lib/creative/desks";
@@ -100,24 +108,24 @@ describe("customer sidebar model", () => {
     }
   });
 
-  it("marks the row you are on: Home, Create for every making screen, Trends, Projects, Library, Credits and Settings", () => {
+  it("marks the row you are on: Studio for every making screen, Library, Brain, Channels, Research, Credits and Settings", () => {
     expect(sidebarCurrent("/home")).toBe("home");
-    // Every tool and making screen lives under the one Create entry: no per-tool, per-desk or per-screen rows to light.
-    expect(sidebarCurrent("/create")).toBe("create");
-    expect(sidebarCurrent("/studio/look")).toBe("create");
-    expect(sidebarCurrent("/series")).toBe("create");
-    expect(sidebarCurrent("/styles")).toBe("create");
-    expect(sidebarCurrent("/presets")).toBe("create");
-    expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e")).toBe("create");
-    expect(sidebarCurrent("/videos/abc")).toBe("create");
-    expect(sidebarCurrent("/workflows")).toBe("create");
-    expect(sidebarCurrent("/trends")).toBe("trends");
-    // The Studio canvas and its project shelf are where projects live.
-    expect(sidebarCurrent("/studio")).toBe("projects");
+    // Every tool and making screen lives under the one Nightshift Studio entry: no per-tool, per-desk or per-screen rows.
+    expect(sidebarCurrent("/studio")).toBe("studio");
+    expect(sidebarCurrent("/create")).toBe("studio");
+    expect(sidebarCurrent("/studio/look")).toBe("studio");
+    expect(sidebarCurrent("/series")).toBe("studio");
+    expect(sidebarCurrent("/styles")).toBe("studio");
+    expect(sidebarCurrent("/presets")).toBe("studio");
+    expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e")).toBe("studio");
+    expect(sidebarCurrent("/videos/abc")).toBe("studio");
+    expect(sidebarCurrent("/trends")).toBe("studio");
     expect(sidebarCurrent("/library")).toBe("library");
-    // The Inbox and Channels left the rail for the avatar menu: no row lights for them.
+    expect(sidebarCurrent("/brain")).toBe("brain");
+    expect(sidebarCurrent("/channels")).toBe("channels");
+    expect(sidebarCurrent("/research")).toBe("research");
+    // The Inbox is in the avatar menu: no row lights for it.
     expect(sidebarCurrent("/inbox")).toBeNull();
-    expect(sidebarCurrent("/channels")).toBeNull();
     expect(sidebarCurrent("/credits")).toBe("credits");
     // Usage (plan allowance, the extra-credits switch) is part of the credits story: Credits is its row.
     expect(sidebarCurrent("/usage")).toBe("credits");
@@ -133,6 +141,29 @@ describe("customer sidebar model", () => {
     // Minus the sections behind a server-side switch that is off by default (Ads): tests/ads-factory-nav.test.tsx holds both states.
     expect(keys).toEqual(NAV_ITEMS.map((i) => i.key).filter((k) => !RAIL_HIDDEN_KEYS.includes(k) && navShown(k)));
     expect(navGroupsFor(false).flatMap((g) => g.items.map((i) => i.key))).toEqual(CUSTOMER_RAIL.map((i) => i.key));
+  });
+});
+
+describe("no navigation list links to a 404 or a redirect-only page (audit 2026-11-21)", () => {
+  // /create/projects and /character-studio answer 404 while their switch is off (the default); /videos, /editor and
+  // /workflows are only redirects into Studio now (lib/studioRoutes ZOMBIE_SECTIONS).
+  const DEAD = ["/create/projects", "/character-studio", "/videos", "/editor", "/workflows"];
+  it("the rails, the phone bar, the Studio tiles and the console never list them with the switches off", () => {
+    const lists = [
+      ...customerRail(NO_NAV_FEATURES, true),
+      ...CUSTOMER_TABBAR,
+      ...CUSTOMER_SIDEBAR.footer,
+      ...studioTilesFor(false),
+      ...studioTilesFor(true),
+      ...navGroupsFor(true).flatMap((g) => g.items),
+    ].map((i) => i.href.split("?")[0]);
+    for (const d of DEAD) expect(lists, d).not.toContain(d);
+  });
+
+  it("the command palette sends Videos to the Studio shelf, not to the redirect", () => {
+    const src = readFileSync(path.join(__dirname, "..", "components", "CommandPalette.tsx"), "utf8");
+    for (const d of DEAD) expect(src, d).not.toContain(`href: "${d}"`);
+    expect(src).toContain(`href: "/studio?shelf=videos", key: "videos"`);
   });
 });
 
@@ -153,19 +184,23 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Home, Create, Trends, Projects, Nightshift Brain and Library, and the account foot: no wall of tools", () => {
+  it("shows Nightshift Studio, Media library, Nightshift Brain, Channels and, on one channel, Research; then Credits and Settings", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.create, en.nav.trends, en.nav.projects, en.nav.brain, en.nav.library]);
+    // Analytics is the owner's one-channel entry too, but /analytics is an operator section a customer is redirected away
+    // from (CUSTOMER_NAV_KEYS): listing it would be a dead link, so it is not drawn until that access decision changes.
+    expect(links.map((a) => a.textContent)).toEqual([en.nav.studio, en.nav.library, en.nav.brain, en.nav.channels, en.nav.research]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
-      "/chronos/home",
-      "/chronos/create",
-      "/chronos/trends",
-      "/chronos/studio?shelf=projects",
-      "/chronos/brain",
+      "/chronos/studio",
       "/chronos/library",
+      "/chronos/brain",
+      "/chronos/channels",
+      "/chronos/research",
     ]);
+    // No owner-only entry reaches a customer's sidebar, whatever the rail lists.
+    const owner = ["margin", "ownerAnalytics", "customers", "billing", "providers", "portfolio", "modelKeys"] as const;
+    for (const k of owner) expect(within(nav).queryByRole("link", { name: en.nav[k] }), k).toBeNull();
     // The desks and the per-screen rows are nodes on the Studio canvas now (components/studio-canvas).
     expect(within(nav).queryByRole("heading", { name: en.shell.gCreate })).toBeNull();
     for (const d of DESKS) expect(within(nav).queryByRole("link", { name: en.desk.names[d] })).toBeNull();
@@ -178,12 +213,47 @@ describe("customer sidebar (rendered)", () => {
     expect(card.textContent).toContain("Creator");
   });
 
-  it("lights Create on a creative screen, whatever the query names", () => {
+  it("leaves the one-channel entries out on the every-channel roll-up", () => {
+    pathname = "/all-channels/home";
+    render(withI18n(<SideNav email={null} plan={null} />));
+    const nav = screen.getByRole("navigation", { name: en.shell.primary });
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual([en.nav.studio, en.nav.library, en.nav.brain, en.nav.channels]);
+  });
+
+  it("lights Nightshift Studio on a creative screen, whatever the query names", () => {
     search = "tool=upscale";
     render(withI18n(<SideNav email={null} plan={null} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
-    expect(within(nav).getByRole("link", { name: en.nav.create }).getAttribute("aria-current")).toBe("page");
-    expect(within(nav).getByRole("link", { name: en.nav.home }).getAttribute("aria-current")).toBeNull();
+    expect(within(nav).getByRole("link", { name: en.nav.studio }).getAttribute("aria-current")).toBe("page");
+    expect(within(nav).getByRole("link", { name: en.nav.library }).getAttribute("aria-current")).toBeNull();
+  });
+
+  it("puts the Owner Console in the avatar menu for the platform owner only (the server's isPlatformOwner, ownerSwitch)", () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      for (const ownerSwitch of [true, false]) {
+        render(
+          withI18n(
+            <ShellProvider operator={false} ownerSwitch={ownerSwitch}>
+              <SideNav email="me@example.com" plan={PLAN} />
+            </ShellProvider>,
+          ),
+        );
+        fireEvent.click(screen.getByRole("button", { name: en.account.open }));
+        const link = screen.queryByTestId("account-owner-console");
+        if (ownerSwitch) {
+          expect(link?.getAttribute("href")).toBe("/owner");
+          expect(link?.textContent).toBe(en.ownerConsole.title);
+        } else {
+          expect(link).toBeNull();
+          expect(screen.queryByRole("link", { name: en.ownerConsole.title })).toBeNull();
+        }
+        cleanup();
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("leaves an unknown plan off the user card rather than calling it Free", () => {

@@ -5,7 +5,8 @@ import { Suspense, useState } from "react";
 import { PanelLeft } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
-import { useChannelPath } from "@/lib/channels-client";
+import { useChannelPath, useChannelSlug } from "@/lib/channels-client";
+import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { CUSTOMER_SIDEBAR, customerRail, sidebarCurrent, type NavItem } from "@/lib/navigation";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
@@ -131,27 +132,16 @@ function CurrentRows({ collapsed }: { collapsed: boolean }) {
 }
 
 /**
- * Home, then Nightshift Studio, the Inbox and Channels. The Studio's desks and tools used to be rows
+ * Nightshift Studio, the Media library, Nightshift Brain and Channels (lib/navigation CUSTOMER_RAIL). The Studio's desks and tools used to be rows
  * of their own here (and the creative screens a group of their own); they are tiles on Studio home
  * now, so the sidebar is a few places, not a wall of tools (docs/studio/STUDIO_IA.md §4).
  */
 function SidebarRows({ current, collapsed }: { current: string | null; collapsed: boolean }) {
-  const { t } = useI18n();
-  const path = useChannelPath();
-  const { home } = CUSTOMER_SIDEBAR;
-  // The rail's entries after Home, Nightshift AI among them only where the server's flag lets this workspace in.
-  const work = customerRail(useShell().features).slice(1);
-  const HomeIcon = ICONS[home.key];
+  // Nightshift AI only where the server's flag lets this workspace in; Analytics and Research only on one channel.
+  const work = customerRail(useShell().features, useChannelSlug() !== ALL_CHANNELS_SLUG);
   return (
     <>
       <ul className="flex flex-col gap-0.5 pt-1">
-        <li>
-          <Link href={path(home.href)} aria-current={current === "home" ? "page" : undefined} className={rowClass(current === "home")} data-tip={collapsed ? t.nav[home.key] : undefined}>
-            {current === "home" && <Plate id={PLATE} />}
-            <HomeIcon aria-hidden className="shell-icon size-[18px]" strokeWidth={1.9} />
-            <span className={collapsed ? "sr-only" : "truncate"}>{t.nav[home.key]}</span>
-          </Link>
-        </li>
         {work.map((item) => (
           <Row key={item.key} item={item} current={current} collapsed={collapsed} />
         ))}

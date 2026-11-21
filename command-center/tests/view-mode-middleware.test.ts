@@ -134,7 +134,7 @@ describe("the middleware", () => {
 
   it("keeps the channel on a signed-in page inside the frame request", async () => {
     auth.user = { id: "u1" };
-    const res = await run("/chronos/videos", { cookie: "ns_view=mobile", "sec-fetch-dest": "document" });
-    expect(res.headers.get(FRAME_HEADER)).toBe("/chronos/videos");
+    const res = await run("/chronos/library", { cookie: "ns_view=mobile", "sec-fetch-dest": "document" });
+    expect(res.headers.get(FRAME_HEADER)).toBe("/chronos/library");
   });
 });

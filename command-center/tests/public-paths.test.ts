@@ -221,8 +221,23 @@ describe("signed-in users keep today's behaviour", () => {
     expect((await visit("/videos", true)).redirect).toBe("/all-channels/videos");
   });
 
+  it("are sent from a moved list screen (Videos, Editor, Workflows) straight to Studio by the middleware, before any render", async () => {
+    const to = async (p: string) => {
+      const loc = (await visit(p, true)).res.headers.get("location");
+      return loc ? new URL(loc).pathname + new URL(loc).search : null;
+    };
+    expect(await to("/chronos/videos?a=1")).toBe("/chronos/studio?shelf=videos&a=1");
+    expect(await to("/chronos/editor")).toBe("/chronos/studio?shelf=projects&kind=edit");
+    expect(await to("/chronos/workflows")).toBe("/chronos/studio");
+    // A video's own page is not a list screen: it is served.
+    expect((await visit("/chronos/videos/abc", true)).redirect).toBeNull();
+    // Signed out, the gate decides first, exactly as before: sign-in, not Studio.
+    expect((await visit("/chronos/videos", false)).redirect).toBe("/login");
+  });
+
   it("reach app screens with the channel handed inward", async () => {
-    const { redirect, res } = await visit("/chronos/videos", true);
+    // /chronos/videos is a redirect into Studio now (lib/studioRoutes ZOMBIE_SECTIONS); Library is an ordinary screen.
+    const { redirect, res } = await visit("/chronos/library", true);
     expect(redirect).toBeNull();
     expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBe("chronos");
   });

@@ -39,6 +39,8 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
   const [cancelling, setCancelling] = useState(false);
   // The channel exists but its connection was not saved: nothing more to pick.
   const [done, setDone] = useState(false);
+  // One account of a several-account sign-in was added; the rest of the list stays to pick from.
+  const [addedOne, setAddedOne] = useState(false);
 
   const addPath = path("/channels/new");
 
@@ -66,8 +68,13 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "confirm", ...body }),
       });
-      const data = (await res.json().catch(() => ({}))) as { result?: ConfirmResult };
+      const data = (await res.json().catch(() => ({}))) as { result?: ConfirmResult; remaining?: unknown };
       const result = data.result;
+      if (result === "connected" && body.platform !== "youtube" && typeof data.remaining === "number" && data.remaining > 0) {
+        setAddedOne(true);
+        router.refresh();
+        return;
+      }
       if (result === "connected") {
         router.push(
           body.platform === "youtube"
@@ -160,37 +167,57 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
 
   const platform = view.platform;
   const platformName = platform === "instagram" ? tc.instagram : tc.tiktok;
-  const a = view.account;
+  const many = view.accounts.length > 1;
+  const anyConnected = view.accounts.some((a) => a.connected);
   return (
     <section className="ns-desk g2-desk g2-connect" aria-labelledby="connect-pick-title">
       <header>
         <h2 id="connect-pick-title" className="g2-h2">
-          {fmt(tp.socialTitle, { platform: platformName })}
+          {platform === "instagram" ? tp.instagramTitle : fmt(tp.socialTitle, { platform: platformName })}
         </h2>
-        <p className="g2-sub">{tp.socialLead}</p>
+        <p className="g2-sub">{platform === "instagram" ? tp.instagramLead : tp.socialLead}</p>
       </header>
 
-      <div className="g2-pick-row">
-        <ChannelMark name={a.name} thumbnail={a.avatarUrl} />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <PlatformLogo platform={platform} size={16} />
-            <span className="truncate text-[17px] font-semibold">{a.name}</span>
-          </div>
-          {a.username && <div className="tnum truncate text-[13px] text-[var(--color-muted)]">@{a.username}</div>}
-        </div>
-        <button
-          type="button"
-          className="btn-primary g2-pick-btn"
-          disabled={busy !== null || done}
-          onClick={() => confirm(a.externalId, { platform })}
-        >
-          {busy ? tp.connecting : a.connected ? tp.reconnect : tp.confirm}
-        </button>
-      </div>
+      <ul className="g2-pick-list" aria-label={fmt(tp.socialListLabel, { platform: platformName })}>
+        {view.accounts.map((a) => (
+          <li key={a.externalId} className="g2-pick-row">
+            <ChannelMark name={a.name} thumbnail={a.avatarUrl} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <PlatformLogo platform={platform} size={16} />
+                <span className="truncate text-[17px] font-semibold">{a.name}</span>
+              </div>
+              {a.username && a.name !== `@${a.username}` && (
+                <div className="tnum truncate text-[13px] text-[var(--color-muted)]">@{a.username}</div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn-primary g2-pick-btn"
+              disabled={busy !== null || done}
+              onClick={() => confirm(a.externalId, { platform, external_id: a.externalId })}
+            >
+              {busy === a.externalId ? tp.connecting : a.connected ? tp.reconnect : tp.confirm}
+            </button>
+          </li>
+        ))}
+      </ul>
 
-      {a.connected && <p className="g2-note">{tp.socialAlready}</p>}
-      <p className="g2-note">{fmt(tp.switchHint, { platform: platformName })}</p>
+      {addedOne && (
+        <div className="flex flex-col items-start gap-2">
+          <p className="g2-ok" role="status">
+            {tp.addedOne}
+          </p>
+          <Link href={`${path("/channels")}?social=connected&platform=${encodeURIComponent(platform)}`} className="btn-quiet">
+            {tp.openChannels}
+          </Link>
+        </div>
+      )}
+      {anyConnected && <p className="g2-note">{tp.socialAlready}</p>}
+      {(many || addedOne) && <p className="g2-note">{tp.instagramAgain}</p>}
+      <p className="g2-note">
+        {platform === "instagram" ? tp.instagramSwitchHint : fmt(tp.switchHint, { platform: platformName })}
+      </p>
       {errorLine}
       {actions(platform, fmt(tp.anotherAccount, { platform: platformName }))}
     </section>

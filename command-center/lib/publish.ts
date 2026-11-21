@@ -156,6 +156,8 @@ export const PUBLISH_REASONS = [
   "video_not_found",
   "not_uploaded",
   "gate_blocked",
+  // 0205: no stored gate verdict for the video. Unknown, never a pass (CLAUDE.md rules 2 and 5).
+  "gate_unknown",
   "not_approved",
   "rejected",
   "awaiting_two_person",
@@ -195,6 +197,13 @@ export const PUBLISH_REASONS = [
   "published_unexpectedly",
   "duplicate_post",
   "credits_exhausted",
+  // Instagram API with Unified Login (0204, modules/social_publish.py).
+  "instagram_reconnect",
+  "ig_permission_missing",
+  "limit_unreadable",
+  "publish_limit_reached",
+  // A post that exists with part of it missing (Instagram's config_issue): published, never as a clean success.
+  "published_partially",
 ] as const;
 export type PublishReason = (typeof PUBLISH_REASONS)[number];
 

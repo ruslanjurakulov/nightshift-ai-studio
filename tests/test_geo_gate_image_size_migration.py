@@ -18,6 +18,8 @@ MIG = ROOT / "supabase" / "migrations"
 NEW_TEXT = (MIG / "0208_geo_gate_and_image_size_price.sql").read_text(encoding="utf-8")
 T156 = (MIG / "0156_named_resolution_params.sql").read_text(encoding="utf-8")
 T159 = (MIG / "0159_duration_offered_by_model.sql").read_text(encoding="utf-8")
+T126 = (MIG / "0126_region_edit_run.sql").read_text(encoding="utf-8")
+T196 = (MIG / "0196_adult_attestation_google_runs.sql").read_text(encoding="utf-8")
 ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0208_geo_gate_and_image_size_price.sql").read_text(encoding="utf-8")
 LAB = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
 CLAIM_TS = (ROOT / "command-center" / "lib" / "server" / "geo-claim.ts").read_text(encoding="utf-8")
@@ -58,8 +60,11 @@ CP_ANCHORS = [
 
 class GeoGateImageSizeMigration(unittest.TestCase):
     def test_it_replaces_exactly_these_functions_and_drops_nothing(self):
-        self.assertEqual(set(NEW), {"geo_claim_country", "creative_jobs_geo_gate", "creative_params_problem", "creative_price"})
-        low = CODE.lower()
+        self.assertEqual(set(NEW), {"geo_claim_country", "creative_jobs_geo_gate", "creative_params_problem", "creative_price",
+                                    "creative_regions_problem", "reroute_creative_job"})
+        # reroute_creative_job's own update of the job it moves is 0196's (pinned below as 0196's body plus one hunk), not a data change
+        # this file makes on apply.
+        low = "\n".join(ln.split("--", 1)[0] for ln in NEW_TEXT.replace(NEW["reroute_creative_job"], "").splitlines()).lower()
         for word in ("drop table", "drop column", "drop function", "delete from", "truncate", "alter table", "create policy",
                      "create table", "grant execute"):
             self.assertNotIn(word, low)
@@ -68,6 +73,38 @@ class GeoGateImageSizeMigration(unittest.TestCase):
     def test_the_earlier_bodies_are_the_ones_the_guard_names(self):
         self.assertEqual(md5_of(PP_OLD), "25ee9cc62a27ad3a19e71008b04f3f36")
         self.assertEqual(md5_of(CP_OLD), "dafc5edae0000e741ac1b19bd0075790")
+
+    def test_a_region_edit_may_name_a_size_and_nothing_else_changed_in_0126s_regions_check(self):
+        # M1: without image_size in this closed list a model sold by size (creative_price refuses it with no size) could never run a
+        # region edit. Undoing the one hunk (and its comment) must give 0126's body back byte for byte.
+        old = bodies(T126)["creative_regions_problem"]
+        self.assertEqual(md5_of(old), "5603be6af36c813d2799eb581bb971cd")
+        new = NEW["creative_regions_problem"]
+        self.assertEqual(md5_of(new), "bcf4c3e85a977c984ab53a9f00a4cfb6")
+        undone = new.replace("""    if k not in ('source_asset_id', 'quality', 'regions', 'region_feather',
+                 -- 0208
+                 'image_size') then
+""", "    if k not in ('source_asset_id', 'quality', 'regions', 'region_feather') then\n").replace(
+            "the edge blend, the render tier (which only prices the model's own tiers) and the\n"
+            "  -- picture size (0208: the value is creative_params_problem's, the model's list creative_price's) and nothing else",
+            "the edge blend and the render tier (which only prices the model's own tiers) and\n  -- nothing else")
+        self.assertEqual(undone, old)
+        for sig in ("creative_regions_problem(jsonb)", "reroute_creative_job(uuid, text, text)"):
+            self.assertIn(f"'public.{sig}'", NEW_TEXT.split("-- A missing key")[0], f"{sig} has no drift guard")
+
+    def test_a_failover_skips_a_country_gated_candidate_instead_of_aborting(self):
+        # M2: the routed_model update fires creative_jobs_geo_gate, and the worker has no claim: outside a block its NS400 aborted
+        # the whole reroute (and every later candidate). The update must sit inside its own NS400 block that continues the loop.
+        old = bodies(T196)["reroute_creative_job"]
+        self.assertEqual(md5_of(old), "4e43d78523acacf10799497afef0d39a")
+        new = NEW["reroute_creative_job"]
+        self.assertEqual(md5_of(new), "7ebae97d8b932edbf565a394c5b9ca56")
+        a = new.index("    -- 0208: moving the job onto m")
+        b = new.index("    -- The real reason is the platform's")
+        block = new[a:b]
+        self.assertRegex(block, r"begin\n\s+update public\.creative_jobs[\s\S]*routed_model = m[\s\S]*exception when sqlstate 'NS400' then\n\s+continue;\n\s+end;")
+        self.assertEqual(re.sub(r"\s+", " ", new[:a] + new[b:]),
+                         re.sub(r"\s+", " ", old.replace(old[old.index("    update public.creative_jobs\n"):old.index("    -- The real reason")], "")))
 
     def test_creative_params_problem_is_0156s_plus_exactly_the_two_hunks(self):
         new = NEW["creative_params_problem"]

@@ -23,6 +23,8 @@ got `terms_review_required`, because a country list needs one (0142). No Google 
 
 ## The database's own check (0208)
 
+Since 0208 the database checks the country for every creative job on a model with a country list.
+
 A member holds the anon key and their session, so the web routes alone cannot stop a direct `create_creative_job`. 0208 puts
 a trigger on `creative_jobs` (every path writes there: the Studio, a workflow step, the API and MCP, a Film Studio take, the
 worker's failover): a job on a model with a non-empty `blocked_countries` needs the header `x-nightshift-geo` =
@@ -32,12 +34,28 @@ listed country: `country_blocked`. The header goes from our server to Supabase, 
 call that may create a job on a gated model (the Studio's create, the region editor's run, Run now and the advance of a
 workflow with such a step). The country is read in the transaction and stored nowhere.
 
-Not vouched for, so refused for a gated model: the worker moving a job onto one (failover), a Film Studio take (the worker
+Not vouched for, so refused for a gated model: the worker moving a job onto one (failover: `reroute_creative_job` skips that
+candidate and tries the next, it does not abort the failover), a Film Studio take (the worker
 makes it; there is no visitor), the API and MCP (a server's address says nothing about the person; these models are
 `web_only` anyway), and a workflow step carried on from another member's page (the claim is bound to the person whose session
 makes the call, and the step is made as the run's starter). Setup: the same 32+ character value in the web's
 `NIGHTSHIFT_GEO_CLAIM_KEY` and in Vault as `nightshift_geo_claim_key`; without it every job on a gated model is refused and
 the web logs the remedy.
+
+**Opening steps, in this order** (before any model with a list is opened; 0208 says so with a NOTICE when a step is missing):
+
+1. **Registry sync.** `python tools/probe_models.py --sync` copies `schemas/model_registry.json` into `model_registry`. The
+   trigger reads `spec.blocked_countries` from the database row, so until the sync has run a Google row has no list there and
+   the database does not gate it at all (0208 raises a NOTICE naming how many `provider = 'google'` rows have none).
+2. **Vault key.** `select vault.create_secret('<value>', 'nightshift_geo_claim_key');` once, in the SQL editor (32+ characters;
+   the value is never written in a file). 0208 raises a NOTICE while it is missing.
+3. **Web key.** The same value as `NIGHTSHIFT_GEO_CLAIM_KEY` in the web's environment, then a redeploy. Without it the web signs
+   nothing and every gated job is refused `country_unverified`.
+
+**An unknown country fails closed in the database.** The web signs a claim only for a country it read; for a visitor whose
+address DB-IP has no country for (`not_in_table`, below) it sends none, so the database refuses a job on any model with a list
+with `country_unverified`, including a model the web allows such a visitor to see and quote (`grounded-image-1.0`, which is not
+an allow-list model). For Google's models web and database agree (both refuse an unknown country).
 
 ## How a request's country is known
 
@@ -101,7 +119,7 @@ The country can be unknown for four reasons, and they are not alike (`lib/server
 
 | Reason | What it means | Production (self-hosted) | Development, tests, Vercel |
 | :-- | :-- | :-- | :-- |
-| `not_in_table` | a public address DB-IP has no country for | allowed, logged | allowed, logged |
+| `not_in_table` | a public address DB-IP has no country for | allowed, logged (the web); the job is refused `country_unverified` by the database (0208 fails closed) | the same |
 | `no_address` | no `X-Nightshift-Client-IP`: the request did not come through Caddy, or Caddy did not write it | **refused and hidden** | allowed, logged |
 | `not_public` | a private or local peer: the same | **refused and hidden** | allowed, logged |
 | `no_table` | `data/geoip/country.bin.gz` cannot be read | **refused and hidden** | allowed, logged |

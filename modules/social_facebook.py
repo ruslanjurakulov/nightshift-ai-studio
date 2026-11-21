@@ -45,6 +45,19 @@ Rate limits and quota (clear messages, no counting of our own): Meta allows 30 A
 24 h on this endpoint and enforces it; the Page call budget is ``4800 x engaged users`` per 24 h. Error codes 4, 17, 32,
 613 and 80000-80014 are ``rate_limited`` (with Meta's own ``estimated_time_to_regain_access`` from
 ``X-Business-Use-Case-Usage`` when it sends one, in whole minutes). A local counter would need a database table.
+
+Connecting a Page — PLAN ONLY, nothing below is built (no route, no connect flow, no publish behaviour):
+
+* Auth: Facebook Login for Business with the Page permissions ``FB_PAGE_PERMISSIONS`` (pages_show_list,
+  pages_read_engagement, pages_manage_posts), then ``GET /me/accounts`` for the Page and its Page access token, which is
+  what this adapter's ``tok`` would hold. (Unlike Instagram's Unified Login, where /me/accounts is NOT used.)
+* Publish: exactly the start -> rupload -> finish flow above, saved as a DRAFT.
+* Which Meta app: UNVERIFIED whether the app that holds "Instagram API with Unified Login" may also hold the Page
+  use case. So nothing here reuses INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET / INSTAGRAM_CONFIG_ID: a Page connection
+  would read its own ``FB_APP_ENV`` names (nothing reads them today), so it can live in a second Meta app without a code
+  change, or point at the same values if Meta allows one app for both.
+* Before any of it: ``social_accounts`` / ``publish_requests`` need the word ``facebook`` (a migration), and the owner
+  decides the publish behaviour (CLAUDE.md #2).
 """
 
 from __future__ import annotations
@@ -62,14 +75,19 @@ from modules import social_tokens
 from modules.capabilities.base import AdapterError
 from modules.capabilities.safe_fetch import checked_polling_url
 
-#: Graph version of the official page's examples (it also shows v18.0 in places). A live probe confirms it.
-GRAPH_VERSION = "v26.0"
+#: The Graph version Instagram's Unified Login calls use too (modules/social_publish.py IG_GRAPH). A live probe confirms it.
+GRAPH_VERSION = "v27.0"
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
 RUPLOAD_HOST = "rupload.facebook.com"
 PORTS = (None, 443)
 
 #: Saved on the Page as a draft; a person publishes it. See the module docstring.
 FB_VIDEO_STATE = "DRAFT"
+
+#: PLAN ONLY (see the module docstring): what a Page connection would ask for, and the env names it would read. Nothing
+#: reads either today; they are here so the plan is pinned by a test, not so anything can connect.
+FB_PAGE_PERMISSIONS = ("pages_show_list", "pages_read_engagement", "pages_manage_posts")
+FB_APP_ENV = {"app_id": "FACEBOOK_APP_ID", "app_secret": "FACEBOOK_APP_SECRET", "config_id": "FACEBOOK_CONFIG_ID"}
 
 MAX_RESUMES = 3
 MAX_API_BODY = 1024 * 1024

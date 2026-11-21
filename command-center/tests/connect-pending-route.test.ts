@@ -6,6 +6,7 @@ const s = {
   user: { id: "u1" } as { id: string } | null,
   yt: [] as unknown[],
   social: [] as unknown[],
+  socialAnswer: { result: "expired", platform: null } as Record<string, unknown>,
 };
 vi.mock("@/lib/supabase/server", () => ({ getUser: async () => s.user, createClient: async () => null }));
 vi.mock("@/lib/server/connect-youtube", () => ({
@@ -17,7 +18,7 @@ vi.mock("@/lib/server/connect-youtube", () => ({
 vi.mock("@/lib/server/social-connect", () => ({
   confirmSocialPick: async (o: unknown) => {
     s.social.push(o);
-    return { result: "expired", platform: null };
+    return s.socialAnswer;
   },
 }));
 delete process.env.APP_ORIGIN;
@@ -39,6 +40,7 @@ beforeEach(() => {
   s.user = { id: "u1" };
   s.yt = [];
   s.social = [];
+  s.socialAnswer = { result: "expired", platform: null };
 });
 
 describe("POST /api/connect/pending", () => {
@@ -65,6 +67,18 @@ describe("POST /api/connect/pending", () => {
     expect((await post("not json")).status).toBe(400);
     expect(s.yt).toEqual([]);
   });
+  it("keeps the hold cookie while accounts of the same sign-in remain, and clears it with the last one (Lens M2)", async () => {
+    s.socialAnswer = { result: "connected", platform: "instagram", remaining: 1 };
+    const one = await post({ action: "confirm", platform: "instagram", external_id: "17841400000000001" });
+    expect(await one.json()).toEqual({ ok: true, result: "connected", remaining: 1 });
+    expect(one.headers.getSetCookie().join("\n")).not.toMatch(/ns_connect_pending=;/);
+    s.socialAnswer = { result: "connected", platform: "instagram", remaining: 0 };
+    const last = await post({ action: "confirm", platform: "instagram", external_id: "17841400000000002" });
+    expect(await last.json()).toEqual({ ok: true, result: "connected", remaining: 0 });
+    expect(last.headers.getSetCookie().join("\n")).toMatch(/ns_connect_pending=;/);
+    // A number is not an account id: Meta's ids are strings (Breach I3).
+    expect((await post({ action: "confirm", platform: "instagram", external_id: 17841400000000001 })).status).toBe(400);
+  });
   it("answers an expired authorisation with 410 and our own word only", async () => {
     const res = await post({ action: "confirm", platform: "instagram" });
     expect(res.status).toBe(410);
@@ -75,7 +89,7 @@ describe("POST /api/connect/pending", () => {
     const h = pending.createPending({
       userId: "u1",
       orgId: "3f2b8c1e-8d4a-4b7e-9a51-0c2d6e7f8a90",
-      grant: { platform: "tiktok", accessToken: "a", refreshToken: null, accessExpiresIn: null, refreshExpiresIn: null, scopes: [], profile: { externalId: "1", username: null, displayName: null, avatarUrl: null } },
+      grant: { platform: "tiktok", accessToken: "a", refreshToken: null, accessExpiresIn: null, refreshExpiresIn: null, scopes: [], profiles: [{ externalId: "1", username: null, displayName: null, avatarUrl: null }] },
     });
     const res = await post({ action: "cancel" });
     expect(res.headers.getSetCookie().join("\n")).toMatch(/ns_connect_pending=;/);

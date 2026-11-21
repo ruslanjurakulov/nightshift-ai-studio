@@ -11,6 +11,11 @@ newer main that had no registry yet. A
 change that reorders a read, drops a field, adds a call or alters a refusal word fails here. Regenerating the file
 after a deliberate behaviour change is a decision to review, not a way to make this pass.
 
+Regenerated once, deliberately, for Instagram API with Unified Login (migration 0204): only the ig_ scenarios changed, and
+only by graph.instagram.com/v23.0 -> graph.facebook.com/v27.0, the content_publishing_limit read before staging, the
+store.social_account_flow read in connect, the poll sleep 10 s -> 60 s, and tokens.set_status(expired) after error 190.
+Every outcome, row and refusal word stayed the same.
+
 No platform is called: HTTP, the store, the tokens and the uploader are fakes.
 """
 
@@ -26,7 +31,7 @@ from pathlib import Path
 from modules import social_probe as pr
 from modules import social_publish as sp
 from tests.test_social_disclosure import DStore, event, ig_http
-from tests.test_social_publish import TOKEN, Base, FakeHTTP, FakeTokens, FakeUploader, HttpErr, Resp
+from tests.test_social_publish import LIMIT_OK, TOKEN, Base, FakeHTTP, FakeTokens, FakeUploader, HttpErr, Resp
 
 GOLDEN = Path(__file__).parent / "fixtures" / "publisher_transcripts.json"
 LABELLED = [event(generated_clips=2)]   # an AI-generated clip: the decision labels the video
@@ -216,6 +221,7 @@ def scenarios():
         "ig_published_clean": dict(platform="instagram", http=ig_http(), events=CLEAN),
         "ig_published_never_label": dict(platform="instagram", http=ig_http(), agent={"ai_disclosure": "never"}),
         "ig_in_progress_then_finished": dict(platform="instagram", http=FakeHTTP({
+            ("GET", f"{IG}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
             ("POST", f"{IG}/17841400000/media_publish"): [Resp(200, {"id": "M2"})],
             ("POST", f"{IG}/17841400000/media"): [Resp(200, {"id": "C2"})],
             ("GET", f"{IG}/C2"): [Resp(200, {"status_code": "IN_PROGRESS"}), Resp(200, {"status_code": "FINISHED"})],
@@ -230,8 +236,10 @@ def scenarios():
                                             info=sp.VideoInfo(1200.0, 1920, 1080, 2048)),
         "ig_not_faststart": dict(platform="instagram", facts=no_faststart),
         "ig_container_rejected_token": dict(platform="instagram", http=FakeHTTP({
+            ("GET", f"{IG}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
             ("POST", f"{IG}/17841400000/media"): [Resp(400, {"error": {"code": 190}})]})),
         "ig_processing_error": dict(platform="instagram", http=FakeHTTP({
+            ("GET", f"{IG}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
             ("POST", f"{IG}/17841400000/media"): [Resp(200, {"id": "C3"})],
             ("GET", f"{IG}/C3"): [Resp(200, {"status_code": "ERROR"})]})),
         # TikTok

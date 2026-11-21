@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { Ellipsis } from "lucide-react";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useI18n } from "@/lib/i18n/context";
-import { useChannelPath } from "@/lib/channels-client";
-import { ALL_SECTIONS, customerRail, HOME, OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
+import { useChannelPath, useChannelSlug } from "@/lib/channels-client";
+import { ALL_CHANNELS_SLUG } from "@/lib/channels";
+import { ALL_SECTIONS, CUSTOMER_TABBAR, customerRail, HOME, OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import { useShell } from "@/components/shell/ShellContext";
 import { type AccountPlan } from "@/lib/account";
@@ -148,6 +149,7 @@ function StudioRail({ operator }: { operator: boolean }) {
   const path = useChannelPath();
   const isActive = useIsActive();
   const { features } = useShell();
+  const slug = useChannelSlug();
   const r = t.studioCanvas.rail;
   const items: { href: string; key: NavKey; label: string }[] = operator
     ? [
@@ -156,7 +158,7 @@ function StudioRail({ operator }: { operator: boolean }) {
         { href: "/inbox", key: "inbox", label: r.inbox },
         { href: "/analytics", key: "analytics", label: r.analytics },
       ]
-    : customerRail(features).map((i) => ({ href: i.href, key: i.key, label: i.key in r ? r[i.key as keyof typeof r] : t.nav[i.key] }));
+    : customerRail(features, slug !== ALL_CHANNELS_SLUG).map((i) => ({ href: i.href, key: i.key, label: i.key in r ? r[i.key as keyof typeof r] : t.nav[i.key] }));
   return (
     <nav aria-label={r.label} className={operator ? "cv-rail is-operator" : "cv-rail"} data-studio-rail="">
       <Link href={path(items[0].href)} className="cv-rail-logo" aria-label={t.brand.name} title={t.brand.name}>
@@ -194,8 +196,7 @@ function BottomBar() {
   const { t } = useI18n();
   const isActive = useIsActive();
   const path = useChannelPath();
-  const items = navGroupsFor(false)[0]?.items ?? [];
-  const ordered = BOTTOM_ORDER.map((k) => items.find((i) => i.key === k)).filter((i) => i !== undefined);
+  const ordered = BOTTOM_ORDER.map((k) => CUSTOMER_TABBAR.find((i) => i.key === k)).filter((i) => i !== undefined);
   return (
     <SharedLayout id="customer-tabbar">
       {/* layoutRoot: the bar is fixed to the viewport, so the tab plate measures

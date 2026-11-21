@@ -5,8 +5,7 @@
       "mcp__Remote_Desktop_Commander"
     ],
     "ask": [
-      "mcp__Remote_Desktop_Commander__force_terminate",
-      "mcp__Remote_Desktop_Commander__kill_process"
+       
     ]
   }
 }

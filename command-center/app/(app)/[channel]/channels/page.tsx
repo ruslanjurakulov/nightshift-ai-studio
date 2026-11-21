@@ -24,7 +24,7 @@ import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
 import { YOUTUBE_OAUTH_SCOPES, isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { latestLiveVerdicts, operatorYoutubeState, parseVaultResult } from "@/lib/channel-tokens";
 import { fetchSocialAccounts } from "@/lib/server/social-accounts";
-import { isSocialConfigured } from "@/lib/server/social-oauth";
+import { socialConnectOpen } from "@/lib/server/social-oauth";
 import { isSocialPlatform, parseSocialResult } from "@/lib/social-accounts";
 import { SocialAccountsPanel } from "@/components/social/SocialAccountsPanel";
 import { ChannelDnaSection } from "@/components/channels/ChannelDnaSection";
@@ -181,7 +181,7 @@ export default async function ChannelsPage({
         available={social.available}
         hasOrg={Boolean(orgId)}
         role={orgRole}
-        configured={{ instagram: isSocialConfigured("instagram"), tiktok: isSocialConfigured("tiktok") }}
+        configured={{ instagram: socialConnectOpen("instagram", orgId), tiktok: socialConnectOpen("tiktok", orgId) }}
         result={socialResult}
       />
 

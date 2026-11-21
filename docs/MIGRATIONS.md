@@ -2371,6 +2371,46 @@ Rollback: `docs/sql/rollback_0202_channel_research.sql`.
 - Lab: `tests/security/sec_owner_ai_0203.py`, `tests/security/test_sec_owner_ai.py`. Rollback:
   `docs/sql/rollback_0203_owner_ai_turns.sql` (drops the log).
 
+## Instagram through Unified Login (0204)
+
+0204 (`0204_instagram_unified_login.sql`). Instagram now connects through Meta's "Instagram API with Unified Login": the
+Facebook login dialog with a configuration id (`INSTAGRAM_CONFIG_ID`), one code exchange at graph.facebook.com, a Business
+Integration System User token that does not expire by default, and publishing on graph.facebook.com. The old Instagram Login
+tokens do not work there.
+
+- **Adds** `social_accounts.auth_flow` (`unified_login`, or NULL), `client_business_id` and `config_id` (ids, not secrets; readable
+  by the organization's members like `external_id`). No token column; tokens stay in Vault exactly as 0028.
+- **Old connections are kept.** No row is updated or deleted. An Instagram row whose `auth_flow` is not `unified_login` is an old
+  Instagram Login connection: the Command Center shows "reconnect needed" and does not offer it as a publish target, and the
+  queue worker refuses it as `instagram_reconnect`. Reconnecting the same account through Unified Login updates that row.
+- **Replaces** 0028's `store_social_account` (marked hunks only): an Instagram connect must carry `auth_flow = 'unified_login'` and
+  its `config_id`; the three keys are refused for TikTok. The binding is unchanged: the unique key is (org, platform, account), so
+  another organization connecting the same IG account gets its own row and token and never touches the first.
+- **Replaces** 0042's `api_list_connected_accounts` (one marked hunk, md5-guarded; only where the public API is applied): the public
+  API and the MCP tools report an old Instagram Login row as `connected: false`, like the Command Center.
+- **Before it is applied** the Command Center still lists accounts (every Instagram row then reads "reconnect needed") and an
+  Instagram connect answers "needs a database update (0204)"; nothing is stored.
+- **Undo.** `docs/sql/rollback_0204_instagram_unified_login.sql` (owner-applied): 0028's `store_social_account` and 0042's
+  `api_list_connected_accounts`; the columns stay.
+
+## Publish to platforms: a missing gate verdict refuses (0205)
+
+0205 (`0205_publish_refusal_gate_verdict.sql`, provisional number) replaces only `publish_request_refusal` (0029). That function
+is the check the `publish_requests` insert trigger and the queue worker's re-check (modules/social_publish.py) both ask before a
+video is cross-posted.
+
+- **Why.** Its gate check looked for `publish.allowed` / `publish.blocked` events by `video_id`, but the pipeline emits those
+  events with the channel only. Nothing ever matched: a blocked verdict did not refuse, and a video with no verdict passed
+  (ledger BR-LIVE-04).
+- **What.** It now also reads `videos.gate_verdict` (0112), with 0112's meaning:
+  - blocked → `gate_blocked`;
+  - missing or not `allowed: true` → `gate_unknown`, never a pass.
+  Every other reason and its order is unchanged.
+- **Effect.** Videos uploaded before 0112 have no stored verdict and are now refused `gate_unknown` for cross-posting. Count them
+  first: `select count(*) from public.videos where published_at is not null and gate_verdict is null;`.
+- **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
+- **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
+
 ## The database's own country gate, and the price by picture size (0208, provisional)
 
 0208 (`0208_geo_gate_and_image_size_price.sql`) changes no answer for a model on sale today (0142 keeps every model with a country
@@ -2386,5 +2426,11 @@ list off sale, and every model priced by size carries a terms gate). Post-event:
   prices a model whose `pricing.variants.by` is `image_size` by `<credit_unit>_<size>`, refuses one with no size, a size it does not
   list, or a size on a model not priced by size, and names the size in the quote. A size without a row is `unpriced`.
 - **Replaces** 0156's `creative_params_problem` and 0159's `creative_price` (md5 guards). The lab's `take_off_0159` takes 0208 off first.
+- **Also replaces** 0126's `creative_regions_problem` (a region edit may name `image_size`, so a model sold by size can run one; the
+  web's region editor sends the model's smallest listed size) and 0196's `reroute_creative_job` (a failover candidate the country gate
+  refuses is skipped; before, the gate's NS400 aborted the whole failover). Both md5-guarded; the rollback puts each back only where
+  it is 0208's body, and the lab's `take_off_0196` takes 0208 off first.
+- **Before it is useful, in order:** the registry sync (`python tools/probe_models.py --sync`; 0208 raises a NOTICE while any
+  `provider = 'google'` row has no `blocked_countries`), the Vault key, then the web's key.
 - Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
   `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.

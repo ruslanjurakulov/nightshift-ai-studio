@@ -304,8 +304,8 @@ describe("Models section navigation", () => {
     expect(keys(false)).not.toContain("models");
     expect(CUSTOMER_SECTIONS).toContain("models");
     expect(studioTilesFor(false).map((x) => x.href)).toContain("/models");
-    // Its sidebar row is Create: picking a model is part of making something.
-    expect(sidebarCurrent("/models")).toBe("create");
+    // Its sidebar row is Nightshift Studio: picking a model is part of making something.
+    expect(sidebarCurrent("/models")).toBe("studio");
   });
 
   it("is a customer section: sectionAllowed lets both in", () => {
