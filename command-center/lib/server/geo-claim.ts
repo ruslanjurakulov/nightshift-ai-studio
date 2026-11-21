@@ -61,7 +61,9 @@ export function geoClaimHeaders(
   if (!models.some((m) => typeof m === "string" && blockedCountriesOf(m, map).length > 0)) return undefined;
   const reading = readCountry(h, opts.load ?? (() => loadGeoTable()));
   if (reading.country === null) return undefined;
-  const key = claimKey(opts.env ?? process.env);
+  // Read by its literal name: the self-host check (tests/test_deploy_self_host.py) can only prove the server provides a variable
+  // it can see named, and handing over the whole environment would hide this one from it.
+  const key = claimKey(opts.env ?? { [KEY_ENV]: process.env.NIGHTSHIFT_GEO_CLAIM_KEY });
   if (!key || !UUID_RE.test(userId)) return undefined;
   return { [GEO_CLAIM_HEADER]: signGeoClaim(reading.country, userId, opts.nowS ?? Date.now() / 1000, key) };
 }
