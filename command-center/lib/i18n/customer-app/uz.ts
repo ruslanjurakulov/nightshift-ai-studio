@@ -23,18 +23,6 @@ export const customerAppUz: CustomerAppDictionary = {
   home: {
     title: "Nima yaratamiz?",
     lead: "Oʻz soʻzlaringiz bilan tasvirlang. Narxni hech narsa yaratilmasidan oldin koʻrasiz.",
-    placeholder: {
-      video: "Tong chogʻida tumanli togʻ koʻli ustidan sekin dron parvozi…",
-      image: "Yomgʻirli Toshkent koʻchasidagi neon chiroqli shinam lagʻmonxona…",
-      audio: "Iliq, osoyishta ovoz oʻqiydi: Kanalimizga xush kelibsiz…",
-    },
-    promptLabel: "Gʻoyangiz",
-    submit: "Davom etish",
-    submitHint: "«Yaratish»ni soʻzlaringiz bilan ochadi. U yerda «Yaratish»ni bosmaguningizcha hech narsa sarflanmaydi.",
-    trendsTitle: "Trend shablonlari",
-    trendsAll: "Barcha trendlar",
-    trendsSoonTitle: "Trend shablonlar tez orada",
-    trendsSoonBody: "Bu yerda hozir ishlayotgan narsalardan tayyor gʻoyalar paydo boʻladi. Hozircha oʻz gʻoyangizdan boshlang.",
     continueTitle: "Davom ettirish",
     continueEmpty: "Hozircha davom ettiradigan narsa yoʻq. Boshlaganlaringiz shu yerda chiqadi.",
     continueFailed: "Loyihalaringizni oʻqib boʻlmadi.",

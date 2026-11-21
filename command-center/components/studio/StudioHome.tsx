@@ -40,6 +40,9 @@ import { attachErrorKey, attachWords, toolForAttachment, uploadAttachment } from
 import { checkAttachment, discardPending, indexedDbStore, takePending, type AttachKind } from "@/lib/site/pending-attachment";
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
+import { StartBox, type StartChannel } from "@/components/prompt/StartBox";
+import type { StartAvailable } from "@/lib/start-box";
+import { KIND_TOOL, type CreateKind } from "@/lib/customer/create";
 import { formatMediaBytes } from "@/lib/media";
 import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
@@ -101,6 +104,8 @@ export function StudioHome({
   assistant = null,
   pending = null,
   idea = false,
+  ideaKind = "video",
+  start = null,
 }: {
   orgId: string | null;
   models: StudioModel[];
@@ -123,6 +128,10 @@ export function StudioHome({
   pending?: { nonce: string; words: string } | null;
   /** `?idea=1`: the landing's idea box kept the visitor's words in this browser (lib/site/idea-handoff.ts); the box takes them once. */
   idea?: boolean;
+  /** `?idea=1&kind=image|audio`: the start box sent the words for that kind, so they fill its box, not the clip box. */
+  ideaKind?: CreateKind;
+  /** The start box at the top (components/prompt/StartBox.tsx): whether the server's flag opens Nightshift AI here, and the channel; null = none. */
+  start?: { agentOpen: boolean; available: StartAvailable; channel: StartChannel | null } | null;
 }) {
   const { t, locale, fmt } = useI18n();
   const th = t.studioHome;
@@ -252,6 +261,12 @@ export function StudioHome({
     setPrefill((p) => ({ nonce: p.nonce + 1, value }));
     if (value) setDraft(value.prompt);
     toComposer();
+  };
+
+  /** Words handed to this page (the landing's idea, the start box above): the box of the kind they were sent for (Create's own map). */
+  const fillWords = (words: string, kind: CreateKind, auto = false) => {
+    const tool = KIND_TOOL[kind];
+    fill(form(tool, { prompt: attachWords(tool, words) }), undefined, auto);
   };
 
   /** A fresh box for mode `m`, with the words typed so far where its first tool takes words (Enhance starts from a file). */
@@ -411,7 +426,7 @@ export function StudioHome({
       return;
     }
     void takePending(indexedDbStore(), pending.nonce).then((p) => {
-      if (words) fill(form("t2v", { prompt: attachWords("t2v", words) }), "video", true);
+      if (words) fillWords(words, ideaKind, true);
       if (p.state === "ready") {
         setAttach({ phase: "confirm", file: p.file, kind: p.kind, words });
         return;
@@ -442,7 +457,7 @@ export function StudioHome({
       // The address keeps `idea=1`; the words are taken once either way.
     }
     const words = takeIdea();
-    if (words) fill(form("t2v", { prompt: attachWords("t2v", words) }), "video", true);
+    if (words) fillWords(words, ideaKind, true);
     // Once, on load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -671,6 +686,9 @@ export function StudioHome({
         <h1 className="sh-title">{th.title}</h1>
         <p className="sh-lead">{th.lead}</p>
       </div>
+
+      {/* The start box: Nightshift AI, the edit desk, a channel video, or this page's own box below (filled, never sent). */}
+      {start && <StartBox agentOpen={start.agentOpen} available={start.available} channel={start.channel} fillHere={fillWords} />}
 
       {/* Not one picture, clip or voice tool on sale: said once, plainly, with the way to what works today. */}
       <NothingOnSaleNote />

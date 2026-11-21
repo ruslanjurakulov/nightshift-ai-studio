@@ -34,6 +34,16 @@ export function createHref(kind: CreateKind, prompt = "", template?: string): st
   return `/create?${q.toString()}`;
 }
 
+/**
+ * Does /create draw the customer's Create screen (components/customer/CreateScreen.tsx) rather than the owner's overview
+ * (StudioHome)? The overview desk, in the customer's frame, unless the public home page handed over a file (only StudioHome asks
+ * whether to use it). `?idea=1` plays no part: the kept words and their storage-refused fallback (`?kind=&prompt=`) must open the
+ * same screen, and a customer sent by the landing or the start box is a customer either way.
+ */
+export function drawsCreateScreen(p: { desk: string; pendingFile: boolean; ownerFrame: boolean }): boolean {
+  return p.desk === "overview" && !p.pendingFile && !p.ownerFrame;
+}
+
 // --- Trend templates (stream S3's API: GET /api/templates, GET /api/templates/<slug>) -------------------------------
 
 /** The S3 contract, exactly: `{ slug, kind, title, prompt, model_id, aspect, duration_s, quality, director? }`. */
