@@ -23,3 +23,11 @@ enabled = true
 [auth]
 enabled = true
 
+
+# X6: omit unused services and their initialization jobs; keep Auth/Storage.
+[realtime]
+enabled = false
+[analytics]
+enabled = false
+[edge_runtime]
+enabled = false
