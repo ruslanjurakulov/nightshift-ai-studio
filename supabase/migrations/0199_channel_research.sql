@@ -335,12 +335,13 @@ $$;
 create or replace function public.research_remedy(p_status text, p_error text) returns jsonb
   language sql immutable set search_path = public, pg_temp as $$
   select case
+    -- YouTube's own quota first: it ends a request budget_exhausted too, and its remedy is not ours to reset.
+    when p_error = 'quota' then jsonb_build_object('remedy_code', 'quota',
+      'remedy', 'YouTube''s daily quota for this project is used up; it resets at midnight Pacific time.')
     when p_status = 'budget_exhausted' or p_error = 'budget' then jsonb_build_object('remedy_code', 'budget',
       'remedy', 'Today''s research budget is used; it resets at midnight Pacific time.')
     when p_status = 'not_connected' or p_error = 'not_connected' then jsonb_build_object('remedy_code', 'connect',
       'remedy', 'Connect this channel to YouTube on the Channels page, then refresh.')
-    when p_error = 'quota' then jsonb_build_object('remedy_code', 'quota',
-      'remedy', 'YouTube''s daily quota for this project is used up; it resets at midnight Pacific time.')
     when p_error = 'not_configured' then jsonb_build_object('remedy_code', 'not_configured',
       'remedy', 'Research is not set up on this server yet: the operator adds the YOUTUBE_DATA_API_KEY secret.')
     when p_error = 'auth' then jsonb_build_object('remedy_code', 'auth',
@@ -671,7 +672,7 @@ begin
     select count(*) into today from public.research_requests r
      where r.org_id = org and r.kind = 'topic'
        and (r.created_at at time zone 'America/Los_Angeles')::date = (now() at time zone 'America/Los_Angeles')::date
-       and coalesce(r.error_code, '') not in ('not_configured', 'budget');
+       and coalesce(r.error_code, '') not in ('not_configured', 'budget', 'quota');
     if today >= 3 then
       return jsonb_build_object('ok', false, 'error', 'daily_limit') || public.research_remedy('budget_exhausted', null);
     end if;
