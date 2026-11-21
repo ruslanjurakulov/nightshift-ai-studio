@@ -163,7 +163,7 @@ describe.each(["actions", "queue"] as const)("%s backend: a custom voice the cha
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(
       backend === "actions"
-        ? { ok: true, backend: "actions", credits_reserved: 36 }
+        ? { ok: true, backend: "actions", credits_reserved: 36, channel_id: expect.any(String), dispatched_at: expect.any(String) }
         : { ok: true, backend: "queue", job_id: 7, credits_reserved: 36 },
     );
     expect(h.rpcCalls).toEqual([]);
