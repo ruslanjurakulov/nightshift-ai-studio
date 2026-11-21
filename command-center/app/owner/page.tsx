@@ -1,6 +1,6 @@
 import { getDictionary } from "@/lib/i18n/server";
 import { OwnerPage, OwnerTools } from "@/components/owner-console/OwnerPage";
-import { AsOf, Count, FactValue, FactsUnavailable, Gap, Kpi, Kpis } from "@/components/owner-console/OwnerFacts";
+import { AsOf, Count, FactValue, FactsUnavailable, Gap, Kpi, Kpis, Tag } from "@/components/owner-console/OwnerFacts";
 import { ownerSection } from "@/lib/owner-console/nav";
 import { block, healthView, peopleView } from "@/lib/owner-console/facts-view";
 import { fill, int, pct, usd } from "@/lib/owner-analytics/format";
@@ -51,7 +51,14 @@ export default async function OwnerConsoleOverview() {
           <Kpi label={f.kpi.churn}>{rev ? <FactValue fact={rev.monthly_churn_30d} f={f} format={(v) => pct(v, locale)} /> : <Gap why={facts.revenue.state === "unknown" ? facts.revenue.why : ""} f={f} />}</Kpi>
           <Kpi label={f.kpi.due} hint={plan && plan.unknown.length > 0 ? `${f.providers.unknown}: ${plan.unknown.length}` : undefined}>
             {plan ? (
-              <span className="oc-val">{fill(f.dueOf, { n: plan.due.length, total: plan.due.length + plan.unknown.length + plan.fine.length })}</span>
+              plan.due.length + plan.unknown.length + plan.fine.length === 0 ? (
+                <span className="oc-why">{f.providers.none}</span>
+              ) : (
+                <span className="oc-fact">
+                  <span className="oc-val">{fill(f.dueOf, { n: plan.due.length, total: plan.due.length + plan.unknown.length + plan.fine.length })}</span>{" "}
+                  <Tag state="estimated" f={f} />
+                </span>
+              )
             ) : (
               <Gap why={facts.providers.state === "unknown" ? facts.providers.why : ""} f={f} />
             )}

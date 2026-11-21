@@ -135,7 +135,7 @@ describe("owner facts are the owner's only", () => {
         if (statSync(f).isDirectory()) walk(f);
         else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(n)) {
           const rel = path.relative(root, f);
-          if (!OWNER_ZONES.some((z) => z.test(rel)) && /owner-brain-facts|buildOwnerFacts/.test(readFileSync(f, "utf8"))) named.push(rel);
+          if (!OWNER_ZONES.some((z) => z.test(rel)) && /owner-brain-facts|buildOwnerFacts|loadOwnerFacts|owner\/_facts/.test(readFileSync(f, "utf8"))) named.push(rel);
         }
       }
     };

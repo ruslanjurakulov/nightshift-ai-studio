@@ -18,6 +18,18 @@ export function num(v: unknown): number | null {
 }
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
+/**
+ * A timestamp: null when the database said none, "invalid" when it holds text that is not a time (system_events.ts is free
+ * text, and max() over text can pick a malformed row), undefined when the key itself is missing (a renamed column). Three
+ * different answers, drawn three different ways — and none of them may throw the page.
+ */
+export type When = string | null | "invalid" | undefined;
+export function when(doc: Json, key: string): When {
+  if (!(key in doc)) return undefined;
+  const v = doc[key];
+  if (v === null) return null;
+  return typeof v === "string" && v !== "" && !Number.isNaN(Date.parse(v)) ? v : "invalid";
+}
 
 /** A block's value, or why it is missing. */
 export function block(f: Fact<Json>): { ok: true; doc: Json; asOf: string } | { ok: false; why: string } {
@@ -42,7 +54,7 @@ export interface PeopleView {
   pastDue: number | null;
   cancelling: number | null;
   canceledD30: number | null;
-  recent: Array<{ workspace: string | null; workspaceId: string | null; plan: string | null; status: string | null; at: string | null }>;
+  recent: Array<{ workspace: string | null; workspaceId: string | null; plan: string | null; status: string | null; at: When }>;
   internalExcluded: boolean;
 }
 
@@ -65,7 +77,7 @@ export function peopleView(doc: Json): PeopleView {
       workspaceId: str(r.workspace_id),
       plan: str(r.plan),
       status: str(r.status),
-      at: str(r.at),
+      at: when(r, "at"),
     })),
     internalExcluded: doc.internal_excluded === true,
   };
@@ -75,18 +87,20 @@ export interface ChannelHealth {
   id: string;
   name: string | null;
   status: string | null;
-  lastRunAt: string | null;
+  lastRunAt: When;
   failures24h: number | null;
   failures7d: number | null;
-  lastPublishedAt: string | null;
   held: number | null;
   tokenStored: boolean | null;
   credentialStatus: string | null;
+  credentialCheckedAt: When;
+  /** YouTube refused the token after it was last verified: "connected" on the credential row is out of date. */
+  rejected: boolean;
 }
 
 export interface QueueView {
   queued: number | null;
-  oldestQueuedAt: string | null;
+  oldestQueuedAt: When;
   running: number | null;
   stuck: number | null;
   failed24h: number | null;
@@ -97,8 +111,8 @@ export interface HealthView {
   channels: ChannelHealth[];
   creative: QueueView;
   render: QueueView;
-  workers: Array<{ id: string; kind: string | null; state: string | null; updatedAt: string | null; stale: boolean | null }>;
-  doctor: { verdict: "ok" | "fail" | "unknown"; at: string | null };
+  workers: Array<{ id: string; kind: string | null; state: string | null; updatedAt: When; stale: boolean | null }>;
+  doctor: { verdict: "ok" | "fail" | "unknown"; at: When };
   alerts: { critical: number | null; warn: number | null; criticalPlatform: number | null };
   lookbackDays: number | null;
 }
@@ -107,7 +121,7 @@ const queue = (v: unknown): QueueView => {
   const q = obj(v) ?? {};
   return {
     queued: num(q.queued),
-    oldestQueuedAt: str(q.oldest_queued_at),
+    oldestQueuedAt: when(q, "oldest_queued_at"),
     running: num(q.running),
     stuck: num(q.stuck),
     failed24h: num(q.failed_24h),
@@ -128,29 +142,36 @@ export function healthView(doc: Json): HealthView {
           id: str(c.channel_id) ?? "",
           name: str(c.name),
           status: str(c.status),
-          lastRunAt: str(c.last_run_event_at),
+          lastRunAt: when(c, "last_run_event_at"),
           failures24h: num(c.failure_events_24h),
           failures7d: num(c.failure_events_7d),
-          lastPublishedAt: str(c.last_published_at),
           held: num(c.held_videos),
           tokenStored: bool(yt.token_stored),
           credentialStatus: str(yt.credential_status),
+          credentialCheckedAt: when(yt, "credential_checked_at"),
+          rejected: rejectedAfter(when(yt, "last_oauth_failure_at"), when(yt, "credential_checked_at")),
         };
       })
       .filter((c) => c.id !== ""),
     creative: queue(queues.creative),
     render: queue(queues.render),
     workers: arr(doc.workers)
-      .map((w) => ({ id: str(w.worker_id) ?? "", kind: str(w.kind), state: str(w.state), updatedAt: str(w.updated_at), stale: bool(w.stale) }))
+      .map((w) => ({ id: str(w.worker_id) ?? "", kind: str(w.kind), state: str(w.state), updatedAt: when(w, "updated_at"), stale: bool(w.stale) }))
       .filter((w) => w.id !== ""),
-    doctor: { verdict, at: verdict === "unknown" ? null : str(doctor.at) },
+    doctor: { verdict, at: verdict === "unknown" ? null : when(doctor, "at") },
     alerts: { critical: num(alerts.critical), warn: num(alerts.warn), criticalPlatform: num(alerts.critical_platform) },
     lookbackDays: num(doc.lookback_days),
   };
 }
 
+const valid = (w: When): w is string => typeof w === "string" && w !== "invalid";
+function rejectedAfter(failure: When, checked: When): boolean {
+  if (!valid(failure)) return false;
+  return !valid(checked) || Date.parse(failure) > Date.parse(checked);
+}
+
 /** A channel needs a look when it failed in the last day, holds videos for review, or its YouTube credential is not
  *  `connected` (0001: connected | not_connected | expired | error). */
 export function channelNeedsLook(c: ChannelHealth): boolean {
-  return (c.failures24h ?? 0) > 0 || (c.held ?? 0) > 0 || c.tokenStored === false || (c.credentialStatus !== null && c.credentialStatus !== "connected");
+  return (c.failures24h ?? 0) > 0 || (c.held ?? 0) > 0 || c.tokenStored === false || c.rejected || (c.credentialStatus !== null && c.credentialStatus !== "connected");
 }

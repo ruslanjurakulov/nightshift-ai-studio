@@ -72,7 +72,9 @@ export const buildOwnerFacts = cache(async (nowMs: number = Date.now()): Promise
   const supabase = await createClient();
   if (supabase) {
     const { data: aalOk, error: aalError } = await supabase.rpc("admin_aal_ok");
-    if (aalError || aalOk !== true) throw new SecondFactorRequiredError();
+    // A failed check is "couldn't check, retry", not "verify your code": an owner who already verified must not be sent in a loop.
+    if (aalError) throw new Error("second factor check failed");
+    if (aalOk !== true) throw new SecondFactorRequiredError();
   }
   const asOf = new Date(nowMs).toISOString();
   const tomorrow = new Date(nowMs + DAY).toISOString();

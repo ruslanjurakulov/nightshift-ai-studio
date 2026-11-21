@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
 import type { Fact } from "@/lib/owner-console/facts-types";
+import type { When } from "@/lib/owner-console/facts-view";
 import { fill, tashkentDateTime } from "@/lib/owner-analytics/format";
 
 /**
@@ -52,7 +53,7 @@ export function Count({ n, f, format }: { n: number | null; f: F; format: (v: nu
   return n === null ? <Tag state="unknown" f={f} /> : <span className="oc-val">{format(n)}</span>;
 }
 
-export function Kpi({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+export function Kpi({ label, children, hint }: { label: string; children: React.ReactNode; hint?: React.ReactNode }) {
   return (
     <div className="oc-kpi">
       <dt className="oc-kpi-label">{label}</dt>
@@ -124,4 +125,9 @@ export function Table({ caption, head, children }: { caption: string; head: stri
   );
 }
 
-export const when = (iso: string | null, f: F) => (iso ? tashkentDateTime(iso) : f.none);
+/** A time from the facts: the database's "none" is a dash; a missing key or text that is not a time is "unknown". */
+export function when(w: When, f: F): React.ReactNode {
+  if (w === null) return f.none;
+  if (w === undefined || w === "invalid") return <Tag state="unknown" f={f} />;
+  return tashkentDateTime(w);
+}

@@ -33,4 +33,17 @@ describe("owner facts with the second-factor gate on", () => {
     expect(readMoney).not.toHaveBeenCalled();
     expect(readRunway).not.toHaveBeenCalled();
   });
+
+  it("treat a failed second-factor check as a failure to retry, not as a missing factor", async () => {
+    vi.resetModules();
+    const readMoney = vi.fn();
+    vi.doMock("@/lib/server/owner-analytics", () => ({ ownerAccess: async () => "owner", readMoney }));
+    vi.doMock("@/lib/server/owner-runway", () => ({ readRunway: readMoney }));
+    vi.doMock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: async () => ({ data: null, error: { code: "08006" } }) }) }));
+    const { buildOwnerFacts, SecondFactorRequiredError } = await import("@/lib/server/owner-brain-facts");
+    const out = await buildOwnerFacts(NOW).catch((e: unknown) => e);
+    expect(out).toBeInstanceOf(Error);
+    expect(out).not.toBeInstanceOf(SecondFactorRequiredError);
+    expect(readMoney).not.toHaveBeenCalled();
+  });
 });

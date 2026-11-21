@@ -32,7 +32,7 @@ export default async function OwnerConsoleHealth() {
     <section className="oc-card" aria-label={label}>
       <h3 className="m-0 text-sm font-semibold">{label}</h3>
       <Kpis label={label}>
-        <Kpi label={hz.queued} hint={q.oldestQueuedAt ? `${hz.oldest}: ${when(q.oldestQueuedAt, f)}` : undefined}>
+        <Kpi label={hz.queued} hint={q.oldestQueuedAt === null ? undefined : <>{hz.oldest}: {when(q.oldestQueuedAt, f)}</>}>
           <Count n={q.queued} f={f} format={n} />
         </Kpi>
         <Kpi label={hz.running}><Count n={q.running} f={f} format={n} /></Kpi>
@@ -55,7 +55,7 @@ export default async function OwnerConsoleHealth() {
               <>
                 <AsOf iso={b.asOf} f={f} />
                 <Kpis label={hz.alerts}>
-                  <Kpi label={hz.doctor} hint={h.doctor.at ? when(h.doctor.at, f) : undefined}>
+                  <Kpi label={hz.doctor} hint={h.doctor.at === null ? undefined : when(h.doctor.at, f)}>
                     <span className={h.doctor.verdict === "fail" ? "oc-flag-fail" : undefined}>{f.doctor[h.doctor.verdict]}</span>
                   </Kpi>
                   <Kpi label={`${hz.alerts}: ${hz.critical}`}><Count n={h.alerts.critical} f={f} format={n} /></Kpi>
@@ -113,14 +113,24 @@ export default async function OwnerConsoleHealth() {
                           <td>
                             {ch.tokenStored === false ? (
                               <span className="oc-flag">{hz.ytNoToken}</span>
+                            ) : ch.rejected ? (
+                              // The credential row may still say "connected": a refusal after its last check outranks it.
+                              <span className="oc-flag-fail">{hz.ytRejected}</span>
                             ) : ch.credentialStatus === "connected" ? (
-                              hz.ytConnected
+                              hz.yt.connected
                             ) : ch.credentialStatus ? (
                               <span className="oc-flag">
-                                {ch.credentialStatus in hz.yt ? hz.yt[ch.credentialStatus as keyof typeof hz.yt] : <Tag state="unknown" f={f} />}
+                                {Object.hasOwn(hz.yt, ch.credentialStatus) ? hz.yt[ch.credentialStatus as keyof typeof hz.yt] : <Tag state="unknown" f={f} />}
                               </span>
                             ) : (
                               <Tag state="unknown" f={f} />
+                            )}
+                            {ch.credentialCheckedAt !== undefined && ch.credentialCheckedAt !== null && (
+                              <div className="oc-why">
+                                {hz.checked.split("{time}")[0]}
+                                {when(ch.credentialCheckedAt, f)}
+                                {hz.checked.split("{time}")[1]}
+                              </div>
                             )}
                           </td>
                         </tr>

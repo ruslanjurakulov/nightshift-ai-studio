@@ -1,6 +1,6 @@
 import { getDictionary } from "@/lib/i18n/server";
 import { OwnerPage, OwnerTools } from "@/components/owner-console/OwnerPage";
-import { AsOf, Count, FactsUnavailable, Gap, Kpi, Kpis, Table, when } from "@/components/owner-console/OwnerFacts";
+import { AsOf, Count, FactsUnavailable, Gap, Kpi, Kpis, Table, Tag, when } from "@/components/owner-console/OwnerFacts";
 import { ownerSection } from "@/lib/owner-console/nav";
 import { block, peopleView, type PlanCount } from "@/lib/owner-console/facts-view";
 import { int } from "@/lib/owner-analytics/format";
@@ -92,10 +92,11 @@ export default async function OwnerConsoleUsers() {
                         <tr key={`${r.workspaceId ?? "x"}-${i}`}>
                           {/* Customer-typed text, drawn as text (React escapes it), with the id beside it. */}
                           <td>
-                            {r.workspace ?? f.none} <span className="oc-why">{r.workspaceId ? `#${r.workspaceId}` : ""}</span>
+                            {/* <bdi>: a right-to-left override in a name must not reorder the id beside it. */}
+                            <bdi>{r.workspace ?? f.none}</bdi> <span className="oc-why">{r.workspaceId ? `#${r.workspaceId}` : ""}</span>
                           </td>
                           <td>{r.plan ?? f.none}</td>
-                          <td>{r.status ?? f.none}</td>
+                          <td>{r.status === null ? f.none : Object.hasOwn(u.status, r.status) ? u.status[r.status as keyof typeof u.status] : <Tag state="unknown" f={f} />}</td>
                           <td>{when(r.at, f)}</td>
                         </tr>
                       ))}

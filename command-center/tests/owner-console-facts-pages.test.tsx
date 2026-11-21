@@ -145,6 +145,7 @@ describe("owner console pages from the owner's facts", () => {
     expect(out).toContain(en.ownerConsole.facts.why.churnBase);
     expect(out).toContain(en.ownerConsole.facts.doctor.fail);
     expect(out).toContain("2 of 3");
+    expect(out).toMatch(/2 of 3<\/span> <span class="oc-tag oc-tag-estimated">/);
   });
 
   it("overview: a block the database could not give is a gap, never 0", async () => {
@@ -159,6 +160,7 @@ describe("owner console pages from the owner's facts", () => {
     expect(out).not.toContain("<script>alert(1)</script>");
     expect(out).toContain("&lt;script&gt;");
     expect(out).toContain("#abcd1234");
+    expect(out).toContain(`<td>${en.ownerConsole.facts.users.status.active}</td>`);
     expect(out).toContain(en.ownerConsole.facts.users.untrusted);
   });
 
@@ -178,6 +180,18 @@ describe("owner console pages from the owner's facts", () => {
     expect(out).toContain(en.ownerConsole.facts.providers.reason.empty);
     expect(out).toContain(en.ownerConsole.facts.providers.noMinimum);
     expect(out).not.toMatch(/<form|<button/);
+  });
+
+  it("health: a malformed time from free-text events is unknown, and the page still renders", async () => {
+    const f = facts();
+    if (f.health.state === "unknown") throw new Error("fixture");
+    (f.health.value.channels as Record<string, unknown>[])[0].last_run_event_at = "2026-13-01T00:00:00";
+    (f.health.value.channels as Record<string, unknown>[])[1].youtube = { token_stored: true, credential_status: "connected", credential_checked_at: "2026-11-14T00:00:00Z", last_oauth_failure_at: "2026-11-20T00:00:00Z" };
+    s.load = { ok: true, facts: f };
+    const out = await html(await pages.health());
+    expect(out).toContain(en.ownerConsole.facts.health.ytRejected);
+    expect(out).toContain("checked 2026-11-14 05:00");
+    expect(out).toContain("oc-tag-unknown");
   });
 
   it("health: credential states are words, an unrecognised one is unknown, and a failing channel is flagged", async () => {
@@ -205,11 +219,20 @@ describe("reading the facts", () => {
   });
 
   it("flags a channel that failed, holds videos or lost its YouTube credential", () => {
-    const base = { id: "c", name: null, status: null, lastRunAt: null, failures24h: 0, failures7d: 0, lastPublishedAt: null, held: 0, tokenStored: true, credentialStatus: "connected" };
+    const base = { id: "c", name: null, status: null, lastRunAt: null, failures24h: 0, failures7d: 0, held: 0, tokenStored: true, credentialStatus: "connected", credentialCheckedAt: null, rejected: false };
     expect(channelNeedsLook(base)).toBe(false);
     expect(channelNeedsLook({ ...base, failures24h: 1 })).toBe(true);
     expect(channelNeedsLook({ ...base, credentialStatus: "expired" })).toBe(true);
     expect(channelNeedsLook({ ...base, tokenStored: false })).toBe(true);
+    expect(channelNeedsLook({ ...base, rejected: true })).toBe(true);
+  });
+
+  it("reads a refusal after the last check as rejected, whatever the credential row still says", () => {
+    const ch = (yt: Record<string, unknown>) => healthView({ channels: [{ channel_id: "c", youtube: { token_stored: true, credential_status: "connected", ...yt } }] }).channels[0];
+    expect(ch({ credential_checked_at: "2026-11-14T00:00:00Z", last_oauth_failure_at: "2026-11-21T00:00:00Z" }).rejected).toBe(true);
+    expect(ch({ credential_checked_at: "2026-11-21T00:00:00Z", last_oauth_failure_at: "2026-11-14T00:00:00Z" }).rejected).toBe(false);
+    expect(ch({ credential_checked_at: null, last_oauth_failure_at: "2026-11-14T00:00:00Z" }).rejected).toBe(true);
+    expect(ch({}).rejected).toBe(false);
   });
 
   it("says every reason the facts builder gives in the owner's language, none as 'not known'", () => {
