@@ -86,6 +86,8 @@ export const studioLiveEn = {
   privacyWords: { public: "public", unlisted: "unlisted" } as Record<string, string>,
   privacyUnknown: "The upload's privacy was not recorded.",
   recordedAt: "Last event {time}",
+  openVideo: "Open video → Send to platforms",
+  videoAfterSync: "The video's page appears after sync.",
   download: "Download",
   openTimeline: "Open in Timeline",
   failedGeneric: "This step failed ({code}).",

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { toQueueJob } from "@/lib/runBackend";
 import { readRunHold } from "@/lib/server/run-hold";
+import { readRunVideo, type RunVideo } from "@/lib/server/run-video";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   // Before it started there is nothing of this run to read; null events is "not readable", [] is "none recorded yet".
   let events: unknown[] | null = [];
+  let video: RunVideo | null = null;
   const from = job.started_at ?? null;
   if (from && channelId) {
     // A job stuck in "running" (a worker that died) would otherwise take every later event of the channel as its own.
@@ -70,6 +72,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         break;
       }
     }
+    video = await readRunVideo(supabase, channelId, from, until);
   }
 
   return NextResponse.json(
@@ -77,6 +80,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       job: { id: job.id, status: job.status, startedAt: job.started_at, finishedAt: job.finished_at, error: job.errorCode },
       events,
       hold: await readRunHold(supabase, creditRef),
+      video,
     },
     { headers: NO_STORE },
   );

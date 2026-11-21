@@ -88,6 +88,8 @@ export const studioLiveRu: StudioLiveDictionary = {
   privacyWords: { public: "публичное", unlisted: "доступное по ссылке" },
   privacyUnknown: "Приватность загрузки не записана.",
   recordedAt: "Последнее событие {time}",
+  openVideo: "Открыть видео → Отправить на платформы",
+  videoAfterSync: "Страница видео появится после синхронизации.",
   download: "Скачать",
   openTimeline: "Открыть в таймлайне",
   failedGeneric: "Шаг завершился ошибкой ({code}).",
