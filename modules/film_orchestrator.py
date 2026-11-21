@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import re
 import shutil
 import threading
@@ -80,6 +81,8 @@ _CODE_MAP = {
 #: ElevenLabs' own words for a voice that is not the account's (modules/capabilities/audio.py, _EL_VOICE).
 _VOICE_VENDOR_CODES = frozenset({"voice_not_found", "invalid_voice_id"})
 
+#: The assembly session's own switch (modules/film_assembly.py): only `on` begins an assembly.
+ASSEMBLY_FLAG = "NIGHTSHIFT_FILM_ASSEMBLY"
 #: The order takes run in: a clip needs its key frame (and may end on the next scene's), the narration comes last.
 PHASE = {"keyframe": 0, "clip": 1, "extend": 1, "narration": 2}
 #: What each take's file is.
@@ -134,6 +137,15 @@ def _parse_ts(v: Any) -> Optional[float]:
     return d.timestamp()
 
 
+def _assembly_raised(exc: BaseException, mod: Any, name: str) -> bool:
+    """One of modules.film_assembly's own exceptions (DbUnavailable, AssemblyDisabled), matched by the module's class when it is loaded
+    and by its name otherwise, so this module imports whether or not the assembly is installed."""
+    cls = getattr(mod, name, ()) if mod is not None else ()
+    if isinstance(cls, type) and isinstance(exc, cls):
+        return True
+    return any(c.__name__ == name for c in type(exc).__mro__)
+
+
 class FilmUnavailable(RuntimeError):
     """The database could not be reached. Never carries a key or a body."""
 
@@ -172,6 +184,8 @@ class AssemblyOutcome:
     asset_id: Optional[str] = None
     reason: Optional[str] = None
     detail: Optional[str] = None
+    #: Whether film_record_assembly took the outcome (S11). Read for the log only: the settle follows any returned outcome.
+    recorded: Optional[bool] = None
 
 
 @dataclass(frozen=True)
@@ -341,7 +355,8 @@ class FilmOrchestrator:
                  stop: Optional[threading.Event] = None,
                  sleep: Callable[[float], None] = time.sleep,
                  clock: Callable[[], float] = time.monotonic,
-                 now: Callable[[], float] = time.time):
+                 now: Callable[[], float] = time.time,
+                 env: Optional[Mapping[str, str]] = None):
         self.db = db
         self.resolve_adapter = resolve_adapter
         self.worker_id = worker_id
@@ -358,6 +373,7 @@ class FilmOrchestrator:
         self.sleep = sleep
         self.clock = clock
         self.now = now
+        self.env = os.environ if env is None else env
         self._lease: Optional[_Lease] = None
 
     # -- one claim -------------------------------------------------------------
@@ -430,9 +446,11 @@ class FilmOrchestrator:
             try:
                 began = self.db.begin_take(str(take["id"]), self.worker_id)
             except FilmRefused as r:
-                if r.word in ("not_running", "take_not_planned"):
-                    stopped = stopped or "deadline" if r.word == "not_running" else stopped
+                if r.word == "not_running":  # drained, or past its deadline: nothing new begins
+                    stopped = stopped or "deadline"
                     break
+                if r.word == "take_not_planned":
+                    continue
                 raise
             if began.get("began") is False:
                 # 0171 settled the segment itself (the hold is gone, or a refund waits on it): nothing more to do here.
@@ -495,6 +513,12 @@ class FilmOrchestrator:
         live = [t for t in takes if t["status"] != "superseded"]
         clips = any(t["kind"] in ("clip", "extend") and t["status"] == "completed" for t in live)
         if stopped is None and live and clips and all(t["status"] == "completed" for t in live):
+            installed = self._assemble is not None or self._assembly_module() is not None
+            if installed and str(self.env.get(ASSEMBLY_FLAG, "") or "") != "on":
+                # The assembly is installed but switched off: it is not begun, and the segment is left as it is (its takes are
+                # made). 0171 settles it: the claim after its last lease, or the sweep at the deadline plus the grace.
+                logger.warning("segment %s: every take is made, but %s is not 'on': the assembly is not begun", sid, ASSEMBLY_FLAG)
+                return DriveOutcome(sid, "left", "assembly_switched_off")
             try:
                 seg = self.db.begin_assembly(sid, self.worker_id)
             except FilmRefused as r:
@@ -516,27 +540,48 @@ class FilmOrchestrator:
                                                   else "assembly_failed")
         return self._settle(sid, reason)
 
+    @staticmethod
+    def _assembly_module():
+        """modules.film_assembly, or None when it is not installed on this worker (another module it fails to import is an error)."""
+        try:
+            return importlib.import_module("modules.film_assembly")
+        except ModuleNotFoundError as e:
+            if e.name != "modules.film_assembly":
+                raise
+            return None
+
     def _run_assembly(self, seg: Mapping[str, Any], sid: str) -> AssemblyOutcome:
         assemble = self._assemble
+        mod = None
         if assemble is None:
-            try:
-                mod = importlib.import_module("modules.film_assembly")
-                assemble = getattr(mod, "assemble_segment")
-            except ModuleNotFoundError as e:
-                if e.name != "modules.film_assembly":
-                    raise
+            mod = self._assembly_module()
+            assemble = getattr(mod, "assemble_segment", None) if mod is not None else None
+            if assemble is None:
                 # The assembly session's module is not deployed here: say so in the record, never guess an assembly.
                 logger.error("segment %s: assembly_unavailable (modules.film_assembly is not installed)", sid)
                 self._record_assembly_failed(sid)
                 return AssemblyOutcome(False, None, "assembly_unavailable", "the assembly is not installed on this worker")
         try:
             out = assemble(dict(seg), worker_id=self.worker_id, db=self.db, media_root=self.media_root, tools=self.tools)
-        except Exception as e:  # its failure path is its own; one that raised may not have recorded, so the record says failed
+        except Exception as e:
+            if _assembly_raised(e, mod, "DbUnavailable"):
+                # The database gave no decision: nothing was recorded and the assembly is still running. Nothing is settled here;
+                # a later claim runs the assembly again (S11's contract).
+                logger.warning("segment %s: the assembly could not reach the database; left for the next claim", sid)
+                raise _Stop("assembly_db_unavailable") from None
+            if _assembly_raised(e, mod, "AssemblyDisabled"):
+                # Its own switch (NIGHTSHIFT_FILM_ASSEMBLY) is off: nothing recorded, nothing settled; 0171's expiry ends it.
+                logger.warning("segment %s: the assembly is switched off (%s); left as it is", sid, ASSEMBLY_FLAG)
+                raise _Stop("assembly_switched_off") from None
+            # Its failure path is its own; one that raised otherwise may not have recorded, so the record says failed.
             logger.error("segment %s: the assembly raised %s", sid, type(e).__name__)
             self._record_assembly_failed(sid)
             return AssemblyOutcome(False, None, "assembly_failed", None)
         ok = bool(getattr(out, "ok", False))
-        return AssemblyOutcome(ok, getattr(out, "asset_id", None), getattr(out, "reason", None), getattr(out, "detail", None))
+        recorded = getattr(out, "recorded", None)
+        if recorded is False:
+            logger.warning("segment %s: the assembly says its outcome was not recorded", sid)
+        return AssemblyOutcome(ok, getattr(out, "asset_id", None), getattr(out, "reason", None), getattr(out, "detail", None), recorded)
 
     def _record_assembly_failed(self, sid: str) -> None:
         try:
@@ -590,8 +635,9 @@ class FilmOrchestrator:
         status, task = str(tj.get("job_status") or ""), tj.get("provider_task_id")
         if status in ("completed", "failed", "cancelled", "expired"):
             raise _TakeFailed("worker_lost", "the take's job ended while no worker held it")
-        if tj.get("job_worker") not in (None, self.worker_id):
-            raise _TakeFailed("worker_lost", "the take's job is another worker's")
+        if tj.get("job_worker") != self.worker_id:
+            # film_take_job hands a live job to the lease holder; one it could not (the creative queue took it back) is lost.
+            raise _TakeFailed("worker_lost", "the take's job is no longer this worker's")
         model = str(take.get("model") or "")
         adapter = self.resolve_adapter(model)
         if adapter is None:
@@ -604,7 +650,7 @@ class FilmOrchestrator:
             if str(task).startswith(("sync:", "film-tts:")):
                 raise _TakeFailed("no_output", "the worker stopped after the provider answered and before the result was stored")
             files = self._poll(adapter, str(task), request, work / "out", lease)
-            return self._deliver(seg, take, tj, job, request, files, str(task), work, None)
+            return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing")
         if tj.get("submit_started"):
             # The paid call may have reached the vendor: it is never made again (0171 plans the retry, charged once).
             raise _TakeFailed("worker_lost", "the worker stopped during the provider call; it is never submitted twice")
@@ -737,17 +783,18 @@ class FilmOrchestrator:
         return self._deliver(seg, take, tj, job, request, [mixed], task_id, work, extra)
 
     def _deliver(self, seg, take, tj, job: str, request: cw.GenerationRequest, files: Sequence[Path], task: str, work: Path,
-                 narration: Optional[Mapping[str, Any]]) -> str:
-        """Register the result (and a clip's last frame) through the job, then hand it to film_take_succeeded."""
+                 narration: Optional[Mapping[str, Any]], *, processing: bool = False) -> str:
+        """Register the result (and a clip's last frame) through the job, then hand it to film_take_succeeded. ``processing``: a
+        resumed job that was already storing (0036 moves it there once); the same asset ids make a second store the same rows."""
         tid, kind, org = str(take["id"]), str(take["kind"]), str(seg["org_id"])
-        if not self.db.advance_job(job, self.worker_id, "processing"):
+        if not processing and not self.db.advance_job(job, self.worker_id, "processing"):
             raise _Stop("job_lost")
         provenance = narration_provenance(job, tid, narration) if kind == "narration" else {
             "job_id": job, "film_take_id": tid, "capability": request.capability, "model": request.model,
             "rights": "generated_for_org"}
         aid = str(uuid.uuid5(ASSET_NS, f"{job}:0"))
         try:
-            row = self.media.store_file(files[0], asset_id=aid, org_id=org, provenance=provenance, expect_kind=OUTPUT_KIND[kind])
+            self.media.store_file(files[0], asset_id=aid, org_id=org, provenance=provenance, expect_kind=OUTPUT_KIND[kind])
         except Exception as e:
             raise _TakeFailed("no_output", f"the result could not be stored ({type(e).__name__})") from None
         if not self.db.attach_job_assets(job, self.worker_id, [aid]):
@@ -764,12 +811,21 @@ class FilmOrchestrator:
                 raise _TakeFailed("no_output", f"the clip's last frame could not be extracted ({type(e).__name__})") from None
             if not self.db.attach_job_assets(job, self.worker_id, [aid, last]):
                 raise _Stop("job_lost")
-        seconds = row.get("duration_s") if isinstance(row, Mapping) else None
+        # What this worker measured, for 0171's record only: 0171 charges by the length register_asset recorded, never by this.
+        seconds = None
+        if kind != "keyframe":
+            try:
+                seconds = self.media.duration(files[0])
+            except Exception:  # noqa: BLE001 — a reported number is optional; the recorded one decides
+                seconds = None
+            seconds = round(float(seconds), 2) if seconds is not None and 0.01 <= float(seconds) <= 600 else None
         try:
-            seconds = float(seconds) if seconds is not None and 0.01 <= float(seconds) <= 600 else None
-        except (TypeError, ValueError):
-            seconds = None
-        out = self.db.take_succeeded(tid, self.worker_id, seconds, aid, last, task)
+            out = self.db.take_succeeded(tid, self.worker_id, seconds, aid, last, task)
+        except FilmRefused as r:
+            if r.word in ("lease_lost", "take_not_running"):
+                raise
+            # 0171 refused the result itself (not a live file of the right kind): the take delivered nothing.
+            raise _TakeFailed("no_output", f"the result was refused ({r.word})") from None
         accepted = isinstance(out, Mapping) and out.get("accepted") is True
         if accepted:
             result = {"asset_ids": [aid] + ([last] if last else []), "storage": "library"}
@@ -781,14 +837,12 @@ class FilmOrchestrator:
 
 def narration_provenance(job: str, take: str, narration: Optional[Mapping[str, Any]]) -> dict:
     """The narration file's provenance, the assembly's contract (S11): film_take_id, the per-scene segments in the file's time on the
-    film's clock, the measured loudness (null when not measured, never a default), and the job (0046's attach_creative_job_assets
-    accepts only files whose provenance names the job). ``words`` only when the vendor returned timings; today none does."""
+    film's clock, and the measured loudness (null when not measured, never a default). No word timings: 0038 caps a provenance at
+    16 KB and a film's words do not fit (the captions come from the assembly's own transcription). Plus the job id, which is not the
+    contract's but 0046's: attach_creative_job_assets refuses a file whose provenance does not name the job that made it."""
     n = dict(narration or {})
-    out = {"job_id": job, "film_take_id": take, "segments": list(n.get("segments") or []),
-           "loudness_lufs": n.get("loudness_lufs"), "true_peak_db": n.get("true_peak_db")}
-    if n.get("words"):
-        out["words"] = list(n["words"])
-    return out
+    return {"job_id": job, "film_take_id": take, "segments": list(n.get("segments") or []),
+            "loudness_lufs": n.get("loudness_lufs"), "true_peak_db": n.get("true_peak_db")}
 
 
 # ── the database (PostgREST, service key) ───────────────────────────────────

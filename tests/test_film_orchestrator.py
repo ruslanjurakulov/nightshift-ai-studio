@@ -112,6 +112,8 @@ class FakeDb:
         cap = {"keyframe": "t2i", "clip": "i2v", "extend": "i2v", "narration": "tts"}[t["kind"]]
         if t["job"]:
             j = self.jobs[t["job"]]
+            if j["status"] not in ("completed", "failed", "cancelled", "expired"):
+                j["worker"] = worker  # 0198: a live job follows the segment's lease to the worker that holds it now
             return {"ok": True, "replayed": True, "job_id": j["id"], "job_status": j["status"], "capability": cap,
                     "params": j["params"], "provider_task_id": j["task"], "submit_started": j["submitting"], "job_worker": j["worker"],
                     "inputs": j["inputs"], "narration": j["narration"]}
@@ -232,6 +234,7 @@ class FakeMedia:
         return p
 
     def store_file(self, path, *, asset_id, org_id, provenance, expect_kind, parent_asset_id=None):
+        # What register_asset records from the service's probe: 0171 charges a clip by this, never by the reported number.
         dur = self.video_seconds if expect_kind == "video" else (4.0 if expect_kind == "audio" else None)
         row = {"id": asset_id, "kind": expect_kind, "duration_s": dur, "provenance": dict(provenance), "parent": parent_asset_id}
         self.stored[asset_id] = row
@@ -306,6 +309,7 @@ class Harness:
             return self.adapters.get(model)
 
         self.media = media or FakeMedia(self.db)
+        kw.setdefault("env", {"NIGHTSHIFT_FILM_ASSEMBLY": "on"})
         self.orch = fo.FilmOrchestrator(self.db, resolve, worker_id=kw.pop("worker_id", "w-1"), media=self.media,
                                         out_dir=Path(self.tmp.name), assemble=assemble or default_assemble,
                                         heartbeat_seconds=0, poll_seconds=0, sleep=lambda s: None, **kw)
@@ -359,6 +363,14 @@ class TakeKinds(unittest.TestCase):
         self.assertEqual(p["segments"], [{"scene_id": SA, "start_s": 0.25, "end_s": 2.25},
                                          {"scene_id": SB, "start_s": 10.25, "end_s": 12.25}])
         self.assertEqual(fo.NARRATION_LEAD_S, 0.25)
+
+    def test_the_narration_provenance_of_a_sixty_scene_film_fits_0038s_16_kb(self):
+        import json
+        segs = [{"scene_id": str(uuid.uuid4()), "start_s": 1200.25 - i, "end_s": 1229.75 - i} for i in range(60)]
+        p = fo.narration_provenance(str(uuid.uuid4()), str(uuid.uuid4()),
+                                    {"segments": segs, "loudness_lufs": -16.4, "true_peak_db": -1.9, "words": [{"word": "x"}] * 400})
+        self.assertNotIn("words", p)
+        self.assertLess(len(json.dumps(p).encode()), 16 * 1024)
 
     def test_measured_loudness_is_carried_as_measured(self):
         h = Harness()
@@ -471,9 +483,6 @@ class Crash(unittest.TestCase):
         self.assertEqual(db.settles, [])  # a lost lease settles nothing
         clip.poll = real_poll
         second = Harness(db, adapters, worker_id="w-2")
-        # The next claim's worker owns the job now (0171 hands it the lease; the job row keeps the task id).
-        for j in db.jobs.values():
-            j["worker"] = "w-2"
         out = second.run()
         self.assertEqual(out.result, "settled")
         self.assertEqual(clip.submits, 2)  # scene A's clip once, scene B's clip once: never a second submit for A
@@ -501,6 +510,36 @@ class Crash(unittest.TestCase):
         db.jobs[job["job_id"]].update(submitting=True, task="sync:abc")
         h.run()
         self.assertEqual(db.failed[0][2], "no_output")
+
+
+class Resume(unittest.TestCase):
+    def test_a_job_left_while_storing_is_stored_again_under_the_same_ids_not_stopped(self):
+        db = FakeDb()
+        h = Harness(db)
+        kf = db.takes_[0]
+        kf["status"] = "running"
+        db.seg["worker"] = "w-0"
+        job = db.take_job(kf["id"], "w-0")
+        db.jobs[job["job_id"]].update(submitting=True, task="task-img-key-9", status="processing")
+        out = h.run()  # claimed by w-1: the job follows the lease
+        self.assertEqual(out.result, "settled")
+        self.assertEqual(kf["status"], "completed")
+        self.assertEqual(h.adapters["img-key"].submits, 0)  # polled, never paid for again
+        self.assertNotIn("processing", db.jobs[job["job_id"]]["steps"])
+
+    def test_a_result_0171_refuses_fails_the_take_instead_of_leaving_the_segment(self):
+        db = FakeDb()
+        real = db.take_succeeded
+
+        def refuse(take, worker, *a):
+            if db._t(take)["kind"] == "keyframe" and db._t(take)["attempt"] == 1:
+                raise fo.FilmRefused("invalid_params")
+            return real(take, worker, *a)
+
+        db.take_succeeded = refuse
+        out = Harness(db).run()
+        self.assertEqual(out.result, "settled")
+        self.assertEqual(db.failed[0][:3], ("keyframe", "provider_error", "no_output"))
 
 
 class Stops(unittest.TestCase):
@@ -568,6 +607,55 @@ class Assembly(unittest.TestCase):
         self.assertEqual(h.db.count("begin"), 0)
         self.assertEqual(h.assembled, [(SEG, "w-1")])
         self.assertEqual(h.db.settles, ["completed"])
+
+    def test_an_assembly_without_a_database_decision_is_left_for_the_next_claim_unsettled(self):
+        class DbUnavailable(ConnectionError):
+            pass
+
+        def flaky(seg, **k):
+            raise DbUnavailable("no answer")
+
+        h = Harness(assemble=flaky)
+        out = h.run()
+        self.assertEqual((out.result, out.reason), ("left", "assembly_db_unavailable"))
+        self.assertEqual(h.db.settles, [])
+        self.assertEqual(h.db.count("record_assembly"), 0)
+        self.assertEqual(h.db.seg["assembly"]["status"], "running")
+        # The next claim runs the assembly again, and this time it answers.
+        h.orch._assemble = None
+        good = Harness(h.db, h.adapters)
+        out = good.run()
+        self.assertEqual(good.assembled, [(SEG, "w-1")])
+        self.assertEqual(h.db.settles, ["completed"])
+
+    def test_with_the_assembly_switched_off_it_is_not_begun_and_nothing_is_settled(self):
+        h = Harness(env={})
+        out = h.run()
+        self.assertEqual((out.result, out.reason), ("left", "assembly_switched_off"))
+        self.assertEqual(h.db.count("begin_assembly"), 0)
+        self.assertEqual(h.db.count("settle"), 0)
+        self.assertEqual(h.assembled, [])
+
+    def test_an_assembly_that_says_it_is_disabled_is_not_settled(self):
+        class AssemblyDisabled(RuntimeError):
+            pass
+
+        def off(seg, **k):
+            raise AssemblyDisabled("NIGHTSHIFT_FILM_ASSEMBLY is not on")
+
+        h = Harness(assemble=off)
+        out = h.run()
+        self.assertEqual((out.result, out.reason), ("left", "assembly_switched_off"))
+        self.assertEqual(h.db.settles, [])
+        self.assertEqual(h.db.count("record_assembly"), 0)
+
+    def test_a_missing_module_is_recorded_and_settled_even_with_the_switch_off(self):
+        h = Harness(env={})
+        h.orch._assemble = None
+        missing = ModuleNotFoundError("No module named 'modules.film_assembly'", name="modules.film_assembly")
+        with mock.patch.object(fo.importlib, "import_module", side_effect=missing):
+            h.run()
+        self.assertEqual(h.db.settles, ["assembly_unavailable"])
 
     def test_no_usable_clip_means_no_assembly(self):
         bad = FakeAdapter("vid-clip", fail=[Err("provider_error")] * 10)

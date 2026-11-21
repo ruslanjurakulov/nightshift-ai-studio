@@ -98,10 +98,17 @@ pay everything), `segment_skipped` (a segment the claim or the sweep could not t
 
 ### The assembly handoff
 
-1. When every take is completed and at least one clip exists, the worker calls `film_begin_assembly(segment, worker)`:
-   `assembly_status` becomes `running`; the segment stays `running`.
+1. When every take is completed and at least one clip exists, the worker decides, in this order:
+   - `modules.film_assembly` is **not installed** on the worker: it calls `film_begin_assembly`, records the assembly as failed
+     (`film_record_assembly(segment, worker, false, null)`) and settles with `assembly_unavailable`.
+   - It is installed but **`NIGHTSHIFT_FILM_ASSEMBLY` is not `on`**: nothing is begun, recorded or settled; one log line names the
+     switch, and the segment is left to 0171 (the claim after its last lease, or `film_expire_segments` at the deadline plus the
+     grace, settles it with the takes that were made).
+   - Otherwise it calls `film_begin_assembly(segment, worker)`: `assembly_status` becomes `running`; the segment stays `running`.
 2. Under the **same lease** (one lease per segment, no handoff; the worker keeps beating it through the assembly), the worker calls
    `modules.film_assembly.assemble_segment(segment, worker_id=..., db=..., media_root=..., tools=...)`. That code owns everything up to
    and including `film_record_assembly(segment, worker, ok, asset)`, its failure path included.
 3. The worker then calls `film_settle_segment(segment, worker, 'completed')` when the assembly succeeded, or with its reason when it
-   did not. A worker that dies during the assembly leaves `assembly_status = 'running'`; the next claim runs the assembly again.
+   did not. When `assemble_segment` raises `DbUnavailable` (the database gave no decision) or `AssemblyDisabled` (its switch is
+   off), nothing was recorded: the worker settles nothing and stops driving the segment. A worker that dies during the assembly, or
+   stops like this, leaves `assembly_status = 'running'`; the next claim runs the assembly again.
