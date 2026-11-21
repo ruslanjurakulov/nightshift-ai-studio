@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useChannelPath } from "@/lib/channels-client";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
 import { TemplateGallery } from "@/components/studio/TemplateGallery";
 import { useI18n } from "@/lib/i18n/context";
-import { defaultDescribeLanguage, describePrefill, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
+import { defaultDescribeLanguage, describePrefill, promptRule, wordsMax, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
 import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
 import { DESK_TOOLS, type MediaDesk } from "@/lib/creative/desks";
@@ -14,6 +14,8 @@ import type { FeedVariant } from "@/components/studio/JobFeed";
 import { useShell } from "@/components/shell/ShellContext";
 import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
 import { toolOpen } from "@/lib/tool-availability";
+import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
+import { attachWords } from "@/lib/creative/attach";
 import "@/components/studio/desk.css";
 
 /** How each desk shows what it made (components/studio/JobFeed variants). */
@@ -42,6 +44,7 @@ export function GenerateSection({
   desk = null,
   project = null,
   unavailable = [],
+  idea = false,
 }: {
   /**
    * The desk this section is (lib/creative/desks): its tools only, laid out
@@ -66,13 +69,15 @@ export function GenerateSection({
   project?: string | null;
   /** The model ids the owner switched off for now (0124): the composer says so over a model the form came with, and picks nothing instead. */
   unavailable?: readonly string[];
+  /** `?idea=1`: the start box's "AI edit" kept the words in this browser (lib/site/idea-handoff.ts); the composer takes them once. */
+  idea?: boolean;
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
   );
   const [sourceRequest, setSourceRequest] = useState<{ nonce: number; id: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { t, locale } = useI18n();
+  const { t, locale, fmt } = useI18n();
   const top = useRef<HTMLDivElement>(null);
   const path = useChannelPath();
   const { tools: availability } = useShell();
@@ -85,6 +90,34 @@ export function GenerateSection({
     setPrefill((p) => ({ nonce: (p?.nonce ?? 0) + 1, value }));
     toComposer();
   };
+
+  // The kept words, taken once (read and deleted together) and put in the composer's prompt, not sent: the person still chooses
+  // the clip and presses the priced key (rule 3). The address loses `idea=`; nothing kept is an empty box, never an error.
+  // A tool that takes no words is asked about BEFORE the words are taken: a crafted address (`tool=video_upscale&idea=1`) must not
+  // quietly delete what someone kept for another page. Words longer than the tool takes are cut to its limit and said so.
+  const ideaTaken = useRef(false);
+  const [ideaCut, setIdeaCut] = useState<number | null>(null);
+  useEffect(() => {
+    if (!idea || ideaTaken.current) return;
+    ideaTaken.current = true;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete(IDEA_PARAM);
+      window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      // The address keeps `idea=1`; the words are taken once either way.
+    }
+    const tool = initial?.capability ?? (desk ? DESK_TOOLS[desk][0] : null);
+    if (!tool || promptRule(tool) === "none") return;
+    const words = takeIdea();
+    if (!words) return;
+    const prompt = attachWords(tool, words);
+    if (!prompt) return;
+    if (Array.from(words.trim()).length > wordsMax(tool)) setIdeaCut(wordsMax(tool));
+    fill({ ...(initial ?? { capability: tool, model: "", prompt: "", aspect: "16:9", duration: 5 }), prompt });
+    // Once, on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pickAsSource = (id: string) => {
     setSourceRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, id }));
@@ -115,6 +148,13 @@ export function GenerateSection({
     />
   );
 
+  const cutNote =
+    ideaCut !== null ? (
+      <p className="m-0 text-sm text-[var(--color-muted)]" role="status" data-testid="idea-cut">
+        {fmt(t.startBox.received.cut, { max: ideaCut })}
+      </p>
+    ) : null;
+
   const fromProject = project ? (
     <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--color-muted)]" data-testid="from-project">
       <span>{t.improveAi.fromProject}</span>
@@ -131,6 +171,7 @@ export function GenerateSection({
     return (
       <div className="flex flex-col gap-4">
       {fromProject}
+      {cutNote}
       {/* Which of this desk's tools have nothing on sale, said before a tab is pressed (lib/tool-availability.ts). */}
       <DeskAvailabilityNote desk={desk} />
       <div className="desk-layout" data-desk={desk} style={dock}>
@@ -168,6 +209,7 @@ export function GenerateSection({
   return (
     <div className="flex flex-col gap-4">
     {fromProject}
+    {cutNote}
     <NothingOnSaleNote />
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]" style={dock}>
       <div

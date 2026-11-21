@@ -11,6 +11,7 @@ import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { voiceCatalogUz } from "./voice-catalog/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { assetDownloadUz } from "./asset-download/uz";
+import { brainDashUz } from "./brain-dashboard/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ageUz } from "./age/uz";
 import { aiChatUz } from "./ai-chat/uz";
@@ -36,6 +37,7 @@ import { ownerAnalyticsUz } from "./owner-analytics/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { trendsUz } from "./trends/uz";
+import { startBoxUz } from "./start-box/uz";
 import { ownerConsoleUz } from "./owner-console/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
@@ -69,12 +71,15 @@ export const uz: Dictionary = {
   presets: presetsUz,
   /** The Trends gallery (migration 0183): ./trends/uz.ts. */
   trends: trendsUz,
+  /** The start box of the app (Home, the Studio start): ./start-box/uz.ts. */
+  startBox: startBoxUz,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/uz.ts. */
   ownerConsole: ownerConsoleUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
   assetDownload: assetDownloadUz,
+  brainDash: brainDashUz,
   ownerShell: ownerShellUz,
   age: ageUz,
   aiChat: aiChatUz,
@@ -173,6 +178,7 @@ export const uz: Dictionary = {
     organization: "Sozlamalar",
     credits: "Kreditlar",
     usage: "Sarf",
+    brain: "Nightshift Brain",
     security: "Xavfsizlik",
     onboarding: "Ishni boshlash",
     approvals: "Tasdiqlashlar",
