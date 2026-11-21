@@ -22,7 +22,7 @@ import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { withPreviews } from "@/lib/creative/studio";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
-import { filmStudioListed, filmStudioMode, filmStudioOpen } from "@/lib/server/films";
+import { filmStudioListed, filmStudioMode, filmStudioOpen, filmStudioOpenFor } from "@/lib/server/films";
 import { STUDIO_SHELVES, shelfFromQuery, type StudioShelf } from "@/lib/studioRoutes";
 import "@/components/studio-hub/studio-hub.css";
 
@@ -52,8 +52,9 @@ export default async function StudioPage({
   if (sp.view === "live") {
     // The live view of one plan (S5's handoff opens it): a project (?film=) or a channel video run (?run=, a render_jobs id). It reads in
     // the browser through the read-only live routes; the server only says whether projects are open for this viewer.
-    const filmStudio = await filmStudioOpen();
     const film = parseFilmId(sp.film);
+    // A named project is open only when its own workspace is switched on too (filmStudioOpenFor).
+    const filmStudio = film ? await filmStudioOpenFor(film) : await filmStudioOpen();
     const run = typeof sp.run === "string" && /^[1-9][0-9]{0,14}$/.test(sp.run) ? sp.run : null;
     // The Actions backend gives no run id: its run is the channel's events since the dispatch (/api/agent/run's dispatched_at).
     // channels.channel_id is a slug (0001), not a uuid.
@@ -73,8 +74,9 @@ export default async function StudioPage({
   if (sp.view === "timeline") {
     // The Timeline reads one project through /api/films (RLS, film_json) in the browser; the server only says whether the section is
     // open for this viewer, so a switched-off workspace sees "not open yet" and no project is read at all.
-    const filmStudio = await filmStudioOpen();
-    return <StudioTimeline filmStudio={filmStudio} filmId={parseFilmId(sp.film) ?? null} />;
+    const timelineFilm = parseFilmId(sp.film) ?? null;
+    const filmStudio = timelineFilm ? await filmStudioOpenFor(timelineFilm) : await filmStudioOpen();
+    return <StudioTimeline filmStudio={filmStudio} filmId={timelineFilm} />;
   }
 
   const { selection, channels } = await getChannelContext();

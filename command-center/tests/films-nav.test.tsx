@@ -97,18 +97,26 @@ describe("the Studio section", () => {
     }
     const layout = readFileSync(join(root, "app/(app)/layout.tsx"), "utf8");
     expect(layout).toContain("filmStudio: filmStudioListed(filmMode, frame, filmOrgOn)");
-    // The roll-up asks about any of the viewer's workspaces; a channel view about the open one.
-    expect(layout).toContain("filmStudioViewerOn(filmMode, !isScoped(selection))");
+    // The roll-up asks about the open workspace, like a channel view: every page behind the entry checks that one.
+    expect(layout).toContain("filmStudioViewerOn(filmMode)");
   });
 });
 
 const ORG_A = "0a000000-0000-4000-8000-00000000000a";
 const ORG_B = "0b000000-0000-4000-8000-00000000000b";
 /** A member client whose org_film_settings read answers `answer` (rows, a database error, or a throw), and records what was asked. */
-function switchClient(answer: () => unknown) {
+function switchClient(answer: () => unknown, filmOrg: () => unknown = () => ({ data: { org_id: ORG_A }, error: null })) {
   const asked: string[][] = [];
   const client = {
     from: (table: string) => {
+      if (table === "films") {
+        return {
+          select: (cols: string) => {
+            expect(cols).toBe("org_id");
+            return { eq: () => ({ maybeSingle: async () => filmOrg() }) };
+          },
+        };
+      }
       if (table !== "org_film_settings") throw new Error(`unexpected table ${table}`);
       return {
         select: (cols: string) => {
@@ -145,7 +153,7 @@ describe("the workspace switch under `on` (org_film_settings, 0198)", () => {
     const { filmStudioListed, filmStudioViewerOn } = await import("../lib/server/films");
     const { client } = switchClient(() => rows([ORG_A, false]));
     h.client.mockResolvedValue(client);
-    expect(filmStudioListed("on", true, await filmStudioViewerOn("on", false))).toBe(false);
+    expect(filmStudioListed("on", true, await filmStudioViewerOn("on"))).toBe(false);
     const { default: List } = await import("../app/(app)/[channel]/create/projects/page");
     const { default: Canvas } = await import("../app/(app)/[channel]/create/projects/[id]/page");
     await expect(List({})).rejects.toThrow("NEXT_NOT_FOUND");
@@ -156,7 +164,7 @@ describe("the workspace switch under `on` (org_film_settings, 0198)", () => {
     const { filmStudioListed, filmStudioViewerOn, filmStudioOpen } = await import("../lib/server/films");
     const { client, asked } = switchClient(() => rows([ORG_A, true]));
     h.client.mockResolvedValue(client);
-    expect(filmStudioListed("on", false, await filmStudioViewerOn("on", false))).toBe(true);
+    expect(filmStudioListed("on", false, await filmStudioViewerOn("on"))).toBe(true);
     expect(await filmStudioOpen()).toBe(true);
     // The open workspace only, through the member's own client.
     expect(asked).toEqual([[ORG_A], [ORG_A]]);
@@ -167,7 +175,7 @@ describe("the workspace switch under `on` (org_film_settings, 0198)", () => {
   it("a workspace never switched (no row) is hidden", async () => {
     const { filmStudioViewerOn, filmStudioOpen } = await import("../lib/server/films");
     h.client.mockResolvedValue(switchClient(() => rows()).client);
-    expect(await filmStudioViewerOn("on", false)).toBe(false);
+    expect(await filmStudioViewerOn("on")).toBe(false);
     expect(await filmStudioOpen()).toBe(false);
   });
 
@@ -183,7 +191,7 @@ describe("the workspace switch under `on` (org_film_settings, 0198)", () => {
         [() => ({ data: null, error: null }), "unexpected_shape"],
       ] as Array<[() => unknown, string]>) {
         h.client.mockResolvedValue(switchClient(answer).client);
-        for (const check of [() => filmStudioViewerOn("on", false), () => filmStudioOpen()]) {
+        for (const check of [() => filmStudioViewerOn("on"), () => filmStudioOpen()]) {
           log.mockClear();
           expect(await check()).toBe(false);
           expect(log).toHaveBeenCalledOnce();
@@ -205,26 +213,73 @@ describe("the workspace switch under `on` (org_film_settings, 0198)", () => {
     }
   });
 
-  it("the every-channel roll-up: listed when any of the viewer's own workspaces is on, not when none is", async () => {
+  it("the every-channel roll-up asks the open workspace only: off there and on elsewhere is not listed (no link to a 404)", async () => {
     const { filmStudioListed, filmStudioViewerOn } = await import("../lib/server/films");
     let s = switchClient(() => rows([ORG_A, false], [ORG_B, true]));
     h.client.mockResolvedValue(s.client);
-    expect(filmStudioListed("on", false, await filmStudioViewerOn("on", true))).toBe(true);
-    expect(s.asked).toEqual([[ORG_A, ORG_B]]);
-    s = switchClient(() => rows([ORG_A, false], [ORG_B, false]));
+    expect(filmStudioListed("on", false, await filmStudioViewerOn("on"))).toBe(false);
+    expect(s.asked).toEqual([[ORG_A]]);
+    s = switchClient(() => rows([ORG_A, true]));
     h.client.mockResolvedValue(s.client);
-    expect(filmStudioListed("on", false, await filmStudioViewerOn("on", true))).toBe(false);
-    s = switchClient(() => rows());
+    expect(filmStudioListed("on", false, await filmStudioViewerOn("on"))).toBe(true);
+  });
+
+  it("a membership lookup that failed is hidden, with one org_context_unavailable line", async () => {
+    const { filmStudioViewerOn, filmStudioOpen } = await import("../lib/server/films");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      h.org.mockResolvedValue({ supported: false, orgs: [], switchable: [], current: null, unavailable: true });
+      const s = switchClient(() => rows([ORG_A, true]));
+      h.client.mockResolvedValue(s.client);
+      expect(await filmStudioViewerOn("on")).toBe(false);
+      expect(log).toHaveBeenCalledOnce();
+      expect(log.mock.calls[0].map(String).join(" ")).toContain("org_context_unavailable");
+      expect(await filmStudioOpen()).toBe(false);
+      expect(s.asked).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("the open workspace on, the project's own off: the project's page is a 404", async () => {
+    const { default: Canvas } = await import("../app/(app)/[channel]/create/projects/[id]/page");
+    const FILM_ID = "0f000000-0000-4000-8000-00000000000f";
+    const s = switchClient(
+      () => rows([ORG_A, true], [ORG_B, false]),
+      () => ({ data: { org_id: ORG_B }, error: null }),
+    );
     h.client.mockResolvedValue(s.client);
-    expect(await filmStudioViewerOn("on", true)).toBe(false);
+    await expect(Canvas({ params: Promise.resolve({ id: FILM_ID }) })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(s.asked).toEqual([[ORG_A], [ORG_B]]);
+    // A project RLS does not show (missing, or a workspace the caller is not in) is the same 404.
+    h.client.mockResolvedValue(switchClient(() => rows([ORG_A, true]), () => ({ data: null, error: null })).client);
+    await expect(Canvas({ params: Promise.resolve({ id: FILM_ID }) })).rejects.toThrow("NEXT_NOT_FOUND");
+  });
+
+  it("the Studio's live and timeline views of a project say closed when its workspace is off", async () => {
+    const { default: StudioPage } = await import("../app/(app)/[channel]/studio/page");
+    const FILM_ID = "0f000000-0000-4000-8000-00000000000f";
+    const open = async (sp: Record<string, string>) =>
+      ((await StudioPage({ searchParams: Promise.resolve(sp) })) as ReactElement<{ filmStudio: boolean }>).props.filmStudio;
+    for (const view of ["live", "timeline"]) {
+      // The open workspace off.
+      h.client.mockResolvedValue(switchClient(() => rows([ORG_A, false])).client);
+      expect(await open({ view, film: FILM_ID }), view).toBe(false);
+      // The open workspace on, the project's own off.
+      h.client.mockResolvedValue(switchClient(() => rows([ORG_A, true], [ORG_B, false]), () => ({ data: { org_id: ORG_B }, error: null })).client);
+      expect(await open({ view, film: FILM_ID }), view).toBe(false);
+      // Both on.
+      h.client.mockResolvedValue(switchClient(() => rows([ORG_A, true], [ORG_B, true]), () => ({ data: { org_id: ORG_B }, error: null })).client);
+      expect(await open({ view, film: FILM_ID }), view).toBe(true);
+    }
   });
 
   it("`admins` and `off` read no workspace switch: an admin sees it, anyone else does not", async () => {
     const { filmStudioListed, filmStudioViewerOn, filmStudioOpen } = await import("../lib/server/films");
     const s = switchClient(() => rows([ORG_A, false]));
     h.client.mockResolvedValue(s.client);
-    expect(await filmStudioViewerOn("admins", false)).toBe(false);
-    expect(await filmStudioViewerOn("off", true)).toBe(false);
+    expect(await filmStudioViewerOn("admins")).toBe(false);
+    expect(await filmStudioViewerOn("off")).toBe(false);
     expect(filmStudioListed("admins", true, false)).toBe(true);
     expect(filmStudioListed("admins", false, true)).toBe(false);
     expect(filmStudioListed("off", true, true)).toBe(false);

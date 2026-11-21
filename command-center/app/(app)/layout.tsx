@@ -16,7 +16,6 @@ import {
   SEARCH_HEADER,
   appRedirect,
   channelSlug,
-  isScoped,
   unscopedScope,
 } from "@/lib/channels";
 import { NavigationProvider } from "@/components/navigation/NavigationProvider";
@@ -160,10 +159,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // When the balance was read, so the header's live store (lib/credits-live) never trades a fresher reading of its own for this one.
   let creditsReadAt: string | null = null;
   let plan: AccountPlan | null = null;
-  // Film Studio under `on` is listed per workspace (org_film_settings, 0198): the open one in a channel view, any of the viewer's own
-  // in the every-channel roll-up. Started here beside the reads below; it never rejects (an unknown switch is "off").
+  // Film Studio under `on` is listed by the open workspace's own switch (org_film_settings, 0198), in the every-channel roll-up too:
+  // the pages and routes behind the entry check that workspace. Started here beside the reads below; it never rejects (an unknown
+  // switch is "off").
   const filmMode = filmStudioMode();
-  const filmOrgOnRead = filmStudioViewerOn(filmMode, !isScoped(selection));
+  const filmOrgOnRead = filmStudioViewerOn(filmMode);
   // Which Studio tools have a model on sale (lib/server/tool-availability.ts): the sidebar, the desk bar, Home and Presets mark the
   // rest "Not available yet" instead of linking to a form that has nothing to pick. Started here so it runs beside the credit reads
   // below (it never rejects: a failure is "unknown"); one read, shared with the page (React cache).

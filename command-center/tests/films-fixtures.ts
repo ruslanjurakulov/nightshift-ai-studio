@@ -65,20 +65,27 @@ export function sceneJson(id: string, position: number, over: Record<string, unk
 export type OrgSwitchAnswer = { data: unknown; error: { code?: string; message?: string } | null } | Error;
 
 /**
- * A Supabase client's `from` that answers org_film_settings (the workspace switch filmGate reads under `on`) and hands every other
- * table to `rest`, so a test's own table mock never sees the switch read. `answer` defaults to ORG switched on.
+ * A Supabase client's `from` that answers org_film_settings (the workspace switch filmGate reads under `on`) and the project's own
+ * workspace (filmGateFor's `films.select("org_id")`), and hands every other read to `rest`, so a test's own table mock never sees the
+ * gate's reads. `answer` defaults to ORG switched on; `filmOrg` to a project of ORG.
  */
-export function withOrgSwitch(rest: (table: string) => unknown, answer: () => OrgSwitchAnswer = () => ({ data: [{ org_id: ORG, film_studio_enabled: true }], error: null })) {
+export function withOrgSwitch(
+  rest: (table: string) => unknown,
+  answer: () => OrgSwitchAnswer = () => ({ data: [{ org_id: ORG, film_studio_enabled: true }], error: null }),
+  filmOrg: () => OrgSwitchAnswer = () => ({ data: { org_id: ORG }, error: null }),
+) {
+  const settle = async (a: OrgSwitchAnswer) => {
+    if (a instanceof Error) throw a;
+    return a;
+  };
   return (table: string) => {
-    if (table !== "org_film_settings") return rest(table);
+    if (table === "org_film_settings") return { select: () => ({ in: async () => settle(answer()) }) };
+    if (table !== "films") return rest(table);
     return {
-      select: () => ({
-        in: async () => {
-          const a = answer();
-          if (a instanceof Error) throw a;
-          return a;
-        },
-      }),
+      select: (cols: string) =>
+        cols === "org_id"
+          ? { eq: () => ({ maybeSingle: async () => settle(filmOrg()) }) }
+          : (rest(table) as { select: (c: string) => unknown }).select(cols),
     };
   };
 }

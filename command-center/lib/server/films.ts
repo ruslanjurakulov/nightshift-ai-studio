@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isPlatformAdmin } from "@/lib/auth/org-roles";
@@ -30,8 +31,9 @@ export const NO_STORE = { "cache-control": "no-store" };
  *   - `off` (unset, empty, anything unrecognised): the pages and the routes are a 404, and no navigation lists the section;
  *   - `admins`: only a platform owner/admin sees it (the operator trying the unfinished section in production); everyone else, 404;
  *   - `on` (also 1/true/yes): a member of a workspace whose own switch is on (org_film_settings.film_studio_enabled, migration
- *     0198, default false; filmStudioOrgOn). Without that, `on` would open the section to every workspace the moment the owner
- *     tried it for one, while start_film still refused them all: a section that answers "not open" on every click.
+ *     0198, default false; filmStudioOrgOn), and for one project its own workspace as well (filmGateFor, filmStudioOpenFor).
+ *     Without that, `on` would open the section to every workspace the moment the owner tried it for one, while start_film still
+ *     refused them all: a section that answers "not open" on every click.
  * The platform switch (film_studio_settings, 0171) is not readable by any API role, so it is not read here: quote_film and
  * start_film enforce it themselves (both read 0198's film_studio_on_for, the platform's switch AND the workspace's), as before.
  */
@@ -96,29 +98,81 @@ export async function filmStudioOrgOn(supabase: Client | null, orgIds: readonly 
 }
 
 /**
- * The workspace answer for the navigation under `on` (no read under `off` or `admins`). A channel view asks about the workspace the
- * app has open (getOrgContext's `current`); the every-channel roll-up asks about any workspace the viewer is in (`switchable`: their
- * own memberships, not every organization a platform admin may read).
+ * The open workspace's switch (getOrgContext's `current`), once per rendered request: React's cache() memoizes within one server
+ * render only (never across requests, and not at all in a route handler, which then simply reads again), so the layout, the page and
+ * a shelf share one read and, when it fails, one log line. No open workspace is off; a membership lookup that failed (getOrgContext
+ * `unavailable`) is off too, and said.
  */
-export async function filmStudioViewerOn(mode: FilmStudioMode, allChannels: boolean): Promise<boolean> {
-  if (mode !== "on") return false;
+const currentOrgFilmOn = cache(async (): Promise<boolean> => {
   let ids: string[] = [];
   try {
     const ctx = await getOrgContext();
-    ids = allChannels ? ctx.switchable.map((o) => o.id) : ctx.current ? [ctx.current.id] : [];
-    if (ids.length === 0) return false;
+    if (ctx.unavailable) {
+      orgSwitchUnknown(ids, "org_context_unavailable");
+      return false;
+    }
+    if (!ctx.current) return false;
+    ids = [ctx.current.id];
     return await filmStudioOrgOn(await createClient(), ids);
   } catch {
     orgSwitchUnknown(ids, "threw");
     return false;
   }
+});
+
+/**
+ * The workspace answer for the navigation under `on` (no read under `off` or `admins`): the open workspace's own switch, in a channel
+ * view and in the every-channel roll-up alike. Not "any of the viewer's workspaces" in the roll-up: every page and route behind the
+ * entry checks the open workspace, so any other answer would list a link to a 404.
+ */
+export async function filmStudioViewerOn(mode: FilmStudioMode): Promise<boolean> {
+  return mode === "on" ? currentOrgFilmOn() : false;
 }
 
 /** May this request open the section's pages? An unknown admin answer is "no" (isPlatformAdmin folds errors to false), and so is an unknown workspace switch. */
 export async function filmStudioOpen(mode: FilmStudioMode = filmStudioMode()): Promise<boolean> {
   if (mode === "off") return false;
-  if (mode === "on") return filmStudioViewerOn(mode, false);
+  if (mode === "on") return currentOrgFilmOn();
   return isPlatformAdmin();
+}
+
+function filmOrgUnknown(filmId: string, code: string) {
+  console.error("films: the project's workspace could not be read (film %s, %s); it is closed", filmId, code);
+}
+
+/**
+ * Is the workspace that owns this project switched on? The project's org_id under films RLS (0166 grants members that column), then
+ * that workspace's switch. A project that is missing, of a workspace the caller is not in (RLS: no row), unreadable, or whose
+ * workspace is off: false. The open workspace's switch is not enough, because a person in two workspaces can name a project of the
+ * other one, and save_film / archive_film / film_json check membership, never a switch.
+ */
+async function filmOrgOnFor(supabase: Client | null, id: unknown): Promise<boolean> {
+  const filmId = parseFilmId(id);
+  if (!filmId || !supabase) return false;
+  try {
+    const { data, error } = await supabase.from("films").select("org_id").eq("id", filmId).maybeSingle();
+    if (error) {
+      filmOrgUnknown(filmId, typeof error.code === "string" && error.code ? error.code : "error");
+      return false;
+    }
+    if (data === null) return false;
+    const org = (data as { org_id?: unknown }).org_id;
+    if (typeof org !== "string") {
+      filmOrgUnknown(filmId, "unexpected_shape");
+      return false;
+    }
+    return filmStudioOrgOn(supabase, [org]);
+  } catch {
+    filmOrgUnknown(filmId, "threw");
+    return false;
+  }
+}
+
+/** filmStudioOpen for a page about one project: under `on`, the open workspace AND the project's own workspace are switched on. */
+export async function filmStudioOpenFor(id: unknown, mode: FilmStudioMode = filmStudioMode()): Promise<boolean> {
+  if (mode !== "on") return filmStudioOpen(mode);
+  if (!(await currentOrgFilmOn())) return false;
+  return filmOrgOnFor(await createClient(), id);
 }
 
 export function filmFail(error: FilmError, status: number, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
@@ -139,10 +193,7 @@ export type FilmGate = { ok: true; supabase: Client; userId: string } | { ok: fa
  * not tell a visitor whether they are signed in), the session (401), the admins-only check (404, the same answer as "off"), the client,
  * and under `on` the open workspace's own switch (404 again, so a workspace that is off cannot tell the section exists).
  *
- * The workspace checked is the one the app has open, also for a route that names a project, and that is enough: a project of a
- * workspace the caller is not in reads and writes like a missing one through this client (films RLS, 0166's functions check the
- * organization again). The one way to name a project of another workspace the caller can read (the platform operator's support
- * read) still cannot spend through it: quote_film and start_film ask film_studio_on_for about the film's own organization (0198).
+ * A route that names a project uses filmGateFor, which also checks the project's own workspace.
  */
 export async function filmGate(mode: FilmStudioMode = filmStudioMode()): Promise<FilmGate> {
   if (mode === "off") return { ok: false, response: filmFail("not_found", 404) };
@@ -151,11 +202,20 @@ export async function filmGate(mode: FilmStudioMode = filmStudioMode()): Promise
   if (mode === "admins" && !(await isPlatformAdmin())) return { ok: false, response: filmFail("not_found", 404) };
   const supabase = await createClient();
   if (!supabase) return { ok: false, response: filmFail("not_configured", 503) };
-  if (mode === "on") {
-    const org = await currentFilmOrg();
-    if (!org || !(await filmStudioOrgOn(supabase, [org.id]))) return { ok: false, response: filmFail("not_found", 404) };
-  }
+  if (mode === "on" && !(await currentOrgFilmOn())) return { ok: false, response: filmFail("not_found", 404) };
   return { ok: true, supabase, userId: user.id };
+}
+
+/**
+ * filmGate for a route that names a project (/api/films/[id]/*): the same order and answers, and under `on` the project's own
+ * workspace must be switched on as well (filmOrgOnFor); a project that is missing, unreadable or in a workspace that is off is the same
+ * 404 not_found. quote_film and start_film keep 0198's own check (film_studio_on_for, with the platform's switch) as well.
+ */
+export async function filmGateFor(id: string, mode: FilmStudioMode = filmStudioMode()): Promise<FilmGate> {
+  const gate = await filmGate(mode);
+  if (!gate.ok || mode !== "on") return gate;
+  if (!(await filmOrgOnFor(gate.supabase, id))) return { ok: false, response: filmFail("not_found", 404) };
+  return gate;
 }
 
 /** The route's per-person limit (lib/server/web-rate), or the refusal to send. */
