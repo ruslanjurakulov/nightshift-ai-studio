@@ -56,6 +56,18 @@ EXPECTED_ESTIMATES = {
 
 #: Chargeable units left without a price ON PURPOSE, each with the reason.
 UNPRICED_ON_PURPOSE = {
+    # S10 (2026-11-20): hidden until a probe passes; the owner sets these rows in the database only (0194 / 0195 open a model
+    # only once its rows exist), so no price file in the repository names them.
+    "model_openai_gpt_image_2_6_sunburst_image": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_image_2_6_sunburst_image_low": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_image_2_6_sunburst_image_medium": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_image_2_6_sunburst_image_high": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_image_2_6_flare_image": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_image_2_6_flare_image_low": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_image_2_6_flare_image_medium": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_image_2_6_flare_image_high": "priced in the database only (S10); hidden until then",
+    "model_anthropic_claude_sonnet_5_5_request": "priced in the database only (S10); hidden until then",
+    "model_openai_gpt_6_luna_request": "priced in the database only (S10); hidden until then",
     "video_minute": "held back (Lens-380): publishes the public rate and starts paid runs; owner applies when ready",
     "reply_draft": "held back (Lens-380): the comment inbox is the last deploy step",
     "scene_regenerate": "held back (Lens-380): the worker and 0076/0085 first",
@@ -349,16 +361,19 @@ class PriceDefaultsFile(unittest.TestCase):
         self.assertIn("'scene_regenerate_clip_' ||", (MIGRATIONS / "0076_scene_regenerate.sql").read_text())
 
     def test_quality_tiers_match_what_the_registry_sells(self):
-        # The gated, unpriced grok tiers and the operator-only Ideogram 4.5 trial are not ones the registry SELLS; every other
-        # tier must still be priced.
+        # The gated, unpriced grok tiers, the operator-only Ideogram 4.5 trial and the hidden GPT Image 2.6 tiers (priced in the
+        # database only, S10) are not ones the registry SELLS; every other tier must still be priced.
         tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)} \
-            - {u for u in UNPRICED_ON_PURPOSE if u.startswith(("model_grok_imagine_", "model_ideogram_4_5_"))}
+            - {u for u in UNPRICED_ON_PURPOSE
+               if u.startswith(("model_grok_imagine_", "model_ideogram_4_5_", "model_openai_gpt_image_2_6_"))}
         all_tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)}
         self.assertEqual(all_tiers - tiers, {"model_grok_imagine_image_2_0_image_low",
                                              "model_grok_imagine_image_2_0_image_medium",
                                              "model_ideogram_4_5_image_low", "model_ideogram_4_5_image_medium",
-                                             "model_ideogram_4_5_image_high"},
-                         "only the gated grok tiers and the Ideogram 4.5 trial may be left out of the sold-tier check")
+                                             "model_ideogram_4_5_image_high",
+                                             *(f"model_openai_gpt_image_2_6_{v}_image_{q}" for v in ("sunburst", "flare")
+                                               for q in ("low", "medium", "high"))},
+                         "only the gated grok tiers, the Ideogram 4.5 trial and the hidden GPT Image 2.6 tiers may be left out")
         self.assertEqual(len(tiers), 9)
         self.assertTrue(tiers <= {r["unit"] for r in self.rows})
 

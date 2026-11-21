@@ -3998,6 +3998,7 @@ export const uz: Dictionary = {
     useAsSource: "Rasm sifatida olish",
     describeAction: "Bu rasmni tasvirlash",
     descriptionLabel: "Tavsif",
+    aiWrittenNote: "Matnni sunʼiy intellekt rasm asosida yozgan. Unga tayanishdan oldin tekshirib chiqing.",
     copy: "Nusxalash",
     copied: "Nusxalandi",
     copyFailed: "Nusxalab boʻlmadi. Matnni belgilab, oʻzingiz nusxalang.",

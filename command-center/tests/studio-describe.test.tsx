@@ -276,7 +276,7 @@ describe("where Describe is offered", () => {
     for (const d of Object.values(dictionaries)) {
       const copy = JSON.stringify([
         d.gen.describeNote, d.gen.describe, d.gen.describePriced, d.gen.describeAction, d.gen.makeSimilar,
-        d.gen.makeSimilarHint, d.gen.tabs.describe, d.gen.kinds.describe, d.gen.describeLanguageLabel,
+        d.gen.makeSimilarHint, d.gen.tabs.describe, d.gen.kinds.describe, d.gen.describeLanguageLabel, d.gen.aiWrittenNote,
       ]).toLowerCase();
       for (const brand of ["gemini", "google", "openai", "gpt", "claude", "anthropic"]) expect(copy).not.toContain(brand);
     }
@@ -363,6 +363,10 @@ describe("the feed", () => {
     const text = await screen.findByTestId("describe-text");
     expect(text.textContent).toBe("A lighthouse on a rocky coast at dawn, soft fog, warm light.");
     expect(text.getAttribute("lang")).toBe("en");
+    // Model text nobody checked says so, right after the text (Anthropic Commercial Terms D.3; the same for every describe model).
+    const note = screen.getByTestId("describe-ai-note");
+    expect(note.textContent).toBe(t.gen.aiWrittenNote);
+    expect(text.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: t.gen.copy }));
     await screen.findByRole("button", { name: t.gen.copied });
@@ -405,6 +409,7 @@ describe("the feed", () => {
     render(withI18n(<JobFeed orgId={ORG} models={MODELS} onRetry={vi.fn()} />));
     expect(await screen.findByRole("button", { name: t.gen.tryAgain })).toBeTruthy();
     expect(screen.queryByTestId("describe-text")).toBeNull();
+    expect(screen.queryByTestId("describe-ai-note")).toBeNull();
     expect(screen.getByText(t.gen.returned)).toBeTruthy();
   });
 });

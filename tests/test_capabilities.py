@@ -413,7 +413,8 @@ class RequestShapeTests(unittest.TestCase):
                        CapabilityRequest("t2i", "apple", aspect_ratio="16:9", end_user="u_1a2b3c"),
                        "gpt-image-2", FakeResp(200, {"data": [{"b64_json": png}]}))
         self.assertEqual(kw["json"]["size"], "1536x864")
-        self.assertEqual(kw["json"]["user"], "u_1a2b3c")
+        self.assertEqual(kw["json"]["safety_identifier"], "u_1a2b3c")
+        self.assertNotIn("user", kw["json"])          # deprecated on the Images API
         w, h = map(int, kw["json"]["size"].split("x"))
         self.assertEqual((w % 16, h % 16), (0, 0))
 
@@ -423,6 +424,7 @@ class RequestShapeTests(unittest.TestCase):
                        CapabilityRequest("t2i", "apple", end_user="alice@example.com"),
                        "gpt-image-2", FakeResp(200, {"data": [{"b64_json": png}]}))
         self.assertNotIn("user", kw["json"])
+        self.assertNotIn("safety_identifier", kw["json"])
 
     def test_elevenlabs_sfx_sends_its_model_id(self):
         a = adapter("audio.elevenlabs_sfx", [("POST", "sound-generation", FakeResp(200, content=b"ID3audio"))])

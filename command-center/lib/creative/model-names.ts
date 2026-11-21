@@ -8,6 +8,7 @@
  * site show them); nothing else of the registry is copied here.
  */
 export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
+  "anthropic-claude-sonnet-5-5": "Claude Sonnet 5.5",
   "assemblyai-universal-2": "AssemblyAI Universal-2",
   "elevenlabs-dubbing-v1": "ElevenLabs Dubbing v1",
   "elevenlabs-dubbing-v2": "ElevenLabs Dubbing v2",
@@ -62,9 +63,12 @@ export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "minimax-h3-lite": "MiniMax H3 Lite",
   "minimax-h3-max": "MiniMax H3 Max",
   "minimax-hailuo-2.3": "MiniMax Hailuo 2.3",
+  "openai-gpt-6-luna": "GPT-6 Luna",
   "openai-gpt-image-2": "OpenAI GPT Image 2",
   "openai-gpt-image-2.5-flare": "OpenAI GPT Image 2.5 Flare",
   "openai-gpt-image-2.5-sunburst": "OpenAI GPT Image 2.5 Sunburst",
+  "openai-gpt-image-2.6-flare": "OpenAI GPT Image 2.6 Flare",
+  "openai-gpt-image-2.6-sunburst": "OpenAI GPT Image 2.6 Sunburst",
   "pika-2.5": "Pika 2.5",
   "pika-pikaframes": "Pika 2.5 Pikaframes",
   "qwen-image-2.1-pro": "Qwen-Image 2.1 Pro",

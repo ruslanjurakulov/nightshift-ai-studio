@@ -11,4 +11,5 @@ pillow-heif>=0.20.0,<2
 python-dotenv>=1.0.0  # same floor as requirements.txt
 # test_sec_breach_owner_costs.py runs the operator bot's own balance alerts (modules/operator_bot) against lab rows; its
 # import chain reaches modules/supabase_sync.py, which imports requests at module level. No request is sent from the lab.
+# test_sec_breach_llm_describe.py also imports requests, for the Claude / GPT describe adapters (fake sessions, no request sent).
 requests>=2.33.0  # same floor as requirements.txt

@@ -23,6 +23,7 @@ import { validateSecretValue } from "@/lib/server/secret-validators";
 
 export const MODEL_KEY_PROVIDER_IDS = [
   "alibaba",
+  "anthropic",
   "assemblyai",
   "bfl",
   "bytedance",
@@ -128,6 +129,24 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
       auth: { header: "Authorization", scheme: "bearer" },
       expect: { kind: "field", name: "data", type: "array" },
       docUrl: "https://developers.openai.com/api/reference/resources/models/methods/list",
+    }),
+  },
+  {
+    // Read 2026-11-20 (platform.claude.com/docs api/models-list, api/versioning). The key page's address was not read on an official
+    // page, so the card says "link unverified" rather than guess one.
+    id: "anthropic",
+    name: "Anthropic (Claude)",
+    keyUrl: null,
+    keyUrlSource: null,
+    envSets: [["ANTHROPIC_API_KEY"]],
+    scopedKeys: false,
+    strategy: json({
+      origin: "https://api.anthropic.com",
+      path: "/v1/models",
+      auth: { header: "x-api-key", scheme: "raw" },
+      headers: { "anthropic-version": "2026-10-21" },
+      expect: { kind: "field", name: "data", type: "array" },
+      docUrl: "https://platform.claude.com/docs/en/api/models-list",
     }),
   },
   {

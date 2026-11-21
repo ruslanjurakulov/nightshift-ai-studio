@@ -120,12 +120,14 @@ class EveryConfigSettingCanReachTheWorker(unittest.TestCase):
                     ("_MODEL", "_BASE_URL", "_SUBMIT_PATH", "_QUERY_PATH", "_RESOLUTION")):
                 self.assertNotIn(name, secrets, name)
 
-    def test_anthropic_is_not_deployed_because_nothing_reads_it(self):
-        self.assertNotIn("ANTHROPIC_API_KEY", example_keys())
-        self.assertNotIn("ANTHROPIC_API_KEY", WORKFLOW.read_text().split("Build the worker env")[1].split("Build the notify env")[0])
+    def test_anthropic_is_deployed_because_the_text_providers_read_it(self):
+        # The Claude describe adapter and modules/text_providers.py read ANTHROPIC_API_KEY; without it in the worker env every such
+        # job would fail as not_configured even with the secret set.
+        self.assertIn("ANTHROPIC_API_KEY", example_keys())
+        self.assertIn("WORKERENV_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}", WORKFLOW.read_text())
         readers = [str(p.relative_to(ROOT)) for d in ("modules", "tools") for p in (ROOT / d).rglob("*.py")
                    if "ANTHROPIC_API_KEY" in p.read_text()]
-        self.assertEqual(readers + [n for n in ("main.py", "config.py") if "ANTHROPIC_API_KEY" in (ROOT / n).read_text()], [])
+        self.assertEqual(sorted(readers), ["modules/capabilities/describe_llm.py", "modules/text_providers.py"])
 
 
 _CONFIG_CHILD = r"""
