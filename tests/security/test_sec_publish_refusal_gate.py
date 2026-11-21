@@ -27,7 +27,10 @@ ALLOWED = {"allowed": True, "blocks": [], "warnings": [], "checks_run": ["rights
 
 
 def _video(su, channel, verdict):
-    """An uploaded, approved video: everything 0029 checks passes, so only the gate decides."""
+    """An uploaded, approved video: everything 0029 checks passes, so only the gate decides. The channel's two-person rule is off
+    here (inside the rolled-back world): another file may have left it on, and that reason comes after the gate's."""
+    su.rows("update public.channels set agent_config = coalesce(agent_config, '{}'::jsonb) - 'require_two_person_publish' "
+            "where channel_id = %s returning 1", [channel])
     uploaded(su, channel, review_state="approved", gate_verdict=None if verdict is None else json.dumps(verdict))
 
 
