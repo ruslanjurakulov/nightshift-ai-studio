@@ -22,10 +22,9 @@
   .desk-bar { -webkit-mask-image: linear-gradient(to right, #000 82%, transparent); mask-image: linear-gradient(to right, #000 82%, transparent); }
 }
 @media (min-width: 640px) {
-  .desk-bar { margin-inline: 0; padding-inline: 0; overflow: visible; }
-  /* With Studio → Projects listed (NIGHTSHIFT_FILM_STUDIO) the row has an eighth key and no longer fits every width: it scrolls
-     sideways inside the page instead of running past its edge. */
-  .desk-bar:has([data-desk="projects"]) { overflow-x: auto; }
+  /* The row scrolls sideways inside the page instead of running past its edge. Seven keys do not fit every width either: in ru and uz
+     they overflowed by up to 280 px at 640 px and by about 160 px at 1024 px beside the sidebar, with Projects hidden. */
+  .desk-bar { margin-inline: 0; padding-inline: 0; overflow-x: auto; }
 }
 .desk-bar-row {
   display: flex;
