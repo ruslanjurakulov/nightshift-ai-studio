@@ -150,7 +150,7 @@ def put_back_0145(session) -> None:
 ROLLBACK_0164 = REPO / "docs" / "sql" / "rollback_0164_public_site_stats.sql"
 #: 0164 (the site's live counters) refuses to apply without 0112's videos.cut_sha256 and 0116's video_visibility_requests: a base
 #: built without either leaves it out too (name prefix), and take_off_0164 takes it off the full chain before comparing to it.
-NEEDS_0112_0116 = ("0164_",)
+NEEDS_0112_0116 = ("0164_", "0206_")  # 0206 reads videos.gate_verdict (0112) and refuses to apply without it
 
 
 def take_off_0164(session) -> None:

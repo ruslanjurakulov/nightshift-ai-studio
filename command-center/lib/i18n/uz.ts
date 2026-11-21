@@ -2481,6 +2481,7 @@ export const uz: Dictionary = {
       video_not_found: "Video endi mavjud emas.",
       not_uploaded: "Rad etildi: video joylash tekshiruvi va tasdiqlardan oʻtmagan.",
       gate_blocked: "Rad etildi: joylash tekshiruvi bu videoni toʻxtatgan.",
+      gate_unknown: "Rad etildi: bu video uchun joylash tekshiruvining qarori saqlanmagan. Bu nomaʼlum, “oʻtdi” emas, shuning uchun yuborilmaydi.",
       not_approved: "Rad etildi: video hali tasdiqlanmagan.",
       rejected: "Rad etildi: video tekshiruvda rad etilgan.",
       awaiting_two_person: "Rad etildi: bu kanalda avval ikkinchi shaxsning tasdigʻi kerak.",
