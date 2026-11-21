@@ -60,19 +60,27 @@ describe("the run's video", () => {
     expect(await readRunVideo(c as never, "ch-alpha", FROM, UNTIL)).toEqual({ id: "yt-long0001", state: "uploaded" });
   });
 
-  it("a queue run names its video by slug (0189 result_slug), with no time window that another run could fall into", async () => {
+  it("a queue run names its video by slug (0189 result_slug), so another video of the channel in the window is not it", async () => {
     const c = client([
-      long({ video_id: "run-held-rome", slug: "rome", publish_state: "held", held_at: "2026-11-20T09:00:00Z" }),
+      long({ video_id: "run-held-rome", slug: "rome", publish_state: "held", held_at: "2026-11-21T10:20:00Z" }),
       long({ video_id: "yt-carthage1", slug: "carthage", published_at: "2026-11-21T10:30:00Z" }),
     ]);
     expect(await readRunVideo(c as never, "ch-alpha", FROM, UNTIL, "rome")).toEqual({ id: "run-held-rome", state: "held" });
-    expect(c.sent.every((l) => l.includes("eq slug") && !l.some((x) => x.startsWith("gte")))).toBe(true);
+  });
+
+  it("a slug reused by an earlier run of the same topic is not this run's: the window still holds", async () => {
+    const c = client([
+      long({ video_id: "yt-rome-old1", slug: "rome", published_at: "2026-11-19T15:00:00Z" }),
+      long({ video_id: "run-held-rome", slug: "rome", publish_state: "held", held_at: "2026-11-21T10:20:00Z" }),
+    ]);
+    expect(await readRunVideo(c as never, "ch-alpha", FROM, UNTIL, "rome")).toEqual({ id: "run-held-rome", state: "held" });
+    expect(c.sent.every((l) => l.includes("eq slug") && l.some((x) => x.startsWith("gte")))).toBe(true);
   });
 
   it("an uploaded row wins over a held one of the same run; none, or a read RLS refuses, is null: never a guess", async () => {
     const both = client([
       long({ video_id: "run-held-rome", slug: "rome", publish_state: "held", held_at: "2026-11-21T10:40:00Z" }),
-      long({ video_id: "yt-rome00001", slug: "rome", published_at: "2026-11-21T10:20:00Z" }),
+      long({ video_id: "yt-rome00001", slug: "rome", published_at: "2026-11-21T10:50:00Z" }),
     ]);
     expect(await readRunVideo(both as never, "ch-alpha", FROM, UNTIL, "rome")).toEqual({ id: "yt-rome00001", state: "uploaded" });
     expect(await readRunVideo(client([]) as never, "ch-alpha", FROM, UNTIL)).toBeNull();

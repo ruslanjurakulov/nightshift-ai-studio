@@ -8,8 +8,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Only the run's own long video counts (Lens): never its Short (main.py _publish_short: video_format 'short', parent_video_id
  * set, uploaded later), a repurpose clip (0080: held 'short' rows with a parent) or a repaired cut of another video
  * (publish_state 'repaired_awaiting_review', re-held "now" by held_video.record_held).
- * - Queue runs name their video: render_jobs.result_slug (0189), matched on channel + slug.
- * - An Actions run names none: the newest such long video of the channel held or uploaded inside the run's window.
+ * - Every run: a long video of the channel held or uploaded inside the run's window.
+ * - Queue runs also name their video: render_jobs.result_slug (0189), so a second video of the channel in the window is not it.
  *
  * Null when no such row is readable yet (a run that uploaded on its first try gets its row with the nightly mirror). The view says
  * "the video's page appears after sync"; it never guesses an id.
@@ -58,8 +58,10 @@ export async function readRunVideo(
   const found: { id: string; at: number; state: RunVideo["state"] }[] = [];
   for (const col of ["held_at", "published_at"] as const) {
     let q = longVideosOf(supabase, channelId);
-    // The job's own slug when it has one; otherwise the run's window (two plain reads, not a built or() of times).
-    q = slug ? q.eq("slug", slug) : q.gte(col, fromIso).lte(col, untilIso);
+    // The run's window always (two plain reads, not a built or() of times), and the job's own slug when it has one: a slug is per
+    // channel and topic, so a later run of the same topic reuses it, and only the window tells this run's row from that one (Lens).
+    q = q.gte(col, fromIso).lte(col, untilIso);
+    if (slug) q = q.eq("slug", slug);
     const r = await q.order(col, { ascending: false }).limit(3);
     if (r.error || !Array.isArray(r.data)) continue;
     found.push(...pick(r.data as Record<string, unknown>[], col));
