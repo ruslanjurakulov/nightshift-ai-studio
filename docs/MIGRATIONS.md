@@ -2185,3 +2185,21 @@ that fails one is left as it is, with a NOTICE naming the fix. Order: probe (Act
 `openai-gpt-6-luna`; adapters in `modules/capabilities/describe_llm.py`): beta only when verified, priced, terms-clear and `web_only`.
 No price is written. Keys: GitHub secrets `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, shipped to the worker by `deploy_web.yml`.
 Rollback: `docs/sql/rollback_0195_open_llm_describe.sql`.
+
+## Channel research on our own YouTube data (0199)
+
+0199 (`0199_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
+(`docs/studio/RESEARCH_TOOLS.md`). It is built on our own YouTube Data API calls, never on vidIQ (whose terms forbid redistribution).
+It adds six closed tables (RLS on, no policy, no grant, the service key included): `research_competitors` (up to 20 per channel,
+`pending` until the worker resolves the reference with `channels.list`, then `resolved` or `not_found`), `research_channel_cache` and
+`research_video_cache` (the API's numbers as returned; a hidden subscriber count is `subscribers_hidden` with a NULL count),
+`research_topic_results` (per organization), `research_own_analytics` (the customer's own YouTube Analytics totals) and
+`research_requests` (the queue: one open request per channel, kind and topic). Readers (`research_own_channel`,
+`research_competitors_view`, `research_topic_channels`, `research_comment_themes`) and writers (`research_request_refresh`,
+`research_add_competitor`, `research_remove_competitor`) are member-scoped security-definer functions; the worker's functions are the
+service key's only. YouTube's 30-day limit on non-authorized data: every reader ignores a row older than 30 days and
+`research_purge_stale()` (called by the worker every cycle) deletes it. `youtube_quota_ledger`'s source CHECK is extended (dropped and
+re-added) with `research` and `research_search`, and a six-argument `youtube_quota_take(..., p_source)` writes only those; 0116's
+five-argument one is untouched. Nothing runs until the worker has `YOUTUBE_DATA_API_KEY` (a GitHub secret, shipped by
+`deploy_web.yml`); without it a request ends `failed` / `not_configured` and the page names the secret.
+Rollback: `docs/sql/rollback_0199_channel_research.sql`.
