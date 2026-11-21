@@ -343,9 +343,9 @@ ON_0139 = (*ON_0139, "0191_mcp_oauth_creative.sql")
 #: 0192 (the adult attestation) replaces 0188's sellable_models and two of 0191's functions, and refuses any other body: last, after
 #: both, so that every sequence that leaves out 0125 or a file on it leaves 0192 out too. It also sits on 0174, so it is listed again
 #: at the end of ON_0124 (a sequence that puts both lists back applies it once, last).
-ON_0139 = (*ON_0139, "0192_adult_attestation.sql")
+ON_0139 = (*ON_0139, "0192_adult_attestation.sql", "0196_adult_attestation_google_runs.sql")
 #: 0198 (Film Studio's switch per organization) replaces 0192's quote_film and start_film and refuses to apply without 0192: after it
-#: in both lists, for the same reason.
+#: (and after 0196, by number) in both lists, for the same reason.
 ON_0139 = (*ON_0139, "0198_film_studio_org_switch.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
@@ -357,7 +357,7 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
            "0174_rights_acknowledgement.sql", "0187_rights_acknowledgement_inputs.sql", "0191_mcp_oauth_creative.sql",
-           "0192_adult_attestation.sql", "0198_film_studio_org_switch.sql")
+           "0192_adult_attestation.sql", "0196_adult_attestation_google_runs.sql", "0198_film_studio_org_switch.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -774,6 +774,7 @@ def take_off_0192(conn_or_session) -> None:
     adult_attestations (the record, with its append-only triggers) stays, and put_back_0192 picks it up again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     take_off_0198(conn)  # 0198 sits on 0192's quote_film and start_film, and 0192's rollback refuses any other body
+    take_off_0196(conn)  # 0196 sits on 0192's route_model, api_create_video and oauth_create_video; 0192's rollback refuses them
     if has_0192(conn):
         text = ROLLBACK_0192.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -781,13 +782,55 @@ def take_off_0192(conn_or_session) -> None:
 
 def put_back_0192(conn_or_session) -> None:
     """0192 again, once 0125, 0171, 0174 and the two files on them it builds on (0187's start_film, 0188's sellable_models) are on
-    (it refuses to apply without any of them), and only when it is not on already."""
+    (it refuses to apply without any of them), and only when it is not on already; then the files on it, in number order (0196's
+    video bodies, 0198's film bodies), each when it is not on already."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if (not has_0192(conn) and has_0174(conn) and has_0171(conn) and has_0187(conn) and has_0188(conn)
             and conn.execute("select to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is not null").fetchone()[0]
             and conn.execute("select to_regprocedure('public.model_past_shutdown(jsonb)') is not null").fetchone()[0]):
         conn.execute(MIGRATION_0192.read_text(encoding="utf-8"))
+    put_back_0196(conn)
     put_back_0198(conn)
+
+
+MIGRATION_0196 = MIGRATIONS / "0196_adult_attestation_google_runs.sql"
+ROLLBACK_0196 = REPO / "docs" / "sql" / "rollback_0196_adult_attestation_google_runs.sql"
+
+
+def has_0196(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.render_run_google_stages(text, jsonb)') is not null").fetchone()[0])
+
+
+def take_off_0196(conn_or_session) -> None:
+    """0196 (a video run on Google needs an adult answer) replaces 0192's route_model, api_create_video and oauth_create_video and
+    0187's reroute_creative_job, and points 0192's run gate at its own function; 0192's and 0187's guards and rollbacks refuse its
+    bodies, so take_off_0192 takes 0196 off first (and take_off_0187 reaches it through take_off_0192)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0196(conn):
+        text = ROLLBACK_0196.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0196(conn_or_session) -> None:
+    """0196 again, once 0192 is on (it refuses to apply without it), and only when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0196(conn) or not has_0192(conn):
+        return
+    conn.execute(MIGRATION_0196.read_text(encoding="utf-8"))
+
+
+def attest_adults(conn_or_session, *uids) -> None:
+    """Record "18 or older" for these lab people, as the database owner (record_adult_attestation is the app's path; this is the
+    seed's). Since 0196 a video run, a series plan and a scene repair spend on Google, so a lab person who queues one has to have
+    answered, as a real one does. The first answer stands: a person who already answered keeps their answer."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not conn.execute("select to_regclass('public.adult_attestations') is not null").fetchone()[0]:
+        return
+    for uid in uids:
+        if uid:
+            conn.execute("insert into public.adult_attestations (user_id, adult, terms_version, method) "
+                         "values (%s, true, '2026-11-20', 'email_signup') on conflict (user_id) do nothing", [uid])
 
 
 MIGRATION_0198 = MIGRATIONS / "0198_film_studio_org_switch.sql"

@@ -210,6 +210,8 @@ def world(conn, sc):
         w.platform = user("series-platform", "series-platform@nightshift.test")
         su.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning 1", [w.platform.uid, w.platform.email])
         su.rows("insert into public.app_members (user_id, email, role) values (%s, %s, 'admin') returning 1", [w.platform.uid, w.platform.email])
+        # 0196: a series plan and its episodes spend on Google; the lab's people have answered 18+, as real ones do.
+        sec_db.attest_adults(su, w.adm.uid, w.adm2.uid, w.ed.uid, w.viewer.uid, w.platform.uid)
         w.alice, w.bob, w.operator, w.stranger = sc.alice.actor, sc.bob.actor, sc.operator, sc.stranger
         w.org_a, w.org_b = sc.alice.org, sc.bob.org
         w.chan_a, w.chan_b = sc.alice.channel, sc.bob.channel
@@ -1346,6 +1348,7 @@ class RaceOrg:
             su.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning 1", [self.who.uid, self.who.email])
             su.rows("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, %s) returning 1",
                     [self.org, self.who.uid, self.who.email, role])
+            sec_db.attest_adults(su, self.who.uid)   # 0196: a series plan spends on Google
             for ch in self.channels:
                 su.rows("insert into public.channels (channel_id, name, niche, status, org_id) values (%s, %s, 'tech', 'PAUSED', %s) returning 1",
                         [ch, ch, self.org])

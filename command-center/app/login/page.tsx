@@ -9,7 +9,7 @@ import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
-import { safeLoginReturn } from "@/lib/safe-redirect";
+import { safeLoginReturn, studioNext } from "@/lib/safe-redirect";
 import { clearAllDrafts } from "@/lib/create-draft";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
 import { retryInviteJoin } from "@/lib/friend-invites";
@@ -26,6 +26,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The way back, for someone without an account yet: a Studio form they came for (the landing's idea box) goes with them to sign-up.
+  const [signupHref, setSignupHref] = useState("/signup");
+  useEffect(() => {
+    const next = studioNext(new URLSearchParams(window.location.search).get("next"));
+    if (next) setSignupHref(`/signup?next=${encodeURIComponent(next)}`);
+  }, []);
   const [linkError, setLinkError] = useState<CallbackError | null>(null);
   // With Google offered, it is the first and primary way in and the e-mail submit is the quiet key under it.
   const google = useGoogleEnabled();
@@ -129,7 +135,7 @@ export default function LoginPage() {
 
       <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
         {t.signup.noAccount}
-        <Link href="/signup" className="st-link text-[15px]">
+        <Link href={signupHref} className="st-link text-[15px]">
           {t.signup.createAccount}
         </Link>
       </p>

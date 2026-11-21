@@ -34,6 +34,7 @@ const h = vi.hoisted(() => ({
   backend: "queue",
   github: true,
   audits: [] as unknown[],
+  age: "adult" as "adult" | "minor" | "none" | "unknown" | "absent",
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -49,6 +50,8 @@ vi.mock("@/lib/auth/org-roles", () => ({
   requireOrgRole: async () => h.access,
   isOperator: async () => false,
 }));
+// The adult answer (0192/0196): an admin who answered 18+, unless a test below says otherwise.
+vi.mock("@/lib/server/age", () => ({ readAgeAnswer: async () => h.age, readAgeState: async () => (h.age === "absent" ? "unknown" : h.age) }));
 vi.mock("@/lib/server/audit", () => ({ logAudit: async (e: unknown) => void h.audits.push(e) }));
 vi.mock("@/lib/server/github-secrets", () => ({
   get isGithubConfigured() {
@@ -88,6 +91,7 @@ beforeEach(() => {
   h.rpcCalls = [];
   h.quoted = [];
   h.dispatch.mockReset();
+  h.age = "adult";
   h.dispatch.mockResolvedValue(undefined);
   h.github = true;
   h.audits = [];
@@ -403,5 +407,52 @@ describe("the routes hold no service key", () => {
       const src = readFileSync(join(process.cwd(), f), "utf8");
       expect(src, f).not.toMatch(/SERVICE_KEY|service_role|SERVICE_ROLE/);
     }
+  });
+});
+
+describe("approving a storyboard and the adult answer (0196)", () => {
+  // What would break without these: on Actions the approval writes no render_jobs row, so the database's run gate never sees it,
+  // and an admin who never answered (or said under 18) would resume a run that spends on Gemini, whose terms are 18+.
+  it.each([
+    ["none", 428, "adult_attestation_required"],
+    ["minor", 403, "adult_only_service"],
+  ] as const)("on Actions, an answer of %s is refused before the quote, the hold and the dispatch", async (age, status, error) => {
+    vi.stubEnv("NIGHTSHIFT_RUN_BACKEND", "actions");
+    h.age = age;
+    const res = await approve(req({ max_credits: 54, revision: undefined }), ctx());
+    expect(res.status).toBe(status);
+    expect(await res.json()).toMatchObject({ error });
+    expect(h.quoted).toHaveLength(0);
+    expect(h.rpcCalls.map((c) => c.name)).not.toContain("approve_storyboard");
+    expect(h.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("on Actions, an answer that could not be read stops the approval (try again); 0192 not applied lets it go on as before", async () => {
+    vi.stubEnv("NIGHTSHIFT_RUN_BACKEND", "actions");
+    h.age = "unknown";
+    const res = await approve(req({ max_credits: 54 }), ctx());
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: "age_unavailable" });
+    expect(h.dispatch).not.toHaveBeenCalled();
+    h.age = "absent";
+    const ok = await approve(req({ max_credits: 54 }), ctx());
+    expect((await ok.clone().json()).error).not.toBe("age_unavailable");
+  });
+
+  it("on the queue, an unread answer goes on to the database, and the run gate's word comes back named, not as approve_failed", async () => {
+    vi.stubEnv("NIGHTSHIFT_RUN_BACKEND", "queue");
+    h.age = "unknown";
+    h.rpc = { approve_storyboard: { data: null, error: { code: "NS400", message: "adult_attestation_required" } } };
+    const res = await approve(req({ max_credits: 54 }), ctx());
+    expect(res.status).toBe(428);
+    expect(await res.json()).toMatchObject({ error: "adult_attestation_required" });
+  });
+
+  it("an adult approves exactly as before", async () => {
+    vi.stubEnv("NIGHTSHIFT_RUN_BACKEND", "actions");
+    h.age = "adult";
+    const res = await approve(req({ max_credits: 54 }), ctx());
+    expect(res.status).toBeLessThan(300);
+    expect(h.dispatch).toHaveBeenCalledTimes(1);
   });
 });

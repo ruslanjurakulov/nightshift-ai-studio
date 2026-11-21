@@ -691,6 +691,7 @@ def test_a_plan_made_before_the_migration_still_replays_and_its_job_is_still_val
             who = sec_db.user("legacy-editor", "legacy@a.test")
             with as_superuser(c, commit=True) as su:
                 su.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning 1", [who.uid, who.email])
+                sec_db.attest_adults(su, who.uid)   # 0196: a series plan spends on Google
             with sec_db.acting(c, who, commit=True) as su:
                 org = str(su.value("select public.create_organization(%s)", ["Legacy org"]))
             with as_superuser(c, commit=True) as su:

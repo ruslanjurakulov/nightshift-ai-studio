@@ -443,6 +443,7 @@ def _seed(db_dsn):
         with as_superuser(c, commit=True) as s:
             cust = customer(s)
             ext = topup(s, cust, 5000)
+            sec_db.attest_adults(s, cust.actor.uid)   # 0196: a video run spends on Google
     return cust, ext
 
 

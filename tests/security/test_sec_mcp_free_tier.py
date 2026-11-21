@@ -40,6 +40,7 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
 # (0161, tests/security/test_sec_mcp_chatgpt_client.py) and api_request_download (0170, tests/security/test_sec_api_download.py).
 # 0198 (Film Studio's switch per organization) sits on 0192's quote_film and start_film: off before 0192, on after it.
 LATER = [(sec_db.MIGRATION_0198, sec_db.ROLLBACK_0198),
+         (sec_db.MIGRATION_0196, sec_db.ROLLBACK_0196),  # 0196 sits on 0192's api_create_video
          (sec_db.MIGRATION_0192, sec_db.ROLLBACK_0192),
          (sec_db.MIGRATIONS / "0191_mcp_oauth_creative.sql", sec_db.REPO / "docs" / "sql" / "rollback_0191_mcp_oauth_creative.sql"),
          (sec_db.MIGRATIONS / "0161_mcp_chatgpt_client.sql", sec_db.REPO / "docs" / "sql" / "rollback_0161_mcp_chatgpt_client.sql"),

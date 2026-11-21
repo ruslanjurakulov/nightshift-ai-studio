@@ -305,6 +305,7 @@ def carol(conn):
     with as_superuser(conn) as s:
         s.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning 1",
                [who.uid, who.email])
+        sec_db.attest_adults(s, who.uid)   # 0196: a video run spends on Google
     with acting(conn, who, commit=True) as s:
         org = str(s.value("select public.create_organization('Carol Films')"))
     channel = f"chan-c{uuid.uuid4().hex[:6]}"
