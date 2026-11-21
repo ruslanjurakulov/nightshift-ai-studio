@@ -216,6 +216,36 @@ describe("OC-2: the console's second factor does not depend on the role lookup s
   });
 });
 
+// The pages' own lock covers the second factor too: a page rendered without its layout (OC-1's route) must not hand a
+// password-only owner session the console, even when the separate admin lookup fails as well (Breach's open Low).
+describe("OC-2b: every Owner Console page enforces the second factor on its own", () => {
+  const pages = ownerPages();
+
+  it.each(pages)("%s sends a password-only owner session (with an authenticator) to verify the code", async (file) => {
+    asOwner();
+    s.aal = "aal1";
+    s.path = "/owner/revenue";
+    const Page = (await import(`../${file}`)).default as () => unknown;
+    expect(await outcome(() => Page())).toMatch(/^\/login\/verify\?next=%2Fowner%2Frevenue/);
+  });
+
+  it.each(pages)("%s sends an owner with no authenticator to enrol, even when is_platform_admin errored", async (file) => {
+    s.user = { id: "owner-1", email: "owner@lab.test", factors: [] };
+    s.admin = "error";
+    s.owner = true;
+    s.aal = "aal1";
+    const Page = (await import(`../${file}`)).default as () => unknown;
+    expect(await outcome(() => Page())).toBe("/security");
+  });
+
+  it.each(pages)("%s renders for the owner once the code was given", async (file) => {
+    asOwner();
+    s.aal = "aal2";
+    const Page = (await import(`../${file}`)).default as () => unknown;
+    expect(await outcome(() => Page())).toBe("rendered");
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Refusals that held (regression)
 // ─────────────────────────────────────────────────────────────────────────────
