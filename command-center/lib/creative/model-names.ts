@@ -77,6 +77,8 @@ export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "recraft-v4.1-flash": "Recraft V4.1 Flash",
   "runway-gen4-turbo": "Runway Gen-4 Turbo",
   "runway-gen4.5": "Runway Gen-4.5",
+  "runway-seedance-2.5": "Seedance 2.5 (via Runway)",
+  "runway-seedance-2.5-flash": "Seedance 2.5 Flash (via Runway)",
   "runway-video-upscale": "Runway Video Upscale",
   "seedance-1.0-pro": "Seedance 1.0 Pro",
   "seedance-1.5-pro": "Seedance 1.5 Pro",

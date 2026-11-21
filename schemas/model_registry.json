@@ -3251,6 +3251,180 @@
       }
     },
     {
+      "id": "runway-seedance-2.5",
+      "display_name": "Seedance 2.5 (via Runway)",
+      "provider": "runway",
+      "adapter": "video.runway_seedance",
+      "vendor_model": "seedance2_5",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "9:16"
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        4,
+        5,
+        10,
+        15,
+        30
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.dev.runwayml.com/api.md",
+        "checked_at": "2026-11-21",
+        "source": "vendor_docs_search",
+        "evidence": "Runway API reference and guides/models (read 2026-11-21): model seedance2_5 on POST /v1/text_to_video and /v1/image_to_video; duration 4-30 s or auto; 480p/720p/1080p/4K via ratio, 9:16 480:854|720:1280|1080:1920|2160:3840; audio defaults to true",
+        "note": "references max 30, referenceVideos max 10, referenceAudio max 10 (<30 s) on text_to_video; promptImage keyframes or references, not mixed. UNCONFIRMED: element shapes, 16:9 ratios, prompt limit"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": "https://docs.dev.runwayml.com/guides/pricing",
+        "as_of": "2026-11-21",
+        "confirmed": false,
+        "note": "Credits per output second by resolution, plus per second of input or reference video. Figures not taken into this file: a price row needs the page read and a probe's cost.credits",
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "480p": null,
+            "720p": null,
+            "1080p": null,
+            "4k": null
+          }
+        }
+      },
+      "credit_unit": "model_runway_seedance_2_5_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": "written_ok_required: Runway written confirmation naming Seedance + owner exception to own-models-only rule",
+      "terms_notes": [
+        "Owner's rule (2026-11-13): through Runway's API we sell only Runway's own models. Seedance is ByteDance's; an owner exception is needed before this entry is ungated.",
+        "Runway support's confirmation covered Runway's own models only. A written OK naming Seedance in our resale workflow is needed (dev.runwayml.com/learn/commercial-use §4.2: a reseller 'cannot promise more than its own upstream agreement allows').",
+        "Runway Terms of Use (runway.com/terms-of-use, read 2026-11-21) §1: the APIs may be used to make the functionality available to end users, with 'Powered by Runway' displayed prominently. Hence the attribution.",
+        "Film Studio refuses Seedance by vendor id in the database (0166_films_core.sql, vendor_model ilike '%seedance%'): this entry is refused there too until a migration lifts it for this route.",
+        "Runway has no consent step for faces; public figures are moderated in reference inputs. Our likeness-consent step is ours to build before a sale."
+      ],
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 1000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "aspect_ratio": "9:16",
+        "resolution": "480p",
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
+    },
+    {
+      "id": "runway-seedance-2.5-flash",
+      "display_name": "Seedance 2.5 Flash (via Runway)",
+      "provider": "runway",
+      "adapter": "video.runway_seedance",
+      "vendor_model": "seedance2_5_flash",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "9:16"
+      ],
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        4,
+        5,
+        10,
+        15,
+        30
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.dev.runwayml.com/api.md",
+        "checked_at": "2026-11-21",
+        "source": "vendor_docs_search",
+        "evidence": "Runway API reference and guides/models (read 2026-11-21): model seedance2_5_flash on POST /v1/text_to_video and /v1/image_to_video; duration 4-30 s or auto; Flash supports 480p and 720p, 9:16 480:854|720:1280; audio defaults to true",
+        "note": "references max 30, referenceVideos max 10, referenceAudio max 10 (<30 s) on text_to_video; promptImage keyframes or references, not mixed. UNCONFIRMED: element shapes, 16:9 ratios, prompt limit"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": "https://docs.dev.runwayml.com/guides/pricing",
+        "as_of": "2026-11-21",
+        "confirmed": false,
+        "note": "Credits per output second by resolution, plus per second of input or reference video. Figures not taken into this file: a price row needs the page read and a probe's cost.credits",
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "480p": null,
+            "720p": null
+          }
+        }
+      },
+      "credit_unit": "model_runway_seedance_2_5_flash_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "written_ok_required: Runway written confirmation naming Seedance + owner exception to own-models-only rule",
+      "terms_notes": [
+        "Owner's rule (2026-11-13): through Runway's API we sell only Runway's own models. Seedance is ByteDance's; an owner exception is needed before this entry is ungated.",
+        "Runway support's confirmation covered Runway's own models only. A written OK naming Seedance in our resale workflow is needed (dev.runwayml.com/learn/commercial-use §4.2: a reseller 'cannot promise more than its own upstream agreement allows').",
+        "Runway Terms of Use (runway.com/terms-of-use, read 2026-11-21) §1: the APIs may be used to make the functionality available to end users, with 'Powered by Runway' displayed prominently. Hence the attribution.",
+        "Film Studio refuses Seedance by vendor id in the database (0166_films_core.sql, vendor_model ilike '%seedance%'): this entry is refused there too until a migration lifts it for this route.",
+        "Runway has no consent step for faces; public figures are moderated in reference inputs. Our likeness-consent step is ours to build before a sale."
+      ],
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 1000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "aspect_ratio": "9:16",
+        "resolution": "480p",
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
+    },
+    {
       "id": "generic-video-edit",
       "display_name": "Video edit (provider not assigned)",
       "provider": "unassigned-video-vendor",

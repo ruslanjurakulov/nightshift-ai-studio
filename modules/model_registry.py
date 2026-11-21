@@ -69,8 +69,12 @@ SCHEMA_PATH = SCHEMAS / "model_registry.schema.json"
 
 #: ``credit_prices.unit`` must match this (migration 0020's CHECK).
 CREDIT_UNIT_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+#: Another maker's model bought through Runway (Seedance): Runway support confirmed resale of its OWN models only, and the
+#: owner's rule of 2026-11-13 sells only those through it (tests/test_runway_own_models_only.py). Both must change first.
+RUNWAY_THIRD_PARTY_GATE = ("written_ok_required: Runway written confirmation naming Seedance + owner exception to "
+                           "own-models-only rule")
 #: A terms gate keeps a model unsellable in SQL until the owner clears it.
-TERMS_GATES = ("written_consent_required", "terms_review_required", "plan_required:scale")
+TERMS_GATES = ("written_consent_required", "terms_review_required", "plan_required:scale", RUNWAY_THIRD_PARTY_GATE)
 
 
 class RegistryError(ValueError):
@@ -326,7 +330,9 @@ class ModelEntry:
             out.append(f"duration {request.duration_s}s is not offered by {self.id}")
         if request.audio and not self.audio_out:
             out.append(f"{self.id} does not generate audio")
-        if cap in IMAGE_INPUT and not request.input_images:
+        # A clip animated from reference pictures (no frame of their own) has its pictures in reference_images; whether the
+        # adapter takes them that way is its own check (media_reference_capabilities).
+        if cap in IMAGE_INPUT and not request.input_images and not (cap == I2V and request.reference_images):
             out.append(f"{cap} needs an input image")
         if cap == UPSCALE and request.scale not in self.upscale_factors:
             out.append(f"{self.id} does not offer a {request.scale}x upscale")

@@ -163,7 +163,8 @@
           "pattern": "^models_(image|video|audio):(basic|premium|ultra)$"
         },
         "terms_gate": {
-          "enum": [null, "written_consent_required", "terms_review_required", "plan_required:scale"]
+          "enum": [null, "written_consent_required", "terms_review_required", "plan_required:scale",
+                   "written_ok_required: Runway written confirmation naming Seedance + owner exception to own-models-only rule"]
         },
         "terms_notes": {"type": "array", "items": {"type": "string", "minLength": 10, "maxLength": 300}},
         "attribution": {

@@ -88,7 +88,13 @@ UNPRICED_ON_PURPOSE = {
     "model_seedance_2_5_second_480p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
     "model_seedance_2_5_second_720p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
     "model_seedance_2_5_second_1080p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
-    "model_seedream_5_0_pro_image": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    **{u: "registry: Seedance through Runway, terms-gated (written_ok_required) and unpriced; the owner prices it only after "
+          "Runway confirms Seedance resale in writing and the owner makes an exception to the own-models-only rule"
+       for u in ("model_runway_seedance_2_5_second", "model_runway_seedance_2_5_second_480p",
+                 "model_runway_seedance_2_5_second_720p", "model_runway_seedance_2_5_second_1080p",
+                 "model_runway_seedance_2_5_second_4k", "model_runway_seedance_2_5_flash_second",
+                 "model_runway_seedance_2_5_flash_second_480p", "model_runway_seedance_2_5_flash_second_720p")},
+    "model_seedream_5_0_pro_image":"registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
     "model_seedream_5_0_flash_image": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
     "model_seedream_4_5_image": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
     "model_gemini_2_5_flash_image_expand_image": "registry: picture op (0099), unverified and gated; the owner sets a price when a probe has proven it",

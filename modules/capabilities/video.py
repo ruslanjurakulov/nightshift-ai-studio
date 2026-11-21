@@ -482,6 +482,36 @@ class RunwayAdapter(HttpAdapter):
             return E_QUOTA
         return None
 
+    #: Runway's ephemeral uploads: 512 bytes to 200 MB.
+    MIN_BYTES = 512
+    MAX_BYTES = 200 * 1024 * 1024
+
+    def _upload(self, path: Path, mime: Optional[str] = None) -> str:
+        """An ephemeral upload (``POST /v1/uploads``) of a library file; the ``runway://`` URI is what a task names.
+        ``mime`` defaults to the video type of the suffix (the upscaler's case); the Seedance route passes audio types."""
+        mime = mime or _RUNWAY_VIDEO_TYPES[path.suffix.lower()]
+        ticket = self.post(f"{self.base_url}/v1/uploads", {"filename": path.name, "type": "ephemeral"},
+                           what="upload")
+        url, fields, uri = ticket.get("uploadUrl"), ticket.get("fields"), ticket.get("runwayUri")
+        if not is_url(url or "") or not isinstance(fields, dict) \
+                or not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()) \
+                or not _RUNWAY_URI.fullmatch(str(uri or "")):
+            raise AdapterError(E_BAD_RESPONSE, "upload: Runway answered without a usable upload ticket")
+        try:
+            with open(path, "rb") as fh:
+                # No auth header: the presigned URL is the credential, and our
+                # key must never reach a storage host. No redirects either.
+                resp = self.session.request("POST", url, data=dict(fields), files={"file": (path.name, fh, mime)},
+                                            timeout=max(self.timeout, 300), allow_redirects=False)
+        except requests.RequestException as e:
+            raise AdapterError(E_UNAVAILABLE, f"upload: {type(e).__name__}") from None
+        status = getattr(resp, "status_code", 200)
+        if status >= 300:
+            # Runway: "If the upload fails, do not retry" — a new ticket is
+            # needed, so the job fails and its hold is released.
+            raise AdapterError(classify_http(status), f"upload: HTTP {status}", http_status=status)
+        return str(uri)
+
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
         ratio = self._RATIOS.get(request.aspect_ratio or "16:9")
@@ -612,9 +642,6 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
     TARGETS = ("720p", "1k", "2k", "4k")
     #: The per-second price assumes at most this many frames a second.
     MAX_FPS = 60.0
-    #: Runway's ephemeral uploads: 512 bytes to 200 MB.
-    MIN_BYTES = 512
-    MAX_BYTES = 200 * 1024 * 1024
     #: Replaced in tests; the worker image ships ffprobe (Dockerfile.worker).
     fps_of = staticmethod(video_fps)
 
@@ -629,30 +656,6 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
         elif Path(request.input_media[0]).suffix.lower() not in _RUNWAY_VIDEO_TYPES:
             out.append("Runway takes MP4, MOV, WebM or MKV video")
         return out
-
-    def _upload(self, path: Path) -> str:
-        mime = _RUNWAY_VIDEO_TYPES[path.suffix.lower()]
-        ticket = self.post(f"{self.base_url}/v1/uploads", {"filename": path.name, "type": "ephemeral"},
-                           what="upload")
-        url, fields, uri = ticket.get("uploadUrl"), ticket.get("fields"), ticket.get("runwayUri")
-        if not is_url(url or "") or not isinstance(fields, dict) \
-                or not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()) \
-                or not _RUNWAY_URI.fullmatch(str(uri or "")):
-            raise AdapterError(E_BAD_RESPONSE, "upload: Runway answered without a usable upload ticket")
-        try:
-            with open(path, "rb") as fh:
-                # No auth header: the presigned URL is the credential, and our
-                # key must never reach a storage host. No redirects either.
-                resp = self.session.request("POST", url, data=dict(fields), files={"file": (path.name, fh, mime)},
-                                            timeout=max(self.timeout, 300), allow_redirects=False)
-        except requests.RequestException as e:
-            raise AdapterError(E_UNAVAILABLE, f"upload: {type(e).__name__}") from None
-        status = getattr(resp, "status_code", 200)
-        if status >= 300:
-            # Runway: "If the upload fails, do not retry" — a new ticket is
-            # needed, so the job fails and its hold is released.
-            raise AdapterError(classify_http(status), f"upload: HTTP {status}", http_status=status)
-        return str(uri)
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
@@ -674,6 +677,197 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
         uri = self._upload(path)
         data = self.post(f"{self.base_url}/v1/video_upscale",
                          {"model": vendor_model, "videoUri": uri, "resolution": request.upscale_target})
+        if not data.get("id"):
+            raise AdapterError(E_BAD_RESPONSE, "no task id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
+
+
+def media_seconds(path: str, *, timeout: int = 30) -> Optional[float]:
+    """The file's length in seconds as ffprobe reads it, or None when it cannot be read. Never a guess."""
+    exe = shutil.which("ffprobe")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration",
+                              "-of", "json", str(path)], capture_output=True, timeout=timeout, check=False)
+        seconds = float(json.loads(out.stdout or b"{}").get("format", {}).get("duration"))
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+        return None
+    return seconds if seconds > 0 else None
+
+
+class RunwaySeedanceAdapter(RunwayAdapter):
+    """ByteDance's Seedance 2.5 and 2.5 Flash bought through Runway's API (``seedance2_5`` / ``seedance2_5_flash``): the same
+    ``POST /v1/text_to_video`` / ``/v1/image_to_video`` and ``GET /v1/tasks/{id}`` as gen4.5, with what those models add
+    (docs.dev.runwayml.com/api.md and guides/models, read 2026-11-21; D:/vera/reports/runway-seedance-route.md):
+
+    * ``duration`` 4-30 whole seconds, always the job's own: ``auto`` "is billed at the variant maximum up front", so a
+      job is never sent one (the quote would be for one length and the hold for another), and none is defaulted;
+    * the resolution is chosen by ``ratio``, so the job's resolution and shape pick one documented value, never Runway's
+      default; Flash stops at 720p;
+    * ``audio`` "defaults to true": it is ALWAYS sent. A job that did not ask for sound is sent ``false`` (the worker's
+      rule for every priced soundtrack: off unless asked), never left to the vendor (CLAUDE.md #4);
+    * ``promptImage`` is either keyframes (``position`` first / last) or references (no position), and the two "cannot be
+      mixed": a job that has both is refused before anything is sent or uploaded;
+    * text_to_video takes ``references`` (pictures, at most 30), ``referenceVideos`` (at most 10) and ``referenceAudio``
+      (at most 10, each under 30 s). Sound and clips go up as ephemeral uploads (``runway://``), like the upscaler's
+      source, never as a public URL of ours. image_to_video is not documented with them, so they are refused there;
+    * a spoken line in a language other than English or Chinese "needs the language marked alongside it" (Runway's
+      Seedance prompt guide): the language is named in the prompt when the prompt does not already name it.
+
+    UNCONFIRMED until a real probe (the docs pages above were read through the research report, not re-fetched here):
+    the element shape ``{"uri": ...}`` of ``references`` / ``referenceAudio`` / ``referenceVideos``, the audio types
+    Runway's uploads take, the wording of the dialogue-language mark, and every ratio but the four 9:16 ones.
+
+    TERMS: Runway confirmed resale of its own models only, and the owner's rule (2026-11-13) sells only those through
+    Runway. The registry entries carry a terms_gate naming both conditions; nothing here is sellable until they are met."""
+
+    key = "video.runway_seedance"
+    capabilities = (T2V, I2V)
+    end_frame_capabilities = (I2V,)
+    audio_capabilities = (T2V, I2V)
+    resolution_capabilities = (T2V, I2V)
+    media_reference_capabilities = (T2V, I2V)
+    dialogue_language_capabilities = (T2V, I2V)
+    #: vendor model -> the resolutions it makes ("Seedance 2.5 supports 480p, 720p, 1080p, and 4K"; Flash "supports 480p
+    #: and 720p") and its whole-second lengths ("Durations remain 4-30 seconds, or auto").
+    SPECS = {
+        "seedance2_5": {"resolutions": ("480p", "720p", "1080p", "4k"), "durations": tuple(range(4, 31))},
+        "seedance2_5_flash": {"resolutions": ("480p", "720p"), "durations": tuple(range(4, 31))},
+    }
+    #: shape -> resolution -> the ``ratio`` Runway takes. Only the 9:16 values were read in the docs (api.md); a 16:9 row
+    #: would be the mirror image, which is a guess until the docs or a probe show it, so it is not offered.
+    RATIOS = {"9:16": {"480p": "480:854", "720p": "720:1280", "1080p": "1080:1920", "4k": "2160:3840"}}
+    MAX_REFERENCE_IMAGES, MAX_REFERENCE_VIDEOS, MAX_REFERENCE_AUDIO = 30, 10, 10
+    #: referenceAudio: each "less than 30 seconds".
+    MAX_REFERENCE_AUDIO_S = 30.0
+    #: Audio types sent to the upload. Runway's input page for audio was not read: MP3 and WAV only until it is.
+    AUDIO_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav"}
+    #: Languages the prompt guide says need no mark, and the name the mark uses for the others we make content in.
+    UNMARKED_LANGUAGES = ("en", "zh")
+    MARKED_LANGUAGES = {"ru": "Russian", "uz": "Uzbek"}
+    #: Replaced in tests; the worker image ships ffprobe (Dockerfile.worker).
+    seconds_of = staticmethod(media_seconds)
+
+    @classmethod
+    def marked_prompt(cls, prompt: str, language: Optional[str]) -> str:
+        """The prompt as sent: with the dialogue language named when Runway's guide asks for it."""
+        text = (prompt or "").strip()
+        name = cls.MARKED_LANGUAGES.get(language or "")
+        if name is None or name.lower() in text.lower():
+            return text
+        return f"{text}\nThe dialogue is spoken in {name}."
+
+    def _spec_problems(self, request: CapabilityRequest, vendor_model: str) -> List[str]:
+        spec = self.SPECS.get(vendor_model)
+        if spec is None:
+            return [f"{vendor_model!r} is not a Seedance model this adapter knows"]
+        out: List[str] = []
+        d = request.duration_s
+        if isinstance(d, str) and d.strip().lower() == "auto":
+            out.append("duration auto is refused: Runway holds the longest length up front, so the clip's length is "
+                       "chosen (4 to 30 seconds) and priced before it is made")
+        elif isinstance(d, bool) or not isinstance(d, int) or d not in spec["durations"]:
+            out.append(f"{vendor_model} makes clips of 4 to 30 whole seconds, and the length is never defaulted "
+                       f"(the price is per second); got {d if d is not None else '(none)'}")
+        if request.resolution not in spec["resolutions"]:
+            out.append(f"resolution {request.resolution or '(none)'} is not offered by {vendor_model} "
+                       f"({', '.join(spec['resolutions'])}); it sets the price, so it is never defaulted")
+        elif (request.aspect_ratio or "") not in self.RATIOS:
+            out.append(f"aspect ratio {request.aspect_ratio or '(none)'} is not offered for {vendor_model} through Runway "
+                       f"({', '.join(self.RATIOS)})")
+        frames = bool(request.input_images or request.end_image)
+        if request.capability == I2V:
+            if frames and request.reference_images:
+                out.append("keyframes and reference pictures cannot be mixed in one Seedance clip: use a first (and "
+                           "last) frame, or reference pictures")
+            elif not frames and not request.reference_images:
+                out.append("i2v needs a first frame or reference pictures")
+            if request.end_image and not request.input_images:
+                out.append("a last frame needs a first frame")
+            if len(request.input_images) > 1:
+                out.append("i2v takes one first frame; more pictures go in as references")
+            if request.reference_audio or request.reference_videos:
+                out.append("Runway documents reference sound and clips for text-to-video only")
+        elif frames:
+            out.append("a picture on text-to-video is a reference, never a frame: send it as a reference picture")
+        if len(request.reference_images) > self.MAX_REFERENCE_IMAGES:
+            out.append(f"Runway takes at most {self.MAX_REFERENCE_IMAGES} reference pictures")
+        if len(request.reference_videos) > self.MAX_REFERENCE_VIDEOS:
+            out.append(f"Runway takes at most {self.MAX_REFERENCE_VIDEOS} reference clips")
+        if len(request.reference_audio) > self.MAX_REFERENCE_AUDIO:
+            out.append(f"Runway takes at most {self.MAX_REFERENCE_AUDIO} reference recordings")
+        if any(Path(str(p)).suffix.lower() not in self.AUDIO_TYPES for p in request.reference_audio):
+            out.append("a reference recording must be MP3 or WAV")
+        if any(Path(str(p)).suffix.lower() not in _RUNWAY_VIDEO_TYPES for p in request.reference_videos):
+            out.append("a reference clip must be MP4, MOV, WebM or MKV")
+        lang = request.dialogue_language
+        if lang is not None and lang not in self.UNMARKED_LANGUAGES and lang not in self.MARKED_LANGUAGES:
+            out.append(f"the dialogue language {lang!r} is not one this route can mark "
+                       f"({', '.join((*self.UNMARKED_LANGUAGES, *self.MARKED_LANGUAGES))})")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        # HttpAdapter's, not RunwayAdapter's: gen4.5's ratio and 2-10 s rules are not Seedance's.
+        out = HttpAdapter.problems(self, request, entry)
+        out.extend(p for p in self._spec_problems(request, entry.vendor_model_for(request.capability)) if p not in out)
+        # UTF-16 code units, as model_registry.prompt_units counts them (Runway's own measure); the mark counts too.
+        marked = self.marked_prompt(request.prompt, request.dialogue_language)
+        if len(marked.encode("utf-16-le")) // 2 > entry.max_prompt_chars:
+            out.append(f"the prompt with its dialogue-language mark is longer than {entry.max_prompt_chars} characters")
+        return out
+
+    def _file_problems(self, request: CapabilityRequest) -> List[str]:
+        """What is wrong with the files themselves: read from disk, so it runs in submit, before any upload."""
+        out: List[str] = []
+        for p in (*request.reference_audio, *request.reference_videos):
+            path = Path(str(p))
+            size = path.stat().st_size if path.is_file() else -1
+            if not self.MIN_BYTES <= size <= self.MAX_BYTES:
+                out.append(f"{path.name}: Runway takes files from 512 bytes to 200 MB")
+        for p in request.reference_audio:
+            seconds = self.seconds_of(str(p))
+            if seconds is None:
+                out.append(f"{Path(str(p)).name}: its length could not be read; export it again as MP3")
+            elif seconds >= self.MAX_REFERENCE_AUDIO_S:
+                out.append(f"{Path(str(p)).name}: a reference recording must be shorter than 30 seconds")
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        bad = self._spec_problems(request, vendor_model) or self._file_problems(request)
+        if bad:
+            # Nothing has been uploaded or sent: a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad), not_accepted=True)
+        body: dict = {"model": vendor_model,
+                      "promptText": self.marked_prompt(request.prompt, request.dialogue_language),
+                      "ratio": self.RATIOS[request.aspect_ratio][request.resolution],
+                      "duration": int(request.duration_s),
+                      # Always explicit: Runway's default is true, and an unasked soundtrack is not what was priced.
+                      "audio": bool(request.audio)}
+        try:
+            if request.capability == I2V:
+                if request.input_images:
+                    images = [{"uri": _image_ref(str(request.input_images[0])), "position": "first"}]
+                    if request.end_image:
+                        images.append({"uri": _image_ref(str(request.end_image)), "position": "last"})
+                else:
+                    images = [{"uri": _image_ref(str(p))} for p in request.reference_images]
+                body["promptImage"] = images
+                path = "image_to_video"
+            else:
+                if request.reference_images:
+                    body["references"] = [{"uri": _image_ref(str(p))} for p in request.reference_images]
+                path = "text_to_video"
+        except OSError:
+            raise AdapterError(E_BAD_REQUEST, "a picture could not be read", not_accepted=True) from None
+        # Uploads last, after every check: an upload is a call to Runway, and nothing is sent for a job that is refused.
+        if request.reference_videos:
+            body["referenceVideos"] = [{"uri": self._upload(Path(str(p)))} for p in request.reference_videos]
+        if request.reference_audio:
+            body["referenceAudio"] = [{"uri": self._upload(Path(str(p)), self.AUDIO_TYPES[Path(str(p)).suffix.lower()])}
+                                      for p in request.reference_audio]
+        data = self.post(f"{self.base_url}/v1/{path}", body)
         if not data.get("id"):
             raise AdapterError(E_BAD_RESPONSE, "no task id in the response")
         return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
@@ -1132,4 +1326,4 @@ class FluxVideoAdapter(HttpAdapter):
 
 
 ADAPTERS = (VeoAdapter, KlingAdapter, MiniMaxVideoAdapter, RunwayAdapter, RunwayVideoUpscaleAdapter,
-            LumaAdapter, SeedanceAdapter, SeedanceV2Adapter, WanAdapter, FluxVideoAdapter)
+            RunwaySeedanceAdapter, LumaAdapter, SeedanceAdapter, SeedanceV2Adapter, WanAdapter, FluxVideoAdapter)

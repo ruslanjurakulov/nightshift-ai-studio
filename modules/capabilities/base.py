@@ -337,6 +337,16 @@ class CapabilityRequest:
     #: The light a ``relight`` is asked for by name (0099): one of RELIGHT_LOOKS,
     #: which the entry's ``relight_looks`` must list. None = the prompt names it.
     look: Optional[str] = None
+    #: Pictures the clip draws its subjects or style from, never a frame of it (t2v / i2v on a model whose adapter lists the
+    #: capability in ``media_reference_capabilities``). Kept apart from ``input_images`` because a vendor that takes both
+    #: reads them differently: a reference sent as a first frame makes a different clip than the one asked for.
+    reference_images: Sequence[str] = ()
+    #: Recordings the soundtrack follows, and clips the motion follows: local paths the worker copied from the library.
+    reference_audio: Sequence[str] = ()
+    reference_videos: Sequence[str] = ()
+    #: The language the clip's spoken lines are in (base BCP-47 tag). It comes from the project, the channel or the
+    #: person's explicit choice, never from the UI locale (an Uzbek user may make English content). None = not said.
+    dialogue_language: Optional[str] = None
 
 
 @dataclass
@@ -457,6 +467,11 @@ class HttpAdapter:
     #: Capabilities for which this adapter always sends a resolution — the
     #: request's, else the one the registry pins (``default_resolution``, 0070).
     resolution_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter sends ``reference_images`` / ``reference_audio`` / ``reference_videos``. Every
+    #: other adapter would drop them and make a clip that ignores what the person gave it, so a request carrying one is refused.
+    media_reference_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter marks ``dialogue_language`` in what it sends; elsewhere the field is refused.
+    dialogue_language_capabilities: Sequence[str] = ()
     timeout = 60
     #: False = a 3xx from the API host is an error, never followed: the request carries the key in a header,
     #: and a redirect would send it to wherever the answer points (requests drops only ``Authorization``).
@@ -512,6 +527,11 @@ class HttpAdapter:
             out.append(f"adapter {self.key} does not send a quality")
         if request.audio is not None and request.capability not in self.audio_capabilities:
             out.append(f"adapter {self.key} does not send an audio flag")
+        if (request.reference_images or request.reference_audio or request.reference_videos) \
+                and request.capability not in self.media_reference_capabilities:
+            out.append(f"adapter {self.key} does not send reference pictures, sound or clips")
+        if request.dialogue_language is not None and request.capability not in self.dialogue_language_capabilities:
+            out.append(f"adapter {self.key} does not mark a dialogue language")
         out.extend(entry.problems(request))
         return out
 
