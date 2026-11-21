@@ -301,16 +301,10 @@ export const CUSTOMER_RAIL: readonly NavItem[] = [
   // Nightshift Brain (0201): the customer's channel, credits and forecast, projects and memory on one screen.
   { href: "/brain", key: "brain" },
   { href: "/channels", key: "channels" },
-];
-
-/**
- * Entries that read ONE channel's numbers: listed only while one channel is selected, since on the every-channel roll-up they
- * have nothing of their own to show. Each is filtered by sectionAllowed in customerRail, so an entry a customer would only be
- * bounced from (Analytics is an operator section today, CUSTOMER_NAV_KEYS) is never drawn as a link: hiding is presentation,
- * and listing a screen the layout redirects away from is a dead end.
- */
-export const CUSTOMER_CHANNEL_RAIL: readonly NavItem[] = [
-  { href: "/analytics", key: "analytics" },
+  // Channel research (0202) reads one channel, but it stays listed on the all-channels roll-up too, where its page asks
+  // which channel (research/page.tsx "pickChannel"). It used to be listed only on a channel, so the rail grew and shrank
+  // as the scope changed between pages (owner, 2026-11-21: "their number changes"). A customer sees one rail everywhere.
+  // Analytics is not here: it is an operator section (CUSTOMER_NAV_KEYS) and, by the owner's decision, moves into Brain.
   { href: "/research", key: "research" },
 ];
 
@@ -327,13 +321,13 @@ export const CUSTOMER_TABBAR: readonly NavItem[] = [
 ];
 
 /**
- * The customer rail for this request: CUSTOMER_RAIL, with Nightshift AI after Studio only while the server's flag is on for
- * this workspace, and the one-channel entries only when `oneChannel` (the URL names a channel, not the roll-up).
+ * The customer rail for this workspace: CUSTOMER_RAIL, with Nightshift AI after Studio only while the server's flag is on for
+ * this workspace. Deliberately NOT a function of the page or the channel scope: the flag is per workspace, so the rail is the
+ * same on every page a customer opens.
  */
-export function customerRail(features: NavFeatures = NO_NAV_FEATURES, oneChannel = false): readonly NavItem[] {
-  const channel = oneChannel ? CUSTOMER_CHANNEL_RAIL.filter((i) => sectionAllowed(i.href.slice(1), false)) : [];
-  if (features.aiChat !== true && channel.length === 0) return CUSTOMER_RAIL;
-  return [CUSTOMER_RAIL[0], ...(features.aiChat === true ? [NIGHTSHIFT_AI_ENTRY] : []), ...CUSTOMER_RAIL.slice(1), ...channel];
+export function customerRail(features: NavFeatures = NO_NAV_FEATURES): readonly NavItem[] {
+  if (features.aiChat !== true) return CUSTOMER_RAIL;
+  return [CUSTOMER_RAIL[0], NIGHTSHIFT_AI_ENTRY, ...CUSTOMER_RAIL.slice(1)];
 }
 
 /**

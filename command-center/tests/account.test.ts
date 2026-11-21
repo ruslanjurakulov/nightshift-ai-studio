@@ -38,10 +38,10 @@ const { youtubeAccounts } = await import("@/lib/connectedAccounts");
 const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.items.map((i) => i.key));
 
 describe("nav filtering by role", () => {
-  it("gives a customer exactly four destinations, in the owner's order (audit 2026-11-21)", () => {
-    // Nightshift Studio, Media library, Nightshift Brain, Channels. Credits and Settings are the sidebar's foot
-    // (CUSTOMER_SIDEBAR.footer). The phone's bottom bar keeps its own five (CUSTOMER_TABBAR).
-    expect(keys(false)).toEqual(["studio", "library", "brain", "channels"]);
+  it("gives a customer exactly five destinations, in the owner's order, whatever the scope (audit and owner, 2026-11-21)", () => {
+    // Nightshift Studio, Media library, Nightshift Brain, Channels, then Research, which used to appear on a channel's pages
+    // only. Credits and Settings are the sidebar's foot (CUSTOMER_SIDEBAR.footer). The phone's bottom bar keeps its own five.
+    expect(keys(false)).toEqual(["studio", "library", "brain", "channels", "research"]);
     expect(CUSTOMER_SIDEBAR.footer.map((i) => i.key)).toEqual(["credits", "settings"]);
   });
 
@@ -242,7 +242,7 @@ describe("appRedirect", () => {
     expect(customerRail().map((i) => i.key)).not.toContain("nightshiftAi");
     expect(customerRail({ adsFactory: false, characterStudio: false, aiChat: false })).toBe(CUSTOMER_RAIL);
     const on = customerRail({ adsFactory: false, characterStudio: false, aiChat: true });
-    expect(on.map((i) => i.key)).toEqual(["studio", "nightshiftAi", "library", "brain", "channels"]);
+    expect(on.map((i) => i.key)).toEqual(["studio", "nightshiftAi", "library", "brain", "channels", "research"]);
     expect(on[1]).toEqual(NIGHTSHIFT_AI_ENTRY);
     expect(NIGHTSHIFT_AI_ENTRY.href).toBe("/studio?ai=new");
   });

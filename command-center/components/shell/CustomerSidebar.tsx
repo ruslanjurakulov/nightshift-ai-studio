@@ -5,8 +5,7 @@ import { Suspense, useState } from "react";
 import { PanelLeft } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
-import { useChannelPath, useChannelSlug } from "@/lib/channels-client";
-import { ALL_CHANNELS_SLUG } from "@/lib/channels";
+import { useChannelPath } from "@/lib/channels-client";
 import { CUSTOMER_SIDEBAR, customerRail, sidebarCurrent, type NavItem } from "@/lib/navigation";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
@@ -137,8 +136,9 @@ function CurrentRows({ collapsed }: { collapsed: boolean }) {
  * now, so the sidebar is a few places, not a wall of tools (docs/studio/STUDIO_IA.md §4).
  */
 function SidebarRows({ current, collapsed }: { current: string | null; collapsed: boolean }) {
-  // Nightshift AI only where the server's flag lets this workspace in; Analytics and Research only on one channel.
-  const work = customerRail(useShell().features, useChannelSlug() !== ALL_CHANNELS_SLUG);
+  // Nightshift AI only where the server's flag lets this workspace in. Never read the channel scope here: that made the
+  // rail differ between a channel's pages and all-channels (owner, 2026-11-21).
+  const work = customerRail(useShell().features);
   return (
     <>
       <ul className="flex flex-col gap-0.5 pt-1">
