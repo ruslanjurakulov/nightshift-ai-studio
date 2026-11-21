@@ -48,6 +48,7 @@ export const filmStudioUz: FilmStudioDictionary = {
     lengthLabel: "Maqsadli uzunlik",
     minutes: "{n} daq",
     seconds: "{n} s",
+    minutesAndSeconds: "{minutes} daq {seconds} s",
     languageLabel: "Video tili",
     languageHint: "Ovoz va subtitrlar shu tilda boʻladi. Ekran tili alohida tanlanadi.",
     formatLabel: "Format",

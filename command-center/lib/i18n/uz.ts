@@ -11,6 +11,7 @@ import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { voiceCatalogUz } from "./voice-catalog/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { assetDownloadUz } from "./asset-download/uz";
+import { brainDashUz } from "./brain-dashboard/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ageUz } from "./age/uz";
 import { aiChatUz } from "./ai-chat/uz";
@@ -78,6 +79,7 @@ export const uz: Dictionary = {
   effects: effectsUz,
   libraryUx: libraryUxUz,
   assetDownload: assetDownloadUz,
+  brainDash: brainDashUz,
   ownerShell: ownerShellUz,
   age: ageUz,
   aiChat: aiChatUz,
@@ -176,6 +178,7 @@ export const uz: Dictionary = {
     organization: "Sozlamalar",
     credits: "Kreditlar",
     usage: "Sarf",
+    brain: "Nightshift Brain",
     security: "Xavfsizlik",
     onboarding: "Ishni boshlash",
     approvals: "Tasdiqlashlar",
