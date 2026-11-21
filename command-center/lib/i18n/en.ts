@@ -3398,6 +3398,7 @@ export const en = {
     runLimitShort: "Your plan's parallel runs are all in use. Start this one when a run finishes.",
     notEnforced: "Runs for this organization are paid with credits, which this deployment has not switched on (NIGHTSHIFT_CREDITS_ENFORCE). Ask the operator to enable credits.",
     adultRequired: "A video run uses Google's Gemini for its research and script, and Google's terms are for adults (18+). Confirm your age in the box at the top of Create, then run again. Nothing was started or charged.",
+    ageUnavailable: "We could not read your age answer just now, so the run was not started. Nothing was charged. Try again in a moment.",
     estimateUnavailable: "This run's cost can't be estimated yet, so it can't start while credits are enforced.",
     unavailable: "Credits are enforced but unavailable on this database (is migration 0020 applied?).",
     readFailedRun: "Credits could not be read just now, so this run was not started and nothing was put on hold. Retry in a moment.",

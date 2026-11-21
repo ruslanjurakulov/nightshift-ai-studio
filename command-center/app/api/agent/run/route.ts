@@ -202,11 +202,15 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const madeForKids = body.made_for_kids === true;
   // 0196: a run spends on Google (runGoogleStages: the research and the script are always Gemini's), whose terms are 18+, so it
   // needs an adult answer, as a Google model does in the Studio. Asked here, before anything is held or dispatched: the Actions
-  // dispatch writes no row for the database's run gate to see. An unknown answer blocks no one, as the minor check above.
+  // dispatch writes no row for the database's run gate to see. On the queue an unknown answer goes on, because the run gate
+  // refuses the row itself; on Actions nothing behind this line would ask again, so an answer that could not be read stops the
+  // run (try again) rather than spending on Google for someone who may never have answered.
   const googleStages = runGoogleStages("daily", { video_provider: videoProvider || undefined, image_provider: imageProvider || undefined });
   const age = await readAgeState();
   if (age === "none" && googleStages.length > 0)
     return NextResponse.json({ error: "adult_attestation_required", google_stages: googleStages }, { status: 428 });
+  if (age === "unknown" && googleStages.length > 0 && backend === "actions")
+    return NextResponse.json({ error: "age_unavailable" }, { status: 503 });
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
 

@@ -89,6 +89,28 @@ describe("Run now and the adult answer", () => {
     expect(h.dispatch).toHaveBeenCalledTimes(1);
   });
 
+  it("0196: on Actions an answer that could not be read stops the run (try again), because nothing after the route asks again", async () => {
+    h.age = "unknown";
+    const res = await post();
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: "age_unavailable" });
+    expect(h.reserve).not.toHaveBeenCalled();
+    expect(h.dispatch).not.toHaveBeenCalled();
+    const { creditRunError } = await import("../lib/credits");
+    for (const [loc, d] of Object.entries(dictionaries)) expect(creditRunError({ error: "age_unavailable" }, d, loc), loc).toBe(d.credits.ageUnavailable);
+  });
+
+  it("0196: on the queue an unread answer goes on to the database, whose run gate refuses the row itself", async () => {
+    process.env.NIGHTSHIFT_RUN_BACKEND = "queue";
+    h.age = "unknown";
+    h.insert.mockResolvedValue({ data: { id: "job-1" }, error: null });
+    const res = await post();
+    expect((await res.clone().json().catch(() => ({}))).error).not.toBe("age_unavailable");
+    expect(res.status).not.toBe(428);
+    // It reached the row: on the queue the database's run gate, not this route, decides.
+    expect(h.insert).toHaveBeenCalledTimes(1);
+  });
+
   it("0196: the remedy is in every language and names Create", async () => {
     const { creditRunError } = await import("../lib/credits");
     for (const [loc, d] of Object.entries(dictionaries)) {
