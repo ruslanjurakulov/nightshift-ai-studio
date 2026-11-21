@@ -28,9 +28,11 @@ const FULL_DICTIONARY = new Set(
 /**
  * Route folders under app/ that are not public. (app) is the signed-in app; api holds route handlers, which have no
  * client bundle; /welcome is the first run of a signed-in account (its page sends anyone signed out to /login before
- * rendering, and its layout mounts the app's providers on purpose). scripts/public-bundle-check.mjs skips the same three.
+ * rendering, and its layout mounts the app's providers on purpose); /owner is the platform owner's console (its layout sends
+ * anyone signed out to /login and answers everyone but the owner with the 404, and mounts the app's providers on purpose).
+ * scripts/public-bundle-check.mjs skips the same four.
  */
-const SIGNED_IN_ROOTS = new Set(["(app)", "api", "welcome"]);
+const SIGNED_IN_ROOTS = new Set(["(app)", "api", "welcome", "owner"]);
 
 /**
  * The one allowed way in, with its reason: the root error boundary replaces the root layout and so loses the public

@@ -1,0 +1,219 @@
+/* The Owner Console (/owner) and the account switcher. Tokens only (globals.css / tokens.css): it follows the theme. */
+
+.oc-root {
+  min-height: 100dvh;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  display: grid;
+  /* minmax(0, …): a plain 1fr grows to the scrolling section row's max-content width and the whole page scrolls sideways.
+     align-content: start keeps the phone header its own height instead of stretching it to fill the screen. */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+@media (min-width: 64rem) {
+  .oc-root { grid-template-columns: 15rem minmax(0, 1fr); }
+}
+
+/* The skip link, as the app draws it (app-redesign.css), for a page that does not load that sheet. */
+.oc-root .app-skip {
+  position: fixed;
+  left: 12px;
+  top: -80px;
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--ns-r-key, 0.6rem);
+  background: var(--ns-cta-bg, var(--color-primary));
+  color: var(--ns-cta-fg, var(--color-on-accent));
+  font-weight: 600;
+  text-decoration: none;
+}
+.oc-root .app-skip:focus,
+.oc-root .app-skip:focus-visible {
+  top: max(10px, env(safe-area-inset-top));
+  outline: 3px solid var(--ns-focus, var(--color-primary));
+  outline-offset: 2px;
+}
+
+/* ── sidebar (desktop) ── */
+.oc-side {
+  display: none;
+}
+@media (min-width: 64rem) {
+  .oc-side {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem 0.75rem;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-panel);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+}
+/* Sidebar labels wrap: Russian and Uzbek section names are longer than the rail. The phone row keeps one line. */
+.oc-side .oc-link { white-space: normal; line-height: 1.25; }
+.oc-brand { display: flex; align-items: center; gap: 0.55rem; padding: 0.25rem 0.5rem; min-width: 0; }
+.oc-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.45rem;
+  background: var(--ns-cta-bg, var(--color-primary));
+  color: var(--ns-cta-fg, var(--color-on-accent));
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.oc-brand-tx { font-weight: 600; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.oc-nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.oc-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.oc-link:hover { background: var(--color-hover); color: var(--color-fg); }
+.oc-link[aria-current="page"] { background: var(--color-active, var(--color-panel-2)); color: var(--color-fg); font-weight: 600; }
+.oc-link:focus-visible,
+.oc-tool:focus-visible,
+.oc-acct:focus-visible,
+.acct-switch-row:focus-visible {
+  outline: 2px solid var(--ns-focus, var(--color-primary));
+  outline-offset: 2px;
+}
+
+.oc-foot { margin-top: auto; display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border); }
+.oc-email { margin: 0; padding: 0 0.5rem; font-size: 0.75rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── top bar (phone and tablet) ── */
+.oc-top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-border);
+  padding-top: env(safe-area-inset-top);
+}
+@media (min-width: 64rem) {
+  .oc-top { display: none; }
+}
+.oc-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 1rem; }
+.oc-acct {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-fg);
+  font-size: 0.85rem;
+}
+.oc-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 40;
+  width: min(20rem, calc(100vw - 2rem));
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.9rem;
+  background: var(--color-panel);
+  box-shadow: var(--shadow-elevated, 0 12px 32px rgb(0 0 0 / 0.25));
+}
+.oc-top-nav {
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* An edge fade says the row goes on. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+}
+.oc-top-nav::-webkit-scrollbar { display: none; }
+.oc-nav-row { list-style: none; margin: 0; padding: 0 0.75rem 0.5rem; display: flex; gap: 0.25rem; width: max-content; }
+.oc-nav-row .oc-link { min-height: 44px; }
+
+/* ── page ── */
+.oc-main { min-width: 0; outline: none; }
+.oc-page { max-width: 72rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
+@media (min-width: 40rem) {
+  .oc-page { padding: 2rem 2rem 3rem; }
+}
+.oc-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.75rem; }
+.oc-h1 { margin: 0; font-size: 1.35rem; font-weight: 650; letter-spacing: -0.01em; }
+.oc-sub { margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--color-muted); max-width: 46rem; }
+.oc-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.oc-card { border: 1px solid var(--color-border); border-radius: 0.8rem; background: var(--color-panel); padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.oc-note { margin: 0; color: var(--color-muted); font-size: 0.9rem; }
+.oc-note[data-tone="warn"] { color: var(--color-warn); }
+.oc-h2 { margin: 0.25rem 0 0; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted); }
+.oc-tools { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); gap: 0.5rem; }
+.oc-tool {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  color: var(--color-fg);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.oc-tool:hover { background: var(--color-hover); }
+
+/* ── the account switcher (avatar menu and console) ── */
+.acct-switch { display: flex; flex-direction: column; gap: 0.35rem; }
+/* In the avatar menu it sits above the plan figures: a rule keeps the two apart. */
+.acct-switch[data-in-menu="true"] { padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-border); }
+.acct-switch-h { margin: 0; padding: 0 0.25rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted); }
+.acct-switch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.acct-switch-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.4rem 0.5rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--color-fg);
+  text-align: left;
+  cursor: pointer;
+}
+.acct-switch-row:hover:not([aria-disabled="true"]) { background: var(--color-hover); }
+.acct-switch-row[aria-current="true"] { background: var(--color-active, var(--color-panel-2)); }
+.acct-switch-row[aria-disabled="true"] { cursor: progress; opacity: 0.75; }
+.acct-switch-ic {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--color-panel-2);
+  flex-shrink: 0;
+}
+.acct-switch-tx { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.acct-switch-nm { font-size: 0.9rem; font-weight: 600; }
+.acct-switch-hint { font-size: 0.75rem; color: var(--color-muted); }
+.acct-switch-check { color: var(--ns-amber, var(--color-primary)); display: inline-flex; }
+.acct-switch-err { margin: 0; padding: 0 0.25rem; font-size: 0.75rem; color: var(--color-warn); }
+
+@media (prefers-reduced-motion: reduce) {
+  .oc-link, .oc-tool, .acct-switch-row { transition: none; }
+}

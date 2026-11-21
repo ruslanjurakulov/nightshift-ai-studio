@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Activity, Coins, Gift, Inbox, LogOut, Settings, Tv, X } from "lucide-react";
-import { OwnerModeSwitch } from "@/components/shell/OwnerModeSwitch";
+import { AccountSwitcher } from "@/components/account/AccountSwitcher";
 import { useShell } from "@/components/shell/ShellContext";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
@@ -51,7 +51,7 @@ export function AccountMenu({
   const { t, locale, setLocale } = useI18n();
   const path = useChannelPath();
   // The customer's top bar keeps only search, credits, language and New project: theme and view live in this menu at every width.
-  const operatorFrame = useShell().operator;
+  const { operator: operatorFrame, ownerSwitch } = useShell();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -197,6 +197,9 @@ export function AccountMenu({
             </button>
           </header>
 
+          {/* The platform owner's two accounts, first in the menu as a messenger lists them (decided on the server: ownerSwitch). */}
+          {ownerSwitch && <AccountSwitcher current={operatorFrame ? "owner" : "user"} onDone={() => close(false)} inMenu />}
+
           {state === "failed" && (
             <p role="status" className="text-xs text-[var(--color-warn)]">
               {t.account.loadFailed}
@@ -292,7 +295,6 @@ export function AccountMenu({
               <Settings aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.account.settings}</span>
             </Link>
-            <OwnerModeSwitch onDone={() => close(false)} />
             <button type="button" onClick={signOut} className="side-link w-full text-left">
               <LogOut aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.common.signOut}</span>
