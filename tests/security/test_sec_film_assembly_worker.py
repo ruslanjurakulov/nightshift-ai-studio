@@ -24,7 +24,7 @@ import pytest
 from modules import film_assembly as fa
 from modules import media_library as ml
 
-from test_sec_films_money import Db, a, db, no_live_segment  # noqa: F401 — the money lab's fixtures, reused as they are
+from test_sec_films_money import Db, a, b, db, no_live_segment  # noqa: F401 — the money lab's fixtures, reused as they are
 
 SETTINGS = {"title": "The assembly", "language": "en", "target_seconds": 60, "keyframe_model": "img-key",
             "clip_model": "vid-clip", "voice": {"source": "creative_tts", "model": "tts-a", "voice_id": "voice_lab_1"},
@@ -38,8 +38,21 @@ ASSEMBLY_CHARGE = Decimal(5)     # 18 s → 1 whole minute × the lab's film_ass
 class PgStore:
     """AssemblyStore over the lab database, reading as the service role (0166/0171's SELECT grants) and calling 0171 as it."""
 
+    #: Which organizations film_studio_on_for answers true for. That function is S6's migration (not on this branch):
+    #: the lab stands in for it here, and test_the_flag_function_is_read_when_it_exists checks the real one when present.
+    enabled_orgs: set = set()
+
     def __init__(self, d: Db):
         self.d = d
+
+    def org_enabled(self, org):
+        return str(org) in self.enabled_orgs
+
+    def heartbeat(self, sid, worker):
+        return self._call("select public.film_heartbeat_segment(%s::uuid, %s)", [sid, worker]) is True
+
+    def discard_unrecorded(self, sid, asset):
+        return self._call("select public.film_discard_unrecorded_assembly(%s::uuid, %s::uuid)", [sid, asset])
 
     def _rows(self, q, p):
         return self.d.one("service_role", None, f"select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from ({q}) x", p)
@@ -66,7 +79,10 @@ class PgStore:
     def _call(self, q, p):
         try:
             return self.d.svc(q, p)
+        except psycopg.OperationalError as e:
+            raise fa.DbUnavailable(str(e).splitlines()[0]) from None
         except psycopg.Error as e:
+            # As PostgREST hands a refusal over: a 4xx whose message is the function's machine word.
             raise fa.DbRefused(q.split("(")[0], 400, str(e).splitlines()[0]) from None
 
     def begin(self, sid, worker):
@@ -98,7 +114,9 @@ def store_file(path, *, asset_id, org_id, store, media_root, tools, provenance, 
                           provenance=provenance, variants=["thumb", "proxy"])
 
 
-def render(norm, resolver, out, **kw):
+def render(norm, resolver, out, timings=None, **kw):
+    if timings is not None:
+        timings.mode, timings.intermediate = "sequential", "fast"
     Path(out).write_bytes(b"\0" * 64)
     render.calls += 1
     return out
@@ -108,7 +126,8 @@ render.calls = 0
 
 
 def deps(org, **kw):
-    d = dict(env={fa.ENABLE_ENV: "on", fa.ORGS_ENV: org}, render=render, store_file=store_file,
+    PgStore.enabled_orgs.add(str(org))
+    d = dict(env={fa.ENABLE_ENV: "on"}, render=render, store_file=store_file,
              probe=lambda p: fa.Probed(FILM_S, 1920, 1080, True), has_audio=lambda p, m: False, free_mb=lambda p: 1e9)
     d.update(kw)
     return fa.Deps(**d)
@@ -208,11 +227,11 @@ def test_a_retry_after_the_record_was_lost_reuses_the_file_and_charges_once(db, 
     def flaky(*args):
         if lost["n"]:
             lost["n"] -= 1
-            raise ConnectionError("the database went away")
+            raise fa.DbUnavailable("the database went away")
         return real(*args)
     store.record = flaky
     render.calls = 0
-    with pytest.raises(ConnectionError):
+    with pytest.raises(fa.DbUnavailable):
         fa.assemble_segment(seg, worker_id="w-1", store=store, media=PgMedia(db), media_root=root,
                             tools=ml.Tools("ffprobe", "ffmpeg"), deps=deps(seg["org_id"]))
     assert db.su("select assembly_status from public.film_segments where id = %s", [seg["id"]])[0][0] == "running"
@@ -227,10 +246,13 @@ def test_a_retry_after_the_record_was_lost_reuses_the_file_and_charges_once(db, 
     assert len(captures) == 1 and abs(Decimal(captures[0])) == Decimal(str(settled["captured_credits"])), captures
 
 
-def test_a_workspace_the_flag_does_not_list_is_never_assembled_and_pays_nothing_for_it(db, a, root):
+def test_a_workspace_the_flag_does_not_enable_is_never_assembled_and_pays_nothing_for_it(db, a, root):
     film, seg = assembling(db, a, root)
     render.calls = 0
-    out = run(db, seg, root, env={fa.ENABLE_ENV: "on", fa.ORGS_ENV: str(uuid.uuid4())})
+    store = PgStore(db)
+    store.org_enabled = lambda org: False
+    out = fa.assemble_segment(seg, worker_id="w-1", store=store, media=PgMedia(db), media_root=root,
+                              tools=ml.Tools("ffprobe", "ffmpeg"), deps=deps(seg["org_id"]))
     assert (out.ok, out.reason) == (False, "assembly_not_enabled")
     assert render.calls == 0
     s = seg_json(db, seg["id"])
@@ -246,3 +268,43 @@ def test_a_worker_that_lost_the_lease_records_nothing(db, a, root):
     assert (out.ok, out.reason) == (False, "lease_lost")
     assert render.calls == 0
     assert db.su("select assembly_status from public.film_segments where id = %s", [seg["id"]])[0][0] == "running"
+
+
+def test_the_flag_function_is_read_when_it_exists(db, a, root):
+    """S6's film_studio_on_for(org): absent on this branch (the real store then answers not enabled, never true)."""
+    exists = db.su("select to_regprocedure('public.film_studio_on_for(uuid)') is not null")[0][0]
+    if not exists:
+        pytest.skip("film_studio_on_for is S6's migration; not applied on this branch")
+    answer = db.one("service_role", None, "select public.film_studio_on_for(%s::uuid)", [a.org])
+    assert answer in (True, False)
+
+
+def test_the_orphan_discard_is_the_service_roles_only(db, a):
+    for role in ("anon", "authenticated"):
+        with pytest.raises(psycopg.Error) as e:
+            db.act(role, a.owner if role == "authenticated" else None,
+                   "select public.film_discard_unrecorded_assembly(gen_random_uuid(), gen_random_uuid())")
+        assert e.value.sqlstate == "42501"
+
+
+def test_the_orphan_discard_never_touches_a_running_or_recorded_assembly_or_a_foreign_file(db, a, b, root):
+    film, seg = assembling(db, a, root)
+    mine = str(db.su("select public.register_asset(gen_random_uuid(), %s, 'video', 'video/mp4', 1, %s, 'generated', "
+                     "p_duration_s => 18, p_provenance => %s::jsonb) ->> 'id'",
+                     [a.org, uuid.uuid4().hex * 2, json.dumps({"film_segment_id": seg["id"]})])[0][0])
+    # Running: a re-claimer records this very file by its id; never removed.
+    assert db.svc("select public.film_discard_unrecorded_assembly(%s::uuid, %s::uuid)", [seg["id"], mine]) == 0
+    assert db.live(mine)
+    out = run(db, seg, root)                          # the real assembly records its own master
+    assert out.ok
+    # The recorded master is never removed; an unrecorded file of the segment is, once the assembly ended.
+    assert db.svc("select public.film_discard_unrecorded_assembly(%s::uuid, %s::uuid)", [seg["id"], out.asset_id]) == 0
+    assert db.live(out.asset_id)
+    assert db.svc("select public.film_discard_unrecorded_assembly(%s::uuid, %s::uuid)", [seg["id"], mine]) == 1
+    assert not db.live(mine)
+    # Another workspace's file, or one whose provenance does not name the segment, is never a candidate.
+    foreign = db.asset(b.org, "video", "video/mp4", provenance={"film_segment_id": seg["id"]})
+    other = db.asset(a.org, "video", "video/mp4", provenance={"film_segment_id": str(uuid.uuid4())})
+    for f in (foreign, other):
+        assert db.svc("select public.film_discard_unrecorded_assembly(%s::uuid, %s::uuid)", [seg["id"], f]) == 0
+        assert db.live(f)

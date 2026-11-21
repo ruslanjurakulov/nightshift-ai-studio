@@ -26,7 +26,7 @@ OTHER_ORG = "0a000000-0000-4000-8000-000000000002"
 SEG = "5e000000-0000-4000-8000-000000000001"
 FILM = "f1000000-0000-4000-8000-000000000001"
 NARR = "aa000000-0000-4000-8000-000000000001"
-ENV = {fa.ENABLE_ENV: "on", fa.ORGS_ENV: ORG}
+ENV = {fa.ENABLE_ENV: "on"}
 
 
 def _u(n: int, kind: int) -> str:
@@ -48,6 +48,24 @@ class FakeDb:
         self.rate, self.line, self.worker = rate, line, worker
         self.calls = []
         self.record_failures = 0       # how many record calls raise a connection error first
+        self.enabled_orgs = {ORG}      # film_studio_on_for(org)
+        self.lease_alive = True        # film_heartbeat_segment
+        self.discarded = []
+
+    def org_enabled(self, org):
+        self.calls.append(("org_enabled", org))
+        return org in self.enabled_orgs
+
+    def heartbeat(self, sid, worker):
+        return self.lease_alive and worker == self.worker
+
+    def discard_unrecorded(self, sid, asset):
+        self.calls.append(("discard", asset))
+        if self.seg["assembly"]["status"] == "running" or self.seg["assembly"]["asset_id"] == asset:
+            return 0
+        self.discarded.append(asset)
+        self.asset_rows[asset]["deleted_at"] = "now"
+        return 1
 
     # AssemblyStore
     def film(self, fid):
@@ -85,7 +103,7 @@ class FakeDb:
         self._lease(worker)
         if self.record_failures:
             self.record_failures -= 1
-            raise ConnectionError("database unreachable")
+            raise fa.DbUnavailable("database unreachable")
         a = self.seg["assembly"]
         if a["status"] in ("completed", "failed"):
             if ok != (a["status"] == "completed") or (ok and asset != a["asset_id"]):
@@ -231,7 +249,11 @@ class Base(unittest.TestCase):
         render, calls, probe = fake_render(length, w, h)
         self.render_calls = calls
         d = dict(env=ENV, render=render, probe=probe, store_file=fake_store_file(db, self.root),
-                 store_captions=lambda *a, **k: {"id": k["asset_id"]}, has_audio=lambda p, m: False,
+                 store_captions=lambda path, **k: k["store"].register(
+                     asset_id=k["asset_id"], org=k["org_id"], kind="caption", mime="text/vtt", bytes=10, sha256="x",
+                     source="generated", width=None, height=None, duration_s=None, provenance=k["provenance"],
+                     derived_bytes=0, variants=[], parent_asset_id=None),
+                 has_audio=lambda p, m: False,
                  free_mb=lambda p: 1e9)
         d.update(kw)
         return fa.Deps(**d)
@@ -247,20 +269,27 @@ class Base(unittest.TestCase):
 # ── the flag ─────────────────────────────────────────────────────────────────
 
 class FlagTest(Base):
-    def test_a_workspace_the_flag_does_not_list_is_never_assembled(self):
+    def test_a_workspace_the_database_does_not_enable_is_never_assembled(self):
         f = self.film()
-        for env in ({}, {fa.ENABLE_ENV: "on"}, {fa.ENABLE_ENV: "on", fa.ORGS_ENV: OTHER_ORG},
-                    {fa.ENABLE_ENV: "off", fa.ORGS_ENV: ORG}, {fa.ENABLE_ENV: "on", fa.ORGS_ENV: "not-a-uuid"}):
+        for env, orgs in (({}, {ORG}), ({fa.ENABLE_ENV: "off"}, {ORG}), ({fa.ENABLE_ENV: "on"}, set()),
+                          ({fa.ENABLE_ENV: "on"}, {OTHER_ORG})):
             db = f.db()
+            db.enabled_orgs = orgs
             out = run(db, self.root, deps=self.fake_deps(db, env=env))
             self.assertFalse(out.ok)
-            self.assertEqual(out.reason, "assembly_not_enabled", env)
+            self.assertEqual(out.reason, "assembly_not_enabled", (env, orgs))
             self.assertEqual(self.render_calls, [], env)
-            # Nothing read, nothing begun: the only call is the failure, charged 0.
-            self.assertEqual(db.calls, [("record", False, None)], env)
+            # Nothing read, nothing begun: the only write is the failure, charged 0.
+            self.assertEqual([c for c in db.calls if c[0] != "org_enabled"], [("record", False, None)], env)
             self.assertEqual(db.seg["assembly"]["charged_credits"], 0.0)
 
-    def test_the_listed_workspace_is_assembled(self):
+    def test_the_kill_switch_is_read_before_the_database(self):
+        f = self.film()
+        db = f.db()
+        run(db, self.root, deps=self.fake_deps(db, env={}))
+        self.assertNotIn(("org_enabled", ORG), db.calls)
+
+    def test_the_enabled_workspace_is_assembled(self):
         f = self.film()
         db = f.db()
         out = run(db, self.root, deps=self.fake_deps(db))
@@ -297,9 +326,10 @@ class MoneyTest(Base):
         f = self.film()
         db = f.db()
         db.record_failures = 1          # registered, then the database went away before the record
-        with self.assertRaises(ConnectionError):
+        with self.assertRaises(fa.DbUnavailable):
             run(db, self.root, deps=self.fake_deps(db))
         self.assertEqual(db.seg["assembly"]["status"], "running")
+        self.assertEqual(db.records(), [("record", True, db.records()[0][2])], "a lost record was turned into a failure")
         first_renders = len(self.render_calls)
         out = run(db, self.root, deps=self.fake_deps(db))
         self.assertTrue(out.ok, out)
@@ -399,6 +429,182 @@ class LoudFailureTest(Base):
         self.assert_fails(f.db(), "captions_failed", transcribe=deaf)
 
 
+# ── Lens / Breach findings ──────────────────────────────────────────────────
+
+class FakeResponse:
+    def __init__(self, status, body):
+        self.status_code, self._body = status, body
+        self.content = b"x" if body is not None else b""
+
+    def json(self):
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+
+class FakeHttp:
+    """PostgREST as the gateway answers: per rpc name, a (status, body) or an exception."""
+
+    def __init__(self, answers):
+        self.answers, self.sent = answers, []
+
+    def request(self, method, url, **kw):
+        name = url.rsplit("/", 1)[-1]
+        self.sent.append((name, kw.get("json")))
+        a = self.answers.get(name, (200, True))
+        if isinstance(a, Exception):
+            raise a
+        return FakeResponse(*a)
+
+
+class RestStoreTest(unittest.TestCase):
+    def store(self, answers):
+        media = ml.MediaStore("http://db.invalid", "service-key-placeholder", session=FakeHttp(answers))
+        return fa.AssemblyStore(media), media.http()
+
+    def test_a_gateway_5xx_is_not_a_refusal(self):
+        st, http = self.store({"film_record_assembly": (503, ValueError("html, not json"))})
+        with self.assertRaises(fa.DbUnavailable):
+            st.record(SEG, "w-1", True, NARR)
+
+    def test_a_4xx_with_the_databases_word_is_a_refusal(self):
+        st, _ = self.store({"film_record_assembly": (409, {"message": "lease_lost"})})
+        with self.assertRaises(fa.DbRefused) as cm:
+            st.record(SEG, "w-1", True, NARR)
+        self.assertEqual(cm.exception.word, "lease_lost")
+
+    def test_no_answer_at_all_is_not_a_refusal(self):
+        st, _ = self.store({"film_begin_assembly": OSError("connection reset")})
+        with self.assertRaises(fa.DbUnavailable):
+            st.begin(SEG, "w-1")
+
+    def test_the_flag_function_missing_means_not_enabled(self):
+        self.assertFalse(self.store({"film_studio_on_for": (404, {"message": "Could not find the function"})})[0]
+                         .org_enabled(ORG))
+        self.assertFalse(self.store({"film_studio_on_for": (200, "true")})[0].org_enabled(ORG))
+        self.assertTrue(self.store({"film_studio_on_for": (200, True)})[0].org_enabled(ORG))
+
+    def test_a_large_film_reads_its_files_in_small_requests(self):
+        st, http = self.store({})
+        calls = []
+        st._get = lambda table, params: calls.append(params["id"]) or []
+        st.assets(ORG, [_u(i, 0xB) for i in range(130)])
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(c.count(",") < fa.ID_CHUNK for c in calls))
+
+
+class FindingsTest(Base):
+    def test_a_5xx_on_the_success_record_keeps_the_rendered_film_and_the_assembly_running(self):
+        f = self.film()
+        db = f.db()
+        real = db.record
+
+        def record(sid, worker, ok, asset):
+            if ok:
+                db.calls.append(("record", ok, asset))
+                raise fa.DbUnavailable("film_record_assembly: HTTP 503")
+            return real(sid, worker, ok, asset)
+        db.record = record
+        with self.assertRaises(fa.DbUnavailable):
+            run(db, self.root, deps=self.fake_deps(db))
+        self.assertEqual(db.seg["assembly"]["status"], "running")
+        self.assertNotIn(("record", False, None), db.calls)
+
+    def test_a_5xx_on_begin_records_nothing(self):
+        f = self.film()
+        db = f.db()
+
+        def begin(sid, worker):
+            raise fa.DbUnavailable("film_begin_assembly: HTTP 502")
+        db.begin = begin
+        with self.assertRaises(fa.DbUnavailable):
+            run(db, self.root, deps=self.fake_deps(db))
+        self.assertEqual(db.records(), [])
+        self.assertEqual(self.render_calls, [])
+
+    def test_a_refused_begin_is_reported_and_records_nothing(self):
+        f = self.film()
+        db = f.db()
+        db.seg["assembly"]["status"] = "planned"     # S6 called before film_begin_assembly
+        out = run(db, self.root, deps=self.fake_deps(db))
+        self.assertEqual((out.ok, out.reason, out.recorded), (False, "not_running", False))
+        self.assertEqual(db.records(), [])
+
+    def test_a_render_that_fell_back_to_the_compact_encode_fails(self):
+        f = self.film()
+        db = f.db()
+        render, _c, probe = fake_render(6.0, 1280, 720)
+
+        def degraded(*a, timings=None, **kw):
+            timings.mode, timings.intermediate = "fallback", "compact"
+            return render(*a, **kw)
+        out = run(db, self.root, deps=self.fake_deps(db, render=degraded, probe=probe))
+        self.assertEqual((out.ok, out.reason), (False, "render_degraded"))
+        self.assertEqual(db.seg["assembly"]["charged_credits"], 0.0)
+
+    def test_a_render_that_outlived_its_lease_registers_nothing(self):
+        f = self.film()
+        db = f.db()
+        db.lease_alive = False
+        media_regs = []
+        deps = self.fake_deps(db)
+        out = run(db, self.root, deps=deps)
+        self.assertEqual((out.ok, out.reason), (False, "lease_lost"))
+        self.assertEqual(db.records(), [])
+        self.assertFalse(any(a.get("provenance") for a in db.asset_rows.values() if a.get("kind") == "video"
+                             and a["id"] not in f.assets))
+
+    def test_a_file_registered_before_the_lease_was_lost_is_discarded_once_the_assembly_ended(self):
+        f = self.film()
+        db = f.db()
+        real = db.record
+
+        def record(sid, worker, ok, asset):
+            if ok:
+                # Meanwhile the sweep failed the assembly and settled; this worker's record is refused.
+                db.seg["assembly"].update(status="failed", charged_credits=0.0)
+                raise fa.DbRefused("film_record_assembly", 409, "lease_lost")
+            return real(sid, worker, ok, asset)
+        db.record = record
+        out = run(db, self.root, deps=self.fake_deps(db))
+        self.assertEqual(out.reason, "lease_lost")
+        self.assertEqual(len(db.discarded), 1, "an unpaid finished film stayed in the library")
+
+    def test_each_attempt_works_in_its_own_folder(self):
+        f = self.film()
+        seen = []
+        for _ in range(2):
+            db = f.db()
+            render, _c, probe = fake_render(6.0, 1280, 720)
+
+            def spy(norm, resolver, out, workdir=None, **kw):
+                seen.append(workdir)
+                return render(norm, resolver, out, **kw)
+            run(db, self.root, deps=self.fake_deps(db, render=spy, probe=probe))
+            shutil.rmtree(ml.asset_dir(self.root, db.records()[-1][2]), ignore_errors=True)
+            for a in list(db.asset_rows):
+                if a not in f.assets:
+                    del db.asset_rows[a]
+        self.assertEqual(len(set(seen)), 2, seen)
+        self.assertFalse((self.root / fa.WORK_DIRNAME / SEG).exists())
+
+    def test_whisper_runs_once_per_narration_so_a_retry_builds_the_same_cut(self):
+        f = self.film(captions="sidecar", words=False)
+        heard = []
+
+        def transcribe(path, language):
+            heard.append(path)
+            return [{"word": "Scene", "start": 0.35, "end": 0.7}, {"word": "speaks.", "start": 0.7, "end": 1.2}]
+        shas = []
+        for _ in range(2):
+            db = f.db()
+            out = run(db, self.root, deps=self.fake_deps(db, transcribe=transcribe))
+            self.assertTrue(out.ok, out)
+            shas.append(out.cut_sha256)
+        self.assertEqual(len(heard), 1)
+        self.assertEqual(shas[0], shas[1])
+
+
 # ── captions ─────────────────────────────────────────────────────────────────
 
 class CaptionTest(unittest.TestCase):
@@ -406,12 +612,23 @@ class CaptionTest(unittest.TestCase):
 
     def test_cues_never_cross_a_scene_and_are_deterministic(self):
         words = [{"word": w, "start": 0.3 + i * 0.3, "end": 0.55 + i * 0.3} for i, w in enumerate("a b c d e".split())]
-        words += [{"word": "next", "start": 3.3, "end": 3.6}, {"word": "outside", "start": 2.8, "end": 3.0}]
+        words += [{"word": "next", "start": 3.3, "end": 3.6}]
         cues = fa.cues_from_words(words, self.SEGS, 30)
         self.assertEqual(cues, fa.cues_from_words(list(reversed(words)), self.SEGS, 30))
         self.assertEqual([c["text"] for c in cues], ["a b c d e", "next"])
         for c in cues:
             self.assertTrue(any(s["start_s"] <= c["start_s"] and c["end_s"] <= s["end_s"] for s in self.SEGS), c)
+
+    def test_a_first_word_aligned_just_before_its_segment_is_still_captioned(self):
+        words = [{"word": "It", "start": 0.22, "end": 0.45}, {"word": "begins.", "start": 0.5, "end": 1.0}]
+        self.assertEqual([c["text"] for c in fa.cues_from_words(words, self.SEGS, 30)], ["It begins."])
+
+    def test_a_spoken_word_outside_every_segment_fails_the_captions_never_drops_quietly(self):
+        words = [{"word": "a", "start": 0.3, "end": 0.6}, {"word": "stray", "start": 2.8, "end": 3.0}]
+        with self.assertRaises(fa.AssemblyFailed) as cm:
+            fa.cues_from_words(words, self.SEGS, 30)
+        self.assertEqual(cm.exception.reason, "captions_failed")
+        self.assertIn("stray", cm.exception.detail)
 
     def test_a_sentence_end_or_three_seconds_ends_a_cue(self):
         words = [{"word": "One.", "start": 0.3, "end": 0.6}, {"word": "Two", "start": 0.7, "end": 1.0}]

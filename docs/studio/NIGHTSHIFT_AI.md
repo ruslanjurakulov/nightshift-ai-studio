@@ -19,6 +19,7 @@ the two, and it rests on 0171 as written.
 - **One lease per segment.** Every service call (`film_begin_assembly`, `film_record_assembly`, `film_heartbeat_segment`,
   `film_settle_segment`) checks `film_segments.worker_id`. No function hands a lease over. `film_claim_segment` re-takes a
   segment only after its heartbeat has gone stale, and that costs an attempt (`attempts` + 1, capped by `max_attempts`).
+  So a lease *can* move under a running assembly, and the assembly is built for that (below).
 - **The assembly has no hold of its own.** It is one line inside the segment's `fm-<id>` hold. `film_record_assembly(ok)`
   charges the file's recorded length in whole minutes at the confirmed `film_assembly_minute` rate, never above its line.
   `film_record_assembly(false)` charges 0. The settle then captures what was charged and releases the rest.
@@ -47,19 +48,29 @@ the two, and it rests on 0171 as written.
    cut (`film_timeline.build_cut`) and the captions, renders through the editor's path, checks the output, and registers
    the master with provenance `{"film_segment_id", "film_id", "film_version", "cut_sha256", "captions_asset_id"}`. Then
    it calls `film_record_assembly(ok=true)`.
-   **Every failure is recorded as `film_record_assembly(false)`, at 0, before the call returns,** an unexpected exception
-   included (which is then re-raised). There are three exceptions:
-   - the lease was lost (`outcome.reason = 'lease_lost'`: another worker records it);
-   - the assembly is not running (`not_running`: there is nothing to record);
-   - the film was rendered and registered, but the *success* record did not reach the database. Then the call raises,
-     and the assembly stays `running`, so a good film is not thrown away.
+   **Every decision is recorded before the call returns.** A refusal, a bad output, or an unexpected exception (which is
+   then re-raised) is recorded as `film_record_assembly(false)`, at 0. `outcome.recorded` says whether this call recorded.
+   Three things are not decisions and are not recorded:
+   - **The database did not answer.** No answer, a timeout, a 5xx, or a body that is not PostgREST's raises
+     `DbUnavailable` (a `ConnectionError`) and leaves the assembly `running`. That applies to the success record too, so
+     a paid, rendered film is never thrown away over a 503. Only a 4xx carrying the database's machine word is a refusal.
+   - **The lease was lost** (`outcome.reason = 'lease_lost'`: the new holder records).
+   - **The assembly is not running** (`not_running`: there is nothing to record).
+   S6 settles a returned outcome, and on `DbUnavailable` it settles nothing and lets the next claim retry.
 4. **S6 then settles** with `film_settle_segment(seg, worker, 'completed' if outcome.ok else outcome.reason)`. The
    assembly never settles.
 5. **Crash recovery.** If S6 re-claims a segment whose `assembly_status` is still `running`, it calls `assemble_segment`
-   again. The master's asset id is `uuid5(segment, cut sha256)`, so a file that a crashed attempt already registered is
-   recorded without rendering again. A segment whose assembly is already `completed` gets back the recorded file, with
-   nothing rendered or charged twice. Past `max_attempts`, or past the deadline plus grace, 0171 itself fails a running
-   assembly at 0 and settles.
+   again. The master's asset id is `uuid5(segment, cut sha256)`. Whisper's word timings are cached per narration file
+   (at temperature 0), so a retry builds the same cut. A file that a crashed attempt already registered is then recorded
+   without rendering again. A segment whose assembly is already `completed` gets back the recorded file, with nothing
+   rendered or charged twice. Past `max_attempts`, or past the deadline plus grace, 0171 itself fails a running assembly
+   at 0 and settles.
+6. **A lease that moves under a running assembly** (Breach BR-P4B-01 and -02):
+   - each attempt renders in its own folder (`.film-assembly/<segment>/<attempt>`) and removes only that folder;
+   - the lease is checked again (`film_heartbeat_segment`) after the render and before anything is registered;
+   - a file registered just before the lease was lost is handed to `film_discard_unrecorded_assembly` (migration 0200,
+     service role only). That soft-deletes it only when the segment's assembly is no longer running and did not record
+     it, so a re-claimer's legitimate reuse is never touched.
 
 ### What S6's takes must carry
 
@@ -74,13 +85,15 @@ the two, and it rests on 0171 as written.
   ```json
   {"film_take_id": "<take>",
    "segments": [{"scene_id": "<scene>", "start_s": 0.25, "end_s": 9.5}],
-   "loudness_lufs": null, "true_peak_db": null,
-   "words": [{"word": "It", "start": 0.3, "end": 0.45}]}
+   "loudness_lufs": null, "true_peak_db": null}
   ```
 
   Times are in the file's own time, on the film's clock: each scene's words start `NARRATION_LEAD_S` (0.25 s) into the
   scene, so a 60-scene film is one sound clip, not 60. Loudness that was not measured stays `null`, never a default
-  (rule 5). `words` is optional: without it, the assembly runs Whisper base on the file to time the captions.
+  (rule 5). **No `words` in provenance:** 0038 caps provenance at 16 KB, and about 400 words (2.7 minutes of speech)
+  already exceed it (Lens L4). The assembly times the captions with Whisper base on the file instead. Every spoken word
+  must fall inside a segment: a word outside every segment fails the captions (`captions_failed`) instead of being left
+  out quietly.
 
 ### What the assembly refuses (no silent fallback, rule 4)
 
@@ -93,20 +106,28 @@ Each of these fails the assembly at 0, by name, with the remedy in `detail`. A s
 - `disk_low`: less free space than the fast intermediates need, which is 8 MB per second of 1080p scaled by pixels, plus
   the output. Below that, the editor's renderer would quietly switch to a second lossy generation;
 - `render_timed_out` and `render_failed`;
+- `render_degraded`: `render_backend` redid the segments with its compact encode (a second lossy generation) after a
+  failure or a full disk, instead of failing. It does that without raising; the assembly reads it off the render's
+  timings;
 - `output_mismatch`: the length is more than 0.12 s off the sum of the scenes, the frame is not the aspect's, or a film
   with sound came out without it;
-- `store_failed`;
+- `store_failed`: also a library row whose recorded length is not the film's, since 0171 charges by that length;
 - `review_copy_missing` or `review_copy_too_large`. The review copy is the library's 480p proxy of the master, and it must
   fit the 50 MB Supabase object ceiling;
 - `assembly_not_enabled`.
 
 ### The flag
 
-The assembly runs only where `NIGHTSHIFT_FILM_ASSEMBLY=on` is set in the worker's environment, and only for an
-organization listed in `NIGHTSHIFT_FILM_ASSEMBLY_ORGS` (comma-separated ids: the owner's and the demo workspaces). Both
-fail closed: when they are unset, no organization is assembled. The check comes before any row is read or anything is
-rendered. A segment of an organization that is not listed is recorded as failed at 0 (`assembly_not_enabled`), so its
-hold is released at the settle.
+There is one allowlist, the database's: `public.film_studio_on_for(p_org uuid)` from S6's migration (0198 provisional).
+It is true when the global Film Studio switch and the organization's own `film_studio_enabled` are both on. It is STABLE
+and granted to service_role only. S6's claim already requires it; the assembly reads the same function again as a
+defensive check.
+- If the function is missing (its migration is not applied) or answers anything but `true`, the organization is not
+  assembled.
+- `NIGHTSHIFT_FILM_ASSEMBLY=on` is only an environment kill-switch on the worker, off by default. It is read before the
+  database.
+- A segment that either check stops is recorded as failed at 0 (`assembly_not_enabled`), before any row is read or
+  anything rendered, so its hold is released at the settle.
 
 ### Money
 
@@ -119,3 +140,6 @@ real functions and checks these four things:
 - a crash leaves it charged 0, and the line is released at the settle;
 - a retry after a lost record renders once and captures once;
 - an organization that is not flagged pays nothing for an assembly.
+
+`tests/security/test_sec_breach_film_assembly_worker.py` adds Breach's attacks: two lease holders racing, a render that
+outlives its segment, a forged worker id or organization, a foreign row at the master's id, and the charge cap.
