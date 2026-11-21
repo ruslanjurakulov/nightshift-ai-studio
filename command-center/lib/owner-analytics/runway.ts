@@ -158,6 +158,8 @@ export interface ProviderRunway {
   perDay7d: number | null;
   /** The same over 14 days: the owner's payment plan paces on this, a longer and steadier window than 7 days. */
   perDay14d: number | null;
+  /** The 14-day pace prices some spend from a price list rather than a recorded amount. */
+  perDay14dEstimate: boolean;
   /** When the provider's own reading was taken (reported balances only). */
   checkedAt: string | null;
   usd24h: number | null;
@@ -353,9 +355,12 @@ export function providerRunways(x: RunwayData): ProviderRunway[] {
     const left = nativeRunway ? leftNative!.amount : leftUsd;
     const perDay7d = nativeRunway ? native7 : burn7d;
     const native14 = nativeRunway ? providerBurn(p, x.pipelineRows, null, 14, x.now).unitsPerDay : null;
-    // 14 days needs the reads (and the nightly mirror) to reach back 14 days; otherwise the pace is not known.
-    const reaches14 = synced(x.now - 14 * DAY) && [x.pipelineFromMs, x.studioFromMs, x.probesFromMs].every((f) => f === null || f <= x.now - 14 * DAY);
-    const perDay14d = nativeRunway ? native14 : reaches14 && s14.usd !== null ? s14.usd / 14 : null;
+    // 14 days needs the reads to reach back 14 days AND a fresh mirror: a mirror last synced 10 days ago reaches back 14 days but
+    // misses the last 10, and dividing that by 14 would read as a slow pace, so an overdue top-up would look like "fine".
+    const reaches14 =
+      !pipelineStale && synced(x.now - 14 * DAY) && [x.pipelineFromMs, x.studioFromMs, x.probesFromMs].every((f) => f === null || f <= x.now - 14 * DAY);
+    const perDay14d = !reaches14 ? null : nativeRunway ? native14 : s14.usd !== null ? s14.usd / 14 : null;
+    const perDay14dEstimate = !nativeRunway && s14.estimate;
     const runsOut = daysLeft(left, perDay7d);
     const r24 = daysLeft(left, nativeRunway ? native1 : burn24h);
     const rank = (v: number | "never") => (v === "never" ? Infinity : v);
@@ -395,6 +400,7 @@ export function providerRunways(x: RunwayData): ProviderRunway[] {
       left,
       perDay7d,
       perDay14d,
+      perDay14dEstimate,
       checkedAt: rem.kind === "reported" ? rem.checkedAt : null,
       usd24h,
       usd7d,

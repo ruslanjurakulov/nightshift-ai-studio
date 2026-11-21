@@ -14,7 +14,7 @@ import { paymentPlan, PLAN_DAYS, type PaymentPlan } from "@/lib/owner-analytics/
  *
  * WHO. buildOwnerFacts() throws OwnerOnlyError unless ownerAccess() says "owner"; the database refuses everyone else too
  * (0182's gate, 0200's functions, 0107's second factor). Nothing in a customer path may import this module — a test reads the
- * import graph and fails the build if one does (tests/owner-brain-isolation.test.ts).
+ * import graph and fails the build if one does (tests/owner-brain-facts.test.ts).
  *
  * WHAT. Every figure is tagged: `measured` (read from a record of what happened), `estimated` (arithmetic on measurements, e.g.
  * top-ups minus spend) or `unknown` with the reason. Revenue is net of refunds and disputes but before provider fees, which no
@@ -24,6 +24,13 @@ import { paymentPlan, PLAN_DAYS, type PaymentPlan } from "@/lib/owner-analytics/
 export class OwnerOnlyError extends Error {
   constructor(readonly access: string) {
     super("owner facts are for the platform owner only");
+  }
+}
+
+/** The owner signed in with a password only while 0107's second-factor gate is on: the whole object is withheld. */
+export class SecondFactorRequiredError extends Error {
+  constructor() {
+    super("owner facts need the second factor");
   }
 }
 
@@ -89,6 +96,13 @@ export interface OwnerFacts {
 export const buildOwnerFacts = cache(async (nowMs: number = Date.now()): Promise<OwnerFacts> => {
   const access = await ownerAccess();
   if (access !== "owner") throw new OwnerOnlyError(access);
+  // Revenue (0182) and the provider tables carry no second-factor check of their own, and this object is what the owner's AI
+  // hands a model: with 0107's gate on, a stolen password gets none of it — asked once, before any read, never assumed.
+  const supabase = await createClient();
+  if (supabase) {
+    const { data: aalOk, error: aalError } = await supabase.rpc("admin_aal_ok");
+    if (aalError || aalOk !== true) throw new SecondFactorRequiredError();
+  }
   const asOf = new Date(nowMs).toISOString();
   const tomorrow = new Date(nowMs + DAY).toISOString();
 
@@ -147,7 +161,7 @@ export const buildOwnerFacts = cache(async (nowMs: number = Date.now()): Promise
                 ? { state: "unknown", why: "no reading and no top-up, or spend not fully known" }
                 : { state: r.ledger.remaining.kind === "reported" ? "measured" : "estimated", value: r2(r.left), as_of: r.checkedAt ?? asOf },
             unit: line?.unit ?? "usd",
-            per_day_14d: r.perDay14d === null ? { state: "unknown", why: "spend over 14 days not fully known" } : { state: "measured", value: r2(r.perDay14d), as_of: asOf },
+            per_day_14d: r.perDay14d === null ? { state: "unknown", why: "spend over 14 days not fully known" } : { state: r.perDay14dEstimate ? "estimated" : "measured", value: r2(r.perDay14d), as_of: asOf },
             runs_out_on: typeof line?.runsOutOn === "string" ? line.runsOutOn : null,
             top_up_url: line?.topUpUrl ?? null,
           };

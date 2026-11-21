@@ -60,6 +60,27 @@ def test_people_leave_out_the_operators_own_workspace(conn, sc):
     assert out.rows[0][0]["internal_excluded"] is True
 
 
+def test_a_trial_is_not_paying_and_a_typed_address_never_reaches_the_owners_ai(conn, sc):
+    """A workspace name is customer-typed text: an address in it is masked before the owner's AI sees it, and a trial is
+    counted apart from paying workspaces."""
+    with as_superuser(conn, commit=False) as su:
+        plan = su.value("select id from public.plans order by id limit 1")
+        with acting(conn, sc.operator) as s:
+            before = s.run("select public.owner_brain_people()").rows[0][0]
+        su.rows("update public.organizations set name = 'Shop of leak.me@example.test' where id = %s returning 1", [sc.alice.org])
+        su.rows("insert into public.subscriptions (org_id, provider_subscription_id, plan_id, status, last_event_at) "
+                "values (%s, 'sub_labtrial0001', %s, 'trialing', now()) returning 1", [sc.alice.org, plan])
+        with acting(conn, sc.operator) as s:
+            out = s.run("select public.owner_brain_people()")
+    assert out.ok, out
+    doc = out.rows[0][0]
+    assert "leak.me@example.test" not in json.dumps(doc), doc
+    assert doc["trialing_by_plan"].get(plan, 0) == before["trialing_by_plan"].get(plan, 0) + 1, doc
+    assert doc["paying_by_plan"] == before["paying_by_plan"], doc
+    names = [r["workspace"] for r in doc["recent_plan_changes"]]
+    assert "Shop of [address]" in names and doc["untrusted_fields"], doc
+
+
 def test_health_says_ci_is_not_in_the_database(conn, sc):
     with acting(conn, sc.operator) as s:
         out = s.run("select public.owner_brain_health()")

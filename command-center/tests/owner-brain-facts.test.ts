@@ -11,7 +11,7 @@ const NOW = Date.parse("2026-11-21T12:00:00Z");
 const row = (over: Partial<ProviderRunway>): ProviderRunway =>
   ({
     id: "minimax", name: "MiniMax", left: 50, leftUsd: 50, leftNative: null, nativeRunway: false, perDay7d: 10, perDay14d: 10,
-    status: "ok", autoRecharge: false, checkedAt: null, models: [],
+    status: "ok", emptyUnchecked: false, perDay14dEstimate: false, autoRecharge: false, checkedAt: null, models: [],
     ledger: { remaining: { kind: "estimate", usd: 50, credits: null } },
     ...over,
   }) as unknown as ProviderRunway;
@@ -39,6 +39,13 @@ describe("owner payment plan", () => {
     expect(p.due).toHaveLength(0);
     expect(p.unknown.map((l) => l.reason)).toEqual(["unknown", "unknown"]);
     expect(p.unknown.find((l) => l.provider === "minimax")?.amount).toBeNull();
+  });
+
+  it("cannot judge a provider whose empty check did not run, and asks for no amount for an empty one with no pace", () => {
+    expect(paymentPlan([row({ emptyUnchecked: true })], NOW).unknown).toHaveLength(1);
+    expect(paymentPlan([row({ status: "empty", perDay14d: 0 })], NOW).due[0]).toMatchObject({ reason: "empty", amount: null });
+    // 10 × 0.07 is 0.7000000000000001 in floats: one cent of noise must not round up.
+    expect(paymentPlan([row({ perDay14d: 0.07, left: 0.1 })], NOW).due[0].amount).toBe(0.7);
   });
 
   it("labels the provider's own reading measured, and keeps a self-recharging provider off the due list", () => {
@@ -71,14 +78,15 @@ describe("owner facts are the owner's only", () => {
       for (const n of readdirSync(dir)) {
         const f = path.join(dir, n);
         if (statSync(f).isDirectory()) walk(f);
-        else if (/\.(ts|tsx)$/.test(n)) files.push(path.relative(root, f));
+        else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(n)) files.push(path.relative(root, f));
       }
     };
     for (const d of ["app", "lib", "components"]) walk(path.join(root, d));
     const resolve = (from: string, spec: string): string | null => {
       const base = spec.startsWith("@/") ? path.join(root, spec.slice(2)) : spec.startsWith(".") ? path.resolve(root, path.dirname(from), spec) : null;
       if (!base) return null;
-      for (const c of [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")]) {
+      const noJs = base.replace(/\.(m|c)?jsx?$/, "");
+      for (const c of [base, `${noJs}.ts`, `${noJs}.tsx`, `${noJs}.mts`, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")]) {
         if (existsSync(c) && statSync(c).isFile()) return path.relative(root, c);
       }
       return null;
@@ -86,14 +94,15 @@ describe("owner facts are the owner's only", () => {
     const imports = new Map<string, string[]>();
     const edges = (f: string) => {
       if (!imports.has(f)) {
-        const src = readFileSync(path.join(root, f), "utf8");
-        const specs = [...src.matchAll(/(?:import|export)[^'"]*from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1] ?? m[2]);
+        // Comments stripped first: an apostrophe in one ("the owner's facts") would end the specifier match early.
+        const src = readFileSync(path.join(root, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+        const specs = [...src.matchAll(/\bfrom\s*['"`]([^'"`]+)['"`]|\b(?:import|require)\s*\(\s*['"`]([^'"`]+)['"`]|^\s*import\s*['"]([^'"]+)['"]/gm)].map((m) => m[1] ?? m[2] ?? m[3]);
         imports.set(f, specs.map((s) => resolve(f, s)).filter((x): x is string => x !== null));
       }
       return imports.get(f)!;
     };
     const entries = files.filter(
-      (f) => (f.startsWith("app/") || f.startsWith("lib/brain/")) && !OWNER_ZONES.some((z) => z.test(f)) && !OWNER_ONLY.some((o) => o.test(f)),
+      (f) => (f.startsWith("app/") || f.startsWith("lib/brain/") || f.startsWith("components/")) && !OWNER_ZONES.some((z) => z.test(f)) && !OWNER_ONLY.some((o) => o.test(f)),
     );
     const leaks: string[] = [];
     for (const e of entries) {
@@ -103,7 +112,8 @@ describe("owner facts are the owner's only", () => {
         const f = stack.pop()!;
         for (const n of edges(f)) {
           if (OWNER_ONLY.some((o) => o.test(n))) leaks.push(`${e} → … → ${f} → ${n}`);
-          else if (!seen.has(n) && !OWNER_ZONES.some((z) => z.test(n))) {
+          // Owner-zone files are walked too: a customer route reaching the facts through a helper in app/(owner)/ is a leak.
+          else if (!seen.has(n)) {
             seen.add(n);
             stack.push(n);
           }
@@ -111,5 +121,25 @@ describe("owner facts are the owner's only", () => {
       }
     }
     expect(leaks).toEqual([]);
+  });
+
+  // Catch-all behind the graph walk, for the forms no regex follows (a computed import, a string built at runtime): outside
+  // the owner's zones, no file so much as names the module.
+  it("no file outside the owner's zones names the owner facts module", () => {
+    const root = path.resolve(__dirname, "..");
+    const OWNER_ZONES = [/^app\/\(owner\)\//, /^app\/api\/brain\/owner\//, /^app\/api\/owner-/, /^app\/\(app\)\/\[channel\]\/owner-analytics\//, /^lib\/server\/owner-brain-facts\.ts$/];
+    const named: string[] = [];
+    const walk = (dir: string) => {
+      for (const n of readdirSync(dir)) {
+        const f = path.join(dir, n);
+        if (statSync(f).isDirectory()) walk(f);
+        else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(n)) {
+          const rel = path.relative(root, f);
+          if (!OWNER_ZONES.some((z) => z.test(rel)) && /owner-brain-facts|buildOwnerFacts/.test(readFileSync(f, "utf8"))) named.push(rel);
+        }
+      }
+    };
+    for (const d of ["app", "lib", "components"]) walk(path.join(root, d));
+    expect(named).toEqual([]);
   });
 });

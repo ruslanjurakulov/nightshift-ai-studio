@@ -53,17 +53,22 @@ begin
   end if;
   v_internal := array(select public.owner_analytics_internal_org_ids());
 
-  with members as (
-    -- A person counts once, by their earliest membership; a person only in internal workspaces is internal.
-    select m.user_id, bool_and(m.org_id = any (v_internal)) as internal
-      from public.org_members m
-     group by m.user_id
+  with roster as (
+    select a.user_id as uid from public.app_members a
+     where a.user_id is not null and a.role in ('owner', 'admin') group by a.user_id
   ),
+  internal_owner as (
+    select m.user_id as uid from public.org_members m
+     where m.role = 'owner' and m.user_id is not null and m.org_id = any (v_internal) group by m.user_id
+  ),
+  -- Internal exactly as 0182's owner_analytics_people says it: on the roster, or the owner of an internal workspace (a demo
+  -- account under another address). The AI and the analytics hub must count the same signups.
   people as (
     select u.id, u.created_at, u.email_confirmed_at is not null as confirmed, u.last_sign_in_at,
-           coalesce(mb.internal, false) as internal
+           (r.uid is not null or io.uid is not null) as internal
       from auth.users u
-      left join members mb on mb.user_id = u.id
+      left join roster r on r.uid = u.id
+      left join internal_owner io on io.uid = u.id
   ),
   subs as (
     select s.org_id, s.plan_id, s.status, s.provider, s.current_period_start, s.cancel_at_period_end, s.canceled_at,
@@ -90,16 +95,26 @@ begin
     'paying_by_plan', coalesce((
       select jsonb_object_agg(plan_id, n) from (
         select plan_id, count(distinct org_id) as n from subs
-         where status in ('active', 'trialing', 'past_due') group by plan_id
+         where status in ('active', 'past_due') group by plan_id
       ) x), '{}'::jsonb),
+    -- A trial is not a paying workspace: counted apart, as past due is.
+    'trialing_by_plan', coalesce((
+      select jsonb_object_agg(plan_id, n) from (
+        select plan_id, count(distinct org_id) as n from subs where status = 'trialing' group by plan_id
+      ) t), '{}'::jsonb),
     'past_due', (select count(distinct org_id) from subs where status = 'past_due'),
     'cancelling', (select count(distinct org_id) from subs where status in ('active', 'trialing') and cancel_at_period_end),
     'canceled_d30', (select count(distinct org_id) from subs where status = 'canceled' and canceled_at >= now() - interval '30 days'),
-    -- Who bought which plan, newest first: the workspace's name and the plan, never a person or a payment id.
+    -- Who bought which plan, newest first: the workspace and the plan, never a person or a payment id. A workspace name is
+    -- text a customer typed (it can hold an address, or words aimed at the owner's AI): anything e-mail-shaped is masked, the
+    -- id stands beside it, and the field is marked untrusted for whoever reads it.
+    'untrusted_fields', jsonb_build_array('recent_plan_changes[].workspace'),
     'recent_plan_changes', coalesce((
-      select jsonb_agg(r order by r->>'at' desc) from (
+      select jsonb_agg(r order by r->>'at' desc nulls last) from (
         select jsonb_build_object(
-                 'workspace', o.name, 'plan', s.plan_id, 'status', s.status, 'provider', s.provider,
+                 'workspace', left(regexp_replace(o.name, '[^[:space:]@]+@[^[:space:]@]+', '[address]', 'g'), 80),
+                 'workspace_id', left(o.id::text, 8),
+                 'plan', s.plan_id, 'status', s.status, 'provider', s.provider,
                  'at', coalesce(s.last_event_at, s.current_period_start)) as r
           from subs s join public.organizations o on o.id = s.org_id
          order by coalesce(s.last_event_at, s.current_period_start) desc nulls last
@@ -127,6 +142,9 @@ as $$
 declare
   v_since24 text := to_char((now() at time zone 'utc') - interval '1 day', 'YYYY-MM-DD"T"HH24:MI:SS');
   v_since7  text := to_char((now() at time zone 'utc') - interval '7 days', 'YYYY-MM-DD"T"HH24:MI:SS');
+  -- Newest-event lookups look back 90 days at most: system_events is the largest append-only table, and "none in 90 days"
+  -- is an answer, where a scan of a channel's whole history on every question is not.
+  v_since90 text := to_char((now() at time zone 'utc') - interval '90 days', 'YYYY-MM-DD"T"HH24:MI:SS');
   v_out jsonb;
 begin
   if not public.owner_analytics_is_owner() then
@@ -138,22 +156,24 @@ begin
 
   select jsonb_build_object(
     'as_of', now(),
+    'lookback_days', 90,
     -- system_events.ts is ISO text (some naive, some with a zone): compared as text against an ISO bound, never cast, so one
     -- malformed row cannot fail the whole answer.
     'channels', coalesce((
       select jsonb_agg(c order by c->>'channel_id') from (
         select jsonb_build_object(
           'channel_id', ch.channel_id,
-          'name', ch.name,
+          'name', left(regexp_replace(ch.name, '[^[:space:]@]+@[^[:space:]@]+', '[address]', 'g'), 80),
           'status', ch.status,
           'last_run_event_at', (select max(e.ts) from public.system_events e
-                                 where e.channel_id = ch.channel_id
+                                 where e.channel_id = ch.channel_id and e.ts >= v_since90
                                    and e.event in ('system.started', 'render.completed', 'upload.completed', 'video.published',
                                                    'publish.held', 'publish.blocked', 'upload.failed', 'storyboard.ready')),
-          'failures_24h', (select count(*) from public.system_events e
+          -- Failure EVENTS, not failed runs: one failed run writes several (a stage, an agent, a retry).
+          'failure_events_24h', (select count(*) from public.system_events e
                             where e.channel_id = ch.channel_id and e.ts >= v_since24
                               and (e.status ilike 'fail%' or e.status ilike 'error%' or e.event like '%.failed')),
-          'failures_7d', (select count(*) from public.system_events e
+          'failure_events_7d', (select count(*) from public.system_events e
                            where e.channel_id = ch.channel_id and e.ts >= v_since7
                              and (e.status ilike 'fail%' or e.status ilike 'error%' or e.event like '%.failed')),
           'last_published_at', (select max(v.published_at) from public.videos v where v.channel_id = ch.channel_id),
@@ -170,10 +190,13 @@ begin
             'credential_checked_at', (select cc.last_verified_at from public.channel_credentials cc
                                        where cc.channel_id = ch.channel_id and cc.provider = 'youtube'),
             'last_oauth_failure_at', (select max(e.ts) from public.system_events e
-                                       where e.channel_id = ch.channel_id and e.event = 'channel.oauth.failed')
+                                       where e.channel_id = ch.channel_id and e.ts >= v_since90
+                                         and e.event = 'channel.oauth.failed')
           )
         ) as c
         from public.channels ch
+        order by ch.channel_id
+        limit 200
       ) x), '[]'::jsonb),
     'queues', jsonb_build_object(
       'creative', jsonb_build_object(
@@ -200,16 +223,27 @@ begin
     'workers', coalesce((
       select jsonb_agg(jsonb_build_object('worker_id', w.worker_id, 'kind', w.kind, 'state', w.state, 'updated_at', w.updated_at,
                                           'stale', w.updated_at < now() - interval '120 seconds') order by w.worker_id)
-        from public.worker_status w), '[]'::jsonb),
-    'doctor', (select jsonb_build_object('verdict', a.title, 'at', a.at) from public.alert_events a
-                where a.kind = 'operator.doctor' order by a.at desc limit 1),
+        from (select * from public.worker_status order by worker_id limit 200) w), '[]'::jsonb),
+    -- The doctor writes ONE platform row (channel_id null, title 'ok' or 'fail'; tools/doctor_report.py), and a customer may
+    -- insert alert rows for their own channel (0033). So only a channel-less, not-future row is the doctor's, and only its two
+    -- words pass: anything else is "unknown", never a verdict, and never free text in front of the owner's AI.
+    'doctor', coalesce((
+      select jsonb_build_object('verdict', case when a.title in ('ok', 'fail') then a.title else 'unknown' end, 'at', a.at)
+        from public.alert_events a
+       where a.kind = 'operator.doctor' and a.channel_id is null and a.at <= now()
+       order by a.at desc limit 1), jsonb_build_object('verdict', 'unknown', 'at', null)),
+    -- A row dated in the future would sit in "the last 24 hours" forever: bounded on both sides. Channel rows may be written
+    -- by the channel's own workspace, so the platform's rows are counted apart.
     'alerts_24h', jsonb_build_object(
       'critical', (select count(*) from public.alert_events a
-                    where a.at >= now() - interval '1 day' and a.severity = 'critical' and a.kind not like 'operator.%'),
+                    where a.at >= now() - interval '1 day' and a.at <= now() and a.severity = 'critical' and a.kind not like 'operator.%'),
       'warn', (select count(*) from public.alert_events a
-                where a.at >= now() - interval '1 day' and a.severity = 'warn' and a.kind not like 'operator.%')
+                where a.at >= now() - interval '1 day' and a.at <= now() and a.severity = 'warn' and a.kind not like 'operator.%'),
+      'critical_platform', (select count(*) from public.alert_events a
+                    where a.at >= now() - interval '1 day' and a.at <= now() and a.severity = 'critical' and a.channel_id is null
+                      and a.kind not like 'operator.%'),
+      'basis', 'critical and warn include rows written for a channel by its own workspace; critical_platform counts only platform rows'
     ),
-    'pipeline_mirror_at', (select max(vc.synced_at) from public.video_costs vc),
     'provider_readings', coalesce((
       select jsonb_object_agg(provider, checked_at) from (
         select b.provider, max(b.checked_at) as checked_at from public.provider_balances b where b.source = 'api' group by b.provider

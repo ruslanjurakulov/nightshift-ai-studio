@@ -25,7 +25,8 @@ export interface PlanLine {
   /** The provider's own billing / top-up page; null when none was verified (no guessed link). */
   topUpUrl: string | null;
   basis: Basis;
-  /** What is left and the 14-day pace, in `unit` (USD, or the provider's own unit for a native reading). */
+  /** What is left and the 14-day pace, in `unit` (USD, or the provider's own unit for a native reading — then `amount` is in
+   *  that unit too, and the owner converts at the provider's own price). */
   left: number | null;
   perDay: number | null;
   unit: string;
@@ -36,7 +37,7 @@ export interface PlanLine {
   /** days × pace, rounded up to the minimum top-up when known; null when the pace is unknown. */
   amount: number | null;
   minimumTopUp: number | null;
-  /** Why the line is here: it is empty, runs out inside the plan, or cannot be judged. */
+  /** Why the line is here: it is empty, runs out inside the plan, or cannot be judged. Days are UTC calendar days. */
   reason: "empty" | "runs_out" | "unknown" | "ok";
   /** The provider's reading time, or the ledger's — every line says when it is true. */
   asOf: string | null;
@@ -64,13 +65,16 @@ export function paymentPlan(rows: ProviderRunway[], nowMs: number, days = PLAN_D
     const daysLeft = r.left === null || perDay === null ? null : perDay <= 0 ? ("never" as const) : r.left / perDay;
     const runsOutOn = daysLeft === null ? null : daysLeft === "never" ? "never" : isoDay(nowMs + daysLeft * DAY);
     const minimum = minimums[r.id] ?? null;
-    const raw = perDay === null ? null : Math.ceil(days * perDay * 100) / 100;
-    const amount = raw === null ? null : minimum !== null ? Math.max(minimum, Math.ceil(raw / minimum) * minimum) : raw;
+    // The epsilon keeps float noise (10 × 0.07 = 0.7000000000000001) from rounding a cent up.
+    const raw = perDay === null ? null : Math.ceil(days * perDay * 100 - 1e-6) / 100;
     const empty = r.status === "empty";
+    // An empty provider with no recorded pace has no "days × pace" to pay: null (amount unknown), not a 0 that reads as "nothing".
+    const amount =
+      raw === null || (empty && raw <= 0) ? null : minimum !== null ? Math.max(minimum, Math.ceil(raw / minimum - 1e-9) * minimum) : raw;
     const reason: PlanLine["reason"] = empty
       ? "empty"
-      : daysLeft === null
-        ? "unknown"
+      : daysLeft === null || r.emptyUnchecked
+        ? "unknown" // whether it already refuses for want of balance was not checked: never "fine"
         : daysLeft !== "never" && daysLeft < days && !r.autoRecharge
           ? "runs_out"
           : "ok";
