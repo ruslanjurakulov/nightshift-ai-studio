@@ -251,12 +251,13 @@ describe("r2: state and nonce before ?error=", () => {
     it(`${platform}: a forged, foreign or absent state with ?error= keeps the person's nonce (and PKCE)`, async () => {
       const f = vi.spyOn(globalThis, "fetch");
       const cookie = `${nonceName}=${NONCE}; tt_oauth_pkce=${"v".repeat(43)}`;
-      for (const q of [
+      const queries: Record<string, string>[] = [
         { error: "access_denied" },
         { error: "access_denied", state: "garbage" },
         { error: "access_denied", state: encodeSocialState({ org: ORG, nonce: "x".repeat(32) }) },
         { error: "access_denied", state: encodeSocialState({ org: ORG, nonce: "x".repeat(32), pick: true }) },
-      ]) {
+      ];
+      for (const q of queries) {
         const res = await finishSocialConnect(callback(platform, q, cookie), platform);
         expect(new URL(res.headers.get("location") ?? "").search).toMatch(/bad_state/);
         expect(setCookies(res)).not.toMatch(new RegExp(`${nonceName}=;`));
@@ -306,7 +307,7 @@ describe("r2: paging on /me/assigned_instagram_accounts", () => {
     for (const p of rest) f.mockResolvedValueOnce(Response.json(p));
     return f;
   }
-  const hosts = (f: ReturnType<typeof vi.spyOn>) => f.mock.calls.map(([u]) => new URL(String(u)));
+  const hosts = (f: ReturnType<typeof vi.spyOn>) => f.mock.calls.map(([u]: unknown[]) => new URL(String(u)));
 
   it("a paging.next to another host, http, a port, userinfo, a trailing dot, or a look-alike is never fetched", async () => {
     for (const next of [
