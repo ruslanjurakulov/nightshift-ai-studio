@@ -39,7 +39,7 @@ class TheTableIsOneTable(unittest.TestCase):
         block = re.search(r"TTS_MODEL_LANGUAGES[^=]*=\s*\{(.*?)\n\};", ts, re.S)
         self.assertIsNotNone(block, "TTS_MODEL_LANGUAGES not found in ttsLanguages.ts")
         parsed = {m: tuple(re.findall(r'"([a-z]{2})"', langs))
-                  for m, langs in re.findall(r"^\s*([a-z0-9_]+):\s*\[([^\]]*)\]", block.group(1), re.M)}
+                  for m, langs in re.findall(r'^\s*"?([a-z0-9_.-]+)"?:\s*\[([^\]]*)\]', block.group(1), re.M)}
         self.assertEqual(parsed, tl.MODEL_LANGUAGES)
         self.assertIn('"uz", "ru", "en"', ts)
         self.assertIn(tl.SOURCE_URL, ts)

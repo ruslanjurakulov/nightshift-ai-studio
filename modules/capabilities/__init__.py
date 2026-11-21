@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Dict, Mapping, Optional, Type
 
-from modules.capabilities import alibaba, audio, bfl, google_interactions, image, image_ops, minimax, recraft, transcribe, video, video_ops, xai
+from modules.capabilities import alibaba, audio, bfl, gemini_tts, google_interactions, image, image_ops, minimax, recraft, transcribe, video, video_ops, xai
 from modules.capabilities.base import HttpAdapter
 from modules.capabilities import character_swap, describe_llm, krea, ltx, luma, meta, pika, sonilo, vidu
 
@@ -38,6 +38,7 @@ ADAPTERS: Dict[str, Type[HttpAdapter]] = {
         *xai.ADAPTERS,
         *meta.ADAPTERS,
         *google_interactions.ADAPTERS,
+        *gemini_tts.ADAPTERS,
         *alibaba.ADAPTERS,
     )
 }

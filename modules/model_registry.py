@@ -408,7 +408,10 @@ class ModelEntry:
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), quality=p.get("quality"),
                                  duration_s=p.get("duration_s"),
-                                 voice_id=None if cap in (DUB, CAPTIONS) else voice_id, input_images=tuple(images),
+                                 # A probe that names its own voice (Gemini's prebuilt names) is probed in it: an
+                                 # ElevenLabs voice id means nothing to another vendor. Its language is the probe's own.
+                                 voice_id=None if cap in (DUB, CAPTIONS) else (p.get("voice") or voice_id),
+                                 text_language=p.get("text_language"), input_images=tuple(images),
                                  scale=p.get("factor"), input_media=tuple(media),
                                  target_language=p.get("target_language"), end_image=end,
                                  upscale_target=p.get("upscale_target"))

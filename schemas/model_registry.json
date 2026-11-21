@@ -2619,7 +2619,10 @@
       "output": "video",
       "inputs": {
         "image_refs_max": 1,
-        "prompt_required": ["t2v", "i2v"]
+        "prompt_required": [
+          "t2v",
+          "i2v"
+        ]
       },
       "aspect_ratios": [
         "21:9",
@@ -2719,7 +2722,10 @@
       "output": "video",
       "inputs": {
         "image_refs_max": 1,
-        "prompt_required": ["t2v", "i2v"]
+        "prompt_required": [
+          "t2v",
+          "i2v"
+        ]
       },
       "aspect_ratios": [
         "21:9",
@@ -2819,7 +2825,10 @@
       "output": "video",
       "inputs": {
         "image_refs_max": 1,
-        "prompt_required": ["t2v", "i2v"]
+        "prompt_required": [
+          "t2v",
+          "i2v"
+        ]
       },
       "aspect_ratios": [
         "21:9",
@@ -2919,7 +2928,10 @@
       "output": "video",
       "inputs": {
         "image_refs_max": 1,
-        "prompt_required": ["t2v", "i2v"]
+        "prompt_required": [
+          "t2v",
+          "i2v"
+        ]
       },
       "aspect_ratios": [
         "21:9",
@@ -5999,6 +6011,128 @@
         "prompt": "a red apple on a white table",
         "aspect_ratio": "1:1",
         "image_size": "1K"
+      }
+    },
+    {
+      "id": "gemini-3.8-flash-tts",
+      "display_name": "Gemini 3.8 Flash TTS",
+      "provider": "google",
+      "adapter": "audio.gemini_tts",
+      "vendor_model": "gemini-3.8-flash-tts",
+      "capabilities": [
+        "tts"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://aistudio.google.com/docs/speech-generation",
+        "checked_at": "2026-11-21",
+        "source": "vendor_docs_search",
+        "evidence": "aistudio.google.com/docs/speech-generation read 2026-11-21 for research: model id, Northern Uzbek/Russian/English ticked, up to 2 prebuilt speakers, WAV/L16 24 kHz mono. No real call made.",
+        "note": "generateContent request shape UNVERIFIED for 3.8 (modules/capabilities/gemini_tts.py). No input limit on the page: 4000 characters is our conservative bound. Billed per token, audio output by duration."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": "https://aistudio.google.com/docs/pricing",
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price stated here and no credit price: not on sale. The SQL tts quote counts characters, this model bills audio seconds and input tokens; the quote needs a migration before any price."
+      },
+      "credit_unit": "model_gemini_3_8_flash_tts_second",
+      "entitlement": "models_audio:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "PROBE REQUIRED: no real call through the adapter yet, and the owner's Uzbek listening test (tools/probe_gemini_tts.py) is pending. The gate stays until both pass.",
+        "Google Cloud Service Terms §20.d, as the registry cites it for Google models (NOT re-read for the Gemini API, whose own terms are the notes below): not for a service directed to, or likely to be accessed by, people under 18",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Enforced by requires_adult (0192 attestation, 0196 refusal)",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
+        "Paid tier only: on unpaid services Google uses submitted content to improve its products. The key must be on a billed project before any customer text is sent.",
+        "Uzbekistan is on Google's available-regions list (read 2026-11-21); billing from Uzbekistan NOT verified. Whether a refused or blocked request is billed: not stated, so never reported as free."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "requires_adult": true,
+      "probe": {
+        "capability": "tts",
+        "prompt": "Salom, mening ismim Dilnoza.",
+        "voice": "Kore",
+        "text_language": "uz"
+      }
+    },
+    {
+      "id": "gemini-3.8-flash-lite-tts",
+      "display_name": "Gemini 3.8 Flash-Lite TTS",
+      "provider": "google",
+      "adapter": "audio.gemini_tts",
+      "vendor_model": "gemini-3.8-flash-lite-tts",
+      "capabilities": [
+        "tts"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://aistudio.google.com/docs/speech-generation",
+        "checked_at": "2026-11-21",
+        "source": "vendor_docs_search",
+        "evidence": "aistudio.google.com/docs/speech-generation read 2026-11-21 for research: model id, Northern Uzbek/Russian/English ticked, up to 2 prebuilt speakers, WAV/L16 24 kHz mono. No real call made.",
+        "note": "generateContent request shape UNVERIFIED for 3.8 (modules/capabilities/gemini_tts.py). No input limit on the page: 4000 characters is our conservative bound. Billed per token, audio output by duration."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": "https://aistudio.google.com/docs/pricing",
+        "as_of": null,
+        "confirmed": false,
+        "note": "No price stated here and no credit price: not on sale. The SQL tts quote counts characters, this model bills audio seconds and input tokens; the quote needs a migration before any price."
+      },
+      "credit_unit": "model_gemini_3_8_flash_lite_tts_second",
+      "entitlement": "models_audio:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "PROBE REQUIRED: no real call through the adapter yet, and the owner's Uzbek listening test (tools/probe_gemini_tts.py) is pending. The gate stays until both pass.",
+        "Google Cloud Service Terms §20.d, as the registry cites it for Google models (NOT re-read for the Gemini API, whose own terms are the notes below): not for a service directed to, or likely to be accessed by, people under 18",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Enforced by requires_adult (0192 attestation, 0196 refusal)",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
+        "Paid tier only: on unpaid services Google uses submitted content to improve its products. The key must be on a billed project before any customer text is sent.",
+        "Uzbekistan is on Google's available-regions list (read 2026-11-21); billing from Uzbekistan NOT verified. Whether a refused or blocked request is billed: not stated, so never reported as free."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "requires_adult": true,
+      "probe": {
+        "capability": "tts",
+        "prompt": "Salom, mening ismim Dilnoza.",
+        "voice": "Kore",
+        "text_language": "uz"
       }
     },
     {

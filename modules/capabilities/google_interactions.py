@@ -117,6 +117,30 @@ def _picture_part(ref: str) -> dict:
     return {"type": "image", "data": base64.b64encode(data).decode("ascii"), "mime_type": mime}
 
 
+def google_error_code(text: str) -> Optional[str]:
+    """Google's ``error.status`` where it is sharper than the HTTP status: a 400 saying the key is not valid is
+    ``auth`` (not a bad request), a 400 ``FAILED_PRECONDITION`` is a billing / region problem of the ACCOUNT
+    (never the request), a 403 ``PERMISSION_DENIED`` is the key or the account's billing. Anything else falls
+    through to the status. Shared by every adapter on the Gemini API (here and gemini_tts) so one Google
+    answer never gets two remedies."""
+    err = json_body(text).get("error")
+    err = err if isinstance(err, dict) else {}
+    name = str(err.get("status") or "").upper()
+    low = str(err.get("message") or text or "").lower()
+    if any(w in low for w in _KEY_WORDS):
+        return E_AUTH
+    if name == "FAILED_PRECONDITION":
+        if any(w in low for w in _QUOTA_WORDS):
+            return E_QUOTA
+        if any(w in low for w in _REGION_WORDS):
+            return E_AUTH
+    if name == "PERMISSION_DENIED" and any(w in low for w in _QUOTA_WORDS):
+        return E_QUOTA
+    if name in ("INVALID_ARGUMENT", "FAILED_PRECONDITION") and any(w in low for w in _POLICY_WORDS):
+        return E_POLICY
+    return None
+
+
 def _refused(message: str, *, http_status=None, not_accepted: bool = False) -> AdapterError:
     return AdapterError(E_POLICY, f"{BILLING_UNKNOWN}. {message}", http_status=http_status, not_accepted=not_accepted)
 
@@ -153,26 +177,7 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
         return None
 
     def vendor_error_code(self, status: int, text: str) -> Optional[str]:
-        """Google's ``error.status`` where it is sharper than the HTTP status: a 400 saying the key is not valid is
-        ``auth`` (not a bad request), a 400 ``FAILED_PRECONDITION`` is a billing / region problem of the ACCOUNT
-        (never the request), a 403 ``PERMISSION_DENIED`` is the key or the account's billing. Anything else falls
-        through to the status."""
-        err = json_body(text).get("error")
-        err = err if isinstance(err, dict) else {}
-        name = str(err.get("status") or "").upper()
-        low = str(err.get("message") or text or "").lower()
-        if any(w in low for w in _KEY_WORDS):
-            return E_AUTH
-        if name == "FAILED_PRECONDITION":
-            if any(w in low for w in _QUOTA_WORDS):
-                return E_QUOTA
-            if any(w in low for w in _REGION_WORDS):
-                return E_AUTH
-        if name == "PERMISSION_DENIED" and any(w in low for w in _QUOTA_WORDS):
-            return E_QUOTA
-        if name in ("INVALID_ARGUMENT", "FAILED_PRECONDITION") and any(w in low for w in _POLICY_WORDS):
-            return E_POLICY
-        return None
+        return google_error_code(text)
 
     def _create(self, body: dict, *, what: str) -> dict:
         """POST /interactions. A refusal for content carries ``BILLING_UNKNOWN``; a lost answer carries

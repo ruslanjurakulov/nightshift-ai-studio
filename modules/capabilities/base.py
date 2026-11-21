@@ -34,7 +34,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -306,6 +306,14 @@ class CapabilityRequest:
     #: ("Uzbek", "uz"). None = not said, and nothing is refused for it. A model
     #: whose docs do not list that language is refused (modules/tts_languages.py).
     text_language: Optional[str] = None
+    #: A two-voice dialogue (``tts`` only): ``(speaker label, voice)`` pairs, the labels being the names the
+    #: prompt's lines start with ("Dilnoza: ..."). Empty = one voice (``voice_id``). Only an adapter that lists
+    #: the capability in ``dialogue_capabilities`` receives it: any other would read the dialogue in one voice.
+    speakers: Sequence[Tuple[str, str]] = ()
+    #: How the words are to be spoken (``tts`` only): emotion, pace, delivery, in plain words. None = not
+    #: said. Only an adapter listing the capability in ``style_capabilities`` receives it, so a direction
+    #: is never silently dropped.
+    style: Optional[str] = None
     #: Ask a video model for a soundtrack; None = do not send the vendor flag
     #: at all (a model without audio may reject the field).
     audio: Optional[bool] = None
@@ -457,6 +465,11 @@ class HttpAdapter:
     #: Capabilities for which this adapter always sends a resolution — the
     #: request's, else the one the registry pins (``default_resolution``, 0070).
     resolution_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter sends ``CapabilityRequest.speakers`` (a two-voice dialogue) and
+    #: ``CapabilityRequest.style`` (a delivery direction). Any other adapter would drop them and deliver one
+    #: voice, read flat, under a request for something else (rule 4): such a request is refused.
+    dialogue_capabilities: Sequence[str] = ()
+    style_capabilities: Sequence[str] = ()
     timeout = 60
     #: False = a 3xx from the API host is an error, never followed: the request carries the key in a header,
     #: and a redirect would send it to wherever the answer points (requests drops only ``Authorization``).
@@ -512,6 +525,10 @@ class HttpAdapter:
             out.append(f"adapter {self.key} does not send a quality")
         if request.audio is not None and request.capability not in self.audio_capabilities:
             out.append(f"adapter {self.key} does not send an audio flag")
+        if request.speakers and request.capability not in self.dialogue_capabilities:
+            out.append(f"adapter {self.key} does not read a dialogue in several voices")
+        if request.style is not None and request.capability not in self.style_capabilities:
+            out.append(f"adapter {self.key} does not send a delivery style")
         out.extend(entry.problems(request))
         return out
 

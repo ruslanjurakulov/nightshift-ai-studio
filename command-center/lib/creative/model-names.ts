@@ -32,6 +32,8 @@ export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "gemini-3.1-flash-image": "Gemini 3.1 Flash Image",
   "gemini-3.1-flash-lite-image": "Gemini 3.1 Flash Lite Image",
   "gemini-3.6-flash": "Gemini 3.6 Flash",
+  "gemini-3.8-flash-lite-tts": "Gemini 3.8 Flash-Lite TTS",
+  "gemini-3.8-flash-tts": "Gemini 3.8 Flash TTS",
   "gemini-nano-banana-2.1": "Nano Banana 2.1",
   "gemini-omni-1.1-flash": "Gemini Omni Flash 1.1",
   "generic-video-edit": "Video edit (provider not assigned)",

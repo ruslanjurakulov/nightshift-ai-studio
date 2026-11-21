@@ -25,6 +25,9 @@ export const TTS_MODEL_LANGUAGES: Readonly<Record<string, readonly VerifiedTtsLa
   eleven_turbo_v2_5: ["ru", "en"],
   eleven_multilingual_sts_v2: ["ru", "en"],
   eleven_multilingual_ttv_v2: ["ru", "en"],
+  // Gemini API TTS: "Northern Uzbek", Russian, English ticked on aistudio.google.com/docs/speech-generation (read 2026-11-21).
+  "gemini-3.8-flash-tts": ["uz", "ru", "en"],
+  "gemini-3.8-flash-lite-tts": ["uz", "ru", "en"],
 };
 
 // What a person calls the language, keyed after foldLanguage(). One entry per line in this exact

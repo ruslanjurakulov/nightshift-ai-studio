@@ -23,6 +23,11 @@ the two equal.
   eleven_turbo_v2_5 (deprecated: equivalent to Flash v2.5),
   eleven_multilingual_sts_v2 or eleven_multilingual_ttv_v2.
 * Russian and English are listed for all of them.
+* Gemini API TTS (``gemini-3.8-flash-tts``, ``gemini-3.8-flash-lite-tts``): "Northern Uzbek",
+  Russian and English are ticked on https://aistudio.google.com/docs/speech-generation (read
+  2026-11-21); MODEL_SOURCES records that page so a refusal cites it, not ElevenLabs'.
+  The Gemini adapter is stricter than this table: it refuses ANY language that is not a
+  verified "yes" (modules/capabilities/gemini_tts.py), unknown included.
 
 Stdlib only, no side effects: main.py's preflight and the creative adapters
 import it before anything heavy.
@@ -51,6 +56,23 @@ MODEL_LANGUAGES: dict[str, tuple[str, ...]] = {
     "eleven_turbo_v2_5": ("ru", "en"),
     "eleven_multilingual_sts_v2": ("ru", "en"),
     "eleven_multilingual_ttv_v2": ("ru", "en"),
+    # Gemini API TTS: "Northern Uzbek", "Russian" and "English" are each ticked for both models on
+    # GEMINI_SOURCE_URL (read 2026-11-21, D:/vera/reports/uz-voice-options.md). The page gives no codes.
+    "gemini-3.8-flash-tts": ("uz", "ru", "en"),
+    "gemini-3.8-flash-lite-tts": ("uz", "ru", "en"),
+}
+
+#: Where a non-ElevenLabs model's languages were read: a refusal must cite the page that was actually checked.
+GEMINI_SOURCE_URL = "https://aistudio.google.com/docs/speech-generation"
+MODEL_SOURCES: dict[str, tuple[str, str]] = {
+    "gemini-3.8-flash-tts": (GEMINI_SOURCE_URL, "2026-11-21"),
+    "gemini-3.8-flash-lite-tts": (GEMINI_SOURCE_URL, "2026-11-21"),
+}
+#: How the vendor's page names a language we send, so a refusal or a note says what the page actually lists.
+#: Gemini lists Uzbek as "Northern Uzbek" only (no code); it detects the language from the text itself.
+VENDOR_LANGUAGE_NAMES: dict[str, dict[str, str]] = {
+    "gemini-3.8-flash-tts": {"uz": "Northern Uzbek", "ru": "Russian", "en": "English"},
+    "gemini-3.8-flash-lite-tts": {"uz": "Northern Uzbek", "ru": "Russian", "en": "English"},
 }
 
 #: Models the docs mark as deprecated. Turbo v2.5 is equivalent to Flash v2.5.
@@ -142,8 +164,9 @@ def refusal(model: str, language) -> Optional[str]:
         return None
     code = language_code(language)
     name = _MODEL_NAMES.get(model, model)
-    if code == "uz":
-        return (f"{name} does not speak Uzbek. {UZBEK_FIX}. Checked against {SOURCE_URL} on "
-                f"{SOURCE_READ_ON}. No other model is substituted.")
-    return (f"{name} does not list language {code!r} ({SOURCE_URL}, read {SOURCE_READ_ON}). "
+    url, read_on = MODEL_SOURCES.get(model, (SOURCE_URL, SOURCE_READ_ON))
+    if code == "uz" and model not in MODEL_SOURCES:
+        return (f"{name} does not speak Uzbek. {UZBEK_FIX}. Checked against {url} on "
+                f"{read_on}. No other model is substituted.")
+    return (f"{name} does not list language {code!r} ({url}, read {read_on}). "
             "No other model is substituted.")

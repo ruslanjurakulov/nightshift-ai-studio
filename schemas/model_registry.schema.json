@@ -212,7 +212,9 @@
             "input_video": {"enum": ["generated"]},
             "end_frame": {"enum": ["generated"]},
             "upscale_target": {"$ref": "#/$defs/upscale_target"},
-            "look": {"$ref": "#/$defs/relight_look"}
+            "look": {"$ref": "#/$defs/relight_look"},
+            "voice": {"type": "string", "pattern": "^[A-Za-z]{2,32}$", "description": "A TTS probe's voice when the vendor names voices (Gemini's prebuilt names), instead of the ElevenLabs voice id the probe tool passes."},
+            "text_language": {"$ref": "#/$defs/language"}
           }
         }
       }
