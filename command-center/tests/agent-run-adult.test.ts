@@ -9,9 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const h = { age: "minor" as "adult" | "minor" | "none" | "unknown", dispatch: vi.fn(), reserve: vi.fn(), insert: vi.fn() };
+const h = { age: "minor" as "adult" | "minor" | "none" | "unknown" | "absent", dispatch: vi.fn(), reserve: vi.fn(), insert: vi.fn() };
 
-vi.mock("@/lib/server/age", () => ({ readAgeState: async () => h.age }));
+vi.mock("@/lib/server/age", () => ({ readAgeState: async () => (h.age === "absent" ? "unknown" : h.age), readAgeAnswer: async () => h.age }));
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => ({ id: "u-me" }),
   createClient: async () => ({

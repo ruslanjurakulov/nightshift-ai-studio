@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 // The adult answer (0192/0196) is read by the route too: an admin who answered 18+, so this file tests what it always did.
-vi.mock("@/lib/server/age", () => ({ readAgeState: async () => "adult" }));
+vi.mock("@/lib/server/age", () => ({ readAgeState: async () => "adult", readAgeAnswer: async () => "adult" }));
 
 const CLONE = "AbCdEfGhIjKlMnOpQrSt";
 const STOCK = "pNInz6obpgDQGcFmaJgB";
