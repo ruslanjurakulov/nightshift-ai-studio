@@ -15,7 +15,7 @@ import json
 import uuid
 from dataclasses import dataclass
 
-from sec_db import ANON, SERVICE, user
+from sec_db import ANON, SERVICE, attest_adults, user
 
 BAL = "select balance_cents, reserved_cents from public.api_accounts where org_id = %s"
 
@@ -80,7 +80,9 @@ def topup(s, c: Customer, cents: int) -> str:
 
 
 def run(s, c: Customer, seconds: int):
-    """One API run of `seconds` (2 cents a second at the lab's price): (job id, hold ref, price)."""
+    """One API run of `seconds` (2 cents a second at the lab's price): (job id, hold ref, price). The key's person has answered
+    18+ (0196: a video run spends on Google); a customer who already answered keeps their answer."""
+    attest_adults(s, c.actor.uid)
     body = ok(call(s, ANON, "select public.api_create_video(%s, %s, %s::jsonb, null, null, null)",
                    [c.key_hash, c.channel, json.dumps({"topic": "lab", "duration": seconds})]))
     assert body["ok"] is True and body["status"] == 201, body

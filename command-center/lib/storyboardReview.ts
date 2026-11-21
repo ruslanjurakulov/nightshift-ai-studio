@@ -245,7 +245,10 @@ export type StoryboardErrorCode =
   | "render_finished"
   | "hold_not_released"
   | "render_unverifiable"
-  | "approve_failed";
+  | "approve_failed"
+  | "adult_attestation_required"
+  | "adult_only_service"
+  | "age_unavailable";
 
 type DbError = { code?: string; message?: string; details?: string | null; hint?: string | null };
 
@@ -286,6 +289,9 @@ export function mapStoryboardError(error: DbError): { status: number; body: Reco
     return { status: 400, body: { error: msg } };
   if (code === "22023" && msg === "storyboard_not_editable") return { status: 409, body: { error: msg } };
   if (code === "23514") return { status: 400, body: { error: "scenes_invalid" } };
+  // 0192/0196: the render_jobs run gate's words (the queue's approval writes the run row), named rather than "failed".
+  if (msg === "adult_attestation_required") return { status: 428, body: { error: msg } };
+  if (msg === "adult_only_service") return { status: 403, body: { error: msg } };
   if (
     code === "42P01" ||
     code === "42883" ||
@@ -325,6 +331,12 @@ export function storyboardErrorText(body: Record<string, unknown> | null, t: Dic
       return t.noPrice;
     case "dispatch_failed":
       return t.errDispatch;
+    case "adult_attestation_required":
+      return t.errAdultRequired;
+    case "adult_only_service":
+      return t.errAdultOnly;
+    case "age_unavailable":
+      return t.errAgeUnavailable;
     case "stale_revision":
       return t.errStale;
     case "scenes_invalid":
