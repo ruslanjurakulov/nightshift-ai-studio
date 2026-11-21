@@ -101,6 +101,9 @@ def main(argv=None) -> int:
         audio = Path(args.audio)
         if not audio.is_file():
             raise ve.ExplainerError(f"--audio {audio} does not exist")
+        # The length is read with ffprobe: without it the next line would blame the recording ("is it an audio file?").
+        if shutil.which("ffprobe") is None:
+            raise ve.ExplainerError("ffprobe is not on PATH: install ffmpeg (it reads the recording's length, and joins long renders)")
         duration = ve.audio_seconds(audio)
         if duration > ve.MAX_SECONDS:
             raise ve.ExplainerError(f"the recording is {duration:.0f} s; the explainer takes up to {ve.MAX_SECONDS:.0f} s — cut it first")
@@ -158,7 +161,8 @@ def main(argv=None) -> int:
         if args.dump_props:
             Path(args.dump_props).write_text(json.dumps(props, ensure_ascii=False, indent=2), encoding="utf-8")
         logger.info("%d words, %d scenes, %.1f s, look %s — rendering…", len(words), len(scenes), duration, args.look)
-        out = ve.render(props, Path(args.out), files=files, browser=args.browser or None)
+        out = ve.render(props, Path(args.out), files=files, browser=args.browser or None,
+                        timeout_s=ve.render_timeout_s(duration))
         logger.info("wrote %s", out)
         return 0
     except ve.PlanRejected as e:
