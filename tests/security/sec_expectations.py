@@ -783,3 +783,8 @@ FUNCTIONS.update({
 import sec_public_models_0193  # noqa: E402
 
 sec_public_models_0193.extend(TABLES, FUNCTIONS)
+
+# Migration 0196 (the owner's facts for Nightshift Brain: people and plans, system health): tests/security/sec_owner_brain_0196.py
+import sec_owner_brain_0196  # noqa: E402
+
+sec_owner_brain_0196.extend(TABLES, FUNCTIONS)
