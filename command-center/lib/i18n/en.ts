@@ -11,6 +11,7 @@ import { rightsAckEn } from "./rights-acknowledgement/en";
 import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
+import { brainDashEn } from "./brain-dashboard/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ageEn } from "./age/en";
 import { customerAppEn } from "./customer-app/en";
@@ -79,6 +80,7 @@ export const en = {
   effects: effectsEn,
   libraryUx: libraryUxEn,
   assetDownload: assetDownloadEn,
+  brainDash: brainDashEn,
   ownerShell: ownerShellEn,
   age: ageEn,
   customerApp: customerAppEn,
@@ -178,6 +180,7 @@ export const en = {
     organization: "Settings",
     credits: "Credits",
     usage: "Usage",
+    brain: "Nightshift Brain",
     security: "Security",
     onboarding: "Getting Started",
     approvals: "Approvals",

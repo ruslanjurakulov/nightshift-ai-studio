@@ -35,9 +35,10 @@ const { youtubeAccounts } = await import("@/lib/connectedAccounts");
 const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.items.map((i) => i.key));
 
 describe("nav filtering by role", () => {
-  it("gives a customer exactly five destinations, in rail order", () => {
-    // The sprint IA: making and finding things. Credits and Settings are the sidebar's foot (CUSTOMER_SIDEBAR.footer).
-    expect(keys(false)).toEqual(["home", "create", "trends", "projects", "library"]);
+  it("gives a customer exactly six destinations, in rail order", () => {
+    // The sprint IA: making and finding things, plus Nightshift Brain (the owner's dashboard, 0196). Credits and Settings
+    // are the sidebar's foot (CUSTOMER_SIDEBAR.footer). The phone's bottom bar keeps five (BOTTOM_ORDER).
+    expect(keys(false)).toEqual(["home", "brain", "create", "trends", "projects", "library"]);
   });
 
   it("puts every customer screen behind a rail entry or its tabs", () => {
@@ -222,7 +223,8 @@ describe("appRedirect", () => {
 
   it("opens Home from the customer rail's first entry, with Create beside it, without changing the operator's rail", () => {
     expect(CUSTOMER_RAIL[0]).toEqual({ href: "/home", key: "home" });
-    expect(CUSTOMER_RAIL[1]).toEqual({ href: "/create", key: "create" });
+    expect(CUSTOMER_RAIL[1]).toEqual({ href: "/brain", key: "brain" });
+    expect(CUSTOMER_RAIL[2]).toEqual({ href: "/create", key: "create" });
     expect(tabsFor("home")).toBeNull();
     expect(keys(true)).not.toContain("home");
   });

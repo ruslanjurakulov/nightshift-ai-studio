@@ -70,6 +70,8 @@ export const NAV_GROUPS: NavGroup[] = [
       // Comments on the channel's videos, with drafted replies a person approves (migration 0081).
       { href: "/inbox", key: "inbox" },
       { href: "/analytics", key: "analytics" },
+      // The customer's own dashboard: channel, credits and forecast, projects and memory (migration 0196).
+      { href: "/brain", key: "brain" },
       // Housed in Nightshift Studio (hidden from the rail, reached from Studio home's tiles):
       { href: "/create", key: "create" },
       { href: "/videos", key: "videos" },
@@ -215,6 +217,7 @@ export const SECTION_ITEMS: readonly SectionItem[] = [
  */
 export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "command",
+  "brain",
   "create",
   "trends",
   "videos",
@@ -277,6 +280,9 @@ export const PROJECTS = "/studio?shelf=projects";
  */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
   { href: CUSTOMER_HOME, key: "home" },
+  // Nightshift Brain (0196): the customer's channel, credits and forecast, projects and memory on one screen. A desktop
+  // rail entry; the phone's bottom bar keeps its five (BOTTOM_ORDER) and reaches it from the avatar menu.
+  { href: "/brain", key: "brain" },
   { href: "/create", key: "create" },
   { href: TRENDS, key: "trends" },
   { href: PROJECTS, key: "projects" },
