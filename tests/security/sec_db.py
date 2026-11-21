@@ -362,6 +362,9 @@ ON_0139 = (*ON_0139, "0191_mcp_oauth_creative.sql")
 #: both, so that every sequence that leaves out 0125 or a file on it leaves 0192 out too. It also sits on 0174, so it is listed again
 #: at the end of ON_0124 (a sequence that puts both lists back applies it once, last).
 ON_0139 = (*ON_0139, "0192_adult_attestation.sql", "0196_adult_attestation_google_runs.sql")
+#: 0198 (Film Studio's switch per organization) replaces 0192's quote_film and start_film and refuses to apply without 0192: after it
+#: (and after 0196, by number) in both lists, for the same reason.
+ON_0139 = (*ON_0139, "0198_film_studio_org_switch.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -372,7 +375,7 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: api_creative_refusal and its drift guard refuses any other body, so it goes out and back with 0124 too.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql",
            "0174_rights_acknowledgement.sql", "0187_rights_acknowledgement_inputs.sql", "0191_mcp_oauth_creative.sql",
-           "0192_adult_attestation.sql", "0196_adult_attestation_google_runs.sql")
+           "0192_adult_attestation.sql", "0196_adult_attestation_google_runs.sql", "0198_film_studio_org_switch.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -788,6 +791,7 @@ def take_off_0192(conn_or_session) -> None:
     takes 0192 off first as well. Its rollback puts the fifteen earlier bodies back and drops its functions and triggers;
     adult_attestations (the record, with its append-only triggers) stays, and put_back_0192 picks it up again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0198(conn)  # 0198 sits on 0192's quote_film and start_film, and 0192's rollback refuses any other body
     take_off_0196(conn)  # 0196 sits on 0192's route_model, api_create_video and oauth_create_video; 0192's rollback refuses them
     if has_0192(conn):
         text = ROLLBACK_0192.read_text(encoding="utf-8")
@@ -796,16 +800,15 @@ def take_off_0192(conn_or_session) -> None:
 
 def put_back_0192(conn_or_session) -> None:
     """0192 again, once 0125, 0171, 0174 and the two files on them it builds on (0187's start_film, 0188's sellable_models) are on
-    (it refuses to apply without any of them), and only when it is not on already."""
+    (it refuses to apply without any of them), and only when it is not on already; then the files on it, in number order (0196's
+    video bodies, 0198's film bodies), each when it is not on already."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if has_0192(conn) or not has_0174(conn) or not has_0171(conn) or not has_0187(conn) or not has_0188(conn):
-        return
-    if not conn.execute("select to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is not null").fetchone()[0]:
-        return
-    if not conn.execute("select to_regprocedure('public.model_past_shutdown(jsonb)') is not null").fetchone()[0]:
-        return
-    conn.execute(MIGRATION_0192.read_text(encoding="utf-8"))
+    if (not has_0192(conn) and has_0174(conn) and has_0171(conn) and has_0187(conn) and has_0188(conn)
+            and conn.execute("select to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is not null").fetchone()[0]
+            and conn.execute("select to_regprocedure('public.model_past_shutdown(jsonb)') is not null").fetchone()[0]):
+        conn.execute(MIGRATION_0192.read_text(encoding="utf-8"))
     put_back_0196(conn)
+    put_back_0198(conn)
 
 
 MIGRATION_0196 = MIGRATIONS / "0196_adult_attestation_google_runs.sql"
@@ -846,6 +849,36 @@ def attest_adults(conn_or_session, *uids) -> None:
         if uid:
             conn.execute("insert into public.adult_attestations (user_id, adult, terms_version, method) "
                          "values (%s, true, '2026-11-20', 'email_signup') on conflict (user_id) do nothing", [uid])
+
+
+MIGRATION_0198 = MIGRATIONS / "0198_film_studio_org_switch.sql"
+ROLLBACK_0198 = REPO / "docs" / "sql" / "rollback_0198_film_studio_org_switch.sql"
+
+
+def has_0198(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.film_studio_on_for(uuid)') is not null").fetchone()[0])
+
+
+def take_off_0198(conn_or_session) -> None:
+    """0198 (Film Studio's switch per organization, the take's creative job) replaces quote_film() and start_film() (0192's bodies) and
+    film_claim_segment() (0171's). 0192's and 0171's drift guards and rollbacks refuse any other body, so take_off_0192 takes 0198 off
+    first (take_off_0187 and take_off_0171 reach it through it). It also replaces 0171's film_fail_locked, film_begin_take and
+    film_settle_locked (whose rollback refuses them), 0036's claim_creative_job and cancel_creative_job and 0064's notify trigger:
+    a lab that rolls back or replays 0036, 0064 or 0171 takes 0198 off first. Its rollback keeps
+    org_film_settings.film_studio_enabled, which put_back_0198 picks up again as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0198(conn):
+        text = ROLLBACK_0198.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0198(conn_or_session) -> None:
+    """0198 again, once 0192 (whose bodies it builds on) is on, and only when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0198(conn) or not has_0192(conn):
+        return
+    conn.execute(MIGRATION_0198.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

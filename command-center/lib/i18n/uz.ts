@@ -17,6 +17,7 @@ import { customerAppUz } from "./customer-app/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
 import { studioTimelineUz } from "./studio-timeline/uz";
+import { studioLiveUz } from "./studio-live/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -81,6 +82,7 @@ export const uz: Dictionary = {
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
   studioTimeline: studioTimelineUz,
+  studioLive: studioLiveUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,

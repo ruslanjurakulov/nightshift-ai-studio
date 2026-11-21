@@ -17,6 +17,7 @@ import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
+import { studioLiveRu } from "./studio-live/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -81,6 +82,7 @@ export const ru: Dictionary = {
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
+  studioLive: studioLiveRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,

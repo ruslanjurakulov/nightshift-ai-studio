@@ -114,7 +114,7 @@ describe("create", () => {
       createBody({ title: "" }),
       createBody({ language: "de" }),
       createBody({ aspect: "4:3" }),
-      createBody({ target_seconds: 59 }),
+      createBody({ target_seconds: 9 }),
       createBody({ target_seconds: 300.5 }),
       createBody({ idem: "short" }),
       createBody({ channel_id: 7 }),
@@ -122,6 +122,8 @@ describe("create", () => {
       expect((await list.POST(req("/api/films", "POST", bad))).status, JSON.stringify(bad)).toBe(400);
     }
     expect(h.rpc).not.toHaveBeenCalled();
+    // 0198: a 15 s advert is a film.
+    expect((await list.POST(req("/api/films", "POST", createBody({ target_seconds: 15 })))).status).toBe(201);
     // A script may be long.
     expect((await list.POST(req("/api/films", "POST", createBody({ source_kind: "script", source_text: "x".repeat(30000) })))).status).toBe(201);
   });
