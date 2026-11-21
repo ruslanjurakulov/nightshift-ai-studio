@@ -2185,3 +2185,23 @@ that fails one is left as it is, with a NOTICE naming the fix. Order: probe (Act
 `openai-gpt-6-luna`; adapters in `modules/capabilities/describe_llm.py`): beta only when verified, priced, terms-clear and `web_only`.
 No price is written. Keys: GitHub secrets `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, shipped to the worker by `deploy_web.yml`.
 Rollback: `docs/sql/rollback_0195_open_llm_describe.sql`.
+
+## Nightshift AI, the Studio's planning chat (0197)
+
+0197 (`0197_studio_ai_chat.sql`, number provisional until merge) is the database half of the chat in docs/studio/AI_CHAT.md.
+
+- **Tables.** RLS is on for all four.
+  - `ai_chat_sessions` and `ai_chat_messages`: readable by their author only, written only by the functions.
+  - `ai_chat_calls`: metering with no text, closed to every API role.
+  - `ai_chat_limits`: one row, per_org_daily 40 and max_input_chars 2000, closed.
+- **Functions.**
+  - `ai_chat_start(org, channel, model)`: a member of the channel's own workspace.
+  - `ai_chat_reserve_turn(session, text)`: the daily cap under the workspace's advisory lock, before any vendor call. A refusal writes nothing.
+  - `ai_chat_finish_turn(call, …)`: once, by the caller who reserved the turn.
+  - `ai_chat_quota(org)`: the member's own workspace.
+  - `ai_chat_set_limits` and `ai_chat_usage`: the owner only.
+  - `ai_chat_used(org)`: internal.
+- **Not changed.** Every price, hold, credit, create and publish rule. The chat only links to Run now.
+- **Without it.** The panel says the chat is not set up on this database; nothing else changes.
+- **Lab.** `tests/security/sec_ai_chat_0197.py` and `tests/security/test_sec_ai_chat.py`, covering the cap, the race for the last turn, isolation, single finish and the closed tables.
+- **Rollback.** `docs/sql/rollback_0197_studio_ai_chat.sql` drops the conversations and the metering.

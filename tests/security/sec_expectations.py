@@ -783,3 +783,8 @@ FUNCTIONS.update({
 import sec_public_models_0193  # noqa: E402
 
 sec_public_models_0193.extend(TABLES, FUNCTIONS)
+
+# Migration 0197 (Nightshift AI, the Studio's planning chat): tests/security/sec_ai_chat_0197.py
+import sec_ai_chat_0197  # noqa: E402
+
+sec_ai_chat_0197.extend(TABLES, FUNCTIONS)
