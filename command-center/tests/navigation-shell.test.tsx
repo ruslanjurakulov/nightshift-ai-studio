@@ -150,7 +150,7 @@ describe("no navigation list links to a 404 or a redirect-only page (audit 2026-
   const DEAD = ["/create/projects", "/character-studio", "/videos", "/editor", "/workflows"];
   it("the rails, the phone bar, the Studio tiles and the console never list them with the switches off", () => {
     const lists = [
-      ...customerRail(NO_NAV_FEATURES, true),
+      ...customerRail(NO_NAV_FEATURES),
       ...CUSTOMER_TABBAR,
       ...CUSTOMER_SIDEBAR.footer,
       ...studioTilesFor(false),
@@ -184,7 +184,7 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Nightshift Studio, Media library, Nightshift Brain, Channels and, on one channel, Research; then Credits and Settings", () => {
+  it("shows Nightshift Studio, Media library, Nightshift Brain, Channels and Research; then Credits and Settings", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
@@ -213,11 +213,11 @@ describe("customer sidebar (rendered)", () => {
     expect(card.textContent).toContain("Creator");
   });
 
-  it("leaves the one-channel entries out on the every-channel roll-up", () => {
+  it("keeps Research on the every-channel roll-up too, so the rail does not change size with the scope (owner, 2026-11-21)", () => {
     pathname = "/all-channels/home";
     render(withI18n(<SideNav email={null} plan={null} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual([en.nav.studio, en.nav.library, en.nav.brain, en.nav.channels]);
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual([en.nav.studio, en.nav.library, en.nav.brain, en.nav.channels, en.nav.research]);
   });
 
   it("lights Nightshift Studio on a creative screen, whatever the query names", () => {
