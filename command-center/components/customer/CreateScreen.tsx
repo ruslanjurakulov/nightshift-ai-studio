@@ -26,6 +26,8 @@ import {
   type TrendTemplate,
 } from "@/lib/customer/create";
 import { Director } from "@/components/customer/Director";
+import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
+import { attachWords } from "@/lib/creative/attach";
 import "@/components/studio/desk.css";
 import "@/components/customer/customer.css";
 
@@ -70,6 +72,7 @@ export function CreateScreen({
   initialPrompt = "",
   templateSlug = null,
   bottomBar = true,
+  idea = false,
 }: {
   orgId: string;
   models: StudioModel[];
@@ -82,6 +85,8 @@ export function CreateScreen({
   /** `?template=<slug>`, shape-checked by the page. */
   templateSlug?: string | null;
   bottomBar?: boolean;
+  /** `?idea=1`: the landing's idea box or the app's start box kept the words in this browser (lib/site/idea-handoff.ts). */
+  idea?: boolean;
 }) {
   const { t, fmt } = useI18n();
   const c = t.customerApp.create;
@@ -153,6 +158,28 @@ export function CreateScreen({
     // `unavailable` is the server's list for this request; reading it once with the template is the point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateSlug, fill, tplAttempt]);
+
+  // The kept words, taken once (read and deleted together: a reload or another tab never fills a box with them again) and put in
+  // this kind's box, not sent: nothing is quoted or created until the person presses Create and sees the price (rule 3). The
+  // address loses `idea=` either way. Nothing kept (expired, another browser, storage off) is an empty box, never an error.
+  const ideaTaken = useRef(false);
+  useEffect(() => {
+    if (!idea || ideaTaken.current) return;
+    ideaTaken.current = true;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete(IDEA_PARAM);
+      window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      // The address keeps `idea=1`; the words are taken once either way.
+    }
+    const tool = KIND_TOOL[initialKind];
+    const words = takeIdea();
+    const prompt = words ? attachWords(tool, words) : "";
+    if (prompt) fill({ capability: tool, model: "", prompt, aspect: shape, duration: 5 }, initialKind);
+    // Once, on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const switchKind = (k: CreateKind) => {
     if (k === kind) return;
