@@ -2276,9 +2276,9 @@ organization's are on (`film_studio_on_for(org)`): `start_film` refuses `film_st
 - **Undo.** `docs/sql/rollback_0198_film_studio_org_switch.sql` (owner-applied): the nine earlier bodies, 0064's trigger and 0166's
   check back (refused while any film targets less than 60 s), the four functions dropped, the column kept.
 
-## Channel research on our own YouTube data (0200)
+## Channel research on our own YouTube data (0201)
 
-0200 (`0200_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
+0201 (`0201_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
 (`docs/studio/RESEARCH_TOOLS.md`). It is built on our own YouTube Data API calls, never on vidIQ (whose terms forbid redistribution).
 It adds six closed tables (RLS on, no policy, no grant, the service key included): `research_competitors` (up to 20 per channel,
 `pending` until the worker resolves the reference with `channels.list`, then `resolved` or `not_found`), `research_channel_cache` and
@@ -2307,4 +2307,4 @@ competitor's `resolved_at`, and the 30-day reset queues one competitors request 
 removes only rows older than its fetch's start, and an empty own playlist clears the stored list; own numbers read from another
 YouTube account than the channel's current one are not shown (`channel_mismatch`); the competitors status CHECK is swapped in
 place (guarded), so a database that ran an earlier draft gains `own_channel`.
-Rollback: `docs/sql/rollback_0200_channel_research.sql`.
+Rollback: `docs/sql/rollback_0201_channel_research.sql`.

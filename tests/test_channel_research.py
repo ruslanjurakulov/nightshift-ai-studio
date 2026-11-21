@@ -1,4 +1,4 @@
-"""modules/channel_research.py — the worker's side of 0200, with fake HTTP sessions (no network, ever).
+"""modules/channel_research.py — the worker's side of 0201, with fake HTTP sessions (no network, ever).
 
 What would break without these:
 
@@ -201,7 +201,7 @@ class ErrorsNameTheirRemedy(unittest.TestCase):
         self.assertEqual(store.takes, [])
 
     def test_the_error_words_match_the_database(self):
-        sql = (ROOT / "supabase" / "migrations" / "0200_channel_research.sql").read_text(encoding="utf-8")
+        sql = (ROOT / "supabase" / "migrations" / "0201_channel_research.sql").read_text(encoding="utf-8")
         body = re.search(r"function public\.research_error_words\(\).*?array\[(.*?)\]", sql, re.S).group(1)
         self.assertEqual(tuple(re.findall(r"'([a-z_]+)'", body)), cr.ERROR_WORDS)
 

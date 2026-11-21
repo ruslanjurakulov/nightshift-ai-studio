@@ -1,11 +1,11 @@
-"""Breach on 0200 (channel research, PR #851): the attacks that went past the contract tests in test_sec_research.py.
+"""Breach on 0201 (channel research, PR #851): the attacks that went past the contract tests in test_sec_research.py.
 
 The worker is driven for real here: modules/channel_research.process_request runs against the lab database through the same service
 functions it calls in production (LabStore below), and against a fake YouTube that behaves as the real one does on the points that
 matter: an owner's OAuth token sees the channel's private and unlisted uploads (and videos.list part=status says which), the
 platform's API key sees public ones only, and a channel's customUrl is its @handle. Nothing here opens a socket.
 
-Round 1 (0199) found five holes; the fix round (0200) closed them, and these tests now pin the fixes:
+Round 1 (0199) found five holes; the fix round (0201) closed them, and these tests now pin the fixes:
   * BR-R-001 (high)   an own-channel refresh read private uploads with the channel's token into the SHARED video cache, which any
                       organization naming that channel as a competitor reads. Now research_own_videos (channel-scoped), and only a
                       video YouTube reports public reaches the shared cache; a complete public batch removes one that went private.
@@ -19,7 +19,7 @@ Round 1 (0199) found five holes; the fix round (0200) closed them, and these tes
                       confirmed channels stay inside 3 a day per organization and 30 per project (the 31st is refused).
   * BR-R-005 (low)    comments the inbox flagged as injections reached the chat's samples. Now left out.
 
-Round 2 (re-attack of 0200), FAILING NOW:
+Round 2 (re-attack of 0201), FAILING NOW:
   * BR-R-006 (low)    a request queued while the channel was confirmed is still carried out (and spends) after the channel became a
                       draft again (disconnected, unconfirmed): research_claim_request does not ask research_channel_confirmed().
 
@@ -297,7 +297,7 @@ def _bob_is(s: Steps, sc, uc=BOB_UC):
             "where channel_id = %s", [uc, sc.bob.channel])
 
 
-# ── BR-R-001: private uploads stay with their channel (fixed in 0200) ───────────────────────────────────────────────────────
+# ── BR-R-001: private uploads stay with their channel (fixed in 0201) ───────────────────────────────────────────────────────
 
 
 def test_br_r_001_a_channels_private_uploads_never_reach_another_organization(conn, sc):
@@ -381,7 +381,7 @@ def test_a_video_that_stops_being_public_leaves_the_shared_cache(conn, sc):
         assert PRIV_VIDEO not in _shared_videos(s, BOB_UC)
 
 
-# ── BR-R-002: every youtube envelope carries untrusted_strings (fixed in 0200, the approved marker) ────────────────────────
+# ── BR-R-002: every youtube envelope carries untrusted_strings (fixed in 0201, the approved marker) ────────────────────────
 
 
 def test_br_r_002_every_youtube_answer_with_third_party_strings_is_marked(conn, sc):
@@ -432,7 +432,7 @@ def test_comment_text_reaches_the_reader_only_under_untrusted_keys(conn, sc):
             assert not _unmarked(out, marker), marker
 
 
-# ── BR-R-005: comments the inbox flagged as injections are not sampled (fixed in 0200) ──────────────────────────────────────
+# ── BR-R-005: comments the inbox flagged as injections are not sampled (fixed in 0201) ──────────────────────────────────────
 
 
 def test_br_r_005_a_comment_flagged_as_an_injection_is_not_sampled(conn, sc):
@@ -445,7 +445,7 @@ def test_br_r_005_a_comment_flagged_as_an_injection_is_not_sampled(conn, sc):
         assert INJECT not in json.dumps(out), "BR-R-005: comments the inbox flagged as injections are sampled for the chat"
 
 
-# ── BR-R-003: remove + re-add is free inside the hour, and one organization has a share (fixed in 0200) ───────────────────
+# ── BR-R-003: remove + re-add is free inside the hour, and one organization has a share (fixed in 0201) ───────────────────
 
 
 def test_br_r_003_one_organization_cannot_spend_every_tenants_research_day(conn, sc):
@@ -748,7 +748,7 @@ def test_topic_cap_holds_under_concurrent_presses(conn, sc):
         org = str(s.value("select public.create_organization('Racer Org')"))
         for ch in ("racer-one", "racer-two"):
             s.value("select public.create_channel(%s, %s, 'Racer')", [ch, org])
-    # Confirmed, as YouTube leaves a connected channel (0005): drafts are refused before the cap is even reached (0200).
+    # Confirmed, as YouTube leaves a connected channel (0005): drafts are refused before the cap is even reached (0201).
     with sec_db.as_superuser(conn) as s:
         for i, ch in enumerate(("racer-one", "racer-two")):
             s.rows("update public.channels set credential_ref = credential_ref || jsonb_build_object('provider', 'youtube', "

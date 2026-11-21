@@ -1197,7 +1197,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is True
         after = snapshot(su)
         sec_db.take_off_0164(su)                   # reads 0116's table: off first, like the base that never had it
-        sec_db.take_off_0200(su)                   # 0200 reads 0116's ledger: off first too, like the base that never had it
+        sec_db.take_off_0201(su)                   # 0201 reads 0116's ledger: off first too, like the base that never had it
         sec_db.take_off_0119(su)                   # going down: 0119, 0121, then 0117 (it sits on 0116's audit list), then 0116
         sec_db.take_off_0121(su)
         su.conn.execute(body_0117)
@@ -1226,7 +1226,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         sec_db.put_back_0119(su)
         sec_db.put_back_0121(su)
         sec_db.put_back_0164(su)
-        sec_db.put_back_0200(su)
+        sec_db.put_back_0201(su)
         assert snapshot(su) == after
         sec_db.take_off_0145(su)                                      # 0145 sits on 0117's audit list: off before 0112/0116 replay it, back with put_back_0121
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))

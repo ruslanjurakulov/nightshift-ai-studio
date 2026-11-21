@@ -1,4 +1,4 @@
-"""Security-lab contract for migration 0200 (channel research: own channel, competitors, topic channels, comment themes).
+"""Security-lab contract for migration 0201 (channel research: own channel, competitors, topic channels, comment themes).
 
 Every table is closed (RLS on, no policy, no grant, the service key included): the readers and writers below are the only way in or
 out, and each resolves the organization from the channel row. The named attacks are in test_sec_research.py.

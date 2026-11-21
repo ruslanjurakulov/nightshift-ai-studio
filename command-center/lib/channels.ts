@@ -72,7 +72,7 @@ export const SECTIONS = [
   "presets",
   // Trends (0181): ready formats that open Create prefilled.
   "trends",
-  // Channel research (0200): a section name, so no channel may take it as a slug.
+  // Channel research (0201): a section name, so no channel may take it as a slug.
   "research",
   "library",
   "editor",

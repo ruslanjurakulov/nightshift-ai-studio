@@ -6,7 +6,7 @@ import { parseJsonCapped, SMALL_BODY_BYTES } from "@/lib/server/json-body";
 import { WRITER_ERRORS } from "@/lib/research";
 
 /**
- * Channel research's routes (migration 0200) each call ONE writer function with the signed-in person's own session (the anon key
+ * Channel research's routes (migration 0201) each call ONE writer function with the signed-in person's own session (the anon key
  * plus their cookie; never the service key) and stop: the function decides who may, writes a row, and the queue worker makes every
  * YouTube call later (rule 3). A refusal is a route answer with the database's own word, never its message.
  */
@@ -20,7 +20,7 @@ export async function callResearchWriter(name: string, args: Record<string, unkn
   if (!supabase) return NextResponse.json({ error: "not_configured" }, { status: 503, headers: NO_STORE });
   const { data, error } = await supabase.rpc(name, args);
   if (error) {
-    // 0200 not applied here: the page says "not enabled", and so does the route.
+    // 0201 not applied here: the page says "not enabled", and so does the route.
     if (isMissingFunction(error)) return NextResponse.json({ error: "not_enabled" }, { status: 503, headers: NO_STORE });
     // A channel the caller cannot see answers exactly like one that does not exist.
     if (error.code === "P0002") return NextResponse.json({ error: "not_found" }, { status: 404, headers: NO_STORE });

@@ -503,9 +503,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Owner FX rates (0185): tests/security/sec_owner_fx_0185.py — one frozen rate, set by the owner.
     import sec_owner_fx_0185
     sec_owner_fx_0185.seed(conn, sc)
-    # Channel research (0200): tests/security/sec_research_0200.py — a competitor per tenant and the worker's cache rows.
-    import sec_research_0200
-    sec_research_0200.seed(conn, sc)
+    # Channel research (0201): tests/security/sec_research_0201.py — a competitor per tenant and the worker's cache rows.
+    import sec_research_0201
+    sec_research_0201.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

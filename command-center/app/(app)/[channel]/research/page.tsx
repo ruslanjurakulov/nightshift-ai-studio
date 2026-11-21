@@ -25,14 +25,14 @@ export const revalidate = 0;
 
 type Rpc = { data: unknown; error: { code?: string; message?: string } | null };
 
-/** A reader's answer as a panel; a missing function (0200 not applied) is "not enabled here", any other failure is "could not read". */
+/** A reader's answer as a panel; a missing function (0201 not applied) is "not enabled here", any other failure is "could not read". */
 function panelOf<T>(res: Rpc, parse: (d: unknown) => T | null): Panel<T> {
   if (res.error) return unreadPanel<T>(isMissingFunction(res.error));
   return parsePanel(res.data, parse);
 }
 
 /**
- * Channel research (migration 0200): the channel's own YouTube numbers, the competitors a person named, the channels YouTube lists
+ * Channel research (migration 0201): the channel's own YouTube numbers, the competitors a person named, the channels YouTube lists
  * for a topic, and themes in the channel's own comments. Read with the signed-in member's own session through the four reader
  * functions (each checks the channel's organization itself). Nothing here calls YouTube or spends: Refresh writes a request row and
  * the queue worker fetches.

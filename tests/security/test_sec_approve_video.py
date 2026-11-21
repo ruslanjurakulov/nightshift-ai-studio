@@ -496,7 +496,7 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     with as_superuser(conn, commit=False) as su:
         after = snapshot(su)
         sec_db.take_off_0164(su)                   # reads 0112's columns and 0116's table: off first, like the base that never had it
-        sec_db.take_off_0200(su)                   # 0200 reads 0116's ledger: off first too, like the base that never had it
+        sec_db.take_off_0201(su)                   # 0201 reads 0116's ledger: off first too, like the base that never had it
         sec_db.take_off_0119(su)                   # going down: 0119, 0121, then 0117, then 0116, then 0112
         sec_db.take_off_0121(su)
         su.conn.execute(body_0117)
@@ -519,5 +519,5 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
         sec_db.put_back_0119(su)
         sec_db.put_back_0121(su)
         sec_db.put_back_0164(su)
-        sec_db.put_back_0200(su)
+        sec_db.put_back_0201(su)
         assert snapshot(su) == after

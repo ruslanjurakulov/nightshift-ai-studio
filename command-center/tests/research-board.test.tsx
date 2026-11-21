@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The research page's panels (migration 0200).
+ * The research page's panels (migration 0201).
  *
  * What would break without these: an unknown drawn as 0 or a hidden subscriber count drawn as a number (rule 5); a derived number
  * (a ratio, a percentage) appearing next to YouTube's own; a panel with no data that reads "nothing here" when the truth is "not
@@ -136,7 +136,7 @@ describe("a panel without numbers says why", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("a database without 0200 gets one note for the page, naming who turns it on", () => {
+  it("a database without 0201 gets one note for the page, naming who turns it on", () => {
     show(props({ own: unreadPanel(true), competitors: unreadPanel(true), topic: unreadPanel(true), themes: unreadPanel(true) }));
     expect(screen.getByText(en.notEnabled)).toBeTruthy();
     expect(screen.queryByTestId("research-own")).toBeNull();

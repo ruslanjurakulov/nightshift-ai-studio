@@ -1,12 +1,12 @@
--- rollback_0200_channel_research.sql — takes migration 0200 (channel research) out.
+-- rollback_0201_channel_research.sql — takes migration 0201 (channel research) out.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT IS LOST: the research caches (public YouTube statistics, at most 30 days old by construction), the competitor lists customers
 --   typed, the topic results, the own-channel analytics totals and the research queue. Nothing there is anyone's money or a record of
---   who approved what: every number can be fetched again after 0200 is re-applied, and the competitor lists would have to be typed
+--   who approved what: every number can be fetched again after 0201 is re-applied, and the competitor lists would have to be typed
 --   again (say so to the owner first).
 -- WHAT COMES BACK: youtube_quota_ledger's source CHECK as 0116 wrote it (visibility only), after the ledger's research rows are deleted
---   (they would violate it). 0116's five-argument youtube_quota_take is untouched by 0200 and stays.
+--   (they would violate it). 0116's five-argument youtube_quota_take is untouched by 0201 and stays.
 -- The page /{channel}/research then reads "not enabled here" (the functions are missing), and the worker's research step logs the
 --   404 once and does nothing.
 
@@ -64,10 +64,10 @@ do $$
 begin
   if to_regclass('public.research_requests') is not null or to_regprocedure('public.research_own_channel(text)') is not null
      or to_regprocedure('public.youtube_quota_take(text, integer, integer, uuid, integer, text)') is not null then
-    raise exception 'rollback 0200: something of 0200 is still here';
+    raise exception 'rollback 0201: something of 0201 is still here';
   end if;
   if to_regprocedure('public.youtube_quota_take(text, integer, integer, uuid, integer)') is null then
-    raise exception 'rollback 0200: 0116''s youtube_quota_take is missing (this rollback must not touch it)';
+    raise exception 'rollback 0201: 0116''s youtube_quota_take is missing (this rollback must not touch it)';
   end if;
 end $$;
 

@@ -1,4 +1,4 @@
--- 0200_channel_research.sql — channel research on our OWN YouTube Data API calls: the customer's own channel (its public numbers and
+-- 0201_channel_research.sql — channel research on our OWN YouTube Data API calls: the customer's own channel (its public numbers and
 -- its YouTube Analytics totals), up to 20 competitor channels the customer names, the channels YouTube lists for a topic, and themes in
 -- the channel's own inbox comments. Read by the page /{channel}/research and by the Studio chat ("Nightshift AI") as tools
 -- (docs/studio/RESEARCH_TOOLS.md). vidIQ is NOT used here: its terms (§5(t)) forbid redistributing its data or building a competing
@@ -43,7 +43,7 @@
 -- three topic searches per organization per Pacific day).
 --
 -- Additive and idempotent: create table if not exists, guarded constraint swap, create or replace, drop policy/trigger then create,
--- revoke then grant. Rollback: docs/sql/rollback_0200_channel_research.sql.
+-- revoke then grant. Rollback: docs/sql/rollback_0201_channel_research.sql.
 -- REQUIRES 0018 (is_org_member, channel_org), 0020 (credits_trusted_caller), 0087 (take_web_rate), 0116 (youtube_quota_ledger,
 -- visibility_channel_connected). 0081 (inbox_comments) is optional: without it the comment themes answer not_enabled.
 
@@ -52,17 +52,17 @@ set local lock_timeout = '5s';
 do $$
 begin
   if to_regclass('public.channels') is null then
-    raise exception '0200 needs channels: apply 0001 first';
+    raise exception '0201 needs channels: apply 0001 first';
   end if;
   if to_regprocedure('public.is_org_member(uuid, text)') is null or to_regprocedure('public.credits_trusted_caller()') is null then
-    raise exception '0200 needs 0018_organizations.sql and 0020_credits.sql (is_org_member, credits_trusted_caller): apply them first';
+    raise exception '0201 needs 0018_organizations.sql and 0020_credits.sql (is_org_member, credits_trusted_caller): apply them first';
   end if;
   if to_regprocedure('public.take_web_rate(text, integer, integer)') is null then
-    raise exception '0200 needs 0087_audit_and_rate_hardening.sql (take_web_rate): apply it first';
+    raise exception '0201 needs 0087_audit_and_rate_hardening.sql (take_web_rate): apply it first';
   end if;
   if to_regclass('public.youtube_quota_ledger') is null
      or to_regprocedure('public.visibility_channel_connected(text)') is null then
-    raise exception '0200 needs 0116_visibility_requests.sql (youtube_quota_ledger, visibility_channel_connected): apply it first';
+    raise exception '0201 needs 0116_visibility_requests.sql (youtube_quota_ledger, visibility_channel_connected): apply it first';
   end if;
 end $$;
 
@@ -99,7 +99,7 @@ alter table public.research_competitors add constraint research_competitors_stat
   check (status in ('pending', 'resolved', 'not_found', 'own_channel'));
 
 comment on table public.research_competitors is
-  'Channel research (migration 0200): a competitor channel a customer named. pending until the worker resolved it with channels.list; not_found when YouTube knows no such channel. Written only by research_add_competitor / research_remove_competitor / research_resolve_competitor.';
+  'Channel research (migration 0201): a competitor channel a customer named. pending until the worker resolved it with channels.list; not_found when YouTube knows no such channel. Written only by research_add_competitor / research_remove_competitor / research_resolve_competitor.';
 
 create table if not exists public.research_channel_cache (
   youtube_channel_id   text primary key check (youtube_channel_id ~ '^UC[A-Za-z0-9_-]{22}$'),
@@ -116,7 +116,7 @@ create table if not exists public.research_channel_cache (
 );
 
 comment on table public.research_channel_cache is
-  'Channel research (0200): a channel''s public statistics exactly as channels.list returned them. Non-authorized data: deleted 30 days after fetched_at (research_purge_stale) and never read after that.';
+  'Channel research (0201): a channel''s public statistics exactly as channels.list returned them. Non-authorized data: deleted 30 days after fetched_at (research_purge_stale) and never read after that.';
 
 create table if not exists public.research_video_cache (
   video_id            text primary key check (video_id ~ '^[A-Za-z0-9_-]{11}$'),
@@ -134,7 +134,7 @@ create index if not exists research_video_cache_channel_idx
   on public.research_video_cache (youtube_channel_id, published_at desc nulls last);
 
 comment on table public.research_video_cache is
-  'Channel research (0200): a video''s public statistics exactly as videos.list returned them. Deleted 30 days after fetched_at.';
+  'Channel research (0201): a video''s public statistics exactly as videos.list returned them. Deleted 30 days after fetched_at.';
 
 create table if not exists public.research_topic_results (
   id                   bigint generated always as identity primary key,
@@ -147,7 +147,7 @@ create table if not exists public.research_topic_results (
 );
 
 comment on table public.research_topic_results is
-  'Channel research (0200): which channels YouTube''s search.list (type=channel) returned for an organization''s topic. Deleted 30 days after fetched_at.';
+  'Channel research (0201): which channels YouTube''s search.list (type=channel) returned for an organization''s topic. Deleted 30 days after fetched_at.';
 
 create table if not exists public.research_own_analytics (
   channel_id                 text not null references public.channels (channel_id) on update cascade on delete cascade,
@@ -163,7 +163,7 @@ create table if not exists public.research_own_analytics (
 );
 
 comment on table public.research_own_analytics is
-  'Channel research (0200): the customer''s own channel''s YouTube Analytics totals for the last period_days, read with that channel''s own token. Each metric as reported, never combined.';
+  'Channel research (0201): the customer''s own channel''s YouTube Analytics totals for the last period_days, read with that channel''s own token. Each metric as reported, never combined.';
 
 -- The customer's OWN newest uploads, read with the channel's own token, which also sees private and unlisted ones. Scoped to the
 -- channel (never the shared research_video_cache, which any organization naming that YouTube channel as a competitor reads: a
@@ -188,7 +188,7 @@ alter table public.research_own_videos add column if not exists youtube_channel_
   check (youtube_channel_id is null or youtube_channel_id ~ '^UC[A-Za-z0-9_-]{22}$');
 
 comment on table public.research_own_videos is
-  'Channel research (0200): the customer''s own newest uploads (private and unlisted included), read with its own token and readable only through research_own_channel by that channel''s members. Deleted after 30 days or when the channel is no longer connected.';
+  'Channel research (0201): the customer''s own newest uploads (private and unlisted included), read with its own token and readable only through research_own_channel by that channel''s members. Deleted after 30 days or when the channel is no longer connected.';
 
 create table if not exists public.research_requests (
   id            bigint generated always as identity primary key,
@@ -225,7 +225,7 @@ create index if not exists research_requests_channel_idx on public.research_requ
 create index if not exists research_requests_org_day_idx on public.research_requests (org_id, kind, created_at);
 
 comment on table public.research_requests is
-  'Channel research (0200): a person asked for fresh numbers. Written by research_request_refresh / research_add_competitor (a row, nothing else: rule 3); carried out by the queue worker, which alone calls YouTube.';
+  'Channel research (0201): a person asked for fresh numbers. Written by research_request_refresh / research_add_competitor (a row, nothing else: rule 3); carried out by the queue worker, which alone calls YouTube.';
 
 -- The error words a request may end with, shared with modules/channel_research.py (tests/test_channel_research.py pins the two equal).
 create or replace function public.research_error_words() returns text[]

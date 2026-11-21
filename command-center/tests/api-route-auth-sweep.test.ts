@@ -27,7 +27,7 @@ const AUTH_CALLS = [
   "requireOperator",     // a platform operator
   "creativeSession(",    // the creative routes' session helper
   "workflowSession(",    // the workflow routes' session helper
-  "callResearchWriter(", // channel research (lib/server/research, migration 0200): getUser, then one writer function as that person
+  "callResearchWriter(", // channel research (lib/server/research, migration 0201): getUser, then one writer function as that person
   "callInbox(",          // the comment inbox routes' helper (lib/server/comment-inbox): getUser, then one database function as that person
   "handleOwnerPost(",    // the owner routes' helper (lib/server/owner-rpc): same origin, the flag, getUser, owner/admin, then one database function as that person
   "adsGate(",           // the Ads routes' helper (lib/server/ads-factory): the NIGHTSHIFT_ADS_FACTORY switch, then getUser, then the member's own client; tests/ads-factory-routes.test.ts proves the order

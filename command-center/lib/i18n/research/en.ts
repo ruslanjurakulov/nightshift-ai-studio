@@ -1,4 +1,4 @@
-/** Channel research (migration 0200, /{channel}/research): YouTube's own numbers, never derived; ./ru.ts and ./uz.ts mirror it. */
+/** Channel research (migration 0201, /{channel}/research): YouTube's own numbers, never derived; ./ru.ts and ./uz.ts mirror it. */
 export const researchEn = {
   title: "Research",
   subtitle: "Your channel, the channels you compare it with, and what your viewers ask, from YouTube's own numbers.",

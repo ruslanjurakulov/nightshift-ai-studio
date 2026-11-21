@@ -58,7 +58,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   learning: GraduationCap,
   memory: Database,
   topics: Hash,
-  // Channel research (0200): looking outward at YouTube.
+  // Channel research (0201): looking outward at YouTube.
   research: Telescope,
   measure: Ruler,
   feedback: RefreshCw,

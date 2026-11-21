@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Ask for fresh research numbers (research_request_refresh, migration 0200): one queued row, or the open one a second press finds.
+ * Ask for fresh research numbers (research_request_refresh, migration 0201): one queued row, or the open one a second press finds.
  * Nothing here calls YouTube or spends: the worker does, after counting the day's budget.
  */
 export const POST = requireSameOrigin(async function POST(request: Request) {
