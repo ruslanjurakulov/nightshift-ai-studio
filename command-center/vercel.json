@@ -6,6 +6,7 @@
       "main": false,
       "claude/**": false,
       "codex/**": false,
+      "vera/**": false,
       "showcase/**": false
     }
   }
