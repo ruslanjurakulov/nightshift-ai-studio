@@ -498,14 +498,17 @@ def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
 
 def render(doc: Union[str, bytes, dict], resolver: tl.AssetResolver, output_path: str, *,
            ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
-           jobs: Optional[int] = None, timeout_s: Optional[float] = None) -> str:
+           jobs: Optional[int] = None, timeout_s: Optional[float] = None,
+           allow_compact: bool = True) -> str:
     """Render a timeline to ``output_path`` with the ffmpeg backend.
     ``timeout_s`` bounds the whole render's wall time (render_backend kills
-    the ffmpeg running when it runs out and raises RenderTimeout)."""
+    the ffmpeg running when it runs out and raises RenderTimeout).
+    ``allow_compact=False`` (a paid export): no fallback to the compact encode."""
     from modules import render_backend
 
     spec = to_render_spec(doc, resolver, output_path)
+    extra = {} if allow_compact else {"allow_compact": False}
     if timeout_s is None:
-        return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs)
+        return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs, **extra)
     return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs,
-                                 timeout_s=timeout_s)
+                                 timeout_s=timeout_s, **extra)

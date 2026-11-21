@@ -78,6 +78,12 @@ class RenderTimeout(RenderBackendError):
     rendering again with MoviePy): the next attempt would hang the same way."""
 
 
+class CompactEncodeRefused(RenderBackendError):
+    """The render was told not to fall back to the compact (legacy) segment encode
+    (``allow_compact=False``: a paid export) and the preferred encode could not be
+    used or failed. Raised instead of delivering a lower-quality file as the paid one."""
+
+
 class RenderRefused(RenderBackendError):
     """ffmpeg refused a frame of a member's media: over the decoder's size cap
     (a stream that switches to a bigger frame, BR-L-004), or no memory for it
@@ -1235,7 +1241,8 @@ def _free_mb(path: Path) -> Optional[float]:
 
 
 def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
-                   timings: RenderTimings, deadline: Optional[float] = None) -> List[Segment]:
+                   timings: RenderTimings, deadline: Optional[float] = None,
+                   allow_compact: bool = True) -> List[Segment]:
     """Every segment → ``seg_NNNN.mp4``, in parallel when ``jobs`` > 1.
 
     Any failure of the parallel path — a segment, the pool itself — is logged
@@ -1260,6 +1267,9 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
     t0 = time.monotonic()
     try:
         x264 = intermediate_x264(spec, tmpdir)
+        if x264 == LEGACY_X264 and not allow_compact:
+            raise CompactEncodeRefused("not enough free disk for the preferred segment encode; the compact "
+                                       "encode is not allowed for this render — free disk space and retry")
         tasks = [task(i, x264) for i in range(len(outs))]
         if jobs > 1:
             timings.segment_s = run_pool(tasks, jobs)
@@ -1271,6 +1281,11 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
         # run past the limit again. Refused: the same file is refused again.
         raise
     except Exception as e:
+        if not allow_compact:
+            if isinstance(e, CompactEncodeRefused):
+                raise
+            raise CompactEncodeRefused("the preferred segment encode failed (%s) and the compact encode is not "
+                                       "allowed for this render" % type(e).__name__) from e
         logger.warning("ffmpeg segment normalisation (%d job(s)) failed (%s) — redoing it "
                        "one segment at a time", jobs, f"{type(e).__name__}: {e}"[:300])
         for p in outs:
@@ -1351,7 +1366,8 @@ def check_layers_fit(spec: RenderSpec) -> None:
 
 def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
            jobs: Optional[int] = None, timings: Optional[RenderTimings] = None,
-           timeout_s: Optional[float] = None, faststart: bool = False) -> str:
+           timeout_s: Optional[float] = None, faststart: bool = False,
+           allow_compact: bool = True) -> str:
     """Render `spec` to `spec.output_path` via ffmpeg and return that path.
 
     Normalises every segment (``jobs`` at once; default ``render_jobs``),
@@ -1368,6 +1384,10 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
     ``faststart`` writes the index (moov) in front of the media data
     (``render_spec.FASTSTART_MOVFLAGS``): the pipeline's master asks for it, an
     editor export does not (default False: its command is unchanged).
+
+    ``allow_compact`` (default True, the pipeline's behaviour): when False, a low-disk
+    switch to the compact segment encode, or the sequential redo with it after a failed
+    parallel pass, raises CompactEncodeRefused instead of producing a lower-quality file.
     """
     problems = validate(spec)
     if problems:
@@ -1396,8 +1416,9 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
         if any(o.shape is not None for o in spec.picture_overlays):
             spec = replace(spec, picture_overlays=draw_shapes(spec, tmpdir))
             check_layers_fit(spec)
-        normalized = (_normalize_all(ffmpeg, spec, tmpdir, jobs, timings) if deadline is None
-                      else _normalize_all(ffmpeg, spec, tmpdir, jobs, timings, deadline))
+        strict = {} if allow_compact else {"allow_compact": False}
+        normalized = (_normalize_all(ffmpeg, spec, tmpdir, jobs, timings, **strict) if deadline is None
+                      else _normalize_all(ffmpeg, spec, tmpdir, jobs, timings, deadline, **strict))
 
         norm_spec = replace(spec, segments=normalized)
         concat_path = tmpdir / "concat.txt"
