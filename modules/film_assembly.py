@@ -1,6 +1,8 @@
 """Film Studio P4b: one assembling segment → one finished, registered mp4 (server-side only).
 
-S6's film worker (tools/film_worker.py, in the media-worker container) holds the segment's lease for its whole
+S6's film worker (tools/film_worker.py, its own film-worker container: the worker image, the media volume, a 3 GB
+memory limit; the measured assembly peaks at 572 MB in one ffmpeg and 535 MB anonymous, the rest of its 2.9 GB high-water
+mark being reclaimable page cache, docs/FILM_ASSEMBLY_MEASUREMENT.md) holds the segment's lease for its whole
 life. When every take is terminal it calls ``film_begin_assembly`` (0171: ``assembly_status`` planned →
 running) and then :func:`assemble_segment` here, on the same lease and with its heartbeat still running. From
 there until ``film_record_assembly`` everything is this module's; the worker settles afterwards. The contract is
