@@ -310,7 +310,8 @@ function ChannelCard({ read, now, canRefresh }: { read: ChannelRead; now: number
       ) : read.state === "refreshing" ? (
         <Note>{tc.refreshing}</Note>
       ) : read.state === "no_data" ? (
-        <Note>{tc.noData}</Note>
+        // Numbers read from another YouTube account are withheld (S10); the remedy line below says so instead of "none yet".
+        read.remedy === "channel_mismatch" ? null : <Note>{tc.noData}</Note>
       ) : read.state === "failed" ? (
         <StateBlock compact tone="fail" role="alert" actions={<RetryKey />}>{td.readFailed}</StateBlock>
       ) : read.state === "pick_channel" ? (
@@ -321,12 +322,12 @@ function ChannelCard({ read, now, canRefresh }: { read: ChannelRead; now: number
         <Note>{tc.waiting}</Note>
       )}
       {/* Only the codes whose fix the state's own sentence does not already say. */}
-      {"remedy" in read && (read.remedy === "token_expired" || read.remedy === "not_configured") ? (
+      {"remedy" in read && read.remedy ? (
         <StateBlock
           compact
           tone="warn"
           data-remedy={read.remedy}
-          actions={read.remedy === "token_expired" ? connect : undefined}
+          actions={read.remedy === "reconnect" ? connect : undefined}
         >
           {tc.remedy[read.remedy]}
         </StateBlock>

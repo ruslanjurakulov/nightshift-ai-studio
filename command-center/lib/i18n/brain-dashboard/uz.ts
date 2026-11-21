@@ -35,7 +35,7 @@ export const brainDashUz: BrainDashDictionary = {
     refreshRecent: "Raqamlar soʻnggi bir soat ichida yangilangan, shuning uchun yangi soʻrov yuborilmadi.",
     refreshRecentUntil: "Raqamlar yangi. Qayta soʻrash mumkin boʻlgan vaqt: {time}",
     privacy: { unlisted: "havola orqali", private: "shaxsiy" },
-    remedy: { token_expired: "Bu kanal uchun YouTube ruxsati muddati tugagan. Raqamlarni yana oʻqish uchun kanalni qayta ulang.", not_configured: "Bu ish maydoni uchun kanal oʻqish hali sozlanmagan. Qoʻllab-quvvatlash xizmatiga murojaat qiling." },
+    remedy: { reconnect: "Bu kanal uchun YouTube ruxsati muddati tugagan. Raqamlarni yana oʻqish uchun kanalni qayta ulang.", support: "Bu ish maydoni uchun kanal oʻqish hali sozlanmagan. Qoʻllab-quvvatlash xizmatiga murojaat qiling.", channel_mismatch: "Bu kanal endi boshqa YouTube akkauntiga ulangan. Shu akkaunt raqamlarini yuklash uchun yangi raqamlarni soʻrang." },
     refreshForbidden: "Yangi raqamlarni faqat bu ish maydonining muharriri yoki egasi soʻrashi mumkin.",
     questions: "Savollar",
     topVideos: "Eng yaxshi videolar",

@@ -39,7 +39,7 @@ export const brainDashEn = {
     refreshRecent: "These numbers were refreshed within the last hour, so nothing new was asked.",
     refreshRecentUntil: "These numbers are fresh. You can ask again after: {time}",
     privacy: { unlisted: "unlisted", private: "private" },
-    remedy: { token_expired: "YouTube access for this channel has expired. Reconnect the channel to read its numbers again.", not_configured: "Channel readings are not set up for this workspace yet. Contact support." },
+    remedy: { reconnect: "YouTube access for this channel has expired. Reconnect the channel to read its numbers again.", support: "Channel readings are not set up for this workspace yet. Contact support.", channel_mismatch: "This channel is now connected to a different YouTube account. Ask for fresh numbers to load this account's numbers." },
     refreshForbidden: "Only an editor or owner of this workspace can ask for fresh numbers.",
     questions: "Questions",
     topVideos: "Top videos",

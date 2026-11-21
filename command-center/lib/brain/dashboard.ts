@@ -261,8 +261,19 @@ export type ChannelStatus = "ok" | "no_data" | "not_connected" | "refreshing" | 
  * S10's stable remedy codes. The page words each one in en/ru/uz itself: the envelope's `remedy` text is English-only
  * and meant for the chat, so it is never shown. An unknown code is null (the state's own sentence stands).
  */
-export const REMEDY_CODES = ["connect", "budget", "not_configured", "token_expired", "daily_limit"] as const;
-export type RemedyCode = (typeof REMEDY_CODES)[number];
+export type RemedyCode = "reconnect" | "support" | "channel_mismatch";
+/**
+ * docs/studio/RESEARCH_TOOLS.md (#851) lists budget, quota, connect, not_configured, auth, reconnect, channel_mismatch,
+ * not_found, retry. Only the ones whose fix the card's state sentence does not already say get their own line; two
+ * spellings of "reconnect" and two of "ask support" each read the same. retry is about competitors, not the own channel.
+ */
+const REMEDY_OF: Record<string, RemedyCode> = {
+  reconnect: "reconnect",
+  token_expired: "reconnect",
+  auth: "support",
+  not_configured: "support",
+  channel_mismatch: "channel_mismatch",
+};
 
 export interface ChannelUpload {
   videoId: string;
@@ -326,7 +337,7 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
   const fetchedAt = str(env.fetched_at);
   if (st !== "ok") {
     const code = env.remedy_code;
-    const remedy = (REMEDY_CODES as readonly unknown[]).includes(code) ? (code as RemedyCode) : null;
+    const remedy = typeof code === "string" && Object.hasOwn(REMEDY_OF, code) ? REMEDY_OF[code] : null;
     return { state: st, channelId, fetchedAt, remedy };
   }
   const d = obj(env.data) ?? {};

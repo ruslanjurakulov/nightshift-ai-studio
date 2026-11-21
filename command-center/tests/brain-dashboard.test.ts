@@ -209,8 +209,20 @@ describe("coerceChannel: the channel's own uploads", () => {
 describe("coerceChannel: remedy codes", () => {
   it("keeps S10's stable remedy_code and never the English remedy text; an unknown code is null", () => {
     const env = (code: unknown) => ({ status: "not_connected", fetched_at: null, data: null, remedy: "Please reconnect in English", remedy_code: code });
-    expect(coerceChannel("ch", env("token_expired"), null)).toMatchObject({ state: "not_connected", remedy: "token_expired" });
+    expect(coerceChannel("ch", env("token_expired"), null)).toMatchObject({ state: "not_connected", remedy: "reconnect" });
+    expect(coerceChannel("ch", env("reconnect"), null)).toMatchObject({ remedy: "reconnect" });
+    expect(coerceChannel("ch", env("auth"), null)).toMatchObject({ remedy: "support" });
     expect(coerceChannel("ch", env("drop table"), null)).toMatchObject({ remedy: null });
+    expect(coerceChannel("ch", env("toString"), null)).toMatchObject({ remedy: null });
+    // Codes the state sentence already words (budget, connect, retry for competitors) add no second line.
+    expect(coerceChannel("ch", env("budget"), null)).toMatchObject({ remedy: null });
     expect(JSON.stringify(coerceChannel("ch", env("connect"), null))).not.toContain("English");
+  });
+});
+
+describe("coerceChannel: numbers from another YouTube account", () => {
+  it("no_data with channel_mismatch keeps the reason, so the card says 'different account', not 'no numbers yet'", () => {
+    const r = coerceChannel("ch", { status: "no_data", fetched_at: null, data: null, remedy_code: "channel_mismatch" }, null);
+    expect(r).toMatchObject({ state: "no_data", channelId: "ch", remedy: "channel_mismatch" });
   });
 });
