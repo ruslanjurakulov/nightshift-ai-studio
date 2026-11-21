@@ -109,6 +109,13 @@ describe("a film", () => {
     expect(n.get(`scene:${S1}:keyframe`)?.status).toBe("none");
     expect(n.get(`scene:${S2}:keyframe`)).toMatchObject({ status: "failed", error: "first_frame_missing", assetId: null });
   });
+  it("a failed assembly names the worker's recorded reason (films.pause_reason), and the generic word only when none was recorded", () => {
+    const seg: LiveSegment = { id: "s", status: "settled", assemblyStatus: "failed", assemblyAssetId: null, confirmedCredits: 40, chargedCredits: 30, assemblyConfirmedCredits: 8, assemblyChargedCredits: 0, createdAt: "2026-11-21T00:00:00Z" };
+    const withReason = coerceFilmLive({ film: filmJson({ status: "paused", pause_reason: "assembly_unavailable" }, [sceneJson(S1, 0)]), segments: [{ id: "s", status: "settled", assembly_status: "failed", created_at: "2026-11-21T00:00:00Z" }], takes: [] })!;
+    expect(withReason.pauseReason).toBe("assembly_unavailable");
+    expect(byId(filmGraph(withReason)).get("assembly")).toMatchObject({ status: "failed", error: "assembly_unavailable" });
+    expect(byId(filmGraph(reading({ status: "paused" }, [sceneJson(S1, 0)], { segments: [seg] }))).get("assembly")?.error).toBe("assembly_failed");
+  });
 });
 
 describe("the live route's answer", () => {

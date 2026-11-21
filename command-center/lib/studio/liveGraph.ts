@@ -103,6 +103,8 @@ export interface FilmReading {
   segments: LiveSegment[] | null;
   money: TakeMoney;
   errors: TakeErrors;
+  /** films.pause_reason: where the worker records why a segment's assembly failed (S6's contract). */
+  pauseReason?: string | null;
 }
 
 /**
@@ -140,7 +142,8 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     if (err) errors.set(id, err);
     if ("confirmed_credits" in o || "charged_credits" in o) money.set(id, { held: num(o.confirmed_credits), charged: num(o.charged_credits) });
   }
-  return { film, segments, money, errors };
+  const filmRow = rec(rec(r.film)?.film);
+  return { film, segments, money, errors, pauseReason: filmRow ? str(filmRow.pause_reason) : null };
 }
 
 const BEFORE_WORK = new Set(["draft", "planning", "planned", "queued"]);
@@ -329,7 +332,7 @@ export function filmGraph(r: FilmReading): LiveGraph {
     kind: "assembly",
     status: asm,
     credits: seg ? { held: seg.assemblyConfirmedCredits, charged: seg.assemblyChargedCredits } : null,
-    error: asm === "failed" ? "assembly_failed" : null,
+    error: asm === "failed" ? (r.pauseReason ?? "assembly_failed") : null,
     col: 5,
     row: mid,
   });
