@@ -8,6 +8,8 @@ import { quoteStoryboard, readStoryboard } from "@/lib/server/storyboards";
 import { isStoryboardId, mapStoryboardError } from "@/lib/storyboardReview";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { readAgeAnswer } from "@/lib/server/age";
+import { runAgeRefusal } from "@/lib/age";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,6 +89,11 @@ export const POST = requireSameOrigin(async function POST(request: Request, { pa
   const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   if (backend === "actions" && !isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
+  // 0196: the approved storyboard resumes a video run, and every run spends on Gemini (18+ by Google's terms). On the queue the
+  // render_jobs run gate refuses the row; on Actions no row is written, so the answer is read here, before the quote, the hold
+  // and the dispatch, by the same rule as Run now (lib/age.ts runAgeRefusal).
+  const ageRefusal = runAgeRefusal(await readAgeAnswer(), backend);
+  if (ageRefusal) return NextResponse.json({ error: ageRefusal.error }, { status: ageRefusal.status });
 
   const quote = await quoteStoryboard(supabase, sb, access.source === "org" ? access.orgId : null);
   let amount: number | null = null;

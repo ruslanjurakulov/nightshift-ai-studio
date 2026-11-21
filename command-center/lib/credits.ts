@@ -666,6 +666,13 @@ export function creditRunError(data: Record<string, unknown>, t: Dictionary, loc
     case "adult_only_service":
       text = t.creative.errors.adult_only_service;
       break;
+    // 0196: a run spends on Google (runGoogleStages), whose terms are 18+: the remedy is the age box on Create.
+    case "adult_attestation_required":
+      text = t.credits.adultRequired;
+      break;
+    case "age_unavailable":
+      text = t.credits.ageUnavailable;
+      break;
   }
   if (num(data.credits_held) !== null) return `${text ?? t.agents.runFailed} ${t.credits.heldNote}`;
   return text;
