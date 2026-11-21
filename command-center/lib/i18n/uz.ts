@@ -17,6 +17,7 @@ import { customerAppUz } from "./customer-app/uz";
 import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
 import { studioTimelineUz } from "./studio-timeline/uz";
+import { studioLiveUz } from "./studio-live/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -35,6 +36,7 @@ import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { trendsUz } from "./trends/uz";
 import { startBoxUz } from "./start-box/uz";
+import { ownerConsoleUz } from "./owner-console/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
@@ -69,6 +71,8 @@ export const uz: Dictionary = {
   trends: trendsUz,
   /** The start box of the app (Home, the Studio start): ./start-box/uz.ts. */
   startBox: startBoxUz,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/uz.ts. */
+  ownerConsole: ownerConsoleUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
@@ -79,6 +83,7 @@ export const uz: Dictionary = {
   studioHub: studioHubUz,
   studioCanvas: studioCanvasUz,
   studioTimeline: studioTimelineUz,
+  studioLive: studioLiveUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
@@ -5981,6 +5986,8 @@ export const uz: Dictionary = {
       priceRequired: "Narx tasdiqlanmadi. Qayta bosing.",
       conflict: "Bu bosish boshqa soʻrov uchun ishlatilgan. Sahifani yangilab, qayta urinib koʻring.",
       queueRequired: "Sahnalarni qayta yaratish bu ish maydonida hali mavjud emas.",
+      adultRequired: "Bu yerda foydalaniladigan ayrim SI modellari ularni yaratganlarning shartlariga koʻra faqat kattalar uchun (18+). «Yaratish» sahifasining yuqorisidagi oynada yoshingizni tasdiqlang va qayta urinib koʻring. Hech narsa boshlanmadi va yechilmadi.",
+      adultOnly: "Nightshift kattalar uchun (18+). Bu akkaunt 18 yoshga toʻlmaganini bildirgan, shuning uchun hech narsa yaratib boʻlmaydi. Hech narsa yechilmadi.",
       invalidPrompt: "Prompt juda uzun yoki ruxsat etilmagan belgilar bor.",
       notInstalled: "Sahnalarni qayta yaratish hali sozlanmagan.",
       failed: "Boshlab boʻlmadi. Hech narsa yechilmadi.",

@@ -17,6 +17,7 @@ import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
+import { studioLiveRu } from "./studio-live/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -35,6 +36,7 @@ import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { trendsRu } from "./trends/ru";
 import { startBoxRu } from "./start-box/ru";
+import { ownerConsoleRu } from "./owner-console/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
@@ -69,6 +71,8 @@ export const ru: Dictionary = {
   trends: trendsRu,
   /** The app's start box (Home, the Studio start): ./start-box/ru.ts. */
   startBox: startBoxRu,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/ru.ts. */
+  ownerConsole: ownerConsoleRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
@@ -79,6 +83,7 @@ export const ru: Dictionary = {
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
+  studioLive: studioLiveRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
@@ -5981,6 +5986,8 @@ export const ru: Dictionary = {
       priceRequired: "Цена не подтверждена. Нажмите снова.",
       conflict: "Это нажатие уже использовано для другого запроса. Обновите страницу и попробуйте снова.",
       queueRequired: "Пересоздание сцен пока недоступно в этом рабочем пространстве.",
+      adultRequired: "Некоторые модели ИИ, которые здесь используются, по условиям их создателей доступны только взрослым (18+). Подтвердите возраст в блоке вверху страницы «Создать» и попробуйте снова. Ничего не запущено и не списано.",
+      adultOnly: "Nightshift — для взрослых (18+). Для этого аккаунта указан возраст младше 18, поэтому создание недоступно. Ничего не списано.",
       invalidPrompt: "Промпт слишком длинный или содержит недопустимые символы.",
       notInstalled: "Пересоздание сцен ещё не настроено.",
       failed: "Не удалось запустить. Ничего не списано.",

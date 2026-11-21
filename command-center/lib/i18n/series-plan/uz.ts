@@ -226,6 +226,8 @@ export const seriesPlanUz: SeriesPlanDictionary = {
       insufficient_unknown: "Bu epizodni boshlash uchun kredit yetarli emas.",
       unpriced: "Bu epizodning narxi hali yoʻq, shuning uchun u boshlanmaydi. Hech narsa ushlab turilmadi.",
       earlier_episode_not_finished: "Avval oldingi epizodni tugating. Epizodlar birma-bir, tartib bilan boshlanadi.",
+      adult_attestation_required: "Bu yerda foydalaniladigan ayrim SI modellari ularni yaratganlarning shartlariga koʻra faqat kattalar uchun (18+). «Yaratish» sahifasining yuqorisidagi oynada yoshingizni tasdiqlang va qayta urinib koʻring. Hech narsa boshlanmadi va yechilmadi.",
+      adult_only_service: "Nightshift kattalar uchun (18+). Bu akkaunt 18 yoshga toʻlmaganini bildirgan, shuning uchun hech narsa yaratib boʻlmaydi. Hech narsa yechilmadi.",
       rate_limited: "Soʻrovlar juda koʻp. Biroz kutib, qayta urinib koʻring.",
       run_limit: "Tarifingizdagi bir vaqtda ishga tushirish limiti band. Biri tugashini kutib, qayta urinib koʻring.",
       forbidden: "Bu yerda epizodni boshlay olmaysiz. Ish maydonini boshqaradigan kishidan soʻrang.",

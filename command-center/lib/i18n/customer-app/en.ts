@@ -4,9 +4,6 @@
  */
 export const customerAppEn = {
   shell: {
-    ownerMode: "Owner mode",
-    ownerModeHint: "Show the owner and operations sections",
-    ownerModeFailed: "Could not switch Owner mode. Try again.",
     newProject: "New project",
     search: "Search",
     breadcrumb: "Where you are",
