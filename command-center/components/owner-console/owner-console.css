@@ -285,7 +285,8 @@
 .ai-kpi[data-tone="warn"] .ai-kpi-ic { color: var(--color-warn); }
 .ai-kpi[data-tone="fail"] .ai-kpi-ic { color: var(--color-fail); }
 .ai-kpi-body { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; min-width: 0; }
-.ai-kpi-val { font-size: 1.35rem; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* A figure never breaks inside itself: at 390 px "1 240,50 US$" wrapped its currency onto a second line. It shrinks instead. */
+.ai-kpi-val { font-size: clamp(1.05rem, 4.4vw, 1.35rem); font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ai-kpi-runway { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .ai-kpi-name { font-size: 1.05rem; }
 .ai-kpi-sub { font-size: 0.78rem; color: var(--color-muted); }
