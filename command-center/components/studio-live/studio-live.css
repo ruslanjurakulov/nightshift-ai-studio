@@ -6,7 +6,7 @@
 .lv-stale { margin: 0; font-size: 13px; color: var(--caution); }
 .lv-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 0; flex: 1; }
 .lv-main.has-details { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
-.lv-board { position: relative; min-height: 520px; height: calc(100dvh - 220px); border: 1px solid var(--rule); border-radius: 14px; background: var(--console); overflow: hidden; }
+.lv-board { position: relative; min-height: 0; height: clamp(380px, calc(100dvh - 260px), 640px); border: 1px solid var(--rule); border-radius: 14px; background: var(--console); overflow: hidden; }
 .lv-handle { opacity: 0; pointer-events: none; }
 
 .lv-card {
@@ -15,19 +15,32 @@
   transition: border-color 280ms ease, box-shadow 280ms ease, background-color 280ms ease, transform 280ms ease;
 }
 .lv-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.lv-card:hover { border-color: var(--rule-strong, var(--rule)); background: var(--key-hi, var(--key)); }
+/* xyflow gives a node that is neither draggable nor selectable pointer-events:none: the card (a button) takes the click itself (S4 HIGH 1). */
+.lv-board .lv-card { pointer-events: all; cursor: pointer; }
 .lv-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; font-size: 14px; }
 .lv-card-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lv-card.is-working { border-color: var(--run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--run) 22%, transparent), 0 0 18px -6px var(--run-glow); transform: translateY(-1px); }
+.lv-card.is-working { position: relative; overflow: hidden; border-color: var(--run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--run) 22%, transparent), 0 0 18px -6px var(--run-glow); transform: translateY(-1px); }
+/* Working: a slow light sweep over the card, driven only by the real status class. */
+.lv-card.is-working::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--run) 18%, transparent) 50%, transparent 70%);
+  background-size: 250% 100%; animation: lv-sweep 2.4s ease-in-out infinite; }
+@keyframes lv-sweep { from { background-position: 120% 0; } to { background-position: -20% 0; } }
 .lv-card.is-done { border-color: color-mix(in srgb, var(--go) 55%, var(--rule)); }
+/* Turning on: a ring opens once on a card whose row just became done (data-lit marks a change since the last reading). */
+.lv-card[data-lit] { animation: lv-lit 900ms ease-out 1; }
+@keyframes lv-lit { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--go) 55%, transparent); } to { box-shadow: 0 0 0 12px transparent; } }
 .lv-card.is-failed { border-color: var(--tally); background: color-mix(in srgb, var(--tally) 8%, var(--key)); }
 .lv-card.is-unknown, .lv-card.is-stopped { border-style: dashed; }
 .lv-card.is-none, .lv-card.is-skipped { opacity: 0.6; }
 /* Planned in the conversation, before Create: a sketch, not a running step. */
-.lv-card.is-draft { border-style: dashed; background: color-mix(in srgb, var(--key) 60%, transparent); }
+.lv-card.is-draft { border-style: dashed; color: var(--dim);
+  background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--rule) 55%, transparent) 7px 8px), var(--key); }
 .lv-price { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .lv-card.is-selected { outline: 2px solid var(--sel, var(--run)); outline-offset: 1px; }
 
 .lv-board .react-flow__edge-path { stroke: var(--rule-strong, var(--rule)); stroke-width: 1.5; transition: stroke 280ms ease; }
+.lv-board .lv-edge.is-none .react-flow__edge-path { stroke-dasharray: 2 6; opacity: 0.45; }
 .lv-board .lv-edge.is-done .react-flow__edge-path { stroke: color-mix(in srgb, var(--go) 60%, var(--rule)); }
 .lv-board .lv-edge.is-live .react-flow__edge-path { stroke: var(--run); stroke-dasharray: 6 6; animation: lv-flow 1s linear infinite; }
 @keyframes lv-flow { to { stroke-dashoffset: -12; } }
@@ -45,7 +58,9 @@
 .lv-audio { width: 100%; }
 .lv-final { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-@media (max-width: 760px) {
+@media (max-width: 1279px) {
+  /* The tab bar and the raised Create key sit over the last rows on a phone (S4 MEDIUM 5). */
+  .lv-list { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
   .lv-root { padding: 12px 16px; }
   .lv-main.has-details { grid-template-columns: minmax(0, 1fr); }
   .lv-details { order: -1; }
@@ -54,5 +69,6 @@
 @media (prefers-reduced-motion: reduce) {
   .lv-card, .lv-board .react-flow__edge-path { transition: none; }
   .lv-card.is-working { transform: none; }
+  .lv-card.is-working::after, .lv-card[data-lit] { animation: none; }
   .lv-board .lv-edge.is-live .react-flow__edge-path { animation: none; }
 }

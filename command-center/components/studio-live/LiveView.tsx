@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Handle, Position, ReactFlow, ReactFlowProvider, type Edge, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { AudioLines, Clapperboard, FileText, Film, Flag, Image as ImageIcon, Lightbulb, MapPin, Music, Search, ShieldCheck, Sword, Upload, UserRound, Wand2, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -49,7 +49,24 @@ const TONE: Record<LiveStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
   none: "idle",
 };
 
-const NARROW = "(max-width: 760px)";
+/** The board only where it can be read (S4 HIGH 2: at 768 the fitted plan was ~5px text): a list below 1280. */
+const NARROW = "(max-width: 1279px)";
+const FIT = { padding: 0.12, minZoom: 0.72, maxZoom: 1 };
+const reduced = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Refit when the board resizes (the details panel opening narrows it), so the plan's right end never slides out of view. */
+function FitOnResize() {
+  const { fitView } = useReactFlow();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current?.closest(".lv-board");
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => void fitView({ ...FIT, duration: reduced() ? 0 : 200 }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fitView]);
+  return <div ref={ref} hidden />;
+}
 const COL_W = 236;
 const ROW_H = 124;
 
@@ -90,7 +107,7 @@ export function failureText(t: T, n: LiveNode, run: boolean): { reason: string; 
   return { reason: n.error ? fmt(c.failedGeneric, { code: n.error }) : c.failedNoCode, remedy: c.remedyGeneric };
 }
 
-type CardData = { node: LiveNode; name: string; statusWord: string; price: string | null; selected: boolean; onOpen: (id: string) => void };
+type CardData = { node: LiveNode; name: string; statusWord: string; price: string | null; lit: boolean; selected: boolean; onOpen: (id: string) => void };
 
 function CardView({ data }: NodeProps<Node<CardData, "step">>) {
   const Icon = ICONS[data.node.kind];
@@ -102,6 +119,7 @@ function CardView({ data }: NodeProps<Node<CardData, "step">>) {
         className={`lv-card is-${data.node.status}${data.selected ? " is-selected" : ""}`}
         data-testid={`live-node-${data.node.id}`}
         data-status={data.node.status}
+        data-lit={data.lit ? "" : undefined}
         aria-pressed={data.selected}
         onClick={() => data.onOpen(data.node.id)}
       >
@@ -119,21 +137,21 @@ function CardView({ data }: NodeProps<Node<CardData, "step">>) {
 
 const NODE_TYPES = { step: CardView };
 
-type ViewProps = { graph: LiveGraph; selected: string | null; onOpen: (id: string) => void; names: Map<string, string>; words: Map<string, string>; prices: Map<string, string> };
+type ViewProps = { graph: LiveGraph; selected: string | null; onOpen: (id: string) => void; names: Map<string, string>; words: Map<string, string>; prices: Map<string, string>; lit: ReadonlySet<string> };
 
-function Board({ graph, selected, onOpen, names, words, prices }: ViewProps) {
+function Board({ graph, selected, onOpen, names, words, prices, lit }: ViewProps) {
   const nodes = useMemo<Node<CardData, "step">[]>(
     () =>
       graph.nodes.map((n) => ({
         id: n.id,
         type: "step",
         position: { x: n.col * COL_W, y: n.row * ROW_H },
-        data: { node: n, name: names.get(n.id) ?? n.id, statusWord: words.get(n.id) ?? "", price: prices.get(n.id) ?? null, selected: selected === n.id, onOpen },
+        data: { node: n, name: names.get(n.id) ?? n.id, statusWord: words.get(n.id) ?? "", price: prices.get(n.id) ?? null, lit: lit.has(n.id), selected: selected === n.id, onOpen },
         draggable: false,
         connectable: false,
         selectable: false,
       })),
-    [graph, selected, onOpen, names, words, prices],
+    [graph, selected, onOpen, names, words, prices, lit],
   );
   const status = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n.status])), [graph]);
   const edges = useMemo<Edge[]>(
@@ -142,7 +160,15 @@ function Board({ graph, selected, onOpen, names, words, prices }: ViewProps) {
         id: `${e.from}->${e.to}`,
         source: e.from,
         target: e.to,
-        className: status.get(e.from) === "done" && status.get(e.to) === "working" ? "lv-edge is-live" : status.get(e.from) === "done" ? "lv-edge is-done" : "lv-edge",
+        // A step not in the plan draws no live path into the next one (S4 LOW 6).
+        className:
+          status.get(e.from) === "none" || status.get(e.to) === "none"
+            ? "lv-edge is-none"
+            : status.get(e.from) === "done" && status.get(e.to) === "working"
+              ? "lv-edge is-live"
+              : status.get(e.from) === "done"
+                ? "lv-edge is-done"
+                : "lv-edge",
         selectable: false,
         focusable: false,
       })),
@@ -160,17 +186,19 @@ function Board({ graph, selected, onOpen, names, words, prices }: ViewProps) {
           elementsSelectable={false}
           edgesFocusable={false}
           fitView
-          fitViewOptions={{ padding: 0.15 }}
+          fitViewOptions={FIT}
           minZoom={0.3}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
-        />
+        >
+          <FitOnResize />
+        </ReactFlow>
       </ReactFlowProvider>
     </div>
   );
 }
 
-function List({ graph, selected, onOpen, names, words, prices }: ViewProps) {
+function List({ graph, selected, onOpen, names, words, prices, lit }: ViewProps) {
   const order = [...graph.nodes].sort((a, b) => a.col - b.col || a.row - b.row);
   return (
     <ol className="lv-list" data-testid="live-list">
@@ -183,6 +211,7 @@ function List({ graph, selected, onOpen, names, words, prices }: ViewProps) {
               className={`lv-card is-${n.status}${selected === n.id ? " is-selected" : ""}`}
               data-testid={`live-node-${n.id}`}
               data-status={n.status}
+              data-lit={lit.has(n.id) ? "" : undefined}
               aria-pressed={selected === n.id}
               onClick={() => onOpen(n.id)}
             >
@@ -219,7 +248,8 @@ function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean;
   const c = t.studioLive;
   const path = useChannelPath();
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => closeRef.current?.focus(), [node.id]);
+  // preventScroll: focusing the close key must not scroll the page and hide the plan's title (S4 MEDIUM 4).
+  useEffect(() => closeRef.current?.focus({ preventScroll: true }), [node.id]);
   const credit = (v: number | null) => (v === null ? c.creditsUnrecorded : String(v));
   return (
     <aside className="lv-details" aria-label={c.details} data-testid="live-details">
@@ -290,6 +320,15 @@ export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boo
     [graph, c],
   );
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
+  // The steps that turned done since the last reading: only they play the "turning on" ring, never every done card on first load.
+  const seen = useRef<Map<string, LiveStatus> | null>(null);
+  const [lit, setLit] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (!graph) return;
+    const before = seen.current;
+    setLit(new Set(before ? graph.nodes.filter((n) => n.status === "done" && before.has(n.id) && before.get(n.id) !== "done").map((n) => n.id) : []));
+    seen.current = new Map(graph.nodes.map((n) => [n.id, n.status]));
+  }, [graph]);
 
   let body: React.ReactNode;
   if (draft) body = null;
@@ -336,9 +375,9 @@ export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boo
       {graph ? (
         <div className={sel ? "lv-main has-details" : "lv-main"}>
           {narrow ? (
-            <List graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} />
+            <List graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           ) : (
-            <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} />
+            <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           )}
           {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} onClose={() => setSelected(null)} /> : null}
         </div>
