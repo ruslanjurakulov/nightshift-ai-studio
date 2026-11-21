@@ -403,6 +403,11 @@
   scroll-snap-type: x mandatory;
 }
 .hc-row > * { scroll-snap-align: start; }
+/* Exactly two cards on a phone (Home's "Waiting for you": videos and storyboards) share the width instead of the second one
+   showing cut off at the edge (measured at 360 and 390 px). Three or more keep scrolling sideways. */
+@media (max-width: 639px) {
+  .hc-row:has(> :last-child:nth-child(2)) { grid-auto-columns: minmax(0, 1fr); }
+}
 .hc-card,
 .hc-tile {
   position: relative;
