@@ -171,9 +171,13 @@ function RefreshKey({ channelId, canRefresh }: { channelId: string; canRefresh: 
     <div className="flex min-w-0 flex-col items-start gap-1.5">
       <button
         type="button"
-        className="btn-quiet min-h-11 text-sm"
-        onClick={() => void ask()}
-        disabled={state === "busy" || settled}
+        className="btn-quiet min-h-11 text-sm aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+        // aria-disabled, not disabled: a disabled button drops keyboard focus to <body>. The busy ref and this guard refuse
+        // the second press instead.
+        onClick={() => {
+          if (state !== "busy" && !settled) void ask();
+        }}
+        aria-disabled={state === "busy" || settled}
         aria-busy={state === "busy"}
         data-refresh={state}
       >
@@ -242,7 +246,12 @@ function ChannelCard({ read, now, canRefresh }: { read: ChannelRead; now: number
                 <Figure label={tc.minutesWatched} value={missing(read.analytics.minutesWatched)} />
                 <Figure
                   label={tc.subsChange}
-                  value={`+${word(read.analytics.subsGained)} · −${word(read.analytics.subsLost)}`}
+                  value={
+                    <>
+                      <span className="whitespace-nowrap">+{word(read.analytics.subsGained)}</span>{" "}
+                      <span className="whitespace-nowrap">· −{word(read.analytics.subsLost)}</span>
+                    </>
+                  }
                 />
               </div>
             </div>
@@ -253,7 +262,7 @@ function ChannelCard({ read, now, canRefresh }: { read: ChannelRead; now: number
               <ol className="m-0 flex list-none flex-col gap-1 p-0">
                 {read.topUploads.map((v) => (
                   <li key={v.videoId} className="flex min-w-0 justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate">{v.title ?? v.videoId}</span>
+                    <span className="min-w-0 truncate" title={v.title ?? v.videoId}>{v.title ?? v.videoId}</span>
                     <span className="shrink-0 tabular-nums text-[var(--color-muted)]">
                       {v.views === null ? td.unknown : viewsText(t.brainDash.projects.views, v.views, locale)}
                     </span>
@@ -432,7 +441,7 @@ function ProjectsCard({ facts }: { facts: BrainFacts }) {
                 href={v.channelId ? `/${encodeURIComponent(v.channelId)}/videos/${encodeURIComponent(v.videoId)}` : path(`/videos/${encodeURIComponent(v.videoId)}`)}
                 className="flex min-h-11 min-w-0 items-center justify-between gap-3 py-2 text-sm text-inherit no-underline hover:underline"
               >
-                <span className="min-w-0 truncate">{v.title ?? v.videoId}</span>
+                <span className="min-w-0 truncate" title={v.title ?? v.videoId}>{v.title ?? v.videoId}</span>
                 <span className="shrink-0 tabular-nums text-xs text-[var(--color-muted)]">
                   {v.views === null ? tp.noStats : viewsText(tp.views, v.views, locale)}
                 </span>
@@ -516,7 +525,7 @@ export function BrainDashboard({
           <StateBlock
             tone="warn"
             actions={
-              <Link href="/organization" className="btn-quiet min-h-11 text-sm no-underline">
+              <Link href={path("/organization")} className="btn-quiet min-h-11 text-sm no-underline">
                 {td.switchWorkspace}
               </Link>
             }
