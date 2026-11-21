@@ -13,6 +13,7 @@ import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ageEn } from "./age/en";
+import { aiChatEn } from "./ai-chat/en";
 import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
@@ -88,6 +89,8 @@ export const en = {
   assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
   age: ageEn,
+  /** Nightshift AI, the Studio's planning chat: ./ai-chat/en.ts. */
+  aiChat: aiChatEn,
   customerApp: customerAppEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,

@@ -798,6 +798,11 @@ import sec_owner_brain_0197  # noqa: E402
 
 sec_owner_brain_0197.extend(TABLES, FUNCTIONS)
 
+# Migration 0199 (Nightshift AI, the Studio's planning chat): tests/security/sec_ai_chat_0199.py
+import sec_ai_chat_0199  # noqa: E402
+
+sec_ai_chat_0199.extend(TABLES, FUNCTIONS)
+
 # Migration 0202 (channel research: closed caches and queue, member readers/writers, worker functions):
 # tests/security/sec_research_0202.py
 import sec_research_0202  # noqa: E402

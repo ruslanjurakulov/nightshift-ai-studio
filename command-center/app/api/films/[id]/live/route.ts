@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { NO_STORE, filmFail, filmGate, readFilm } from "@/lib/server/films";
+import { NO_STORE, filmFail, filmGateFor, readFilm } from "@/lib/server/films";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,9 +16,9 @@ const MAX_SEGMENTS = 20;
  * Nothing here starts, prices or retries anything.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await filmGate();
-  if (!gate.ok) return gate.response;
   const { id } = await params;
+  const gate = await filmGateFor(id);
+  if (!gate.ok) return gate.response;
   const read = await readFilm(gate.supabase, id);
   if (!read.ok) return filmFail(read.error, read.status);
   const filmId = read.view.film.id;

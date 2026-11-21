@@ -54,6 +54,7 @@ class Tenant:
     media_ticket: str = ""
     creative_job: str = ""
     agent_draft: str = ""
+    ai_chat_session: str = ""
 
 
 @dataclass
@@ -503,6 +504,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Owner FX rates (0185): tests/security/sec_owner_fx_0185.py — one frozen rate, set by the owner.
     import sec_owner_fx_0185
     sec_owner_fx_0185.seed(conn, sc)
+    # Nightshift AI (0199): tests/security/sec_ai_chat_0199.py — one conversation of one message each for Alice and Bob.
+    import sec_ai_chat_0199
+    sec_ai_chat_0199.seed(conn, sc)
     # Channel research (0202): tests/security/sec_research_0202.py — a competitor per tenant and the worker's cache rows.
     import sec_research_0202
     sec_research_0202.seed(conn, sc)

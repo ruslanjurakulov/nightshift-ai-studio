@@ -2276,6 +2276,30 @@ organization's are on (`film_studio_on_for(org)`): `start_film` refuses `film_st
 - **Undo.** `docs/sql/rollback_0198_film_studio_org_switch.sql` (owner-applied): the nine earlier bodies, 0064's trigger and 0166's
   check back (refused while any film targets less than 60 s), the four functions dropped, the column kept.
 
+## Nightshift AI: the Studio's assistant (0199)
+
+0199 (`0199_studio_ai_chat.sql`) is the database half of Nightshift AI and the Nightshift Brain. The product contract is in docs/studio/NIGHTSHIFT_AI.md, and operating notes are in docs/studio/AI_CHAT.md.
+
+- **Tables.** RLS is on for all six.
+  - `ai_chat_sessions`: slots, step, BRIEF, card and handoff. Readable by its author only.
+  - `ai_chat_messages`: readable by its author only.
+  - `ai_chat_settings`: the owner's model and limits. Closed.
+  - `ai_chat_plan_caps`: creator 30, pro 100, studio 300. Free has no row. Closed.
+  - `ai_chat_calls`: metering, with no text. Closed. It also counts a free workspace's lifetime trial (`trial_messages`, 3).
+  - `ai_chat_pilot_orgs`: workspaces the owner pilots, at Business's cap. Closed.
+- **Functions.**
+  - `ai_chat_start(org, channel?)`: editor or above, on a plan with a cap or with trial messages left, at most 50 a day per person.
+  - `ai_chat_reserve_turn(session, text, retry)`: the plan cap, a per-person cap and a platform cap, under locks, before any vendor call. A refusal writes nothing.
+  - `ai_chat_finish_turn(…)`: once per call, by its caller; unreported tokens stay NULL, and counts are bounded.
+  - `ai_chat_save_brief`: the author's own draft.
+  - `ai_chat_record_handoff`: a film or channel of the workspace's own. It starts nothing, and it closes the conversation. It reads a run's `credit_ref` from the job and a film's `scene_map` from its scenes; nothing the browser sends for them is kept.
+  - `ai_chat_quota`.
+  - Owner-only: `ai_chat_set_model`, `ai_chat_set_plan_cap`, `ai_chat_set_limits`, `ai_chat_set_pilot`, `ai_chat_owner_settings` and `ai_chat_usage`.
+- **Not changed.** Every price, hold, credit, create, film and publish rule. A long plan opens Run now. A short plan is a film draft (`create_film_draft`/`save_film`), started only by the person through `/api/films/<id>/start`.
+- **Without it.** The panel says "not set up on this database".
+- **Lab.** `tests/security/sec_ai_chat_0199.py`, `test_sec_ai_chat.py` and `test_sec_breach_0199.py`.
+- **Rollback.** `docs/sql/rollback_0199_studio_ai_chat.sql`.
+
 ## Channel research on our own YouTube data (0202)
 
 0202 (`0202_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
