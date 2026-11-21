@@ -10,7 +10,8 @@
  *     ("< /facts>", a zero-width or soft-hyphen inside, full-width brackets) are left intact;
  *  2. the route hands the browser a link the facts never contained, with nothing marking it unverified.
  *
- * These stay FAILING until fixed. Synthetic figures and hosts only (.example), no vendor is called.
+ * Fixed: values are NFKC-folded, format characters dropped and every bracket (and lookalike) escaped; links and IBANs a reply
+ * carries that are not a provider's own page are cut and counted (removed_links). Synthetic figures and hosts only (.example).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OwnerFacts } from "../lib/owner-console/facts-types";

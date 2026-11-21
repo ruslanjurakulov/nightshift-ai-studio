@@ -14,6 +14,7 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
   copy: "Nusxalash",
   copied: "Nusxalandi",
   copyFailed: "Nusxalab boʻlmadi. Matnni belgilab, qoʻlda nusxalang.",
+  linksRemoved: "Javobdan provayderlarning oʻz sahifalariga tegishli boʻlmagan havola yoki hisob raqami olib tashlandi ([⚠]). Faqat provayderning oʻz sahifasida, «Provayderlar va toʻlovlar» boʻlimidan toʻlang.",
   asOf: "Koʻrsatkichlar {time} holatiga (Toshkent)",
   empty: "Hali savol yoʻq.",
   suggestions: "Sinab koʻring",

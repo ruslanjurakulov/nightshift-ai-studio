@@ -15,6 +15,7 @@ interface Turn {
   a: string;
   draft: { title: string | null; body: string } | null;
   asOf: string | null;
+  removedLinks: number;
 }
 type Failure = { message: string; verify?: boolean; clear?: boolean };
 
@@ -98,6 +99,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
           a: body.answer as string,
           draft: d && typeof d.body === "string" ? { title: typeof d.title === "string" ? d.title : null, body: d.body } : null,
           asOf: typeof body.as_of === "string" ? body.as_of : null,
+          removedLinks: typeof body.removed_links === "number" ? body.removed_links : 0,
         },
       ]);
       setQuestion("");
@@ -163,6 +165,11 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
                     </div>
                     <pre className="oc-ai-draft-body">{t.draft.body}</pre>
                   </div>
+                )}
+                {t.removedLinks > 0 && (
+                  <p className="oc-note" data-tone="warn">
+                    {a.linksRemoved}
+                  </p>
                 )}
                 {t.asOf && tashkent(t.asOf) && <p className="oc-asof">{fill(a.asOf, { time: tashkent(t.asOf)! })}</p>}
               </article>

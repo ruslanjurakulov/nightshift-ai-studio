@@ -7,7 +7,8 @@ import { buildOwnerFacts, OwnerOnlyError, SecondFactorRequiredError } from "@/li
 import { callChatModel } from "@/lib/server/brain/llm";
 import { brainJson, chosenModelState, notFound } from "@/lib/server/brain/session";
 import { extractJson } from "@/lib/brain/logic";
-import { OWNER_AI_SYSTEM, ownerUserBlock, QUESTION_MAX, readHistory, readOwnerAnswer } from "@/lib/owner-console/ai-prompt";
+import { guardLinks, knownLinks, OWNER_AI_SYSTEM, ownerUserBlock, QUESTION_MAX, readHistory, readOwnerAnswer } from "@/lib/owner-console/ai-prompt";
+import { BILLED_PROVIDERS } from "@/lib/billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,7 +113,18 @@ export async function POST(request: Request) {
     // The answer is paid for whether or not the log write lands: it is returned either way, and a failed write is the
     // only thing a log line names (no question, no answer).
     if (!(await finish(true, null, llm.tokensIn, llm.tokensOut))) console.error("owner ai: finish_turn failed", turn);
-    return brainJson({ answer: answer.answer, draft: answer.draft, as_of: facts.as_of, model: model.id });
+    const known = knownLinks(facts, BILLED_PROVIDERS.flatMap((p) => (p.billingUrl ? [p.billingUrl] : [])));
+    const a = guardLinks(answer.answer, known);
+    const d = answer.draft ? guardLinks(answer.draft.body, known) : null;
+    const dt = answer.draft?.title ? guardLinks(answer.draft.title, known) : null;
+    return brainJson({
+      answer: a.text,
+      draft: answer.draft && d ? { title: dt ? dt.text : null, body: d.text } : null,
+      // Links or account numbers the platform does not know were cut: the panel warns, and never shows what was cut.
+      removed_links: a.removed + (d?.removed ?? 0) + (dt?.removed ?? 0),
+      as_of: facts.as_of,
+      model: model.id,
+    });
   } catch (e) {
     await finish(false, "unknown", null, null);
     console.error("owner ai: turn failed", e instanceof Error ? e.name : "unknown");

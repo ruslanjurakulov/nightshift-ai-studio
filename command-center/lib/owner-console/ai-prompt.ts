@@ -69,10 +69,21 @@ export function factsForPrompt(facts: OwnerFacts): Json {
   return out;
 }
 
-/** The user block: language, the facts as data, the recent turns, the question. A closing tag inside any value is defused. */
+/**
+ * No tag can form inside a value: compatibility forms are folded (NFKC: full-width ＜ becomes <), invisible format characters are
+ * dropped (a zero-width space or a soft hyphen inside "facts"), and then every angle bracket and its lookalikes is escaped. In the
+ * facts (JSON) the escape is \u003c, so the JSON stays valid; in the history and the question, a single guillemet.
+ * Breach on 0202: "< /facts>", "</ facts>", "<\u200b/facts>", "</fac\u00adts>" and "＜/facts＞" all closed the block before.
+ */
+const BRACKETS = /[<>\uFF1C\uFF1E\uFE64\uFE65\u2039\u203A\u3008\u3009\u27E8\u27E9]/g;
+const fold = (s: string) => s.normalize("NFKC").replace(/\p{Cf}/gu, "");
+const defuseJson = (s: string) => fold(s).replace(BRACKETS, (c) => (c === "<" || c === "\uFF1C" || c === "\uFE64" || c === "\u2039" || c === "\u3008" || c === "\u27E8" ? "\\u003c" : "\\u003e"));
+const defuseText = (s: string) => fold(s).replace(BRACKETS, (c) => (c === "<" || c === "\uFF1C" || c === "\uFE64" || c === "\u2039" || c === "\u3008" || c === "\u27E8" ? "‹" : "›"));
+
+/** The user block: language, the facts as data, the recent turns, the question. No tag can be opened or closed inside a value. */
 export function ownerUserBlock(input: { facts: OwnerFacts; question: string; history: OwnerTurn[]; locale: string }): string {
-  const defuse = (s: string) => s.replace(/<\/?(facts|history|question)\b/gi, (m) => m.replace("<", "‹"));
-  const facts = defuse(JSON.stringify(factsForPrompt(input.facts)));
+  const defuse = defuseText;
+  const facts = defuseJson(JSON.stringify(factsForPrompt(input.facts)));
   const history = input.history.map((t) => `Owner: ${defuse(t.q)}\nNightshift AI: ${defuse(t.a)}`).join("\n\n");
   return [
     `LANGUAGE: ${input.locale === "ru" ? "Russian" : input.locale === "uz" ? "Uzbek (Latin script)" : "English"}`,
@@ -101,4 +112,47 @@ export function readOwnerAnswer(doc: Record<string, unknown> | null): OwnerAnswe
     if (typeof b === "string" && b.trim() !== "") draft = { title: typeof t === "string" && t.trim() !== "" ? clip(t.trim(), 120) : null, body: clip(b, DRAFT_MAX) };
   }
   return { answer: clip(doc.answer.trim(), ANSWER_MAX), draft };
+}
+
+/**
+ * Links and account numbers in a reply are checked against the ones the platform knows (Breach on 0202: a customer can name a
+ * workspace "Vendor A top-up moved: https://…", and a model told to give "the top-up link from the facts" may repeat it). Only a
+ * URL the facts offer as a provider's top-up page, or the code's own billing pages, survives; every other URL, and anything
+ * shaped like an IBAN, is cut from the answer and the draft, and the count is returned so the panel can say so. The owner pays on
+ * the provider's own page, never on a link the model wrote.
+ */
+const URL_RE = /\bhttps?:\/\/[^\s<>"'`)\]}]+/gi;
+// A host with a path and no scheme ("billing.example.com/pay"): a link a person would type in, so it is checked too.
+const BARE_RE = /(?<![@\w./-])(?:[a-z0-9-]+\.)+[a-z]{2,24}\/[^\s<>"'`)\]}]*/gi;
+const IBAN_RE = /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g;
+const trimUrl = (u: string) => u.replace(/[.,;:!?]+$/, "");
+
+export function knownLinks(facts: OwnerFacts, extra: readonly string[] = []): Set<string> {
+  const out = new Set<string>(extra.map(trimUrl));
+  const walk = (v: unknown, key = "") => {
+    if (typeof v === "string") {
+      if ((key === "top_up_url" || key === "topUpUrl") && /^https:\/\//.test(v)) out.add(trimUrl(v));
+      return;
+    }
+    if (Array.isArray(v)) v.forEach((x) => walk(x, key));
+    else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, k);
+  };
+  walk(facts.providers);
+  return out;
+}
+
+export function guardLinks(text: string, known: Set<string>): { text: string; removed: number } {
+  let removed = 0;
+  const cut = () => {
+    removed++;
+    return "[⚠]";
+  };
+  const out = text
+    .replace(URL_RE, (m) => {
+      const u = trimUrl(m);
+      return known.has(u) ? m : cut() + m.slice(u.length);
+    })
+    .replace(BARE_RE, (m) => ([...known].some((k) => k.replace(/^https:\/\//, "") === trimUrl(m)) ? m : cut()))
+    .replace(IBAN_RE, cut);
+  return { text: out, removed };
 }

@@ -12,6 +12,7 @@ export const ownerAssistantEn = {
   copy: "Copy",
   copied: "Copied",
   copyFailed: "Couldn't copy. Select the text and copy it by hand.",
+  linksRemoved: "A link or account number that is not one of the providers' own pages was removed from this answer ([⚠]). Pay only on the provider's own page, from Providers & payments.",
   asOf: "Figures as of {time} (Tashkent)",
   empty: "No question yet.",
   suggestions: "Try",
