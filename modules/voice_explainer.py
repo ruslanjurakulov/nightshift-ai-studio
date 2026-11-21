@@ -539,6 +539,17 @@ def plan_chunks(scenes: Sequence[Mapping], duration_s: float, fps: int, *, targe
     return chunks
 
 
+#: The whole render's budget (bundle, chunks, sound, join), scaled with the recording: the paid adapter
+#: (modules/capabilities/voice_video.py) and tools/voice_to_video.py use the same one, so a length the Studio sells is a
+#: length the tool can render too (a flat 1800 s could not finish 600 s, measured on #769).
+RENDER_TIMEOUT_FLOOR_S = 600
+RENDER_TIMEOUT_PER_SECOND = 6
+
+
+def render_timeout_s(duration_s: float) -> float:
+    return RENDER_TIMEOUT_FLOOR_S + RENDER_TIMEOUT_PER_SECOND * float(duration_s or 0)
+
+
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
            browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
            chunk_s: float = CHUNK_S, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
@@ -622,7 +633,9 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
                 got = _frame_count(out_path)
                 if got != want:
                     raise ExplainerError(f"the joined video has {got} frames, the composition has {want}: not delivered")
-        except ExplainerError:
+        except BaseException:
+            # Any end that is not a delivered video leaves no file behind: a refusal, a stop (SIGTERM, Ctrl-C) or a bug in
+            # the middle of a join must not leave a partial mp4 that a later step could take for this run's output.
             out_path.unlink(missing_ok=True)
             raise
     return out_path
