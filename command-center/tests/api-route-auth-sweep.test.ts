@@ -27,12 +27,14 @@ const AUTH_CALLS = [
   "requireOperator",     // a platform operator
   "creativeSession(",    // the creative routes' session helper
   "workflowSession(",    // the workflow routes' session helper
+  "callResearchWriter(", // channel research (lib/server/research, migration 0202): getUser, then one writer function as that person
   "callInbox(",          // the comment inbox routes' helper (lib/server/comment-inbox): getUser, then one database function as that person
   "handleOwnerPost(",    // the owner routes' helper (lib/server/owner-rpc): same origin, the flag, getUser, owner/admin, then one database function as that person
   "adsGate(",           // the Ads routes' helper (lib/server/ads-factory): the NIGHTSHIFT_ADS_FACTORY switch, then getUser, then the member's own client; tests/ads-factory-routes.test.ts proves the order
   "adsScanGate(",       // the brand scan routes' helper (lib/server/ads-brand-scan): NIGHTSHIFT_ADS_BRAND_SCAN, then adsGate(); tests/ads-brand-scan.test.ts proves the order
   "characterStudioGate(", // Character Studio's helper (lib/server/character-studio): NIGHTSHIFT_CHARACTER_STUDIO, then getUser, then the member's own client; tests/character-studio.test.ts proves the order
   "filmGate(",          // Studio → Projects (lib/server/films): NIGHTSHIFT_FILM_STUDIO, then getUser, then the admins-only check, then the member's own client; tests/films-routes.test.ts proves the order
+  "filmGateFor(",       // the same gate for a route that names a project, plus the project's own workspace switch under `on` (tests/films-routes.test.ts)
   "startSocialConnect(", // social connect: getUser + org role inside
   "finishSocialConnect(",
   "runApi(",             // the public API: a bearer key, checked by api_auth

@@ -53,7 +53,7 @@ def check_env(rep: Report):
     optional = {
         "YOUTUBE_CHANNEL_ID": "run: python main.py --list-channels",
         "ELEVENLABS_API_KEY": "only needed if TTS_PROVIDER=elevenlabs",
-        "YOUTUBE_DATA_API_KEY": "only needed for tools/run_intelligence_poll.py",
+        "YOUTUBE_DATA_API_KEY": "only needed for tools/run_intelligence_poll.py and the queue worker's channel research",
     }
     for key, hint in required.items():
         if os.getenv(key):

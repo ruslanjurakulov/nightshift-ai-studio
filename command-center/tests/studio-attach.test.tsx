@@ -574,6 +574,16 @@ describe("the landing's idea (lib/site/idea-handoff.ts, ?idea=1)", () => {
     expect(takeIdea()).toBeNull();
   });
 
+  it("an image idea (`?idea=1&kind=image`, the start box's Image) fills the picture box (t2i), not the clip box", async () => {
+    const { stashIdea } = await import("@/lib/site/idea-handoff");
+    expect(stashIdea("A neon noodle bar in the rain")).toBe(true);
+    render(home({ idea: true, ideaKind: "image" }));
+    await waitFor(() => expect(box().value).toBe("A neon noodle bar in the rain"));
+    const modes = within(screen.getByRole("radiogroup", { name: th.modesLabel }));
+    expect(modes.getByRole("radio", { name: new RegExp(`^${th.modes.image}`) }).getAttribute("aria-checked")).toBe("true");
+    expect(creates()).toEqual([]);
+  });
+
   it("nothing kept (another browser, expired, storage off) is an empty box and no error", async () => {
     render(home({ idea: true }));
     await waitFor(() => expect(box()).toBeTruthy());

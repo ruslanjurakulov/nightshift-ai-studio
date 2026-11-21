@@ -58,6 +58,14 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   const [capped, setCapped] = useState(false);
   const idem = useRef<string | null>(null);
   const listRef = useRef<HTMLOListElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Set when a turn starts with focus inside the panel. The box is disabled for the turn, which drops focus to <body>, so it is given
+  // back once the turn is over. Never set when focus was elsewhere: nothing here may take focus from the rest of the page.
+  const returnFocus = useRef(false);
+  const noteFocus = () => {
+    returnFocus.current = !!panelRef.current && panelRef.current.contains(document.activeElement);
+  };
 
   const announce = useCallback((sid: string, b: Brief | null) => {
     if (typeof window === "undefined") return;
@@ -123,6 +131,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     window.history.replaceState(null, "", u.toString());
   }, [takeIdea]);
   useEffect(() => {
+    if (busy || !returnFocus.current) return;
+    returnFocus.current = false;
+    inputRef.current?.focus();
+  }, [busy]);
+  useEffect(() => {
     listRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
   }, [messages.length, card]);
 
@@ -168,6 +181,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
 
   const run = async (label: string, body: Record<string, unknown>, again: () => void) => {
     if (busy) return;
+    noteFocus();
     setBusy(true);
     setProblem(null);
     try {
@@ -219,6 +233,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   };
   const choose = async (index: number) => {
     if (!session || busy) return;
+    noteFocus();
     setBusy(true);
     setProblem(null);
     try {
@@ -296,7 +311,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   const disabled = busy || capped || noBrain || down || viewer;
 
   return (
-    <aside className="studio-surface flex min-w-0 flex-col gap-3 p-4" aria-labelledby="ns-ai-title" data-testid="nightshift-ai-panel">
+    <aside className="studio-surface flex min-w-0 flex-col gap-3 p-4" aria-labelledby="ns-ai-title" data-testid="nightshift-ai-panel" ref={panelRef}>
       <header className="flex items-center justify-between gap-2">
         <h2 id="ns-ai-title" className="truncate text-sm font-semibold text-[var(--color-fg)]">{session ? title : c.title}</h2>
         <div className="flex items-center gap-1">
@@ -356,7 +371,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                         <p className="text-xs text-[var(--color-muted)]">
                           {fmt(c.scenarioFacts, { len: lengthLabel(s.target_seconds), scenes: s.scenes.length, characters: s.characters.length })}
                         </p>
-                        <button type="button" className="btn-quiet mt-1 min-h-11 px-4 text-sm" disabled={disabled} onClick={() => void choose(k)}>{c.chooseThis}</button>
+                        <button type="button" className="btn-quiet mt-1 min-h-11 px-4 text-sm" disabled={disabled} aria-label={fmt(c.chooseThisNamed, { title: s.title })} onClick={() => void choose(k)}>{c.chooseThis}</button>
                       </article>
                     ))}
                   </li>
@@ -396,7 +411,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
               {(!card || step !== "asking") && step !== "created" && (
                 <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); send(text); }}>
                   <label className="sr-only" htmlFor="ns-ai-input">{c.placeholder}</label>
-                  <textarea id="ns-ai-input" className="studio-field min-h-[5rem] w-full p-3 text-base" value={text} maxLength={load.plan.max_input_chars}
+                  <textarea id="ns-ai-input" ref={inputRef} className="studio-field min-h-[5rem] w-full p-3 text-base" value={text} maxLength={load.plan.max_input_chars}
                             placeholder={c.placeholder} disabled={disabled} onChange={(e) => setText(e.target.value)} aria-describedby="ns-ai-count"
                             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(text); } }} />
                   {/* The limit is shown, never applied silently (Lens on 0199). */}

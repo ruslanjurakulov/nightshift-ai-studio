@@ -6,7 +6,7 @@ import { Ellipsis } from "lucide-react";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { ALL_SECTIONS, CUSTOMER_RAIL, HOME, OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
+import { ALL_SECTIONS, customerRail, HOME, OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import { useShell } from "@/components/shell/ShellContext";
 import { type AccountPlan } from "@/lib/account";
@@ -147,6 +147,7 @@ function StudioRail({ operator }: { operator: boolean }) {
   const { t } = useI18n();
   const path = useChannelPath();
   const isActive = useIsActive();
+  const { features } = useShell();
   const r = t.studioCanvas.rail;
   const items: { href: string; key: NavKey; label: string }[] = operator
     ? [
@@ -155,7 +156,7 @@ function StudioRail({ operator }: { operator: boolean }) {
         { href: "/inbox", key: "inbox", label: r.inbox },
         { href: "/analytics", key: "analytics", label: r.analytics },
       ]
-    : CUSTOMER_RAIL.map((i) => ({ href: i.href, key: i.key, label: i.key in r ? r[i.key as keyof typeof r] : t.nav[i.key] }));
+    : customerRail(features).map((i) => ({ href: i.href, key: i.key, label: i.key in r ? r[i.key as keyof typeof r] : t.nav[i.key] }));
   return (
     <nav aria-label={r.label} className={operator ? "cv-rail is-operator" : "cv-rail"} data-studio-rail="">
       <Link href={path(items[0].href)} className="cv-rail-logo" aria-label={t.brand.name} title={t.brand.name}>
@@ -163,7 +164,8 @@ function StudioRail({ operator }: { operator: boolean }) {
       </Link>
       {items.map(({ href, key, label }) => {
         const Icon = ICONS[key];
-        const active = isActive(href, key);
+        // Nightshift AI opens a panel ON this page (/studio?ai=new): lighting it whenever the canvas is open would claim the panel is.
+        const active = key !== "nightshiftAi" && isActive(href, key);
         return (
           <Link key={href} href={path(href)} aria-current={active ? "page" : undefined} title={t.nav[key]}>
             <Icon aria-hidden className="size-5" strokeWidth={1.8} />

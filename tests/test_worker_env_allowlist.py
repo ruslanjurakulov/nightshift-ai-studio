@@ -129,6 +129,14 @@ class EveryConfigSettingCanReachTheWorker(unittest.TestCase):
                    if "ANTHROPIC_API_KEY" in p.read_text()]
         self.assertEqual(sorted(readers), ["modules/capabilities/describe_llm.py", "modules/text_providers.py"])
 
+    def test_the_research_key_is_deployed_as_a_secret_because_the_worker_reads_it(self):
+        # modules/channel_research.py (migration 0202) makes the channel research's public lookups with YOUTUBE_DATA_API_KEY; without
+        # it in the worker env every competitor and topic request ends not_configured even with the repository secret set.
+        self.assertIn("YOUTUBE_DATA_API_KEY", example_keys())
+        secrets = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", EXAMPLE.read_text().split("# ─── Behaviour")[0], re.M))
+        self.assertIn("YOUTUBE_DATA_API_KEY", secrets)
+        self.assertIn("WORKERENV_YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}", WORKFLOW.read_text())
+
 
 _CONFIG_CHILD = r"""
 import json, os, sys
