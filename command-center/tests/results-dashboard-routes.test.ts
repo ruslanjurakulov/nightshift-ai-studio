@@ -124,7 +124,7 @@ function seed() {
     metrics_snapshots: [snapshot("vidA000001", 100), snapshot("vidA000002", 40), snapshot("vidB000001", 777777)],
     publish_requests: [request(1, ORG_A, "chanA1", "vidA000001"), request(2, ORG_B, "chanB1", "vidB000001", { account_id: "acc-b" })],
     social_accounts: [
-      { id: "acc-a", org_id: ORG_A, platform: "instagram", username: "alpha_ig", display_name: null, status: "connected" },
+      { id: "acc-a", org_id: ORG_A, platform: "instagram", username: "alpha_ig", display_name: null, status: "connected", auth_flow: "unified_login" },
       { id: "acc-b", org_id: ORG_B, platform: "tiktok", username: "bravo_tt", display_name: "SECRET Bravo TikTok", status: "connected" },
     ],
   };
@@ -358,6 +358,15 @@ describe("a read that fails is never an empty dashboard", () => {
     const cards = Object.fromEntries((await json(await get())).platforms.map((c: Row) => [c.id, c]));
     expect(cards.instagram).toMatchObject({ state: "not_connected", connected: 0 });
     expect(cards.tiktok).toMatchObject({ state: "not_connected", connected: 0 });
+  });
+
+  it("an old Instagram Login row (no auth_flow, migration 0204) is not counted as a connection", async () => {
+    h.db.social_accounts = [
+      { id: "acc-a", org_id: ORG_A, platform: "instagram", username: "alpha_ig", display_name: null, status: "connected" },
+      { id: "acc-n", org_id: ORG_A, platform: "instagram", username: "new_ig", display_name: null, status: "connected", auth_flow: "unified_login" },
+    ];
+    const cards = Object.fromEntries((await json(await get())).platforms.map((c: Row) => [c.id, c]));
+    expect(cards.instagram).toMatchObject({ connected: 1 });
   });
 
   it("says when the history is cut: one more than the limit is 'truncated', exactly the limit is not", async () => {

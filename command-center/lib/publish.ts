@@ -197,6 +197,13 @@ export const PUBLISH_REASONS = [
   "published_unexpectedly",
   "duplicate_post",
   "credits_exhausted",
+  // Instagram API with Unified Login (0204, modules/social_publish.py).
+  "instagram_reconnect",
+  "ig_permission_missing",
+  "limit_unreadable",
+  "publish_limit_reached",
+  // A post that exists with part of it missing (Instagram's config_issue): published, never as a clean success.
+  "published_partially",
 ] as const;
 export type PublishReason = (typeof PUBLISH_REASONS)[number];
 

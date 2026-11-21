@@ -13,6 +13,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const YT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** An Instagram / TikTok account id, the same alphabet social_accounts.external_id allows (0028). */
+const SOCIAL_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
 /** HTTP status per answer. Nothing but our own word is ever in the body. */
 const STATUS: Record<ConfirmResult, number> = {
@@ -33,16 +35,16 @@ const STATUS: Record<ConfirmResult, number> = {
 /** Answers after which the held authorisation is gone (or never will work). */
 const TERMINAL: ReadonlySet<ConfirmResult> = new Set(["connected", "created_not_connected", "expired", "forbidden"]);
 
-function answer(result: ConfirmResult, extra: Record<string, unknown> = {}) {
+function answer(result: ConfirmResult, extra: Record<string, unknown> = {}, keepHold = false) {
   const res = NextResponse.json({ ok: result === "connected" || result === "created_not_connected", result, ...extra }, { status: STATUS[result] });
-  if (TERMINAL.has(result)) res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0, secure: true });
+  if (TERMINAL.has(result) && !keepHold) res.cookies.set(PENDING_COOKIE, "", { path: "/", maxAge: 0, secure: true });
   return res;
 }
 
 /**
  * The pick screen's one write.
  *
- * POST `{ action: "confirm", platform, channel_id? }` or `{ action: "cancel" }`.
+ * POST `{ action: "confirm", platform, channel_id?, external_id? }` or `{ action: "cancel" }`.
  *
  * The browser names only WHICH of the listed accounts it means. The
  * authorisation itself (the token, the list Google returned) is held on the
@@ -63,7 +65,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const read = await readJsonBodyCapped(request, SMALL_BODY_BYTES);
   if (!read.ok || !read.value || typeof read.value !== "object")
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
-  const body = read.value as { action?: unknown; platform?: unknown; channel_id?: unknown };
+  const body = read.value as { action?: unknown; platform?: unknown; channel_id?: unknown; external_id?: unknown };
 
   if (body.action === "cancel") {
     dropUserPending(user.id);
@@ -82,8 +84,16 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     return answer(out.result, out.channelId ? { channel_id: out.channelId } : {});
   }
   if (isSocialPlatform(body.platform)) {
-    const out = await confirmSocialPick({ userId: user.id, handle, platform: body.platform });
-    return answer(out.result);
+    let externalId: string | undefined;
+    if (body.external_id !== undefined) {
+      const id = typeof body.external_id === "string" ? body.external_id.trim() : "";
+      if (!SOCIAL_ID_RE.test(id)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
+      externalId = id;
+    }
+    const out = await confirmSocialPick({ userId: user.id, handle, platform: body.platform, externalId });
+    // Accounts of the same sign-in still to pick: the handle cookie stays, so the pick screen lists them.
+    const remaining = out.result === "connected" ? (out.remaining ?? 0) : 0;
+    return answer(out.result, out.result === "connected" ? { remaining } : {}, remaining > 0);
   }
   return NextResponse.json({ error: "bad_request" }, { status: 400 });
 });

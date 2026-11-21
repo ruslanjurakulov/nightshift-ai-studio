@@ -177,6 +177,10 @@ jobs:
           WEBENV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           WEBENV_INSTAGRAM_APP_ID: ${{ secrets.INSTAGRAM_APP_ID }}
           WEBENV_INSTAGRAM_APP_SECRET: ${{ secrets.INSTAGRAM_APP_SECRET }}
+          # Instagram API with Unified Login: the configuration's id (docs/SOCIAL_SETUP.md). Not a secret, so a variable.
+          WEBENV_INSTAGRAM_CONFIG_ID: ${{ vars.INSTAGRAM_CONFIG_ID }}
+          # The workspaces the Instagram connect is open to while the Meta app is Unpublished. Empty = nobody.
+          WEBENV_INSTAGRAM_UNIFIED_ORGS: ${{ vars.INSTAGRAM_UNIFIED_ORGS }}
           WEBENV_TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           WEBENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           WEBENV_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

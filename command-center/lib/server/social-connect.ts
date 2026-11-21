@@ -6,7 +6,6 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { publicOrigin } from "@/lib/server/public-origin";
 import {
-  INSTAGRAM_SCOPES,
   NONCE_COOKIE,
   PKCE_COOKIE,
   SocialOAuthError,
@@ -18,15 +17,15 @@ import {
   encodeSocialState,
   exchangeInstagramCode,
   exchangeTiktokCode,
-  fetchInstagramProfile,
+  fetchInstagramAccounts,
   fetchTiktokProfile,
-  isSocialConfigured,
   newCodeVerifier,
   newNonce,
   nonceMatches,
   readCookie,
+  socialConnectOpen,
+  socialOAuthConfig,
   tiktokCodeChallenge,
-  type SocialProfile,
 } from "@/lib/server/social-oauth";
 import { storeSocialAccount } from "@/lib/server/social-accounts";
 import {
@@ -34,7 +33,9 @@ import {
   claimPending,
   createPending,
   finishPending,
+  markPendingUsed,
   pendingCookieOptions,
+  readPending,
   releasePending,
 } from "@/lib/server/connect-pending";
 import { CONNECT_PICK_PATH, PICK_FLAG, connectBackPath, safeImageUrl, type ConfirmResult } from "@/lib/connect-picker";
@@ -66,12 +67,15 @@ function cookiePath(platform: SocialPlatform): string {
 
 /** Where a refusal goes: the Channels page for the classic connect, the Add
  *  channel screen when the connect started there (`pick`). */
-function back(origin: string, platform: SocialPlatform, result: SocialResult, pick = false): NextResponse {
+function back(origin: string, platform: SocialPlatform, result: SocialResult, pick = false, spend = true): NextResponse {
   const to = pick && result !== "connected" ? connectBackPath(platform, result) : socialReturnPath(platform, result);
   const res = NextResponse.redirect(`${origin}${to}`);
-  // Spent either way: a nonce is good for one callback.
-  res.cookies.set(NONCE_COOKIE[platform], "", { path: cookiePath(platform), maxAge: 0 });
-  if (platform === "tiktok") res.cookies.set(PKCE_COOKIE, "", { path: cookiePath(platform), maxAge: 0 });
+  // Spent either way: a nonce is good for one callback -- but only by a callback that proved it holds it (spend).
+  // A request without the matching state is not this flow's callback and must not end the person's real one.
+  if (spend) {
+    res.cookies.set(NONCE_COOKIE[platform], "", { path: cookiePath(platform), maxAge: 0 });
+    if (platform === "tiktok") res.cookies.set(PKCE_COOKIE, "", { path: cookiePath(platform), maxAge: 0 });
+  }
   return res;
 }
 
@@ -94,7 +98,7 @@ export async function startSocialConnect(request: Request, platform: SocialPlatf
   const pick = new URL(request.url).searchParams.get(PICK_FLAG) === "1";
   const org = await editableOrg();
   if (!org.ok) return back(origin, platform, org.result, pick);
-  if (!isSocialConfigured(platform)) return back(origin, platform, "not_configured", pick);
+  if (!socialConnectOpen(platform, org.orgId)) return back(origin, platform, "not_configured", pick);
 
   const nonce = newNonce();
   const state = encodeSocialState({ org: org.orgId, nonce, ...(pick ? { pick: true as const } : {}) });
@@ -127,18 +131,21 @@ export async function finishSocialConnect(request: Request, platform: SocialPlat
   // Started from the Add channel screen: hold the grant for the confirm screen.
   const pick = state?.pick === true;
 
-  // A declined consent comes back as ?error=... (both platforms).
-  if (url.searchParams.get("error")) return back(origin, platform, "denied", pick);
-
+  // State and nonce first, then anything else the query says. A cross-site link to this callback (?error=x, or a
+  // code with someone else's state) carries no matching state, so it is refused WITHOUT spending the person's nonce
+  // cookie: it cannot cancel a connect they have in progress (Breach L2, both platforms).
   if (!state || !nonceMatches(readCookie(request, NONCE_COOKIE[platform]), state.nonce))
-    return back(origin, platform, "bad_state", pick);
+    return back(origin, platform, "bad_state", pick, false);
+
+  // A declined consent comes back as ?error=... (both platforms), with our own state.
+  if (url.searchParams.get("error")) return back(origin, platform, "denied", pick);
 
   const org = await editableOrg();
   if (!org.ok) return back(origin, platform, org.result, pick);
   // The connection belongs to the organization the flow STARTED in; if the
   // user switched organizations meanwhile, refuse rather than guess.
   if (org.orgId !== state.org) return back(origin, platform, "bad_state", pick);
-  if (!isSocialConfigured(platform)) return back(origin, platform, "not_configured", pick);
+  if (!socialConnectOpen(platform, org.orgId)) return back(origin, platform, "not_configured", pick);
 
   const code = url.searchParams.get("code") ?? "";
   if (!code || code.length > 2048) return back(origin, platform, "bad_state", pick);
@@ -151,35 +158,47 @@ export async function finishSocialConnect(request: Request, platform: SocialPlat
   let externalId: string | null = null;
   try {
     if (platform === "instagram") {
+      // Checked above (socialConnectOpen), read again here so the stored row names the configuration the
+      // login really used.
+      const configId = socialOAuthConfig("instagram").configId;
+      if (!configId) return back(origin, platform, "not_configured", pick);
       const grant = await exchangeInstagramCode({ code, origin });
-      if (missingSocialScopes(grant.scopes, INSTAGRAM_SCOPES).length > 0) result = "missing_scopes";
-      else {
-        const profile: SocialProfile = await fetchInstagramProfile(grant.accessToken);
+      // No granted scopes come back from a Unified Login exchange, so none are claimed (an empty list): a
+      // missing permission shows up as the publishing call's own refusal, which the worker names.
+      const found = await fetchInstagramAccounts(grant.accessToken);
+      const instagram = { clientBusinessId: found.clientBusinessId, configId };
+      if (pick || found.accounts.length > 1) {
+        // Several accounts in the portfolio: the person picks one on the confirm screen, even when the connect
+        // started from the Channels page. Nothing is stored until they do.
+        if (found.accounts.length === 1) externalId = found.accounts[0].externalId;
+        held = createPending({
+          userId: user.id,
+          orgId: org.orgId,
+          grant: {
+            platform,
+            accessToken: grant.accessToken,
+            refreshToken: null,
+            accessExpiresIn: grant.expiresIn,
+            refreshExpiresIn: null,
+            scopes: [],
+            profiles: found.accounts.map((p) => ({ ...p, avatarUrl: safeImageUrl(p.avatarUrl) })),
+            instagram,
+          },
+        });
+        result = "connected"; // placeholder: nothing is stored until the person confirms
+      } else {
+        const profile = found.accounts[0];
         externalId = profile.externalId;
-        if (pick) {
-          held = createPending({
-            userId: user.id,
-            orgId: org.orgId,
-            grant: {
-              platform,
-              accessToken: grant.accessToken,
-              refreshToken: null,
-              accessExpiresIn: grant.expiresIn,
-              refreshExpiresIn: null,
-              scopes: grant.scopes.filter((s) => (INSTAGRAM_SCOPES as readonly string[]).includes(s)),
-              profile: { ...profile, avatarUrl: safeImageUrl(profile.avatarUrl) },
-            },
-          });
-          result = "connected"; // placeholder: nothing is stored until the person confirms
-        } else ({ result, accountId } = await storeSocialAccount({
+        ({ result, accountId } = await storeSocialAccount({
           orgId: org.orgId,
           platform,
           accessToken: grant.accessToken,
           refreshToken: null,
           profile,
-          scopes: grant.scopes.filter((s) => (INSTAGRAM_SCOPES as readonly string[]).includes(s)),
+          scopes: [],
           accessExpiresIn: grant.expiresIn,
           refreshExpiresIn: null,
+          instagram,
         }));
       }
     } else {
@@ -201,7 +220,7 @@ export async function finishSocialConnect(request: Request, platform: SocialPlat
               accessExpiresIn: grant.expiresIn,
               refreshExpiresIn: grant.refreshExpiresIn,
               scopes: grant.scopes.filter((s) => (TIKTOK_SCOPES as readonly string[]).includes(s)),
-              profile: { ...profile, avatarUrl: safeImageUrl(profile.avatarUrl) },
+              profiles: [{ ...profile, avatarUrl: safeImageUrl(profile.avatarUrl) }],
             },
           });
           result = "connected"; // placeholder: nothing is stored until the person confirms
@@ -242,17 +261,23 @@ export async function finishSocialConnect(request: Request, platform: SocialPlat
  * The confirm: store the held Instagram / TikTok grant for the organization.
  * Editor+ of the organization being viewed (checked again here), the same as
  * the classic callback, and the database checks it a third time.
+ *
+ * `externalId` names WHICH of the held accounts is meant. It is checked against the list the server holds,
+ * never taken on trust; it may be left out only when exactly one account is held.
  */
 export async function confirmSocialPick(opts: {
   userId: string;
   handle: string | undefined;
   /** What the screen the person pressed was showing; must be what is held. */
   platform: SocialPlatform;
-}): Promise<{ result: ConfirmResult; platform: SocialPlatform | null }> {
+  externalId?: string;
+}): Promise<{ result: ConfirmResult; platform: SocialPlatform | null; remaining?: number }> {
   const org = await editableOrg();
   if (!org.ok) return { result: org.result === "unavailable" ? "unavailable" : "forbidden", platform: null };
-  const claim = claimPending(opts.handle, { userId: opts.userId, orgId: org.orgId });
-  if (!claim) return { result: "expired", platform: null };
+  const who = { userId: opts.userId, orgId: org.orgId };
+  const claim = claimPending(opts.handle, who);
+  // Held but taken by a confirm in flight (two taps, two tabs): one at a time, and the other is told so.
+  if (!claim) return { result: readPending(opts.handle, who) ? "busy" : "expired", platform: null };
   const handle = opts.handle as string;
   const grant = claim.grant;
   if (grant.platform === "youtube" || grant.platform !== opts.platform) {
@@ -260,27 +285,55 @@ export async function confirmSocialPick(opts: {
     finishPending(handle);
     return { result: "expired", platform: null };
   }
+  if (!socialConnectOpen(grant.platform, org.orgId)) {
+    // The workspace was taken off the Instagram allowlist (or the app's keys removed) while the pick was open.
+    finishPending(handle);
+    return { result: "not_configured", platform: grant.platform };
+  }
+  const used = new Set(grant.used ?? []);
+  const left = grant.profiles.filter((p) => !used.has(p.externalId));
+  const profile = opts.externalId
+    ? left.find((p) => p.externalId === opts.externalId)
+    : left.length === 1
+      ? left[0]
+      : undefined;
+  if (!profile) {
+    // Not one of the offered accounts: refused, and the held grant stays for a real pick.
+    releasePending(handle);
+    return { result: "not_in_list", platform: grant.platform };
+  }
   try {
     const { result, accountId } = await storeSocialAccount({
       orgId: org.orgId,
       platform: grant.platform,
       accessToken: grant.accessToken,
       refreshToken: grant.refreshToken,
-      profile: grant.profile,
+      profile,
       scopes: grant.scopes,
       accessExpiresIn: grant.accessExpiresIn,
       refreshExpiresIn: grant.refreshExpiresIn,
+      ...(grant.instagram ? { instagram: grant.instagram } : {}),
     });
     await logAudit({
       action: result === "connected" ? `social.${grant.platform}.connect` : `social.${grant.platform}.connect_failed`,
       target: accountId ?? undefined,
-      detail: { platform: grant.platform, result, flow: "pick", org_id: org.orgId, external_id: grant.profile.externalId },
+      detail: { platform: grant.platform, result, flow: "pick", org_id: org.orgId, external_id: profile.externalId },
     });
-    if (result === "connected" || result === "forbidden") finishPending(handle);
-    else releasePending(handle);
+    // Connected: that account is used, and the hold stays (until its TTL) for the others of the same sign-in.
+    const remaining = result === "connected" ? markPendingUsed(handle, profile.externalId) : 0;
+    if (result === "forbidden") finishPending(handle);
+    else if (result !== "connected") releasePending(handle);
     const mapped: ConfirmResult =
-      result === "connected" ? "connected" : result === "forbidden" ? "forbidden" : result === "not_available" ? "unavailable" : "failed";
-    return { result: mapped, platform: grant.platform };
+      result === "connected"
+        ? "connected"
+        : result === "forbidden"
+          ? "forbidden"
+          : result === "not_available"
+            ? "unavailable"
+            : result === "needs_migration"
+              ? "not_configured"
+              : "failed";
+    return { result: mapped, platform: grant.platform, ...(result === "connected" ? { remaining } : {}) };
   } catch {
     releasePending(handle);
     return { result: "failed", platform: grant.platform };

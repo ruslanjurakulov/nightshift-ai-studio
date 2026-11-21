@@ -124,7 +124,10 @@ describe("owner facts are the owner's only", () => {
       }
     }
     expect(leaks).toEqual([]);
-  });
+    // Reads and resolves every file under app/, lib/ and components/ synchronously: about 5 s on a loaded 2-core runner, so
+    // vitest's 5 s default failed it on time alone (run 44900840300, 5057 ms) with no leak found. Same budget as the other
+    // whole-tree walks (prompt-required.test.ts).
+  }, 60_000);
 
   // Catch-all behind the graph walk, for the forms no regex follows (a computed import, a string built at runtime): outside
   // the owner's zones, no file so much as names the module.

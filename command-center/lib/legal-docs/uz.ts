@@ -155,6 +155,7 @@ export const uz: LegalTexts = {
             ],
           },
           "Nightshift’ning Google akkauntingizga kirish huquqini istalgan vaqtda [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions) sahifasida bekor qilishingiz mumkin. Akkauntingizni va bizdagi maʼlumotlarni oʻchirish uchun {contactEmail} manziliga yozing.",
+          "Nightshift’ga ulangan Instagram akkaunti haqida — Meta’da kirish huquqimizni qanday bekor qilish va nimani oʻchirishimiz — [Maʼlumotlarni oʻchirish](/data-deletion) sahifasiga qarang.",
         ],
       },
       {
@@ -429,6 +430,55 @@ export const uz: LegalTexts = {
         id: "contact",
         heading: "16. Aloqa",
         body: ["{legalName}, {country}. Elektron pochta: {contactEmail}."],
+      },
+    ],
+  },
+  dataDeletion: {
+    title: "Maʼlumotlarni oʻchirish",
+    summary:
+      "Ulangan Instagram akkauntiga Nightshift kirishini qanday olib tashlash, uni Nightshift’da qanday uzish va bizdagi maʼlumotlarni oʻchirishni qanday soʻrash.",
+    sections: [
+      {
+        id: "remove-in-meta",
+        heading: "1. Nightshift’ni Meta’da olib tashlang",
+        body: [
+          "Instagram akkaunti Nightshift’ga Meta biznes portfeli orqali ulanadi. Meta tomonida kirish huquqimizni olib tashlash uchun:",
+          {
+            list: [
+              "Meta Business Settings’da ([business.facebook.com/settings](https://business.facebook.com/settings)) «Integrations» → «Connected apps»ni oching, Nightshift’ni tanlang va olib tashlang.",
+            ],
+          },
+          "Shu daqiqadan Nightshift akkaunt uchun saqlagan token ishlamay qoladi va Nightshift unga endi joylay olmaydi ham, uni oʻqiy olmaydi ham.",
+        ],
+      },
+      {
+        id: "disconnect-in-nightshift",
+        heading: "2. Uni Nightshift’da uzing",
+        body: [
+          "“Kanallar” sahifasida, “Ulangan akkauntlar” boʻlimida akkaunt yonidagi “Uzish” tugmasini bosing (buni ish maydonining egasi, administratori yoki muharriri qila oladi). Saqlangan token shifrlangan omborimizda (Supabase Vault) darhol yoʻq qilinadi va akkauntga boshqa hech narsa joylanmaydi. Buni 1-qadam bilan birga qiling: ularning har biri alohida ham Nightshift’ning akkaunt nomidan ishlashini toʻxtatadi.",
+        ],
+      },
+      {
+        id: "request",
+        heading: "3. Maʼlumotlaringizni oʻchirishni soʻrang",
+        body: [
+          "{contactEmail} manziliga yozing va qaysi Instagram akkaunti qaysi Nightshift akkaunti yoki ish maydoniga ulanganini ayting. Boshqa hech kim maʼlumotlaringizni oʻchirtira olmasligi uchun soʻrovni oʻsha Nightshift akkauntining elektron pochtasidan tasdiqlashingizni soʻrashimiz mumkin.",
+        ],
+      },
+      {
+        id: "what-we-delete",
+        heading: "4. Nimani va qachon oʻchiramiz",
+        body: [
+          {
+            list: [
+              "Faqat Supabase Vault’da saqlanadigan akkaunt kirish tokeni: uzganingizda darhol, agar hali boʻlsa, oʻchirish soʻrovi bilan ham yoʻq qilinadi.",
+              "Ulangan akkaunt yozuvi: Instagram akkauntining identifikatori, foydalanuvchi nomi, ismi va rasmi, uni kim va qachon ulagani hamda u ulangan Meta biznes portfeli va konfiguratsiya identifikatorlari.",
+              "Nightshift akkauntga yuborgan postlar yozuvi (nima yuborilgani, qachon va Instagram qaytargan post identifikatori yoki xato).",
+              "Hozir Nightshift Instagram statistikasi va xabarlarini oʻqimaydi, shuning uchun akkaunt uchun ular saqlanmaydi.",
+            ],
+          },
+          "Bularning barchasi tasdiqlangan oʻchirish soʻrovidan keyin 30 kun ichida oʻchiriladi — [Maxfiylik siyosatimiz](/privacy) akkaunt maʼlumotlari haqida shunday deydi. Akkauntni kim ulagani yoki uzgani haqidagi audit yozuvlari Maxfiylik siyosatining 8-boʻlimida aytilganidek, Nightshift akkaunti mavjud ekan saqlanadi, chunki ular amalga kim ruxsat berganini qayd etadi.",
+        ],
       },
     ],
   },

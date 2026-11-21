@@ -87,6 +87,8 @@ const PAGES: PageSpec[] = [
   { path: "/referral", module: "@/app/referral/page", props: {}, indexed: true },
   // Trust and safety: listed like /roadmap and /refund, not counted by the page-view beacon.
   { path: "/trust", module: "@/app/trust/page", props: {}, indexed: true },
+  // The data deletion instructions Meta's App Settings ask for: listed like /refund, not counted by the page-view beacon.
+  { path: "/data-deletion", module: "@/app/data-deletion/page", props: {}, indexed: true },
 ];
 /** Public, with their own metadata (a layout, the page being client code), but not in the sitemap by design: forms, not content. */
 const FORM_PAGES: { path: string; module: string }[] = [

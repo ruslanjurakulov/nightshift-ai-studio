@@ -4,6 +4,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { isMissingFunction } from "@/lib/orgs";
 import {
   SOCIAL_ACCOUNT_COLUMNS,
+  SOCIAL_ACCOUNT_COLUMNS_0028,
   coerceSocialAccounts,
   socialStoreErrorResult,
   toConnectedAccounts,
@@ -13,6 +14,7 @@ import {
   type SocialResult,
 } from "@/lib/social-accounts";
 import type { SocialProfile } from "@/lib/server/social-oauth";
+import type { InstagramConnection } from "@/lib/server/connect-pending";
 
 /**
  * Instagram / TikTok connections (migration 0028) — the server half.
@@ -33,6 +35,9 @@ export async function storeSocialAccount(opts: {
   scopes: string[];
   accessExpiresIn: number | null;
   refreshExpiresIn: number | null;
+  /** Instagram only: the Unified Login connection's portfolio and configuration (0204 refuses an Instagram
+   *  connect without them). */
+  instagram?: InstagramConnection;
 }): Promise<{ result: SocialResult; accountId: string | null }> {
   const supabase = await createClient();
   if (!supabase) return { result: "not_available", accountId: null };
@@ -46,6 +51,11 @@ export async function storeSocialAccount(opts: {
     };
     if (opts.accessExpiresIn != null) meta.access_expires_in = opts.accessExpiresIn;
     if (opts.refreshExpiresIn != null) meta.refresh_expires_in = opts.refreshExpiresIn;
+    if (opts.platform === "instagram" && opts.instagram) {
+      meta.auth_flow = "unified_login";
+      meta.config_id = opts.instagram.configId;
+      if (opts.instagram.clientBusinessId) meta.client_business_id = opts.instagram.clientBusinessId;
+    }
     const { data, error } = await supabase.rpc("store_social_account", {
       p_org_id: opts.orgId,
       p_platform: opts.platform,
@@ -80,12 +90,31 @@ export async function revokeSocialAccount(
   }
 }
 
+/** 42703 (undefined column) / PGRST204: 0204's auth_flow is not there yet. */
+function missingColumn(error: { code?: string | null } | null): boolean {
+  return Boolean(error && (error.code === "42703" || error.code === "PGRST204"));
+}
+
+type Read = { data: unknown; error: { code?: string | null } | null };
+
+/**
+ * Read social_accounts with 0204's column, or, on a database that has not applied 0204, without it. The
+ * fallback is honest rather than generous: with no auth_flow every Instagram row is an old Instagram Login
+ * connection (coerceSocialAccounts reads the missing field as null), so it shows as "reconnect needed" instead of
+ * hiding every account, TikTok's included, behind "not set up".
+ */
+async function selectAccounts(run: (columns: string) => PromiseLike<Read>): Promise<Read> {
+  const first = await run(SOCIAL_ACCOUNT_COLUMNS);
+  if (!missingColumn(first.error)) return first;
+  return run(SOCIAL_ACCOUNT_COLUMNS_0028);
+}
+
 /** One account row by id, if the caller can see it (RLS). */
 export async function fetchSocialAccount(accountId: string): Promise<SocialAccount | null> {
   const supabase = await createClient();
   if (!supabase) return null;
   try {
-    const { data } = await supabase.from("social_accounts").select(SOCIAL_ACCOUNT_COLUMNS).eq("id", accountId).limit(1);
+    const { data } = await selectAccounts((cols) => supabase.from("social_accounts").select(cols).eq("id", accountId).limit(1));
     return coerceSocialAccounts(data)[0] ?? null;
   } catch {
     return null;
@@ -102,13 +131,15 @@ export async function fetchSocialAccounts(orgId: string | null): Promise<{ avail
   const supabase = await createClient();
   if (!supabase) return { available: false, rows: [] };
   try {
-    const { data, error } = await supabase
-      .from("social_accounts")
-      .select(SOCIAL_ACCOUNT_COLUMNS)
-      .eq("org_id", orgId)
-      .neq("status", "revoked")
-      .order("platform")
-      .order("connected_at", { ascending: true });
+    const { data, error } = await selectAccounts((cols) =>
+      supabase
+        .from("social_accounts")
+        .select(cols)
+        .eq("org_id", orgId)
+        .neq("status", "revoked")
+        .order("platform")
+        .order("connected_at", { ascending: true }),
+    );
     if (error) return { available: false, rows: [] };
     return { available: true, rows: coerceSocialAccounts(data) };
   } catch {

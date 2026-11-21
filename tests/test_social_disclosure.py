@@ -8,7 +8,7 @@ import unittest
 from modules import ai_disclosure as ad
 from modules import social_captions as sc
 from modules import social_publish as sp
-from tests.test_social_publish import (Base, FakeHTTP, FakeStore, FakeTokens, FakeUploader, Resp, YtStore,
+from tests.test_social_publish import (LIMIT_OK, Base, FakeHTTP, FakeStore, FakeTokens, FakeUploader, Resp, YtStore,
                                        YoutubeFlowTests)
 
 GEN_VIDEO = {"assets": [{"id": "a1", "kind": "video", "source": "generated"}]}
@@ -62,6 +62,7 @@ TT = sp.TT_API
 
 def ig_http():
     return FakeHTTP({
+        ("GET", f"{IG}/17841400000/content_publishing_limit"): [Resp(200, LIMIT_OK)],
         ("POST", f"{IG}/17841400000/media_publish"): [Resp(200, {"id": "MEDIA1"})],
         ("POST", f"{IG}/17841400000/media"): [Resp(200, {"id": "CONT1"})],
         ("GET", f"{IG}/CONT1"): [Resp(200, {"status_code": "FINISHED"})],

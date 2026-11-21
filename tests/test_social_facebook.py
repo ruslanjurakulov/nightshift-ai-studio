@@ -1308,6 +1308,27 @@ class DarkMeansUnreachable(unittest.TestCase):
         self.assertNotIn("print(", src)
 
 
+class PageReelsPlanIsAPlanOnly(unittest.TestCase):
+    """The Page Reels connect is planned, not built (migration 0204's PR): the permissions it would ask for are pinned,
+    it would read its OWN app env names (one Meta app for both use cases is unverified), and nothing reads them yet."""
+
+    def test_graph_version_matches_instagram(self):
+        self.assertEqual(fbk.GRAPH_VERSION, "v27.0")
+        self.assertTrue(sp.IG_GRAPH.endswith("/" + fbk.GRAPH_VERSION))
+
+    def test_page_permissions(self):
+        self.assertEqual(fbk.FB_PAGE_PERMISSIONS, ("pages_show_list", "pages_read_engagement", "pages_manage_posts"))
+
+    def test_a_page_connection_does_not_assume_the_instagram_app(self):
+        self.assertFalse(set(fbk.FB_APP_ENV.values()) & {"INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "INSTAGRAM_CONFIG_ID"})
+        root = Path(__file__).resolve().parent.parent
+        for name in fbk.FB_APP_ENV.values():
+            for f in [*(root / "modules").glob("*.py"), *(root / "command-center" / "lib").rglob("*.ts")]:
+                if f.name == "social_facebook.py":
+                    continue
+                self.assertNotIn(name, f.read_text(encoding="utf-8"), f"{name} read by {f}: the plan is not built")
+
+
 if __name__ == "__main__":
     logging.disable(logging.NOTSET)
     unittest.main()

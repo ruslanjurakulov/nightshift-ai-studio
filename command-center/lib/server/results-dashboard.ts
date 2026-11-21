@@ -199,7 +199,14 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
     youtube: own.filter((c) => c.connected).length,
   };
   {
-    const res = await supabase.from("social_accounts").select("id, org_id, platform, username, display_name, status").eq("org_id", orgId);
+    // auth_flow (migration 0204): an old Instagram Login row can never post, so it is not counted as connected. On a
+    // database without the column every Instagram row is such a row (the same fallback as lib/server/social-accounts.ts).
+    const read = (cols: string) => supabase.from("social_accounts").select(cols).eq("org_id", orgId);
+    let res: { data: unknown; error: { code?: string; message?: string } | null } = await read(
+      "id, org_id, platform, username, display_name, status, auth_flow",
+    );
+    if (res.error && (res.error.code === "42703" || res.error.code === "PGRST204"))
+      res = await read("id, org_id, platform, username, display_name, status");
     if (res.error) {
       accountsState = isMissingTable(res.error) ? "unavailable" : "failed";
       connectedByPlatform.instagram = null;
@@ -214,7 +221,7 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
         const id = str(r.id);
         if (id) accountName.set(id, str(r.display_name) ?? (str(r.username) ? `@${str(r.username)}` : null));
         if (r.status !== "connected") continue;
-        if (r.platform === "instagram") ig += 1;
+        if (r.platform === "instagram" && r.auth_flow === "unified_login") ig += 1;
         else if (r.platform === "tiktok") tt += 1;
       }
       connectedByPlatform.instagram = ig;

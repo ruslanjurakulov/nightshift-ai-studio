@@ -68,6 +68,8 @@ export const PUBLIC_PAGE_PATHS = [
   "/terms",
   // The Refund Policy (lib/public-paths.ts REFUND_PATH).
   "/refund",
+  // The data deletion instructions (lib/public-paths.ts DATA_DELETION_PATH).
+  "/data-deletion",
   // The referral programme's terms (lib/public-paths.ts REFERRAL_PATH).
   "/referral",
   // Trust and safety (lib/public-paths.ts TRUST_PATH).
