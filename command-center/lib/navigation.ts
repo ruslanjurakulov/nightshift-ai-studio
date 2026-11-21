@@ -117,6 +117,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/learning", key: "learning" },
       { href: "/memory", key: "memory" },
       { href: "/topics", key: "topics" },
+      // Channel research (migration 0199): the channel's own numbers, competitors, channels on a topic, comment themes.
+      { href: "/research", key: "research" },
       { href: "/measurement", key: "measure" },
       { href: "/feedback-loop", key: "feedback" },
       { href: "/autonomy", key: "autonomy" },
@@ -230,6 +232,8 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "credits",
   "usage",
   "series",
+  // Channel research (migration 0199): a customer's own channel, its competitors and its viewers' questions.
+  "research",
   // The Ads workspace: a customer's own brand kits and campaigns (shown only while its switch is on).
   "ads",
   // Character Studio: swap the people in a customer's own video (shown only while its switch is on).
@@ -319,7 +323,7 @@ const RAIL_SCREENS: Readonly<Record<RailGroup, readonly string[]>> = {
  * screen with no rail key. Filtered by navShown (switches) and sectionAllowed (operator-only).
  */
 export type StudioTileKey =
-  | Extract<NavKey, "create" | "trends" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models">
+  | Extract<NavKey, "create" | "trends" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models" | "research">
   | "presets";
 
 export interface StudioTile {
@@ -343,6 +347,8 @@ export const STUDIO_TILES: readonly StudioTile[] = [
   { href: "/character-studio", key: "characterStudio", group: "make" },
   { href: "/inbox", key: "inbox", group: "channel" },
   { href: "/series", key: "series", group: "channel" },
+  // Channel research (0199): reached from Studio home by a customer, whose rail does not list it.
+  { href: "/research", key: "research", group: "channel" },
   { href: "/models", key: "models", group: "channel" },
 ];
 

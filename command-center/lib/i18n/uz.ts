@@ -34,6 +34,7 @@ import { ownerAnalyticsUz } from "./owner-analytics/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { trendsUz } from "./trends/uz";
+import { researchUz } from "./research/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
@@ -66,6 +67,7 @@ export const uz: Dictionary = {
   presets: presetsUz,
   /** The Trends gallery (migration 0183): ./trends/uz.ts. */
   trends: trendsUz,
+  research: researchUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
@@ -153,6 +155,7 @@ export const uz: Dictionary = {
     billing: "Toʻlovlar",
     studio: "Nightshift Studio",
     trends: "Trendlar",
+    research: "Tadqiqot",
     brandLook: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",

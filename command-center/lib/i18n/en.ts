@@ -34,6 +34,7 @@ import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
+import { researchEn } from "./research/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -74,6 +75,8 @@ export const en = {
   presets: presetsEn,
   /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
+  /** Channel research (migration 0199): ./research/en.ts. */
+  research: researchEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
@@ -164,6 +167,7 @@ export const en = {
     billing: "Billing",
     studio: "Nightshift Studio",
     trends: "Trends",
+    research: "Research",
     // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
     brandLook: "Brand look",
     library: "Library",
