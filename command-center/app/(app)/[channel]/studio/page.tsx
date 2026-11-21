@@ -63,7 +63,7 @@ export default async function StudioPage({
       : run
         ? { kind: "run" as const, id: run }
         : channel && since
-          ? { kind: "window" as const, channel, since }
+          ? { kind: "window" as const, channel, since, hold: typeof sp.hold === "string" && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(sp.hold) ? sp.hold : null }
           : null;
     // ?brain=<conversation> with no plan named: the conversation's brief as a draft, followed live once it is handed off.
     const brain = !target && typeof sp.brain === "string" && /^[0-9a-f-]{36}$/i.test(sp.brain) ? sp.brain : null;

@@ -230,6 +230,43 @@ describe("a channel run", () => {
   });
 });
 
+describe("a channel run's live facts (workflow and hold)", () => {
+  const win = { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" };
+  it("absent from the answer is not asked; present and malformed is not known", () => {
+    expect(coerceRunLive({ job: null, window: win, events: [] }).workflow).toBeUndefined();
+    expect(coerceRunLive({ job: null, window: win, events: [], workflow: { state: "weird" }, hold: { state: "open", amount: "12.00" } })).toMatchObject({
+      workflow: null,
+      hold: { state: "open", amount: 12, captured: null },
+    });
+  });
+
+  it("GitHub saying the job failed ends the run with no synced events: stages not known, polling stops", () => {
+    const g = runGraph(coerceRunLive({ job: null, window: win, events: [], workflow: { state: "completed", conclusion: "failure" } }));
+    expect(new Set(g.nodes.map((n) => n.status))).toEqual(new Set(["unknown"]));
+    expect(g.settled).toBe(true);
+    expect(g.workflow).toEqual({ state: "completed", conclusion: "failure" });
+  });
+
+  it("GitHub running keeps the stages waiting and the view reading", () => {
+    const g = runGraph(coerceRunLive({ job: null, window: win, events: [], workflow: { state: "in_progress" } }));
+    expect(new Set(g.nodes.map((n) => n.status))).toEqual(new Set(["waiting"]));
+    expect(g.settled).toBe(false);
+  });
+
+  it("a finished job with an upload event reads completed: the stages it reached are done", () => {
+    const ev = (event: string, ts: string) => ({ ts, event, status: "ok", agent: null });
+    const g = runGraph(
+      coerceRunLive({
+        job: null, window: win, workflow: { state: "completed", conclusion: "success" },
+        events: [ev("topic.selected", "2026-11-21T10:01:00Z"), ev("upload.completed", "2026-11-21T10:04:00Z")],
+      }),
+    );
+    expect(g.nodes.find((n) => n.id === "upload")?.status).toBe("done");
+    expect(g.nodes.find((n) => n.id === "research")?.status).toBe("unknown");
+    expect(g.settled).toBe(true);
+  });
+});
+
 describe("the brief, before Create", () => {
   // BRIEF v1 as GET /api/brain/session/<id> returns it (docs/studio/NIGHTSHIFT_AI.md).
   const raw = {

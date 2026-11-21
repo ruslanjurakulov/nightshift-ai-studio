@@ -20,7 +20,7 @@ export const BRAIN_BRIEF_EVENT = "nightshift:brain-brief";
 export function handoffTarget(h: BriefHandoff): LiveTarget {
   if (h.kind === "film") return { kind: "film", id: h.filmId };
   if ("jobId" in h) return { kind: "run", id: h.jobId };
-  return { kind: "window", channel: h.channelId, since: h.dispatchedAt };
+  return { kind: "window", channel: h.channelId, since: h.dispatchedAt, hold: h.creditRef ?? null };
 }
 
 async function readBrief(session: string): Promise<BriefLoad> {

@@ -12,6 +12,7 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+const oneOf = <T extends string>(v: unknown, xs: readonly T[]): T | null => (typeof v === "string" && (xs as readonly string[]).includes(v) ? (v as T) : null);
 
 /**
  * - waiting: in the plan, not started yet (a planned or queued row, or no row while the project has not reached it)
@@ -72,7 +73,17 @@ export interface LiveGraph {
   runError?: string | null;
   /** Every step is done, failed, skipped, stopped or not in the plan: polling can stop. */
   settled: boolean;
+  /** A channel run's live facts next to its (possibly lagging) stages: undefined = not asked, null = asked and not known. */
+  workflow?: WorkflowStatus | null;
+  hold?: HoldStatus | null;
 }
+
+/** GitHub's status of a dispatched Run now's job (lib/server/github-runs.ts), as the route answers it. */
+export type WorkflowStatus =
+  | { state: "not_seen" | "queued" | "in_progress" }
+  | { state: "completed"; conclusion: "success" | "failure" | "cancelled" | "timed_out" | "skipped" | "other" };
+/** The run's credit hold (lib/server/run-hold.ts). */
+export type HoldStatus = { state: "open" | "captured" | "released"; amount: number | null; captured: number | null };
 
 const TERMINAL: ReadonlySet<LiveStatus> = new Set(["done", "failed", "skipped", "stopped", "none"]);
 
@@ -380,6 +391,23 @@ export interface RunReading {
   window?: { since: string; now: string } | null;
   /** Null: the events could not be read, so no stage is claimed either way. */
   events: RunEvent[] | null;
+  workflow?: WorkflowStatus | null;
+  hold?: HoldStatus | null;
+}
+
+function coerceWorkflow(v: unknown): WorkflowStatus | null {
+  const w = rec(v);
+  if (!w) return null;
+  if (w.state === "not_seen" || w.state === "queued" || w.state === "in_progress") return { state: w.state };
+  if (w.state !== "completed") return null;
+  const c = oneOf(w.conclusion, ["success", "failure", "cancelled", "timed_out", "skipped", "other"] as const);
+  return { state: "completed", conclusion: c ?? "other" };
+}
+
+function coerceHold(v: unknown): HoldStatus | null {
+  const h = rec(v);
+  const state = h ? oneOf(h.state, ["open", "captured", "released"] as const) : null;
+  return h && state ? { state, amount: num(h.amount), captured: num(h.captured) } : null;
 }
 
 /** GET /api/agent/runs/[id]'s answer as runGraph reads it. A missing or malformed job is null: every stage then reads unknown. */
@@ -395,7 +423,10 @@ export function coerceRunLive(raw: unknown): RunReading {
         .filter((e): e is Record<string, unknown> => !!e && !!str(e.ts) && !!str(e.event))
         .map((e) => ({ ts: str(e.ts)!, event: str(e.event)!, status: str(e.status), agent: str(e.agent), privacy: str(e.privacy) }))
     : null;
-  return { job, events, window };
+  // Absent from the answer: not asked (an older route); present and unreadable: asked and not known.
+  const workflow = r && "workflow" in r ? coerceWorkflow(r.workflow) : undefined;
+  const hold = r && "hold" in r ? coerceHold(r.hold) : undefined;
+  return { job, events, window, workflow, hold };
 }
 
 /** daily_video.yml's video job stops at 60 minutes; a dispatch can wait for a runner before that. Past this, a run with no last event ended. */
@@ -424,8 +455,20 @@ export function runGraph(r: RunReading): LiveGraph {
   const stageFailed = events.some((e) => RUN_STAGES.some((st) => st.failEvents.includes(e.event) || (e.event === "agent.failed" && !!e.agent && st.failAgents.includes(e.agent))));
   const uploaded = events.some((e) => e.event === "video.published" || e.event === "upload.completed" || e.event === "publish.held");
   const timedOut = win ? Date.parse(win.now) - Date.parse(win.since) > RUN_WINDOW_LIMIT_MS : false;
-  const ended = r.job ? JOB_TERMINAL.has(r.job.status) : win ? stageFailed || uploaded || timedOut : false;
-  const jobStatus = r.job ? r.job.status : win ? (stageFailed || timedOut ? (uploaded && !stageFailed ? "completed" : "failed") : uploaded ? "completed" : "running") : null;
+  // GitHub saying the channel's job finished ends the run even when its events have not been synced yet (they then read unknown).
+  const wf = win && r.workflow?.state === "completed" ? r.workflow.conclusion : null;
+  const ended = r.job ? JOB_TERMINAL.has(r.job.status) : win ? stageFailed || uploaded || timedOut || wf !== null : false;
+  const jobStatus = r.job
+    ? r.job.status
+    : win
+      ? stageFailed || timedOut || (wf !== null && wf !== "success")
+        ? uploaded && !stageFailed && (wf === null || wf === "success")
+          ? "completed"
+          : "failed"
+        : uploaded || wf === "success"
+          ? "completed"
+          : "running"
+      : null;
   let reachedLater = false;
   const statuses: { kind: RunNodeKind; status: LiveStatus; at: string | null; privacy: string | null }[] = [];
   for (let i = RUN_STAGES.length - 1; i >= 0; i--) {
@@ -460,7 +503,14 @@ export function runGraph(r: RunReading): LiveGraph {
   }));
   const edges: LiveEdge[] = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id }));
   const runError = r.job && (jobStatus === "failed" || jobStatus === "cancelled") ? (r.job.error ?? null) : null;
-  return { nodes, edges, runError, settled: ended && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown") };
+  return {
+    nodes,
+    edges,
+    runError,
+    settled: ended && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown"),
+    ...(r.workflow !== undefined ? { workflow: r.workflow } : {}),
+    ...(r.hold !== undefined ? { hold: r.hold } : {}),
+  };
 }
 
 /* ------------------------------------------------------------------ the brief (before Create) ---------------------------------- */
@@ -486,7 +536,7 @@ export interface BriefScene {
 }
 export type BriefHandoff =
   | { kind: "film"; filmId: string }
-  | { kind: "run"; channelId: string; dispatchedAt: string }
+  | { kind: "run"; channelId: string; dispatchedAt: string; creditRef?: string | null }
   | { kind: "run"; channelId: string; jobId: string };
 export interface Brief {
   status: "drafting" | "ready" | "created" | null;
@@ -507,7 +557,6 @@ export interface Brief {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const oneOf = <T extends string>(v: unknown, xs: readonly T[]): T | null => (typeof v === "string" && (xs as readonly string[]).includes(v) ? (v as T) : null);
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0) : []);
 
 /** The handoff as a live target: where Create's result is read from. A malformed handoff is no handoff (the view stays a draft). */
@@ -524,7 +573,10 @@ function coerceHandoff(v: unknown): BriefHandoff | null {
   const job = typeof h.job_id === "number" ? String(h.job_id) : str(h.job_id);
   if (job && /^[1-9][0-9]{0,14}$/.test(job)) return { kind: "run", channelId: channel, jobId: job };
   const at = str(h.dispatched_at);
-  return at && Number.isFinite(Date.parse(at)) ? { kind: "run", channelId: channel, dispatchedAt: at } : null;
+  if (!at || !Number.isFinite(Date.parse(at))) return null;
+  // The hold /api/agent/run answered (credit_ref): optional, and only in credit_reservations.job_id's own shape (0020).
+  const ref = str(h.credit_ref);
+  return { kind: "run", channelId: channel, dispatchedAt: at, ...(ref && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(ref) ? { creditRef: ref } : {}) };
 }
 
 /** GET /api/brain/session/<id>'s brief, or null when it is not a brief at all (an answer that cannot be drawn is not drawn). */
@@ -645,5 +697,6 @@ export function briefGraph(b: Brief): LiveGraph {
 export function handoffHref(h: BriefHandoff): string {
   if (h.kind === "film") return `?view=live&film=${encodeURIComponent(h.filmId)}`;
   if ("jobId" in h) return `?view=live&channel=${encodeURIComponent(h.channelId)}&run=${encodeURIComponent(h.jobId)}`;
-  return `?view=live&channel=${encodeURIComponent(h.channelId)}&since=${encodeURIComponent(h.dispatchedAt)}`;
+  const hold = h.creditRef ? `&hold=${encodeURIComponent(h.creditRef)}` : "";
+  return `?view=live&channel=${encodeURIComponent(h.channelId)}&since=${encodeURIComponent(h.dispatchedAt)}${hold}`;
 }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
+import { dispatchedRunStatus } from "@/lib/server/github-runs";
+import { readRunHold } from "@/lib/server/run-hold";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +20,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
  * (/api/agent/run answers `dispatched_at`). The view says so in those words. Read-only, with the person's own session (RLS:
  * only their channels; another workspace's channel reads as no events at all). It reads only the stage words and the upload's
  * privacy, never the rest of an event's metadata. Nothing here starts, retries or spends anything.
+ *
+ * The pipeline's events reach Supabase when they are synced, so stages can lag the run. Two facts are live and answer next to them:
+ * - `workflow`: GitHub's own status of this channel's dispatched job, asked server-side with the app's token (never sent to the
+ *   browser, nor any URL, id or log of GitHub's), and only for a channel this person can see through RLS;
+ * - `hold`: the credit hold (`&hold=<credit_ref>`, as /api/agent/run answered it), read through RLS like the rest.
+ * Either is null when it is not known.
  */
 export async function GET(request: Request) {
   const user = await getUser();
@@ -50,5 +58,9 @@ export async function GET(request: Request) {
       break;
     }
   }
-  return NextResponse.json({ job: null, window: { since, now: new Date(nowMs).toISOString() }, events }, { headers: NO_STORE });
+  // GitHub is asked with the app's token: only for a channel RLS shows this person, so another workspace's channel id learns nothing.
+  const visible = await supabase.from("channels").select("id").eq("id", channel).maybeSingle();
+  const workflow = !visible.error && visible.data ? await dispatchedRunStatus(channel, sinceMs) : null;
+  const hold = await readRunHold(supabase, url.searchParams.get("hold"));
+  return NextResponse.json({ job: null, window: { since, now: new Date(nowMs).toISOString() }, events, workflow, hold }, { headers: NO_STORE });
 }

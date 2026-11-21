@@ -5,7 +5,7 @@ import { startPolling, type PollVerdict } from "@/lib/studio/timeline";
 import { coerceFilmLive, coerceRunLive, filmGraph, runGraph, type FilmReading, type LiveGraph } from "@/lib/studio/liveGraph";
 
 /** A project, a queue-backend run (render_jobs id), or an Actions-backend run: its channel and the moment it was dispatched. */
-export type LiveTarget = { kind: "film"; id: string } | { kind: "run"; id: string } | { kind: "window"; channel: string; since: string };
+export type LiveTarget = { kind: "film"; id: string } | { kind: "run"; id: string } | { kind: "window"; channel: string; since: string; hold?: string | null };
 
 export type LiveLoad =
   | { state: "loading" }
@@ -23,7 +23,8 @@ const TERMINAL: LiveLoad["state"][] = ["notFound", "expired", "unavailable"];
 function urlOf(t: LiveTarget): string {
   if (t.kind === "film") return `/api/films/${encodeURIComponent(t.id)}/live`;
   if (t.kind === "run") return `/api/agent/runs/${encodeURIComponent(t.id)}`;
-  return `/api/agent/runs/window?channel=${encodeURIComponent(t.channel)}&since=${encodeURIComponent(t.since)}`;
+  const hold = t.hold ? `&hold=${encodeURIComponent(t.hold)}` : "";
+  return `/api/agent/runs/window?channel=${encodeURIComponent(t.channel)}&since=${encodeURIComponent(t.since)}${hold}`;
 }
 
 async function readLive(t: LiveTarget): Promise<LiveLoad> {

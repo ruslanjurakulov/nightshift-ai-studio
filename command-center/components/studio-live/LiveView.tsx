@@ -124,6 +124,28 @@ export function nodeName(t: T, n: LiveNode): string {
   return (n.kind === "character" || n.kind === "location" || n.kind === "prop") && n.sceneTitle ? `${kind} · ${n.sceneTitle}` : kind;
 }
 
+/** A channel run's live facts: GitHub's own status of the dispatched job, and the run's credit hold. Only what was read is said. */
+function RunFacts({ graph }: { graph: LiveGraph }) {
+  const { t } = useI18n();
+  const c = t.studioLive;
+  const w = graph.workflow;
+  const h = graph.hold;
+  const wf = w === undefined ? null : w === null ? c.workflow.unknown : w.state === "completed" ? c.workflow[w.conclusion] : c.workflow[w.state];
+  const hold = !h
+    ? null
+    : h.state === "open"
+      ? h.amount === null ? c.holdOpenUnknown : fmt(c.holdOpen, { n: h.amount })
+      : h.state === "captured"
+        ? (h.captured ?? h.amount) === null ? c.holdCapturedUnknown : fmt(c.holdCaptured, { n: (h.captured ?? h.amount) as number })
+        : c.holdReleased;
+  return (
+    <ul className="lv-facts" data-testid="live-run-facts">
+      {wf ? <li data-testid="live-workflow">{wf}</li> : null}
+      {hold ? <li data-testid="live-hold">{hold}</li> : null}
+    </ul>
+  );
+}
+
 /** A failed step's reason and remedy, never a guess: a known word gets its sentence, any other is named as it was stored. */
 export function failureText(t: T, n: LiveNode, run: boolean): { reason: string; remedy: string | null } {
   const c = t.studioLive;
@@ -461,7 +483,12 @@ export function LiveView({
       <header className="lv-head">
         <h1>{(draft && brief?.title) || (run ? c.runTitle : (load.state === "ready" && load.film?.film.view.film.title) || c.filmTitle)}</h1>
         <p className="lv-muted" data-testid={draft ? "live-draft-note" : undefined}>{draft ? c.draftNote : c.readOnly}</p>
-        {run && target ? <p className="lv-muted" data-testid="live-run-window">{target?.kind === "window" ? c.runWindowSince : c.runWindow}</p> : null}
+        {run && target ? (
+          <p className="lv-muted" data-testid="live-run-window">
+            {target.kind === "window" ? c.runWindowSince : c.runWindow} {c.stagesLag}
+          </p>
+        ) : null}
+        {graph && (graph.workflow !== undefined || graph.hold) ? <RunFacts graph={graph} /> : null}
         <p className="sr-only" role="status" aria-live="polite">
           {stale ? c.stale : graph?.settled ? c.settled : ""}
         </p>

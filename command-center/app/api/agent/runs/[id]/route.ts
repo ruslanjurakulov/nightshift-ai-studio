@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { toQueueJob } from "@/lib/runBackend";
+import { readRunHold } from "@/lib/server/run-hold";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .select("id,kind,status,attempts,channel_id,created_at,started_at,heartbeat_at,finished_at,error")
     .eq("id", Number(id))
     .maybeSingle();
+  // credit_ref is read apart: a database without 0020 must still show the run.
+  const refRead = jr.data ? await supabase.from("render_jobs").select("credit_ref").eq("id", Number(id)).maybeSingle() : null;
+  const creditRef = refRead && !refRead.error && typeof (refRead.data as { credit_ref?: unknown } | null)?.credit_ref === "string" ? ((refRead.data as { credit_ref: string }).credit_ref) : null;
   if (jr.error) return NextResponse.json({ error: "failed" }, { status: 502, headers: NO_STORE });
   if (!jr.data) return NextResponse.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
   const row = jr.data as Record<string, unknown>;
@@ -72,6 +76,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     {
       job: { id: job.id, status: job.status, startedAt: job.started_at, finishedAt: job.finished_at, error: job.errorCode },
       events,
+      hold: await readRunHold(supabase, creditRef),
     },
     { headers: NO_STORE },
   );

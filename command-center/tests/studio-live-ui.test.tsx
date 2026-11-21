@@ -200,7 +200,7 @@ describe("a channel run", () => {
     });
     render(<LiveView filmStudio={false} target={{ kind: "run", id: "7" }} />);
     await screen.findByTestId("live-list");
-    expect(screen.getByTestId("live-run-window").textContent).toBe(c.runWindow);
+    expect(screen.getByTestId("live-run-window").textContent).toBe(`${c.runWindow} ${c.stagesLag}`);
     expect(calls[0].url).toBe("/api/agent/runs/7");
     fireEvent.click(node("upload"));
     expect(screen.getByTestId("live-privacy").textContent).toBe(c.privacyPrivate);
@@ -216,6 +216,24 @@ describe("a channel run", () => {
     await screen.findByTestId("live-list");
     fireEvent.click(node("voice"));
     expect(screen.getByTestId("live-failure").textContent).toBe(en.create.jobError.voice);
+  });
+});
+
+describe("a channel run's live facts", () => {
+  it("says GitHub's status and the hold as read, next to an honest line that stages lag", async () => {
+    answer = live({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: { state: "queued" }, hold: { state: "open", amount: 40, captured: null } });
+    render(<LiveView filmStudio target={{ kind: "window", channel: "c0000000-0000-4000-8000-0000000000c0", since: "2026-11-21T10:00:00Z", hold: "gh-abc" }} />);
+    expect((await screen.findByTestId("live-workflow")).textContent).toBe(c.workflow.queued);
+    expect(screen.getByTestId("live-hold").textContent).toBe("40 credits are held for this run.");
+    expect(screen.getByTestId("live-run-window").textContent).toContain(c.stagesLag);
+    expect(calls[0].url).toContain("&hold=gh-abc");
+  });
+
+  it("an unreadable GitHub status says so; no hold read says nothing about credits", async () => {
+    answer = live({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: null, hold: null });
+    render(<LiveView filmStudio target={{ kind: "window", channel: "c0000000-0000-4000-8000-0000000000c0", since: "2026-11-21T10:00:00Z" }} />);
+    expect((await screen.findByTestId("live-workflow")).textContent).toBe(c.workflow.unknown);
+    expect(screen.queryByTestId("live-hold")).toBeNull();
   });
 });
 
