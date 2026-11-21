@@ -98,6 +98,16 @@ def sweep_once(db) -> None:
         logger.warning("film_expire_segments failed (%s)", type(e).__name__)
 
 
+def prune_cache(media_root: Path) -> None:
+    """Housekeeping at start (throttled to once per 24h inside): never raises, a failure must not stop a paid film."""
+    try:
+        from modules import film_assembly as fa  # noqa: PLC0415
+
+        fa.prune_word_cache(media_root)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("word cache prune skipped (%s)", type(e).__name__)
+
+
 def sweeper(db, stop: threading.Event, every: float) -> None:
     while not stop.wait(every):
         sweep_once(db)
@@ -199,6 +209,7 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
     every = expire_every(env)
     logger.info("film worker %s started (sweep every %s s, media library read/write)", args.worker_id, every)
     sweep_once(db)
+    prune_cache(media_root)
     if args.once:
         return loop(orch, db, stop, once=True)
     t = threading.Thread(target=sweeper, args=(db, stop, every), daemon=True, name="film-sweep")
