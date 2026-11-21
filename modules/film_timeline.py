@@ -60,12 +60,25 @@ What it decides
   ``sidecar``/``both`` gives the ``.srt`` text. The safe-area fractions are this module's
   conservative design values, not figures published by YouTube (unverified: Scout before relying
   on an exact pixel).
+* **A shot's own sound.** A take made with sound (``params.audio`` true: 0171 copies the scene's
+  ``clip_params.audio`` into the take, and creative_price charged the model's with-sound variant for
+  it) is a shot whose sound was paid for: on a film with dialogue it is where the lines are spoken,
+  since the video model speaks them inside the clip and there is no narration take. Its picture clip
+  plays its own sound (``audio: true``); without it the editor renders the clip silent and the film
+  loses its dialogue without a word. The file must be known to carry a sound track (``has_audio``,
+  probed by the assembly): one that has none is refused (``clip_without_sound``, re-shoot), one not
+  probed is ``asset_unprobed``, never rendered silent. Each such clip is one more input of the final
+  pass, so it counts toward ``MAX_SOUND_CLIPS`` exactly as ``timeline.validate`` counts it. Music
+  ducks under it as under the narration (the editor's ``speech_spans`` takes every V clip that plays
+  its sound). At a cross-fade both shots' sounds are joined with the editor's ``acrossfade`` over
+  the picture's overlap, so they do not double up. A take made without sound stays silent, as every
+  film before this did (its document, and so its hash, is unchanged: FORMAT_VERSION stays).
 
 What it refuses (``FilmTimelineRefused.reason``; rule 4: no scene is dropped, no still or other take
 is put in a missing one's place, and the sentence names the fix): ``no_scenes``, ``too_many_scenes``,
 ``invalid_film``, ``invalid_scene``, ``scene_not_shot``, ``missing_take``, ``take_failed``,
 ``take_without_result``, ``asset_unavailable``, ``asset_not_video``, ``asset_unprobed``,
-``aspect_mismatch``, ``scene_too_short``, ``continuity_broken``, ``continuity_trim``, ``narration_missing``,
+``aspect_mismatch``, ``clip_without_sound``, ``scene_too_short``, ``continuity_broken``, ``continuity_trim``, ``narration_missing``,
 ``narration_segment_missing``, ``narration_too_long``, ``narration_outside_take``, ``narration_loudness``,
 ``music_unavailable``,
 ``captions_missing``, ``invalid_captions``, ``caption_outside_narration``, ``caption_too_long``, ``too_many_audio_clips``,
@@ -167,7 +180,7 @@ REASONS = ("no_scenes", "too_many_scenes", "invalid_film", "invalid_scene", "sce
            "narration_segment_missing", "narration_too_long", "narration_outside_take", "narration_loudness",
            "music_unavailable",
            "captions_missing", "invalid_captions", "caption_outside_narration", "caption_too_long", "too_many_audio_clips",
-           "film_too_long", "invalid_timeline")
+           "film_too_long", "invalid_timeline", "clip_without_sound")
 
 
 class FilmTimelineRefused(ValueError):
@@ -314,6 +327,29 @@ def _video(asset_id: str, assets: Mapping, n: int, idx: int, frame: Tuple[int, i
     return a
 
 
+def made_with_sound(take: Mapping) -> bool:
+    """Was this take made with its own sound? Only an explicit true: 0171 copies ``audio`` into a take's params
+    only when the scene asked for a choice of sound, and a take that never asked is the silent clip it always was."""
+    p = take.get("params")
+    if isinstance(p, str):
+        try:
+            p = json.loads(p)
+        except ValueError:
+            p = None
+    return isinstance(p, Mapping) and p.get("audio") is True
+
+
+def _check_sound(asset: Mapping, n: int, idx: int) -> None:
+    """A shot bought with sound plays it, or the film is refused: never the silent clip in its place (rule 4)."""
+    has = asset.get("has_audio")
+    if has is False:
+        raise FilmTimelineRefused("clip_without_sound", f"{_scene_label(n)} shot {idx} was made with its own sound "
+                                  "(its spoken lines), but its video has no sound track: re-shoot the shot", n)
+    if has is not True:
+        raise FilmTimelineRefused("asset_unprobed", f"{_scene_label(n)} shot {idx} was made with its own sound, and "
+                                  "whether its video carries a sound track is not known yet: retry the assembly", n)
+
+
 def _narration_gain(narration: Mapping) -> dict:
     """The gain that brings the narration take to the target, from what was measured on it."""
     lufs, peak = narration.get("loudness_lufs"), narration.get("true_peak_db")
@@ -349,8 +385,9 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
     ``music_gain_db``, ``duck_db`` (as in 0166 ``films``). ``scenes``: ``id``, ``position``,
     ``planned_seconds``, ``shot_count``, ``first_frame``, ``transition_in``, ``current_version``,
     ``narration`` (the text; only whether it is empty matters here). ``takes``: rows of 0166
-    ``film_takes``. ``assets``: asset id → ``kind``, ``duration_s``, ``width``, ``height`` from the
-    library (``media_assets``). ``narration``: ``asset_id`` and ``segments`` [{``scene_id``,
+    ``film_takes`` (a take's ``params.audio`` true: made with its own sound). ``assets``: asset id →
+    ``kind``, ``duration_s``, ``width``, ``height`` from the library (``media_assets``), and for the
+    video of a take made with sound ``has_audio`` (probed: the library does not record it). ``narration``: ``asset_id`` and ``segments`` [{``scene_id``,
     ``start_s``, ``end_s``}] in the narration file's time. ``captions``: [{``start_s``, ``end_s``,
     ``text``}] in the narration file's time."""
     assets = {_id(k): v for k, v in assets.items()}
@@ -392,6 +429,7 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
     trans = ["cut" if (n == 0 or continues[n]) else (sc.get("transition_in") or default_tr)
              for n, sc in enumerate(ordered)]
     v_clips: List[dict] = []
+    clip_sound: List[str] = []          # ids of the picture clips that play their own sound
     scene_plans: List[dict] = []
     starts: List[int] = []
     cursor = 0
@@ -458,6 +496,12 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
         for k, (take, aid, in_ms, length, chained) in enumerate(used):
             clip = {"id": f"v{n:02d}_{k + 1}", "asset_id": aid, "start_s": _s(start), "in_s": _s(in_ms),
                     "out_s": _s(in_ms + length), "fit": "cover"}
+            sounding = made_with_sound(take)
+            if sounding:
+                # Checked only for a shot the cut shows: an unused take's file plays no part in the film.
+                _check_sound(assets[aid], n, take["shot_index"])
+                clip["audio"] = True
+                clip_sound.append(clip["id"])
             if k == 0 and tr == "crossfade":
                 clip["transition"] = {"type": "crossfade", "duration_s": CROSSFADE_S}
             elif k == 0 and tr == "dip_to_black":
@@ -465,7 +509,7 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
             v_clips.append(clip)
             shot_plans.append({"take_id": _id(take.get("id")), "shot_index": take["shot_index"], "asset_id": aid,
                                "start_s": _s(start), "in_s": _s(in_ms), "out_s": _s(in_ms + length),
-                               "chained": chained})
+                               "chained": chained, "own_sound": sounding})
             start += length
         shown = {id(u[0]) for u in used}
         scene_plans.append({"scene_id": _id(sc.get("id")), "number": n, "start_s": _s(cursor),
@@ -559,19 +603,29 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
                           "out_s": _s(length), "gain_db": round(gain, 1), "fade_in_s": _s(fin), "fade_out_s": _s(fout)})
             at += length
         track = {"id": "music", "kind": "A", "role": "music", "clips": tiles}
-        if duck < 0 and nar_clips:
+        # Under the shots' own spoken lines exactly as under the narration: music at full level over dialogue
+        # buries the words the person paid for.
+        if duck < 0 and (nar_clips or clip_sound):
             track["duck"] = {"amount_db": round(-duck, 1)}
         a_tracks.append(track)
         music_plan = {"asset_id": maid, "gain_db": round(gain, 1), "duck_db": round(duck, 1) if "duck" in track else 0.0,
                       "tiles": len(tiles), "attack_s": tl.DUCK_DEFAULTS["attack_s"],
                       "release_s": tl.DUCK_DEFAULTS["release_s"]}
 
-    n_audio = sum(len(t["clips"]) for t in a_tracks)
+    # A picture clip that plays its own sound is an input of the final pass like any A clip: counted as
+    # timeline.validate counts it, so a film with too many is refused here, by name, not in ffmpeg.
+    n_audio = sum(len(t["clips"]) for t in a_tracks) + len(clip_sound)
     if n_audio > MAX_SOUND_CLIPS:
+        fixes = []
+        if clip_sound:
+            fixes.append(f"{len(clip_sound)} of them are shots that play their own sound: give the film fewer, "
+                         "longer shots with sound (fewer scenes, or one shot per scene)")
+        if nar_clips:
+            fixes.append("generate the narration on the film's clock so its scenes join into one clip")
+        fixes.append("choose a longer music track, or remove the music")
         raise FilmTimelineRefused("too_many_audio_clips", f"the film needs {n_audio} sound clips; at 1080p the "
                                   f"final pass mixes at most {MAX_SOUND_CLIPS} under the export's memory limit "
-                                  "(measured): generate the narration on the film's clock so its scenes join into "
-                                  "one clip, or choose a longer music track")
+                                  "(measured): " + "; or ".join(fixes))
 
     # ── captions ──
     layout = caption_layout(aspect, width, height)
@@ -629,6 +683,7 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
             "narration": ({"asset_id": _id(narration.get("asset_id")), "clips": len(nar_clips),
                            "lead_s": NARRATION_LEAD_S, "loudness": loud} if nar_clips else None),
             "music": music_plan,
+            "clip_sound": {"clips": len(clip_sound), "ids": clip_sound} if clip_sound else None,
             "master_loudness": "not normalised: the editor has no master loudness pass",
             "clips": n_audio, "max_clips": MAX_SOUND_CLIPS,
         },
@@ -640,5 +695,5 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
 
 
 __all__ = ["CAPTION_MODES", "CHAIN_SKIP_S", "CROSSFADE_S", "Cut", "DIP_S", "FORMAT_VERSION", "FRAMES",
-           "FilmTimelineRefused", "MAX_FILM_S", "MAX_SCENES", "MAX_SOUND_CLIPS", "REASONS", "SAFE_AREAS", "build_cut",
+           "FilmTimelineRefused", "MAX_FILM_S", "MAX_SCENES", "MAX_SOUND_CLIPS", "REASONS", "SAFE_AREAS", "build_cut", "made_with_sound",
            "canonical_json", "caption_layout", "cut_hash", "frame_for", "srt_text", "wrap_caption"]

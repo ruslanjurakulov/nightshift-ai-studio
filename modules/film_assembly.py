@@ -54,7 +54,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Mapping, Optional, Sequence
+from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
 from modules import editor_export
 from modules import film_timeline as ft
@@ -467,6 +467,29 @@ def _with_versions(scenes: Sequence[Mapping], takes: Sequence[Mapping]) -> List[
     return out
 
 
+def _probe_clip_sound(takes: Sequence[Mapping], by_id: Dict[str, dict], media_root: Path,
+                      probe: Callable[[Path, str], bool]) -> None:
+    """``has_audio`` on the video of every take made with its own sound, for build_cut: the library does not record
+    whether a file carries a sound track, and a shot bought with sound that has none must be refused by name, before the
+    render, rather than rendered silent. A probe that cannot say leaves it unknown, which build_cut refuses too."""
+    for t in takes:
+        if t.get("kind") not in ("clip", "extend") or t.get("status") != "completed" or not t.get("result_asset_id") \
+                or not ft.made_with_sound(t):
+            continue
+        aid = ml.canonical_id(t["result_asset_id"])
+        row = by_id.get(aid)
+        if row is None or row.get("kind") != "video":
+            continue        # build_cut refuses a missing or non-video result by its own name
+        path = ml.asset_file(media_root, aid, "original")
+        if not path.is_file():
+            raise AssemblyFailed("asset_unavailable", "a shot's video is not on the media volume: re-shoot the scenes "
+                                 "whose clips are gone")
+        try:
+            row["has_audio"] = bool(probe(path, str(row.get("mime") or "")))
+        except editor_export.ExportFailed:
+            row.pop("has_audio", None)
+
+
 def store_caption(path: Path, *, asset_id: str, org_id: str, store: ml.MediaStore, media_root: Path,
                   provenance: Mapping) -> dict:
     """The sidecar as a library caption file (kind caption, text/vtt, source generated). The library's own
@@ -664,7 +687,9 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
     if film.get("music_asset_id"):
         ids.append(film["music_asset_id"])
     rows = store.assets(org, [ml.canonical_id(i) for i in ids])
-    by_id = {ml.canonical_id(r["id"]): r for r in rows}
+    by_id = {ml.canonical_id(r["id"]): dict(r) for r in rows}
+    probe_audio = deps.has_audio or (lambda path, mime: editor_export.probe_has_audio(tools.ffprobe, path, mime))
+    _probe_clip_sound(takes, by_id, media_root, probe_audio)
 
     narration = None
     words: List[dict] = []
@@ -732,13 +757,18 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
         raise AssemblyFailed("disk_low", f"the media volume has {have_txt} free and this film needs {need:.0f} MB to "
                              "render at full quality: free space on the media volume and retry the assembly")
 
-    resolver = editor_export.build_resolver(
-        rows, media_root,
-        has_audio=deps.has_audio or (lambda path, mime: editor_export.probe_has_audio(tools.ffprobe, path, mime)))
+    resolver = editor_export.build_resolver(rows, media_root, has_audio=probe_audio)
     missing = [a for a in tl.asset_ids(norm) if resolver(a) is None]
     if missing:
         raise AssemblyFailed("asset_unavailable", f"{len(missing)} of the film's files are not on the media volume: "
                              "re-shoot the scenes whose clips are gone")
+    # The renderer skips a V clip's sound when its file has none, without a word (timeline_render._sound): checked
+    # again on what the render will actually read, so a file that changed since build_cut cannot go out silent.
+    mute = [c["id"] for t in norm["tracks"] if t["kind"] == tl.KIND_V for c in t["clips"]
+            if c.get("audio") is True and resolver(c["asset_id"]).has_audio is not True]
+    if mute:
+        raise AssemblyFailed("clip_without_sound", f"{len(mute)} shot(s) made with their own sound ({', '.join(mute[:5])}) "
+                             "have no sound track on the media volume: re-shoot those shots")
     work.mkdir(parents=True, mode=0o700)
     out = work / "film.mp4"
     timings = render_backend.RenderTimings()
@@ -760,7 +790,9 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
         raise AssemblyFailed("render_failed", "the render produced no file: retry the assembly")
 
     got = (deps.probe or (lambda p: probe_output(tools.ffprobe, p)))(out)
-    wants_sound = any(t.get("kind") == "A" and t.get("clips") for t in cut.doc["tracks"])
+    # A film whose only sound is its shots' spoken lines has no A track, and must still come out with sound.
+    wants_sound = any(t.get("kind") == "A" and t.get("clips") for t in cut.doc["tracks"]) or bool(
+        (cut.plan["audio"].get("clip_sound") or {}).get("clips"))
     if got.duration_s is None or abs(got.duration_s - cut.length_s) > DURATION_TOLERANCE_S:
         raise AssemblyFailed("output_mismatch", f"the film rendered {got.duration_s} s of the {cut.length_s} s its "
                              "scenes add up to: retry the assembly")
