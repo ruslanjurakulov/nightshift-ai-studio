@@ -1158,6 +1158,9 @@ export function ProjectBar({
     };
   }, [open]);
   const tiles = studioTilesFor(operator, features).filter((x) => x.key !== "create" && x.key !== "editor");
+  // The Timeline view answers "not open yet" unless projects are on (studio/page.tsx passes the same switch), so the way in is
+  // offered only then. On the Timeline itself it stays, or the person would have no way back from that page.
+  const timelineOpen = filmStudio || view === "timeline";
   return (
     <div className={inline ? "cv-pbar is-inline" : "cv-pbar"}>
       <div className="relative min-w-0" ref={menu}>
@@ -1173,7 +1176,7 @@ export function ProjectBar({
             <p className="cv-pop-h">{c.views}</p>
             <MenuLink href={path("/studio")} icon={<Check aria-hidden className="size-4" />} label={c.viewCanvas} current={view === "canvas"} />
             {/* The Canvas|Timeline toggle is desk-only; on a phone the Timeline is reached from here. */}
-            <MenuLink href={timelineHref} icon={<AlignLeft aria-hidden className="size-4" />} label={c.timeline} current={view === "timeline"} testid="menu-timeline" />
+            {timelineOpen && <MenuLink href={timelineHref} icon={<AlignLeft aria-hidden className="size-4" />} label={c.timeline} current={view === "timeline"} testid="menu-timeline" />}
             <MenuLink href={path("/studio?shelf=videos")} icon={<Film aria-hidden className="size-4" />} label={c.viewVideos} />
             <MenuLink href={path("/studio?shelf=projects")} icon={<ICONS.editor aria-hidden className="size-4" />} label={c.viewEditor} />
             {filmStudio && <MenuLink href={path("/create/projects")} icon={<Projector aria-hidden className="size-4" />} label={c.projects} sub={c.projectsSub} testid="menu-projects" />}
@@ -1185,14 +1188,16 @@ export function ProjectBar({
           </div>
         )}
       </div>
-      <div className="cv-seg cv-deskonly" role="group" aria-label={c.views}>
-        <Link href={path("/studio")} aria-current={view === "canvas" ? "page" : undefined} data-testid="view-canvas">
-          <GitBranch aria-hidden className="size-4" /> {c.viewCanvas}
-        </Link>
-        <Link href={timelineHref} aria-current={view === "timeline" ? "page" : undefined} data-testid="view-timeline">
-          <AlignLeft aria-hidden className="size-4" /> {c.timeline}
-        </Link>
-      </div>
+      {timelineOpen && (
+        <div className="cv-seg cv-deskonly" role="group" aria-label={c.views}>
+          <Link href={path("/studio")} aria-current={view === "canvas" ? "page" : undefined} data-testid="view-canvas">
+            <GitBranch aria-hidden className="size-4" /> {c.viewCanvas}
+          </Link>
+          <Link href={timelineHref} aria-current={view === "timeline" ? "page" : undefined} data-testid="view-timeline">
+            <AlignLeft aria-hidden className="size-4" /> {c.timeline}
+          </Link>
+        </div>
+      )}
       {/* Brand look, one click from where its old bookmark lands (STUDIO_IA.md §9.1). */}
       <Link href={path("/studio/look")} className="cv-chip-link" data-testid="channel-look-chip" aria-label={t.studioHub.channelLook} title={t.studioHub.channelLook}>
         <Palette aria-hidden className="size-4" />

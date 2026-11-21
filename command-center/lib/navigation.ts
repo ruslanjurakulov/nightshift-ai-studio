@@ -161,7 +161,7 @@ export interface NavFeatures {
   /**
    * NIGHTSHIFT_FILM_STUDIO (lib/server/films.ts), already resolved for this viewer (`admins` lists it for a platform admin only):
    * Studio's Projects section, STUDIO_PROJECTS. Absent reads as off. It is not a rail entry of its own: it is listed beside the
-   * Studio's desks (the desk bar, the customer sidebar's Create group and Studio's overview).
+   * Studio's desks (the desk bar and the canvas's view menu); the customer sidebar does not list it (CUSTOMER_SIDEBAR).
    */
   filmStudio?: boolean;
 }
