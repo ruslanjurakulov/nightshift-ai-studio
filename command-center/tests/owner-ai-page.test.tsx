@@ -51,6 +51,8 @@ describe("the panel's failures", () => {
     expect(failureText(a, 503, { error: "not_enabled", needs: "0202" }).message).toContain("0202");
     expect(failureText(a, 401, { error: "second_factor" })).toEqual({ message: a.errors.second_factor, verify: true });
     expect(failureText(a, 404, { error: "not_found" }).message).toBe(a.errors.session);
+    // A conversation too long to send says how to get out of it, not "ask again".
+    expect(failureText(a, 413, { error: "payload_too_large" })).toEqual({ message: a.errors.tooMuchHistory, clear: true });
   });
 
   it("never shows a raw code, even one it does not know", () => {

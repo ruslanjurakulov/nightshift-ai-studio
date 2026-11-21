@@ -18,13 +18,16 @@ RULES
 6. Answer in the owner's language (LANGUAGE). Be short and concrete: the answer first, then the figures behind it.
 
 OUTPUT: one JSON object and nothing else:
-{"answer": "<plain text, at most 2500 characters>", "draft": null}
+{"answer": "<plain text, at most 1200 characters>", "draft": null}
 or, when the owner asks for something to send or keep (an e-mail to a vendor, a payment plan, a summary):
-{"answer": "<plain text>", "draft": {"title": "<short title>", "body": "<plain text, at most 4000 characters>"}}`;
+{"answer": "<plain text, at most 600 characters>", "draft": {"title": "<short title>", "body": "<plain text, at most 2000 characters>"}}
+Keep the whole reply short: it must fit one response.`;
 
 export const QUESTION_MAX = 2000;
-export const ANSWER_MAX = 2500;
-export const DRAFT_MAX = 4000;
+// The reply must fit the chat adapter's output budget (lib/server/brain/llm.ts, 1600 tokens): a reply cut at the limit is a
+// failure, not a shorter answer. 1200 + 2000 characters of Cyrillic stays under it with the JSON around it.
+export const ANSWER_MAX = 1200;
+export const DRAFT_MAX = 2000;
 export const HISTORY_TURNS = 6;
 /** The facts can name up to 200 channels; the model is handed the ones that need a look first, then the rest up to this many. */
 export const PROMPT_CHANNELS = 60;
@@ -83,7 +86,8 @@ export function ownerUserBlock(input: { facts: OwnerFacts; question: string; his
 
 export interface OwnerAnswer {
   answer: string;
-  draft: { title: string; body: string } | null;
+  /** title null: the panel names it in the owner's language. */
+  draft: { title: string | null; body: string } | null;
 }
 
 /** The model's reply, or null when it is not the JSON asked for (no fallback: a bad answer is the model's failure, said so). */
@@ -94,7 +98,7 @@ export function readOwnerAnswer(doc: Record<string, unknown> | null): OwnerAnswe
   if (d && typeof d === "object") {
     const t = (d as Json).title;
     const b = (d as Json).body;
-    if (typeof t === "string" && typeof b === "string" && b.trim() !== "") draft = { title: clip(t.trim() || "Draft", 120), body: clip(b, DRAFT_MAX) };
+    if (typeof b === "string" && b.trim() !== "") draft = { title: typeof t === "string" && t.trim() !== "" ? clip(t.trim(), 120) : null, body: clip(b, DRAFT_MAX) };
   }
   return { answer: clip(doc.answer.trim(), ANSWER_MAX), draft };
 }

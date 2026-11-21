@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
 
 /**
@@ -13,10 +13,10 @@ type A = OwnerConsoleDictionary["assistant"];
 interface Turn {
   q: string;
   a: string;
-  draft: { title: string; body: string } | null;
+  draft: { title: string | null; body: string } | null;
   asOf: string | null;
 }
-type Failure = { message: string; verify?: boolean };
+type Failure = { message: string; verify?: boolean; clear?: boolean };
 
 const QUESTION_MAX = 2000;
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
@@ -38,6 +38,7 @@ export function failureText(a: A, status: number, body: Record<string, unknown> 
   if (err === "daily_cap") return { message: fill(a.errors.daily_cap, { limit: typeof body?.limit === "number" ? body.limit : "—" }) };
   if (err === "not_enabled") return { message: fill(a.errors.not_enabled, { n: typeof body?.needs === "string" ? body.needs : "—" }) };
   if (err === "message_too_long") return { message: fill(a.tooLong, { n: QUESTION_MAX }) };
+  if (status === 413 || err === "payload_too_large") return { message: a.errors.tooMuchHistory, clear: true };
   if (err === "unavailable") return { message: a.errors.unavailable };
   return { message: a.errors.other };
 }
@@ -51,14 +52,30 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
   const [copied, setCopied] = useState<number | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  // A ref, not state: two presses before the re-render must not both pass (each would be a paid turn).
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    if (copied === null) return;
+    const id = setTimeout(() => setCopied(null), 2000);
+    return () => clearTimeout(id);
+  }, [copied]);
+
+  function clearAll() {
+    setTurns([]);
+    setFailure(null);
+    setLastAsked(null);
+  }
 
   async function ask(text: string) {
     const q = text.trim();
-    if (!q || pending) return;
+    if (!q || inFlight.current) return;
     if (q.length > QUESTION_MAX) {
+      setLastAsked(null);
       setFailure({ message: fill(a.tooLong, { n: QUESTION_MAX }) });
       return;
     }
+    inFlight.current = true;
     setPending(true);
     setFailure(null);
     setLastAsked(q);
@@ -79,7 +96,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
         {
           q,
           a: body.answer as string,
-          draft: d && typeof d.title === "string" && typeof d.body === "string" ? { title: d.title, body: d.body } : null,
+          draft: d && typeof d.body === "string" ? { title: typeof d.title === "string" ? d.title : null, body: d.body } : null,
           asOf: typeof body.as_of === "string" ? body.as_of : null,
         },
       ]);
@@ -88,6 +105,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
     } catch {
       setFailure({ message: a.errors.network });
     } finally {
+      inFlight.current = false;
       setPending(false);
       box.current?.focus();
     }
@@ -137,9 +155,9 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
                   <div className="oc-ai-draft">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="m-0 text-sm font-semibold">
-                        {a.draft}: {t.draft.title}
+                        {t.draft.title ? `${a.draft}: ${t.draft.title}` : a.draft}
                       </h3>
-                      <button type="button" className="btn-quiet" onClick={() => copy(i, `${t.draft!.title}\n\n${t.draft!.body}`)}>
+                      <button type="button" className="btn-quiet" onClick={() => copy(i, t.draft!.title ? `${t.draft!.title}\n\n${t.draft!.body}` : t.draft!.body)}>
                         {copied === i ? a.copied : a.copy}
                       </button>
                     </div>
@@ -150,7 +168,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
               </article>
             ))
           )}
-          {pending && <p className="oc-note">{a.asking}</p>}
+          {pending && <p className="sr-only">{a.asking}</p>}
         </div>
         {copyFailed && (
           <p className="oc-note" role="status">
@@ -165,6 +183,10 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
                 <a className="btn-quiet" href={verifyHref}>
                   {a.verify}
                 </a>
+              ) : failure.clear ? (
+                <button type="button" className="btn-quiet" onClick={clearAll}>
+                  {a.clear}
+                </button>
               ) : (
                 lastAsked && (
                   <button type="button" className="btn-quiet" disabled={pending} onClick={() => ask(lastAsked)}>
@@ -212,10 +234,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
               type="button"
               className="btn-quiet"
               disabled={pending}
-              onClick={() => {
-                setTurns([]);
-                setFailure(null);
-              }}
+              onClick={clearAll}
             >
               {a.clear}
             </button>

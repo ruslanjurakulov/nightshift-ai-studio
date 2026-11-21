@@ -12,8 +12,14 @@ import { OWNER_AI_SYSTEM, ownerUserBlock, QUESTION_MAX, readHistory, readOwnerAn
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** A question plus a few prior turns, each capped: well under this. */
-const BODY_BYTES = 40_000;
+/** A question plus six prior turns at their caps, in 2-byte Cyrillic, with room for the JSON: (2000 + 1200) × 7 × 2 ≈ 45 KB. */
+const BODY_BYTES = 64_000;
+
+/** The vendor gets an opaque id for abuse tracing (as S5's chat does), never the person's database key. */
+async function vendorUser(userId: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`nightshift-owner:${userId}`));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
 
 /**
  * POST /api/brain/owner/turn — one question to the owner's Nightshift AI. Answers and drafts only: there is no action endpoint and
@@ -77,21 +83,39 @@ export async function POST(request: Request) {
     return brainJson({ error: "unavailable" }, 503);
   }
   const turn = Number(reserve.data);
-  const finish = (ok: boolean, error: string | null, tokensIn: number | null, tokensOut: number | null) =>
-    supabase.rpc("owner_ai_finish_turn", { p_turn: turn, p_ok: ok, p_error: error, p_tokens_in: tokensIn, p_tokens_out: tokensOut });
+  // No id, no call: a turn that cannot be finished would be spend the log never records.
+  if (!Number.isSafeInteger(turn) || turn <= 0) return brainJson({ error: "unavailable" }, 503);
+  const finish = async (ok: boolean, error: string | null, tokensIn: number | null, tokensOut: number | null) => {
+    try {
+      const { error: e } = await supabase.rpc("owner_ai_finish_turn", { p_turn: turn, p_ok: ok, p_error: error, p_tokens_in: tokensIn, p_tokens_out: tokensOut });
+      return !e;
+    } catch {
+      return false;
+    }
+  };
 
-  const locale = await getLocale();
-  const llm = await callChatModel(model.id, OWNER_AI_SYSTEM, ownerUserBlock({ facts, question, history, locale }), { endUser: user.id });
-  if (!llm.ok) {
-    await finish(false, llm.error, llm.tokensIn, llm.tokensOut);
-    // The failure names its remedy (rule 6): the page says "top up the chat model's provider" for vendor_quota, and so on.
-    return brainJson({ error: "model_failed", reason: llm.error }, llm.error === "timeout" ? 504 : 502);
+  // Everything after the reserve is guarded (as S5's chat is, after Lens on 0198): a throw must still finish the turn, never
+  // leave it "reserved" with a bare 500.
+  try {
+    const locale = await getLocale().catch(() => "en");
+    const llm = await callChatModel(model.id, OWNER_AI_SYSTEM, ownerUserBlock({ facts, question, history, locale }), { endUser: await vendorUser(user.id) });
+    if (!llm.ok) {
+      await finish(false, llm.error, llm.tokensIn, llm.tokensOut);
+      // The failure names its remedy (rule 6): the page says "top up the chat model's provider" for vendor_quota, and so on.
+      return brainJson({ error: "model_failed", reason: llm.error }, llm.error === "timeout" ? 504 : 502);
+    }
+    const answer = readOwnerAnswer(extractJson(llm.text));
+    if (!answer) {
+      await finish(false, "bad_answer", llm.tokensIn, llm.tokensOut);
+      return brainJson({ error: "model_failed", reason: "bad_answer" }, 502);
+    }
+    // The answer is paid for whether or not the log write lands: it is returned either way, and a failed write is the
+    // only thing a log line names (no question, no answer).
+    if (!(await finish(true, null, llm.tokensIn, llm.tokensOut))) console.error("owner ai: finish_turn failed", turn);
+    return brainJson({ answer: answer.answer, draft: answer.draft, as_of: facts.as_of, model: model.id });
+  } catch (e) {
+    await finish(false, "unknown", null, null);
+    console.error("owner ai: turn failed", e instanceof Error ? e.name : "unknown");
+    return brainJson({ error: "unavailable" }, 503);
   }
-  const answer = readOwnerAnswer(extractJson(llm.text));
-  if (!answer) {
-    await finish(false, "bad_answer", llm.tokensIn, llm.tokensOut);
-    return brainJson({ error: "model_failed", reason: "bad_answer" }, 502);
-  }
-  await finish(true, null, llm.tokensIn, llm.tokensOut);
-  return brainJson({ answer: answer.answer, draft: answer.draft, as_of: facts.as_of, model: model.id });
 }

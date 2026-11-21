@@ -35,7 +35,8 @@ const s = vi.hoisted(() => ({
   facts: null as unknown,
   factsErr: null as unknown,
   llm: { ok: true, text: '{"answer":"Pay Lab Vendor.","draft":null}', tokensIn: 10, tokensOut: 5 } as Record<string, unknown>,
-  llmCalls: [] as { id: string; system: string; user: string }[],
+  llmCalls: [] as { id: string; system: string; user: string; opts: Record<string, unknown> }[],
+  llmThrow: false,
   factsCalls: 0,
 }));
 
@@ -66,8 +67,9 @@ vi.mock("@/lib/server/owner-brain-facts", () => {
   };
 });
 vi.mock("@/lib/server/brain/llm", () => ({
-  callChatModel: async (id: string, system: string, user: string) => {
-    s.llmCalls.push({ id, system, user });
+  callChatModel: async (id: string, system: string, user: string, opts: Record<string, unknown>) => {
+    s.llmCalls.push({ id, system, user, opts });
+    if (s.llmThrow) throw new Error("socket hang up");
     return s.llm;
   },
 }));
@@ -96,6 +98,7 @@ beforeEach(() => {
   s.factsErr = null;
   s.llm = { ok: true, text: 'Sure: {"answer":"Pay Lab Vendor.","draft":{"title":"Top-up note","body":"Pay on the vendor page."}}', tokensIn: 10, tokensOut: 5 };
   s.llmCalls = [];
+  s.llmThrow = false;
   s.factsCalls = 0;
 });
 
@@ -181,6 +184,27 @@ describe("the model", () => {
   });
 });
 
+describe("after the reserve", () => {
+  it("a throw still finishes the turn as failed, and answers unavailable rather than a bare 500", async () => {
+    s.llmThrow = true;
+    expect(await call()).toMatchObject({ status: 503, body: { error: "unavailable" } });
+    expect(s.rpcCalls.find((c) => c.name === "owner_ai_finish_turn")?.args).toMatchObject({ p_turn: 7, p_ok: false, p_error: "unknown" });
+  });
+
+  it("a reserve that returns no turn id calls no vendor", async () => {
+    s.rpc.owner_ai_reserve_turn = { data: null, error: null };
+    expect(await call()).toMatchObject({ status: 503, body: { error: "unavailable" } });
+    expect(s.llmCalls).toEqual([]);
+  });
+
+  it("the vendor gets an opaque id, never the person's database key", async () => {
+    await call();
+    const id = s.llmCalls[0].opts.endUser as string;
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(id).not.toContain("owner-1");
+  });
+});
+
 describe("the answer", () => {
   it("returns only the answer, the draft, the facts' time and the model — never the facts or the raw reply", async () => {
     const out = await call({ question: "Which API must I pay?", history: [{ q: "Hi", a: "Hello" }, { q: 5, a: "x" }] });
@@ -220,7 +244,7 @@ describe("the prompt helpers", () => {
     expect(doc.channels[0].channel_id).toBe(`c${PROMPT_CHANNELS + 10}`);
     expect(doc.channels_omitted).toBe(20);
     // The original object is not changed.
-    expect((f.health as { value: { channels: unknown[] } }).value.channels).toHaveLength(PROMPT_CHANNELS + 20);
+    expect((f.health as unknown as { value: { channels: unknown[] } }).value.channels).toHaveLength(PROMPT_CHANNELS + 20);
   });
 
   it("history from the browser is plain capped strings, at most six turns", () => {
@@ -234,7 +258,9 @@ describe("the prompt helpers", () => {
     expect(readOwnerAnswer(null)).toBeNull();
     expect(readOwnerAnswer({ answer: "" })).toBeNull();
     expect(readOwnerAnswer({ answer: "ok", draft: { title: "t" } })).toEqual({ answer: "ok", draft: null });
-    expect(readOwnerAnswer({ answer: "x".repeat(3000), draft: null })!.answer.length).toBeLessThanOrEqual(2501);
+    // No English fallback title: the panel names an untitled draft in the owner's language.
+    expect(readOwnerAnswer({ answer: "ok", draft: { body: "b" } })).toEqual({ answer: "ok", draft: { title: null, body: "b" } });
+    expect(readOwnerAnswer({ answer: "x".repeat(3000), draft: null })!.answer.length).toBeLessThanOrEqual(1201);
   });
 
   it("the user block never carries the system rules (they go only as the system prompt)", () => {
