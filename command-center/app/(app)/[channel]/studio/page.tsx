@@ -65,7 +65,9 @@ export default async function StudioPage({
         : channel && since
           ? { kind: "window" as const, channel, since }
           : null;
-    return <LiveView filmStudio={filmStudio} target={target} />;
+    // ?brain=<conversation> with no plan named: the conversation's brief as a draft, followed live once it is handed off.
+    const brain = !target && typeof sp.brain === "string" && /^[0-9a-f-]{36}$/i.test(sp.brain) ? sp.brain : null;
+    return <LiveView filmStudio={filmStudio} target={target} brain={brain} />;
   }
   if (sp.view === "timeline") {
     // The Timeline reads one project through /api/films (RLS, film_json) in the browser; the server only says whether the section is

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { coerceTimelineFilm } from "../lib/studio/timeline";
-import { briefGraph, coerceFilmLive, coerceRunLive, filmGraph, runGraph, type LiveSegment, type RunEvent } from "../lib/studio/liveGraph";
+import { briefGraph, coerceBrief, coerceFilmLive, coerceRunLive, filmGraph, runGraph, type LiveSegment, type RunEvent } from "../lib/studio/liveGraph";
 import { S1, S2, filmJson, sceneJson } from "./films-fixtures";
 
 const PIC = "a1000000-0000-4000-8000-0000000000a1";
@@ -231,19 +231,26 @@ describe("a channel run", () => {
 });
 
 describe("the brief, before Create", () => {
-  const brief = {
-    idea: "Two heroes cross the desert",
-    story: "A sword is lost; it must be found before sunset.",
-    characters: [{ id: "hero", name: "Aziz" }],
-    locations: [{ id: "desert", name: "Desert", assetId: PIC }],
+  // BRIEF v1 as GET /api/brain/session/<id> returns it (docs/studio/NIGHTSHIFT_AI.md).
+  const raw = {
+    version: 1, session_id: "b0000000-0000-4000-8000-0000000000b0", status: "drafting", kind: "short",
+    title: "Desert sword", idea: "Two heroes cross the desert",
+    story: { logline: "A sword is lost; it must be found before sunset.", conflict: "" },
+    chapters: [{ id: "ch1", title: "Cold open", start_s: 0, beats: [] }],
+    characters: [{ id: "hero", name: "Aziz", asset_id: null, source: "prompt" }],
+    locations: [{ id: "desert", name: "Desert", asset_id: PIC }],
     props: [{ id: "sword", name: "Sword" }],
     scenes: [
-      { id: S1, summary: "Aziz in the dunes", refs: ["hero", "desert"], price: 12 },
-      { id: S2, summary: "The sword in the sand", refs: ["sword", "ghost"] },
+      { id: S1, n: 1, title: "Dunes", visual_prompt: "Aziz in the dunes", character_ids: ["hero"], location_id: "desert", prop_ids: [] },
+      { id: S2, n: 2, title: "Sand", visual_prompt: "The sword in the sand", character_ids: ["ghost"], location_id: null, prop_ids: ["sword"] },
     ],
-    voice: "Narrator",
-    music: null,
+    voice: { mode: "clip_audio" },
+    music: { mode: "off" },
+    price: { state: "priced", total_credits: 30, nodes: { [S1]: 12 }, spendable: 300, fits: true, shorter: null },
+    handoff: null,
+    smuggled: "<script>",
   };
+  const brief = coerceBrief(raw)!;
 
   it("draws every step as a draft: no lamp is lit, nothing reads as running or done but a reference already made", () => {
     const g = briefGraph(brief);
@@ -262,17 +269,48 @@ describe("the brief, before Create", () => {
     expect(g.edges.some((e) => e.from === "ref:ghost")).toBe(false);
   });
 
-  it("a price is only where the backend gave one, never guessed", () => {
+  it("a price is only where the backend gave one, never guessed, and none at all unless the server says priced", () => {
     const g = briefGraph(brief);
     expect(g.nodes.find((n) => n.id === `scene:${S1}:clip`)?.price).toBe(12);
     expect(g.nodes.find((n) => n.id === `scene:${S2}:clip`)?.price).toBeNull();
     expect(g.nodes.find((n) => n.id === "assembly")?.price).toBeNull();
     expect(g.nodes.find((n) => n.id === "music")?.status).toBe("none");
+    for (const state of ["unpriced", "failed", "exempt", undefined]) {
+      const b = coerceBrief({ ...raw, price: { ...raw.price, state } })!;
+      expect(briefGraph(b).nodes.every((n) => n.price == null), String(state)).toBe(true);
+    }
+    expect(briefGraph(coerceBrief({ ...raw, price: { state: "priced", nodes: { [S1]: "12; drop" } } })!).nodes.every((n) => n.price == null)).toBe(true);
+  });
+
+  it("voice off is no voice step, as the live film draws it; not asked yet is still planned", () => {
+    expect(briefGraph(coerceBrief({ ...raw, voice: { mode: "off" } })!).nodes.find((n) => n.id === "voice")?.status).toBe("none");
+    expect(briefGraph(coerceBrief({ ...raw, voice: undefined })!).nodes.find((n) => n.id === "voice")?.status).toBe("draft");
   });
 
   it("the steps keep the ids the live film uses, so Create lights them without a redraw", () => {
     const draftIds = new Set(briefGraph(brief).nodes.map((n) => n.id));
     const live = filmGraph(reading({ status: "running" }, [sceneJson(S1, 0), sceneJson(S2, 1)]));
     for (const n of live.nodes) expect(draftIds.has(n.id)).toBe(true);
+  });
+
+  it("a long video is drawn as the channel run's own stages, with the ids the live run uses", () => {
+    const g = briefGraph(coerceBrief({ ...raw, kind: "long" })!);
+    const live = runGraph({ job: null, window: { since: "2026-11-21T00:00:00Z", now: "2026-11-21T00:01:00Z" }, events: [] });
+    expect(g.nodes.map((n) => n.id)).toEqual(live.nodes.map((n) => n.id));
+    expect(g.nodes.every((n) => n.status === "draft")).toBe(true);
+  });
+
+  it("a handoff is followed only once created, and only when it names a real target", () => {
+    const film = "f0000000-0000-4000-8000-0000000000f0";
+    const ch = "c0000000-0000-4000-8000-0000000000c0";
+    expect(coerceBrief({ ...raw, handoff: { kind: "film", film_id: film } })!.handoff).toBeNull();
+    expect(coerceBrief({ ...raw, status: "created", handoff: { kind: "film", film_id: film } })!.handoff).toEqual({ kind: "film", filmId: film });
+    expect(coerceBrief({ ...raw, status: "created", handoff: { kind: "run", channel_id: ch, job_id: 42 } })!.handoff).toEqual({ kind: "run", channelId: ch, jobId: "42" });
+    expect(coerceBrief({ ...raw, status: "created", handoff: { kind: "run", channel_id: ch, dispatched_at: "2026-11-21T00:00:00Z" } })!.handoff).toEqual({
+      kind: "run", channelId: ch, dispatchedAt: "2026-11-21T00:00:00Z",
+    });
+    expect(coerceBrief({ ...raw, status: "created", handoff: { kind: "film", film_id: "../etc" } })!.handoff).toBeNull();
+    expect(coerceBrief({ ...raw, status: "created", handoff: { kind: "run", channel_id: ch, job_id: "1; drop" } })!.handoff).toBeNull();
+    expect(coerceBrief("nope")).toBeNull();
   });
 });

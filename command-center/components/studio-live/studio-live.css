@@ -1,5 +1,6 @@
 /* The Studio's live view (LiveView.tsx): the canvas's tokens (.cv-root), a read-only board, and a list at phone width. */
-.lv-root { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 16px; background: var(--canvas); color: var(--text); }
+/* Content height, not the canvas's fixed one: at phone width the list would spill past the background (Pixel M3). */
+.lv-root { height: auto; min-height: 100%; display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 16px; background: var(--canvas); color: var(--text); }
 .lv-head { display: grid; gap: 4px; }
 .lv-head h1 { margin: 0; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
 .lv-muted { margin: 0; font-size: 13px; color: var(--dim); }
@@ -32,7 +33,8 @@
 @keyframes lv-lit { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--go) 55%, transparent); } to { box-shadow: 0 0 0 12px transparent; } }
 .lv-card.is-failed { border-color: var(--tally); background: color-mix(in srgb, var(--tally) 8%, var(--key)); }
 .lv-card.is-unknown, .lv-card.is-stopped { border-style: dashed; }
-.lv-card.is-none, .lv-card.is-skipped { opacity: 0.6; }
+/* Quiet but readable (Pixel M7: opacity put the status words under 4.5:1): a dotted border and the dim text token. */
+.lv-card.is-none, .lv-card.is-skipped { border-style: dotted; color: var(--dim); background: transparent; }
 /* Planned in the conversation, before Create: a sketch, not a running step. */
 .lv-card.is-draft { border-style: dashed; color: var(--dim);
   background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--rule) 55%, transparent) 7px 8px), var(--key); }

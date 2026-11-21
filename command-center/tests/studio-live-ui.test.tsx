@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { studioLiveEn as c } from "../lib/i18n/studio-live/en";
-import { FILM, S1, filmJson, sceneJson } from "./films-fixtures";
+import { coerceBrief } from "../lib/studio/liveGraph";
+import { FILM, S1, S2, filmJson, sceneJson } from "./films-fixtures";
 
 vi.mock("@/lib/i18n/context", async () => {
   const { en } = await import("../lib/i18n/en");
@@ -118,7 +119,7 @@ describe("details", () => {
     const d = screen.getByTestId("live-details");
     expect(within(d).getByTestId("live-failure").textContent).toContain("provider_timeout");
     expect(within(d).getByTestId("live-failure").textContent).toContain(c.remedyGeneric);
-    expect(within(d).getByTestId("live-credits").textContent).toBe("Held 12 · charged 0 credits");
+    expect(within(d).getByTestId("live-credits").textContent).toBe("Held 12 credits · charged 0");
     // Read-only: the failed step offers no retry key.
     expect(within(d).queryByRole("button", { name: /retry|try again/i })).toBeNull();
   });
@@ -130,6 +131,52 @@ describe("details", () => {
     fireEvent.click(node("final"));
     const fin = screen.getByTestId("live-final");
     expect(within(fin).getByTestId("live-open-timeline").getAttribute("href")).toBe(`/alpha/studio?view=timeline&film=${FILM}`);
+  });
+
+  it("a done picture shows in the details (an image has a thumbnail and no play link); Escape closes and focus returns to the step", async () => {
+    const PIC = "a1000000-0000-4000-8000-0000000000a1";
+    answer = (url) =>
+      url.startsWith("/api/media/")
+        ? { status: 200, body: { asset: { kind: "image" }, urls: { thumb: "https://cdn.test/pic.webp" }, served: true } }
+        : {
+            status: 200,
+            body: {
+              film: film("running", { takes: [{ id: "k1", kind: "keyframe", status: "completed", version: 1, shot_index: 0, attempt: 1, result_asset_id: PIC }] }),
+              segments: [seg()],
+              takes: [],
+            },
+          };
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-list");
+    const card = node(`scene:${S1}:keyframe`);
+    fireEvent.click(card);
+    const d = screen.getByTestId("live-details");
+    await waitFor(() => expect(d.querySelector("img")?.getAttribute("src")).toBe("https://cdn.test/pic.webp"));
+    fireEvent.keyDown(within(d).getByRole("button", { name: c.close }), { key: "Escape" });
+    expect(screen.queryByTestId("live-details")).toBeNull();
+    expect(document.activeElement).toBe(node(`scene:${S1}:keyframe`));
+  });
+
+  it("a scene reads as its picture then its clip in the phone list", async () => {
+    answer = live({ film: filmJson({ status: "running" }, [sceneJson(S1, 0), sceneJson(S2, 1)]), segments: [seg()], takes: [] });
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    const list = await screen.findByTestId("live-list");
+    const ids = [...list.querySelectorAll("[data-testid^='live-node-']")].map((e) => e.getAttribute("data-testid")!.slice("live-node-".length));
+    const at = (id: string) => ids.indexOf(id);
+    expect(at(`scene:${S1}:keyframe`)).toBeLessThan(at(`scene:${S1}:clip`));
+    expect(at(`scene:${S1}:clip`)).toBeLessThan(at(`scene:${S2}:keyframe`));
+  });
+
+  it("an expired session's sign-in returns to this plan; a plan not found leaves a way back to the Studio", async () => {
+    answer = () => ({ status: 401, body: {} });
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    const ex = await screen.findByTestId("live-expired");
+    expect(within(ex).getByRole("link").getAttribute("href")).toMatch(/^\/login\?next=/);
+    cleanup();
+    answer = () => ({ status: 404, body: {} });
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-notfound");
+    expect(screen.getByTestId("live-back").getAttribute("href")).toBe("/alpha/studio");
   });
 
   it("an unreadable assembly reads not known, and its credits not recorded", async () => {
@@ -215,10 +262,64 @@ describe("the board", () => {
 describe("before Create", () => {
   it("the brief is drawn as planned steps, nothing is read, and the note says nothing runs yet", () => {
     answer = live({});
-    render(<LiveView filmStudio target={null} brief={{ idea: "x", scenes: [{ id: S1, summary: "A dune", price: 12 }] }} />);
+    render(<LiveView filmStudio target={null} brief={coerceBrief({ idea: "x", scenes: [{ id: S1, n: 1, visual_prompt: "A dune" }], price: { state: "priced", nodes: { [S1]: 12 } } })} />);
     expect(screen.getByTestId("live-draft-note").textContent).toBe(c.draftNote);
     expect(node(`scene:${S1}:clip`).getAttribute("data-status")).toBe("draft");
     expect(node(`scene:${S1}:clip`).textContent).toContain("12 credits");
     expect(calls).toEqual([]);
+  });
+});
+
+describe("a Nightshift AI conversation (?brain=)", () => {
+  const SESSION = "b0000000-0000-4000-8000-0000000000b0";
+  const brainBrief = (over: Record<string, unknown> = {}) => ({
+    status: "drafting", kind: "short", title: "Desert sword", idea: "x", scenes: [{ id: S1, n: 1, visual_prompt: "A dune" }], ...over,
+  });
+
+  it("reads the conversation's brief with GET only, and reads again when the panel says this conversation changed", async () => {
+    let brief = brainBrief();
+    answer = (url) => (url.includes("/api/brain/session/") ? { status: 200, body: { brief, card: null, updated_at: "2026-11-21T00:00:00Z" } } : { status: 404, body: {} });
+    render(<LiveView filmStudio target={null} brain={SESSION} />);
+    await waitFor(() => expect(node(`scene:${S1}:clip`).getAttribute("data-status")).toBe("draft"));
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Desert sword");
+    brief = brainBrief({ voice: { mode: "off" } });
+    act(() => {
+      window.dispatchEvent(new CustomEvent("nightshift:brain-brief", { detail: { session_id: "another-conversation" } }));
+    });
+    expect(calls.length).toBe(1);
+    act(() => {
+      window.dispatchEvent(new CustomEvent("nightshift:brain-brief", { detail: { session_id: SESSION } }));
+    });
+    await waitFor(() => expect(node("voice").getAttribute("data-status")).toBe("none"));
+    expect(calls.every((x) => x.method === "GET" && x.url === `/api/brain/session/${SESSION}`)).toBe(true);
+  });
+
+  it("after Create the view follows the handoff: the film is read live, in place", async () => {
+    answer = (url) =>
+      url.includes("/api/brain/session/")
+        ? { status: 200, body: { brief: brainBrief({ status: "created", handoff: { kind: "film", film_id: FILM } }) } }
+        : { status: 200, body: { film: film("running"), segments: [seg()], takes: [] } };
+    render(<LiveView filmStudio target={null} brain={SESSION} />);
+    await waitFor(() => expect(calls.some((x) => x.url === `/api/films/${FILM}/live`)).toBe(true));
+    await waitFor(() => expect(node(`scene:${S1}:clip`).getAttribute("data-status")).not.toBe("draft"));
+    expect(calls.every((x) => x.method === "GET")).toBe(true);
+  });
+
+  it("a conversation that is not this person's, or a server with no Brain, says so; a failed read offers Try again", async () => {
+    answer = () => ({ status: 404, body: {} });
+    render(<LiveView filmStudio target={null} brain={SESSION} />);
+    expect((await screen.findByTestId("live-notfound")).textContent).toBe(c.briefNotFound);
+    cleanup();
+    answer = () => ({ status: 503, body: {} });
+    render(<LiveView filmStudio target={null} brain={SESSION} />);
+    expect((await screen.findByTestId("live-unavailable")).textContent).toBe(c.briefUnavailable);
+    cleanup();
+    answer = () => ({ status: 500, body: {} });
+    render(<LiveView filmStudio target={null} brain={SESSION} />);
+    const alert = await screen.findByTestId("live-error");
+    expect(alert.textContent).toContain(c.briefReadFailed);
+    answer = () => ({ status: 200, body: { brief: brainBrief() } });
+    fireEvent.click(within(alert).getByRole("button", { name: c.retry }));
+    await waitFor(() => expect(node(`scene:${S1}:clip`).getAttribute("data-status")).toBe("draft"));
   });
 });

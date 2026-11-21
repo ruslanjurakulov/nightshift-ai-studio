@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { AudioLines, Clapperboard, FileText, Film, Flag, Image as ImageIcon, Lightbulb, MapPin, Music, Search, ShieldCheck, Sword, Upload, UserRound, Wand2, X, type LucideIcon } from "lucide-react";
@@ -12,6 +12,7 @@ import { AssetDownloads } from "@/components/media/AssetDownloads";
 import { Lamp } from "@/components/studio-canvas/parts";
 import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/runBackend";
+import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import "@/components/studio-canvas/studio-canvas.css";
@@ -54,17 +55,38 @@ const NARROW = "(max-width: 1279px)";
 const FIT = { padding: 0.12, minZoom: 0.72, maxZoom: 1 };
 const reduced = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Refit when the board resizes (the details panel opening narrows it), so the plan's right end never slides out of view. */
-function FitOnResize() {
-  const { fitView } = useReactFlow();
+/**
+ * Refit when the board resizes (the details panel opening narrows it), and keep the selected step on screen: the whole plan may not
+ * fit at a readable zoom (FIT.minZoom), so after the fit the view pans until the chosen card is inside the board (Pixel H3).
+ */
+function FitOnResize({ selected }: { selected: string | null }) {
+  const { fitView, getInternalNode, getViewport, setViewport } = useReactFlow();
   const ref = useRef<HTMLDivElement>(null);
+  const sel = useRef(selected);
+  sel.current = selected;
+  const keep = useCallback(() => {
+    const board = ref.current?.closest(".lv-board");
+    const id = sel.current;
+    const n = id ? getInternalNode(id) : undefined;
+    if (!board || !n) return;
+    const { x, y, zoom } = getViewport();
+    const w = (n.measured.width ?? 200) * zoom;
+    const left = n.internals.positionAbsolute.x * zoom + x;
+    const room = board.clientWidth;
+    const pad = 24;
+    let nx = x;
+    if (left + w > room - pad) nx = x - (left + w - (room - pad));
+    if (left + (nx - x) < pad) nx = x + (pad - left);
+    if (nx !== x) void setViewport({ x: nx, y, zoom }, { duration: reduced() ? 0 : 200 });
+  }, [getInternalNode, getViewport, setViewport]);
   useEffect(() => {
     const el = ref.current?.closest(".lv-board");
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => void fitView({ ...FIT, duration: reduced() ? 0 : 200 }));
+    const ro = new ResizeObserver(() => void Promise.resolve(fitView({ ...FIT, duration: reduced() ? 0 : 200 })).then(() => setTimeout(keep, reduced() ? 0 : 220)));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [fitView]);
+  }, [fitView, keep]);
+  useEffect(() => keep(), [selected, keep]);
   return <div ref={ref} hidden />;
 }
 const COL_W = 236;
@@ -84,6 +106,12 @@ function useNarrow(): boolean {
 }
 
 type T = ReturnType<typeof useI18n>["t"];
+
+/** Signing in again returns to this very plan (Pixel M10), as AssetDownloads does. */
+function loginHref(): string {
+  const here = typeof window === "undefined" ? "/" : window.location.pathname + window.location.search;
+  return `/login?next=${encodeURIComponent(here || "/")}`;
+}
 
 /** system_events.ts is text, often a naive utcnow().isoformat(): read without an offset it would be local time (Lens M1). */
 export function utc(ts: string): Date {
@@ -185,13 +213,16 @@ function Board({ graph, selected, onOpen, names, words, prices, lit }: ViewProps
           nodesConnectable={false}
           elementsSelectable={false}
           edgesFocusable={false}
+          nodesFocusable={false}
+          // A read-only board: React Flow's own "arrow keys move the node, delete removes it" would be a false instruction.
+          disableKeyboardA11y
           fitView
           fitViewOptions={FIT}
           minZoom={0.3}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
         >
-          <FitOnResize />
+          <FitOnResize selected={selected} />
         </ReactFlow>
       </ReactFlowProvider>
     </div>
@@ -199,7 +230,9 @@ function Board({ graph, selected, onOpen, names, words, prices, lit }: ViewProps
 }
 
 function List({ graph, selected, onOpen, names, words, prices, lit }: ViewProps) {
-  const order = [...graph.nodes].sort((a, b) => a.col - b.col || a.row - b.row);
+  // A scene reads as its picture then its clip (Pixel M5): the scene columns (2 and 3) are ordered by row first.
+  const group = (n: LiveNode) => (n.col < 2 ? 0 : n.col <= 3 ? 1 : 2);
+  const order = [...graph.nodes].sort((a, b) => group(a) - group(b) || (group(a) === 1 ? a.row - b.row || a.col - b.col : a.col - b.col || a.row - b.row));
   return (
     <ol className="lv-list" data-testid="live-list">
       {order.map((n) => {
@@ -233,26 +266,38 @@ function Output({ node }: { node: LiveNode }) {
   const { t } = useI18n();
   const ids = useMemo(() => (node.assetId ? [node.assetId] : []), [node.assetId]);
   const { urls } = useMediaUrls(ids);
-  if (!node.assetId) return node.text ? <p className="lv-text">{node.text}</p> : <p className="lv-muted">{t.studioLive.noOutput}</p>;
+  // A failed step has nothing coming: "nothing to show yet" would promise otherwise.
+  if (!node.assetId) return node.text ? <p className="lv-text">{node.text}</p> : node.status === "failed" ? null : <p className="lv-muted">{t.studioLive.noOutput}</p>;
   const m = urls.get(node.assetId);
   if (!m) return <p className="lv-muted">{t.studioLive.loading}</p>;
-  if (m.failed || m.unavailable || !m.play) return <p className="lv-muted">{t.studioLive.outputUnavailable}</p>;
+  // A picture has a thumbnail and no play link (useMediaUrls gives play to video and audio only): Pixel H2.
+  const src = m.kind === "image" ? (m.thumb ?? m.play) : m.play;
+  if (m.failed || m.unavailable || !src) return <p className="lv-muted">{t.studioLive.outputUnavailable}</p>;
   // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
-  if (m.kind === "image") return <img className="lv-media" src={m.thumb ?? m.play} alt="" />;
-  if (m.kind === "audio") return <audio className="lv-audio" src={m.play} controls preload="none" />;
-  return <video className="lv-media" src={m.play} poster={m.thumb ?? undefined} controls preload="metadata" playsInline />;
+  if (m.kind === "image") return <img className="lv-media" src={src} alt="" />;
+  if (m.kind === "audio") return <audio className="lv-audio" src={src} controls preload="none" />;
+  return <video className="lv-media" src={src} poster={m.thumb ?? undefined} controls preload="metadata" playsInline />;
 }
 
 function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean; filmId: string | null; onClose: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const c = t.studioLive;
   const path = useChannelPath();
   const closeRef = useRef<HTMLButtonElement>(null);
   // preventScroll: focusing the close key must not scroll the page and hide the plan's title (S4 MEDIUM 4).
   useEffect(() => closeRef.current?.focus({ preventScroll: true }), [node.id]);
-  const credit = (v: number | null) => (v === null ? c.creditsUnrecorded : String(v));
   return (
-    <aside className="lv-details" aria-label={c.details} data-testid="live-details">
+    <aside
+      className="lv-details"
+      aria-label={c.details}
+      data-testid="live-details"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
       <div className="lv-details-head">
         <h2>{nodeName(t, node)}</h2>
         <button type="button" ref={closeRef} className="cv-kbtn" onClick={onClose} aria-label={c.close}>
@@ -272,14 +317,19 @@ function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean;
         })()
       ) : null}
       {node.kind === "upload" ? (
-        <p data-testid="live-privacy">{node.privacy === "private" ? c.privacyPrivate : node.privacy ? fmt(c.privacyOther, { privacy: node.privacy }) : c.privacyUnknown}</p>
+        <p data-testid="live-privacy">{node.privacy === "private" ? c.privacyPrivate : node.privacy ? fmt(c.privacyOther, { privacy: c.privacyWords[node.privacy] ?? node.privacy }) : c.privacyUnknown}</p>
       ) : null}
       {!run ? (
         <p className="lv-muted" data-testid="live-credits">
-          {node.credits ? fmt(c.credits, { held: credit(node.credits.held), charged: credit(node.credits.charged) }) : c.creditsNone}
+          {node.credits
+            ? [
+                node.credits.held === null ? c.creditsHeldUnrecorded : fmt(c.creditsHeld, { n: node.credits.held }),
+                node.credits.charged === null ? c.creditsChargedUnrecorded : fmt(c.creditsCharged, { n: node.credits.charged }),
+              ].join(" · ")
+            : c.creditsNone}
         </p>
       ) : node.at ? (
-        <p className="lv-muted">{fmt(c.recordedAt, { time: utc(node.at).toLocaleString() })}</p>
+        <p className="lv-muted">{fmt(c.recordedAt, { time: utc(node.at).toLocaleString(locale === "uz" ? "uz-Latn-UZ" : locale) })}</p>
       ) : null}
       {!run ? <Output node={node} /> : null}
       {node.kind === "final" && node.assetId ? (
@@ -301,11 +351,27 @@ function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean;
  * rows as they change. Read-only: no drag, no wiring, no key that starts, repeats or charges anything (CLAUDE.md rule 3); a failed
  * step shows its reason and remedy only. At phone width the board becomes a list of the same steps.
  */
-export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boolean; target: LiveTarget | null; brief?: Brief | null }) {
+export function LiveView({
+  filmStudio,
+  target: given,
+  brief: givenBrief = null,
+  brain = null,
+}: {
+  filmStudio: boolean;
+  target: LiveTarget | null;
+  brief?: Brief | null;
+  /** A Nightshift AI conversation (?brain=): its brief is drawn as a draft, and its handoff, once Create is pressed, is followed live. */
+  brain?: string | null;
+}) {
   const { t } = useI18n();
   const c = t.studioLive;
   const narrow = useNarrow();
-  const run = target?.kind === "run" || target?.kind === "window";
+  const studioPath = useChannelPath();
+  const brainRead = useBrainBrief(given || givenBrief ? null : brain);
+  const brief = givenBrief ?? (brainRead.load.state === "ready" ? brainRead.load.brief : null);
+  // After Create the brief names what was made; the view follows it in place, with the same cards where the ids match.
+  const target = given ?? (brief?.handoff ? handoffTarget(brief.handoff) : null);
+  const run = target?.kind === "run" || target?.kind === "window" || (!target && brief?.kind === "long");
   const shown = filmStudio || run ? target : null;
   const { load, stale, retry } = useLiveGraph(shown);
   const [selected, setSelected] = useState<string | null>(null);
@@ -320,6 +386,13 @@ export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boo
     [graph, c],
   );
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
+  // Closing the details gives focus back to the step it was opened from, not to the page (Pixel M2). The card is focused before the
+  // panel unmounts: focusing it after, the browser has already dropped focus to <body>.
+  const close = () => {
+    const id = selected;
+    if (id) [...document.querySelectorAll<HTMLElement>(".lv-card")].find((el) => el.dataset.testid === `live-node-${id}`)?.focus({ preventScroll: true });
+    setSelected(null);
+  };
   // The steps that turned done since the last reading: only they play the "turning on" ring, never every done card on first load.
   const seen = useRef<Map<string, LiveStatus> | null>(null);
   const [lit, setLit] = useState<ReadonlySet<string>>(new Set());
@@ -332,7 +405,28 @@ export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boo
 
   let body: React.ReactNode;
   if (draft) body = null;
-  else if (!target) body = <p className="lv-muted" data-testid="live-notfound">{c.notFound}</p>;
+  else if (brain && !target && !brief) {
+    const b = brainRead.load.state;
+    body =
+      b === "loading" ? (
+        <p className="lv-muted" role="status" data-testid="live-loading">{c.briefLoading}</p>
+      ) : b === "expired" ? (
+        <p role="alert" data-testid="live-expired">
+          {c.expired} <Link href={loginHref()}>{c.signIn}</Link>
+        </p>
+      ) : b === "notFound" ? (
+        <p data-testid="live-notfound">{c.briefNotFound}</p>
+      ) : b === "unavailable" ? (
+        <p data-testid="live-unavailable">{c.briefUnavailable}</p>
+      ) : (
+        <div role="alert" data-testid="live-error">
+          <p>{c.briefReadFailed}</p>
+          <button type="button" className="cv-kbtn" onClick={brainRead.retry}>
+            {c.retry}
+          </button>
+        </div>
+      );
+  } else if (!target) body = <p className="lv-muted" data-testid="live-notfound">{c.notFound}</p>;
   else if (!shown) body = <p className="lv-muted" data-testid="live-closed">{c.closed}</p>;
   else if (load.state === "loading") body = <p className="lv-muted" role="status" data-testid="live-loading">{c.loading}</p>;
   else if (load.state === "error")
@@ -348,18 +442,26 @@ export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boo
   else if (load.state === "expired")
     body = (
       <p role="alert" data-testid="live-expired">
-        {c.expired} <Link href="/login">{c.signIn}</Link>
+        {c.expired} <Link href={loginHref()}>{c.signIn}</Link>
       </p>
     );
   else if (load.state === "unavailable") body = <p data-testid="live-unavailable">{c.unavailable}</p>;
   else body = null;
 
+  // A plan that cannot be shown here still leaves a way on (Pixel M11).
+  const brainWaiting = !!brain && !target && !brief;
+  const deadEnd =
+    !graph &&
+    (brainWaiting
+      ? brainRead.load.state === "notFound" || brainRead.load.state === "unavailable"
+      : !target || !shown || load.state === "notFound" || load.state === "unavailable");
+
   return (
     <div className="cv-root lv-root" data-studio-live="" data-testid="live-view">
       <header className="lv-head">
-        <h1>{run ? c.runTitle : (load.state === "ready" && load.film?.film.view.film.title) || c.filmTitle}</h1>
+        <h1>{(draft && brief?.title) || (run ? c.runTitle : (load.state === "ready" && load.film?.film.view.film.title) || c.filmTitle)}</h1>
         <p className="lv-muted" data-testid={draft ? "live-draft-note" : undefined}>{draft ? c.draftNote : c.readOnly}</p>
-        {run ? <p className="lv-muted" data-testid="live-run-window">{target?.kind === "window" ? c.runWindowSince : c.runWindow}</p> : null}
+        {run && target ? <p className="lv-muted" data-testid="live-run-window">{target?.kind === "window" ? c.runWindowSince : c.runWindow}</p> : null}
         <p className="sr-only" role="status" aria-live="polite">
           {stale ? c.stale : graph?.settled ? c.settled : ""}
         </p>
@@ -372,6 +474,11 @@ export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boo
         {graph?.settled ? <p className="lv-muted" data-testid="live-settled">{c.settled}</p> : null}
       </header>
       {body}
+      {deadEnd ? (
+        <Link className="cv-kbtn self-start" href={studioPath("/studio")} data-testid="live-back">
+          {c.backToStudio}
+        </Link>
+      ) : null}
       {graph ? (
         <div className={sel ? "lv-main has-details" : "lv-main"}>
           {narrow ? (
@@ -379,7 +486,7 @@ export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boo
           ) : (
             <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           )}
-          {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} onClose={() => setSelected(null)} /> : null}
+          {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} onClose={close} /> : null}
         </div>
       ) : null}
     </div>

@@ -317,13 +317,15 @@ export function filmGraph(r: FilmReading): LiveGraph {
     credits: voiceRow ? (r.money.get(voiceRow.id) ?? null) : null,
     error: voiceRow ? (r.errors.get(voiceRow.id) ?? null) : null,
     col: 4,
-    row: Math.max(0, mid - 1),
+    // Voice and music get their own lanes above and below the scenes: on a scene row, the clips' wires into the assembly read as
+    // running through them (Pixel M4).
+    row: -1,
   });
   edges.push({ from: "script", to: "voice" });
 
   // Music is a library file the person chose, not a step that runs: there, gone from the library, or not chosen.
   const music: LiveStatus = r.film.musicMissing ? "failed" : r.film.musicAssetId ? "done" : "none";
-  nodes.push({ id: "music", kind: "music", status: music, assetId: r.film.musicMissing ? null : r.film.musicAssetId, error: r.film.musicMissing ? "music_missing" : null, col: 4, row: mid + 1 });
+  nodes.push({ id: "music", kind: "music", status: music, assetId: r.film.musicMissing ? null : r.film.musicAssetId, error: r.film.musicMissing ? "music_missing" : null, col: 4, row: rows });
 
   const seg = r.segments === null ? null : ([...r.segments].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0] ?? null);
   const asm: LiveStatus = r.segments === null ? "unknown" : seg ? assemblyStatus(seg.assemblyStatus) : noRow(fs);
@@ -464,36 +466,139 @@ export function runGraph(r: RunReading): LiveGraph {
 /* ------------------------------------------------------------------ the brief (before Create) ---------------------------------- */
 
 /**
- * The plan as Nightshift AI's conversation has it so far (S5's brief, docs/studio/NIGHTSHIFT_AI.md). Every field is optional: the
- * graph draws what the person has answered and nothing more. PROVISIONAL field names until S5 publishes the schema.
+ * The plan as Nightshift AI's conversation has it so far: S5's BRIEF v1 (docs/studio/NIGHTSHIFT_AI.md), read from
+ * GET /api/brain/session/<id>. Every field may still be missing: the graph draws what the person has answered and nothing more.
+ * Only the fields the canvas draws are kept; anything else in the answer is ignored.
  */
 export interface BriefRef {
   id: string;
   name: string;
-  assetId?: string | null;
+  assetId: string | null;
 }
+export interface BriefScene {
+  id: string;
+  n: number;
+  title: string | null;
+  visualPrompt: string | null;
+  characterIds: string[];
+  locationId: string | null;
+  propIds: string[];
+}
+export type BriefHandoff =
+  | { kind: "film"; filmId: string }
+  | { kind: "run"; channelId: string; dispatchedAt: string }
+  | { kind: "run"; channelId: string; jobId: string };
 export interface Brief {
-  idea?: string | null;
-  story?: string | null;
-  scenes?: { id: string; summary?: string | null; seconds?: number | null; refs?: string[]; price?: number | null }[];
-  characters?: BriefRef[];
-  locations?: BriefRef[];
-  props?: BriefRef[];
-  voice?: string | null;
-  music?: string | null;
-  prices?: { voice?: number | null; assembly?: number | null } | null;
+  status: "drafting" | "ready" | "created" | null;
+  kind: "long" | "short" | null;
+  title: string | null;
+  idea: string | null;
+  logline: string | null;
+  chapters: string[];
+  characters: BriefRef[];
+  locations: BriefRef[];
+  props: BriefRef[];
+  scenes: BriefScene[];
+  voice: "off" | "clip_audio" | "pipeline" | null;
+  music: "off" | "library" | null;
+  /** brief.price.nodes, only when the server says the brief is priced: a number on a node is the backend's, never the model's. */
+  prices: ReadonlyMap<string, number>;
+  handoff: BriefHandoff | null;
 }
 
-/** The brief as a graph of DRAFT steps, in the same ids and places the live film graph will use, so Create lights it without a redraw. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const oneOf = <T extends string>(v: unknown, xs: readonly T[]): T | null => (typeof v === "string" && (xs as readonly string[]).includes(v) ? (v as T) : null);
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0) : []);
+
+/** The handoff as a live target: where Create's result is read from. A malformed handoff is no handoff (the view stays a draft). */
+function coerceHandoff(v: unknown): BriefHandoff | null {
+  const h = rec(v);
+  if (!h) return null;
+  if (h.kind === "film") {
+    const id = str(h.film_id);
+    return id && UUID.test(id) ? { kind: "film", filmId: id } : null;
+  }
+  if (h.kind !== "run") return null;
+  const channel = str(h.channel_id);
+  if (!channel || !UUID.test(channel)) return null;
+  const job = typeof h.job_id === "number" ? String(h.job_id) : str(h.job_id);
+  if (job && /^[1-9][0-9]{0,14}$/.test(job)) return { kind: "run", channelId: channel, jobId: job };
+  const at = str(h.dispatched_at);
+  return at && Number.isFinite(Date.parse(at)) ? { kind: "run", channelId: channel, dispatchedAt: at } : null;
+}
+
+/** GET /api/brain/session/<id>'s brief, or null when it is not a brief at all (an answer that cannot be drawn is not drawn). */
+export function coerceBrief(raw: unknown): Brief | null {
+  const b = rec(raw);
+  if (!b) return null;
+  const refList = (v: unknown, withAsset: boolean): BriefRef[] =>
+    (Array.isArray(v) ? v : [])
+      .map(rec)
+      .filter((r): r is Record<string, unknown> => !!r && !!str(r.id))
+      .map((r) => ({ id: str(r.id) as string, name: str(r.name) ?? "", assetId: withAsset && str(r.asset_id) && UUID.test(str(r.asset_id) as string) ? (str(r.asset_id) as string) : null }));
+  const scenes: BriefScene[] = (Array.isArray(b.scenes) ? b.scenes : [])
+    .map(rec)
+    .filter((r): r is Record<string, unknown> => !!r && !!str(r.id))
+    .map((r, i) => ({
+      id: str(r.id) as string,
+      n: num(r.n) ?? i + 1,
+      title: str(r.title),
+      visualPrompt: str(r.visual_prompt),
+      characterIds: strs(r.character_ids),
+      locationId: str(r.location_id),
+      propIds: strs(r.prop_ids),
+    }));
+  const price = rec(b.price);
+  const prices = new Map<string, number>();
+  if (price?.state === "priced")
+    for (const [k, v] of Object.entries(rec(price.nodes) ?? {})) {
+      const n = num(v);
+      if (n !== null && n >= 0) prices.set(k, n);
+    }
+  const story = rec(b.story);
+  return {
+    status: oneOf(b.status, ["drafting", "ready", "created"] as const),
+    kind: oneOf(b.kind, ["long", "short"] as const),
+    title: str(b.title),
+    idea: str(b.idea),
+    logline: story ? str(story.logline) : null,
+    chapters: (Array.isArray(b.chapters) ? b.chapters : []).map(rec).map((c) => (c ? str(c.title) : null)).filter((x): x is string => !!x),
+    characters: refList(b.characters, true),
+    locations: refList(b.locations, true),
+    props: refList(b.props, false),
+    scenes,
+    voice: oneOf(rec(b.voice)?.mode, ["off", "clip_audio", "pipeline"] as const),
+    music: oneOf(rec(b.music)?.mode, ["off", "library"] as const),
+    prices,
+    handoff: b.status === "created" ? coerceHandoff(b.handoff) : null,
+  };
+}
+
+/**
+ * The brief as a graph of DRAFT steps, in the same places the live graph will use. A long video is drawn as the channel run's own
+ * stages (Create hands it to Run now); a short one, or one whose kind is not chosen yet, as a film.
+ */
 export function briefGraph(b: Brief): LiveGraph {
   const nodes: LiveNode[] = [];
   const edges: LiveEdge[] = [];
-  const idea = (b.idea ?? "").trim();
-  nodes.push({ id: "idea", kind: "idea", status: "draft", text: idea || null, col: 0, row: 0 });
-  const story = (b.story ?? "").trim();
-  nodes.push({ id: "script", kind: "script", status: "draft", text: story || null, col: 1, row: 0 });
+  const price = (id: string): number | null => b.prices.get(id) ?? null;
+  const outline = [b.logline, ...b.chapters].filter(Boolean).join("\n") || null;
+
+  if (b.kind === "long") {
+    // Run now cuts its own scenes and picks its own topic from this brief: the stages are the pipeline's, nothing per scene.
+    const kinds: RunNodeKind[] = ["topic", "research", "script", "voice", "visuals", "render", "gate", "upload"];
+    kinds.forEach((kind, i) => {
+      const text = kind === "topic" ? b.idea ?? b.title : kind === "script" ? outline : null;
+      nodes.push({ id: kind, kind, status: "draft", text, price: price(kind), col: i, row: 0 });
+      if (i > 0) edges.push({ from: kinds[i - 1], to: kind });
+    });
+    return { nodes, edges, settled: false };
+  }
+
+  nodes.push({ id: "idea", kind: "idea", status: "draft", text: b.idea ?? b.title, col: 0, row: 0 });
+  nodes.push({ id: "script", kind: "script", status: "draft", text: outline, col: 1, row: 0 });
   edges.push({ from: "idea", to: "script" });
-  const refs: { list: BriefRef[] | undefined; kind: "character" | "location" | "prop" }[] = [
+  const refs: { list: BriefRef[]; kind: "character" | "location" | "prop" }[] = [
     { list: b.characters, kind: "character" },
     { list: b.locations, kind: "location" },
     { list: b.props, kind: "prop" },
@@ -501,33 +606,44 @@ export function briefGraph(b: Brief): LiveGraph {
   let refRow = 0;
   const refIds = new Set<string>();
   for (const { list, kind } of refs) {
-    for (const r of list ?? []) {
+    for (const r of list) {
       const id = `ref:${r.id}`;
       refIds.add(r.id);
-      nodes.push({ id, kind, status: r.assetId ? "done" : "draft", sceneTitle: r.name, assetId: r.assetId ?? null, col: 1, row: ++refRow });
+      // A reference picture that exists already (uploaded, or from the library) is real; one still to be made is a sketch.
+      nodes.push({ id, kind, status: r.assetId ? "done" : "draft", sceneTitle: r.name || undefined, assetId: r.assetId, col: 1, row: ++refRow });
       edges.push({ from: "script", to: id });
     }
   }
-  const scenes = b.scenes ?? [];
-  scenes.forEach((s, i) => {
+  b.scenes.forEach((s, i) => {
     const kf = `scene:${s.id}:keyframe`;
     const clip = `scene:${s.id}:clip`;
-    nodes.push({ id: kf, kind: "keyframe", status: "draft", scene: i + 1, text: s.summary ?? null, col: 2, row: i });
-    nodes.push({ id: clip, kind: "clip", status: "draft", scene: i + 1, text: s.summary ?? null, price: s.price ?? null, col: 3, row: i });
+    nodes.push({ id: kf, kind: "keyframe", status: "draft", scene: s.n, sceneTitle: s.title ?? undefined, text: s.visualPrompt, col: 2, row: i });
+    // brief.price.nodes is per scene: the scene's number sits on its clip, the step that costs it.
+    nodes.push({ id: clip, kind: "clip", status: "draft", scene: s.n, sceneTitle: s.title ?? undefined, text: s.visualPrompt, price: price(s.id), col: 3, row: i });
     edges.push({ from: "script", to: kf }, { from: kf, to: clip });
     // A character, place or prop made once and reused in every shot that names it: how the scenes stay consistent.
-    for (const r of s.refs ?? []) if (refIds.has(r)) edges.push({ from: `ref:${r}`, to: kf });
+    for (const r of [...s.characterIds, ...(s.locationId ? [s.locationId] : []), ...s.propIds]) if (refIds.has(r)) edges.push({ from: `ref:${r}`, to: kf });
   });
-  const rows = Math.max(1, scenes.length);
+  const rows = Math.max(1, b.scenes.length);
   const mid = Math.floor((rows - 1) / 2);
-  nodes.push({ id: "voice", kind: "voice", status: b.voice === null ? "none" : "draft", text: b.voice ?? null, price: b.prices?.voice ?? null, col: 4, row: Math.max(0, mid - 1) });
+  // Voice "off" is a film with no narration take: the live graph draws it "none" too. Not asked yet is still a planned step.
+  const voiced = b.voice !== "off";
+  nodes.push({ id: "voice", kind: "voice", status: voiced ? "draft" : "none", price: price("voice"), col: 4, row: -1 });
   edges.push({ from: "script", to: "voice" });
-  nodes.push({ id: "music", kind: "music", status: b.music ? "draft" : "none", text: b.music ?? null, col: 4, row: mid + 1 });
-  nodes.push({ id: "assembly", kind: "assembly", status: "draft", price: b.prices?.assembly ?? null, col: 5, row: mid });
-  for (const s of scenes) edges.push({ from: `scene:${s.id}:clip`, to: "assembly" });
-  edges.push({ from: "voice", to: "assembly" });
-  if (b.music) edges.push({ from: "music", to: "assembly" });
+  const music = b.music === "library";
+  nodes.push({ id: "music", kind: "music", status: music ? "draft" : "none", price: price("music"), col: 4, row: rows });
+  nodes.push({ id: "assembly", kind: "assembly", status: "draft", price: price("assembly"), col: 5, row: mid });
+  for (const s of b.scenes) edges.push({ from: `scene:${s.id}:clip`, to: "assembly" });
+  if (voiced) edges.push({ from: "voice", to: "assembly" });
+  if (music) edges.push({ from: "music", to: "assembly" });
   nodes.push({ id: "final", kind: "final", status: "draft", col: 6, row: mid });
   edges.push({ from: "assembly", to: "final" });
   return { nodes, edges, settled: false };
+}
+
+/** Where the live view reads a handed-off brief: the same URLs the Studio opens after Create (docs/studio/NIGHTSHIFT_AI.md, Handoff). */
+export function handoffHref(h: BriefHandoff): string {
+  if (h.kind === "film") return `?view=live&film=${encodeURIComponent(h.filmId)}`;
+  if ("jobId" in h) return `?view=live&channel=${encodeURIComponent(h.channelId)}&run=${encodeURIComponent(h.jobId)}`;
+  return `?view=live&channel=${encodeURIComponent(h.channelId)}&since=${encodeURIComponent(h.dispatchedAt)}`;
 }
