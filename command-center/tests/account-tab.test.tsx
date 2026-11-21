@@ -65,59 +65,37 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("the account is not in the customer's top bar", () => {
-  it("has no account button: the phone's account is the bottom bar's Settings tab", () => {
+describe("the account is the customer's top-bar avatar below lg", () => {
+  it("has one account button, named by what it does, wrapped so it hides from lg where the sidebar card is the account", () => {
     render(wrap(<Header operator={false} credits={null} email={EMAIL} />));
-    expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
-    expect(screen.queryByTitle(EMAIL)).toBeNull();
+    const button = screen.getByRole("button", { name: en.account.open });
+    expect(button.closest(".lg\\:hidden")).not.toBeNull();
+    // The e-mail is a tooltip at most, never the button's name.
+    expect(button.getAttribute("aria-label")).toBe(en.account.open);
   });
 
   it("is still the operator's last control on the console bar", () => {
     render(wrap(<Header operator credits={null} email={EMAIL} />));
     expect(screen.getByRole("button", { name: en.account.open })).toBeTruthy();
   });
+
+  it("puts + New project on the bar as a link to the projects shelf: nothing is made or spent by it", () => {
+    render(wrap(<Header operator={false} credits={null} email={EMAIL} />));
+    const link = screen.getByTestId("topbar-new-project");
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe("/chronos/studio?shelf=projects");
+    expect(link.textContent).toContain(en.customerApp.shell.newProject);
+  });
 });
 
-describe("the bottom bar's Settings tab is the account", () => {
-  const tab = () => {
-    const bar = document.querySelector("nav.ns-tabbar") as HTMLElement;
-    return within(bar).getByRole("link", { name: en.nav.settings });
-  };
-
-  it("draws the account's initial in a circle, named only 'Settings'", () => {
+describe("the bottom bar is the rail's five, with no account tab", () => {
+  it("has five tabs, Create in the centre, and draws no avatar", () => {
     render(wrap(<SideNav email={EMAIL} plan={null} />));
-    const link = tab();
-    const avatar = link.querySelector(".ns-tab-avatar") as HTMLElement;
-    expect(avatar.textContent).toBe("A");
-    expect(avatar.getAttribute("aria-hidden")).toBe("true");
-    expect(link.getAttribute("href")).toBe("/chronos/organization");
-    // Nothing sensitive in the name or a tooltip: not the e-mail, not even its local part.
-    expect(link.getAttribute("aria-label")).toBeNull();
-    expect(link.getAttribute("title")).toBeNull();
-    expect(link.textContent).not.toContain("example.com");
-    expect(link.textContent).not.toContain("ana.k");
-    expect(document.querySelector("nav.ns-tabbar")?.innerHTML).not.toContain(EMAIL);
-  });
-
-  it("marks the tab as selected with the current plate and ring on Settings, and not elsewhere", () => {
-    const { unmount } = render(wrap(<SideNav email={EMAIL} plan={null} />));
-    expect(tab().getAttribute("aria-current")).toBeNull();
-    expect(tab().querySelector(".ns-tab-avatar")?.classList.contains("is-current")).toBe(false);
-    unmount();
-    pathname = "/chronos/organization";
-    render(wrap(<SideNav email={EMAIL} plan={null} />));
-    expect(tab().getAttribute("aria-current")).toBe("page");
-    expect(tab().querySelector(".ns-tab-avatar")?.classList.contains("is-current")).toBe(true);
-  });
-
-  it("falls back to a neutral person when there is no e-mail, and the other tabs keep their glyphs", () => {
-    render(wrap(<SideNav email={null} plan={null} />));
-    const avatar = tab().querySelector(".ns-tab-avatar") as HTMLElement;
-    expect(avatar.textContent).toBe("");
-    expect(avatar.querySelector("svg")).not.toBeNull();
     const bar = document.querySelector("nav.ns-tabbar") as HTMLElement;
-    expect(bar.querySelectorAll(".ns-tab-avatar")).toHaveLength(1);
     expect(bar.querySelectorAll("li")).toHaveLength(5);
+    expect(bar.querySelectorAll(".ns-tab-avatar")).toHaveLength(0);
+    expect(bar.querySelectorAll("li")[2].textContent).toBe(en.nav.create);
+    expect(bar.innerHTML).not.toContain(EMAIL);
   });
 });
 

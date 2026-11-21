@@ -430,6 +430,8 @@ def test_turning_on_clears_a_reason_and_a_note_the_caller_sent_along(db):
 
 
 def test_the_switch_is_rate_limited_after_sixty_calls_in_ten_minutes(db):
+    # 62 calls, each its own transaction: split across a ten-minute boundary none reaches the 61st (sec_db.one_rate_window).
+    sec_db.one_rate_window(db.dsn, 600)
     enforce(db)
     seen = set()
     for _ in range(62):
@@ -1030,6 +1032,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
     # 0174 sits on 0124's api_creative_refusal, and 0124's drift guard refuses any other body: off before everything else.
     with psycopg.connect(db.dsn, autocommit=True) as c:
         sec_db.take_off_0174(c)
+        sec_db.take_off_0188(c)  # 0188 sits on 0125's sellable_models and 0124's api_creative_model_ok
     db.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
     db.su(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
     db.su(sec_db.rollback_0155_body())
@@ -1050,6 +1053,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
         db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))  # and 0159 back on it
         with psycopg.connect(db.dsn, autocommit=True) as c:
+            sec_db.put_back_0188(c)
             sec_db.put_back_0174(c)  # and 0174 last, on 0124's api_creative_refusal again
     assert db.su("select enforced from public.model_availability_settings") == [(True,)], "the seed row is on conflict do nothing"
     assert db.su("select enabled, reason, note from public.model_availability where target = 'img-z2'") == [(False, "other", "kept")]

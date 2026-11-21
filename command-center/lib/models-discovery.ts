@@ -401,7 +401,8 @@ export function discoverySpec(raw: unknown): DiscoverySpec {
       isObj(attr) && typeof attr.text === "string" && typeof attr.url === "string" && attr.url.startsWith("https://")
         ? { text: attr.text, url: attr.url }
         : null,
-    webOnly: v.api_exposure === "web_only",
+    // Not on the public API: web_only, web_mcp (0188) and any value this build does not know.
+    webOnly: v.api_exposure !== undefined && v.api_exposure !== null && v.api_exposure !== "any",
   };
 }
 

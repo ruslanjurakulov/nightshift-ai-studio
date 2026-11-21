@@ -260,6 +260,10 @@ export const CREATIVE_ERRORS = [
   "source_unavailable",
   // 0174: the model requires a rights acknowledgement for an input, and this person has not given it at the current text version.
   "acknowledgement_required",
+  // The model's maker allows it for adults only (registry requires_adult) and this person has no adult attestation (0192).
+  "adult_attestation_required",
+  // This person said they are under 18 (0192): the service is 18+, so nothing is quoted or created for them.
+  "adult_only_service",
   "style_unavailable",
   "mode_not_supported",
   // 0075: the automatic choice changed since the quote; nothing fits these settings.
@@ -270,6 +274,9 @@ export const CREATIVE_ERRORS = [
   "forbidden",
   "not_found",
   "not_cancellable",
+  // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
+  // create, before anything is held, instead of failing at the adapter after the press.
+  "prompt_required",
   "failed",
 ] as const;
 export type CreativeError = (typeof CREATIVE_ERRORS)[number];
@@ -326,6 +333,8 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   source_unavailable: { status: 422, code: "source_unavailable" },
   // 0174: nothing was priced or held; the detail names kind=… version=… subject=…, which the Studio's dialog asks about.
   acknowledgement_required: { status: 428, code: "acknowledgement_required" },
+  adult_attestation_required: { status: 403, code: "adult_attestation_required" },
+  adult_only_service: { status: 403, code: "adult_only_service" },
   // 0048: the style kit is not this organization's or no longer exists —
   // another organization's kit reads exactly like a missing one.
   style_unavailable: { status: 422, code: "style_unavailable" },
@@ -523,6 +532,11 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `factor does not apply to ${capability}` }) };
   if (capability === "voice_change" && !(typeof params.voice_id === "string" && VOICE_ID_RE.test(params.voice_id)))
     return { ok: false, result: fail(400, "invalid_params", { detail: "voice_id (a voice of the account) is required for voice_change" }) };
+  // Every speech model speaks through ElevenLabs, whose worker adapter refuses a request without a voice of the
+  // account (modules/capabilities/audio.py). The database (0156) accepts speech with no voice, so without this the
+  // refusal came after the credits were held: asked here, it comes before the quote and the hold (rule 6).
+  if (capability === "tts" && !(typeof params.voice_id === "string" && VOICE_ID_RE.test(params.voice_id)))
+    return { ok: false, result: fail(400, "invalid_params", { detail: "voice_id (a voice picked from the account's voice list) is required for tts" }) };
   if (capability === "dub" && !(DUB_LANGUAGES as readonly unknown[]).includes(params.target_language))
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_language must be one of ${DUB_LANGUAGES.join(", ")}` }) };
   if (capability !== "dub" && params.target_language !== undefined)

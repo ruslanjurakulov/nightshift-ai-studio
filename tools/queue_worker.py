@@ -342,6 +342,10 @@ class QueueClient:
     def heartbeat(self, job_id: int, worker_id: str) -> Optional[bool]:
         return self._patch_mine(job_id, worker_id, {"heartbeat_at": _now()})
 
+    def record_result_slug(self, job_id: int, worker_id: str, slug: str) -> Optional[bool]:
+        """0189: the slug of the video this run made (render_jobs.result_slug), while the job is running and ours."""
+        return self._patch_mine(job_id, worker_id, {"result_slug": slug})
+
     def finish(self, job_id: int, worker_id: str, status: str, error: Optional[str]) -> Optional[bool]:
         return self._patch_mine(job_id, worker_id, {
             "status": status, "finished_at": _now(), "heartbeat_at": _now(), "error": error,
@@ -934,6 +938,13 @@ class Worker:
             result_file = self._result_path(job_id)
             result_file.unlink(missing_ok=True)
             run_env = dict(run_env, **{run_request.RESULT_FILE_ENV: str(result_file)})
+        # 0189: every video run reports its slug so get_job_status can name the video it made, a free (exempt) run too. Only a
+        # paid run's file gates the charge (video_check below); this one is read once, after success, and then removed.
+        slug_file: Optional[Path] = result_file
+        if slug_file is None and job.get("kind") == "daily":
+            slug_file = self._result_path(job_id)
+            slug_file.unlink(missing_ok=True)
+            run_env = dict(run_env, **{run_request.RESULT_FILE_ENV: str(slug_file)})
         settled = {"done": False}
 
         def settle(succeeded: bool) -> None:
@@ -946,7 +957,9 @@ class Worker:
             outcome = self._execute(job, argv, run_env, channel_row,
                                     settle=settle if hold is not None else None,
                                     video_check=(lambda: self._run_made_video(result_file))
-                                    if result_file is not None else None)
+                                    if result_file is not None else None,
+                                    on_success=(lambda: self._record_result_slug(job, slug_file))
+                                    if slug_file is not None else None)
             # "paused": the run stopped at its storyboard (modules/storyboard_review)
             # and waits for a person. Released in full like a failed run — planning
             # is never charged on its own; the render is paid by the hold placed
@@ -959,6 +972,8 @@ class Worker:
             # not be finished (Supabase down for the retries), is re-queued by the stale sweep; its next
             # attempt finds the hold captured and decides from THIS file (_already_delivered_and_charged).
             # Deleting it here made that attempt fail a job the customer had already paid for.
+            if slug_file is not None and slug_file is not result_file:
+                slug_file.unlink(missing_ok=True)
             if result_file is not None:
                 if self._row_unconfirmed:
                     logger.warning("job %s: its queue row could not be finished, so %s is kept for the "
@@ -1028,6 +1043,22 @@ class Worker:
 
     def _result_path(self, job_id) -> Path:
         return self.repo_dir / f".run_result_{job_id}.json"
+
+    def _record_result_slug(self, job: Mapping, slug_file: Path) -> None:
+        """0189: write the slug the run reported onto its queue row (while it is still running and ours), so get_job_status can name
+        the video. Bookkeeping only: a missing file, an unreadable slug or an unreachable database leaves the job's video_id NULL
+        ("not recorded"), and never changes the job's outcome or its charge."""
+        try:
+            slug = str(json.loads(slug_file.read_text(encoding="utf-8")).get("slug") or "")
+        except (OSError, ValueError, AttributeError):
+            logger.info("job %s: no run result to name its video", job.get("id"))
+            return
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,199}", slug):
+            logger.warning("job %s: the run reported a slug the queue row cannot hold; its video is not named", job.get("id"))
+            return
+        record = getattr(self.client, "record_result_slug", None)
+        if callable(record) and record(job["id"], self.worker_id, slug) is not True:
+            logger.warning("job %s: could not record the video it made; get_job_status will not name it", job.get("id"))
 
     def _run_made_video(self, result_file: Path) -> bool:
         """True when main.py wrote its result file after the render stage and
@@ -1343,7 +1374,8 @@ class Worker:
 
     def _execute(self, job: Mapping, argv: List[str], run_env: Mapping[str, str],
                  channel_row: Mapping, settle: Optional[Callable[[bool], None]] = None,
-                 video_check: Optional[Callable[[], bool]] = None) -> str:
+                 video_check: Optional[Callable[[], bool]] = None,
+                 on_success: Optional[Callable[[], None]] = None) -> str:
         job_id = job["id"]
 
         def end(status: str, error: Optional[str], charge: bool = False) -> str:
@@ -1411,6 +1443,8 @@ class Worker:
                     # (nothing to deliver): failed, hold released.
                     logger.warning("job %s: the run exited 0 but its render stage left no video", job_id)
                     return end("failed", f"{render_error.NO_VIDEO_HEADER}; nothing was charged.")
+                if on_success is not None:
+                    on_success()
                 return end("succeeded", None, charge=True)
             if rc == STORYBOARD_PAUSED_EXIT:
                 # The job did what it was asked: the run is planned and waits

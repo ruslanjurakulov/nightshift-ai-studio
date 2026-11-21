@@ -147,12 +147,16 @@ E_POLICY = "policy"                   # vendor safety refusal         → user c
 E_NOT_FOUND = "not_found"             # model / task id unknown       → registry entry is stale
 E_UNAVAILABLE = "unavailable"         # vendor 5xx, outage, network   → retry later, same task
 E_BAD_RESPONSE = "bad_response"       # 2xx we do not understand      → adapter needs a fix
+#: The vendor account's PLAN does not allow this (a library voice on a free ElevenLabs plan): not an empty balance —
+#: topping up the same plan changes nothing — and not a wrong key. The person picks what the plan allows, or the
+#: operator changes the plan. Never retried, never failed over. Migration 0190 lets the probe log record it.
+E_PLAN_REQUIRED = "plan_required"
 #: The vendor refused an option the adapter sends through one of its tools (a 400 naming ``param: "tools"``): the
 #: request is a bad request for THIS model, but the fix is the adapter's or the option's, not the prompt's. Never retried
 #: without the tool (that would quietly deliver something other than what was asked). Migration 0143.
 E_VENDOR_TOOL_UNSUPPORTED = "vendor_tool_unsupported"
 ERROR_CODES = (E_NOT_CONFIGURED, E_AUTH, E_QUOTA, E_RATE_LIMITED, E_BAD_REQUEST, E_POLICY,
-               E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, E_VENDOR_TOOL_UNSUPPORTED)
+               E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, E_VENDOR_TOOL_UNSUPPORTED, E_PLAN_REQUIRED)
 #: Codes worth retrying later with the SAME task / request. Never auth, quota,
 #: policy or a bad request — retrying those only spends or fails again.
 RETRYABLE = frozenset({E_RATE_LIMITED, E_UNAVAILABLE})
@@ -160,6 +164,13 @@ RETRYABLE = frozenset({E_RATE_LIMITED, E_UNAVAILABLE})
 _POLICY_WORDS = ("policy", "safety", "moderat", "sensitive", "nsfw", "prohibited", "inappropriate")
 _QUOTA_WORDS = ("insufficient", "balance", "quota", "credit", "billing", "exceeded your", "payment",
                 "arrear")
+#: An empty vendor balance some vendors answer with a plain 400 (Recraft: {"code": "not_enough_credits"}, probe run of
+#: 2026-11-20). Narrower than _QUOTA_WORDS on purpose: on a 400, "credit" or "balance" alone can be a parameter's name, and
+#: an input error read as "top up the vendor" would send the operator to the wrong fix (CLAUDE.md #6).
+_EMPTY_BALANCE_PHRASES = ("not_enough_credits", "not enough credits", "insufficient_credits", "insufficient credits",
+                          "insufficient credit", "insufficient_balance", "insufficient balance", "insufficient funds",
+                          "insufficient_quota", "out of credits", "no credits left", "credit balance is too low",
+                          "balance is not enough", "please top up", "payment required", "account is in arrears")
 
 
 #: HTTP answers that PROVE the vendor refused the call outright (it did not
@@ -167,7 +178,7 @@ _QUOTA_WORDS = ("insufficient", "balance", "quota", "credit", "billing", "exceed
 #: an unknown model, slow down. Never a 5xx (a 502 / 504 from a gateway can
 #: stand in front of a vendor that already accepted and is billing the task).
 REFUSED_OUTRIGHT = frozenset({401, 402, 403, 404, 429})
-_REFUSED_CODES = frozenset({E_AUTH, E_QUOTA, E_RATE_LIMITED, E_NOT_FOUND})
+_REFUSED_CODES = frozenset({E_AUTH, E_QUOTA, E_RATE_LIMITED, E_NOT_FOUND, E_PLAN_REQUIRED})
 
 
 class AdapterError(Exception):
@@ -213,7 +224,8 @@ def never_sent(exc: BaseException) -> bool:
 
 
 def refused_outright(status: int, code: str) -> bool:
-    """A vendor answer that proves the call was refused, not taken."""
+    """A vendor answer that proves the call was refused, not taken. Only the statuses in REFUSED_OUTRIGHT: a 400 that reads as
+    an empty balance gets the right remedy (quota) but does not, by its text alone, prove no task exists (BR-L-019)."""
     return status in REFUSED_OUTRIGHT and code in _REFUSED_CODES
 
 
@@ -231,6 +243,8 @@ def classify_http(status: int, text: str = "") -> str:
     if status == 404:
         return E_NOT_FOUND
     if 400 <= status < 500:
+        if any(p in low for p in _EMPTY_BALANCE_PHRASES):
+            return E_QUOTA
         return E_POLICY if any(w in low for w in _POLICY_WORDS) else E_BAD_REQUEST
     return E_UNAVAILABLE
 

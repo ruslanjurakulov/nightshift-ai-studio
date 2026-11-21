@@ -312,12 +312,12 @@ export default async function CommandCenter() {
   const lamp = chip === "healthy" ? "ok" : chip === "attention" ? "fail" : chip === "unreadable" ? "warn" : "idle";
   const lampLabel =
     chip === "healthy"
-      ? t.dashboard.systemHealthy
+      ? t.dashboard.eventStatusClear
       : chip === "attention"
-        ? t.dashboard.attention
+        ? t.dashboard.eventStatusErrors
         : chip === "unreadable"
-          ? t.dashboard.unreadable
-          : t.dashboard.noActivity;
+          ? t.dashboard.eventStatusUnavailable
+          : t.dashboard.eventStatusEmpty;
   // One lit desk and one filled key per page: the finish-setup banner when it shows, otherwise the run.
   const runDesk = !needsSetup;
   const runLabel = !eventsOk
@@ -480,6 +480,7 @@ export default async function CommandCenter() {
         </section>
       )}
 
+      <p className="g5-sub">{t.dashboard.eventStatusScope}</p>
       {tiles.length > 0 && (
         <OwnerGlance
           label={t.ownerShell.glanceLabel}

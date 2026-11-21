@@ -39,7 +39,7 @@ no key was used: every vendor fact below comes from Ideogram's public developer 
   the old probe proved the v1 call, not this one, so `ideogram-4` is hidden until it is probed again.
 - **4.0 shapes are 1K sizes from `ResolutionV4`, exact ratios only.** 1:1 1024x1024, 16:9 1280x720, 9:16 720x1280, 4:3 1152x864,
   3:4 864x1152, 3:2 1248x832, 2:3 832x1248, 5:4 1120x896, 4:5 896x1120, 2:1 1440x720, 1:2 720x1440, 3:1 1536x512, 1:3 512x1536,
-  16:10 1280x800, 10:16 800x1280. 1K because the owner's price reading for 4.0 (Turbo US$0.03) names no size and the docs do not say
+  16:10 1280x800, 10:16 800x1280. 1K because the owner's price reading for 4.0 (Turbo) names no size and the docs do not say
   whether 2K costs the same: sending 2K could bill more than the quote. `resolution` is always sent (1:1 when the request names none, as
   the Ideogram 3 adapter does), so the vendor never picks a size that might bill as 2K. The 2K-only ratios (23:9, 8:3, 12:5, 22:9) are not
   offered; 21:9 has no exact size at all and is refused, never rounded to 2:1.
@@ -59,21 +59,21 @@ no key was used: every vendor fact below comes from Ideogram's public developer 
 Evidence: the two quotes (`credits_per_unit` 15 with `minimum` 30, and 10), `schemas/model_registry.json`, `docs/sql/prices_2026_10_01.sql`,
 `docs/sql/prices_corrections_2026_10_01.sql`, `creative_price` as 0153 left it, `tests/test_price_defaults.py`.
 
-- `creative_price` reads a `credit_prices` row for the unit first; 0139's preview rate (vendor cost, 1 credit = 1 US cent, margin 0)
+- `creative_price` reads a `credit_prices` row for the unit first; 0139's preview rate (vendor cost converted to credits, no margin)
   is used **only when there is no row** ("A credit_prices row for the tier's unit still wins", 0153's header).
-- **ideogram-3 has a row.** `docs/sql/prices_2026_10_01.sql`: `model_ideogram_3_image`, 6 credits, margin 1.5, "Ideogram API list:
-  $0.06 per image (default speed)". The quote's `credits_per_unit` is the rate as charged, `credits_per_unit x (1 + margin)` (0084):
-  6 x 2.5 = **15**. That is a sale price with margin, not the vendor's cost.
+- **ideogram-3 has a row.** `docs/sql/prices_2026_10_01.sql`: `model_ideogram_3_image`, with a margin and a note quoting the
+  Ideogram API list price at default speed. The quote's `credits_per_unit` is the rate as charged, `credits_per_unit x (1 + margin)` (0084):
+  **15**. That is a sale price with margin, not the vendor's cost.
 - **ideogram-4.5 has no row** (`model_ideogram_4_5_image_*` are unpriced on purpose, `tests/test_price_defaults.py`), so 0153's preview
-  rate applies: `pricing.variants.prices.high` 0.10 x 100 = **10**, margin 0. That is the vendor's cost, as 0153 intends.
-- In cost terms the order is right: 4.5 High US$0.10 > Ideogram 3 Turbo US$0.03. The comparison set a margin-inclusive sale price
+  rate applies: `pricing.variants.prices.high` converted to credits, no margin. That is the vendor's cost, as 0153 intends.
+- In cost terms the order is right: 4.5 High costs more than Ideogram 3 Turbo. The comparison set a margin-inclusive sale price
   against a no-margin cost record.
 - `minimum` 30 is `credits_round_up(job_minimum)`: the live `job_minimum` row is 30 (the seed file says 1, so it was raised on the
   Credits page). Every one-image quote of either model is floored at it: both settle at 30 credits. The operator's organization is
   credits-exempt, so neither holds anything.
-- **One stale figure, left for the owner:** the `model_ideogram_3_image` row's base (6, "$0.06 per image (default speed)") predates the
-  adapter sending `TURBO` (US$0.03 per the registry). `docs/sql/prices_corrections_2026_10_01.sql` moved `model_ideogram_4_image` from 8
-  to 3 for the same reason, and did not touch Ideogram 3. The row overprices (it never sells below cost), and a price is the owner's
+- **One stale figure, left for the owner:** the `model_ideogram_3_image` row's base (the default-speed list price) predates the
+  adapter sending `TURBO` (cheaper, per the registry). `docs/sql/prices_corrections_2026_10_01.sql` lowered `model_ideogram_4_image`
+  for the same reason, and did not touch Ideogram 3. The row overprices (it never sells below cost), and a price is the owner's
   decision on the Credits page, so this change does not touch it.
 
 ## What is not verified
@@ -81,5 +81,5 @@ Evidence: the two quotes (`credits_per_unit` 15 with `minimum` 30, and 10), `sch
 - No call has been made. The probes (`ideogram-4` at 16:9 Turbo, `ideogram-4.5` at 16:9 low) are the first real calls of these bodies.
 - That 4.5 accepts these exact 2K presets is read from its rules and the family's list, not seen. A size it refused would return 400
   ("Invalid input provided"; the worker reads it as `bad_request`). The docs do not say in so many words that a 400 is not billed.
-- Whether 4.0 bills 2K above Turbo's US$0.03: not stated. This is why 4.0 sends 1K. A free check exists: the same request with
+- Whether 4.0 bills 2K above Turbo's 1K price: not stated. This is why 4.0 sends 1K. A free check exists: the same request with
   `?dry_run=true` returns Ideogram's own `PriceQuote` (needs the key; not done here).

@@ -109,6 +109,10 @@ COPY --from=builder /app/data/geoip ./data/geoip
 # hides every model with a country list from everyone (fail closed), which is how the operator's preview of such a model
 # vanished from the Studio. Readable, never writable.
 RUN chmod -R a+rX,go-w data/geoip
+# The PDF font (DejaVu Sans, data/fonts/LICENSE-DejaVu.txt): read from disk by lib/server/owner-analytics-pdf.ts, so not
+# traced into standalone either. About 1.5 MB. Readable, never writable, for the same umask reason as the country table.
+COPY --from=builder /app/data/fonts ./data/fonts
+RUN chmod -R a+rX,go-w data/fonts
 RUN mkdir -p .next/cache && chown node:node .next/cache
 # Mount points of the media library's volumes (migration 0038). An empty named
 # volume takes the owner of the directory it is first mounted over, so both

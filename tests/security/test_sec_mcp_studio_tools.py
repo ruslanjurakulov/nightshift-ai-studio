@@ -185,6 +185,42 @@ def test_lists_only_what_this_organizations_create_would_accept(db):
         assert priced not in text, priced
 
 
+# The vendor's figure and our reading of its terms stay on the server (owner's rule; Atlas on 0191/0162, 2026-11-20). They live in
+# model_registry.spec, and every door a key, an assistant or a browser can open reads spec only through sellable_models' allow-list
+# (0084 onwards: "the public half of spec"). Seed them and read every such door.
+SECRET_SPEC = {"pricing": {"provider_usd_per_unit": 0.0731, "unit": "image"},
+               "terms_notes": ["vendor-terms-reading-x7"], "terms_url": "https://vendor.example/terms-x7",
+               "probe": {"evidence": "probe-evidence-x7"}, "api_documented": "doc-x7"}
+# The vendor's model id is the fixture's own (changing it un-verifies the model, so it is never seeded).
+SECRETS = ("0.0731", "provider_usd", "vendor-terms-reading-x7", "terms-x7", "acme-img-api", "probe-evidence-x7", "doc-x7")
+
+
+def test_no_door_a_key_or_a_browser_can_open_gives_the_vendors_price_or_our_terms_notes(db):
+    before = db.su("select spec from public.model_registry where id = 'img-api'")[0][0]
+    seeded = dict(SECRET_SPEC, pricing={**(before.get("pricing") or {}), **SECRET_SPEC["pricing"]})
+    db.su("update public.model_registry set spec = spec || %s::jsonb where id = 'img-api'", [json.dumps(seeded)])
+    try:
+        answers = {
+            "api_creative_models": models(db, "a_quote"),
+            "sellable_models(api)": db.act("authenticated", UA, "select coalesce(jsonb_agg(to_jsonb(s)), '[]') "
+                                           "from public.sellable_models(null, 'api') s")[0][0],
+            "sellable_models(web)": db.act("authenticated", UA, "select coalesce(jsonb_agg(to_jsonb(s)), '[]') "
+                                           "from public.sellable_models(null, 'web') s")[0][0],
+        }
+        stored = json.dumps(db.su("select spec from public.model_registry where id = 'img-api'")[0][0])
+        assert all(s in stored for s in SECRETS if s != "provider_usd"), stored  # the secrets are really there to leak
+        assert "img-api" in json.dumps(answers["api_creative_models"]), answers  # the seeded model is listed, so the check reads it
+        for door, res in answers.items():
+            text = json.dumps(res)
+            for secret in SECRETS:
+                assert secret not in text, (door, secret)
+        # The table itself: spec is not a column a signed-in person may select.
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            db.act("authenticated", UA, "select spec from public.model_registry limit 1")
+    finally:
+        db.su("update public.model_registry set spec = %s::jsonb where id = 'img-api'", [json.dumps(before)])
+
+
 def test_a_paid_model_is_listed_once_the_organization_bought_credits_and_create_agrees(db):
     assert "img-paid" not in ids(models(db, "b_full"))
     refused = db.act("anon", None, "select public.api_creative_quote(%s,'t2i','img-paid',%s::jsonb,null)", [H("b_full"), json.dumps(PROMPT)])[0][0]

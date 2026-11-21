@@ -36,7 +36,8 @@ const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.item
 
 describe("nav filtering by role", () => {
   it("gives a customer exactly five destinations, in rail order", () => {
-    expect(keys(false)).toEqual(["home", "studio", "channels", "credits", "settings"]);
+    // The sprint IA: making and finding things. Credits and Settings are the sidebar's foot (CUSTOMER_SIDEBAR.footer).
+    expect(keys(false)).toEqual(["home", "create", "trends", "projects", "library"]);
   });
 
   it("puts every customer screen behind a rail entry or its tabs", () => {
@@ -53,8 +54,14 @@ describe("nav filtering by role", () => {
       // Usage (plan allowance, the extra-credits switch) is opened from the Credits page's link card
       // and the account and credit menus; its sidebar row is Credits (sidebarCurrent).
       "usage",
+      // Nightshift Studio's canvas is the Projects entry (/studio?shelf=projects).
+      "studio",
+      // Channels and the Inbox are in the avatar menu (components/account/AccountMenu); Developers is reached from Settings.
+      "channels",
+      "inbox",
+      "developers",
     ]);
-    expect(CUSTOMER_RAIL.find((i) => i.key === "settings")?.href).toBe("/organization");
+    expect(CUSTOMER_SIDEBAR.footer.find((i) => i.key === "settings")?.href).toBe("/organization");
     expect(SECTION_TABS.settings).toEqual([]); // no tab bar, no team screens behind it
     for (const k of CUSTOMER_NAV_KEYS) if (k !== "command") expect(reachable.has(k)).toBe(true);
     expect(tabsFor("library")?.rail).toBe("studio");
@@ -213,9 +220,9 @@ describe("appRedirect", () => {
     expect(isSection("home")).toBe(true);
   });
 
-  it("opens Home from the customer rail's first entry, with Studio beside it, without changing the operator's rail", () => {
+  it("opens Home from the customer rail's first entry, with Create beside it, without changing the operator's rail", () => {
     expect(CUSTOMER_RAIL[0]).toEqual({ href: "/home", key: "home" });
-    expect(CUSTOMER_RAIL[1]).toEqual({ href: "/studio", key: "studio" });
+    expect(CUSTOMER_RAIL[1]).toEqual({ href: "/create", key: "create" });
     expect(tabsFor("home")).toBeNull();
     expect(keys(true)).not.toContain("home");
   });

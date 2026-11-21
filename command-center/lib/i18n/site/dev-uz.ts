@@ -328,6 +328,7 @@ export const devUz: DevDictionary = {
       slug: "Yordamchingiz nima qila oladi",
       title: "Videolar va Studiya generatsiyalari. Oʻqish bepul.",
       lead: "Pul sarflaydigan vositalar shunday deb belgilangan. Video va yuklab olish API balansidan, Studiya generatsiyasi esa ish maydoni kreditlaridan toʻlanadi va har bir generatsiya narxi boshlanishdan oldin aytiladi. Studiyaning toʻrtta vositasi Studiya ruxsatlari bor API kalit bilan ishlaydi.",
+      assistantStudio: "Kirish orqali ulangan yordamchi Studiya rasmlari va kliplarini ham yarata oladi, bunga ruxsat beradigan modellar bilan: ularni roʻyxat qiladi, narxni kreditlarda aytadi va faqat siz tasdiqlaganingizdan keyin, ulanishning oylik limiti doirasida boshlaydi. Huquqlaringizni tasdiqlash kerak boʻlgan model Studiyada qoladi.",
       table: "Vositalar",
       cols: { tool: "Vosita", what: "Nima qiladi", cost: "Narxi" },
       free: "Bepul",

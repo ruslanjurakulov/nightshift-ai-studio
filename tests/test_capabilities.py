@@ -24,6 +24,7 @@ from modules import model_registry as reg
 from modules.capabilities import ADAPTERS, build_adapter
 from modules.capabilities import base
 from modules.capabilities.base import (
+    refused_outright,
     E_AUTH,
     E_BAD_REQUEST,
     E_NOT_CONFIGURED,
@@ -112,6 +113,19 @@ class ClassifyHttpTests(unittest.TestCase):
         self.assertEqual(classify_http(400, "size must be 1024x1024"), E_BAD_REQUEST)
         self.assertEqual(classify_http(404, ""), E_NOT_FOUND)
         self.assertEqual(classify_http(503, ""), E_UNAVAILABLE)
+
+    def test_a_400_that_says_the_balance_is_empty_is_quota_not_a_bad_request(self):
+        # Recraft's probe, 2026-11-20: HTTP 400 {"code":"not_enough_credits"} was recorded as bad_request, which sends the
+        # operator to the input instead of the vendor's balance.
+        self.assertEqual(classify_http(400, '{"code":"not_enough_credits","message":"Not enough credits"}'), E_QUOTA)
+        self.assertEqual(classify_http(400, '{"error":{"type":"insufficient_balance"}}'), E_QUOTA)
+        self.assertEqual(classify_http(422, "Insufficient credits on your account"), E_QUOTA)
+        # The remedy changes, the billing rule does not: only REFUSED_OUTRIGHT statuses prove nothing was taken (no failover).
+        self.assertFalse(refused_outright(400, E_QUOTA))
+        # The narrow list: a parameter that merely names credits or a balance is still the input's fault.
+        self.assertEqual(classify_http(400, "credits must be an integer"), E_BAD_REQUEST)
+        self.assertEqual(classify_http(400, "unknown field: balance"), E_BAD_REQUEST)
+        self.assertFalse(refused_outright(400, E_BAD_REQUEST))
 
     def test_only_transient_codes_are_retryable(self):
         self.assertTrue(AdapterError(E_RATE_LIMITED).retryable)

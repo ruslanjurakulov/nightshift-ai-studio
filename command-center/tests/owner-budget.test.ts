@@ -124,7 +124,7 @@ describe("exact arithmetic", () => {
     // The cases a floating-point tolerance once rounded UP: each must be the exact floor.
     expect(computeForModel(model("elevenlabs-flash-v2.5"), "40300")).toEqual({ kind: "characters", count: 1_007_500_000 });
     expect(computeForModel(model("recraft-v4.1-flash"), "1000000")).toEqual({ kind: "images", count: 142_857_142 });
-    // $13 201 / $0.036667 = 360 023.9... s = 6000.39... min: 6000.3, not 6000.4.
+    // $13 201 / the registry's per-second price = 360 023.9... s = 6000.39... min: 6000.3, not 6000.4.
     expect(computeForModel(model("elevenlabs-dubbing-v2"), "13201")).toEqual({ kind: "seconds", minutes: 6000.3, clips: null, floorSeconds: null });
     expect(computeBudget({ budget: "1000000000", kind: "video", unit: "second", usdPerUnit: 0.1, durationS: 5 })).toEqual({
       kind: "videos",
@@ -193,7 +193,7 @@ describe("each pricing shape the registry uses", () => {
     expect(m.defaultOption).toBe("768p");
     expect(m.defaultWhy).toBe("default_resolution");
     expect(m.durations[0]).toBe(4);
-    // $10 / (4 s × $0.04) = 62.5 videos -> 62, 248 s -> 4.1 min.
+    // $10 / (4 s × the registry's per-second price) = 62.5 videos -> 62, 248 s -> 4.1 min.
     expect(computeForModel(m, "10")).toEqual({ kind: "videos", count: 62, durationS: 4, billedS: 4, minutes: 4.1 });
     expect(computeForModel(m, "10", "480p", 10)).toEqual({ kind: "videos", count: 40, durationS: 10, billedS: 10, minutes: 6.6 });
   });
@@ -228,12 +228,12 @@ describe("each pricing shape the registry uses", () => {
     expect(m.defaultOption).toBe("720p");
     expect(m.defaultWhy).toBe("cheapest_variant");
     expect(m.durations).toEqual([]);
-    // No set length: minutes of video only. $10 / $0.42 = 23.8 s -> 0.3 min.
+    // No set length: minutes of video only. $10 / the cheapest variant's per-second price = 23.8 s -> 0.3 min.
     expect(computeForModel(m, "10")).toEqual({ kind: "seconds", minutes: 0.3, clips: null, floorSeconds: null });
   });
 
   it("per second of video with no set lengths: minutes only", () => {
-    // $10 / $0.15 per second (BFL pricing, HD, read 2026-11-11) = 66.6 s -> 1.1 min.
+    // $10 / the HD per-second price (BFL pricing, read 2026-11-11; in the registry) = 66.6 s -> 1.1 min.
     expect(computeForModel(model("flux-3-video"), "10")).toEqual({ kind: "seconds", minutes: 1.1, clips: null, floorSeconds: null });
   });
 
@@ -426,7 +426,7 @@ describe("every model in the registry", () => {
 });
 
 describe("every priced option against exact fraction arithmetic", () => {
-  // An independent oracle: registry prices have at most nine decimals (Scribe is $0.0000556/s), so in nano-dollars they are integers, and every
+  // An independent oracle: registry prices have at most nine decimals (Scribe's per-second price has seven), so in nano-dollars they are integers, and every
   // count is one integer division. The calculator must agree at every amount, small and very large.
   const AMOUNTS = [10, 13201, 40300, 1_000_000, 1_000_000_000];
   const nano = (usd: number): bigint => {

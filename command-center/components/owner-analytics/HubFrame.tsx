@@ -10,12 +10,16 @@ import { delta } from "@/lib/owner-analytics/period";
 import { fill, pct } from "@/lib/owner-analytics/format";
 import { PeriodPicker, PresentToggle, ExportButtons, RetryButton } from "./Controls";
 
-export type Section = "overview" | "revenue" | "users" | "usage";
+export type Section = "overview" | "revenue" | "users" | "usage" | "costs" | "runway" | "forecast" | "tax";
 const SECTIONS: Array<{ key: Section; path: string; label: keyof Dictionary["ownerAnalytics"] }> = [
   { key: "overview", path: "owner-analytics", label: "tabOverview" },
   { key: "revenue", path: "owner-analytics/revenue", label: "tabRevenue" },
   { key: "users", path: "owner-analytics/users", label: "tabUsers" },
   { key: "usage", path: "owner-analytics/usage", label: "tabUsage" },
+  { key: "costs", path: "owner-analytics/costs", label: "tabCosts" },
+  { key: "runway", path: "owner-analytics/runway", label: "tabRunway" },
+  { key: "forecast", path: "owner-analytics/forecast", label: "tabForecast" },
+  { key: "tax", path: "owner-analytics/tax", label: "tabTax" },
 ];
 
 export interface HubContext {
@@ -96,7 +100,10 @@ export async function HubFrame({ ctx, section, children }: { ctx: HubContext; se
           <h1>{d.title}</h1>
           <p className="oa-note">{d.subtitle}</p>
         </div>
-        <PresentToggle on={ctx.present} />
+        <div className="oa-picker">
+          <ExportButtons what="report.full" query={ctx.query} reauthMinutes={EXPORT_REAUTH_MINUTES} title={d.reportFull} formats={["pdf", "xlsx"]} label={d.reportFull} />
+          <PresentToggle on={ctx.present} />
+        </div>
       </div>
       <nav className="oa-tabs" aria-label={d.title}>
         {SECTIONS.map((s) => (
@@ -191,14 +198,26 @@ export function Kpi({
   );
 }
 
-export function CardHead({ title, what, ctx, note }: { title: string; what?: string; ctx: HubContext; note?: string }) {
+export function CardHead({
+  title,
+  what,
+  ctx,
+  note,
+  formats,
+}: {
+  title: string;
+  what?: string;
+  ctx: HubContext;
+  note?: string;
+  formats?: Array<"csv" | "xlsx" | "pdf">;
+}) {
   return (
     <div className="oa-card-head">
       <div>
         <h2>{title}</h2>
         {note && <p className="oa-note">{note}</p>}
       </div>
-      {what && <ExportButtons what={what} query={ctx.query} reauthMinutes={EXPORT_REAUTH_MINUTES} title={title} />}
+      {what && <ExportButtons what={what} query={ctx.query} reauthMinutes={EXPORT_REAUTH_MINUTES} title={title} formats={formats} />}
     </div>
   );
 }

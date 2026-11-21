@@ -7,9 +7,12 @@ import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { rightsAckEn } from "./rights-acknowledgement/en";
+import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
 import { ownerShellEn } from "./owner-shell/en";
+import { ageEn } from "./age/en";
+import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
@@ -29,6 +32,7 @@ import { ownerTruthEn } from "./owner-truth/en";
 import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
+import { trendsEn } from "./trends/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -46,6 +50,7 @@ import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
+import { captionReviewEn } from "./caption-review/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 import { regionEditEn } from "./region-edit/en";
 import { imageEditorEn } from "./image-editor/en";
@@ -66,12 +71,16 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
+  /** The Trends gallery (migration 0183): ./trends/en.ts. */
+  trends: trendsEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
   libraryUx: libraryUxEn,
   assetDownload: assetDownloadEn,
   ownerShell: ownerShellEn,
+  age: ageEn,
+  customerApp: customerAppEn,
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
@@ -123,6 +132,7 @@ export const en = {
     menu: "Menu",
     command: "Command Center",
     create: "Create",
+    projects: "Projects",
     videos: "Videos",
     pipeline: "Pipeline",
     agents: "Agents",
@@ -151,6 +161,7 @@ export const en = {
     customers: "Customers",
     billing: "Billing",
     studio: "Nightshift Studio",
+    trends: "Trends",
     // Brand look moved under Nightshift Studio (/studio/look); the brand name took its key, as the URL did.
     brandLook: "Brand look",
     library: "Library",
@@ -443,7 +454,7 @@ export const en = {
     stepCreateNeedsChannel: "A full YouTube video needs a connected channel.",
     open: "Open",
     done: "Done",
-    finish: "Go to Command Center",
+    finish: "Go to Home",
     /** The last button when the person came from a model sample's "Try it": it opens the Studio with that sample's tool and words. */
     finishStudio: "Open Nightshift Studio with your sample",
     unavailable: "We couldn't load your workspace just now. Reload the page in a moment.",
@@ -512,6 +523,11 @@ export const en = {
     body2b: "in the repo root. Until then, no data is shown — the dashboard will not invent numbers.",
   },
   dashboard: {
+    eventStatusClear: "Recorded events: no errors in 24h",
+    eventStatusErrors: "Recorded errors in the last 24h",
+    eventStatusUnavailable: "Event status unavailable",
+    eventStatusEmpty: "No recorded events yet",
+    eventStatusScope: "Based on recorded events. Service and Brain health are unverified.",
     latestRun: "Latest run",
     noRunsYet: "No runs yet",
     unreadable: "Cannot read backend",
@@ -909,26 +925,27 @@ export const en = {
     sPublish: "Publish",
   },
   agents: {
-    title: "Agents",
-    subtitle: "Derived from the live system_events stream — no separate agents table",
+    title: "Pipeline agents",
+    subtitle: "Latest recorded pipeline events, not live process checks. Current activity is unverified.",
     seen: "Agents seen",
-    seenSub: "distinct, recent window",
-    running: "Running",
-    activeNow: "active now",
-    noneActive: "none active",
-    failed: "Failed",
+    seenSub: "distinct agents in the event window",
+    running: "Last event: running",
+    activeNow: "recorded as running",
+    noneActive: "none recorded as running",
+    failed: "Last event: failed",
     latestFailed: "latest event failed",
-    noneFailing: "none failing",
+    noneFailing: "none recorded as failed",
     scanned: "Events scanned",
     scannedSub: "most recent 500",
-    roster: "Agent Roster",
+    roster: "Agents seen in events",
     dbErr: "Could not reach the database. The agent roster is unavailable right now.",
-    empty: "No agent activity yet. Once the pipeline runs, each agent appears here with its latest state.",
+    empty: "No agent events in this window. Current process activity is unknown.",
     recentEvents: "{n} recent events",
-    currentTask: "Current task",
+    currentTask: "Last recorded task",
     took: "took {d} · ",
     lastSuccess: "Last success",
     lastFailure: "Last failure",
+    recordedStatus: "Last recorded state: {status}",
     schedTitle: "Schedule & Autopilot",
     schedHint: "Set when this channel's daily run fires, and whether autopilot runs it at all. The scheduler reads this straight from the channel — no redeploy.",
     schedAutopilot: "Autopilot",
@@ -2414,6 +2431,7 @@ export const en = {
       errors: {
         insufficient_credits: "Not enough credits.",
         master_not_available: "There is no full-quality master for this quality.",
+        adult_only_service: "Nightshift is for adults (18+). You told us you are under 18, so downloads are not available on this account. Nothing was charged. If that answer was a mistake, contact support.",
         unpriced: "This quality is not priced yet.",
         price_changed: "The price changed — check it and confirm again.",
         forbidden: "You don't have access to buy a download here.",
@@ -3192,6 +3210,7 @@ export const en = {
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
   rightsAck: rightsAckEn,
+  voiceCatalog: voiceCatalogEn,
   accountSecurity: {
     cancel: "Cancel",
     title: "Account and security",
@@ -3750,11 +3769,14 @@ export const en = {
       model_not_sellable: "This model is not available right now.",
       model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
       country_blocked: "This model is not available in your region. Nothing was charged. Choose another model from the list.",
+      prompt_required: "This model needs words for this: describe the motion or the shot, then the price is shown. Nothing was charged.",
       entitlement_required: "This model isn't open to your organization yet.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",
       source_unavailable: "This picture cannot be used: it is not in your organization's library, was deleted, or is not a PNG, JPEG or WebP image.",
       acknowledgement_required: "This model needs you to confirm your rights to the picture first. Nothing was started or charged.",
+      adult_attestation_required: "This model is for adults (18+) only, by its maker's terms. Confirm your age in the box at the top of Create. Nothing was started or charged.",
+      adult_only_service: "Nightshift is for adults (18+). This account said it is under 18, so nothing can be created. Nothing was charged.",
       style_unavailable: "This style kit cannot be used: it is not in your organization or was deleted. Pick another style, or None.",
       mode_not_supported: "Only the model you pick is used; automatic model choice is not available yet.",
       route_changed: "The automatic choice changed since the price was shown. Check the new pick and its price, then confirm again.",
@@ -3889,10 +3911,11 @@ export const en = {
     factSecondsRange: "{min}–{max} s",
     factUpTo: "up to {r}",
     verifiedOn: "Last proven working {date}",
-    lock: { first_purchase: "After first purchase", not_on_sale: "Not open to any workspace" },
+    lock: { first_purchase: "After first purchase", not_on_sale: "Not open to any workspace", adult_only: "For adults (18+)" },
     lockWhy: {
       first_purchase: "This model opens after your organization's first credit purchase.",
       not_on_sale: "This model isn't sold to any workspace yet, on any plan. Pick another model.",
+      adult_only: "This model's maker allows it for adults only. Confirm your age in the box at the top of Create to use it.",
     },
     lockBuy: "Buy credits",
     needMore: "Add credits · need {n} more",
@@ -3948,6 +3971,7 @@ export const en = {
       no_model: "No model can make this right now.",
       need_picture: "Pick a picture to see the price.",
       need_words: "Describe it to see the price.",
+      need_motion_words: "{model} needs a description of the motion: write what happens in the shot to see the price.",
       need_recording: "Pick an audio or video file to see the price.",
       need_voice: "Pick a voice to see the price.",
       need_language: "Pick a language to see the price.",
@@ -3998,11 +4022,14 @@ export const en = {
     makeSimilarHint: "Puts this text into the image form, with the picture's shape. You see the price before anything is made.",
     describedPicture: "The described picture",
     emptyTitle: "Your generations appear here",
+    videoCancellationUnknown: "Cancellation recorded in Nightshift. Provider cancellation is not confirmed by this job record.",
+    reloadFeed: "Reload generations",
     feedLoading: "Loading your generations…",
     working: "Working — this updates by itself",
     reasons: {
       policy: "The safety check refused this request. Change the description and try again.",
       bad_request: "These settings were not accepted. Change them and try again.",
+      plan: "The provider's plan does not allow this. For speech, pick a premade voice and try again.",
       busy: "The service was busy or too slow. Try again in a few minutes.",
       service: "Something went wrong on our side. Try again, or pick another model.",
       credits: "Credits could not be checked for this generation, so it did not run.",
@@ -4475,6 +4502,7 @@ export const en = {
     confirmAckHint: "Tick the box to continue.",
   },
   media: {
+    comparison: {"action": "Compare images", "title": "Compare saved images", "left": "First image", "right": "Second image", "unnamed": "Unnamed image", "unavailable": "Preview unavailable", "dismiss": "Close comparison", "version": "Version {n}"},
     title: "Library",
     subtitle: "Images, video, audio and captions of {org}: uploaded here or made by Nightshift.",
     notEnabled: "The media library is not enabled on this deployment yet (migration 0038 has not been applied).",
@@ -4679,6 +4707,9 @@ export const en = {
     scopeRead: "See your channels, videos, jobs and credit balance.",
     scopeCreate: "Make videos. Each one spends credits from your balance, at the same price as in the app.",
     scopePublish: "Send finished videos to your connected accounts, with the same checks and approvals as in the app.",
+    studioOptIn: "Also allow it to generate pictures and clips in the Studio (spends credits after you confirm each price). Off unless you tick it.",
+    studioOnly: "This app asked only to generate in the Studio. Tick that choice to allow it, or deny.",
+    scopeStudio: "Generate pictures and clips in the Studio, only with the models that allow it. Each one spends credits from your balance, at the same price as in the app, after you confirm the price.",
     cannotTitle: "It can never",
     cannot: "Change your plan or password, buy credits, delete anything, or see your API keys.",
     nameNote: "The name comes from the app itself; Nightshift has not checked it. Rely on the address below.",
@@ -4732,6 +4763,7 @@ export const en = {
     scopesRead: "read",
     scopesCreate: "create videos",
     scopesPublish: "publish",
+    scopesStudio: "Studio",
     loadFailed: "Couldn't load your connected apps. Try again.",
     notMigrated: "Connecting apps is not set up on this database yet (migration 0093).",
     actionFailed: "That did not work. Nothing was changed. Try again.",
@@ -5629,6 +5661,7 @@ export const en = {
     },
     exportRev: "Version {rev}",
     exportPanel: editorExportEn,
+    captionReview: captionReviewEn,
     viewInLibrary: "Open in Library",
     watch: "Watch",
     deleteProject: "Delete project",
@@ -5849,6 +5882,26 @@ export const en = {
     typeDisplay: "Display · Sofia Sans Extra Condensed",
     typeBody: "Body · Sofia Sans",
     typeMono: "Counter · Martian Mono",
+    ds: {
+      title: "Keys and controls (--ds)",
+      primary: "Create video",
+      secondary: "Preview",
+      quiet: "Cancel",
+      danger: "Delete",
+      disabled: "Unavailable",
+      busy: "Saving…",
+      icon: "Settings",
+      field: "Title",
+      fieldPh: "Name your video",
+      fieldHint: "Up to 100 characters.",
+      display: "From idea to finished video",
+      toggle: "Auto captions",
+      toggleHint: "Adds captions to every export.",
+      text: "Text",
+      image: "Image",
+      video: "Video",
+      audio: "Audio",
+    },
     typeSample: "The night shift made twelve videos while you slept.",
     flat: "Flat",
     sunken: "Sunken",

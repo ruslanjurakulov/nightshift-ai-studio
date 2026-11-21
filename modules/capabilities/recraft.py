@@ -15,10 +15,10 @@ appendix}`` and the Developer Terms (``/legal/developer-terms``, effective 2026-
 * Errors come back as plain text or JSON depending on the error ("request
   unauthorized" for a rejected token); the body is read as text and classified by
   status and words, never assumed to be JSON.
-* ``credits`` in the answer is the number of API units charged ($1 = 1,000 units).
+* ``credits`` in the answer is the number of API units charged (prepaid units; see the vendor pricing page).
 
 What is sent is exactly what is priced: the raster 1K model only (``recraftv4_1``,
-``recraftv4_1_flash``). Vector (SVG) and the 2K "pro" variants are priced apart and
+``recraftv4_1_flash_v2``, the docs' "V4.1 Flash V2" since 2026-11; the older ``recraftv4_1_flash`` is no longer documented). Vector (SVG) and the 2K "pro" variants are priced apart and
 are not offered; ``n`` is 1. Style ids/references, controls, ``negative_prompt``
 and the ``seed`` are not wired (V4.1 does not take ``negative_prompt`` at all).
 
@@ -67,7 +67,7 @@ class RecraftImageAdapter(SafeResultMixin, HttpAdapter):
     #: Nothing is downloaded (``b64_json``): no host is allowed.
     result_hosts = ()
     MAX_PROMPT_UNITS = 10000
-    SPECS = {"recraftv4_1": {"sizes": ("1K",)}, "recraftv4_1_flash": {"sizes": ("1K",)}}
+    SPECS = {"recraftv4_1": {"sizes": ("1K",)}, "recraftv4_1_flash_v2": {"sizes": ("1K",)}}
     #: Ratios of the vendor's size table that are plain ``w:h`` (the 6:10 / 14:10 / 10:14 rows are left out).
     RATIOS = ("1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16")
 

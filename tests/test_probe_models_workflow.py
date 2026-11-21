@@ -47,6 +47,16 @@ class ProbeWorkflowShapeTests(unittest.TestCase):
         model = on["workflow_dispatch"]["inputs"]["model"]
         self.assertFalse(model["required"])
         self.assertEqual(model["default"], "")
+        voice = on["workflow_dispatch"]["inputs"]["voice_id"]
+        self.assertFalse(voice["required"])
+        self.assertEqual(voice["default"], "")
+
+    def test_the_voice_input_never_needs_the_shared_variable(self):
+        # daily_video.yml and deploy_web.yml read vars.ELEVENLABS_VOICE_ID too: a probe that could only take its voice
+        # from there would make someone change the bot's voice to run one.
+        env = probe_step()["env"]
+        self.assertEqual(env["VOICE_INPUT"], "${{ github.event.inputs.voice_id }}")
+        self.assertEqual(env["ELEVENLABS_VOICE_ID"], "${{ vars.ELEVENLABS_VOICE_ID }}")
 
     def test_one_run_at_a_time_and_read_only_token(self):
         wf = workflow()
@@ -64,10 +74,10 @@ class ProbeWorkflowShapeTests(unittest.TestCase):
             self.assertNotIn("${{", s.get("run", ""), s.get("name"))
 
     def test_the_script_never_names_a_key_variable(self):
-        # Only the model id is read by the script; every key is the tool's.
+        # Only the two inputs are read by the script; every key is the tool's.
         run = probe_step()["run"]
         for name in probe_step()["env"]:
-            if name == "MODEL_ID":
+            if name in ("MODEL_ID", "VOICE_INPUT"):
                 continue
             self.assertNotIn(f"${name}", run, name)
             self.assertNotIn(f"${{{name}", run, name)
@@ -109,7 +119,7 @@ FAKE_PYTHON = textwrap.dedent(
 class ProbeStepScriptTests(unittest.TestCase):
     """Runs the workflow's own `Probe` script with every key set to a secret."""
 
-    def run_step(self, model=""):
+    def run_step(self, model="", voice=""):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         bindir = tmp / "bin"
@@ -120,6 +130,7 @@ class ProbeStepScriptTests(unittest.TestCase):
         env = {k: SECRET for k in probe_step()["env"]}
         env.update(
             MODEL_ID=model,
+            VOICE_INPUT=voice,
             PATH=f"{bindir}:{os.environ['PATH']}",
             HOME=str(tmp),
             RUNNER_TEMP=str(tmp),
@@ -156,6 +167,23 @@ class ProbeStepScriptTests(unittest.TestCase):
         self.assertEqual(args, "")
         self.assertIn("must be one id", proc.stdout)
         self.assertNotIn(SECRET, proc.stdout + proc.stderr + summary)
+
+
+    def test_no_voice_input_leaves_the_tool_to_read_the_variable(self):
+        _, _, args = self.run_step("elevenlabs-v3")
+        self.assertNotIn("--voice-id", args)
+
+    def test_a_voice_id_from_the_list_is_passed_to_the_tool(self):
+        _, _, args = self.run_step("elevenlabs-v3", "AbCdEfGhIj0123456789")
+        self.assertIn("--voice-id AbCdEfGhIj0123456789", args)
+
+    def test_a_voice_input_that_is_not_a_voice_id_is_refused_before_anything_runs(self):
+        for bad in ("12345", "AbCdEfGhIj01234567890", "AbCdEfGhIj012345678-", 'x"; echo $ELEVENLABS_API_KEY; "'):
+            proc, summary, args = self.run_step("elevenlabs-v3", bad)
+            self.assertNotEqual(proc.returncode, 0, bad)
+            self.assertEqual(args, "", bad)
+            self.assertIn("voice_id input must be a voice id", proc.stdout, bad)
+            self.assertNotIn(SECRET, proc.stdout + proc.stderr + summary)
 
 
 class BriefModeTests(unittest.TestCase):

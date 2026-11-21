@@ -578,9 +578,17 @@ def _gate_md5(db):
 
 
 def test_replaying_0174_changes_nothing_and_rollback_keeps_the_record(db):
+    # 0192 (the adult attestation) sits on 0174's create_creative_job, and 0174's drift guard refuses any other body: off for the
+    # replay, and back on after (put_back_0174 puts it back).
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0192(c)
     gate = _gate_md5(db)
     rows = db.su("select count(*) from public.rights_acknowledgements")[0][0]
-    db.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8"))
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0187(c)  # 0187 replaces 0174's rights_acknowledgement_missing, which 0174's guard refuses
+        c.execute((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8"))
+        sec_db.put_back_0187(c)
+        sec_db.take_off_0192(c)  # put_back_0187 puts 0192 back on; the comparison is of 0174's own body
     assert _gate_md5(db) == gate
     with psycopg.connect(db.dsn, autocommit=True) as c:
         sec_db.take_off_0174(c)
@@ -591,7 +599,11 @@ def test_replaying_0174_changes_nothing_and_rollback_keeps_the_record(db):
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
             sec_db.put_back_0174(c)
-    assert _gate_md5(db) == gate
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        assert sec_db.has_0192(c), "0192 is back on top of 0174"
+        sec_db.take_off_0192(c)
+        assert _gate_md5(db) == gate, "under 0192, 0174's own gate is the one that was there"
+        sec_db.put_back_0192(c)
 
 
 def test_a_replay_of_0075_silently_removes_the_gate_which_is_why_the_doc_says_undo_first():
@@ -611,7 +623,8 @@ def test_a_replay_of_0075_silently_removes_the_gate_which_is_why_the_doc_says_un
         # And 0174 then refuses to go back on by itself: 0075 also put its own api_creative_refusal over 0124's. Re-running an
         # older file over newer ones is not a supported operation; the Verify query is how it is noticed.
         st, msg, _ = err(lambda: d.su((sec_db.MIGRATIONS / "0174_rights_acknowledgement.sql").read_text(encoding="utf-8")))
-        assert "0174 found public.api_creative_refusal(text, text, text) with a body that is neither 0124's nor 0174's" in msg
+        # Which body it names first depends on what sits on 0174 (0187 replaces its workflow_quote_steps): a refusal either way.
+        assert msg.startswith("0174 found public.") and "with a body that is neither" in msg, msg
     finally:
         if not os.environ.get("NIGHTSHIFT_SECURITY_KEEP"):
             sec_db.drop_database(admin, name)

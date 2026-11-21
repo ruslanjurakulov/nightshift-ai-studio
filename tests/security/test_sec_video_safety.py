@@ -334,10 +334,11 @@ def test_every_other_field_of_the_job_answer_is_what_it_was(db, conn):
         job = failed_job(conn, su, "failed", "[code:render] boom")
         api, oauth = both(conn, su, job, token)
         row = su.rows("select id, channel_id, status, params, attempts, created_at, started_at, finished_at from public.render_jobs where id = %s", [job])[0]
+        # 0189 adds video_id (NULL until the worker records the run's slug).
         assert set(api["data"]) == {"id", "channel_id", "status", "params", "attempts", "created_at", "started_at", "finished_at",
-                                    "error", "error_code", "charge"}
+                                    "error", "error_code", "charge", "video_id"}
         assert set(oauth["data"]) == {"id", "channel_id", "status", "params", "created_at", "started_at", "finished_at",
-                                      "error", "error_code", "charge"}
+                                      "error", "error_code", "charge", "video_id"}
         for answer in (api, oauth):
             d = answer["data"]
             assert (d["id"], d["channel_id"], d["status"], d["params"]) == (row[0], row[1], row[2], row[3])
@@ -402,6 +403,7 @@ def test_a_signed_in_user_cannot_call_the_helper_or_read_a_job_error_around_it(c
 def test_replay_changes_no_definition_and_no_privilege(conn):
     text = MIGRATION.read_text(encoding="utf-8")
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0189(su)  # 0189 sits on 0111's api_get_job / oauth_get_job
         sec_db.take_off_0122(su)
         before = acls(su)
         defs = [su.value("select pg_get_functiondef(%s::regprocedure)", [s]) for s in (*CHANGED, HELPER)]
@@ -415,6 +417,7 @@ def test_replay_changes_no_definition_and_no_privilege(conn):
 def test_the_migration_touches_no_other_function_and_no_table_policy_or_trigger(conn):
     text = MIGRATION.read_text(encoding="utf-8")
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0189(su)  # 0189 sits on 0111's api_get_job / oauth_get_job
         sec_db.take_off_0122(su)
         def snapshot():
             return (su.rows("select p.oid::regprocedure::text, md5(pg_get_functiondef(p.oid)), p.proacl::text from pg_proc p "
@@ -437,7 +440,7 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     base_dsn = sec_db.create_database(admin, base)
     try:
         # (0120 replaces 0111's guard and refuses to do so on a database that never had it: the base for "before 0111" stops short of it too)
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_", "0122_", "0127_", "0145_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_", "0122_", "0127_", "0145_", "0189_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0]) for s in CHANGED}
@@ -447,6 +450,7 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     rollback = ROLLBACK.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0189(su)  # 0189 sits on 0111's api_get_job / oauth_get_job
         sec_db.take_off_0122(su)
         after_0111 = {s: su.value("select pg_get_functiondef(%s::regprocedure)", [s]) for s in (*CHANGED, HELPER)}
         assert after_0111[GUARD] != want[GUARD][0] and after_0111[API_JOB] != want[API_JOB][0]

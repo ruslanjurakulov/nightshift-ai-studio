@@ -35,8 +35,8 @@ the queue host ``queue.fal.run``, ``POST /<model id>`` taking ``image_url`` and
 submit response, a failure also being ``COMPLETED`` (the result call carries the
 error), the result ``{"video": {"url"}, "duration"}``, the two-step CDN upload
 (``POST rest.fal.ai/storage/upload/initiate`` giving ``upload_url`` and
-``file_url``, then a PUT of the bytes) and ``$0.0562`` per output second for the
-default model. Follow-up URLs (status, result, cancel) use only ``owner/app``
+``file_url``, then a PUT of the bytes) and the per-output-second price of the
+default model (on its model page). Follow-up URLs (status, result, cancel) use only ``owner/app``
 (``fal-ai/kling-video``): adding the endpoint path returns 405, so the fallback used
 when a submit answer omits them is built that way. Nothing here was run against the
 live service.
@@ -71,9 +71,9 @@ from modules.avatar import (
 
 logger = logging.getLogger(__name__)
 
-#: Kling AI Avatar v2 Standard: the cheaper tier ($0.0562 per output second on its model page).
+#: Kling AI Avatar v2 Standard: the cheaper tier (per output second; see its model page).
 DEFAULT_MODEL = "fal-ai/kling-video/ai-avatar/v2/standard"
-#: The portrait: FLUX.1 schnell, $0.003 per megapixel on its model page.
+#: The portrait: FLUX.1 schnell, priced per megapixel on its model page.
 DEFAULT_IMAGE_MODEL = "fal-ai/flux/schnell"
 
 QUEUE_BASE = "https://queue.fal.run"
@@ -116,13 +116,13 @@ SEGMENT_HARD_CAP_SECONDS = 30.0
 DEFAULT_MAX_SECONDS = 30.0
 #: No run may buy more presenter seconds than this, whatever the variable says.
 RUN_HARD_CAP_SECONDS = 60.0
-#: An estimate for fal's price per output second; the model page quotes $0.0562.
+#: An estimate for fal's price per output second, rounded up from the model page's figure.
 DEFAULT_USD_PER_SECOND = 0.06
 #: The default model's published price: the ledger and the caps never use less for it.
 DEFAULT_MODEL_USD_PER_SECOND = 0.0562
 #: No avatar model costs less than this per output second; a lower setting is a mistake.
 MIN_USD_PER_SECOND = 0.01
-#: A generous upper bound for the one portrait (about $0.003 on the default model).
+#: A generous upper bound for the one portrait (well above the default model's page price).
 PORTRAIT_USD = 0.01
 #: A slice shorter than this is not sent: fal's minimum audio length is not
 #: published, so a sliver is skipped rather than paid for and possibly refused.

@@ -164,6 +164,7 @@ jobs:
           WEBENV_NEXT_PUBLIC_PLAN_DISPLAY_PRO: ${{ vars.NEXT_PUBLIC_PLAN_DISPLAY_PRO }}
           WEBENV_NEXT_PUBLIC_PLAN_DISPLAY_STUDIO: ${{ vars.NEXT_PUBLIC_PLAN_DISPLAY_STUDIO }}
           WEBENV_NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS: ${{ vars.NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS }}
+          WEBENV_ELEVENLABS_VOICES_KEY: ${{ secrets.ELEVENLABS_VOICES_KEY }}
           WEBENV_GITHUB_SECRETS_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
           # The bot runs from this repository; the variable is for a split later.
           WEBENV_GITHUB_SECRETS_REPO: ${{ vars.GH_SECRETS_REPO || github.repository }}

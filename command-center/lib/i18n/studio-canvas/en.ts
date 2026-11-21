@@ -30,7 +30,7 @@ export const studioCanvasEn = {
   statusNeeds: "{n} need an input",
   statusUnknown: "{n} status unknown",
   statusClosed: "{n} not available yet",
-  notSaved: "Layout not remembered in this browser",
+  notSaved: "Layout not saved in this browser. Leaving may lose unsaved changes.",
   nothingSpends: "Nothing spends without a quote",
   quote: "Quote",
   quoteHint: "Select a node to see its price",

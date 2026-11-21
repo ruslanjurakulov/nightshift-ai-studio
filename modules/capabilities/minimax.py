@@ -120,6 +120,9 @@ class MiniMaxH3Adapter(SafeResultMixin, HttpAdapter):
     capabilities = (T2V, I2V)
     end_frame_capabilities = (I2V,)
     resolution_capabilities = (T2V, I2V)
+    # Words are required for every mode (image-to-video included); schemas/model_registry.json must say so in
+    # inputs.prompt_required, so the Studio asks for them before a press instead of failing after it (modules/model_registry.py).
+    prompt_required_capabilities = (T2V, I2V)
     result_hosts = RESULT_HOSTS
     #: ``image_url`` takes a public URL or a base64 data URI of JPG/PNG/WEBP (HEIC too, not sent here); 30 MB each,
     #: and the whole request body 64 MB, so a picture sent inline stays well under both.
@@ -128,7 +131,7 @@ class MiniMaxH3Adapter(SafeResultMixin, HttpAdapter):
     RATIOS = ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16")
     SPECS = {
         "MiniMax-H3": {"resolutions": {"768p": "768P", "2k": "2K"}, "durations": _DURATIONS},
-        # 480P for Highspeed is in the create API's resolution list and on the pricing page ($0.04/s), both read 2026-11-13.
+        # 480P for Highspeed is in the create API's resolution list and on the vendor pricing page, both read 2026-11-13.
         "MiniMax-H3-Highspeed": {"resolutions": {"480p": "480P", "768p": "768P"}, "durations": _DURATIONS},
         "MiniMax-H3-Lite": {"resolutions": {"480p": "480P", "768p": "768P"}, "durations": _DURATIONS},
         "MiniMax-H3-Max": {"resolutions": {"480p": "480P", "768p": "768P"}, "durations": tuple(range(5, 16))},
@@ -173,9 +176,10 @@ class MiniMaxH3Adapter(SafeResultMixin, HttpAdapter):
         if dur not in spec["durations"]:
             out.append(f"duration {dur if dur is not None else '(none)'} s is not offered by {vendor_model}: the "
                        f"price is per second, so it is never defaulted")
-        if not (request.prompt or "").strip():
+        words = re.sub("[\u200b-\u200d\u2060\ufeff]", "", request.prompt or "").strip()
+        if request.capability in self.prompt_required_capabilities and not words:
             out.append("MiniMax H3 needs words for every mode, image-to-video included")
-        elif _utf16_len(request.prompt.strip()) > self.MAX_PROMPT_UNITS:
+        elif words and _utf16_len(words) > self.MAX_PROMPT_UNITS:
             out.append(f"the prompt is longer than {self.MAX_PROMPT_UNITS} characters")
         if request.aspect_ratio is not None and request.aspect_ratio not in self.RATIOS:
             out.append(f"aspect ratio {request.aspect_ratio} is not offered by {vendor_model}")

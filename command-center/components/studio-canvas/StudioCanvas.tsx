@@ -741,7 +741,7 @@ export function StudioCanvas({
           {!!counts.closed && <Lamp tone="idle" label={fmt(c.statusClosed, { n: counts.closed })} />}
         </>
       )}
-      {!saved && <span className="cv-strip-warn">{c.notSaved}</span>}
+      <span className="cv-strip-warn" role="status" aria-live="polite" aria-atomic="true">{!saved ? c.notSaved : null}</span>
     </div>
   );
 
