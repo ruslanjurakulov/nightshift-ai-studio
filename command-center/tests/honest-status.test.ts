@@ -58,6 +58,6 @@ describe("models: chip count and section count", () => {
   });
   it("the image chip counts only text-to-image, so the section must not share its label", () => {
     expect(taskCounts(models, NO_FILTERS).image).toBe(2);
-    for (const d of [en, ru, uz]) expect(d.models.groupOutputs.image).not.toBe(d.models.tasks.image);
+    for (const d of [en, ru, uz]) expect(d.modelDiscovery.groupOutputs.image).not.toBe(d.modelDiscovery.tasks.image);
   });
 });
