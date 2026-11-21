@@ -182,6 +182,11 @@ def render_timeout_s(length_s: float) -> float:
     return min(RENDER_TIMEOUT_MAX_S, RENDER_TIMEOUT_PER_S * length + RENDER_TIMEOUT_BASE_S)
 
 
+def attempt_token() -> str:
+    """A name no other attempt of any export shares (the work folder of one run_export call)."""
+    return uuid.uuid4().hex
+
+
 class ExportFailed(Exception):
     """End an export as failed with a reason word."""
 
@@ -375,10 +380,16 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
     org = ml.canonical_id(export.get("org_id"))
     project = ml.canonical_id(export.get("project_id"))
     doc = export.get("doc")
-    work = Path(media_root) / WORK_DIRNAME / eid
+    # One folder per ATTEMPT, not per export id: a worker whose lease expired and the worker that
+    # was handed the export next both run it, and with a shared folder the stale one's cleanup
+    # (or its pre-render wipe) deleted the live render's files. Each attempt only ever creates and
+    # removes its own folder.
+    export_dir = Path(media_root) / WORK_DIRNAME / eid
+    work = export_dir / attempt_token()
     probe = has_audio or (lambda path, mime: probe_has_audio(tools.ffprobe, path, mime))
     asset_id: Optional[str] = None
     reason: Optional[str] = None
+    created = False
     try:
         # The heartbeat starts with the work, not after the checks: a claimed export is
         # "rendering" from the first line, and anything slow or odd before the render
@@ -438,8 +449,9 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
             if any(resolver(aid) is None for aid in tl.asset_ids(norm)):
                 # Deleted since the export was asked for, or never this org's.
                 raise ExportFailed("asset_unavailable")
-            shutil.rmtree(work, ignore_errors=True)
+            # exist_ok=False: a folder that is already there is not ours, and is never wiped.
             work.mkdir(parents=True, mode=0o700)
+            created = True
             out = work / "export.mp4"
             try:
                 timeline_render.to_render_spec(norm, resolver, str(out))
@@ -454,11 +466,18 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                 # media worker's memory budget, not in the render worker's.
                 budget = (hires_export.render_timeout_s(frame.width, frame.height, length) if paid
                           else render_timeout_s(length))
+                # A paid export is never delivered from the backend's compact-encode fallback (low
+                # disk, or a failed parallel pass redone with the old settings): that would sell a
+                # lower-quality file as the paid one (CLAUDE.md rule 4). Strict: it fails instead.
+                strict = {"allow_compact": False} if priced else {}
                 render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1,
-                       timeout_s=budget)
+                       timeout_s=budget, **strict)
             except render_backend.RenderTimeout:
                 logger.warning("editor export %s: render ran past its time limit", eid)
                 raise ExportFailed("timed_out") from None
+            except render_backend.CompactEncodeRefused:
+                logger.warning("editor export %s: paid render refused the compact encode; failing, no file delivered", eid)
+                raise ExportFailed("render_failed") from None
             except Exception as e:
                 logger.warning("editor export %s: render failed (%s)", eid, type(e).__name__)
                 raise ExportFailed("render_failed") from None
@@ -471,14 +490,25 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                                     provenance={"tool": "editor", "editor_project": project,
                                                 "editor_export": eid, "rev": export.get("rev"),
                                                 **({"frame": frame.id} if frame is not None else {})})
-            except (ml.IngestReject, ml.StoreUnavailable) as e:
-                logger.warning("editor export %s: storing failed (%s)", eid, type(e).__name__)
+            except ml.MediaStoreUnavailable as e:
+                # No answer is not a decision: nothing is recorded and the stale export is handed out again, instead of
+                # a finished (possibly paid) render being reported as store_failed.
+                logger.warning("editor export %s: the database did not answer while storing (%s); left for a re-claim",
+                               eid, e.code)
+                raise
+            except (ml.IngestReject, ml.StoreUnavailable, ml.MediaStoreRefused) as e:
+                logger.warning("editor export %s: storing failed (%s)", eid, getattr(e, "code", type(e).__name__))
                 raise ExportFailed("store_failed") from None
             asset_id = str(stored.get("id"))
     except ExportFailed as e:
         reason = e.reason
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if created:  # never remove a folder this attempt did not create
+            shutil.rmtree(work, ignore_errors=True)
+        try:
+            export_dir.rmdir()  # only when empty: another attempt's folder keeps it
+        except OSError:
+            pass
     status = store.finish_export(eid, worker_id, asset_id, reason)
     logger.info("editor export %s: %s%s", eid, status, f" ({reason})" if reason else "")
     return str(status or ("done" if asset_id else "failed"))

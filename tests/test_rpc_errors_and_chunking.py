@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from modules import media_library, postgrest_chunks, scene_repair  # noqa: E402
-from modules.media_library import MediaStore, MediaStoreError  # noqa: E402
+from modules.media_library import MediaStore, MediaStoreError, MediaStoreRefused, MediaStoreUnavailable  # noqa: E402
 from operator_bot_fakes import NOW, make_ops  # noqa: E402
 
 SECRET = "sb-service-key-DO-NOT-LEAK"
@@ -43,14 +43,21 @@ def _store(**kw):
 
 
 class RpcWrapsTransportFailures(unittest.TestCase):
-    def assertTyped(self, store, code):
+    def assertTyped(self, store, code, *, transient=True):
         with self.assertRaises(MediaStoreError) as cm:
             store._rpc("claim_media_upload", {})
         e = cm.exception
         self.assertEqual(e.code, code)
         self.assertTrue(e.remedy)
         self.assertIsInstance(e, RuntimeError)  # callers already catch this as "queue unavailable"
-        self.assertIsInstance(e, media_library.StoreUnavailable)  # ingest maps it to "retry"
+        if transient:
+            # No answer: nothing decided, every caller leaves the job for a retry.
+            self.assertIsInstance(e, MediaStoreUnavailable)
+            self.assertIsInstance(e, media_library.StoreUnavailable)
+        else:
+            # The database said no: a decision. As a StoreUnavailable it would be "left for the sweep" with its reason lost.
+            self.assertIsInstance(e, MediaStoreRefused)
+            self.assertNotIsInstance(e, media_library.StoreUnavailable)
         self.assertNotIn(SECRET, str(e))
         self.assertNotIn("projectref123", str(e))  # the URL carries the project id
         return e
@@ -63,7 +70,8 @@ class RpcWrapsTransportFailures(unittest.TestCase):
 
     def test_http_error_is_typed_not_raw(self):
         resp = _Resp(401)
-        e = self.assertTyped(_store(exc=requests.exceptions.HTTPError("x", response=resp)), "invalid_service_key")
+        e = self.assertTyped(_store(exc=requests.exceptions.HTTPError("x", response=resp)), "invalid_service_key",
+                             transient=False)
         self.assertEqual(e.status, 401)
 
     def test_other_request_exception_is_typed(self):
@@ -74,10 +82,25 @@ class RpcWrapsTransportFailures(unittest.TestCase):
 
     def test_status_codes_name_different_remedies(self):
         remedies = {}
-        for status in (401, 429, 503, 400):
-            remedies[status] = self.assertTyped(_store(resp=_Resp(status)), {
-                401: "invalid_service_key", 429: "rate_limited", 503: "server_error", 400: "http_error"}[status]).remedy
-        self.assertEqual(len(set(remedies.values())), 4)
+        for status, code, transient in ((401, "invalid_service_key", False), (403, "forbidden", False),
+                                        (429, "rate_limited", True), (503, "server_error", True),
+                                        (400, "http_error", False)):
+            remedies[status] = self.assertTyped(_store(resp=_Resp(status)), code, transient=transient).remedy
+        self.assertEqual(len(set(remedies.values())), 5)
+
+    def test_a_refusal_is_a_decision_and_an_outage_is_not(self):
+        """401/403/400/422 fail now with a remedy; timeout, unreachable, 5xx, 429 and an unreadable answer are retried."""
+        for status in (400, 401, 403, 409, 422):
+            self.assertTyped(_store(resp=_Resp(status)), {401: "invalid_service_key", 403: "forbidden"}.get(status, "http_error"),
+                             transient=False)
+        for status in (429, 500, 502, 503, 504):
+            self.assertTyped(_store(resp=_Resp(status)), "rate_limited" if status == 429 else "server_error")
+
+    def test_remedies_name_no_single_migration(self):
+        # _rpc serves 0038's upload functions and 0054's export functions: a remedy naming one of them misleads.
+        for code, remedy in media_library._STORE_REMEDIES.items():
+            self.assertNotIn("0038", remedy, code)
+        self.assertNotEqual(media_library._STORE_REMEDIES["forbidden"], media_library._STORE_REMEDIES["invalid_service_key"])
 
     def test_success_and_missing_migration_unchanged(self):
         self.assertEqual(_store(resp=_Resp(200, [{"a": 1}]))._rpc("x", {}), [{"a": 1}])
@@ -86,7 +109,8 @@ class RpcWrapsTransportFailures(unittest.TestCase):
     def test_claim_still_raises_to_the_caller(self):
         with self.assertRaises(MediaStoreError):
             _store(exc=requests.exceptions.ConnectionError("x")).claim("w1")
-        self.assertIn("MediaStoreError", media_library.__all__)
+        for name in ("MediaStoreError", "MediaStoreRefused", "MediaStoreUnavailable"):
+            self.assertIn(name, media_library.__all__)
 
 
 class ChunkHelper(unittest.TestCase):

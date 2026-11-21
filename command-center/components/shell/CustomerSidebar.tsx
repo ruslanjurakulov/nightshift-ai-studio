@@ -6,9 +6,10 @@ import { PanelLeft } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem } from "@/lib/navigation";
+import { CUSTOMER_SIDEBAR, customerRail, sidebarCurrent, type NavItem } from "@/lib/navigation";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
+import { useShell } from "@/components/shell/ShellContext";
 import { Wordmark } from "@/components/site/Wordmark";
 import type { AccountPlan } from "@/lib/account";
 import { aside as MAside, nav as MNav } from "motion/react-m";
@@ -137,7 +138,9 @@ function CurrentRows({ collapsed }: { collapsed: boolean }) {
 function SidebarRows({ current, collapsed }: { current: string | null; collapsed: boolean }) {
   const { t } = useI18n();
   const path = useChannelPath();
-  const { home, work } = CUSTOMER_SIDEBAR;
+  const { home } = CUSTOMER_SIDEBAR;
+  // The rail's entries after Home, Nightshift AI among them only where the server's flag lets this workspace in.
+  const work = customerRail(useShell().features).slice(1);
   const HomeIcon = ICONS[home.key];
   return (
     <>

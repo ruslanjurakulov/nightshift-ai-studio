@@ -1013,7 +1013,7 @@ def _response_json(r, name: str):
     try:
         return json.loads(r.text, parse_int=_bounded_int)
     except ValueError:
-        raise MediaStoreError(name, "unreadable_response") from None
+        raise MediaStoreUnavailable(name, "unreadable_response") from None
 
 
 #: reason code -> what to do about it. Codes, not HTTP statuses: 401 (a wrong key) and 429 (a rate limit)
@@ -1022,19 +1022,22 @@ _STORE_REMEDIES = {
     "unreachable": "check SUPABASE_URL and that the database host is reachable from this worker",
     "timeout": "the database did not answer in time; it is retried on the next poll, check Supabase status",
     "invalid_service_key": "the service key was refused; check SUPABASE_SERVICE_KEY on the worker",
+    # 403 is not always the key: a security-definer function's own permission check (42501) answers 403 too.
+    "forbidden": "the database refused this call; check SUPABASE_SERVICE_KEY on the worker, then the function's grants",
     "rate_limited": "Supabase is throttling this worker; wait, the next poll retries",
     "server_error": "Supabase failed on its side; check its status page, the next poll retries",
-    "http_error": "the request was refused; check that migration 0038 matches this worker's version",
+    # Not one migration's name: _rpc serves 0038's upload functions and 0054's export functions alike.
+    "http_error": "the database refused the request; check that the applied migrations match this worker's version",
     "unreadable_response": "the database answered something that is not JSON; check SUPABASE_URL points at the REST API",
     "request_failed": "the request could not be made; check the worker's network and SUPABASE_URL",
 }
 
 
-class MediaStoreError(StoreUnavailable, RuntimeError):
-    """A MediaStore call failed. ``code`` is a short reason, ``remedy`` the fix. It is a StoreUnavailable (the
-    module's own 'could not reach the database' error, which ingest already maps to a retry) and still a
-    RuntimeError, which the service loop treats as 'queue unavailable'. The message holds the function name, the code and the remedy:
-    never the URL (it can carry a project id), a header or a payload."""
+class MediaStoreError(RuntimeError):
+    """A MediaStore call failed. ``code`` is a short reason, ``remedy`` the fix. Never raised itself: it is either
+    :class:`MediaStoreUnavailable` (no answer, nothing decided: retry) or :class:`MediaStoreRefused` (the database
+    answered no: fail now). Still a RuntimeError, which the service loop treats as 'queue unavailable'. The message
+    holds the function name, the code and the remedy: never the URL (it can carry a project id), a header or a payload."""
 
     def __init__(self, name: str, code: str, status: Optional[int] = None):
         self.name, self.code, self.status = name, code, status
@@ -1043,12 +1046,32 @@ class MediaStoreError(StoreUnavailable, RuntimeError):
         super().__init__(f"{name}: {code}{extra}: {self.remedy}")
 
 
-def _http_failure_code(status: int) -> str:
-    if status in (401, 403):
-        return "invalid_service_key"
+class MediaStoreUnavailable(MediaStoreError, StoreUnavailable):
+    """Timeout, unreachable, 5xx, 429, an unreadable answer: the call may or may not have landed and nothing is
+    decided, so it is a StoreUnavailable and every caller leaves the job for a retry. A lost register_asset answer
+    must stay here: film assembly reuses the registered master on the next claim instead of recording a failure
+    (Sentinel R1)."""
+
+
+class MediaStoreRefused(MediaStoreError):
+    """A 4xx other than 404 and 429: a refused key, a refused or invalid call. A decision, deliberately NOT a
+    StoreUnavailable: a retry gets the same answer, and treating it as an outage delays the failure and loses its
+    reason (CLAUDE.md rule 6)."""
+
+
+def _http_failure(name: str, status: Optional[int]) -> MediaStoreError:
+    if status == 401:
+        return MediaStoreRefused(name, "invalid_service_key", status)
+    if status == 403:
+        return MediaStoreRefused(name, "forbidden", status)
     if status == 429:
-        return "rate_limited"
-    return "server_error" if status >= 500 else "http_error"
+        return MediaStoreUnavailable(name, "rate_limited", status)
+    if status is not None and 400 <= status < 500:
+        return MediaStoreRefused(name, "http_error", status)
+    if status is not None and status >= 500:
+        return MediaStoreUnavailable(name, "server_error", status)
+    # A 3xx (PostgREST never redirects an RPC: SUPABASE_URL points elsewhere) or no status at all: no decision was read.
+    return MediaStoreUnavailable(name, "unreadable_response", status)
 
 
 class MediaStore:
@@ -1080,22 +1103,21 @@ class MediaStore:
             r = self.http().post(f"{self.url}/rest/v1/rpc/{name}", json=payload,
                                  headers=self._h({"Content-Type": "application/json"}), timeout=self._timeout)
         except requests.exceptions.Timeout:
-            raise MediaStoreError(name, "timeout") from None  # from None: requests' text can hold the full URL
+            raise MediaStoreUnavailable(name, "timeout") from None  # from None: requests' text can hold the full URL
         except requests.exceptions.ConnectionError:
-            raise MediaStoreError(name, "unreachable") from None
+            raise MediaStoreUnavailable(name, "unreachable") from None
         except requests.exceptions.HTTPError as e:
-            status = getattr(getattr(e, "response", None), "status_code", None)
-            raise MediaStoreError(name, _http_failure_code(status) if status else "http_error", status) from None
+            raise _http_failure(name, getattr(getattr(e, "response", None), "status_code", None)) from None
         except requests.exceptions.RequestException:
-            raise MediaStoreError(name, "request_failed") from None
+            raise MediaStoreUnavailable(name, "request_failed") from None
         if r.status_code == 404:
             return None  # 0038 not applied: nothing to do
         if r.status_code >= 300:
-            raise MediaStoreError(name, _http_failure_code(r.status_code), r.status_code)
+            raise _http_failure(name, r.status_code)
         try:
             return _response_json(r, name)
         except requests.exceptions.JSONDecodeError:
-            raise MediaStoreError(name, "unreadable_response") from None
+            raise MediaStoreUnavailable(name, "unreadable_response") from None
 
     def claim(self, worker_id: str) -> Optional[dict]:
         rows = self._rpc("claim_media_upload", {"p_worker": worker_id})
@@ -1579,7 +1601,8 @@ class MediaService:
 
 
 __all__ = [
-    "ALLOWED_MIME", "DEMUXER", "EXT_MIME", "HEIF_MIMES", "IngestReject", "MediaService", "MediaStore", "MediaStoreError", "Probe",
+    "ALLOWED_MIME", "DEMUXER", "EXT_MIME", "HEIF_MIMES", "IngestReject", "MediaService", "MediaStore", "MediaStoreError", "MediaStoreRefused",
+    "MediaStoreUnavailable", "Probe",
     "Tools", "VARIANT_FILES", "asset_dir", "asset_file", "canonical_id", "check_declared", "decode_heic",
     "find_tools", "gc_staging", "heic_available", "heif_has_image_item", "ingest", "interpret_probe",
     "process_ticket", "purge_deleted", "sniff", "staged_path", "storage_key",

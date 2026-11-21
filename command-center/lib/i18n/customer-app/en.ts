@@ -24,18 +24,6 @@ export const customerAppEn = {
   home: {
     title: "What shall we create?",
     lead: "Describe it in your own words. You see the price before anything is made.",
-    placeholder: {
-      video: "A slow drone shot over a misty mountain lake at sunrise…",
-      image: "A cosy neon-lit noodle bar on a rainy Tashkent street…",
-      audio: "A warm, calm voice reading: Welcome to our channel…",
-    },
-    promptLabel: "Your idea",
-    submit: "Continue",
-    submitHint: "Opens Create with your words. Nothing is spent until you press Create there.",
-    trendsTitle: "Trending templates",
-    trendsAll: "All trends",
-    trendsSoonTitle: "Trend templates are on their way",
-    trendsSoonBody: "Ready-made ideas from what is working now will appear here. Until then, start from your own idea.",
     continueTitle: "Continue",
     continueEmpty: "Nothing to continue yet. What you start appears here.",
     continueFailed: "Couldn't read your projects.",
