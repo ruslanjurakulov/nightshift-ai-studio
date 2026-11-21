@@ -7,7 +7,7 @@ create a transcript, and let the worker poll it — so a long recording never
 sits inside a single request, and a worker that restarts keeps the task id.
 
     POST {base}/v2/upload            raw bytes  -> {"upload_url"}
-    POST {base}/v2/transcript        {"audio_url", "speech_models", "language_code" | "language_detection"}
+    POST {base}/v2/transcript        {"audio_url", "speech_models", "language_code"}
                                      -> {"id", "status"}
     GET  {base}/v2/transcript/{id}   status queued | processing | completed | error;
                                      completed: {"language_code", "words": [{"text", "start", "end"}]}
@@ -22,8 +22,9 @@ The answer is turned into exactly what the synchronous adapter hands back — on
 SECONDS — and the worker cleans and stores it the same way, so everything after
 this file (price, hold, refund, track, cues, export) is shared.
 
-* the spoken language is sent only when the person named one (uz / ru / en);
-  otherwise the vendor detects it and the detected language is stored;
+* the spoken language is the one the person named (uz / ru / en), always sent;
+  a job without one is refused before any upload, never left for the vendor
+  to detect (an accented Uzbek speaker was heard as another language);
 * a recording with no speech is an EMPTY answer for the worker to turn into
   its own ``no_speech`` failure (the hold is released), never a vendor fault;
 * speaker labels and the vendor's text rewriting are not asked for: only words
@@ -37,7 +38,7 @@ import re
 from typing import Dict, List
 
 from modules import captions as caption_words
-from modules.capabilities.audio import DUB_SUFFIXES, VENDOR_ID, _one_recording, _recording
+from modules.capabilities.audio import DUB_SUFFIXES, SPOKEN_LANGUAGE_REQUIRED, VENDOR_ID, _one_recording, _recording
 from modules.capabilities.base import (
     CAPTIONS,
     E_BAD_REQUEST,
@@ -85,13 +86,17 @@ class AsyncTranscriptionAdapter(HttpAdapter):
         out.extend(_one_recording(request, DUB_SUFFIXES))
         if request.voice_id:
             out.append("a voice does not apply to captions")
+        if not request.spoken_language:
+            out.append(SPOKEN_LANGUAGE_REQUIRED)
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
         bad = _one_recording(request, DUB_SUFFIXES)
         lang = request.spoken_language
-        if lang is not None and not re.fullmatch(r"[a-z]{2}", lang):
+        if not lang:
+            bad.append(SPOKEN_LANGUAGE_REQUIRED)
+        elif not re.fullmatch(r"[a-z]{2}", lang):
             bad.append("the spoken language must be a two-letter tag")
         if bad:
             raise AdapterError(E_BAD_REQUEST, "; ".join(bad))
@@ -102,11 +107,8 @@ class AsyncTranscriptionAdapter(HttpAdapter):
         url = up.get("upload_url") if isinstance(up, dict) else None
         if not isinstance(url, str) or not is_url(url):
             raise AdapterError(E_BAD_RESPONSE, "the upload did not return a usable address")
-        body: dict = {"audio_url": url, "speech_models": [vendor_model], "speaker_labels": False}
-        if lang:
-            body["language_code"] = lang
-        else:
-            body["language_detection"] = True
+        # Never "language_detection": a detected language captioned accented Uzbek as another language.
+        body: dict = {"audio_url": url, "speech_models": [vendor_model], "speaker_labels": False, "language_code": lang}
         made = self.post(f"{self.base_url}/v2/transcript", body, what="submit")
         task = made.get("id") if isinstance(made, dict) else None
         if not isinstance(task, str) or not VENDOR_ID.fullmatch(task):

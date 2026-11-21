@@ -70,6 +70,38 @@ def base_language(code: Any) -> Optional[str]:
     return c if _LANG.match(c) else None
 
 
+class CaptionLanguageMissing(CaptionsError):
+    """No language was set for the speech, or Whisper does not know the one set.
+
+    Whisper left to itself guesses the language from the first 30 seconds: an Uzbek speaker with an accent was
+    transcribed (and captioned) as another language. The language is therefore always the run's, film's or job's
+    own, and when there is none the work stops by this name instead of guessing (CLAUDE.md rules 4 and 6)."""
+
+    def __init__(self, message: str):
+        super().__init__("captions_language_missing", message)
+
+
+def whisper_language(language: Any, *, known: Optional[Mapping[str, str]] = None) -> str:
+    """The Whisper code (``uz``) for a channel's language as the pipeline stores it ("Uzbek") or a tag ("uz").
+
+    ``known`` is Whisper's own ``code -> name`` table (``whisper.tokenizer.LANGUAGES``), read lazily so this module
+    does not import torch; a test passes its own. Raises :class:`CaptionLanguageMissing` for no language or one
+    Whisper does not have — never ``None``, which Whisper would read as "detect it"."""
+    if not isinstance(language, str) or not language.strip():
+        raise CaptionLanguageMissing("no language is set for the speech, and it is never guessed: set the channel's "
+                                     "language (or pass --language) to the language the narration is spoken in")
+    if known is None:
+        from whisper.tokenizer import LANGUAGES as known  # noqa: PLC0415 — heavy, only where Whisper runs
+    wanted = language.strip().lower()
+    if wanted in known:
+        return wanted
+    by_name = {name.lower(): code for code, name in known.items()}
+    if wanted in by_name:
+        return by_name[wanted]
+    raise CaptionLanguageMissing(f"Whisper does not transcribe {language.strip()[:40]!r}: set the language to one "
+                                 "Whisper knows (an English name such as 'Uzbek', or its code such as 'uz')")
+
+
 def _clean_word(text: Any) -> str:
     s = str(text if text is not None else "")
     out = []

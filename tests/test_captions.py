@@ -167,33 +167,44 @@ class Adapter(Tmp):
         self.assertEqual(body["language"], "uz")
         self.assertEqual(body["words"], [{"t": "Salom", "s": 0.1, "e": 0.5}, {"t": "dunyo", "s": 0.6, "e": 1.1}])
 
-    def test_no_language_asked_means_the_vendor_detects_and_that_is_what_is_stored(self):
+    # Owner's report: an accented Uzbek speaker was transcribed as another language when the vendor detected it.
+    def test_no_language_is_refused_before_the_recording_is_sent_never_left_to_detection(self):
         a = adapter([("POST", "/v1/speech-to-text", FakeResp(200, heard(("Privet", 0, 1), language="rus")))])
-        task = a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "scribe_v2")
-        self.assertNotIn("language_code", a.session.calls[0][2]["data"])
-        self.assertEqual(json.loads(task.outputs[0].data)["language"], "ru")
+        for missing in (None, ""):
+            with self.assertRaises(AdapterError) as cm:
+                a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language=missing), "scribe_v2")
+            self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+            self.assertIn("spoken language is required", cm.exception.message)
+        self.assertEqual(a.session.calls, [])
+
+    def test_the_named_language_is_stored_even_when_the_vendor_heard_another(self):
+        # The vendor's guess ("rus") never replaces the person's choice: the track is in the language they named.
+        a = adapter([("POST", "/v1/speech-to-text", FakeResp(200, heard(("Salom", 0, 1), language="rus")))])
+        task = a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="uz"), "scribe_v2")
+        self.assertEqual(a.session.calls[0][2]["data"]["language_code"], "uz")
+        self.assertEqual(json.loads(task.outputs[0].data)["language"], "uz")
 
     def test_audio_events_and_spacing_never_become_words(self):
         body = heard(("Hi", 0, 1), extra=[{"text": "(music)", "start": 1, "end": 3, "type": "audio_event"}])
         a = adapter([("POST", "/v1/speech-to-text", FakeResp(200, body))])
-        task = a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "scribe_v2")
+        task = a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="uz"), "scribe_v2")
         self.assertEqual([w["t"] for w in json.loads(task.outputs[0].data)["words"]], ["Hi"])
 
     def test_a_recording_without_speech_is_an_empty_answer_for_the_worker_to_refuse(self):
         a = adapter([("POST", "/v1/speech-to-text", FakeResp(200, {"language_code": "eng", "text": "", "words": []}))])
-        task = a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "scribe_v2")
+        task = a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="uz"), "scribe_v2")
         self.assertEqual(json.loads(task.outputs[0].data)["words"], [])
 
     def test_an_answer_with_channels_instead_of_words_is_refused_not_half_read(self):
         a = adapter([("POST", "/v1/speech-to-text", FakeResp(200, {"transcripts": [{"words": []}]}))])
         with self.assertRaises(AdapterError) as cm:
-            a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "scribe_v2")
+            a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="uz"), "scribe_v2")
         self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
 
     def test_a_vendor_error_is_typed_and_never_carries_the_key(self):
         a = adapter([("POST", "/v1/speech-to-text", FakeResp(402, json.dumps({"detail": f"quota exceeded {KEY}"})))])
         with self.assertRaises(AdapterError) as cm:
-            a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "scribe_v2")
+            a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="uz"), "scribe_v2")
         self.assertEqual(cm.exception.code, E_QUOTA)
         self.assertNotIn(KEY, cm.exception.message)
 
@@ -201,9 +212,9 @@ class Adapter(Tmp):
         entry = reg.get(MODEL)
         a = adapter()
         rec = (self.recording(),)
-        self.assertEqual(a.problems(CapabilityRequest("captions", input_media=rec), entry), [])
         self.assertEqual(a.problems(CapabilityRequest("captions", input_media=rec, spoken_language="ru"), entry), [])
         for bad in (CapabilityRequest("captions"),
+                    CapabilityRequest("captions", input_media=rec),
                     CapabilityRequest("captions", input_media=rec * 2),
                     CapabilityRequest("captions", input_media=rec, spoken_language="de"),
                     CapabilityRequest("captions", "say this", input_media=rec),
@@ -224,7 +235,7 @@ class Adapter(Tmp):
     def test_no_key_on_the_worker_is_not_configured_before_any_call(self):
         a = adapter(env={})
         with self.assertRaises(AdapterError) as cm:
-            a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "scribe_v2")
+            a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="uz"), "scribe_v2")
         self.assertEqual(cm.exception.code, "not_configured")
         self.assertEqual(a.session.calls, [])
 
@@ -353,7 +364,9 @@ class Worker(Tmp):
         self.assertEqual(q.finished["error_code"], "no_speech")
         self.assertIsNone(q.stored)
 
-    def test_the_detected_language_is_stored_when_none_was_asked_for(self):
+    # Owner's report: an accented Uzbek speaker was transcribed as another language when the vendor detected it.
+    # A job queued with no language (0072 still accepts one) is refused by name, free, and the recording never leaves.
+    def test_a_job_without_a_language_fails_by_name_and_the_recording_is_never_sent(self):
         session = FakeSession([("POST", "/v1/speech-to-text", FakeResp(200, heard(("Privet", 0, 1), language="rus")))])
         entry = reg.get(MODEL)
         ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env=ENV, session=session), sync_store={})
@@ -361,9 +374,12 @@ class Worker(Tmp):
                              params={"source_asset_id": SRC}, quoted_credits=3, quantity=95), recording_source())
         w = cw.CreativeWorker(q, lambda m: ra, worker_id="w1", out_dir=self.out, credits=FakeCredits(amount=3),
                               enforce=True, media_root=self.media, sleep=lambda s: None, heartbeat_seconds=0)
-        self.assertEqual(w.process(q.claim("w1")), "completed:captions")
-        self.assertEqual(q.stored["language"], "ru")
-        self.assertNotIn("language_code", session.calls[0][2]["data"])
+        self.assertEqual(w.process(q.claim("w1")), "failed:bad_request")
+        self.assertEqual((q.finished["ok"], q.finished["error_code"]), (False, "bad_request"))
+        self.assertIn("spoken language is required", q.finished["error"])
+        self.assertIsNone(q.finished["charge"])
+        self.assertEqual(session.calls, [])
+        self.assertIsNone(q.stored)
 
     def test_a_provider_outage_or_refusal_fails_the_job_with_a_typed_code(self):
         out, q, _ = self.run_job({"detail": "overloaded"}, status=503)

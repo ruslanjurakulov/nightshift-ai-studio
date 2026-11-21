@@ -34,11 +34,6 @@ export function isCaptionLanguage(v: unknown): v is CaptionLanguage {
   return typeof v === "string" && (CAPTION_LANGUAGES as readonly string[]).includes(v);
 }
 
-/** The language a job starts in: the one the app is read in, else English. */
-export function defaultCaptionLanguage(locale: unknown): CaptionLanguage {
-  return isCaptionLanguage(locale) ? locale : "en";
-}
-
 /** The longest recording captions take (0072's source check; the database still decides). */
 export const CAPTIONS_MAX_SECONDS = 1800;
 
@@ -741,9 +736,11 @@ export function coerceCaptionJobs(rows: unknown): CaptionJob[] {
   return out;
 }
 
-/** The params of a captions job: the recording, and the language only when the person named one. */
-export function captionParams(assetId: string, language: CaptionLanguage | null): Record<string, string> {
-  return language ? { source_asset_id: assetId, language } : { source_asset_id: assetId };
+/** The params of a captions job: the recording and the language spoken in it. */
+export function captionParams(assetId: string, language: CaptionLanguage): Record<string, string> {
+  // Always the language the person chose: a job without one was left to the vendor to detect, and accented Uzbek
+  // came back as another language. The app's own language is never a stand-in (an Uzbek reader may caption English).
+  return { source_asset_id: assetId, language };
 }
 
 /** Why the recording of a clip cannot be captioned here, or null (the database decides again at the quote). */

@@ -444,6 +444,56 @@ class LoudFailureTest(Base):
             raise RuntimeError("no model")
         self.assert_fails(f.db(), "captions_failed", transcribe=deaf)
 
+    # Owner's report: accented Uzbek narration was transcribed as another language when Whisper guessed it.
+    def test_the_films_own_language_is_what_the_narration_is_transcribed_in(self):
+        f = self.film(captions="sidecar", words=False)
+        f.film["language"] = "uz"
+        heard = []
+
+        def transcribe(path, language):
+            heard.append(language)
+            return [{"word": "Salom", "start": 0.35, "end": 0.7}]
+        db = f.db()
+        out = run(db, self.root, deps=self.fake_deps(db, transcribe=transcribe))
+        self.assertTrue(out.ok, out.detail)
+        self.assertEqual(heard, ["uz"])
+
+    def test_a_film_without_a_language_refuses_its_captions_and_never_lets_whisper_guess(self):
+        for missing in (None, "", "uzb"):
+            with self.subTest(language=missing):
+                f = self.film(captions="sidecar", words=False)
+                f.film["language"] = missing
+                heard = []
+
+                def transcribe(path, language):
+                    heard.append(language)
+                    return [{"word": "Salom", "start": 0.35, "end": 0.7}]
+                out = self.assert_fails(f.db(), "captions_language_missing", transcribe=transcribe)
+                self.assertEqual(heard, [], "the recogniser was called without the film's language")
+                self.assertIn("set the film's language", out.detail)
+                self.assertEqual(self.render_calls, [])
+
+    def test_whisper_itself_is_told_the_language(self):
+        calls = []
+
+        class Model:
+            def transcribe(self, path, **kw):
+                calls.append(kw)
+                return {"segments": [{"words": [{"word": " Salom", "start": 0.1, "end": 0.4}]}]}
+        fake = mock.MagicMock()
+        fake.load_model.return_value = Model()
+        tok = mock.MagicMock(LANGUAGES={"uz": "uzbek", "ru": "russian", "en": "english"})
+        modules = {"whisper": fake, "whisper.tokenizer": tok}
+        with mock.patch.dict("sys.modules", modules):
+            words = fa.whisper_words(self.root / "n.mp3", "uz")
+        self.assertEqual(calls[0]["language"], "uz")
+        self.assertEqual(words[0]["word"], " Salom")
+        with mock.patch.dict("sys.modules", modules):
+            for missing in (None, ""):
+                with self.assertRaises(fa.caption_words.CaptionLanguageMissing):
+                    fa.whisper_words(self.root / "n.mp3", missing)
+        self.assertEqual(len(calls), 1, "Whisper ran with no language")
+
 
 # ── Lens / Breach findings ──────────────────────────────────────────────────
 

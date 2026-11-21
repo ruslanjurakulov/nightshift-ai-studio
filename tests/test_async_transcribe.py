@@ -5,7 +5,7 @@ recording, create a transcript, poll it. Everything is driven through fake
 sessions: no network, no key, no paid call. What must hold:
 
 * the documented requests are sent in order — raw upload, then the transcript
-  with the vendor model and EITHER the named language OR detection, the key in
+  with the vendor model and the named language (never detection), the key in
   a header only;
 * the answer (milliseconds) becomes exactly the words-in-seconds JSON the
   synchronous adapter hands back, so the worker stores it the same way;
@@ -110,25 +110,28 @@ class Submit(Tmp):
         self.assertEqual(task.task_id, TID)
         self.assertFalse(task.outputs)
 
-    def test_no_language_asked_means_the_vendor_detects_it(self):
+    # Owner's report: an accented Uzbek speaker was transcribed as another language when the vendor detected it.
+    def test_no_language_is_refused_before_the_upload_never_left_to_detection(self):
         a = adapter([UP_OK, CREATE_OK])
-        a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "universal-2")
-        body = a.session.calls[1][2]["json"]
-        self.assertTrue(body["language_detection"])
-        self.assertNotIn("language_code", body)
+        for missing in (None, ""):
+            with self.assertRaises(AdapterError) as cm:
+                a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language=missing), "universal-2")
+            self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+            self.assertIn("spoken language is required", cm.exception.message)
+        self.assertEqual(a.session.calls, [], "the recording was uploaded for a job with no language")
 
     def test_an_upload_without_an_address_or_a_transcript_without_an_id_is_a_bad_response(self):
         for routes in ([("POST", "/v2/upload", FakeResp(200, {"upload_url": "http://insecure.example/x"}))],
                        [UP_OK, ("POST", "/v2/transcript", FakeResp(200, {"status": "queued"}))],
                        [UP_OK, ("POST", "/v2/transcript", FakeResp(200, {"id": "../etc"}))]):
             with self.assertRaises(AdapterError) as cm:
-                adapter(routes).submit(CapabilityRequest("captions", input_media=(self.recording(),)), "universal-2")
+                adapter(routes).submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="ru"), "universal-2")
             self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
 
     def test_a_refused_key_is_typed_and_the_message_never_carries_it(self):
         a = adapter([("POST", "/v2/upload", FakeResp(401, json.dumps({"error": f"invalid {KEY}"})))])
         with self.assertRaises(AdapterError) as cm:
-            a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "universal-2")
+            a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="ru"), "universal-2")
         self.assertEqual(cm.exception.code, E_AUTH)
         self.assertNotIn(KEY, cm.exception.message)
         self.assertTrue(cm.exception.not_accepted)
@@ -137,8 +140,9 @@ class Submit(Tmp):
         entry = reg.get(MODEL)
         a = adapter()
         rec = (self.recording(),)
-        self.assertEqual(a.problems(CapabilityRequest("captions", input_media=rec), entry), [])
+        self.assertEqual(a.problems(CapabilityRequest("captions", input_media=rec, spoken_language="ru"), entry), [])
         for bad in (CapabilityRequest("captions"),
+                    CapabilityRequest("captions", input_media=rec),
                     CapabilityRequest("captions", input_media=rec * 2),
                     CapabilityRequest("captions", input_media=rec, spoken_language="uz"),
                     CapabilityRequest("captions", input_media=rec, voice_id="A" * 20),
@@ -152,7 +156,7 @@ class Submit(Tmp):
     def test_no_key_on_the_worker_is_not_configured_before_any_call(self):
         a = adapter(env={})
         with self.assertRaises(AdapterError) as cm:
-            a.submit(CapabilityRequest("captions", input_media=(self.recording(),)), "universal-2")
+            a.submit(CapabilityRequest("captions", input_media=(self.recording(),), spoken_language="ru"), "universal-2")
         self.assertEqual(cm.exception.code, "not_configured")
         self.assertEqual(a.session.calls, [])
 
@@ -174,7 +178,7 @@ class Poll(unittest.TestCase):
         a.poll(self.task())
         self.assertEqual(a.session.calls[0][2]["timeout"], 30)
         b = adapter([UP_OK, CREATE_OK])
-        b.submit(CapabilityRequest("captions", input_media=(self._rec(),)), "universal-2")
+        b.submit(CapabilityRequest("captions", input_media=(self._rec(),), spoken_language="ru"), "universal-2")
         self.assertEqual([c[2]["timeout"] for c in b.session.calls], [600, 600])
 
     def _rec(self):

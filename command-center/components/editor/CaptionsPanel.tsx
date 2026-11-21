@@ -21,7 +21,7 @@ import {
   coerceTrack,
   coerceTrackSummary,
   cueWarnings,
-  defaultCaptionLanguage,
+  isCaptionLanguage,
   mergeWithNext,
   playedClips,
   presetMatching,
@@ -312,7 +312,9 @@ export function CaptionsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectNonce, preselectId]);
   const picked = recordings.find((r) => r.id === sourceId) ?? recordings.find((r) => recordingProblem(r) === null) ?? recordings[0] ?? null;
-  const [language, setLanguage] = useState<CaptionLanguage | "detect">(() => defaultCaptionLanguage(locale));
+  // Nothing is chosen until the person chooses: neither the app's language (an Uzbek reader may caption English
+  // speech) nor detection (accented Uzbek was transcribed as another language) is the language of a recording.
+  const [language, setLanguage] = useState<CaptionLanguage | null>(null);
   const [modelId, setModelId] = useState<string>(models[0]?.id ?? "");
   const [preset, setPreset] = useState<CaptionPresetId>(
     () => presetMatching(captionsOf(model)?.style, model.width, model.height) ?? DEFAULT_PRESET,
@@ -339,13 +341,13 @@ export function CaptionsPanel({
   const [replacement, setReplacement] = useState("");
 
   const chosen = models.find((m) => m.id === modelId) ?? models[0] ?? null;
-  // A language the picked model was not proven for is not offered: back to "detect it".
-  const spoken: CaptionLanguage | null = language !== "detect" && chosen?.languages.includes(language) ? language : null;
+  // A language the picked model was not proven for is not sent, and nothing takes its place: the person chooses again.
+  const spoken: CaptionLanguage | null = language !== null && chosen?.languages.includes(language) ? language : null;
   const problem = picked ? recordingProblem(picked) : "unknown";
   // Caption times use a clip's constant forward speed: not offered on a curve or backwards.
   const curved = Boolean(picked?.curved);
-  const canQuote = Boolean(picked && chosen && problem === null && orgId && !curved);
-  const paramsKey = picked ? JSON.stringify(captionParams(picked.id, spoken)) : "";
+  const canQuote = Boolean(picked && chosen && problem === null && orgId && !curved && spoken);
+  const paramsKey = picked && spoken ? JSON.stringify(captionParams(picked.id, spoken)) : "";
 
   // ── the price (asked of the database; nothing is held) ──────────────────────
   useEffect(() => {
@@ -523,7 +525,7 @@ export function CaptionsPanel({
 
   // ── the priced press: the only thing here that spends ────────────────────────
   async function start() {
-    if (quote.status !== "ready" || submitting || !chosen || !picked || problem !== null || curved) return;
+    if (quote.status !== "ready" || submitting || !chosen || !picked || problem !== null || curved || !spoken) return;
     setSubmitting(true);
     setErrorCode(null);
     setNotice(null);
@@ -727,13 +729,20 @@ export function CaptionsPanel({
             </label>
             <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
               {tc.languageLabel}
-              <select value={spoken ?? "detect"} onChange={(e) => setLanguage(e.target.value as CaptionLanguage | "detect")} className={fieldClass}>
+              <select
+                value={spoken ?? ""}
+                onChange={(e) => setLanguage(isCaptionLanguage(e.target.value) ? e.target.value : null)}
+                aria-describedby={picked && !spoken ? "captions-language-needed" : undefined}
+                className={fieldClass}
+              >
+                <option value="" disabled>
+                  {tc.chooseLanguage}
+                </option>
                 {CAPTION_LANGUAGES.filter((l) => chosen?.languages.includes(l)).map((l) => (
                   <option key={l} value={l}>
                     {tc.languages[l]}
                   </option>
                 ))}
-                <option value="detect">{tc.detect}</option>
               </select>
             </label>
             {models.length > 1 ? (
@@ -750,6 +759,11 @@ export function CaptionsPanel({
             ) : null}
           </div>
 
+          {picked && !spoken ? (
+            <p id="captions-language-needed" data-testid="captions-language-needed" className="m-0 text-xs text-[var(--color-muted)]">
+              {language !== null ? fmt(tc.languageNotOffered, { lang: tc.languages[language] }) : tc.languageNeeded}
+            </p>
+          ) : null}
           {picked && !picked.heard && picked.kind === "video" ? (
             <p className="m-0 text-xs text-[var(--color-muted)]">{tc.muted}</p>
           ) : null}

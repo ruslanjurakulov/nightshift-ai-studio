@@ -7,6 +7,7 @@ from pathlib import Path
 
 import whisper
 
+from modules.captions import whisper_language
 from modules.resource_monitor import process_rss_mb
 
 from config import (
@@ -74,14 +75,19 @@ class SubtitleGenerator:
                 before, after,
             )
 
-    def transcribe(self, audio_path: Path) -> list[dict]:
+    def transcribe(self, audio_path: Path, language: str) -> list[dict]:
         """
         Returns word-level timestamps:
         [{"word": str, "start": float, "end": float}, ...]
+
+        ``language`` is the narration's (the channel's, "Uzbek" or "uz"), resolved before the model is loaded.
+        Without it Whisper guessed from the first 30 s and captioned accented Uzbek as another language.
         """
+        code = whisper_language(language)
         model = self._get_model()
         result = model.transcribe(
             str(audio_path),
+            language=code,
             word_timestamps=True,
             verbose=False,
         )

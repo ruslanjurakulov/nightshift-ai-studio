@@ -49,7 +49,8 @@ from modules.avatar import (
     AvatarUnavailable, UnsafeAvatarRequest, describe_presenter, maybe_generate_presenter,
     planned_presenter_usd, preflight_avatar, presenter_narration, resolve_avatar_config,
 )
-from modules.audio_mixer import AudioMixer, VoiceUnavailable, narrator_voice, secondary_voice, verify_voice
+from modules.audio_mixer import AudioMixer, VoiceUnavailable, narrator_voice, script_language, secondary_voice, verify_voice
+from modules.captions import CaptionLanguageMissing, whisper_language
 from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, effective_privacy, resolve_channel
 from modules.credential_health import (
@@ -798,6 +799,22 @@ def _preflight_pictures(ctx, series_obj, channel_id) -> None:
         raise
 
 
+def _preflight_caption_language(ctx, channel_id) -> str:
+    """The Whisper code the captions are transcribed in: the narration's own language, resolved now.
+
+    Whisper was called with no language and guessed it from the first 30 s, so accented Uzbek narration came back
+    captioned as another language. The run's script and voice language (the channel's, or this run's --language) is
+    the language spoken, so it is the one Whisper is told; one it does not know stops the run here, before anything
+    is paid for, rather than at Stage 5 (CLAUDE.md rules 4 and 6)."""
+    try:
+        return whisper_language(script_language(ctx.agent))
+    except CaptionLanguageMissing as e:
+        logger.error("[channel: %s] %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="subtitle_generator", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": e.message, "reason": e.code, "stage": "preflight"})
+        raise
+
+
 @_flush_costs_on_exit
 def run(
     niche: str | None = None,
@@ -1031,6 +1048,7 @@ def run(
         events.emit(events.AGENT_FAILED, agent="audio_mixer", status=events.STATUS_FAILED,
                     channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
         raise
+    caption_language = _preflight_caption_language(ctx, channel_id)
 
     # ── Stage 0c: Can the configured b-roll model be called at all?
     # Same reasoning as the voice: with generated b-roll on, a model id this
@@ -1557,7 +1575,7 @@ def run(
 
     # ── Stage 5: Subtitles
     sub_gen = SubtitleGenerator(slug)
-    word_timestamps = sub_gen.transcribe(audio_path)
+    word_timestamps = sub_gen.transcribe(audio_path, caption_language)
     # The .srt has always been written and then only burnt into the picture.
     # Keeping the path lets the upload also offer it to YouTube as a caption
     # track — see YouTubeUploader.upload_captions.

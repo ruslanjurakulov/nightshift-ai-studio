@@ -320,13 +320,23 @@ class CliOrder(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_cli(self, *extra, duration=30.0):
+    def run_cli(self, *extra, duration=30.0, language=("--language", "Uzbek")):
+        # A language by default, so each refusal below is the one its test names, not the missing language.
         with self.mock.patch.object(ve, "audio_seconds", return_value=duration), \
                 self.mock.patch.object(voice_to_video, "_words", side_effect=AssertionError("transcribed")) as w, \
                 self.mock.patch.object(voice_to_video, "_model_gen", side_effect=AssertionError("planner")) as g, \
                 self.mock.patch("shutil.which", return_value="/usr/bin/npx"):
-            rc = voice_to_video.main(["--audio", str(self.audio), "--out", str(self.d / "o.mp4"), *extra])
+            rc = voice_to_video.main(["--audio", str(self.audio), "--out", str(self.d / "o.mp4"), *language, *extra])
         return rc, w.called, g.called
+
+    # Owner's report: Whisper left to guess heard accented Uzbek as another language.
+    def test_transcribing_without_a_language_is_refused_before_anything_runs(self):
+        import contextlib
+        import io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(self.run_cli("--sfx-dir", "none", language=()), (2, False, False))
+        self.assertIn("--language is required", err.getvalue())
 
     def test_a_recording_over_the_limit_is_refused_before_anything_runs(self):
         self.assertEqual(self.run_cli(duration=ve.MAX_SECONDS + 1), (2, False, False))

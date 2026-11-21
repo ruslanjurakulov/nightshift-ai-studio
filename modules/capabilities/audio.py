@@ -389,6 +389,11 @@ class ElevenLabsDubbingAdapter(_ElevenLabs):
 
 # ── captions (migration 0072) ───────────────────────────────────────────────
 
+#: A captions job names the language spoken (the person's choice, uz / ru / en). Left to the vendor to detect, an
+#: accented Uzbek speaker was transcribed as another language: no language is a refusal, before any upload or charge.
+SPOKEN_LANGUAGE_REQUIRED = ("the spoken language is required for captions and is never detected: "
+                            "choose the language spoken in the recording (uz, ru or en)")
+
 class ElevenLabsScribeAdapter(_ElevenLabs):
     """``POST /v1/speech-to-text`` (multipart ``file`` + ``model_id``, with
     ``timestamps_granularity=word``) — the vendor's speech-to-text. Synchronous:
@@ -397,10 +402,11 @@ class ElevenLabsScribeAdapter(_ElevenLabs):
     Only words come back to the caller: no speaker labels and no audio-event
     tags are asked for (``diarize`` and ``tag_audio_events`` are sent false),
     and ``type`` other than ``word`` is dropped by
-    :func:`modules.captions.words_from_vendor`. The spoken language is sent
-    only when the person named one (``language_code``, an ISO 639-1 tag the
-    registry entry lists); otherwise the vendor detects it and the detected
-    language is stored with the track."""
+    :func:`modules.captions.words_from_vendor`. The spoken language is always
+    the one the person named (``language_code``, an ISO 639-1 tag the registry
+    entry lists) and is the language stored with the track; a job without one
+    is refused, never sent for the vendor to detect (an accented Uzbek speaker
+    was heard as another language)."""
 
     key = "audio.elevenlabs_scribe"
     capabilities = (CAPTIONS,)
@@ -412,21 +418,23 @@ class ElevenLabsScribeAdapter(_ElevenLabs):
         out.extend(_one_recording(request, DUB_SUFFIXES))
         if request.voice_id:
             out.append("a voice does not apply to captions")
+        if not request.spoken_language:
+            out.append(SPOKEN_LANGUAGE_REQUIRED)
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
         bad = _one_recording(request, DUB_SUFFIXES)
         lang = request.spoken_language
-        if lang is not None and not re.fullmatch(r"[a-z]{2}", lang):
+        if not lang:
+            bad.append(SPOKEN_LANGUAGE_REQUIRED)
+        elif not re.fullmatch(r"[a-z]{2}", lang):
             bad.append("the spoken language must be a two-letter tag")
         if bad:
             raise AdapterError(E_BAD_REQUEST, "; ".join(bad))
         name, mime = _recording(request.input_media[0])
         form = {"model_id": vendor_model, "timestamps_granularity": "word",
-                "diarize": "false", "tag_audio_events": "false"}
-        if lang:
-            form["language_code"] = lang
+                "diarize": "false", "tag_audio_events": "false", "language_code": lang}
         with open(request.input_media[0], "rb") as fh:
             body = self._call("POST", f"{self.base_url}/v1/speech-to-text", what="transcribe",
                               files={"file": (name, fh, mime)}, data=form)
@@ -437,7 +445,7 @@ class ElevenLabsScribeAdapter(_ElevenLabs):
         # A recording with no speech answers with no words: the worker turns
         # that into its own "no_speech" failure (and releases the hold) — it is
         # neither a vendor fault nor a bad request.
-        payload = json.dumps(caption_words.track_json(lang or language, [
+        payload = json.dumps(caption_words.track_json(lang, [
             {"t": w.get("text"), "s": w.get("start"), "e": w.get("end")} for w in words]),
             ensure_ascii=False).encode("utf-8")
         return ProviderTask(self.key, vendor_model, None, outputs=[Output("application/json", data=payload)])

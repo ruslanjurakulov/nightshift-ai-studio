@@ -4,7 +4,7 @@
 
 An operator tool for now: it spends nothing of a customer's (no hold, no queue job, no
 upload). With ``--planner model`` it makes ONE Gemini call (GEMINI_API_KEY); with
-``--planner rules`` (the default) none. Transcription is the local Whisper model unless
+``--planner rules`` (the default) none. Transcription is the local Whisper model, in ``--language``, unless
 ``--words`` gives a word track (``[{"text","start_s","end_s"}]``, Whisper's
 ``{"word","start","end"}`` or the captions track's ``{"t","s","e"}``).
 
@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from modules import voice_explainer as ve  # noqa: E402
+from modules.captions import CaptionLanguageMissing  # noqa: E402
 
 logger = logging.getLogger("voice_to_video")
 
@@ -51,7 +52,9 @@ def _words(args, audio: Path):
         raise ve.ExplainerError(f"Whisper is not installed ({e.name}): `pip install -r requirements.txt`, or pass --words") from None
     gen = SubtitleGenerator(audio.stem)
     try:
-        return ve.normalize_words(gen.transcribe(audio))
+        return ve.normalize_words(gen.transcribe(audio, args.language))
+    except CaptionLanguageMissing as e:
+        raise ve.ExplainerError(e.message) from None
     finally:
         gen.release_model()
 
@@ -84,7 +87,8 @@ def main(argv=None) -> int:
     ap.add_argument("--planner", default="rules", choices=("rules", "model"))
     ap.add_argument("--plan", help="a JSON plan (one object per sentence) to use instead of a planner")
     ap.add_argument("--words", help="a JSON word track instead of Whisper")
-    ap.add_argument("--language", default="", help="the narration's language, for the model planner")
+    ap.add_argument("--language", default="", help="the narration's language ('Uzbek' or 'uz'): required to transcribe "
+                    "(it is never guessed), and given to the model planner")
     ap.add_argument("--music", help="a music bed (mp3/wav); default: none")
     ap.add_argument("--sfx-dir", default=str(ROOT / "assets" / "sfx"), help="where whoosh/deep_boom are; 'none' for no effects")
     ap.add_argument("--no-captions", action="store_true")
@@ -101,6 +105,10 @@ def main(argv=None) -> int:
         audio = Path(args.audio)
         if not audio.is_file():
             raise ve.ExplainerError(f"--audio {audio} does not exist")
+        if not args.words and not args.language.strip():
+            # Whisper left to guess heard accented Uzbek as another language: the language is the operator's to state.
+            raise ve.ExplainerError("--language is required to transcribe the recording (it is never guessed): "
+                                    "pass the language it is spoken in, e.g. --language Uzbek, or pass --words")
         duration = ve.audio_seconds(audio)
         if duration > ve.MAX_SECONDS:
             raise ve.ExplainerError(f"the recording is {duration:.0f} s; the explainer takes up to {ve.MAX_SECONDS:.0f} s — cut it first")

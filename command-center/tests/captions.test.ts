@@ -35,7 +35,6 @@ import {
   coerceWords,
   cueWarnings,
   cuesAt,
-  defaultCaptionLanguage,
   lineLimit,
   mergeWithNext,
   playedClips,
@@ -528,11 +527,23 @@ describe("the request", () => {
     parseGenerationInput({ org_id: ORG, capability: "captions", model: "scribe", params, max_credits: 3, ...extra }, null, { requirePrice: true });
   const bad = (r: ReturnType<typeof parse>) => (r.ok ? "ok" : (r.result.body.error as string));
 
-  it("a recording, and a language only when one was named", () => {
-    expect(captionParams(A, null)).toEqual({ source_asset_id: A });
+  it("a recording and the language spoken in it", () => {
     expect(captionParams(A, "uz")).toEqual({ source_asset_id: A, language: "uz" });
     expect(parse(captionParams(A, "ru")).ok).toBe(true);
-    expect(parse(captionParams(A, null)).ok).toBe(true);
+  });
+
+  // Owner's report: an accented Uzbek speaker was transcribed as another language when it was left to be detected.
+  it("a captions job without the spoken language is refused before it is priced, naming what to send", () => {
+    for (const params of [{ source_asset_id: A }, { source_asset_id: A, language: null }, { source_asset_id: A, language: "" }]) {
+      const r = parse(params);
+      expect(bad(r), JSON.stringify(params)).toBe("invalid_params");
+      if (!r.ok) expect(String(r.result.body.detail)).toContain("is required for captions");
+    }
+  });
+
+  it("the app's language is not a source: the module has no locale-to-language default", async () => {
+    const mod = (await import("@/lib/captions")) as Record<string, unknown>;
+    expect(mod.defaultCaptionLanguage).toBeUndefined();
   });
 
   // The shape checks here; prompt, voice_id and the rest of 0072's refusals are the database's (tests/security/test_sec_captions.py).
@@ -551,13 +562,11 @@ describe("the request", () => {
     // A language belongs to describe and captions only.
     expect(bad(parseGenerationInput({ org_id: ORG, capability: "t2i", model: "m", params: { prompt: "x", language: "en" }, max_credits: 1 }, null, { requirePrice: true }))).toBe("invalid_params");
     // The price is the person's to confirm.
-    expect(bad(parseGenerationInput({ org_id: ORG, capability: "captions", model: "scribe", params: { source_asset_id: A } }, null, { requirePrice: true }))).toBe("confirm_price");
+    expect(bad(parseGenerationInput({ org_id: ORG, capability: "captions", model: "scribe", params: { source_asset_id: A, language: "uz" } }, null, { requirePrice: true }))).toBe("confirm_price");
   });
 
   it("the language allow-list is one list in the code and the database", () => {
     expect([...OPS_LANGUAGES]).toEqual([...CAPTION_LANGUAGES]);
-    expect(defaultCaptionLanguage("uz")).toBe("uz");
-    expect(defaultCaptionLanguage("de")).toBe("en");
     expect(CAPTIONS_MAX_SECONDS).toBe(1800);
   });
 

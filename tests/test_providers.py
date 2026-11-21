@@ -173,33 +173,33 @@ class SpeechToTextAdapterTestCase(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def transcribe(self, audio_path):
-                self.calls.append(audio_path)
+            def transcribe(self, audio_path, language):
+                self.calls.append((audio_path, language))
                 return words
 
         fake = FakeGenerator()
         provider = WhisperSpeechToTextProvider(fake)
         self.assertIsInstance(provider, SpeechToTextProvider)
         # str in, Path to the engine; the word list comes back as the engine made it.
-        result = provider.transcribe("/tmp/narration.mp3")
+        result = provider.transcribe("/tmp/narration.mp3", "uz")
         self.assertIs(result, words)
-        self.assertEqual(fake.calls, [Path("/tmp/narration.mp3")])
+        self.assertEqual(fake.calls, [(Path("/tmp/narration.mp3"), "uz")])
 
     def test_empty_transcript_stays_empty(self):
         class Silent:
-            def transcribe(self, audio_path):
+            def transcribe(self, audio_path, language):
                 return []
 
-        self.assertEqual(WhisperSpeechToTextProvider(Silent()).transcribe(Path("/tmp/a.wav")), [])
+        self.assertEqual(WhisperSpeechToTextProvider(Silent()).transcribe(Path("/tmp/a.wav"), "uz"), [])
 
     def test_engine_failure_is_not_swallowed(self):
         # A transcription that failed must not read as "no words" (rule 4/5).
         class Broken:
-            def transcribe(self, audio_path):
+            def transcribe(self, audio_path, language):
                 raise RuntimeError("model missing")
 
         with self.assertRaises(RuntimeError):
-            WhisperSpeechToTextProvider(Broken()).transcribe(Path("/tmp/a.wav"))
+            WhisperSpeechToTextProvider(Broken()).transcribe(Path("/tmp/a.wav"), "uz")
 
     def test_default_factory_is_lazy(self):
         # Building the default provider must not build a SubtitleGenerator (which

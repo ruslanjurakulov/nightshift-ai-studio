@@ -87,9 +87,12 @@ class SpeechToTextProvider(Protocol):
     cannot give per-word times does not satisfy this contract; it must not
     invent them (CLAUDE.md rule 5). The adapter over the local Whisper path is
     WhisperSpeechToTextProvider below.
+
+    ``language`` is the speech's own (the channel's, the film's, the job's), always given: an engine left to
+    detect it captioned accented Uzbek as another language.
     """
 
-    def transcribe(self, audio_path: Path) -> list[dict]:
+    def transcribe(self, audio_path: Path, language: str) -> list[dict]:
         ...
 
 
@@ -274,8 +277,8 @@ class WhisperSpeechToTextProvider:
             self._generator = SubtitleGenerator(self._slug)
         return self._generator
 
-    def transcribe(self, audio_path: Path) -> list[dict]:
-        return self._get_generator().transcribe(Path(audio_path))
+    def transcribe(self, audio_path: Path, language: str) -> list[dict]:
+        return self._get_generator().transcribe(Path(audio_path), language)
 
 
 class VidIQKeywordResearchProvider:

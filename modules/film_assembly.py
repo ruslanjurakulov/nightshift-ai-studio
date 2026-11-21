@@ -57,6 +57,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Mapping, Optional, Sequence
 
+from modules import captions as caption_words
 from modules import editor_export
 from modules import film_timeline as ft
 from modules import media_library as ml
@@ -70,6 +71,8 @@ logger = logging.getLogger(__name__)
 WORK_DIRNAME = ".film-assembly"
 #: Word timings already transcribed, per narration file, so a retry builds the same cut (Lens L5).
 CACHE_DIRNAME = ".film-assembly-cache"
+#: A film's languages (0166's check on films.language): the only ones its captions are transcribed in.
+FILM_LANGUAGES = ("en", "ru", "uz")
 #: Namespace of the master's asset id: uuid5(NS, "<segment>:<cut sha256>").
 ASSET_NS = uuid.UUID("6f1c7a3e-2b8d-5e44-9a61-0c5e2f8d4b17")
 
@@ -93,7 +96,7 @@ ENABLE_ENV = "NIGHTSHIFT_FILM_ASSEMBLY"
 #: The machine words this module fails an assembly with (film_timeline's own refusals pass through as
 #: they are, so the canvas shows the same word the cut used).
 REASONS = ("assembly_not_enabled", "not_running", "lease_lost", "film_unavailable", "narration_missing",
-           "captions_failed", "disk_low", "asset_unavailable", "render_timed_out", "render_failed",
+           "captions_failed", "captions_language_missing", "disk_low", "asset_unavailable", "render_timed_out", "render_failed",
            "render_degraded", "output_mismatch", "store_failed", "review_copy_missing", "review_copy_too_large",
            "assembly_crashed") + ft.REASONS
 
@@ -222,14 +225,16 @@ def cues_from_words(words: Sequence[Mapping], segments: Sequence[Mapping], max_c
     return [c for c in cues if c["end_s"] > c["start_s"]]
 
 
-def whisper_words(path: Path, language: Optional[str]) -> List[dict]:
+def whisper_words(path: Path, language: str) -> List[dict]:
     """Word timings of the narration file from Whisper base (the worker image caches it at build time).
 
-    Temperature 0 with no fallback: the same file gives the same words, so a retry builds the same cut."""
+    Temperature 0 with no fallback: the same file gives the same words, so a retry builds the same cut. The language is
+    the film's, always: ``None`` made Whisper guess, and accented Uzbek was captioned as another language."""
+    code = caption_words.whisper_language(language)
     import whisper  # noqa: PLC0415 — only the worker image has it
 
     model = whisper.load_model("base")
-    out = model.transcribe(str(path), language=(language or None), word_timestamps=True, fp16=False,
+    out = model.transcribe(str(path), language=code, word_timestamps=True, fp16=False,
                            condition_on_previous_text=False, temperature=0.0)
     words: List[dict] = []
     for seg in out.get("segments") or []:
@@ -238,8 +243,8 @@ def whisper_words(path: Path, language: Optional[str]) -> List[dict]:
     return words
 
 
-def cached_words(media_root: Path, narration_id: str, path: Path, language: Optional[str],
-                 transcribe: Callable[[Path, Optional[str]], List[dict]]) -> List[dict]:
+def cached_words(media_root: Path, narration_id: str, path: Path, language: str,
+                 transcribe: Callable[[Path, str], List[dict]]) -> List[dict]:
     """The narration's word timings, transcribed once per file: a retry reads the same words back."""
     cache = Path(media_root) / CACHE_DIRNAME / f"{narration_id}.json"
     try:
@@ -590,7 +595,7 @@ class Deps:
     render: Callable[..., str] = render_strict
     store_file: Callable[..., dict] = ml.store_generated
     store_captions: Callable[..., dict] = store_caption
-    transcribe: Callable[[Path, Optional[str]], List[dict]] = whisper_words
+    transcribe: Callable[[Path, str], List[dict]] = whisper_words
     probe: Optional[Callable[[Path], Probed]] = None
     has_audio: Optional[Callable[[Path, str], bool]] = None
     free_mb: Callable[[Path], Optional[float]] = free_mb
@@ -767,8 +772,14 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
             if nid not in by_id or not path.is_file():
                 raise AssemblyFailed("asset_unavailable", "the narration file is no longer in the library: generate "
                                      "the narration again")
+            # The film's own language (0166: not null, en/ru/uz), never guessed: Whisper left to detect it heard accented
+            # Uzbek as another language. Checked outside the try below, whose remedy ("retry") would not fix this.
+            language = film.get("language")
+            if language not in FILM_LANGUAGES:
+                raise AssemblyFailed("captions_language_missing", "the film has no language set for its captions, and "
+                                     "it is never guessed: set the film's language (uz, ru or en), or set captions to none")
             try:
-                words = cached_words(media_root, nid, path, film.get("language"), deps.transcribe)
+                words = cached_words(media_root, nid, path, language, deps.transcribe)
             except Exception as e:  # noqa: BLE001
                 raise AssemblyFailed("captions_failed", f"the captions could not be transcribed ({type(e).__name__}): "
                                      "retry the assembly, or set captions to none") from None

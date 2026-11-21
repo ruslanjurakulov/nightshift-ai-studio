@@ -130,13 +130,18 @@ const labelRe = (template: string) =>
 const makeBtn = (n: number | null) =>
   screen.getByRole("button", { name: n === null ? tc.make : fmt(tc.makePriced, { n: String(n) }) });
 
+/** The person names the language spoken: nothing is quoted before that (it is never guessed, nor the app's language). */
+const speak = (lang: "uz" | "ru" | "en" = "uz", label: string = tc.languageLabel) =>
+  fireEvent.change(screen.getByLabelText(label), { target: { value: lang } });
+
 describe("the paid step: quote, price on the button, one priced press", () => {
   it("shows the database's price on the button and holds nothing until it is pressed", async () => {
     routes.push(quoteOk(6.2), noTracks, noJobs);
     render(<Host />);
+    speak("uz");
     await waitFor(() => expect(makeBtn(6.2)).toBeTruthy());
     const [q] = calls("POST", "/api/creative/quote");
-    expect(bodyOf(q)).toEqual({ org_id: ORG, capability: "captions", model: "scribe", params: { source_asset_id: A, language: "en" } });
+    expect(bodyOf(q)).toEqual({ org_id: ORG, capability: "captions", model: "scribe", params: { source_asset_id: A, language: "uz" } });
     expect(calls("POST", "/api/creative/jobs")).toHaveLength(0);
     expect(screen.getByText(tc.priceNote)).toBeTruthy();
   });
@@ -148,6 +153,7 @@ describe("the paid step: quote, price on the button, one priced press", () => {
         : undefined,
     );
     render(<Host />);
+    speak("uz");
     await waitFor(() => expect(makeBtn(6.2)).toHaveProperty("disabled", false));
     const press = makeBtn(6.2);
     fireEvent.click(press);
@@ -156,31 +162,63 @@ describe("the paid step: quote, price on the button, one priced press", () => {
     const posts = calls("POST", "/api/creative/jobs");
     expect(posts).toHaveLength(1);
     const body = bodyOf(posts[0]);
-    expect(body).toMatchObject({ org_id: ORG, capability: "captions", model: "scribe", max_credits: 6.2, params: { source_asset_id: A, language: "en" } });
+    expect(body).toMatchObject({ org_id: ORG, capability: "captions", model: "scribe", max_credits: 6.2, params: { source_asset_id: A, language: "uz" } });
     expect(typeof body.idempotency_key).toBe("string");
     expect(body.idempotency_key.length).toBeGreaterThan(8);
     // While a job runs the button cannot be pressed again.
     expect(press).toHaveProperty("disabled", true);
   });
 
-  it("detecting the language sends no language at all", async () => {
+  // Owner's report: speaking Uzbek with an accent, the recogniser decided it was another language. The language is the
+  // person's choice: never detected, never the app's language, and nothing is priced or sent until it is chosen.
+  it("nothing is chosen, priced or sent until the person names the language spoken; there is no 'detect' choice", async () => {
     routes.push(quoteOk(3), noTracks, noJobs);
     render(<Host />);
+    const select = screen.getByLabelText(tc.languageLabel) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect(within(select).getAllByRole("option").map((o) => o.getAttribute("value"))).toEqual(["", "uz", "ru", "en"]);
+    expect(screen.getByTestId("captions-language-needed").textContent).toBe(tc.languageNeeded);
+    expect(select.getAttribute("aria-describedby")).toBe("captions-language-needed");
+    expect(makeBtn(null)).toHaveProperty("disabled", true);
+    await new Promise((r) => setTimeout(r, 600));
+    expect(calls("POST", "/api/creative/quote")).toHaveLength(0);
+    speak("uz");
     await waitFor(() => expect(makeBtn(3)).toBeTruthy());
-    fireEvent.change(screen.getByLabelText(tc.languageLabel), { target: { value: "detect" } });
-    await waitFor(() => expect(calls("POST", "/api/creative/quote").length).toBe(2));
-    expect(bodyOf(calls("POST", "/api/creative/quote")[1]).params).toEqual({ source_asset_id: A });
+    expect(calls("POST", "/api/creative/quote").map((c) => bodyOf(c).params)).toEqual([{ source_asset_id: A, language: "uz" }]);
+    expect(screen.queryByTestId("captions-language-needed")).toBeNull();
   });
 
-  it("offers only the languages the model was proven for, and falls back to detecting", async () => {
+  for (const locale of ["en", "ru", "uz"] as const) {
+    it(`${locale}: the app's own language is never taken as the language spoken`, async () => {
+      routes.push(quoteOk(3), noTracks, noJobs);
+      render(<Host locale={locale} />);
+      const d = dictionaries[locale].captions;
+      expect((screen.getByLabelText(d.languageLabel) as HTMLSelectElement).value).toBe("");
+      await new Promise((r) => setTimeout(r, 600));
+      expect(calls("POST", "/api/creative/quote")).toHaveLength(0);
+      // An Uzbek reader captioning English speech: the language sent is the one chosen, not the app's.
+      const other = locale === "en" ? "ru" : "en";
+      speak(other, d.languageLabel);
+      await waitFor(() => expect(calls("POST", "/api/creative/quote")).toHaveLength(1));
+      expect(bodyOf(calls("POST", "/api/creative/quote")[0]).params.language).toBe(other);
+    });
+  }
+
+  it("offers only the languages the model was proven for, and a language it lacks is never swapped for another", async () => {
     routes.push(quoteOk(3), noTracks, noJobs);
-    render(<Host models={[{ id: "narrow", displayName: "Narrow", languages: ["uz"] }]} />);
-    // The app is read in English, which this model does not list.
-    const select = screen.getByLabelText(tc.languageLabel) as HTMLSelectElement;
-    expect(select.value).toBe("detect");
-    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([tc.languages.uz, tc.detect]);
+    const narrow = { id: "narrow", displayName: "Narrow", languages: ["uz"] };
+    render(<Host models={[SCRIBE, narrow]} />);
+    speak("ru");
     await waitFor(() => expect(makeBtn(3)).toBeTruthy());
-    expect(bodyOf(calls("POST", "/api/creative/quote")[0]).params).toEqual({ source_asset_id: A });
+    // The person switches to a transcription that does not take Russian: nothing is quoted in its place.
+    fireEvent.change(screen.getByLabelText(tc.modelLabel), { target: { value: "narrow" } });
+    const select = screen.getByLabelText(tc.languageLabel) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(""));
+    expect(within(select).getAllByRole("option").map((o) => o.getAttribute("value"))).toEqual(["", "uz"]);
+    expect(screen.getByTestId("captions-language-needed").textContent).toBe(fmt(tc.languageNotOffered, { lang: tc.languages.ru }));
+    expect(makeBtn(null)).toHaveProperty("disabled", true);
+    await new Promise((r) => setTimeout(r, 600));
+    expect(calls("POST", "/api/creative/quote").map((c) => bodyOf(c).params.language)).toEqual(["ru"]);
   });
 
   it("insufficient credits is a sentence with a way to add credits, and nothing is started", async () => {
@@ -191,6 +229,7 @@ describe("the paid step: quote, price on the button, one priced press", () => {
       (url, init) => (url.endsWith("/api/creative/jobs") && init?.method === "POST" ? json({ error: "insufficient_credits", available: 1, needed: 6.2 }, 402) : undefined),
     );
     render(<Host />);
+    speak();
     await waitFor(() => expect(makeBtn(6.2)).toHaveProperty("disabled", false));
     fireEvent.click(makeBtn(6.2));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(t.creative.errors.insufficient_credits));
@@ -213,6 +252,7 @@ describe("the paid step: quote, price on the button, one priced press", () => {
       },
     );
     render(<Host />);
+    speak();
     await waitFor(() => expect(makeBtn(6.2)).toHaveProperty("disabled", false));
     fireEvent.click(makeBtn(6.2));
     await waitFor(() => expect(makeBtn(8)).toBeTruthy());
@@ -222,6 +262,7 @@ describe("the paid step: quote, price on the button, one priced press", () => {
   it("a model with no price (unpriced) is a sentence, never a zero", async () => {
     routes.push((url) => (url.endsWith("/api/creative/quote") ? json({ error: "unpriced" }, 422) : undefined), noTracks, noJobs);
     render(<Host />);
+    speak();
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(t.creative.errors.unpriced));
     expect(screen.queryByText(/credits/)?.textContent ?? "").not.toMatch(/· 0 credits/);
     expect(screen.getByRole("button", { name: tc.make })).toHaveProperty("disabled", true);
@@ -318,6 +359,7 @@ describe("a job on its way", () => {
     await waitFor(() => expect(screen.getByText(new RegExp(tc.failed))).toBeTruthy(), { timeout: 8000 });
     expect(screen.getByText(new RegExp(t.gen.reasons.no_speech))).toBeTruthy();
     // And it can be tried again.
+    speak();
     await waitFor(() => expect(makeBtn(6.2)).toHaveProperty("disabled", false));
   }, 12000);
 
@@ -347,6 +389,7 @@ describe("a job on its way", () => {
       (url) => (url.startsWith("/api/creative/jobs?") ? json({ jobs: [{ id: JOB, capability: "captions", status: "running", params: { source_asset_id: B }, quoted_credits: 6.2 }] }) : undefined),
     );
     render(<Host />);
+    speak();
     await waitFor(() => expect(makeBtn(6.2)).toBeTruthy());
     expect(screen.queryByText(tc.working)).toBeNull();
   });
@@ -373,6 +416,7 @@ describe("stopping and finding a job", () => {
     const [post] = calls("POST", `/api/creative/jobs/${JOB}`);
     expect(bodyOf(post)).toEqual({ action: "cancel" });
     expect(screen.queryByText(tc.working)).toBeNull();
+    speak();
     await waitFor(() => expect(makeBtn(6.2)).toHaveProperty("disabled", false));
     // Cancelling never starts (or pays for) a job.
     expect(fetchMock.mock.calls.filter(([u, init]) => u === "/api/creative/jobs" && (init as RequestInit | undefined)?.method === "POST")).toHaveLength(0);
@@ -616,13 +660,16 @@ describe("a transcript, then captions on the video (free)", () => {
 
 describe("the other languages", () => {
   for (const locale of ["ru", "uz"] as const) {
-    it(`${locale}: the panel reads in that language and starts in it`, async () => {
+    it(`${locale}: the panel reads in that language, and asks which language is spoken`, async () => {
       routes.push(quoteOk(6.2), noTracks, noJobs);
       render(<Host locale={locale} />);
       const d = dictionaries[locale].captions;
       expect(screen.getByRole("heading", { name: d.heading })).toBeTruthy();
+      expect(screen.getByTestId("captions-language-needed").textContent).toBe(d.languageNeeded);
+      expect(screen.getByRole("option", { name: d.chooseLanguage })).toBeTruthy();
+      speak("en", d.languageLabel);
       await waitFor(() => expect(screen.getByRole("button", { name: fmt(d.makePriced, { n: "6.2" }) })).toBeTruthy());
-      expect(bodyOf(calls("POST", "/api/creative/quote")[0]).params.language).toBe(locale);
+      expect(bodyOf(calls("POST", "/api/creative/quote")[0]).params.language).toBe("en");
     });
   }
 });

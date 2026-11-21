@@ -69,6 +69,8 @@ SCHEMA_PATH = SCHEMAS / "model_registry.schema.json"
 
 #: ``credit_prices.unit`` must match this (migration 0020's CHECK).
 CREDIT_UNIT_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+#: The language of a captions probe's speech: tools/probe_models.py speaks the probe's English ``prompt`` with TTS.
+PROBE_SPEECH_LANGUAGE = "en"
 #: A terms gate keeps a model unsellable in SQL until the owner clears it.
 TERMS_GATES = ("written_consent_required", "terms_review_required", "plan_required:scale")
 
@@ -411,7 +413,10 @@ class ModelEntry:
                                  voice_id=None if cap in (DUB, CAPTIONS) else voice_id, input_images=tuple(images),
                                  scale=p.get("factor"), input_media=tuple(media),
                                  target_language=p.get("target_language"), end_image=end,
-                                 upscale_target=p.get("upscale_target"))
+                                 upscale_target=p.get("upscale_target"),
+                                 # A captions probe hears its own English prompt spoken: it names that language, as
+                                 # every captions request must (the adapters refuse one left to detection).
+                                 spoken_language=PROBE_SPEECH_LANGUAGE if cap == CAPTIONS else None)
 
 
 def _entry(m: Mapping) -> ModelEntry:

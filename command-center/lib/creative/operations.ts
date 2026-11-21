@@ -137,7 +137,7 @@ export const RECORDING_CAPABILITIES: readonly string[] = [...MEDIA_SOURCE_CAPABI
 
 /**
  * 0072's explicit allow-list for the spoken `language` of a captions job
- * (optional; absent = the provider detects it). The model must list it too.
+ * (required here: never detected, never the app's language). The model must list it too.
  */
 export const CAPTION_LANGUAGES = ["uz", "ru", "en"] as const;
 export type CaptionLanguage = (typeof CAPTION_LANGUAGES)[number];
@@ -543,8 +543,15 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_language does not apply to ${capability}` }) };
   if (capability === "describe" && params.language !== undefined && !(DESCRIBE_LANGUAGES as readonly unknown[]).includes(params.language))
     return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${DESCRIBE_LANGUAGES.join(", ")}` }) };
-  if (capability === "captions" && params.language !== undefined && !(CAPTION_LANGUAGES as readonly unknown[]).includes(params.language))
-    return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${CAPTION_LANGUAGES.join(", ")}` }) };
+  // Required, and never detected or taken from the app's language: a job without one was left to the vendor to guess,
+  // and accented Uzbek came back as another language. Refused here, before the quote and the hold (0072 still allows none).
+  if (capability === "captions" && !(CAPTION_LANGUAGES as readonly unknown[]).includes(params.language))
+    return {
+      ok: false,
+      result: fail(400, "invalid_params", {
+        detail: `language (the language spoken in the recording: ${CAPTION_LANGUAGES.join(", ")}) is required for captions`,
+      }),
+    };
   if (capability !== "describe" && capability !== "captions" && params.language !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `language does not apply to ${capability}` }) };
   const bad = pictureOpProblem(capability, params) ?? videoOpProblem(capability, params);
