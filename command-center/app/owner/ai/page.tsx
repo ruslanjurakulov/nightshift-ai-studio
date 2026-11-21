@@ -16,7 +16,7 @@ export default async function OwnerConsoleAi() {
   const c = t.ownerConsole;
   return (
     <OwnerPage title={c.sections.ai.title} subtitle={c.sections.ai.subtitle}>
-      <OwnerAssistant a={c.assistant} verifyHref={mfaVerifyUrl("/owner/ai")} />
+      <OwnerAssistant a={c.assistant} verifyHref={mfaVerifyUrl("/owner/ai")} signInHref={`/login?next=${encodeURIComponent("/owner/ai")}`} />
     </OwnerPage>
   );
 }

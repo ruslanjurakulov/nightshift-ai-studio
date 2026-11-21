@@ -17,7 +17,8 @@ interface Turn {
   asOf: string | null;
   removedLinks: number;
 }
-type Failure = { message: string; verify?: boolean; clear?: boolean };
+/** retry: whether asking again can help (a daily cap, a missing key or migration will refuse again). */
+type Failure = { message: string; verify?: boolean; clear?: boolean; signIn?: boolean; retry?: boolean };
 
 const QUESTION_MAX = 2000;
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
@@ -31,20 +32,20 @@ export function failureText(a: A, status: number, body: Record<string, unknown> 
   const err = typeof body?.error === "string" ? body.error : "";
   const reason = typeof body?.reason === "string" ? body.reason : "";
   if (status === 401 && err === "second_factor") return { message: a.errors.second_factor, verify: true };
-  if (status === 401 || status === 404) return { message: a.errors.session };
+  if (status === 401 || status === 404) return { message: a.errors.session, signIn: true };
   if (err === "model_unavailable" && Object.hasOwn(a.errors.model_unavailable, reason))
     return { message: a.errors.model_unavailable[reason as keyof A["errors"]["model_unavailable"]] };
   if (err === "model_failed" && Object.hasOwn(a.errors.model_failed, reason))
-    return { message: a.errors.model_failed[reason as keyof A["errors"]["model_failed"]] };
+    return { message: a.errors.model_failed[reason as keyof A["errors"]["model_failed"]], retry: !["vendor_auth", "vendor_quota", "not_configured"].includes(reason) };
   if (err === "daily_cap") return { message: fill(a.errors.daily_cap, { limit: typeof body?.limit === "number" ? body.limit : "—" }) };
   if (err === "not_enabled") return { message: fill(a.errors.not_enabled, { n: typeof body?.needs === "string" ? body.needs : "—" }) };
   if (err === "message_too_long") return { message: fill(a.tooLong, { n: QUESTION_MAX }) };
   if (status === 413 || err === "payload_too_large") return { message: a.errors.tooMuchHistory, clear: true };
-  if (err === "unavailable") return { message: a.errors.unavailable };
-  return { message: a.errors.other };
+  if (err === "unavailable") return { message: a.errors.unavailable, retry: true };
+  return { message: a.errors.other, retry: true };
 }
 
-export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) {
+export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref: string; signInHref: string }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState(false);
@@ -68,7 +69,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
     setLastAsked(null);
   }
 
-  async function ask(text: string) {
+  async function ask(text: string, fromBox = false) {
     const q = text.trim();
     if (!q || inFlight.current) return;
     if (q.length > QUESTION_MAX) {
@@ -102,10 +103,11 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
           removedLinks: typeof body.removed_links === "number" ? body.removed_links : 0,
         },
       ]);
-      setQuestion("");
+      // A suggestion must not wipe what the owner had half-typed in the box.
+      if (fromBox) setQuestion("");
       setLastAsked(null);
     } catch {
-      setFailure({ message: a.errors.network });
+      setFailure({ message: a.errors.network, retry: true });
     } finally {
       inFlight.current = false;
       setPending(false);
@@ -131,7 +133,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
       </section>
 
       <section className="oc-card" aria-label={a.ai}>
-        <div role="log" aria-live="polite" aria-busy={pending} className="oc-stack">
+        <div role="log" aria-live="polite" className="oc-stack">
           {turns.length === 0 ? (
             <div className="oc-stack">
               <p className="oc-note">{a.empty}</p>
@@ -139,7 +141,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
               <ul role="list" className="m-0 flex list-none flex-col gap-2 p-0">
                 {a.suggest.map((s) => (
                   <li key={s}>
-                    <button type="button" className="btn-quiet text-start" disabled={pending} onClick={() => ask(s)}>
+                    <button type="button" className="btn-quiet justify-start py-2 text-start disabled:cursor-not-allowed disabled:opacity-40" disabled={pending} onClick={() => ask(s)}>
                       {s}
                     </button>
                   </li>
@@ -156,7 +158,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
                 {t.draft && (
                   <div className="oc-ai-draft">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="m-0 text-sm font-semibold">
+                      <h3 className="m-0 min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">
                         {t.draft.title ? `${a.draft}: ${t.draft.title}` : a.draft}
                       </h3>
                       <button type="button" className="btn-quiet" onClick={() => copy(i, t.draft!.title ? `${t.draft!.title}\n\n${t.draft!.body}` : t.draft!.body)}>
@@ -175,8 +177,11 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
               </article>
             ))
           )}
-          {pending && <p className="sr-only">{a.asking}</p>}
         </div>
+        {/* Outside the log: a busy live region holds its updates back, so this would never be heard inside it. */}
+        <p className="sr-only" role="status">
+          {pending ? a.asking : ""}
+        </p>
         {copyFailed && (
           <p className="oc-note" role="status">
             {a.copyFailed}
@@ -190,13 +195,18 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
                 <a className="btn-quiet" href={verifyHref}>
                   {a.verify}
                 </a>
+              ) : failure.signIn ? (
+                <a className="btn-quiet" href={signInHref}>
+                  {a.signIn}
+                </a>
               ) : failure.clear ? (
                 <button type="button" className="btn-quiet" onClick={clearAll}>
                   {a.clear}
                 </button>
               ) : (
+                failure.retry &&
                 lastAsked && (
-                  <button type="button" className="btn-quiet" disabled={pending} onClick={() => ask(lastAsked)}>
+                  <button type="button" className="btn-quiet disabled:cursor-not-allowed disabled:opacity-40" disabled={pending} onClick={() => ask(lastAsked)}>
                     {a.retry}
                   </button>
                 )
@@ -210,7 +220,7 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
         className="oc-card"
         onSubmit={(e) => {
           e.preventDefault();
-          void ask(question);
+          void ask(question, true);
         }}
       >
         <label htmlFor="owner-ai-q" className="text-sm font-semibold">
@@ -228,18 +238,18 @@ export function OwnerAssistant({ a, verifyHref }: { a: A; verifyHref: string }) 
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
-              void ask(question);
+              void ask(question, true);
             }
           }}
         />
         <div className="oc-actions">
-          <button type="submit" className="btn-primary" disabled={pending || question.trim() === ""} aria-disabled={pending || question.trim() === ""}>
+          <button type="submit" className="btn-primary disabled:cursor-not-allowed disabled:opacity-40" disabled={pending || question.trim() === ""}>
             {pending ? a.asking : a.ask}
           </button>
-          {turns.length > 0 && (
+          {turns.length > 0 && !failure?.clear && (
             <button
               type="button"
-              className="btn-quiet"
+              className="btn-quiet disabled:cursor-not-allowed disabled:opacity-40"
               disabled={pending}
               onClick={clearAll}
             >

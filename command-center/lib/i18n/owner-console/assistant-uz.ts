@@ -3,7 +3,7 @@ import type { ownerAssistantEn } from "./assistant-en";
 /** Eganing Nightshift AI yordamchisi (/owner/ai). Matn manbai — ./assistant-en.ts. */
 export const ownerAssistantUz: typeof ownerAssistantEn = {
   intro: "Foydalanuvchilar va tariflar, tushum, qaysi provayderga qachon toʻlash yoki tizim holati haqida soʻrang. Javoblar faqat platformaning oʻz koʻrsatkichlaridan olinadi va har bir koʻrsatkich oʻlchangan, taxminiy yoki nomaʼlum ekanini aytadi.",
-  noActions: "Faqat javob va qoralamalar: bu yerda hech narsa toʻlanmaydi, narx yoki tarif oʻzgarmaydi, foydalanuvchi tahrirlanmaydi va hech narsa eʼlon qilinmaydi.",
+  noActions: "Faqat javoblar va qoralamalar: bu yerda hech narsa toʻlanmaydi, narx yoki tarif oʻzgarmaydi, foydalanuvchi tahrirlanmaydi va hech narsa eʼlon qilinmaydi.",
   label: "Savolingiz",
   placeholder: "Bu hafta qaysi API uchun toʻlashim kerak?",
   ask: "Soʻrash",
@@ -15,7 +15,7 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
   copied: "Nusxalandi",
   copyFailed: "Nusxalab boʻlmadi. Matnni belgilab, qoʻlda nusxalang.",
   linksRemoved: "Javobdan provayderlarning oʻz sahifalariga tegishli boʻlmagan havola yoki hisob raqami olib tashlandi ([⚠]). Faqat provayderning oʻz sahifasida, «Provayderlar va toʻlovlar» boʻlimidan toʻlang.",
-  asOf: "Koʻrsatkichlar {time} holatiga (Toshkent)",
+  asOf: "Koʻrsatkichlar {time} holatiga koʻra (Toshkent vaqti)",
   empty: "Hali savol yoʻq.",
   suggestions: "Sinab koʻring",
   suggest: [
@@ -41,7 +41,7 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
       bad_answer: "Model javobi kutilgan koʻrinishda kelmadi. Qayta soʻrang.",
       not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",
     },
-    daily_cap: "Bugungi {limit} ta savol chegarasi tugadi. U keyingi 24 soat ichida boʻshaydi.",
+    daily_cap: "Bugungi {limit} ta savol chegarasiga yetildi. U 24 soat ichida tiklanadi.",
     second_factor: "Buning uchun ikkinchi omil kerak. Uni tasdiqlab, qayta soʻrang.",
     not_enabled: "Ega AI yordamchisi uchun hali qoʻllanmagan maʼlumotlar bazasi migratsiyasi ({n}) kerak.",
     unavailable: "Hozir javob berib boʻlmadi. Muammo bizning tomonda. Qayta soʻrang.",
@@ -50,6 +50,7 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
     tooMuchHistory: "Suhbat yuborish uchun juda uzun. Uni tozalab, qayta soʻrang.",
     other: "Javob berib boʻlmadi. Qayta soʻrang.",
   },
+  signIn: "Kirish",
   verify: "Tasdiqlash",
   retry: "Qayta soʻrash",
 };

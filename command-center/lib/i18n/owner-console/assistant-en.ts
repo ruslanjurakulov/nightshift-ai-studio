@@ -48,6 +48,7 @@ export const ownerAssistantEn = {
     tooMuchHistory: "The conversation is too long to send. Clear it and ask again.",
     other: "Couldn't answer. Ask again.",
   },
+  signIn: "Sign in",
   verify: "Verify",
   retry: "Ask again",
 };

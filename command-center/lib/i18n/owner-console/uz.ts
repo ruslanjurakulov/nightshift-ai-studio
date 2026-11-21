@@ -21,7 +21,7 @@ export const ownerConsoleUz: OwnerConsoleDictionary = {
     revenue: { title: "Daromad", subtitle: "Sotuvlar, qaytarishlar va nizolar — toʻlov provayderi yozganidek." },
     providers: { title: "Provayderlar va toʻlovlar", subtitle: "Model provayderlari, ularning kalitlari va xarajatlari hamda toʻlov provayderi." },
     health: { title: "Tizim holati", subtitle: "Butun platformadagi xatolar, ogohlantirishlar, vazifalar va jurnallar." },
-    ai: { title: "Ega uchun Nightshift AI", subtitle: "Nightshift AI dan platformaning oʻz maʼlumotlari haqida soʻrang." },
+    ai: { title: "Ega uchun Nightshift AI", subtitle: "Nightshift AIʼdan platformaning oʻz maʼlumotlari haqida soʻrang." },
     settings: { title: "Sozlamalar", subtitle: "Nightshift AI modeli, chat cheklovlari va Film Studio kalitlari." },
   },
   notBuilt: "Bu sahifa hali tayyorlanmoqda. Shu paytgacha xuddi shu maʼlumotlar quyidagi vositalarda.",

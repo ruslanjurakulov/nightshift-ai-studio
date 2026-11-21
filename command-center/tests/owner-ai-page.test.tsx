@@ -50,7 +50,12 @@ describe("the panel's failures", () => {
     expect(failureText(a, 429, { error: "daily_cap", limit: 200 }).message).toContain("200");
     expect(failureText(a, 503, { error: "not_enabled", needs: "0202" }).message).toContain("0202");
     expect(failureText(a, 401, { error: "second_factor" })).toEqual({ message: a.errors.second_factor, verify: true });
-    expect(failureText(a, 404, { error: "not_found" }).message).toBe(a.errors.session);
+    expect(failureText(a, 404, { error: "not_found" })).toEqual({ message: a.errors.session, signIn: true });
+    // Asking again only where it can help: a daily cap or a missing key refuses again.
+    expect(failureText(a, 429, { error: "daily_cap", limit: 200 }).retry).toBeFalsy();
+    expect(failureText(a, 502, { error: "model_failed", reason: "vendor_auth" }).retry).toBe(false);
+    expect(failureText(a, 502, { error: "model_failed", reason: "timeout" }).retry).toBe(true);
+    expect(failureText(a, 503, { error: "unavailable" }).retry).toBe(true);
     // A conversation too long to send says how to get out of it, not "ask again".
     expect(failureText(a, 413, { error: "payload_too_large" })).toEqual({ message: a.errors.tooMuchHistory, clear: true });
   });
