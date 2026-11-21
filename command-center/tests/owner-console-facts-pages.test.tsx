@@ -34,6 +34,9 @@ vi.mock("@/app/owner/_facts", () => ({
     return s.load;
   },
 }));
+// The live cards' own reads are pinned in tests/owner-ai-redesign.test.tsx; here the slot is a marker, so the Overview's own
+// decision (where the cards go, and when they are left out) is what is checked.
+vi.mock("@/app/owner/_kpis", () => ({ OwnerAiKpis: () => <div data-testid="kpis-slot" /> }));
 
 const AS_OF = "2026-11-21T07:00:00.000Z";
 const line = (over: Partial<PlanLine>): PlanLine => ({
@@ -146,6 +149,15 @@ describe("owner console pages from the owner's facts", () => {
     expect(out).toContain(en.ownerConsole.facts.doctor.fail);
     expect(out).toContain("2 of 3");
     expect(out).toMatch(/2 of 3<\/span> <span class="oc-tag oc-tag-estimated">/);
+  });
+
+  it("overview: the four live cards come first, before the tiles; not at all when the facts did not load", async () => {
+    const out = await html(await pages.overview());
+    expect(out).toContain("kpis-slot");
+    expect(out.indexOf("kpis-slot")).toBeLessThan(out.indexOf("oc-kpis"));
+    s.load = { ok: false, kind: "failed" };
+    // FactsUnavailable already says why with its retry: a second "couldn't load" card under it would be noise.
+    expect(await html(await pages.overview())).not.toContain("kpis-slot");
   });
 
   it("overview: a block the database could not give is a gap, never 0", async () => {

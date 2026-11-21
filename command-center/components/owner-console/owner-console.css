@@ -245,13 +245,71 @@
 .oc-nowrap { white-space: nowrap; }
 .oc-warn { color: var(--color-warn); }
 
-/* The owner's Nightshift AI. */
-.oc-ai-turn { display: flex; flex-direction: column; gap: 0.3rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-border); }
-.oc-ai-turn:last-child { border-bottom: 0; padding-bottom: 0; }
-.oc-ai-who { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--color-muted); }
-.oc-ai-q, .oc-ai-a { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The owner's live cards (Overview) and the owner AI's draft and failure notices. */
 .oc-ai-draft { border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-panel-2); padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .oc-ai-draft-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 0.9rem; }
 .oc-ai-error { border: 1px solid var(--color-warn); border-radius: 0.6rem; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.oc-ai-input { width: 100%; resize: vertical; min-height: 5rem; border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-bg); color: var(--color-fg); padding: 0.6rem; font: inherit; }
-.oc-ai-input:focus-visible { outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }
+
+/* Live cards: two across on a phone (four stacked would push the chat off the first screen), four across on a desktop. */
+.ai-kpis-wrap { display: flex; flex-direction: column; gap: 0.4rem; }
+.ai-kpis { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+@media (min-width: 64rem) {
+  .ai-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+}
+.ai-kpi {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.8rem;
+  background: var(--color-panel);
+}
+@media (min-width: 40rem) {
+  .ai-kpi { padding: 0.9rem 1rem; }
+}
+.ai-kpi[data-tone="warn"] { border-color: var(--color-warn); }
+.ai-kpi[data-tone="fail"] { border-color: var(--color-fail); }
+.ai-kpi-label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; line-height: 1.3; color: var(--color-muted); }
+.ai-kpi-ic {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-panel-2);
+  color: var(--color-fg);
+}
+.ai-kpi[data-tone="warn"] .ai-kpi-ic { color: var(--color-warn); }
+.ai-kpi[data-tone="fail"] .ai-kpi-ic { color: var(--color-fail); }
+.ai-kpi-body { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; min-width: 0; }
+/* A figure never breaks inside itself: at 390 px "1 240,50 US$" wrapped its currency onto a second line. It shrinks instead. */
+.ai-kpi-val { font-size: clamp(1.05rem, 4.4vw, 1.35rem); font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ai-kpi-runway { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.ai-kpi-name { font-size: 1.05rem; }
+.ai-kpi-sub { font-size: 0.78rem; color: var(--color-muted); }
+.ai-kpi-hint { margin: 0; font-size: 0.75rem; color: var(--color-muted); }
+.ai-kpi-retry { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.25rem; }
+.ai-kpi-down { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.85rem 1rem; border: 1px solid var(--color-warn); border-radius: 0.8rem; background: var(--color-panel); }
+.ai-skel { display: block; border-radius: 0.4rem; background: var(--color-panel-2); animation: ai-pulse 1.4s ease-in-out infinite; }
+.ai-skel-val { width: 60%; height: 1.4rem; }
+.ai-skel-tag { width: 4rem; height: 0.9rem; border-radius: 999px; }
+@keyframes ai-pulse { 50% { opacity: 0.45; } }
+.ai-spin { animation: ai-spin 0.9s linear infinite; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+
+/* The chat itself is the shared shell (components/chat/chat-shell.css); the console keeps only its failure notice and the page frame.
+   The shell fills the screen under the phone's top bar (brand row + section row), and the whole height on a desktop. */
+.oc-ai-page { --chat-offset: calc(7rem + env(safe-area-inset-top)); }
+@media (min-width: 64rem) {
+  .oc-ai-page { --chat-offset: 0px; }
+}
+.ai-error { border-radius: 0.8rem; background: var(--color-panel); }
+.ai-error-ic { flex-shrink: 0; margin-top: 0.2rem; color: var(--color-warn); }
+.ai-kpi-retry:focus-visible { outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-skel, .ai-spin { animation: none; }
+}
