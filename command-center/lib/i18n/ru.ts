@@ -11,6 +11,7 @@ import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { voiceCatalogRu } from "./voice-catalog/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
+import { brainDashRu } from "./brain-dashboard/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ageRu } from "./age/ru";
 import { aiChatRu } from "./ai-chat/ru";
@@ -36,6 +37,7 @@ import { ownerAnalyticsRu } from "./owner-analytics/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { trendsRu } from "./trends/ru";
+import { startBoxRu } from "./start-box/ru";
 import { ownerConsoleRu } from "./owner-console/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
@@ -69,12 +71,15 @@ export const ru: Dictionary = {
   presets: presetsRu,
   /** The Trends gallery (migration 0183): ./trends/ru.ts. */
   trends: trendsRu,
+  /** The app's start box (Home, the Studio start): ./start-box/ru.ts. */
+  startBox: startBoxRu,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/ru.ts. */
   ownerConsole: ownerConsoleRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
   assetDownload: assetDownloadRu,
+  brainDash: brainDashRu,
   ownerShell: ownerShellRu,
   age: ageRu,
   aiChat: aiChatRu,
@@ -173,6 +178,7 @@ export const ru: Dictionary = {
     organization: "Настройки",
     credits: "Кредиты",
     usage: "Расход",
+    brain: "Nightshift Brain",
     security: "Безопасность",
     onboarding: "С чего начать",
     approvals: "Согласования",

@@ -263,6 +263,58 @@ In the order a film would meet them:
 * The review copy: a 480p copy of a 10-minute film for the Supabase previews bucket (50 MB per object) is
   `video_review`'s, not this path's (docs/FILM_STUDIO.md).
 
+## Second run: 1080p on the fast path, an idle machine, and the review copy (2026-11-21, P4b)
+
+The P4b assembly worker (`modules/film_assembly.py`) refuses to render when the disk is short for the fast intermediates,
+instead of letting `render_backend` fall back to the compact ones. So the fast path at 1080p, "not measured" above, is the
+path it takes. It was measured before the worker was built (rule 8).
+
+**The machine.** Again a development container and **not the media-worker**: 4 vCPU, 15.7 GiB RAM, ffmpeg 6.1.1, 60 GB
+free on the work disk. This time it was **idle**: the one-minute load was 0.1 before the run and about 2 to 5 during it,
+which is the render's own threads. Same 4 GiB cgroup-v1 memory group as above.
+
+```bash
+python3 tools/film_assembly_measure.py generate --dir $FM/src1080 --res 1080 --film-s 600
+python3 tools/film_assembly_measure.py run --dir $FM/src1080 --res 1080 --minutes 10 --narration-clock film \
+    --cgroup $CG --mem-limit 4g --work $FM/work --out r1080_10_fast_film.json --assume-free-mb 100000
+```
+
+| film | sound clips | intermediates | wall s | editor budget s | segments wall / CPU s | final pass wall / CPU s | CPU user + sys s | segment peak RSS MB | cross-fade peak RSS MB | final pass peak RSS MB | cgroup peak MB (with cache) | cgroup RSS MB (sampled) | limit hits | work dir peak MB | output MB | Mb/s | result |
+| :-- | --: | :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | :-- |
+| 1080p, 10 min, film clock, 60 scenes, 180 burned cues | 4 | fast | **718** | 1920 | 187 / 398 | 530 / 1619 | 2017 | 159 | 253 | 572 | 2865 | 535 | 0 | 2260 | 354 | 4.95 | ok |
+
+* **202 core-seconds per output minute** on the fast path at 1080p, against 393 on the compact path (the 1080p row
+  above): the fast intermediates halve the CPU, and the segments drop from 206 to 40 core-seconds a minute. The final
+  pass (one libx264 medium encode with the mix and the burned captions) is 80 % of the CPU.
+* **Wall time: 37 % of the editor's budget** on an idle 4-vCPU machine. The render ran on about 2.8 cores on average
+  (2017 / 718). It needs about 1.05 cores for the whole film to stay inside its 1920 s budget (2017 / 1920), against
+  about 2 on the compact path. This is still not the media-worker, and the owner's timed run there stays owed.
+* **Disk: 2,260 MB at the peak**, which is 3.8 MB per second of film, intermediates and output together. The worker
+  asks for 8 MB per second scaled by pixels, plus 1 MB per second for the output (5.4 GB for 10 minutes of 1080p): about
+  2.4 times what was used, on purpose. Detailed real footage makes bigger intermediates than these synthetic clips
+  (6.2 MB/s, `render_backend`), and nothing re-checks the free space during the render.
+* **Memory, unchanged:** at most 572 MB in any one ffmpeg, 535 MB of anonymous memory in the group, and `failcnt` 0. The
+  group's high-water mark of 2,865 MB is page cache of the intermediates (reclaimable), under the 4 GiB.
+
+**The review copy.** The assembly's review copy is the library's own 480p proxy of the registered master
+(`media_library.proxy_command`: libx264 veryfast crf 28, AAC 96 kb/s), made by `store_generated`. Measured on a
+600 s 1080p master of the same twelve clips in turn, with the narration:
+
+| master | proxy | wall s | CPU s | peak RSS MB | size | video kb/s | the library's time limit for it |
+| :-- | :-- | --: | --: | --: | --: | --: | --: |
+| 1920x1080, 600 s, 587 MB | 854x480 | 66 | 155 | 128 | **22.1 MB** | 197 | 1,087 s |
+
+That is 44 % of the 50 MB Supabase object ceiling, **for synthetic content**. crf 28 spends bits on detail, so real
+provider footage could give a larger proxy, and that was not measured. The worker therefore checks the proxy's size after
+storing the master. Above 50 MB it fails the assembly by name (`review_copy_too_large`) rather than keep a review copy
+that cannot be uploaded. If real films reach that limit, the remedy is a bitrate-capped review encode (about
+`45 MB × 8 / length − 96 kb/s`, which is 504 kb/s for 10 minutes), not a smaller film.
+
+**A/V sync,** checked on a real render of fixture clips (`tests/test_film_assembly.py`): a white flash in scene 1's clip
+and a beep placed at the same film time in the narration land within 50 ms of each other in the output. The narration's
+0.25 s lead shows up as the audio stream's `start_time` (0.228 s), not as leading silence samples. A check that counts
+samples from the start of the stream reads the audio as 0.23 s early. It is in sync; measure on the file's clock.
+
 ## Running it on the media-worker (owner step)
 
 On the server, in the deploy directory, with nothing else rendering. It writes only under the media volume's

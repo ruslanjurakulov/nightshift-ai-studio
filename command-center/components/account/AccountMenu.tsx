@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Activity, Coins, Gift, Inbox, LogOut, Settings, Tv, X } from "lucide-react";
+import { Activity, Brain, Coins, Gift, Inbox, LogOut, Settings, Tv, X } from "lucide-react";
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
 import { useShell } from "@/components/shell/ShellContext";
 import { useI18n } from "@/lib/i18n/context";
@@ -271,6 +271,11 @@ export function AccountMenu({
 
           <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">
             {/* Channels and the Inbox left the rail for Create, Trends, Projects and Library: they are one tap away here. */}
+            {/* Nightshift Brain is a desktop rail entry; on a phone the bottom bar keeps its five, so it is one tap away here. */}
+            <Link href={path("/brain")} onClick={() => close(false)} className="side-link lg:hidden">
+              <Brain aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+              <span>{t.nav.brain}</span>
+            </Link>
             <Link href={path("/channels")} onClick={() => close(false)} className="side-link">
               <Tv aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.nav.channels}</span>

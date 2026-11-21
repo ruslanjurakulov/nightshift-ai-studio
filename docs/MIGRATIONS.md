@@ -2299,3 +2299,23 @@ organization's are on (`film_studio_on_for(org)`): `start_film` refuses `film_st
 - **Without it.** The panel says "not set up on this database".
 - **Lab.** `tests/security/sec_ai_chat_0199.py`, `test_sec_ai_chat.py` and `test_sec_breach_0199.py`.
 - **Rollback.** `docs/sql/rollback_0199_studio_ai_chat.sql`.
+
+## Nightshift Brain: one organization's own facts (0201)
+
+0201 (`0201_brain_org_facts.sql`) gives the customer's Nightshift Brain dashboard (`/{channel}/brain`) and the customer's
+Nightshift AI one read-only JSON answer about ONE organization. No table, no write.
+
+- `brain_org_facts(p_org)`: credits charged to this organization (ledger captures net of a refund of the same job) by tool over
+  14 and 30 days, per UTC day for 14 days (quiet days included), the window and when this org could first have spent in it,
+  `usage_summary(p_org)` unchanged (0094: plan, renewal, spendable); the org's video count and 12 newest videos with their latest
+  snapshot; counts of saved characters, style kits and brand domains.
+- **Never in it.** Another organization's rows, a vendor cost, a price list or a margin: only what this organization was already
+  shown on its Credits page. A lab test pins the keys.
+- **Who.** A member of `p_org` (viewer and up) through `is_org_member` (0018), which also lets a platform owner/admin through as
+  RLS does. Anyone else gets null, the same answer as an organization that does not exist. Execute granted to `authenticated`
+  only; `anon` and `service_role` have none. Callers pass the session's own open organization, never one from a request.
+- **Without it.** The Brain dashboard says Nightshift Brain is not switched on for this workspace yet (credits, projects and
+  memory); the channel card reads S10's research functions and is unaffected. `GET /api/brain/facts` answers 503.
+- Lab: `tests/security/sec_brain_org_facts_0201.py`, `tests/security/test_sec_brain_org_facts.py`,
+  `tests/security/test_sec_brain_org_facts_breach.py`. Rollback: `docs/sql/rollback_0201_brain_org_facts.sql` (nothing stored,
+  nothing lost).

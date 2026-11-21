@@ -9,6 +9,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { ProjectPanel } from "../components/films/ProjectPanel";
+import { filmStudioStrings } from "../lib/i18n/film-studio";
 import { filmStudioEn as t } from "../lib/i18n/film-studio/en";
 import { coerceFilmView } from "../lib/films";
 import { FILM, PIC, S1, S2, filmJson, sceneJson } from "./films-fixtures";
@@ -55,6 +57,23 @@ afterEach(() => {
 const view = (over: Record<string, unknown> = {}, scenes = [sceneJson(S1, 0), sceneJson(S2, 1)]) => coerceFilmView(filmJson(over, scenes))!;
 const canvas = (v = view(), canEdit = true) =>
   render(<FilmCanvas initial={v} canEdit={canEdit} pictures={[{ id: PIC, name: "pic.png", thumbUrl: null }]} characters={[]} listHref="/alpha/create/projects" />);
+
+describe("saved off-list target lengths", () => {
+  it.each([
+    ["en", "1 min 30 s"],
+    ["ru", "1 мин 30 с"],
+    ["uz", "1 daq 30 s"],
+  ])("names the selected 90-second option with units in %s", (locale, name) => {
+    const { film, limits } = view({ target_seconds: 90 });
+    const dict = filmStudioStrings(locale);
+    render(<ProjectPanel t={dict} film={film} settings={film} refs={[]} limits={limits} problems={[]} readOnly={false}
+      pictures={[]} characters={[]} onSettings={vi.fn()} onRefs={vi.fn()} />);
+
+    const picker = screen.getByRole("combobox", { name: dict.create.lengthLabel });
+    const option = within(picker).getByRole("option", { name, selected: true });
+    expect(option.getAttribute("value")).toBe("90");
+  });
+});
 
 describe("last-clip deletion focus", () => {
   it.each(["Delete", "Backspace", "inspector"])("keeps Commands reachable after removing the last clip through %s", async (removal) => {

@@ -11,6 +11,7 @@ import { rightsAckEn } from "./rights-acknowledgement/en";
 import { voiceCatalogEn } from "./voice-catalog/en";
 import { libraryUxEn } from "./library-ux/en";
 import { assetDownloadEn } from "./asset-download/en";
+import { brainDashEn } from "./brain-dashboard/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ageEn } from "./age/en";
 import { aiChatEn } from "./ai-chat/en";
@@ -36,6 +37,7 @@ import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
+import { startBoxEn } from "./start-box/en";
 import { ownerConsoleEn } from "./owner-console/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
@@ -77,6 +79,8 @@ export const en = {
   presets: presetsEn,
   /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
+  /** The app's start box (Home, the Studio start): ./start-box/en.ts. */
+  startBox: startBoxEn,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/en.ts. */
   ownerConsole: ownerConsoleEn,
   availability: availabilityEn,
@@ -84,6 +88,7 @@ export const en = {
   effects: effectsEn,
   libraryUx: libraryUxEn,
   assetDownload: assetDownloadEn,
+  brainDash: brainDashEn,
   ownerShell: ownerShellEn,
   age: ageEn,
   /** Nightshift AI, the Studio's planning chat: ./ai-chat/en.ts. */
@@ -186,6 +191,7 @@ export const en = {
     organization: "Settings",
     credits: "Credits",
     usage: "Usage",
+    brain: "Nightshift Brain",
     security: "Security",
     onboarding: "Getting Started",
     approvals: "Approvals",

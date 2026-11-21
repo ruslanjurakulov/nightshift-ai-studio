@@ -53,6 +53,7 @@ export const filmStudioEn = {
     lengthLabel: "Target length",
     minutes: "{n} min",
     seconds: "{n} s",
+    minutesAndSeconds: "{minutes} min {seconds} s",
     languageLabel: "Language of the video",
     languageHint: "Narration and subtitles use this language. The screen's language is separate.",
     formatLabel: "Format",
