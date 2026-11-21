@@ -159,11 +159,14 @@ create or replace function public.ai_chat_cap(p_org uuid) returns integer
                           then 'studio' else public.org_plan_internal(p_org) end
 $$;
 
--- A plan without the Brain: the trial messages left in the workspace's whole life (every turn it ever took counts).
+-- The Free plan (plans.is_default): the trial messages left in the workspace's whole life (every turn it ever took counts). Only Free:
+-- a paid plan without a cap row (a new plan nobody priced the Brain for) is refused as "not on this plan", never handed Free's trial,
+-- and never unlimited. A subscription to an unknown plan id cannot exist (0034's foreign key on subscriptions.plan_id).
 create or replace function public.ai_chat_trial_left(p_org uuid) returns integer
   language sql stable security definer set search_path = public, pg_temp as $$
-  select greatest(0, (select trial_messages from public.ai_chat_settings where id)
-                     - (select count(*)::integer from public.ai_chat_calls c where c.org_id = p_org))
+  select case when public.org_plan_internal(p_org) is distinct from (select p.id from public.plans p where p.is_default limit 1) then 0
+              else greatest(0, (select trial_messages from public.ai_chat_settings where id)
+                               - (select count(*)::integer from public.ai_chat_calls c where c.org_id = p_org)) end
 $$;
 
 -- The workspace's turns in the last 24 hours, every outcome counted: a call that failed at the vendor may still have cost money.

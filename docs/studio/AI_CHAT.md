@@ -21,8 +21,9 @@ What the flag values do:
 
 ## Who may use it
 
-- **Plans.** Plus (`creator`), Pro and Business (`studio`).
-- **Free trial.** A plan without a row in `ai_chat_plan_caps` (free) gets 3 messages in the workspace's whole life. The count comes from the metering, which no member can change. Two tabs cannot both take the last one. After the trial the panel is locked, with "Upgrade plan". The conversation already on screen stays. Change the number with `update public.ai_chat_settings set trial_messages = <n> where id;`.
+- **Plans.** Plus (`creator`, 30 a day), Pro (`pro`, 100) and Business (`studio`, 300). The cap is read from `ai_chat_plan_caps` by the workspace's plan (`org_plan_internal`).
+- **A paid plan without a row** in `ai_chat_plan_caps` (a new plan nobody priced the Brain for) is refused: "Nightshift AI is on the Plus, Pro and Business plans". It never gets the Free trial and is never unlimited. A subscription to an unknown plan id cannot exist (0034's foreign key).
+- **Free trial.** Only the Free plan (`plans.is_default`) gets 3 messages in the workspace's whole life. The count comes from the metering, which no member can change. Two tabs cannot both take the last one. After the trial the panel is locked, with "Upgrade plan". The conversation already on screen stays. Change the number with `update public.ai_chat_settings set trial_messages = <n> where id;`.
 - **Pilot.** A workspace the owner lists gets Business's cap (300 a day) whatever its plan: `select public.ai_chat_set_pilot('<workspace id>', true);`. `false` takes it off again. The list is in `ai_chat_owner_settings()`. No workspace id is written in the migration. For the pilot, list the owner's and the demo workspace, both also in `NIGHTSHIFT_AI_CHAT_ORGS`.
 - **Role.** An editor or above. A viewer is told that an editor can use it.
 - **Starting a long video.** Run now itself stays an admin's press. Others are told so.
