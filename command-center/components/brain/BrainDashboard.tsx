@@ -518,7 +518,7 @@ function MemoryCard({ facts }: { facts: BrainFacts }) {
 
 /**
  * The Nightshift Brain dashboard. It only reads: the facts the server read
- * as the person (brain_org_facts, 0201) and the channel's research reading.
+ * as the person (brain_org_facts, 0202) and the channel's research reading.
  * "Try again" re-reads the page; nothing here renders, charges or publishes.
  */
 export function BrainDashboard({

@@ -1,4 +1,4 @@
--- 0201_brain_org_facts.sql: what the customer's Nightshift Brain dashboard
+-- 0202_brain_org_facts.sql: what the customer's Nightshift Brain dashboard
 -- and the Nightshift AI's customer facts read about ONE organization.
 -- (Stream S2. Atlas renumbers this file at merge.)
 --

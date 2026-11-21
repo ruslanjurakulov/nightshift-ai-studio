@@ -1,4 +1,4 @@
-"""Breach: attacks on brain_org_facts(p_org) (0201) beyond the happy-path contract in test_sec_brain_org_facts.py.
+"""Breach: attacks on brain_org_facts(p_org) (0202) beyond the happy-path contract in test_sec_brain_org_facts.py.
 
 Each test is one attack a signed-up account, an invitee, a viewer of the operator's default org, a forged JWT or a
 temp-table shadow could try. All rolled back; nothing is left in the lab.

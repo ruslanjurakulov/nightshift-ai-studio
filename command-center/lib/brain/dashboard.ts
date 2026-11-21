@@ -2,7 +2,7 @@
  * The customer's Nightshift Brain dashboard, the pure half: client-safe and
  * unit-tested (tests/brain-dashboard.test.ts).
  *
- * It shapes what brain_org_facts (migration 0201) returns for ONE organization
+ * It shapes what brain_org_facts (migration 0202) returns for ONE organization
  * and works out the few figures the page shows on top of it. Every figure
  * keeps the line between "measured" and "assumed" (CLAUDE.md rule 5):
  *

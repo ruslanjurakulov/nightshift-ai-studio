@@ -17,7 +17,7 @@ export const revalidate = 0;
  * The customer's Nightshift Brain: their channel, their credits and how long
  * they last, what they made and what the Brain remembers, on one screen.
  *
- * Everything is read as the signed-in person: brain_org_facts (migration 0201)
+ * Everything is read as the signed-in person: brain_org_facts (migration 0202)
  * answers for the open workspace only. The channel's numbers come from S10's
  * research readers (research_own_channel, research_comment_themes); before
  * they are deployed that section says so, never a 0. Nothing on this page renders, charges or publishes (CLAUDE.md
