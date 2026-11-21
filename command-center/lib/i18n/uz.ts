@@ -1814,7 +1814,7 @@ export const uz: Dictionary = {
     cycleImprove: "Yaxshilash",
     statusTitle: "Tizim holati",
     allOperational: "Barcha tizimlar ishlamoqda",
-    someUnknown: "Ba'zi tizimlar holati noma'lum — ishlashi tasdiqlanmagan",
+    someUnknown: "Baʼzi tizimlar holati nomaʼlum — ishlashi tasdiqlanmagan",
     someDegraded:"Pasaygan — qism tizimlarni tekshiring",
     someOffline: "Qism tizim offlayn",
     subYoutube: "YouTube",
