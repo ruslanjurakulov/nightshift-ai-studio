@@ -113,6 +113,7 @@ def capworld(world):
     become(s, None)
     s.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning 1", [world.ed2.uid, world.ed2.email])
     s.rows("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'editor') returning 1", [world.org_a, world.ed2.uid, world.ed2.email])
+    sec_db.attest_adults(s, world.ed2.uid)   # 0196: a series plan spends on Google
     return world
 
 

@@ -748,6 +748,9 @@ sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 import sec_adult_attestation_0192  # noqa: E402
 
 sec_adult_attestation_0192.extend(TABLES, FUNCTIONS)
+
+# Migration 0196 (a video run on Google needs an adult answer): one internal rule, read by the run gate and the video doors only.
+FUNCTIONS.update({"render_run_google_stages": SERVICE})
 # Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
 # tests/security/sec_creative_templates_0183.py
 import sec_creative_templates_0183  # noqa: E402
@@ -784,7 +787,7 @@ import sec_public_models_0193  # noqa: E402
 
 sec_public_models_0193.extend(TABLES, FUNCTIONS)
 
-# Migration 0196 (the owner's facts for Nightshift Brain: people and plans, system health): tests/security/sec_owner_brain_0196.py
-import sec_owner_brain_0196  # noqa: E402
+# Migration 0200 (the owner's facts for Nightshift Brain: people and plans, system health): tests/security/sec_owner_brain_0200.py
+import sec_owner_brain_0200  # noqa: E402
 
-sec_owner_brain_0196.extend(TABLES, FUNCTIONS)
+sec_owner_brain_0200.extend(TABLES, FUNCTIONS)

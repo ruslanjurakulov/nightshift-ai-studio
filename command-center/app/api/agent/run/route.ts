@@ -5,7 +5,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isSupabaseConfigured } from "@/lib/config";
-import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
+import { buildRenderJobInsert, isRunConfigured, resolveRunBackend, runGoogleStages } from "@/lib/runBackend";
 import { creditsEnforced, reserveRunCredits, runCreditRefFor } from "@/lib/server/credits";
 import { dispatchOutcome, insertOutcome, startFailureBody } from "@/lib/server/run-start";
 import { runVoiceProblem } from "@/lib/server/run-voice";
@@ -15,7 +15,8 @@ import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { acceptedHint } from "@/lib/publish";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
-import { readAgeState } from "@/lib/server/age";
+import { readAgeAnswer } from "@/lib/server/age";
+import { runAgeRefusal } from "@/lib/age";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -156,7 +157,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // 0192's gates sit on a credit hold and on the render_jobs row. In a credits-exempt workspace the Actions dispatch takes
   // neither, so for a person who said "under 18" nothing in the database would refuse this run: the answer is read here,
   // before anything is dispatched. An unknown answer (migration not applied, read failed) blocks no one, as everywhere else.
-  if ((await readAgeState()) === "minor") return NextResponse.json({ error: "adult_only_service" }, { status: 403 });
+  if ((await readAgeAnswer()) === "minor") return NextResponse.json({ error: "adult_only_service" }, { status: 403 });
   // A customer organization's run is paid for with its credits. Without
   // enforcement nothing would pay, so only the operator may start one.
   const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
@@ -200,6 +201,18 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (body.made_for_kids != null && body.made_for_kids !== true)
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const madeForKids = body.made_for_kids === true;
+  // 0196: a run spends on Google (runGoogleStages: the research and the script are always Gemini's), whose terms are 18+, so it
+  // needs an adult answer, as a Google model does in the Studio. Asked here, before anything is held or dispatched: the Actions
+  // dispatch writes no row for the database's run gate to see. On the queue an unknown answer goes on, because the run gate
+  // refuses the row itself; on Actions nothing behind this line would ask again, so an answer that could not be read stops the
+  // run (try again) rather than spending on Google for someone who may never have answered.
+  const googleStages = runGoogleStages("daily", { video_provider: videoProvider || undefined, image_provider: imageProvider || undefined });
+  const ageRefusal = googleStages.length > 0 ? runAgeRefusal(await readAgeAnswer(), backend) : null;
+  if (ageRefusal)
+    return NextResponse.json(
+      { error: ageRefusal.error, ...(ageRefusal.error === "adult_attestation_required" ? { google_stages: googleStages } : {}) },
+      { status: ageRefusal.status },
+    );
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
 
@@ -283,10 +296,14 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     if (error || !data) {
       // A missing table is "0017 not applied yet" — say so, never claim it queued.
       const missing = error?.code === "42P01" || /PGRST205|does not exist/i.test(error?.message ?? "");
-      const reason = missing ? "queue_unavailable" : "queue_insert_failed";
+      // The run gate's words (0192/0196), when an answer read as unknown above turned out to be "none" or "minor": named, so the
+      // person sees the remedy, not "failed". The hold this press took stays until it expires, as for any refused insert.
+      const word = (error?.message ?? "").trim();
+      const age = word === "adult_attestation_required" || word === "adult_only_service" ? word : null;
+      const reason = age ?? (missing ? "queue_unavailable" : "queue_insert_failed");
       return NextResponse.json(
         keyedHold ? startFailureBody(insertOutcome(ins), reason, heldAmount) : { error: reason, ...heldNote },
-        { status: missing ? 503 : 502 },
+        { status: age === "adult_attestation_required" ? 428 : age ? 403 : missing ? 503 : 502 },
       );
     }
     await logAudit({
