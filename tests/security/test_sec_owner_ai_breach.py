@@ -14,6 +14,7 @@ import time
 import psycopg
 from psycopg import sql
 
+import sec_db
 from sec_db import acting, as_superuser, user
 
 RESERVE = "select public.owner_ai_reserve_turn(40, 'anthropic-claude-sonnet-5-5')"
@@ -21,7 +22,8 @@ RESERVE = "select public.owner_ai_reserve_turn(40, 'anthropic-claude-sonnet-5-5'
 
 def _owner_conn(conn, who):
     """A second PostgREST-like connection to the same lab database, acting as `who` in one open transaction."""
-    c = psycopg.connect(conn.info.dsn)
+    # conn.info.dsn hides the password (CI's lab has one): build it from the lab's admin DSN, as the other race tests do.
+    c = psycopg.connect(psycopg.conninfo.make_conninfo(sec_db.admin_dsn(), dbname=conn.info.dbname))
     c.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps(who.claims())])
     c.execute("select set_config('request.jwt.claim.role', %s, true)", [who.role])
     c.execute(sql.SQL("set local role {}").format(sql.Identifier(who.role)))
@@ -35,16 +37,19 @@ def _seed(conn, uid, n):
 
 
 def _wipe(conn):
+    # Only this file's rows (the last day's): the scenario's seed row, two days old, stays for the isolation suite.
     with as_superuser(conn, commit=True) as su:
-        su.run("delete from public.owner_ai_turns")
+        su.run("delete from public.owner_ai_turns where created_at > now() - interval '1 day'")
 
 
 def test_two_racing_requests_cannot_both_take_the_last_turn(conn, sc):
-    _seed(conn, sc.operator.uid, 199)
-    a = _owner_conn(conn, sc.operator)
-    b = _owner_conn(conn, sc.operator)
+    a = b = None
     out_b: dict = {}
     try:
+        # Inside the try: a failed connect must still wipe the seeded rows, or the next test starts at the cap.
+        _seed(conn, sc.operator.uid, 199)
+        a = _owner_conn(conn, sc.operator)
+        b = _owner_conn(conn, sc.operator)
         first = a.execute(RESERVE).fetchone()[0]  # holds the advisory lock, its insert not yet committed
 
         def second():
@@ -64,14 +69,15 @@ def test_two_racing_requests_cannot_both_take_the_last_turn(conn, sc):
         assert first is not None
         assert out_b.get("err", (None,))[0] == "NS429", out_b
     finally:
-        a.close()
-        b.close()
+        for c in (a, b):
+            if c is not None:
+                c.close()
         _wipe(conn)
 
 
 def test_finishing_a_turn_does_not_free_a_slot(conn, sc):
-    _seed(conn, sc.operator.uid, 199)
     try:
+        _seed(conn, sc.operator.uid, 199)
         with acting(conn, sc.operator, commit=True) as s:
             tid = s.value(RESERVE)
             s.run("select public.owner_ai_finish_turn(%s, false, 'vendor_error', null, null)", [tid])
