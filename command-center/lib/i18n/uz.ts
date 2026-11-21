@@ -182,6 +182,8 @@ export const uz: Dictionary = {
     credits: "Kreditlar",
     usage: "Sarf",
     brain: "Nightshift Brain",
+    // The Studio planning chat (#843): a rail entry only where the server flag lets this workspace in. A product name, one spelling.
+    nightshiftAi: "Nightshift AI",
     security: "Xavfsizlik",
     onboarding: "Ishni boshlash",
     approvals: "Tasdiqlashlar",

@@ -196,6 +196,8 @@ export const en = {
     credits: "Credits",
     usage: "Usage",
     brain: "Nightshift Brain",
+    // The Studio planning chat (#843): a rail entry only where the server flag lets this workspace in. A product name, one spelling.
+    nightshiftAi: "Nightshift AI",
     security: "Security",
     onboarding: "Getting Started",
     approvals: "Approvals",

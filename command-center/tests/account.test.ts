@@ -5,6 +5,8 @@ import { ALL_CHANNELS, SECTIONS, appRedirect, isSection } from "@/lib/channels";
 import {
   CUSTOMER_NAV_KEYS,
   CUSTOMER_RAIL,
+  NIGHTSHIFT_AI_ENTRY,
+  customerRail,
   CUSTOMER_SIDEBAR,
   SECTION_TABS,
   tabsFor,
@@ -227,6 +229,16 @@ describe("appRedirect", () => {
     expect(CUSTOMER_RAIL[4]).toEqual({ href: "/brain", key: "brain" });
     expect(tabsFor("home")).toBeNull();
     expect(keys(true)).not.toContain("home");
+  });
+
+  it("lists Nightshift AI second only where the server's flag lets the workspace in, never as a door to a closed panel", () => {
+    expect(customerRail().map((i) => i.key)).not.toContain("nightshiftAi");
+    expect(customerRail({ adsFactory: false, characterStudio: false, aiChat: false })).toBe(CUSTOMER_RAIL);
+    const on = customerRail({ adsFactory: false, characterStudio: false, aiChat: true });
+    // The owner's order: Home, Nightshift AI, Studio, Brain, the rest.
+    expect(on.map((i) => i.key)).toEqual(["home", "nightshiftAi", "create", "trends", "projects", "brain", "library"]);
+    expect(on[1]).toEqual(NIGHTSHIFT_AI_ENTRY);
+    expect(NIGHTSHIFT_AI_ENTRY.href).toBe("/studio?ai=new");
   });
 
   it("still rewrites a channel id to its name, for everyone", () => {

@@ -51,6 +51,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -257,6 +258,75 @@ def cached_words(media_root: Path, narration_id: str, path: Path, language: Opti
         # Not fatal: the cut is still right, only a retry would transcribe again (and could differ: then it renders anew).
         logger.warning("film assembly: could not cache the narration's words (%s)", type(e).__name__)
     return words
+
+
+CACHE_MAX_AGE_DAYS = 14
+PRUNE_EVERY_S = 24 * 3600
+_PRUNE_STAMP = ".last-prune"
+
+
+def prune_word_cache(media_root: Path, *, max_age_days: float = CACHE_MAX_AGE_DAYS, now: Optional[float] = None,
+                     force: bool = False) -> int:
+    """Delete cached word timings whose narration file is gone, or that are older than ``max_age_days``. Returns how many.
+
+    Housekeeping must never stop a paid film, so this never raises: a failure is logged with its reason and the worker goes on.
+    It only ever unlinks regular files directly inside the resolved cache directory; a symlink (entry or directory) is left alone,
+    because following one is how a prune would reach a file outside the cache. Runs at most once per 24h (a stamp file in the
+    cache), so a restart loop does not rescan.
+    """
+    removed = 0
+    try:
+        root = Path(media_root)
+        cache = root / CACHE_DIRNAME
+        if not cache.exists() and not cache.is_symlink():
+            return 0
+        if cache.is_symlink() or not cache.is_dir():
+            logger.warning("film assembly: word cache not pruned (the cache directory is a symlink or not a directory)")
+            return 0
+        real = cache.resolve(strict=True)
+        if real.parent != root.resolve(strict=True):
+            logger.warning("film assembly: word cache not pruned (the cache directory resolves outside the media root)")
+            return 0
+        t = float(now) if now is not None else time.time()
+        stamp = real / _PRUNE_STAMP
+        if not force:
+            try:
+                st = os.lstat(stamp)
+                if 0 <= t - st.st_mtime < PRUNE_EVERY_S:
+                    return 0
+            except OSError:
+                pass
+        cutoff = t - float(max_age_days) * 86400
+        for entry in os.scandir(real):
+            try:
+                if entry.name == _PRUNE_STAMP or entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                    continue
+                target = Path(entry.path)
+                if target.parent.resolve(strict=True) != real or ".." in entry.name:
+                    continue
+                stale = entry.stat(follow_symlinks=False).st_mtime < cutoff
+                orphan = False
+                if not stale and entry.name.endswith(".json") and not entry.name.startswith("."):
+                    try:
+                        nid = ml.canonical_id(entry.name[:-len(".json")])
+                        orphan = not ml.asset_file(root, nid, "original").is_file()
+                    except ValueError:
+                        orphan = False  # not a name this cache writes: only age may remove it
+                if stale or orphan:
+                    os.unlink(entry.path)
+                    removed += 1
+            except OSError as e:
+                logger.warning("film assembly: could not prune one word-cache entry (%s)", type(e).__name__)
+        try:
+            stamp.write_text(str(int(t)), encoding="utf-8")
+            os.utime(stamp, (t, t))
+        except OSError as e:
+            logger.warning("film assembly: could not record the prune time (%s)", type(e).__name__)
+        if removed:
+            logger.info("film assembly: pruned %d word-cache entr%s", removed, "y" if removed == 1 else "ies")
+    except Exception as e:  # noqa: BLE001 — housekeeping never stops a film
+        logger.warning("film assembly: word cache prune failed (%s)", type(e).__name__)
+    return removed
 
 
 def vtt_text(srt: str) -> str:
@@ -843,5 +913,5 @@ def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> 
 
 
 __all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "clients_from", "DbRefused", "DbUnavailable", "Deps", "REASONS",
-           "assemble_segment", "cached_words", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
+           "assemble_segment", "cached_words", "prune_word_cache", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
            "master_asset_id", "render_strict", "store_caption", "vtt_text", "whisper_words"]
