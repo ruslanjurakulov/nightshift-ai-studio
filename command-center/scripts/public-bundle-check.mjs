@@ -26,10 +26,11 @@ const SENTINELS = ["PADDLE_API_KEY", "DODO_PAYMENTS_API_KEY", "NIGHTSHIFT_CREDIT
 
 /**
  * The manifest's entries that are not public pages: the signed-in app, API and other route handlers (no client
- * bundle), and /welcome, the first run of a signed-in account. tests/public-bundle-dictionary.test.ts skips the same.
+ * bundle), /welcome, the first run of a signed-in account, and /owner, the platform owner's console (signed in, owner
+ * only). tests/public-bundle-dictionary.test.ts skips the same.
  */
 function isPublicEntry(entry) {
-  if (entry.startsWith("/(app)/") || entry.startsWith("/api/") || entry.startsWith("/welcome/")) return false;
+  if (entry.startsWith("/(app)/") || entry.startsWith("/api/") || entry.startsWith("/welcome/") || entry.startsWith("/owner/")) return false;
   return !entry.endsWith("/route");
 }
 

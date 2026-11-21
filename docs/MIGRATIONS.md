@@ -2226,3 +2226,21 @@ Nano Banana for footage. So 0192's model check never saw it, and a member who ne
   `creative_route_quote` (one marked hunk each), and points 0192's run gate at its own function. Replaying 0075 over it silently
   puts the old `creative_route_quote` back.
 - **Undo.** `docs/sql/rollback_0196_adult_attestation_google_runs.sql` (owner-applied): the five earlier bodies and 0192's run gate.
+
+## Owner Brain facts: people and plans, system health (0197)
+
+0197 (`0197_owner_brain_facts.sql`) gives the owner's Nightshift AI and the Owner Console two read-only, owner-only summaries,
+each one JSON object. No table, no write, no value in the file.
+
+- `owner_brain_people()`: confirmed signups (1/7/30 days), last sign-ins (a floor), paying workspaces by plan, past due,
+  cancelling, canceled in 30 days, and the 20 newest plan changes by workspace name. Internal and owner-flagged workspaces
+  (0182) are excluded.
+- `owner_brain_health()`: per channel the newest run evidence, failures in 24 h / 7 days, held videos and the YouTube token's
+  stored/verified state (never token bytes); creative and render queues (queued, oldest, running, stuck, failed); workers and
+  their staleness; the doctor's verdict; alerts; the nightly mirror's time; provider readings' times. CI and deploys are not in
+  the database, and the JSON says so.
+- **Who.** Platform owner only (0182's gate) and 0107's second factor when it is on (NS401): unlike the hub's reads, these are
+  what the owner's AI hands a model. Execute granted to `authenticated` only.
+- Revenue and providers are not repeated: the app reads 0182's `owner_analytics_money` and 0184 / the Billing ledger.
+- Lab: `tests/security/sec_owner_brain_0197.py`, `tests/security/test_sec_owner_brain.py`. Rollback:
+  `docs/sql/rollback_0197_owner_brain_facts.sql` (nothing stored, nothing lost).

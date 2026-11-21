@@ -9,6 +9,7 @@ import { ModelDiscovery } from "@/components/models/ModelDiscovery";
 import { ModelSwitchBoard } from "@/components/models/ModelSwitchBoard";
 import { ModelBudgetBoard } from "@/components/models/ModelBudgetBoard";
 import { isOperator } from "@/lib/auth/org-roles";
+import { viewingAsOperator } from "@/lib/server/owner-view";
 import { resolvePlatformRole } from "@/lib/auth/roles";
 import { modelSwitchOn, readModelSwitches } from "@/lib/server/model-switch";
 import { createClient } from "@/lib/supabase/server";
@@ -61,6 +62,10 @@ export default async function ModelsPage({
   const { t } = await getDictionary();
   const c = t.modelDiscovery;
   const operator = await isOperator();
+  // What the default (browse) view DRAWS: the whole registry, provider names and the views bar only in the Owner account. The
+  // owner's User account browses exactly what a customer does (lib/server/owner-view). The ?view= tools below keep the real
+  // role: they are the owner's tools, opened from the Owner Console, and each is checked again on the server.
+  const asOperator = await viewingAsOperator();
   const q = await searchParams;
   const manage = operator && q.view === "manage";
   const switchView = operator && q.view === "switch";
@@ -80,11 +85,11 @@ export default async function ModelsPage({
     <PageHeader
       icon="models"
       title={budgetView ? t.modelBudget.title : c.title}
-      subtitle={budgetView ? undefined : switchView ? t.modelSwitch.subtitle : manage ? t.models.subtitle : operator ? c.subtitleOperator : c.subtitle}
+      subtitle={budgetView ? undefined : switchView ? t.modelSwitch.subtitle : manage ? t.models.subtitle : asOperator ? c.subtitleOperator : c.subtitle}
     />
   );
   // The operator's two views: the catalog, and the availability switches.
-  const views = operator ? (
+  const views = asOperator || manage || switchView || budgetView ? (
     <nav aria-label={c.viewsLabel} className={styles.views}>
       <Link href={channelPath(slug, "/models")} aria-current={manage || switchView || budgetView ? undefined : "page"}>
         {c.viewBrowse}
@@ -216,12 +221,12 @@ export default async function ModelsPage({
   }
 
   // The open organization, for the one gate that depends on it (`paid`: a first purchase).
-  const org = operator ? null : await getOrgContext().catch(() => null);
-  const read = operator ? await readOperatorModels(supabase) : await readCustomerModels(supabase, org?.current?.id ?? null);
+  const org = asOperator ? null : await getOrgContext().catch(() => null);
+  const read = asOperator ? await readOperatorModels(supabase) : await readCustomerModels(supabase, org?.current?.id ?? null);
   if (read.status === "not_enabled") return note(c.notEnabled);
   if (read.status === "forbidden") return note(c.forbidden);
   if (read.status !== "ok") return failed;
-  if (read.models.length === 0) return note(operator ? c.emptyOperator : c.emptyCustomer);
+  if (read.models.length === 0) return note(asOperator ? c.emptyOperator : c.emptyCustomer);
 
   return (
     <div className="rhythm ns-open">
@@ -229,7 +234,7 @@ export default async function ModelsPage({
       {views}
       <ModelDiscovery
         models={read.models}
-        operator={operator}
+        operator={asOperator}
         pricesRead={read.pricesRead}
         probesRead={read.probesRead}
         initialFilters={filtersFromQuery(q)}

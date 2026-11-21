@@ -35,6 +35,7 @@ import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
+import { ownerConsoleEn } from "./owner-console/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -75,6 +76,8 @@ export const en = {
   presets: presetsEn,
   /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/en.ts. */
+  ownerConsole: ownerConsoleEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
@@ -6003,6 +6006,8 @@ export const en = {
       priceRequired: "The price wasn't confirmed. Press again.",
       conflict: "This press was already used for a different request. Reload and try again.",
       queueRequired: "Scene regeneration isn't available on this workspace yet.",
+      adultRequired: "Some of the AI models this uses are for adults (18+) by their makers' terms. Confirm your age in the box at the top of Create, then try again. Nothing was started or charged.",
+      adultOnly: "Nightshift is for adults (18+). This account said it is under 18, so nothing can be made. Nothing was charged.",
       invalidPrompt: "The prompt is too long or has characters that aren't allowed.",
       notInstalled: "Scene regeneration isn't set up yet.",
       failed: "It could not be started. Nothing was charged.",

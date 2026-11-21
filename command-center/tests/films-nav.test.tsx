@@ -95,7 +95,7 @@ describe("the Studio section", () => {
       const src = readFileSync(join(root, f), "utf8");
       expect(src, f).not.toMatch(/process\.env|NEXT_PUBLIC_[A-Z_]*FILM/);
     }
-    expect(readFileSync(join(root, "app/(app)/layout.tsx"), "utf8")).toContain("filmStudio: filmStudioListed(filmStudioMode(), operator)");
+    expect(readFileSync(join(root, "app/(app)/layout.tsx"), "utf8")).toContain("filmStudio: filmStudioListed(filmStudioMode(), frame)");
   });
 });
 
