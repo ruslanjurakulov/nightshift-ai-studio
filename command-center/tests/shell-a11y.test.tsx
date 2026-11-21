@@ -21,6 +21,23 @@ afterEach(() => {
 
 const read = (p: string) => readFileSync(path.join(process.cwd(), p), "utf8");
 
+describe("shared form fields", () => {
+  const css = read("app/(app)/app-redesign.css");
+
+  it("dims native and ARIA-disabled fields and uses a not-allowed cursor", () => {
+    const rule = css.match(/\.ns-field:disabled,\s*\.ns-field\[aria-disabled="true"\]\s*\{([^}]*)\}/)?.[1];
+    expect(rule).toMatch(/opacity:\s*0\.55\s*;/);
+    expect(rule).toMatch(/cursor:\s*not-allowed\s*;/);
+  });
+
+  it.each(["hover", "focus-visible"])("only applies the %s style to enabled fields", (state) => {
+    const selectors = css.match(new RegExp(`\\.ns-field:${state}[^,{]*`, "g"));
+    expect(selectors?.map((selector) => selector.trim())).toEqual([
+      `.ns-field:${state}:not(:disabled):not([aria-disabled="true"])`,
+    ]);
+  });
+});
+
 describe("skip link", () => {
   it.each([
     ["en", en],

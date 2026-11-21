@@ -1,0 +1,165 @@
+/* ── The app's start box (components/prompt/StartBox.tsx): Home and the Studio start.
+   The Studio composer's look (one lifted surface, pill chips, the primary key on the right) in --ds-* tokens, so light and dark
+   follow app/tokens.css. Nothing here animates except colour, and only through --ds-dur-*, which reduced motion zeroes.
+   Every key is at least 44 px tall; nothing is wider than the box at 360 px. */
+
+.sb-wrap { display: flex; flex-direction: column; gap: var(--ds-space-8); width: 100%; max-width: 860px; margin-inline: auto; min-width: 0; }
+
+.sb { display: flex; flex-direction: column; gap: var(--ds-space-2); min-width: 0; }
+.sb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* The tabs sit on the box's top edge, like a folder's: the selected one is the box's own surface. */
+.sb-tabs { display: flex; flex-wrap: wrap; gap: var(--ds-space-1); }
+.sb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-control-md);
+  padding: 0 var(--ds-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--ds-r-pill);
+  background: transparent;
+  color: var(--ds-text-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--ds-dur-press) var(--ds-ease-out), color var(--ds-dur-press) var(--ds-ease-out);
+}
+.sb-tab:hover { color: var(--ds-text); background: var(--ds-hover); }
+.sb-tab[aria-selected="true"] { color: var(--ds-text); background: var(--ds-surface-2); border-color: var(--ds-border-strong); }
+/* 3 px, the global ring's width (app/globals.css :focus-visible): this file is unlayered, so a thinner one here would win over it. */
+.sb-tab:focus-visible, .sb-chip:focus-visible, .sb-card:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; }
+.sb-tab[aria-disabled="true"] { cursor: not-allowed; color: var(--ds-text-2); }
+.sb-tab[aria-disabled="true"]:hover { background: transparent; }
+
+.sb-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-r-sheet);
+  background: var(--ds-surface-2);
+  box-shadow: var(--ds-elev-2);
+}
+/* Only the field's focus: the keys and chips draw their own ring, and two would show at once (the landing box's Pixel finding). */
+.sb-row:has(.sb-field:focus-visible) { border-color: var(--ds-focus); box-shadow: 0 0 0 1px var(--ds-focus), var(--ds-elev-2); }
+.sb-field {
+  width: 100%;
+  min-width: 0;
+  /* Three lines, fixed: the box does not grow under the first keystroke and nothing below it moves. */
+  min-height: calc(3 * 1.5em + 2 * var(--ds-space-2));
+  padding: var(--ds-space-2);
+  /* Fixed at three lines (above); a drag handle would undo that and sits over the chips at 390 px. */
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text);
+  font: inherit;
+  /* 16 px: iOS zooms the page into any smaller field. */
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.sb-field::placeholder { color: var(--ds-muted); opacity: 1; }
+/* The row draws the focus ring; the field's own outline would double it. This file is unlayered, so it wins over the layered
+   global :focus-visible (the landing box's lesson). */
+.sb-field:focus-visible { outline: none; }
+.sb-field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--ds-danger); border-radius: var(--ds-r-key); }
+
+.sb-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); }
+.sb-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); flex: 1 1 auto; min-width: 0; }
+.sb-formats { display: flex; flex-wrap: wrap; gap: var(--ds-space-1); min-width: 0; }
+.sb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--ds-control-md);
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-pill);
+  background: transparent;
+  color: var(--ds-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--ds-dur-press) var(--ds-ease-out), border-color var(--ds-dur-press) var(--ds-ease-out);
+}
+.sb-chip:hover:not([aria-disabled="true"]) { background: var(--ds-hover); border-color: var(--ds-border-strong); }
+.sb-chip[aria-checked="true"], .sb-chip[aria-pressed="true"] { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
+/* Closed: visibly not a switch, and its reason is in words (never only a tooltip). The dashed edge in the strong border: the plain
+   one is too faint to read as an edge at all in light mode. */
+.sb-chip[aria-disabled="true"] { cursor: not-allowed; color: var(--ds-text-2); border-style: dashed; border-color: var(--ds-border-strong); }
+/* The chip's own name never breaks inside the word (390 px drew "Agen / t"); only a "Not available yet" beside it wraps. */
+.sb-chip-name { flex: none; white-space: nowrap; }
+.sb-chip-sub { min-width: 0; overflow-wrap: break-word; text-align: start; color: var(--ds-text-2); font-weight: 400; }
+/* A kind with nothing on sale: its name over "Not available yet", two short lines in the chip's own height. */
+.sb-chip-stack { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; text-align: start; }
+.sb-chip-stack .sb-chip-sub { font-size: 0.75rem; }
+.sb-go { margin-inline-start: auto; white-space: nowrap; }
+/* Leaving for the place it opens: seen on a touch screen too, where no cursor shows it. */
+.sb-go[aria-busy="true"] { opacity: 0.7; }
+@media (max-width: 479px) {
+  .sb-go { width: 100%; justify-content: center; white-space: normal; }
+}
+
+.sb-problem { margin: 0; color: var(--ds-danger); font-size: 0.875rem; font-weight: 600; }
+.sb-note { margin: 0; padding-inline: var(--ds-space-1); color: var(--ds-text-2); font-size: 0.8125rem; line-height: 1.5; }
+.sb-count { color: var(--ds-text); font-variant-numeric: tabular-nums; }
+.sb-count[data-full] { color: var(--ds-warning, var(--ds-text)); font-weight: 600; }
+.sb-line { margin: 0; padding-inline: var(--ds-space-1); color: var(--ds-text-2); font-size: 0.8125rem; line-height: 1.5; }
+.sb-link { color: var(--ds-accent); font-size: 0.875rem; font-weight: 600; }
+
+/* ── the templates, by purpose ────────────────────────────────────────────── */
+.sb-library { display: flex; flex-direction: column; gap: var(--ds-space-4); min-width: 0; }
+.sb-library-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--ds-space-2) var(--ds-space-4); }
+.sb-h2 { margin: 0; color: var(--ds-text); font-size: 1rem; font-weight: 600; }
+/* Focused only by script, after a retry (tabIndex -1): a ring there would look like a control. */
+.sb-h2:focus { outline: none; }
+.sb-lead { margin: var(--ds-space-1) 0 0; color: var(--ds-text-2); font-size: 0.8125rem; line-height: 1.5; }
+.sb-group { display: flex; flex-direction: column; gap: var(--ds-space-2); min-width: 0; }
+.sb-h3 { margin: 0; color: var(--ds-text-2); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.sb-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; }
+.sb-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-3);
+  width: 100%;
+  min-height: 64px;
+  padding: var(--ds-space-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-r-panel);
+  background: var(--ds-surface-1);
+  color: var(--ds-text);
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--ds-dur-press) var(--ds-ease-out), background-color var(--ds-dur-press) var(--ds-ease-out);
+}
+.sb-card:hover { border-color: var(--ds-border-strong); background: var(--ds-surface-2); }
+.sb-card-media {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border-radius: var(--ds-r-chip);
+  background: var(--ds-surface-3);
+  color: var(--ds-type-video);
+}
+.sb-card-media[data-kind="image"] { color: var(--ds-type-image); }
+.sb-card-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.sb-card-body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 0; }
+.sb-card-title { font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.sb-card-meta { color: var(--ds-text-2); font-size: 0.75rem; }
+/* The model's availability, under the poster and title: a whole line, never squeezed beside them. */
+.sb-card-note { flex-basis: 100%; color: var(--ds-text-2); font-size: 0.75rem; line-height: 1.4; }
+.sb-card-note[data-tone="warn"] { color: var(--ds-warning, var(--ds-text)); }
+div.sb-card { cursor: default; }
+div.sb-card:hover { border-color: var(--ds-border); background: var(--ds-surface-1); }
+.sb-card-skel { min-height: 64px; border-style: dashed; background: var(--ds-surface-1); cursor: default; }
+.sb-state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); margin: 0; color: var(--ds-text-2); font-size: 0.875rem; }
+.sb-state p { margin: 0; }

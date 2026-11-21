@@ -1190,6 +1190,9 @@ class RenderTimings:
     segments: int = 0
     jobs: Optional[int] = None
     mode: Optional[str] = None           # parallel | sequential | fallback
+    #: fast | compact: which segment encode was used (compact: LEGACY_X264, a second lossy generation). A caller
+    #: that must not ship the compact path (the film assembly, CLAUDE.md rule 4) reads this after the render.
+    intermediate: Optional[str] = None
     normalize_s: Optional[float] = None  # wall time of the whole normalise stage
     segment_s: List[float] = field(default_factory=list)  # each segment's own wall time
     concat_s: Optional[float] = None
@@ -1270,6 +1273,7 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
         if x264 == LEGACY_X264 and not allow_compact:
             raise CompactEncodeRefused("not enough free disk for the preferred segment encode; the compact "
                                        "encode is not allowed for this render — free disk space and retry")
+        timings.intermediate = "fast" if tuple(x264) == tuple(INTERMEDIATE_X264) else "compact"
         tasks = [task(i, x264) for i in range(len(outs))]
         if jobs > 1:
             timings.segment_s = run_pool(tasks, jobs)
@@ -1293,6 +1297,7 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
                 p.unlink()
             except OSError:
                 pass
+        timings.intermediate = "compact"
         timings.segment_s = _run_sequential([task(i, LEGACY_X264) for i in range(len(outs))])
         timings.mode, timings.jobs = "fallback", 1
     timings.normalize_s = round(time.monotonic() - t0, 3)

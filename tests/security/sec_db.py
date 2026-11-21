@@ -688,11 +688,37 @@ def has_0187(conn_or_session) -> bool:
     return bool(conn.execute("select to_regprocedure('public.film_acknowledgement_missing(public.films, uuid)') is not null").fetchone()[0])
 
 
+MIGRATION_0200 = MIGRATIONS / "0200_film_assembly_orphans.sql"
+ROLLBACK_0200 = REPO / "docs" / "sql" / "rollback_0200_film_assembly_orphans.sql"
+
+
+def has_0200(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute(
+        "select to_regprocedure('public.film_discard_unrecorded_assembly(uuid, uuid)') is not null").fetchone()[0])
+
+
+def take_off_0200(conn_or_session) -> None:
+    """0200's film_discard_unrecorded_assembly reads 0171's film_segments, and 0171's rollback refuses while a later function does,
+    so it comes off before 0171 (take_off_0187 runs first in every 0171 take-off) and goes back with put_back_0171 / put_back_0187."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0200(conn):
+        text = ROLLBACK_0200.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0200(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0200(conn) and has_0171(conn):
+        conn.execute(MIGRATION_0200.read_text(encoding="utf-8"))
+
+
 def take_off_0187(conn_or_session) -> None:
     """0187 replaces rights_acknowledgement_missing() (0174's body), reroute_creative_job() (0088's) and start_film() (0171's). 0174's
     and 0171's drift guards and rollbacks refuse any body but their own, so a test that replays or rolls back 0174 or 0171 takes 0187
     off first (take_off_0174 and take_off_0171 do it), and put_back_0174 / put_back_0171 put it back once both are on again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0200(conn)  # 0200 reads 0171's film_segments: off before anything under it
     take_off_0192(conn)  # 0192 sits on 0187's start_film, and 0187's rollback refuses any other body
     if has_0187(conn):
         text = ROLLBACK_0187.read_text(encoding="utf-8")
@@ -704,6 +730,7 @@ def put_back_0187(conn_or_session) -> None:
     if not has_0187(conn) and has_0174(conn) and has_0171(conn):
         conn.execute(MIGRATION_0187.read_text(encoding="utf-8"))
     put_back_0192(conn)
+    put_back_0200(conn)
 
 
 MIGRATION_0189 = MIGRATIONS / "0189_job_video_and_list_order.sql"
