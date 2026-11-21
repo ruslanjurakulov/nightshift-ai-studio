@@ -238,6 +238,9 @@ jobs:
           # Character Studio (docs/CHARACTER_STUDIO.md, migration 0137): the page and /api/character-studio/*, off unless this repository
           # variable is exactly on. Setting nothing leaves it dark; this change does not set it. The worker is not deployed yet (a release step).
           WEBENV_NIGHTSHIFT_CHARACTER_STUDIO: ${{ vars.NIGHTSHIFT_CHARACTER_STUDIO }}
+          # Likeness policy (lib/likeness-policy.ts): face swap, voice cloning and dub stay refused unless this repository variable is
+          # exactly on, which is set only after the payment provider allows them in writing. Setting nothing keeps them off.
+          WEBENV_NIGHTSHIFT_LIKENESS_FEATURES: ${{ vars.NIGHTSHIFT_LIKENESS_FEATURES }}
           # Studio → Projects (docs/FILM_STUDIO.md, migration 0166): the pages and /api/films/*, off unless this repository variable is
           # `admins` (platform admins only) or `on`. Setting nothing leaves it dark; this change does not set it. Drafts only, no spend.
           WEBENV_NIGHTSHIFT_FILM_STUDIO: ${{ vars.NIGHTSHIFT_FILM_STUDIO }}

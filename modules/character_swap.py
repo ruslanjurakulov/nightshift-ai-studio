@@ -42,6 +42,8 @@ from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
+from modules import likeness_policy
+
 logger = logging.getLogger(__name__)
 
 FLAG = "NIGHTSHIFT_CHARACTER_STUDIO"
@@ -273,6 +275,8 @@ class CharacterSwapWorker:
     registry: Mapping = field(default_factory=dict)
     adapter_env: Optional[Mapping[str, str]] = None
     build_adapter: Optional[Callable] = None
+    #: Where NIGHTSHIFT_LIKENESS_FEATURES is read (None: this process's environment). Tests pass their own.
+    policy_env: Optional[Mapping[str, str]] = None
     poll_every_s: float = 10.0
     poll_limit_s: float = 45 * 60
     heartbeat_every_s: float = 60.0
@@ -313,6 +317,12 @@ class CharacterSwapWorker:
         from modules.capabilities.base import FAILED, SUCCEEDED, AdapterError, ProviderTask  # noqa: PLC0415
 
         jid = str(job["job_id"])
+        # The likeness policy (modules/likeness_policy.py): a real-person swap is what the payment terms forbid us to sell, whatever
+        # NIGHTSHIFT_CHARACTER_STUDIO says. First, before the registry, the adapter or a signed link: fail_character_swap releases the
+        # hold and nothing is sent. A resumed job is refused too: finishing it would charge for the very thing the switch keeps off.
+        if likeness_policy.refused(CAPABILITY, self.policy_env):
+            self._fail(jid, likeness_policy.REFUSAL)
+            return
         entry = self._entry(str(job.get("model") or ""))
         if entry is None or entry.id not in MODELS or CAPABILITY not in entry.capabilities:
             self._fail(jid, "model_unknown")

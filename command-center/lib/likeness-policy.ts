@@ -15,8 +15,9 @@
  *    in their own (cloned) voice. Off as a whole capability for the same reason.
  *
  * It sits IN FRONT of the features' own switches (NIGHTSHIFT_CHARACTER_STUDIO, CUSTOM_VOICE_ENABLED): those say whether a feature is
- * built and deployed, this one says whether the payment terms allow it to be offered. Both must be on. Jobs already queued are not
- * touched: the workers finish or refund them through their existing paths, and finished assets stay in the library.
+ * built and deployed, this one says whether the payment terms allow it to be offered. Both must be on. The workers read the same switch
+ * (modules/likeness_policy.py): a swap or dub job that reaches them while it is off (queued before, or through a door this code does not
+ * cover) is failed with the same word and its hold released. Finished assets stay in the library.
  */
 
 export const LIKENESS_POLICY_FLAG = "NIGHTSHIFT_LIKENESS_FEATURES";

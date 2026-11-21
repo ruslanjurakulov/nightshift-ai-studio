@@ -123,6 +123,89 @@ describe("the model list a customer gets", () => {
   });
 });
 
+describe("dub through the developer API and the MCP doors (they call api_creative_* / oauth_creative_* themselves)", () => {
+  const api = () => import("../lib/api/operations");
+  const DUB = { capability: "dub", model: "some-dubber", params: { source_asset_id: "0b000000-0000-4000-8000-00000000000b", target_language: "ru" } };
+  function caller() {
+    const calls: string[] = [];
+    const c = {
+      keyHash: "h",
+      requestId: "r",
+      downloads: false,
+      backend: {} as never,
+      rpc: async (fn: string) => {
+        calls.push(fn);
+        return { data: { ok: true, status: 200, data: { id: "q" } }, error: null };
+      },
+    };
+    return { c: c as unknown as Parameters<Awaited<ReturnType<typeof api>>["quoteCreative"]>[0], calls };
+  }
+
+  it.each([
+    ["quoteCreative", async (o: Awaited<ReturnType<typeof api>>, c: ReturnType<typeof caller>["c"]) => o.quoteCreative(c, DUB)],
+    ["createCreative", async (o: Awaited<ReturnType<typeof api>>, c: ReturnType<typeof caller>["c"]) => o.createCreative(c, { ...DUB, max_credits: 10 }, "idem-0123456789")],
+    ["oauthQuoteCreative", async (o: Awaited<ReturnType<typeof api>>, c: ReturnType<typeof caller>["c"]) => o.oauthQuoteCreative(c, DUB)],
+  ] as const)("%s refuses dub with 403 feature_unavailable_policy before any RPC, and reaches the RPC with the policy on", async (_n, run) => {
+    const o = await api();
+    const off = caller();
+    const res = await run(o, off.c);
+    expect(res).toMatchObject({ ok: false, status: 403, code: "feature_unavailable_policy" });
+    expect(off.calls).toEqual([]);
+    // The same body is a valid request: with the policy on it is the database that answers, so the refusal above is the policy's.
+    vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "on");
+    const on = caller();
+    await run(o, on.c);
+    expect(on.calls).toHaveLength(1);
+  });
+
+  it("a model list (API key and OAuth) drops a dub-only model and strips dub from the rest while the policy is off", async () => {
+    const o = await api();
+    const listed = { ok: true as const, status: 200, data: { capability: null, models: [
+      { id: "dubber", capabilities: ["dub"] },
+      { id: "audio-all", capabilities: ["voice_change", "dub"] },
+      { id: "editor", capabilities: ["edit"] },
+    ] } };
+    const out = o.withoutLikenessModels(listed, false);
+    expect((out as { data: { models: { id: string; capabilities: string[] }[] } }).data.models).toEqual([
+      { id: "audio-all", capabilities: ["voice_change"] },
+      { id: "editor", capabilities: ["edit"] },
+    ]);
+    expect(o.withoutLikenessModels(listed, true)).toBe(listed);
+  });
+
+  it("listCreativeModels and oauthListCreativeModels apply the filter to what the database answers", async () => {
+    const o = await api();
+    const rows = { ok: true, status: 200, data: { capability: "dub", models: [{ id: "dubber", capabilities: ["dub"] }] } };
+    const c = { keyHash: "h", requestId: "r", downloads: false, backend: {} as never, rpc: async () => ({ data: rows, error: null }) };
+    for (const res of [await o.listCreativeModels(c as never, "dub"), await o.oauthListCreativeModels(c as never, "dub")])
+      expect((res as { data: { models: unknown[] } }).data.models).toEqual([]);
+  });
+});
+
+describe("the composer, the canvas and Improve with AI do not offer dub while the policy is off", () => {
+  it("offeredTools strips dub (and only dub) unless the policy is on", async () => {
+    const { offeredTools, DESK_TOOLS } = await import("../lib/creative/desks");
+    expect(offeredTools(DESK_TOOLS.voice, false)).toEqual(["tts", "voice_change"]);
+    expect(offeredTools(DESK_TOOLS.enhance, false)).toEqual(DESK_TOOLS.enhance);
+    expect(offeredTools(DESK_TOOLS.voice, true)).toEqual(["tts", "voice_change", "dub"]);
+  });
+
+  it("the canvas Voice node wired to a recording offers voice_change, not dub", async () => {
+    const { toolsFor } = await import("../components/studio-canvas/Inspector");
+    const node = { kind: "voice" } as Parameters<typeof toolsFor>[0];
+    expect(toolsFor(node, "audio")).toEqual(["voice_change"]);
+    vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "on");
+    expect(toolsFor(node, "video")).toEqual(["voice_change", "dub"]);
+  });
+
+  it("Improve with AI lists no dub for a video or a recording", async () => {
+    const { improveTools } = await import("../lib/creative/improve");
+    expect(improveTools("video")).toEqual(["video_upscale", "captions", "voice_change"]);
+    expect(improveTools("audio")).toEqual(["voice_change"]);
+    expect(improveTools("audio", true)).toEqual(["voice_change", "dub"]);
+  });
+});
+
 describe("the screens: nothing is shown that the routes refuse", () => {
   const read = (...p: string[]) => readFileSync(join(__dirname, "..", ...p), "utf8");
 

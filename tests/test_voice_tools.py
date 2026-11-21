@@ -283,6 +283,10 @@ class Registry(unittest.TestCase):
 
 # ── the adapter seam and the worker ──────────────────────────────────────────
 
+#: The likeness policy on: the worker tests below are about the dub itself; the off state is pinned in Worker.
+POLICY_ON = {"NIGHTSHIFT_LIKENESS_FEATURES": "on"}
+
+
 def voice_job(cap="voice_change", **over):
     params = {"source_asset_id": SRC, "voice_id": VOICE} if cap == "voice_change" else \
         {"source_asset_id": SRC, "target_language": "uz"}
@@ -323,7 +327,7 @@ class Worker(Tmp):
         self.media.mkdir()
         self.out = self.root / "jobs"
 
-    def run_job(self, j, source, routes, downloads=None, store=None):
+    def run_job(self, j, source, routes, downloads=None, store=None, policy_env=POLICY_ON):
         put_asset(self.media, SRC, MP4 if source.get("kind") == "video" else MP3)
         q = SourceQueue(j, source=source)
         entry = reg.get(j["requested_model"])
@@ -332,9 +336,38 @@ class Worker(Tmp):
         library = cw.Library(store=store, media_root=self.media) if store is not None else None
         w = cw.CreativeWorker(q, lambda m: ra if m == entry.id else None, worker_id="w1", out_dir=self.out,
                               credits=FakeCredits(), enforce=True, sleep=lambda s: None, heartbeat_seconds=0,
-                              media_root=self.media, library=library)
+                              media_root=self.media, library=library, env=policy_env)
         w.run_once()
         return q, session
+
+    # modules/likeness_policy.py: a dub re-voices real speakers, which the payment terms forbid us to sell. A dub job that reaches
+    # the worker anyway (an RPC called directly, a job queued before the switch went off) is failed and its hold released.
+    def test_a_dub_with_the_likeness_policy_off_fails_before_the_source_or_the_vendor_and_is_not_charged(self):
+        for env in ({}, {"NIGHTSHIFT_LIKENESS_FEATURES": ""}, {"NIGHTSHIFT_LIKENESS_FEATURES": "1"},
+                    {"NIGHTSHIFT_LIKENESS_FEATURES": "true"}):
+            store = FakeStore()
+            q, session = self.run_job(voice_job("dub"), ok_source("video/mp4", "video"),
+                                      [("POST", "/v1/dubbing/project", FakeResp(201, CREATED))], store=store, policy_env=env)
+            self.assertEqual(session.calls, [], env)
+            self.assertFalse(q.finished["ok"], env)
+            self.assertEqual(q.finished["error_code"], "feature_unavailable_policy", env)
+            self.assertIsNone(q.finished["charge"], env)
+            self.assertEqual([c for c in q.calls if c[0] == "advance"], [], env)
+            self.assertEqual(store.rows, [], env)
+
+    def test_a_voice_change_is_not_a_likeness_tool_and_still_runs_with_the_policy_off(self):
+        q, _ = self.run_job(voice_job(), ok_source(), [("POST", "speech-to-speech", FakeResp(200, content=MP3))],
+                            store=FakeStore(), policy_env={})
+        self.assertTrue(q.finished["ok"], q.finished)
+
+    def test_the_likeness_policy_reads_on_trimmed_any_case_and_nothing_else(self):
+        from modules import likeness_policy as lp
+        for v in (None, "", "1", "true", "yes", "off", "onn"):
+            self.assertFalse(lp.allowed({} if v is None else {"NIGHTSHIFT_LIKENESS_FEATURES": v}), v)
+        for v in ("on", " ON ", "On"):
+            self.assertTrue(lp.allowed({"NIGHTSHIFT_LIKENESS_FEATURES": v}), v)
+        self.assertEqual(lp.LIKENESS_CAPABILITIES, frozenset({"video_character_swap", "dub"}))
+        self.assertFalse(lp.refused(["dub"], {}))
 
     def test_a_voice_change_runs_end_to_end_into_the_library(self):
         store = FakeStore()
@@ -369,7 +402,7 @@ class Worker(Tmp):
         store = FakeStore()
         cw.CreativeWorker(q, lambda m: ra, worker_id="w1", out_dir=self.out, credits=FakeCredits(), enforce=True,
                           sleep=lambda s: None, heartbeat_seconds=0, media_root=self.media,
-                          library=cw.Library(store=store, media_root=self.media)).run_once()
+                          library=cw.Library(store=store, media_root=self.media), env=POLICY_ON).run_once()
         self.assertTrue(q.finished["ok"], q.finished)
         submits = [c for c in session.calls if c[0] == "POST"]
         self.assertEqual(len(submits), 1)

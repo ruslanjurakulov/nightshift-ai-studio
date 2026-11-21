@@ -609,8 +609,10 @@ export function parseGenerationInput(
  * why (`route_reason`) and is that model's own quote.
  */
 /**
- * Here, not in a route, because every door (the web routes, region edit, the agent's quote) reaches the database through quote() and
- * createGeneration(): a check in one route would leave the others selling a dub. Before the RPC, so nothing is quoted or held.
+ * Here, not in a route, because the session doors (the web routes, region edit, the agent's quote) reach the database through quote()
+ * and createGeneration(): a check in one route would leave the others selling a dub. The key and connected-assistant doors call
+ * api_creative_* / oauth_creative_* themselves and carry the same check in lib/api/operations.ts parseCreativeBody. Before the RPC, so
+ * nothing is quoted or held.
  */
 function likenessPolicyFail(capability: string): CreativeResult | null {
   return isLikenessCapability(capability) && !likenessFeaturesAllowed() ? fail(POLICY_REFUSAL_STATUS, "feature_unavailable_policy") : null;

@@ -54,6 +54,9 @@ let fetchMock: ReturnType<typeof vi.fn>;
 let extra: (url: string, init?: RequestInit) => Promise<Response> | undefined;
 const assign = vi.fn();
 beforeEach(() => {
+  // These tests are about the menu's layout with every tool; the likeness policy's own off state (no dub) is pinned in
+  // tests/likeness-policy.test.ts.
+  vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "on");
   router.push.mockReset();
   // Into and out of the editor's project page is a full document load (lib/editor-nav.ts), never router.push.
   assign.mockReset();
@@ -73,6 +76,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   document.body.style.overflow = "";
 });

@@ -34,11 +34,13 @@ export function csFail(error: SwapError, status: number, extra: Record<string, u
 }
 
 /**
- * The payment-terms refusal (lib/likeness-policy.ts), first in every route that reads, quotes or starts a swap: before the studio's own
- * switch, the session and any database call, so nothing is quoted or held. The cancel route does not call it: cancelling a job that was
- * queued before the switch went off is how its hold comes back.
+ * The payment-terms refusal (lib/likeness-policy.ts), first in every route that reads, quotes or starts a swap: before the session and
+ * any database call, so nothing is quoted or held. The studio's own switch is asked first: a studio that is not deployed answers the
+ * public 404 as it did before the policy, and does not reveal that it exists. The cancel route does not call it: cancelling a job that
+ * was queued before the switch went off is how its hold comes back.
  */
 export function studioPolicyRefusal(): NextResponse | null {
+  if (!characterStudioEnabled()) return csFail("not_found", 404);
   const refused = likenessRefusal();
   return refused ? NextResponse.json(refused.body, { status: refused.status, headers: NO_STORE }) : null;
 }

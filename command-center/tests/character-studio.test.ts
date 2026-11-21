@@ -128,7 +128,17 @@ describe("the likeness policy (payment terms: no real-person swap)", () => {
     expect(h.calls).toEqual([]);
   });
 
-  it("cancel still reaches the database with the policy off: a job queued before the switch went off gets its hold back", async () => {
+  it.each(POLICY)("%s still answers the public 404 when the studio itself is off, whatever the policy says (a dark feature is not revealed)", async (_n, call) => {
+    delete process.env.NIGHTSHIFT_CHARACTER_STUDIO;
+    for (const v of [undefined, "on"]) {
+      if (v === undefined) delete process.env.NIGHTSHIFT_LIKENESS_FEATURES;
+      else process.env.NIGHTSHIFT_LIKENESS_FEATURES = v;
+      expect((await call()).status).toBe(404);
+    }
+    expect(h.calls).toEqual([]);
+  });
+
+  it("cancel still reaches the database with the policy off:a job queued before the switch went off gets its hold back", async () => {
     delete process.env.NIGHTSHIFT_LIKENESS_FEATURES;
     h.rpc.cancel_character_swap = { data: { id: JOB, status: "cancelled", replayed: false }, error: null };
     const res = await cancel.POST(req(`/api/character-studio/swaps/${JOB}/cancel`, "POST", {}), ctx(JOB));

@@ -94,12 +94,16 @@ class Tools:
     ffmpeg, ffprobe = "ffmpeg", "ffprobe"
 
 
-def worker(job, adapter, *, tools=Tools(), store=None):
+#: The likeness policy on: these tests are about the swap itself; LikenessPolicy below pins the off state.
+POLICY_ON = {"NIGHTSHIFT_LIKENESS_FEATURES": "on"}
+
+
+def worker(job, adapter, *, tools=Tools(), store=None, policy_env=POLICY_ON):
     tmp = Path(tempfile.mkdtemp())
     st = store or Store(job)
     w = cs.CharacterSwapWorker(st, worker_id="w-1", library=cs.Library(store=object(), media_root=tmp, tools=tools), scratch=tmp / "s",
                                origin=ORIGIN, secret=SECRET, registry=reg.registry(), build_adapter=lambda key: adapter,
-                               sleep=lambda s: None)
+                               policy_env=policy_env, sleep=lambda s: None)
     return w, st, tmp
 
 
@@ -121,6 +125,42 @@ class Patched(unittest.TestCase):
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
+
+
+class LikenessPolicy(Patched):
+    """modules/likeness_policy.py: the payment terms forbid selling a real-person swap. A job that reaches the worker anyway (an RPC
+    called directly, a job queued before the switch went off) is failed with feature_unavailable_policy, which releases its hold."""
+
+    def test_policy_off_fails_the_job_before_any_vendor_call_or_library_write(self):
+        for env in ({}, {"NIGHTSHIFT_LIKENESS_FEATURES": ""}, {"NIGHTSHIFT_LIKENESS_FEATURES": "1"},
+                    {"NIGHTSHIFT_LIKENESS_FEATURES": "true"}, {"NIGHTSHIFT_LIKENESS_FEATURES": "off"}):
+            a = Adapter(polls=[done()])
+            w, st, _ = worker(claimed(), a, policy_env=env)
+            self.assertTrue(w.run_once())
+            self.assertEqual(st.calls, [("claim",), ("fail", "feature_unavailable_policy")], env)
+            self.assertEqual(a.calls, [], env)
+            self.assertEqual(self.stored, [], env)
+
+    def test_a_resumed_job_with_a_recorded_task_is_refused_too_never_finished_and_charged(self):
+        a = Adapter(polls=[done()])
+        w, st, _ = worker(claimed(resume=True, provider_task_id="T-1"), a, policy_env={})
+        w.run_once()
+        self.assertEqual(st.calls, [("claim",), ("fail", "feature_unavailable_policy")])
+        self.assertNotIn("finish", [c[0] for c in st.calls])
+
+    def test_policy_on_trimmed_any_case_runs_the_job(self):
+        a = Adapter(polls=[done()])
+        w, st, _ = worker(claimed(), a, policy_env={"NIGHTSHIFT_LIKENESS_FEATURES": " On "})
+        w.run_once()
+        self.assertIn("submit", [c[0] for c in a.calls])
+
+    def test_unset_in_the_process_environment_is_off(self):
+        a = Adapter(polls=[done()])
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("NIGHTSHIFT_LIKENESS_FEATURES", None)
+            w, st, _ = worker(claimed(), a, policy_env=None)
+            w.run_once()
+        self.assertEqual(st.calls[-1], ("fail", "feature_unavailable_policy"))
 
 
 class Flow(Patched):

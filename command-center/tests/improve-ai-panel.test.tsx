@@ -54,12 +54,15 @@ const MODELS: StudioModel[] = [
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  // The panel's layout with every tool; the likeness policy's off state (no dub) is pinned in tests/likeness-policy.test.ts.
+  vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "on");
   fetchMock = vi.fn(() => Promise.resolve(new Response("{}", { status: 404 })));
   vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   document.body.style.overflow = "";
 });
 

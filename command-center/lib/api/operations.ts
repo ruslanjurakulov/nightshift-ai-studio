@@ -14,6 +14,7 @@ import { en } from "@/lib/i18n/en";
 import { API_KEY_PREFIX, hashApiKey, parseBearer, sha256Hex } from "@/lib/api/keys";
 import { apiError, fromRpcResult, type ApiResult } from "@/lib/api/http";
 import { parseGenerationInput, type CreativeCapability } from "@/lib/creative/operations";
+import { POLICY_REFUSAL, POLICY_REFUSAL_STATUS, isLikenessCapability, likenessFeaturesAllowed } from "@/lib/likeness-policy";
 
 export type Rpc = (
   fn: string,
@@ -467,6 +468,11 @@ export function parseCreativeBody(
     };
   }
   const i = parsed.input;
+  // The key and the connected-assistant doors call api_creative_* / oauth_creative_* directly, never quote() or createGeneration(),
+  // so the likeness policy (lib/likeness-policy.ts) is checked here too: every quote and create body passes through this parser,
+  // and the refusal comes before any RPC, so nothing is quoted or held for a dub while the payment terms forbid it.
+  if (isLikenessCapability(i.capability) && !likenessFeaturesAllowed())
+    return { ok: false, result: apiError(POLICY_REFUSAL_STATUS, POLICY_REFUSAL, "This capability is not offered. Nothing was charged.") };
   return { ok: true, request: { capability: i.capability, model: i.model, params: i.params, mode: i.mode, maxCredits: i.maxCredits } };
 }
 
@@ -545,7 +551,28 @@ export async function listCreativeModels(caller: ApiCaller, capability?: string 
   const cap = capability == null ? null : capability.trim().toLowerCase();
   if (cap !== null && !(API_CREATIVE_CAPABILITIES as readonly string[]).includes(cap))
     return bad("invalid_params", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
-  return call(caller, "api_creative_models", { p_capability: cap }, "0162");
+  return withoutLikenessModels(await call(caller, "api_creative_models", { p_capability: cap }, "0162"));
+}
+
+/**
+ * A models answer ({ capability, models: [{ capabilities: [...] }] }, 0162 / 0191) with every likeness capability taken out while the
+ * policy is off, and a model left with none dropped: a list must not offer what parseCreativeBody would refuse at the quote.
+ */
+export function withoutLikenessModels(result: ApiResult, allowed: boolean = likenessFeaturesAllowed()): ApiResult {
+  if (allowed || !result.ok || !result.data || typeof result.data !== "object") return result;
+  const d = result.data as Record<string, unknown>;
+  if (!Array.isArray(d.models)) return result;
+  const models: unknown[] = [];
+  for (const m of d.models) {
+    const caps = m && typeof m === "object" ? (m as Record<string, unknown>).capabilities : undefined;
+    if (!Array.isArray(caps)) {
+      models.push(m);
+      continue;
+    }
+    const kept = caps.filter((c) => !isLikenessCapability(c));
+    if (kept.length > 0) models.push(kept.length === caps.length ? m : { ...(m as Record<string, unknown>), capabilities: kept });
+  }
+  return { ...result, data: { ...d, models } };
 }
 
 type JobFile = { asset_id: string; kind: string; mime: string; variants: string[]; width?: number | null; height?: number | null; duration_s?: number | null };
@@ -630,7 +657,7 @@ export async function oauthListCreativeModels(caller: ApiCaller, capability?: st
   const cap = capability == null ? null : capability.trim().toLowerCase();
   if (cap !== null && !(API_CREATIVE_CAPABILITIES as readonly string[]).includes(cap))
     return bad("invalid_params", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
-  const result = await call(caller, "oauth_creative_models", { p_capability: cap }, "0191");
+  const result = withoutLikenessModels(await call(caller, "oauth_creative_models", { p_capability: cap }, "0191"));
   if (!result.ok || !result.data || typeof result.data !== "object") return result;
   const d = result.data as Record<string, unknown>;
   // CLAUDE.md #5: an empty list is a fact about what is offered to assistants, not "the Studio has no models".
