@@ -1,0 +1,27 @@
+import type { DeviceAccountsDictionary } from "./en";
+
+export const deviceAccountsUz: DeviceAccountsDictionary = {
+  title: "Ushbu qurilmadagi hisoblar",
+  current: "Joriy hisob",
+  switchTo: "{name} hisobiga oʻtish",
+  add: "Hisob qoʻshish",
+  limit: "Qurilmada 3 tagacha hisob saqlanadi. Boshqasini qoʻshish uchun bittasidan chiqing.",
+  signInAgain: "Qayta kirish",
+  expired: "Seans tugadi",
+  expiredMessage: "Bu hisob seansi tugadi. Unga qayta kiring.",
+  staleBelow: "Seans tugadi · quyidagi shakl orqali kiring",
+  logOut: "Chiqish",
+  logOutOf: "{name} hisobidan chiqish",
+  logOutAll: "Barcha hisoblardan chiqish",
+  working: "Bir daqiqa…",
+  loading: "Hisoblar yuklanmoqda…",
+  loadFailed: "Ushbu qurilmadagi hisoblarni yuklab boʻlmadi.",
+  retry: "Qayta urinish",
+  failed: "Boʻlmadi. Qayta urinib koʻring.",
+  unavailable: "Kirish xizmati javob bermadi. Qayta urinib koʻring.",
+  mismatch: "Saqlangan hisob yaroqsiz chiqdi va olib tashlandi. Unga qayta kiring.",
+  changed: "Ushbu qurilmadagi hisoblar boshqa oynada oʻzgardi. Mana hozirgi roʻyxat.",
+  notRevoked: "Hisob bu qurilmadan olib tashlandi, lekin kirish xizmati javob bermadi va seans serverda tugatilmadi. U oʻzi tugaydi yoki boshqa qurilmada undan chiqing.",
+  continueAs: "{name} sifatida davom etish",
+  savedTitle: "Ushbu qurilmada saqlangan",
+};

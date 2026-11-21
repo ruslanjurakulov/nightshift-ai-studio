@@ -2,6 +2,10 @@ import { ownerFactsEn } from "./facts-en";
 
 /** The Owner Console (/owner) and the account switcher (User / Owner). */
 export const ownerConsoleEn = {
+  studioNotice: "Switch to User to open the Studio and your workspace.",
+  studioSwitch: "Switch to User",
+  studioSwitching: "Switching…",
+  studioSwitchFailed: "Could not switch. Try again.",
   title: "Owner Console",
   navLabel: "Owner Console navigation",
   nav: {

@@ -7,6 +7,9 @@ import { Activity, Bot, ChevronDown, Coins, LayoutDashboard, Plug, Settings, Use
 import { useI18n } from "@/lib/i18n/context";
 import { OWNER_SECTIONS, currentOwnerSection, type OwnerSectionKey } from "@/lib/owner-console/nav";
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
+import { DeviceAccounts } from "@/components/account/DeviceAccounts";
+import { useSignOut } from "@/components/account/AccountParts";
+import { useDeviceAccountsSync } from "@/lib/device-accounts-client";
 import { SkipLink } from "@/components/shell/SkipLink";
 import "./owner-console.css";
 
@@ -28,12 +31,17 @@ const ICONS: Record<OwnerSectionKey, typeof Users> = {
 export function OwnerShell({
   email,
   account = "owner",
+  skipLink = true,
   children,
 }: {
   email: string | null;
   account?: "user" | "owner";
+  /** Off where the page around it already draws one (the app's layout, for an owner tool in the Owner view). */
+  skipLink?: boolean;
   children: React.ReactNode;
 }) {
+  const signOut = useSignOut();
+  useDeviceAccountsSync();
   const { t } = useI18n();
   const c = t.ownerConsole;
   const pathname = usePathname() ?? "/owner";
@@ -81,7 +89,7 @@ export function OwnerShell({
 
   return (
     <div className="oc-root">
-      <SkipLink />
+      {skipLink && <SkipLink />}
       <aside className="oc-side">
         <div className="oc-brand">
           <span className="oc-mark" aria-hidden>
@@ -96,6 +104,8 @@ export function OwnerShell({
         </nav>
         <div className="oc-foot">
           {email && <p className="oc-email">{email}</p>}
+          {/* The accounts kept on this device first, as in the app's avatar menu; then this account's two views. */}
+          <DeviceAccounts enabled onSignOutCurrent={signOut} />
           <AccountSwitcher current={account} />
         </div>
       </aside>
@@ -125,6 +135,7 @@ export function OwnerShell({
             </button>
             {open && (
               <div className="oc-pop" id="oc-acct-pop" role="dialog" aria-label={c.switcher.title}>
+                <DeviceAccounts enabled={open} onSignOutCurrent={signOut} />
                 <AccountSwitcher current={account} onDone={() => setOpen(false)} />
               </div>
             )}
@@ -138,8 +149,56 @@ export function OwnerShell({
       </header>
 
       <main id="main" tabIndex={-1} className="oc-main">
+        <StudioNotice />
         {children}
       </main>
+    </div>
+  );
+}
+
+/**
+ * After a Studio or workspace URL was opened in the Owner view (app/(app)/layout.tsx sends it to /owner?from=studio): one
+ * line saying where the Studio is, and the switch to the User account right there. The switch is the same server call as
+ * the account switcher's User row, then a full load of the workspace Home.
+ */
+function StudioNotice() {
+  const { t } = useI18n();
+  const c = t.ownerConsole;
+  const [shown, setShown] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    try {
+      setShown(new URLSearchParams(window.location.search).get("from") === "studio");
+    } catch {
+      setShown(false);
+    }
+  }, []);
+  if (!shown) return null;
+  async function toUser() {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const res = await fetch("/api/account/owner-mode", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ on: false }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      window.location.assign("/");
+    } catch {
+      setFailed(true);
+      setBusy(false);
+    }
+  }
+  return (
+    <div role="status" className="oc-notice" data-studio-notice="">
+      <p className="oc-notice-tx">{c.studioNotice}</p>
+      <button type="button" className="oc-notice-btn" onClick={() => void toUser()} aria-disabled={busy ? "true" : undefined}>
+        {busy ? c.studioSwitching : c.studioSwitch}
+      </button>
+      {failed && <p className="oc-notice-err">{c.studioSwitchFailed}</p>}
     </div>
   );
 }

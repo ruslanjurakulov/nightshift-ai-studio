@@ -3,6 +3,10 @@ import { ownerFactsUz } from "./facts-uz";
 
 /** Ega konsoli (/owner) va hisob almashtirgich. Matn manbasi — ./en.ts. */
 export const ownerConsoleUz: OwnerConsoleDictionary = {
+  studioNotice: "Studio va ish maydonini ochish uchun «Foydalanuvchi» hisobiga oʻting.",
+  studioSwitch: "«Foydalanuvchi» hisobiga oʻtish",
+  studioSwitching: "Oʻtilmoqda…",
+  studioSwitchFailed: "Oʻtib boʻlmadi. Qayta urinib koʻring.",
   title: "Ega konsoli",
   navLabel: "Ega konsoli navigatsiyasi",
   nav: {

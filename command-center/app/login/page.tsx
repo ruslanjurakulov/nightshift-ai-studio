@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { GoogleButton } from "@/components/auth/GoogleButton";
+import { SavedAccounts } from "@/components/auth/SavedAccounts";
 import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
 import { safeLoginReturn, studioNext } from "@/lib/safe-redirect";
 import { clearAllDrafts } from "@/lib/create-draft";
@@ -99,6 +100,9 @@ export default function LoginPage() {
           <AuthAlert tone="warn">{t.site.auth.unavailable}</AuthAlert>
         </div>
       )}
+
+      {/* The accounts still kept on this device (after "Add account", or when one of several signed out). Nothing if none. */}
+      {isSupabaseConfigured && <SavedAccounts />}
 
       <GoogleButton mode="signin" />
 

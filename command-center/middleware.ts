@@ -16,6 +16,7 @@ import {
   isPublicApiPath,
   isPublicFontPath,
   isReviewLinkPath,
+  isDeviceAccountsPath,
   isSignedMediaPath,
   isUnknownDocsPath,
   isUnknownSolutionPath,
@@ -218,6 +219,10 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // A review link carries its own authorization too (its token, checked by the database): no session to
   // refresh, and none to spend a round trip on for every range a phone asks for.
   if (isReviewLinkPath(request.nextUrl.pathname)) return NextResponse.next({ request });
+  // The accounts kept in this browser (lib/device-accounts.ts) handle the sessions themselves: a switch replaces the active
+  // session's cookies, and a refresh written here for the OUTGOING account would race the route's own write of the new one.
+  // Each route checks its own origin, slot and the auth server's answer.
+  if (isDeviceAccountsPath(request.nextUrl.pathname)) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
 

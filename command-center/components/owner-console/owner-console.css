@@ -214,6 +214,35 @@
 .acct-switch-check { color: var(--ns-amber, var(--color-primary)); display: inline-flex; }
 .acct-switch-err { margin: 0; padding: 0 0.25rem; font-size: 0.75rem; color: var(--color-warn); }
 
+.oc-notice {
+  max-width: 72rem;
+  margin: 1rem auto 0;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.8rem;
+  background: var(--color-panel);
+}
+@media (min-width: 40rem) {
+  .oc-notice { margin: 1.5rem 2rem 0; }
+}
+.oc-notice-tx { margin: 0; flex: 1 1 14rem; font-size: 0.9rem; }
+.oc-notice-btn {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--ns-cta-bg, var(--color-primary));
+  color: var(--ns-cta-fg, var(--color-on-accent));
+  font-weight: 600;
+}
+.oc-notice-btn:focus-visible { outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }
+.oc-notice-btn[aria-disabled="true"] { cursor: progress; opacity: 0.75; }
+.oc-notice-err { margin: 0; flex-basis: 100%; font-size: 0.8rem; color: var(--color-warn); }
+
 @media (prefers-reduced-motion: reduce) {
   .oc-link, .oc-tool, .acct-switch-row { transition: none; }
 }

@@ -94,3 +94,28 @@ export function currentOwnerSection(pathname: string): OwnerSectionKey | null {
   }
   return best?.key ?? null;
 }
+
+/**
+ * The Owner account's view rule (the platform owner with the switcher on "Owner"): the console and the owner tools it links
+ * to, and nothing of the Studio or the workspace (Home, Create, the Studio, Library, channels, credits). Those open only in
+ * the User account. A VIEW rule: who may read or write anything is still the real role, in either account, and an account
+ * that is not the platform owner is never in this view (app/(app)/layout.tsx decides it from the database's answer).
+ *
+ * The tools are app sections under a channel (`/{channel}/margin`), so the rule is the section name: exactly the first
+ * segment of a tool link above. The Models registry is an owner tool only in its management views (`?view=`); the plain
+ * Models page is the customers' catalog.
+ */
+export const OWNER_TOOL_SECTIONS: ReadonlySet<string> = new Set(
+  OWNER_SECTIONS.flatMap((s) => s.tools.map((t) => t.href.split(/[/?]/)[1] ?? "")).filter(Boolean),
+);
+
+/** Where a workspace URL goes in the Owner view: the console, which then says how to open the Studio. */
+export const OWNER_VIEW_BLOCKED = `${OWNER_CONSOLE_PATH}?from=studio`;
+
+/** May the Owner view open this app path (`/{channel}/{section}/…`, with its query)? */
+export function ownerViewAllows(path: string, search: string = ""): boolean {
+  const section = path.split("/")[2] ?? "";
+  if (!OWNER_TOOL_SECTIONS.has(section)) return false;
+  if (section === "models") return new URLSearchParams(search).has("view");
+  return true;
+}

@@ -36,6 +36,7 @@ import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
 import { ownerConsoleEn } from "./owner-console/en";
+import { deviceAccountsEn } from "./device-accounts/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -78,6 +79,7 @@ export const en = {
   trends: trendsEn,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/en.ts. */
   ownerConsole: ownerConsoleEn,
+  deviceAccounts: deviceAccountsEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,

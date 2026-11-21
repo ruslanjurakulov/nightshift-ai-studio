@@ -49,6 +49,8 @@ import { filmStudioListed, filmStudioMode } from "@/lib/server/films";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { isPlatformOwner } from "@/lib/server/owner-view";
+import { OWNER_VIEW_BLOCKED, ownerViewAllows } from "@/lib/owner-console/nav";
+import { OwnerShell } from "@/components/owner-console/OwnerShell";
 import { GlassPointer } from "@/components/ui/GlassPointer";
 import "./app-redesign.css";
 import "./app-pages-1.css";
@@ -147,6 +149,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // customer is never asked (no lookup). Decided by the database's own answer (lib/server/owner-view), never by the cookie.
   const ownerAccount = operator ? await isPlatformOwner() : false;
   const frame = ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value, ownerAccount);
+  // The Owner account's view (lib/owner-console/nav ownerViewAllows): the platform owner on "Owner" gets the console and its
+  // owner tools only. Any Studio or workspace URL goes to the console, which says how to switch to User. Drawing and routing
+  // only: the pages still check the real role, and no one but the platform owner is ever in this view.
+  const ownerView = frame && ownerAccount;
+  if (ownerView && path && !ownerViewAllows(path, headerStore.get(SEARCH_HEADER) ?? "")) redirect(OWNER_VIEW_BLOCKED);
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database
@@ -235,7 +242,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {/* One delegated listener for every glass key's pointer highlight (app-glass.css). */}
             <GlassPointer />
             <NeuralBackdrop dim />
-            {frame ? (
+            {ownerView ? (
+              // The Owner view: an owner tool drawn in the Owner Console's own frame, with no Studio or workspace navigation
+              // (lib/owner-console/nav ownerViewAllows). The app's skip link above already leads to this frame's main.
+              <div className="relative z-10">
+                <OwnerShell email={email} account="owner" skipLink={false}>
+                  <AdminMfaBanner action={mfa} t={tt.mfa} path={path} />
+                  <div className="pad-page">{children}{geo}</div>
+                </OwnerShell>
+              </div>
+            ) : frame ? (
               <div className="relative z-10 flex min-h-svh flex-col">
                 <AdminMfaBanner action={operator ? mfa : "allow"} t={tt.mfa} path={path} />
                 {header}

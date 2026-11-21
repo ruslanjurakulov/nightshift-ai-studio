@@ -36,6 +36,7 @@ import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { trendsRu } from "./trends/ru";
 import { ownerConsoleRu } from "./owner-console/ru";
+import { deviceAccountsRu } from "./device-accounts/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
@@ -70,6 +71,7 @@ export const ru: Dictionary = {
   trends: trendsRu,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/ru.ts. */
   ownerConsole: ownerConsoleRu,
+  deviceAccounts: deviceAccountsRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
