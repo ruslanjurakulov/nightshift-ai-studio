@@ -41,6 +41,7 @@ import { CreateScreen } from "@/components/customer/CreateScreen";
 import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { SLUG_RE, cleanLinkPrompt, isCreateKind } from "@/lib/customer/create";
+import { readNightshiftAiAccess } from "@/lib/server/nightshift-ai";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -187,6 +188,20 @@ export default async function CreatePage({
           : { state: "failed" };
   }
 
+  // The start box at the top of the Studio start: the Agent chip's answer is the server's (flag, then plan), and a channel video
+  // goes to the open channel when YouTube has answered for it, else the first that has (rule 7).
+  const start =
+    desk === "overview" && !createScreen
+      ? await (async () => {
+          const runnable = runnableChannels(channels);
+          const target = runnable.find((c) => c.channel_id === scopedChannel?.channel_id) ?? runnable[0];
+          return {
+            agent: await readNightshiftAiAccess(genOrgId),
+            channel: target ? { slug: channelSlug(target, channels), name: target.name || target.channel_id } : null,
+          };
+        })()
+      : null;
+
   // 0192: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
   // instead of the composer (the database refuses their quotes too); an unknown state stops no one.
   const age = await readAgeState();
@@ -247,6 +262,8 @@ export default async function CreatePage({
           // whether to use it. Its words are cleaned and bounded as any link's; the tool's own limit applies once the tool is known.
           pending={pendingNonce ? { nonce: pendingNonce, words: cleanLinkWords(one(q.prompt)) } : null}
           idea={ideaPickup}
+          ideaKind={one(q.kind) === "image" ? "image" : "video"}
+          start={start}
         />
       )}
       {desk === "effects" &&
@@ -277,6 +294,8 @@ export default async function CreatePage({
             plans={plans}
             // From an editor project ("Improve with AI"): a finished result can be added back to it.
             project={parseIdParam(q.project)}
+            // The start box's "AI edit" kept its words in this browser (lib/site/idea-handoff.ts): the composer takes them once.
+            idea={ideaPickup}
           />
         ) : (
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>

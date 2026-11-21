@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useChannelPath } from "@/lib/channels-client";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
@@ -14,6 +14,8 @@ import type { FeedVariant } from "@/components/studio/JobFeed";
 import { useShell } from "@/components/shell/ShellContext";
 import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
 import { toolOpen } from "@/lib/tool-availability";
+import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
+import { attachWords } from "@/lib/creative/attach";
 import "@/components/studio/desk.css";
 
 /** How each desk shows what it made (components/studio/JobFeed variants). */
@@ -42,6 +44,7 @@ export function GenerateSection({
   desk = null,
   project = null,
   unavailable = [],
+  idea = false,
 }: {
   /**
    * The desk this section is (lib/creative/desks): its tools only, laid out
@@ -66,6 +69,8 @@ export function GenerateSection({
   project?: string | null;
   /** The model ids the owner switched off for now (0124): the composer says so over a model the form came with, and picks nothing instead. */
   unavailable?: readonly string[];
+  /** `?idea=1`: the start box's "AI edit" kept the words in this browser (lib/site/idea-handoff.ts); the composer takes them once. */
+  idea?: boolean;
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
@@ -85,6 +90,28 @@ export function GenerateSection({
     setPrefill((p) => ({ nonce: (p?.nonce ?? 0) + 1, value }));
     toComposer();
   };
+
+  // The kept words, taken once (read and deleted together) and put in the composer's prompt, not sent: the person still chooses
+  // the clip and presses the priced key (rule 3). The address loses `idea=`; nothing kept is an empty box, never an error.
+  const ideaTaken = useRef(false);
+  useEffect(() => {
+    if (!idea || ideaTaken.current) return;
+    ideaTaken.current = true;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete(IDEA_PARAM);
+      window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      // The address keeps `idea=1`; the words are taken once either way.
+    }
+    const words = takeIdea();
+    const tool = initial?.capability ?? (desk ? DESK_TOOLS[desk][0] : null);
+    if (!words || !tool) return;
+    const prompt = attachWords(tool, words);
+    if (prompt) fill({ ...(initial ?? { capability: tool, model: "", prompt: "", aspect: "16:9", duration: 5 }), prompt });
+    // Once, on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pickAsSource = (id: string) => {
     setSourceRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, id }));

@@ -23,6 +23,9 @@ import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
 import { filmStudioOpen } from "@/lib/server/films";
 import { STUDIO_SHELVES, shelfFromQuery, type StudioShelf } from "@/lib/studioRoutes";
+import { redirect } from "next/navigation";
+import { studioAiFallback } from "@/lib/start-box";
+import { NIGHTSHIFT_AI_PANEL_AVAILABLE } from "@/lib/nightshift-ai-flag";
 import "@/components/studio-hub/studio-hub.css";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +49,10 @@ export default async function StudioPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+  // `?ai=new` (the start box's Agent): S5's Nightshift AI panel is not on this branch, so there is nothing to open. Rather than a
+  // canvas that ignores the ask, Create's box opens with the kept words (the same idea pickup). Replaced when the panel lands.
+  const aiFallback = studioAiFallback(sp, NIGHTSHIFT_AI_PANEL_AVAILABLE);
+  if (aiFallback) redirect((await getChannelPath())(aiFallback));
   if (sp.shelf !== undefined) return await ShelfView({ shelf: shelfFromQuery(sp.shelf) });
   if (!isSupabaseConfigured) return <NotConfigured />;
   if (sp.view === "timeline") {

@@ -34,6 +34,7 @@ import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
+import { startBoxEn } from "./start-box/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -74,6 +75,8 @@ export const en = {
   presets: presetsEn,
   /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
+  /** The app's start box (Home, the Studio start): ./start-box/en.ts. */
+  startBox: startBoxEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,

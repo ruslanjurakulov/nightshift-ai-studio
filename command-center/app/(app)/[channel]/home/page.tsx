@@ -4,19 +4,20 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { loadEditorProjects } from "@/lib/server/editor";
 import { HomeCreate, type HomeProjectsReading, type HomeWaiting } from "@/components/customer/HomeCreate";
 import { getChannelContext } from "@/lib/channels-server";
-import { orgWide } from "@/lib/channels";
+import { channelSlug, isScoped, orgWide } from "@/lib/channels";
+import { runnableChannels } from "@/lib/home";
+import { readNightshiftAiAccess } from "@/lib/server/nightshift-ai";
 import { createClient } from "@/lib/supabase/server";
 import { heldOnly } from "@/lib/heldVideos";
 import { listWaitingStoryboards } from "@/lib/server/storyboards";
-import { TrendsStrip } from "@/components/trends/TrendsStrip";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Home ("Nima yaratamiz?") — where a customer lands after sign-in (lib/navigation landingSection): the prompt box with
- * its Video | Image | Audio tabs, the top trend templates (stream S3's GET /api/templates, a designed placeholder until
- * it is deployed), what to continue, and for a new account three ways to start.
+ * Home ("Nima yaratamiz?") — where a customer lands after sign-in (lib/navigation landingSection): the start box
+ * (components/prompt/StartBox.tsx) with the Trends templates under it by purpose, what to continue, and for a new account
+ * three ways to start.
  *
  * Reads only the organization's editor projects, as the signed-in member (RLS); a missing table or a failed read says
  * so instead of an empty list that reads as "none yet". Nothing here writes, prices or starts anything: the box opens
@@ -41,7 +42,7 @@ export default async function HomePage() {
   // and storyboards waiting for approval, across the organization's channels, as the member (RLS). A failed read is null
   // ("couldn't read"), never 0.
   let waiting: HomeWaiting = { videos: null, storyboards: null };
-  const { channels, scope } = await getChannelContext();
+  const { channels, scope, selection } = await getChannelContext();
   const ids = channels.map((c) => c.channel_id);
   const supabase = ids.length > 0 ? await createClient() : null;
   if (supabase) {
@@ -53,6 +54,12 @@ export default async function HomePage() {
   } else if (ids.length === 0) {
     waiting = { videos: 0, storyboards: 0 };
   }
-  // Trends (0183): stream S3's strip of the first six templates, in Home's slot (one strip, never a second copy).
-  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} trends={<TrendsStrip />} />;
+  // The start box's "Channel video" goes to a channel YouTube has answered for (rule 7): the open one when it is, else the first.
+  const runnable = runnableChannels(channels);
+  const target = runnable.find((c) => isScoped(selection) && c.channel_id === selection) ?? runnable[0];
+  const channel = target ? { slug: channelSlug(target, channels), name: target.name || target.channel_id } : null;
+  // The Agent chip: open only when the server says so for this workspace (flag, then plan); computed here, never in the browser.
+  const agent = await readNightshiftAiAccess(orgId);
+  // The Trends templates are the start box's own library now (by purpose), so Home draws no second strip of them.
+  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} agent={agent} channel={channel} />;
 }
