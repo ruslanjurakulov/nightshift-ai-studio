@@ -689,7 +689,7 @@ export function draftProblems(settings: SettingsDraft, scenes: readonly SceneDra
  */
 export const TARGET_SECONDS = [15, 30, 60, 120, 180, 300, 480, 600, 900, 1200] as const;
 
-/** How a target length reads: seconds under a minute, whole minutes, or m:ss for a length another client saved off the list. */
+/** Mixed durations keep their total seconds so callers can choose clock notation or localized units. */
 export function targetLabel(seconds: number): { unit: "s" | "min" | "clock"; n: number } {
   if (seconds < 60) return { unit: "s", n: seconds };
   if (seconds % 60 === 0) return { unit: "min", n: seconds / 60 };

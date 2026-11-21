@@ -360,7 +360,7 @@ describe("a read that fails is never an empty dashboard", () => {
     expect(cards.tiktok).toMatchObject({ state: "not_connected", connected: 0 });
   });
 
-  it("an old Instagram Login row (no auth_flow, migration 0205) is not counted as a connection", async () => {
+  it("an old Instagram Login row (no auth_flow, migration 0204) is not counted as a connection", async () => {
     h.db.social_accounts = [
       { id: "acc-a", org_id: ORG_A, platform: "instagram", username: "alpha_ig", display_name: null, status: "connected" },
       { id: "acc-n", org_id: ORG_A, platform: "instagram", username: "new_ig", display_name: null, status: "connected", auth_flow: "unified_login" },

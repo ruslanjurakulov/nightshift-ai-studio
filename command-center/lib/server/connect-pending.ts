@@ -55,7 +55,7 @@ export interface YoutubeGrant {
   language: string | null;
 }
 
-/** What an Instagram (Unified Login) connection stores beside its token (migration 0205). */
+/** What an Instagram (Unified Login) connection stores beside its token (migration 0204). */
 export interface InstagramConnection {
   /** The client's business portfolio id, or null when Meta returned none. */
   clientBusinessId: string | null;

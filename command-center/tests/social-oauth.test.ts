@@ -270,7 +270,7 @@ describe("pure helpers", () => {
     expect(pure.socialStoreErrorResult({ code: "42501", message: "token abc" })).toBe("forbidden");
     expect(pure.socialStoreErrorResult({ code: "PGRST202" })).toBe("not_available");
     expect(pure.socialStoreErrorResult({ code: "22023" })).toBe("failed");
-    // 0028's store_social_account, before 0205: the remedy is the migration, not another try.
+    // 0028's store_social_account, before 0204: the remedy is the migration, not another try.
     expect(pure.socialStoreErrorResult({ code: "22023", message: "meta has an unknown key" })).toBe("needs_migration");
   });
 });

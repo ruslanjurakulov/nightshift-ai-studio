@@ -22,11 +22,18 @@ vi.mock("@/lib/auth/org-roles", () => ({ isPlatformAdmin: h.admin }));
 vi.mock("@/lib/orgs-server", () => ({ getOrgContext: h.org }));
 vi.mock("@/lib/server/web-rate", async (orig) => ({ ...(await orig<typeof import("../lib/server/web-rate")>()), takeWebRate: h.rate }));
 
-const { filmJson, FILM, ORG } = await import("./films-fixtures");
+const { filmJson, FILM, ORG, withOrgSwitch } = await import("./films-fixtures");
 const list = await import("../app/api/films/route");
 const one = await import("../app/api/films/[id]/route");
 const arch = await import("../app/api/films/[id]/archive/route");
+const live = await import("../app/api/films/[id]/live/route");
+const quote = await import("../app/api/films/[id]/quote/route");
+const start = await import("../app/api/films/[id]/start/route");
 const { filmStudioMode, filmStudioListed } = await import("../lib/server/films");
+
+const OTHER = "0b000000-0000-4000-8000-00000000000b";
+const orgSwitch = vi.fn();
+const filmOrg = vi.fn();
 
 const ORIGIN = { origin: "https://app.test", "sec-fetch-site": "same-origin", "content-type": "application/json" };
 const req = (url: string, method = "GET", body?: unknown) =>
@@ -45,19 +52,27 @@ beforeEach(() => {
   h.rate.mockReset().mockResolvedValue("ok");
   h.rpc.mockReset().mockResolvedValue({ data: filmJson(), error: null });
   h.from.mockReset();
-  h.client.mockReset().mockResolvedValue({ rpc: h.rpc, from: h.from });
+  // The open workspace is switched on (0198) unless a test says otherwise; h.from sees every other table.
+  orgSwitch.mockReset().mockReturnValue({ data: [{ org_id: ORG, film_studio_enabled: true }], error: null });
+  filmOrg.mockReset().mockReturnValue({ data: { org_id: ORG }, error: null });
+  h.client.mockReset().mockResolvedValue({ rpc: h.rpc, from: withOrgSwitch((t) => h.from(t), () => orgSwitch(), () => filmOrg()) });
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 describe("the switch", () => {
   it("reads off / admins / on, and anything else is off", () => {
     for (const v of ["", "off", "no", "enabled", "admin"]) expect(filmStudioMode(v)).toBe("off");
     for (const v of ["on", "ON", " 1 ", "true", "yes"]) expect(filmStudioMode(v)).toBe("on");
     expect(filmStudioMode(" Admins ")).toBe("admins");
-    expect(filmStudioListed("off", true)).toBe(false);
-    expect(filmStudioListed("admins", false)).toBe(false);
-    expect(filmStudioListed("admins", true)).toBe(true);
-    expect(filmStudioListed("on", false)).toBe(true);
+    expect(filmStudioListed("off", true, true)).toBe(false);
+    expect(filmStudioListed("admins", false, true)).toBe(false);
+    expect(filmStudioListed("admins", true, false)).toBe(true);
+    // `on` lists the section only for a workspace whose own switch is on, operator or not.
+    expect(filmStudioListed("on", false, true)).toBe(true);
+    expect(filmStudioListed("on", true, false)).toBe(false);
   });
 
   it("off: every route is a 404 before the session is read", async () => {
@@ -87,6 +102,146 @@ describe("the switch", () => {
     const r = await one.GET(req(`/api/films/${FILM}`), params(FILM));
     expect(r.status).toBe(401);
     expect(await r.json()).toEqual({ error: "session_expired" });
+  });
+});
+
+describe("the workspace switch under `on` (org_film_settings.film_studio_enabled, 0198)", () => {
+  const every = async () => [
+    await list.GET(req("/api/films")),
+    await list.POST(req("/api/films", "POST", createBody())),
+    await one.GET(req(`/api/films/${FILM}`), params(FILM)),
+    await one.PATCH(req(`/api/films/${FILM}`, "PATCH", { version: 1, patch: { title: "x" } }), params(FILM)),
+    await arch.POST(req(`/api/films/${FILM}/archive`, "POST", {}), params(FILM)),
+  ];
+
+  it("a workspace that is off gets the same 404 not_found as `off`, and nothing behind the gate runs", async () => {
+    orgSwitch.mockReturnValue({ data: [{ org_id: ORG, film_studio_enabled: false }], error: null });
+    for (const r of await every()) {
+      expect(r.status).toBe(404);
+      expect(await r.json()).toEqual({ error: "not_found" });
+    }
+    expect(h.rpc).not.toHaveBeenCalled();
+    expect(h.from).not.toHaveBeenCalled();
+    expect(h.rate).not.toHaveBeenCalled();
+  });
+
+  it("a workspace never switched (no row) is off", async () => {
+    orgSwitch.mockReturnValue({ data: [], error: null });
+    for (const r of await every()) expect(r.status).toBe(404);
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("another workspace's row being on does not open the one the app has open", async () => {
+    orgSwitch.mockReturnValue({ data: [{ org_id: OTHER, film_studio_enabled: true }], error: null });
+    expect((await one.GET(req(`/api/films/${FILM}`), params(FILM))).status).toBe(404);
+  });
+
+  it("a failed read is a 404 and one log line with the workspace and the code, never an open route", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failures = [
+      () => ({ data: null, error: { code: "42501", message: "permission denied for table org_film_settings" } }),
+      () => new Error("fetch failed"),
+      () => ({ data: { film_studio_enabled: true }, error: null }),
+      () => ({ data: [{ org_id: ORG, film_studio_enabled: "true" }], error: null }),
+    ];
+    for (const f of failures) {
+      log.mockClear();
+      orgSwitch.mockImplementation(f);
+      const r = await one.GET(req(`/api/films/${FILM}`), params(FILM));
+      expect(r.status).toBe(404);
+      expect(await r.json()).toEqual({ error: "not_found" });
+      expect(log).toHaveBeenCalledOnce();
+      const line = log.mock.calls[0].map(String).join(" ");
+      expect(line).toContain(ORG);
+      expect(line).not.toContain("permission denied");
+    }
+    expect(log.mock.calls[0].map(String).join(" ")).toContain("unexpected_shape");
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("the order holds: no session is still 401 before the switch is read", async () => {
+    h.user.mockResolvedValue(null);
+    expect((await one.GET(req(`/api/films/${FILM}`), params(FILM))).status).toBe(401);
+    expect(orgSwitch).not.toHaveBeenCalled();
+  });
+
+  it("no open workspace is a 404, with no read", async () => {
+    h.org.mockResolvedValue({ supported: true, orgs: [], switchable: [], current: null });
+    expect((await list.POST(req("/api/films", "POST", createBody()))).status).toBe(404);
+    expect(orgSwitch).not.toHaveBeenCalled();
+  });
+
+  it("a workspace that is on gets through: the open workspace, then the project's own", async () => {
+    expect((await one.GET(req(`/api/films/${FILM}`), params(FILM))).status).toBe(200);
+    expect(orgSwitch).toHaveBeenCalledTimes(2);
+    expect(filmOrg).toHaveBeenCalledOnce();
+  });
+
+  const QID = `fq-3-${"c".repeat(32)}`;
+  const IDEM = "film-0123456789abcdef0123456789abcdef";
+  const everyNamed = async () => [
+    await one.GET(req(`/api/films/${FILM}`), params(FILM)),
+    await one.PATCH(req(`/api/films/${FILM}`, "PATCH", { version: 1, patch: { title: "x" } }), params(FILM)),
+    await arch.POST(req(`/api/films/${FILM}/archive`, "POST", {}), params(FILM)),
+    await live.GET(req(`/api/films/${FILM}/live`), params(FILM)),
+    await quote.POST(req(`/api/films/${FILM}/quote`, "POST", { version: 3 }), params(FILM)),
+    await start.POST(req(`/api/films/${FILM}/start`, "POST", { quote_id: QID, idem: IDEM }), params(FILM)),
+  ];
+
+  it("the open workspace on, the project's workspace off: every route that names it is a 404, and nothing reaches the database", async () => {
+    // A person in two workspaces (A open and on, B off) naming B's project: save_film and archive_film check membership, never a switch.
+    filmOrg.mockReturnValue({ data: { org_id: OTHER }, error: null });
+    orgSwitch.mockImplementation(() => ({ data: [{ org_id: ORG, film_studio_enabled: true }, { org_id: OTHER, film_studio_enabled: false }], error: null }));
+    for (const r of await everyNamed()) {
+      expect(r.status).toBe(404);
+      expect(await r.json()).toEqual({ error: "not_found" });
+    }
+    expect(h.rpc).not.toHaveBeenCalled();
+    expect(h.rate).not.toHaveBeenCalled();
+    expect(h.from).not.toHaveBeenCalled();
+  });
+
+  it("live, quote and start in a workspace that is off: 404, with no project read", async () => {
+    orgSwitch.mockReturnValue({ data: [{ org_id: ORG, film_studio_enabled: false }], error: null });
+    for (const r of await everyNamed()) expect(r.status).toBe(404);
+    expect(filmOrg).not.toHaveBeenCalled();
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("a project that is missing (or another workspace's: RLS gives no row) or unreadable is a 404; a failed read is logged once", async () => {
+    filmOrg.mockReturnValue({ data: null, error: null });
+    expect((await one.GET(req(`/api/films/${FILM}`), params(FILM))).status).toBe(404);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const f of [() => ({ data: null, error: { code: "57014", message: "canceling statement" } }), () => new Error("reset"), () => ({ data: { org_id: 7 }, error: null })]) {
+      log.mockClear();
+      filmOrg.mockImplementation(f);
+      expect((await quote.POST(req(`/api/films/${FILM}/quote`, "POST", { version: 3 }), params(FILM))).status).toBe(404);
+      expect(log).toHaveBeenCalledOnce();
+      expect(log.mock.calls[0].map(String).join(" ")).toContain(FILM);
+      expect(log.mock.calls[0].map(String).join(" ")).not.toContain("canceling");
+    }
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("a membership lookup that failed (org context unavailable) is a 404 and one org_context_unavailable line", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    h.org.mockResolvedValue({ supported: false, orgs: [], switchable: [], current: null, unavailable: true });
+    const r = await one.GET(req(`/api/films/${FILM}`), params(FILM));
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ error: "not_found" });
+    expect(log).toHaveBeenCalledOnce();
+    expect(log.mock.calls[0].map(String).join(" ")).toContain("org_context_unavailable");
+    expect(orgSwitch).not.toHaveBeenCalled();
+  });
+
+  it("`admins` reads no workspace switch: an admin gets through even where the workspace is off, a member gets 404", async () => {
+    vi.stubEnv("NIGHTSHIFT_FILM_STUDIO", "admins");
+    orgSwitch.mockReturnValue({ data: [{ org_id: ORG, film_studio_enabled: false }], error: null });
+    expect((await one.GET(req(`/api/films/${FILM}`), params(FILM))).status).toBe(404);
+    h.admin.mockResolvedValue(true);
+    expect((await one.GET(req(`/api/films/${FILM}`), params(FILM))).status).toBe(200);
+    expect(orgSwitch).not.toHaveBeenCalled();
+    expect(filmOrg).not.toHaveBeenCalled();
   });
 });
 
@@ -151,6 +306,9 @@ describe("create", () => {
   });
 
   it("no open workspace is said, not guessed", async () => {
+    // Under `on` no open workspace has no switch to read, so it is the gate's 404 (below); `admins` reaches the route's own answer.
+    vi.stubEnv("NIGHTSHIFT_FILM_STUDIO", "admins");
+    h.admin.mockResolvedValue(true);
     h.org.mockResolvedValue({ supported: true, orgs: [], current: null });
     const r = await list.POST(req("/api/films", "POST", createBody()));
     expect(r.status).toBe(400);

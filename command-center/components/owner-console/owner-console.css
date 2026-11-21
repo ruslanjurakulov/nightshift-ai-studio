@@ -244,3 +244,14 @@
 .oc-stack { display: flex; flex-direction: column; gap: 1rem; }
 .oc-nowrap { white-space: nowrap; }
 .oc-warn { color: var(--color-warn); }
+
+/* The owner's Nightshift AI. */
+.oc-ai-turn { display: flex; flex-direction: column; gap: 0.3rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-border); }
+.oc-ai-turn:last-child { border-bottom: 0; padding-bottom: 0; }
+.oc-ai-who { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--color-muted); }
+.oc-ai-q, .oc-ai-a { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.oc-ai-draft { border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-panel-2); padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.oc-ai-draft-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 0.9rem; }
+.oc-ai-error { border: 1px solid var(--color-warn); border-radius: 0.6rem; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.oc-ai-input { width: 100%; resize: vertical; min-height: 5rem; border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-bg); color: var(--color-fg); padding: 0.6rem; font: inherit; }
+.oc-ai-input:focus-visible { outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }

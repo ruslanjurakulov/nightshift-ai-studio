@@ -23,9 +23,9 @@ yozuvi chiqadi — sahifa buzilmaydi.
 2. Supabase → **SQL Editor** → `supabase/migrations/0028_social_accounts.sql`
    faylining butun matnini qo'yib, **Run** bosing. Fayl oxiridagi "Verify"
    so'rovini ishga tushirsangiz, barcha ustunlar `true` bo'lishi kerak.
-3. Instagram (Unified Login) uchun: `supabase/migrations/0205_instagram_unified_login.sql`
+3. Instagram (Unified Login) uchun: `supabase/migrations/0204_instagram_unified_login.sql`
    ni ham xuddi shunday ishga tushiring (0028 dan keyin). Usiz Instagram ulash
-   "maʼlumotlar bazasini yangilash kerak (0205)" deb javob beradi va hech narsa
+   "maʼlumotlar bazasini yangilash kerak (0204)" deb javob beradi va hech narsa
    saqlamaydi.
 
 ---
@@ -120,7 +120,7 @@ foydalanish holati bilan:
 
 - Eski "Instagram Login" bilan ulangan akkauntlar o'chirilmaydi, lekin ular
   **"Qayta ulash kerak"** deb ko'rinadi va ularga hech narsa joylanmaydi
-  (migratsiya `0205`). Har biri Instagram'ni qayta ulab, o'sha akkauntni
+  (migratsiya `0204`). Har biri Instagram'ni qayta ulab, o'sha akkauntni
   tanlashi kerak — shunda eski yozuv yangisiga aylanadi.
 
 ### Cheklovlar (bilib qo'ying)

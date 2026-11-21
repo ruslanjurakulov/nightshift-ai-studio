@@ -70,6 +70,8 @@ export const NAV_GROUPS: NavGroup[] = [
       // Comments on the channel's videos, with drafted replies a person approves (migration 0081).
       { href: "/inbox", key: "inbox" },
       { href: "/analytics", key: "analytics" },
+      // The customer's own dashboard: channel, credits and forecast, projects and memory (migration 0201).
+      { href: "/brain", key: "brain" },
       // Housed in Nightshift Studio (hidden from the rail, reached from Studio home's tiles):
       { href: "/create", key: "create" },
       { href: "/videos", key: "videos" },
@@ -117,6 +119,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/learning", key: "learning" },
       { href: "/memory", key: "memory" },
       { href: "/topics", key: "topics" },
+      // Channel research (migration 0202): the channel's own numbers, competitors, channels on a topic, comment themes.
+      { href: "/research", key: "research" },
       { href: "/measurement", key: "measure" },
       { href: "/feedback-loop", key: "feedback" },
       { href: "/autonomy", key: "autonomy" },
@@ -161,9 +165,14 @@ export interface NavFeatures {
   /**
    * NIGHTSHIFT_FILM_STUDIO (lib/server/films.ts), already resolved for this viewer (`admins` lists it for a platform admin only):
    * Studio's Projects section, STUDIO_PROJECTS. Absent reads as off. It is not a rail entry of its own: it is listed beside the
-   * Studio's desks (the desk bar, the customer sidebar's Create group and Studio's overview).
+   * Studio's desks (the desk bar and the canvas's view menu); the customer sidebar does not list it (CUSTOMER_SIDEBAR).
    */
   filmStudio?: boolean;
+  /**
+   * NIGHTSHIFT_AI_CHAT / _ORGS (lib/brain/flag.ts), already resolved for this workspace by the layout: the customer rail's
+   * "Nightshift AI" entry. Absent reads as off, so a workspace the flag does not let in never sees a door to a closed panel.
+   */
+  aiChat?: boolean;
 }
 
 /** Studio → Projects: a whole video planned scene by scene (migration 0166). Under /create, the Studio's own address. */
@@ -215,6 +224,7 @@ export const SECTION_ITEMS: readonly SectionItem[] = [
  */
 export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "command",
+  "brain",
   "create",
   "trends",
   "videos",
@@ -230,6 +240,8 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "credits",
   "usage",
   "series",
+  // Channel research (migration 0202): a customer's own channel, its competitors and its viewers' questions.
+  "research",
   // The Ads workspace: a customer's own brand kits and campaigns (shown only while its switch is on).
   "ads",
   // Character Studio: swap the people in a customer's own video (shown only while its switch is on).
@@ -275,13 +287,28 @@ export const PROJECTS = "/studio?shelf=projects";
  * Credits and Settings sit at the foot of the desktop sidebar (and behind the credit pill and the avatar on a phone).
  * Channels, the Inbox and Nightshift Studio's canvas keep their URLs and are reached from Projects, the avatar menu and ⌘K.
  */
+/** The Studio's planning chat opens on the canvas with its panel up (#843: /studio?ai=new). */
+export const NIGHTSHIFT_AI_ENTRY: NavItem = { href: "/studio?ai=new", key: "nightshiftAi" };
+
 export const CUSTOMER_RAIL: readonly NavItem[] = [
   { href: CUSTOMER_HOME, key: "home" },
   { href: "/create", key: "create" },
   { href: TRENDS, key: "trends" },
   { href: PROJECTS, key: "projects" },
+  // Nightshift Brain (0201): the customer's channel, credits and forecast, projects and memory on one screen. After the
+  // Studio entries (the owner's order: Home, Nightshift AI, Studio, Brain, the rest). A desktop rail entry; the phone's
+  // bottom bar keeps its five (BOTTOM_ORDER) and reaches it from the avatar menu.
+  { href: "/brain", key: "brain" },
   { href: "/library", key: "library" },
 ];
+
+/**
+ * The customer rail for this request: CUSTOMER_RAIL, with Nightshift AI second (the owner's order: Home, Nightshift AI,
+ * Studio, Brain, the rest) only while the server's flag is on for this workspace. The phone's bottom bar keeps its five.
+ */
+export function customerRail(features: NavFeatures = NO_NAV_FEATURES): readonly NavItem[] {
+  return features.aiChat === true ? [CUSTOMER_RAIL[0], NIGHTSHIFT_AI_ENTRY, ...CUSTOMER_RAIL.slice(1)] : CUSTOMER_RAIL;
+}
 
 /**
  * Tab bars under a rail entry. Neither has one any more: Studio's tools are tiles on Studio home
@@ -319,7 +346,7 @@ const RAIL_SCREENS: Readonly<Record<RailGroup, readonly string[]>> = {
  * screen with no rail key. Filtered by navShown (switches) and sectionAllowed (operator-only).
  */
 export type StudioTileKey =
-  | Extract<NavKey, "create" | "trends" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models">
+  | Extract<NavKey, "create" | "trends" | "library" | "editor" | "workflows" | "styles" | "brandLook" | "pipeline" | "ads" | "characterStudio" | "inbox" | "series" | "models" | "research">
   | "presets";
 
 export interface StudioTile {
@@ -343,6 +370,8 @@ export const STUDIO_TILES: readonly StudioTile[] = [
   { href: "/character-studio", key: "characterStudio", group: "make" },
   { href: "/inbox", key: "inbox", group: "channel" },
   { href: "/series", key: "series", group: "channel" },
+  // Channel research (0202): reached from Studio home by a customer, whose rail does not list it.
+  { href: "/research", key: "research", group: "channel" },
   { href: "/models", key: "models", group: "channel" },
 ];
 

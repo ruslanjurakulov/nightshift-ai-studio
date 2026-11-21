@@ -261,7 +261,7 @@ class InstagramFlowTests(Base):
 
 
 class InstagramUnifiedLoginTests(Base):
-    """Instagram API with Unified Login (0205): graph.facebook.com, the publishing limit read first, config_issue as a
+    """Instagram API with Unified Login (0204): graph.facebook.com, the publishing limit read first, config_issue as a
     partial success, an old Instagram Login row refused with its remedy, a missing permission named."""
 
     G = sp.IG_GRAPH
@@ -362,7 +362,7 @@ class InstagramUnifiedLoginTests(Base):
         self.assertEqual(sum(1 for c in http.calls if c[1].endswith("/CONT1")), 6)   # at 0, 60 ... 300 s
         self.assertFalse(any(c[1].endswith("/media_publish") for c in http.calls))
 
-    def test_the_store_reads_the_flow_and_a_database_before_0205_reads_as_old(self):
+    def test_the_store_reads_the_flow_and_a_database_before_0204_reads_as_old(self):
         class S:
             def __init__(self, status, body):
                 self.status, self.body, self.params = status, body, None

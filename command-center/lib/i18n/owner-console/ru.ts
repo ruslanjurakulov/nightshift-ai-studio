@@ -1,3 +1,4 @@
+import { ownerAssistantRu } from "./assistant-ru";
 import type { OwnerConsoleDictionary } from "./en";
 import { ownerFactsRu } from "./facts-ru";
 
@@ -54,6 +55,7 @@ export const ownerConsoleRu: OwnerConsoleDictionary = {
   checkFailed: "Не удалось подтвердить доступ. Проблема на нашей стороне.",
   retry: "Повторить",
   facts: ownerFactsRu,
+  assistant: ownerAssistantRu,
   switcher: {
     title: "Сменить аккаунт",
     user: "Пользователь",

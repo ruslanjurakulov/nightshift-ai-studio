@@ -1,4 +1,4 @@
-"""Breach, PR #862 / migration 0205 (Instagram API with Unified Login).
+"""Breach, PR #862 / migration 0204 (Instagram API with Unified Login).
 
 Lab half (real Postgres, tests/security/bootstrap.sql + every migration): who may call store_social_account, what p_meta
 can smuggle in, whether workspace B can reach workspace A's row or Vault secret for the same IG account, and whether a

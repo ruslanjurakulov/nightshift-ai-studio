@@ -37,7 +37,7 @@ export const connectPickerEn = {
     exchange_rejected: "The sign-in code was rejected. Try connecting again.",
     unavailable: "Could not check your workspace. Nothing was added. Try again.",
     expired: "That sign-in has expired. Connect again.",
-    needs_migration: "This server's database needs an update (migration 0205) before {platform} can be connected. Nothing was added.",
+    needs_migration: "This server's database needs an update (migration 0204) before {platform} can be connected. Nothing was added.",
     failed: "Connecting failed. Nothing was added. Try again.",
   },
   pick: {

@@ -34,7 +34,7 @@ export const connectPickerUz: ConnectPickerDictionary = {
     exchange_rejected: "Kirish kodi rad etildi. Qayta ulab koʻring.",
     unavailable: "Ish maydoningizni tekshirib boʻlmadi. Hech narsa qoʻshilmadi. Qayta urining.",
     expired: "Bu kirish muddati tugadi. Qayta ulang.",
-    needs_migration: "{platform}ni ulashdan oldin bu server maʼlumotlar bazasini yangilash kerak (0205-migratsiya). Hech narsa qoʻshilmadi.",
+    needs_migration: "{platform}ni ulashdan oldin bu server maʼlumotlar bazasini yangilash kerak (0204-migratsiya). Hech narsa qoʻshilmadi.",
     failed: "Ulab boʻlmadi. Hech narsa qoʻshilmadi. Qayta urining.",
   },
   pick: {

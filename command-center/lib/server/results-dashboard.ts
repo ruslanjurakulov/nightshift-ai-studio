@@ -199,7 +199,7 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
     youtube: own.filter((c) => c.connected).length,
   };
   {
-    // auth_flow (migration 0205): an old Instagram Login row can never post, so it is not counted as connected. On a
+    // auth_flow (migration 0204): an old Instagram Login row can never post, so it is not counted as connected. On a
     // database without the column every Instagram row is such a row (the same fallback as lib/server/social-accounts.ts).
     const read = (cols: string) => supabase.from("social_accounts").select(cols).eq("org_id", orgId);
     let res: { data: unknown; error: { code?: string; message?: string } | null } = await read(

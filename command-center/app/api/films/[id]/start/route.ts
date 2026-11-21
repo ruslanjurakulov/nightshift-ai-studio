@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { FILM_CREATE_RATE } from "@/lib/server/web-rate";
-import { NO_STORE, filmFail, filmGate, filmRate, filmRefusal, readFilmBody } from "@/lib/server/films";
+import { NO_STORE, filmFail, filmGateFor, filmRate, filmRefusal, readFilmBody } from "@/lib/server/films";
 import { IDEM_RE, parseFilmId } from "@/lib/films";
 
 export const runtime = "nodejs";
@@ -33,9 +33,9 @@ function memberSafeStart(d: Record<string, unknown>) {
  * A refusal that counted (insufficient credits, an expired or changed quote, a full slot) comes back as `{ ok: false, reason }`.
  */
 export const POST = requireSameOrigin(async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await filmGate();
-  if (!gate.ok) return gate.response;
   const { id } = await params;
+  const gate = await filmGateFor(id);
+  if (!gate.ok) return gate.response;
   const filmId = parseFilmId(id);
   if (!filmId) return filmFail("not_found", 404);
   const b = await readFilmBody(request, 1_000);

@@ -5,6 +5,8 @@ import { ALL_CHANNELS, SECTIONS, appRedirect, isSection } from "@/lib/channels";
 import {
   CUSTOMER_NAV_KEYS,
   CUSTOMER_RAIL,
+  NIGHTSHIFT_AI_ENTRY,
+  customerRail,
   CUSTOMER_SIDEBAR,
   SECTION_TABS,
   tabsFor,
@@ -35,9 +37,10 @@ const { youtubeAccounts } = await import("@/lib/connectedAccounts");
 const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.items.map((i) => i.key));
 
 describe("nav filtering by role", () => {
-  it("gives a customer exactly five destinations, in rail order", () => {
-    // The sprint IA: making and finding things. Credits and Settings are the sidebar's foot (CUSTOMER_SIDEBAR.footer).
-    expect(keys(false)).toEqual(["home", "create", "trends", "projects", "library"]);
+  it("gives a customer exactly six destinations, in rail order", () => {
+    // The sprint IA: making and finding things, plus Nightshift Brain (the owner's dashboard, 0196). Credits and Settings
+    // are the sidebar's foot (CUSTOMER_SIDEBAR.footer). The phone's bottom bar keeps five (BOTTOM_ORDER).
+    expect(keys(false)).toEqual(["home", "create", "trends", "projects", "brain", "library"]);
   });
 
   it("puts every customer screen behind a rail entry or its tabs", () => {
@@ -223,8 +226,19 @@ describe("appRedirect", () => {
   it("opens Home from the customer rail's first entry, with Create beside it, without changing the operator's rail", () => {
     expect(CUSTOMER_RAIL[0]).toEqual({ href: "/home", key: "home" });
     expect(CUSTOMER_RAIL[1]).toEqual({ href: "/create", key: "create" });
+    expect(CUSTOMER_RAIL[4]).toEqual({ href: "/brain", key: "brain" });
     expect(tabsFor("home")).toBeNull();
     expect(keys(true)).not.toContain("home");
+  });
+
+  it("lists Nightshift AI second only where the server's flag lets the workspace in, never as a door to a closed panel", () => {
+    expect(customerRail().map((i) => i.key)).not.toContain("nightshiftAi");
+    expect(customerRail({ adsFactory: false, characterStudio: false, aiChat: false })).toBe(CUSTOMER_RAIL);
+    const on = customerRail({ adsFactory: false, characterStudio: false, aiChat: true });
+    // The owner's order: Home, Nightshift AI, Studio, Brain, the rest.
+    expect(on.map((i) => i.key)).toEqual(["home", "nightshiftAi", "create", "trends", "projects", "brain", "library"]);
+    expect(on[1]).toEqual(NIGHTSHIFT_AI_ENTRY);
+    expect(NIGHTSHIFT_AI_ENTRY.href).toBe("/studio?ai=new");
   });
 
   it("still rewrites a channel id to its name, for everyone", () => {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { FILM_SAVE_RATE } from "@/lib/server/web-rate";
-import { NO_STORE, filmAnswer, filmFail, filmGate, filmRate, filmRefusal, readFilm, readFilmBody } from "@/lib/server/films";
+import { NO_STORE, filmAnswer, filmFail, filmGateFor, filmRate, filmRefusal, readFilm, readFilmBody } from "@/lib/server/films";
 import { SAVE_PATCH_KEYS, parseFilmId } from "@/lib/films";
 
 export const runtime = "nodejs";
@@ -12,9 +12,9 @@ const SAVE_BODY_BYTES = 2_050_000;
 
 /** GET: one project's read model (0166's film_json; viewer and up). */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await filmGate();
-  if (!gate.ok) return gate.response;
   const { id } = await params;
+  const gate = await filmGateFor(id);
+  if (!gate.ok) return gate.response;
   const read = await readFilm(gate.supabase, id);
   if (!read.ok) return filmFail(read.error, read.status);
   return NextResponse.json({ film: read.raw }, { headers: NO_STORE });
@@ -26,9 +26,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  * a stale version with `film_changed` (409): nothing is merged and nothing is overwritten. Spends nothing.
  */
 export const PATCH = requireSameOrigin(async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await filmGate();
-  if (!gate.ok) return gate.response;
   const { id } = await params;
+  const gate = await filmGateFor(id);
+  if (!gate.ok) return gate.response;
   const filmId = parseFilmId(id);
   if (!filmId) return filmFail("not_found", 404);
   const b = await readFilmBody(request, SAVE_BODY_BYTES);

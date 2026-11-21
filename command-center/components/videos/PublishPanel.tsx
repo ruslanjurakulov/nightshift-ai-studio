@@ -284,7 +284,7 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
           accounts.map((a) => {
             const last = latest.get(a.id);
             const live = last ? isLive(last.status) : false;
-            // An old Instagram Login row reads "connected" in the table but can never post (0205): not offered.
+            // An old Instagram Login row reads "connected" in the table but can never post (0204): not offered.
             const usable = isPublishable(a);
             const disabled = !editor || Boolean(blocker) || !usable || live || sending;
             return (

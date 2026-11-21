@@ -1,4 +1,4 @@
-"""supabase/migrations/0205_instagram_unified_login.sql — Instagram through Unified Login, old connections kept.
+"""supabase/migrations/0204_instagram_unified_login.sql — Instagram through Unified Login, old connections kept.
 
 Static checks of the file; the behaviour against a real Postgres is tests/security/test_sec_instagram_unified_login.py."""
 
@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SQL = (ROOT / "supabase" / "migrations" / "0205_instagram_unified_login.sql").read_text()
+SQL = (ROOT / "supabase" / "migrations" / "0204_instagram_unified_login.sql").read_text()
 CODE = "\n".join(line for line in SQL.splitlines() if not line.lstrip().startswith("--"))
 OLD = (ROOT / "supabase" / "migrations" / "0028_social_accounts.sql").read_text()
 
@@ -16,11 +16,11 @@ def store_body(sql: str) -> str:
     return sql.split("function public.store_social_account(", 1)[1].split("$$;", 1)[0]
 
 
-class Migration0205(unittest.TestCase):
+class Migration0204(unittest.TestCase):
     def test_is_the_next_number(self):
         numbers = sorted(int(p.name[:4]) for p in (ROOT / "supabase" / "migrations").glob("[0-9][0-9][0-9][0-9]_*.sql"))
-        self.assertEqual(numbers[-1], 205)
-        self.assertEqual(numbers.count(205), 1)
+        self.assertEqual(numbers[-1], 204)
+        self.assertEqual(numbers.count(204), 1)
 
     def test_is_additive_and_keeps_every_existing_row(self):
         self.assertNotRegex(CODE, r"\bdrop (table|function|column|policy)\b")
@@ -53,11 +53,11 @@ class Migration0205(unittest.TestCase):
 
     def test_only_marked_hunks_differ_from_0028(self):
         def norm(text):
-            text = re.sub(r"\s*-- 0205: the last three", "", text)
+            text = re.sub(r"\s*-- 0204: the last three", "", text)
             text = text.replace(",\n                     'auth_flow', 'client_business_id', 'config_id')", ")")
             text = text.replace(",\n    auth_flow, client_business_id, config_id)", ")")
             text = text.replace(",\n    flow, biz, cfg)", ")")
-            text = re.sub(r"[ \t]*-- 0205[^\n]*\n.*?-- /0205\n", "", text, flags=re.S)
+            text = re.sub(r"[ \t]*-- 0204[^\n]*\n.*?-- /0204\n", "", text, flags=re.S)
             return re.sub(r"\s+", " ", text).strip()
         self.assertEqual(norm(store_body(SQL)), norm(store_body(OLD)))
 
@@ -73,7 +73,7 @@ class Migration0205(unittest.TestCase):
         old = (ROOT / "supabase" / "migrations" / "0042_web_api_hardening.sql").read_text()
         old_body = old.split("function public.api_list_connected_accounts(", 1)[1].split("$$;", 1)[0]
         norm = lambda t: re.sub(r"\s+", " ", t).strip()  # noqa: E731
-        mine = norm(re.sub(r"\s*-- 0205[^\n]*\n", "\n", SQL.split("function public.api_list_connected_accounts(", 1)[1].split("$$;", 1)[0]))
+        mine = norm(re.sub(r"\s*-- 0204[^\n]*\n", "\n", SQL.split("function public.api_list_connected_accounts(", 1)[1].split("$$;", 1)[0]))
         mine = mine.replace("'connected', s.status = 'connected' and (s.platform <> 'instagram' or s.auth_flow is not distinct from 'unified_login')) order by",
                             "'connected', s.status = 'connected') order by")
         self.assertEqual(mine, norm(old_body))

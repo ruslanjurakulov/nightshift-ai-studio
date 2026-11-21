@@ -1,15 +1,15 @@
--- rollback_0205_instagram_unified_login.sql — takes migration 0205 (Instagram through Unified Login) out.
+-- rollback_0204_instagram_unified_login.sql — takes migration 0204 (Instagram through Unified Login) out.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT COMES BACK: 0028's store_social_account and 0042's api_list_connected_accounts, verbatim, with their grants. The Command Center then answers an Instagram
---   connect with "needs a database update (0205)" (0028 refuses the auth_flow / config_id keys), and stores nothing.
+--   connect with "needs a database update (0204)" (0028 refuses the auth_flow / config_id keys), and stores nothing.
 -- WHAT IS KEPT: the three columns and their values (auth_flow, client_business_id, config_id). They are ids, not secrets;
 --   dropping them would turn every Unified Login connection back into one that reads "reconnect needed". Drop them by
 --   hand only if you mean exactly that.
 -- REDEPLOYING the old Command Center after this rollback leaves auth_flow = 'unified_login' on the rows reconnected through
 --   Unified Login: the old worker would then use those tokens on graph.instagram.com and fail until a 190 marks them expired.
 --
--- 0. REFUSES (changes nothing) if store_social_account is not 0205's body.
+-- 0. REFUSES (changes nothing) if store_social_account is not 0204's body.
 
 begin;
 set local lock_timeout = '5s';
@@ -18,13 +18,13 @@ do $$
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = to_regprocedure('public.store_social_account(uuid, text, text, text, jsonb)'))
-     is distinct from '4971ea1fb121bdfb0eb6b94f1954ca57' then
-    raise exception 'rollback_0205: store_social_account is not 0205''s body; read the live body first';
+     is distinct from '11fa2894bceebb8750beb789b8e3a1e4' then
+    raise exception 'rollback_0204: store_social_account is not 0204''s body; read the live body first';
   end if;
   if to_regprocedure('public.api_list_connected_accounts(text, text)') is not null
      and (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
-           where oid = 'public.api_list_connected_accounts(text, text)'::regprocedure) is distinct from '0e31510702e902f7f03fe9816dd2b5fd' then
-    raise exception 'rollback_0205: api_list_connected_accounts is not 0205''s body; read the live body first';
+           where oid = 'public.api_list_connected_accounts(text, text)'::regprocedure) is distinct from '2b8bc78b99e24a55f0a1c38626d7d3bf' then
+    raise exception 'rollback_0204: api_list_connected_accounts is not 0204''s body; read the live body first';
   end if;
 end $$;
 
@@ -205,12 +205,12 @@ begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = 'public.store_social_account(uuid, text, text, text, jsonb)'::regprocedure)
      is distinct from 'ac6b096b2d1eb2db6af1f695b797d173' then
-    raise exception 'rollback_0205 end state: store_social_account is not 0028''s body';
+    raise exception 'rollback_0204 end state: store_social_account is not 0028''s body';
   end if;
   if to_regprocedure('public.api_list_connected_accounts(text, text)') is not null
      and (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
            where oid = 'public.api_list_connected_accounts(text, text)'::regprocedure) is distinct from '84514536a7fb15db21bae3c735de942b' then
-    raise exception 'rollback_0205 end state: api_list_connected_accounts is not 0042''s body';
+    raise exception 'rollback_0204 end state: api_list_connected_accounts is not 0042''s body';
   end if;
 end $$;
 

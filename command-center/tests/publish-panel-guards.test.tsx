@@ -136,7 +136,7 @@ describe("TikTok: the unaudited-app error", () => {
   });
 });
 
-describe("Instagram through Unified Login (0205)", () => {
+describe("Instagram through Unified Login (0204)", () => {
   it.each(LOCALES)("%s: an old Instagram Login account is shown as needing a reconnect and cannot be ticked", (locale) => {
     const old = { ...account("instagram"), auth_flow: null };
     panel(locale, { accounts: [old] });

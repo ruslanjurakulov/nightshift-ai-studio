@@ -12,7 +12,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { STUDIO_PROJECTS } from "@/lib/navigation";
 import { filmStudioStrings } from "@/lib/i18n/film-studio";
-import { filmStudioOpen, readFilm } from "@/lib/server/films";
+import { filmStudioOpenFor, readFilm } from "@/lib/server/films";
 import { MEDIA_ASSET_COLUMNS, coerceAssets } from "@/lib/media";
 import { mediaDir, mediaUrlSecret, withUrls } from "@/lib/server/media";
 import { CHARACTER_COLUMNS } from "@/lib/style-kits";
@@ -63,9 +63,10 @@ async function loadPickables(supabase: Client, orgId: string): Promise<{ picture
  * member: another workspace's project reads exactly like a missing one, and either says so, never an empty canvas.
  */
 export default async function StudioProjectPage({ params }: { params: Promise<{ id: string }> }) {
-  if (!(await filmStudioOpen())) notFound();
-  if (!isSupabaseConfigured) return <NotConfigured />;
   const { id } = await params;
+  // The project's own workspace, not only the open one (filmStudioOpenFor): a person in two workspaces can name the other's project.
+  if (!(await filmStudioOpenFor(id))) notFound();
+  if (!isSupabaseConfigured) return <NotConfigured />;
   const { locale } = await getDictionary();
   const s = filmStudioStrings(locale);
   const path = await getChannelPath();

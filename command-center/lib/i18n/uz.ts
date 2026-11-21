@@ -11,6 +11,7 @@ import { rightsAckUz } from "./rights-acknowledgement/uz";
 import { voiceCatalogUz } from "./voice-catalog/uz";
 import { libraryUxUz } from "./library-ux/uz";
 import { assetDownloadUz } from "./asset-download/uz";
+import { brainDashUz } from "./brain-dashboard/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ageUz } from "./age/uz";
 import { aiChatUz } from "./ai-chat/uz";
@@ -36,7 +37,9 @@ import { ownerAnalyticsUz } from "./owner-analytics/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { trendsUz } from "./trends/uz";
+import { startBoxUz } from "./start-box/uz";
 import { ownerConsoleUz } from "./owner-console/uz";
+import { researchUz } from "./research/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
@@ -69,12 +72,16 @@ export const uz: Dictionary = {
   presets: presetsUz,
   /** The Trends gallery (migration 0183): ./trends/uz.ts. */
   trends: trendsUz,
+  /** The start box of the app (Home, the Studio start): ./start-box/uz.ts. */
+  startBox: startBoxUz,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/uz.ts. */
   ownerConsole: ownerConsoleUz,
+  research: researchUz,
   availability: availabilityUz,
   effects: effectsUz,
   libraryUx: libraryUxUz,
   assetDownload: assetDownloadUz,
+  brainDash: brainDashUz,
   ownerShell: ownerShellUz,
   age: ageUz,
   aiChat: aiChatUz,
@@ -160,6 +167,7 @@ export const uz: Dictionary = {
     billing: "Toʻlovlar",
     studio: "Nightshift Studio",
     trends: "Trendlar",
+    research: "Tadqiqot",
     brandLook: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",
@@ -173,6 +181,9 @@ export const uz: Dictionary = {
     organization: "Sozlamalar",
     credits: "Kreditlar",
     usage: "Sarf",
+    brain: "Nightshift Brain",
+    // The Studio planning chat (#843): a rail entry only where the server flag lets this workspace in. A product name, one spelling.
+    nightshiftAi: "Nightshift AI",
     security: "Xavfsizlik",
     onboarding: "Ishni boshlash",
     approvals: "Tasdiqlashlar",
@@ -2571,7 +2582,7 @@ export const uz: Dictionary = {
       no_account: "{platform} bu kirish uchun akkaunt qaytarmadi. Hech narsa saqlanmadi.",
       exchange_rejected: "{platform} kirish kodini rad etdi. Qayta ulab koʻring.",
       unavailable: "Tashkilotingizni tekshirib boʻlmadi. Hech narsa saqlanmadi — qayta urinib koʻring.",
-      needs_migration: "{platform}ni ulash uchun bu serverda maʼlumotlar bazasini yangilash kerak (0205-migratsiya). Hech narsa saqlanmadi.",
+      needs_migration: "{platform}ni ulash uchun bu serverda maʼlumotlar bazasini yangilash kerak (0204-migratsiya). Hech narsa saqlanmadi.",
       failed: "Ulash muvaffaqiyatsiz. Hech narsa saqlanmadi — qayta urinib koʻring.",
     },
   },

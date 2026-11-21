@@ -1,8 +1,8 @@
-"""Breach, PR #862 round 2 (migration 0205).
+"""Breach, PR #862 round 2 (migration 0204).
 
 The pick hold now stays open after a confirm, so one sign-in may store several IG accounts with the SAME BISU token.
 Each must land as its own row, with its own Vault secret, in the workspace that confirmed it, and revoking one must
-not destroy another's secret. And api_list_connected_accounts (0042 body + one 0205 hunk): an old Instagram Login row
+not destroy another's secret. And api_list_connected_accounts (0042 body + one 0204 hunk): an old Instagram Login row
 reads connected = false (never null), the grant is still anon-only, and nothing else in the answer moved.
 
 Every test is an attack. One that fails is a hole and must stay failing until it is fixed.
