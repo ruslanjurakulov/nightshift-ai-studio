@@ -25,6 +25,20 @@ export const homeEn = {
     and: "and",
     /** {model}: the registry display name of the model that made the piece (lib/creative/model-names.ts). */
     credit: "Made with {model} in Nightshift Studio",
+    /** The reel's titles for pieces whose data carries none (components/landing/home/home-reel.ts REEL keys). */
+    reelTitles: {
+      whaleCity: "A whale over the city at sunset",
+      lighthouse: "A storm wave hits the lighthouse",
+      snowGlobe: "A neon city in a snow globe",
+      giantSneaker: "A giant sneaker lands in the rain",
+      oldCity: "An old city at golden hour",
+      coastRoad: "A road along the ocean cliffs",
+      scaleShock: "Something enormous beneath the boat",
+      drones: "Drones over a neon highway",
+      stormJar: "A storm in a jar",
+      samarkand: "Samarkand, from the sky to the table",
+      aboveClouds: "Sunrise above the clouds",
+    },
     /** The captions track's name (language-duo's spoken lines are English). */
     captions: "English",
     ai: "AI-generated",
