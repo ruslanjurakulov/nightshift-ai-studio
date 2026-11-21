@@ -232,6 +232,13 @@ describe("a channel run", () => {
 
 describe("a channel run's live facts (workflow and hold)", () => {
   const win = { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" };
+  it("the run's video: absent is not asked, malformed is none, a real one comes through", () => {
+    expect(coerceRunLive({ job: null, window: win, events: [] }).video).toBeUndefined();
+    expect(coerceRunLive({ job: null, window: win, events: [], video: { id: "", state: "held" } }).video).toBeNull();
+    expect(coerceRunLive({ job: null, window: win, events: [], video: { id: "x", state: "public" } }).video).toBeNull();
+    expect(runGraph(coerceRunLive({ job: null, window: win, events: [], video: { id: "held-1", state: "held" } })).video).toEqual({ id: "held-1", state: "held" });
+  });
+
   it("absent from the answer is not asked; present and malformed is not known", () => {
     expect(coerceRunLive({ job: null, window: win, events: [] }).workflow).toBeUndefined();
     expect(coerceRunLive({ job: null, window: win, events: [], workflow: { state: "weird" }, hold: { state: "open", amount: "12.00" } })).toMatchObject({

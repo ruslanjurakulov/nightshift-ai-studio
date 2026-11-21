@@ -59,6 +59,8 @@
 .lv-text { margin: 0; font-size: 13px; white-space: pre-wrap; max-height: 280px; overflow: auto; }
 .lv-media { width: 100%; max-height: 320px; border-radius: 10px; background: var(--film, #000); object-fit: contain; }
 .lv-audio { width: 100%; }
+/* 44px targets in the panel, and a long label wraps instead of overflowing (Pixel: .cv-kbtn is a fixed 40px, nowrap). */
+.lv-details .cv-kbtn { height: auto; min-height: 44px; white-space: normal; text-align: center; }
 .lv-final { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 @media (max-width: 1279px) {

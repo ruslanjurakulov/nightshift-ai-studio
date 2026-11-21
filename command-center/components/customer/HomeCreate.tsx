@@ -33,7 +33,7 @@ export function HomeCreate({
   orgId: string | null;
   projects: HomeProjectsReading;
   waiting?: HomeWaiting;
-  /** Nightshift AI is open for this workspace, as the server's flag answered (lib/nightshift-ai-flag.ts). */
+  /** Nightshift AI is open for this workspace, as the server's flag answered (lib/brain/flag.ts). */
   agentOpen?: boolean;
   /** Which kinds and the edit tab have something on sale (lib/start-box.ts startAvailability); unknown marks nothing. */
   available?: StartAvailable;

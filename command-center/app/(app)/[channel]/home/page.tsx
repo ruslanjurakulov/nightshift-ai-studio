@@ -6,7 +6,7 @@ import { HomeCreate, type HomeProjectsReading, type HomeWaiting } from "@/compon
 import { getChannelContext } from "@/lib/channels-server";
 import { channelSlug, isScoped, orgWide } from "@/lib/channels";
 import { runnableChannels } from "@/lib/home";
-import { aiChatEnv, aiChatOpenFor } from "@/lib/nightshift-ai-flag";
+import { aiChatEnv, aiChatOpenFor } from "@/lib/brain/flag";
 import { createClient } from "@/lib/supabase/server";
 import { heldOnly } from "@/lib/heldVideos";
 import { listWaitingStoryboards } from "@/lib/server/storyboards";

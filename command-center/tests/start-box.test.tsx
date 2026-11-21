@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The app's start box (components/prompt/StartBox.tsx, lib/start-box.ts, lib/nightshift-ai-flag.ts). What would break without
+ * The app's start box (components/prompt/StartBox.tsx, lib/start-box.ts, lib/brain/flag.ts). What would break without
  * these: a closed Agent chip that still opens Nightshift AI (`ai=new`), a format that is not the closed enum riding in an address,
  * a typo in NIGHTSHIFT_AI_CHAT opening the assistant for everyone, the stand-in flag drifting from S5's `aiChatOpenFor`, a
  * template drawn under two purposes or an empty purpose drawn as a heading with nothing under it, and the box itself posting a
@@ -47,7 +47,7 @@ import {
   type StartChoice,
 } from "@/lib/start-box";
 import { rovingIndex } from "@/components/prompt/StartBox";
-import { aiChatEnv, aiChatMode, aiChatOpenFor, aiChatOrgs } from "@/lib/nightshift-ai-flag";
+import { aiChatEnv, aiChatMode, aiChatOpenFor, aiChatOrgs } from "@/lib/brain/flag";
 
 const en = dictionaries.en;
 const ORG = "11111111-2222-4333-8444-555555555555";
@@ -76,11 +76,12 @@ describe("where the send key goes: every tab × Agent (open/closed, on/off) × f
     if (q.has("format")) expect(isStartFormat(q.get("format"))).toBe(true);
   });
 
-  it("AI_READER_READY is false until #843 merges: an open flag alone never routes to ai=new", () => {
-    expect(AI_READER_READY).toBe(false);
+  it("the reader exists since #843 (AI_READER_READY): an open flag routes to ai=new; closing the switch closes the chip", () => {
+    expect(AI_READER_READY).toBe(true);
     for (const format of START_FORMATS) {
-      const r = startRoute({ tab: "create", agent: true, agentOpen: true, format, kind: "video" }, "x", ctx());
-      expect(params(r.href).has("ai")).toBe(false);
+      expect(params(startRoute({ tab: "create", agent: true, agentOpen: true, format, kind: "video" }, "x", ctx()).href).get("ai")).toBe("new");
+      const shut = startRoute({ tab: "create", agent: true, agentOpen: true, aiReader: false, format, kind: "video" }, "x", ctx());
+      expect(params(shut.href).has("ai")).toBe(false);
     }
   });
 
@@ -242,7 +243,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** `aiReader` defaults to true here (the behaviour once #843 is in); `reader: "constant"` leaves it to AI_READER_READY. */
+/** `aiReader` defaults to true here; `reader: "constant"` leaves it to AI_READER_READY (true since #843). */
 function draw(
   agentOpen = true,
   channel: { slug: string; name: string } | null = { slug: "my-channel", name: "Night Tales" },
@@ -487,8 +488,8 @@ describe("StartBox", () => {
     expect(calls.filter((c) => c.url.startsWith("/api/templates"))).toHaveLength(2);
   });
 
-  it("an open flag without its reader (AI_READER_READY false): the chip reads closed with its reason and never sends to ai=new", () => {
-    draw(true, undefined, "en", { reader: "constant" });
+  it("an open flag without its reader (the switch closed): the chip reads closed with its reason and never sends to ai=new", () => {
+    draw(true, undefined, "en", { reader: false });
     const chip = screen.getByTestId("start-agent");
     expect(chip.getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByTestId("start-agent-reason").textContent).toContain(en.startBox.agent.closed);

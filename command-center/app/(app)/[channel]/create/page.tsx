@@ -42,7 +42,7 @@ import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { isPlatformOwner } from "@/lib/server/owner-view";
 import { KIND_TOOL, SLUG_RE, cleanLinkPrompt, drawsCreateScreen, isCreateKind } from "@/lib/customer/create";
-import { aiChatEnv, aiChatOpenFor } from "@/lib/nightshift-ai-flag";
+import { aiChatEnv, aiChatOpenFor } from "@/lib/brain/flag";
 import { readToolAvailability } from "@/lib/server/tool-availability";
 import { startAvailability } from "@/lib/start-box";
 

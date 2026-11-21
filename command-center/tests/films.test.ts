@@ -207,6 +207,10 @@ describe("checks before a save", () => {
     expect(codes([s({ narration: "x".repeat(LIMITS.max_narration_chars + 1) })])).toContain("narration_too_long");
     expect(codes([s({ narration: "x".repeat(LIMITS.max_narration_chars) + "   " })])).toEqual([]);
     expect(codes([], { ...settings, title: "   " })).toContain("title_required");
+    // 0198: a 15 s advert of two scenes (8 s + 7 s) is a film; below 10 s the target is refused.
+    expect(LIMITS.target_seconds_min).toBe(10);
+    expect(codes([s({ plannedSeconds: 8 }), s({ key: "b", plannedSeconds: 7 })], { ...settings, targetSeconds: 15 })).toEqual([]);
+    expect(codes([s({})], { ...settings, targetSeconds: 9 })).toContain("target_range");
     const long = Array.from({ length: 41 }, (_, i) => s({ key: `k${i}`, plannedSeconds: 30 }));
     expect(draftProblems(settings, long, [], LIMITS).find((p) => p.code === "film_too_long")).toMatchObject({ n: 1230, max: 1200 });
   });
@@ -280,5 +284,24 @@ describe("the browser's calls", () => {
     }
     // The server side builds its client only from the member's own session (anon key + cookie).
     expect(readFileSync(join(root, "lib/server/films.ts"), "utf8")).toContain('import { createClient, getUser } from "@/lib/supabase/server"');
+  });
+});
+
+describe("film target lengths (0198: 10-1200 s)", () => {
+  it("offers only lengths the database accepts, including 15 and 30 s for ads", async () => {
+    const { TARGET_SECONDS, CREATE_LIMITS } = await import("@/lib/films");
+    for (const s of TARGET_SECONDS) {
+      expect(Number.isInteger(s)).toBe(true);
+      expect(s).toBeGreaterThanOrEqual(CREATE_LIMITS.target_seconds_min);
+      expect(s).toBeLessThanOrEqual(CREATE_LIMITS.target_seconds_max);
+    }
+    expect(TARGET_SECONDS).toEqual(expect.arrayContaining([15, 30, 60]));
+  });
+
+  it("reads seconds under a minute, minutes on the minute, m:ss otherwise", async () => {
+    const { targetLabel } = await import("@/lib/films");
+    expect(targetLabel(15)).toEqual({ unit: "s", n: 15 });
+    expect(targetLabel(300)).toEqual({ unit: "min", n: 5 });
+    expect(targetLabel(90)).toEqual({ unit: "clock", n: 90 });
   });
 });

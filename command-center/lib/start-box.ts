@@ -26,22 +26,19 @@ export function isStartFormat(v: unknown): v is StartFormat {
 }
 
 /**
- * `/studio?ai=new`: "open Nightshift AI with a new conversation" (S5's panel). S5 owns that page, and its reader and fallback arrive
- * with PR #843, which is NOT on main yet: there it will read the kept words (`ns.idea.v1`) once, type them in only if its box is
- * empty, and while the panel is closed or absent send `ai=new&idea=1` on to Create's prefilled box itself. Until #843 is merged the
- * page ignores the words, which is why the Agent chip stays closed while AI_READER_READY (below) is false.
+ * `/studio?ai=new`: "open Nightshift AI with a new conversation" (S5's panel, #843). That page reads the kept words (`ns.idea.v1`)
+ * once and types them in only if its box is empty; while the panel is closed for the workspace it sends `ai=new&idea=1` on to
+ * Create's prefilled box itself (lib/brain/flag.ts ideaNeedsCreate), so the words are never left unread behind an absent panel.
  * `format` goes last and is harmless there: S5 ignores parameters it does not know.
  */
 export const AI_PARAM = "ai";
 export const AI_NEW = "new";
 
 /**
- * Whether `/studio?ai=new` has a reader for the kept words yet. False until PR #843 merges: flip it to true in the same change that
- * swaps the flag's import to `@/lib/brain/flag`. While it is false the Agent chip reads closed with its reason even where the server's
- * flag is open, and nothing routes to `ai=new`: a chip that opened a panel which then ignored the words would promise Nightshift AI
- * before it can keep that promise.
+ * Whether `/studio?ai=new` has a reader for the kept words. True since #843 (components/brain/NightshiftAiPanel.tsx reads them);
+ * kept as a switch, with its tests, so a chip that would open a panel ignoring the words can be closed again in one line.
  */
-export const AI_READER_READY = false;
+export const AI_READER_READY = true;
 
 /** The Agent chip can be used: the server's flag is open for this workspace AND the page it opens can read the words. */
 export function agentUsable(agentOpen: boolean, aiReader: boolean = AI_READER_READY): boolean {

@@ -20,6 +20,9 @@ import { isOperatorOrg } from "@/lib/channel-tokens";
 import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { withPreviews } from "@/lib/creative/studio";
+import { NightshiftAiPanel } from "@/components/brain/NightshiftAiPanel";
+import { aiChatEnv, aiChatOpenFor, ideaNeedsCreate } from "@/lib/brain/flag";
+import { redirect } from "next/navigation";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
 import { filmStudioListed, filmStudioMode, filmStudioOpen } from "@/lib/server/films";
@@ -81,6 +84,7 @@ export default async function StudioPage({
   const scopedChannel = isScoped(selection) ? channels.find((c) => c.channel_id === selection) : undefined;
   const org = await getOrgContext();
   const orgId = org.supported && org.current ? org.current.id : null;
+  if (ideaNeedsCreate(sp, !!orgId && aiChatOpenFor(orgId, aiChatEnv()))) redirect((await getChannelPath())("/create?idea=1"));
   const [models, plans, switchedOff] = orgId
     ? await Promise.all([loadStudioModels(orgId), loadUpsellCatalog(orgId), loadSwitchedOffModels()])
     : [[], null, [] as string[]];
@@ -92,7 +96,7 @@ export default async function StudioPage({
   // The admins-only beta is drawn only in the Owner account, like its nav entry; the Timeline's own link stays on the real role.
   const filmStudio = filmOpen && filmStudioListed(filmStudioMode(), asOperator);
 
-  return (
+  const canvas = (
     <StudioCanvas
       data={{
         orgId,
@@ -106,6 +110,24 @@ export default async function StudioPage({
       channel={slug}
       filmStudio={filmStudio}
     />
+  );
+  // Nightshift AI (0199, docs/studio/NIGHTSHIFT_AI.md): docked on the left of the canvas, only where NIGHTSHIFT_AI_CHAT opens it.
+  if (!orgId || !aiChatOpenFor(orgId, aiChatEnv())) return canvas;
+  const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
+  const brain = one(sp.brain);
+  return (
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
+      <NightshiftAiPanel
+        channelId={scopedChannel?.channel_id ?? null}
+        channelSlug={slug}
+        initialSession={one(sp.ai) === "new" ? null : brain && /^[0-9a-f-]{36}$/i.test(brain) ? brain : null}
+        // The landing page's idea (S4): ?ai=new&idea=1 opens a new conversation with it typed in, never sent.
+        fresh={one(sp.ai) === "new"}
+        takeIdea={one(sp.ai) === "new" && one(sp.idea) === "1"}
+        initialPrompt={(one(sp.prompt) ?? "").slice(0, 2000) || null}
+      />
+      <div className="min-w-0">{canvas}</div>
+    </div>
   );
 }
 

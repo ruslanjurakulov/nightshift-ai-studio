@@ -64,7 +64,7 @@ const MAKE_ICON = { video: Clapperboard, image: ImageIcon, audio: AudioLines, ch
  * starts anything. The words ride in this browser (lib/site/idea-handoff.ts), not the address.
  *
  * The Agent chip can be switched on only when the SERVER's flag opens Nightshift AI for this workspace (`agentOpen`,
- * lib/nightshift-ai-flag.ts) AND the page it opens reads the words (lib/start-box.ts AI_READER_READY, false until PR #843 merges);
+ * lib/brain/flag.ts) AND the page it opens reads the words (lib/start-box.ts AI_READER_READY, false until PR #843 merges);
  * closed, it is drawn disabled with the reason in words, never a toggle that pretends. Open, it still starts OFF: a person turns it
  * on on purpose. The plan plays no part: a free workspace gets its trial messages and the upgrade offer inside the panel itself.
  *
@@ -82,7 +82,7 @@ export function StartBox({
   channel,
   fillHere,
 }: {
-  /** The server's flag (lib/nightshift-ai-flag.ts aiChatOpenFor) let this workspace into Nightshift AI. */
+  /** The server's flag (lib/brain/flag.ts aiChatOpenFor) let this workspace into Nightshift AI. */
   agentOpen: boolean;
   /** A test seam for lib/start-box.ts AI_READER_READY (the page `ai=new` opens reads the words). Pages never pass it. */
   aiReader?: boolean;
