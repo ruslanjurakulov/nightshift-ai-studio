@@ -23,7 +23,7 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
 vi.mock("@/components/navigation/NavigationProvider", () => ({
   useNavigation: () => ({ canGoBack: () => false, goBack: vi.fn(), channelName: () => null, showChannel: false }),
 }));
-vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
+vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}`, useChannelSlug: () => "chronos" }));
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";

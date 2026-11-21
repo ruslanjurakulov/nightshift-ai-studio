@@ -5,6 +5,8 @@ import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMenu } from "@/components/legal/PublicMenu";
+import { SessionSwap } from "@/components/legal/SessionSwap";
+import { APP_HOME } from "@/lib/session-hint";
 import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { SiteEffects } from "@/components/site/SiteEffects";
@@ -93,16 +95,32 @@ export function PublicShell({
               <span className="hidden min-[1280px]:contents">
                 <ViewModeToggle />
               </span>
-              <Link href="/login" className="st-signin">
-                {t.site.nav.signIn}
-              </Link>
+              {/* Signed in: no Sign in here; the one key beside the menu opens the app instead (SessionSwap). */}
+              <SessionSwap
+                signedOut={
+                  <Link href="/login" className="st-signin">
+                    {t.site.nav.signIn}
+                  </Link>
+                }
+                signedIn={null}
+              />
             </div>
           </div>
 
           <div className="st-header-tools">
-            <Link href="/signup" className="st-key" data-size="sm">
-              {t.site.nav.start}
-            </Link>
+            <SessionSwap
+              signedOut={
+                <Link href="/signup" className="st-key" data-size="sm">
+                  {t.site.nav.start}
+                </Link>
+              }
+              // A plain link, not next/link: no prefetch of an app route from a public page, and the app opens as a full load.
+              signedIn={
+                <a href={APP_HOME} className="st-key" data-size="sm" data-testid="public-open-app">
+                  {t.site.nav.openApp}
+                </a>
+              }
+            />
             <PublicMenu
               links={links.map((l) => ({ href: l.href, label: l.label, current: Boolean(l.section && l.section === current) }))}
               label={t.site.nav.menu}

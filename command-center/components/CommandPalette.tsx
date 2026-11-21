@@ -26,7 +26,8 @@ const NAV: { href: string; key: NavKey; hotkey?: string }[] = [
   { href: "/home", key: "home" },
   { href: "/command-center", key: "command", hotkey: "d" },
   { href: "/channels", key: "channels", hotkey: "h" },
-  { href: "/videos", key: "videos", hotkey: "v" },
+  // The Videos shelf itself: /videos is only a redirect to it now (lib/studioRoutes ZOMBIE_SECTIONS).
+  { href: "/studio?shelf=videos", key: "videos", hotkey: "v" },
   { href: "/pipeline", key: "pipeline", hotkey: "p" },
   { href: "/agents", key: "agents" },
   { href: "/jobs", key: "jobs" },

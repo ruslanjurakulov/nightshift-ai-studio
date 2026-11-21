@@ -23,6 +23,7 @@ import {
 } from "@/lib/public-paths";
 import { authorizeReturnPath } from "@/lib/oauth/authorize";
 import { studioNext } from "@/lib/safe-redirect";
+import { zombieRedirect } from "@/lib/studioRoutes";
 import { hardenSessionCookie } from "@/lib/supabase/cookie-options";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
@@ -343,6 +344,16 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // A channelless URL is sent to one that names its channel.
   const redirectTo = channelRedirect(request);
   if (redirectTo) return NextResponse.redirect(redirectTo);
+
+  // A list screen that moved into Nightshift Studio (lib/studioRoutes ZOMBIE_SECTIONS) goes there before anything renders: a
+  // page-level redirect() came after the streamed shell. After every gate above, so it decides nothing about access; the target
+  // is an app URL that passes through this same gate.
+  const zombie = zombieRedirect(request.nextUrl.pathname, request.nextUrl.search);
+  if (zombie) {
+    const moved = NextResponse.redirect(new URL(zombie, request.nextUrl.origin));
+    response.cookies.getAll().forEach((c) => moved.cookies.set(c));
+    return moved;
+  }
 
   // Otherwise the first segment IS the channel: hand it inward as a header, so
   // any Server Component can read the selection without threading params

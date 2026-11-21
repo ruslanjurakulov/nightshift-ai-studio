@@ -290,24 +290,50 @@ export const PROJECTS = "/studio?shelf=projects";
 /** The Studio's planning chat opens on the canvas with its panel up (#843: /studio?ai=new). */
 export const NIGHTSHIFT_AI_ENTRY: NavItem = { href: "/studio?ai=new", key: "nightshiftAi" };
 
+/**
+ * A customer's desktop sidebar, in the owner's order (audit 2026-11-21): Nightshift Studio, Media library, Nightshift Brain,
+ * Channels; Credits and Settings are its foot (CUSTOMER_SIDEBAR.footer). The audit found a rail of Home, Create, Trends,
+ * Projects, Brain and Library, where Projects and Create were two doors into the same Studio; Home stays behind the wordmark.
+ */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
+  { href: "/studio", key: "studio" },
+  { href: "/library", key: "library" },
+  // Nightshift Brain (0201): the customer's channel, credits and forecast, projects and memory on one screen.
+  { href: "/brain", key: "brain" },
+  { href: "/channels", key: "channels" },
+];
+
+/**
+ * Entries that read ONE channel's numbers: listed only while one channel is selected, since on the every-channel roll-up they
+ * have nothing of their own to show. Each is filtered by sectionAllowed in customerRail, so an entry a customer would only be
+ * bounced from (Analytics is an operator section today, CUSTOMER_NAV_KEYS) is never drawn as a link: hiding is presentation,
+ * and listing a screen the layout redirects away from is a dead end.
+ */
+export const CUSTOMER_CHANNEL_RAIL: readonly NavItem[] = [
+  { href: "/analytics", key: "analytics" },
+  { href: "/research", key: "research" },
+];
+
+/**
+ * The phone's bottom bar (SideNav BottomBar): its own five, unchanged by the desktop sidebar's order. Credits and the account
+ * are the top bar's credit pill and avatar there; Brain and Channels are one tap away in the avatar menu.
+ */
+export const CUSTOMER_TABBAR: readonly NavItem[] = [
   { href: CUSTOMER_HOME, key: "home" },
   { href: "/create", key: "create" },
   { href: TRENDS, key: "trends" },
   { href: PROJECTS, key: "projects" },
-  // Nightshift Brain (0201): the customer's channel, credits and forecast, projects and memory on one screen. After the
-  // Studio entries (the owner's order: Home, Nightshift AI, Studio, Brain, the rest). A desktop rail entry; the phone's
-  // bottom bar keeps its five (BOTTOM_ORDER) and reaches it from the avatar menu.
-  { href: "/brain", key: "brain" },
   { href: "/library", key: "library" },
 ];
 
 /**
- * The customer rail for this request: CUSTOMER_RAIL, with Nightshift AI second (the owner's order: Home, Nightshift AI,
- * Studio, Brain, the rest) only while the server's flag is on for this workspace. The phone's bottom bar keeps its five.
+ * The customer rail for this request: CUSTOMER_RAIL, with Nightshift AI after Studio only while the server's flag is on for
+ * this workspace, and the one-channel entries only when `oneChannel` (the URL names a channel, not the roll-up).
  */
-export function customerRail(features: NavFeatures = NO_NAV_FEATURES): readonly NavItem[] {
-  return features.aiChat === true ? [CUSTOMER_RAIL[0], NIGHTSHIFT_AI_ENTRY, ...CUSTOMER_RAIL.slice(1)] : CUSTOMER_RAIL;
+export function customerRail(features: NavFeatures = NO_NAV_FEATURES, oneChannel = false): readonly NavItem[] {
+  const channel = oneChannel ? CUSTOMER_CHANNEL_RAIL.filter((i) => sectionAllowed(i.href.slice(1), false)) : [];
+  if (features.aiChat !== true && channel.length === 0) return CUSTOMER_RAIL;
+  return [CUSTOMER_RAIL[0], ...(features.aiChat === true ? [NIGHTSHIFT_AI_ENTRY] : []), ...CUSTOMER_RAIL.slice(1), ...channel];
 }
 
 /**
@@ -358,8 +384,8 @@ export interface StudioTile {
 export const STUDIO_TILES: readonly StudioTile[] = [
   { href: "/create", key: "create", group: "make" },
   { href: "/library", key: "library", group: "make" },
-  { href: "/editor", key: "editor", group: "make" },
-  { href: "/workflows", key: "workflows", group: "make" },
+  // No Editor or Workflows tile: both list pages redirect to Studio home itself (lib/studioRoutes ZOMBIE_SECTIONS), so a tile
+  // to them was a door back into the room you stand in. A project still opens at /editor/{id}, a workflow at /workflows/{id}.
   { href: "/styles", key: "styles", group: "make" },
   { href: "/presets", key: "presets", group: "make" },
   // Trends (0183): ready formats that open Create prefilled.
@@ -426,8 +452,8 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
   // Kept as data for the canvas's Add node menu (STUDIO_IA.md §4); the sidebar no longer lists them, Studio home's
   // Create tile and its desk chips do. Every link still works (tests/studio-routes.test.ts).
   tools: STUDIO_TOOLS.map((tool) => ({ tool, href: toolHref(tool) })),
-  // The rail after Home, in the same order the phone's bottom bar draws it.
-  work: CUSTOMER_RAIL.slice(1),
+  // The whole rail: Home is the wordmark above it, not a row.
+  work: CUSTOMER_RAIL,
   footer: [
     { href: "/credits", key: "credits" },
     { href: "/organization", key: "settings" },
@@ -444,16 +470,18 @@ export function sidebarCurrent(section: string): string | null {
   const parts = section.split("/").filter(Boolean);
   const first = "/" + (parts[0] ?? "");
   if (first === CUSTOMER_HOME) return "home";
-  if (first === TRENDS) return "trends";
-  // The projects shelf and the canvas a project opens in are both Projects (the section path carries no query).
-  if (first === "/studio" && parts.length === 1) return "projects";
   if (first === "/library") return "library";
+  if (first === "/brain") return "brain";
+  if (first === "/channels") return "channels";
+  if (first === "/analytics") return "analytics";
+  if (first === "/research") return "research";
   if (first === "/developers" || first === "/organization") return "settings";
   // Usage is part of the credits story (plan allowance, extra credits): its row is Credits.
   if (first === "/usage" || first === "/credits") return "credits";
-  // Every other creative screen (a tool, the editor, styles, presets, a video's page, Series, Models) is part of making.
-  if (first === "/series" || first === "/models") return "create";
-  if (tabsFor(first.slice(1))?.rail === "studio") return "create";
+  // Every creative screen (Studio home and its shelves, a tool, the editor, styles, presets, Trends, a video's page, Series,
+  // Models) is part of the one Nightshift Studio row.
+  if (first === TRENDS || first === "/series" || first === "/models") return "studio";
+  if (tabsFor(first.slice(1))?.rail === "studio") return "studio";
   return null;
 }
 

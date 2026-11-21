@@ -179,12 +179,22 @@ describe("the middleware", () => {
 
   it("forwards the nonce on a signed-in channel page too", async () => {
     auth.user = { id: "u1" };
-    const res = await run("/chronos/videos");
+    // /chronos/videos moved into Studio and now redirects before rendering (lib/studioRoutes ZOMBIE_SECTIONS), so a page that
+    // still renders in place is the one whose nonce must reach the layout.
+    const res = await run("/chronos/brain");
     const sent = res.headers.get("content-security-policy-report-only");
     expect(nonceOf(sent)).toBeTruthy();
     expect(res.headers.get("x-middleware-request-content-security-policy-report-only")).toBe(sent);
     // The channel header the layout needs is still forwarded alongside it.
     expect(res.headers.get("x-middleware-override-headers")).toContain("content-security-policy-report-only");
+  });
+
+  it("still sends the policy on the redirect of a moved section into Studio", async () => {
+    auth.user = { id: "u1" };
+    const res = await run("/chronos/videos");
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).not.toContain("/login");
+    expect(res.headers.get("content-security-policy-report-only")).toContain("default-src 'self'");
   });
 
   it("uses a different nonce for every response", async () => {

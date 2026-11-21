@@ -10,7 +10,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MOVED_PARAM, redirectTarget, shelfFromQuery, studioRoute } from "@/lib/studioRoutes";
+import { MOVED_PARAM, ZOMBIE_SECTIONS, redirectTarget, shelfFromQuery, studioRoute, zombieRedirect } from "@/lib/studioRoutes";
 import { STUDIO_HOUSED_KEYS, STUDIO_SCREENS, STUDIO_TILES, CUSTOMER_SIDEBAR, NAV_ITEMS, STUDIO_TOOLS, toolHref } from "@/lib/navigation";
 import { DESKS, deskHref } from "@/lib/creative/desks";
 import { toolHref as homeToolHref, runHandoffHref } from "@/lib/home";
@@ -122,7 +122,8 @@ describe("studioRoute: every old creative URL maps somewhere real", () => {
 
   it("redirects only what has a new home today, and names the canvas step for everything else", () => {
     const redirects = OLD_SHAPES.filter((u) => studioRoute(u)?.kind === "redirect");
-    expect(redirects).toEqual(["/create/projects", "/videos", "/editor"]);
+    expect(redirects).toEqual(["/create/projects", "/videos", "/editor", "/workflows"]);
+    expect(studioRoute("/workflows")?.href).toBe("/studio");
     expect(studioRoute("/create/projects")?.href).toBe("/studio?shelf=projects");
     expect(studioRoute(`/create/projects/${UUID}`)?.canvas).toEqual({ step: "film", target: `/studio/film/${UUID}` });
     expect(studioRoute("/videos")?.href).toBe("/studio?shelf=videos");
@@ -276,4 +277,38 @@ describe("the old pages are server-side shims that redirect once, on the same ch
       expect(redirect).toHaveBeenCalledWith(want);
     });
   }
+
+  it("/workflows no longer draws the old list under a 'moved' line: it redirects to Studio home, query kept, no notice", async () => {
+    const mod = await import("../app/(app)/[channel]/workflows/page");
+    await expect(mod.default({ searchParams: Promise.resolve({ tab: "1" }) })).rejects.toThrow("NEXT_REDIRECT");
+    expect(redirect).toHaveBeenCalledWith("/chronos/studio?tab=1");
+  });
+});
+
+describe("zombieRedirect: the middleware answers the moved list screens before the shell streams", () => {
+  it("sends each zombie list to its Studio place on the same channel, with no 'moved' notice", () => {
+    expect(ZOMBIE_SECTIONS).toEqual(["videos", "editor", "workflows"]);
+    expect(zombieRedirect("/chronos/videos", "")).toBe("/chronos/studio?shelf=videos");
+    expect(zombieRedirect("/chronos/editor", "")).toBe("/chronos/studio?shelf=projects&kind=edit");
+    expect(zombieRedirect("/all-channels/workflows", "")).toBe("/all-channels/studio");
+    expect(zombieRedirect("/chronos/videos/", "?a=1&moved=videos")).toBe("/chronos/studio?shelf=videos&a=1");
+  });
+
+  it("leaves a video's, a project's and a workflow's own pages, and every other screen, alone", () => {
+    for (const p of [`/chronos/videos/${UUID}`, `/chronos/videos/storyboard/${UUID}`, `/chronos/editor/${UUID}`, `/chronos/editor/image/${UUID}`,
+      `/chronos/workflows/${UUID}`, `/chronos/workflows/runs/${UUID}`, "/chronos/studio", "/chronos/create/projects", "/chronos/character-studio",
+      "/videos", "/api/videos", "/chronos/library"]) {
+      expect(zombieRedirect(p, ""), p).toBeNull();
+    }
+  });
+
+  it("is called by middleware.ts only after the auth and second-factor gates (it decides nothing about access)", () => {
+    const src = readFileSync(path.join(__dirname, "..", "middleware.ts"), "utf8");
+    const at = src.indexOf("zombieRedirect(request");
+    expect(at).toBeGreaterThan(0);
+    for (const gate of ["supabase.auth.getUser()", "mfaAction === \"challenge\"", "channelRedirect(request)"]) {
+      expect(src.indexOf(gate), gate).toBeGreaterThan(0);
+      expect(src.indexOf(gate), gate).toBeLessThan(at);
+    }
+  });
 });

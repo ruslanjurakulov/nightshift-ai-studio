@@ -15,6 +15,7 @@ export const siteUz: SiteDictionary = {
     api: "API",
     signIn: "Kirish",
     start: "Bepul boshlash",
+    openApp: "Kabinet",
     menu: "Menyu",
     menuClose: "Menyuni yopish",
   },

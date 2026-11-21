@@ -28,7 +28,7 @@ vi.mock("@/components/navigation/NavigationProvider", () => ({
 }));
 // The operator bar's event feed reads Supabase; this test is about the account button beside it.
 vi.mock("@/components/NotificationsCenter", () => ({ NotificationsCenter: () => null }));
-vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
+vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}`, useChannelSlug: () => "chronos" }));
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";

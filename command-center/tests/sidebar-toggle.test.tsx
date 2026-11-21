@@ -16,7 +16,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
-vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
+vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}`, useChannelSlug: () => "chronos" }));
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
@@ -61,21 +61,21 @@ describe("the sidebar's collapse toggle", () => {
     expect(open.getAttribute("aria-expanded")).toBe("false");
     expect(aside.getAttribute("data-collapsed")).toBe("true");
     // Labels stay reachable: the rail's links keep their names, and say them as tooltips.
-    expect(screen.getByRole("link", { name: "Trends" }).getAttribute("data-tip")).toBe("Trends");
+    expect(screen.getByRole("link", { name: "Nightshift Brain" }).getAttribute("data-tip")).toBe("Nightshift Brain");
 
     fireEvent.click(open);
     expect(toggle("Collapse sidebar").getAttribute("aria-expanded")).toBe("true");
     expect(aside.getAttribute("data-collapsed")).toBe("false");
-    expect(screen.getByRole("link", { name: "Trends" }).getAttribute("data-tip")).toBeNull();
+    expect(screen.getByRole("link", { name: "Nightshift Brain" }).getAttribute("data-tip")).toBeNull();
   });
 
   it("on the rail, a row's name shows beside it on hover and on keyboard focus, and goes away after", () => {
     const { container } = sidebar("en", true);
     const aside = container.querySelector("aside")!;
-    const row = screen.getByRole("link", { name: "Trends" });
+    const row = screen.getByRole("link", { name: "Nightshift Brain" });
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
     fireEvent.mouseOver(row);
-    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Trends");
+    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Nightshift Brain");
     fireEvent.mouseLeave(aside);
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
 
@@ -85,7 +85,7 @@ describe("the sidebar's collapse toggle", () => {
       return sel === ":focus-visible" ? true : real.call(this, sel);
     });
     fireEvent.focus(row);
-    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Trends");
+    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Nightshift Brain");
     fireEvent.blur(row);
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
   });
@@ -108,7 +108,7 @@ describe("the sidebar's collapse toggle", () => {
 
   it("an open sidebar shows no tooltip (the names are written out)", () => {
     sidebar();
-    fireEvent.mouseOver(screen.getByRole("link", { name: "Trends" }));
+    fireEvent.mouseOver(screen.getByRole("link", { name: "Nightshift Brain" }));
     expect(screen.queryByTestId("sidebar-tip")).toBeNull();
   });
 
