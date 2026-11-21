@@ -9,7 +9,6 @@ import { coerceJobs, isActiveStatus } from "@/lib/creative/studio";
 import { createHref } from "@/lib/customer/create";
 import { PROJECTS, TRENDS } from "@/lib/navigation";
 import { StartBox, type StartChannel } from "@/components/prompt/StartBox";
-import type { NightshiftAiAccess } from "@/lib/nightshift-ai-flag";
 import "@/components/customer/customer.css";
 
 export type HomeProject = { id: string; title: string; updatedAt: string | null };
@@ -26,14 +25,14 @@ export function HomeCreate({
   orgId,
   projects,
   waiting = { videos: 0, storyboards: 0 },
-  agent = { open: false, reason: "workspace" },
+  agentOpen = false,
   channel = null,
 }: {
   orgId: string | null;
   projects: HomeProjectsReading;
   waiting?: HomeWaiting;
-  /** Nightshift AI for this workspace, as the server answered (lib/server/nightshift-ai.ts). */
-  agent?: NightshiftAiAccess;
+  /** Nightshift AI is open for this workspace, as the server's flag answered (lib/nightshift-ai-flag.ts). */
+  agentOpen?: boolean;
   /** The verified channel the start box's "Channel video" is for; null = none. */
   channel?: StartChannel | null;
 }) {
@@ -48,7 +47,7 @@ export function HomeCreate({
       <section aria-labelledby="hc-title" className="hc-hero">
         <h1 id="hc-title" className="hc-title">{h.title}</h1>
         <p className="hc-lead">{h.lead}</p>
-        <StartBox agent={agent} channel={channel} />
+        <StartBox agentOpen={agentOpen} channel={channel} />
       </section>
 
       <WaitingForYou waiting={waiting} />

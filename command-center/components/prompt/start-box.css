@@ -86,8 +86,9 @@
 .sb-chip[aria-checked="true"], .sb-chip[aria-pressed="true"] { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
 /* Closed: visibly not a switch, and its reason is right there in words (never only a tooltip). */
 .sb-chip[aria-disabled="true"] { cursor: not-allowed; color: var(--ds-text-2); border-style: dashed; }
-.sb-chip > span { min-width: 0; overflow-wrap: anywhere; text-align: start; }
-.sb-chip-sub { color: var(--ds-text-2); font-weight: 400; }
+/* The chip's own name never breaks inside the word (390 px drew "Agen / t"); only the closed reason beside it wraps. */
+.sb-chip-name { flex: none; white-space: nowrap; }
+.sb-chip-sub { min-width: 0; overflow-wrap: break-word; text-align: start; color: var(--ds-text-2); font-weight: 400; }
 .sb-go { margin-inline-start: auto; white-space: nowrap; }
 /* Leaving for the place it opens: seen on a touch screen too, where no cursor shows it. */
 .sb-go[aria-busy="true"] { opacity: 0.7; }

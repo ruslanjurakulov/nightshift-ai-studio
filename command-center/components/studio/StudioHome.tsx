@@ -41,7 +41,6 @@ import { checkAttachment, discardPending, indexedDbStore, takePending, type Atta
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
 import { StartBox, type StartChannel } from "@/components/prompt/StartBox";
-import type { NightshiftAiAccess } from "@/lib/nightshift-ai-flag";
 import type { TemplateKind } from "@/lib/templates/trends";
 import { formatMediaBytes } from "@/lib/media";
 import type { UpsellCatalog } from "@/lib/upsell";
@@ -130,8 +129,8 @@ export function StudioHome({
   idea?: boolean;
   /** `?idea=1&kind=image`: the start box sent an image template's words, so they fill the picture box, not the clip box. */
   ideaKind?: TemplateKind;
-  /** The start box at the top (components/prompt/StartBox.tsx): the server's Nightshift AI answer and the channel; null = none. */
-  start?: { agent: NightshiftAiAccess; channel: StartChannel | null } | null;
+  /** The start box at the top (components/prompt/StartBox.tsx): whether the server's flag opens Nightshift AI here, and the channel; null = none. */
+  start?: { agentOpen: boolean; channel: StartChannel | null } | null;
 }) {
   const { t, locale, fmt } = useI18n();
   const th = t.studioHome;
@@ -688,7 +687,7 @@ export function StudioHome({
       </div>
 
       {/* The start box: Nightshift AI, the edit desk, a channel video, or this page's own box below (filled, never sent). */}
-      {start && <StartBox agent={start.agent} channel={start.channel} fillHere={fillWords} />}
+      {start && <StartBox agentOpen={start.agentOpen} channel={start.channel} fillHere={fillWords} />}
 
       {/* Not one picture, clip or voice tool on sale: said once, plainly, with the way to what works today. */}
       <NothingOnSaleNote />

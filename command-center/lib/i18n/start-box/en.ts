@@ -32,12 +32,7 @@ export const startBoxEn = {
     label: "Agent",
     /** The chip's tooltip and its accessible description when it can be used. */
     hint: "Nightshift AI plans the video with you",
-    closed: {
-      workspace: "Not open for this workspace yet",
-      plan: "On paid plans",
-      plan_unknown: "Couldn't check your plan",
-    },
-    plans: "See plans",
+    closed: "Not open for this workspace yet",
   },
   formatLabel: "Format",
   formats: { film: "AI film", ad: "Ad", channel: "Channel video" },

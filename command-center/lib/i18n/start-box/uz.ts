@@ -27,12 +27,7 @@ export const startBoxUz: StartBoxDictionary = {
   agent: {
     label: "Agent",
     hint: "Nightshift AI videoni siz bilan birga rejalaydi",
-    closed: {
-      workspace: "Bu ish maydoni uchun hali ochilmagan",
-      plan: "Pullik tariflarda",
-      plan_unknown: "Tarifingizni tekshirib boʻlmadi",
-    },
-    plans: "Tariflar",
+    closed: "Bu ish maydoni uchun hali ochilmagan",
   },
   formatLabel: "Format",
   formats: { film: "AI film", ad: "Reklama", channel: "Kanal videosi" },

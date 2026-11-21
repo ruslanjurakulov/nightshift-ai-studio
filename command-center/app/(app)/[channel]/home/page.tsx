@@ -6,7 +6,7 @@ import { HomeCreate, type HomeProjectsReading, type HomeWaiting } from "@/compon
 import { getChannelContext } from "@/lib/channels-server";
 import { channelSlug, isScoped, orgWide } from "@/lib/channels";
 import { runnableChannels } from "@/lib/home";
-import { readNightshiftAiAccess } from "@/lib/server/nightshift-ai";
+import { aiChatEnv, aiChatOpenFor } from "@/lib/nightshift-ai-flag";
 import { createClient } from "@/lib/supabase/server";
 import { heldOnly } from "@/lib/heldVideos";
 import { listWaitingStoryboards } from "@/lib/server/storyboards";
@@ -58,8 +58,8 @@ export default async function HomePage() {
   const runnable = runnableChannels(channels);
   const target = runnable.find((c) => isScoped(selection) && c.channel_id === selection) ?? runnable[0];
   const channel = target ? { slug: channelSlug(target, channels), name: target.name || target.channel_id } : null;
-  // The Agent chip: open only when the server says so for this workspace (flag, then plan); computed here, never in the browser.
-  const agent = await readNightshiftAiAccess(orgId);
+  // The Agent chip: open only when the server's flag lets this workspace in; computed here, never in the browser.
+  const agentOpen = aiChatOpenFor(orgId, aiChatEnv());
   // The Trends templates are the start box's own library now (by purpose), so Home draws no second strip of them.
-  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} agent={agent} channel={channel} />;
+  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} agentOpen={agentOpen} channel={channel} />;
 }

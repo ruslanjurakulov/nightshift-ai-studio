@@ -41,7 +41,7 @@ import { CreateScreen } from "@/components/customer/CreateScreen";
 import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { SLUG_RE, cleanLinkPrompt, isCreateKind } from "@/lib/customer/create";
-import { readNightshiftAiAccess } from "@/lib/server/nightshift-ai";
+import { aiChatEnv, aiChatOpenFor } from "@/lib/nightshift-ai-flag";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -188,7 +188,7 @@ export default async function CreatePage({
           : { state: "failed" };
   }
 
-  // The start box at the top of the Studio start: the Agent chip's answer is the server's (flag, then plan), and a channel video
+  // The start box at the top of the Studio start: the Agent chip's answer is the server's flag, and a channel video
   // goes to the open channel when YouTube has answered for it, else the first that has (rule 7).
   const start =
     desk === "overview" && !createScreen
@@ -196,7 +196,7 @@ export default async function CreatePage({
           const runnable = runnableChannels(channels);
           const target = runnable.find((c) => c.channel_id === scopedChannel?.channel_id) ?? runnable[0];
           return {
-            agent: await readNightshiftAiAccess(genOrgId),
+            agentOpen: aiChatOpenFor(genOrgId, aiChatEnv()),
             channel: target ? { slug: channelSlug(target, channels), name: target.name || target.channel_id } : null,
           };
         })()

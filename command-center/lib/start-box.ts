@@ -22,7 +22,11 @@ export function isStartFormat(v: unknown): v is StartFormat {
   return typeof v === "string" && (START_FORMATS as readonly string[]).includes(v);
 }
 
-/** `/studio?ai=new`: "open Nightshift AI with a new conversation" (S5's panel). */
+/**
+ * `/studio?ai=new`: "open Nightshift AI with a new conversation" (S5's panel, PR #843). S5 owns that page: it reads the kept words
+ * (`ns.idea.v1`) once and types them in only if its box is empty, and while the panel is closed or absent it sends `ai=new&idea=1`
+ * on to Create's prefilled box itself. `format` goes last and is harmless there: S5 ignores parameters it does not know.
+ */
 export const AI_PARAM = "ai";
 export const AI_NEW = "new";
 
@@ -92,19 +96,6 @@ export function startRoute(c: StartChoice, words: string, ctx: StartContext): St
   // AI film and Ad: Create's clip box (or its picture box for an image template), filled once by the idea pickup.
   const kindQ = c.kind === "image" ? "&kind=image" : "";
   return { via: "idea", href: ctx.path(`/create?${IDEA_PARAM}=1${kindQ}`), fallback: ctx.path(createHref(c.kind, words)) };
-}
-
-// ── /studio?ai=new before S5's panel exists ─────────────────────────────────
-
-const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-
-/**
- * Where `/studio?ai=…` goes instead when the panel cannot open (not merged here, or closed for this workspace): Create's box,
- * filled by the same idea pickup when the words were kept. Null when the address does not ask for the panel, or the panel is there.
- */
-export function studioAiFallback(q: Record<string, string | string[] | undefined>, panelAvailable: boolean): string | null {
-  if (q[AI_PARAM] === undefined || panelAvailable) return null;
-  return one(q[IDEA_PARAM]) === "1" ? `/create?${IDEA_PARAM}=1` : "/create";
 }
 
 // ── the templates under the box, by purpose ─────────────────────────────────

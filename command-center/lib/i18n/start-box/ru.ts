@@ -27,12 +27,7 @@ export const startBoxRu: StartBoxDictionary = {
   agent: {
     label: "Агент",
     hint: "Nightshift AI спланирует видео вместе с вами",
-    closed: {
-      workspace: "Пока не открыт для этого пространства",
-      plan: "На платных тарифах",
-      plan_unknown: "Не удалось проверить тариф",
-    },
-    plans: "Тарифы",
+    closed: "Пока не открыт для этого пространства",
   },
   formatLabel: "Формат",
   formats: { film: "ИИ-фильм", ad: "Реклама", channel: "Видео для канала" },

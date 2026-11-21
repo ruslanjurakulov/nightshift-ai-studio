@@ -10,7 +10,6 @@ import { useTemplates } from "@/components/trends/useTemplates";
 import { IDEA_MAX, ideaWords, stashIdea } from "@/lib/site/idea-handoff";
 import { TOPIC_MAX, defaultLanguage } from "@/lib/home";
 import { START_FORMATS, START_TABS, groupTemplates, startRoute, topicCut, type StartFormat, type StartTab } from "@/lib/start-box";
-import type { NightshiftAiAccess } from "@/lib/nightshift-ai-flag";
 import type { TemplateDto, TemplateKind } from "@/lib/templates/trends";
 import "@/components/prompt/start-box.css";
 
@@ -42,19 +41,21 @@ function smooth(): ScrollBehavior {
  * AI with the words filled in (lib/start-box.ts startRoute), and the place it opens shows the price; nothing here posts, quotes or
  * starts anything. The words ride in this browser (lib/site/idea-handoff.ts), not the address.
  *
- * The Agent chip is on only when the SERVER said Nightshift AI is open for this workspace (`agent`, lib/nightshift-ai-flag.ts);
- * closed, it is drawn disabled with the reason in words, never a toggle that pretends.
+ * The Agent chip is on only when the SERVER's flag opens Nightshift AI for this workspace (`agentOpen`, lib/nightshift-ai-flag.ts);
+ * closed, it is drawn disabled with the reason in words, never a toggle that pretends. The plan plays no part: a free workspace
+ * gets its trial messages and the upgrade offer inside the panel itself.
  *
  * A full page load, not a client push: the places it opens take the kept words once, on mount, and a push to the page already
  * open (the Studio start sending to its own clip box) would not mount it again. Where the box sits on that very page, `fillHere`
  * puts the words straight into its composer instead.
  */
 export function StartBox({
-  agent,
+  agentOpen,
   channel,
   fillHere,
 }: {
-  agent: NightshiftAiAccess;
+  /** The server's flag (lib/nightshift-ai-flag.ts aiChatOpenFor) let this workspace into Nightshift AI. */
+  agentOpen: boolean;
   /** The channel a channel video is for; null = none connected and verified (the key then leads to connecting one). */
   channel: StartChannel | null;
   /** On the Studio start: fill this page's own clip or picture box rather than loading the page again. */
@@ -69,7 +70,7 @@ export function StartBox({
   const formatRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [tab, setTab] = useState<StartTab>("create");
   // On by default where it is open: that is the point of the chip. Closed, it can never be on.
-  const [agentOn, setAgentOn] = useState(agent.open);
+  const [agentOn, setAgentOn] = useState(agentOpen);
   const [format, setFormat] = useState<StartFormat>("film");
   const [kind, setKind] = useState<TemplateKind>("video");
   const [words, setWords] = useState("");
@@ -77,9 +78,9 @@ export function StartBox({
   const [refused, setRefused] = useState(false);
   const [filled, setFilled] = useState("");
 
-  const choice = { tab, agent: agentOn, agentOpen: agent.open, format, kind };
+  const choice = { tab, agent: agentOn, agentOpen, format, kind };
   const route = startRoute(choice, words, { path, channel: channel?.slug ?? null, language: defaultLanguage(locale) });
-  const viaAgent = tab === "create" && agentOn && agent.open;
+  const viaAgent = tab === "create" && agentOn && agentOpen;
   const mode: "edit" | "agent" | "channel" | "connect" | "create" =
     tab === "edit" ? "edit" : viaAgent ? "agent" : route.via === "connect" ? "connect" : route.via === "topic" ? "channel" : "create";
   const cut = mode === "channel" && topicCut(words);
@@ -164,26 +165,26 @@ export function StartBox({
         <button
           type="button"
           className="sb-chip sb-agent"
-          aria-pressed={agent.open ? agentOn : false}
-          aria-disabled={agent.open ? undefined : true}
+          aria-pressed={agentOpen ? agentOn : false}
+          aria-disabled={agentOpen ? undefined : true}
           // Closed, the reason is part of the chip's own name already; said twice it is noise to a screen reader.
-          aria-describedby={agent.open ? reasonId : undefined}
-          title={agent.open ? s.agent.hint : s.agent.closed[agent.reason]}
+          aria-describedby={agentOpen ? reasonId : undefined}
+          title={agentOpen ? s.agent.hint : s.agent.closed}
           data-testid="start-agent"
-          data-closed={agent.open ? undefined : "true"}
+          data-closed={agentOpen ? undefined : "true"}
           onClick={() => {
-            if (agent.open) setAgentOn((v) => !v);
+            if (agentOpen) setAgentOn((v) => !v);
           }}
         >
           <Sparkles aria-hidden className="size-4 shrink-0" strokeWidth={1.9} />
-          <span>{s.agent.label}</span>
-          {!agent.open && (
+          <span className="sb-chip-name">{s.agent.label}</span>
+          {!agentOpen && (
             <span className="sb-chip-sub" data-testid="start-agent-reason">
-              · {s.agent.closed[agent.reason]}
+              · {s.agent.closed}
             </span>
           )}
         </button>
-        {agent.open && (
+        {agentOpen && (
           <span id={reasonId} className="sr-only">
             {s.agent.hint}
           </span>
@@ -233,13 +234,6 @@ export function StartBox({
 
   const after = (
     <>
-      {!agent.open && agent.reason === "plan" && tab === "create" && (
-        <p className="sb-line">
-          <Link href={path("/credits#plans")} className="tap-link sb-link" data-testid="start-plans">
-            {s.agent.plans}
-          </Link>
-        </p>
-      )}
       {cut && (
         <p className="sb-line" role="status" data-testid="start-topic-cut">
           {fmt(s.topicCut, { max: TOPIC_MAX })}

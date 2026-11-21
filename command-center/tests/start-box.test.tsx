@@ -2,9 +2,9 @@
 /**
  * The app's start box (components/prompt/StartBox.tsx, lib/start-box.ts, lib/nightshift-ai-flag.ts). What would break without
  * these: a closed Agent chip that still opens Nightshift AI (`ai=new`), a format that is not the closed enum riding in an address,
- * a typo in NIGHTSHIFT_AI_CHAT opening the assistant for everyone, a template drawn under two purposes or an empty purpose drawn
- * as a heading with nothing under it, `/studio?ai=new` landing on a page that ignores it, and the box itself posting a job, a
- * quote or an agent call (CLAUDE.md rule 3: the box is a link and nothing more).
+ * a typo in NIGHTSHIFT_AI_CHAT opening the assistant for everyone, the stand-in flag drifting from S5's `aiChatOpenFor`, a
+ * template drawn under two purposes or an empty purpose drawn as a heading with nothing under it, and the box itself posting a
+ * job, a quote or an agent call (CLAUDE.md rule 3: the box is a link and nothing more).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -38,13 +38,9 @@ import {
   groupTemplates,
   isStartFormat,
   startRoute,
-  studioAiFallback,
   type StartChoice,
 } from "@/lib/start-box";
-import { aiChatMode, aiChatOrgs, nightshiftAiAccess, nightshiftAiOpen, type NightshiftAiAccess } from "@/lib/nightshift-ai-flag";
-import { aiPlanOf } from "@/lib/server/nightshift-ai";
-
-vi.mock("server-only", () => ({}));
+import { aiChatEnv, aiChatMode, aiChatOpenFor, aiChatOrgs } from "@/lib/nightshift-ai-flag";
 
 const ORG = "11111111-2222-4333-8444-555555555555";
 const OTHER = "99999999-2222-4333-8444-555555555555";
@@ -118,57 +114,40 @@ describe("where the send key goes: every tab × Agent (open/closed, on/off) × f
   });
 });
 
-describe("/studio?ai=new while S5's panel is not there", () => {
-  it("falls back to Create, keeping the idea pickup", () => {
-    expect(studioAiFallback({ ai: "new", idea: "1", format: "film" }, false)).toBe("/create?idea=1");
-    expect(studioAiFallback({ ai: "new" }, false)).toBe("/create");
-    expect(studioAiFallback({ ai: ["new", "x"], idea: ["1"] }, false)).toBe("/create?idea=1");
-  });
-  it("does nothing when the address does not ask for the panel, or the panel exists", () => {
-    expect(studioAiFallback({ view: "timeline" }, false)).toBeNull();
-    expect(studioAiFallback({ ai: "new", idea: "1" }, true)).toBeNull();
-  });
-  it("the Studio page redirects before it reads or draws anything", () => {
-    const src = readFileSync(path.join(__dirname, "../app/(app)/[channel]/studio/page.tsx"), "utf8");
-    const body = src.slice(src.indexOf("export default async function StudioPage"));
-    const redirectAt = body.indexOf("if (aiFallback) redirect(");
-    expect(redirectAt).toBeGreaterThan(0);
-    expect(redirectAt).toBeLessThan(body.indexOf("sp.shelf"));
-    expect(src).toContain("studioAiFallback(sp, NIGHTSHIFT_AI_PANEL_AVAILABLE)");
-  });
-});
-
 // ── the flag ────────────────────────────────────────────────────────────────
 
-describe("NIGHTSHIFT_AI_CHAT (stand-in for S5's flag function)", () => {
+describe("NIGHTSHIFT_AI_CHAT (stand-in, same answers as S5's lib/ai-chat/flag aiChatOpenFor)", () => {
   it("off, unset and every malformed value are off", () => {
-    for (const v of [undefined, "", "off", "ON", "On", "1", "true", "yes", "orgs,on", "all"]) {
+    for (const v of [undefined, "", "off", "1", "true", "yes", "orgs,on", "all", "o n"]) {
       expect(aiChatMode({ NIGHTSHIFT_AI_CHAT: v })).toBe("off");
-      expect(nightshiftAiOpen(ORG, "paid", { NIGHTSHIFT_AI_CHAT: v, NIGHTSHIFT_AI_CHAT_ORGS: ORG })).toBe(false);
+      expect(aiChatOpenFor(ORG, { NIGHTSHIFT_AI_CHAT: v, NIGHTSHIFT_AI_CHAT_ORGS: ORG })).toBe(false);
     }
+    expect(aiChatOpenFor(ORG, {})).toBe(false);
+  });
+  it("the mode is read as S5 reads it: trimmed, case-insensitive", () => {
+    expect(aiChatOpenFor(ORG, { NIGHTSHIFT_AI_CHAT: "On " })).toBe(true);
+    expect(aiChatMode({ NIGHTSHIFT_AI_CHAT: " ORGS" })).toBe("orgs");
   });
   it("orgs: only the listed workspaces, ids compared case-insensitively, non-uuid entries dropped", () => {
     const env = { NIGHTSHIFT_AI_CHAT: "orgs", NIGHTSHIFT_AI_CHAT_ORGS: ` ${ORG.toUpperCase()} , not-a-uuid,,` };
     expect([...aiChatOrgs(env)]).toEqual([ORG]);
-    expect(nightshiftAiAccess(ORG, "paid", env)).toEqual({ open: true });
-    expect(nightshiftAiAccess(OTHER, "paid", env)).toEqual({ open: false, reason: "workspace" });
-    expect(nightshiftAiAccess(null, "paid", env)).toEqual({ open: false, reason: "workspace" });
+    expect(aiChatOpenFor(ORG, env)).toBe(true);
+    expect(aiChatOpenFor(OTHER, env)).toBe(false);
+    expect(aiChatOpenFor(null, env)).toBe(false);
+    expect(aiChatOpenFor(undefined, { NIGHTSHIFT_AI_CHAT: "on" })).toBe(false);
   });
-  it("on: every paid workspace", () => {
-    expect(nightshiftAiAccess(OTHER, "paid", { NIGHTSHIFT_AI_CHAT: "on" })).toEqual({ open: true });
+  it("on: every workspace, whatever its plan (a free one gets its trial inside the panel, so the plan is not asked)", () => {
+    expect(aiChatOpenFor(OTHER, { NIGHTSHIFT_AI_CHAT: "on" })).toBe(true);
+    expect(aiChatOpenFor.length).toBe(2);
   });
-  it("paid plans only: a free plan is closed with its reason, an unread plan is not assumed either way", () => {
-    expect(nightshiftAiAccess(ORG, "free", { NIGHTSHIFT_AI_CHAT: "on" })).toEqual({ open: false, reason: "plan" });
-    expect(nightshiftAiAccess(ORG, "unknown", { NIGHTSHIFT_AI_CHAT: "on" })).toEqual({ open: false, reason: "plan_unknown" });
-    // A free workspace that is not on the list hears "not open here", not "upgrade".
-    expect(nightshiftAiAccess(OTHER, "free", { NIGHTSHIFT_AI_CHAT: "orgs", NIGHTSHIFT_AI_CHAT_ORGS: ORG })).toEqual({ open: false, reason: "workspace" });
-  });
-  it("the billing summary as a plan: exempt is paid, the default plan is free, no summary or no plan is unknown", () => {
-    expect(aiPlanOf(null)).toBe("unknown");
-    expect(aiPlanOf({ exempt: true, plan: null } as never)).toBe("paid");
-    expect(aiPlanOf({ exempt: false, plan: null } as never)).toBe("unknown");
-    expect(aiPlanOf({ exempt: false, plan: { isDefault: true } } as never)).toBe("free");
-    expect(aiPlanOf({ exempt: false, plan: { isDefault: false } } as never)).toBe("paid");
+  it("reads only its two variables, by name", () => {
+    vi.stubEnv("NIGHTSHIFT_AI_CHAT", "orgs");
+    vi.stubEnv("NIGHTSHIFT_AI_CHAT_ORGS", ORG);
+    try {
+      expect(aiChatEnv()).toEqual({ NIGHTSHIFT_AI_CHAT: "orgs", NIGHTSHIFT_AI_CHAT_ORGS: ORG });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -195,7 +174,6 @@ describe("templates grouped by purpose", () => {
 
 // ── the component ───────────────────────────────────────────────────────────
 
-const OPEN: NightshiftAiAccess = { open: true };
 type FetchCall = { url: string; method: string };
 let calls: FetchCall[];
 let templatesResponse: () => Promise<Response>;
@@ -222,10 +200,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function draw(agent: NightshiftAiAccess = OPEN, channel: { slug: string; name: string } | null = { slug: "my-channel", name: "Night Tales" }, locale: "en" | "uz" = "en") {
+function draw(agentOpen = true, channel: { slug: string; name: string } | null = { slug: "my-channel", name: "Night Tales" }, locale: "en" | "uz" = "en") {
   return render(
     <I18nProvider locale={locale}>
-      <StartBox agent={agent} channel={channel} />
+      <StartBox agentOpen={agentOpen} channel={channel} />
     </I18nProvider>,
   );
 }
@@ -290,12 +268,11 @@ describe("StartBox", () => {
   });
 
   it("a closed Agent is disabled with its reason in words, cannot be switched on, and never sends to ai=new", () => {
-    draw({ open: false, reason: "plan" });
+    draw(false);
     const chip = screen.getByTestId("start-agent");
     expect(chip.getAttribute("aria-disabled")).toBe("true");
     expect(chip.getAttribute("aria-pressed")).toBe("false");
-    expect(screen.getByTestId("start-agent-reason").textContent).toContain("On paid plans");
-    expect(screen.getByTestId("start-plans").getAttribute("href")).toBe("/my-channel/credits#plans");
+    expect(screen.getByTestId("start-agent-reason").textContent).toContain("Not open for this workspace yet");
     fireEvent.click(chip);
     expect(chip.getAttribute("aria-pressed")).toBe("false");
     fireEvent.change(screen.getByTestId("start-field"), { target: { value: "An idea" } });
@@ -304,10 +281,16 @@ describe("StartBox", () => {
     expect(assign.mock.calls[0][0]).not.toContain("ai=");
   });
 
-  it("an unread plan says so, never 'on paid plans'", () => {
-    draw({ open: false, reason: "plan_unknown" });
-    expect(screen.getByTestId("start-agent-reason").textContent).toContain("Couldn't check your plan");
-    expect(screen.queryByTestId("start-plans")).toBeNull();
+  it("an open Agent is a real toggle: off, the same box goes to Create instead", () => {
+    draw(true);
+    const chip = screen.getByTestId("start-agent");
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByTestId("start-agent-reason")).toBeNull();
+    fireEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.change(screen.getByTestId("start-field"), { target: { value: "An idea" } });
+    fireEvent.click(screen.getByTestId("start-submit"));
+    expect(assign).toHaveBeenCalledWith("/my-channel/create?idea=1");
   });
 
   it("an empty box is refused in words and goes nowhere", () => {
@@ -318,7 +301,7 @@ describe("StartBox", () => {
   });
 
   it("Channel video: says the topic will be cut before the press, and goes to the run form", () => {
-    draw({ open: false, reason: "workspace" });
+    draw(false);
     fireEvent.click(screen.getByTestId("start-format-channel"));
     fireEvent.change(screen.getByTestId("start-field"), { target: { value: "t".repeat(TOPIC_MAX + 1) } });
     expect(screen.getByTestId("start-topic-cut").textContent).toContain(String(TOPIC_MAX));
@@ -327,7 +310,7 @@ describe("StartBox", () => {
   });
 
   it("Channel video with no channel: the key connects one, and needs no words", () => {
-    draw({ open: false, reason: "workspace" }, null);
+    draw(false, null);
     fireEvent.click(screen.getByTestId("start-format-channel"));
     expect(screen.getByTestId("start-submit").textContent).toContain("Connect a channel");
     fireEvent.click(screen.getByTestId("start-submit"));
@@ -381,7 +364,7 @@ describe("StartBox", () => {
   });
 
   it("speaks Uzbek", async () => {
-    draw(OPEN, null, "uz");
+    draw(true, null, "uz");
     expect(screen.getByTestId("start-tab-create").textContent).toContain("Video yaratish");
     expect(screen.getByTestId("start-format-film").textContent).toBe("AI film");
   });
