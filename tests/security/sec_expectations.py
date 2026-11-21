@@ -815,3 +815,8 @@ sec_brain_org_facts_0201.extend(TABLES, FUNCTIONS)
 import sec_research_0202  # noqa: E402
 
 sec_research_0202.extend(TABLES, FUNCTIONS)
+
+# Migration 0203 (the owner's Nightshift AI: turn log and daily cap): tests/security/sec_owner_ai_0203.py
+import sec_owner_ai_0203  # noqa: E402
+
+sec_owner_ai_0203.extend(TABLES, FUNCTIONS)

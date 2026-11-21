@@ -104,6 +104,9 @@ describe("owner facts are the owner's only", () => {
     const entries = files.filter(
       (f) => (f.startsWith("app/") || f.startsWith("lib/brain/") || f.startsWith("components/")) && !OWNER_ZONES.some((z) => z.test(f)) && !OWNER_ONLY.some((o) => o.test(f)),
     );
+    // Not vacuous: the customer Brain's own route is walked (it must exist and not sit in an owner zone).
+    if (existsSync(path.join(root, "app/api/brain/turn/route.ts"))) expect(entries).toContain("app/api/brain/turn/route.ts");
+    expect(entries.some((e) => e.startsWith("app/api/brain/owner/"))).toBe(false);
     const leaks: string[] = [];
     for (const e of entries) {
       const seen = new Set<string>([e]);

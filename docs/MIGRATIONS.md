@@ -2357,3 +2357,16 @@ in a row make it `invalid_ref` (the status CHECK is swapped again, guarded). Han
 `channels.list` answer re-confirms an @handle competitor only while it still carries that handle; the 30-day reset skips a channel
 with a running competitors request; the claim returns the request's `started_at`, the cutoff a complete batch uses.
 Rollback: `docs/sql/rollback_0202_channel_research.sql`.
+
+## The owner's Nightshift AI: turn log and daily cap (0203, provisional)
+
+0203 (`0203_owner_ai_turns.sql`) meters the owner's Nightshift AI (`/owner/ai`, `POST /api/brain/owner/turn`).
+
+- **Table.** `owner_ai_turns`: who asked, when, the model, the outcome (reserved / answered / failed with a fixed code), the
+  question's length and the token counts. Never the question, the answer or the facts. RLS on, no policy, no grant.
+- **Functions.** `owner_ai_reserve_turn(chars, model)` reserves a turn before the vendor is called: platform owner only (42501),
+  0107's second factor (NS401), 200 per rolling 24 hours under one advisory lock (NS429 `owner_ai_daily_cap`).
+  `owner_ai_finish_turn(turn, ok, error, tokens_in, tokens_out)` records the end once.
+- **Requires** 0182, 0107, 0036 (`creative_refuse`); the route also needs 0199 (`ai_chat_owner_settings`, the owner's model).
+- Lab: `tests/security/sec_owner_ai_0203.py`, `tests/security/test_sec_owner_ai.py`. Rollback:
+  `docs/sql/rollback_0203_owner_ai_turns.sql` (drops the log).

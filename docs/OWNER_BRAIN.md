@@ -39,3 +39,19 @@ listed as unknown, never as fine. Days are UTC calendar days.
   is bounded by now() (`tests/security/test_sec_breach_owner_brain_r1.py`).
 - Import graph: no route outside the owner zones, and nothing under `lib/brain/`, may import the facts, directly or through
   another file, and no file outside the owner zones may even name the module (`tests/owner-brain-facts.test.ts`). The owner's AI route lives under `app/api/brain/owner/`.
+
+## Owner AI (/owner/ai)
+
+`POST /api/brain/owner/turn` answers one owner question from the facts above, with the chat model the owner chose (0199's
+`ai_chat_owner_settings`, through S5's `callChatModel`). It is not the Studio's planning chat.
+
+- **Order.** Same-origin POST → signed in → platform owner (404 otherwise, before anything is read) → the chosen model is on sale and
+  keyed (409 with the reason otherwise; no other model is tried) → the facts, built server side (401 `second_factor`) → a turn
+  reserved under the daily cap (0203, 429) → the model → the turn finished with how it ended.
+- **Answers and drafts only.** The model has no tools and the route no action: nothing it says is executed. The rules
+  (`lib/owner-console/ai-prompt.ts`) forbid inventing, keep the measured / estimated / unknown tags, and treat customer-typed
+  text in the facts as data; a closing tag inside a value is defused so it cannot end the data block.
+- **What reaches the browser.** The answer, an optional draft, the facts' time and the model id — never the facts or the raw reply.
+  Nothing about the question or the answer is logged or stored; the conversation lives in the tab.
+- **Failures name their remedy** (rule 6): a missing key, a model switched off, the provider out of balance, rate limits, a
+  timeout, a reply in the wrong shape, the daily cap, a migration not applied.

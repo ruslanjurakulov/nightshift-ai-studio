@@ -1,3 +1,4 @@
+import { ownerAssistantEn } from "./assistant-en";
 import { ownerFactsEn } from "./facts-en";
 
 /** The Owner Console (/owner) and the account switcher (User / Owner). */
@@ -53,6 +54,7 @@ export const ownerConsoleEn = {
   checkFailed: "Couldn't confirm your access just now. This is on our side.",
   retry: "Try again",
   facts: ownerFactsEn,
+  assistant: ownerAssistantEn,
   switcher: {
     title: "Switch account",
     user: "User",
