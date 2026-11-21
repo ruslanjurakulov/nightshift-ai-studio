@@ -1,6 +1,6 @@
--- 0198_studio_ai_chat.sql — Nightshift AI (the Studio's assistant; its server side is "Nightshift Brain", docs/studio/NIGHTSHIFT_AI.md):
+-- 0199_studio_ai_chat.sql — Nightshift AI (the Studio's assistant; its server side is "Nightshift Brain", docs/studio/NIGHTSHIFT_AI.md):
 -- where its conversations and their BRIEF live, who may use it and how much, the model the owner chose, and the metering the owner
--- reads. Number 0198, assigned at merge (after 0197, the owner's Brain facts).
+-- reads. Number 0199, assigned at merge (after 0198, the film switch per organization).
 --
 -- WHY A MIGRATION. The Brain is the Command Center's first call to a text LLM, and every call costs the platform money: the person is
 -- not charged for it (the owner's decision, 2026-11-21), so the only brakes are who may use it (paid plans) and a daily cap per
@@ -32,23 +32,23 @@
 --   Run now form; a short one is saved as a film DRAFT (create_film_draft / save_film, 0166) and priced and started only by the
 --   person through the film routes (quote_film / start_film, 0171). Nothing here publishes.
 --
--- Undo: docs/sql/rollback_0198_studio_ai_chat.sql (owner-applied; it drops the conversations).
+-- Undo: docs/sql/rollback_0199_studio_ai_chat.sql (owner-applied; it drops the conversations).
 
 -- APPLY AS ONE TRANSACTION.
 
 do $$
 begin
   if to_regprocedure('public.is_org_member(uuid, text)') is null then
-    raise exception '0198 needs is_org_member (0018)';
+    raise exception '0199 needs is_org_member (0018)';
   end if;
   if to_regprocedure('public.owner_analytics_is_owner()') is null then
-    raise exception '0198 needs owner_analytics_is_owner (0182)';
+    raise exception '0199 needs owner_analytics_is_owner (0182)';
   end if;
   if to_regprocedure('public.creative_refuse(text, text, text)') is null then
-    raise exception '0198 needs creative_refuse (0036)';
+    raise exception '0199 needs creative_refuse (0036)';
   end if;
   if to_regprocedure('public.org_plan_internal(uuid)') is null or to_regprocedure('public.credits_exempt(uuid)') is null then
-    raise exception '0198 needs org_plan_internal (0034) and credits_exempt (0020)';
+    raise exception '0199 needs org_plan_internal (0034) and credits_exempt (0020)';
   end if;
 end $$;
 
@@ -56,7 +56,7 @@ create table if not exists public.ai_chat_settings (
   id               boolean primary key default true check (id),
   model            text not null default 'anthropic-claude-sonnet-5-5' check (model ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),
   max_input_chars  integer not null default 2000 check (max_input_chars between 100 and 4000),
-  -- Beyond the plan's cap per workspace (Breach on 0198: one account can belong to several workspaces): a person's own turns across
+  -- Beyond the plan's cap per workspace (Breach on 0199: one account can belong to several workspaces): a person's own turns across
   -- every workspace, and the whole platform's, in a rolling 24 hours. The last brake on the platform's LLM spend.
   per_user_daily   integer not null default 300 check (per_user_daily between 0 and 100000),
   global_daily     integer not null default 5000 check (global_daily between 0 and 1000000),
@@ -178,12 +178,12 @@ create or replace function public.ai_chat_trial_left(p_org uuid) returns integer
               else greatest(0, (select trial_messages from public.ai_chat_settings where id)
                                - (select count(*)::integer from public.ai_chat_calls c where c.org_id = p_org
                                     -- Every outcome uses the trial: a refusal on Free is a paid vendor call, and a call a member
-                                    -- finishes by hand as not_sent still stores their message (Breach on 0198: both kept the trial).
+                                    -- finishes by hand as not_sent still stores their message (Breach on 0199: both kept the trial).
                                     )) end
 $$;
 
 -- The workspace's turns in the last 24 hours. A failure at the vendor counts (it may have cost money); a turn that never reached the
--- vendor (not_sent) or that a safety rule refused does not: the person is not charged a turn for those (Lens on 0198).
+-- vendor (not_sent) or that a safety rule refused does not: the person is not charged a turn for those (Lens on 0199).
 create or replace function public.ai_chat_used(p_org uuid) returns integer
   language sql stable security definer set search_path = public, pg_temp as $$
   select count(*)::integer from public.ai_chat_calls c where c.org_id = p_org and c.created_at > now() - interval '24 hours'
@@ -225,7 +225,7 @@ $$;
 
 -- The cap, then the person's message and a pending call. Under the workspace's own lock, so two tabs (or two servers) cannot both
 -- take the last turn. Refused turns write nothing. The plan is read now, not at the session's start: a downgrade takes effect at once.
--- p_retry: the same message again after a failed answer (Lens on 0198: a retry stored the message twice). It takes a turn (the
+-- p_retry: the same message again after a failed answer (Lens on 0199: a retry stored the message twice). It takes a turn (the
 -- vendor is called again) but adds no message: the last one must be the person's own, unanswered.
 create or replace function public.ai_chat_reserve_turn(p_session uuid, p_text text, p_retry boolean default false,
                                                       p_request_id text default null) returns jsonb
@@ -238,8 +238,8 @@ declare
   v_used integer;
   v_call uuid;
   -- Every whitespace a person can type, not only spaces (Breach: a message of tabs and newlines took a turn), and the invisible ones
-  -- (zero-width, word joiner, BOM) removed first, so a message of NBSPs or zero-width spaces is empty (Lens on 0198).
-  -- Breach on 0198 added the rest that render as nothing: soft hyphen, joiners, bidi marks, variation selectors, tags, fillers.
+  -- (zero-width, word joiner, BOM) removed first, so a message of NBSPs or zero-width spaces is empty (Lens on 0199).
+  -- Breach on 0199 added the rest that render as nothing: soft hyphen, joiners, bidi marks, variation selectors, tags, fillers.
   v_text text := btrim(regexp_replace(coalesce(p_text, ''),
                          E'[\u00AD\u034F\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\uFE00-\uFE0F\U000E0000-\U000E007F]', '', 'g'),
                        E' \t\r\n\f\u0085\u00A0\u115F\u1160\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u2028\u2029\u202F\u205F\u2800\u3000\u3164\uFFA0' || chr(11));
@@ -273,7 +273,7 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('ai_chat:' || s.org_id::text, 0));
   -- The same press again (a network retry): answered as a duplicate, with nothing written (under the lock: two copies racing find
   -- each other, and the unique index is the last word).
-  -- The refusal names the conversation the first copy went to: a retried Start finds its own (Lens on 0198).
+  -- The refusal names the conversation the first copy went to: a retried Start finds its own (Lens on 0199).
   if p_request_id is not null and exists (select 1 from public.ai_chat_calls c where c.user_id = v_user and c.request_id = p_request_id) then
     perform public.creative_refuse('duplicate_request',
       coalesce((select c.session_id::text from public.ai_chat_calls c where c.user_id = v_user and c.request_id = p_request_id), ''), 'NS409');
@@ -293,7 +293,7 @@ begin
   -- The person's own turns everywhere, and the platform's: under their own locks, after the workspace's, always in this order.
   perform pg_advisory_xact_lock(hashtextextended('ai_chat_user:' || v_user::text, 0));
   -- Every outcome counts here, not_sent too: a member can reserve and finish their own calls by hand, and each writes rows
-  -- (Lens and Breach on 0198: not_sent passed every cap). The plan cap is the one that forgives what was not their doing.
+  -- (Lens and Breach on 0199: not_sent passed every cap). The plan cap is the one that forgives what was not their doing.
   if (select count(*) from public.ai_chat_calls c where c.user_id = v_user and c.created_at > now() - interval '24 hours')
      >= st.per_user_daily then
     perform public.creative_refuse('chat_daily_cap', 'your own daily limit across workspaces is reached', 'NS429');
@@ -455,7 +455,7 @@ begin
   -- The model is the owner's and its id names the vendor: a member gets only a reference the server maps to its own list
   -- (lib/server/brain/session modelFromRef), never the id itself. This keeps the id out of every answer and screen; it is not a secret
   -- against a member who hashes the few public candidate ids: the web server reads as the member (anon key only, CLAUDE.md rule 3),
-  -- so nothing it can read is hidden from them (Lens and Breach on 0198).
+  -- so nothing it can read is hidden from them (Lens and Breach on 0199).
   return jsonb_build_object('used', public.ai_chat_used(p_org), 'limit', public.ai_chat_cap(p_org),
                             'trial_left', case when public.ai_chat_cap(p_org) is null then public.ai_chat_trial_left(p_org) end,
                             'max_input_chars', (select max_input_chars from public.ai_chat_settings where id),
@@ -608,12 +608,12 @@ begin
      or has_table_privilege('authenticated', 'public.ai_chat_plan_caps', 'SELECT')
      or has_table_privilege('authenticated', 'public.ai_chat_settings', 'SELECT')
      or has_table_privilege('anon', 'public.ai_chat_sessions', 'SELECT') then
-    raise exception '0198 end state: an API role can reach a chat table directly';
+    raise exception '0199 end state: an API role can reach a chat table directly';
   end if;
   if has_function_privilege('anon', 'public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.ai_chat_used(uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.ai_chat_cap(uuid)', 'EXECUTE') then
-    raise exception '0198 end state: a chat function is callable by the wrong role';
+    raise exception '0199 end state: a chat function is callable by the wrong role';
   end if;
 end $$;
 

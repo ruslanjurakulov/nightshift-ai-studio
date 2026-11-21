@@ -1,4 +1,4 @@
--- Rollback of 0198_studio_ai_chat.sql (owner-applied, one transaction). It drops every Nightshift AI conversation, its BRIEF and the
+-- Rollback of 0199_studio_ai_chat.sql (owner-applied, one transaction). It drops every Nightshift AI conversation, its BRIEF and the
 -- metering: export ai_chat_usage() first if the figures are wanted. Turn the panel off first (NIGHTSHIFT_AI_CHAT=off), or it answers
 -- "not set up on this database" until the server restarts. Films a person created from a BRIEF are films like any other: they stay.
 

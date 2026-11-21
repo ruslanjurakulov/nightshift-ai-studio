@@ -51,7 +51,7 @@ export function chatModelConfigured(id: ChatModelId, keys: ChatKeys = chatKeysFr
   return Boolean(keyFor(id, keys));
 }
 
-/** A question card is short; two or three whole scenarios (ru and uz run longer than en) are not (Lens on 0198: 1600 cut them off). */
+/** A question card is short; two or three whole scenarios (ru and uz run longer than en) are not (Lens on 0199: 1600 cut them off). */
 export const OUTPUT_TOKENS = { card: 1_600, proposal: 8_000 } as const;
 const TIMEOUT_MS = { card: 45_000, proposal: 150_000 } as const;
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
@@ -67,7 +67,11 @@ export async function callChatModel(
   id: ChatModelId,
   system: string,
   user: string,
-  opts: { fetchImpl?: typeof fetch; keys?: ChatKeys; endUser?: string; size?: keyof typeof OUTPUT_TOKENS } = {},
+  opts: {
+    fetchImpl?: typeof fetch; keys?: ChatKeys; endUser?: string; size?: keyof typeof OUTPUT_TOKENS;
+    /** A caller's own ceiling (S8's owner Brain), bounded to 256–16000; otherwise the size's. */
+    maxOutputTokens?: number;
+  } = {},
 ): Promise<LlmResult> {
   const wire = CHAT_MODELS[id];
   const key = keyFor(id, opts.keys ?? chatKeysFromEnv());
@@ -75,7 +79,8 @@ export async function callChatModel(
   const doFetch = opts.fetchImpl ?? fetch;
   const ctl = new AbortController();
   const size = opts.size ?? "card";
-  const MAX_OUTPUT_TOKENS = OUTPUT_TOKENS[size];
+  const asked = opts.maxOutputTokens;
+  const MAX_OUTPUT_TOKENS = typeof asked === "number" && Number.isFinite(asked) ? Math.min(16_000, Math.max(256, Math.round(asked))) : OUTPUT_TOKENS[size];
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS[size]);
   try {
     const req: { url: string; headers: Record<string, string>; body: Record<string, unknown> } =

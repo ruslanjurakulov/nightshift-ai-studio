@@ -7,7 +7,7 @@ import { modelText, unsafeText } from "@/lib/brain/logic";
 import { modelFromRef } from "@/lib/server/brain/session";
 import { callChatModel, OUTPUT_TOKENS } from "@/lib/server/brain/llm";
 
-describe("a price in the model's words never reads as Nightshift's (Lens 9 on 0198)", () => {
+describe("a price in the model's words never reads as Nightshift's (Lens 9 on 0199)", () => {
   it.each([
     "It costs 150 ta kredit",
     "only 50 ming soʻm",
@@ -32,7 +32,7 @@ describe("a price in the model's words never reads as Nightshift's (Lens 9 on 01
   });
 });
 
-describe("the safety floor under the prompt (B3 on 0198)", () => {
+describe("the safety floor under the prompt (B3 on 0199)", () => {
   it.each(["a naked woman", "голая модель", "yalangʻoch", "a celebrity cameo", "deepfake of a singer", "gory beheading", "Spider-Man swings", "porno"])(
     "refuses %s", (s) => expect(unsafeText(s)).toBe(true));
   it.each(["Sussex countryside", "a sextant on a ship", "owls at night", "a nervous intern", "Essex", "the celebration",
@@ -40,7 +40,7 @@ describe("the safety floor under the prompt (B3 on 0198)", () => {
     "lets %s through", (s) => expect(unsafeText(s)).toBe(false));
 });
 
-describe("the owner's model reaches the server only as a reference (Lens 4 on 0198)", () => {
+describe("the owner's model reaches the server only as a reference (Lens 4 on 0199)", () => {
   const ref = (id: string) => createHash("md5").update(`nightshift-chat-model:${id}`).digest("hex");
   it("maps a known reference back, and anything else to no model (never another one)", () => {
     expect(modelFromRef(ref("anthropic-claude-sonnet-5-5"))).toBe("anthropic-claude-sonnet-5-5");
@@ -51,7 +51,7 @@ describe("the owner's model reaches the server only as a reference (Lens 4 on 01
   });
 });
 
-describe("an answer cut off at the limit is its own failure (B2 on 0198)", () => {
+describe("an answer cut off at the limit is its own failure (B2 on 0199)", () => {
   const keys = { anthropic: "k", openai: "k" };
   const reply = (body: unknown) => (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
   it("Anthropic max_tokens and OpenAI max_output_tokens are output_too_long, not vendor_error", async () => {
@@ -66,5 +66,15 @@ describe("an answer cut off at the limit is its own failure (B2 on 0198)", () =>
     await callChatModel("anthropic-claude-sonnet-5-5", "s", "u", { keys, fetchImpl: f, size: "proposal" });
     expect(sent.max_tokens).toBe(OUTPUT_TOKENS.proposal);
     expect(OUTPUT_TOKENS.proposal).toBeGreaterThanOrEqual(8000);
+  });
+});
+
+describe("a caller's own output ceiling (S8's owner Brain)", () => {
+  it("is used when given, bounded to 256–16000", async () => {
+    const keys = { anthropic: "k", openai: "k" };
+    const seen: number[] = [];
+    const f = (async (_u: string, init: RequestInit) => { seen.push(JSON.parse(String(init.body)).max_tokens); return new Response(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: "{}" }] })); }) as unknown as typeof fetch;
+    for (const n of [3000, 10, 999999]) await callChatModel("anthropic-claude-sonnet-5-5", "s", "u", { keys, fetchImpl: f, maxOutputTokens: n });
+    expect(seen).toEqual([3000, 256, 16000]);
   });
 });

@@ -72,7 +72,7 @@ describe("owner facts are the owner's only", () => {
   it("no customer route or Brain module imports the owner facts, directly or through another file", () => {
     const root = path.resolve(__dirname, "..");
     const OWNER_ONLY = [/^lib\/server\/owner-brain-facts\.ts$/];
-    const OWNER_ZONES = [/^app\/\(owner\)\//, /^app\/api\/brain\/owner\//, /^app\/api\/owner-/, /^app\/\(app\)\/\[channel\]\/owner-analytics\//];
+    const OWNER_ZONES = [/^app\/\(owner\)\//, /^app\/owner\//, /^app\/api\/brain\/owner\//, /^app\/api\/owner-/, /^app\/\(app\)\/\[channel\]\/owner-analytics\//];
     const files: string[] = [];
     const walk = (dir: string) => {
       for (const n of readdirSync(dir)) {
@@ -127,7 +127,7 @@ describe("owner facts are the owner's only", () => {
   // the owner's zones, no file so much as names the module.
   it("no file outside the owner's zones names the owner facts module", () => {
     const root = path.resolve(__dirname, "..");
-    const OWNER_ZONES = [/^app\/\(owner\)\//, /^app\/api\/brain\/owner\//, /^app\/api\/owner-/, /^app\/\(app\)\/\[channel\]\/owner-analytics\//, /^lib\/server\/owner-brain-facts\.ts$/];
+    const OWNER_ZONES = [/^app\/\(owner\)\//, /^app\/owner\//, /^app\/api\/brain\/owner\//, /^app\/api\/owner-/, /^app\/\(app\)\/\[channel\]\/owner-analytics\//, /^lib\/server\/owner-brain-facts\.ts$/];
     const named: string[] = [];
     const walk = (dir: string) => {
       for (const n of readdirSync(dir)) {
@@ -135,7 +135,7 @@ describe("owner facts are the owner's only", () => {
         if (statSync(f).isDirectory()) walk(f);
         else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(n)) {
           const rel = path.relative(root, f);
-          if (!OWNER_ZONES.some((z) => z.test(rel)) && /owner-brain-facts|buildOwnerFacts/.test(readFileSync(f, "utf8"))) named.push(rel);
+          if (!OWNER_ZONES.some((z) => z.test(rel)) && /owner-brain-facts|buildOwnerFacts|loadOwnerFacts|owner\/_facts/.test(readFileSync(f, "utf8"))) named.push(rel);
         }
       }
     };

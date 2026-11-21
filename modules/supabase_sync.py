@@ -216,6 +216,8 @@ class SupabaseSync:
         rows: list[dict],
         on_conflict: str | None = None,
         ignore_duplicates: bool = False,
+        timeout: float | tuple[float, float] | None = None,
+        quiet: bool = False,
     ) -> int:
         """Upsert `rows` into `table` via PostgREST. Returns the number sent (0
         when disabled, empty, or on any failure). Never raises.
@@ -237,15 +239,18 @@ class SupabaseSync:
                 params=params,
                 json=rows,
                 headers=self._headers({"Prefer": prefer}),
-                timeout=_TIMEOUT,
+                timeout=_TIMEOUT if timeout is None else timeout,
             )
             if resp.status_code >= 300:
-                logger.warning("Supabase upsert into %s failed: HTTP %s %s", table, resp.status_code, resp.text[:300])
                 self.last_failure = (resp.status_code, self._error_code(resp))
+                # quiet: the caller logs the status and code itself; the body is never logged on that path.
+                if not quiet:
+                    logger.warning("Supabase upsert into %s failed: HTTP %s %s", table, resp.status_code, resp.text[:300])
                 return 0
             return len(rows)
         except Exception as e:
-            logger.warning("Supabase upsert into %s errored (%s: %s)", table, type(e).__name__, e)
+            if not quiet:
+                logger.warning("Supabase upsert into %s errored (%s: %s)", table, type(e).__name__, e)
             self.last_failure = (None, type(e).__name__)
             return 0
 

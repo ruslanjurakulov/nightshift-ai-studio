@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isSmallTalk, modelText, readModelAnswer, unsafeText } from "@/lib/brain/logic";
 
-// Breach on 0198's Lens round: the route-side checks a model's answer (or a person's chosen plan) passes through. A failing case
+// Breach on 0199's Lens round: the route-side checks a model's answer (or a person's chosen plan) passes through. A failing case
 // here is a bypass still open: what the person reads names the vendor, shows a price, or a floor word is drafted.
 const IDENTITY = "I am Nightshift AI.";
 const reply = (r: string) =>

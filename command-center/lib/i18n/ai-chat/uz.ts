@@ -1,6 +1,6 @@
 import type { AiChatDictionary } from "./en";
 
-/** Nightshift AI, Studiya yordamchisi (0198-migratsiya). Manba — ./en.ts. */
+/** Nightshift AI, Studiya yordamchisi (0199-migratsiya). Manba — ./en.ts. */
 export const aiChatUz: AiChatDictionary = {
   title: "Nightshift AI",
   subtitle:

@@ -1,6 +1,6 @@
-"""Breach's attacks on Nightshift AI's database half (migration 0198, working-tree shape after the Brain rewrite), PR #843.
+"""Breach's attacks on Nightshift AI's database half (migration 0199, working-tree shape after the Brain rewrite), PR #843.
 
-A test that FAILS here is a confirmed hole and stays failing until 0198 (or a follow-up migration) closes it. A passing test pins an
+A test that FAILS here is a confirmed hole and stays failing until 0199 (or a follow-up migration) closes it. A passing test pins an
 attack that was tried and held, so a later change that reopens it says so by name.
 
 The lab's tenants are on the free plan, which has no Brain: every attack that needs a turn first grants a cap to the plans inside a

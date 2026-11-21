@@ -1,6 +1,6 @@
-"""Breach on 0198's Lens round (not_sent / refused outcomes, request ids, text normalisation, model_ref).
+"""Breach on 0199's Lens round (not_sent / refused outcomes, request ids, text normalisation, model_ref).
 
-Each test names the attack. A test that fails here is a hole still open, kept failing (never skipped) until 0198 closes it:
+Each test names the attack. A test that fails here is a hole still open, kept failing (never skipped) until 0199 closes it:
 
 * model_ref is md5 of a fixed prefix and the model id, and the candidate ids are a member's to list (sellable_models, which the
   route itself calls as the member): the "reference" reverses to the owner's model id in two hashes;
@@ -31,7 +31,7 @@ def _limits(su, per_user: int, global_daily: int) -> None:
 
 
 def test_breach_lens_model_ref_never_carries_the_id_and_its_reversibility_is_the_documented_limit(conn, sc):
-    """Accepted limit, not a fix (Atlas told on 0198): the web server reads as the member (anon key only, CLAUDE.md rule 3), so no
+    """Accepted limit, not a fix (Atlas told on 0199): the web server reads as the member (anon key only, CLAUDE.md rule 3), so no
     value it can map back to a model is hidden from a member who hashes the few public candidate ids. What IS guaranteed, and pinned
     here: the id itself never reaches a member, not from ai_chat_quota and not from their session row. Breach's reversal stays
     recorded below so the limit cannot be forgotten: if a server-only secret ever exists, this assertion is where it gets tightened."""

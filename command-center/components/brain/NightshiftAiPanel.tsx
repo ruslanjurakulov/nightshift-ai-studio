@@ -399,7 +399,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                   <textarea id="ns-ai-input" className="studio-field min-h-[5rem] w-full p-3 text-base" value={text} maxLength={load.plan.max_input_chars}
                             placeholder={c.placeholder} disabled={disabled} onChange={(e) => setText(e.target.value)} aria-describedby="ns-ai-count"
                             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(text); } }} />
-                  {/* The limit is shown, never applied silently (Lens on 0198). */}
+                  {/* The limit is shown, never applied silently (Lens on 0199). */}
                   <p id="ns-ai-count" className="self-end text-xs text-[var(--color-muted)]">{fmt(c.charCount, { n: Array.from(text).length, max: load.plan.max_input_chars })}</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="submit" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-40" disabled={disabled || !text.trim()}>{busy ? c.sending : c.send}</button>

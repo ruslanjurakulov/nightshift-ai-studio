@@ -80,7 +80,7 @@ export interface Brief extends Partial<Omit<Scenario, "target_seconds">> {
   voice: { mode: "off" | "clip_audio" | "pipeline" };
   music: { mode: "off" };
   price?: BriefPrice;
-  // credit_ref and scene_map are read by the database from the job and the film (0198), never sent by the browser.
+  // credit_ref and scene_map are read by the database from the job and the film (0199), never sent by the browser.
   handoff: null | { kind: "film"; film_id: string; scene_map?: Record<string, string> }
     | { kind: "run"; channel_id: string; dispatched_at?: string; job_id?: string; credit_ref?: string };
 }
@@ -91,7 +91,7 @@ export const MAX_SCENARIOS = 3;
 export const MIN_SCENARIOS = 2;
 export const HISTORY_TURNS = 12;
 
-// Control characters, bidi overrides and isolates, zero-width marks, LRM/RLM/ALM and the BOM (Breach on 0198: these make a title,
+// Control characters, bidi overrides and isolates, zero-width marks, LRM/RLM/ALM and the BOM (Breach on 0199: these make a title,
 // a number or a URL read other than it is).
 const INVISIBLE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f؜​-‏\u2028\u2029‪-‮⁠-⁤⁦-⁩﻿]/g;
 
@@ -121,7 +121,7 @@ export function plain(v: unknown, max: number, multiline = false): string {
   if (typeof v !== "string") return "";
   // Lone surrogates (half an emoji) are as unstorable as a cut one.
   // Format characters that render as nothing (zero-width, soft hyphen, bidi marks, variation selectors, tags) go entirely, never as a
-  // space: "Cl\u200baude" and "cr\u00adedits" are the words they look like (Breach on 0198).
+  // space: "Cl\u200baude" and "cr\u00adedits" are the words they look like (Breach on 0199).
   const whole = v.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "").replace(FORMAT, "");
   const stripped = whole.replace(INVISIBLE, " ");
   const folded = multiline
@@ -133,11 +133,11 @@ export function plain(v: unknown, max: number, multiline = false): string {
 
 // A link or a price in the model's words would read as Nightshift's own next to the real price (a comment can steer the model).
 const LINK = /\[([^\]]{0,200})\]\([^)]*\)|\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+\.(?:com|net|org|io|ru|uz|me|app|link|xyz|ly)\/\S*/gi;
-// Every apostrophe a "soʻm" is typed with, and letters in any script (\w is ASCII: "300 кредитов" left "…ов", Lens on 0198).
+// Every apostrophe a "soʻm" is typed with, and letters in any script (\w is ASCII: "300 кредитов" left "…ов", Lens on 0199).
 const AP = "[ʻʼ'’‘`]";
 const UNIT = String.raw`(?:usd|eur|uzs|rub|dollars?|euros?|so${AP}?m|сўм|сум(?:ы|ов|а|ах)?|рубл\p{L}*|руб\.?|долл\p{L}*|(?:credits?|кредит\p{L}*|kredit\p{L}*)(?!\s+roll))`;
 const SCALE = String.raw`(?:k|тыс\.?|тысяч\p{L}*|ming|mln|million\p{L}*|млн\.?|миллион\p{L}*)`;
-// Word numbers next to a unit. Not "on" (English): Uzbek "oʻn" (ten) only with its apostrophe (Lens on 0198: "living on credit").
+// Word numbers next to a unit. Not "on" (English): Uzbek "oʻn" (ten) only with its apostrophe (Lens on 0199: "living on credit").
 const WORDNUM = String.raw`(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|thousand|nol|bir|ikki|uch|to${AP}rt|besh|o${AP}n|yigirma|o${AP}ttiz|qirq|ellik|yuz|ming|ноль|один|два|три|четыре|пять|десять|пятнадцать|двадцать|тридцать|сорок|пятьдесят|сто|двести|триста|пятьсот|тысяч\p{L}*)`;
 const MONEY = new RegExp(
   [
@@ -147,7 +147,7 @@ const MONEY = new RegExp(
     String.raw`\d[\d\s.,]*\s?${SCALE}?\s?(?:ta\s)?${UNIT}(?![\p{L}])`,
     String.raw`(?<![\p{L}])${WORDNUM}(?:[\s-]+${WORDNUM})*\s+(?:ta\s)?${UNIT}(?![\p{L}])`,
     String.raw`\d+\s?%\s?(?:off|discount|скидк\p{L}*|chegirma\p{L}*)`,
-    // "Free" only as a price claim, next to what would be priced (Lens on 0198: "living for free in Tokyo" is a topic).
+    // "Free" only as a price claim, next to what would be priced (Lens on 0199: "living for free in Tokyo" is a topic).
     String.raw`(?<![\p{L}])(?:free|бесплатн\p{L}*|bepul)\s+(?:credits?|кредит\p{L}*|kredit\p{L}*|plan|trial|тариф\p{L}*|tarif\p{L}*|video|видео)`,
     String.raw`(?:credits?|кредит\p{L}*|kredit\p{L}*|plan|тариф\p{L}*|tarif\p{L}*)\s+(?:is\s+|are\s+)?(?:free|бесплатн\p{L}*|bepul)(?![\p{L}])`,
   ].join("|"),
@@ -415,7 +415,7 @@ const UNSAFE = new RegExp(
   String.raw`(?<![\p{L}\p{N}])(?:` +
     [
       String.raw`nudes?|nudit\p{L}*|nudist\p{L}*|naked\p{L}*|topless|porn\p{L}*|sex|sexual\p{L}*|sexy|erotic\p{L}*|nsfw|onlyfans|fetish\p{L}*|lingerie`,
-      // "голы" alone is football goals (Lens on 0198): the adjective's own endings only.
+      // "голы" alone is football goals (Lens on 0199): the adjective's own endings only.
       String.raw`гол(?:ый|ая|ое|ые|ую|ой|ым|ыми|ых)|голышом|раздет\p{L}*|порн\p{L}*|секс(?:уальн\p{L}*|и)?|эрот\p{L}*`,
       String.raw`yalang${AP}?och\p{L}*|яланғоч\p{L}*|яланг[ʻʼ'’‘]?оч\p{L}*|porno\p{L}*|shahvoniy\p{L}*|erotik\p{L}*`,
       String.raw`gory|gore[-\s]?fest|dismember\p{L}*|decapitat\p{L}*|behead\p{L}*|расчлен\p{L}*|обезглав\p{L}*`,

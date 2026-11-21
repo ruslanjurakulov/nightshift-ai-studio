@@ -89,7 +89,7 @@ async function kindChoices(s: Session) {
 }
 
 async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry = false, requestId: string | null = null): Promise<Response> {
-  // The owner's model as it is now (0198 hands a member only a reference to it, never the id).
+  // The owner's model as it is now (0199 hands a member only a reference to it, never the id).
   const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
   if (q0.error) return dbRefusal(q0.error) ?? brainJson({ error: "unavailable" }, 503);
   const model = await chosenModelState(supabase, modelFromRef((q0.data as { model_ref?: unknown } | null)?.model_ref));
@@ -100,7 +100,7 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   const { words: words0, open, kindOptions } = await kindChoices(s);
   if (!prev0.kind && kindOptions.length === 0) return brainJson({ error: "channel_required" }, 400);
   // A greeting or "who are you" before anything is decided: Nightshift AI's own answer and the first question, from i18n. No vendor
-  // call, no turn, nothing written (Lens on 0198: a "salom" cost a turn; Breach: a not_sent that stores is a free write).
+  // call, no turn, nothing written (Lens on 0199: a "salom" cost a turn; Breach: a not_sent that stores is a free write).
   if (!retry && !prev0.kind && isSmallTalk(text)) {
     const first: BrainCard = { id: FIRST_CARD, slot: "kind", thread_title: "", question: "", allow_own: true, options: kindOptions };
     return brainJson({ reply: words0.identityReply, slots: prev0, step: "asking", card: first, scenarios: [], brief: buildBrief(s.id, prev0, null, "drafting") });
@@ -118,7 +118,7 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
       p_brief: extra?.brief ?? null, p_card: extra?.card ?? null,
     });
 
-  // From here a turn was taken: whatever happens, it ends with a recorded outcome (Lens on 0198: a throw left it pending forever).
+  // From here a turn was taken: whatever happens, it ends with a recorded outcome (Lens on 0199: a throw left it pending forever).
   // Until the vendor is called, a failure is not_sent: it costs nothing and the person is not charged a turn for it.
   let called = false;
   // not_sent is refused for a call older than 2 minutes: then the turn is recorded as a failure rather than left pending.
@@ -139,7 +139,7 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   const facts = await readChannelFacts(supabase, s.channel_id, ch.state === "ok" ? ch.name : "");
   const history = ((hist.data ?? []) as { role: "user" | "assistant"; content: string }[]).reverse();
   const locale = await getLocale().catch(() => "en");
-  // A short film is offered only where it can be made (Pixel M6 on 0198: no dead option); the kind card's options are ours.
+  // A short film is offered only where it can be made (Pixel M6 on 0199: no dead option); the kind card's options are ours.
   const shortAvailable = open;
   const words = words0;
   called = true;
@@ -215,7 +215,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   // The floor under the prompt's and the vendors' safety rules (lib/brain/logic unsafeBrief): nothing of it is priced or drafted.
   if (unsafeBrief(buildBrief(s.id, slots, chosen, "ready"))) return brainJson({ error: "content_refused" }, 422);
   // One draft per proposal and scenario: a re-proposal is a new key, so choosing "the first one" again is not a conflict with the
-  // draft of an earlier, different first one (Lens on 0198).
+  // draft of an earlier, different first one (Lens on 0199).
   const proposal = String((msgs?.[0] as { id?: number } | undefined)?.id ?? "0");
 
   if (slots.kind === "long") {
@@ -265,7 +265,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
 }
 
 export async function POST(request: Request) {
-  // Off is off: nothing is read, not even the session (Breach on 0198: a 401/403 would say the feature exists).
+  // Off is off: nothing is read, not even the session (Breach on 0199: a 401/403 would say the feature exists).
   if (aiChatMode(aiChatEnv()) === "off") return notFound();
   const cross = rejectCrossOrigin(request);
   if (cross) return cross;
@@ -276,7 +276,7 @@ export async function POST(request: Request) {
   const body = await readJsonBodyCapped(request, SMALL_BODY_BYTES);
   if (!body.ok) return brainJson({ error: body.reason === "too_large" ? "payload_too_large" : "bad_request" }, body.reason === "too_large" ? 413 : 400);
   const b = (body.value ?? {}) as Record<string, unknown>;
-  // The browser's id for this press: a network retry of the same press is a duplicate, never a second message (0198).
+  // The browser's id for this press: a network retry of the same press is a duplicate, never a second message (0199).
   const requestId = typeof b.request_id === "string" && REQUEST_ID.test(b.request_id) ? b.request_id : null;
   // 0192: someone who said they are under 18 is not served, as on Run now.
   if ((await readAgeState()) === "minor") return brainJson({ error: "adult_only_service" }, 403);

@@ -5,7 +5,7 @@ docs/studio/NIGHTSHIFT_AI.md.
 
 ## Turning it on
 
-1. Apply migration **0198** (the number is assigned at merge).
+1. Apply migration **0199**.
 2. Add the repository secret `AI_CHAT_ANTHROPIC_API_KEY`, and optionally `AI_CHAT_OPENAI_API_KEY`.
    - These are the chat's own keys, not the worker's. With them unset, the web server holds no LLM key.
    - A key with its own spend limit is the safer choice.
@@ -58,7 +58,7 @@ What the flag values do:
 - **Short film.** "Create — N credits" starts the film at the quote the server read. The handoff records the film. The database builds `scene_map` = {brief scene id: `film_scenes.id`} from the film's scenes by position.
 - Nothing the browser sends as a `credit_ref` or a `scene_map` is stored.
 - **The landing idea.** `/all-channels/studio?ai=new&idea=1` opens a new conversation. The idea in localStorage `ns.idea.v1` (`{text, at}`, 2 h) is typed into the box once and removed. It is never sent for the person.
-- **Short films.** At least 10 seconds (0198).
+- **Short films.** At least 10 seconds (0198, the film switch).
 
 ## What is never planned
 
@@ -83,7 +83,7 @@ A proposal gets room for 8000 output tokens (`OUTPUT_TOKENS`, lib/server/brain/l
 
 `ai_chat_quota` returns `model_ref` (an md5 reference), which the server maps to its own list (`modelFromRef`). The session's `model` column is not granted to members. The id never appears in an answer or on a screen.
 
-**This is not a secret against a determined member.** Hashing the few public candidate ids confirms the owner's choice. The web server reads as the member (anon key only, CLAUDE.md rule 3), so nothing it can map back is hidden from them. `tests/security/test_sec_breach_lens_0198.py` pins both halves.
+**This is not a secret against a determined member.** Hashing the few public candidate ids confirms the owner's choice. The web server reads as the member (anon key only, CLAUDE.md rule 3), so nothing it can map back is hidden from them. `tests/security/test_sec_breach_lens_0199.py` pins both halves.
 
 ## Cost
 

@@ -48,7 +48,7 @@ const client = {
     rpc(fn, args);
     if (fn === "sellable_models") return { data: state.onSale.map((id) => ({ id })), error: null };
     if (fn === "ai_chat_reserve_turn") return state.reserve;
-    // The owner's model reaches the server only as a reference (0198): never the id a member could read.
+    // The owner's model reaches the server only as a reference (0199): never the id a member could read.
     if (fn === "ai_chat_quota") return { data: { used: 3, limit: 30, model_ref: ref("anthropic-claude-sonnet-5-5") }, error: null };
     if (fn === "create_film_draft") return { data: { film: { id: FILM, version: 1 } }, error: null };
     if (fn === "save_film") return { data: { film: { id: FILM, version: 2 } }, error: null };
@@ -171,13 +171,13 @@ describe("/api/brain/turn", () => {
     expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_text: "Short" });
   });
 
-  // ── Lens behaviour-gap round on 0198 ─────────────────────────────────────────────────────────────────────────────────
+  // ── Lens behaviour-gap round on 0199 ─────────────────────────────────────────────────────────────────────────────────
   it("a greeting before anything is decided is answered by Nightshift itself: no vendor call, no turn charged", async () => {
     const d = await (await post({ action: "turn", session: SESSION, text: "salom" })).json();
     expect(llm).not.toHaveBeenCalled();
     expect(d.reply).toMatch(/Nightshift AI/);
     expect(d.card).toMatchObject({ slot: "kind", options: ["A long YouTube video", "A short film or ad"] });
-    // Nothing is written for a greeting: no turn reserved, nothing finished (a stored not_sent was a free write, Breach on 0198).
+    // Nothing is written for a greeting: no turn reserved, nothing finished (a stored not_sent was a free write, Breach on 0199).
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     expect(called("ai_chat_finish_turn")).toHaveLength(0);
     expect(d.card.id).toBe("kind-first");

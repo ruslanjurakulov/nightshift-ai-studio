@@ -1,6 +1,6 @@
 import type { AiChatDictionary } from "./en";
 
-/** Nightshift AI, ассистент Студии (миграция 0198). Источник — ./en.ts. */
+/** Nightshift AI, ассистент Студии (миграция 0199). Источник — ./en.ts. */
 export const aiChatRu: AiChatDictionary = {
   title: "Nightshift AI",
   subtitle:

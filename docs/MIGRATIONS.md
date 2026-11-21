@@ -2245,9 +2245,40 @@ each one JSON object. No table, no write, no value in the file.
 - Lab: `tests/security/sec_owner_brain_0197.py`, `tests/security/test_sec_owner_brain.py`. Rollback:
   `docs/sql/rollback_0197_owner_brain_facts.sql` (nothing stored, nothing lost).
 
-## Nightshift AI: the Studio's assistant (0198)
+## Film Studio P3: a switch per organization, and the take's creative job (0198)
 
-0198 (`0198_studio_ai_chat.sql`) is the database half of Nightshift AI and the Nightshift Brain. The product contract is in docs/studio/NIGHTSHIFT_AI.md, and operating notes are in docs/studio/AI_CHAT.md.
+0198 (`0198_film_studio_org_switch.sql`, provisional number) adds `org_film_settings.film_studio_enabled` (**off** by default). A
+film starts, and a segment is handed to a worker, only while the platform's switch (`film_studio_settings`, 0171) **and** the
+organization's are on (`film_studio_on_for(org)`): `start_film` refuses `film_studio_disabled`, `quote_film` lists it in
+`blocked_by`, and `film_claim_segment` skips the segment (the unchanged `film_expire_segments` settles it while its hold is open).
+
+- **Who switches it.** `set_org_film_studio_enabled(org, on)`: a platform owner or admin (owner_guard: second factor, a rate
+  limit) or the SQL editor. Every change writes `security_events` (`film_studio.org_enabled`). This file never touches the platform
+  switch, which stays off.
+- **The take's job.** `film_take_job(take, worker)` (service role only) writes the running take's creative job for the worker
+  holding the segment's lease: `payer = 'film'`, `film_take_id`, no hold, quoted 0, already `running` under that worker (the
+  credit-paid creative worker never claims it), `requested_by` = the person who started the film (0187, 0117). The database decides
+  the inputs (key frame, previous last frame, end frame, references) and records them on the take. One job a take, ever.
+- **10-second films.** `film_limits().target_seconds_min` 60 -> 10 and `films_format_check` 10-1200 s, so a 15-30 s advert of 1-3
+  scenes is a film. The scene rule (3-30 s, 1-3 shots) is unchanged. The check is replaced only when it is 0166's or 0198's.
+- **A film take's job is the film worker's alone** (Breach/Lens/Sentinel on #853). `claim_creative_job` (0036) never sweeps nor
+  picks payer `film`; `cancel_creative_job` (0036) answers `not_found` for it; a lease that changes hands takes the live jobs of the
+  segment's running takes with it (the `film_claim_segment` hunk); ending a take ends its job (`film_fail_locked`, 0171) and a
+  settled segment leaves none live (`film_settle_locked`); the `creative_jobs_notify` trigger (0064) skips payer `film`.
+- **Off means nothing new begins.** `film_begin_take` (0171) and `film_take_job` refuse `film_studio_disabled` while either switch
+  is off; a job already at the vendor may still be resumed, and a running segment of an org switched off may still be re-claimed so
+  it is polled. Only a queued one is skipped by the claim.
+- **Replaced bodies.** `quote_film` and `start_film` (0192's), `film_claim_segment`, `film_fail_locked`, `film_begin_take` and
+  `film_settle_locked` (0171's), `claim_creative_job` and `cancel_creative_job` (0036's) and `film_limits` (0166's), with marked hunks,
+  under an md5 drift guard. Re-running 0192, 0171 or 0166 over it fails loudly; re-running 0036 or 0064 SILENTLY puts the old queue,
+  cancel or trigger back: apply 0198 again after either.
+- **Without it.** `tools/film_worker.py` cannot make a take (`film_take_job` is missing): it refuses to start.
+- **Undo.** `docs/sql/rollback_0198_film_studio_org_switch.sql` (owner-applied): the nine earlier bodies, 0064's trigger and 0166's
+  check back (refused while any film targets less than 60 s), the four functions dropped, the column kept.
+
+## Nightshift AI: the Studio's assistant (0199)
+
+0199 (`0199_studio_ai_chat.sql`) is the database half of Nightshift AI and the Nightshift Brain. The product contract is in docs/studio/NIGHTSHIFT_AI.md, and operating notes are in docs/studio/AI_CHAT.md.
 
 - **Tables.** RLS is on for all six.
   - `ai_chat_sessions`: slots, step, BRIEF, card and handoff. Readable by its author only.
@@ -2266,5 +2297,5 @@ each one JSON object. No table, no write, no value in the file.
   - Owner-only: `ai_chat_set_model`, `ai_chat_set_plan_cap`, `ai_chat_set_limits`, `ai_chat_set_pilot`, `ai_chat_owner_settings` and `ai_chat_usage`.
 - **Not changed.** Every price, hold, credit, create, film and publish rule. A long plan opens Run now. A short plan is a film draft (`create_film_draft`/`save_film`), started only by the person through `/api/films/<id>/start`.
 - **Without it.** The panel says "not set up on this database".
-- **Lab.** `tests/security/sec_ai_chat_0198.py`, `test_sec_ai_chat.py` and `test_sec_breach_0198.py`.
-- **Rollback.** `docs/sql/rollback_0198_studio_ai_chat.sql`.
+- **Lab.** `tests/security/sec_ai_chat_0199.py`, `test_sec_ai_chat.py` and `test_sec_breach_0199.py`.
+- **Rollback.** `docs/sql/rollback_0199_studio_ai_chat.sql`.

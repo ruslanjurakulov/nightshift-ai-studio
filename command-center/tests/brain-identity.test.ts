@@ -98,7 +98,7 @@ describe("only what can be made here is offered (Pixel M6)", () => {
   });
 });
 
-describe("the vendor check does not swallow ordinary words (Lens S4 on 0198)", () => {
+describe("the vendor check does not swallow ordinary words (Lens S4 on 0199)", () => {
   it.each(["A video about Claude Monet's water lilies", "Gemini season: what the stars say", "Shakespeare's Sonnet 18, read slowly", "Клод Моне и его сад", "Egyptian pyramids"])(
     "%s is left alone", (s) => expect(namesVendor(s)).toBe(false));
   it.each(["I am powered by Gemini", "Я основан на Gemini", "My model is Sonnet 5"])("%s is the assistant naming itself", (s) => expect(namesVendor(s)).toBe(true));
