@@ -1,0 +1,115 @@
+name: Frontend
+
+# The Command Center had no CI at all: `tsc`, `next lint` and `vitest` only ever
+# ran on someone's laptop, so a type error or a failing derivation reached main
+# whenever they forgot. This runs the same three checks the Python suite's
+# counterpart runs for the bot.
+#
+# Scoped by path in both directions: Tests ignores `command-center/**` and this
+# one runs on nothing else, so a frontend change never pays for the Python suite
+# and a Python change never pays for npm install.
+
+on:
+  push:
+    # main only — see tests.yml. On a PR branch, `push` and `pull_request` would
+    # otherwise both fire on the same SHA and run the identical suite twice.
+    branches: [main]
+    paths:
+      - "command-center/**"
+      - ".github/workflows/frontend.yml"
+      # command-center/lib/creative/model-names.ts is a twin of the registry's names; its test reads this file.
+      - "schemas/model_registry.json"
+  pull_request:
+    branches: [main]
+    paths:
+      - "command-center/**"
+      - ".github/workflows/frontend.yml"
+      # command-center/lib/creative/model-names.ts is a twin of the registry's names; its test reads this file.
+      - "schemas/model_registry.json"
+  workflow_dispatch:
+
+# A second push supersedes the first: only the newest commit on a branch is
+# worth minutes, and cancelling the older run is what keeps the queue short.
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege (BR-S-001): nothing in this workflow calls the GitHub API or
+# pushes, so the job token can only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    # 10 was too tight: on 2026-11-14 three runs were cancelled mid-vitest at the 10-minute mark while
+    # the same suite had passed in ~8.5 minutes earlier that day. A cancelled run is not a result.
+    # 20 was then too tight as well: PR #779's run that evening spent 15 min 8 s in vitest (626 files) and was
+    # cancelled three minutes into `next build`. The suite keeps growing; the limit is a hang guard, not a budget.
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: command-center
+    env:
+      # Nothing here should phone home from CI, and the notice is noise in the log.
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: command-center/package-lock.json
+
+      # `ci` rather than `install`: it installs exactly the lockfile and fails if
+      # package.json has drifted from it, which is a thing CI should catch.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Each check runs even when an earlier one failed, so one round reports
+      # every problem instead of hiding the tests behind a lint nit.
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: npx next lint
+
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: npx vitest run
+
+      # BR-S-004/005: the tree had a critical dev advisory and two runtime ones
+      # that nobody saw because nothing looked. The gate is scripts/audit-gate.mjs:
+      # anything moderate or worse in what ships to production fails the job, and
+      # so does any high or critical advisory in the dev tree unless it is named
+      # in scripts/audit-allowlist.mjs with a reason and an expiry date (the
+      # allowed ones are still printed; the list is empty today).
+      # A new advisory can still turn this red on an unrelated PR;
+      # that is the point, and the fix is its own small dependency PR.
+      - name: Dependency advisories
+        if: ${{ !cancelled() }}
+        run: node scripts/audit-gate.mjs
+
+      # Not redundant with the typecheck. A server/client boundary violation, a
+      # bad route export, or a `"use client"` module importing something
+      # server-only all satisfy `tsc` and fail here — which is a class of
+      # breakage that reached main more than once while tsc was clean. Last
+      # because it is the slowest, so a faster check still fails fast.
+      - name: Build
+        if: ${{ !cancelled() }}
+        run: npx next build
+
+      # The build passing says nothing about what it put in a public page's JavaScript. One client component on /pricing
+      # importing from "@/lib/i18n" instead of "@/lib/i18n/core" shipped every screen's copy (about 2 MB) to signed-out
+      # visitors. tests/public-bundle-dictionary.test.ts checks the import graph; this checks the built chunks.
+      - name: Public bundles carry no app dictionary
+        if: ${{ !cancelled() }}
+        run: node scripts/public-bundle-check.mjs

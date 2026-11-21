@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""Voice worker: carry out ``voice_clone_jobs`` (migration 0117, docs/CUSTOM_VOICE.md) — clone, delete at the provider, purge the sample.
+
+    python tools/voice_worker.py --once     # claim at most one job, then exit
+    python tools/voice_worker.py            # loop until SIGTERM / SIGINT
+    python tools/voice_worker.py --sweep    # re-queue purge / deletion jobs that failed for good, log what is overdue, exit (0121)
+
+``--sweep`` calls the two service-role functions of migration 0121 and nothing else (no claim, no provider call, no Storage call). It
+exits 0 when nothing is overdue, 1 when something is (each line logged as ``voice OVERDUE: <line> count=<n> oldest_seconds=<n>``) and 2 when
+the database could not answer. It starts under the same conditions as the loop: the switch is on and all three keys are set.
+
+NOTHING RUNS THIS. There is no service, cron entry or workflow for it, on purpose: it is started by hand, by the owner, after the
+steps in docs/CUSTOM_VOICE.md. It also does nothing unless the repository variable ``NIGHTSHIFT_VOICE_CLONING`` is ``on`` (the owner
+sets it; empty is off). With the switch off it exits 0 without reading the environment's keys or contacting anything.
+
+What a job does is ``modules/voice_worker.py``. This file only wires it to the environment: ``SUPABASE_URL`` and
+``SUPABASE_SERVICE_KEY`` (the queue functions and the private bucket) and ``ELEVENLABS_API_KEY`` (the provider). **Without any of the
+three it refuses to start** (exit 2). That includes the ElevenLabs key: ``claim_voice_job`` hands out the oldest job of ANY kind and cannot
+be asked for a kind, so a worker that cannot reach the provider would claim every clone and every provider deletion, park them, use up their
+three claims and an hour later reject every outstanding clone and permanently fail every deletion. A recording stranded while the key is
+away is purged by hand (docs/CUSTOM_VOICE.md, "Purging a stranded sample by hand"). On the free plan every clone job ends in the closed
+state ``provider_not_enabled`` and nothing is spent.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import signal
+import socket
+import sys
+import threading
+from pathlib import Path
+from typing import List, Optional
+
+REPO_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_DIR))
+
+from modules import voice_profiles as vp  # noqa: E402
+from modules import voice_worker as vw  # noqa: E402
+
+logger = logging.getLogger("voice_worker")
+
+POLL_SECONDS = 15.0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Carry out voice_clone_jobs (migration 0117)")
+    parser.add_argument("--once", action="store_true", help="Claim at most one job, run it, and exit")
+    parser.add_argument("--sweep", action="store_true",
+                        help="Re-queue purge / provider-deletion jobs that failed for good, report what is overdue, and exit (migration 0121)")
+    parser.add_argument("--worker-id", default=os.environ.get("NIGHTSHIFT_WORKER_ID") or f"{socket.gethostname()}-{os.getpid()}")
+    args = parser.parse_args(argv)
+    if args.sweep and args.once:
+        parser.error("--sweep and --once are different runs")
+
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(asctime)s voice_worker %(levelname)s %(message)s")
+
+    if not vw.enabled(os.environ):
+        logger.info("%s is not on: nothing was claimed and nothing was contacted.", vw.SWITCH_ENV)
+        return 0
+
+    url = os.environ.get("SUPABASE_URL", "").strip()
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+    if not url or not key:
+        logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in the worker's env file: the voice queue lives in Supabase.")
+        return 2
+    import requests  # noqa: PLC0415
+
+    try:
+        provider = vp.ElevenLabsVoiceProvider(requests.Session(), os.environ.get("ELEVENLABS_API_KEY", ""))
+    except vp.ProviderError:
+        logger.error("ELEVENLABS_API_KEY must be set: without the provider this worker would claim clone and provider-deletion jobs "
+                     "it cannot carry out and burn their attempts. Nothing was claimed. A stranded recording is purged by hand: "
+                     "docs/CUSTOM_VOICE.md.")
+        return 2
+
+    if args.sweep:
+        return vw.sweep_overdue(vw.VoiceStore(url, key))
+
+    vw.sweep_stale_workdirs()
+    worker = vw.VoiceWorker(vw.VoiceStore(url, key), vw.SampleStorage(url, key), provider,
+                            worker_id=args.worker_id, transcribe=vw.whisper_transcriber())
+    stop = threading.Event()
+
+    def on_signal(signum, _frame):
+        logger.info("signal %s: no new jobs", signum)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGINT, on_signal)
+
+    logger.info("voice worker %s started", args.worker_id)
+    while not stop.is_set():
+        outcome = worker.run_once()
+        if args.once:
+            return 0
+        # Work found: look again at once. Nothing found: wait. (A parked job comes back by itself when its lease runs out.)
+        if outcome is None:
+            stop.wait(POLL_SECONDS)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

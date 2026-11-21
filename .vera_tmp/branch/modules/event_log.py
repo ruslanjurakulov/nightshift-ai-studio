@@ -1,0 +1,506 @@
+"""Event log — structured observability events for the Command Center.
+
+`emit()` records a SystemEvent into StateStore's `system_events` table. That
+table is the data source for the monitoring Command Center's Live Activity
+Feed, agent status, and per-video pipeline timeline. Every important lifecycle
+moment in the pipeline and the intelligence poll emits one.
+
+Two hard guarantees:
+
+1. **emit() never raises and never changes behavior.** Observability must not
+   be able to break video generation, upload, or a scheduled poll. Any failure
+   to record an event is swallowed with a warning and the caller proceeds.
+
+2. **No secret ever enters the event stream.** `metadata` is sanitized before
+   storage: any key whose name looks credential-bearing (token, key, secret,
+   password, cookie, credential, authorization, ...) is dropped and replaced
+   with a redaction marker, so an accidental `emit(..., metadata={"api_key": ...})`
+   cannot leak.
+
+Event names follow a `noun.verb` convention (`topic.selected`, `render.progress`,
+`upload.completed`, `feedback.applied`, ...). The common ones are exported as
+constants below; callers may also pass any string.
+
+Live copy: where the runner has Supabase credentials (SUPABASE_URL and SUPABASE_SERVICE_KEY, as daily_video.yml's
+run step has), each event is also upserted into Supabase's `system_events` as it happens, so the Studio's live view
+sees a run's stages while it runs instead of after the nightly mirror. It is the mirror's own row and `event_key`
+(`supabase_sync._event_row`), so the mirror later finds it there and changes nothing. It is best-effort: a short
+timeout, one warning, and after a failure a two-minute pause, after which it also sends what it missed. The slot-
+evidence events (operator_bot.sources.RUN_EVENTS, and the failures counted beside them) are never copied live: the dead-man switch and the catch-up rely on
+them arriving with the mirror. `NIGHTSHIFT_LIVE_EVENTS=off`
+switches it off.
+
+Storage note: `emit()` opens a short-lived StateStore per call when one isn't
+injected. The event volume is low (a dozen or so per video run, a handful per
+poll), so this is simpler and safer than sharing a long-lived connection across
+the whole pipeline; a test or hot path can inject a store to avoid re-opening.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import threading
+import time
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+# -- canonical event names --------------------------------------------------
+# System / heartbeat
+SYSTEM_STARTED = "system.started"
+# One scheduled attempt at a channel's slot (modules/schedule_catchup.py claim_attempt). Unlike every other event it
+# is written straight to Supabase, atomically, by tools/slot_guard.py before the pipeline starts: the run's local
+# event store reaches Supabase once a day, far too late to cap the attempts of a slot. Closed fields only: the
+# slot's start, the attempt number and the cap. Never evidence that a video exists (see reliability.Evidence).
+SLOT_ATTEMPT = "schedule.attempt"
+SYSTEM_HEARTBEAT = "system.heartbeat"
+# Agents (a logical worker: topic manager, script engine, poller, ...)
+AGENT_STARTED = "agent.started"
+AGENT_COMPLETED = "agent.completed"
+AGENT_FAILED = "agent.failed"
+# Autopilot agent (modules/agent_planner.py). Advisory: the day's chosen topic,
+# the ranked reason it is trending, and the generation prompts — the plan that
+# drove this run's content. Off by default; it decides WHAT to make, the
+# pre-publish gate still decides whether it ships.
+AGENT_PLAN = "agent.plan"
+# Jobs (a unit of scheduled work)
+JOB_CREATED = "job.created"
+JOB_STARTED = "job.started"
+JOB_COMPLETED = "job.completed"
+JOB_FAILED = "job.failed"
+# Pipeline stages
+TOPIC_SELECTED = "topic.selected"
+# Topic memory (modules/topic_manager.py). Deliberately NOT `agent.failed`: the
+# Command Center reads every `agent.failed` as the AI integration failing, and
+# a history file that could not be written or had to be reset is not that.
+# Fixed words and counts only — never a topic title.
+TOPIC_HISTORY_RESET = "topic.history_reset"
+# Not named `.failed` on purpose: command-center/lib/decisions.ts and the Errors
+# page treat ANY event name ending in `.failed` as a failure, whatever its status.
+TOPIC_HISTORY_WRITE_ERROR = "topic.history_write_error"
+# A topic the selection gate (modules/topic_gate.py) refused to use, or could
+# not confirm this time. Not named `.failed` for the reason above, and a warning
+# not a failure: the run carries on with the next candidate. Metadata is fixed
+# words and the gate's rule-set version; the topic is shortened to 100 characters
+# the way topic.selected carries it, so an operator can see WHAT was refused.
+TOPIC_REJECTED = "topic.rejected"
+RESEARCH_STARTED = "research.started"
+RESEARCH_COMPLETED = "research.completed"
+# Packaging is decided BEFORE the script (modules/title_planner.py): the title
+# and a thumbnail concept come first, and the script is written to deliver them.
+TITLE_PLANNED = "title.planned"
+SCRIPT_STARTED = "script.started"
+SCRIPT_COMPLETED = "script.completed"
+VOICE_STARTED = "voice.started"
+VOICE_COMPLETED = "voice.completed"
+MEDIA_STARTED = "media.started"
+MEDIA_COMPLETED = "media.completed"
+# AI-generated b-roll (modules/minimax_broll.py + minimax_client.py). Optional and
+# off by default: when enabled, MiniMax H3 generates an on-topic clip for a few
+# sections instead of pulling stock. `broll.generated` records how many clips were
+# actually produced; a generation failure is never a run failure — the section
+# falls back to Pexels stock and the video still renders.
+BROLL_GENERATED = "broll.generated"
+# AI-generated stills (modules/image_providers.py + Leonardo). Optional and off
+# by default: when enabled, a bespoke on-topic image is generated for a few
+# sections instead of Pexels stock. `image.generated` records how many were
+# produced; a failure is never a run failure — the section falls back to stock.
+IMAGE_GENERATED = "image.generated"
+# Director Mode (modules/director.py). Advisory: the per-scene cinematic shot
+# plan (camera/lens/lighting/mood/motion) used for this run. Never gates.
+DIRECTOR_PLAN = "director.plan"
+# Character Bible / Elements Library (modules/elements.py). Advisory: which
+# reusable characters/locations/props were applied to this run's scenes for
+# visual consistency. Never gates.
+ELEMENTS_APPLIED = "elements.applied"
+# Channel DNA in a run (modules/dna_render.py): the frame and target length
+# it picked and where each came from, and whether a style kit / which @names
+# reached the picture prompts. Counts and names only, never a description.
+DNA_APPLIED = "dna.applied"
+RENDER_STARTED = "render.started"
+RENDER_COMPLETED = "render.completed"
+RENDER_FAILED = "render.failed"
+# AITuber presenter (modules/avatar.py). Optional, off by default; a run stays
+# faceless unless a channel/series enables it. `avatar.skipped` records the
+# common case (no presenter asked for); `avatar.failed` records an enabled-but-
+# -unconfigured or refused request — the run then continues faceless (a wrong or
+# blank presenter is never shipped), it never means the video failed.
+AVATAR_STARTED = "avatar.started"
+AVATAR_COMPLETED = "avatar.completed"
+AVATAR_SKIPPED = "avatar.skipped"
+AVATAR_FAILED = "avatar.failed"
+THUMBNAIL_STARTED = "thumbnail.started"
+THUMBNAIL_COMPLETED = "thumbnail.completed"
+UPLOAD_STARTED = "upload.started"
+UPLOAD_COMPLETED = "upload.completed"
+UPLOAD_FAILED = "upload.failed"
+VIDEO_PUBLISHED = "video.published"
+# The pre-publish gate (Phase 6). `publish.blocked` is the only event in this
+# vocabulary that records something the pipeline REFUSED to do.
+PUBLISH_BLOCKED = "publish.blocked"
+PUBLISH_ALLOWED = "publish.allowed"
+# The gate allowed the video, but the channel's auto-publish is OFF, so the
+# upload is held for a human to publish. This is a policy hold, never a gate
+# failure — `publish.allowed` still fired; the video is finished and on disk.
+PUBLISH_HELD = "publish.held"
+# The video WAS uploaded, but YouTube applied a stricter privacy than the run asked for (an API
+# project that had not passed the audit used to have uploads locked private; YouTube lifted that on
+# 2026-11-02, so this now means YouTube applied something else for another reason). `video.published` still fires,
+# carrying the privacy the video really has. Deliberately NOT `publish.held`: no consumer counts
+# this as held-for-review, because the video is on the channel, only not public.
+PRIVACY_FORCED = "publish.privacy_forced"
+# Advisory pre-publish intelligence (modules/publish_score.py). Records a
+# quality/prediction score for a human to read; it never gates, blocks, or
+# permits anything — the gate above is the only thing that decides publishing.
+PUBLISH_SCORE = "publish.score"
+# Advisory title + thumbnail-text pairing lint (modules/packaging_lint.py): cut points, case, whether
+# the overlay repeats the title. Counts and closed reason words only, never the text. Like
+# publish.score it never gates, blocks, rewrites or permits anything.
+PACKAGING_LINT = "packaging.lint"
+# AI critic on rendered frames (modules/video_critic.py). Advisory and off by
+# default (CHRONOS_AI_CRITIC): per-scene issues a vision model saw on a contact
+# sheet of the render. Like publish.score it never blocks or permits anything.
+VIDEO_CRITIC = "video.critic"
+# Shorts. A short only ever exists downstream of a long video that published,
+# so `short.failed` never means the run failed — the video is already out.
+SHORT_STARTED = "short.started"
+SHORT_COMPLETED = "short.completed"
+SHORT_FAILED = "short.failed"
+# Run checkpoint / resume (modules/run_checkpoint.py). `run.resumed` records a
+# run that reused a crashed run's saved artifacts (today: the script, skipping
+# the paid Gemini generation). Advisory bookkeeping — it never changes what is
+# produced, only what gets re-paid-for.
+RUN_RESUMED = "run.resumed"
+# What a run asked of Gemini (modules/gemini_stages.py): one event at the end of a run that made any request,
+# with the requests per stage and model and the per-day quota errors seen. Counts and stage/model names only.
+# Not named `.failed` on purpose (a quota stop is a warning here; the run's own ending says it failed).
+GEMINI_USAGE = "gemini.usage"
+# Storyboard review (modules/storyboard_review.py, migration 0057). `storyboard.ready`
+# records a run that stopped after its script and scene plan, before anything
+# was spent on the render, and waits for a person; `storyboard.stopped` a run
+# that stopped on an earlier storyboard (still waiting, or discarded). Neither
+# is a failure, and neither ever causes a render or an upload.
+STORYBOARD_READY = "storyboard.ready"
+STORYBOARD_STOPPED = "storyboard.stopped"
+# Targeted scene repair (modules/scene_repair.py). A repair re-fetches footage
+# for the named scenes only, re-renders them through the scene cache and holds
+# the new cut for review — it never uploads; `repair.completed` carries scene
+# ids, counts and the QC verdict, never paths or script text.
+REPAIR_STARTED = "repair.started"
+REPAIR_COMPLETED = "repair.completed"
+REPAIR_FAILED = "repair.failed"
+# Channels (Phase 5). Lifecycle only — the per-stage events above already
+# carry a channel_id, so there is no channel.job.* duplicate of job.*.
+CHANNEL_CREATED = "channel.created"
+CHANNEL_UPDATED = "channel.updated"
+CHANNEL_PAUSED = "channel.paused"
+CHANNEL_ACTIVATED = "channel.activated"
+CHANNEL_OAUTH_CONNECTED = "channel.oauth.connected"
+CHANNEL_OAUTH_FAILED = "channel.oauth.failed"
+# Telegram control panel (modules/telegram_control.py + tools/run_telegram_control.py).
+# `telegram.command` records an admin command the transport routed — a read query
+# or an action INTENT. It records intents for observability and a driver to act
+# on; the transport itself never uploads or flips a channel's autonomy, and an
+# action still runs through the normal gated pipeline.
+TELEGRAM_COMMAND = "telegram.command"
+# Credential health preflight (modules/credential_health.py). Advisory: reports
+# which credentials a run needs and whether they are present, before it spends.
+CREDENTIAL_HEALTH = "credential.health"
+# Per-channel spend ceiling (modules/budget.py). `budget.preflight` records the
+# channel's spend vs its ceiling before a run; `budget.exceeded` records a run
+# stopped BEFORE spending because the ceiling was already met. Off unless a
+# channel sets a ceiling; a data gap (unpriced costs) never triggers a block.
+BUDGET_PREFLIGHT = "budget.preflight"
+BUDGET_EXCEEDED = "budget.exceeded"
+# Spend forecast (modules/budget.py). Advisory: a straight-line projection of
+# the channel's month-end spend, flagging when the pace is on track to blow a
+# set ceiling. It forecasts for a human/Command Center — it never blocks a run.
+BUDGET_FORECAST = "budget.forecast"
+# All-Accounts spend overview (modules/spend_overview.py). Advisory: month-to-date
+# spend rolled up across every channel, per provider/unit, with a month-end
+# projection and — where a ceiling is set — how many more videos the budget
+# covers. USD only when priced (null ≠ 0); it reports, it never blocks.
+SPEND_OVERVIEW = "spend.overview"
+# Analytics / feedback loop
+ANALYTICS_UPDATED = "analytics.updated"
+FEEDBACK_GENERATED = "feedback.generated"
+FEEDBACK_APPLIED = "feedback.applied"
+# Series playlist (modules/playlist.py). Best-effort, downstream of a live
+# video: `playlist.failed` never means the run failed — the video is published.
+PLAYLIST_ADDED = "playlist.added"
+PLAYLIST_FAILED = "playlist.failed"
+# Engagement comment (modules/pinned_comment.py). The channel's own first comment
+# — an on-topic question — posted right after a video publishes; the creator pins
+# it in one tap (the Data API can't pin). Best-effort and downstream of a live
+# video: `comment.failed`/`comment.skipped` never mean the run failed.
+COMMENT_POSTED = "comment.posted"
+COMMENT_SKIPPED = "comment.skipped"
+COMMENT_FAILED = "comment.failed"
+# Re-package underperformers (modules/repackage.py). Advisory: flags published
+# videos whose CTR is well below the channel's own median as candidates for a
+# new title/thumbnail. It never edits a live video — like publish.score it
+# informs a human/Command Center, it does not act.
+REPACKAGE_SUGGESTED = "repackage.suggested"
+# Watch-next link (modules/watch_next.py). A "▶ WATCH NEXT" link into another of
+# the channel's videos, added to the description (the API can't set end screens).
+# Best-effort description text: it never changes what publishes or when.
+WATCH_NEXT_LINKED = "watchnext.linked"
+# Publish-time optimizer (modules/publish_timing.py). Advisory: the hour (UTC)
+# and weekday this channel's best-performing videos were published, for the
+# scheduler/human to use. It never reschedules or holds a run on its own.
+PUBLISH_TIMING = "publish.timing"
+# Niche RPM intelligence (modules/niche_rpm.py). Advisory: a ranking of niches
+# by measured performance for a human/scheduler to consult. It never changes
+# niche selection on its own — like publish.score, it informs, it does not gate.
+NICHE_RPM = "niche.rpm"
+# Sponsorship pricing (modules/sponsorship.py). Advisory: a suggested price for
+# one integrated sponsor slot, from the channel's measured average views × a
+# configured sponsorship CPM (USD). It informs a human's negotiation — it never
+# contacts a sponsor, sells a slot, or commits to a price.
+SPONSORSHIP_ESTIMATE = "sponsorship.estimate"
+# Revenue tracking (modules/revenue_tracker.py). Advisory: the channel's real
+# estimatedRevenue (USD) and RPM, read back from YouTube Analytics for a
+# human/Command Center. A video with no reported revenue is "unknown", never
+# $0. It never gates a publish or changes niche selection — it reports.
+REVENUE_TRACKED = "revenue.tracked"
+# vidIQ research & scoring (modules/vidiq.py). Advisory: `vidiq.research` records
+# a ranking of keyword opportunities; `vidiq.scored` a ranking of candidate
+# titles by vidIQ's title score. Research and scoring ONLY — it never selects a
+# topic, edits a title, gates a publish, or runs a second pipeline; it informs.
+VIDIQ_RESEARCH = "vidiq.research"
+VIDIQ_SCORED = "vidiq.scored"
+# Viral Remix (modules/remix.py). `remix.planned` records an eligible, rights-clean
+# remix plan (a NEW transformative work, still gated); `remix.blocked` records a
+# source refused for lacking an asserted rights basis. Off unless a channel opts in;
+# neither event ever weakens or skips the pre-publish gate the remix output faces.
+REMIX_PLANNED = "remix.planned"
+REMIX_BLOCKED = "remix.blocked"
+# Quota allocation (modules/quota_allocator.py). Advisory: the recommended split
+# of a day's upload budget across channels by measured performance, with a
+# reserved baseline per channel. It recommends for a scheduler/human — it never
+# schedules or publishes anything itself.
+QUOTA_ALLOCATED = "quota.allocated"
+# State durability (modules/durability.py). Advisory: whether the ephemeral
+# local history is safely mirrored to Supabase, and when a JSON backup was
+# written. It never deletes or overwrites history — it reports and backs up.
+DURABILITY_CHECK = "durability.check"
+
+# Status vocabulary (free-form, but these are the common ones).
+STATUS_RUNNING = "running"
+STATUS_COMPLETED = "completed"
+STATUS_FAILED = "failed"
+# Something degraded but the run goes on (a history file reset, say). The
+# Command Center renders an unknown status neutrally; only "failed"/"error"
+# are errors there.
+STATUS_WARNING = "warning"
+
+# Substrings that mark a metadata key as credential-bearing. Case-insensitive.
+_SENSITIVE_KEY_MARKERS = (
+    "token", "secret", "password", "passwd", "cookie", "credential",
+    "authorization", "auth", "api_key", "apikey", "access_key", "private",
+    "client_secret", "refresh",
+)
+_REDACTED = "[redacted]"
+
+
+def _looks_sensitive(key: str) -> bool:
+    lowered = str(key).lower()
+    # A bare "key" is too broad (video_key, topic_key are innocent), so only
+    # redact when the name carries one of the credential markers.
+    return any(marker in lowered for marker in _SENSITIVE_KEY_MARKERS)
+
+
+def _sanitize(metadata: dict | None) -> str | None:
+    """Serialize metadata to JSON with credential-bearing keys redacted.
+
+    Returns None for empty/None input. Never raises: anything that won't
+    serialize is coerced to its repr so an odd value can't break emit().
+    """
+    if not metadata:
+        return None
+    safe: dict = {}
+    for key, value in metadata.items():
+        safe[key] = _REDACTED if _looks_sensitive(key) else value
+    try:
+        return json.dumps(safe, ensure_ascii=False, default=repr)
+    except Exception:
+        # Last-resort: never let metadata serialization break an emit.
+        return json.dumps({"_unserializable": repr(safe)}, ensure_ascii=False)
+
+
+#: requests' (connect, read) timeouts, each its own limit (DNS is not covered): a slow Supabase costs a run a few seconds
+#: once, because a failure pauses the copy (below).
+_LIVE_TIMEOUT_S = (2.0, 2.0)
+#: After a failure the copy pauses this long, then tries again and also sends what it missed: an Actions run is often
+#: over by then, but the queue worker lives for days and one network blip must not silence the live view for good.
+_LIVE_PAUSE_S = 120
+#: How many missed events one catch-up sends at most (a run writes a few dozen).
+_LIVE_BACKFILL = 200
+
+
+def _evidence_events() -> frozenset[str]:
+    """The events the dead-man switch and the scheduler's catch-up read as proof that a slot was worked
+    (modules/operator_bot/sources.RUN_EVENTS). They are NOT copied live: both readers are built on these arriving
+    with the nightly mirror (a run that dies after ``system.started`` is retried and alerted on today, and would not
+    be if its start arrived at once). Copying them would change reliability, not just the view (Lens, PR (A))."""
+    from modules.operator_bot.sources import RUN_EVENTS
+
+    # The failures the owner's /today, /errors and digest count next to them: one of a pair arriving a day before the
+    # other would read "made 0, failed 1" for a day that made one (Lens).
+    return frozenset(RUN_EVENTS) | _COUNTED_FAILURES
+
+
+#: Failure events the operator views count beside RUN_EVENTS (modules/operator_bot/views.py, owner_digest.py).
+_COUNTED_FAILURES = frozenset({"render.failed", "short.failed", "repair.failed"})
+#: Consecutive failures after which the copy stops for the life of the process: a fault that keeps happening (a schema
+#: the table lacks, a refused key) is not a blip, and retrying it every pause only repeats the warning.
+_LIVE_MAX_FAILURES = 5
+
+
+class _LiveState:
+    """The process's live-copy client and its failure. Guarded by a lock: emit() may be called from threads."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.sync = None
+        #: monotonic time until which nothing is sent; None = sending.
+        self.paused_until: float | None = None
+        #: The ts of the first event a failure kept back: the catch-up sends from there.
+        self.missed_since: str | None = None
+        #: No credentials, or a fault that is not transient: nothing more is sent for the life of the process.
+        self.disabled = False
+        self.failures = 0
+
+
+_live = _LiveState()
+
+
+def _reset_live_sync() -> None:
+    """Tests only: forget the process's live-copy client and its failure."""
+    global _live
+    _live = _LiveState()
+
+
+def _live_copy(store, event_id: int | None) -> None:
+    """Send one stored event to Supabase's system_events, as the nightly mirror would. Never raises.
+
+    A swallowed error here is acceptable only because the event stays in the local store and is sent later under the
+    same event_key: by this copy's own catch-up once the pause ends, and, for an Actions run, by the nightly mirror
+    (tools/run_intelligence_poll.py → SupabaseSync.mirror_from_store). On the queue worker no mirror covers the store,
+    so the catch-up is the only later route; an event kept back when its process ends inside a pause never reaches
+    Supabase, which is also where every such event stood before this copy existed. Anywhere that is not acceptable,
+    this must not be copied.
+    """
+    # A store that is not a StateStore (a test double) gives no row id: nothing to send.
+    if type(event_id) is not int:
+        return
+    if os.environ.get("NIGHTSHIFT_LIVE_EVENTS", "").strip().lower() in ("off", "0", "false", "no"):
+        return
+    state = _live
+    failure = None
+    row: dict | None = None
+    with state.lock:
+        if state.disabled:
+            return
+        try:
+            row = store.get_event(event_id)
+            if not row or row.get("event") in _evidence_events():
+                return
+            if state.paused_until is not None and time.monotonic() < state.paused_until:
+                if state.missed_since is None:
+                    state.missed_since = row.get("ts")
+                return
+            sync = state.sync
+            if sync is None:
+                from modules.supabase_sync import SupabaseSync
+
+                sync = SupabaseSync()
+                if not sync.enabled:
+                    state.disabled = True
+                    return
+                state.sync = sync
+            rows = [row]
+            if state.missed_since is not None:
+                evidence = _evidence_events()
+                listed = store.list_events(since=state.missed_since, limit=_LIVE_BACKFILL)
+                if len(listed) >= _LIVE_BACKFILL:
+                    # Newest first: the oldest missed events are cut here; the nightly mirror (Actions runs) still sends them.
+                    logger.warning("Live event copy: more than %d events were kept back; the oldest are not re-sent live", _LIVE_BACKFILL)
+                back = [r for r in listed if r.get("event") not in evidence]
+                rows = list({r["id"]: r for r in back + [row]}.values())
+            payload = [sync._event_row(r) for r in rows]
+            sent = sync.upsert("system_events", payload, on_conflict="event_key", timeout=_LIVE_TIMEOUT_S, quiet=True)
+            if sent == len(payload):
+                state.paused_until = None
+                state.missed_since = None
+                state.failures = 0
+                return
+            failure = sync.last_failure
+        except Exception as e:
+            failure = type(e).__name__
+        state.paused_until = time.monotonic() + _LIVE_PAUSE_S
+        if state.missed_since is None and row is not None:
+            state.missed_since = row.get("ts")
+        state.failures += 1
+        status = failure[0] if isinstance(failure, tuple) else None
+        # A refusal (4xx other than a timeout or a rate limit) will be refused again: stop instead of retrying forever.
+        permanent = isinstance(status, int) and 400 <= status < 500 and status not in (408, 429)
+        if permanent or state.failures >= _LIVE_MAX_FAILURES:
+            state.disabled = True
+    if state.disabled:
+        logger.warning("Live event copy to Supabase stopped for this process (%s); the events stay local", failure)
+        return
+    # Only an HTTP status and PostgREST's error code, or an exception's class name: never a body or an exception's text,
+    # which can carry the Supabase host (a secret on the worker) or a header.
+    logger.warning("Live event copy to Supabase failed (%s); paused for %d s, then it sends what it missed", failure, _LIVE_PAUSE_S)
+
+
+def emit(
+    event: str,
+    *,
+    video_id: str | None = None,
+    job_id: str | None = None,
+    agent: str | None = None,
+    status: str | None = None,
+    duration_ms: float | None = None,
+    metadata: dict | None = None,
+    channel_id: str | None = None,
+    store=None,
+) -> bool:
+    """Record one observability event. Returns True on success, False if it was
+    swallowed. Never raises.
+
+    Pass `store` (an open StateStore) on a hot path to avoid re-opening the DB;
+    otherwise a short-lived store is opened and closed for this one event.
+
+    `channel_id` marks the event as one channel's work. Leave it None for
+    genuinely global events — a system heartbeat or an infrastructure failure
+    belongs to no channel, and tagging it with one would make the Command
+    Center attribute shared infrastructure to whichever channel ran last.
+    """
+    try:
+        ts = datetime.utcnow().isoformat()
+        payload = _sanitize(metadata)
+        if store is not None:
+            event_id = store.record_event(
+                event=event, ts=ts, video_id=video_id, job_id=job_id,
+                agent=agent, status=status, duration_ms=duration_ms, metadata=payload,
+                channel_id=channel_id,
+            )
+            _live_copy(store, event_id)
+            return True
+        from modules.state_store import StateStore
+
+        with StateStore() as own_store:
+            event_id = own_store.record_event(
+                event=event, ts=ts, video_id=video_id, job_id=job_id,
+                agent=agent, status=status, duration_ms=duration_ms, metadata=payload,
+                channel_id=channel_id,
+            )
+            _live_copy(own_store, event_id)
+        return True
+    except Exception as e:
+        logger.warning("Failed to record event %r (%s: %s) — continuing", event, type(e).__name__, e)
+        return False

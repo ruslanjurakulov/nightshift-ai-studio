@@ -1,0 +1,298 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/config";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { fmt } from "@/lib/i18n/core";
+import { AuthAlert, AuthField, AuthNotice, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
+import { useInvited } from "@/components/auth/InvitedContext";
+import { GoogleButton } from "@/components/auth/GoogleButton";
+import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
+import { AUTH_CALLBACK_PATH, HANDLE_CHECK_PATH } from "@/lib/public-paths";
+import { afterSignupPath, studioNext } from "@/lib/safe-redirect";
+import { HandleInput } from "@/components/account/HandleInput";
+import { useHandleCheck } from "@/components/account/useHandleCheck";
+import { HANDLE_META_KEY, applyPendingHandle, handleAllowsSubmit, type HandleClient } from "@/lib/handles";
+import {
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  classifySignupError,
+  neutralSignupOutcome,
+  classifySignupResult,
+  validateSignup,
+  type SignupFieldError,
+  type SignupOutcome,
+} from "@/lib/signup";
+
+/** The visitor's availability check: our own route, one yes/no/unknown. Anything odd is "unknown". */
+async function askHandleAvailable(handle: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(HANDLE_CHECK_PATH, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ handle }),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { available?: unknown };
+    return typeof body.available === "boolean" ? body.available : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Self-serve sign-up. The account is created by Supabase Auth with the anon
+ * key, exactly like sign-in; nothing here touches a table. With "Confirm
+ * email" on (docs/SIGNUP_SETUP.md), no session exists until the emailed link
+ * is opened — it lands on /auth/callback, which signs the person in and sends
+ * them to /welcome.
+ */
+export default function SignupPage() {
+  const router = useRouter();
+  const { t } = usePublicI18n();
+  const invited = useInvited();
+  // With Google offered, it is the first and primary way in and the e-mail submit is the quiet key under it.
+  const google = useGoogleEnabled();
+  const [email, setEmail] = useState("");
+  const [handleInput, setHandleInput] = useState("");
+  const { status: handleStatus, handle } = useHandleCheck(handleInput, useCallback(askHandleAvailable, []));
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [adult, setAdult] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<SignupFieldError | Exclude<SignupOutcome, "already_registered"> | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  // A Studio form to come back to (the landing's idea box, a sample's "Try this prompt") is carried to sign-in as well, so someone
+  // who already has an account and follows "Sign in" still lands on it. Read after mount: the page is static.
+  const [loginHref, setLoginHref] = useState("/login");
+  useEffect(() => {
+    const next = studioNext(new URLSearchParams(window.location.search).get("next"));
+    if (next) setLoginHref(`/login?next=${encodeURIComponent(next)}`);
+  }, []);
+
+  const messages: Record<SignupFieldError | Exclude<SignupOutcome, "check_email" | "signed_in" | "already_registered">, string> = {
+    email_invalid: t.signup.errEmail,
+    handle_invalid: t.signup.errHandle,
+    password_short: fmt(t.signup.errPasswordShort, { n: PASSWORD_MIN }),
+    password_long: t.signup.errPasswordLong,
+    password_mismatch: t.signup.errMismatch,
+    consent_required: t.signup.errConsent,
+    age_required: t.signup.errAge,
+    weak_password: t.signup.errWeakPassword,
+    rate_limited: t.signup.errRateLimited,
+    signups_closed: t.signup.errSignupsClosed,
+    failed: t.signup.errFailed,
+  };
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    // A name still being checked is waited for (the button is disabled meanwhile), not refused.
+    if (busy || handleStatus.kind === "checking") return;
+    // The username is required; "could not check" may go on (the database decides when it is saved).
+    const invalid = validateSignup({ email, password, confirm, consent, adult, handleOk: handleAllowsSubmit(handleStatus) });
+    if (invalid) {
+      setProblem(invalid);
+      return;
+    }
+    const supabase = createClient();
+    if (!supabase) return;
+
+    setBusy(true);
+    setProblem(null);
+    const address = email.trim();
+    // /welcome, or /welcome carrying a Studio form to open afterwards (a model sample's "Try it"): never anywhere else.
+    const after = afterSignupPath(new URLSearchParams(window.location.search).get("next"));
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: address,
+        password,
+        options: {
+          // Kept on the new account until its first session can set it (lib/handles.ts applyPendingHandle).
+          data: { [HANDLE_META_KEY]: handle },
+          emailRedirectTo: `${window.location.origin}${AUTH_CALLBACK_PATH}?next=${encodeURIComponent(after)}`,
+        },
+      });
+      // An address that already has an account sees the same screen as a new one (neutralSignupOutcome).
+      const outcome = neutralSignupOutcome(error ? classifySignupError(error) : classifySignupResult(data));
+      if (outcome === "signed_in") {
+        // "Confirm email" is off in this project: the account is live already,
+        // so there is no confirmation link to land on /auth/callback, where a
+        // friend's invite is otherwise recorded. The database still refuses an
+        // account whose e-mail it has not confirmed.
+        if (invited) await fetch("/api/invite/join", { method: "POST" }).catch(() => undefined);
+        await applyPendingHandle(supabase as unknown as HandleClient);
+        router.push(after);
+        router.refresh();
+        return;
+      }
+      if (outcome === "check_email") {
+        setPassword("");
+        setConfirm("");
+        setSentTo(address);
+      } else {
+        setProblem(outcome);
+      }
+    } catch {
+      setProblem("failed");
+    }
+    setBusy(false);
+  }
+
+  if (sentTo) {
+    return (
+      <AuthShell title={t.signup.checkTitle} mode="signup">
+        <p role="status" className="st-body mt-4 text-[var(--ns-text)]">
+          {fmt(t.signup.checkBody, { email: sentTo })}
+        </p>
+        <p className="st-small mt-3">{t.signup.checkHint}</p>
+        <div className="mt-8 flex flex-col gap-3">
+          <Link href={loginHref} className="st-key" data-block="true">
+            {t.signup.signIn}
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setSentTo(null);
+              setBusy(false);
+            }}
+            className="st-link self-center text-sm"
+          >
+            {t.signup.useDifferent}
+          </button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  const shownProblem = problem && problem !== "check_email" && problem !== "signed_in" ? messages[problem] : null;
+
+  return (
+    <AuthShell title={t.signup.title} subtitle={t.signup.sub} mode="signup">
+      {!isSupabaseConfigured && (
+        <div className="mt-5">
+          <AuthAlert tone="warn">{t.site.auth.unavailableSignup}</AuthAlert>
+        </div>
+      )}
+      {invited && (
+        <div className="mt-5" data-invite-banner>
+          <AuthNotice>{t.signup.invitedBanner}</AuthNotice>
+        </div>
+      )}
+
+      <GoogleButton mode="signup" />
+
+      <form onSubmit={onSubmit} noValidate className="mt-8">
+        <fieldset disabled={!isSupabaseConfigured} className="st-fieldset">
+          <AuthField
+            label={t.signup.email}
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <HandleInput
+            variant="public"
+            label={t.signup.handleLabel}
+            value={handleInput}
+            onChange={(v) => {
+              setHandleInput(v);
+              if (problem === "handle_invalid") setProblem(null);
+            }}
+            status={handleStatus}
+            handle={handle}
+            strings={t.signup}
+            required
+          />
+          <AuthField
+            label={t.signup.password}
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={PASSWORD_MIN}
+            maxLength={PASSWORD_MAX}
+            hint={fmt(t.signup.passwordHint, { n: PASSWORD_MIN })}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <AuthField
+            label={t.signup.confirm}
+            type="password"
+            autoComplete="new-password"
+            required
+            maxLength={PASSWORD_MAX}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+          <label className="mt-1 flex min-h-11 items-start gap-3 text-sm leading-snug text-[var(--ns-text-dim)]">
+            <input
+              type="checkbox"
+              required
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              className="size-6 shrink-0 accent-[var(--st-act)]"
+            />
+            <span>
+              {t.signup.consentPre}{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--st-act-ink)]"
+              >
+                {t.signup.terms}
+              </Link>{" "}
+              {t.signup.consentAnd}{" "}
+              <Link
+                href="/privacy"
+                target="_blank"
+                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--st-act-ink)]"
+              >
+                {t.signup.privacy}
+              </Link>
+              {t.signup.consentPost}
+            </span>
+          </label>
+          {/* Nothing records this box on the server (no consent or terms-version record exists for sign-up today): it is
+              the person's own statement, required before the form is sent, as the vendors' 18+ terms require. */}
+          <label className="mt-1 flex min-h-11 items-start gap-3 text-sm leading-snug text-[var(--ns-text-dim)]">
+            <input
+              type="checkbox"
+              required
+              data-age-confirm
+              checked={adult}
+              onChange={(e) => {
+                setAdult(e.target.checked);
+                if (problem === "age_required") setProblem(null);
+              }}
+              className="size-6 shrink-0 accent-[var(--st-act)]"
+            />
+            <span>{t.signup.ageConfirm}</span>
+          </label>
+          {shownProblem && (
+            <AuthAlert tone="fail">
+              {shownProblem}
+            </AuthAlert>
+          )}
+          <AuthSubmit
+            busy={busy}
+            disabled={!isSupabaseConfigured || handleStatus.kind === "checking"}
+            tone={google ? "quiet" : undefined}
+          >
+            {busy ? t.signup.submitting : t.signup.submit}
+          </AuthSubmit>
+        </fieldset>
+      </form>
+
+      <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
+        {t.signup.haveAccount}
+        <Link href={loginHref} className="st-link text-[15px]">
+          {t.signup.signIn}
+        </Link>
+      </p>
+    </AuthShell>
+  );
+}

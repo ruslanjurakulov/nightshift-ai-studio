@@ -1,0 +1,683 @@
+name: Deploy web
+
+# Deploys the self-hosted Command Center (deploy/, docs/DEPLOY_AX42.md) to the
+# server whenever main changes what the server runs. Configuration lives ONLY
+# in the GitHub Environment `production`: this job turns it into the server's
+# /opt/nightshift/.env.web on every run, so nobody edits that file by hand and
+# the two can never drift.
+#
+#   GitHub Environment `production`      runner                  server (forced command)
+#   vars.* + secrets.*  ──env──>  build KEY=value lines  ──ssh stdin──>  deploy/remote-deploy.sh
+#
+# Secrets travel in step `env:` and over ssh's stdin only: never interpolated
+# into a script, never on a command line, never echoed. This repository is
+# public and so are its Actions logs; GitHub masks `secrets.*` in them, and the
+# server side prints key names and container status, never values.
+#
+# Never on pull_request: a PR run would hand the deploy key to code that has
+# not been reviewed.
+#
+# While the variable NIGHTSHIFT_WORKER is `on`, the same run also deploys the
+# pipeline worker next to it, with its own env file built from the repository's
+# Actions secrets (step "Build the worker env"; docs/DEPLOY_AX42.md, g).
+# While NIGHTSHIFT_CREATIVE_WORKER is `on` as well, it also starts the creative
+# worker (creative_jobs, migration 0036); otherwise that one is removed.
+# While NIGHTSHIFT_FILM_WORKER is `on` as well, it also starts the film worker
+# (Film Studio segments, migrations 0171 and 0198); otherwise that one is removed.
+# Two small workers have a switch and an env file each, and neither is the
+# pipeline worker's: while NIGHTSHIFT_NOTIFY_WORKER is `on` the customer
+# Telegram sender (notify-worker, /opt/nightshift/.env.notify, step "Build the
+# notify env"), while NIGHTSHIFT_EMAIL_WORKER is `on` the customer e-mail sender
+# (email-worker, /opt/nightshift/.env.email, step "Build the e-mail env").
+# Anything but `on` removes that container and its file. Both are independent
+# of NIGHTSHIFT_WORKER.
+# The operator bot has the same shape: while NIGHTSHIFT_OPERATOR_BOT is `on`,
+# the always-on operator-bot service (its own
+# /opt/nightshift/.env.operator, step "Build the operator-bot env") long-polls
+# Telegram and runs the alert pass, and the two GitHub workflows it replaces
+# (telegram_control.yml, operator_alerts.yml) skip their work on the same
+# variable, so Telegram never sees two getUpdates consumers. Anything but `on`
+# removes the container and its file and those workflows run as before.
+# The brand channel's poster (migration 0108, docs/MARKETING_POSTS.md) is the same
+# shape and OFF by default: while NIGHTSHIFT_MARKETING_WORKER is `on` the
+# marketing-worker (its own /opt/nightshift/.env.marketing, step "Build the
+# marketing env") exists, and it still drafts and sends nothing until
+# NIGHTSHIFT_MARKETING_POSTS is `on` too. Anything but `on` removes the container
+# and its file, so no secret has to exist for a deploy while it is off.
+# The brand scan worker (Ads Factory, Phase 2, migrations 0133 and 0134) is the same
+# shape and OFF by default: while NIGHTSHIFT_ADS_BRAND_SCAN is `on` (the same variable
+# that shows the "Scan my site" panel) the brand-scan-worker (its own
+# /opt/nightshift/.env.brandscan, step "Build the brand-scan env") exists. It sells
+# nothing until the owner sets the price in the database. Anything but `on` removes
+# the container and its file.
+
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "command-center/**"
+      - "deploy/**"
+      - ".github/workflows/deploy_web.yml"
+      # What the worker image is built from (Dockerfile.worker, .dockerignore).
+      # With the worker off these redeploy an unchanged web image: cached, quick.
+      - "Dockerfile.worker"
+      - ".dockerignore"
+      - "requirements.txt"
+      - "constraints.txt"
+      - "main.py"
+      - "config.py"
+      - "modules/**"
+      - "tools/**"
+      - "schemas/**"
+      # The marketing worker reads docs/news/*.json, banned-claims.json and docs/promo/*.json from its
+      # image (docs/MARKETING_POSTS.md): a merged news item or promo file must rebuild it.
+      - "docs/news/**"
+      - "docs/promo/**"
+  workflow_dispatch:
+
+# One deploy at a time, and never cancelled halfway: an interrupted
+# `compose up` leaves the server between two versions. A newer push waits.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # A worker mid-render gets up to 15 minutes to finish (docker-compose.yml).
+    timeout-minutes: 45
+    # Required reviewers or a branch rule can be added to this environment in
+    # Settings -> Environments without touching this file.
+    environment:
+      name: production
+      url: ${{ steps.payload.outputs.url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # One entry per key in deploy/.env.web.example, as WEBENV_<KEY>. The
+      # step below walks the example's keys, so a key added there without a
+      # line here fails the deploy (and tests/test_deploy_gha.py, before that).
+      #   vars.*    public or non-sensitive (NEXT_PUBLIC_* are in the browser
+      #             bundle by design)
+      #   secrets.* everything that grants access. Repository-level secrets
+      #             the bot already uses (GOOGLE_OAUTH_*, SLACK_WEBHOOK_URL,
+      #             SUPABASE_URL) are read by the same name: an environment job
+      #             sees them too, so nothing is stored twice.
+      # GitHub reserves the GITHUB_ prefix for its own secret and variable
+      # names, so GITHUB_SECRETS_* are stored as GH_SECRETS_*.
+      # Defaults exist only for facts about this deployment; the legal fields
+      # have none on purpose: an invented operator name or country on /terms is
+      # worse than the page saying NOT CONFIGURED.
+      # SUPABASE_SERVICE_KEY is a repository secret too, and is never read here:
+      # only the worker step below takes it, into the worker's own file.
+      - name: Build the server env
+        id: payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '168.119.142.178' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'nightshift' }}
+          HAS_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+          HAS_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS != '' }}
+          WEBENV_DOMAIN: ${{ vars.DOMAIN || 'new.nightshift-ai.studio' }}
+          WEBENV_ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          # The project URL is public; the bot's SUPABASE_URL secret holds the same one.
+          WEBENV_NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
+          WEBENV_NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          WEBENV_NEXT_PUBLIC_LEGAL_NAME: ${{ vars.NEXT_PUBLIC_LEGAL_NAME }}
+          WEBENV_NEXT_PUBLIC_CONTACT_EMAIL: ${{ vars.NEXT_PUBLIC_CONTACT_EMAIL }}
+          WEBENV_NEXT_PUBLIC_LEGAL_COUNTRY: ${{ vars.NEXT_PUBLIC_LEGAL_COUNTRY }}
+          WEBENV_NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE: ${{ vars.NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE }}
+          WEBENV_NEXT_PUBLIC_PADDLE_ENV: ${{ vars.NEXT_PUBLIC_PADDLE_ENV }}
+          WEBENV_NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: ${{ vars.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PRICE_STARTER: ${{ vars.NEXT_PUBLIC_PADDLE_PRICE_STARTER }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PRICE_CREATOR: ${{ vars.NEXT_PUBLIC_PADDLE_PRICE_CREATOR }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PRICE_STUDIO: ${{ vars.NEXT_PUBLIC_PADDLE_PRICE_STUDIO }}
+          WEBENV_PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
+          WEBENV_PADDLE_API_TOPUP_PRODUCT_ID: ${{ vars.PADDLE_API_TOPUP_PRODUCT_ID }}
+          # Dodo Payments (docs/DODO_SETUP.md): off unless the repository variable PAYMENTS_PROVIDER is exactly dodo. Empty = every
+          # page sells through Paddle exactly as before. Setting nothing leaves it dark; this change does not set it. The key is a secret.
+          WEBENV_PAYMENTS_PROVIDER: ${{ vars.PAYMENTS_PROVIDER }}
+          WEBENV_DODO_PAYMENTS_ENV: ${{ vars.DODO_PAYMENTS_ENV }}
+          WEBENV_DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}
+          WEBENV_DODO_METADATA_SECRET: ${{ secrets.DODO_METADATA_SECRET }}
+          WEBENV_DODO_TEST_ORG_IDS: ${{ vars.DODO_TEST_ORG_IDS }}
+          WEBENV_DODO_PRODUCT_STARTER: ${{ vars.DODO_PRODUCT_STARTER }}
+          WEBENV_DODO_PRODUCT_CREATOR: ${{ vars.DODO_PRODUCT_CREATOR }}
+          WEBENV_DODO_PRODUCT_STUDIO: ${{ vars.DODO_PRODUCT_STUDIO }}
+          WEBENV_DODO_PLAN_CREATOR: ${{ vars.DODO_PLAN_CREATOR }}
+          WEBENV_DODO_PLAN_PRO: ${{ vars.DODO_PLAN_PRO }}
+          WEBENV_DODO_PLAN_STUDIO: ${{ vars.DODO_PLAN_STUDIO }}
+          WEBENV_DODO_PRODUCT_AMOUNT: ${{ vars.DODO_PRODUCT_AMOUNT }}
+          WEBENV_NEXT_PUBLIC_PRICE_DISPLAY_STARTER: ${{ vars.NEXT_PUBLIC_PRICE_DISPLAY_STARTER }}
+          WEBENV_NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: ${{ vars.NEXT_PUBLIC_PRICE_DISPLAY_CREATOR }}
+          WEBENV_NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: ${{ vars.NEXT_PUBLIC_PRICE_DISPLAY_STUDIO }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PLAN_CREATOR: ${{ vars.NEXT_PUBLIC_PADDLE_PLAN_CREATOR }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PLAN_PRO: ${{ vars.NEXT_PUBLIC_PADDLE_PLAN_PRO }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PLAN_STUDIO: ${{ vars.NEXT_PUBLIC_PADDLE_PLAN_STUDIO }}
+          WEBENV_NEXT_PUBLIC_PLAN_DISPLAY_CREATOR: ${{ vars.NEXT_PUBLIC_PLAN_DISPLAY_CREATOR }}
+          WEBENV_NEXT_PUBLIC_PLAN_DISPLAY_PRO: ${{ vars.NEXT_PUBLIC_PLAN_DISPLAY_PRO }}
+          WEBENV_NEXT_PUBLIC_PLAN_DISPLAY_STUDIO: ${{ vars.NEXT_PUBLIC_PLAN_DISPLAY_STUDIO }}
+          WEBENV_NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS: ${{ vars.NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS }}
+          WEBENV_ELEVENLABS_VOICES_KEY: ${{ secrets.ELEVENLABS_VOICES_KEY }}
+          WEBENV_GITHUB_SECRETS_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
+          # The bot runs from this repository; the variable is for a split later.
+          WEBENV_GITHUB_SECRETS_REPO: ${{ vars.GH_SECRETS_REPO || github.repository }}
+          WEBENV_GITHUB_SECRETS_REF: ${{ vars.GH_SECRETS_REF }}
+          WEBENV_NIGHTSHIFT_RUN_BACKEND: ${{ vars.NIGHTSHIFT_RUN_BACKEND }}
+          WEBENV_NIGHTSHIFT_CREDITS_ENFORCE: ${{ vars.NIGHTSHIFT_CREDITS_ENFORCE }}
+          WEBENV_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          WEBENV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          WEBENV_INSTAGRAM_APP_ID: ${{ secrets.INSTAGRAM_APP_ID }}
+          WEBENV_INSTAGRAM_APP_SECRET: ${{ secrets.INSTAGRAM_APP_SECRET }}
+          WEBENV_TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          WEBENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          WEBENV_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          WEBENV_MEDIA_URL_SECRET: ${{ secrets.MEDIA_URL_SECRET }}
+          WEBENV_CSP_MODE: ${{ vars.CSP_MODE }}
+          WEBENV_CSP_REPORT_URI: ${{ vars.CSP_REPORT_URI }}
+          WEBENV_NIGHTSHIFT_ADMIN_MFA: ${{ vars.NIGHTSHIFT_ADMIN_MFA }}
+          WEBENV_NIGHTSHIFT_ADMIN_MFA_RECENT_MINUTES: ${{ vars.NIGHTSHIFT_ADMIN_MFA_RECENT_MINUTES }}
+          # Off unless the repository variable is exactly `on`: the owner pages use the server-side owner functions
+          # of migration 0107 (docs/security/ADMIN_MFA.md). Empty = today's behaviour.
+          WEBENV_NIGHTSHIFT_OWNER_RPC: ${{ vars.NIGHTSHIFT_OWNER_RPC }}
+          # Agent Builder private drafts (docs/product/AGENT_NODE_BUILDER.md, migration 0130): off unless this repository variable is on (on,
+          # 1, true or yes). Empty = every /api/agent-builder/drafts route is a 404. It hides the routes only: once 0130 is applied a signed-in
+          # user can call the two draft functions directly, within their limits. Nothing executes. This change does not set it.
+          WEBENV_NIGHTSHIFT_AGENT_DRAFTS_ENABLED: ${{ vars.NIGHTSHIFT_AGENT_DRAFTS_ENABLED }}
+          # The owner's model switch section (migration 0124, docs/MODEL_SWITCH.md): off unless exactly `on` (empty = the section shows an
+          # "off" note and POST /api/owner/model-switch answers 404). The same variable the queue worker reads (WORKERENV_ below).
+          WEBENV_NIGHTSHIFT_MODEL_SWITCH: ${{ vars.NIGHTSHIFT_MODEL_SWITCH }}
+          # The owner's vendor-key checker (docs/MODEL_API_KEYS.md): verifies a pasted key with the vendor and forgets it, nothing is stored.
+          # Off unless the repository variable is exactly `on` (empty = the page shows an "off" note and /api/owner/model-keys answers 404).
+          WEBENV_NIGHTSHIFT_MODEL_KEYS: ${{ vars.NIGHTSHIFT_MODEL_KEYS }}
+          # The brand channel's owner page (docs/MARKETING_POSTS.md): the SAME repository variables the marketing worker
+          # reads, so one switch controls both. Off unless NIGHTSHIFT_MARKETING_POSTS is exactly `on` (empty = the page
+          # shows an "off" note and /api/marketing answers 404). MARKETING_TELEGRAM_CHAT is the channel's public @name,
+          # shown on the confirm sheet; never the bot token (that secret never reaches the web container).
+          WEBENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
+          # Publish when approved (migration 0116): hidden from customers unless this variable is on (on, 1, true or yes); empty = hidden
+          # (docs/APPROVE_PUBLISH_1B.md, "Releasing it"). The worker's own switch is a separate variable on the worker.
+          WEBENV_PUBLISH_ON_APPROVE_RELEASED: ${{ vars.PUBLISH_ON_APPROVE_RELEASED }}
+          WEBENV_SERIES_FACTORY_ENABLED: ${{ vars.SERIES_FACTORY_ENABLED }}
+          # Region editor (docs/REGION_EDITOR.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page and
+          # /api/region-edit/* are a 404. Setting nothing leaves it dark; this change does not set it.
+          WEBENV_NIGHTSHIFT_REGION_EDITOR: ${{ vars.NIGHTSHIFT_REGION_EDITOR }}
+          # Image editor (docs/IMAGE_EDITOR.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page is a 404.
+          # A web-only switch (no worker reads it). Setting nothing leaves it dark; this change does not set it.
+          WEBENV_NIGHTSHIFT_IMAGE_EDITOR: ${{ vars.NIGHTSHIFT_IMAGE_EDITOR }}
+          # Results dashboard (docs/RESULTS_DASHBOARD.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page and
+          # /api/results are a 404. Read-only, web only: there is no worker side. Setting nothing leaves it dark; this change does not set it.
+          WEBENV_NIGHTSHIFT_RESULTS_DASHBOARD: ${{ vars.NIGHTSHIFT_RESULTS_DASHBOARD }}
+          # One edit, several frame sizes (docs/MULTI_RATIO_EXPORT.md, migration 0129): off unless this repository variable is on (on, 1,
+          # true or yes). Empty = no size picker in the editor and the export route ignores `frames`. Setting nothing leaves it dark; this
+          # change does not set it. The media worker reads the same variable (WORKERENV_ below).
+          WEBENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
+          # 1440p and 4K exports, sold by the minute (docs/HIRES_EXPORT.md, migration 0132): off unless this repository variable is on (on, 1,
+          # true or yes), on top of the one above. Empty = no paid size in the editor. Setting nothing leaves it dark; this change does not set
+          # it. The media worker reads the same variable (WORKERENV_ below).
+          WEBENV_NIGHTSHIFT_HIRES_EXPORT: ${{ vars.NIGHTSHIFT_HIRES_EXPORT }}
+          # Ads Factory, Phase 1 (docs/ADS_FACTORY.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page, /api/ads/*
+          # and the navigation entry are gone (404). Web only: there is no worker side in Phase 1. Setting nothing leaves it dark; this change does not set it.
+          WEBENV_NIGHTSHIFT_ADS_FACTORY: ${{ vars.NIGHTSHIFT_ADS_FACTORY }}
+          # Ads Factory, Phase 2 (docs/ADS_FACTORY.md, migration 0133): the "Scan my site" panel and /api/ads/scan/*, off unless this repository
+          # variable is on (and NIGHTSHIFT_ADS_FACTORY too). The SAME variable starts the brand-scan-worker (step "Build the brand-scan env"),
+          # so one switch controls both. Setting nothing leaves it dark; this change does not set it.
+          WEBENV_NIGHTSHIFT_ADS_BRAND_SCAN: ${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}
+          # Character Studio (docs/CHARACTER_STUDIO.md, migration 0137): the page and /api/character-studio/*, off unless this repository
+          # variable is exactly on. Setting nothing leaves it dark; this change does not set it. The worker is not deployed yet (a release step).
+          WEBENV_NIGHTSHIFT_CHARACTER_STUDIO: ${{ vars.NIGHTSHIFT_CHARACTER_STUDIO }}
+          # Studio → Projects (docs/FILM_STUDIO.md, migration 0166): the pages and /api/films/*, off unless this repository variable is
+          # `admins` (platform admins only) or `on`. Setting nothing leaves it dark; this change does not set it. Drafts only, no spend.
+          WEBENV_NIGHTSHIFT_FILM_STUDIO: ${{ vars.NIGHTSHIFT_FILM_STUDIO }}
+          # Nightshift AI (docs/studio/AI_CHAT.md, migration 0199): dark unless the repository variable is `orgs` or `on`. Its vendor
+          # keys are secrets of their own (never the worker's): the web container holds an LLM key only when the owner adds one.
+          WEBENV_NIGHTSHIFT_AI_CHAT: ${{ vars.NIGHTSHIFT_AI_CHAT }}
+          WEBENV_NIGHTSHIFT_AI_CHAT_ORGS: ${{ vars.NIGHTSHIFT_AI_CHAT_ORGS }}
+          WEBENV_AI_CHAT_ANTHROPIC_API_KEY: ${{ secrets.AI_CHAT_ANTHROPIC_API_KEY }}
+          WEBENV_AI_CHAT_OPENAI_API_KEY: ${{ secrets.AI_CHAT_OPENAI_API_KEY }}
+          WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
+          WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
+          WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
+          WEBENV_DEV_CLI_PAGE: ${{ vars.DEV_CLI_PAGE }}
+          # Custom voice page (docs/CUSTOM_VOICE.md): off unless this repository variable is exactly `1`. Empty = the page is a 404.
+          WEBENV_CUSTOM_VOICE_ENABLED: ${{ vars.CUSTOM_VOICE_ENABLED }}
+          WEBENV_MCP_OAUTH_LIVE: ${{ vars.MCP_OAUTH_LIVE }}
+          # Customer Telegram notifications: the bot's PUBLIC username, empty =
+          # the Notifications panel stays hidden. Set it last, after the notify
+          # worker is running (docs/NOTIFY_TELEGRAM_SETUP.md). Never the token.
+          WEBENV_TELEGRAM_CUSTOMER_BOT_USERNAME: ${{ vars.TELEGRAM_CUSTOMER_BOT_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          # Before the owner has set the environment up, a push to main should
+          # not paint main red. A manual run always means "deploy", so there a
+          # missing setting is an error.
+          if [[ "$HAS_SSH_KEY" != true && "$HAS_KNOWN_HOSTS" != true ]]; then
+            if [[ "$EVENT_NAME" == push ]]; then
+              echo "::warning::Deploy web is not set up (Environment production has no DEPLOY_SSH_KEY / DEPLOY_KNOWN_HOSTS): NOT deployed. See docs/DEPLOY_AX42.md, Avtomatik deploy."
+              echo "run=false" >>"$GITHUB_OUTPUT"
+              echo "Deploy web: **not deployed** — Environment \`production\` has no DEPLOY_SSH_KEY / DEPLOY_KNOWN_HOSTS yet." >>"$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
+          errors=()
+          [[ "$GITHUB_REF" == refs/heads/main ]] || errors+=("run this from main (got $GITHUB_REF); the server only accepts commits on main")
+          [[ -n "$DEPLOY_HOST" ]] || errors+=("variable DEPLOY_HOST is empty (the server IP)")
+          [[ -n "$DEPLOY_USER" ]] || errors+=("variable DEPLOY_USER is empty (nightshift)")
+          [[ "$HAS_SSH_KEY" == true ]] || errors+=("secret DEPLOY_SSH_KEY is empty (deploy/setup-gha-deploy.sh prints it)")
+          [[ "$HAS_KNOWN_HOSTS" == true ]] || errors+=("secret DEPLOY_KNOWN_HOSTS is empty (deploy/setup-gha-deploy.sh prints it)")
+
+          umask 077
+          work="$RUNNER_TEMP/deploy"
+          mkdir -p "$work"
+          payload="$work/payload"
+          printf 'NIGHTSHIFT_DEPLOY_SHA=%s\n' "$GITHUB_SHA" >"$payload"
+
+          # printf is a shell builtin: values go straight into the file, never
+          # into an argv that `ps` or a log could show. Errors name the key and
+          # the fix, never the value.
+          mapfile -t keys < <(grep -oE '^[A-Z][A-Z0-9_]*=' deploy/.env.web.example | tr -d '=')
+          (( ${#keys[@]} > 0 )) || errors+=("no keys found in deploy/.env.web.example")
+          for key in "${keys[@]}"; do
+            var="WEBENV_$key"
+            if [[ -z "${!var+set}" ]]; then
+              errors+=("$key is in deploy/.env.web.example but not mapped in deploy_web.yml")
+              continue
+            fi
+            value="${!var}"
+            if [[ "$value" == *'$'* ]]; then
+              errors+=("$key contains \"\$\", which compose would interpolate; change the value")
+            elif [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+              errors+=("$key contains a line break; re-paste it without the trailing newline")
+            fi
+            printf '%s=%s\n' "$key" "$value" >>"$payload"
+          done
+
+          for key in DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY; do
+            var="WEBENV_$key"
+            [[ -n "${!var:-}" ]] || errors+=("variable $key is required and empty")
+          done
+          if [[ -n "$WEBENV_DOMAIN" && ! "$WEBENV_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
+            errors+=("variable DOMAIN must be a bare host name like new.nightshift-ai.studio (no https://, no slash)")
+          fi
+
+          if (( ${#errors[@]} > 0 )); then
+            for e in "${errors[@]}"; do echo "::error::$e"; done
+            echo "Fix these in GitHub -> Settings -> Environments -> production, then re-run."
+            exit 1
+          fi
+
+          {
+            echo "run=true"
+            echo "file=$payload"
+            echo "url=https://$WEBENV_DOMAIN"
+          } >>"$GITHUB_OUTPUT"
+          echo "Server env built: ${#keys[@]} keys for $WEBENV_DOMAIN at $GITHUB_SHA."
+
+      # The pipeline worker (docs/DEPLOY_AX42.md, "Worker"), only while the
+      # repository variable NIGHTSHIFT_WORKER is `on`: its env goes to the
+      # server after a marker line, and remote-deploy.sh writes it to
+      # /opt/nightshift/.env.worker (600) — a file the web container never
+      # reads. One WORKERENV_<KEY> per key in deploy/.env.worker.example, from
+      # the repository secret or variable daily_video.yml already uses under
+      # the same name, so nothing is stored twice. Only named secrets are
+      # read, never the whole secrets context: GitHub flags a workflow that dumps every
+      # secret as possibly malicious and holds each push-triggered run for
+      # manual approval, which defeats the automatic deploy. Channels other
+      # than the default publish from the worker through their Supabase Vault
+      # connection (connect them on the Channels page). GitHub masks every
+      # secret in this public log; the script prints key names, never values.
+      - name: Build the worker env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          WORKERENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          WORKERENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          WORKERENV_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          WORKERENV_PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          WORKERENV_ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          WORKERENV_YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          WORKERENV_YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          WORKERENV_YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          WORKERENV_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          WORKERENV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          WORKERENV_YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
+          WORKERENV_TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          WORKERENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          WORKERENV_MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          WORKERENV_HIGGSFIELD_API_KEY: ${{ secrets.HIGGSFIELD_API_KEY }}
+          WORKERENV_HIGGSFIELD_API_KEY_ID: ${{ secrets.HIGGSFIELD_API_KEY_ID }}
+          WORKERENV_HIGGSFIELD_API_KEY_SECRET: ${{ secrets.HIGGSFIELD_API_KEY_SECRET }}
+          WORKERENV_KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          WORKERENV_KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
+          WORKERENV_KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
+          WORKERENV_VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
+          WORKERENV_SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
+          WORKERENV_WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
+          WORKERENV_LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+          WORKERENV_BFL_API_KEY: ${{ secrets.BFL_API_KEY }}
+          WORKERENV_IDEOGRAM_API_KEY: ${{ secrets.IDEOGRAM_API_KEY }}
+          WORKERENV_FAL_KEY: ${{ secrets.FAL_KEY }}
+          WORKERENV_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WORKERENV_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          WORKERENV_VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
+          WORKERENV_RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
+          WORKERENV_LUMA_AGENTS_API_KEY: ${{ secrets.LUMA_AGENTS_API_KEY }}
+          WORKERENV_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          WORKERENV_RECRAFT_API_TOKEN: ${{ secrets.RECRAFT_API_TOKEN }}
+          WORKERENV_KREA_API_KEY: ${{ secrets.KREA_API_KEY }}
+          WORKERENV_LTX_API_KEY: ${{ secrets.LTX_API_KEY }}
+          WORKERENV_VIDU_API_KEY: ${{ secrets.VIDU_API_KEY }}
+          WORKERENV_PIKA_API_KEY: ${{ secrets.PIKA_API_KEY }}
+          WORKERENV_SONILO_API_KEY: ${{ secrets.SONILO_API_KEY }}
+          WORKERENV_META_API_KEY: ${{ secrets.META_API_KEY }}
+          WORKERENV_ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+          WORKERENV_VIDEO_OPS_API_KEY: ${{ secrets.VIDEO_OPS_API_KEY }}
+          WORKERENV_TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+          WORKERENV_NIGHTSHIFT_EXPECT_TTS: ${{ vars.NIGHTSHIFT_EXPECT_TTS }}
+          WORKERENV_ELEVENLABS_MODEL_ID: ${{ vars.ELEVENLABS_MODEL_ID }}
+          WORKERENV_ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+          WORKERENV_ELEVENLABS_SECONDARY_VOICE_ID: ${{ vars.ELEVENLABS_SECONDARY_VOICE_ID }}
+          WORKERENV_CHRONOS_RENDER_BACKEND: ${{ vars.CHRONOS_RENDER_BACKEND }}
+          WORKERENV_NIGHTSHIFT_RENDER_THREADS: ${{ vars.NIGHTSHIFT_RENDER_THREADS }}
+          WORKERENV_NIGHTSHIFT_RENDER_JOBS: ${{ vars.NIGHTSHIFT_RENDER_JOBS }}
+          WORKERENV_WORKER_JOB_TIMEOUT_SECONDS: ${{ vars.WORKER_JOB_TIMEOUT_SECONDS }}
+          WORKERENV_NIGHTSHIFT_MIN_FREE_DISK_GB: ${{ vars.NIGHTSHIFT_MIN_FREE_DISK_GB }}
+          WORKERENV_CHRONOS_VIDEO_PROVIDER: ${{ vars.CHRONOS_VIDEO_PROVIDER }}
+          WORKERENV_CHRONOS_ENABLE_VIDEO_GEN: ${{ vars.CHRONOS_ENABLE_VIDEO_GEN }}
+          WORKERENV_CHRONOS_ENABLE_MINIMAX_BROLL: ${{ vars.CHRONOS_ENABLE_MINIMAX_BROLL }}
+          WORKERENV_MINIMAX_H3_MODEL: ${{ vars.MINIMAX_H3_MODEL }}
+          WORKERENV_MINIMAX_V2_QUERY_PATH: ${{ vars.MINIMAX_V2_QUERY_PATH }}
+          WORKERENV_WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}
+          WORKERENV_CHRONOS_IMAGE_PROVIDER: ${{ vars.CHRONOS_IMAGE_PROVIDER }}
+          WORKERENV_CHRONOS_ENABLE_IMAGE_GEN: ${{ vars.CHRONOS_ENABLE_IMAGE_GEN }}
+          WORKERENV_CHRONOS_IMAGE_MODEL: ${{ vars.CHRONOS_IMAGE_MODEL }}
+          WORKERENV_CHRONOS_ENABLE_VIDIQ: ${{ vars.CHRONOS_ENABLE_VIDIQ }}
+          WORKERENV_CHRONOS_AGENT_AUTOPILOT: ${{ vars.CHRONOS_AGENT_AUTOPILOT }}
+          WORKERENV_CHRONOS_AI_CRITIC: ${{ vars.CHRONOS_AI_CRITIC }}
+          WORKERENV_NIGHTSHIFT_AVATAR_ENABLED: ${{ vars.NIGHTSHIFT_AVATAR_ENABLED }}
+          WORKERENV_HIGGSFIELD_AVATAR_ENDPOINT: ${{ vars.HIGGSFIELD_AVATAR_ENDPOINT }}
+          WORKERENV_NIGHTSHIFT_AVATAR_PROVIDER: ${{ vars.NIGHTSHIFT_AVATAR_PROVIDER }}
+          WORKERENV_NIGHTSHIFT_AVATAR_FAL_MODEL: ${{ vars.NIGHTSHIFT_AVATAR_FAL_MODEL }}
+          WORKERENV_NIGHTSHIFT_AVATAR_FAL_IMAGE_MODEL: ${{ vars.NIGHTSHIFT_AVATAR_FAL_IMAGE_MODEL }}
+          WORKERENV_NIGHTSHIFT_AVATAR_INTRO_SECONDS: ${{ vars.NIGHTSHIFT_AVATAR_INTRO_SECONDS }}
+          WORKERENV_NIGHTSHIFT_AVATAR_OUTRO_SECONDS: ${{ vars.NIGHTSHIFT_AVATAR_OUTRO_SECONDS }}
+          WORKERENV_NIGHTSHIFT_AVATAR_MAX_SECONDS: ${{ vars.NIGHTSHIFT_AVATAR_MAX_SECONDS }}
+          WORKERENV_NIGHTSHIFT_AVATAR_FAL_USD_PER_SECOND: ${{ vars.NIGHTSHIFT_AVATAR_FAL_USD_PER_SECOND }}
+          WORKERENV_NIGHTSHIFT_AVATAR_MAX_USD: ${{ vars.NIGHTSHIFT_AVATAR_MAX_USD }}
+          WORKERENV_NIGHTSHIFT_CREDITS_ENFORCE: ${{ vars.NIGHTSHIFT_CREDITS_ENFORCE }}
+          # The creative worker's switch: `on` = remote-deploy.sh starts or
+          # recreates creative-worker, anything else = it is removed. A word,
+          # not a secret; it rides in the worker section because the creative
+          # worker shares the worker's env file (so it needs NIGHTSHIFT_WORKER
+          # on too), and a server still on the previous remote-deploy.sh
+          # accepts it as a key of .env.worker.example at the deployed commit.
+          WORKERENV_NIGHTSHIFT_CREATIVE_WORKER: ${{ vars.NIGHTSHIFT_CREATIVE_WORKER }}
+          # The film worker's switch (tools/film_worker.py): `on` = remote-deploy.sh starts or recreates
+          # film-worker, anything else = it is removed. A word, not a secret; the worker reads it as well.
+          WORKERENV_NIGHTSHIFT_FILM_WORKER: ${{ vars.NIGHTSHIFT_FILM_WORKER }}
+          # The film assembly's switch: off unless exactly `on`; without it the film worker claims nothing.
+          WORKERENV_NIGHTSHIFT_FILM_ASSEMBLY: ${{ vars.NIGHTSHIFT_FILM_ASSEMBLY }}
+          # Models, hosts, per-run and per-day USD caps and unit prices: variables only
+          # (deploy/.env.worker.example, "Models, hosts and caps" and "Spend").
+          WORKERENV_GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          WORKERENV_RESEARCH_SEARCH_SHARED_UNITS: ${{ vars.RESEARCH_SEARCH_SHARED_UNITS }}
+          WORKERENV_EDGE_TTS_VOICE: ${{ vars.EDGE_TTS_VOICE }}
+          WORKERENV_MINIMAX_BASE_URL: ${{ vars.MINIMAX_BASE_URL }}
+          WORKERENV_CHRONOS_MINIMAX_BROLL_MAX_CLIPS: ${{ vars.CHRONOS_MINIMAX_BROLL_MAX_CLIPS }}
+          WORKERENV_CHRONOS_LEONARDO_MAX_IMAGES: ${{ vars.CHRONOS_LEONARDO_MAX_IMAGES }}
+          WORKERENV_KLING_MODEL: ${{ vars.KLING_MODEL }}
+          WORKERENV_KLING_BASE_URL: ${{ vars.KLING_BASE_URL }}
+          WORKERENV_KLING_SUBMIT_PATH: ${{ vars.KLING_SUBMIT_PATH }}
+          WORKERENV_KLING_QUERY_PATH: ${{ vars.KLING_QUERY_PATH }}
+          WORKERENV_VEO_MODEL: ${{ vars.VEO_MODEL }}
+          WORKERENV_VEO_BASE_URL: ${{ vars.VEO_BASE_URL }}
+          WORKERENV_VEO_RESOLUTION: ${{ vars.VEO_RESOLUTION }}
+          WORKERENV_VEO_SUBMIT_PATH: ${{ vars.VEO_SUBMIT_PATH }}
+          WORKERENV_VEO_QUERY_PATH: ${{ vars.VEO_QUERY_PATH }}
+          WORKERENV_SEEDANCE_MODEL: ${{ vars.SEEDANCE_MODEL }}
+          WORKERENV_SEEDANCE_BASE_URL: ${{ vars.SEEDANCE_BASE_URL }}
+          WORKERENV_SEEDANCE_RESOLUTION: ${{ vars.SEEDANCE_RESOLUTION }}
+          WORKERENV_SEEDANCE_SUBMIT_PATH: ${{ vars.SEEDANCE_SUBMIT_PATH }}
+          WORKERENV_SEEDANCE_QUERY_PATH: ${{ vars.SEEDANCE_QUERY_PATH }}
+          WORKERENV_WAN_MODEL: ${{ vars.WAN_MODEL }}
+          WORKERENV_WAN_BASE_URL: ${{ vars.WAN_BASE_URL }}
+          WORKERENV_WAN_RESOLUTION: ${{ vars.WAN_RESOLUTION }}
+          WORKERENV_WAN_SUBMIT_PATH: ${{ vars.WAN_SUBMIT_PATH }}
+          WORKERENV_WAN_QUERY_PATH: ${{ vars.WAN_QUERY_PATH }}
+          WORKERENV_HIGGSFIELD_MODEL: ${{ vars.HIGGSFIELD_MODEL }}
+          WORKERENV_HIGGSFIELD_BASE_URL: ${{ vars.HIGGSFIELD_BASE_URL }}
+          WORKERENV_HIGGSFIELD_SUBMIT_PATH: ${{ vars.HIGGSFIELD_SUBMIT_PATH }}
+          WORKERENV_HIGGSFIELD_QUERY_PATH: ${{ vars.HIGGSFIELD_QUERY_PATH }}
+          WORKERENV_LEONARDO_MODEL_ID: ${{ vars.LEONARDO_MODEL_ID }}
+          WORKERENV_ASSEMBLYAI_BASE_URL: ${{ vars.ASSEMBLYAI_BASE_URL }}
+          WORKERENV_VIDEO_OPS_BASE_URL: ${{ vars.VIDEO_OPS_BASE_URL }}
+          WORKERENV_VIDEO_OPS_SUBMIT_PATH: ${{ vars.VIDEO_OPS_SUBMIT_PATH }}
+          WORKERENV_VIDEO_OPS_QUERY_PATH: ${{ vars.VIDEO_OPS_QUERY_PATH }}
+          WORKERENV_CHRONOS_PRICE_GEMINI_INPUT_TOKENS: ${{ vars.CHRONOS_PRICE_GEMINI_INPUT_TOKENS }}
+          WORKERENV_CHRONOS_PRICE_GEMINI_OUTPUT_TOKENS: ${{ vars.CHRONOS_PRICE_GEMINI_OUTPUT_TOKENS }}
+          WORKERENV_CHRONOS_PRICE_TTS_CHARACTERS: ${{ vars.CHRONOS_PRICE_TTS_CHARACTERS }}
+          WORKERENV_CHRONOS_PRICE_RENDER_SECONDS: ${{ vars.CHRONOS_PRICE_RENDER_SECONDS }}
+          WORKERENV_CHRONOS_PRICE_PEXELS_REQUESTS: ${{ vars.CHRONOS_PRICE_PEXELS_REQUESTS }}
+          WORKERENV_CHRONOS_PRICE_UPLOAD_BYTES: ${{ vars.CHRONOS_PRICE_UPLOAD_BYTES }}
+          WORKERENV_CHRONOS_PRICE_VIDEO_GEN_CLIPS: ${{ vars.CHRONOS_PRICE_VIDEO_GEN_CLIPS }}
+          WORKERENV_CHRONOS_PRICE_IMAGE_GENERATIONS: ${{ vars.CHRONOS_PRICE_IMAGE_GENERATIONS }}
+          WORKERENV_CHRONOS_PRICE_VISION_CALLS: ${{ vars.CHRONOS_PRICE_VISION_CALLS }}
+          WORKERENV_CHRONOS_MAX_RUN_USD: ${{ vars.CHRONOS_MAX_RUN_USD }}
+          WORKERENV_CHRONOS_MAX_DAILY_USD: ${{ vars.CHRONOS_MAX_DAILY_USD }}
+          # Gemini model per stage (config.GEMINI_STAGE_MODELS, modules/gemini_stages.py); empty = GEMINI_MODEL.
+          WORKERENV_GEMINI_MODEL_TOPIC: ${{ vars.GEMINI_MODEL_TOPIC }}
+          WORKERENV_GEMINI_MODEL_RESEARCH: ${{ vars.GEMINI_MODEL_RESEARCH }}
+          WORKERENV_GEMINI_MODEL_SCRIPT: ${{ vars.GEMINI_MODEL_SCRIPT }}
+          WORKERENV_GEMINI_MODEL_FACTCHECK: ${{ vars.GEMINI_MODEL_FACTCHECK }}
+          WORKERENV_GEMINI_MODEL_GROUNDING: ${{ vars.GEMINI_MODEL_GROUNDING }}
+          WORKERENV_GEMINI_MODEL_PACKAGING: ${{ vars.GEMINI_MODEL_PACKAGING }}
+          WORKERENV_GEMINI_MODEL_OTHER: ${{ vars.GEMINI_MODEL_OTHER }}
+          WORKERENV_NIGHTSHIFT_GROUNDED_FACTCHECK: ${{ vars.NIGHTSHIFT_GROUNDED_FACTCHECK }}
+          WORKERENV_NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT: ${{ vars.NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT }}
+          WORKERENV_NIGHTSHIFT_PACKAGING_REPAIR: ${{ vars.NIGHTSHIFT_PACKAGING_REPAIR }}
+          WORKERENV_CHRONOS_TOPIC_GATE: ${{ vars.CHRONOS_TOPIC_GATE }}
+          WORKERENV_CHRONOS_TOPIC_QUEUE_STALE_DAYS: ${{ vars.CHRONOS_TOPIC_QUEUE_STALE_DAYS }}
+          WORKERENV_CHRONOS_TOPIC_GATE_MODEL_CALLS: ${{ vars.CHRONOS_TOPIC_GATE_MODEL_CALLS }}
+          WORKERENV_CHRONOS_HELD_TOPIC_COOLDOWN_DAYS: ${{ vars.CHRONOS_HELD_TOPIC_COOLDOWN_DAYS }}
+          # Dormant features (off while empty; deploy/.env.worker.example, tests/test_switch_reachability.py).
+          WORKERENV_CHRONOS_SCENE_RENDER: ${{ vars.CHRONOS_SCENE_RENDER }}
+          WORKERENV_CHRONOS_REMOTION: ${{ vars.CHRONOS_REMOTION }}
+          WORKERENV_CHRONOS_GRAPHIC_RECIPES: ${{ vars.CHRONOS_GRAPHIC_RECIPES }}
+          WORKERENV_CHRONOS_SCENE_CACHE_MAX_MB: ${{ vars.CHRONOS_SCENE_CACHE_MAX_MB }}
+          WORKERENV_CHRONOS_SCENE_CACHE_MAX_AGE_DAYS: ${{ vars.CHRONOS_SCENE_CACHE_MAX_AGE_DAYS }}
+          WORKERENV_NIGHTSHIFT_COMMENT_INBOX: ${{ vars.NIGHTSHIFT_COMMENT_INBOX }}
+          WORKERENV_NIGHTSHIFT_INBOX_SYNC_SECONDS: ${{ vars.NIGHTSHIFT_INBOX_SYNC_SECONDS }}
+          WORKERENV_NIGHTSHIFT_VISIBILITY_PUBLISH: ${{ vars.NIGHTSHIFT_VISIBILITY_PUBLISH }}
+          WORKERENV_NIGHTSHIFT_VISIBILITY_DAILY_UNITS: ${{ vars.NIGHTSHIFT_VISIBILITY_DAILY_UNITS }}
+          WORKERENV_NIGHTSHIFT_VISIBILITY_ORG_PERCENT: ${{ vars.NIGHTSHIFT_VISIBILITY_ORG_PERCENT }}
+          WORKERENV_NIGHTSHIFT_YT_QUOTA_PROJECT: ${{ vars.NIGHTSHIFT_YT_QUOTA_PROJECT }}
+          # Region editor, the worker's side (docs/REGION_EDITOR.md): the same repository variable as the web's. Empty = off, and a region
+          # edit that reaches the worker is failed at once with its credits released. This change does not set it.
+          WORKERENV_NIGHTSHIFT_REGION_EDITOR: ${{ vars.NIGHTSHIFT_REGION_EDITOR }}
+          # One edit, several frame sizes, the media worker's side (docs/MULTI_RATIO_EXPORT.md): the same repository variable as the web's.
+          # Empty = off, and an export that carries a frame override is failed at once (frame_off). This change does not set it.
+          WORKERENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
+          # 1440p and 4K exports, the media worker's side (docs/HIRES_EXPORT.md): the same repository variable as the web's. Empty = off, and
+          # a paid export that reaches the worker is failed at once (hires_off) with its credits released. This change does not set it.
+          WORKERENV_NIGHTSHIFT_HIRES_EXPORT: ${{ vars.NIGHTSHIFT_HIRES_EXPORT }}
+          WORKERENV_NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
+          WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}
+          # The owner's model switch (migration 0124, docs/MODEL_SWITCH.md): the SAME repository variable the Command Center reads
+          # (WEBENV_ below), so one variable switches both. Empty = the worker does not ask the database; nothing changes.
+          WORKERENV_NIGHTSHIFT_MODEL_SWITCH: ${{ vars.NIGHTSHIFT_MODEL_SWITCH }}
+          WORKERENV_NIGHTSHIFT_VOICE_CLONING: ${{ vars.NIGHTSHIFT_VOICE_CLONING }}
+          WORKERENV_CHRONOS_THUMBNAIL_VARIANTS: ${{ vars.CHRONOS_THUMBNAIL_VARIANTS }}
+          WORKERENV_CHRONOS_GEMINI_STRUCTURED_OUTPUT: ${{ vars.CHRONOS_GEMINI_STRUCTURED_OUTPUT }}
+          WORKERENV_NIGHTSHIFT_AVATAR_CHARACTER_PROMPT: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_PROMPT }}
+          WORKERENV_NIGHTSHIFT_AVATAR_CHARACTER_REF: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_REF }}
+          WORKERENV_NIGHTSHIFT_LIVE_EVENTS: ${{ vars.NIGHTSHIFT_LIVE_EVENTS }}
+        run: python3 deploy/build-worker-env.py "$PAYLOAD"
+
+      # The customer Telegram sender (docs/NOTIFY_TELEGRAM_SETUP.md), only while
+      # the repository variable NIGHTSHIFT_NOTIFY_WORKER is `on`. Its OWN env,
+      # four names, after a marker line; remote-deploy.sh writes it to
+      # /opt/nightshift/.env.notify (600). The pipeline provider keys are not
+      # mapped here, so that container can never hold them. Named secrets only,
+      # as above; deploy/build-service-env.py prints key names, never values.
+      - name: Build the notify env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_NOTIFY_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          NOTIFYENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NOTIFYENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NOTIFYENV_TELEGRAM_CUSTOMER_BOT_TOKEN: ${{ secrets.TELEGRAM_CUSTOMER_BOT_TOKEN }}
+          # The link back in a message. Empty variable = the app's own domain.
+          NOTIFYENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
+        run: python3 deploy/build-service-env.py notify "$PAYLOAD"
+
+      # The customer e-mail sender (migration 0103, tools/email_worker.py), only
+      # while NIGHTSHIFT_EMAIL_WORKER is `on`: its own env, five names, to
+      # /opt/nightshift/.env.email (600). The transport is fixed to `resend` in
+      # docker-compose.yml.
+      - name: Build the e-mail env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_EMAIL_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          EMAILENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          EMAILENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          EMAILENV_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAILENV_NIGHTSHIFT_EMAIL_FROM: ${{ vars.NIGHTSHIFT_EMAIL_FROM }}
+          EMAILENV_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
+        run: python3 deploy/build-service-env.py email "$PAYLOAD"
+
+      # The operator bot (docs/operator-bot.md), only while NIGHTSHIFT_OPERATOR_BOT
+      # is `on`: its OWN env, after a marker line, to /opt/nightshift/.env.operator
+      # (600). The names are the ones telegram_control.yml and operator_alerts.yml
+      # already read, from the same secrets and variables; no pipeline provider key
+      # is mapped. The optional ones may be empty. GITHUB_TOKEN is not the job
+      # token (the server has none): an optional read-only fine-grained token
+      # in the secret OPERATOR_GITHUB_TOKEN, for the /deploys and /health views.
+      # Named secrets only, as above; deploy/build-service-env.py prints key
+      # names, never values.
+      - name: Build the operator-bot env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_OPERATOR_BOT == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          OPERATORENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          OPERATORENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPERATORENV_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPERATORENV_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPERATORENV_TELEGRAM_ADMIN_USER_IDS: ${{ secrets.TELEGRAM_ADMIN_USER_IDS }}
+          OPERATORENV_GITHUB_TOKEN: ${{ secrets.OPERATOR_GITHUB_TOKEN }}
+          OPERATORENV_GITHUB_REPOSITORY: ${{ github.repository }}
+          OPERATORENV_ELEVENLABS_LOW_CREDITS: ${{ vars.ELEVENLABS_LOW_CREDITS }}
+          OPERATORENV_OPERATOR_APP_URL: ${{ vars.OPERATOR_APP_URL }}
+          OPERATORENV_OPERATOR_LANGUAGE: ${{ vars.OPERATOR_LANGUAGE }}
+          OPERATORENV_OPERATOR_TZ: ${{ vars.OPERATOR_TZ }}
+          OPERATORENV_OPERATOR_QUIET_HOURS: ${{ vars.OPERATOR_QUIET_HOURS }}
+          OPERATORENV_OPERATOR_DIGEST_HOUR: ${{ vars.OPERATOR_DIGEST_HOUR }}
+          OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
+          OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
+          OPERATORENV_OPERATOR_DEADMAN_HOURS: ${{ vars.OPERATOR_DEADMAN_HOURS }}
+          # The owner's pause of the scheduled pipeline: the always-on bot reads it at deploy time, so after
+          # changing the variable run Deploy web (docs/VIDEO_GO_LIVE.md, section 8).
+          OPERATORENV_NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}
+          # The owner's e-mail copy (docs/OWNER_EMAIL.md), all optional and OFF while the variable
+          # NIGHTSHIFT_OWNER_EMAIL is not exactly `on`. The key is its OWN secret, OPERATOR_RESEND_API_KEY (a
+          # Resend "Sending access" key restricted to the one domain, created by the owner for this), and it
+          # is mapped ONLY while the switch is `on`: with the switch off the container never receives it.
+          # (build-service-env.py enforces the same, so a mapping mistake here cannot leak it.)
+          OPERATORENV_NIGHTSHIFT_OWNER_EMAIL: ${{ vars.NIGHTSHIFT_OWNER_EMAIL }}
+          OPERATORENV_OWNER_EMAIL_KINDS: ${{ vars.OWNER_EMAIL_KINDS }}
+          OPERATORENV_RESEND_API_KEY: ${{ vars.NIGHTSHIFT_OWNER_EMAIL == 'on' && secrets.OPERATOR_RESEND_API_KEY || '' }}
+          OPERATORENV_NIGHTSHIFT_EMAIL_FROM: ${{ vars.NIGHTSHIFT_EMAIL_FROM }}
+        run: python3 deploy/build-service-env.py operator "$PAYLOAD"
+
+      # The brand channel's poster (docs/MARKETING_POSTS.md), only while
+      # NIGHTSHIFT_MARKETING_WORKER is `on` (default: unset = off, and then NO
+      # secret below needs to exist): its OWN env, six names, after a marker line,
+      # to /opt/nightshift/.env.marketing (600). The bot token is the DEDICATED
+      # channel bot's (TELEGRAM_CHANNEL_BOT_TOKEN), never TELEGRAM_BOT_TOKEN
+      # (operator) or TELEGRAM_CUSTOMER_BOT_TOKEN (customers). No pipeline provider
+      # key is mapped. NIGHTSHIFT_MARKETING_POSTS is the poster's own switch: empty
+      # or anything but `on` and the container idles. Named secrets only, as above;
+      # deploy/build-service-env.py prints key names, never values.
+      - name: Build the marketing env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_MARKETING_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          MARKETINGENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          MARKETINGENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MARKETINGENV_TELEGRAM_CHANNEL_BOT_TOKEN: ${{ secrets.TELEGRAM_CHANNEL_BOT_TOKEN }}
+          MARKETINGENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
+          # The link in a post. Empty variable = the app's own domain.
+          MARKETINGENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
+          MARKETINGENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
+        run: python3 deploy/build-service-env.py marketing "$PAYLOAD"
+
+      # The brand scan worker (docs/ADS_FACTORY.md, "Releasing Phase 2"), only while
+      # NIGHTSHIFT_ADS_BRAND_SCAN is `on` (default: unset = off, and then NO secret
+      # below is read): its OWN env, three names, after a marker line, to
+      # /opt/nightshift/.env.brandscan (600). The Supabase service key and nothing
+      # else: no provider key, no bot token. Named secrets only, as above;
+      # deploy/build-service-env.py prints key names, never values.
+      - name: Build the brand-scan env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_ADS_BRAND_SCAN == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          BRANDSCANENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          BRANDSCANENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          BRANDSCANENV_NIGHTSHIFT_ADS_BRAND_SCAN: ${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}
+        run: python3 deploy/build-service-env.py brandscan "$PAYLOAD"
+
+      - name: Deploy over SSH
+        if: steps.payload.outputs.run == 'true'
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '168.119.142.178' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'nightshift' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/deploy"
+          # A key pasted from Windows carries \r, which OpenSSH rejects as an
+          # invalid format; the trailing newline it requires is added here.
+          printf '%s\n' "${DEPLOY_SSH_KEY//$'\r'/}" >"$work/key"
+          printf '%s\n' "${DEPLOY_KNOWN_HOSTS//$'\r'/}" >"$work/known_hosts"
+
+          # The host key is pinned: an unknown or changed server key fails the
+          # connection instead of being trusted on first use. The server runs
+          # its forced command whatever we ask for, so none is sent; the env
+          # and the commit go over stdin.
+          ssh -T \
+            -i "$work/key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$work/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=6 \
+            "$DEPLOY_USER@$DEPLOY_HOST" <"$PAYLOAD"
+
+      - name: Summary
+        if: always() && steps.payload.outputs.run == 'true'
+        env:
+          URL: ${{ steps.payload.outputs.url }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          echo "Deploy web: **$OUTCOME** — \`$GITHUB_SHA\` → $URL" >>"$GITHUB_STEP_SUMMARY"
+
+      # GitHub-hosted runners are discarded after the job, but the key and the
+      # env should not outlive the step that needed them on any runner.
+      - name: Remove key and env from the runner
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/deploy"

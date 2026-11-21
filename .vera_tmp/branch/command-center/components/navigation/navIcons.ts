@@ -1,0 +1,83 @@
+import {
+  TerminalSquare, Activity,
+  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot, SwatchBook,
+  Users, UserCircle, KeyRound, Bot, ListChecks,
+  Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House, Sparkles, Flame, FolderOpen, MessagesSquare, Telescope,
+  type LucideIcon,
+} from "lucide-react";
+import type { NavKey } from "@/lib/navigation";
+
+/**
+ * One icon per section, shared by every navigation surface (the operator's
+ * rail, the customer sidebar, the phone's bottom bar), so a section looks the
+ * same wherever it is listed.
+ */
+export const ICONS: Record<NavKey, LucideIcon> = {
+  // The record key, not a sparkle: making something is a REC press (IDENTITY.md §Iconography).
+  hub: CircleDot,
+  home: House,
+  settings: Settings,
+  design: SwatchBook,
+  command: LayoutDashboard,
+  // The customer's Nightshift Brain dashboard (0201): what the Brain knows about the workspace.
+  brain: Brain,
+  nightshiftAi: MessagesSquare,
+  // The customer rail's Create (the sprint IA): sparkles, as Krea and Higgsfield mark the make-something screen.
+  create: Sparkles,
+  projects: FolderOpen,
+  videos: Film,
+  inbox: Inbox,
+  // Nightshift Studio is where things are made: it takes the hub's record key.
+  studio: CircleDot,
+  // Trends (0181): what is hot right now.
+  trends: Flame,
+  brandLook: Palette,
+  styles: Brush,
+  ads: Target,
+  characterStudio: Drama,
+  library: Images,
+  editor: Scissors,
+  workflows: Waypoints,
+  pipeline: Workflow,
+  analytics: BarChart3,
+  channels: Users,
+  accounts: UserCircle,
+  portfolio: PieChart,
+  providers: KeyRound,
+  models: Cpu,
+  margin: TrendingUp,
+  ownerAnalytics: PieChart,
+  customers: Contact,
+  billing: Wallet,
+  credits: Coins,
+  usage: Activity,
+  series: ListVideo,
+  agents: Bot,
+  jobs: ListChecks,
+  advisory: Lightbulb,
+  intelligence: Brain,
+  decisions: GitBranch,
+  learning: GraduationCap,
+  memory: Database,
+  topics: Hash,
+  // Channel research (0202): looking outward at YouTube.
+  research: Telescope,
+  measure: Ruler,
+  feedback: RefreshCw,
+  autonomy: Gauge,
+  onboarding: Rocket,
+  organization: Building2,
+  developers: TerminalSquare,
+  members: ShieldCheck,
+  security: Lock,
+  approvals: UserCheck,
+  marketing: Megaphone,
+  modelKeys: KeyRound,
+  alerts: BellRing,
+  audit: ClipboardList,
+  timeMachine: History,
+  integrations: Plug,
+  errors: TriangleAlert,
+  logs: ScrollText,
+};

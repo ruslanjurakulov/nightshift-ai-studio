@@ -1,0 +1,130 @@
+{
+ "_comment": "The text looks the editor offers (command-center/lib/editorTextLook.ts TEXT_LOOKS; tests/editor-text-look.test.ts pins that file to this one) and what the export draws for them (tests/test_editor_transitions.py renders each with the real export, ffmpeg + libass, and measures it). A look only sets fields a text clip has. Sizes are output pixels of a frame whose short side is 1080. 'draws' is what the export does with the three look fields, the contract the editor preview approximates in CSS: a shadow is black at shadow_opacity, offset by `shadow` pixels both right and down; a box is box_color at box_opacity, padded by box_padding_em of the font size on every side, and REPLACES the outline.",
+ "draws": {
+  "shadow_opacity": 0.6,
+  "box_padding_em": 0.25
+ },
+ "frame_short_side": 1080,
+ "looks": [
+  {
+   "id": "title",
+   "fields": {
+    "font": "DejaVu Sans",
+    "size": 96,
+    "color": "#FFFFFF",
+    "bold": true,
+    "outline_color": "#000000",
+    "outline_width": 4,
+    "x": 0.5,
+    "y": 0.45,
+    "anchor": "center"
+   }
+  },
+  {
+   "id": "lower_third",
+   "fields": {
+    "font": "DejaVu Sans",
+    "size": 52,
+    "color": "#FFFFFF",
+    "bold": true,
+    "outline_color": "#000000",
+    "outline_width": 0,
+    "x": 0.06,
+    "y": 0.88,
+    "anchor": "bottom-left",
+    "box_color": "#000000",
+    "box_opacity": 0.65
+   }
+  },
+  {
+   "id": "caption",
+   "fields": {
+    "font": "DejaVu Sans",
+    "size": 56,
+    "color": "#FFFFFF",
+    "bold": true,
+    "outline_color": "#000000",
+    "outline_width": 4,
+    "x": 0.5,
+    "y": 0.9,
+    "anchor": "bottom"
+   }
+  },
+  {
+   "id": "subtitle",
+   "fields": {
+    "font": "Liberation Sans",
+    "size": 44,
+    "color": "#FFFFFF",
+    "bold": false,
+    "outline_color": "#000000",
+    "outline_width": 2,
+    "x": 0.5,
+    "y": 0.93,
+    "anchor": "bottom",
+    "shadow": 3
+   }
+  },
+  {
+   "id": "outline",
+   "fields": {
+    "font": "DejaVu Sans",
+    "size": 88,
+    "color": "#FFD400",
+    "bold": true,
+    "outline_color": "#000000",
+    "outline_width": 8,
+    "x": 0.5,
+    "y": 0.5,
+    "anchor": "center"
+   }
+  },
+  {
+   "id": "shadow",
+   "fields": {
+    "font": "Liberation Serif",
+    "size": 80,
+    "color": "#FFFFFF",
+    "bold": true,
+    "outline_color": "#000000",
+    "outline_width": 0,
+    "x": 0.5,
+    "y": 0.5,
+    "anchor": "center",
+    "shadow": 8
+   }
+  },
+  {
+   "id": "label",
+   "fields": {
+    "font": "Liberation Sans",
+    "size": 56,
+    "color": "#111111",
+    "bold": true,
+    "outline_color": "#000000",
+    "outline_width": 0,
+    "x": 0.5,
+    "y": 0.78,
+    "anchor": "center",
+    "box_color": "#FFFFFF",
+    "box_opacity": 0.9
+   }
+  },
+  {
+   "id": "highlight",
+   "fields": {
+    "font": "DejaVu Sans",
+    "size": 56,
+    "color": "#111111",
+    "bold": true,
+    "outline_color": "#000000",
+    "outline_width": 0,
+    "x": 0.5,
+    "y": 0.78,
+    "anchor": "center",
+    "box_color": "#FFE600",
+    "box_opacity": 1
+   }
+  }
+ ]
+}

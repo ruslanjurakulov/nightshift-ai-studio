@@ -1,0 +1,58 @@
+name: Tests
+
+on:
+  push:
+    # main only. Without this, every push to a PR branch ran the suite once for
+    # the push AND once for the pull_request event — two identical runs on the
+    # same SHA, doubling the minutes for no extra signal.
+    branches: [main]
+    # The Command Center is a self-contained Next.js app with its own tooling;
+    # the Python suite has nothing to say about it, so don't run (and fail) on
+    # frontend-only changes.
+    paths-ignore: ["command-center/**"]
+  pull_request:
+    branches: [main]
+    paths-ignore: ["command-center/**"]
+  workflow_dispatch:
+
+# Least privilege (BR-S-001): nothing in this workflow calls the GitHub API or
+# pushes, so the job token can only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # A hang detector, not a budget. The suite takes 5-8 min on the runner
+    # (max 7.9 over the last 28 green runs) and runs at 10.1-10.3 min were
+    # cancelled by the old 10-minute limit; 25 leaves ~3x headroom.
+    # 25 was too tight: on 2026-11-14 the suite took 21 minutes on one run and was cancelled at 25 on the next.
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+          # Full history: tests/test_migration_prerequisites.py reads each migration
+          # as it was first merged (a shallow clone would only make it vacuous).
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      # packages/cli is tested with Node's built-in runner, started from
+      # tests/test_cli_package.py; the skills test reads the CLI's command table.
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Install Python dependencies
+        run: pip install -c constraints.txt -r requirements.txt
+
+      - name: Run unit tests
+        run: python3 -m unittest discover tests -v

@@ -1,0 +1,37 @@
+google-genai>=0.8.0
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+edge-tts>=6.1.9
+openai-whisper>=20231117
+moviepy==1.0.3
+# moviepy 1.0.3 picks its resizer at import time: cv2 when available, else a
+# PIL path calling Image.ANTIALIAS, which Pillow 10 removed. compositor.py
+# aliases that constant as a safety net; cv2 avoids the branch altogether.
+opencv-python>=4.8.0
+# The ffmpeg binary every render, probe and media-library decode runs comes from this package
+# (modules/render_backend.resolve_ffmpeg). moviepy installs it anyway; it is named here because the code imports it
+# directly and constraints.txt pins it (a new release swaps the binary: see the note there).
+imageio-ffmpeg>=0.6.0
+pydub>=0.25.1
+# audioop was removed from the stdlib in Python 3.13; audioop-lts backfills it
+# and its wheels REQUIRE >=3.13. On 3.11/3.12 (what the workflows run) audioop
+# is still built in, so this backport is neither needed nor installable — the
+# marker skips it there. Without the marker, `pip install -r requirements.txt`
+# hard-fails on 3.11 ("No matching distribution found for audioop-lts").
+audioop-lts>=0.2.1; python_version >= "3.13"
+# Floors are the first releases with no known advisory (BR-S-006, pip-audit
+# 2026-10-01). The media worker decodes user uploads with Pillow, so its floor
+# matters most. tests/test_requirements_floors.py pins both.
+Pillow>=12.3.0
+# HEIC / HEIF photos in the media library (migration 0044): ffmpeg cannot decode
+# them. The manylinux wheels bundle libheif, so Dockerfile.worker needs no apt
+# package. Only the media worker uses it, in a child process
+# (modules/heic_decode.py); without it HEIC uploads are rejected, nothing else breaks.
+pillow-heif>=0.20.0,<2
+requests>=2.33.0
+python-dotenv>=1.0.0
+numpy>=1.24.0
+elevenlabs>=1.0.0
+model2vec>=0.3.0
+rapidfuzz>=3.9.0

@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nightshift.local/schemas/video_ir.schema.json",
+  "title": "Nightshift Video IR v1",
+  "description": "Canonical description of one video project (modules/video_ir.py). Scene times come from the real audio timeline; unknown values are null, never invented. The hand-written validator in modules/video_ir.py is the twin of this schema \u2014 tests/test_video_ir.py keeps their field lists in sync.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "slug",
+    "channel_id",
+    "title",
+    "width",
+    "height",
+    "fps",
+    "audio",
+    "subtitles_path",
+    "scenes",
+    "assets"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "channel_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "fps": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "duration_s"
+      ],
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "subtitles_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scene"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    }
+  },
+  "$defs": {
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "index",
+        "name",
+        "type",
+        "narration",
+        "start_s",
+        "end_s",
+        "shot",
+        "element_ids",
+        "asset_ids",
+        "claim_ids"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^s\\d{3,}$"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "narration": {
+          "type": "string"
+        },
+        "start_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "end_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "shot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "recipe",
+            "camera",
+            "lighting",
+            "mood"
+          ],
+          "properties": {
+            "recipe": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "camera": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "lighting": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "mood": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "element_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "asset_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "path",
+        "source",
+        "provider",
+        "url",
+        "license",
+        "author",
+        "model",
+        "prompt",
+        "task_id",
+        "cost_usd",
+        "sha256",
+        "rights"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "video",
+            "image",
+            "audio"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "license": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "author": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cost_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "ok",
+                "unknown",
+                "blocked"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

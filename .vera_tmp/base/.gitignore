@@ -1,0 +1,88 @@
+.env
+# Blanket-ignore JSON: client_secret.json and youtube_token*.json carry
+# credentials and must never be committed. Safe ones are re-included below.
+*.json
+!package.json
+!samples/*.json
+# The example channel config. It holds no credential by construction —
+# credential_ref names a secret, it never carries one — and the docs point
+# at it, so the blanket rule above was hiding a file that should ship.
+!channels.example.json
+# Which trend-template preview files ship with the app (0183): slugs and booleans only, imported by the API at build time.
+!command-center/lib/templates/media-manifest.json
+# The wording of the customer notifications (migration 0105): the registry and one
+# file per language, read by the Edge Function and the Python workers. Words only.
+!supabase/functions/_shared/notify-i18n/*.json
+# The news items the channel poster may announce (docs/news/README.md): words and a schema, no credentials.
+# Without this line the blanket rule above hides every one of them (the 0105 wording files had the same problem).
+!docs/news/*.json
+# The promo posts the channel poster may draft (docs/MARKETING_POSTS.md, "Promo posts"): words and evidence, no credentials.
+# Same reason as the line above; tests/test_promo_format.py fails if this line goes.
+!docs/promo/*.json
+# The cases the owner page's message preview and the sender's renderer are both checked against
+# (tests/test_marketing_message_fixture.py): made-up words and counts, no credentials.
+!tests/fixtures/marketing_message_cases.json
+!tests/fixtures/marketing_banned_cases.json
+# What process_request did on main for Instagram, TikTok and YouTube before the publisher registry
+# (tests/test_publisher_transcripts.py): fake ids and made-up captions, no credentials.
+!tests/fixtures/publisher_transcripts.json
+# The cases the channel card's risk editors and the worker's reader (modules/channels.py) are both checked against
+# (command-center/tests/channel-risk.test.ts, tests/test_channel_risk_values.py): made-up values, no credentials.
+!command-center/tests/fixtures/channel-risk-cases.json
+# Command Center (Next.js app) config — no credentials, and Vercel needs the
+# lockfile for reproducible `npm ci` builds.
+!command-center/tsconfig.json
+!command-center/package-lock.json
+# The premade ElevenLabs voice list (ids, names, styles — public data), read by
+# the Create page and tools/voice_previews.py.
+!command-center/lib/voices.json
+# The public site's model samples (docs/SHOWCASE.md): job ids, prompts, model names and recorded costs, no credentials.
+# Written by tools/export_showcase.py; without this line the blanket rule hides it and the export's PR would carry no entry.
+!command-center/lib/site/showcase.json
+# The Studio's effects (docs/EFFECTS.md): ids, English prompts, model ids, shapes and colours, no credentials.
+# Without this line the blanket rule hides it and the build ships no catalog (command-center/tests/effects-catalog.test.ts checks it).
+!command-center/lib/effects/effects.json
+# The labelled claims tools/factcheck_calibration.py measures the fact-checker against: public history, no credentials.
+# Without this line the blanket rule above hides the file and CI fails the calibration tests
+# (tests/test_factcheck_calibration.py checks it is not ignored).
+!tools/factcheck_calibration_claims.json
+# The OpenAPI document's route is a DIRECTORY named openapi.json (Next's URL
+# is the folder name); the blanket rule hid its route.ts. Only that folder.
+!command-center/app/docs/api/openapi.json/
+# Remotion video engine: TS config, lockfile (for `npm ci`) and the props
+# fixtures used by its smoke render — none carries a credential.
+!video-engine/tsconfig.json
+!video-engine/package-lock.json
+!video-engine/fixtures/*.json
+# The bot's runtime directories, anchored to the repository root.
+#
+# Unanchored ("logs/") these match at ANY depth, and that silently swallowed
+# command-center/app/(app)/logs/ and command-center/components/logs/ — the
+# Logs screen was never committed and never deployed. A leading slash keeps
+# the rule pointed at the bot's own output and off the app's source.
+/output/
+/logs/
+/history/
+# Resume ledgers carried between Actions runs (tools/run_state_cache.py).
+/.run_state/
+/.run_state.staging/
+# Opt-in media of the newest unfinished run, for scene repair (tools/repair_kit_cache.py).
+/.repair_kit/
+/.repair_kit.staging/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# Synthesized audio — regenerated on demand by tools/generate_assets.py.
+# Commit real recordings as .mp3 instead; the loaders check mp3 before wav,
+# so a committed .mp3 always overrides the generated fallback.
+assets/sfx/*.wav
+assets/music/*.wav
+!schemas/*.json
+# The country table's manifest (docs/GEO_BLOCK.md): the source, its URL and MD5, the licence and what the
+# conversion changed. No credential; tests/test_geoip_build.py reads it beside country.bin.gz.
+!command-center/data/geoip/manifest.json
+# The project's Claude Code settings: permission rules only (today: WebFetch allowed), never a
+# credential. settings.local.json stays ignored by the rule above: it is per person.
+!.claude/settings.json

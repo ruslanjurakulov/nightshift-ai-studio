@@ -1,0 +1,1135 @@
+"""Video adapters: Veo, Kling, MiniMax Hailuo, Runway (+ its video upscaler), Luma, Seedance (1.x and 2.x), Wan.
+
+All of these are asynchronous: ``submit`` starts a billable job and returns its
+task id, ``poll`` asks about that id and never re-submits, ``fetch`` downloads
+the clip. Each calls the vendor's documented endpoint (the model's
+``api_documented`` entry in ``schemas/model_registry.json`` names the source);
+base URLs are env-overridable (https only) so a vendor's host move is a config
+change, not a release.
+
+Task ids are validated before they are put into a URL: an id comes back from a
+job row, and a row is data, so it must not be able to steer a request (and our
+key) anywhere else.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import logging
+import re
+import shutil
+import subprocess
+import time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import requests
+
+from modules.capabilities.base import (
+    E_AUTH,
+    E_BAD_REQUEST,
+    E_BAD_RESPONSE,
+    E_NOT_CONFIGURED,
+    E_NOT_FOUND,
+    E_POLICY,
+    E_QUOTA,
+    E_RATE_LIMITED,
+    E_UNAVAILABLE,
+    FAILED,
+    I2V,
+    PENDING,
+    SUCCEEDED,
+    T2V,
+    VIDEO_UPSCALE,
+    AdapterError,
+    CapabilityRequest,
+    HttpAdapter,
+    Output,
+    PollResult,
+    ProviderTask,
+    b64_output,
+    classify_http,
+    dig,
+    host_is,
+    image_b64,
+    image_data_uri,
+    image_mime,
+    is_url,
+    json_body,
+)
+from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
+from modules.capabilities.modelark import map_code as modelark_code
+from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, checked_polling_url, unconfirmed
+
+logger = logging.getLogger(__name__)
+
+_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
+_POLICY_HINTS = ("safety", "policy", "blocked", "moderation", "sensitive", "risk")
+#: ModelArk's ``safety_identifier``: an English string of at most 64 characters.
+_SAFETY_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _safe_id(task_id: Optional[str], pattern: re.Pattern = _ID) -> str:
+    tid = str(task_id or "")
+    if not pattern.fullmatch(tid):
+        raise AdapterError(E_NOT_FOUND, "task id has an unexpected shape")
+    return tid
+
+
+def _image_ref(path: str) -> str:
+    """An https URL as is, a local file as a data URI (vendors that accept both)."""
+    return path if is_url(path) else image_data_uri(path)
+
+
+def _failed(adapter: HttpAdapter, msg, default: str = E_UNAVAILABLE) -> PollResult:
+    text = adapter.message(msg) or "the vendor reported the task failed"
+    code = E_POLICY if any(w in text.lower() for w in _POLICY_HINTS) else default
+    return PollResult(FAILED, error=AdapterError(code, text))
+
+
+# ── Google Veo (Gemini API) ─────────────────────────────────────────────────
+class VeoAdapter(HttpAdapter):
+    """``POST /v1beta/models/{model}:predictLongRunning`` → an operation name;
+    ``GET /v1beta/{name}`` until ``done``; the clip is a file URI (downloaded
+    with the key header, Google hosts only) or inline ``encodedVideo``.
+    Field names are those of google-genai's ``generate_videos``."""
+
+    key = "video.veo"
+    key_env = ("VEO_API_KEY", "GEMINI_API_KEY")
+    base_url_env = "VEO_BASE_URL"
+    default_base_url = "https://generativelanguage.googleapis.com"
+    capabilities = (T2V, I2V)
+    #: ``lastFrame`` — "the final image for an interpolation video", Veo 3.1,
+    #: 3.1 Fast and 3.1 Lite (ai.google.dev/gemini-api/docs/veo, 2026-10-01).
+    end_frame_capabilities = (I2V,)
+    _OP = re.compile(r"^models/[A-Za-z0-9.-]+/operations/[A-Za-z0-9_-]+$")
+    #: The key rides every Veo call in a header requests would carry across a cross-host redirect: a 3xx is an error, never followed.
+    follow_redirects = False
+    #: Set by tools/probe_models.py on the adapter it builds (to the vendor model it is probing) so a probe BY NAME can learn
+    #: whether a past-shutdown id still answers; every other caller is refused at submit. Deliberately an attribute and not an
+    #: environment switch: a value that GitHub or a deploy could set would let every worker bypass the shutdown guard.
+    probing_past_shutdown: str = ""
+
+    def auth_headers(self) -> Dict[str, str]:
+        return {"x-goog-api-key": self.api_key()}
+
+    def _refuse_past_shutdown(self, vendor_model: str) -> None:
+        """A job priced before the model's announced shutdown date (schemas/model_registry.json ``shutdown``) and advanced after it
+        is refused HERE, before any request, with the reason; no other model is tried (CLAUDE.md #4). Google's date is the
+        EARLIEST possible one, so this is a stop, not a claim that the id is dead."""
+        from modules import model_registry   # late: the registry imports the adapters
+
+        allowed = (self.probing_past_shutdown or "").strip().lower()
+        for entry in model_registry.entries_named_in(vendor_model):
+            if entry.adapter == self.key and entry.shut_down() and allowed != entry.vendor_model.lower():
+                s = entry.raw["shutdown"]
+                raise AdapterError(
+                    E_NOT_FOUND,
+                    f"{entry.vendor_model} is past Google's announced shutdown date {s['on']} (the EARLIEST possible date, "
+                    f"{s['source_url']}, read {s['as_of']}): nothing was sent and no other model was tried. Re-open it only after "
+                    f"tools/probe_models.py --model {entry.id} shows it still answers (then move shutdown.on in the registry)",
+                    not_accepted=True)
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        self._refuse_past_shutdown(vendor_model)
+        instance: dict = {"prompt": request.prompt.strip()}
+        if request.capability == I2V and request.input_images:
+            path = request.input_images[0]
+            instance["image"] = {"bytesBase64Encoded": image_b64(path), "mimeType": image_mime(path)}
+            if request.end_image:
+                # google-genai sends GenerateVideosConfig.last_frame here, in
+                # the same Image shape as the first frame.
+                end = request.end_image
+                instance["lastFrame"] = {"bytesBase64Encoded": image_b64(end), "mimeType": image_mime(end)}
+        params: dict = {"aspectRatio": request.aspect_ratio or "16:9"}
+        if request.duration_s:
+            params["durationSeconds"] = int(request.duration_s)
+        if request.resolution:
+            params["resolution"] = request.resolution
+        if request.negative_prompt:
+            params["negativePrompt"] = request.negative_prompt
+        data = self.post(f"{self.base_url}/v1beta/models/{vendor_model}:predictLongRunning",
+                         {"instances": [instance], "parameters": params})
+        name = data.get("name")
+        if not name:
+            raise AdapterError(E_BAD_RESPONSE, "no operation name in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(name, self._OP))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        name = _safe_id(task.task_id, self._OP)
+        data = self.get(f"{self.base_url}/v1beta/{name}")
+        if not data.get("done"):
+            return PollResult(PENDING)
+        if data.get("error"):
+            return _failed(self, dig(data, "error", "message") or "operation failed")
+        resp = dig(data, "response", "generateVideoResponse") or {}
+        video = dig(resp, "generatedSamples", 0, "video") or {}
+        if video.get("encodedVideo"):
+            return PollResult(SUCCEEDED, [b64_output(video["encodedVideo"], "video/mp4")])
+        uri = video.get("uri")
+        if uri:
+            if not host_is(uri, "generativelanguage.googleapis.com"):
+                # The key header goes only to Google's own file endpoint.
+                raise AdapterError(E_BAD_RESPONSE, "video URI is not a Gemini API file URL")
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(uri),
+                                                 url_headers=self.auth_headers())])
+        if resp.get("raiMediaFilteredCount") or resp.get("raiMediaFilteredReasons"):
+            reasons = "; ".join(map(str, resp.get("raiMediaFilteredReasons") or []))
+            return PollResult(FAILED, error=AdapterError(E_POLICY, self.message(reasons) or "filtered"))
+        return PollResult(FAILED, error=AdapterError(E_BAD_RESPONSE, "done without a video"))
+
+
+# ── Kling (console API key, or JWT from access key + secret key) ───────────
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+KLING_JWT_TTL_S = 1800
+
+
+def kling_jwt(access_key: str, secret_key: str, *, now: Optional[float] = None,
+              ttl_s: int = KLING_JWT_TTL_S) -> str:
+    """The HS256 token Kling's access-key mode expects in ``Authorization:
+    Bearer``: ``iss`` = access key, valid from 5 s ago for ``ttl_s`` (Kling
+    documents 30 min). Built fresh for every request, so a poll loop that runs
+    longer than the lifetime never sends an expired token."""
+    t = int(now if now is not None else time.time())
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = _b64url(json.dumps({"iss": access_key, "exp": t + ttl_s, "nbf": t - 5},
+                                 separators=(",", ":")).encode())
+    signing = f"{header}.{payload}".encode("ascii")
+    sig = _b64url(hmac.new(secret_key.encode(), signing, hashlib.sha256).digest())
+    return f"{header}.{payload}.{sig}"
+
+
+class KlingAdapter(HttpAdapter):
+    """``POST /v1/videos/{text2video|image2video}`` → ``data.task_id``;
+    ``GET /v1/videos/{kind}/{task_id}`` → ``data.task_status`` and
+    ``data.task_result.videos[0].url``. Kling files this shape under its
+    "legacy" pages; the per-model v3 path is not confirmed, so kling-v3 stays
+    hidden until a probe on this path succeeds.
+
+    Two documented auth modes:
+
+    * ``KLING_ACCESS_KEY`` + ``KLING_SECRET_KEY`` (or ``KLING_API_KEY`` as
+      ``<access key>:<secret key>``) → a fresh HS256 JWT per request;
+    * ``KLING_API_KEY`` without a colon → a console API key, sent as is.
+
+    Watermark: ``watermark_info`` is optional and off by default (it adds a second, marked copy,
+    ``watermark_url``); nothing read requires it, so it is not sent and the vendor's default output
+    (``url``) is stored as returned. https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy"""
+
+    key = "video.kling"
+    key_env = ("KLING_API_KEY", "KLING_ACCESS_KEY", "KLING_SECRET_KEY")
+    base_url_env = "KLING_BASE_URL"
+    default_base_url = "https://api-singapore.klingai.com"
+    capabilities = (T2V, I2V)
+    #: ``image_tail`` on image2video. Kling's capability map: kling-v3 takes
+    #: first + last frame; kling-v2-6 only in 1080p silent (pro) mode, which
+    #: this adapter never sends — so only kling-v3's registry entry has it.
+    end_frame_capabilities = (I2V,)
+    #: ``sound`` on / off (kling-v2-6 and later). Sent only when the job names
+    #: audio (the registry pins it off for a model that is priced by it), so a
+    #: model that takes no such field is never sent one.
+    audio_capabilities = (T2V, I2V)
+    _TASK = re.compile(r"^(text2video|image2video)/[A-Za-z0-9_-]{1,128}$")
+
+    def _pair(self) -> Tuple[str, str]:
+        ak = (self._env.get("KLING_ACCESS_KEY") or "").strip()
+        sk = (self._env.get("KLING_SECRET_KEY") or "").strip()
+        if ak and sk:
+            return ak, sk
+        combined = (self._env.get("KLING_API_KEY") or "").strip()
+        if ":" in combined:
+            ak, sk = (p.strip() for p in combined.split(":", 1))
+            if ak and sk:
+                return ak, sk
+        return "", ""
+
+    def _console_key(self) -> str:
+        combined = (self._env.get("KLING_API_KEY") or "").strip()
+        return combined if combined and ":" not in combined else ""
+
+    def api_key(self) -> str:
+        ak, sk = self._pair()
+        return f"{ak}:{sk}" if ak and sk else self._console_key()
+
+    def secrets(self) -> List[str]:
+        own = [s for s in (*self._pair(), self._console_key(),
+                           (self._env.get("KLING_API_KEY") or "").strip()) if s]
+        return own + super().secrets()
+
+    def require_key(self) -> None:
+        if not self.configured():
+            raise AdapterError(E_NOT_CONFIGURED, "no Kling key on this worker (set KLING_API_KEY, or "
+                                                 "KLING_ACCESS_KEY and KLING_SECRET_KEY)")
+
+    def auth_headers(self) -> Dict[str, str]:
+        ak, sk = self._pair()
+        if ak and sk:
+            return {"Authorization": f"Bearer {kling_jwt(ak, sk)}"}
+        key = self._console_key()
+        return {"Authorization": f"Bearer {key}"} if key else {}
+
+    @staticmethod
+    def code_for(code) -> Optional[str]:
+        """Kling's business codes (1000s auth, 1100s account, 1200s request,
+        1300s policy/limits, 5000s server) → ours. The table page could not
+        be read in full (egress blocked); an unknown code falls back to the
+        HTTP status, never to "success"."""
+        try:
+            c = int(code)
+        except (TypeError, ValueError):
+            return None
+        if c == 0:
+            return None
+        if 1000 <= c <= 1004 or c == 1103:
+            return E_AUTH                 # bad / expired token, no access to the resource
+        if 1100 <= c <= 1199:
+            return E_QUOTA                # account arrears / resource pack used up
+        if c == 1203:
+            return E_NOT_FOUND
+        if 1200 <= c <= 1299:
+            return E_BAD_REQUEST
+        if c in (1300, 1301):
+            return E_POLICY
+        if 1302 <= c <= 1304:
+            return E_RATE_LIMITED
+        return E_UNAVAILABLE
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        return self.code_for(json_body(text).get("code"))
+
+    def _check(self, data: dict) -> dict:
+        code = self.code_for(data.get("code"))
+        if code:
+            raise AdapterError(code, self.message(data.get("message") or "Kling error"))
+        return data.get("data") or {}
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        kind = "image2video" if request.capability == I2V else "text2video"
+        body: dict = {"model_name": vendor_model, "prompt": request.prompt.strip(),
+                      "duration": str(int(request.duration_s or 5)), "mode": "std"}
+        if request.negative_prompt:
+            body["negative_prompt"] = request.negative_prompt
+        if request.audio is not None:
+            # Priced apart (0070): the soundtrack is asked for, or refused, never left to the vendor.
+            body["sound"] = "on" if request.audio else "off"
+        if kind == "image2video":
+            path = request.input_images[0]
+            # Kling takes a URL or raw base64 (no data: prefix).
+            body["image"] = path if is_url(path) else image_b64(path)
+            if request.end_image:
+                end = request.end_image
+                body["image_tail"] = end if is_url(end) else image_b64(end)
+        else:
+            body["aspect_ratio"] = request.aspect_ratio or "16:9"
+        data = self._check(self.post(f"{self.base_url}/v1/videos/{kind}", body))
+        task_id = data.get("task_id")
+        if not task_id:
+            raise AdapterError(E_BAD_RESPONSE, "no task_id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(f"{kind}/{task_id}", self._TASK))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        tid = _safe_id(task.task_id, self._TASK)
+        data = self._check(self.get(f"{self.base_url}/v1/videos/{tid}"))
+        status = str(data.get("task_status") or "").lower()
+        if status == "succeed":
+            url = dig(data, "task_result", "videos", 0, "url")
+            if not url:
+                raise AdapterError(E_BAD_RESPONSE, "succeeded without a video URL")
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
+        if status == "failed":
+            return _failed(self, data.get("task_status_msg") or "task failed")
+        return PollResult(PENDING)
+
+
+# ── MiniMax Hailuo (v1 flow; the H3 models use /v2 and are not wired here) ──
+class MiniMaxVideoAdapter(HttpAdapter):
+    """``POST /v1/video_generation`` → ``task_id``; ``GET
+    /v1/query/video_generation?task_id=`` → ``status`` + ``file_id``;
+    ``GET /v1/files/retrieve?file_id=`` → ``file.download_url``
+    (MiniMax's own MCP server makes exactly these calls)."""
+
+    key = "video.minimax"
+    key_env = ("MINIMAX_API_KEY",)
+    base_url_env = "MINIMAX_BASE_URL"
+    default_base_url = "https://api.minimax.io"
+    capabilities = (T2V, I2V)
+    _CODES = {1002: E_RATE_LIMITED, 1004: E_AUTH, 2049: E_AUTH, 1008: E_QUOTA,
+              1026: E_POLICY, 1027: E_POLICY, 1042: E_POLICY, 2013: E_BAD_REQUEST}
+
+    def _check(self, data: dict) -> dict:
+        status = dig(data, "base_resp", "status_code")
+        if status not in (None, 0, "0"):
+            try:
+                code = self._CODES.get(int(status), E_UNAVAILABLE)
+            except (TypeError, ValueError):
+                code = E_UNAVAILABLE
+            raise AdapterError(code, self.message(dig(data, "base_resp", "status_msg") or "MiniMax error"))
+        return data
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        raw = dig(json_body(text), "base_resp", "status_code")
+        try:
+            return self._CODES.get(int(raw)) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        body: dict = {"model": vendor_model, "prompt": request.prompt.strip(),
+                      "duration": int(request.duration_s or 6),
+                      "resolution": (request.resolution or "768p").upper()}
+        if request.capability == I2V and request.input_images:
+            body["first_frame_image"] = _image_ref(request.input_images[0])
+        data = self._check(self.post(f"{self.base_url}/v1/video_generation", body))
+        if not data.get("task_id"):
+            raise AdapterError(E_BAD_RESPONSE, "no task_id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(data["task_id"]))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        tid = _safe_id(task.task_id)
+        data = self._check(self.get(f"{self.base_url}/v1/query/video_generation",
+                                    params={"task_id": tid}))
+        status = str(data.get("status") or "").lower()
+        if status == "success":
+            file_id = data.get("file_id")
+            if not file_id:
+                raise AdapterError(E_BAD_RESPONSE, "success without file_id")
+            file = self._check(self.get(f"{self.base_url}/v1/files/retrieve",
+                                        params={"file_id": _safe_id(file_id)}, what="retrieve"))
+            url = dig(file, "file", "download_url")
+            if not url:
+                raise AdapterError(E_BAD_RESPONSE, "no download_url for the file")
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
+        if status == "fail":
+            return _failed(self, "the vendor reported the task failed")
+        return PollResult(PENDING)
+
+
+# ── Runway ──────────────────────────────────────────────────────────────────
+#: GET /v1/tasks/{id} ``status`` words that mean "not finished yet" (docs.dev.runwayml.com/api.md, read 2026-11-13). THROTTLED is
+#: Runway holding the task behind the account's concurrency limit: it still runs, and bills, once a slot frees up.
+_RUNWAY_IN_FLIGHT = frozenset({"PENDING", "THROTTLED", "RUNNING"})
+#: ``failureCode`` prefixes that are the input's fault (docs.dev.runwayml.com/errors/task-failures, read 2026-11-13): an input asset
+#: Runway cannot use (its size, shape or length), which a retry of the same picture would only pay for again. Every code with SAFETY
+#: in it (SAFETY.INPUT.*, SAFETY.OUTPUT.*, INPUT_PREPROCESSING.SAFETY.TEXT) is a moderation refusal; the rest (INTERNAL,
+#: INTERNAL.BAD_OUTPUT.*, INPUT_PREPROCESSING.INTERNAL, THIRD_PARTY.UNAVAILABLE, or none) Runway documents as worth a later retry.
+_RUNWAY_BAD_INPUT = ("ASSET.INVALID",)
+#: A 4xx body that names a credit shortfall. Runway's error page does not document these words, so the match is narrow on purpose:
+#: without it an empty Runway balance answered as a 400 reads as "change your input", the opposite remedy (CLAUDE.md #6).
+_RUNWAY_NO_CREDITS = re.compile(r"(?i)\b(?:not have enough|insufficient)\s+credits?\b")
+#: Tasks whose reported credits are kept for the probe's note (the worker never reads them).
+_RUNWAY_KEEP = 32
+
+
+class RunwayAdapter(HttpAdapter):
+    """``POST /v1/text_to_video`` or ``/v1/image_to_video`` (header
+    ``X-Runway-Version: 2024-11-06``) → ``id``; ``GET /v1/tasks/{id}`` →
+    ``status`` and ``output[0]`` (docs.dev.runwayml.com/api.md, read 2026-11-13)."""
+
+    key = "video.runway"
+    key_env = ("RUNWAYML_API_SECRET", "RUNWAY_API_KEY")
+    base_url_env = "RUNWAY_BASE_URL"
+    default_base_url = "https://api.dev.runwayml.com"
+    capabilities = (T2V, I2V)
+    API_VERSION = "2024-11-06"
+    _RATIOS = {"16:9": "1280:720", "9:16": "720:1280", "1:1": "960:960",
+               "4:3": "1104:832", "3:4": "832:1104", "21:9": "1584:672"}
+    #: text_to_video (gen4.5) documents only the two 720p ratios.
+    _T2V_RATIOS = ("16:9", "9:16")
+    #: ``duration`` is an integer from 2 to 10 seconds for gen4.5 (where it is required) and gen4_turbo. The registry may offer fewer
+    #: lengths, never more: Runway would refuse one after the job was queued and priced.
+    MIN_DURATION_S, MAX_DURATION_S = 2, 10
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        #: ``cost.credits`` per task as Runway reported it (credits at the developer portal's rate): printed beside a probe's OK so the registry's
+        #: per-second figure can be compared with a real bill before anyone sets pricing.confirmed.
+        self.credits_reported: Dict[str, float] = {}
+
+    def auth_headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key()}", "X-Runway-Version": self.API_VERSION}
+
+    def _duration_problem(self, request: CapabilityRequest) -> Optional[str]:
+        d = 5 if request.duration_s is None else request.duration_s
+        if isinstance(d, bool) or not isinstance(d, int) or not self.MIN_DURATION_S <= d <= self.MAX_DURATION_S:
+            return f"Runway makes clips of {self.MIN_DURATION_S} to {self.MAX_DURATION_S} whole seconds"
+        return None
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        if request.capability == T2V and (request.aspect_ratio or "16:9") not in self._T2V_RATIOS:
+            out.append("Runway text-to-video takes 16:9 or 9:16 only")
+        if request.capability in (T2V, I2V):
+            problem = self._duration_problem(request)
+            if problem:
+                out.append(problem)
+        return out
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        # Never for a 5xx: a gateway in front of a Runway that already took the task must stay "unavailable", never a refusal.
+        if 400 <= status < 500 and _RUNWAY_NO_CREDITS.search(text or ""):
+            return E_QUOTA
+        return None
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        ratio = self._RATIOS.get(request.aspect_ratio or "16:9")
+        if not ratio or (request.capability == T2V and (request.aspect_ratio or "16:9") not in self._T2V_RATIOS):
+            raise AdapterError(E_BAD_REQUEST, "aspect ratio not offered by Runway for this capability", not_accepted=True)
+        problem = self._duration_problem(request)
+        if problem:
+            raise AdapterError(E_BAD_REQUEST, problem, not_accepted=True)
+        body: dict = {"model": vendor_model, "promptText": request.prompt.strip(), "ratio": ratio,
+                      "duration": int(request.duration_s or 5)}
+        if request.capability == I2V:
+            # promptImage as one string is the first frame (position "first"), the only frame gen4.5 and gen4_turbo take.
+            body["promptImage"] = _image_ref(request.input_images[0])
+            path = "image_to_video"
+        else:
+            path = "text_to_video"
+        data = self.post(f"{self.base_url}/v1/{path}", body)
+        if not data.get("id"):
+            raise AdapterError(E_BAD_RESPONSE, "no task id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
+
+    def _remember_cost(self, task_id: str, data) -> None:
+        credits = dig(data, "cost", "credits")
+        if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0:
+            self.credits_reported[task_id] = credits
+            while len(self.credits_reported) > _RUNWAY_KEEP:
+                self.credits_reported.pop(next(iter(self.credits_reported)))
+
+    def probe_note(self, task: ProviderTask) -> str:
+        """What the probe prints beside OK: the credits Runway says the task cost, to compare with the registry estimate."""
+        seen = self.credits_reported.get(str(task.task_id or ""))
+        if seen is None:
+            return "Runway reported no cost.credits figure"
+        return f"credits reported by Runway: {seen:g} (compare with the registry estimate before trusting a price)"
+
+    def probe_credits(self, task: ProviderTask) -> Optional[float]:
+        """The same figure as a bare number, for the probe's --brief log (the workflow's), which prints no free text."""
+        return self.credits_reported.get(str(task.task_id or ""))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        tid = _safe_id(task.task_id)
+        data = self.get(f"{self.base_url}/v1/tasks/{tid}")
+        status = str(data.get("status") or "").upper()
+        if status == "SUCCEEDED":
+            url = dig(data, "output", 0)
+            if not url:
+                raise AdapterError(E_BAD_RESPONSE, "succeeded without output")
+            self._remember_cost(tid, data)
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
+        if status in ("FAILED", "CANCELLED"):
+            fcode = str(data.get("failureCode") or "")
+            if "SAFETY" in fcode.upper():
+                return PollResult(FAILED, error=AdapterError(E_POLICY, self.message(fcode)))
+            if fcode.upper().startswith(_RUNWAY_BAD_INPUT):
+                return PollResult(FAILED, error=AdapterError(E_BAD_REQUEST, self.message(fcode)))
+            return _failed(self, f"{fcode} {data.get('failure') or ''}".strip() or status)
+        if status not in _RUNWAY_IN_FLIGHT:
+            # A word the docs do not list is a docs change to read, not a reason to drop a task Runway may still finish and bill.
+            logger.warning("runway: task status %r is not one the docs list; treated as pending",
+                           self.message(status)[:40] or "(none)")
+        return PollResult(PENDING, progress=data.get("progress"))
+
+
+#: What Runway's video inputs document (docs.dev.runwayml.com/assets/inputs):
+#: the container's content type. The library copy's suffix says which it is.
+_RUNWAY_VIDEO_TYPES = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm",
+                       ".mkv": "video/x-matroska"}
+_RUNWAY_URI = re.compile(r"^runway://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,4990}$")
+
+
+#: The demuxer forced for a source's extension (the upscale's accepted types).
+_FPS_DEMUXERS = {".mp4": "mov", ".mov": "mov", ".webm": "matroska", ".mkv": "matroska"}
+
+
+def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
+    """The first video stream's frame rate as ffprobe reads it, or None when
+    it cannot be read (no ffprobe, not a video, a 0/0 rate). Never a guess."""
+    exe = shutil.which("ffprobe")
+    if not exe:
+        return None
+    # The file is a member's library copy: only the file protocol, and the
+    # demuxer its type names (as the media library's own probe does), so a
+    # playlist or concat script cannot make ffprobe open anything else.
+    demuxer = _FPS_DEMUXERS.get(Path(str(path)).suffix.lower())
+    forced = ["-f", demuxer] if demuxer else []
+    try:
+        out = subprocess.run([exe, "-v", "error", "-protocol_whitelist", "file", *forced,
+                              "-select_streams", "v:0", "-show_entries",
+                              "stream=avg_frame_rate,r_frame_rate", "-of", "json", str(path)],
+                             capture_output=True, timeout=timeout, check=False)
+        stream = (json.loads(out.stdout or b"{}").get("streams") or [{}])[0]
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        num, _, den = str(stream.get(key) or "").partition("/")
+        try:
+            rate = float(num) / float(den or 1)
+        except (ValueError, ZeroDivisionError):
+            continue
+        if rate > 0:
+            return rate
+    return None
+
+
+class RunwayVideoUpscaleAdapter(RunwayAdapter):
+    """``POST /v1/video_upscale`` (model ``magnific_video_upscaler_creative``,
+    ``videoUri``, ``resolution`` 720p | 1k | 2k | 4k) → ``id``; polled like
+    every Runway task at ``GET /v1/tasks/{id}``.
+
+    The library file reaches Runway as an ephemeral upload: ``POST
+    /v1/uploads {filename, type: "ephemeral"}`` answers a presigned
+    ``uploadUrl`` + form ``fields`` and a ``runwayUri``; the file is POSTed
+    there as multipart (WITHOUT our key — it is a storage host, not the API)
+    and the ``runway://`` URI is what the task names. Never a public URL of
+    ours: nothing of the organization's is exposed to fetch.
+
+    Runway bills this per OUTPUT FRAME (docs.dev.runwayml.com/guides/pricing):
+    the database prices it per second of source (0052), at a rate the owner
+    sets for a ceiling frame rate. A source above that ceiling would cost more
+    than it was priced at, so it is refused here before anything is uploaded
+    or spent; a frame rate that cannot be read is refused too (CLAUDE.md #5).
+    ``fpsBoost`` is never sent: it changes the frame count, and so the bill."""
+
+    key = "video.runway_upscale"
+    capabilities = (VIDEO_UPSCALE,)
+    end_frame_capabilities = ()
+    TARGETS = ("720p", "1k", "2k", "4k")
+    #: The per-second price assumes at most this many frames a second.
+    MAX_FPS = 60.0
+    #: Runway's ephemeral uploads: 512 bytes to 200 MB.
+    MIN_BYTES = 512
+    MAX_BYTES = 200 * 1024 * 1024
+    #: Replaced in tests; the worker image ships ffprobe (Dockerfile.worker).
+    fps_of = staticmethod(video_fps)
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        if request.upscale_target not in self.TARGETS:
+            out.append(f"Runway upscales a video to {', '.join(self.TARGETS)} only")
+        if request.input_images:
+            out.append("a video upscale takes a video, not a picture")
+        if len(request.input_media) != 1:
+            out.append("a video upscale takes exactly one video")
+        elif Path(request.input_media[0]).suffix.lower() not in _RUNWAY_VIDEO_TYPES:
+            out.append("Runway takes MP4, MOV, WebM or MKV video")
+        return out
+
+    def _upload(self, path: Path) -> str:
+        mime = _RUNWAY_VIDEO_TYPES[path.suffix.lower()]
+        ticket = self.post(f"{self.base_url}/v1/uploads", {"filename": path.name, "type": "ephemeral"},
+                           what="upload")
+        url, fields, uri = ticket.get("uploadUrl"), ticket.get("fields"), ticket.get("runwayUri")
+        if not is_url(url or "") or not isinstance(fields, dict) \
+                or not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()) \
+                or not _RUNWAY_URI.fullmatch(str(uri or "")):
+            raise AdapterError(E_BAD_RESPONSE, "upload: Runway answered without a usable upload ticket")
+        try:
+            with open(path, "rb") as fh:
+                # No auth header: the presigned URL is the credential, and our
+                # key must never reach a storage host. No redirects either.
+                resp = self.session.request("POST", url, data=dict(fields), files={"file": (path.name, fh, mime)},
+                                            timeout=max(self.timeout, 300), allow_redirects=False)
+        except requests.RequestException as e:
+            raise AdapterError(E_UNAVAILABLE, f"upload: {type(e).__name__}") from None
+        status = getattr(resp, "status_code", 200)
+        if status >= 300:
+            # Runway: "If the upload fails, do not retry" — a new ticket is
+            # needed, so the job fails and its hold is released.
+            raise AdapterError(classify_http(status), f"upload: HTTP {status}", http_status=status)
+        return str(uri)
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        if request.upscale_target not in self.TARGETS or len(request.input_media) != 1:
+            raise AdapterError(E_BAD_REQUEST, "a video upscale needs one video and a target resolution")
+        path = Path(request.input_media[0])
+        if path.suffix.lower() not in _RUNWAY_VIDEO_TYPES:
+            raise AdapterError(E_BAD_REQUEST, "Runway takes MP4, MOV, WebM or MKV video")
+        size = path.stat().st_size
+        if not self.MIN_BYTES <= size <= self.MAX_BYTES:
+            raise AdapterError(E_BAD_REQUEST, "Runway takes videos from 512 bytes to 200 MB")
+        fps = self.fps_of(str(path))
+        if fps is None:
+            raise AdapterError(E_BAD_REQUEST, "the video's frame rate could not be read, so its upscale "
+                                              "cannot be priced; export it again as MP4")
+        if fps > self.MAX_FPS + 0.5:
+            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second; the upscale "
+                                              f"takes up to {self.MAX_FPS:.0f}")
+        uri = self._upload(path)
+        data = self.post(f"{self.base_url}/v1/video_upscale",
+                         {"model": vendor_model, "videoUri": uri, "resolution": request.upscale_target})
+        if not data.get("id"):
+            raise AdapterError(E_BAD_RESPONSE, "no task id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
+
+
+# ── Luma (Agents API) ───────────────────────────────────────────────────────
+class LumaAdapter(HttpAdapter):
+    """``POST /v1/generations`` with ``type: "video"`` and ``video: {duration,
+    resolution, start_frame}`` → ``id``; ``GET /v1/generations/{id}`` →
+    ``state`` (queued | processing | completed | failed), ``output[].url`` and
+    ``failure_code`` (luma-agents SDK). The older Dream Machine API and its
+    Ray 2 models are deprecated by Luma and are not wired.
+
+    Luma's API terms forbid a service that "substantially replicates" Luma
+    without written consent, so its registry entries carry a ``terms_gate``
+    that keeps them unsellable (migration 0035) until the owner has it."""
+
+    key = "video.luma"
+    key_env = ("LUMA_AGENTS_API_KEY",)
+    base_url_env = "LUMA_AGENTS_BASE_URL"
+    default_base_url = "https://agents.lumalabs.ai/v1"
+    capabilities = (T2V, I2V)
+    #: ``video.end_frame`` (docs.agents.lumalabs.ai guides/videos/generation).
+    end_frame_capabilities = (I2V,)
+    _FAILURES = {"content_moderated": E_POLICY, "budget_exhausted": E_QUOTA,
+                 "rate_limited": E_RATE_LIMITED, "invalid_request": E_BAD_REQUEST,
+                 "image_too_large": E_BAD_REQUEST, "unsupported_format": E_BAD_REQUEST,
+                 "corrupt_input": E_BAD_REQUEST, "output_not_found": E_UNAVAILABLE,
+                 "generation_failed": E_UNAVAILABLE}
+    #: Luma's validation rules: start_frame / end_frame are "rejected with
+    #: duration: 10s" — a first frame included, so this holds for every i2v.
+    _FRAMED_DURATIONS = (5,)
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        if request.capability == I2V and request.duration_s is not None \
+                and request.duration_s not in self._FRAMED_DURATIONS:
+            out.append("Luma animates a picture into 5 s clips only")
+        return out
+
+    @staticmethod
+    def _frame(path: str) -> dict:
+        return {"url": path} if is_url(path) else {"data": image_b64(path), "media_type": image_mime(path)}
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        video: dict = {}
+        if request.duration_s:
+            video["duration"] = f"{int(request.duration_s)}s"
+        if request.resolution:
+            video["resolution"] = request.resolution
+        if request.capability == I2V:
+            video["start_frame"] = self._frame(request.input_images[0])
+            if request.end_image:
+                video["end_frame"] = self._frame(request.end_image)
+        body: dict = {"model": vendor_model, "type": "video", "prompt": request.prompt.strip(),
+                      "aspect_ratio": request.aspect_ratio or "16:9"}
+        if video:
+            body["video"] = video
+        data = self.post(f"{self.base_url}/generations", body)
+        if not data.get("id"):
+            raise AdapterError(E_BAD_RESPONSE, "no generation id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        data = self.get(f"{self.base_url}/generations/{_safe_id(task.task_id)}")
+        state = str(data.get("state") or "").lower()
+        if state == "completed":
+            urls = [o.get("url") for o in (data.get("output") or []) if isinstance(o, dict) and o.get("url")]
+            if not urls:
+                raise AdapterError(E_BAD_RESPONSE, "completed without output")
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(urls[0]))])
+        if state == "failed":
+            code = self._FAILURES.get(str(data.get("failure_code") or ""), E_UNAVAILABLE)
+            return PollResult(FAILED, error=AdapterError(
+                code, self.message(data.get("failure_reason") or data.get("failure_code") or "failed")))
+        return PollResult(PENDING)
+
+
+# ── ByteDance Seedance (BytePlus ModelArk, international) ───────────────────
+class SeedanceAdapter(HttpAdapter):
+    """``POST /api/v3/contents/generations/tasks`` → ``id``; ``GET …/tasks/{id}``
+    → ``status`` and ``content.video_url``. Settings ride as top-level body
+    fields (``ratio``, ``duration``, ``resolution``, ``generate_audio``), the
+    form byteplus-python-sdk-v2 sends and the docs recommend. International
+    region (owner decision D5); ``SEEDANCE_BASE_URL`` overrides it.
+
+    Watermark: ``watermark`` is optional, default ``false`` (an "AI Generated"
+    mark when true); the Acceptable Use Policy forbids removing identifiers but
+    does not require the mark, so it is not sent and the default applies.
+    https://docs.byteplus.com/en/docs/ModelArk/1520757"""
+
+    key = "video.seedance"
+    key_env = ("SEEDANCE_API_KEY", "ARK_API_KEY")
+    base_url_env = "SEEDANCE_BASE_URL"
+    default_base_url = "https://ark.ap-southeast.bytepluses.com"
+    capabilities = (T2V, I2V)
+    #: Two ``image_url`` items with ``role`` first_frame / last_frame — Seedance
+    #: 1.5 pro and 1.0 pro (ModelArk video generation API, docs 1520757).
+    end_frame_capabilities = (I2V,)
+    #: ``generate_audio`` (1.5 pro) and ``resolution`` are both sent: priced
+    #: apart (0070), neither is left to the vendor's default.
+    audio_capabilities = (T2V, I2V)
+    resolution_capabilities = (T2V, I2V)
+    #: The resolution sent when a job names none: the cheapest the models
+    #: price by, never the vendor's own default.
+    DEFAULT_RESOLUTION = "720p"
+    _CODES = {"AuthenticationError": E_AUTH, "AccessDenied": E_AUTH,
+              "AccountOverdueError": E_QUOTA, "QuotaExceeded": E_QUOTA,
+              "RateLimitExceeded": E_RATE_LIMITED, "InvalidParameter": E_BAD_REQUEST,
+              "SensitiveContentDetected": E_POLICY,
+              "InputTextSensitiveContentDetected": E_POLICY,
+              "InputImageSensitiveContentDetected": E_POLICY,
+              "OutputVideoSensitiveContentDetected": E_POLICY,
+              "ModelNotOpen": E_NOT_FOUND, "InvalidEndpointOrModel.NotFound": E_NOT_FOUND}
+
+    def _map(self, code) -> Optional[str]:
+        c = str(code or "")
+        if not c:
+            return None
+        return self._CODES.get(c) or next((v for k, v in self._CODES.items() if c.startswith(k)), None)
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        return self._map(dig(json_body(text), "error", "code"))
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        content: list = [{"type": "text", "text": request.prompt.strip()}]
+        if request.capability == I2V and request.input_images:
+            first = {"type": "image_url", "image_url": {"url": _image_ref(request.input_images[0])}}
+            if request.end_image:
+                # With two pictures the role is required on both; with one it
+                # is left out, as before (the vendor reads it as the first frame).
+                content += [dict(first, role="first_frame"),
+                            {"type": "image_url", "image_url": {"url": _image_ref(request.end_image)},
+                             "role": "last_frame"}]
+            else:
+                content.append(first)
+        body: dict = {"model": vendor_model, "content": content,
+                      "ratio": request.aspect_ratio or "16:9",
+                      "duration": int(request.duration_s or 5)}
+        body["resolution"] = request.resolution or self.DEFAULT_RESOLUTION
+        if request.audio is not None:
+            body["generate_audio"] = bool(request.audio)
+        data = self.post(f"{self.base_url}/api/v3/contents/generations/tasks", body)
+        if not data.get("id"):
+            raise AdapterError(E_BAD_RESPONSE, "no task id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        data = self.get(f"{self.base_url}/api/v3/contents/generations/tasks/{_safe_id(task.task_id)}")
+        status = str(data.get("status") or "").lower()
+        if status == "succeeded":
+            url = dig(data, "content", "video_url")
+            if not url:
+                raise AdapterError(E_BAD_RESPONSE, "succeeded without content.video_url")
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
+        if status in ("failed", "cancelled", "expired"):
+            code = self._map(dig(data, "error", "code")) or E_UNAVAILABLE
+            return PollResult(FAILED, error=AdapterError(code, self.message(dig(data, "error", "message") or status)))
+        return PollResult(PENDING)
+
+
+# ── ByteDance Seedance 2.x (BytePlus ModelArk, international) ───────────────
+class SeedanceV2Adapter(SafeResultMixin, SeedanceAdapter):
+    """Dreamina Seedance 2.0 and 2.5 on the same ModelArk task API as the 1.x
+    models (``POST /api/v3/contents/generations/tasks``, ``GET …/{id}``;
+    docs.byteplus.com/en/docs/ModelArk/1520757 and …/seedance-2-5, read
+    2026-10-24), with what the 2.x pages add or change:
+
+    * the settings are always explicit: the resolution and the duration are
+      required and sent as given (``-1`` — "the model picks the length" — is
+      never sent, because the price is per second), and a model or a value
+      this table does not list is refused before any call;
+    * 2.5 first-frame / first-and-last-frame video "defaults to and only
+      supports ``adaptive``": the clip keeps the picture's own shape, so a job
+      that names an aspect ratio for it is refused rather than ignored;
+    * ``role`` is always sent on the pictures (``first_frame`` /
+      ``last_frame``): 2.5 reads the task type from it;
+    * ``execution_expires_after`` is the API's minimum (3600 s): a task still
+      queued when the worker stops polling (45 min) is ended by the vendor
+      within the hour instead of running — and billing — up to its 48 h default;
+    * ``safety_identifier`` carries the opaque per-organization id the vendors
+      ask for, so abuse is traced to one user and not to our account;
+    * reference images or videos with real faces are refused by the vendor
+      (``InputImageSensitiveContentDetected.PrivacyInformation``): a ``policy``
+      error, no fallback;
+    * the clip is fetched with ``SafeResultMixin`` (https, vendor hosts,
+      no redirect, byte cap, atomic write).
+
+    Watermark: left to the vendor's default (off for Seedance).
+
+    TERMS: BytePlus's Service Specific Terms (Model Services §4.2.3) forbid
+    integrating the video APIs into UGC platforms or AI content creation
+    tools, or reselling them, without written authorization. The registry
+    entries carry ``terms_gate: written_consent_required`` (migration 0035),
+    so none of this is sellable until BytePlus agrees in writing."""
+
+    key = "video.seedance2"
+    result_hosts = MODELARK_RESULT_HOSTS
+    EXPIRES_AFTER_S = 3600
+    #: The aspect ratios the API takes ("adaptive" is handled apart: it is what i2v sends).
+    RATIOS = ("16:9", "4:3", "1:1", "3:4", "9:16", "21:9")
+    #: A picture goes inline as base64: the API takes < 30 MB per picture and 64 MB per request.
+    MAX_IMAGE_BYTES = 20 * 1024 * 1024
+    #: vendor model -> what it takes. 4K exists for 2.0 but is not offered (its price and its
+    #: rate limit differ, and nothing here is priced for it).
+    SPECS = {
+        "dreamina-seedance-2-0-260128": {"resolutions": ("480p", "720p", "1080p"),
+                                         "durations": tuple(range(4, 16)), "adaptive_first_frame": False},
+        "dreamina-seedance-2-5-260628": {"resolutions": ("480p", "720p", "1080p"),
+                                         "durations": tuple(range(4, 31)), "adaptive_first_frame": True},
+    }
+
+    def _map(self, code) -> Optional[str]:
+        return modelark_code(code)
+
+    def _spec_problems(self, request: CapabilityRequest, vendor_model: str) -> List[str]:
+        spec = self.SPECS.get(vendor_model)
+        if spec is None:
+            return [f"{vendor_model!r} is not a Seedance 2.x model this adapter knows"]
+        out: List[str] = []
+        if request.resolution not in spec["resolutions"]:
+            out.append(f"resolution {request.resolution or '(none)'} is not offered by {vendor_model}: the price "
+                       f"depends on it, so it is never defaulted")
+        if request.duration_s not in spec["durations"]:
+            out.append(f"duration {request.duration_s if request.duration_s is not None else '(none)'} s is not "
+                       f"offered by {vendor_model}: the price is per second, so it is never defaulted")
+        if request.aspect_ratio is not None and request.aspect_ratio not in self.RATIOS:
+            out.append(f"aspect ratio {request.aspect_ratio} is not offered by {vendor_model}")
+        if request.capability == I2V:
+            if not request.input_images:
+                out.append("i2v needs a first-frame picture")
+            elif not is_url(str(request.input_images[0])):
+                path = Path(str(request.input_images[0]))
+                if path.is_file() and path.stat().st_size > self.MAX_IMAGE_BYTES:
+                    out.append("Seedance takes pictures of at most 20 MB")
+            if spec["adaptive_first_frame"] and request.aspect_ratio:
+                out.append(f"{vendor_model} keeps the first frame's own shape: an aspect ratio does not apply to i2v")
+        elif request.input_images or request.end_image:
+            out.append("a picture does not apply to text-to-video")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(self._spec_problems(request, entry.vendor_model_for(request.capability)))
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        bad = self._spec_problems(request, vendor_model)
+        if bad:
+            # Nothing has been sent: this is a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad), not_accepted=True)
+        spec = self.SPECS[vendor_model]
+        content: list = []
+        if request.prompt.strip():
+            content.append({"type": "text", "text": request.prompt.strip()})
+        try:
+            if request.capability == I2V:
+                content.append({"type": "image_url", "image_url": {"url": _image_ref(str(request.input_images[0]))},
+                                "role": "first_frame"})
+                if request.end_image:
+                    content.append({"type": "image_url", "image_url": {"url": _image_ref(str(request.end_image))},
+                                    "role": "last_frame"})
+        except OSError:
+            raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+        if not content:
+            raise AdapterError(E_BAD_REQUEST, "there is nothing to generate from: no prompt and no picture",
+                               not_accepted=True)
+        if request.capability == I2V and spec["adaptive_first_frame"]:
+            ratio = "adaptive"
+        else:
+            ratio = request.aspect_ratio or ("adaptive" if request.capability == I2V else "16:9")
+        body: dict = {"model": vendor_model, "content": content, "resolution": request.resolution,
+                      "ratio": ratio, "duration": int(request.duration_s),
+                      "execution_expires_after": self.EXPIRES_AFTER_S}
+        if request.audio is not None:
+            body["generate_audio"] = bool(request.audio)
+        if request.end_user and _SAFETY_ID.fullmatch(request.end_user):
+            body["safety_identifier"] = request.end_user
+        data = self.submit_json(f"{self.base_url}/api/v3/contents/generations/tasks", body)
+        tid = data.get("id") if isinstance(data, dict) else None
+        if not isinstance(tid, str) or not _ID.fullmatch(tid):
+            # The vendor answered 2xx: a task probably exists, and it bills.
+            raise unconfirmed("the answer carries no usable task id")
+        return ProviderTask(self.key, vendor_model, tid)
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        data = self.get(f"{self.base_url}/api/v3/contents/generations/tasks/{_safe_id(task.task_id)}")
+        data = data if isinstance(data, dict) else {}
+        status = str(data.get("status") or "").lower()
+        if status == "succeeded":
+            url = dig(data, "content", "video_url")
+            if not isinstance(url, str) or not url:
+                # The vendor says the clip exists (and bills it): we just were not given the link.
+                raise after_completion(AdapterError(E_BAD_RESPONSE, "succeeded without content.video_url"))
+            return self.checked_outputs(PollResult(SUCCEEDED, [Output("video/mp4", url=url)]))
+        if status in ("failed", "cancelled", "expired"):
+            code = self._map(dig(data, "error", "code")) or E_UNAVAILABLE
+            return PollResult(FAILED, error=AdapterError(code, self.message(dig(data, "error", "message") or status)))
+        return PollResult(PENDING)
+
+
+# ── Alibaba Wan (Model Studio, international) ───────────────────────────────
+_WORKSPACE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+
+
+class WanAdapter(HttpAdapter):
+    """``POST /api/v1/services/aigc/video-generation/video-synthesis`` with
+    ``X-DashScope-Async: enable`` → ``output.task_id``; ``GET /api/v1/tasks/{id}``
+    → ``output.task_status`` and ``output.video_url`` (dashscope SDK). Wan 2.7
+    and 3.0 take ``parameters.resolution`` + ``ratio`` and the first frame as
+    ``input.media[{type: first_frame, url}]``.
+
+    Host: the workspace host ``https://{WAN_WORKSPACE_ID}.ap-southeast-1.maas.aliyuncs.com``
+    when ``WAN_WORKSPACE_ID`` is set; otherwise the shared
+    ``dashscope-intl.aliyuncs.com``, which Alibaba put in maintenance mode on
+    2026-09-30 (still served, no new models).
+
+    Watermark: ``parameters.watermark`` is optional, default ``false`` ("AI
+    Generated" when true); nothing read requires it, so it is not sent.
+    https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference"""
+
+    key = "video.wan"
+    key_env = ("WAN_API_KEY", "DASHSCOPE_API_KEY")
+    base_url_env = "WAN_BASE_URL"
+    default_base_url = "https://dashscope-intl.aliyuncs.com"
+    capabilities = (T2V, I2V)
+    #: Always sent (720P when a job names none), so what is priced is what runs.
+    resolution_capabilities = (T2V, I2V)
+    _CODES = {"InvalidApiKey": E_AUTH, "Arrearage": E_QUOTA, "DataInspectionFailed": E_POLICY,
+              "InvalidParameter": E_BAD_REQUEST, "ModelNotFound": E_NOT_FOUND}
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        ws = (self._env.get("WAN_WORKSPACE_ID") or "").strip()
+        explicit = (self._env.get(self.base_url_env) or "").strip().startswith("https://")
+        if ws and _WORKSPACE.fullmatch(ws) and not explicit:
+            self.base_url = f"https://{ws}.ap-southeast-1.maas.aliyuncs.com"
+
+    def _map(self, code) -> Optional[str]:
+        c = str(code or "")
+        if not c:
+            return None
+        if c.startswith("Throttling"):
+            return E_RATE_LIMITED
+        return self._CODES.get(c)
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        return self._map(json_body(text).get("code"))
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        if request.capability == I2V and request.input_images and not is_url(request.input_images[0]):
+            out.append("Wan needs the first-frame image as an https URL")
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        inp: dict = {"prompt": request.prompt.strip()}
+        if request.negative_prompt:
+            inp["negative_prompt"] = request.negative_prompt
+        if request.capability == I2V:
+            if not is_url(request.input_images[0]):
+                raise AdapterError(E_BAD_REQUEST, "Wan needs the first-frame image as an https URL")
+            inp["media"] = [{"type": "first_frame", "url": request.input_images[0]}]
+        params: dict = {"resolution": (request.resolution or "720p").upper(),
+                        "ratio": request.aspect_ratio or "16:9",
+                        "duration": int(request.duration_s or 5)}
+        data = self.post(f"{self.base_url}/api/v1/services/aigc/video-generation/video-synthesis",
+                         {"model": vendor_model, "input": inp, "parameters": params},
+                         headers={"X-DashScope-Async": "enable"})
+        tid = dig(data, "output", "task_id")
+        if not tid:
+            raise AdapterError(E_BAD_RESPONSE, "no output.task_id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(tid))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        data = self.get(f"{self.base_url}/api/v1/tasks/{_safe_id(task.task_id)}")
+        out = data.get("output") or {}
+        status = str(out.get("task_status") or "").upper()
+        if status == "SUCCEEDED":
+            if not out.get("video_url"):
+                raise AdapterError(E_BAD_RESPONSE, "succeeded without video_url")
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(out["video_url"]))])
+        if status in ("FAILED", "CANCELED", "UNKNOWN"):
+            code = self._map(out.get("code")) or E_UNAVAILABLE
+            return PollResult(FAILED, error=AdapterError(code, self.message(out.get("message") or status)))
+        return PollResult(PENDING)
+
+
+# ── Black Forest Labs FLUX video ────────────────────────────────────────────
+class FluxVideoAdapter(HttpAdapter):
+    """``POST https://api.bfl.ai/v1/{model}`` (header ``x-key``) →
+    ``polling_url``; poll until ``Ready``; ``result.sample`` is the clip — the
+    same flow as FLUX images. Only ``prompt`` and ``resolution`` (hd / fhd)
+    are confirmed (release-notes extract; docs.bfl.ai was unreachable), so no
+    duration is sent and the registry offers none. Hidden until probed."""
+
+    key = "video.bfl"
+    key_env = ("BFL_API_KEY",)
+    base_url_env = "BFL_BASE_URL"
+    default_base_url = "https://api.bfl.ai/v1"
+    capabilities = (T2V,)
+    _RES = {"720p": "hd", "1080p": "fhd"}
+    _FAILED = {"Error", "Failed", "Content Moderated", "Request Moderated", "Task not found"}
+    #: See FluxAdapter: the polling link carries ``x-key``, so it gets the strict check; a 3xx is never followed.
+    polling_domain = "bfl.ai"
+    polling_ports = (None, 443)
+    follow_redirects = False
+
+    def auth_headers(self) -> Dict[str, str]:
+        return {"x-key": self.api_key(), "accept": "application/json"}
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        body: dict = {"prompt": request.prompt.strip()}
+        if request.resolution:
+            if request.resolution not in self._RES:
+                raise AdapterError(E_BAD_REQUEST, "resolution not offered by FLUX video")
+            body["resolution"] = self._RES[request.resolution]
+        data = self.post(f"{self.base_url}/{vendor_model}", body)
+        poll = data.get("polling_url") if isinstance(data, dict) else None
+        try:
+            checked_polling_url(poll, self.polling_domain, self.polling_ports)
+        except (AdapterError, TypeError):
+            # The vendor answered 2xx: a task probably exists, and it bills; the key was not sent to the link.
+            raise unconfirmed("the answer carries no polling_url on bfl.ai") from None
+        return ProviderTask(self.key, vendor_model, str(poll))
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        url = str(task.task_id or "")
+        try:
+            checked_polling_url(url, self.polling_domain, self.polling_ports)
+        except AdapterError:
+            # Accepted once, so it may have run and been billed; the key was not sent to the link.
+            raise after_completion(AdapterError(E_NOT_FOUND, "task id is not a bfl.ai polling URL")) from None
+        data = self.get(url)
+        status = str(data.get("status") or "")
+        if status == "Ready":
+            sample = dig(data, "result", "sample")
+            if not sample:
+                raise AdapterError(E_BAD_RESPONSE, "Ready without result.sample")
+            return PollResult(SUCCEEDED, [Output("video/mp4", url=str(sample))])
+        if status in self._FAILED:
+            code = E_POLICY if "Moderated" in status else (
+                E_NOT_FOUND if status == "Task not found" else E_UNAVAILABLE)
+            return PollResult(FAILED, error=AdapterError(code, f"job ended with status {status!r}"))
+        return PollResult(PENDING)
+
+
+ADAPTERS = (VeoAdapter, KlingAdapter, MiniMaxVideoAdapter, RunwayAdapter, RunwayVideoUpscaleAdapter,
+            LumaAdapter, SeedanceAdapter, SeedanceV2Adapter, WanAdapter, FluxVideoAdapter)

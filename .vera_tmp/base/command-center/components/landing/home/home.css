@@ -1,0 +1,447 @@
+/* The landing page "/" (components/landing/home/HomePage.tsx). Built only on the --ds-* tokens (app/tokens.css): the hero
+   and the closing band are dark in either theme (data-theme-scope="dark"), every other section follows the page's theme.
+   In @layer components, like the rest of the public site's stylesheets, so a utility can still win. */
+@layer components {
+  .hm-root {
+    /* The public shell's own column (site.css --st-max / --st-gutter), so every section, new or reused, starts at one edge. */
+    --hm-gutter: var(--st-gutter, 16px);
+    --hm-max: calc(var(--st-max, 1240px) - 2 * var(--hm-gutter));
+    background: var(--ds-bg);
+    color: var(--ds-text);
+  }
+
+  .hm-wrap { width: 100%; max-width: calc(var(--hm-max) + 2 * var(--hm-gutter)); margin-inline: auto; padding-inline: var(--hm-gutter); }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .hm-hero {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: flex-end;
+    /* A fixed box before anything loads: the still, the clip and the words never move it (CLS 0). */
+    min-height: max(560px, min(88svh, 860px));
+    overflow: hidden;
+    background: var(--ds-bg);
+    color: var(--ds-text);
+  }
+  .hm-hero-media { position: absolute; inset: 0; z-index: -2; }
+  .hm-hero-still,
+  .hm-hero-media .nx-clip { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 55%; }
+  .hm-hero-media .nx-clip { opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
+  .hm-hero-media[data-live="true"] .nx-clip { opacity: 1; }
+  /* The words sit on the left (the dark side of the planet); the veil keeps them >= 4.5:1 whatever frame is behind. */
+  .hm-hero-veil {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    /* Heavy behind the words (left) and on the last strip, which meets the next section; the right side stays the picture. The
+       clip is one shot from Earth orbit down into a neon city, so any frame can sit behind the words: the veil, not the
+       frame, is what keeps them readable. */
+    background:
+      linear-gradient(90deg, rgb(7 10 20 / 0.92) 0%, rgb(7 10 20 / 0.78) 45%, rgb(7 10 20 / 0.35) 70%, rgb(7 10 20 / 0) 88%),
+      linear-gradient(0deg, rgb(7 10 20 / 0.85) 0%, rgb(7 10 20 / 0) 22%);
+  }
+  /* Below 1024 the words span most of the width: the whole picture is veiled, heaviest under them. */
+  @media (max-width: 1023px) {
+    .hm-hero-veil { background: linear-gradient(0deg, rgb(7 10 20 / 0.96) 0%, rgb(7 10 20 / 0.82) 45%, rgb(7 10 20 / 0.35) 100%); }
+  }
+  .hm-hero-body { padding-block: 120px 72px; }
+  @media (min-width: 1024px) { .hm-hero-body { padding-block: 160px 112px; } }
+  .hm-eyebrow {
+    margin-bottom: var(--ds-space-4);
+    color: var(--ds-select);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .hm-hero-title {
+    /* In em, never ch: ch is the width of "0", which differs between the fallback and Unbounded, so a ch box wrapped the
+       fallback to three lines and the real face to two, and the swap moved the whole hero (CLS 0.04). 11em keeps the words
+       inside the veil's dark part (Pixel: at 15em "finished" sat on bright cloud at 1.5:1). */
+    max-width: 11em;
+    font-size: clamp(2.1rem, 1.2rem + 4.4vw, 4.6rem);
+    color: var(--ds-text);
+  }
+  .hm-hero-lead {
+    max-width: 24em;
+    margin-top: var(--ds-space-5);
+    color: var(--ds-text-2);
+    font-size: clamp(1rem, 0.95rem + 0.35vw, 1.25rem);
+    line-height: 1.55;
+  }
+  .hm-hero-ctas { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-8); }
+  @media (max-width: 479px) {
+    .hm-hero-ctas > * { flex: 1 1 100%; }
+  }
+  /* The "Write your idea" box (IdeaBox.tsx): a solid surface on the moving picture, the field and the primary key on one row from
+     640 px, stacked below it. Its height is fixed by the field's rows, so hydration never moves the hero (CLS 0). */
+  .hm-idea { display: grid; gap: var(--ds-space-2); max-width: 44rem; margin-top: var(--ds-space-8); }
+  .hm-idea-label { color: var(--ds-text); font-size: 0.9375rem; font-weight: 600; }
+  .hm-idea-row {
+    display: grid;
+    gap: var(--ds-space-2);
+    padding: var(--ds-space-2);
+    border: 1px solid var(--ds-border-strong);
+    border-radius: var(--ds-r-panel);
+    background: rgb(15 22 38 / 0.86);
+    backdrop-filter: blur(10px);
+  }
+  /* Only the field's focus: the button draws its own ring, and two would show at once. */
+  .hm-idea-row:has(.hm-idea-field:focus-visible) { border-color: var(--ds-focus); box-shadow: 0 0 0 1px var(--ds-focus); }
+  @media (min-width: 640px) { .hm-idea-row { grid-template-columns: minmax(0, 1fr) auto; align-items: end; } }
+  .hm-idea-field {
+    width: 100%;
+    min-width: 0;
+    min-height: calc(2 * 1.5em + 2 * var(--ds-space-3));
+    padding: var(--ds-space-3);
+    resize: none;
+    border: 0;
+    border-radius: var(--ds-r-key);
+    background: transparent;
+    color: var(--ds-text);
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .hm-idea-field::placeholder { color: var(--ds-text-2); opacity: 0.85; }
+  .hm-idea-field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--ds-danger); }
+  .hm-idea-go { white-space: nowrap; }
+  /* Leaving for sign-up: seen on a touch screen too, where no cursor shows it. */
+  .hm-idea-go[aria-busy="true"] { opacity: 0.7; }
+  @media (max-width: 639px) {
+    .hm-idea-go { width: 100%; justify-content: center; }
+    /* A phone wraps the example to three lines; two cut it mid-word. Still a fixed height: nothing moves on hydration. */
+    .hm-idea-field { min-height: calc(3 * 1.5em + 2 * var(--ds-space-3)); }
+  }
+  /* Lighter than --ds-danger, which falls to 4.3:1 on the brightest hero frame; this holds >= 7.6:1 on any of them (Pixel). */
+  .hm-idea-problem { color: #ffb4bd; font-size: 0.875rem; font-weight: 600; }
+  /* 32em keeps the note inside the veil's dark part at 1024-1279 px, where 40em reached bright frames at 2.85:1 (Pixel). */
+  .hm-idea-note { max-width: 32em; color: var(--ds-text-2); font-size: 0.875rem; line-height: 1.5; }
+  .hm-idea-count { color: var(--ds-text); font-variant-numeric: tabular-nums; }
+  .hm-idea-count[data-full] { color: var(--ds-warning, var(--ds-text)); font-weight: 600; }
+  /* A 44 px tap target, as the button it replaced was. */
+  .hm-idea-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: var(--ds-space-2); color: var(--ds-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* On a moving picture a solid surface reads better than a translucent one. */
+  .hm-ghost { --_bg: rgb(15 22 38 / 0.72); --_bg-hover: var(--ds-surface-3); backdrop-filter: blur(8px); }
+  .hm-hero-credit {
+    position: absolute;
+    right: var(--hm-gutter);
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-2);
+    color: var(--ds-text-2);
+    font-size: 0.8125rem;
+  }
+  @media (max-width: 767px) { .hm-hero-credit { display: none; } }
+  .hm-hero .nx-motion { position: absolute; top: 12px; right: var(--hm-gutter); }
+
+  .hm-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--ds-r-pill);
+    border: 1px solid rgb(255 255 255 / 0.35);
+    background: rgb(7 10 20 / 0.72);
+    color: #e6eefc;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25;
+    /* "Sunʼiy intellekt yaratgan" is wider than a phone's reel card: it wraps rather than being cut. */
+    max-width: calc(100% - 16px);
+  }
+
+  /* ── Sections ─────────────────────────────────────────────────────────── */
+  .hm-section { padding-block: 72px; }
+  @media (min-width: 1024px) { .hm-section { padding-block: 112px; } }
+  .hm-section + .hm-section { border-top: 1px solid var(--ds-border); }
+  .hm-h2 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 3rem); color: var(--ds-text); max-width: 14em; }
+  .hm-h2-sm { font-size: 1.25rem; font-weight: 600; color: var(--ds-text); }
+  .hm-h3 { margin-top: var(--ds-space-2); font-size: 1.125rem; font-weight: 600; color: var(--ds-text); }
+  .hm-lead { max-width: 34em; margin-top: var(--ds-space-4); color: var(--ds-text-2); font-size: 1.0625rem; line-height: 1.6; }
+  .hm-muted { margin-top: var(--ds-space-2); color: var(--ds-muted); line-height: 1.55; }
+  .hm-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-space-2);
+    min-height: 44px;
+    margin-top: var(--ds-space-6);
+    color: var(--ds-text);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: var(--ds-border-strong);
+    text-underline-offset: 4px;
+  }
+  .hm-link:hover { text-decoration-color: currentColor; }
+  .hm-link > svg { width: 18px; height: 18px; }
+
+  /* ── Reel ─────────────────────────────────────────────────────────────── */
+  .hm-reel { padding-bottom: 56px; }
+  /* Nine pieces in three shapes: one row at one height, each card as wide as its own shape, scrolled sideways at every width
+     (2,900 px of pictures at desktop height never fits a screen). The height is the one number; widths follow from it. */
+  .hm-reel-row {
+    /* vh first: a browser without svh drops the second line and keeps a height, rather than a zero-width card. */
+    --hm-reel-h: min(56vh, 340px);
+    --hm-reel-h: min(56svh, 340px);
+    /* Starts where the page's column does at every width, and still runs out to the screen's edge. A percentage, not 100vw,
+       so a desktop scrollbar does not shift it. */
+    --hm-reel-pad: max(var(--hm-gutter), calc((100% - var(--hm-max)) / 2));
+    display: flex;
+    gap: var(--ds-space-3);
+    margin-top: var(--ds-space-6);
+    padding-inline: var(--hm-reel-pad);
+    padding-bottom: var(--ds-space-3);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    /* The same inset as the padding, or snapping pulls the first card back to the gutter. */
+    scroll-padding-inline: var(--hm-reel-pad);
+    scrollbar-width: thin;
+  }
+  @media (min-width: 1024px) { .hm-reel-row { --hm-reel-h: 380px; } }
+  .hm-reel-row:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
+  .hm-reel-card { flex: 0 0 auto; scroll-snap-align: start; }
+  .hm-reel-card figure { margin: 0; }
+  .hm-reel-pic {
+    position: relative;
+    height: var(--hm-reel-h);
+    aspect-ratio: 9 / 16;
+    overflow: hidden;
+    border-radius: var(--ds-r-panel);
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface-2);
+  }
+  .hm-reel-card[data-aspect="16:9"] .hm-reel-pic { aspect-ratio: 16 / 9; }
+  .hm-reel-card[data-aspect="1:1"] .hm-reel-pic { aspect-ratio: 1; }
+  /* A wide piece on a phone would be wider than the screen at the row's height: it keeps its shape at the screen's width instead. */
+  @media (max-width: 767px) {
+    .hm-reel-card[data-aspect="16:9"] .hm-reel-pic { height: auto; width: calc(100vw - 2 * var(--hm-gutter) - 24px); }
+    .hm-reel-card[data-aspect="1:1"] .hm-reel-pic { height: auto; width: min(var(--hm-reel-h), calc(100vw - 2 * var(--hm-gutter) - 24px)); }
+  }
+  .hm-reel-pic .hm-reel-still, .hm-reel-pic .nx-clip { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .hm-reel-pic .nx-clip { opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
+  .hm-reel-pic[data-live="true"] .nx-clip { opacity: 1; }
+  /* At the top: the tall pieces carry their captions burned in at the bottom. */
+  .hm-reel-badge { position: absolute; left: 8px; top: 8px; }
+  /* A piece's captions (its spoken words; the clip plays muted): the browser places them at the frame's bottom, inside the picture.
+     ::cue takes only colour, background and font. */
+  .hm-reel-pic .nx-clip::cue {
+    background: rgb(7 10 20 / 0.78);
+    color: #f4f7ff;
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
+  /* The caption is as wide as its picture, never wider: a long credit wraps under a tall card. */
+  .hm-reel-cap { display: grid; gap: 2px; width: 0; min-width: 100%; margin-top: var(--ds-space-2); }
+  .hm-reel-title { color: var(--ds-text); font-size: 0.9375rem; font-weight: 600; line-height: 1.35; }
+  .hm-reel-credit { color: var(--ds-muted); font-size: 0.8125rem; line-height: 1.4; }
+  @media (prefers-reduced-motion: reduce) { .hm-reel-pic .nx-clip { transition: none; } }
+
+  /* ── How it works ─────────────────────────────────────────────────────── */
+  .hm-steps { display: grid; gap: var(--ds-space-4); margin-top: var(--ds-space-10); counter-reset: none; }
+  @media (min-width: 768px) { .hm-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .hm-step {
+    position: relative;
+    padding: var(--ds-space-6);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-r-panel);
+    background: var(--ds-surface-1);
+  }
+  .hm-step-head { display: flex; align-items: center; justify-content: space-between; }
+  .hm-step-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--ds-r-key);
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent);
+  }
+  .hm-step-icon > svg { width: 22px; height: 22px; }
+  .hm-step[data-step="idea"] .hm-step-icon { background: color-mix(in srgb, var(--ds-type-text) 16%, transparent); color: var(--ds-type-text); }
+  .hm-step[data-step="create"] .hm-step-icon { background: color-mix(in srgb, var(--ds-type-video) 16%, transparent); color: var(--ds-type-video); }
+  .hm-step[data-step="export"] .hm-step-icon { background: color-mix(in srgb, var(--ds-type-audio) 16%, transparent); color: var(--ds-type-audio); }
+  .hm-step-num { color: var(--ds-muted); font-family: var(--ds-font-display); font-size: 1.5rem; font-weight: 600; }
+  .hm-step-label { margin-top: var(--ds-space-5); color: var(--ds-muted); font-size: 0.8125rem; font-weight: 600; }
+
+  /* ── Models on sale ───────────────────────────────────────────────────── */
+  .hm-model-list { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-8); }
+  .hm-model {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ds-space-2);
+    min-height: 48px;
+    padding: 8px 8px 8px 16px;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-r-pill);
+    background: var(--ds-surface-1);
+  }
+  .hm-model-name { font-weight: 600; color: var(--ds-text); }
+  .hm-model-kinds { display: inline-flex; gap: 4px; }
+  .hm-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--ds-r-pill);
+    background: var(--ds-surface-2);
+    color: var(--ds-text-2);
+    font-size: 0.8125rem;
+  }
+  /* 0192: an adults-only model is listed, and says so in words, not only in colour. */
+  .hm-adult {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border: 1px solid var(--ds-warning);
+    border-radius: var(--ds-r-pill);
+    color: var(--ds-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .hm-kind::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--_k, var(--ds-muted)); }
+  .hm-kind[data-kind="video"] { --_k: var(--ds-type-video); }
+  .hm-kind[data-kind="image"] { --_k: var(--ds-type-image); }
+  .hm-kind[data-kind="voice"] { --_k: var(--ds-type-audio); }
+
+  /* ── MCP ──────────────────────────────────────────────────────────────── */
+  .hm-mcp {
+    position: relative;
+    overflow: hidden;
+    padding: var(--ds-space-8) var(--ds-space-6);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-r-sheet);
+    background:
+      radial-gradient(600px 240px at 100% 0%, var(--ds-accent-soft), transparent 70%),
+      var(--ds-surface-1);
+  }
+  @media (min-width: 768px) { .hm-mcp { padding: var(--ds-space-12); } }
+  .hm-mcp .ds-btn { margin-top: var(--ds-space-6); }
+  .hm-tag {
+    display: inline-flex;
+    margin-bottom: var(--ds-space-4);
+    padding: 2px 10px;
+    border-radius: var(--ds-r-pill);
+    border: 1px solid var(--ds-select);
+    color: var(--ds-select);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  /* ── Pricing (the site's own teaser, components/landing/PriceBlock.tsx) ─ */
+  .hm-pricing { border-top: 1px solid var(--ds-border); }
+
+  /* ── Trust ────────────────────────────────────────────────────────────── */
+  .hm-trust { display: grid; gap: var(--ds-space-4); margin-top: var(--ds-space-8); }
+  @media (min-width: 768px) { .hm-trust { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .hm-trust-item { padding: var(--ds-space-6); border: 1px solid var(--ds-border); border-radius: var(--ds-r-panel); background: var(--ds-surface-1); }
+  .hm-trust-icon { width: 22px; height: 22px; color: var(--ds-success); }
+
+  /* ── Closing band ─────────────────────────────────────────────────────── */
+  .hm-final {
+    background:
+      radial-gradient(900px 360px at 20% 0%, rgb(47 139 255 / 0.22), transparent 70%),
+      radial-gradient(700px 300px at 90% 100%, rgb(200 255 46 / 0.08), transparent 70%),
+      var(--ds-bg);
+    color: var(--ds-text);
+  }
+  .hm-final-body { text-align: left; }
+}
+
+/* The reused sections (the run walk-through, pricing, FAQ) in the page's one language: display face for their headings, the key's
+   12px corner, one label style (the lime outline the MCP tag uses), and the walk-through's closing band in navy. */
+.hm-root :is(.nx-h1, .nx-h2) { font-family: var(--ds-font-display); font-weight: 600; letter-spacing: -0.02em; }
+.hm-root .nx-btn { border-radius: var(--ds-r-key); font-family: var(--font-sans); }
+.hm-root .nx-label,
+.hm-root .nx-section:not([data-tone="raised"]) .nx-label {
+  min-height: 0;
+  padding: 2px 10px;
+  border: 1px solid var(--ds-select);
+  background: transparent;
+  color: var(--ds-select);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.hm-root .hm-eyebrow { display: inline-flex; padding: 2px 10px; border: 1px solid var(--ds-select); border-radius: var(--ds-r-pill); }
+
+/* Reduced motion: the hero shows its still only (LoopClip never renders a clip), and nothing eases in. */
+@media (prefers-reduced-motion: reduce) {
+  .hm-hero-media .nx-clip { transition: none; }
+}
+
+/* The landing's frame in the --ds-* look. The public shell (header, footer) and the reused pricing teaser paint with the
+   older --ns-* / --st-* / --color-* names; on this page only (the shell that holds .hm-root), those names point at the --ds-*
+   values, so the whole page is one look in either theme and no other public page changes. Unlayered on purpose: the shell's
+   own declarations sit in @layer components (site.css), and a token resolved at :root (--color-bg: var(--ns-ground)) has to be
+   redeclared here, not just its source, because a var() resolves where it is declared. */
+.st:has(.hm-root),
+/* Again inside a dark box (the hero, the closing band): a var() resolves where it is declared, so the remap on .st carries the
+   page's theme and a dark box would inherit light values (the hero's pause key drew grey on navy). */
+.st:has(.hm-root) [data-theme-scope="dark"] {
+  --ns-ground: var(--ds-bg);
+  --ns-console: var(--ds-surface-1);
+  --ns-key: var(--ds-surface-2);
+  --ns-key-hi: var(--ds-surface-3);
+  --ns-rule: var(--ds-border);
+  --ns-rule-strong: var(--ds-border-strong);
+  --ns-text: var(--ds-text);
+  --ns-text-dim: var(--ds-text-2);
+  --ns-amber: var(--ds-select);
+  --ns-amber-ink: var(--ds-select);
+  --ns-on-amber: var(--ds-on-select);
+  --ns-cta-bg: var(--ds-accent-solid);
+  --ns-cta-fg: var(--ds-on-accent);
+  --ns-cta-price: var(--ds-on-accent);
+  --ns-lit-hover: var(--ds-accent-solid-hover);
+  --ns-lit-edge: var(--ds-accent-solid);
+  --ns-lit-glow: rgb(47 139 255 / 0.5);
+  --ns-act: var(--ds-accent);
+  --ns-act-ink: var(--ds-accent);
+  --ns-act-soft: var(--ds-accent-soft);
+  --ns-hover: var(--ds-hover);
+  --ns-select: var(--ds-select-soft);
+  --ns-focus: var(--ds-focus);
+  --ns-go: var(--ds-success);
+  --ns-tally: var(--ds-danger);
+  --ns-caution: var(--ds-warning);
+  --st-lit-bg: var(--ds-accent-solid);
+  --st-lit-hover: var(--ds-accent-solid-hover);
+  --st-lit-fg: var(--ds-on-accent);
+  --st-lit-edge: var(--ds-accent-solid);
+  --st-lit-glow: rgb(47 139 255 / 0.5);
+  --st-act: var(--ds-accent);
+  --st-act-ink: var(--ds-accent);
+  --st-focus-gap: var(--ds-bg);
+  --color-bg: var(--ds-bg);
+  --color-panel: var(--ds-surface-1);
+  --color-panel-2: var(--ds-surface-2);
+  --color-border: var(--ds-border);
+  --color-fg: var(--ds-text);
+  --color-muted: var(--ds-text-2);
+  --color-primary: var(--ds-accent);
+  --color-hover: var(--ds-hover);
+  --color-active: var(--ds-select-soft);
+  --color-accent-soft: var(--ds-accent-soft);
+  --cta-base: var(--ds-accent-solid);
+  --cta-fg: var(--ds-on-accent);
+  /* The product stage (a dark box in either theme, site-next.css): navy here. */
+  --nx-stage: #0f1626;
+  --nx-stage-edge: rgb(80 140 220 / 0.18);
+  --nx-stage-text: #e6eefc;
+  --nx-stage-dim: #a9b8d4;
+  --nx-stage-act: #57a2ff;
+  --nx-stage-amber: #c8ff2e;
+  --nx-stage-go: #3dff8a;
+}
+/* The shell's own ground (only the shell: a dark box keeps its own background, the closing band its gradient). */
+.st:has(.hm-root) {
+  background: var(--ds-bg);
+  color: var(--ds-text);
+}
+/* Unlayered: the global :focus-visible is, and a layered `outline: none` lost to it (a second ring inside the row's). The row draws it. */
+.hm-idea-field:focus-visible { outline: none; }
+/* The pricing teaser's heading in the display face, like every other section title on the page. */
+.hm-pricing h2 { font-family: var(--ds-font-display); font-weight: 600; letter-spacing: -0.02em; }

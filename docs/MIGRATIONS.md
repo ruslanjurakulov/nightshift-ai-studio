@@ -2370,3 +2370,21 @@ Rollback: `docs/sql/rollback_0202_channel_research.sql`.
 - **Requires** 0182, 0107, 0036 (`creative_refuse`); the route also needs 0199 (`ai_chat_owner_settings`, the owner's model).
 - Lab: `tests/security/sec_owner_ai_0203.py`, `tests/security/test_sec_owner_ai.py`. Rollback:
   `docs/sql/rollback_0203_owner_ai_turns.sql` (drops the log).
+
+## The database's own country gate, and the price by picture size (0208, provisional)
+
+0208 (`0208_geo_gate_and_image_size_price.sql`) changes no answer for a model on sale today (0142 keeps every model with a country
+list off sale, and every model priced by size carries a terms gate). Post-event: it prepares Google's models, it does not open them.
+
+- **Country gate.** `creative_jobs_geo_gate` (BEFORE INSERT OR UPDATE OF routed_model on `creative_jobs`): a job on a model whose
+  `spec.blocked_countries` is not empty needs a country the web server signed for this person in the last seconds
+  (`x-nightshift-geo`, an HMAC-SHA256 checked by `geo_claim_country()` against the Vault secret `nightshift_geo_claim_key`);
+  none = NS400 `country_unverified`, a listed country = NS400 `country_blocked`. Neither function is callable by an API role.
+- **Before it is useful:** `select vault.create_secret('<value>', 'nightshift_geo_claim_key');` once, and the same value as
+  `NIGHTSHIFT_GEO_CLAIM_KEY` in the web's environment (32+ characters). Until then every job on a gated model is refused.
+- **Price by picture size.** `creative_params_problem` accepts `image_size` (t2i, edit; 512 / 1K / 2K / 4K); `creative_price`
+  prices a model whose `pricing.variants.by` is `image_size` by `<credit_unit>_<size>`, refuses one with no size, a size it does not
+  list, or a size on a model not priced by size, and names the size in the quote. A size without a row is `unpriced`.
+- **Replaces** 0156's `creative_params_problem` and 0159's `creative_price` (md5 guards). The lab's `take_off_0159` takes 0208 off first.
+- Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
+  `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.

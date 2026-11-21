@@ -1,0 +1,164 @@
+{
+ "_about": "The series format templates (docs/SERIES_FACTORY.md, 'Format templates'): the closed list and the bounds of each, and the cases of the duration clamp. Read by tests/test_series_template.py (modules/series_planner.py) and command-center/tests/series-template.test.ts (lib/seriesTemplates.ts), so the two tables cannot drift apart. Made-up numbers, no credentials.",
+ "ids": [
+  "myth_vs_fact",
+  "top5_countdown",
+  "one_question_one_answer"
+ ],
+ "templates": {
+  "myth_vs_fact": {
+   "episodes": [
+    3,
+    4
+   ],
+   "length_s": [
+    60,
+    480
+   ],
+   "scenes": [
+    4,
+    10
+   ]
+  },
+  "top5_countdown": {
+   "episodes": [
+    3,
+    4
+   ],
+   "length_s": [
+    180,
+    600
+   ],
+   "scenes": [
+    6,
+    12
+   ]
+  },
+  "one_question_one_answer": {
+   "episodes": [
+    3,
+    4
+   ],
+   "length_s": [
+    60,
+    300
+   ],
+   "scenes": [
+    3,
+    8
+   ]
+  }
+ },
+ "clamp_cases": [
+  {
+   "template": null,
+   "durations": [
+    30,
+    300,
+    3600
+   ],
+   "expect": [
+    30,
+    300,
+    3600
+   ],
+   "clamped": []
+  },
+  {
+   "template": "myth_vs_fact",
+   "durations": [
+    30,
+    60,
+    300,
+    480,
+    600
+   ],
+   "expect": [
+    60,
+    60,
+    300,
+    480,
+    480
+   ],
+   "clamped": [
+    1,
+    5
+   ]
+  },
+  {
+   "template": "top5_countdown",
+   "durations": [
+    60,
+    180,
+    300,
+    600,
+    3600
+   ],
+   "expect": [
+    180,
+    180,
+    300,
+    600,
+    600
+   ],
+   "clamped": [
+    1,
+    5
+   ]
+  },
+  {
+   "template": "one_question_one_answer",
+   "durations": [
+    30,
+    300,
+    301,
+    600
+   ],
+   "expect": [
+    60,
+    300,
+    300,
+    300
+   ],
+   "clamped": [
+    1,
+    3,
+    4
+   ]
+  },
+  {
+   "template": "myth_vs_fact",
+   "durations": [
+    null,
+    0,
+    -5,
+    300
+   ],
+   "expect": [
+    null,
+    0,
+    -5,
+    300
+   ],
+   "clamped": []
+  },
+  {
+   "template": "myth_vs_fact",
+   "durations": [],
+   "expect": [],
+   "clamped": []
+  }
+ ],
+ "refused": [
+  "",
+  "MYTH_VS_FACT",
+  " myth_vs_fact",
+  "myth_vs_fact ",
+  "top_5_countdown",
+  "default",
+  "none",
+  "null",
+  "0",
+  "myth_vs_fact\n"
+ ]
+}

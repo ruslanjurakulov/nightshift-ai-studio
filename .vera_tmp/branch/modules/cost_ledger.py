@@ -1,0 +1,235 @@
+"""Cost ledger — what each video actually consumed.
+
+Why quantities, and only sometimes money
+-----------------------------------------
+Profit cannot be discussed without cost, and nothing in this project recorded
+cost before: there was no column for it anywhere. This module fixes that, and it
+does so by recording **quantities first**:
+
+    gemini_input_tokens, gemini_output_tokens, tts_characters,
+    render_seconds, pexels_requests, upload_bytes
+
+Quantities are facts the pipeline observes. A dollar figure is not: unit prices
+differ per vendor plan, change without notice, and are frequently wrong by the
+time anyone reads them. So a price is applied **only** when the operator has
+configured a rate for that unit (``CHRONOS_PRICE_*``). With no rate configured,
+``estimated_usd`` is NULL and the Command Center says the rate is unset — which
+is honest — rather than showing an invented number that would quietly become
+"the cost" in someone's spreadsheet.
+
+Guarantees
+----------
+Like ``event_log``, recording a cost must never break a video. Every method
+swallows its own failures, and a ledger that cannot reach the store still lets
+the pipeline finish.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# Canonical unit names. These are the strings that reach the database, so they
+# are part of the schema contract — add, don't rename.
+GEMINI_INPUT_TOKENS = "gemini_input_tokens"
+GEMINI_OUTPUT_TOKENS = "gemini_output_tokens"
+TTS_CHARACTERS = "tts_characters"
+RENDER_SECONDS = "render_seconds"
+PEXELS_REQUESTS = "pexels_requests"
+UPLOAD_BYTES = "upload_bytes"
+#: Generated media, counted per item. `stage` names the provider that billed it
+#: ("broll:<provider>" / "image:<provider>") so spend can be split per account.
+VIDEO_GEN_CLIPS = "video_gen_clips"
+IMAGE_GENERATIONS = "image_generations"
+#: Vision calls (a contact sheet of rendered frames sent to a multimodal model,
+#: modules/video_critic.py). Counted per call; the tokens Gemini reports are
+#: recorded alongside under the same stage.
+VISION_CALLS = "vision_calls"
+
+#: Env var per unit, e.g. CHRONOS_PRICE_GEMINI_INPUT_TOKENS=0.000000075
+#: The value is USD *per single unit* — per token, per character, per second.
+_PRICE_ENV_PREFIX = "CHRONOS_PRICE_"
+
+
+def price_env_var(unit: str) -> str:
+    """The env var that prices `unit` — the exact name an operator must set.
+
+    Public so reports that list unpriced units (tools/unit_economics.py, the
+    Command Center's Billing card) name the same variable this module reads,
+    rather than each re-deriving the convention and drifting from it.
+    """
+    return _PRICE_ENV_PREFIX + unit.upper()
+
+
+def unit_price(unit: str) -> Optional[float]:
+    """USD per one unit, or None when the operator has not configured a rate.
+
+    None is a meaningful answer, not a failure: it means "we know the quantity,
+    we do not claim to know the price". Callers must not substitute 0.
+    """
+    raw = os.getenv(price_env_var(unit), "").strip()
+    if not raw:
+        return None
+    try:
+        price = float(raw)
+    except ValueError:
+        logger.warning(
+            "Ignoring %s%s=%r — not a number, so cost stays unpriced rather than wrong",
+            _PRICE_ENV_PREFIX, unit.upper(), raw,
+        )
+        return None
+    return price if 0 <= price < float("inf") else None
+
+
+@dataclass
+class CostEntry:
+    """One measured quantity for one video."""
+
+    unit: str
+    quantity: float
+    stage: str = ""
+    estimated_usd: Optional[float] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "unit": self.unit,
+            "quantity": self.quantity,
+            "stage": self.stage,
+            "estimated_usd": self.estimated_usd,
+        }
+
+
+@dataclass
+class CostLedger:
+    """Accumulates one run's costs, then writes them once.
+
+    Held for the length of a pipeline run and flushed after upload, when the
+    video_id is finally known. Entries recorded for a run that never publishes
+    are still worth keeping — a failed render costs real money — so `flush`
+    accepts a null video_id and records the run under its slug instead.
+    """
+
+    channel_id: str = "default"
+    slug: str = ""
+    entries: list = field(default_factory=list)
+    #: How many entries have been handed to a store already. A second flush (the
+    #: ``finally`` of a run that already flushed on its normal path, or a run
+    #: that flushed early at its storyboard) writes only what was added since, so
+    #: nothing is recorded twice.
+    flushed: int = 0
+
+    def add(self, unit: str, quantity, stage: str = "", *, estimated_usd=None) -> None:
+        """Record one quantity. Never raises; a bad value is dropped with a
+        warning rather than propagating into the pipeline.
+
+        ``estimated_usd`` is for a caller that holds its own price for what it just
+        bought (the fal presenter: seconds x its configured per-second price). It
+        is an estimate and is stored as one; without it the amount is priced only
+        from the operator's ``CHRONOS_PRICE_*`` rate, or left unpriced."""
+        try:
+            amount = float(quantity)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring non-numeric cost %s=%r", unit, quantity)
+            return
+        if amount < 0:
+            logger.warning("Ignoring negative cost %s=%s", unit, amount)
+            return
+        price = unit_price(unit)
+        usd = round(amount * price, 6) if price is not None else None  # None when unpriced — deliberately not 0.0.
+        if estimated_usd is not None:
+            try:
+                given = float(estimated_usd)
+            except (TypeError, ValueError):
+                given = -1.0
+            if 0 <= given < float("inf"):
+                usd = round(given, 6)
+        self.entries.append(CostEntry(unit=unit, quantity=amount, stage=stage, estimated_usd=usd))
+
+    def add_gemini_usage(self, response, stage: str = "script") -> None:
+        """Record token usage from a Gemini response, if it reported any.
+
+        The SDK exposes `usage_metadata` on a successful response. When it is
+        absent (an older SDK, a cached response, a mocked object in a test) the
+        honest outcome is to record nothing — an invented token count would be
+        worse than a gap.
+        """
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            return
+        prompt_tokens = getattr(usage, "prompt_token_count", None)
+        output_tokens = getattr(usage, "candidates_token_count", None)
+        if prompt_tokens:
+            self.add(GEMINI_INPUT_TOKENS, prompt_tokens, stage)
+        if output_tokens:
+            self.add(GEMINI_OUTPUT_TOKENS, output_tokens, stage)
+
+    def total_usd(self) -> Optional[float]:
+        """Sum of the priced entries, or None when nothing is priced.
+
+        Deliberately not a partial sum: adding up only the units that happen to
+        have a rate would read as the run's cost while silently omitting the
+        rest. Either every entry is priced or the total is unknown.
+        """
+        if not self.entries:
+            return None
+        if any(e.estimated_usd is None for e in self.entries):
+            return None
+        return round(sum(e.estimated_usd or 0.0 for e in self.entries), 6)
+
+    def pending(self) -> list:
+        """Entries not yet handed to a store."""
+        return self.entries[self.flushed:]
+
+    def priced_usd(self, pending_only: bool = False) -> float:
+        """Sum of the entries that HAVE a USD estimate — a floor, never the
+        run's cost (unpriced entries add nothing here). The spend guard
+        (modules/spend_guard.py) uses it; unlike ``total_usd`` it does not go
+        unknown when one unit has no rate, because a guard that switched itself
+        off for a single unpriced unit would protect nothing."""
+        rows = self.pending() if pending_only else self.entries
+        return round(sum(e.estimated_usd for e in rows if e.estimated_usd is not None), 6)
+
+    def unpriced_units(self) -> list:
+        """Names of the units recorded without a USD rate, sorted, no repeats."""
+        return sorted({e.unit for e in self.entries if e.estimated_usd is None})
+
+    def flush(self, store, video_id: Optional[str] = None) -> int:
+        """Persist every entry not yet persisted. Returns how many rows were
+        written (0 on any failure). Never raises. Each entry is attempted once:
+        a row that failed is not retried by a later flush (a retry could write a
+        row twice when the failure came after the write)."""
+        pending = self.pending()
+        if not pending:
+            return 0
+        self.flushed = len(self.entries)
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        written = 0
+        for entry in pending:
+            try:
+                store.record_video_cost(
+                    video_id=video_id or "",
+                    channel_id=self.channel_id,
+                    slug=self.slug,
+                    unit=entry.unit,
+                    quantity=entry.quantity,
+                    stage=entry.stage,
+                    estimated_usd=entry.estimated_usd,
+                    recorded_at=recorded_at,
+                )
+                written += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to record cost %s for %s (%s: %s)",
+                    entry.unit, video_id or self.slug, type(e).__name__, e,
+                )
+        logger.info(
+            "Cost ledger: %d/%d entr(ies) recorded for %s%s",
+            written, len(pending), video_id or self.slug,
+            f" (~${self.total_usd()})" if self.total_usd() is not None else " (unpriced)",
+        )
+        return written

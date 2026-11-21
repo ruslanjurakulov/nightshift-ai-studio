@@ -1,0 +1,205 @@
+{
+  "_comment": "Shared cases for the retention diagnosis. modules/retention_diagnosis.py (tests/test_retention_diagnosis.py) reproduces every expected value; a TypeScript twin would run the same file. null means unknown, never 0. Curves are hand-built piecewise-linear with a point every 5% of a 600 s video; thresholds are the module constants (hook healthy <= 0.30 / steep >= 0.45 of the viewers at the window start, slide flat <= 0.02 / steady >= 0.05 audience points per 10% of the video).",
+  "cases": [
+    {
+      "name": "healthy hook and flat slide route to packaging",
+      "duration_s": 600,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.05, "watch_ratio": 0.88, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.1, "watch_ratio": 0.8773, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.15, "watch_ratio": 0.8747, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.2, "watch_ratio": 0.872, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.8693, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.3, "watch_ratio": 0.8667, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.35, "watch_ratio": 0.864, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.4, "watch_ratio": 0.8613, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.45, "watch_ratio": 0.8587, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.856, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.55, "watch_ratio": 0.8533, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.6, "watch_ratio": 0.8507, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.65, "watch_ratio": 0.848, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.7, "watch_ratio": 0.8453, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.8427, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.8, "watch_ratio": 0.84, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.85, "watch_ratio": 0.83, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.9, "watch_ratio": 0.82, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.95, "watch_ratio": 0.81, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.8, "measured_date": "2026-09-01"}
+      ],
+      "expected": {
+        "verdict": "packaging",
+        "hook_loss": 0.12,
+        "hook_loss_share": 0.12,
+        "slide_per_tenth": 0.0053
+      }
+    },
+    {
+      "name": "steep early loss routes to hook",
+      "duration_s": 600,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.05, "watch_ratio": 0.4, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.1, "watch_ratio": 0.3933, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.15, "watch_ratio": 0.3867, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.2, "watch_ratio": 0.38, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.3733, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.3, "watch_ratio": 0.3667, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.35, "watch_ratio": 0.36, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.4, "watch_ratio": 0.3533, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.45, "watch_ratio": 0.3467, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.34, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.55, "watch_ratio": 0.3333, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.6, "watch_ratio": 0.3267, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.65, "watch_ratio": 0.32, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.7, "watch_ratio": 0.3133, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.3067, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.8, "watch_ratio": 0.3, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.85, "watch_ratio": 0.2875, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.9, "watch_ratio": 0.275, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.95, "watch_ratio": 0.2625, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.25, "measured_date": "2026-09-01"}
+      ],
+      "expected": {
+        "verdict": "hook",
+        "hook_loss": 0.6,
+        "hook_loss_share": 0.6,
+        "slide_per_tenth": 0.0133
+      }
+    },
+    {
+      "name": "mid-video cliff names its scene and narration, in any language",
+      "duration_s": 600,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.05, "watch_ratio": 0.9, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.1, "watch_ratio": 0.8889, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.15, "watch_ratio": 0.8778, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.2, "watch_ratio": 0.8667, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.8556, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.3, "watch_ratio": 0.8444, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.35, "watch_ratio": 0.8333, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.4, "watch_ratio": 0.8222, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.45, "watch_ratio": 0.8111, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.55, "watch_ratio": 0.68, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.6, "watch_ratio": 0.672, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.65, "watch_ratio": 0.664, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.7, "watch_ratio": 0.656, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.648, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.8, "watch_ratio": 0.64, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.85, "watch_ratio": 0.63, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.9, "watch_ratio": 0.62, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.95, "watch_ratio": 0.61, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.6, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "index": 0, "start_s": 0.0, "end_s": 60.0, "narration": "Ochilish"},
+        {"id": "s001", "index": 1, "start_s": 60.0, "end_s": 120.0, "narration": "Ikkinchi sahna"},
+        {"id": "s002", "index": 2, "start_s": 120.0, "end_s": 180.0, "narration": "Третья сцена"},
+        {"id": "s003", "index": 3, "start_s": 180.0, "end_s": 240.0, "narration": "第四幕"},
+        {"id": "s004", "index": 4, "start_s": 240.0, "end_s": 300.0, "narration": "Fifth scene"},
+        {"id": "s005", "index": 5, "start_s": 300.0, "end_s": 360.0, "narration": "<b>The bridge</b> [PAUSE:2] collapsed at dawn, and nobody had warned the city."},
+        {"id": "s006", "index": 6, "start_s": 360.0, "end_s": 420.0, "narration": "Sixth"},
+        {"id": "s007", "index": 7, "start_s": 420.0, "end_s": 480.0, "narration": "Seventh"},
+        {"id": "s008", "index": 8, "start_s": 480.0, "end_s": 540.0, "narration": "Eighth"},
+        {"id": "s009", "index": 9, "start_s": 540.0, "end_s": 600.0, "narration": "Ninth"}
+      ],
+      "expected": {
+        "verdict": "pacing",
+        "hook_loss": 0.1,
+        "hook_loss_share": 0.1,
+        "slide_per_tenth": 0.0347,
+        "cliffs": [
+          {
+            "at_s": 300,
+            "end_s": 330,
+            "size": 0.12,
+            "zone": "mid",
+            "scene_id": "s005",
+            "scene_index": 5,
+            "excerpt": "The bridge collapsed at dawn, and nobody had warned the city."
+          },
+          {
+            "at_s": 0,
+            "end_s": 30,
+            "size": 0.1,
+            "zone": "hook",
+            "scene_id": "s000",
+            "scene_index": 0,
+            "excerpt": "Ochilish"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a curve under MIN_POINTS is all unknown",
+      "duration_s": 600,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.3333, "watch_ratio": 0.8333, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.6667, "watch_ratio": 0.6667, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.5, "measured_date": "2026-09-01"}
+      ],
+      "expected": {
+        "verdict": "insufficient_data",
+        "hook_loss": null,
+        "hook_loss_share": null,
+        "slide_per_tenth": null,
+        "cliffs": null
+      }
+    },
+    {
+      "name": "unknown duration is all unknown",
+      "duration_s": null,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.05, "watch_ratio": 0.88, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.1, "watch_ratio": 0.8773, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.15, "watch_ratio": 0.8747, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.2, "watch_ratio": 0.872, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.8693, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.3, "watch_ratio": 0.8667, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.35, "watch_ratio": 0.864, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.4, "watch_ratio": 0.8613, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.45, "watch_ratio": 0.8587, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.856, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.55, "watch_ratio": 0.8533, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.6, "watch_ratio": 0.8507, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.65, "watch_ratio": 0.848, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.7, "watch_ratio": 0.8453, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.8427, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.8, "watch_ratio": 0.84, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.85, "watch_ratio": 0.83, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.9, "watch_ratio": 0.82, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.95, "watch_ratio": 0.81, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.8, "measured_date": "2026-09-01"}
+      ],
+      "expected": {
+        "verdict": "insufficient_data",
+        "hook_loss": null,
+        "hook_loss_share": null,
+        "slide_per_tenth": null,
+        "cliffs": null
+      }
+    },
+    {
+      "name": "the curve's own start (1%) is the hook's start, never an invented 100% at 0 s",
+      "duration_s": 600,
+      "points": [
+        {"elapsed_ratio": 0.01, "watch_ratio": 0.97, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.05, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.7, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.65, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.8, "watch_ratio": 0.6, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.55, "measured_date": "2026-09-01"}
+      ],
+      "expected": {
+        "verdict": "healthy",
+        "hook_loss": 0.17,
+        "hook_loss_share": 0.1753,
+        "slide_per_tenth": 0.0267
+      }
+    }
+  ]
+}

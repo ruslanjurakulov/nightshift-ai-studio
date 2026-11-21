@@ -338,8 +338,11 @@ MIGRATION_0156 = MIGRATIONS / "0156_named_resolution_params.sql"
 ROLLBACK_0156 = REPO / "docs" / "sql" / "rollback_0156_named_resolution_params.sql"
 MIGRATION_0159 = MIGRATIONS / "0159_duration_offered_by_model.sql"
 ROLLBACK_0159 = REPO / "docs" / "sql" / "rollback_0159_duration_offered_by_model.sql"
+MIGRATION_0208 = MIGRATIONS / "0208_geo_gate_and_image_size_price.sql"
+ROLLBACK_0208 = REPO / "docs" / "sql" / "rollback_0208_geo_gate_and_image_size_price.sql"
 #: Migrations written on 0156's creative_price, which refuse to apply without it: a sequence that leaves 0156 out leaves these out too.
-ON_0156 = (MIGRATION_0159.name,)
+#: 0208 sits on 0159's creative_price (and 0156's creative_params_problem).
+ON_0156 = (MIGRATION_0159.name, MIGRATION_0208.name)
 #: Migrations written on 0155's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0155 out
 #: leaves these out too, in this order. (0156 also sits on 0126's creative_params_problem, which every sequence that reaches 0155 has
 #: applied already.)
@@ -546,30 +549,60 @@ def put_back_0156(session) -> None:
 
 #: md5 of 0159's creative_price body (white space folded), the way its drift guard reads it.
 CREATIVE_PRICE_0159 = "dafc5edae0000e741ac1b19bd0075790"
+#: md5 of 0208's creative_price body: 0208 replaces 0159's (and 0156's creative_params_problem).
+CREATIVE_PRICE_0208 = "f61aaddd5686045961addd6f14a02c32"
+CREATIVE_PARAMS_PROBLEM_0208 = "7ccde072309a637d9b07e59f1be45d20"
 
 
 def has_0159(conn_or_session) -> bool:
+    """0159's creative_price, or 0208's on top of it (take_off_0159 takes 0208 off first)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute(
+        "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
+        "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
+        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208]]).fetchone()[0])
+
+
+def has_0208(conn_or_session) -> bool:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = %s from pg_proc "
-        "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)", [CREATIVE_PRICE_0159]).fetchone()[0])
+        "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)", [CREATIVE_PRICE_0208]).fetchone()[0])
+
+
+def rollback_0208_body() -> str:
+    text = ROLLBACK_0208.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0208(session) -> None:
+    """0208 replaces creative_price() on 0159's body and creative_params_problem() on 0156's, and 0159's and 0156's replays and
+    rollbacks refuse any other body: taken off first with its own rollback, put back with put_back_0208."""
+    session.conn.execute(rollback_0208_body())
+
+
+def put_back_0208(session) -> None:
+    session.conn.execute(MIGRATION_0208.read_text(encoding="utf-8"))
 
 
 def rollback_0159_body() -> str:
-    """0159's rollback without its own begin / commit, to run inside a test's transaction (or as one statement on a scratch database)."""
+    """0159's rollback without its own begin / commit, to run inside a test's transaction (or as one statement on a scratch database).
+    0208 sits on 0159's creative_price, so its rollback runs first: on a database without 0208 it finds the earlier bodies, puts the
+    same ones back and drops nothing that is there, so it is harmless where 0208 was never applied."""
     text = ROLLBACK_0159.read_text(encoding="utf-8")
-    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    return rollback_0208_body() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
 def take_off_0159(session) -> None:
     """0159 replaces creative_price() on 0156's body, and 0156 (its replay and its rollback) refuses any other body. A test that replays
     0156 or applies its rollback on a database that has 0159 takes 0159 off first with its own rollback, and puts it back with
-    put_back_0159 where the chain goes on."""
+    put_back_0159 where the chain goes on. 0208 sits on 0159's body, so it comes off first when it is there."""
     session.conn.execute(rollback_0159_body())
 
 
 def put_back_0159(session) -> None:
     session.conn.execute(MIGRATION_0159.read_text(encoding="utf-8"))
+    put_back_0208(session)
 
 
 MIGRATION_0167 = MIGRATIONS / "0167_refund_hold_recovery.sql"

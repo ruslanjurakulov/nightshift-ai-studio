@@ -1,0 +1,36 @@
+{
+  "name": "@nightshift/cli",
+  "version": "0.1.0",
+  "description": "Command-line client for the Nightshift public API: make, follow, download and publish videos.",
+  "type": "module",
+  "bin": {
+    "nightshift": "bin/nightshift.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ruslanjurakulov/nightshift-ai-studio.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/ruslanjurakulov/nightshift-ai-studio/blob/main/docs/CLI.md",
+  "keywords": [
+    "nightshift",
+    "cli",
+    "video",
+    "api"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test",
+    "prepublishOnly": "npm test && node scripts/prepublish-check.js"
+  }
+}

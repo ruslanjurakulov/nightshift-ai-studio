@@ -1,0 +1,373 @@
+{
+ "_comment": "Files sent to the editor (\"Open in editor\"): the document the Command Center builds (command-center/lib/editor.ts newDocForAnyAsset / appendAssetToDoc, pinned by command-center/tests/editor-send.test.ts) and that modules/timeline.py must accept and resolve (tests/test_editor_open_in_editor.py). 'doc' is the project before the send (null = a new project); 'asset' is the file as the library knows it; 'expected' is the document that gets saved.",
+ "cases": [
+  {
+   "name": "new project from a video",
+   "asset": {
+    "id": "44444444-4444-4444-8444-444444444444",
+    "kind": "video",
+    "duration_s": 4,
+    "width": 1280,
+    "height": 720
+   },
+   "doc": null,
+   "expected": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "44444444-4444-4444-8444-444444444444",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "speed": 1,
+        "audio": true
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "new project from a vertical picture",
+   "asset": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "kind": "image",
+    "duration_s": null,
+    "width": 1080,
+    "height": 1920
+   },
+   "doc": null,
+   "expected": {
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "22222222-2222-4222-8222-222222222222",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 5,
+        "speed": 1,
+        "audio": false
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "new project from a sound",
+   "asset": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "kind": "audio",
+    "duration_s": 30,
+    "width": null,
+    "height": null
+   },
+   "doc": null,
+   "expected": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": []
+     },
+     {
+      "id": "a1",
+      "kind": "A",
+      "clips": [
+       {
+        "id": "m1",
+        "asset_id": "33333333-3333-4333-8333-333333333333",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 30,
+        "gain_db": 0,
+        "fade_in_s": 0,
+        "fade_out_s": 0
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a video appended to a project",
+   "asset": {
+    "id": "44444444-4444-4444-8444-444444444444",
+    "kind": "video",
+    "duration_s": 4,
+    "width": 1280,
+    "height": 720
+   },
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10,
+        "speed": 1,
+        "audio": true
+       }
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10,
+        "speed": 1,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "44444444-4444-4444-8444-444444444444",
+        "start_s": 10,
+        "in_s": 0,
+        "out_s": 4,
+        "speed": 1,
+        "audio": true
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a picture appended to a project with text",
+   "asset": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "kind": "image",
+    "duration_s": null,
+    "width": 1024,
+    "height": 1024
+   },
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10,
+        "speed": 1,
+        "audio": true
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hi"
+       }
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10,
+        "speed": 1,
+        "audio": true
+       },
+       {
+        "id": "c3",
+        "asset_id": "22222222-2222-4222-8222-222222222222",
+        "start_s": 10,
+        "in_s": 0,
+        "out_s": 5,
+        "speed": 1,
+        "audio": false
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "size": 64,
+        "x": 0.5,
+        "y": 0.85,
+        "anchor": "center",
+        "bold": true,
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hi"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a sound appended to a project with text",
+   "asset": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "kind": "audio",
+    "duration_s": 30,
+    "width": null,
+    "height": null
+   },
+   "doc": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10,
+        "speed": 1,
+        "audio": true
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hi"
+       }
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "version": 1,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10,
+        "speed": 1,
+        "audio": true
+       }
+      ]
+     },
+     {
+      "id": "a1",
+      "kind": "A",
+      "clips": [
+       {
+        "id": "m3",
+        "asset_id": "33333333-3333-4333-8333-333333333333",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 10,
+        "gain_db": 0,
+        "fade_in_s": 0,
+        "fade_out_s": 0
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "size": 64,
+        "x": 0.5,
+        "y": 0.85,
+        "anchor": "center",
+        "bold": true,
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hi"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+node_modules/
+out/
+# Remotion's bundle cache / temp props
+.remotion/

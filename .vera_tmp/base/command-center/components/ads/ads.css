@@ -1,0 +1,84 @@
+/* The Ads workspace (components/ads). Tokens only (app/globals.css): it follows the theme, dark included. One column at 320px. */
+.ads { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+.ads[aria-busy="true"] .ads-body { opacity: 0.6; }
+.ads-body { display: flex; flex-direction: column; gap: 32px; min-width: 0; transition: opacity 0.15s ease; }
+.ads-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ads-note { margin: 0; padding: 12px 0; border-top: 1px solid var(--color-border); color: var(--color-muted); font-size: 0.875rem; line-height: 1.55; max-width: 76ch; overflow-wrap: anywhere; }
+.ads-small { margin: 0; font-size: 0.8125rem; line-height: 1.5; color: var(--color-muted); overflow-wrap: anywhere; }
+.ads-fail { margin: 0; font-size: 0.875rem; line-height: 1.55; color: var(--color-fail); overflow-wrap: anywhere; }
+.ads-ok { margin: 0; font-size: 0.875rem; line-height: 1.55; color: var(--color-ok); overflow-wrap: anywhere; }
+
+.ads-section { display: flex; flex-direction: column; gap: 16px; min-width: 0; border-top: 1px solid var(--color-border); padding-top: 20px; }
+.ads-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+.ads-head h2, .ads-head h3 { margin: 0; }
+.ads-h2 { font-size: 1.125rem; font-weight: 600; line-height: 1.3; color: var(--color-fg); }
+.ads-h3 { font-size: 1rem; font-weight: 600; line-height: 1.3; color: var(--color-fg); overflow-wrap: anywhere; }
+.ads-h4 { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; color: var(--color-fg); overflow-wrap: anywhere; }
+
+.ads-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ads-card { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--ns-r-frame, 12px); background: var(--color-panel); }
+.ads-card-head { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 10px 16px; }
+.ads-ident { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ads-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ads-actions > button, .ads-actions > a { min-height: 44px; }
+.ads-meta { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; min-width: 0; }
+.ads-text { margin: 0; font-size: 0.9375rem; line-height: 1.55; color: var(--color-fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.ads-thumb { flex: none; width: 56px; height: 56px; border-radius: var(--ns-r-key, 8px); border: 1px solid var(--color-border); background: var(--color-panel-2); object-fit: cover; display: grid; place-items: center; color: var(--color-muted); overflow: hidden; }
+.ads-thumb-sm { width: 40px; height: 40px; }
+.ads-swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; padding: 0; list-style: none; }
+.ads-swatch { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.ads-swatch > span:first-child { width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--color-border); }
+
+.ads-sub { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ads-sub > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.ads-sub-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 12rem; }
+.ads-sub-main > div { min-width: 0; }
+
+.ads-form { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ads-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ads-field .ns-field { width: 100%; max-width: 100%; }
+.ads-field textarea.ns-field { min-height: 96px; padding: 10px 14px; line-height: 1.5; resize: vertical; }
+.ads-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ads-fieldset > legend { padding: 0; margin-bottom: 2px; }
+.ads-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.ads-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ads-check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 0.9375rem; color: var(--color-fg); overflow-wrap: anywhere; }
+.ads-check input { width: 20px; height: 20px; flex: none; accent-color: var(--ns-amber, var(--color-primary)); }
+.ads-colour { display: inline-flex; align-items: center; gap: 6px; }
+.ads-colour input[type="color"] { width: 44px; height: 44px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--ns-r-key, 8px); background: var(--color-panel-2); }
+
+.ads-picker { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ads-picker-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; max-height: 240px; overflow-y: auto; }
+.ads-pick { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0; border: 2px solid var(--color-border); border-radius: var(--ns-r-key, 8px); background: var(--color-panel-2); overflow: hidden; color: var(--color-muted); font-size: 0.6875rem; }
+.ads-pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ads-pick[aria-pressed="true"] { border-color: var(--ns-amber, var(--color-primary)); }
+.ads-pick[aria-pressed="true"]::after { content: attr(data-n); position: absolute; left: 0; bottom: 0; min-width: 20px; padding: 0 4px; background: var(--color-panel); color: var(--color-fg); font-size: 0.75rem; font-weight: 600; text-align: center; }
+.ads-pick:disabled { opacity: 0.4; cursor: not-allowed; }
+.ads-pick:focus-visible { outline: 3px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }
+
+.ads-concepts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: 12px; }
+.ads-concept { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--color-border); border-radius: var(--ns-r-key, 8px); background: var(--color-panel-2); }
+.ads-concept[data-status="archived"] { opacity: 0.7; }
+.ads-beats { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; line-height: 1.5; color: var(--color-fg); overflow-wrap: anywhere; }
+.ads-beats em { font-style: normal; color: var(--color-muted); }
+.ads-dl { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ads-dl dt { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); }
+.ads-dl dd { margin: 0; }
+.ads-add { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.ads-add .ads-field { flex: 0 1 10rem; }
+
+/* The brand scan panel (components/ads/BrandScanPanel.tsx, NIGHTSHIFT_ADS_BRAND_SCAN). A three-column review that stacks at 320px. */
+.ads-scan { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ads-scan > button { align-self: flex-start; }
+.ads-self-start { align-self: flex-start; }
+.ads-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.8125rem; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--ns-r-key, 8px); background: var(--color-panel-2); color: var(--color-fg); overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
+.ads-url { font-size: 0.8125rem; word-break: break-all; }
+.ads-scan-table { display: flex; flex-direction: column; min-width: 0; }
+.ads-scan-tr { display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr) minmax(0, 1.5fr); gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--color-border); align-items: start; min-width: 0; }
+.ads-scan-th { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); }
+.ads-scan-td { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 640px) {
+  .ads-scan-tr { grid-template-columns: minmax(0, 1fr); }
+  .ads-scan-th { display: none; }
+}

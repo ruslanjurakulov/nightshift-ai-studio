@@ -1,0 +1,514 @@
+"""Timeline → RenderSpec: render a studio timeline with the existing engine.
+
+The Creative OS plan (§3.6) is explicit: a timeline is rendered by the ffmpeg
+backend the pipeline already uses (``render_spec`` + ``render_backend``),
+extended backwards-compatibly, not by a second renderer. This module is the
+adapter: it validates and normalises a timeline (``modules/timeline.py``),
+resolves its asset ids through the caller's resolver, and lays the result out
+as a declarative :class:`~modules.render_spec.RenderSpec`.
+
+How a timeline maps onto the spec:
+
+* **Picture** — the one V track, on the frame grid (``round(t * fps)``): each
+  clip becomes a segment (``in_s`` trim, ``fit``, fades from its own fades and
+  ``dip_to_black`` transitions); every gap, and the tail up to the end of the
+  timeline, becomes a black segment. ``frame_exact`` is on, so each segment is
+  exactly its frames and the concatenation is exactly the timeline.
+* **Speed** — a V clip's ``speed`` becomes the segment's (``setpts``): its
+  slot on the frame grid is already the sped-up length, and the source range
+  ``in_s``..``out_s`` fills it.
+* **Colour** — a V clip's ``grade`` (brightness / contrast / saturation) becomes
+  the segment's fields and the backend's ffmpeg ``eq``, on video and stills,
+  on a cross-fade's two sides alike; a clip without it adds no filter at all.
+* **Effects** — a V clip's ``filter``, ``vignette``, ``blur``, ``sharpen``, ``grain``,
+  ``flip_*`` and ``rotate`` become the segment's ``ClipEffects``; the backend
+  turns the geometric ones into a prefix of the clip's chain and the rest into
+  filters after the colour grade. A clip without them has ``effects=None``.
+* **Stabilise** — a V clip's ``stabilize`` becomes the segment's flag; the backend
+  adds the detect pass (vidstab) or the single-pass filter (deshake).
+* **Speed ramp** — a V clip's ``speed_curve`` becomes ``Segment.curve`` (its points
+  and the source range), ``interpolate`` the segment's flag; the clip's sound is
+  the track's ``tempos``, one per equal slice of the range
+  (``modules/speed_ramp.py``), so the sound is on the picture at every slice
+  boundary.
+* **Crop and angle** — a V clip's ``crop`` rectangle and free ``angle`` become the
+  segment's ``ClipCrop`` and ``angle``; the backend takes the crop after the turn
+  and mirror and before the fit, and turns the fitted picture by the angle.
+* **Move** — a V clip's ``move`` becomes ``Segment.move`` (a still then has it
+  instead of its automatic zoom); an overlay's ``move.to`` becomes the
+  ``PictureOverlay.to_*`` end values. Both are linear over the clip / the span.
+* **Cross-fade** — two V clips that overlap by a ``crossfade`` transition
+  become: the first clip's own part, ONE segment of the overlap that holds
+  both pictures (``Segment.xfade``; the backend blends them with ffmpeg
+  ``xfade``), then the second clip's own part. Each piece is rendered over
+  its whole clip and cut (``clip_s`` / ``offset_s``), so fades and a still's
+  slow zoom carry on across the cut. The concatenation is still exactly the
+  timeline's frames. The blend is the incoming clip's ``transition.style``
+  (``Segment.xfade_style``, an ffmpeg ``xfade`` transition from a closed list;
+  absent = the plain ``fade``, the segment every older document gets). When both clips play their own sound, the two sounds
+  are joined with ``acrossfade`` (``AudioTrack.crossfade_s``); when only one
+  does, it fades in or out across the overlap.
+* **Sound** — a V clip with ``audio: true`` whose source has a sound track
+  becomes an ``AudioTrack`` of that same file (same trim, start and speed,
+  ``atempo`` keeping the pitch, its ``gain_db``), first; then every A clip (trim,
+  gain, fades, start). All are mixed and cut to the picture's length. A video clip
+  without ``audio`` is silent, as before. An A clip may name a video file (a
+  detached sound): it is that file's sound, and nothing when the file has none.
+* **Ducking** — an A track with ``duck`` gets, on each of its clips, the
+  speech spans that can touch it (V clips whose source is KNOWN to carry
+  sound and play it, and every clip of an A track with ``role: "speech"``),
+  merged across pauses too short for the music to come back up; the backend
+  turns them into one ``volume`` envelope (``render_spec.duck_expression``).
+  Speech that is not there (a silent source) ducks nothing, and a clip no
+  speech can touch gets no envelope at all, so its argv is the one it had
+  before ducking existed.
+* **Overlays** — each of the document's ``overlays`` (a picture or a video over
+  the picture) becomes a ``PictureOverlay`` on the frame grid, cut at the end
+  of the picture; the backend lays them over the composited picture, under the
+  text, with ffmpeg ``overlay`` (``render_spec.picture_overlay_filters``). One
+  that starts after the picture ends, or whose opacity is 0, renders nothing
+  and is left out, so the command is the one the document without it gets.
+* **Shapes** — each of the document's ``shapes`` (a drawn sticker: arrow, ring, star, label, line,
+  progress bar) becomes a ``PictureOverlay`` carrying a ``ShapeArt`` instead of a file, after the
+  pictures (so on top of them). The backend draws it into a PNG in its work directory and the rest
+  is the picture-overlay path; a progress bar is a frame-wide bar the filter slides in across its
+  span. A document without ``shapes`` gives exactly the spec it always did.
+* **Animations** — a text's or overlay's ``anim_in`` / ``anim_out`` (and their
+  durations) are copied onto the ``TextOverlay`` / ``PictureOverlay``; the ASS
+  writer (text) and the overlay filter graph (pictures) turn them into the
+  entrance and exit. Items without them are the objects they always were.
+* **Text looks** — a T clip's ``shadow``, ``box_color`` and ``box_opacity`` become
+  the overlay's ASS style (a drop shadow; an opaque or translucent box instead of
+  the outline); a text without them is written as it always was.
+* **Text** — T clips in track order, then the captions on top, become text
+  overlays burnt from one ASS file.
+
+Pure and deterministic: the same document and the same resolver answers give
+the same spec, and so the same ffmpeg argv (tests/test_timeline_render.py pins
+a golden one).
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from typing import List, Optional, Union
+
+from modules import shape_art, speed_ramp
+from modules import timeline as tl
+from modules.render_spec import (
+    KIND_COLOR,
+    KIND_IMAGE,
+    KIND_VIDEO,
+    AudioTrack,
+    ClipCrop,
+    ClipEffects,
+    ClipMask,
+    ClipMove,
+    SpeedCurve,
+    PictureOverlay,
+    RenderSpec,
+    Segment,
+    TextOverlay,
+)
+
+
+def _frame(t: float, fps: int) -> int:
+    return int(round(float(t) * fps))
+
+
+def _crossfade_frames(clips: List[dict], fps: int) -> dict:
+    """Clip index → how many frames of its head are its cross-fade from the
+    clip before (on the frame grid: the previous clip's last frame minus this
+    one's first). Validation keeps every cross-fade at least 0.2 s, so this is
+    always several frames."""
+    out = {}
+    for i in range(1, len(clips)):
+        if tl.crossfade_s(clips[i]) > 0:
+            n = _frame(tl.clip_end_s(clips[i - 1]), fps) - _frame(clips[i]["start_s"], fps)
+            if n >= 1:
+                out[i] = n
+    return out
+
+
+def _grade(clip: dict) -> dict:
+    """The clip's colour as Segment fields ({} without it: the segment is then
+    exactly what it was before colour existed; normalise() has already dropped
+    a neutral grade)."""
+    return dict(clip["grade"]) if "grade" in clip else {}
+
+
+def _effects(clip: dict) -> dict:
+    """The clip's effects as a Segment field ({} without any: the segment is then
+    exactly what it was before effects existed; normalise() has dropped every
+    value that means "off")."""
+    given = {k: clip[k] for k in tl._EFFECT_KEYS if k in clip}
+    given.update(clip.get("color") or {})     # advanced colour rides on the same effects (render_backend)
+    given.update(clip.get("fx") or {})        # and so does the effects pack (drawn in the clip's tail)
+    out = {"effects": ClipEffects(**given)} if given else {}
+    if "mask" in clip:
+        out["mask"] = ClipMask(**clip["mask"])
+    for side in ("in", "out"):
+        if clip.get(f"anim_{side}"):
+            out[f"anim_{side}"] = clip[f"anim_{side}"]
+            out[f"anim_{side}_s"] = clip[f"anim_{side}_s"]
+    return out
+
+
+def _crop_angle(clip: dict) -> dict:
+    """The clip's crop rectangle and free angle as Segment fields ({} without them)."""
+    out = {}
+    if "crop" in clip:
+        out["crop"] = ClipCrop(**clip["crop"])
+    if "angle" in clip:
+        out["angle"] = clip["angle"]
+    return out
+
+
+def _ramp(clip: dict, asset_kind: str) -> dict:
+    """The clip's speed curve and interpolation as Segment fields ({} without them)."""
+    out = {}
+    if clip.get("speed_curve") and asset_kind == tl.ASSET_VIDEO:
+        out["curve"] = SpeedCurve(tuple((p["at"], p["speed"]) for p in clip["speed_curve"]),
+                                  round(clip["out_s"] - clip["in_s"], 3))
+    if clip.get("interpolate") and asset_kind == tl.ASSET_VIDEO:
+        out["interpolate"] = True
+    if clip.get("stabilize") and asset_kind == tl.ASSET_VIDEO:
+        out["stabilize"] = True
+    return out
+
+
+def _move(clip: dict) -> dict:
+    """The clip's move as a Segment field ({} without one)."""
+    mv = clip.get("move")
+    if mv is None:
+        return {}
+    a, b = mv["from"], mv["to"]
+    return {"move": ClipMove(a["zoom"], a["x"], a["y"], b["zoom"], b["x"], b["y"])}
+
+
+def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
+    fps = doc["fps"]
+    segments: List[Segment] = []
+
+    def black(frames: int) -> None:
+        segments.append(Segment(duration=frames / fps, path=None, kind=KIND_COLOR))
+
+    cursor = 0
+    for track in doc["tracks"]:
+        if track["kind"] != tl.KIND_V:
+            continue
+        fades = tl.effective_fades(track)
+        clips = track["clips"]  # normalised: sorted by start; only cross-fades overlap
+        xin = _crossfade_frames(clips, fps)
+
+        def piece(clip: dict, frames: int, *, full: int = 0, offset: int = 0,
+                  seed: str = "") -> Segment:
+            asset = assets[clip["asset_id"]]
+            fade_in, fade_out = fades[clip["id"]]
+            return Segment(
+                duration=frames / fps,
+                path=asset.path,
+                kind=KIND_IMAGE if asset.kind == tl.ASSET_IMAGE else KIND_VIDEO,
+                # A still has no time inside it: only video seeks.
+                in_s=clip["in_s"] if asset.kind == tl.ASSET_VIDEO else 0.0,
+                fit=clip["fit"],
+                fade_in_s=fade_in,
+                fade_out_s=fade_out,
+                speed=(1.0 if clip.get("freeze") else clip["speed"]) if asset.kind == tl.ASSET_VIDEO else 1.0,
+                reverse=bool(clip.get("reverse")),
+                freeze=bool(clip.get("freeze")),
+                clip_s=full / fps if full else 0.0,
+                offset_s=offset / fps,
+                seed=seed,
+                **_grade(clip),
+                **_effects(clip),
+                **_move(clip),
+                **_crop_angle(clip),
+                **_ramp(clip, asset.kind),
+            )
+
+        for i, clip in enumerate(clips):
+            start = _frame(clip["start_s"], fps)
+            end = _frame(tl.clip_end_s(clip), fps)
+            if end <= start:
+                # Validation keeps a clip at least one frame long, but a clip
+                # of ~1 frame can still fall between two frame boundaries:
+                # there is no frame for it to be shown on.
+                continue
+            head, tail = xin.get(i, 0), xin.get(i + 1, 0)
+            if not head and not tail:
+                # No cross-fade touches this clip: exactly the segment a
+                # timeline always rendered (older documents' argv is pinned).
+                if start > cursor:
+                    black(start - cursor)
+                segments.append(piece(clip, end - start))
+                cursor = end
+                continue
+            # A cross-faded clip is cut into its pieces on the frame grid: the
+            # part only it shows, then the dissolve into the next clip as ONE
+            # segment that holds both pictures (render_backend blends them
+            # with xfade). Every piece is rendered over the whole clip — fades,
+            # a still's slow zoom — and cut, so nothing restarts at a cut.
+            full = end - start
+            seed = f"clip:{clip['id']}"
+            if not head and start > cursor:
+                black(start - cursor)
+            solo = full - head - tail
+            if solo > 0:
+                segments.append(piece(clip, solo, full=full, offset=head, seed=seed))
+            if tail:
+                nxt = clips[i + 1]
+                n_full = _frame(tl.clip_end_s(nxt), fps) - _frame(nxt["start_s"], fps)
+                incoming = piece(nxt, tail, full=n_full, seed=f"clip:{nxt['id']}")
+                outgoing = piece(clip, tail, full=full, offset=full - tail, seed=seed)
+                style = tl.crossfade_style(nxt)    # the incoming clip's transition
+                if style == tl.XFADE_DEFAULT_STYLE:
+                    segments.append(replace(outgoing, xfade=incoming))   # the segment it always was
+                else:
+                    segments.append(replace(outgoing, xfade=incoming, xfade_style=style))
+            cursor = end
+    if cursor < total_frames:
+        black(total_frames - cursor)
+    return segments
+
+
+def _tempos(clip: dict) -> dict:
+    """A speed ramp's sound: the slice tempos that keep it on the picture ({} without a ramp)."""
+    pts = tl.clip_ramp_points(clip)
+    if pts is None:
+        return {}
+    n = speed_ramp.slice_count(pts[-1][0])
+    return {"tempos": tuple(round(t, 6) for t in speed_ramp.slice_tempos(pts, pts[-1][0], n))}
+
+
+def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
+    tracks: List[AudioTrack] = []
+    for track in doc["tracks"]:
+        if track["kind"] != tl.KIND_V:
+            continue
+        clips = track["clips"]
+
+        def sounding(i: int) -> bool:
+            # Only a source KNOWN to carry sound: an input with no audio
+            # stream would make the whole mix fail, and a still has none.
+            if not 0 <= i < len(clips):
+                return False
+            asset = assets[clips[i]["asset_id"]]
+            return bool(clips[i]["audio"]) and asset.kind == tl.ASSET_VIDEO and asset.has_audio is True
+
+        for i, clip in enumerate(clips):
+            if not sounding(i):
+                continue
+            d_in = tl.crossfade_s(clip) if i > 0 else 0.0
+            d_out = tl.crossfade_s(clips[i + 1]) if i + 1 < len(clips) else 0.0
+            # Both clips sound: their sounds are joined with acrossfade. Only
+            # one does: it fades in (or out) under the silent picture instead.
+            joined = d_in > 0 and sounding(i - 1)
+            tracks.append(AudioTrack(
+                path=assets[clip["asset_id"]].path,
+                duration_s=round(clip["out_s"] - clip["in_s"], 3),
+                start_s=clip["start_s"],
+                in_s=clip["in_s"],
+                speed=clip["speed"],
+                gain_db=clip.get("gain_db", 0.0),
+                reverse=bool(clip.get("reverse")),
+                denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
+                **_tempos(clip),
+                fade_in_s=d_in if d_in > 0 and not joined else 0.0,
+                fade_out_s=d_out if d_out > 0 and not sounding(i + 1) else 0.0,
+                crossfade_s=d_in if joined else 0.0,
+            ))
+    def speaks(clip: dict) -> bool:
+        # A sound file always sounds; a video only when its file is known to carry sound
+        # (the V clip's own sound, or an A clip that plays a video's sound).
+        asset = assets[clip["asset_id"]]
+        if asset.kind == tl.ASSET_AUDIO:
+            return True
+        return asset.kind == tl.ASSET_VIDEO and asset.has_audio is True
+
+    speech = tl.speech_spans(doc, speaks)
+    for track in doc["tracks"]:
+        if track["kind"] != tl.KIND_A:
+            continue
+        duck = track.get("duck")
+        merged = (tl.merge_spans(speech, duck["attack_s"] + duck["release_s"])
+                  if duck and speech else [])
+        for clip in track["clips"]:
+            if not speaks(clip):
+                # A detached sound whose video has no sound track: silent, never an error
+                # (an input with no audio stream would make the whole mix fail).
+                continue
+            extra = {}
+            if merged:
+                first, last = clip["start_s"], tl.clip_end_s(clip)
+                near = tuple((a, b) for a, b in merged
+                             if a - duck["attack_s"] < last and b + duck["release_s"] > first)
+                if near:
+                    extra = {"duck_db": duck["amount_db"], "duck_attack_s": duck["attack_s"],
+                             "duck_release_s": duck["release_s"], "duck_spans": near}
+            tracks.append(AudioTrack(
+                path=assets[clip["asset_id"]].path,
+                duration_s=round(clip["out_s"] - clip["in_s"], 3),
+                start_s=clip["start_s"],
+                in_s=clip["in_s"],
+                gain_db=clip["gain_db"],
+                fade_in_s=clip["fade_in_s"],
+                fade_out_s=clip["fade_out_s"],
+                denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
+                video_source=assets[clip["asset_id"]].kind == tl.ASSET_VIDEO,
+                **extra,
+            ))
+    return tracks
+
+
+def _text_looks(c: dict) -> dict:
+    """A text's looks as TextOverlay fields ({} without any: the overlay is then
+    exactly what it was before they existed; normalise() has dropped a zero shadow)."""
+    out = {}
+    if "shadow" in c:
+        out["shadow"] = c["shadow"]
+    if "box_color" in c:
+        out["box_color"] = c["box_color"]
+        out["box_opacity"] = c["box_opacity"]
+    return out
+
+
+def _anims(c: dict) -> dict:
+    """A text's or overlay's animation fields as spec fields ({} without any:
+    the spec object is then exactly what it was before they existed)."""
+    out = {}
+    for key in ("anim_in", "anim_out"):
+        if key in c:
+            out[key] = c[key]
+            out[key + "_s"] = c[key + "_s"]
+    return out
+def _caption_style(st: dict) -> dict:
+    """An animated style's TextOverlay fields ({} without one: the cue is then
+    the plain overlay it always was). The style also owns where its anchor sits
+    (a lower third hugs the left edge, a big centre sits mid-frame), the
+    document's ``y`` being the height the person set on it."""
+    preset = st.get("preset")
+    if not preset:
+        return {}
+    d = tl.caption_styles.STYLES[preset]
+    return {"caption_style": preset, "x": d.x, "anchor": d.anchor,
+            "highlight_color": st.get("highlight_color", d.highlight_color)}
+
+
+def _text(doc: dict) -> List[TextOverlay]:
+    overlays: List[TextOverlay] = []
+    for track in doc["tracks"]:
+        if track["kind"] != tl.KIND_T:
+            continue
+        for c in track["clips"]:
+            overlays.append(TextOverlay(
+                start_s=c["start_s"], end_s=c["end_s"], text=c["text"], font=c["font"],
+                size=c["size"], color=c["color"], outline_color=c["outline_color"],
+                outline_width=c["outline_width"], bold=c["bold"], x=c["x"], y=c["y"],
+                anchor=c["anchor"], fade_in_s=c["fade_in_s"], fade_out_s=c["fade_out_s"],
+                **_text_looks(c), **_anims(c),
+            ))
+    captions = doc.get("captions")
+    if captions:
+        st = captions["style"]
+        for cue in captions["cues"]:
+            # Bottom-centre anchored at the style's height: a two-line caption
+            # grows upward instead of running off the frame.
+            overlays.append(TextOverlay(
+                start_s=cue["start_s"], end_s=cue["end_s"], text=cue["text"], font=st["font"],
+                size=st["size"], color=st["color"], outline_color=st["outline_color"],
+                outline_width=st["outline_width"], bold=st["bold"], y=st["y"],
+                **{"x": 0.5, "anchor": "bottom", **_caption_style(st)},
+            ))
+    return overlays
+
+
+def _pictures(doc: dict, assets: dict, total_frames: int) -> List[PictureOverlay]:
+    fps = doc["fps"]
+    out: List[PictureOverlay] = []
+    for ov in doc.get("overlays") or []:
+        first = _frame(ov["start_s"], fps)
+        last = min(_frame(ov["end_s"], fps), total_frames)
+        end_opacity = (ov.get("move") or {}).get("to", {}).get("opacity", ov["opacity"])
+        if last <= first or (ov["opacity"] <= 0 and end_opacity <= 0):
+            continue   # nothing of it is shown
+        asset = assets[ov["asset_id"]]
+        out.append(PictureOverlay(
+            path=asset.path,
+            kind=KIND_VIDEO if asset.kind == tl.ASSET_VIDEO else KIND_IMAGE,
+            start_s=first / fps, end_s=last / fps,
+            x=ov["x"], y=ov["y"], w=ov["w"], opacity=ov["opacity"], **_anims(ov),
+            **{f"to_{k}": v for k, v in (ov.get("move") or {}).get("to", {}).items()},
+            **({"chroma_color": ov["chroma"]["color"], "chroma_similarity": ov["chroma"]["similarity"],
+                "chroma_blend": ov["chroma"]["blend"]} if "chroma" in ov else {}),
+        ))
+    return out
+
+
+def _shapes(doc: dict, total_frames: int) -> List[PictureOverlay]:
+    """The document's shapes as picture overlays with a drawn shape in place of a file (see
+    ``modules/shape_art.py``). Cut at the end of the picture, left out when nothing of one shows."""
+    fps = doc["fps"]
+    out: List[PictureOverlay] = []
+    for sh in doc.get("shapes") or []:
+        first = _frame(sh["start_s"], fps)
+        last = min(_frame(sh["end_s"], fps), total_frames)
+        if last <= first or sh["opacity"] <= 0:
+            continue
+        art = shape_art.ShapeArt(
+            kind=sh["kind"], color=sh["color"], outline=sh.get("outline", 0.0),
+            aspect=sh.get("aspect", shape_art.ASPECT_DEFAULT), dir=sh.get("dir", shape_art.DIR_DEFAULT),
+            thick=sh.get("thick", 0.0), text=sh.get("text", ""), edge=sh.get("edge", shape_art.EDGE_DEFAULT))
+        if art.is_progress:
+            # Frame-wide, against an edge: only the edge and the thickness are the person's.
+            place = {"x": 0.5, "y": shape_art.progress_center_y(art, doc["height"]), "w": 1.0}
+        else:
+            place = {"x": sh["x"], "y": sh["y"], "w": sh["w"]}
+        out.append(PictureOverlay(
+            path="", kind=KIND_IMAGE, start_s=first / fps, end_s=last / fps,
+            opacity=sh["opacity"], shape=art, **place, **_anims(sh),
+            **{f"to_{k}": v for k, v in (sh.get("move") or {}).get("to", {}).items()},
+        ))
+    return out
+
+
+def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
+                   output_path: str) -> RenderSpec:
+    """The RenderSpec for a timeline. Raises :class:`timeline.TimelineError`
+    when the document is invalid or an asset cannot be used — before anything
+    is rendered or spent."""
+    norm = tl.load(doc)
+    assets = tl.resolve_assets(norm, resolver)
+    fps = norm["fps"]
+    total_frames = _frame(tl.duration_s(norm), fps)
+    if total_frames < 1:
+        raise tl.TimelineError(["timeline: shorter than one frame — nothing to render"])
+    return RenderSpec(
+        output_path=str(output_path),
+        width=norm["width"],
+        height=norm["height"],
+        fps=fps,
+        segments=_picture(norm, assets, total_frames),
+        frame_exact=True,
+        audio_tracks=_sound(norm, assets),
+        overlays=_text(norm),
+        picture_overlays=_pictures(norm, assets, total_frames) + _shapes(norm, total_frames),
+    )
+
+
+def render(doc: Union[str, bytes, dict], resolver: tl.AssetResolver, output_path: str, *,
+           ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
+           jobs: Optional[int] = None, timeout_s: Optional[float] = None,
+           allow_compact: bool = True) -> str:
+    """Render a timeline to ``output_path`` with the ffmpeg backend.
+    ``timeout_s`` bounds the whole render's wall time (render_backend kills
+    the ffmpeg running when it runs out and raises RenderTimeout).
+    ``allow_compact=False`` (a paid export): no fallback to the compact encode."""
+    from modules import render_backend
+
+    spec = to_render_spec(doc, resolver, output_path)
+    extra = {} if allow_compact else {"allow_compact": False}
+    if timeout_s is None:
+        return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs, **extra)
+    return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs,
+                                 timeout_s=timeout_s, **extra)

@@ -1,0 +1,31 @@
+# Build context for Dockerfile.worker. Credentials never enter an image: they
+# come from --env-file at runtime (docs/WORKER_VPS.md).
+.env
+.env.*
+!.env.example
+youtube_token*.json
+client_secret*.json
+**/youtube_token*.json
+**/client_secret*.json
+
+# Runtime state lives in volumes, not layers.
+output/
+history/
+logs/
+.run_state/
+.run_state.staging/
+.repair_kit/
+.repair_kit.staging/
+assets/sfx/*.wav
+assets/music/*.wav
+
+# Not part of the worker.
+.git/
+.github/
+command-center/
+video-engine/node_modules/
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.DS_Store

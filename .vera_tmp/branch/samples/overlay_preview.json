@@ -1,0 +1,225 @@
+{
+ "_comment": "Where a picture overlay sits in the frame, by the preview's arithmetic (command-center/lib/editorOverlay.ts overlayRect): width = w * frame width, height = width / (asset aspect), centre at (x, y) of the frame. Pinned by command-center/tests/editor-overlay.test.ts; tests/test_editor_overlay.py measures a real ffmpeg export against the same formula.",
+ "cases": [
+  {
+   "frame": {
+    "width": 1920,
+    "height": 1080
+   },
+   "asset": {
+    "width": 400,
+    "height": 200
+   },
+   "overlay": {
+    "x": 0.5,
+    "y": 0.5,
+    "w": 0.3,
+    "opacity": 1.0
+   },
+   "rect": {
+    "left": 672.0,
+    "top": 396.0,
+    "width": 576.0,
+    "height": 288.0
+   }
+  },
+  {
+   "frame": {
+    "width": 1920,
+    "height": 1080
+   },
+   "asset": {
+    "width": 1000,
+    "height": 1000
+   },
+   "overlay": {
+    "x": 0.85,
+    "y": 0.15,
+    "w": 0.2,
+    "opacity": 0.8
+   },
+   "rect": {
+    "left": 1440.0,
+    "top": -30.0,
+    "width": 384.0,
+    "height": 384.0
+   }
+  },
+  {
+   "frame": {
+    "width": 1080,
+    "height": 1920
+   },
+   "asset": {
+    "width": 1920,
+    "height": 1080
+   },
+   "overlay": {
+    "x": 0.5,
+    "y": 0.5,
+    "w": 1.0,
+    "opacity": 1.0
+   },
+   "rect": {
+    "left": 0.0,
+    "top": 656.25,
+    "width": 1080.0,
+    "height": 607.5
+   }
+  },
+  {
+   "frame": {
+    "width": 1080,
+    "height": 1920
+   },
+   "asset": {
+    "width": 300,
+    "height": 600
+   },
+   "overlay": {
+    "x": 0.2,
+    "y": 0.8,
+    "w": 0.25,
+    "opacity": 0.5
+   },
+   "rect": {
+    "left": 81.0,
+    "top": 1266.0,
+    "width": 270.0,
+    "height": 540.0
+   }
+  },
+  {
+   "frame": {
+    "width": 1080,
+    "height": 1080
+   },
+   "asset": {
+    "width": 640,
+    "height": 480
+   },
+   "overlay": {
+    "x": 0.5,
+    "y": 0.5,
+    "w": 0.5,
+    "opacity": 1.0
+   },
+   "rect": {
+    "left": 270.0,
+    "top": 337.5,
+    "width": 540.0,
+    "height": 405.0
+   }
+  },
+  {
+   "frame": {
+    "width": 1080,
+    "height": 1080
+   },
+   "asset": {
+    "width": 100,
+    "height": 100
+   },
+   "overlay": {
+    "x": 0.05,
+    "y": 0.95,
+    "w": 0.05,
+    "opacity": 1.0
+   },
+   "rect": {
+    "left": 27.0,
+    "top": 999.0,
+    "width": 54.0,
+    "height": 54.0
+   }
+  },
+  {
+   "frame": {
+    "width": 1280,
+    "height": 720
+   },
+   "asset": {
+    "width": 80,
+    "height": 40
+   },
+   "overlay": {
+    "x": 0.8,
+    "y": 0.2,
+    "w": 0.3,
+    "opacity": 0.5
+   },
+   "rect": {
+    "left": 832.0,
+    "top": 48.0,
+    "width": 384.0,
+    "height": 192.0
+   }
+  },
+  {
+   "frame": {
+    "width": 1280,
+    "height": 720
+   },
+   "asset": {
+    "width": 80,
+    "height": 40
+   },
+   "overlay": {
+    "x": 0.95,
+    "y": 0.5,
+    "w": 0.4,
+    "opacity": 1.0
+   },
+   "rect": {
+    "left": 960.0,
+    "top": 232.0,
+    "width": 512.0,
+    "height": 256.0
+   }
+  },
+  {
+   "frame": {
+    "width": 640,
+    "height": 360
+   },
+   "asset": {
+    "width": 80,
+    "height": 40
+   },
+   "overlay": {
+    "x": 0.25,
+    "y": 0.75,
+    "w": 0.4,
+    "opacity": 0.6
+   },
+   "rect": {
+    "left": 32.0,
+    "top": 206.0,
+    "width": 256.0,
+    "height": 128.0
+   }
+  },
+  {
+   "frame": {
+    "width": 3840,
+    "height": 2160
+   },
+   "asset": {
+    "width": 1920,
+    "height": 1080
+   },
+   "overlay": {
+    "x": 0.5,
+    "y": 0.5,
+    "w": 0.25,
+    "opacity": 1.0
+   },
+   "rect": {
+    "left": 1440.0,
+    "top": 810.0,
+    "width": 960.0,
+    "height": 540.0
+   }
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
+import { Panel } from "@/components/ui";
+import { isSupabaseConfigured } from "@/lib/config";
+import { NotConfigured } from "@/components/NotConfigured";
+import { IntelligenceMap } from "@/components/intelligence/IntelligenceMap";
+import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
+import { getChannelScope } from "@/lib/channels-server";
+import { scopeQuery } from "@/lib/channels";
+import type { SystemEventRow } from "@/lib/types";
+import "../../app-pages-g4.css";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export default async function IntelligencePage() {
+  if (!isSupabaseConfigured) return <NotConfigured />;
+  const { t } = await getDictionary();
+  // Scope channel-owned queries to the selected channel (view control;
+  // RLS still decides what may be read at all).
+  const scope = await getChannelScope();
+
+  const supabase = await createClient();
+  let events: SystemEventRow[] = [];
+  let failed = false;
+  if (supabase) {
+    const res = await scopeQuery(
+        supabase.from("system_events").select("*"),
+        scope, { nullIsGlobal: true },
+      )
+      .order("ts", { ascending: false })
+      .limit(500);
+    failed = readFailed(res);
+    events = (res.data as SystemEventRow[]) ?? [];
+  }
+
+  return (
+    <div className="rhythm ns-open g4 stagger-enter">
+      <PageHeader icon="intelligence" title={t.ops.intelTitle} subtitle={t.ops.intelSubtitle} />
+
+      {failed ? (
+        <Panel title={t.ops.intelTitle}>
+          <ErrorState />
+        </Panel>
+      ) : (
+        <IntelligenceMap initial={events} scope={scope} />
+      )}
+    </div>
+  );
+}

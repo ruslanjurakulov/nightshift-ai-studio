@@ -1,0 +1,43 @@
+{
+  "scene": {
+    "id": "s004",
+    "index": 4,
+    "name": "the_western_isles",
+    "type": "story",
+    "narration": "Twenty miles off the coast, the islands sit alone in the Atlantic.",
+    "start_s": 0,
+    "end_s": 2,
+    "shot": {
+      "recipe": "map_zoom",
+      "camera": null,
+      "lighting": null,
+      "mood": null
+    },
+    "element_ids": [],
+    "asset_ids": [
+      "a_map"
+    ],
+    "claim_ids": []
+  },
+  "width": 640,
+  "height": 360,
+  "fps": 30,
+  "assetsBaseDir": "",
+  "style": null,
+  "words": [],
+  "transition": "hard_cut",
+  "assets": [
+    {
+      "id": "a_map",
+      "kind": "image",
+      "path": "map.svg"
+    }
+  ],
+  "map": {
+    "focus": {
+      "x": 0.453,
+      "y": 0.458
+    },
+    "label": "The lighthouse"
+  }
+}

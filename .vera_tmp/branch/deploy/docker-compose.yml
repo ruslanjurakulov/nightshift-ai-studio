@@ -1,0 +1,568 @@
+# Nightshift on one server: the Command Center behind Caddy.
+# Step by step (Uzbek): docs/DEPLOY_AX42.md
+#
+# Run from the repository checkout, pointing compose at the env file that lives
+# OUTSIDE the checkout (so `git pull` can never overwrite or commit it):
+#
+#   docker compose --env-file /opt/nightshift/.env.web \
+#     -f deploy/docker-compose.yml up -d --build
+#
+# The env file is read twice, for two different things:
+#   * --env-file  -> interpolation of ${...} below. Only DOMAIN, ACME_EMAIL and
+#     the NEXT_PUBLIC_* values are referenced, so only those reach Caddy's
+#     environment or the image build.
+#   * env_file:   -> the web container's runtime environment (server-only
+#     values such as GITHUB_SECRETS_TOKEN). Never a build arg, never Caddy's.
+
+name: nightshift
+
+x-logging: &default-logging
+  # Rotated, so a chatty container cannot fill the disk.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  web:
+    build:
+      context: ../command-center
+      dockerfile: Dockerfile
+      args:
+        # Public by design: inlined into the browser bundle at build time.
+        # Changing either needs `up -d --build`, not just a restart.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?set NEXT_PUBLIC_SUPABASE_URL in the env file}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set NEXT_PUBLIC_SUPABASE_ANON_KEY in the env file}
+        # Operator details for /privacy and /terms; empty shows NOT CONFIGURED there.
+        NEXT_PUBLIC_LEGAL_NAME: ${NEXT_PUBLIC_LEGAL_NAME:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+        NEXT_PUBLIC_LEGAL_COUNTRY: ${NEXT_PUBLIC_LEGAL_COUNTRY:-}
+        NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE: ${NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE:-}
+        # Paddle checkout for buying credits; empty token hides it.
+        NEXT_PUBLIC_PADDLE_ENV: ${NEXT_PUBLIC_PADDLE_ENV:-}
+        NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: ${NEXT_PUBLIC_PADDLE_CLIENT_TOKEN:-}
+        NEXT_PUBLIC_PADDLE_PRICE_STARTER: ${NEXT_PUBLIC_PADDLE_PRICE_STARTER:-}
+        NEXT_PUBLIC_PADDLE_PRICE_CREATOR: ${NEXT_PUBLIC_PADDLE_PRICE_CREATOR:-}
+        NEXT_PUBLIC_PADDLE_PRICE_STUDIO: ${NEXT_PUBLIC_PADDLE_PRICE_STUDIO:-}
+        # /pricing display prices (used until/unless Paddle's own preview answers)
+        # and the credit expiry term the Terms print; empty = not shown / never.
+        NEXT_PUBLIC_PRICE_DISPLAY_STARTER: ${NEXT_PUBLIC_PRICE_DISPLAY_STARTER:-}
+        NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: ${NEXT_PUBLIC_PRICE_DISPLAY_CREATOR:-}
+        NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: ${NEXT_PUBLIC_PRICE_DISPLAY_STUDIO:-}
+        NEXT_PUBLIC_PADDLE_PLAN_CREATOR: ${NEXT_PUBLIC_PADDLE_PLAN_CREATOR:-}
+        NEXT_PUBLIC_PADDLE_PLAN_PRO: ${NEXT_PUBLIC_PADDLE_PLAN_PRO:-}
+        NEXT_PUBLIC_PADDLE_PLAN_STUDIO: ${NEXT_PUBLIC_PADDLE_PLAN_STUDIO:-}
+        NEXT_PUBLIC_PLAN_DISPLAY_CREATOR: ${NEXT_PUBLIC_PLAN_DISPLAY_CREATOR:-}
+        NEXT_PUBLIC_PLAN_DISPLAY_PRO: ${NEXT_PUBLIC_PLAN_DISPLAY_PRO:-}
+        NEXT_PUBLIC_PLAN_DISPLAY_STUDIO: ${NEXT_PUBLIC_PLAN_DISPLAY_STUDIO:-}
+        NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS: ${NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS:-}
+    image: nightshift-web:latest
+    restart: unless-stopped
+    env_file:
+      - ${WEB_ENV_FILE:-/opt/nightshift/.env.web}
+    environment:
+      # The origin the browser uses. Behind a proxy the standalone server cannot
+      # see it (it reports its bind address), and the YouTube OAuth redirect_uri
+      # is built from it — see command-center/lib/server/public-origin.ts.
+      APP_ORIGIN: https://${DOMAIN:?set DOMAIN in the env file}
+      # Paid 720p / 1080p downloads (migration 0030): the worker writes
+      # <id>.mp4 here and /api/downloads/<id> streams it after an RLS check.
+      # Read-only: the dashboard never writes or deletes a download.
+      NIGHTSHIFT_DOWNLOADS_DIR: /data/downloads
+      # Media library (migration 0038): masters, thumbnails and proxies the
+      # media-worker wrote, served read-only through short-lived signed links
+      # (MEDIA_URL_SECRET, in the env file) — and the staging directory the
+      # upload route streams bodies into, the one place this container writes.
+      NIGHTSHIFT_MEDIA_DIR: /data/media
+      NIGHTSHIFT_MEDIA_STAGING_DIR: /data/media-staging
+      # Telegram notifications for customers (migration 0102): the CUSTOMER bot's
+      # public username. Empty = the Notifications panel in Settings stays hidden.
+      # Not the operator bot. docs/NOTIFY_TELEGRAM_SETUP.md.
+      TELEGRAM_CUSTOMER_BOT_USERNAME: ${TELEGRAM_CUSTOMER_BOT_USERNAME:-}
+    # No `ports:` on purpose. Docker publishes ports around ufw, so a published
+    # 3000 would be open to the internet whatever the firewall says. Caddy
+    # reaches the app over the compose network instead.
+    expose:
+      - "3000"
+    init: true
+    read_only: true
+    volumes:
+      # The worker's prepared downloads only — not its output/ (scripts,
+      # checkpoints, masters). An empty volume while the worker is off.
+      - worker_downloads:/data/downloads:ro
+      # The library's files: written by media-worker only.
+      - media:/data/media:ro
+      # Uploads land here as <ticket uuid>.upload and wait for media-worker,
+      # which checks the content before anything is stored or served.
+      - media_staging:/data/media-staging
+    tmpfs:
+      - /tmp
+      # Next's runtime cache; uid 1000 is the image's `node` user.
+      - /app/.next/cache:uid=1000,gid=1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Headroom for the worker: the dashboard must never be what starves a
+    # render of memory.
+    mem_limit: 2g
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in the env file}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in the env file}
+    volumes:
+      # The LAST VERIFIED Caddyfile, never deploy/Caddyfile from the checkout:
+      # deploy/remote-deploy.sh writes this file only after the pinned hash,
+      # validate, the header contract and the live check passed (and seeds it
+      # the same way on a server that has none). So `up` recreating Caddy, a
+      # reboot or a restart never starts it on a Caddyfile that was refused or
+      # not yet checked, or on bytes a checkout rewrote. A missing file is an
+      # error, never an empty directory created in its place.
+      - type: bind
+        source: ${CADDYFILE_LOADED:-/opt/nightshift/.caddyfile.loaded}
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      # Certificates and ACME account. Losing this means re-issuing, and
+      # re-issuing too often hits Let's Encrypt rate limits — back it up.
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: *default-logging
+
+  # ── Pipeline worker (docs/DEPLOY_AX42.md, "Worker"; docs/WORKER_VPS.md) ────
+  # tools/queue_worker.py: claims render_jobs rows ("Run now" with
+  # NIGHTSHIFT_RUN_BACKEND=queue) and runs them. Behind the `worker` profile:
+  # deploy/remote-deploy.sh starts it only while the GitHub variable
+  # NIGHTSHIFT_WORKER is `on`, and removes it otherwise.
+  #
+  # Its env file is its own. It holds the bot's keys and the Supabase service
+  # key, and is written from GitHub on every deploy; .env.web, which the
+  # dashboard reads, never carries any of them. No port: it only calls out.
+  worker:
+    profiles: ["worker"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    restart: unless-stopped
+    env_file:
+      # required: false — with the worker off the file does not exist, and
+      # compose still parses this service because the profile is named.
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-01
+      # On `docker stop` (a deploy, a reboot) the running video gets this long
+      # to finish; after that it is stopped, re-queued, and resumed from its
+      # checkpoint, so nothing already paid for is bought again. Kept under
+      # stop_grace_period so the worker releases the job itself.
+      WORKER_STOP_GRACE_SECONDS: "840"
+      # Paid downloads (migration 0030): prepared files, shared read-only
+      # with the web service. Files expire after 24 hours.
+      NIGHTSHIFT_DOWNLOADS_DIR: /app/downloads
+    stop_grace_period: 15m
+    volumes:
+      # Run checkpoints, resume ledgers and renders; topic memory; logs.
+      - worker_output:/app/output
+      - worker_history:/app/history
+      - worker_logs:/app/logs
+      - worker_downloads:/app/downloads
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # A render uses every core it is given; half the default weight means the
+    # dashboard still answers while one runs.
+    cpu_shares: 512
+    mem_limit: 48g
+    logging: *default-logging
+
+  # ── Media library ingest (migration 0038, tools/media_worker.py) ─────────
+  # Same image as the worker, its own process: an upload is checked (content
+  # sniffed, ffprobed, thumbnail / proxy made) within seconds instead of
+  # waiting behind a 30-minute render. Started and removed with the worker.
+  #
+  # uid 1000 is the web image's `node` user: the web container writes staged
+  # uploads and this service reads and deletes them, so both run as the same
+  # uid instead of sharing a world-writable directory.
+  media-worker:
+    profiles: ["worker"]
+    image: nightshift-worker:latest
+    restart: unless-stopped
+    command: ["python", "tools/media_worker.py"]
+    user: "1000:1000"
+    env_file:
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-media-01
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      NIGHTSHIFT_MEDIA_STAGING_DIR: /app/media-staging
+      HOME: /tmp
+    stop_grace_period: 2m
+    volumes:
+      - media:/app/media
+      - media_staging:/app/media-staging
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 512
+    mem_limit: 4g
+    logging: *default-logging
+
+  # ── Film worker (Film Studio P3, tools/film_worker.py) ─────────────────────
+  # Drives Film Studio segments through migration 0171's state machine: the
+  # takes through the creative adapters, the files into the media library, a
+  # clip's last frame (ffmpeg), the assembly and the settle. Same image, env
+  # file and `media` volume (uid 1000) as media-worker, in a container of its
+  # own: media-worker's 4g was measured for one upload and one export at once
+  # (3289 MB at worst), and an assembly beside them would put both past it. Switched by the GitHub repository
+  # variable NIGHTSHIFT_FILM_WORKER (with NIGHTSHIFT_WORKER on too): `on` and
+  # every deploy starts or recreates it, anything else and it is removed
+  # (deploy/remote-deploy.sh). The process reads the same word from the env
+  # file and claims nothing unless it is exactly `on` AND NIGHTSHIFT_FILM_ASSEMBLY
+  # is `on` with modules.film_assembly installed (otherwise it only sweeps).
+  film-worker:
+    profiles: ["worker"]
+    image: nightshift-worker:latest
+    command: ["python", "tools/film_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-film-01
+      # The creative worker's adapters: a take runs through exactly the adapter
+      # a Studio job of that model would.
+      NIGHTSHIFT_CREATIVE_ADAPTERS: modules.creative_adapters:resolve
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      # One scratch folder per segment, on the media volume (same filesystem).
+      NIGHTSHIFT_FILM_DIR: /app/media/.film-segments
+      HOME: /tmp
+    # Stops between calls; a take waiting on its provider keeps its task id and
+    # is polled again by the next claim, never paid for twice.
+    stop_grace_period: 2m
+    volumes:
+      - media:/app/media
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 256
+    # 3g: the assembly peaked at about 3 GB, page cache included (S11's measurement), and on the AX42's 64 GB the
+    # other limits already add up to 58.5 GB (web 2, worker 48, media 4, creative 2, four at 256m, brand-scan 1.5),
+    # so 4g would put the caps at 62.5 of 64.
+    mem_limit: 3g
+    logging: *default-logging
+
+  # ── Creative worker (migration 0036, tools/creative_worker.py) ─────────────
+  # Runs creative_jobs — image / video / speech generations started from the
+  # Command Center — in its own process, so a generation never waits behind a
+  # pipeline render. Same image and env file as the pipeline worker (the
+  # provider keys and the Supabase service key live only there). Switched by
+  # the GitHub repository variable NIGHTSHIFT_CREATIVE_WORKER: `on` (with
+  # NIGHTSHIFT_WORKER on too) and every deploy starts it or recreates it on
+  # the new image; anything else and the deploy removes it
+  # (deploy/remote-deploy.sh). Turn it on once 0036 is applied.
+  #
+  # Migration 0046: it reads the source picture of an edit / image-to-video /
+  # upscale / background-removal job from the media library, and adds every
+  # output to the organization's library. So it shares the `media` volume
+  # with media-worker, and runs as the same uid (1000), which owns it. A job's
+  # scratch folder lives on that volume too (same filesystem: the finished
+  # file is moved into place, never half-copied); the web container serves
+  # only id-derived paths, never this folder. Provider adapters are switched
+  # on by NIGHTSHIFT_CREATIVE_ADAPTERS below; without it nothing is claimed.
+  creative-worker:
+    profiles: ["worker"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/creative_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-creative-01
+      # The provider adapters (modules/creative_adapters.py). Set here, not in
+      # the env file, so a deploy never starts a worker that claims nothing.
+      NIGHTSHIFT_CREATIVE_ADAPTERS: modules.creative_adapters:resolve
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      # One scratch folder per job id; emptied once the outputs are library
+      # assets.
+      NIGHTSHIFT_CREATIVE_DIR: /app/media/.creative-jobs
+      # Provider jobs mostly wait on the provider; this many run at once.
+      CREATIVE_WORKER_CONCURRENCY: "4"
+      HOME: /tmp
+    # A job waiting on its provider is handed back on stop with its task id
+    # stored, and polled again on the next start — never paid for twice.
+    stop_grace_period: 1m
+    volumes:
+      - media:/app/media
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 256
+    mem_limit: 2g
+    logging: *default-logging
+
+  # Sends the queued notifications (migration 0102) to customers' linked
+  # Telegram chats: tools/notify_worker.py. Its own profile, `notify`, which
+  # nothing activates by itself. deploy/remote-deploy.sh starts it on every
+  # deploy while the GitHub variable NIGHTSHIFT_NOTIFY_WORKER is `on`, and
+  # removes it (and its env file) otherwise; by hand it is
+  #   docker compose --profile notify up -d notify-worker
+  # after creating the CUSTOMER bot (docs/NOTIFY_TELEGRAM_SETUP.md).
+  # It has its OWN env file (/opt/nightshift/.env.notify, mode 600, written by
+  # the deploy from GitHub) with exactly four names: SUPABASE_URL,
+  # SUPABASE_SERVICE_KEY, TELEGRAM_CUSTOMER_BOT_TOKEN and NOTIFY_APP_ORIGIN
+  # (deploy/.env.notify.example). It never sees the pipeline worker's provider
+  # keys, and with the token or the origin missing it says so and claims
+  # nothing. It never reads the operator bot's TELEGRAM_BOT_TOKEN.
+  notify-worker:
+    profiles: ["notify"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/notify_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${NOTIFY_ENV_FILE:-/opt/nightshift/.env.notify}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-notify-01
+      HOME: /tmp
+    stop_grace_period: 20s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 256m
+    logging: *default-logging
+
+  # Sends the customers' "your video is ready" and weekly e-mails (migration
+  # 0103): tools/email_worker.py, through Resend. Its own profile, `email`,
+  # started by deploy/remote-deploy.sh on every deploy while the GitHub variable
+  # NIGHTSHIFT_EMAIL_WORKER is `on`, removed (with its env file) otherwise.
+  # Its OWN env file (/opt/nightshift/.env.email, mode 600) holds exactly five
+  # names: SUPABASE_URL, SUPABASE_SERVICE_KEY, RESEND_API_KEY,
+  # NIGHTSHIFT_EMAIL_FROM and APP_ORIGIN (deploy/.env.email.example); none of
+  # the pipeline provider keys or the Telegram token. The transport is fixed
+  # here so a deploy can never start it on the `fake` one (which writes mails to
+  # a folder and sends nothing). It reports to worker_status as `email-...`;
+  # the e-mail switches in Settings are shown only while it does.
+  email-worker:
+    profiles: ["email"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/email_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${EMAIL_ENV_FILE:-/opt/nightshift/.env.email}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-01
+      NIGHTSHIFT_EMAIL_TRANSPORT: resend
+      HOME: /tmp
+    stop_grace_period: 20s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 256m
+    logging: *default-logging
+
+  # The OPERATOR bot (Telegram) as a service that never stops:
+  # tools/operator_bot_service.py long-polls getUpdates continuously (a reply in
+  # a second or two) and runs the alert / digest pass on its own timer (every
+  # 5 minutes, 10 without a GitHub token), replacing the two GitHub workflows
+  # telegram_control.yml and operator_alerts.yml, whose schedule GitHub fires
+  # only every few hours. Its own profile, `operator`, started by
+  # deploy/remote-deploy.sh on every deploy while the GitHub variable
+  # NIGHTSHIFT_OPERATOR_BOT is `on`, removed (with its env file) otherwise; the
+  # same variable makes the two workflows skip their work, because Telegram
+  # allows ONE getUpdates consumer. docs/operator-bot.md.
+  # Its OWN env file (/opt/nightshift/.env.operator, mode 600) holds only the
+  # names in deploy/.env.operator.example: the bot token and chat id, the
+  # Supabase URL and service key (all its state lives in alert_events
+  # operator.* rows and telegram_updates), optionally a read-only GitHub token
+  # and the OPERATOR_* settings. Never a pipeline provider key. The one mail key it can
+  # hold is its OWN restricted Resend "Sending access" key (repository secret
+  # OPERATOR_RESEND_API_KEY, passed as RESEND_API_KEY) and only while the variable
+  # NIGHTSHIFT_OWNER_EMAIL is `on`: the owner's e-mail copy of the alerts,
+  # docs/OWNER_EMAIL.md. It is not the customer e-mail worker's key.
+  # It listens on no port and Caddy does not know it: it only calls out
+  # (api.telegram.org, Supabase, api.github.com). A refused poll (409: a
+  # webhook or a second consumer; 401: a bad token) ends the process with
+  # exit 1 and docker restarts it, so `docker ps` shows it restarting. No
+  # volume: the update offset is held in memory (Telegram redelivers what it
+  # never saw confirmed, and the telegram_updates claims skip what was handled).
+  operator-bot:
+    profiles: ["operator"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/operator_bot_service.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${OPERATOR_ENV_FILE:-/opt/nightshift/.env.operator}
+        required: false
+    environment:
+      HOME: /tmp
+    # A long poll lasts up to 25 s; on stop the loop ends after the one in flight.
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 256m
+    logging: *default-logging
+
+  # The brand channel's poster (Telegram): tools/marketing_worker.py, migration 0108,
+  # docs/MARKETING_POSTS.md. Drafts the public news items and the month's price post
+  # and sends the posts a person approved, ONE message per post to ONE channel.
+  # Its own profile, `marketing`, started by deploy/remote-deploy.sh on every deploy
+  # while the GitHub variable NIGHTSHIFT_MARKETING_WORKER is `on`, removed (with its
+  # env file, and so the bot token) otherwise. OFF by default, twice over: with the
+  # container running it still does nothing until NIGHTSHIFT_MARKETING_POSTS is `on`,
+  # and the database refuses every claim until the owner re-arms
+  # marketing_settings.enabled.
+  # Its OWN env file (/opt/nightshift/.env.marketing, mode 600) holds exactly the
+  # names in deploy/.env.marketing.example: the Supabase URL and service key, the
+  # DEDICATED channel bot's token, the channel, our site's origin and its switch.
+  # Never a pipeline provider key, and never the operator's or the customer's bot
+  # token. It listens on no port and has no volume: it only calls out
+  # (api.telegram.org, Supabase).
+  marketing-worker:
+    profiles: ["marketing"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/marketing_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${MARKETING_ENV_FILE:-/opt/nightshift/.env.marketing}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: marketing-01
+      HOME: /tmp
+    stop_grace_period: 20s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 256m
+    logging: *default-logging
+
+  # Ads Factory, Phase 2, the brand scan (migrations 0133 and 0134, docs/ADS_FACTORY.md "Releasing Phase 2"):
+  # tools/brand_scan_worker.py claims the DNS TXT checks people asked for ("Check now") and the brand scans they paid
+  # for, reads the customer's own site (modules/brand_fetch.py: public addresses only, robots.txt, byte and time caps)
+  # and stores the logo and product pictures in the organization's media library.
+  # Its own profile, `brandscan`, started by deploy/remote-deploy.sh on every deploy while the GitHub variable
+  # NIGHTSHIFT_ADS_BRAND_SCAN is `on` (the SAME variable that shows the "Scan my site" panel), removed (with its env
+  # file) otherwise. With it running, nothing is sold until the owner sets brand_scan_settings.price_credits.
+  # Its OWN env file (/opt/nightshift/.env.brandscan, mode 600) holds exactly the names in
+  # deploy/.env.brandscan.example: the Supabase URL and service key (0133's worker functions) and its switch. Never a
+  # provider key or a bot token. It listens on no port and Caddy does not know it: it only calls out (customer sites
+  # over HTTPS, cloudflare-dns.com for the TXT record, Supabase). It shares the `media` volume with media-worker and
+  # creative-worker, as the same uid (1000), which owns it.
+  # Limits: one scan at a time, 30 s each; the logo's palette is read in a child process capped at 768 MB of address
+  # space (modules/brand_extract.py PALETTE_MEM_BYTES), so 1.5 GB leaves the worker itself room, and a small CPU weight
+  # keeps it behind the dashboard and the renders.
+  brand-scan-worker:
+    profiles: ["brandscan"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/brand_scan_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${BRANDSCAN_ENV_FILE:-/opt/nightshift/.env.brandscan}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: brand-scan-01
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      HOME: /tmp
+    # A scan has a 30-second budget; on stop the loop ends after the one in flight (an unfinished one is failed by the
+    # next claim's sweep, and its hold released).
+    stop_grace_period: 45s
+    volumes:
+      - media:/app/media
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 1536m
+    pids_limit: 256
+    logging: *default-logging
+
+volumes:
+  caddy_data:
+  caddy_config:
+  worker_output:
+  worker_history:
+  worker_logs:
+  worker_downloads:
+  # The media library (0038). NOT a backup: RAID1 survives a disk, not a
+  # deletion or the server; an off-site copy is a later step.
+  media:
+  media_staging:

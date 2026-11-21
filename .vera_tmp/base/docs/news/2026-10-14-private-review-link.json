@@ -1,0 +1,14 @@
+{
+  "pr": 491,
+  "shipped": "2026-10-14",
+  "kind": "feature",
+  "public": true,
+  "text": {
+    "uz": "Video qoralamasini maxfiy havola orqali ulashing. Video sahifasida havola necha kun ishlashini (1 dan 30 kungacha) tanlang va yuboring. Preview akkauntsiz ochiladi, havolani istalgan payt oʻchirib qoʻyish mumkin.",
+    "ru": "Покажите черновик видео по закрытой ссылке. На странице видео выберите, сколько дней она работает (от 1 до 30), и отправьте. Превью открывается без аккаунта, а ссылку можно отключить в любой момент.",
+    "en": "Share a draft video with a private link. On the video page choose how long the link works (1 to 30 days) and send it. The preview opens without an account, and you can turn the link off any time."
+  },
+  "media": {
+    "hint": "A phone screenshot of the Share a preview panel on a video page; hide the link itself."
+  }
+}

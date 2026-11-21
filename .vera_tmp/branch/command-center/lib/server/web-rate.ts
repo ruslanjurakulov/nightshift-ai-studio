@@ -1,0 +1,133 @@
+import "server-only";
+import { createClient } from "@/lib/supabase/server";
+
+/**
+ * A per-user rate limit for Command Center routes that spend the operator's
+ * quota on each call (ElevenLabs characters, Actions minutes, a key check
+ * against ElevenLabs). The count lives in the database (take_web_rate,
+ * migration 0042), so it holds across serverless instances.
+ *
+ * Before 0042 is applied the function does not exist; the limit then falls
+ * back to a counter in this process — weaker (per instance), but never
+ * "unlimited". Any other failure refuses the request: an unknown count is not
+ * permission to spend.
+ */
+
+export type RateDecision = "ok" | "limited" | "unavailable";
+
+export interface RateRule {
+  /** [a-z0-9_.:-]{1,64} — the database refuses anything else. */
+  bucket: string;
+  max: number;
+  windowSeconds: number;
+}
+
+/** The Studio live view asking GitHub about a dispatched run (lib/server/github-runs.ts): only uncached reads count, at most one per 30 s per run. */
+export const RUN_STATUS_RATE: RateRule = { bucket: "studio.run_status", max: 240, windowSeconds: 3600 };
+export const VOICE_LIST_RATE: RateRule = { bucket: "elevenlabs.voices", max: 20, windowSeconds: 3600 };
+/**
+ * The Studio's speech voice list (GET /api/creative/voices), per member. Reading the list spends no characters,
+ * but each miss of the route's short cache is a call on the platform's ElevenLabs key: a person opening the
+ * Voice tab a few times an hour is the real use, a loop is not.
+ */
+export const STUDIO_VOICE_LIST_RATE: RateRule = { bucket: "studio.voices", max: 30, windowSeconds: 3600 };
+export const VOICE_PREVIEW_RATE: RateRule = { bucket: "elevenlabs.preview", max: 10, windowSeconds: 3600 };
+/** Notification channel controls (pause, disconnect, language): a few real edits, not a loop. The link, test and
+ *  preference calls are limited again inside their own database functions (0102). */
+export const NOTIFY_CHANNEL_RATE: RateRule = { bucket: "notify.channel", max: 60, windowSeconds: 3600 };
+/** Profile photo changes (upload or remove) per person: a few real edits, not a loop. */
+export const AVATAR_WRITE_RATE: RateRule = { bucket: "avatar.write", max: 20, windowSeconds: 3600 };
+
+/** New private review links (migration 0101) per person: a handful of real shares an hour, not a loop. */
+export const REVIEW_LINK_CREATE_RATE: RateRule = { bucket: "review_link.create", max: 30, windowSeconds: 3600 };
+
+/**
+ * The editor's writes, per person. They protect the database and the worker
+ * from a loop, not a person from their own pace: the editor saves when the
+ * person presses save or exports (its draft autosave is local), a few times a
+ * minute at the very most, so each limit is 5-10x what real editing needs. A
+ * refused save says "rate_limited" (429, retry-after) and the editor keeps its
+ * unsaved work in the local draft.
+ */
+/** Saves of a project (PUT): 300 per 10 minutes = 30 a minute. */
+export const EDITOR_SAVE_RATE: RateRule = { bucket: "editor.save", max: 300, windowSeconds: 600 };
+/** New projects (POST): 60 an hour; one organization may hold only so many anyway. */
+export const EDITOR_CREATE_RATE: RateRule = { bucket: "editor.create", max: 60, windowSeconds: 3600 };
+/** Export requests (POST): 30 an hour; the database also allows one at a time and a daily count. */
+export const EDITOR_EXPORT_RATE: RateRule = { bucket: "editor.export", max: 30, windowSeconds: 3600 };
+/** Price quotes of a paid 1440p / 4K export (GET, migration 0132): read-only, asked when a paid size is ticked. 120 per
+ *  10 minutes; the export itself is still EDITOR_EXPORT_RATE. */
+export const EDITOR_QUOTE_RATE: RateRule = { bucket: "editor.quote", max: 120, windowSeconds: 600 };
+/** "Open in editor" sends (POST): 120 per 10 minutes = 12 a minute. */
+export const EDITOR_SEND_RATE: RateRule = { bucket: "editor.send", max: 120, windowSeconds: 600 };
+
+/**
+ * Studio → Projects (films, migration 0166), per person. The database limits the same calls again under its own `db.film.*` buckets
+ * (30 creates, 240 saves, 60 archives an hour); these route buckets are twice that, so they stop a loop at the door without ever
+ * being the limit a real person meets first. A refused call says "rate_limited" and the canvas keeps the unsaved work on screen.
+ */
+export const FILM_CREATE_RATE: RateRule = { bucket: "films.create", max: 60, windowSeconds: 3600 };
+export const FILM_SAVE_RATE: RateRule = { bucket: "films.save", max: 480, windowSeconds: 3600 };
+export const FILM_ARCHIVE_RATE: RateRule = { bucket: "films.archive", max: 120, windowSeconds: 3600 };
+
+/**
+ * Dodo invoice downloads (GET /api/billing/dodo/invoice) per person: 5 a minute. Dodo limits its invoice endpoint to 5 a
+ * minute per payment and 20 a minute per client IP (api-reference/introduction, "Invoice Downloads"), and every tenant's
+ * request leaves from this one server, so without a per-person cap one admin clicking (or a script) could spend the whole
+ * server's allowance for everybody.
+ */
+export const DODO_INVOICE_RATE: RateRule = { bucket: "dodo.invoice", max: 5, windowSeconds: 60 };
+
+const local = new Map<string, { start: number; count: number; end: number }>();
+/** Past this many entries a call first drops every window that has already ended, so a long-lived process that sees
+ *  many distinct people does not keep a row for each one forever. */
+const LOCAL_PRUNE_AT = 1000;
+
+/** The in-process fallback (pre-0042). Exported for tests. */
+export function takeLocal(userId: string, rule: RateRule, now = Date.now()): boolean {
+  const windowMs = rule.windowSeconds * 1000;
+  const start = Math.floor(now / windowMs) * windowMs;
+  const key = `${userId}:${rule.bucket}`;
+  if (local.size >= LOCAL_PRUNE_AT) {
+    for (const [k, v] of local) if (v.end <= now) local.delete(k);
+  }
+  const cur = local.get(key);
+  const next = cur && cur.start === start ? { start, count: cur.count + 1, end: start + windowMs } : { start, count: 1, end: start + windowMs };
+  local.set(key, next);
+  return next.count <= rule.max;
+}
+
+/** For tests only: how many windows are held. */
+export function localRateEntries(): number {
+  return local.size;
+}
+
+function isMissingFunction(error: { code?: string; message?: string }): boolean {
+  return error.code === "PGRST202" || error.code === "42883" || /could not find the function/i.test(error.message ?? "");
+}
+
+export async function takeWebRate(userId: string, rule: RateRule): Promise<RateDecision> {
+  const supabase = await createClient();
+  if (!supabase) return "unavailable";
+  try {
+    const { data, error } = await supabase.rpc("take_web_rate", {
+      p_bucket: rule.bucket,
+      p_max: rule.max,
+      p_window_seconds: rule.windowSeconds,
+    });
+    if (error) {
+      if (isMissingFunction(error)) return takeLocal(userId, rule) ? "ok" : "limited";
+      return "unavailable";
+    }
+    return data === true ? "ok" : "limited";
+  } catch {
+    return "unavailable";
+  }
+}
+
+/** The route's answer for a refused decision. */
+export function rateRefusal(decision: Exclude<RateDecision, "ok">, rule: RateRule) {
+  return decision === "limited"
+    ? { body: { error: "rate_limited" }, status: 429, headers: { "retry-after": String(rule.windowSeconds) } }
+    : { body: { error: "rate_limit_unavailable" }, status: 503, headers: {} as Record<string, string> };
+}

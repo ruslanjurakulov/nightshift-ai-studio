@@ -1,0 +1,93 @@
+/* The Studio's live view (LiveView.tsx): the canvas's tokens (.cv-root), a read-only board, and a list at phone width. */
+/* Content height, not the canvas's fixed one: at phone width the list would spill past the background (Pixel M3). */
+.lv-root { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--canvas); color: var(--text); }
+/* Content height, not the canvas deck's fixed one. The canvas sets it as .cv-root and, below 1024px, .cv-root:not(.is-flow): this
+   must out-rank both, or the list overflows a short root and the Activity log paints over it (Pixel HIGH). */
+.cv-root.lv-root, .cv-root.lv-root:not(.is-flow) { height: auto; }
+.lv-head { display: grid; gap: 4px; }
+.lv-head h1 { margin: 0; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.lv-muted { margin: 0; font-size: 13px; color: var(--dim); }
+.lv-facts { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--text); }
+.lv-stale { margin: 0; font-size: 13px; color: var(--caution); }
+.lv-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 0; flex: 1; }
+.lv-main.has-details { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+.lv-board { position: relative; min-height: 0; height: clamp(380px, calc(100dvh - 260px), 640px); border: 1px solid var(--rule); border-radius: 14px; background: var(--console); overflow: hidden; }
+.lv-handle { opacity: 0; pointer-events: none; }
+
+.lv-card {
+  display: grid; gap: 8px; width: 200px; min-height: 76px; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--rule); border-radius: 12px; background: var(--key); color: var(--text);
+  transition: border-color 280ms ease, box-shadow 280ms ease, background-color 280ms ease, transform 280ms ease;
+}
+.lv-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.lv-card:hover { border-color: var(--rule-strong, var(--rule)); background: var(--key-hi, var(--key)); }
+/* xyflow gives a node that is neither draggable nor selectable pointer-events:none: the card (a button) takes the click itself (S4 HIGH 1). */
+.lv-board .lv-card { pointer-events: all; cursor: pointer; }
+.lv-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; font-size: 14px; }
+.lv-card-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-card.is-working { position: relative; overflow: hidden; border-color: var(--run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--run) 22%, transparent), 0 0 18px -6px var(--run-glow); transform: translateY(-1px); }
+/* Working: a slow light sweep over the card, driven only by the real status class. */
+.lv-card.is-working::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--run) 18%, transparent) 50%, transparent 70%);
+  background-size: 250% 100%; animation: lv-sweep 2.4s ease-in-out infinite; }
+@keyframes lv-sweep { from { background-position: 120% 0; } to { background-position: -20% 0; } }
+.lv-card.is-done { border-color: color-mix(in srgb, var(--go) 55%, var(--rule)); }
+/* Turning on: a ring opens once on a card whose row just became done (data-lit marks a change since the last reading). */
+.lv-card[data-lit] { animation: lv-lit 900ms ease-out 1; }
+@keyframes lv-lit { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--go) 55%, transparent); } to { box-shadow: 0 0 0 12px transparent; } }
+.lv-card.is-failed { border-color: var(--tally); background: color-mix(in srgb, var(--tally) 8%, var(--key)); }
+.lv-card.is-unknown, .lv-card.is-stopped { border-style: dashed; }
+/* Quiet but readable (Pixel M7: opacity put the status words under 4.5:1): a dotted border and the dim text token. */
+.lv-card.is-none, .lv-card.is-skipped { border-style: dotted; color: var(--dim); background: transparent; }
+/* Planned in the conversation, before Create: a sketch, not a running step. */
+.lv-card.is-draft { border-style: dashed; color: var(--dim);
+  background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--rule) 55%, transparent) 7px 8px), var(--key); }
+.lv-price { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.lv-card.is-selected { outline: 2px solid var(--sel, var(--run)); outline-offset: 1px; }
+
+.lv-board .react-flow__edge-path { stroke: var(--rule-strong, var(--rule)); stroke-width: 1.5; transition: stroke 280ms ease; }
+.lv-board .lv-edge.is-none .react-flow__edge-path { stroke-dasharray: 2 6; opacity: 0.45; }
+.lv-board .lv-edge.is-done .react-flow__edge-path { stroke: color-mix(in srgb, var(--go) 60%, var(--rule)); }
+.lv-board .lv-edge.is-live .react-flow__edge-path { stroke: var(--run); stroke-dasharray: 6 6; animation: lv-flow 1s linear infinite; }
+@keyframes lv-flow { to { stroke-dashoffset: -12; } }
+
+.lv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lv-list .lv-card { width: 100%; min-height: 56px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+
+.lv-details { display: grid; align-content: start; gap: 10px; padding: 14px; border: 1px solid var(--rule); border-radius: 14px; background: var(--console); min-width: 0; }
+.lv-details-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lv-details-head h2 { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.lv-fail { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--tally-soft); color: var(--text); font-size: 13px; }
+.lv-fail p { margin: 0; }
+.lv-text { margin: 0; font-size: 13px; white-space: pre-wrap; max-height: 280px; overflow: auto; }
+.lv-media { width: 100%; max-height: 320px; border-radius: 10px; background: var(--film, #000); object-fit: contain; }
+.lv-audio { width: 100%; }
+/* 44px targets in the panel, and a long label wraps instead of overflowing (Pixel: .cv-kbtn is a fixed 40px, nowrap). */
+.lv-details .cv-kbtn { height: auto; min-height: 44px; white-space: normal; text-align: center; }
+/* The Activity log: a read-only list of what the plan's own log recorded, newest first. */
+.lv-activity { display: grid; align-content: start; gap: 8px; padding: 14px; border: 1px solid var(--rule); border-radius: 14px; background: var(--console); min-width: 0; }
+.lv-activity h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.lv-activity-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow: auto; font-size: 13px; }
+.lv-activity-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: baseline; overflow-wrap: anywhere; }
+.lv-activity-list time { color: var(--dim); font-variant-numeric: tabular-nums; }
+.lv-activity-list code { font-size: 12px; color: var(--dim); }
+.lv-final { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+@media (max-width: 1279px) {
+  /* The tab bar and the raised Create key sit over the last rows on a phone (S4 MEDIUM 5). */
+  .lv-list { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .lv-root { padding: 12px 16px; }
+  .lv-main.has-details { grid-template-columns: minmax(0, 1fr); }
+  .lv-details { order: -1; }
+  /* Activity follows the list and clears the tab bar itself: the list's own padding would leave a gap (Pixel). */
+  .lv-main.has-activity .lv-list { padding-bottom: 0; }
+  .lv-main { flex: none; }
+  .lv-activity { margin-bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv-card, .lv-board .react-flow__edge-path { transition: none; }
+  .lv-card.is-working { transform: none; }
+  .lv-card.is-working::after, .lv-card[data-lit] { animation: none; }
+  .lv-board .lv-edge.is-live .react-flow__edge-path { animation: none; }
+}

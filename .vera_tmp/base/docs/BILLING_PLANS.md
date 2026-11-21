@@ -1,0 +1,352 @@
+# Tariflar (obuna) + kredit paketlari — migratsiya 0034
+
+Nightshift endi oddiy SaaS modelida sotiladi:
+
+- **Oylik tariflar** — Free, Plus, Pro, Business (ichki id'lar: `creator`, `pro`, `studio` — o'zgarmagan; faqat ko'rinadigan nom, migratsiya 0095). Har bir pullik tarif har
+  to'langan oy (billing period) uchun **kredit ajratmasi** beradi. Bu kreditlar
+  **o'sha davr oxirida yonadi** (keyingi oyga o'tmaydi). Tarif qo'shimcha
+  **imkoniyatlar** (entitlements) ham beradi: bir vaqtda nechta video ishlashi,
+  navbatdagi ustuvorlik, API'ni yoqish huquqi va keyinchalik model darajalari va
+  funksiyalar.
+- **Kredit paketlari** (Starter / Creator / Studio, `lib/paddle.ts`) — endi
+  **to'ldirish (top-up)** paketlari: sotib olingan kundan **12 oy** amal qiladi.
+- **Sarflash tartibi:** avval obuna kreditlari (eng tez yonadigani birinchi),
+  keyin paket kreditlari (eng tez yonadigani birinchi), eng oxirida muddatsiz
+  kreditlar (xush kelibsiz 100 kredit, operator bergan kreditlar, 0034 dan oldingi
+  balans).
+- **Free tarif** — faqat bir martalik 100 ta xush kelibsiz kredit (0027), oylik
+  ajratma yo'q.
+- **API balansi** (0031, dollarda) — alohida mahsulot, unga tegilmagan. Faqat
+  `api_access` imkoniyati bor tarif ham API'ni yoqa oladi (paket sotib olganlar
+  avvalgidek yoqa oladi).
+
+Hammasi **bazadagi jadvallardan** boshqariladi (`plans`, `plan_entitlements`,
+`entitlement_keys`, `credit_lot_policies`). Kodda tarif nomlari bo'yicha `if`
+yo'q: raqamni o'zgartirish — SQL'da bitta `update`.
+
+## 1. Narx taklifi va hisob-kitob
+
+Tannarx, provayder narxlari, komissiyalar va marja bu hujjatda **saqlanmaydi**:
+repo ochiq, bu raqamlar esa egasining maxfiy ma'lumoti. Ular faqat bazada va
+egasining analitika panelida (owner rolida) hisoblanadi.
+
+Mijozga ko'rinadigan taklif (0034 shu raqamlar bilan seed qiladi — `plans.monthly_credits`):
+
+| Tarif | Narx / oy | Kredit / oy | ≈ daqiqa video (60 kredit/daqiqa) |
+| :-- | --: | --: | --: |
+| Free | 0 | 100 (bir marta) | ≈ 1.7 |
+| Plus | 19 USD | 2 000 | ≈ 33 |
+| Pro | 49 USD | 6 000 | ≈ 100 |
+| Business | 129 USD | 18 000 | ≈ 300 |
+
+Narx qo'yish qoidalari (raqamsiz):
+
+- Har bir tarif kreditlar **100% sarflangan** eng yomon holatda ham zararsiz
+  bo'lishi kerak; tekshiruv bazadagi tannarx jadvali bilan owner panelida qilinadi.
+- Kattaroq tarif — arzonroq kredit: yuqoriga o'tishga sabab bor.
+- Obuna muntazam hajmni sotib olishning eng arzon yo'li bo'lsin; paket esa
+  moslashuvchanlik uchun biroz qimmatroq.
+
+Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
+(3-bo'lim).
+
+### Tariflar imkoniyatlari (seed)
+
+| Kalit | Free | Plus | Pro | Business | Holat |
+| :-- | :-: | :-: | :-: | :-: | :-- |
+| `concurrency` — bir vaqtda ishlaydigan videolar | 1 | 2 | 4 | 8 | **enforced** |
+| `queue_priority` — navbatda boshlab olish (har daraja = 15 daqiqa) | 0 | 1 | 2 | 3 | **enforced** |
+| `api_access` — API'ni yoqish huquqi | – | ✓ | ✓ | ✓ | **enforced** |
+| `models_image` / `models_video` / `models_audio` | basic | premium | all | all | planned |
+| `series`, `channel_dna`, `thumbnail_studio` | – | ✓ | ✓ | ✓ | planned |
+| `autopilot`, `workflows`, `repurposing` | – | – | ✓ | ✓ | planned |
+| `mcp` — AI ilovalarni (Claude, ChatGPT va boshqalar) OAuth bilan ulash | ✓ | ✓ | ✓ | ✓ | planned (0147; 0093 da enforced edi) |
+
+- **enforced** — bugun tekshiriladi va `/pricing` sahifasida ko'rsatiladi.
+- **`mcp`** (0093 → 0147) — egasining qarori (2026-11-13): AI ilovani OAuth bilan ulash **har qanday tarifda**, Free ham, ishlaydi va faqat **sayt kreditlari** bilan cheklanadi (API'ning dollar balansi emas). 0147 tarif tekshiruvini barcha OAuth funksiyalaridan olib tashladi va `mcp` ni yana `planned` qildi (hech qayerda tekshirilmaydi, `/pricing` da ko'rsatilmaydi), hamma tariflar uchun `true`. Video `reserve_credits()` orqali band qilinadi: kredit yetmasa, hech narsa band qilinmasdan `insufficient_credits` bilan rad etiladi; xush kelibsiz kreditlari, paketlar va tarif kreditlari hisoblanadi. Paket yoki tarif qo'shilsa, o'sha ulanish keyingi chaqiruvdan ishlaydi. Qolgan cheklovlar o'zgarmadi: har bir ulanishning oylik kredit limiti, tarifning bir vaqtdagi videolar soni, daqiqasiga 120 so'rov, ruxsatlar va uzish. Bu qoidani tarif qatori bilan emas, kod bilan qo'ydik: yangi tarif yoki bitta UPDATE eshikni yana yopib qo'ymasligi uchun. Qaytarish: `docs/sql/rollback_0147_mcp_free_tier.sql`.
+- **planned** — bazada saqlanadi, lekin hali hech narsa tekshirmaydi, shuning
+  uchun **sahifada ko'rsatilmaydi** (va'da qilinmagan narsani sotmaymiz). Funksiya
+  tayyor bo'lganda, uni tekshiradigan kod bilan **bir PR'da** `status` ni
+  `enforced` ga o'zgartiring.
+- Operator tashkiloti (default org) — hamma narsa cheksiz (`exempt_value`).
+- Model darajasi uchun kelgusi model registri `model_tier_allowed(org, 'video',
+  'premium')` ni chaqiradi (daraja: `basic` < `premium` < `ultra`; `all` hammasini
+  ochadi).
+
+## 2. Qanday ishlaydi (qisqa)
+
+```
+Paddle checkout (tarif price) ─► subscription.created / updated / canceled …
+                                   └► upsert_subscription()  → subscriptions (status, tarif, davr)
+                               ─► transaction.completed (birinchi to'lov, har oy yangilanish, upgrade)
+                                   └► grant_subscription_credits() → credit_lots (source=subscription,
+                                                                      expires_at = davr oxiri)
+Paket (bir martalik)          ─► transaction.completed ─► add_purchased_credits() → lot source=pack, +12 oy
+```
+
+- Har bir kredit **lot**da yashaydi (`credit_lots`): manba, miqdor, qolgan, band
+  (hold), yonish vaqti. `credit_accounts.balance` = lotlardagi qolganlar yig'indisi,
+  `reserved` = band qilinganlar yig'indisi — har bir tranzaksiya oxirida baza buni
+  **tekshiradi**; mos kelmasa, butun tranzaksiya bekor bo'ladi.
+- Run uchun hold lotlardan sarflash tartibida olinadi; charge o'sha hold'dan
+  yechiladi; qolgani qaytadi. Yonib ketgan lotdagi **band** kreditlar himoyalangan:
+  ish tugaguncha yonmaydi.
+- Yangilanish (renewal) → yangi davr loti; eski davr loti yonadi (o'tkazilmaydi).
+- **Upgrade** davr o'rtasida (masalan Plus → Pro): lot yangi ajratmagacha
+  **qolgan vaqtga mutanosib** to'ldiriladi — oxirgi kuni upgrade qilib bir oylik
+  kreditni tiyinlarga olish mumkin emas.
+- Idempotent: bir xil Paddle hodisasi / tranzaksiyasi ikki marta kelsa ham kredit
+  bir marta qo'shiladi (`payment_events`, ledger'dagi `external_id`, lotning
+  `(subscription, period_end)` kaliti).
+- Refund: paket yoki obuna to'lovi qaytarilsa, kreditlar **avval o'sha lotdan**
+  olinadi (0021 qoidasi: faqat mavjud qismi, yetmagani `shortfall`).
+- Yonish: har bir pul funksiyasi (hold, charge, refund …) boshida tashkilotning
+  muddati o'tgan lotlarini yondiradi; worker har 10 daqiqada `expire_credit_lots()`
+  ni chaqiradi; `pg_cron` yoqilgan bo'lsa soatda bir marta ham. Ledger'da har bir
+  yongan lot — `expire` qatori.
+
+## 3. Egasi uchun qadamlar
+
+### 3.1. Migratsiyani qo'llash
+
+1. Supabase → **SQL Editor** → `supabase/migrations/0034_plans_entitlements.sql`
+   ni to'liq qo'ying → **Run**. (0033 undan oldin qo'llangan bo'lishi kerak.)
+   Fayl bitta tranzaksiya: hozirgi balanslar muddatsiz `adjustment` lotiga
+   ko'chiriladi, ochiq hold'lar unga bog'lanadi.
+2. Fayl oxiridagi **Verify** so'rovini ishga tushiring — hamma ustun `true`.
+3. `NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS=12` ni Command Center env'iga qo'ying va
+   qayta build qiling — shartlar (Terms 8.5) va `/pricing` paket kreditlari
+   **12 oyda yonishini** aytsin (baza aynan shuni qiladi:
+   `credit_lot_policies.pack = 12`). 0034 dan oldin sotib olingan kreditlar
+   yonmaydi.
+4. (Ixtiyoriy) Supabase → Database → Extensions → **pg_cron** yoqilgan bo'lsa,
+   0034 ni qayta ishga tushiring — soatlik yondirish jadvali qo'shiladi.
+
+> Diqqat: 0034 dan keyin **Free tarif bir vaqtda 1 ta video** ishlatadi (ilgari
+> cheklov yo'q edi). Paket sotib olgan, lekin obunasi yo'q mijozlar ham Free
+> hisoblanadi. Istasangiz Free uchun kattaroq qiling:
+> `update plan_entitlements set value = '2' where plan_id = 'free' and key = 'concurrency';`
+
+### 3.2. Paddle'da mahsulot va narxlar (avval sandbox)
+
+Paddle → **Catalog → Products → New product**, har bir tarif uchun:
+
+| Product | Tax category | Price | Billing cycle |
+| :-- | :-- | :-- | :-- |
+| Nightshift Plus plan | Standard digital goods / SaaS | 19 USD | **Monthly** |
+| Nightshift Pro plan | Standard digital goods / SaaS | 49 USD | **Monthly** |
+| Nightshift Business plan | Standard digital goods / SaaS | 129 USD | **Monthly** |
+
+Har bir narxning `pri_…` id'sini ko'chirib oling. Trial qo'ymang (trial'da kredit
+berilmaydi — kreditlar faqat to'langan tranzaksiyadan keladi). Paket narxlari
+(one-time) o'zgarishsiz qoladi.
+
+### 3.3. Webhook (Edge Function) secret'lari
+
+```bash
+supabase secrets set \
+  PADDLE_PLAN_CREATOR=pri_... \
+  PADDLE_PLAN_PRO=pri_... \
+  PADDLE_PLAN_STUDIO=pri_...
+supabase functions deploy paddle-webhook --no-verify-jwt
+```
+
+- Nom qoidasi: `PADDLE_PLAN_<TARIF ID KATTA HARFDA>` — `plans.id` bilan bir xil
+  (`creator` → `PADDLE_PLAN_CREATOR`). Yangi tarif qo'shsangiz (masalan
+  `business`), faqat `plans` ga qator va `PADDLE_PLAN_BUSINESS` secret — kod
+  o'zgarmaydi.
+- Bitta price id ham paket, ham tarif bo'lishi mumkin emas (webhook uni tarif
+  sifatida e'tiborsiz qoldiradi).
+
+**Chegirmalar (discount).** Kredit **to'langan summaga** qarab beriladi, ro'yxat
+narxiga emas: Paddle `details.totals` dagi `subtotal − discount` ulushi. 50%
+chegirma — yarim kredit, 100% chegirma — **kredit berilmaydi** (`rejected`,
+odam ko'radi). Bu paketlarga va tarif davrlariga tegishli. **API top-up'ga
+chegirma umuman berilmaydi:** unga har qanday chegirma (ruxsat ro'yxatidagisi
+ham) yoki nol to'lov `rejected` bo'ladi va balans to'ldirilmaydi; top-up faqat
+haqiqatan to'langan summa (soliqsiz qator narxi) bilan to'ldiriladi; Paddle
+`totals` qator narxiga mos kelmasa, USD bo'lmasa yoki to'lovning bir qismi
+Paddle kredit balansidan (`totals.credit`) qoplangan bo'lsa ham `rejected`
+(pastdagi "What the webhook checks before crediting" bo'limiga qarang). Agar biror chegirmani ataylab "bepul kredit" sifatida bermoqchi
+bo'lsangiz (masalan, hamkor uchun kupon), uning `dsc_…` id'sini ruxsat
+ro'yxatiga qo'ying — u to'liq kredit beradi:
+
+```bash
+supabase secrets set PADDLE_PROMO_DISCOUNT_IDS=dsc_...,dsc_...
+```
+
+#### What the webhook checks before crediting
+
+The Edge Function (`supabase/functions/_shared/paddle.ts`) credits only when
+Paddle's own `details.totals` agree with what we sell. Anything that fails a
+rule is recorded as `rejected` (HTTP 200, no retry) and credits nothing: a
+person looks at it in `payment_events` and either grants by hand or refunds.
+
+Paddle's definitions
+([totals](https://developer.paddle.com/api-reference/transactions/get-transaction),
+[credit balances](https://developer.paddle.com/build/customers/get-customer-credit-balances),
+[tax-inclusive/exclusive](https://developer.paddle.com/changelog/2025/automatic-tax-inclusive-exclusive-prices)):
+`total = subtotal - discount + tax`; `grand_total = total - credit` (amount due
+after credits, before payments); with a tax-inclusive price Paddle backs the
+tax out of `subtotal`, so `total` stays equal to the price.
+
+| Applies to | Rule |
+|---|---|
+| Every payment | The signature is valid and fresh; the transaction id is new (idempotent per `txn_…`); the organization exists. Nothing the browser sent decides an amount. |
+| API top-up | `custom_data.purpose = api_topup`; every line is the top-up product, priced in USD, quantity 1–1000; the credited cents are the sum of unit price × quantity, within $5–$5,000. |
+| API top-up | The transaction's `currency_code` is USD (and `totals.currency_code`, when sent). |
+| API top-up | No discount of any kind (`discount_id` absent, `totals.discount` zero), not even a promo from `PADDLE_PROMO_DISCOUNT_IDS`. |
+| API top-up | `totals.credit` and `totals.credit_to_balance` are absent or zero (nothing was paid from the customer's Paddle credit balance). |
+| API top-up | `subtotal`, `tax`, `total` and `grand_total` are readable, and `grand_total = total` (no hidden credit). |
+| API top-up | The line price matches Paddle's totals in one of two ways. Tax-inclusive price: `total` (= `grand_total`) equals the line price, so the amount paid covers the credit; the tax split may be a cent off Paddle's rounding and is not checked. Tax-exclusive price: `subtotal` equals the line price and `total = subtotal + tax` exactly, so the amount paid net of tax equals the credit. Anything else is rejected. |
+| Credit pack | The Paddle price id is one of ours; quantity 1–1000; credits are scaled by the paid share `(subtotal - discount) / subtotal`, rounded down to the cent; a 100% discount credits nothing unless the discount id is in `PADDLE_PROMO_DISCOUNT_IDS`. |
+| Credit pack | `totals.credit` and `totals.credit_to_balance` are absent or zero: a pack bought with Paddle credit-balance money is `rejected` for review, not credited in full. |
+| Plan period | The price id is a plan on this deployment, quantity 1, a billing period is present, and the same discount/promo rule as a pack applies. The database grants once per subscription period (a mid-period upgrade tops up pro rata). |
+| Refund / chargeback | Only an `approved` refund or chargeback takes credits back, in proportion to the money returned, never more than was credited (the database caps the running total); a refund seen before its purchase is retried, not dropped. |
+
+Welcome credits and friend-invite credits are internal grants and are not
+touched by any of this.
+
+### 3.4. Paddle notification destination — yoqiladigan hodisalar
+
+Paddle → **Developer tools → Notifications** → mavjud webhook manzili → quyidagi
+hodisalarni belgilang (avvalgilari qoladi):
+
+- `transaction.completed` *(bor edi)*
+- `adjustment.created`, `adjustment.updated` *(bor edi)*
+- **yangi:** `subscription.created`, `subscription.updated`,
+  `subscription.activated`, `subscription.canceled`, `subscription.past_due`,
+  `subscription.paused`, `subscription.resumed`, `subscription.trialing`
+
+### 3.5. Command Center env
+
+```
+NEXT_PUBLIC_PADDLE_PLAN_CREATOR=pri_...
+NEXT_PUBLIC_PADDLE_PLAN_PRO=pri_...
+NEXT_PUBLIC_PADDLE_PLAN_STUDIO=pri_...
+NEXT_PUBLIC_PLAN_DISPLAY_CREATOR=19 USD
+NEXT_PUBLIC_PLAN_DISPLAY_PRO=49 USD
+NEXT_PUBLIC_PLAN_DISPLAY_STUDIO=129 USD
+```
+
+- Qayerga qo'yiladi: GitHub → Settings → Secrets and variables →
+  **Variables** (`deploy_web.yml` ularni serverga uzatadi). O'zgartirgandan keyin qayta
+  build/deploy qiling (NEXT_PUBLIC_* build paytida kiritiladi).
+- Ko'rsatiladigan narxda **`$` belgisini ishlatmang** — deploy uni rad etadi;
+  `19 USD` deb yozing. Paddle ishlayotganda sahifa baribir Paddle'ning o'z
+  (mahalliy valyuta va soliq bilan) narxini ko'rsatadi; env — zaxira.
+- **Manage subscription** tugmasi Paddle **customer portal** sessiyasini ochadi
+  (`POST /customers/{ctm_…}/portal-sessions`). Buning uchun server env'da
+  `PADDLE_API_KEY` bo'lishi kerak (API top-up uchun allaqachon bor). Kalit
+  cheklangan bo'lsa, unga **customer portal session write** ruxsatini bering.
+  Portalda mijoz kartani yangilaydi, bekor qiladi, cheklarni yuklab oladi.
+
+### 3.6. Sandbox'da sinash
+
+1. Paddle sandbox'da test karta bilan Plus'ga obuna bo'ling (yoki
+   **Developer tools → Simulations** → "Subscription created" stsenariysi).
+2. Tekshiring:
+
+```sql
+select plan_id, status, current_period_end, cancel_at_period_end
+  from subscriptions order by updated_at desc limit 5;
+select org_id, source, amount, remaining, held, expires_at
+  from credit_lots order by id desc limit 10;
+select event_type, status, detail from payment_events order by received_at desc limit 10;
+```
+
+   `credit_lots` da `source = subscription`, `amount = 2000`,
+   `expires_at` = davr oxiri bo'lishi kerak.
+3. Simulyatorda "Subscription renewed" — yangi lot, eskisi `expire` bo'ladi.
+4. Bir xil hodisani **Replay** qiling — kredit ikkinchi marta qo'shilmaydi
+   (`payment_events.status = duplicate`).
+5. Refund (Paddle → Transactions → Refund) — kreditlar o'sha lotdan olinadi.
+
+### 3.7. Production
+
+Sandbox'dagi 3.2–3.5 ni **live** akkauntda takrorlang (price id'lar boshqa!),
+`NEXT_PUBLIC_PADDLE_ENV=production`, live token, live secret'lar.
+
+## 4. Sozlash (SQL, platforma owner/admin)
+
+```sql
+-- Oylik kredit miqdori
+update plans set monthly_credits = 2500 where id = 'creator';
+-- Parallel ishlar
+update plan_entitlements set value = '3' where plan_id = 'pro' and key = 'concurrency';
+-- Paket amal qilish muddati (faqat yangi paketlarga ta'sir qiladi)
+update credit_lot_policies set valid_months = 12 where source = 'pack';
+-- Tarifni sahifadan yashirish (mavjud obunachilar qoladi)
+update plans set is_public = false where id = 'studio';
+```
+
+`plan_entitlements.value` turi `entitlement_keys.value_type` ga mos bo'lishi
+shart (`bool` → `true`/`false`, `int` → butun son, `tier` →
+`"none"|"basic"|"premium"|"all"`); noto'g'ri tur — baza rad etadi.
+
+## 5. Kuzatish
+
+```sql
+-- Hisob va lotlar mosligi (0 qator bo'lishi kerak)
+select a.org_id, a.balance, a.reserved, sum(l.remaining), sum(l.held)
+  from credit_accounts a left join credit_lots l on l.org_id = a.org_id
+ group by a.org_id, a.balance, a.reserved
+having a.balance <> coalesce(sum(l.remaining), 0) or a.reserved <> coalesce(sum(l.held), 0);
+
+-- Rad etilgan tarif hodisalari (odam ko'rishi kerak)
+select received_at, event_type, detail from payment_events
+ where status = 'rejected' and (event_type like 'subscription.%' or detail like '%plan%')
+ order by received_at desc;
+
+-- Bu oy yongan kreditlar
+select org_id, sum(-amount) from credit_transactions
+ where kind = 'expire' and created_at > date_trunc('month', now()) group by org_id;
+```
+
+## 6. Cheklovlar (hozircha)
+
+- **Tarifni almashtirish** (Plus → Pro) Paddle customer portal'da yo'q. Hozir:
+  bekor qilib, davr oxirida yangisiga obuna bo'lish, yoki Paddle dashboard'dan
+  operator o'zgartiradi (proration `prorated_immediately` → mutanosib kredit
+  avtomatik qo'shiladi).
+- Bitta tranzaksiyada ikki xil tarif yoki tarif + paket — `rejected` (odam hal
+  qiladi).
+- Trial davri kredit bermaydi (faqat to'langan tranzaksiya kredit beradi).
+- `planned` imkoniyatlar sahifada ko'rsatilmaydi, hech narsani cheklamaydi.
+
+## 7. Qo'shimcha kreditlar tugmasi va Usage sahifasi (migratsiya 0094)
+
+Mijoz `/<kanal>/usage` sahifasida tarif kreditlarining shu davrdagi sarfini
+(«62% ishlatildi», «2 000 dan 1 240 kredit», yangilanish sanasi) va
+**«Tarif kreditlarim tugaganda qo'shimcha kreditlardan foydalanish»** tugmasini
+ko'radi. Haftalik yoki sessiya hisoblagichlari yo'q: platformada bunday cheklov
+yo'q, shuning uchun ular uydirilmaydi.
+
+- **Qayerda saqlanadi:** `credit_accounts.use_extra_credits` — har bir ish
+  maydoniga bitta qiymat, standart **yoqilgan** (bugungi xatti-harakat).
+- **Yoqilgan:** sarflash tartibi o'zgarmaydi (2-bo'lim): avval tarif, keyin
+  paketlar (eng tez yonadigani birinchi), keyin muddatsizlar.
+- **O'chirilgan:** YANGI ish faqat `subscription`, `grant` (xush kelibsiz va
+  operator bergan) va `adjustment` lotlaridan oladi. **«Qo'shimcha» lot =
+  `source = 'pack'`**; ularga tegilmaydi. Yetmasa, ish boshlanmasdan oldin
+  `NS402` (detail: `available=… needed=… extra_off=1 extra=…`), hech narsa band
+  qilinmaydi va yechilmaydi.
+- **Joriy ishlar to'xtatilmaydi:** tugma faqat yangi hold'ga ta'sir qiladi.
+  Boshlangan ishning hold'i, capture va release'i avvalgidek o'z lotlari bilan
+  yopiladi (tugmani o'zgartirsangiz ham).
+- **Qayerda amal qiladi:** `reserve_credits` va `credit_lots_hold_locked`
+  (0094). Run now, studiya, storyboard, sahna qayta generatsiyasi, repurpose,
+  yuklab olish, API generatsiyalari va MCP OAuth — hammasi shu funksiyadan
+  o'tadi, shuning uchun bitta joyda tekshiriladi.
+- **Kim o'zgartiradi:** faqat ish maydonining o'z egasi,
+  `set_use_extra_credits(org, on)` orqali (`org_members` da `user_id = auth.uid()`
+  va rol owner/admin). Boshqa mijoz, operator, anon va service key — rad etiladi.
+- **O'qish:** `usage_summary(org)` — faqat chaqiruvchining o'z ish maydoni
+  (a'zo, platforma yoki ishonchli chaqiruvchi), marja va boshqa tenant
+  ma'lumotlarisiz.
+- **Tatbiq tartibi:** avval `0094_extra_credits_toggle.sql` (idempotent, ikki
+  marta qo'llash xavfsiz), keyin kod. Kod avval chiqsa ham sahifa «hali mavjud
+  emas» deb halol aytadi.
+- **Hozircha yo'q:** kartadan avtomatik to'ldirish (auto-recharge) — mantiqiy
+  keyingi qadam, Paddle ishini talab qiladi.
+

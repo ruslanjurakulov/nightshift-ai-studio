@@ -1,0 +1,89 @@
+{
+  "topic": "The Flannan Isles Lighthouse Mystery",
+  "title": "3 Men Vanished From This Lighthouse — The Log Book Made It Worse",
+  "title_ab": "The Lighthouse Where 3 Keepers Vanished Without a Trace",
+  "description": "In December 1900, three experienced lighthouse keepers vanished from a remote Scottish island. The lamp was clean. The beds were made. One meal sat unfinished on the table.\n\nWhat the relief crew found in the log book has never been explained. Two sets of oilskins were gone — but the third pair still hung by the door. And the only door that mattered was locked from the inside.\n\nThis is the full story of the Flannan Isles, and the one detail almost every retelling gets wrong.\n\n00:00 The Discovery\n00:15 A Light That Went Dark\n01:20 What the Relief Crew Found\n02:30 The Log Book\n03:40 The Theories\n04:30 What Actually Happened\n\n#history #mystery #unexplained #truestory #lighthouse",
+  "tags": [
+    "flannan isles",
+    "lighthouse mystery",
+    "unsolved mysteries",
+    "history documentary",
+    "true story",
+    "disappearance",
+    "scotland history",
+    "unexplained"
+  ],
+  "hook_sentence": "Three men vanished from a locked lighthouse — and the log book they left behind only made it stranger.",
+  "thumbnail_prompt_a": "Storm-lashed lighthouse at night, single beam cutting through rain, dark cinematic, high contrast",
+  "thumbnail_prompt_b": "Close-up of an open weathered log book on a wooden table, candlelight, ominous shadows",
+  "thumbnail_overlay_text": "STILL LOCKED",
+  "open_loops": [
+    "Why was the third set of oilskins still hanging by the door?",
+    "What did the final log entry actually say?"
+  ],
+  "sections": [
+    {
+      "name": "hook",
+      "type": "hook",
+      "voice": "main",
+      "narration": "[MUSIC:intro_high] [SFX:dramatic_sting] Three men walked into this lighthouse. [PAUSE:1.0] Nobody ever walked out. [SFX:deep_boom] [PAUSE:1.2] The lamp was polished. The beds were made. [PAUSE:0.8] And one meal was still sitting on the table. [SFX:eerie_wind] [PAUSE:1.0] But it's what they wrote in the log book [PAUSE:0.6] that nobody has ever been able to explain.",
+      "duration_hint": 15,
+      "cut_interval": 2.0,
+      "keywords": ["storm waves lighthouse", "dark ocean night", "abandoned room candlelight"]
+    },
+    {
+      "name": "open_loop_plant",
+      "type": "story",
+      "voice": "main",
+      "narration": "[MUSIC:story_low] To understand what happened, we have to go back to December 1900. [PAUSE:0.8] To an island so remote it took a boat two days to reach it. [SFX:eerie_wind] [PAUSE:0.5] But first — the detail almost every version of this story leaves out. [PAUSE:1.0] One of the three men left his coat behind. [PAUSE:0.8] We'll come back to that at the very end.",
+      "duration_hint": 25,
+      "cut_interval": 5.0,
+      "keywords": ["remote rocky island aerial", "vintage sailing boat sea", "stormy grey sky clouds"]
+    },
+    {
+      "name": "the_light_goes_dark",
+      "type": "story",
+      "voice": "main",
+      "narration": "The Flannan Isles sit twenty miles off the coast of Scotland. [PAUSE:0.5] Nothing but rock, seabirds, and wind. [SFX:eerie_wind] The lighthouse had been running for exactly one year. [PAUSE:0.8] On the night of December fifteenth, a passing steamer noticed something wrong. [SFX:clock_tick] [PAUSE:0.6] The light was out. [PAUSE:1.0] For a ship in those waters, a dark lighthouse meant one thing. [PAUSE:0.5] Something had gone very wrong.",
+      "duration_hint": 45,
+      "cut_interval": 5.0,
+      "keywords": ["lighthouse beam fog", "rough sea rocks waves", "old steamship ocean"]
+    },
+    {
+      "name": "the_relief_crew",
+      "type": "story",
+      "voice": "main",
+      "narration": "[MUSIC:story_low] It took eleven days before anyone could land. [PAUSE:0.8] When the relief keeper finally climbed those stairs, [SFX:paper_turn] he found the door closed. [PAUSE:0.5] The beds unmade in one room, perfectly made in another. [PAUSE:0.8] The clock had stopped. [SFX:clock_tick] [PAUSE:1.0] And in the kitchen — [PAUSE:0.6] a chair, knocked over on its side.",
+      "duration_hint": 45,
+      "cut_interval": 5.0,
+      "keywords": ["spiral staircase stone", "empty old kitchen wooden", "overturned wooden chair"]
+    },
+    {
+      "name": "the_log_book",
+      "type": "story",
+      "voice": "secondary",
+      "narration": "[MUSIC:climax_high] [SFX:choir_hit] The log book entries are what haunt people. [PAUSE:1.0] December twelfth: severe winds, the likes of which I have never seen. [PAUSE:0.8] December thirteenth: storm still raging. [PAUSE:0.5] Cannot go out. [PAUSE:0.8] The men are quiet. [PAUSE:1.2] [SFX:thunder_crack] And then the final entry. [PAUSE:1.0] December fifteenth: [PAUSE:0.8] storm ended, sea calm. [PAUSE:1.5] God is over all.",
+      "duration_hint": 50,
+      "cut_interval": 5.0,
+      "keywords": ["handwritten journal closeup", "candle flame dark room", "lightning storm sea"]
+    },
+    {
+      "name": "the_theories",
+      "type": "story",
+      "voice": "main",
+      "narration": "[MUSIC:story_low] So what happened? [PAUSE:0.8] Some said sea serpents. Others said a foreign ship took them. [SFX:whoosh] [PAUSE:0.6] One writer invented a story about a murder — and that fiction is still repeated as fact today. [PAUSE:1.0] But the weather records tell a quieter story. [PAUSE:0.8] There was no storm on December fifteenth. [PAUSE:1.0] The storm had passed days earlier.",
+      "duration_hint": 45,
+      "cut_interval": 5.0,
+      "keywords": ["old newspaper archive", "vintage weather map", "calm sea after storm"]
+    },
+    {
+      "name": "resolution",
+      "type": "story",
+      "voice": "main",
+      "narration": "[MUSIC:outro] Here's what investigators believe. [PAUSE:0.8] A freak wave — the kind that can rise out of a calm sea on that coast. [SFX:deep_boom] [PAUSE:1.0] Two men went down to secure the landing gear. [PAUSE:0.8] And the third — [PAUSE:1.0] the one who left his coat behind — [PAUSE:0.8] saw the wave coming and ran out after them without stopping to dress. [PAUSE:1.5] [SFX:suspense_riser] That empty hook by the door isn't a mystery. [PAUSE:1.0] It's the last thing a man did to try to save his friends.",
+      "duration_hint": 50,
+      "cut_interval": 5.0,
+      "keywords": ["giant wave crashing rocks", "empty coat hook wall", "sunrise over ocean calm"]
+    }
+  ]
+}

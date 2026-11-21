@@ -1,0 +1,27 @@
+# Keeps the commit and digest pins of BR-S-003 current (tests/test_pinned_refs.py).
+# A pin that nobody moves stops receiving the base image's security patches, so
+# pinning without an updater would trade one risk for another. One grouped PR
+# per ecosystem per month; each is a normal draft-and-review PR like any other.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories: ["/", "/command-center"]
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      base-images:
+        patterns: ["*"]
+  - package-ecosystem: docker-compose
+    directory: "/deploy"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1

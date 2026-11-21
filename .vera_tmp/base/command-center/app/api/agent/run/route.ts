@@ -1,0 +1,366 @@
+import { NextResponse } from "next/server";
+import { createClient, getUser } from "@/lib/supabase/server";
+import { isOperator, isPlatformAdmin, requireOrgRole } from "@/lib/auth/org-roles";
+import { getOrgContext } from "@/lib/orgs-server";
+import { logAudit } from "@/lib/server/audit";
+import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
+import { isSupabaseConfigured } from "@/lib/config";
+import { buildRenderJobInsert, isRunConfigured, resolveRunBackend, runGoogleStages } from "@/lib/runBackend";
+import { creditsEnforced, reserveRunCredits, runCreditRefFor } from "@/lib/server/credits";
+import { dispatchOutcome, insertOutcome, startFailureBody } from "@/lib/server/run-start";
+import { runVoiceProblem } from "@/lib/server/run-voice";
+import { IDEMPOTENCY_KEY_RE } from "@/lib/creative/operations";
+import { isCreditExempt } from "@/lib/credits";
+import { readConnectedAccounts } from "@/lib/connectedAccounts";
+import { acceptedHint } from "@/lib/publish";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { parseJsonCapped } from "@/lib/server/json-body";
+import { readAgeAnswer } from "@/lib/server/age";
+import { runAgeRefusal } from "@/lib/age";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * "Run now" — start this channel's pipeline on demand.
+ *
+ * GET reports whether on-demand runs are wired at all (the same GitHub
+ * forwarding token/repo the Providers board uses), so the button can explain
+ * what to configure instead of failing on click.
+ *
+ * POST takes `{ channel_id }` and dispatches the daily-video workflow for that
+ * channel. It spends money and can produce a video, so it is gated on an
+ * authenticated user and never runs "all channels" implicitly — a real channel
+ * id is required. It does not publish by itself: the dispatch pins privacy to
+ * private and the channel's own auto-publish + publish gate still decide the
+ * rest, exactly as on a scheduled run.
+ *
+ * Backend (server env NIGHTSHIFT_RUN_BACKEND, lib/runBackend.ts): "actions"
+ * (default) dispatches the workflow as above; "queue" instead inserts one
+ * `render_jobs` row (migration 0017) that the VPS worker picks up and runs with
+ * the same command the workflow would (docs/WORKER_VPS.md). The insert goes
+ * through the signed-in user's RLS-checked client — this app never holds the
+ * service key — and 0017's insert policy accepts only what this route sends:
+ * a 'daily' job, no privacy (so private), no resume or repair, filed as the
+ * caller. Neither backend asks for more than the other.
+ *
+ * Credits (server env NIGHTSHIFT_CREDITS_ENFORCE, migration 0020): when on, a
+ * run for a channel outside the operator's own organization first reserves its
+ * estimated cost through reserve_credits() — as the signed-in user, never the
+ * service key — and only then dispatches or queues, carrying the hold's id
+ * (`credit_ref`). Not enough credits is a 402 that says how many are needed.
+ * The runner settles the hold when the run ends (tools/queue_worker.py,
+ * tools/credits_settle.py). If the dispatch or insert fails after the hold was
+ * taken, the browser cannot release it (release is service-only); it expires
+ * back to the balance within three hours, and the response says so.
+ *
+ * A KEYED request (`idempotency_key`) that fails to start is answered with one
+ * of two bodies (lib/server/run-start.ts), and is never dispatched again:
+ *  - `start_failed` (+ `retry_with_new_key: true`): the insert or GitHub
+ *    refused (a received 4xx), so nothing started. The hold's reference is
+ *    burnt — reserve_credits() refuses every existing job_id, released ones
+ *    too — so the same key answers `run_already_started` from now on; the
+ *    caller must rotate its key to try again.
+ *  - `start_unsure`: a timeout, a dropped connection or a 5xx, so the job or
+ *    dispatch MAY have happened. Nothing is released; the caller keeps its key
+ *    and says it cannot tell (the same key then answers `run_already_started`,
+ *    which is true: a hold exists).
+ * `credits_held` stays the amount still held. The definite case would release
+ * the hold at once if this app had a way to: release_credits() is service-only
+ * and no user-callable release exists for an unstarted Run now hold, so today
+ * the hold stays until it expires. Unkeyed requests answer exactly as before.
+ *
+ * Who may run (lib/auth/org-roles.ts): an owner/admin of the ORGANIZATION that
+ * owns the channel — the same rule reserve_credits() applies — so a customer
+ * organization's admin can run their own channel. The platform's owner/admin
+ * keep that role in every organization, as RLS already gives them. With
+ * credits NOT enforced, a run outside the operator's own organization would
+ * spend the operator's providers for free, so on Actions it stays a
+ * platform-admin action until the deployment switches credits on — and on the
+ * queue it is refused for everyone: since migration 0041 the database and the
+ * worker refuse a customer organization's job without its credit hold, so the
+ * route says why instead of failing the insert.
+ *
+ * A queued paid run carries the length its hold was priced for
+ * (params.duration, lib/credits.ts frozenRunDurationS) — never "the channel's
+ * target", which the worker would read again at run time.
+ *
+ * Optional, for the Assistant's confirmed plan: `idempotency_key` makes the
+ * hold's reference stable for (user, channel, key) — a replayed step is
+ * refused by reserve_credits() as `run_already_started` (409) and nothing
+ * new is held or dispatched — and `max_credits` is the price the person
+ * confirmed: a higher estimate is `price_changed` (409), nothing held. Both
+ * act on the credit hold, so they apply where credits are enforced; without
+ * them the route behaves exactly as before.
+ */
+
+export async function GET() {
+  const user = await getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Which backend runs the operator's pipeline is for someone who can run
+  // something here: a member of the organization being viewed, or the
+  // operator — not any account that signed up.
+  const org = await getOrgContext();
+  if (!org.current && !(await isOperator())) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
+  return NextResponse.json({
+    configured: isRunConfigured(backend, { github: isGithubConfigured, supabase: isSupabaseConfigured }),
+    backend,
+  });
+}
+
+export const POST = requireSameOrigin(async function POST(request: Request) {
+  const user = await getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  let body: {
+    channel_id?: unknown;
+    topic?: unknown;
+    niche?: unknown;
+    duration?: unknown;
+    language?: unknown;
+    visual_style?: unknown;
+    video_provider?: unknown;
+    image_provider?: unknown;
+    tts_model?: unknown;
+    voice_id?: unknown;
+    publish_hint?: unknown;
+    made_for_kids?: unknown;
+    idempotency_key?: unknown;
+    max_credits?: unknown;
+  };
+  try {
+    body = await parseJsonCapped(request);
+  } catch {
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  }
+
+  const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
+  if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
+  const idemKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+  if (body.idempotency_key != null && !IDEMPOTENCY_KEY_RE.test(idemKey))
+    return NextResponse.json({ error: "invalid_idempotency_key" }, { status: 400 });
+  const mc = body.max_credits;
+  if (mc != null && !(typeof mc === "number" && Number.isFinite(mc) && mc >= 0))
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const maxCredits = typeof mc === "number" ? mc : null;
+  // Spending money to produce a video is an owner/admin action — in the
+  // channel's organization. Only a channel of the organization being viewed:
+  // the Actions dispatch has no database check of its own, and a platform
+  // admin's RLS reaches every tenant, so running another organization's
+  // channel takes switching to it (404, not 403, so ids do not leak).
+  const access = await requireOrgRole({ channelId }, "admin");
+  if (!access.ok) {
+    const error = access.error === "not_found" ? "channel_not_found" : access.error;
+    return NextResponse.json({ error }, { status: access.status });
+  }
+  // 0192's gates sit on a credit hold and on the render_jobs row. In a credits-exempt workspace the Actions dispatch takes
+  // neither, so for a person who said "under 18" nothing in the database would refuse this run: the answer is read here,
+  // before anything is dispatched. An unknown answer (migration not applied, read failed) blocks no one, as everywhere else.
+  if ((await readAgeAnswer()) === "minor") return NextResponse.json({ error: "adult_only_service" }, { status: 403 });
+  // A customer organization's run is paid for with its credits. Without
+  // enforcement nothing would pay, so only the operator may start one.
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
+  const customerRun = access.source === "org" && !isCreditExempt(access.orgId);
+  if (!creditsEnforced && customerRun && (backend === "queue" || !(await isPlatformAdmin())))
+    return NextResponse.json({ error: "credits_not_enforced" }, { status: 403 });
+
+  if (backend === "actions" && !isGithubConfigured)
+    return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
+
+  // Optional per-run overrides. Empty/absent means "the AI picks / the channel's
+  // own setting applies", exactly as before.
+  const topic = typeof body.topic === "string" ? body.topic.trim().slice(0, 300) : "";
+  const niche = typeof body.niche === "string" ? body.niche.trim().slice(0, 120) : "";
+  const language = typeof body.language === "string" ? body.language.trim().slice(0, 40) : "";
+  const visualStyle =
+    typeof body.visual_style === "string" ? body.visual_style.trim().slice(0, 300) : "";
+  // Duration in seconds. Accept a number or a numeric string; clamp to a sane
+  // range (30s … 60min) so a stray value never asks the pipeline for an absurd
+  // length. 0/NaN/absent means "use the channel's own target".
+  const durationRaw =
+    typeof body.duration === "number"
+      ? body.duration
+      : typeof body.duration === "string"
+        ? Number(body.duration)
+        : NaN;
+  const duration =
+    Number.isFinite(durationRaw) && durationRaw > 0
+      ? Math.min(3600, Math.max(30, Math.round(durationRaw)))
+      : undefined;
+  // Per-run model routing (validated again in dispatchDailyVideo against the
+  // workflow's choice lists; a bad value is simply dropped).
+  const videoProvider = typeof body.video_provider === "string" ? body.video_provider.trim() : "";
+  const imageProvider = typeof body.image_provider === "string" ? body.image_provider.trim() : "";
+  // A customer's run is priced per minute whatever the footage source, so the choice of a paid generator is the
+  // platform's, not theirs (the Create form hides the selects from them). The operator's own organization keeps it.
+  if (customerRun && (videoProvider || imageProvider))
+    return NextResponse.json({ error: "provider_not_allowed" }, { status: 403 });
+  // YouTube's "made for kids" (0145): true, or absent. Anything else is refused rather than read as "not for kids": a run
+  // can only turn the declaration on, and a false here would be a request this route cannot honour.
+  if (body.made_for_kids != null && body.made_for_kids !== true)
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const madeForKids = body.made_for_kids === true;
+  // 0196: a run spends on Google (runGoogleStages: the research and the script are always Gemini's), whose terms are 18+, so it
+  // needs an adult answer, as a Google model does in the Studio. Asked here, before anything is held or dispatched: the Actions
+  // dispatch writes no row for the database's run gate to see. On the queue an unknown answer goes on, because the run gate
+  // refuses the row itself; on Actions nothing behind this line would ask again, so an answer that could not be read stops the
+  // run (try again) rather than spending on Google for someone who may never have answered.
+  const googleStages = runGoogleStages("daily", { video_provider: videoProvider || undefined, image_provider: imageProvider || undefined });
+  const ageRefusal = googleStages.length > 0 ? runAgeRefusal(await readAgeAnswer(), backend) : null;
+  if (ageRefusal)
+    return NextResponse.json(
+      { error: ageRefusal.error, ...(ageRefusal.error === "adult_attestation_required" ? { google_stages: googleStages } : {}) },
+      { status: ageRefusal.status },
+    );
+  const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
+  const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
+
+  // A voice chosen for this run that is a custom (cloned) voice must be one this channel may use. The Actions dispatch inserts no
+  // database row, so migration 0117's guards never see it; ask the database function they use, as the signed-in user, before
+  // anything is held or dispatched. A stock voice (no profile) answers "fine" and nothing changes; an unanswered check on an id
+  // that could be a profile's is refused (docs/CUSTOM_VOICE.md, "Hard gate").
+  if (voiceId) {
+    const problem = await runVoiceProblem(await createClient(), channelId, access.orgId, voiceId);
+    if (problem) {
+      // Server side only, and only the closed code: never the voice id, who owns it or the user (the answer to the caller is as terse).
+      console.warn(`[agent-run] voice refused: ${problem}`);
+      return NextResponse.json({ error: problem }, { status: problem === "voice_not_allowed" ? 403 : 503 });
+    }
+  }
+
+  // "Making this for:" — optional, and kept only when it names one of this
+  // organization's own connected accounts (read with the caller's RLS).
+  const publishHint =
+    body.publish_hint == null || body.publish_hint === ""
+      ? null
+      : acceptedHint(body.publish_hint, await readConnectedAccounts().catch(() => []));
+  if (body.publish_hint != null && body.publish_hint !== "" && !publishHint)
+    return NextResponse.json({ error: "publish_hint_unknown" }, { status: 400 });
+
+  const opts = {
+    topic,
+    niche,
+    duration,
+    language,
+    visualStyle,
+    videoProvider,
+    imageProvider,
+    ttsModel,
+    voiceId,
+    ...(publishHint ? { publishHint } : {}),
+    ...(madeForKids ? { madeForKids } : {}),
+  };
+
+  // Pay first (enforced deployments only), then run. The hold's id travels
+  // with the run so its runner can settle exactly this hold.
+  let creditRef: string | null = null;
+  let creditsHeld: number | null = null;
+  let frozenDurationS: number | null = null;
+  if (creditsEnforced) {
+    const supabase = await createClient();
+    if (!supabase) return NextResponse.json({ error: "credits_unavailable" }, { status: 503 });
+    const prefix = backend === "queue" ? "rj" : "gh";
+    const credit = await reserveRunCredits(supabase, channelId, duration, prefix, {
+      maxCredits,
+      creditRef: idemKey ? runCreditRefFor(prefix, user.id, channelId, idemKey) : null,
+    });
+    if (!credit.ok) return NextResponse.json(credit.body, { status: credit.status });
+    creditRef = credit.creditRef;
+    creditsHeld = creditRef ? credit.estimate?.credits ?? null : null;
+    frozenDurationS = creditRef ? credit.durationS : null;
+  }
+  const heldNote = creditRef ? { credits_held: creditsHeld } : {};
+  // Keyed + held: the reference is burnt if the start fails (run-start.ts says what the caller is told).
+  const keyedHold = Boolean(idemKey && creditRef);
+  const heldAmount = creditsHeld ?? true;
+
+  if (backend === "queue") {
+    const supabase = await createClient();
+    if (!supabase)
+      return NextResponse.json(
+        keyedHold ? startFailureBody("failed", "queue_unavailable", heldAmount) : { error: "queue_unavailable", ...heldNote },
+        { status: 503 },
+      );
+    // The job runs the length its hold was priced for, and nothing else.
+    const runOpts = frozenDurationS !== null ? { ...opts, duration: frozenDurationS } : opts;
+    const row = buildRenderJobInsert(channelId, runOpts, user.id, creditRef);
+    // supabase-js reports a failed fetch as { error, status: 0 }; a throw is the same "no answer".
+    let ins: { data: { id: unknown } | null; error: { code?: string; message?: string } | null; status?: number };
+    try {
+      ins = await supabase.from("render_jobs").insert(row).select("id").single();
+    } catch (e) {
+      ins = { data: null, error: { message: e instanceof Error ? e.message : "insert_failed" }, status: 0 };
+    }
+    const { data, error } = ins;
+    if (error || !data) {
+      // A missing table is "0017 not applied yet" — say so, never claim it queued.
+      const missing = error?.code === "42P01" || /PGRST205|does not exist/i.test(error?.message ?? "");
+      // The run gate's words (0192/0196), when an answer read as unknown above turned out to be "none" or "minor": named, so the
+      // person sees the remedy, not "failed". The hold this press took stays until it expires, as for any refused insert.
+      const word = (error?.message ?? "").trim();
+      const age = word === "adult_attestation_required" || word === "adult_only_service" ? word : null;
+      const reason = age ?? (missing ? "queue_unavailable" : "queue_insert_failed");
+      return NextResponse.json(
+        keyedHold ? startFailureBody(insertOutcome(ins), reason, heldAmount) : { error: reason, ...heldNote },
+        { status: age === "adult_attestation_required" ? 428 : age ? 403 : missing ? 503 : 502 },
+      );
+    }
+    await logAudit({
+      action: "agent.run",
+      channelId,
+      detail: {
+        backend: "queue",
+        job_id: data.id,
+        ...row.params,
+        ...(creditRef ? { credit_ref: creditRef, credits_reserved: creditsHeld } : {}),
+      },
+    });
+    return NextResponse.json({ ok: true, backend: "queue", job_id: data.id, credits_reserved: creditsHeld });
+  }
+
+  try {
+    // The Actions run carries no id back, and its events carry none either: the Studio's live view finds this run's events by the
+    // channel and this moment (/studio?view=live&channel=&since=), taken before the dispatch so its first event is never earlier.
+    const dispatchedAt = new Date().toISOString();
+    await dispatchDailyVideo(channelId, { ...opts, creditRef: creditRef ?? undefined });
+    // Audit the on-demand run against its channel (best-effort, never throws).
+    // Record only the non-default controls the operator actually set.
+    const detail: Record<string, unknown> = { backend: "actions" };
+    if (topic) detail.topic = topic;
+    if (duration) detail.duration = duration;
+    if (language) detail.language = language;
+    if (visualStyle) detail.visual_style = visualStyle;
+    if (videoProvider) detail.video_provider = videoProvider;
+    if (imageProvider) detail.image_provider = imageProvider;
+    if (ttsModel) detail.tts_model = ttsModel;
+    if (voiceId) detail.voice_id = voiceId;
+    if (publishHint) detail.publish_hint = publishHint;
+    if (madeForKids) detail.made_for_kids = true;
+    if (creditRef) {
+      detail.credit_ref = creditRef;
+      detail.credits_reserved = creditsHeld;
+    }
+    await logAudit({
+      action: "agent.run",
+      channelId,
+      detail,
+    });
+    return NextResponse.json({ ok: true, backend: "actions", credits_reserved: creditsHeld, channel_id: channelId, dispatched_at: dispatchedAt });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : "github_dispatch_failed";
+    const status =
+      reason === "github_unauthorized"
+        ? 403
+        : reason === "github_workflow_not_found"
+          ? 404
+          : reason === "github_not_configured"
+            ? 503
+            : 502;
+    if (keyedHold) {
+      const { outcome, reason: why } = dispatchOutcome(e);
+      return NextResponse.json(startFailureBody(outcome, why, heldAmount), { status });
+    }
+    return NextResponse.json({ error: reason, ...heldNote }, { status });
+  }
+});

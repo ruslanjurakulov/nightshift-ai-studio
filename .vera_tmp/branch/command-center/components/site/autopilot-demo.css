@@ -1,0 +1,431 @@
+/* ── The autopilot walk-through and the phone's Shorts feed ───────────────
+   components/site/AutopilotDemo.tsx and components/site/ShortsFeed.tsx.
+   The rules of site-next.css hold here too, and tests/autopilot-demo.test.tsx
+   pins them for this file: every selector under .nx (the marketing shell's
+   root) or an .nx-* class, tokens only (--ns-*, --nx-stage-*), every
+   transition inside a prefers-reduced-motion: no-preference block, controls
+   44px or more. Only the current panel takes room, so the frame is as tall
+   as the stage on screen (the tallest stage's height left the first one, the
+   one every visitor sees, with 480 px or more of empty card). */
+
+@layer components {
+.nx-ap-frame {
+  margin-top: 40px;
+  padding: 16px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-sheet, 20px);
+  background: var(--ns-ground);
+}
+@media (min-width: 640px) {
+  .nx-ap-frame { padding: 24px; }
+}
+
+/* The rail: one row that scrolls sideways on a phone, nine equal columns on a wide screen. */
+.nx-ap-rail {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nx-ap-rail::-webkit-scrollbar { display: none; }
+@media (min-width: 1024px) {
+  .nx-ap-rail { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); overflow: visible; }
+}
+.nx-ap-step { flex: 0 0 auto; }
+.nx-ap-stepbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 76px;
+  min-height: 64px;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ns-text-dim);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+}
+.nx-ap-stepbtn:hover { background: var(--ns-key); color: var(--ns-text); }
+.nx-ap-stepbtn:focus-visible { outline: 2px solid var(--ns-text); outline-offset: 2px; }
+.nx-ap-stepbtn[aria-current="step"] { color: var(--ns-text); font-weight: 600; }
+.nx-ap-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: 999px;
+  background: var(--ns-console);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.nx-ap-step[data-state="done"] .nx-ap-dot { border-color: var(--ns-amber); background: var(--ns-amber); color: var(--ns-on-amber); }
+.nx-ap-step[data-state="now"] .nx-ap-dot { border-color: var(--ns-cta-bg); background: var(--ns-cta-bg); color: #ffffff; }
+.nx-ap-name { max-width: 12ch; }
+
+.nx-ap-track { height: 3px; margin-top: 8px; border-radius: 999px; background: var(--ns-rule); overflow: hidden; }
+.nx-ap-fill { display: block; height: 100%; background: var(--ns-amber); transform-origin: left center; }
+
+.nx-ap-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0 20px; }
+.nx-ap-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: 999px;
+  background: var(--ns-console);
+  color: var(--ns-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.nx-ap-key svg { width: 18px; height: 18px; }
+.nx-ap-key:disabled { opacity: 0.45; cursor: default; }
+.nx-ap-key:focus-visible { outline: 2px solid var(--ns-text); outline-offset: 2px; }
+.nx-ap-count { margin: 0 0 0 auto; font-size: 14px; color: var(--ns-text-dim); font-variant-numeric: tabular-nums; }
+.nx-ap-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The current panel is in the flow and sets the frame's height; the others lie over it, top-aligned, hidden and inert, so one
+   fading out never makes room. A floor keeps a short stage from looking like a collapsed box. While the height eases from one
+   stage to the next (data-sizing, AutopilotDemo.tsx), a taller panel fading out is clipped to the frame, not drawn over what
+   follows it. */
+.nx-ap-stack { position: relative; display: grid; min-height: 240px; }
+.nx-ap-stack[data-sizing] { overflow: hidden; }
+.nx-ap-panel {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  visibility: hidden;
+  opacity: 0;
+}
+.nx-ap-panel[data-active="true"] { position: relative; inset: auto; visibility: visible; opacity: 1; }
+@media (min-width: 900px) {
+  .nx-ap-panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 32px; }
+}
+.nx-ap-text .nx-h3 { margin-top: 12px; }
+.nx-ap-text .nx-body { margin-top: 8px; color: var(--ns-text-dim); }
+.nx-ap-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ns-rule-strong);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ns-text);
+}
+.nx-ap-tag[data-kind="file"] { border-color: var(--ns-amber); color: var(--ns-amber-ink); }
+.nx-ap-tag[data-kind="mock"] { border-style: dashed; }
+
+.nx-ap-art { min-width: 0; }
+.nx-ap-card {
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-panel, 16px);
+  background: var(--ns-console);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ns-text);
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+.nx-ap-card dl { margin: 0; }
+.nx-ap-card > dl + .nx-ap-k, .nx-ap-card > dl + dl { margin-top: 14px; }
+.nx-ap-row { display: grid; gap: 2px; padding-block: 6px; }
+.nx-ap-row + .nx-ap-row { border-top: 1px solid var(--ns-rule); }
+.nx-ap-row dt, .nx-ap-k { margin: 0; font-size: 13px; font-weight: 600; color: var(--ns-text-dim); }
+.nx-ap-row dd { margin: 0; }
+.nx-ap-big { font-size: 20px; line-height: 1.3; }
+.nx-ap-k + * { margin-top: 6px; }
+.nx-ap-note { margin-top: 12px; font-size: 14px; color: var(--ns-text-dim); }
+.nx-ap-source { margin-top: 10px; font-size: 13px; color: var(--ns-text-dim); overflow-wrap: anywhere; }
+.nx-ap-card code, .nx-ap-source code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--ns-key);
+}
+
+.nx-ap-claims { display: grid; gap: 12px; }
+.nx-ap-claims li { display: grid; gap: 4px; padding: 12px; border-radius: 12px; background: var(--ns-ground); }
+.nx-ap-verdict { font-size: 14px; font-weight: 600; }
+.nx-ap-verdict[data-status="unverifiable"] { color: var(--ns-amber-ink); }
+
+.nx-ap-sections { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; counter-reset: sec; }
+.nx-ap-sections li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--ns-rule); font-size: 14px; }
+.nx-ap-sections li span { color: var(--ns-text-dim); white-space: nowrap; }
+
+.nx-ap-narr { margin: 6px 0 14px; font-size: 16px; line-height: 1.7; }
+.nx-ap-cue {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--ns-key);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ns-amber-ink);
+}
+.nx-ap-words, .nx-ap-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+.nx-ap-words li { display: inline-flex; gap: 8px; padding: 4px 10px; border-radius: 999px; background: var(--ns-ground); font-size: 14px; }
+.nx-ap-words li span + span { color: var(--ns-text-dim); font-variant-numeric: tabular-nums; }
+.nx-ap-chips li { padding: 3px 10px; border: 1px solid var(--ns-rule); border-radius: 999px; font-size: 13.5px; }
+.nx-ap-overlay {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--nx-stage);
+  color: var(--nx-stage-amber);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.nx-ap-scenes { display: grid; gap: 10px; }
+.nx-ap-scenes li { display: grid; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--ns-rule); }
+.nx-ap-scenes li:last-child { padding-bottom: 0; border-bottom: 0; }
+.nx-ap-scene-id { font-weight: 600; font-size: 14px; }
+.nx-ap-scene-how { font-size: 13px; color: var(--ns-text-dim); }
+.nx-ap-scene-line { font-size: 14px; }
+
+/* The two drawings of the app's screen: a dashed frame says it is a drawing, as the tag above it does in words. */
+.nx-ap-mock { border-style: dashed; border-color: var(--ns-rule-strong); }
+.nx-ap-mock-bar { margin: -18px -18px 12px; padding: 10px 18px; border-bottom: 1px dashed var(--ns-rule-strong); font-size: 13px; font-weight: 600; color: var(--ns-text-dim); }
+.nx-ap-mock-title { font-weight: 600; }
+.nx-ap-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--ns-key);
+  font-size: 14px;
+  font-weight: 600;
+}
+.nx-ap-row .nx-ap-private { margin-top: 0; }
+.nx-ap-private svg { width: 14px; height: 14px; }
+/* A drawing of the key, muted: the page's one primary colour belongs to its real actions, not to a picture of one. */
+.nx-ap-fakebtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 14px;
+  border: 1px dashed var(--ns-rule-strong);
+  border-radius: 999px;
+  background: var(--ns-key);
+  color: var(--ns-text-dim);
+  font-weight: 600;
+}
+
+.nx-ap-rules { display: grid; gap: 16px; }
+.nx-ap-rules p { margin: 0; }
+.nx-ap-ruleslist { display: grid; gap: 8px; margin: 6px 0 0; padding-left: 1.25em; font-size: 14.5px; }
+
+.nx-ap-cta {
+  display: grid;
+  gap: 8px;
+  margin-top: 32px;
+  padding: 24px;
+  border-radius: var(--ns-r-sheet, 20px);
+  background: var(--nx-stage);
+  color: var(--nx-stage-text);
+}
+.nx-ap-cta .nx-body { color: var(--nx-stage-dim); max-width: 60ch; }
+.nx-ap-cta .nx-link { color: var(--nx-stage-text); }
+/* The closing box reads left to right, heading and body at its left edge: its keys start there too, not in the middle. */
+.nx-ap-cta .nx-actions { margin-top: 8px; align-items: flex-start; justify-content: flex-start; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .nx-ap-panel { transition: opacity 260ms var(--ns-ease), visibility 0s linear 260ms; }
+  .nx-ap-panel[data-active="true"] { transition: opacity 260ms var(--ns-ease), visibility 0s; }
+  .nx-ap-fill { transition: transform 420ms var(--ns-ease); }
+  .nx-ap-dot { transition: background-color 200ms var(--ns-ease), border-color 200ms var(--ns-ease); }
+  .nx-ap-stack { transition: height 320ms var(--ns-ease); }
+  html[data-motion="paused"] .nx-ap-panel, html[data-motion="paused"] .nx-ap-fill, html[data-motion="paused"] .nx-ap-stack { transition: none; }
+}
+
+/* ── The Shorts feed (phones only: the entry is hidden from 768px up) ──── */
+.nx-shorts-entry { margin-top: 20px; }
+.nx-shorts-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 20px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: 999px;
+  background: var(--ns-key);
+  color: var(--ns-text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nx-shorts-open svg { width: 20px; height: 20px; }
+.nx-shorts-open:focus-visible { outline: 2px solid var(--ns-text); outline-offset: 2px; }
+.nx-shorts-open-note { display: block; margin-top: 6px; font-size: 13px; color: var(--ns-text-dim); }
+@media (min-width: 768px) {
+  .nx-shorts-entry { display: none; }
+}
+
+.nx-shorts {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #000000;
+  color: #ffffff;
+}
+.nx-shorts-list {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+.nx-shorts-list::-webkit-scrollbar { display: none; }
+.nx-shorts-slide {
+  position: relative;
+  height: 100dvh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  overflow: hidden;
+}
+.nx-shorts-media { position: absolute; inset: 0; }
+.nx-shorts-media img, .nx-shorts-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.nx-shorts-media video { opacity: 0; }
+.nx-shorts-media[data-live="true"] video { opacity: 1; }
+.nx-shorts-shade {
+  position: absolute;
+  inset: auto 0 0;
+  height: 62%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.86), rgba(0, 0, 0, 0.5) 55%, transparent);
+  pointer-events: none;
+}
+.nx-shorts-cap {
+  position: absolute;
+  inset: auto 72px 0 0;
+  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  font-size: 14px;
+  line-height: 1.45;
+}
+.nx-shorts-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); font-size: 12.5px; font-weight: 600; }
+.nx-shorts-model { margin-top: 8px; font-size: 14px; }
+.nx-shorts-prompt {
+  display: -webkit-box;
+  margin-top: 6px;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+}
+.nx-shorts-use {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111111;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.nx-shorts-use svg { width: 18px; height: 18px; }
+.nx-shorts-usenote { margin-top: 6px; font-size: 12.5px; color: rgba(255, 255, 255, 0.78); }
+
+.nx-shorts-top {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top)) 8px 8px 16px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent);
+  pointer-events: none;
+}
+.nx-shorts-top > * { pointer-events: auto; }
+.nx-shorts-pos { margin: 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.nx-shorts-side {
+  position: absolute;
+  right: 8px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+}
+.nx-shorts-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  cursor: pointer;
+}
+.nx-shorts-btn svg { width: 22px; height: 22px; }
+.nx-shorts-btn:disabled { opacity: 0.45; cursor: default; }
+.nx-shorts-btn:focus-visible, .nx-shorts-use:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }
+.nx-shorts-media { cursor: pointer; }
+.nx-shorts-kbd:not(:focus-visible) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.nx-shorts-playbig {
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 72px;
+  height: 72px;
+  transform: translate(-50%, -50%);
+}
+.nx-shorts-playbig svg { width: 30px; height: 30px; }
+.nx-shorts-hint { position: absolute; left: 0; right: 0; top: calc(60px + env(safe-area-inset-top)); text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.8); pointer-events: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .nx-shorts-media video { transition: opacity 240ms var(--ns-ease); }
+  .nx-shorts-list { scroll-behavior: smooth; }
+}
+}

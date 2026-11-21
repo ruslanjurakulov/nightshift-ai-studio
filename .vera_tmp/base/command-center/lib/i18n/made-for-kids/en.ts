@@ -1,0 +1,52 @@
+/**
+ * YouTube's "made for kids" switch (components/review/MadeForKidsSwitch.tsx): on the review panel, where a person approves a
+ * video, and on the Create form, where a run starts. English is the source: ru.ts and uz.ts are typed `MadeForKidsDictionary`.
+ * The ru and uz sentences are machine drafts: have a native speaker read them.
+ */
+export const madeForKidsEn = {
+  label: "Made for kids (YouTube requirement)",
+  help: "When this is on, YouTube turns off comments, personalised ads, notifications and some other features on this video.",
+  kidsNote: "This is kids content, so it is on. Turning it off needs your confirmation.",
+  confirmTitle: "Declare this video not made for kids?",
+  confirmBody:
+    "It is kids content. YouTube's rules and children's privacy law (COPPA) require a video for children to be declared made for kids. Turn it off only if this video is not aimed at children.",
+  confirmYes: "Yes, it is not made for kids",
+  confirmNo: "Keep it on",
+  confirmBack: "Go back",
+  saving: "Saving…",
+  saved: "Saved.",
+  createNote: "Applies to this run's video. Kids content is made for kids even when this is off.",
+  notRecorded: "Not recorded for this video: it was uploaded before this setting existed. Check its audience in YouTube Studio.",
+  confirmedOff: "Declared not made for kids; confirmed on {when}.",
+  question: "Is this video made for kids? (YouTube requirement)",
+  yes: "Yes",
+  no: "No",
+  hintKids: "System's guess: made for kids",
+  hintNotKids: "System's guess: not made for kids",
+  hintUnknown: "System's guess: none recorded for this video",
+  hintNote: "A guess only: choose the answer yourself.",
+  unanswered: "Not answered yet. The video cannot be approved until you choose.",
+  answeredOn: "Answered on {when}.",
+  blockers: {
+    cut_unknown: "This video was uploaded before its cut could be recorded, so the answer has nothing to belong to. Set its audience in YouTube Studio.",
+    already_public: "The video is public: change its audience in YouTube Studio.",
+    approval_live: "Approved as it is. The audience can change when the approval runs out.",
+    not_admin: "Only an administrator of this organization can change it.",
+    not_member: "Only a member of this organization can change it.",
+  },
+  errors: {
+    bad_hash: "This page does not know which version of the video it shows. Reload it and try again.",
+    cut_unknown: "This video was uploaded before its cut could be recorded. Set its audience in YouTube Studio.",
+    cut_changed: "This video changed after you opened the page. Reload it, watch the new version and answer again.",
+    bad_value: "That value cannot be saved.",
+    rate_limited: "Too many changes in a short time. Try again in a few minutes.",
+    already_public: "The video is public: change its audience in YouTube Studio.",
+    approval_live: "Approved as it is. The audience can change when the approval runs out.",
+    confirm_required: "Turning it off needs your confirmation.",
+    forbidden: "Only an administrator of this organization can change it.",
+    not_found: "The video was not found.",
+    failed: "Not saved. Try again.",
+  },
+};
+
+export type MadeForKidsDictionary = typeof madeForKidsEn;

@@ -1,0 +1,102 @@
+import { createClient } from "@/lib/supabase/server";
+import { isSupabaseConfigured } from "@/lib/config";
+import { NotConfigured } from "@/components/NotConfigured";
+import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
+import { SeriesBoard } from "@/components/series/SeriesBoard";
+import { PlanSeriesPanel, type RecentPlansView } from "@/components/series/PlanSeriesPanel";
+import { seriesStatus, type SeriesRow } from "@/lib/series";
+import { getChannelPath } from "@/lib/channels-path-server";
+import { seriesFactoryEnabled } from "@/lib/server/series-factory";
+import { readRecentPlans } from "@/lib/server/seriesPlans";
+import { getChannelContext } from "@/lib/channels-server";
+import { orgWide, scopeQuery } from "@/lib/channels";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { atLeast } from "@/lib/auth/roles";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type ChannelOption = { channel_id: string; name: string };
+
+/**
+ * Series — the recurring content lines within each channel (niche, format,
+ * style, cadence, platforms, automation level). A channel can run several.
+ *
+ * Reads the content_series table (migration 0006). If that migration has not
+ * been applied yet the query fails softly and the board shows its empty state
+ * with a note, rather than the page erroring — the same posture the other
+ * data pages take before their tables exist.
+ */
+export default async function SeriesPage() {
+  if (!isSupabaseConfigured) return <NotConfigured />;
+  const { t } = await getDictionary();
+  const supabase = await createClient();
+
+  let series: SeriesRow[] = [];
+  let channels: ChannelOption[] = [];
+  let tableMissing = false;
+  let readFailedList = false;
+
+  // Every series of the CURRENT organization, whichever channel is selected;
+  // the channel options are the same org-filtered list the switcher shows.
+  const ctx = await getChannelContext();
+  if (supabase) {
+    const s = await scopeQuery(supabase.from("content_series").select("*"), orgWide(ctx.scope))
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (s.error && /content_series/.test(s.error.message)) tableMissing = true;
+    else if (s.error) readFailedList = true;
+    series = (s.data as SeriesRow[]) ?? [];
+    channels = ctx.channels.map((c) => ({ channel_id: c.channel_id, name: c.name }));
+  }
+  // The pre-multi-channel fallback. Inside an organization an empty list is
+  // the truth: offering the operator's "default" channel to a tenant would
+  // name a channel the tenant cannot write to.
+  if (channels.length === 0 && ctx.scope.orgChannelIds === null) {
+    channels = [{ channel_id: "default", name: "Default" }];
+  }
+
+  // Writing a series is an editor+ action in the organization being viewed.
+  const canEdit = atLeast(await resolveCurrentOrgRole(), "editor");
+
+  // The Series Factory (docs/SERIES_FACTORY.md, slice S3) is behind a server flag, default off. Off, nothing below runs: no extra
+  // read, nothing new on the page. On, the "Plan a series" form and the organization's recent plans appear above the board.
+  let planPanel: React.ReactNode = null;
+  if (seriesFactoryEnabled()) {
+    const path = await getChannelPath();
+    let recent: RecentPlansView = { state: "failed" };
+    if (supabase) {
+      const read = await readRecentPlans(supabase, orgWide(ctx.scope));
+      recent =
+        read.state === "ok"
+          ? { state: "ok", plans: read.plans.map((p) => ({ id: p.id, href: path(`/series/${p.id}`), title: p.title, topic: p.topic, status: p.status, nEpisodes: p.nEpisodes })) }
+          : read;
+    }
+    planPanel = (
+      <PlanSeriesPanel
+        channels={channels}
+        series={series.filter((x) => seriesStatus(x) === "ACTIVE").map((x) => ({ series_id: x.series_id, channel_id: x.channel_id, name: x.name }))}
+        canEdit={canEdit}
+        planBase={path("/series")}
+        recent={recent}
+      />
+    );
+  }
+
+  return (
+    <div className="rhythm ns-open stagger-enter">
+      <PageHeader icon="series" title={t.series.title} subtitle={t.series.subtitle} />
+      {planPanel}
+      <SeriesBoard
+        series={series}
+        channels={channels}
+        tableMissing={tableMissing}
+        readFailed={readFailedList}
+        strings={t.series}
+        canEdit={canEdit}
+      />
+    </div>
+  );
+}

@@ -1,0 +1,15 @@
+{
+  "pr": 484,
+  "shipped": "2026-10-15",
+  "kind": "feature",
+  "public": true,
+  "text": {
+    "uz": "Video muharririda yangilik: videoning ustiga strelka, doira, toʻrtburchak, yulduz, yozuv, chiziq va jarayon chizigʻini qoʻshing. Rangi, oʻlchami va qachon koʻrinishini oʻzingiz tanlaysiz.",
+    "ru": "Новое в видеоредакторе: добавляйте поверх видео стрелки, круги, прямоугольники, звёзды, надписи, линии и полосу прогресса. Цвет, размер и время показа выбираете сами.",
+    "en": "New in the video editor: add arrows, circles, rectangles, stars, labels, lines and a progress bar over your video. You choose the colour, the size and when each one shows."
+  },
+  "link": "/studio",
+  "media": {
+    "hint": "A short screen recording of an arrow and a Subscribe label placed on a clip in the editor."
+  }
+}

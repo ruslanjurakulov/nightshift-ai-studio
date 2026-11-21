@@ -1,0 +1,92 @@
+# Nightshift pipeline worker — tools/queue_worker.py on any Docker host.
+#
+#   docker build -f Dockerfile.worker -t nightshift-worker .
+#   docker run -d --name nightshift-worker --restart unless-stopped \
+#     --stop-timeout 3600 --env-file /etc/nightshift/worker.env \
+#     -v nightshift-output:/app/output -v nightshift-history:/app/history \
+#     -v nightshift-logs:/app/logs nightshift-worker
+#
+# See docs/WORKER_VPS.md. The toolchain mirrors the `make-video` job of
+# .github/workflows/daily_video.yml: Python 3.11, ffmpeg, ImageMagick with the
+# same one-line policy fix, DejaVu fonts, requirements.txt. No Node: the
+# workflow does not install Remotion either.
+#
+# NO SECRET IS EVER BUILT INTO THIS IMAGE. Keys, the YouTube token(s) and the
+# OAuth client secret arrive at runtime through --env-file; the worker writes
+# the token files for one job and deletes them after it. .dockerignore keeps
+# .env, youtube_token*.json and client_secret.json out of the build context,
+# and the check below fails the build if one slipped through anyway.
+
+FROM python:3.11-slim-bookworm@sha256:2333bd330d12de02514770b3585cad313644316047cdee24a7acfdece6de6efb
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# The workflow's "Install system dependencies" step. MoviePy's TextClip hands
+# ImageMagick `label:@/tmp/…`, which the shipped policy.xml forbids; re-enable
+# just that one path read, exactly as the workflow does (see its comment).
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends ffmpeg imagemagick fonts-dejavu ca-certificates \
+ && for p in /etc/ImageMagick-6/policy.xml /etc/ImageMagick-7/policy.xml; do \
+      if [ -f "$p" ]; then sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' "$p"; fi; \
+    done \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Dependencies first, so a code change does not reinstall them. openai-whisper
+# pulls torch; the CPU wheel is installed first because a VPS has no GPU and the
+# default wheel bundles several GB of CUDA libraries it would never use.
+# constraints.txt pins the SDKs whose behaviour must not change on a rebuild
+# (elevenlabs, google-genai, edge-tts, openai-whisper) to exact versions.
+COPY requirements.txt constraints.txt ./
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
+ && pip install -c constraints.txt -r requirements.txt
+# Whisper's "base" model is fetched at build time, not in the middle of the first
+# run (after the script and the voice are already paid for). Downloaded into a
+# scratch cache here, before COPY . . so a code change does not repeat it, and
+# moved into the run user's cache below. The check fails the build if the
+# download or the load does not work.
+RUN XDG_CACHE_HOME=/opt/whisper-cache python -c "import whisper; whisper.load_model('base'); print('whisper base cached')" \
+ && chmod -R a+rX /opt/whisper-cache
+# requirements.txt includes pillow-heif (HEIC photos in the media library, 0044):
+# its manylinux wheels bundle libheif, so no apt package is added for it. The
+# check below fails the build if the decoder cannot be imported.
+RUN python -c "import pillow_heif; print('pillow-heif', pillow_heif.__version__, 'libheif', pillow_heif.libheif_version())"
+
+COPY . .
+
+# Refuse to ship a credential, even one .dockerignore missed.
+RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_secret*.json' -o -name '.env' \) | grep -q .; then \
+      echo "credential file in build context — remove it; secrets come from --env-file at runtime" >&2; exit 1; \
+    fi \
+ && useradd --create-home --uid 10001 nightshift \
+ && mkdir -p /home/nightshift/.cache \
+ && mv /opt/whisper-cache/whisper /home/nightshift/.cache/whisper \
+ && chown -R nightshift:nightshift /home/nightshift/.cache \
+ && mkdir -p output history logs assets downloads \
+ && chown -R nightshift:nightshift /app \
+ && chmod -R go+rX,go-w /app \
+ && chmod 700 output history logs \
+ && mkdir -p /app/media /app/media-staging \
+ && chown 1000:1000 /app/media /app/media-staging
+# media/ and media-staging/ belong to uid 1000: media-worker runs as the web
+# image's `node` user so both can manage staged uploads (docker-compose.yml).
+# The code must be readable by that uid too: COPY keeps the build context's
+# modes, and the deploy checks the repo out under umask 077 (files 600), which
+# left media-worker unable to open its own script (python exit 2, "Permission
+# denied"). Code is read-only for others; the worker's own state stays 700.
+
+USER nightshift
+
+# output/ (run checkpoints, resume ledgers, renders), history/ (topic memory,
+# chronos.db) and logs/ outlive the container — the reason to leave Actions.
+VOLUME ["/app/output", "/app/history", "/app/logs"]
+
+# docker stop sends SIGTERM: the worker stops claiming and lets the current run
+# finish for up to WORKER_STOP_GRACE_SECONDS. Give it that long with
+# `--stop-timeout` (docs/WORKER_VPS.md).
+STOPSIGNAL SIGTERM
+CMD ["python", "tools/queue_worker.py"]

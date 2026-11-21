@@ -1,0 +1,915 @@
+"""Self-hosted Command Center: deploy/ must stay in step with the app.
+
+The failure these guard against is quiet: someone adds `process.env.FOO` to the
+Command Center, Vercel has FOO set, the self-hosted box does not, and a feature
+silently reads as "not configured" on the server only. Or a compose edit
+publishes the app port, which Docker opens around ufw. Neither shows up until
+someone clicks the broken button on production.
+"""
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+APP = ROOT / "command-center"
+DEPLOY = ROOT / "deploy"
+ENV_EXAMPLE = DEPLOY / ".env.web.example"
+COMPOSE = DEPLOY / "docker-compose.yml"
+DOCKERFILE = APP / "Dockerfile"
+
+SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".cjs"}
+SKIP_DIRS = {"node_modules", ".next", "tests", "out", "build"}
+
+# Set by the Dockerfile itself (build or runtime); not something an operator sets.
+BUILD_ONLY = {"NEXT_OUTPUT", "NODE_ENV"}
+
+# Set by the hosting platform on its own deploys, never by an operator; the
+# self-hosted box sets APP_ORIGIN instead, which the code reads first
+# (command-center/lib/landing.ts siteOrigin), so an unset value here is the
+# intended state, not a gap.
+# VERCEL is "1" on Vercel's own deploys only: command-center/lib/geo/client-ip.ts reads it to know that no Caddy is in
+# front there (so the header Caddy writes is not believed, and the platform's own is). Unset on the box is the intended state.
+# NEXT_RUNTIME is set by Next.js itself ("nodejs" or "edge") when it runs instrumentation.ts, on every host.
+PLATFORM_PROVIDED = {"VERCEL_PROJECT_PRODUCTION_URL", "VERCEL", "NEXT_RUNTIME"}
+
+DOT_ACCESS = re.compile(r"process\.env\.([A-Z][A-Z0-9_]*)")
+BRACKET_ACCESS = re.compile(r"""process\.env\[\s*["']([A-Z][A-Z0-9_]*)["']\s*\]""")
+ANY_ACCESS = re.compile(r"process\.env\b")
+
+
+def app_sources():
+    for path in APP.rglob("*"):
+        rel = path.relative_to(APP)
+        if any(part in SKIP_DIRS for part in rel.parts):
+            continue
+        if path.suffix not in SOURCE_SUFFIXES or path.name.endswith((".test.ts", ".test.tsx")):
+            continue
+        if path.name == "vitest.config.ts":
+            continue
+        yield path
+
+
+def referenced_env_vars():
+    names, unreadable = set(), []
+    for path in app_sources():
+        text = path.read_text(encoding="utf-8")
+        found = DOT_ACCESS.findall(text) + BRACKET_ACCESS.findall(text)
+        names.update(found)
+        # A dynamic read (process.env[name], destructuring) would slip past
+        # the name check entirely, so it is refused rather than ignored.
+        if len(ANY_ACCESS.findall(text)) != len(found):
+            unreadable.append(str(path.relative_to(ROOT)))
+    return names, unreadable
+
+
+def example_keys():
+    keys = {}
+    for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^([A-Z][A-Z0-9_]*)=(.*)$", line)
+        if m:
+            keys[m.group(1)] = m.group(2)
+    return keys
+
+
+def compose_environment_keys():
+    """Names compose sets on a service itself (`KEY: value` under environment)."""
+    return set(re.findall(r"^\s+([A-Z][A-Z0-9_]*):\s", COMPOSE.read_text(encoding="utf-8"), re.M))
+
+
+class EnvTemplateTests(unittest.TestCase):
+    def test_every_env_var_the_app_reads_is_provided_on_the_server(self):
+        names, unreadable = referenced_env_vars()
+        self.assertFalse(unreadable, f"process.env read by a non-literal name in: {unreadable}")
+        self.assertIn("NEXT_PUBLIC_SUPABASE_URL", names)  # the scan itself works
+        provided = set(example_keys()) | compose_environment_keys() | BUILD_ONLY | PLATFORM_PROVIDED
+        missing = sorted(names - provided)
+        self.assertEqual(missing, [], f"add to deploy/.env.web.example: {missing}")
+
+    def test_build_only_vars_are_really_set_by_the_dockerfile(self):
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        for name in BUILD_ONLY:
+            self.assertRegex(dockerfile, rf"\b{name}=")
+
+    def test_public_vars_are_build_args_because_next_inlines_them_at_build_time(self):
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        compose = COMPOSE.read_text(encoding="utf-8")
+        for name in (k for k in example_keys() if k.startswith("NEXT_PUBLIC_")):
+            self.assertRegex(dockerfile, rf"ARG {name}\b")
+            self.assertRegex(compose, rf"{name}: \$\{{{name}")
+
+    def test_no_service_key_and_no_real_looking_secret_in_the_template(self):
+        text = ENV_EXAMPLE.read_text(encoding="utf-8")
+        for key in example_keys():
+            self.assertNotRegex(key, r"SERVICE|SERVICE_ROLE")
+        for key, value in example_keys().items():
+            # A JWT (Supabase keys), a GitHub token, a Slack hook: none belongs here.
+            self.assertNotRegex(value, r"eyJ|ghp_|github_pat_|hooks\.slack\.com|GOCSPX-", key)
+        self.assertNotIn("SUPABASE_SERVICE_KEY=", text)
+
+    def test_server_only_secrets_are_never_build_args(self):
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        for name in example_keys():
+            if not name.startswith("NEXT_PUBLIC_"):
+                self.assertNotRegex(dockerfile, rf"ARG {name}\b")
+
+    def test_the_runtime_image_makes_public_readable_whatever_the_checkout_umask(self):
+        # `public/` is copied from the build context as checked out, so a strict
+        # umask on the deploy box leaves it 0700 and `node` dies at start with
+        # EACCES (a restart loop behind a 502). The runner stage must fix the
+        # modes after the COPY and before it drops to `node`.
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        runner = dockerfile[dockerfile.index("AS runner"):]
+        copy = runner.index("COPY --from=builder /app/public ./public")
+        chmod = runner.index("RUN chmod -R a+rX,go-w public")
+        user = runner.index("USER node")
+        self.assertLess(copy, chmod)
+        self.assertLess(chmod, user)
+
+    def test_the_runtime_image_makes_the_country_table_readable_whatever_the_checkout_umask(self):
+        # The geo table is copied from the checkout too. Left 0600 root, `node` cannot read it, and in production every
+        # model with a country list is then hidden from everyone (lib/server/geo.ts fails closed): no error page, just
+        # "no model can do this". The modes must be fixed after the COPY and before the image drops to `node`.
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        runner = dockerfile[dockerfile.index("AS runner"):]
+        copy = runner.index("COPY --from=builder /app/data/geoip ./data/geoip")
+        chmod = runner.index("RUN chmod -R a+rX,go-w data/geoip")
+        user = runner.index("USER node")
+        self.assertLess(copy, chmod)
+        self.assertLess(chmod, user)
+
+
+def _docker_compose_available():
+    if not shutil.which("docker"):
+        return False
+    try:
+        return subprocess.run(
+            ["docker", "compose", "version"], capture_output=True, timeout=30
+        ).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+@unittest.skipUnless(_docker_compose_available(), "docker compose not installed")
+class ComposeConfigTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(
+            DOMAIN="app.example.com",
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+        )
+        result = subprocess.run(
+            ["docker", "compose", "-f", str(COMPOSE), "config", "--format", "json"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        if result.returncode != 0:
+            raise AssertionError(f"docker compose config failed:\n{result.stderr}")
+        cls.config = json.loads(result.stdout)
+
+    def test_only_web_and_caddy_are_active(self):
+        # The worker is a commented placeholder until its own image lands.
+        self.assertEqual(set(self.config["services"]), {"web", "caddy"})
+
+    def test_the_operator_bot_is_off_unless_its_profile_is_active(self):
+        # Its profile is only ever activated by deploy/remote-deploy.sh.
+        self.assertNotIn("operator-bot", self.config["services"])
+
+    def test_the_marketing_worker_is_off_unless_its_profile_is_active(self):
+        # Its profile is only ever activated by deploy/remote-deploy.sh, and only while a section is sent.
+        self.assertNotIn("marketing-worker", self.config["services"])
+
+    def test_the_brand_scan_worker_is_off_unless_its_profile_is_active(self):
+        # Its profile is only ever activated by deploy/remote-deploy.sh, and only while NIGHTSHIFT_ADS_BRAND_SCAN is `on`.
+        self.assertNotIn("brand-scan-worker", self.config["services"])
+
+    def test_the_app_port_is_never_published(self):
+        # Docker-published ports bypass ufw; only Caddy faces the internet.
+        self.assertFalse(self.config["services"]["web"].get("ports"))
+        published = {p["published"] for p in self.config["services"]["caddy"]["ports"]}
+        self.assertEqual(published, {"80", "443"})
+
+    def test_oauth_origin_follows_the_domain(self):
+        env = self.config["services"]["web"]["environment"]
+        self.assertEqual(env["APP_ORIGIN"], "https://app.example.com")
+
+    def test_restart_and_log_rotation_on_every_service(self):
+        for name, svc in self.config["services"].items():
+            self.assertEqual(svc.get("restart"), "unless-stopped", name)
+            self.assertEqual(svc["logging"]["options"]["max-size"], "10m", name)
+
+    def test_caddy_keeps_certificates_on_a_volume(self):
+        targets = {v["target"] for v in self.config["services"]["caddy"]["volumes"]}
+        self.assertIn("/data", targets)
+
+    def test_caddy_mounts_the_last_verified_caddyfile_never_the_checkout(self):
+        # deploy/remote-deploy.sh writes that file only after the pin, validate, the contract and the live
+        # check; `up` (step 6, before the check), a reboot or a restart must never find the checkout's.
+        [mount] = [v for v in self.config["services"]["caddy"]["volumes"] if v["target"] == "/etc/caddy/Caddyfile"]
+        self.assertEqual(mount["type"], "bind")
+        self.assertEqual(mount["source"], "/opt/nightshift/.caddyfile.loaded")
+        self.assertTrue(mount["read_only"])
+        # A missing file is an error, never an empty directory created in its place.
+        self.assertFalse(mount["bind"]["create_host_path"])
+        sources = [v.get("source", "") for v in self.config["services"]["caddy"]["volumes"]]
+        self.assertFalse([x for x in sources if x.endswith("deploy/Caddyfile")], sources)
+
+    def test_the_deploy_points_the_mount_at_its_own_state_directory(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(DOMAIN="app.example.com", ACME_EMAIL="admin@example.com",
+                   NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+                   WEB_ENV_FILE=str(ENV_EXAMPLE), CADDYFILE_LOADED="/srv/state/.caddyfile.loaded")
+        out = subprocess.run(["docker", "compose", "-f", str(COMPOSE), "config", "--format", "json"],
+                             capture_output=True, text=True, env=env, timeout=60, check=True).stdout
+        [mount] = [v for v in json.loads(out)["services"]["caddy"]["volumes"] if v["target"] == "/etc/caddy/Caddyfile"]
+        self.assertEqual(mount["source"], "/srv/state/.caddyfile.loaded")
+
+    def test_missing_domain_fails_loudly_instead_of_serving_a_blank_site(self):
+        # Only DOMAIN is missing: compose reports the first unset required
+        # variable it meets, in no fixed order, so every other one is set.
+        env = {k: v for k, v in os.environ.items() if k != "DOMAIN"}
+        env.update(
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+        )
+        result = subprocess.run(
+            ["docker", "compose", "-f", str(COMPOSE), "config"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("DOMAIN", result.stderr)
+
+
+class CaddyFramingTests(unittest.TestCase):
+    """The proxy must not undo the app's frame rules (command-center/lib/view-mode.ts).
+
+    The Mobile view shows the site inside a frame of its own page. The app answers
+    SAMEORIGIN to exactly that request and DENY to everything else; a Caddy that
+    also sends DENY unconditionally would win and blank the frame. So Caddy sends
+    DENY only for requests the browser did not mark Sec-Fetch-Dest: iframe, and
+    never loosens anything.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        cls.code = "\n".join(l for l in cls.text.splitlines() if not l.strip().startswith("#"))
+
+    def test_deny_is_never_unconditional(self):
+        for line in self.code.splitlines():
+            if "X-Frame-Options" in line:
+                self.assertIn("@notFrame", line, "X-Frame-Options must be set only for non-frame requests")
+
+    def test_deny_still_covers_every_request_that_is_not_a_frame(self):
+        self.assertIn("@notFrame not header Sec-Fetch-Dest iframe", self.code)
+        # `>` defers the write, so the response carries ONE header and it is DENY (a plain
+        # `header` would add a second line beside the app's own).
+        self.assertIn('header @notFrame >X-Frame-Options "DENY"', self.code)
+
+    def test_nothing_wider_is_sent_here(self):
+        self.assertNotIn("SAMEORIGIN", self.code)
+        self.assertNotIn("frame-ancestors", self.code)
+
+
+def caddy_duration_seconds(value):
+    """A Caddy duration (Go's time.ParseDuration units, plus `d`) in seconds."""
+    units = {"ns": 1e-9, "us": 1e-6, "µs": 1e-6, "ms": 1e-3, "s": 1, "m": 60, "h": 3600, "d": 86400}
+    parts = re.findall(r"(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h|d)", value)
+    if not parts or "".join(n + u for n, u in parts) != value:
+        raise ValueError(f"not a Caddy duration: {value!r}")
+    return sum(float(n) * units[u] for n, u in parts)
+
+
+class CaddyUpstreamRetryTests(unittest.TestCase):
+    """A deploy is a short wait for the visitor, never a 502.
+
+    Every deploy recreates `web`; for those seconds nothing answers at web:3000.
+    Measured 2026-11-14 with a plain `reverse_proxy web:3000`: 502 for about 5s
+    per deploy, and Google's brand verification called the home page
+    "unresponsive". lb_try_duration makes Caddy hold the request and dial again
+    instead (a failed dial is retried for any method: no request reached the app).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        code = "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+        cls.proxies = re.findall(r"^[ \t]*reverse_proxy\b.*$", code, re.M)
+        m = re.search(r"^[ \t]*reverse_proxy web:3000 \{\n(.*?)^[ \t]*\}", code, re.M | re.S)
+        cls.block = m.group(1) if m else ""
+        cls.options = dict(
+            (o.group(1), o.group(2)) for o in re.finditer(r"^[ \t]*([a-z_]+)[ \t]+(\S+)[ \t]*$", cls.block, re.M)
+        )
+
+    def test_there_is_one_proxy_and_it_has_a_block(self):
+        self.assertEqual(self.proxies, ["\treverse_proxy web:3000 {"], self.proxies)
+
+    def test_a_recreated_web_is_waited_for_at_least_ten_seconds(self):
+        self.assertIn("lb_try_duration", self.options, "without it Caddy answers 502 the moment web:3000 is not there")
+        self.assertGreaterEqual(caddy_duration_seconds(self.options["lb_try_duration"]), 10)
+
+    def test_the_dial_is_repeated_on_an_interval_that_does_not_spin(self):
+        # Caddy's docs: lb_try_interval 0 with a non-zero lb_try_duration can spin the CPU while web is down.
+        self.assertIn("lb_try_interval", self.options)
+        self.assertGreater(caddy_duration_seconds(self.options["lb_try_interval"]), 0)
+
+    def test_a_request_the_app_may_have_received_is_not_resent(self):
+        # lb_retry_match would also retry non-GET requests whose connection succeeded: a
+        # POST that spends credits or writes an intent could run twice.
+        self.assertNotIn("lb_retry_match", self.block)
+
+
+class CaddyMicrophoneTests(unittest.TestCase):
+    """The microphone is allowed on the timeline editor's project page only (owner decision, 2026-11-11).
+
+    On the self-hosted box Caddy has the last word: its deferred `>Permissions-Policy` replaces whatever the
+    app sent (docs/DEPLOY_AX42.md: the headers are Caddy's). So the path split must be HERE, and it must be the
+    same split as next.config.ts (tests/security-headers.test.ts pins the app's). A Caddy line that allowed the
+    microphone everywhere would open it to every page; one that denied it everywhere would make the editor's
+    Record button fail before the person is even asked.
+    """
+
+    POLICY = ('camera=(), microphone={mic}, geolocation=(), '
+              'payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()')
+    PROJECT = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+
+    @classmethod
+    def setUpClass(cls):
+        text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        cls.code = "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+        cls.next_config = (APP / "next.config.ts").read_text(encoding="utf-8")
+
+    def lines(self):
+        """(matcher, value) of every line that sets Permissions-Policy."""
+        out = []
+        for line in self.code.splitlines():
+            if "Permissions-Policy" not in line:
+                continue
+            m = re.fullmatch(r"\theader @(\w+) >Permissions-Policy `(.+)`", line)
+            self.assertIsNotNone(m, f"Permissions-Policy only by a matcher, deferred: {line!r}")
+            out.append((m.group(1), m.group(2)))
+        return out
+
+    def matcher(self, name):
+        """The matcher's conditions: ('regexp' | 'not regexp' | 'not path' | 'path', argument), ANDed."""
+        block = re.search(rf"^\t@{name} \{{\n(.*?)^\t\}}", self.code, re.S | re.M)
+        if block:
+            body = [l.strip() for l in block.group(1).splitlines() if l.strip()]
+        else:
+            one = re.search(rf"^\t@{name} (.+)$", self.code, re.M)
+            self.assertIsNotNone(one, name)
+            body = [one.group(1).strip()]
+        conds = []
+        for c in body:
+            neg = c.startswith("not ")
+            c = c[4:] if neg else c
+            kind, _, arg = c.partition(" ")
+            self.assertIn(kind, ("path_regexp", "path"), c)
+            conds.append((("not " if neg else "") + ("regexp" if kind == "path_regexp" else "path"), arg.strip()))
+        return conds
+
+    def matches(self, name, path):
+        def one(kind, arg):
+            if kind.endswith("regexp"):
+                # Go RE2 syntax; this pattern uses nothing Python's re reads differently.
+                hit = re.search(arg, path) is not None
+            else:
+                hit = path.startswith(arg[:-1]) if arg.endswith("*") else path == arg
+            return not hit if kind.startswith("not ") else hit
+        return all(one(k, a) for k, a in self.matcher(name))
+
+    def policy_for(self, path):
+        values = {v for name, v in self.lines() if self.matches(name, path)}
+        self.assertEqual(len(values), 1, f"{path}: exactly one Permissions-Policy value, got {values}")
+        return values.pop()
+
+    def test_the_editor_project_page_may_ask_for_the_microphone(self):
+        for path in (f"/chronos/editor/{self.PROJECT}", f"/all-channels/editor/{self.PROJECT.upper()}",
+                     f"/chronos/editor/{self.PROJECT}/"):
+            self.assertEqual(self.policy_for(path), self.POLICY.format(mic="(self)"), path)
+
+    def test_every_other_path_still_denies_it(self):
+        for path in ("/", "/studio", "/pricing", "/login", "/chronos/settings", "/chronos/videos",
+                     "/chronos/agents/voice", "/chronos/editor", f"/chronos/editor/image/{self.PROJECT}",
+                     f"/chronos/editor/{self.PROJECT}/more", f"/chronos/editor/{self.PROJECT}x",
+                     f"/x/chronos/editor/{self.PROJECT}", f"/api/editor/{self.PROJECT}",
+                     f"/api/editor/projects/{self.PROJECT}", "/api/media/uploads", f"/api/media/file/{self.PROJECT}/o"):
+            self.assertEqual(self.policy_for(path), self.POLICY.format(mic="()"), path)
+
+    def test_only_self_and_only_the_microphone_is_ever_opened(self):
+        values = {v for _n, v in self.lines()}
+        self.assertEqual(values, {self.POLICY.format(mic="()"), self.POLICY.format(mic="(self)")})
+        for v in values:
+            self.assertNotIn("*", v)
+
+    def test_the_deploy_check_expects_the_same_two_values_and_an_editor_path(self):
+        script = (DEPLOY / "remote-deploy.sh").read_text(encoding="utf-8")
+        val = lambda name: re.search(rf"^{name}='(.*)'$", script, re.M).group(1)  # noqa: E731
+        self.assertEqual(val("CADDY_PP_DENY"), self.POLICY.format(mic="()"))
+        self.assertEqual(val("CADDY_PP_MIC"), self.POLICY.format(mic="(self)"))
+        mic_path = re.search(r"^CADDY_PP_MIC_PATH=(\S+)$", script, re.M).group(1)
+        self.assertEqual(self.policy_for(mic_path), self.POLICY.format(mic="(self)"))
+        deny = re.search(r"^CADDY_PP_DENY_PATHS=\((.*)\)$", script, re.M).group(1).split()
+        self.assertEqual(deny, ["/login", "/api/account"])
+        for path in deny:
+            self.assertEqual(self.policy_for(path), self.POLICY.format(mic="()"))
+
+    def test_the_app_sends_the_same_two_values(self):
+        # next.config.ts builds both from one template; the literal parts must be Caddy's.
+        tpl = re.search(r"`(camera=\(\), microphone=\$\{microphone\}[^`]*)`", self.next_config)
+        self.assertIsNotNone(tpl)
+        self.assertEqual(tpl.group(1).replace("${microphone}", "{mic}"), self.POLICY)
+        self.assertIn('permissionsPolicy("(self)")', self.next_config)
+        self.assertIn("/editor/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+                      self.next_config)
+
+
+class CaddyReloadStepTests(unittest.TestCase):
+    """deploy/remote-deploy.sh makes a Caddyfile change take effect, and only a safe one.
+
+    A bind-mounted Caddyfile does not reload Caddy when only that file changed (PR
+    #426's framing rule sat unapplied on the server), so the deploy validates,
+    guards, reloads, verifies and rolls back; and Caddy mounts only the last
+    VERIFIED file ($CADDY_STATE_DIR/.caddyfile.loaded), never the checkout's. Behaviour is
+    exercised in tests/test_deploy_gha.py; these pin the structure and the contract.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.script = (DEPLOY / "remote-deploy.sh").read_text(encoding="utf-8")
+        cls.code = "\n".join(l for l in cls.script.splitlines() if not l.strip().startswith("#"))
+        cls.caddyfile = "\n".join(
+            l for l in (DEPLOY / "Caddyfile").read_text(encoding="utf-8").splitlines() if not l.strip().startswith("#")
+        )
+
+    def body(self, name):
+        m = re.search(rf"^{name}\(\) \{{\n(.*?)^\}}\n", self.code, re.S | re.M)
+        self.assertIsNotNone(m, name)
+        return m.group(1)
+
+    def array(self, name):
+        m = re.search(rf"^{name}=\((.*?)\)\n", self.code, re.S | re.M)
+        self.assertIsNotNone(m, name)
+        return [a or b for a, b in re.findall(r"'([^']*)'|(\S+)", m.group(1))]
+
+    def test_it_runs_after_compose_up_and_web_is_healthy_and_before_the_script_ends(self):
+        main = self.body("main")
+        order = [main.index(x) for x in ("compose up -d --build --remove-orphans web caddy", 'status" != healthy', "caddy_apply ", "log \"deployed")]
+        self.assertEqual(order, sorted(order))
+
+    def test_validate_then_guard_then_reload_then_verify_then_remember(self):
+        body = self.body("caddy_apply")
+        steps = ["caddy_exec validate", "caddy_exec adapt", "caddy_dropped", "caddy_reload", "caddy_verify", 'mv -f "$snap" "$loaded"', 'mv -f "${marker}.tmp"']
+        idx = [body.index(x) for x in steps]
+        self.assertEqual(idx, sorted(idx), steps)
+
+    def test_the_config_comes_from_the_checkout_on_stdin_not_the_bind_mount(self):
+        # A bind-mounted single file keeps pointing at the old inode when git replaces it.
+        for name in ("caddy_apply", "caddy_reload"):
+            for line in self.body(name).splitlines():
+                if "caddy_exec " in line and "--config" in line:
+                    self.assertIn("--config -", line)
+                    self.assertRegex(line, r"<\"\$(snap|file)\"")
+        self.assertNotIn("/etc/caddy/Caddyfile", self.code)
+        self.assertIn("caddy_exec() { compose exec -T caddy caddy ", self.code)
+
+    def test_reload_is_graceful_never_a_restart(self):
+        self.assertIn("reload --config - ", self.body("caddy_reload"))
+        self.assertIn("(--adapter caddyfile)", self.body("caddy_reload"))
+        for bad in ("restart caddy", "up -d --force-recreate caddy", "stop caddy", "caddy stop", "rm --stop --force caddy"):
+            self.assertNotIn(bad, self.code)
+
+    def test_a_failure_rolls_back_and_the_deploy_step_fails(self):
+        apply_ = self.body("caddy_apply")
+        self.assertIn('caddy_reload "$snap" || caddy_rollback', apply_)
+        self.assertIn("if ! caddy_verify", apply_)
+        self.assertIn("caddy_rollback", apply_)
+        rollback = self.body("caddy_rollback")
+        self.assertLess(rollback.index('caddy_reload "$file" "$kind"'), rollback.index("caddy_verify"))
+        # Best first: the verified copy, then what Caddy was running, then the commit before.
+        order = [rollback.index(x) for x in (".caddyfile.loaded", ".caddy-running.json", ".caddyfile.fallback")]
+        self.assertEqual(order, sorted(order))
+        # Every way out of the rollback is die (exit 1): the owner sees a red step.
+        self.assertGreaterEqual(rollback.count("die "), 3)
+        self.assertNotIn("return 0", rollback)
+        self.assertRegex(self.code, r"die\(\) \{[^}]*exit 1")
+
+    def test_refusals_happen_before_anything_is_loaded(self):
+        apply_ = self.body("caddy_apply")
+        for refusal in ("validate refused", "no longer sets"):
+            self.assertLess(apply_.index(refusal), apply_.index("caddy_reload"))
+            self.assertIn("die ", apply_[apply_.index(refusal) - 120 : apply_.index(refusal)])
+
+    def test_the_marker_is_written_only_after_a_verified_load(self):
+        apply_ = self.body("caddy_apply")
+        self.assertEqual(apply_.count('> "$marker"') + apply_.count('>"${marker}.tmp"'), 1)
+        self.assertLess(apply_.index("caddy_verify"), apply_.index('>"${marker}.tmp"'))
+        # The first-run stand-in is a copy only: no marker, so the first run still loads and verifies.
+        self.assertNotIn("marker", self.body("caddy_seed_previous"))
+        self.assertLess(self.body("main").index("caddy_seed_previous"), self.body("main").index("checkout --quiet -B main"))
+
+    def test_only_the_pinned_caddyfile_is_ever_loaded(self):
+        m = re.search(r'^CADDYFILE_APPROVED_SHA256="\$\{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})\}"$', self.code, re.M)
+        self.assertIsNotNone(m, "the pinned hash constant is missing or reshaped")
+        raw = (DEPLOY / "Caddyfile").read_bytes()
+        # Exact bytes, no normalisation: keep the file free of what a checkout could rewrite.
+        self.assertNotIn(b"\r", raw)
+        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+        self.assertEqual(
+            m.group(1), hashlib.sha256(raw).hexdigest(),
+            "deploy/Caddyfile changed: review it, then put `sha256sum deploy/Caddyfile` into "
+            "CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR",
+        )
+        apply_ = self.body("caddy_apply")
+        snap = self.body("caddy_snapshot")
+        gate = snap.index('"$newsha" != "$approved"')
+        self.assertIn("die ", snap[gate : gate + 400])
+        # The gate (caddy_snapshot) runs before anything reaches Caddy, in both places a file comes from.
+        call = apply_.index('caddy_snapshot "$sha" "$snap"')
+        for later in ("compose exec", "caddy_exec", "caddy_reload"):
+            self.assertLess(call, apply_.index(later), later)
+        prep = self.body("caddy_prepare_mount")
+        self.assertLess(prep.index('caddy_snapshot "$sha" "$seed"'), prep.index("compose run"))
+        self.assertLess(prep.index('caddy_snapshot "$sha" "$seed"'), prep.index('mv -f "$seed" "$loaded"'))
+        # Names and short hashes only.
+        self.assertIn("${newsha:0:12}", snap)
+        self.assertNotIn('${newsha}', snap + apply_)
+        # The service is checked before the file is judged by it.
+        self.assertLess(apply_.index("caddy true"), apply_.index("caddy_exec validate"))
+
+    def test_the_compose_default_is_where_every_deployed_script_keeps_the_verified_file(self):
+        # Rollout: this change's own merge deploy runs the PREVIOUS script, which does not set
+        # CADDYFILE_LOADED. Compose then falls back to its default, and that must be the very file the
+        # previous scripts already write after each verified load ($CADDY_STATE_DIR = the env file's
+        # directory, /opt/nightshift), so the recreate that the new mount causes starts Caddy on it.
+        compose = (DEPLOY / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("${CADDYFILE_LOADED:-/opt/nightshift/.caddyfile.loaded}", compose)
+        self.assertIn('ENV_FILE="${NIGHTSHIFT_ENV_FILE:-/opt/nightshift/.env.web}"', self.code)
+        self.assertIn('CADDY_STATE_DIR="${NIGHTSHIFT_CADDY_STATE_DIR:-$(dirname "$ENV_FILE")}"', self.code)
+        self.assertIn('loaded="$dir/.caddyfile.loaded"', self.body("caddy_apply"))
+
+    def test_caddy_mount_is_reset_at_the_top_and_never_read_from_the_environment(self):
+        top = self.code[: self.code.index("\nmain() {")]
+        self.assertRegex(top, r'(?m)^CADDY_MOUNT=""$')
+        self.assertLess(self.code.index('CADDY_MOUNT=""'), self.code.index("compose() {"))
+        self.assertNotIn("${CADDY_MOUNT:-}", self.code.replace("${CADDY_MOUNT:-$CADDY_STATE_DIR", ""))
+        prep = self.body("caddy_prepare_mount")
+        self.assertIn('.caddyfile.loaded.sha256', prep)
+        self.assertIn('[[ ! -s "$loaded" ]]', prep)
+
+    def test_compose_is_always_pointed_at_the_verified_file_and_it_is_ready_before_step_6(self):
+        self.assertIn('CADDYFILE_LOADED="${CADDY_MOUNT:-$CADDY_STATE_DIR/.caddyfile.loaded}"', self.body("compose"))
+        main = self.body("main")
+        self.assertLess(main.index("checkout --quiet -B main"), main.index('caddy_prepare_mount "$sha"'))
+        self.assertLess(main.index('caddy_prepare_mount "$sha"'), main.index("compose up -d --build --remove-orphans web caddy"))
+        # The verified file is written over the mounted path only after the live check.
+        apply_ = self.body("caddy_apply")
+        self.assertLess(apply_.index('caddy_verify "$host" full'), apply_.index('mv -f "$snap" "$loaded"'))
+        # Rollback never uses a seed that no live check confirmed.
+        self.assertIn('! -e "$dir/.caddyfile.seeded"', self.body("caddy_rollback"))
+
+    def test_the_pin_is_the_deployed_commits_not_the_running_copys(self):
+        # bash runs the pre-checkout copy of this script, so its own CADDYFILE_APPROVED_SHA256 is the
+        # previous commit's. The gate must take the deployed commit's line (or the env override).
+        apply_ = self.body("caddy_snapshot")
+        pin_of = self.body("caddy_pin_of")
+        self.assertIn('git -C "$APP_DIR" show "${sha}:deploy/remote-deploy.sh"', pin_of)
+        self.assertIn('[[ "$pins" =~ ^[0-9a-f]{64}$ ]]', pin_of)  # exactly one line, exactly 64 hex
+        for name in ("caddy_snapshot", "caddy_apply", "caddy_prepare_mount"):
+            self.assertNotIn("$CADDYFILE_APPROVED_SHA256", self.body(name), f"{name}: the running copy's value must not be the gate")
+        override = apply_.index('-n "${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-}"')
+        self.assertLess(override, apply_.index('approved="$(caddy_pin_of "$sha")"'))
+        self.assertLess(apply_.index('approved="$(caddy_pin_of "$sha")"'), apply_.index('"$newsha" != "$approved"'))
+        self.assertIn('caddy_apply "${CADDY_VERIFY_HOST:-$domain}" "$sha"', self.body("main"))
+        # The check-out happens before the step, and the step reads the same commit the env lines came from.
+        self.assertLess(self.body("main").index("checkout --quiet -B main"), self.body("main").index("caddy_apply "))
+
+    def test_the_shellcheck_disable_above_the_pin_is_data_too_and_changes_nothing(self):
+        # SC2034: the running copy never reads its own pin (caddy_pin_of reads the deployed commit's).
+        # The directive sits on the line above; the exact-line parser must still find exactly that pin.
+        lines = self.script.splitlines()
+        i = next(n for n, l in enumerate(lines) if l.startswith("CADDYFILE_APPROVED_SHA256="))
+        self.assertTrue(lines[i - 1].startswith("# shellcheck disable=SC2034"), lines[i - 1])
+        pin = hashlib.sha256((DEPLOY / "Caddyfile").read_bytes()).hexdigest()
+        without = "\n".join(lines[: i - 1] + lines[i:]) + "\n"
+        self.assertEqual(self.pin_from_commit(self.script), pin)
+        self.assertEqual(self.pin_from_commit(without), pin)
+
+    def pin_from_commit(self, script_text):
+        """caddy_pin_of (from the real script) run on a throwaway commit whose deploy/remote-deploy.sh is `script_text`."""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            env = {"PATH": os.environ["PATH"], "HOME": d, "GIT_CONFIG_NOSYSTEM": "1",
+                   "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                   "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+            git = lambda *a: subprocess.run(["git", *a], cwd=repo, env=env, check=True,  # noqa: E731
+                                            capture_output=True, text=True).stdout.strip()
+            git("init", "-q", "-b", "main")
+            (repo / "deploy").mkdir()
+            (repo / "deploy" / "remote-deploy.sh").write_text(script_text)
+            git("add", "-A")
+            git("commit", "-q", "-m", "x")
+            return subprocess.run(
+                ["bash", "-c", 'APP_DIR="$1"; eval "$(sed -n "/^caddy_pin_of() {/,/^}/p" "$2")"; caddy_pin_of HEAD',
+                 "_", str(repo), str(DEPLOY / "remote-deploy.sh")],
+                env=env, capture_output=True, text=True, check=True).stdout
+
+    def test_a_commit_changing_the_caddyfile_and_its_pin_together_is_approved_in_that_same_run(self):
+        """Simulated with git and the script's own caddy_pin_of: the running copy's constant is the OLD
+        pin, the new commit carries the new Caddyfile and the new pin; the gate sees the new pin."""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            env = {"PATH": os.environ["PATH"], "HOME": d, "GIT_CONFIG_NOSYSTEM": "1",
+                   "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                   "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+            git = lambda *a: subprocess.run(["git", *a], cwd=repo, env=env, check=True,  # noqa: E731
+                                            capture_output=True, text=True).stdout.strip()
+            git("init", "-q", "-b", "main")
+            (repo / "deploy").mkdir()
+            caddy = (DEPLOY / "Caddyfile").read_bytes() + b"# changed in the same PR\n"
+            (repo / "deploy" / "Caddyfile").write_bytes(caddy)
+            new_pin = hashlib.sha256(caddy).hexdigest()
+            old_pin = re.search(r'NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})', self.script).group(1)
+            self.assertNotEqual(new_pin, old_pin)
+            (repo / "deploy" / "remote-deploy.sh").write_text(self.script.replace(old_pin, new_pin))
+            git("add", "-A")
+            git("commit", "-q", "-m", "caddyfile + pin")
+            sha = git("rev-parse", "HEAD")
+            got = subprocess.run(
+                ["bash", "-c", 'APP_DIR="$1"; eval "$(sed -n "/^caddy_pin_of() {/,/^}/p" "$2")"; caddy_pin_of "$3"',
+                 "_", str(repo), str(DEPLOY / "remote-deploy.sh"), sha],
+                env=env, capture_output=True, text=True, check=True).stdout
+            self.assertEqual(got, new_pin, "the gate must see the new commit's pin, in this run")
+
+    def test_the_file_is_copied_once_and_that_copy_is_hashed_fed_and_kept(self):
+        apply_ = self.body("caddy_apply")
+        snap = self.body("caddy_snapshot")
+        # The copy is the deployed commit's blob, never the working-tree file (no .gitattributes filter
+        # or eol conversion between the commit and the hash); a symlink entry is refused before it,
+        # and so is anything that is not a regular file (a directory, a submodule).
+        read = 'git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$dest"'
+        self.assertIn('ls-tree "$sha" -- deploy/Caddyfile', snap)
+        self.assertLess(snap.index("120000) die"), snap.index(read))
+        self.assertLess(snap.index("100644 | 100755) ;;"), snap.index("*) die"))
+        self.assertLess(snap.index(read), snap.index('sha256sum "$dest"'))
+        # The working-tree path is never read for the gate, fed to Caddy, or mounted.
+        for body in (apply_, snap, self.body("caddy_prepare_mount")):
+            self.assertNotIn("deploy/Caddyfile\"", body.replace('${sha}:deploy/Caddyfile"', ""))
+            self.assertNotRegex(body, r'<\s*"\$new"|sha256sum "\$new"|cp "\$new"|caddy_reload "\$new"')
+        for fed in ('validate --config - --adapter caddyfile <"$snap"', 'adapt --config - --adapter caddyfile <"$snap"', 'caddy_reload "$snap"', 'mv -f "$snap" "$loaded"'):
+            self.assertIn(fed, apply_)
+        # The temporary copy is removed on every way out and the trap does not touch the exit code.
+        self.assertIn("trap \"rm -f '$snap'\" EXIT", apply_)
+        self.assertIn("trap - EXIT", apply_)
+        self.assertNotIn("exit", apply_[apply_.index("trap") : apply_.index("trap") + 40])
+
+    def test_the_running_config_is_dumped_from_inside_the_container_only(self):
+        apply_ = self.body("caddy_apply")
+        self.assertIn("exec -T caddy wget -qO- http://localhost:2019/config/", apply_)
+        self.assertLess(apply_.index("wget"), apply_.index("caddy_reload"))
+        self.assertIn('--adapter caddyfile', self.body("caddy_reload"))
+
+    def test_the_contract_is_what_the_caddyfile_sends(self):
+        header_block = re.search(r"^\theader \{\n(.*?)^\t\}", self.caddyfile, re.S | re.M).group(1)
+        sent, removed = {}, set()
+        for line in header_block.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("-"):
+                removed.add(line[1:])
+                continue
+            name, _, value = line.partition(" ")
+            # `?Name` is a default (set only when the app sent none): Caddy still sends it on every page that has
+            # no stricter value of its own, so it is part of the contract under its plain name.
+            sent[name.removeprefix("?")] = value.strip("`\"")
+        # A header sent per path (Permissions-Policy: the editor page's microphone, see CaddyMicrophoneTests)
+        # is set by one-line, deferred `header @matcher >Name value` directives outside the block.
+        for m in re.finditer(r"^\theader @\w+ >(\S+) (.+)$", self.caddyfile, re.M):
+            if m.group(1) != "X-Frame-Options":
+                sent.setdefault(m.group(1), m.group(2).strip("`\""))
+        exact = {e.split(": ", 1)[0]: e.split(": ", 1)[1] for e in self.array("CADDY_HEADERS")}
+        present = set(self.array("CADDY_HEADERS_PRESENT"))
+        self.assertEqual(set(sent), set(exact) | present)
+        for name, value in exact.items():
+            self.assertEqual(sent[name], value, name)
+        self.assertEqual(removed, set(self.array("CADDY_HEADERS_ABSENT")))
+        # And the framing rule the script verifies is the one the Caddyfile carries.
+        self.assertIn('header @notFrame >X-Frame-Options "DENY"', self.caddyfile)
+        self.assertIn("X-Frame-Options", self.body("caddy_dropped"))
+        self.assertIn("sameorigin", self.body("caddy_check"))
+
+    def test_the_guard_covers_every_contract_entry_and_nothing_widens(self):
+        dropped = self.body("caddy_dropped")
+        for arr in ("CADDY_HEADERS", "CADDY_HEADERS_PRESENT", "CADDY_HEADERS_ABSENT"):
+            self.assertIn(f"${{{arr}[@]}}", dropped)
+        self.assertIn("only DENY may be set", dropped)
+
+    def test_it_reaches_caddy_only_on_this_machine_and_adds_no_privilege_or_secret(self):
+        fetch = self.body("caddy_fetch")
+        self.assertIn("127.0.0.1", fetch)
+        self.assertIn("--resolve", fetch)
+        self.assertNotIn("-k ", fetch)
+        self.assertNotIn("--insecure", self.code)
+        # The two Permissions-Policy values name Paddle's checkout origins: header text compared with what
+        # Caddy sent, never an address anything is fetched from. Only those two lines may carry a URL.
+        pp = [l for l in self.code.splitlines() if l.startswith(("CADDY_PP_DENY=", "CADDY_PP_MIC="))]
+        self.assertEqual(len(pp), 2)
+        for line in pp:
+            self.assertEqual(set(re.findall(r"https?://[^\"' ]+", line)),
+                             {"https://buy.paddle.com", "https://sandbox-buy.paddle.com"})
+        rest = "\n".join(l for l in self.code.splitlines() if l not in pp)
+        self.assertNotRegex(rest, r"https?://(?!localhost:2019/)[a-z]")
+        self.assertNotIn("sudo", self.code)
+        self.assertNotIn("set -x", self.code)
+
+    def test_nothing_caddy_or_the_app_says_is_printed(self):
+        # The log is public: caddy's own output is discarded, the response is only compared.
+        for name in ("caddy_apply", "caddy_reload"):
+            for line in self.body(name).splitlines():
+                if "caddy_exec " in line and "adapt" not in line:
+                    self.assertIn(">/dev/null 2>&1", line)
+        self.assertIn("2>/dev/null", self.body("caddy_fetch"))
+        self.assertIn("-o /dev/null", self.body("caddy_fetch"))
+
+
+@unittest.skipUnless(_docker_compose_available(), "docker compose not installed")
+class ComposeOperatorProfileTests(unittest.TestCase):
+    """`docker compose config` with the operator profile active, as remote-deploy.sh runs it."""
+
+    @classmethod
+    def setUpClass(cls):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(
+            DOMAIN="app.example.com",
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+            OPERATOR_ENV_FILE="/nonexistent/.env.operator",
+        )
+        result = subprocess.run(
+            ["docker", "compose", "--profile", "operator", "-f", str(COMPOSE), "config", "--format", "json"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        if result.returncode != 0:
+            raise AssertionError(f"docker compose config failed:\n{result.stderr}")
+        cls.config = json.loads(result.stdout)
+
+    def test_the_profile_adds_exactly_the_operator_bot(self):
+        self.assertEqual(set(self.config["services"]), {"web", "caddy", "operator-bot"})
+
+    def test_it_is_unreachable_and_unprivileged(self):
+        bot = self.config["services"]["operator-bot"]
+        self.assertFalse(bot.get("ports"))
+        self.assertFalse(bot.get("expose"))
+        self.assertFalse(bot.get("volumes"))
+        self.assertEqual(bot["user"], "1000:1000")
+        self.assertEqual(bot["cap_drop"], ["ALL"])
+        self.assertEqual(bot["security_opt"], ["no-new-privileges:true"])
+        self.assertEqual(bot["restart"], "unless-stopped")
+        self.assertNotIn("privileged", bot)
+        self.assertNotIn("docker.sock", json.dumps(bot))
+        # Caddy's published ports are still only 80 and 443 and it proxies nothing but web.
+        published = {p["published"] for p in self.config["services"]["caddy"]["ports"]}
+        self.assertEqual(published, {"80", "443"})
+        self.assertNotIn("operator", (DEPLOY / "Caddyfile").read_text().lower())
+
+    def test_it_reads_only_its_own_env_file_and_no_variable_is_interpolated_into_it(self):
+        bot = self.config["services"]["operator-bot"]
+        self.assertEqual(bot.get("env_file") or [], [])       # the file is optional and absent in this check
+        self.assertEqual(bot["environment"], {"HOME": "/tmp"})
+        self.assertEqual(bot["command"], ["python", "tools/operator_bot_service.py"])
+        self.assertEqual(bot["logging"]["options"]["max-size"], "10m")
+
+
+@unittest.skipUnless(_docker_compose_available(), "docker compose not installed")
+class ComposeMarketingProfileTests(unittest.TestCase):
+    """`docker compose config` with the marketing profile active, as remote-deploy.sh runs it."""
+
+    @classmethod
+    def setUpClass(cls):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(
+            DOMAIN="app.example.com",
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+            MARKETING_ENV_FILE="/nonexistent/.env.marketing",
+        )
+        result = subprocess.run(
+            ["docker", "compose", "--profile", "marketing", "-f", str(COMPOSE), "config", "--format", "json"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        if result.returncode != 0:
+            raise AssertionError(f"docker compose config failed:\n{result.stderr}")
+        cls.config = json.loads(result.stdout)
+
+    def test_the_profile_adds_exactly_the_marketing_worker(self):
+        self.assertEqual(set(self.config["services"]), {"web", "caddy", "marketing-worker"})
+
+    def test_it_is_unreachable_unprivileged_and_has_no_volume(self):
+        w = self.config["services"]["marketing-worker"]
+        self.assertFalse(w.get("ports"))
+        self.assertFalse(w.get("expose"))
+        self.assertFalse(w.get("volumes"))
+        self.assertEqual(w["user"], "1000:1000")
+        self.assertEqual(w["cap_drop"], ["ALL"])
+        self.assertEqual(w["security_opt"], ["no-new-privileges:true"])
+        self.assertEqual(w["restart"], "unless-stopped")
+        self.assertNotIn("privileged", w)
+        self.assertNotIn("docker.sock", json.dumps(w))
+        published = {p["published"] for p in self.config["services"]["caddy"]["ports"]}
+        self.assertEqual(published, {"80", "443"})
+        self.assertNotIn("marketing", (DEPLOY / "Caddyfile").read_text().lower())
+
+    def test_it_reads_only_its_own_env_file_and_the_switch_is_not_set_in_compose(self):
+        w = self.config["services"]["marketing-worker"]
+        self.assertEqual(w.get("env_file") or [], [])       # the file is optional and absent in this check
+        # Nothing here turns it on: the poster's own switch lives only in its env file, default off.
+        self.assertEqual(w["environment"], {"HOME": "/tmp", "NIGHTSHIFT_WORKER_ID": "marketing-01"})
+        self.assertEqual(w["command"], ["python", "tools/marketing_worker.py"])
+
+    def test_the_other_services_do_not_name_the_marketing_env_file(self):
+        for name in ("web", "caddy"):
+            self.assertNotIn(".env.marketing", json.dumps(self.config["services"][name]))
+
+
+@unittest.skipUnless(_docker_compose_available(), "docker compose not installed")
+class ComposeBrandScanProfileTests(unittest.TestCase):
+    """`docker compose config` with the brandscan profile active, as remote-deploy.sh runs it."""
+
+    @classmethod
+    def setUpClass(cls):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(
+            DOMAIN="app.example.com",
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+            BRANDSCAN_ENV_FILE="/nonexistent/.env.brandscan",
+        )
+        result = subprocess.run(
+            ["docker", "compose", "--profile", "brandscan", "-f", str(COMPOSE), "config", "--format", "json"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        if result.returncode != 0:
+            raise AssertionError(f"docker compose config failed:\n{result.stderr}")
+        cls.config = json.loads(result.stdout)
+
+    def test_the_profile_adds_exactly_the_brand_scan_worker(self):
+        self.assertEqual(set(self.config["services"]), {"web", "caddy", "brand-scan-worker"})
+
+    def test_it_is_unreachable_unprivileged_and_bounded(self):
+        w = self.config["services"]["brand-scan-worker"]
+        self.assertFalse(w.get("ports"))
+        self.assertFalse(w.get("expose"))
+        self.assertEqual(w["user"], "1000:1000")
+        self.assertEqual(w["cap_drop"], ["ALL"])
+        self.assertEqual(w["security_opt"], ["no-new-privileges:true"])
+        self.assertEqual(w["restart"], "unless-stopped")
+        self.assertNotIn("privileged", w)
+        self.assertNotIn("docker.sock", json.dumps(w))
+        # compose reports the limits in bytes / plain numbers
+        self.assertEqual(int(w["mem_limit"]), 1536 * 1024 * 1024)
+        self.assertEqual(int(w["cpu_shares"]), 128)
+        self.assertEqual(int(w["pids_limit"]), 256)
+        self.assertEqual(w["logging"]["options"]["max-size"], "10m")
+        published = {p["published"] for p in self.config["services"]["caddy"]["ports"]}
+        self.assertEqual(published, {"80", "443"})
+        caddyfile = (DEPLOY / "Caddyfile").read_text().lower()
+        for word in ("brand-scan", "brandscan", "brand_scan"):
+            self.assertNotIn(word, caddyfile)
+
+    def test_its_one_volume_is_the_media_library_and_the_switch_is_not_set_in_compose(self):
+        w = self.config["services"]["brand-scan-worker"]
+        self.assertEqual([(v["source"], v["target"]) for v in w["volumes"] if v["type"] == "volume"], [("media", "/app/media")])
+        self.assertEqual([v for v in w["volumes"] if v["type"] != "volume"], [])
+        self.assertEqual(w.get("env_file") or [], [])       # the file is optional and absent in this check
+        # Nothing here turns it on: the switch lives only in its env file, written while the repository variable is `on`.
+        self.assertEqual(w["environment"], {"HOME": "/tmp", "NIGHTSHIFT_MEDIA_DIR": "/app/media", "NIGHTSHIFT_WORKER_ID": "brand-scan-01"})
+        self.assertEqual(w["command"], ["python", "tools/brand_scan_worker.py"])
+
+    def test_the_other_services_do_not_name_its_env_file(self):
+        for name in ("web", "caddy"):
+            self.assertNotIn(".env.brandscan", json.dumps(self.config["services"][name]))
+
+
+if __name__ == "__main__":
+    unittest.main()

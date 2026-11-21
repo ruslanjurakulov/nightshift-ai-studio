@@ -1,0 +1,115 @@
+/**
+ * Scene repair eligibility (roadmap PR 2.3, migration 0015).
+ *
+ * The Storyboard's "Regenerate scene" is now the priced, confirmed press of
+ * migration 0076 (lib/sceneRegenerate.ts, RegenerateSceneButton). The legacy
+ * `review_intents` "regenerate_scene" row helpers below are kept for rows
+ * filed before it; the repair they named re-fetched stock footage only, and
+ * modules/scene_repair.py now refuses a generated scene instead of giving it
+ * stock. Who may press is the database's decision.
+ *
+ * The button is only offered where a repair can happen at all
+ * (sceneRepairEligibility): scene_repair.find_run repairs an UNFINISHED run
+ * through its checkpoint, and a run that uploaded cleared that checkpoint.
+ *
+ * Pure, so it is unit-tested directly.
+ */
+
+/** The Video IR scene id shape the database check also enforces. */
+const SCENE_ID = /^s\d{3,4}$/;
+
+export function isSceneId(v: unknown): v is string {
+  return typeof v === "string" && SCENE_ID.test(v);
+}
+
+export interface SceneRepairIntent {
+  channel_id: string;
+  video_id: string;
+  action: "regenerate_scene";
+  scene_id: string;
+}
+
+/** The row to insert, or null when any part is missing or malformed — a
+ *  request that names no real scene is never filed. */
+export function sceneRepairIntent(
+  channelId: string | null | undefined,
+  videoId: string | null | undefined,
+  sceneId: string | null | undefined,
+): SceneRepairIntent | null {
+  const channel = (channelId ?? "").trim();
+  const video = (videoId ?? "").trim();
+  if (!channel || !video || !isSceneId(sceneId)) return null;
+  return { channel_id: channel, video_id: video, action: "regenerate_scene", scene_id: sceneId };
+}
+
+/** Scene ids with a request still waiting (unconsumed) — the button then
+ *  shows "requested" instead of offering to file a duplicate. */
+export function pendingSceneRequests(
+  rows: ReadonlyArray<{ action?: string | null; scene_id?: string | null; consumed_at?: string | null }> | null | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows ?? []) {
+    if (r?.action === "regenerate_scene" && !r.consumed_at && isSceneId(r.scene_id)) out.add(r.scene_id);
+  }
+  return out;
+}
+
+/**
+ * Pipeline events that mean the video reached YouTube (modules/event_log.py:
+ * UPLOAD_COMPLETED, VIDEO_PUBLISHED, SHORT_COMPLETED). main.py clears the run
+ * checkpoint right after the upload these follow.
+ */
+const UPLOADED_EVENTS: ReadonlySet<string> = new Set(["upload.completed", "video.published", "short.completed"]);
+
+export type SceneRepairEligibility =
+  | { repairable: true }
+  /** "uploaded": the video reached YouTube; "no_cut": the run was held before its video was made (nothing to repair);
+   *  "unknown": no video row to judge. */
+  | { repairable: false; reason: "uploaded" | "no_cut" | "unknown" };
+
+function present(v: unknown): boolean {
+  return typeof v === "string" && v.trim() !== "";
+}
+
+/**
+ * Can a "Regenerate scene" request on this video ever be carried out?
+ *
+ * Only for a run that has NOT uploaded: modules/scene_repair.find_run repairs
+ * a blocked / held / awaiting-review run through its checkpoint, and main.py
+ * clears that checkpoint as soon as the upload succeeds — so a request on an
+ * uploaded video is filed and then never consumed.
+ *
+ * A held run's own `videos` row (modules/held_video.py, lib/heldVideos) has
+ * all three absent, so it is exactly the row this returns repairable for.
+ *
+ * Derived only from what the video page already loads:
+ *  - `published_at` — set by StateStore.record_video, which runs only after a
+ *    successful YouTube upload (the long video's and a Short's alike);
+ *  - `privacy` — written by that same call with the upload's privacy status;
+ *  - the video's own pipeline events — an upload/publish event names it.
+ * Any one of them present means uploaded, so not repairable. The rule leans to
+ * hiding: offering a request that can never run is the bug this guards.
+ *
+ * Pure: it reads nothing, writes nothing and changes no permission or gate.
+ */
+export function sceneRepairEligibility(
+  video:
+    | { published_at?: string | null; privacy?: string | null; publish_state?: string | null; hold_detail?: unknown }
+    | null
+    | undefined,
+  events?: ReadonlyArray<{ event?: string | null }> | null,
+): SceneRepairEligibility {
+  if (!video) return { repairable: false, reason: "unknown" };
+  const uploaded =
+    present(video.published_at) ||
+    present(video.privacy) ||
+    // Migration 0016: a held row re-keyed to its YouTube id on upload.
+    video.publish_state === "uploaded" ||
+    (events ?? []).some((e) => typeof e?.event === "string" && UPLOADED_EVENTS.has(e.event));
+  if (uploaded) return { repairable: false, reason: "uploaded" };
+  // A run held by the early fact-check stop never rendered: scene_repair.find_run has no cut to re-render.
+  if ((video.hold_detail as { stage?: unknown } | null | undefined)?.stage === "before_render") {
+    return { repairable: false, reason: "no_cut" };
+  }
+  return { repairable: true };
+}

@@ -1,0 +1,241 @@
+/* ── The YouTube Autopilot pillar ─────────────────────────────────────────
+   components/site/AutopilotPillar.tsx and components/site/AutopilotComposer.tsx,
+   on /solutions/youtube-channels. The rules of site-next.css hold here too, and
+   tests/autopilot-pillar.test.tsx pins them for this file: every selector an
+   .nx-pl-* class, tokens only (--ns-*, and --font-mono for the file names), no type under 13px, every transition
+   inside a prefers-reduced-motion: no-preference block, controls 44px or more. */
+
+@layer components {
+.nx-pl-kicker {
+  margin-top: 20px;
+  color: var(--ns-amber-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ── The composer ── */
+.nx-pl-composer {
+  display: grid;
+  gap: 10px;
+  margin-top: 32px;
+  padding: 16px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-console);
+}
+@media (min-width: 640px) {
+  .nx-pl-composer { padding: 20px; }
+}
+.nx-pl-composer-label { font-size: 14px; font-weight: 600; color: var(--ns-text); }
+.nx-pl-genres { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.nx-pl-genre {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: 999px;
+  background: var(--ns-ground);
+  color: var(--ns-text);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.nx-pl-genre:hover { background: var(--ns-key); }
+.nx-pl-genre:focus-visible,
+.nx-pl-topic:focus-visible { outline: 2px solid var(--ns-text); outline-offset: 2px; }
+.nx-pl-genre[aria-pressed="true"] { border-color: var(--ns-cta-bg); background: var(--ns-cta-bg); color: var(--ns-cta-fg); font-weight: 600; }
+.nx-pl-topic {
+  width: 100%;
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  background: var(--ns-ground);
+  color: var(--ns-text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.nx-pl-kids {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-key);
+  background: var(--ns-ground);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ns-text);
+}
+.nx-pl-kids svg { flex-shrink: 0; width: 20px; height: 20px; margin-top: 1px; color: var(--ns-amber-ink); }
+.nx-pl-composer-go { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 6px; }
+.nx-pl-composer-go .nx-btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+.nx-pl-empty { font-size: 14px; color: var(--ns-text-dim); }
+.nx-pl-note { font-size: 14px; line-height: 1.5; color: var(--ns-text-dim); }
+
+/* ── The sample script ── */
+.nx-pl-sample {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 20px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-console);
+}
+.nx-pl-sample-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.nx-pl-sample-label { font-size: 15px; font-weight: 600; }
+.nx-pl-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--ns-text-dim);
+}
+.nx-pl-sample-rows { display: grid; gap: 10px; margin: 0; }
+.nx-pl-sample-rows dt { font-size: 13px; color: var(--ns-text-dim); }
+.nx-pl-sample-rows dd { margin: 2px 0 0; font-size: 16px; line-height: 1.4; }
+.nx-pl-sample-sub { font-size: 13px; color: var(--ns-text-dim); }
+.nx-pl-sections { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.nx-pl-sections li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--ns-rule);
+  font-size: 14px;
+}
+.nx-pl-sections code { font-family: var(--font-mono); font-size: 13px; overflow-wrap: anywhere; }
+.nx-pl-sections span { flex-shrink: 0; color: var(--ns-text-dim); font-variant-numeric: tabular-nums; }
+.nx-pl-source { font-size: 13px; line-height: 1.5; color: var(--ns-text-dim); }
+.nx-pl-source code { font-family: var(--font-mono); font-size: 13px; overflow-wrap: anywhere; }
+
+/* ── The stages ── */
+.nx-pl-price {
+  display: grid;
+  gap: 6px;
+  margin-top: 28px;
+  padding: 16px 20px;
+  border-left: 3px solid var(--ns-amber);
+  border-radius: 0 var(--ns-r-key) var(--ns-r-key) 0;
+  background: var(--ns-console);
+}
+.nx-pl-price-main { font-size: 17px; font-weight: 600; line-height: 1.4; }
+.nx-pl-price-sub { font-size: 15px; line-height: 1.5; color: var(--ns-text-dim); }
+.nx-pl-stages {
+  display: grid;
+  gap: 12px;
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 768px) {
+  .nx-pl-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1200px) {
+  .nx-pl-stages { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.nx-pl-stage {
+  display: flex;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-console);
+}
+.nx-pl-stage[data-paid="false"] { border-style: dashed; border-color: var(--ns-rule-strong); }
+.nx-pl-stage-no {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: 999px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.nx-pl-stage[data-stage="gate"] .nx-pl-stage-no,
+.nx-pl-stage[data-stage="upload"] .nx-pl-stage-no,
+.nx-pl-stage[data-stage="approve"] .nx-pl-stage-no,
+.nx-pl-stage[data-stage="public"] .nx-pl-stage-no { border-color: var(--ns-amber); color: var(--ns-amber-ink); }
+.nx-pl-stage-body { display: grid; gap: 6px; min-width: 0; }
+.nx-pl-cost { margin-top: 4px; font-size: 14px; line-height: 1.5; color: var(--ns-text-dim); }
+.nx-pl-cost-label { font-weight: 600; color: var(--ns-text); }
+
+/* ── You stay in control ── */
+.nx-pl-flow { display: grid; gap: 16px; margin-top: 36px; }
+.nx-pl-flow-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: none; }
+@media (min-width: 1024px) {
+  .nx-pl-flow-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.nx-pl-flow-step {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 18px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-ground);
+}
+.nx-pl-flow-step[data-step="public"] { border-color: var(--ns-amber); }
+.nx-pl-flow-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--ns-key);
+  font-size: 13px;
+  font-weight: 600;
+}
+.nx-pl-flow-state svg { width: 15px; height: 15px; }
+.nx-pl-flow-no {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: var(--ns-cta-bg);
+  color: var(--ns-cta-fg);
+  font-size: 13px;
+  vertical-align: 2px;
+}
+.nx-pl-branch {
+  padding: 18px 20px;
+  border: 1px dashed var(--ns-rule-strong);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-ground);
+}
+.nx-pl-branch ol { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 22px; font-size: 15px; line-height: 1.55; list-style: decimal; }
+.nx-pl-rules { display: grid; gap: 12px; margin-top: 24px; }
+@media (min-width: 900px) {
+  .nx-pl-rules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.nx-pl-rule {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 20px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-console);
+}
+.nx-pl-rule > svg { width: 22px; height: 22px; color: var(--ns-amber-ink); }
+.nx-pl-rule ul { display: grid; gap: 8px; margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.55; list-style: disc; }
+
+/* ── The questions ── */
+.nx-pl-faq-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 8px 0 0; padding: 0; list-style: none; }
+.nx-pl-faq-links a { min-height: 44px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .nx-pl-genre { transition: background-color 120ms ease, border-color 120ms ease; }
+}
+}

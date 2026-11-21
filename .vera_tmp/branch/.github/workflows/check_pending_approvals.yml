@@ -1,0 +1,57 @@
+name: Check Pending Approvals
+
+on:
+  schedule:
+    # Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC). This is a nudge to a
+    # human, not a pipeline step — a run can sit at HUMAN_APPROVAL for a
+    # while by design (see modules/pipeline_stages.py), but it shouldn't sit
+    # there unnoticed. Daily is too slow to catch it promptly; hourly is
+    # noisier than a "someone needs to look at this" notification warrants.
+    # The check itself is nearly free (one local JSON read, no external
+    # API calls), so running it 4x/day costs nothing worth optimizing away.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+# Least privilege (BR-S-001): nothing in this workflow calls the GitHub API or
+# pushes, so the job token can only read the repository. The cache and
+# artifact actions authenticate with the runner's own token, not this one.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -c constraints.txt -r requirements.txt
+
+      - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: history
+          key: chronos-history-${{ github.run_number }}
+          restore-keys: chronos-history-
+
+      - name: Check pending approvals
+        env:
+          # Notifier.send() fans out to whichever transports are configured.
+          # Slack via a webhook; Telegram when the bot token + chat id are set.
+          # An unset transport is silently skipped, so leaving any of these
+          # empty simply means that channel gets no nudge.
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python tools/check_pending_approvals.py
