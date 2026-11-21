@@ -17,6 +17,7 @@ import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import type { PackExpiry } from "@/lib/plans";
 import { HERO_JOB, PIECE_SIZE, reelItem, studioPieces } from "@/components/landing/home/home-reel";
 import { StudioClip, TemplateClip } from "@/components/site/StudioClip";
+import { IdeaBox } from "@/components/landing/home/IdeaBox";
 import "@/components/landing/home/home.css";
 
 /** The hero picture's widths, as the browser should choose them: the whole screen. */
@@ -107,15 +108,10 @@ function Hero({ t }: { t: Dictionary }) {
           {h.title}
         </h1>
         <p className="hm-hero-lead">{h.lead}</p>
-        <div className="hm-hero-ctas">
-          <Link href="/signup" className={buttonClass({ variant: "primary", size: "lg" })}>
-            {h.primary}
-            <ArrowRight aria-hidden />
-          </Link>
-          <a href="#how" className={buttonClass({ variant: "secondary", size: "lg", className: "hm-ghost" })}>
-            {h.secondary}
-          </a>
-        </div>
+        <IdeaBox copy={h.idea} />
+        <a href="#how" className="hm-idea-more">
+          {h.secondary}
+        </a>
       </div>
       {item && (
         <p className="hm-hero-credit">

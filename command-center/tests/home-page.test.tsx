@@ -169,12 +169,15 @@ describe("the landing's pictures are our own Studio's", () => {
 });
 
 describe("the hero", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, with both calls to action", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, then the idea box and the way to how it works", (code) => {
     const { container } = page(code);
     const h = dictionaries[code].landingHome.hero;
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(h.title);
     const hero = within(container.querySelector(".hm-hero") as HTMLElement);
-    expect(hero.getByRole("link", { name: new RegExp(h.primary) }).getAttribute("href")).toBe("/signup");
+    // The idea box is the first call to action: a labelled field and one button, in the visitor's language.
+    expect(hero.getByLabelText(h.idea.label).tagName).toBe("TEXTAREA");
+    expect(hero.getByRole("button", { name: new RegExp(h.idea.submit) })).toBeTruthy();
+    expect(hero.getByText(h.idea.note)).toBeTruthy();
     expect(hero.getByRole("link", { name: h.secondary }).getAttribute("href")).toBe("#how");
   });
 
