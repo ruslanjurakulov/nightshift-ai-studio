@@ -254,6 +254,61 @@ describe("the end step's video page (Publish to platforms lives there)", () => {
   });
 });
 
+describe("Activity", () => {
+  const filmWith = (events: unknown[], total?: number) => {
+    const fj = film("running") as Record<string, unknown>;
+    fj.events = events;
+    if (total !== undefined) fj.events_total = total;
+    return { film: fj, segments: [seg()], takes: [] };
+  };
+  it("lists the film's log newest first in plain sentences, says what is not reported, and how many earlier lines are not shown", async () => {
+    answer = live(
+      filmWith(
+        [
+          { id: 1, event: "started", created_at: "2026-11-21T10:00:00Z" },
+          { id: 2, event: "take_completed", scene_id: S1, created_at: "2026-11-21T10:02:00Z", detail: { kind: "keyframe", charged: 9871 } },
+          { id: 3, event: "new_word_x", created_at: "2026-11-21T10:03:00Z" },
+        ],
+        60,
+      ),
+    );
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    const panel = await screen.findByTestId("live-activity");
+    expect(within(panel).getByRole("heading").textContent).toBe(c.activity.title);
+    const lines = within(panel).getAllByTestId("live-activity-item").map((li) => li.textContent);
+    expect(lines[0]).toContain("new_word_x");
+    expect(lines[1]).toContain("Scene 1 · picture: done");
+    expect(lines[2]).toContain(c.activity.words.started);
+    expect(panel.textContent).not.toContain("9871");
+    expect(within(panel).getByTestId("live-activity-earlier").textContent).toBe("57 earlier events not shown.");
+    expect(within(panel).getByTestId("live-activity-unreported").textContent).toBe(c.activity.notReportedFilm);
+  });
+
+  it("an empty log says nothing is recorded yet; a run says which steps arrive after sync", async () => {
+    answer = live({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: null, hold: null });
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z" }} />);
+    const panel = await screen.findByTestId("live-activity");
+    expect(within(panel).getByTestId("live-activity-empty").textContent).toBe(c.activity.empty);
+    expect(within(panel).getByTestId("live-activity-unreported").textContent).toBe(c.activity.notReportedRun);
+  });
+
+  it("lines read earlier stay when the next reading's newest 50 no longer include them", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    answer = () => {
+      n += 1;
+      const ev = n === 1 ? [{ id: 1, event: "started", created_at: "2026-11-21T10:00:00Z" }] : [{ id: 2, event: "assembly_completed", created_at: "2026-11-21T10:09:00Z" }];
+      return { status: 200, body: filmWith(ev) };
+    };
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    await waitFor(() => expect(screen.getAllByTestId("live-activity-item").map((li) => li.getAttribute("data-word"))).toEqual(["assembly_completed", "started"]));
+  });
+});
+
 describe("a channel run's live facts", () => {
   it("says GitHub's status and the hold as read, next to an honest line that stages lag", async () => {
     answer = live({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: { state: "queued" }, hold: { state: "open", amount: 40, captured: null } });

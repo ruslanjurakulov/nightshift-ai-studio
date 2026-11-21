@@ -13,7 +13,8 @@ import { Lamp } from "@/components/studio-canvas/parts";
 import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/runBackend";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
-import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef } from "@/lib/studio/liveGraph";
+import { ActivityPanel } from "./ActivityPanel";
+import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-live.css";
@@ -120,6 +121,8 @@ function loginHref(): string {
 }
 
 /** system_events.ts is text, often a naive utcnow().isoformat(): read without an offset it would be local time (Lens M1). */
+const utcIso = (ts: string) => (/([zZ]|[+-]\d\d:?\d\d)$/.test(ts) ? ts : `${ts}Z`);
+
 export function utc(ts: string): Date {
   return new Date(/([zZ]|[+-]\d\d:?\d\d)$/.test(ts) ? ts : `${ts}Z`);
 }
@@ -433,6 +436,18 @@ export function LiveView({
     [graph, c],
   );
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
+  // The Activity lines gathered across readings: each reading gives the log's newest lines (a film's newest 50), so lines read
+  // earlier stay on screen. Keyed by line id; a different plan starts empty.
+  const planKey = target ? (target.kind === "window" ? `w:${target.channel}:${target.since}` : `${target.kind}:${target.id}`) : null;
+  const gathered = useRef<{ key: string | null; items: Map<string, ActivityItem> }>({ key: null, items: new Map() });
+  const activity = useMemo<Activity | null>(() => {
+    const a = graph && !draft ? graph.activity : null;
+    if (!a) return null;
+    if (gathered.current.key !== planKey) gathered.current = { key: planKey, items: new Map() };
+    for (const it of a.items) gathered.current.items.set(it.id, it);
+    const items = [...gathered.current.items.values()].sort((x, y) => Date.parse(utcIso(x.at)) - Date.parse(utcIso(y.at)) || x.id.localeCompare(y.id));
+    return { items, total: a.total };
+  }, [graph, draft, planKey]);
   // Closing the details gives focus back to the step it was opened from, not to the page (Pixel M2). The card is focused before the
   // panel unmounts: focusing it after, the browser has already dropped focus to <body>.
   const close = () => {
@@ -543,13 +558,18 @@ export function LiveView({
         </Link>
       ) : null}
       {graph ? (
-        <div className={sel ? "lv-main has-details" : "lv-main"}>
+        <div className={sel || activity ? "lv-main has-details" : "lv-main"}>
           {narrow ? (
             <List graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           ) : (
             <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           )}
-          {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
+          {sel || activity ? (
+            <div className="lv-side">
+              {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
+              {activity ? <ActivityPanel activity={activity} run={run} /> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

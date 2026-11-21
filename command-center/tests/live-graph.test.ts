@@ -299,6 +299,41 @@ describe("events that arrive live and events that wait for the mirror", () => {
   });
 });
 
+describe("activity (the plan's own log)", () => {
+  it("a film's film_events become lines in time order, numbered by scene, with only known words kept from detail", () => {
+    const fj = filmJson({ status: "running" }, [sceneJson(S1, 0), sceneJson(S2, 1)]) as Record<string, unknown>;
+    fj.events = [
+      { id: 3, event: "take_failed", scene_id: S2, actor: null, actor_role: "service", created_at: "2026-11-21T10:03:00Z",
+        detail: { kind: "clip", error_code: "timeout", confirmed: 12, charged: 0, basis: "<script>x</script>" } },
+      { id: 1, event: "started", scene_id: null, actor: null, actor_role: "service", created_at: "2026-11-21T10:00:00Z", detail: null },
+      { id: 2, event: "take_completed", scene_id: S1, actor: null, actor_role: "service", created_at: "2026-11-21T10:02:00Z", detail: { kind: "keyframe" } },
+      { id: 4, event: "Bad Word!", created_at: "2026-11-21T10:04:00Z" },
+      { id: 5, event: "saved", created_at: "not a time" },
+    ];
+    fj.events_total = 120;
+    const g = filmGraph(coerceFilmLive({ film: fj, segments: [], takes: [] })!);
+    expect(g.activity?.total).toBe(120);
+    expect(g.activity?.items.map((i) => [i.word, i.scene, i.kind, i.code])).toEqual([
+      ["started", null, null, null],
+      ["take_completed", 1, "keyframe", null],
+      ["take_failed", 2, "clip", "timeout"],
+      ["Bad Word!", null, null, null],
+    ]);
+    // detail is never carried as text: credits, the basis and any free field stay out of the browser's lines.
+    expect(JSON.stringify(g.activity)).not.toMatch(/script|basis|confirmed|charged/);
+  });
+
+  it("a film_json without events (an older database) has no activity; a run's events become lines oldest first", () => {
+    const fj = filmJson({ status: "running" }, [sceneJson(S1, 0)]) as Record<string, unknown>;
+    delete fj.events;
+    expect(filmGraph(coerceFilmLive({ film: fj, segments: [], takes: [] })!).activity).toBeNull();
+    const ev = (event: string, ts: string) => ({ ts, event, status: "ok", agent: null });
+    const g = runGraph(coerceRunLive({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" }, events: [ev("script.started", "2026-11-21T10:02:00Z"), ev("topic.selected", "2026-11-21T10:01:00Z")] }));
+    expect(g.activity?.items.map((i) => i.word)).toEqual(["topic.selected", "script.started"]);
+    expect(runGraph(coerceRunLive({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" }, events: null })).activity).toBeNull();
+  });
+});
+
 describe("the brief, before Create", () => {
   // BRIEF v1 as GET /api/brain/session/<id> returns it (docs/studio/NIGHTSHIFT_AI.md).
   const raw = {
