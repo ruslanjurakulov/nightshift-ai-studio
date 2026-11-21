@@ -237,6 +237,12 @@ jobs:
           # Studio → Projects (docs/FILM_STUDIO.md, migration 0166): the pages and /api/films/*, off unless this repository variable is
           # `admins` (platform admins only) or `on`. Setting nothing leaves it dark; this change does not set it. Drafts only, no spend.
           WEBENV_NIGHTSHIFT_FILM_STUDIO: ${{ vars.NIGHTSHIFT_FILM_STUDIO }}
+          # Nightshift AI (docs/studio/AI_CHAT.md, migration 0199): dark unless the repository variable is `orgs` or `on`. Its vendor
+          # keys are secrets of their own (never the worker's): the web container holds an LLM key only when the owner adds one.
+          WEBENV_NIGHTSHIFT_AI_CHAT: ${{ vars.NIGHTSHIFT_AI_CHAT }}
+          WEBENV_NIGHTSHIFT_AI_CHAT_ORGS: ${{ vars.NIGHTSHIFT_AI_CHAT_ORGS }}
+          WEBENV_AI_CHAT_ANTHROPIC_API_KEY: ${{ secrets.AI_CHAT_ANTHROPIC_API_KEY }}
+          WEBENV_AI_CHAT_OPENAI_API_KEY: ${{ secrets.AI_CHAT_OPENAI_API_KEY }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
