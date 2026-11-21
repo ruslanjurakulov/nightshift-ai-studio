@@ -748,6 +748,12 @@ sec_owner_analytics_0182.extend(TABLES, FUNCTIONS)
 import sec_adult_attestation_0192  # noqa: E402
 
 sec_adult_attestation_0192.extend(TABLES, FUNCTIONS)
+
+# Migration 0198 (Film Studio P3: the switch per organization, the take's creative job): tests/security/sec_film_worker_0198.py
+import sec_film_worker_0198  # noqa: E402
+
+sec_film_worker_0198.extend(TABLES, FUNCTIONS)
+
 # Migration 0183 (trend templates: anyone reads a published row, only the service key writes):
 # tests/security/sec_creative_templates_0183.py
 import sec_creative_templates_0183  # noqa: E402

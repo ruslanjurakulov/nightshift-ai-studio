@@ -207,6 +207,10 @@ describe("checks before a save", () => {
     expect(codes([s({ narration: "x".repeat(LIMITS.max_narration_chars + 1) })])).toContain("narration_too_long");
     expect(codes([s({ narration: "x".repeat(LIMITS.max_narration_chars) + "   " })])).toEqual([]);
     expect(codes([], { ...settings, title: "   " })).toContain("title_required");
+    // 0198: a 15 s advert of two scenes (8 s + 7 s) is a film; below 10 s the target is refused.
+    expect(LIMITS.target_seconds_min).toBe(10);
+    expect(codes([s({ plannedSeconds: 8 }), s({ key: "b", plannedSeconds: 7 })], { ...settings, targetSeconds: 15 })).toEqual([]);
+    expect(codes([s({})], { ...settings, targetSeconds: 9 })).toContain("target_range");
     const long = Array.from({ length: 41 }, (_, i) => s({ key: `k${i}`, plannedSeconds: 30 }));
     expect(draftProblems(settings, long, [], LIMITS).find((p) => p.code === "film_too_long")).toMatchObject({ n: 1230, max: 1200 });
   });

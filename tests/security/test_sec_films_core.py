@@ -488,7 +488,7 @@ def test_two_creates_at_once_with_one_key_make_one_film(db, a):
     ({"title": ""}, "invalid_params", "title must not be empty"),
     ({"title": "​⁠ "}, "invalid_params", "title must not be empty"),
     ({"title": "t" * 121}, "invalid_params", "title"),
-    ({"target_seconds": 59}, "invalid_params", "target_seconds"),
+    ({"target_seconds": 9}, "invalid_params", "target_seconds"),  # 0198: a film targets 10-1200 s (0166 said 60)
     ({"target_seconds": 1201}, "invalid_params", "target_seconds"),
     ({"source_text": "s" * 2001}, "invalid_params", "at most 2000"),
     ({"language": "de"}, "invalid_params", "language"),

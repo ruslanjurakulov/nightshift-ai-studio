@@ -138,10 +138,17 @@ class Db:
                     [org, u, f"{role}{n}@money.lab", role])
         if credits:
             self.su("select public.grant_credits(%s, %s, 'test')", [org, credits])
+        self.film_org_on(org)
         o = Org(org, *people)
         if image:
             o.image = self.asset(org)
         return o
+
+    def film_org_on(self, org):
+        """0198: Film Studio is switched on per organization too (default off), the way the owner does it from the SQL editor. A
+        database without 0198 has no such switch, and the platform's switch alone decides there."""
+        if self.su("select to_regprocedure('public.set_org_film_studio_enabled(uuid, boolean)') is not null")[0][0]:
+            assert self.su("select public.set_org_film_studio_enabled(%s, true)", [org])[0][0]["ok"] is True
 
     def key(self) -> str:
         self.keys += 1
@@ -813,7 +820,9 @@ def test_two_films_at_once_are_refused_by_the_default_limit_and_the_cap_refuses_
     db.quoted_start(o, f1)
     assert [r["reason"] for r in db.quote(o.editor, f2)["blocked_by"]] == ["limit_reached", "run_slots_full"]
     assert refused(db.start(o.admin, f2, q2)) == ("limit_reached", "NS400")
-    db.su("insert into public.org_film_settings (org_id, max_credits_per_film, max_active_films) values (%s, 48, 2)", [o.org])
+    db.su("insert into public.org_film_settings (org_id, max_credits_per_film, max_active_films) values (%s, 48, 2) "
+          "on conflict (org_id) do update set max_credits_per_film = excluded.max_credits_per_film, "
+          "max_active_films = excluded.max_active_films", [o.org])
     assert refused(db.start(o.admin, f2, q2)) == ("cap_exceeded", "NS400")
     db.su("update public.org_film_settings set max_credits_per_film = 49 where org_id = %s", [o.org])
     # The plan's one parallel run (0034) is the film already running: reserve_credits refuses the second hold.

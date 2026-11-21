@@ -444,6 +444,10 @@ def gate_triggers(db):
 
 
 def test_replay_and_rollback_keep_the_record(db):
+    # 0198 sits on 0192's quote_film and start_film, and a replay of 0192 refuses them (loudly, by design): it comes off first, and
+    # put_back_0192 below puts it back.
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0198(c)
     before = {s: _md5(db, s) for s in GATED}
     rows = db.su("select count(*) from public.adult_attestations")[0][0]
     db.su(sec_db.MIGRATION_0192.read_text(encoding="utf-8"))
@@ -461,7 +465,10 @@ def test_replay_and_rollback_keep_the_record(db):
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
             sec_db.put_back_0192(c)
-    assert {s: _md5(db, s) for s in GATED} == before
+    film = ("public.quote_film(uuid,integer)", "public.start_film(uuid,text,text)")
+    assert {s: _md5(db, s) for s in GATED if s not in film} == {s: h for s, h in before.items() if s not in film}
+    # 0198 is back on top of 0192: the quote and the start ask the organization's switch too.
+    assert [_md5(db, s) for s in film] == ["99d01240ed2df7fb002f674df8891608", "7971355d754165affaf3e08904b4b078"]
     assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate"),
                                  ("download_requests", "adult_attestation_download_gate"),
                                  ("render_jobs", "adult_attestation_run_gate")]

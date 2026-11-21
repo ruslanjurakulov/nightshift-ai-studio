@@ -2185,3 +2185,25 @@ that fails one is left as it is, with a NOTICE naming the fix. Order: probe (Act
 `openai-gpt-6-luna`; adapters in `modules/capabilities/describe_llm.py`): beta only when verified, priced, terms-clear and `web_only`.
 No price is written. Keys: GitHub secrets `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, shipped to the worker by `deploy_web.yml`.
 Rollback: `docs/sql/rollback_0195_open_llm_describe.sql`.
+
+## Film Studio P3: a switch per organization, and the take's creative job (0198)
+
+0198 (`0198_film_studio_org_switch.sql`, provisional number) adds `org_film_settings.film_studio_enabled` (**off** by default). A
+film starts, and a segment is handed to a worker, only while the platform's switch (`film_studio_settings`, 0171) **and** the
+organization's are on (`film_studio_on_for(org)`): `start_film` refuses `film_studio_disabled`, `quote_film` lists it in
+`blocked_by`, and `film_claim_segment` skips the segment (the unchanged `film_expire_segments` settles it while its hold is open).
+
+- **Who switches it.** `set_org_film_studio_enabled(org, on)`: a platform owner or admin (owner_guard: second factor, a rate
+  limit) or the SQL editor. Every change writes `security_events` (`film_studio.org_enabled`). This file never touches the platform
+  switch, which stays off.
+- **The take's job.** `film_take_job(take, worker)` (service role only) writes the running take's creative job for the worker
+  holding the segment's lease: `payer = 'film'`, `film_take_id`, no hold, quoted 0, already `running` under that worker (the
+  credit-paid creative worker never claims it), `requested_by` = the person who started the film (0187, 0117). The database decides
+  the inputs (key frame, previous last frame, end frame, references) and records them on the take. One job a take, ever.
+- **10-second films.** `film_limits().target_seconds_min` 60 -> 10 and `films_format_check` 10-1200 s, so a 15-30 s advert of 1-3
+  scenes is a film. The scene rule (3-30 s, 1-3 shots) is unchanged. The check is replaced only when it is 0166's or 0198's.
+- **Replaced bodies.** `quote_film` and `start_film` (0192's), `film_claim_segment` (0171's) and `film_limits` (0166's), one marked
+  hunk each, under an md5 drift guard. Re-running 0192, 0171 or 0166 over it fails loudly.
+- **Without it.** `tools/film_worker.py` cannot make a take (`film_take_job` is missing): it refuses to start.
+- **Undo.** `docs/sql/rollback_0198_film_studio_org_switch.sql` (owner-applied): the four earlier bodies and 0166's check back
+  (refused while any film targets less than 60 s), the four functions dropped, the column kept.

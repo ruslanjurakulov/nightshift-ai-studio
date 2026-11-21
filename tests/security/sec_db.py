@@ -770,6 +770,7 @@ def take_off_0192(conn_or_session) -> None:
     takes 0192 off first as well. Its rollback puts the fifteen earlier bodies back and drops its functions and triggers;
     adult_attestations (the record, with its append-only triggers) stays, and put_back_0192 picks it up again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0198(conn)  # 0198 sits on 0192's quote_film and start_film, and 0192's rollback refuses any other body
     if has_0192(conn):
         text = ROLLBACK_0192.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -779,13 +780,39 @@ def put_back_0192(conn_or_session) -> None:
     """0192 again, once 0125, 0171, 0174 and the two files on them it builds on (0187's start_film, 0188's sellable_models) are on
     (it refuses to apply without any of them), and only when it is not on already."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if has_0192(conn) or not has_0174(conn) or not has_0171(conn) or not has_0187(conn) or not has_0188(conn):
+    if (not has_0192(conn) and has_0174(conn) and has_0171(conn) and has_0187(conn) and has_0188(conn)
+            and conn.execute("select to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is not null").fetchone()[0]
+            and conn.execute("select to_regprocedure('public.model_past_shutdown(jsonb)') is not null").fetchone()[0]):
+        conn.execute(MIGRATION_0192.read_text(encoding="utf-8"))
+    put_back_0198(conn)
+
+
+MIGRATION_0198 = MIGRATIONS / "0198_film_studio_org_switch.sql"
+ROLLBACK_0198 = REPO / "docs" / "sql" / "rollback_0198_film_studio_org_switch.sql"
+
+
+def has_0198(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.film_studio_on_for(uuid)') is not null").fetchone()[0])
+
+
+def take_off_0198(conn_or_session) -> None:
+    """0198 (Film Studio's switch per organization, the take's creative job) replaces quote_film() and start_film() (0192's bodies) and
+    film_claim_segment() (0171's). 0192's and 0171's drift guards and rollbacks refuse any other body, so take_off_0192 takes 0198 off
+    first (take_off_0187 and take_off_0171 reach it through it). Its rollback keeps org_film_settings.film_studio_enabled, which
+    put_back_0198 picks up again as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0198(conn):
+        text = ROLLBACK_0198.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0198(conn_or_session) -> None:
+    """0198 again, once 0192 (whose bodies it builds on) is on, and only when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0198(conn) or not has_0192(conn):
         return
-    if not conn.execute("select to_regprocedure('public.oauth_creative_quote(text, text, text, jsonb, text)') is not null").fetchone()[0]:
-        return
-    if not conn.execute("select to_regprocedure('public.model_past_shutdown(jsonb)') is not null").fetchone()[0]:
-        return
-    conn.execute(MIGRATION_0192.read_text(encoding="utf-8"))
+    conn.execute(MIGRATION_0198.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

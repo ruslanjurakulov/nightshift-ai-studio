@@ -70,14 +70,15 @@ export type FilmLimits = Record<(typeof LIMIT_KEYS)[number], number>;
 
 /**
  * The limits the "New project" form checks before a film exists (it has no film_json to read them from yet). The same numbers as
- * 0166's film_limits(); tests/films.test.ts pins them against the migration's text, so the two cannot drift apart unnoticed. The
- * database checks them again either way.
+ * film_limits() in the latest migration that writes it (0166, then 0198: a film may target 10 s, so a 15-30 s advert is a film);
+ * tests/films.test.ts pins them against the migration's text, so the two cannot drift apart unnoticed. The database checks them
+ * again either way.
  */
 export const CREATE_LIMITS = {
   max_title_chars: 120,
   max_topic_chars: 2000,
   max_script_chars: 40000,
-  target_seconds_min: 60,
+  target_seconds_min: 10,
   target_seconds_max: 1200,
   max_open_drafts: 50,
 } as const;
@@ -682,7 +683,7 @@ export function draftProblems(settings: SettingsDraft, scenes: readonly SceneDra
 
 // ─── where the project is (the station track) ────────────────────────────────
 
-/** The target lengths the screens offer, in minutes: inside 0166's 60-1200 s (a whole video is 3-10 minutes in the usual case). */
+/** The target lengths the screens offer, in minutes: inside film_limits' 10-1200 s (a whole video is 3-10 minutes in the usual case). */
 export const TARGET_MINUTES = [1, 2, 3, 5, 8, 10, 15, 20] as const;
 
 export const STATIONS = ["idea", "storyboard", "sound", "shoot", "assemble", "handoff"] as const;
