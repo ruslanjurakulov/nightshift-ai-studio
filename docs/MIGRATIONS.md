@@ -2170,6 +2170,22 @@ spending as its own unticked choice; a connection gets it only when the person t
   `command-center/tests/mcp-oauth-creative.test.ts` (the MCP layer).
 - **Order.** Applied after 0188, whose `mcp` surface (`web_mcp` or `any` only) is the one it asks `sellable_models` about.
 
+## OpenAI GPT Image on sale once verified and priced (0194)
+
+0194 (`0194_open_openai_image.sql`) is **live on apply** and writes no price. It sets `availability = beta` (entitlement NULL) for each
+of `openai-gpt-image-2`, `-2.5-flare`, `-2.5-sunburst`, `-2.6-flare`, `-2.6-sunburst` only when ALL hold: the adapter, vendor model
+and unit it was written for, exactly `t2i` + `edit`, a successful probe (`verified_at`), no terms gate, `web_only`, not past shutdown,
+not disabled, no blocked countries, and a `credit_prices` row for the base unit and each quality (`_low`, `_medium`, `_high`). A model
+that fails one is left as it is, with a NOTICE naming the fix. Order: probe (Actions -> Probe models), the owner's price rows, then
+0194. Rollback: `docs/sql/rollback_0194_open_openai_image.sql`.
+
+## Describe on Claude Sonnet 5.5 and GPT-6 Luna (0195)
+
+0195 (`0195_open_llm_describe.sql`) is the same shape for the two `describe` models (`anthropic-claude-sonnet-5-5`,
+`openai-gpt-6-luna`; adapters in `modules/capabilities/describe_llm.py`): beta only when verified, priced, terms-clear and `web_only`.
+No price is written. Keys: GitHub secrets `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, shipped to the worker by `deploy_web.yml`.
+Rollback: `docs/sql/rollback_0195_open_llm_describe.sql`.
+
 ## The adult (18+) attestation and its gates (0192)
 
 0192 (`0192_adult_attestation.sql`) records each person's own answer to "are you 18 or older?" once, and refuses paid work on it in the

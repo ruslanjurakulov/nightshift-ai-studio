@@ -65,11 +65,11 @@
         "note": "billed per token (rate per 1M image output tokens from search extracts, which disagreed; see the vendor pricing page); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_image",
-      "entitlement": "models_image:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
@@ -138,11 +138,11 @@
         "note": "billed per token (rate per 1M image output tokens from a search extract; see the vendor pricing page); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_flare_image",
-      "entitlement": "models_image:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
@@ -211,17 +211,165 @@
         "note": "billed per token (rate per 1M image output tokens from a search extract; see the vendor pricing page); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_sunburst_image",
-      "entitlement": "models_image:ultra",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
       },
       "quality_tier": 5,
       "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "quality": "low"
+      }
+    },
+    {
+      "id": "openai-gpt-image-2.6-sunburst",
+      "display_name": "OpenAI GPT Image 2.6 Sunburst",
+      "provider": "openai",
+      "adapter": "image.openai",
+      "vendor_model": "gpt-image-2.6-sunburst",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 16
+      },
+      "aspect_ratios": [
+        "1:1",
+        "3:2",
+        "2:3",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst",
+        "checked_at": "2026-11-20",
+        "source": "vendor_docs_search",
+        "evidence": "developers.openai.com api/reference images generate: model enum lists gpt-image-2.6-sunburst and gpt-image-2.6-flare; models/all lists both as current, with v1/images/generations and v1/images/edits (multipart image[], optional mask)",
+        "note": "not verified by a real call: hidden until tools/probe_models.py records one (migration 0035)"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
+        "note": "billed per token; no per-image figure pinned"
+      },
+      "credit_unit": "model_openai_gpt_image_2_6_sunburst_image",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "quality": "low"
+      }
+    },
+    {
+      "id": "openai-gpt-image-2.6-flare",
+      "display_name": "OpenAI GPT Image 2.6 Flare",
+      "provider": "openai",
+      "adapter": "image.openai",
+      "vendor_model": "gpt-image-2.6-flare",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 16
+      },
+      "aspect_ratios": [
+        "1:1",
+        "3:2",
+        "2:3",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/models/gpt-image-2.6-flare",
+        "checked_at": "2026-11-20",
+        "source": "vendor_docs_search",
+        "evidence": "developers.openai.com api/reference images generate: model enum lists gpt-image-2.6-sunburst and gpt-image-2.6-flare; models/all lists both as current, with v1/images/generations and v1/images/edits (multipart image[], optional mask)",
+        "note": "not verified by a real call: hidden until tools/probe_models.py records one (migration 0035)"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
+        "note": "billed per token; no per-image figure pinned"
+      },
+      "credit_unit": "model_openai_gpt_image_2_6_flare_image",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
@@ -752,6 +900,115 @@
       "quality_tier": 3,
       "speed_tier": 4,
       "requires_adult": true,
+      "probe": {
+        "capability": "describe",
+        "prompt": "describe the probe frame",
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "anthropic-claude-sonnet-5-5",
+      "display_name": "Claude Sonnet 5.5",
+      "provider": "anthropic",
+      "adapter": "image.anthropic_describe",
+      "vendor_model": "claude-sonnet-5-5",
+      "capabilities": [
+        "describe"
+      ],
+      "output": "text",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "checked_at": "2026-11-20",
+        "source": "vendor_docs_search",
+        "evidence": "platform.claude.com models overview lists claude-sonnet-5-5; POST /v1/messages with an image content block (source.type base64), anthropic-version 2026-10-21, read 2026-11-20",
+        "note": "not verified by a real call: hidden until tools/probe_models.py records one (migration 0035)"
+      },
+      "pricing": {
+        "unit": "request",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per input and output token; no per-request figure, so none is claimed"
+      },
+      "credit_unit": "model_anthropic_claude_sonnet_5_5_request",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [
+        "Anthropic Commercial Terms A.1 (read 2026-11-20): may power products we make available to our own customers. D.4: no competing product or model training, no reselling the Services: we sell our own describe feature, never raw API access",
+        "Anthropic Commercial Terms D.3: tell users factual assertions in Outputs should not be relied upon without checking; the Studio shows an AI-written note under the description",
+        "Anthropic trademark guidelines: name in plain text only, no logo, nothing implying endorsement"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "describe",
+        "prompt": "describe the probe frame",
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "openai-gpt-6-luna",
+      "display_name": "GPT-6 Luna",
+      "provider": "openai",
+      "adapter": "image.openai_describe",
+      "vendor_model": "gpt-6-luna",
+      "capabilities": [
+        "describe"
+      ],
+      "output": "text",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/models/all",
+        "checked_at": "2026-11-20",
+        "source": "vendor_docs_search",
+        "evidence": "developers.openai.com models/all lists gpt-6-luna ('Our most efficient model for focused, high-volume tasks') on the Responses API; input_image (data URL) + input_text, read 2026-11-20",
+        "note": "not verified by a real call: hidden until tools/probe_models.py records one (migration 0035)"
+      },
+      "pricing": {
+        "unit": "request",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per input and output token; no per-request figure, so none is claimed"
+      },
+      "credit_unit": "model_openai_gpt_6_luna_request",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [
+        "OpenAI Services Agreement (openai.com/policies/services-agreement, read 2026-11-20): may integrate the API into Customer Applications for End Users; no reselling account access; no Output to develop competing models",
+        "OpenAI §10 No Publicity: name in plain text only, no logo, no 'powered by'"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
       "probe": {
         "capability": "describe",
         "prompt": "describe the probe frame",

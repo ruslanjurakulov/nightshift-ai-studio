@@ -4018,6 +4018,7 @@ export const en = {
     useAsSource: "Use as picture",
     describeAction: "Describe this picture",
     descriptionLabel: "Description",
+    aiWrittenNote: "Written by AI from the picture. Check it before you rely on it.",
     copy: "Copy",
     copied: "Copied",
     copyFailed: "Could not copy. Select the text and copy it yourself.",

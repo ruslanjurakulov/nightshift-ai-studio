@@ -203,6 +203,9 @@ _PATTERNS = (
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),  # JWT
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}"),
+    # A vendor that MASKS a rejected key ("Incorrect API key provided: sk-proj-****...ZQ7w", OpenAI's 401) still shows a fragment of it:
+    # fewer than 12 key characters in a row, so the pattern above misses it, and it would land on a job row members can read (BR-LLM-001).
+    re.compile(r"\bsk-[A-Za-z0-9_-]*\*{3,}[A-Za-z0-9_.*-]*"),
     re.compile(r"\b1//[A-Za-z0-9_-]{20,}"),  # Google refresh token
     re.compile(r"\bya29\.[A-Za-z0-9._-]{20,}"),  # Google access token
 )
