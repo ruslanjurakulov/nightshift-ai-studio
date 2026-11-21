@@ -1,3 +1,4 @@
+import { DeviceAccountsSync } from "@/components/account/DeviceAccountsSync";
 import type { Metadata, Viewport } from "next";
 import "./fonts.css";
 import "./globals.css";
@@ -84,6 +85,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <PublicI18nProvider locale={locale} t={publicDictionary(getDictionaryFor(locale))}>
           {frameSrc ? <ViewFrame src={frameSrc} /> : children}
           {inFrame && <EmbedBridge />}
+          {/* Every tab reloads when another switches, adds or signs out an account (lib/device-accounts.ts). */}
+          <DeviceAccountsSync />
         </PublicI18nProvider>
       </body>
     </html>

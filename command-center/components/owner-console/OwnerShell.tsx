@@ -9,7 +9,6 @@ import { OWNER_SECTIONS, currentOwnerSection, type OwnerSectionKey } from "@/lib
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
 import { DeviceAccounts } from "@/components/account/DeviceAccounts";
 import { useSignOut } from "@/components/account/AccountParts";
-import { useDeviceAccountsSync } from "@/lib/device-accounts-client";
 import { SkipLink } from "@/components/shell/SkipLink";
 import "./owner-console.css";
 
@@ -41,7 +40,6 @@ export function OwnerShell({
   children: React.ReactNode;
 }) {
   const signOut = useSignOut();
-  useDeviceAccountsSync();
   const { t } = useI18n();
   const c = t.ownerConsole;
   const pathname = usePathname() ?? "/owner";

@@ -54,14 +54,6 @@ export const POST = requireSameOrigin(async (request: Request) => {
     return NextResponse.json({ same: true }, { headers: NO_STORE });
   }
 
-  // The outgoing account's newest token, so its parked copy is not a spent one (a tab may refresh it at any moment).
-  let outgoingRt: string | null = null;
-  if (active.kind === "ok") {
-    const own = await refreshParked(active.session.refresh_token);
-    if (own.kind === "unavailable") return fail("auth_unavailable", 503);
-    outgoingRt = own.kind === "ok" ? own.session.refresh_token : null;
-  }
-
   const fresh = await refreshParked(target.rt);
   if (fresh.kind === "unavailable") return fail("auth_unavailable", 503);
   if (fresh.kind === "expired") {
@@ -79,10 +71,14 @@ export const POST = requireSameOrigin(async (request: Request) => {
     await writeParked(slot, { ...target, rt: fresh.session.refresh_token });
     return fail("auth_unavailable", 503);
   }
-  // The account that was active takes the freed slot (refused for good by the auth server: kept as "Sign in again").
+  // Only now, with the switch done, is the outgoing account's token refreshed for its parked copy (the newest one, not one a
+  // tab may be about to spend). Refreshing it any earlier would spend the active cookie's token on a switch that might
+  // still be refused, and the person would then be signed out of the account they stayed in.
+  // A refusal for good keeps the row as "Sign in again"; an outage parks the token as it was (it was never spent).
   if (active.kind === "ok") {
-    const out = parkedFrom(active.user, outgoingRt ?? active.session.refresh_token);
-    await writeParked(slot, outgoingRt ? out : { ...out, stale: true });
+    const outgoing = await refreshParked(active.session.refresh_token);
+    const out = parkedFrom(active.user, outgoing.kind === "ok" ? outgoing.session.refresh_token : active.session.refresh_token);
+    await writeParked(slot, outgoing.kind === "expired" ? { ...out, stale: true } : out);
   } else {
     await writeParked(slot, null);
   }
