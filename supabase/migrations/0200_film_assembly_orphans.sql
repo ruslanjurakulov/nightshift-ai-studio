@@ -1,5 +1,4 @@
 -- 0200_film_assembly_orphans.sql — Film Studio P4b: a master the assembly registered after it had lost the segment is not kept.
--- (0200 is a placeholder number; Atlas assigns the real one at merge.)
 --
 -- WHY (Breach BR-P4B-01, docs/studio/NIGHTSHIFT_AI.md "Assembly handoff")
 --   The assembly (modules/film_assembly.py) registers its master, then records it with film_record_assembly. A render can outlive
