@@ -477,7 +477,10 @@ export function runGraph(r: RunReading): LiveGraph {
     else if (!last) status = reachedLater || (wfDone && !ended) ? "unknown" : ended ? (jobStatus === "completed" || jobStatus === "succeeded" || (timedOut && !stageFailed) ? "unknown" : "skipped") : "waiting";
     else if (st.failEvents.includes(last.event) || last.event === "agent.failed") status = "failed";
     else if (st.done.includes(last.event)) status = "done";
-    else status = ended ? "stopped" : wfDone ? "unknown" : "working";
+    // A later stage has begun, so this one is past its start, but its end event may not be here yet: the events that prove a slot
+    // was worked (render.completed, upload.completed, ...) reach Supabase only with the mirror, never live (modules/event_log.py).
+    // Not known, never "working" or a guessed "done".
+    else status = ended ? "stopped" : wfDone || reachedLater ? "unknown" : "working";
     if (last) reachedLater = true;
     const published = mine.filter((e) => e.event === "video.published").pop();
     statuses.unshift({ kind: st.kind, status, at: last?.ts ?? null, privacy: published?.privacy ?? null });

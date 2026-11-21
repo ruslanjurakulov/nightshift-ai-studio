@@ -276,6 +276,22 @@ describe("a channel run's live facts (workflow and hold)", () => {
   });
 });
 
+describe("events that arrive live and events that wait for the mirror", () => {
+  it("a stage whose end event has not arrived, while a later stage already began, is not known: never still working", () => {
+    const ev = (event: string, ts: string) => ({ ts, event, status: "ok", agent: null });
+    const g = runGraph(
+      coerceRunLive({
+        job: null,
+        window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:20:00Z" },
+        events: [ev("render.started", "2026-11-21T10:10:00Z"), ev("publish.allowed", "2026-11-21T10:15:00Z"), ev("upload.started", "2026-11-21T10:16:00Z")],
+      }),
+    );
+    expect(g.nodes.find((n) => n.id === "render")?.status).toBe("unknown");
+    expect(g.nodes.find((n) => n.id === "gate")?.status).toBe("done");
+    expect(g.nodes.find((n) => n.id === "upload")?.status).toBe("working");
+  });
+});
+
 describe("the brief, before Create", () => {
   // BRIEF v1 as GET /api/brain/session/<id> returns it (docs/studio/NIGHTSHIFT_AI.md).
   const raw = {
