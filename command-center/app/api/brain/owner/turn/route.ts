@@ -32,7 +32,7 @@ async function vendorUser(userId: string): Promise<string> {
  *  2. The owner's chosen model (0198 ai_chat_owner_settings), on sale and keyed on this server — or the reason it is not. Never
  *     another model (rule 4).
  *  3. The owner's facts, built server side (second factor enforced there). The browser never sends a figure.
- *  4. A turn reserved in the database under the daily cap (0202) BEFORE the vendor is called; finished with how it ended.
+ *  4. A turn reserved in the database under the daily cap (0203) BEFORE the vendor is called; finished with how it ended.
  * Nothing about the question, the facts or the answer is logged or stored.
  */
 export async function POST(request: Request) {
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   const reserve = await supabase.rpc("owner_ai_reserve_turn", { p_chars: question.length, p_model: model.id });
   if (reserve.error) {
     const e = reserve.error as { code?: string; message?: string; details?: string };
-    if (e.code === "42883" || e.code === "PGRST202") return brainJson({ error: "not_enabled", needs: "0202" }, 503);
+    if (e.code === "42883" || e.code === "PGRST202") return brainJson({ error: "not_enabled", needs: "0203" }, 503);
     if (e.code === "NS401") return brainJson({ error: "second_factor" }, 401);
     if (e.message === "owner_ai_daily_cap") {
       const m = /used=(\d+) limit=(\d+)/.exec(e.details ?? "");

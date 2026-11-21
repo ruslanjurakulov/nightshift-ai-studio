@@ -1,4 +1,4 @@
--- 0202_owner_ai_turns.sql — the owner's Nightshift AI: a turn log and its daily cap. docs/OWNER_BRAIN.md "Owner AI".
+-- 0203_owner_ai_turns.sql — the owner's Nightshift AI: a turn log and its daily cap. docs/OWNER_BRAIN.md "Owner AI".
 --
 -- *** LIVE ON APPLY. *** One closed table and two functions. Nothing replaced, nothing backfilled.
 --
@@ -15,21 +15,21 @@
 -- The table has RLS on and no policy: only these two functions touch it. Execute is granted to `authenticated` only.
 --
 -- REQUIRES 0182, 0107, and creative_refuse() (0036). Additive and idempotent.
--- Undo: docs/sql/rollback_0202_owner_ai_turns.sql.
--- NUMBER. 0202 is provisional; the final number is assigned at merge.
+-- Undo: docs/sql/rollback_0203_owner_ai_turns.sql.
+-- NUMBER. 0203 is provisional; the final number is assigned at merge.
 set local lock_timeout = '5s';
 
 do $$
 begin
   if to_regprocedure('public.owner_analytics_is_owner()') is null then
-    raise exception '0202 needs 0182_owner_analytics.sql: apply it first';
+    raise exception '0203 needs 0182_owner_analytics.sql: apply it first';
   end if;
   if to_regprocedure('public.admin_aal_ok()') is null then
-    raise exception '0202 needs 0107_owner_safety.sql (admin_aal_ok): apply it first';
+    raise exception '0203 needs 0107_owner_safety.sql (admin_aal_ok): apply it first';
   end if;
   if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                   where n.nspname = 'public' and p.proname = 'creative_refuse') then
-    raise exception '0202 needs creative_refuse() (0036): apply it first';
+    raise exception '0203 needs creative_refuse() (0036): apply it first';
   end if;
 end $$;
 
@@ -51,7 +51,7 @@ alter table public.owner_ai_turns enable row level security;
 revoke all on table public.owner_ai_turns from public, anon, authenticated, service_role;
 revoke all on sequence public.owner_ai_turns_id_seq from public, anon, authenticated, service_role;
 comment on table public.owner_ai_turns is
-  'Migration 0202: one row per owner Nightshift AI turn — who, when, model, outcome, question length and token counts; never the question, answer or facts. RLS on, no policy: only owner_ai_reserve_turn/owner_ai_finish_turn touch it.';
+  'Migration 0203: one row per owner Nightshift AI turn — who, when, model, outcome, question length and token counts; never the question, answer or facts. RLS on, no policy: only owner_ai_reserve_turn/owner_ai_finish_turn touch it.';
 
 -- The cap. 200 owner questions in a rolling 24 hours: far above a person's use, low enough that a loop is a bounded bill.
 create or replace function public.owner_ai_reserve_turn(p_chars integer, p_model text)
@@ -112,9 +112,9 @@ end
 $$;
 
 comment on function public.owner_ai_reserve_turn(integer, text) is
-  'Migration 0202: reserves one owner Nightshift AI turn before the vendor is called — platform owner only, second factor when 0107''s gate is on, 200 per rolling 24 hours under a lock (NS429 owner_ai_daily_cap). Returns the turn id.';
+  'Migration 0203: reserves one owner Nightshift AI turn before the vendor is called — platform owner only, second factor when 0107''s gate is on, 200 per rolling 24 hours under a lock (NS429 owner_ai_daily_cap). Returns the turn id.';
 comment on function public.owner_ai_finish_turn(bigint, boolean, text, integer, integer) is
-  'Migration 0202: records how a reserved owner AI turn ended (answered / failed with a code) and its token counts. Owner only; a turn is finished once.';
+  'Migration 0203: records how a reserved owner AI turn ended (answered / failed with a code) and its token counts. Owner only; a turn is finished once.';
 
 revoke all on function public.owner_ai_reserve_turn(integer, text) from public, anon, authenticated, service_role;
 revoke all on function public.owner_ai_finish_turn(bigint, boolean, text, integer, integer) from public, anon, authenticated, service_role;
@@ -128,31 +128,31 @@ declare
   fn  oid;
 begin
   if not (select relrowsecurity from pg_class where oid = 'public.owner_ai_turns'::regclass) then
-    raise exception '0202 end state: owner_ai_turns must have RLS on';
+    raise exception '0203 end state: owner_ai_turns must have RLS on';
   end if;
   if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'owner_ai_turns') then
-    raise exception '0202 end state: owner_ai_turns must have no policy';
+    raise exception '0203 end state: owner_ai_turns must have no policy';
   end if;
   if has_table_privilege('authenticated', 'public.owner_ai_turns', 'SELECT')
      or has_table_privilege('anon', 'public.owner_ai_turns', 'SELECT')
      or has_table_privilege('service_role', 'public.owner_ai_turns', 'SELECT') then
-    raise exception '0202 end state: owner_ai_turns must not be readable directly';
+    raise exception '0203 end state: owner_ai_turns must not be readable directly';
   end if;
   foreach sig in array array['public.owner_ai_reserve_turn(integer,text)', 'public.owner_ai_finish_turn(bigint,boolean,text,integer,integer)'] loop
     fn := to_regprocedure(sig);
     if fn is null then
-      raise exception '0202 end state: % does not exist', sig;
+      raise exception '0203 end state: % does not exist', sig;
     end if;
     if not has_function_privilege('authenticated', fn, 'EXECUTE')
        or has_function_privilege('anon', fn, 'EXECUTE')
        or has_function_privilege('service_role', fn, 'EXECUTE') then
-      raise exception '0202 end state: % has the wrong grants', sig;
+      raise exception '0203 end state: % has the wrong grants', sig;
     end if;
     if exists (select 1 from pg_proc p where p.oid = fn
                 and (not p.prosecdef or p.proacl is null
                      or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-      raise exception '0202 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
+      raise exception '0203 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
     end if;
   end loop;
 end $$;

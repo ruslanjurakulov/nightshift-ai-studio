@@ -1,4 +1,4 @@
-"""Breach round on 0202 (the owner's Nightshift AI meter): attacks that go past the author's own lab tests.
+"""Breach round on 0203 (the owner's Nightshift AI meter): attacks that go past the author's own lab tests.
 
 What would break: two owner tabs (or a retry loop) racing for the last turn and both getting a vendor call past the cap; a finish
 call freeing a slot so the cap never bites; a second platform owner finishing, or rewriting, the first one's turn; a value that

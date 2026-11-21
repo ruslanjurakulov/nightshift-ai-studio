@@ -1,4 +1,4 @@
-"""The owner's Nightshift AI turn log and cap (migration 0202).
+"""The owner's Nightshift AI turn log and cap (migration 0203).
 
 Every owner AI turn is vendor spend, so it is reserved in the database before the model is called. What would break: a customer or
 an admin who is not the owner reserving turns (spend on the owner's model, and a way to probe the owner's console); the cap not

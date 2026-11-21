@@ -1,4 +1,4 @@
-"""Security-lab contract for migration 0202 (the owner's Nightshift AI: its turn log and daily cap).
+"""Security-lab contract for migration 0203 (the owner's Nightshift AI: its turn log and daily cap).
 
 Wired in at the bottom of sec_expectations.py, like sec_owner_brain_0197.
 """

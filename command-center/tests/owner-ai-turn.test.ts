@@ -162,9 +162,9 @@ describe("the model", () => {
     expect(s.llmCalls).toEqual([]);
   });
 
-  it("without 0202 nothing is asked, and the route says which migration it needs", async () => {
+  it("without 0203 nothing is asked, and the route says which migration it needs", async () => {
     s.rpc.owner_ai_reserve_turn = { data: null, error: { code: "42883" } };
-    expect(await call()).toMatchObject({ status: 503, body: { error: "not_enabled", needs: "0202" } });
+    expect(await call()).toMatchObject({ status: 503, body: { error: "not_enabled", needs: "0203" } });
     expect(s.llmCalls).toEqual([]);
   });
 

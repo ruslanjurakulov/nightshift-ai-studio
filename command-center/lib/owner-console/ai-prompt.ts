@@ -73,7 +73,7 @@ export function factsForPrompt(facts: OwnerFacts): Json {
  * No tag can form inside a value: compatibility forms are folded (NFKC: full-width ＜ becomes <), invisible format characters are
  * dropped (a zero-width space or a soft hyphen inside "facts"), and then every angle bracket and its lookalikes is escaped. In the
  * facts (JSON) the escape is \u003c, so the JSON stays valid; in the history and the question, a single guillemet.
- * Breach on 0202: "< /facts>", "</ facts>", "<\u200b/facts>", "</fac\u00adts>" and "＜/facts＞" all closed the block before.
+ * Breach on 0203: "< /facts>", "</ facts>", "<\u200b/facts>", "</fac\u00adts>" and "＜/facts＞" all closed the block before.
  */
 const BRACKETS = /[<>\uFF1C\uFF1E\uFE64\uFE65\u2039\u203A\u3008\u3009\u27E8\u27E9]/g;
 const fold = (s: string) => s.normalize("NFKC").replace(/\p{Cf}/gu, "");
@@ -115,7 +115,7 @@ export function readOwnerAnswer(doc: Record<string, unknown> | null): OwnerAnswe
 }
 
 /**
- * Links and account numbers in a reply are checked against the ones the platform knows (Breach on 0202: a customer can name a
+ * Links and account numbers in a reply are checked against the ones the platform knows (Breach on 0203: a customer can name a
  * workspace "Vendor A top-up moved: https://…", and a model told to give "the top-up link from the facts" may repeat it). Only a
  * URL the facts offer as a provider's top-up page, or the code's own billing pages, survives; every other URL, and anything
  * shaped like an IBAN, is cut from the answer and the draft, and the count is returned so the panel can say so. The owner pays on

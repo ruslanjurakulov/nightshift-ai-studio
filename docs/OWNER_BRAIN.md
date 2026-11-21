@@ -47,7 +47,7 @@ listed as unknown, never as fine. Days are UTC calendar days.
 
 - **Order.** Same-origin POST → signed in → platform owner (404 otherwise, before anything is read) → the chosen model is on sale and
   keyed (409 with the reason otherwise; no other model is tried) → the facts, built server side (401 `second_factor`) → a turn
-  reserved under the daily cap (0202, 429) → the model → the turn finished with how it ended.
+  reserved under the daily cap (0203, 429) → the model → the turn finished with how it ended.
 - **Answers and drafts only.** The model has no tools and the route no action: nothing it says is executed. The rules
   (`lib/owner-console/ai-prompt.ts`) forbid inventing, keep the measured / estimated / unknown tags, and treat customer-typed
   text in the facts as data; a closing tag inside a value is defused so it cannot end the data block.

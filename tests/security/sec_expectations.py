@@ -797,7 +797,7 @@ import sec_ai_chat_0198  # noqa: E402
 
 sec_ai_chat_0198.extend(TABLES, FUNCTIONS)
 
-# Migration 0202 (the owner's Nightshift AI: turn log and daily cap): tests/security/sec_owner_ai_0202.py
-import sec_owner_ai_0202  # noqa: E402
+# Migration 0203 (the owner's Nightshift AI: turn log and daily cap): tests/security/sec_owner_ai_0203.py
+import sec_owner_ai_0203  # noqa: E402
 
-sec_owner_ai_0202.extend(TABLES, FUNCTIONS)
+sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
