@@ -1,9 +1,9 @@
-"""The audit row of a switch between the accounts kept in one browser (migration 0203, audit_account_switch), in a real
+"""The audit row of a switch between the accounts kept in one browser (migration 0204, audit_account_switch), in a real
 database.
 
 Found in review before release (Lens H1, Breach M1): the switch route inserted `account.switch` into app_audit_log
 directly, and the database refused every such row (an action outside audit_action_allowed(), and channel_id null for a
-non-admin), while the route reported nothing. 0203 adds the action and one SECURITY DEFINER function that writes the row.
+non-admin), while the route reported nothing. 0204 adds the action and one SECURITY DEFINER function that writes the row.
 
 What would break without these: an anonymous caller writing switch rows; a person writing a row that says ANOTHER person
 switched in (the `to` must always be the caller); p_from being used for anything but the record; the row not being
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from sec_db import ANON, MIGRATIONS, acting, as_superuser
 
-MIGRATION = MIGRATIONS / "0203_account_switch_audit.sql"
+MIGRATION = MIGRATIONS / "0204_account_switch_audit.sql"
 
 
 def _rows(conn, uid):

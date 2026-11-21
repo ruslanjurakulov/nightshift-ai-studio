@@ -1,4 +1,4 @@
--- 0203 (placeholder number; the final one is assigned at merge) — the audit row of a switch between the accounts kept in
+-- 0204 (placeholder number; the final one is assigned at merge) — the audit row of a switch between the accounts kept in
 -- one browser (command-center/lib/device-accounts.ts, app/api/account/accounts/switch).
 --
 -- WHY: the switch route recorded `account.switch` by inserting into app_audit_log as the account switched TO, and the row
@@ -56,7 +56,7 @@ create or replace function public.audit_action_allowed(p_action text) returns bo
     'voice.sample_delete', 'voice.purge',
     -- 0145: a person sets a video's YouTube "made for kids" declaration (set_video_made_for_kids).
     'video.made_for_kids',
-    -- 0203: a person switches between the accounts kept in one browser (audit_account_switch).
+    -- 0204: a person switches between the accounts kept in one browser (audit_account_switch).
     'account.switch',
     -- The comment inbox (0081, in review when this was written): its routes audit
     -- through their own helper, auditInbox().
@@ -92,13 +92,13 @@ grant execute on function public.audit_account_switch(uuid) to authenticated;
 do $$
 begin
   if not public.audit_action_allowed('account.switch') or not public.audit_action_allowed('video.made_for_kids') then
-    raise exception '0203: audit_action_allowed() must keep 0145''s list and add account.switch';
+    raise exception '0204: audit_action_allowed() must keep 0145''s list and add account.switch';
   end if;
   if has_function_privilege('anon', 'public.audit_account_switch(uuid)', 'execute') then
-    raise exception '0203: anon must not execute audit_account_switch';
+    raise exception '0204: anon must not execute audit_account_switch';
   end if;
   if not has_function_privilege('authenticated', 'public.audit_account_switch(uuid)', 'execute') then
-    raise exception '0203: authenticated must execute audit_account_switch';
+    raise exception '0204: authenticated must execute audit_account_switch';
   end if;
 end
 $$;
