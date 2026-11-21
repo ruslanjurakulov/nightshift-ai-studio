@@ -45,14 +45,16 @@ def test_a_job_names_its_own_video_and_never_another_channels(db, conn):
         # Another channel (here the operator's own) holds a video of the same slug: never this job's answer.
         su.run("insert into public.videos (video_id, channel_id, slug, held_at, publish_state) "
                "values ('run-elsewhere', 'chan-op', 'the-lost-colony', now(), 'held')")
-        su.run("update public.render_jobs set result_slug = 'the-lost-colony' where id = %s", [job])
+        # 0207: a job names only a video held or uploaded while it ran, so this job gets a start and an end around now().
+        su.run("update public.render_jobs set result_slug = 'the-lost-colony', started_at = now() - interval '1 hour', "
+               "finished_at = now() where id = %s", [job])
         assert answers(conn, job, token) == (None, None)
         su.run("insert into public.videos (video_id, channel_id, slug, held_at, publish_state) "
                "values ('run-mine', %s, 'the-lost-colony', now(), 'held')", [CHAN])
         assert answers(conn, job, token) == ("run-mine", "run-mine")
         # Once uploaded, the uploaded row is the answer.
         su.run("insert into public.videos (video_id, channel_id, slug, published_at, privacy, publish_state) "
-               "values ('yt-abc123', %s, 'the-lost-colony', '2026-11-20T10:00:00+00:00', 'private', 'uploaded')", [CHAN])
+               "values ('yt-abc123', %s, 'the-lost-colony', (now() - interval '10 minutes')::text, 'private', 'uploaded')", [CHAN])
         assert answers(conn, job, token) == ("yt-abc123", "yt-abc123")
 
 
