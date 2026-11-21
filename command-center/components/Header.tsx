@@ -14,7 +14,6 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { NotificationsCenter } from "@/components/NotificationsCenter";
 import { NotificationBell } from "@/components/shell/NotificationBell";
-import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { OrgSwitcher } from "@/components/org/OrgSwitcher";
 import { ContextSwitcher } from "@/components/shell/ContextSwitcher";
@@ -220,7 +219,6 @@ export function Header({
               <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
             </button>
           </span>
-          <UtcClock />
           <NotificationsCenter scope={scope} />
           <span className="hidden sm:contents">
             <LanguageSelector />

@@ -700,6 +700,8 @@ export function StudioHome({
           const busy = m !== "youtube" ? (working[m] ?? 0) : 0;
           // Nothing on sale for this kind (lib/tool-availability.ts): said on the chip, and the chip does nothing.
           const closed = !modeOpen(tools, m);
+          // Not on sale: not drawn. The current one stays so the radio group never loses its selection.
+          if (closed && !on) return null;
           return (
             <button
               key={m}

@@ -242,9 +242,10 @@ describe("strict enforce: an admin with NO authenticator may open /security and 
   it("a customer with no authenticator is untouched (and the admin lookup is remembered)", async () => {
     auth.admin = false;
     auth.user = { id: "c-strict", factors: [] };
-    expect((await get("/chronos/videos")).headers.get("location")).toBeNull();
+    // An app page that is not itself a redirect (/videos goes to Studio now: lib/studioRoutes ZOMBIE_SECTIONS).
+    expect((await get("/chronos/library")).headers.get("location")).toBeNull();
     expect((await get("/api/agent/run")).status).not.toBe(403);
-    expect((await get("/chronos/videos")).headers.get("location")).toBeNull();
+    expect((await get("/chronos/library")).headers.get("location")).toBeNull();
     expect(auth.calls.rpc).toBe(1);
     expect(auth.calls.aal).toBe(0);
   });
@@ -252,7 +253,7 @@ describe("strict enforce: an admin with NO authenticator may open /security and 
   it("a failing admin lookup never blocks anyone (it is a tightening, not a gate)", async () => {
     auth.rpcFails = true;
     auth.user = { id: "c-err", factors: [] };
-    expect((await get("/chronos/videos")).headers.get("location")).toBeNull();
+    expect((await get("/chronos/library")).headers.get("location")).toBeNull();
   });
 
   it("the same admin with a verified factor is the ordinary enforce case (code page, not /security)", async () => {

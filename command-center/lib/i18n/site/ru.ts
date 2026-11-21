@@ -15,6 +15,7 @@ export const siteRu: SiteDictionary = {
     api: "API",
     signIn: "Войти",
     start: "Начать бесплатно",
+    openApp: "Кабинет",
     menu: "Меню",
     menuClose: "Закрыть меню",
   },

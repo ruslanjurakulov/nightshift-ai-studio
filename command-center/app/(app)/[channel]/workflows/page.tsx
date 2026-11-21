@@ -1,57 +1,24 @@
-import { isSupabaseConfigured } from "@/lib/config";
-import { NotConfigured } from "@/components/NotConfigured";
-import { PageHeader } from "@/components/PageHeader";
-import { Note } from "@/components/g3/Section";
-import { WorkflowsHome } from "@/components/workflows/WorkflowsHome";
-import { getOrgContext } from "@/lib/orgs-server";
-import { getDictionary } from "@/lib/i18n/server";
-import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
-import { atLeast } from "@/lib/auth/roles";
-import { loadStudioModels } from "@/lib/server/creative";
-import { loadRuns, loadWorkflows } from "@/lib/server/workflows";
+import { redirect } from "next/navigation";
+import { getChannelPath } from "@/lib/channels-path-server";
+import { studioRoute } from "@/lib/studioRoutes";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * The organization's saved workflows (migration 0073), read as the signed-in
- * user: RLS shows this organization's and nothing else. Saving costs nothing;
- * a run starts only from a workflow's own page, after its one total price is
- * shown and confirmed. Without the migration the page says so.
+ * The saved-workflows list moved into Nightshift Studio (lib/studioRoutes ZOMBIE_SECTIONS): the audit (2026-11-21) found this
+ * page drawing the old list under a "now lives in Nightshift Studio" line. middleware.ts answers the URL before anything
+ * renders; this shim is the same move for a request that reaches the page anyway. A workflow and its runs still open at
+ * /workflows/{id}, read as the signed-in user under RLS, exactly as before.
  */
-export default async function WorkflowsPage() {
-  if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
-  const org = await getOrgContext();
-  const header = <PageHeader icon="workflows" title={t.workflows.title} subtitle={t.workflows.subtitle} />;
-  const note = (text: string) => (
-    <div className="rhythm ns-open">
-      {header}
-      <Note>{text}</Note>
-    </div>
-  );
-  if (!org.supported) return note(t.org.notMigrated);
-  if (!org.current) return note(t.workflows.noOrg);
-
-  const [list, runs, models, role] = await Promise.all([
-    loadWorkflows(org.current.id),
-    loadRuns(org.current.id),
-    loadStudioModels(),
-    resolveCurrentOrgRole(),
-  ]);
-  if (list.state === "not_available") return note(t.workflows.notEnabled);
-  if (list.state !== "ok") return note(t.workflows.readFailed);
-
-  return (
-    <div className="rhythm ns-open">
-      {header}
-      <WorkflowsHome
-        orgId={org.current.id}
-        models={models}
-        workflows={list.value}
-        runs={runs.state === "ok" ? runs.value : []}
-        canEdit={atLeast(role, "editor")}
-      />
-    </div>
-  );
+export default async function WorkflowsMoved({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const path = await getChannelPath();
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(await searchParams)) for (const one of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, one);
+  const s = q.toString();
+  redirect(path(studioRoute(`/workflows${s ? `?${s}` : ""}`)?.href ?? "/studio"));
 }

@@ -127,10 +127,16 @@ export function subsystemHealth(events: SystemEventRow[], dbOk: boolean, connect
   return subs;
 }
 
-/** Overall banner: operational unless something is offline/degraded. */
-export function overallStatus(subs: Subsystem[]): "operational" | "degraded" | "offline" {
+/**
+ * Overall banner = the worst row beneath it (offline > degraded > unknown >
+ * operational). "Unknown" must count: the banner used to read "all systems
+ * operational" beside a YouTube row of "unknown" (rule 5), and an empty list
+ * is unknown too, not operational.
+ */
+export function overallStatus(subs: Subsystem[]): "operational" | "degraded" | "offline" | "unknown" {
   if (subs.some((s) => s.state === "offline")) return "offline";
   if (subs.some((s) => s.state === "degraded")) return "degraded";
+  if (subs.length === 0 || subs.some((s) => s.state === "unknown")) return "unknown";
   return "operational";
 }
 

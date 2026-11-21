@@ -140,8 +140,9 @@ const RULES: Rule[] = [
   },
   // TODO(canvas step "edit"): the `edit` project on the timeline view.
   { pattern: new RegExp(`^/editor/(${ID})$`), route: (m, q) => stays(`/editor/${m[1]}`, q, { step: "edit", target: `/studio/edit/${m[1]}?view=timeline` }) },
-  // TODO(canvas step "recipe"): saved workflows become recipes.
-  { pattern: /^\/workflows$/, route: (_m, q) => stays("/workflows", q, { step: "recipe", target: "/studio?drawer=recipes" }) },
+  // The saved-workflows list: Studio home, whose first run lays out the same recipes (audit 2026-11-21: the old page under a
+  // "moved" notice). A workflow and its runs still open at /workflows/{id}. TODO(canvas step "recipe"): /studio?drawer=recipes.
+  { pattern: /^\/workflows$/, route: (_m, q) => ({ href: withQuery("/studio", q), kind: "redirect", canvas: { step: "recipe", target: "/studio?drawer=recipes" } }) },
   {
     pattern: new RegExp(`^/workflows/runs/(${ID})$`),
     route: (m, q) => stays(`/workflows/runs/${m[1]}`, q, { step: "recipe", target: `/studio/recipe/{workflowId}?node=recipe&tab=runs&run=${m[1]}` }),
@@ -168,6 +169,30 @@ export function studioRoute(url: string): StudioRoute | null {
     if (m) return rule.route(m, query);
   }
   return null;
+}
+
+/**
+ * The list screens that are nothing but a way into Nightshift Studio now (audit 2026-11-21): Videos, the Editor's project list
+ * and the saved-workflows list. Their page shims redirect too, but under the channel's loading.tsx the layout has already
+ * streamed the whole shell by the time a page calls redirect(), so the browser drew the frame and the "now lives in Nightshift
+ * Studio" line first and only then moved on. The middleware answers these before anything renders (zombieRedirect).
+ */
+export const ZOMBIE_SECTIONS = ["videos", "editor", "workflows"] as const;
+
+/**
+ * `/{channel}/{zombie}` with its query → `/{channel}/{studio target}`, or null for any other path. Exact: a video's,
+ * a project's or a workflow's own page (`/c/videos/abc`) is not matched. No "moved" marker is added (the notice is the screen
+ * the owner asked to lose), and one already in the query is dropped. Pure; called by middleware.ts after the auth and
+ * second-factor gates, so who may open what is decided exactly as before.
+ */
+export function zombieRedirect(pathname: string, search: string): string | null {
+  const m = pathname.match(/^\/([^/]+)\/(videos|editor|workflows)\/?$/);
+  if (!m || m[1] === "api") return null;
+  const q = new URLSearchParams(search);
+  q.delete(MOVED_PARAM);
+  const s = q.toString();
+  const route = studioRoute(`/${m[2]}${s ? `?${s}` : ""}`);
+  return route && route.kind === "redirect" ? `/${m[1]}${route.href}` : null;
 }
 
 /**

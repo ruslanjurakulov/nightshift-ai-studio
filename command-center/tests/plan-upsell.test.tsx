@@ -27,7 +27,7 @@ vi.mock("next/link", () => ({
     </a>
   ),
 }));
-vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
+vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}`, useChannelSlug: () => "chronos" }));
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
@@ -359,8 +359,8 @@ describe("the voice tools in the customer sidebar", () => {
     expect(CUSTOMER_SIDEBAR.tools.find((t) => t.tool === "dub")?.href).toBe("/create?tool=dub");
     expect(en.gen.kinds.voice_change).toBe("Change voice");
     expect(en.gen.kinds.dub).toBe("Dub / translate");
-    // The tools are no longer sidebar rows (they open from Create): the Create entry is lit.
-    expect(sidebarCurrent("/create")).toBe("create");
+    // The tools are no longer sidebar rows (they open from Create): the Nightshift Studio entry is lit.
+    expect(sidebarCurrent("/create")).toBe("studio");
   });
 
   it("every sidebar href is a screen a customer may open", () => {

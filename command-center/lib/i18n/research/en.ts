@@ -2,7 +2,7 @@
 export const researchEn = {
   title: "Research",
   subtitle: "Your channel, the channels you compare it with, and what your viewers ask, from YouTube's own numbers.",
-  pickChannel: "Pick a single channel (top-left switcher) to research it.",
+  pickChannel: "Pick a single channel (top-right switcher) to research it.",
   notEnabled: "Research isn't switched on for this workspace yet. The platform operator turns it on.",
   readFailed: "This could not be read. Try again in a moment.",
   viewerOnly: "Only editors and admins can refresh or change this list.",

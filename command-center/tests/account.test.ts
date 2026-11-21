@@ -5,6 +5,7 @@ import { ALL_CHANNELS, SECTIONS, appRedirect, isSection } from "@/lib/channels";
 import {
   CUSTOMER_NAV_KEYS,
   CUSTOMER_RAIL,
+  CUSTOMER_TABBAR,
   NIGHTSHIFT_AI_ENTRY,
   customerRail,
   CUSTOMER_SIDEBAR,
@@ -37,10 +38,11 @@ const { youtubeAccounts } = await import("@/lib/connectedAccounts");
 const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.items.map((i) => i.key));
 
 describe("nav filtering by role", () => {
-  it("gives a customer exactly six destinations, in rail order", () => {
-    // The sprint IA: making and finding things, plus Nightshift Brain (the owner's dashboard, 0196). Credits and Settings
-    // are the sidebar's foot (CUSTOMER_SIDEBAR.footer). The phone's bottom bar keeps five (BOTTOM_ORDER).
-    expect(keys(false)).toEqual(["home", "create", "trends", "projects", "brain", "library"]);
+  it("gives a customer exactly four destinations, in the owner's order (audit 2026-11-21)", () => {
+    // Nightshift Studio, Media library, Nightshift Brain, Channels. Credits and Settings are the sidebar's foot
+    // (CUSTOMER_SIDEBAR.footer). The phone's bottom bar keeps its own five (CUSTOMER_TABBAR).
+    expect(keys(false)).toEqual(["studio", "library", "brain", "channels"]);
+    expect(CUSTOMER_SIDEBAR.footer.map((i) => i.key)).toEqual(["credits", "settings"]);
   });
 
   it("puts every customer screen behind a rail entry or its tabs", () => {
@@ -59,14 +61,19 @@ describe("nav filtering by role", () => {
       "usage",
       // Nightshift Studio's canvas is the Projects entry (/studio?shelf=projects).
       "studio",
-      // Channels and the Inbox are in the avatar menu (components/account/AccountMenu); Developers is reached from Settings.
-      "channels",
+      // The Inbox is in the avatar menu (components/account/AccountMenu); Developers is reached from Settings.
       "inbox",
       "developers",
+      // The phone's bottom bar: Home, Create, Trends, Projects, Library.
+      ...CUSTOMER_TABBAR.map((i) => i.key),
+      // The Editor's and the saved workflows' lists are Studio home itself now (lib/studioRoutes ZOMBIE_SECTIONS): a project
+      // opens from the Projects shelf at /editor/{id}, a workflow at /workflows/{id}.
+      "editor",
+      "workflows",
     ]);
     expect(CUSTOMER_SIDEBAR.footer.find((i) => i.key === "settings")?.href).toBe("/organization");
     expect(SECTION_TABS.settings).toEqual([]); // no tab bar, no team screens behind it
-    for (const k of CUSTOMER_NAV_KEYS) if (k !== "command") expect(reachable.has(k)).toBe(true);
+    for (const k of CUSTOMER_NAV_KEYS) if (k !== "command") expect(reachable.has(k), k).toBe(true);
     expect(tabsFor("library")?.rail).toBe("studio");
     expect(SECTION_TABS.studio).toEqual([]); // the hub's strip of tabs is gone: tiles, not tabs
     expect(tabsFor("developers")?.rail).toBe("settings");
@@ -223,20 +230,19 @@ describe("appRedirect", () => {
     expect(isSection("home")).toBe(true);
   });
 
-  it("opens Home from the customer rail's first entry, with Create beside it, without changing the operator's rail", () => {
-    expect(CUSTOMER_RAIL[0]).toEqual({ href: "/home", key: "home" });
-    expect(CUSTOMER_RAIL[1]).toEqual({ href: "/create", key: "create" });
-    expect(CUSTOMER_RAIL[4]).toEqual({ href: "/brain", key: "brain" });
+  it("opens Nightshift Studio from the customer rail's first entry, Home behind the wordmark, without changing the operator's rail", () => {
+    expect(CUSTOMER_RAIL[0]).toEqual({ href: "/studio", key: "studio" });
+    expect(CUSTOMER_RAIL[2]).toEqual({ href: "/brain", key: "brain" });
+    expect(CUSTOMER_SIDEBAR.home).toEqual({ href: "/home", key: "home" });
     expect(tabsFor("home")).toBeNull();
     expect(keys(true)).not.toContain("home");
   });
 
-  it("lists Nightshift AI second only where the server's flag lets the workspace in, never as a door to a closed panel", () => {
+  it("lists Nightshift AI after Studio only where the server's flag lets the workspace in, never as a door to a closed panel", () => {
     expect(customerRail().map((i) => i.key)).not.toContain("nightshiftAi");
     expect(customerRail({ adsFactory: false, characterStudio: false, aiChat: false })).toBe(CUSTOMER_RAIL);
     const on = customerRail({ adsFactory: false, characterStudio: false, aiChat: true });
-    // The owner's order: Home, Nightshift AI, Studio, Brain, the rest.
-    expect(on.map((i) => i.key)).toEqual(["home", "nightshiftAi", "create", "trends", "projects", "brain", "library"]);
+    expect(on.map((i) => i.key)).toEqual(["studio", "nightshiftAi", "library", "brain", "channels"]);
     expect(on[1]).toEqual(NIGHTSHIFT_AI_ENTRY);
     expect(NIGHTSHIFT_AI_ENTRY.href).toBe("/studio?ai=new");
   });

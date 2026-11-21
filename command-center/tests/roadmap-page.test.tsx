@@ -84,7 +84,8 @@ const APPROVED_UZ = {
   items: [
     ["Professional video editor", "koʻp qatlamli vaqt chizigʻi, effektlar va animatsiyalar, ritmga moslash, rang va maskalar, jimlikni avtomatik kesish, subtitrlar, ovoz yozish, 4K eksport"],
     ["Eng kuchli video AI modellar", "matndan va rasmdan video, videoni tahrirlash, qahramonni almashtirish, har biri oʻz yaratuvchisining API'si orqali"],
-    ["Rasm, ovoz va musiqa yaratish", ""],
+    // 2026-11-21 (L1-01): the owner's text had no description here; the one line was added because a bare title read as unfinished.
+    ["Rasm, ovoz va musiqa yaratish", "qisqa tavsifdan rasm, ovoz va musiqa yaratib, ularni videongizda ishlatish"],
     ["Reklama fabrikasi", "saytingizni skanerlab brendingizga mos reklama tayyorlash"],
     ["Namunalar galereyasi", "har bir model natijasini koʻrib, bir tugma bilan sinab koʻrish"],
     ["Ijtimoiy tarmoqlarga avtomatik joylash", "tayyor videoni studiyadan chiqmasdan YouTube, Instagram va boshqa ijtimoiy tarmoqlarga sizning roziligingiz bilan yuborish va vaqtini rejalashtirish."],
@@ -183,8 +184,8 @@ describe("/roadmap page", () => {
     const h2 = [...main.querySelectorAll("h2")].map((h) => h.textContent);
     expect(h2).toEqual([...r.items.map((i) => i.title), r.closing.title]);
     for (const item of r.items) if (item.body) expect(main.textContent).toContain(item.body);
-    // An item with no description renders its title alone, never an empty paragraph.
-    expect(main.querySelectorAll('[data-id="create"] p')).toHaveLength(0);
+    // An item with no description would render its title alone; "create" has one now, so it shows a paragraph.
+    expect(main.querySelectorAll('[data-id="create"] p')).toHaveLength(1);
     expect(main.textContent).toContain(r.closing.body);
     // Not the landing's .nx-sub, which site-next.css hides inside .nx-final on a phone: the closing line must show at every width.
     expect(main.querySelector(".rm-closing .nx-sub")).toBeNull();

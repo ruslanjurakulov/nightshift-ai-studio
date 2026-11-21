@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
+import { useSessionHint } from "@/components/legal/SessionSwap";
 
 /** Phones only: the width below which the bar is the wordmark, Start free and this button (site.css .st-menu-btn). */
 const PHONE = "(max-width: 767px)";
@@ -37,6 +38,7 @@ export function PublicMenu({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const signedIn = useSessionHint();
   const uid = useId();
   const button = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
@@ -145,10 +147,13 @@ export function PublicMenu({
             ))}
           </nav>
           <div className="st-menu-tools">{children}</div>
-          {/* Not a key: the bar's one key is Start free, which stays beside the button. */}
-          <Link href="/login" className="st-menu-signin" onClick={() => close(false)}>
-            {signIn}
-          </Link>
+          {/* Not a key: the bar's one key is Start free, which stays beside the button. Signed in, that key opens the app and
+              there is nothing to sign in to (components/legal/SessionSwap). */}
+          {!signedIn && (
+            <Link href="/login" className="st-menu-signin" onClick={() => close(false)}>
+              {signIn}
+            </Link>
+          )}
         </div>
       </div>
     </>
