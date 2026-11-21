@@ -97,7 +97,7 @@ export default async function OwnerConsoleUsers() {
                           </td>
                           <td>{r.plan ?? f.none}</td>
                           <td>{r.status === null ? f.none : Object.hasOwn(u.status, r.status) ? u.status[r.status as keyof typeof u.status] : <Tag state="unknown" f={f} />}</td>
-                          <td>{when(r.at, f)}</td>
+                          <td className="oc-nowrap">{when(r.at, f)}</td>
                         </tr>
                       ))}
                     </Table>

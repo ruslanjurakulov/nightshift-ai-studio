@@ -33,7 +33,11 @@ export default async function OwnerConsoleProviders() {
 
   // A native reading (credits, characters) stays in its own unit: no invented dollar price.
   const amountIn = (v: number | null, unit: string) =>
-    v === null ? null : unit === "usd" ? usd(v, locale) : `${num(v, locale, 0)} ${fill(pv.nativeUnit, { unit })}`;
+    v === null
+      ? null
+      : unit === "usd"
+        ? usd(v, locale)
+        : fill(pv.nativeUnit, { n: num(v, locale, 0), unit: Object.hasOwn(pv.units, unit) ? pv.units[unit as keyof typeof pv.units] : unit });
   const cell = (v: string | null) => v ?? <Tag state="unknown" f={f} />;
 
   const rows = (lines: PlanLine[]) =>
@@ -48,8 +52,8 @@ export default async function OwnerConsoleProviders() {
           {cell(amountIn(l.left, l.unit))} {l.left !== null && <Tag state={l.basis} f={f} />}
         </td>
         <td>{cell(amountIn(l.perDay, l.unit))}</td>
-        <td>{l.runsOutOn === "never" ? pv.never : cell(l.runsOutOn)}</td>
-        <td>{l.payBy ?? f.none}</td>
+        <td className="oc-nowrap">{l.runsOutOn === "never" ? pv.never : cell(l.runsOutOn)}</td>
+        <td className="oc-nowrap">{l.payBy ?? f.none}</td>
         <td>
           {cell(amountIn(l.amount, l.unit))}
           {l.amount !== null && (
@@ -58,8 +62,9 @@ export default async function OwnerConsoleProviders() {
         </td>
         <td>
           {l.topUpUrl ? (
-            <a className="oc-link" href={l.topUpUrl} target="_blank" rel="noopener noreferrer">
+            <a className="btn-quiet oc-nowrap" href={l.topUpUrl} target="_blank" rel="noopener noreferrer">
               {pv.topUp} <span aria-hidden>↗</span>
+              <span className="sr-only"> {pv.newTab}</span>
             </a>
           ) : (
             f.none
@@ -82,7 +87,7 @@ export default async function OwnerConsoleProviders() {
               <>
                 <AsOf iso={plan.asOf} f={f} />
                 <h2 className="oc-h2">{fill(pv.plan, { days: plan.days })}</h2>
-                <p className="oc-note">{fill(pv.planNote, { days: plan.days })}</p>
+                {total > 0 && <p className="oc-note">{fill(pv.planNote, { days: plan.days })}</p>}
                 {total === 0 ? (
                   <p className="oc-note">{pv.none}</p>
                 ) : (

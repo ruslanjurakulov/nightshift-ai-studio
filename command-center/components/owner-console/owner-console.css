@@ -220,7 +220,7 @@
 
 /* Figures drawn from the owner's facts. Every figure carries a word tag (measured / estimated / unknown), so the tag's tint is
    never the only signal. */
-.oc-kpis { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.5rem), 1fr)); gap: 0.5rem; }
+.oc-kpis { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); gap: 0.5rem; }
 .oc-kpi { margin: 0; border: 1px solid var(--color-border); border-radius: 0.7rem; background: var(--color-panel); padding: 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
 .oc-kpi-label { font-size: 0.78rem; color: var(--color-muted); }
 .oc-kpi-value { margin: 0; font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere; }
@@ -234,7 +234,7 @@
 .oc-tag-unknown { border-style: dashed; }
 .oc-asof { margin: 0; font-size: 0.78rem; color: var(--color-muted); }
 .oc-table-wrap { overflow-x: auto; max-width: 100%; }
-.oc-table-wrap:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.oc-table-wrap:focus-visible { outline: 2px solid var(--ns-focus, var(--color-primary)); outline-offset: 2px; }
 .oc-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .oc-table th { text-align: start; font-weight: 600; color: var(--color-muted); font-size: 0.75rem; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--color-border); white-space: nowrap; }
 .oc-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--color-border); vertical-align: top; font-variant-numeric: tabular-nums; }
@@ -242,3 +242,5 @@
 .oc-flag { color: var(--color-warn); font-weight: 600; }
 .oc-flag-fail { color: var(--color-fail); font-weight: 600; }
 .oc-stack { display: flex; flex-direction: column; gap: 1rem; }
+.oc-nowrap { white-space: nowrap; }
+.oc-warn { color: var(--color-warn); }
