@@ -43,6 +43,8 @@ import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { isPlatformOwner } from "@/lib/server/owner-view";
 import { KIND_TOOL, SLUG_RE, cleanLinkPrompt, drawsCreateScreen, isCreateKind } from "@/lib/customer/create";
 import { aiChatEnv, aiChatOpenFor } from "@/lib/nightshift-ai-flag";
+import { readToolAvailability } from "@/lib/server/tool-availability";
+import { startAvailability } from "@/lib/start-box";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -211,6 +213,8 @@ export default async function CreatePage({
           const target = runnable.find((c) => c.channel_id === scopedChannel?.channel_id) ?? runnable[0];
           return {
             agentOpen: aiChatOpenFor(genOrgId, aiChatEnv()),
+            // The same read the mode chips below are drawn from (the layout's, React cache): the box never offers what they call closed.
+            available: startAvailability(await readToolAvailability(genOrgId)),
             channel: target ? { slug: channelSlug(target, channels), name: target.name || target.channel_id } : null,
           };
         })()

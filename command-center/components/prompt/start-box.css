@@ -27,7 +27,10 @@
 }
 .sb-tab:hover { color: var(--ds-text); background: var(--ds-hover); }
 .sb-tab[aria-selected="true"] { color: var(--ds-text); background: var(--ds-surface-2); border-color: var(--ds-border-strong); }
-.sb-tab:focus-visible, .sb-chip:focus-visible, .sb-card:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+/* 3 px, the global ring's width (app/globals.css :focus-visible): this file is unlayered, so a thinner one here would win over it. */
+.sb-tab:focus-visible, .sb-chip:focus-visible, .sb-card:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; }
+.sb-tab[aria-disabled="true"] { cursor: not-allowed; color: var(--ds-text-2); }
+.sb-tab[aria-disabled="true"]:hover { background: transparent; }
 
 .sb-row {
   display: flex;
@@ -47,7 +50,8 @@
   /* Three lines, fixed: the box does not grow under the first keystroke and nothing below it moves. */
   min-height: calc(3 * 1.5em + 2 * var(--ds-space-2));
   padding: var(--ds-space-2);
-  resize: vertical;
+  /* Fixed at three lines (above); a drag handle would undo that and sits over the chips at 390 px. */
+  resize: none;
   border: 0;
   background: transparent;
   color: var(--ds-text);
@@ -84,11 +88,15 @@
 }
 .sb-chip:hover:not([aria-disabled="true"]) { background: var(--ds-hover); border-color: var(--ds-border-strong); }
 .sb-chip[aria-checked="true"], .sb-chip[aria-pressed="true"] { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
-/* Closed: visibly not a switch, and its reason is right there in words (never only a tooltip). */
-.sb-chip[aria-disabled="true"] { cursor: not-allowed; color: var(--ds-text-2); border-style: dashed; }
-/* The chip's own name never breaks inside the word (390 px drew "Agen / t"); only the closed reason beside it wraps. */
+/* Closed: visibly not a switch, and its reason is in words (never only a tooltip). The dashed edge in the strong border: the plain
+   one is too faint to read as an edge at all in light mode. */
+.sb-chip[aria-disabled="true"] { cursor: not-allowed; color: var(--ds-text-2); border-style: dashed; border-color: var(--ds-border-strong); }
+/* The chip's own name never breaks inside the word (390 px drew "Agen / t"); only a "Not available yet" beside it wraps. */
 .sb-chip-name { flex: none; white-space: nowrap; }
 .sb-chip-sub { min-width: 0; overflow-wrap: break-word; text-align: start; color: var(--ds-text-2); font-weight: 400; }
+/* A kind with nothing on sale: its name over "Not available yet", two short lines in the chip's own height. */
+.sb-chip-stack { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; text-align: start; }
+.sb-chip-stack .sb-chip-sub { font-size: 0.75rem; }
 .sb-go { margin-inline-start: auto; white-space: nowrap; }
 /* Leaving for the place it opens: seen on a touch screen too, where no cursor shows it. */
 .sb-go[aria-busy="true"] { opacity: 0.7; }
@@ -107,6 +115,8 @@
 .sb-library { display: flex; flex-direction: column; gap: var(--ds-space-4); min-width: 0; }
 .sb-library-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--ds-space-2) var(--ds-space-4); }
 .sb-h2 { margin: 0; color: var(--ds-text); font-size: 1rem; font-weight: 600; }
+/* Focused only by script, after a retry (tabIndex -1): a ring there would look like a control. */
+.sb-h2:focus { outline: none; }
 .sb-lead { margin: var(--ds-space-1) 0 0; color: var(--ds-text-2); font-size: 0.8125rem; line-height: 1.5; }
 .sb-group { display: flex; flex-direction: column; gap: var(--ds-space-2); min-width: 0; }
 .sb-h3 { margin: 0; color: var(--ds-text-2); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
@@ -142,7 +152,7 @@
 }
 .sb-card-media[data-kind="image"] { color: var(--ds-type-image); }
 .sb-card-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.sb-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sb-card-body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 0; }
 .sb-card-title { font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .sb-card-meta { color: var(--ds-text-2); font-size: 0.75rem; }
 /* The model's availability, under the poster and title: a whole line, never squeezed beside them. */

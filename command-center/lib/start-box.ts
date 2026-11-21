@@ -7,11 +7,12 @@
  * landing's own handoff (lib/site/idea-handoff.ts, `?idea=1`), never put in one; only closed enums (`format`, `kind`) ride along.
  */
 import { TOPIC_MAX, lengthSeconds, runHandoffHref, type HomeLanguage } from "@/lib/home";
-import { createHref, type CreateKind } from "@/lib/customer/create";
+import { KIND_DESK, createHref, type CreateKind } from "@/lib/customer/create";
 // The number only, from the operations table (no model tables, no registry): the start box is client code on Home.
 import { MAX_VIDEO_EDIT_WORDS } from "@/lib/creative/operations";
 import { IDEA_MAX, IDEA_PARAM } from "@/lib/site/idea-handoff";
 import { TEMPLATE_CATEGORIES, type TemplateCategory, type TemplateDto } from "@/lib/templates/trends";
+import { deskOpen, toolOpen, type ToolAvailability } from "@/lib/tool-availability";
 
 export const START_TABS = ["create", "edit"] as const;
 export type StartTab = (typeof START_TABS)[number];
@@ -28,11 +29,24 @@ export function isStartFormat(v: unknown): v is StartFormat {
  * `/studio?ai=new`: "open Nightshift AI with a new conversation" (S5's panel). S5 owns that page, and its reader and fallback arrive
  * with PR #843, which is NOT on main yet: there it will read the kept words (`ns.idea.v1`) once, type them in only if its box is
  * empty, and while the panel is closed or absent send `ai=new&idea=1` on to Create's prefilled box itself. Until #843 is merged the
- * page ignores the words, which is why the Agent chip starts OFF and a person turns it on deliberately (components/prompt/StartBox.tsx).
+ * page ignores the words, which is why the Agent chip stays closed while AI_READER_READY (below) is false.
  * `format` goes last and is harmless there: S5 ignores parameters it does not know.
  */
 export const AI_PARAM = "ai";
 export const AI_NEW = "new";
+
+/**
+ * Whether `/studio?ai=new` has a reader for the kept words yet. False until PR #843 merges: flip it to true in the same change that
+ * swaps the flag's import to `@/lib/brain/flag`. While it is false the Agent chip reads closed with its reason even where the server's
+ * flag is open, and nothing routes to `ai=new`: a chip that opened a panel which then ignored the words would promise Nightshift AI
+ * before it can keep that promise.
+ */
+export const AI_READER_READY = false;
+
+/** The Agent chip can be used: the server's flag is open for this workspace AND the page it opens can read the words. */
+export function agentUsable(agentOpen: boolean, aiReader: boolean = AI_READER_READY): boolean {
+  return agentOpen && aiReader;
+}
 
 /**
  * The "AI edit" tab's desk and tool. The Enhance desk is where Create changes something that already exists; of its tools the one
@@ -56,6 +70,26 @@ export function overLimit(tab: StartTab, words: string): boolean {
   return Array.from(words.trim()).length > wordsLimit(tab);
 }
 
+/**
+ * Which of the box's choices have something on sale behind them, as the Studio start's own chips say it (lib/tool-availability.ts):
+ * a kind is its Create desk (KIND_DESK: Audio is the Voice desk), the edit tab is the one tool it opens, `video_edit` on the Enhance
+ * desk (a sold upscale does not make the edit tab work). `null` = not known (the read failed): drawn usable and marked nothing, never
+ * "not available" on a guess (rule 5).
+ */
+export type StartAvailable = { video: boolean | null; image: boolean | null; audio: boolean | null; edit: boolean | null };
+
+export const UNKNOWN_START: StartAvailable = { video: null, image: null, audio: null, edit: null };
+
+export function startAvailability(av: ToolAvailability): StartAvailable {
+  if (av.state === "unknown") return UNKNOWN_START;
+  return {
+    video: deskOpen(av, KIND_DESK.video),
+    image: deskOpen(av, KIND_DESK.image),
+    audio: deskOpen(av, KIND_DESK.audio),
+    edit: toolOpen(av, "video_edit"),
+  };
+}
+
 /** A channel video's length when the box sends one: Home's composer default (5–10 min, HOME_LENGTHS m5_10). The run form shows it. */
 export const CHANNEL_LENGTH = "m5_10" as const;
 
@@ -65,6 +99,8 @@ export interface StartChoice {
   agent: boolean;
   /** The server said Nightshift AI is open for this workspace. A closed answer overrides `agent`. */
   agentOpen: boolean;
+  /** A test seam for AI_READER_READY; unset, the constant decides. */
+  aiReader?: boolean;
   /** With Agent on: the format Nightshift AI's questions are shaped by. Either way, `channel` is a channel video. */
   format: StartFormat;
   /** With Agent off: Video | Image | Audio, Create's own three kinds (Home's old choice). */
@@ -101,7 +137,7 @@ export function topicCut(words: string): boolean {
 export function startRoute(c: StartChoice, words: string, ctx: StartContext): StartRoute {
   if (c.tab === "edit") return { via: "idea", href: ctx.path(EDIT_DESK_HREF), fallback: null };
   // Agent on reaches Nightshift AI only when the server said it is open; a closed answer is never a way in.
-  if (c.agent && c.agentOpen) {
+  if (c.agent && agentUsable(c.agentOpen, c.aiReader)) {
     const q = new URLSearchParams({ [AI_PARAM]: AI_NEW, [IDEA_PARAM]: "1", format: c.format });
     return { via: "idea", href: ctx.path(`/studio?${q.toString()}`), fallback: null };
   }

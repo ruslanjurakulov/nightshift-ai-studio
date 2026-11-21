@@ -42,6 +42,7 @@ export function PromptBox({
   fieldRef,
   fieldProps,
   rowProps,
+  liveAtLimit = false,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -78,6 +79,9 @@ export function PromptBox({
   fieldProps?: { "aria-labelledby"?: string; id?: string };
   /** The row as the start box's tab panel: a tablist needs a real panel to control, and the row is what each tab changes. */
   rowProps?: { id: string; role: "tabpanel"; "aria-labelledby": string };
+  /** The visible count is not live; one always-present hidden line speaks once, at the limit. A live count re-read "1,801 of
+   *  2,000" under every keystroke. Off for the landing, whose markup (tests/fixtures/idea-box-markup.ts) is a contract. */
+  liveAtLimit?: boolean;
 }) {
   const id = useId();
   const own = useRef<HTMLTextAreaElement>(null);
@@ -165,12 +169,23 @@ export function PromptBox({
       <p id={`${id}-n`} className={`${cls}-note`}>
         {copy.note}
         {length >= countFrom ? (
-          <span className={`${cls}-count`} data-testid={`${testId}-count`} aria-live="polite" data-full={length >= max ? "" : undefined}>
+          <span
+            className={`${cls}-count`}
+            data-testid={`${testId}-count`}
+            aria-live={liveAtLimit ? undefined : "polite"}
+            data-full={length >= max ? "" : undefined}
+          >
             {" "}
             {fmt(copy.count, { n: length, max })}
           </span>
         ) : null}
       </p>
+      {liveAtLimit ? (
+        // Present from the first paint: a live region added together with its words is often not announced at all.
+        <span className="sr-only" aria-live="polite" data-testid={`${testId}-limit`}>
+          {length >= max ? fmt(copy.count, { n: length, max }) : ""}
+        </span>
+      ) : null}
       {after}
     </form>
   );

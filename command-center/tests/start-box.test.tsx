@@ -32,16 +32,21 @@ import { IDEA_KEY } from "@/lib/site/idea-handoff";
 import { TEMPLATE_CATEGORIES, templateCreateHref, type TemplateDto } from "@/lib/templates/trends";
 import { dictionaries } from "@/lib/i18n";
 import {
+  AI_READER_READY,
   EDIT_WORDS_MAX,
+  UNKNOWN_START,
   PURPOSE_CATEGORIES,
   START_FORMATS,
   START_TABS,
   TEMPLATE_PURPOSES,
   groupTemplates,
   isStartFormat,
+  startAvailability,
   startRoute,
+  type StartAvailable,
   type StartChoice,
 } from "@/lib/start-box";
+import { rovingIndex } from "@/components/prompt/StartBox";
 import { aiChatEnv, aiChatMode, aiChatOpenFor, aiChatOrgs } from "@/lib/nightshift-ai-flag";
 
 const en = dictionaries.en;
@@ -56,22 +61,32 @@ describe("where the send key goes: every tab × Agent (open/closed, on/off) × f
   const cases: StartChoice[] = [];
   for (const tab of START_TABS)
     for (const agentOpen of [true, false])
-      for (const agent of [true, false]) for (const format of START_FORMATS) cases.push({ tab, agent, agentOpen, format, kind: "video" });
+      for (const aiReader of [true, false, undefined])
+        for (const agent of [true, false]) for (const format of START_FORMATS) cases.push({ tab, agent, agentOpen, aiReader, format, kind: "video" });
 
   it.each(cases)("%o is an address on this channel, and a closed Agent never yields ai=new", (c) => {
     const r = startRoute(c, "A lighthouse keeper finds a bottle", ctx());
     expect(r.href.startsWith("/my-channel/")).toBe(true);
     const q = params(r.href);
-    if (!c.agentOpen || !c.agent || c.tab === "edit") expect(q.has("ai")).toBe(false);
+    const reader = c.aiReader ?? AI_READER_READY;
+    if (!c.agentOpen || !c.agent || !reader || c.tab === "edit") expect(q.has("ai")).toBe(false);
     // The words never ride in the address unless they are a short channel topic (the run form's own contract).
     if (r.via === "idea") expect(r.href).not.toContain("lighthouse");
     // `format` is only ever one of the closed enum.
     if (q.has("format")) expect(isStartFormat(q.get("format"))).toBe(true);
   });
 
-  it("Agent on and open: Nightshift AI with the words kept in this browser and the format as a closed enum", () => {
+  it("AI_READER_READY is false until #843 merges: an open flag alone never routes to ai=new", () => {
+    expect(AI_READER_READY).toBe(false);
     for (const format of START_FORMATS) {
       const r = startRoute({ tab: "create", agent: true, agentOpen: true, format, kind: "video" }, "x", ctx());
+      expect(params(r.href).has("ai")).toBe(false);
+    }
+  });
+
+  it("Agent on, open and its reader there: Nightshift AI with the words kept in this browser and the format as a closed enum", () => {
+    for (const format of START_FORMATS) {
+      const r = startRoute({ tab: "create", agent: true, agentOpen: true, aiReader: true, format, kind: "video" }, "x", ctx());
       expect(r).toEqual({ via: "idea", href: `/my-channel/studio?ai=new&idea=1&format=${format}`, fallback: null });
     }
   });
@@ -116,6 +131,28 @@ describe("where the send key goes: every tab × Agent (open/closed, on/off) × f
         const r = startRoute({ tab: "edit", agent: true, agentOpen, format, kind: "image" }, "x", ctx());
         expect(r).toEqual({ via: "idea", href: "/my-channel/create?desk=enhance&tool=video_edit&idea=1", fallback: null });
       }
+  });
+});
+
+// ── what is on sale ─────────────────────────────────────────────────────────
+
+describe("startAvailability: the box marks what the Studio start's chips mark", () => {
+  it("an unknown read marks nothing (rule 5)", () => {
+    expect(startAvailability({ state: "unknown" })).toEqual(UNKNOWN_START);
+  });
+  it("a kind is its Create desk (Audio is Voice); the edit tab is video_edit alone, not any Enhance tool", () => {
+    expect(startAvailability({ state: "known", sold: ["t2i", "video_edit"] })).toEqual({ video: false, image: true, audio: false, edit: true });
+    expect(startAvailability({ state: "known", sold: ["i2v", "tts", "upscale"] })).toEqual({ video: true, image: false, audio: true, edit: false });
+    expect(startAvailability({ state: "known", sold: [] })).toEqual({ video: false, image: false, audio: false, edit: false });
+  });
+  it("the roving keys step over a closed key, and stay put when no other key is usable", () => {
+    const closed = (i: number) => i === 1 || i === 2;
+    expect(rovingIndex("ArrowRight", 0, 4, closed)).toBe(3);
+    expect(rovingIndex("ArrowLeft", 3, 4, closed)).toBe(0);
+    expect(rovingIndex("End", 0, 4, (i) => i === 3)).toBe(2);
+    expect(rovingIndex("Home", 3, 4, (i) => i === 0)).toBe(1);
+    expect(rovingIndex("ArrowRight", 0, 2, (i) => i === 1)).toBe(-1);
+    expect(rovingIndex("a", 0, 4)).toBe(-1);
   });
 });
 
@@ -205,10 +242,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function draw(agentOpen = true, channel: { slug: string; name: string } | null = { slug: "my-channel", name: "Night Tales" }, locale: "en" | "uz" = "en") {
+/** `aiReader` defaults to true here (the behaviour once #843 is in); `reader: "constant"` leaves it to AI_READER_READY. */
+function draw(
+  agentOpen = true,
+  channel: { slug: string; name: string } | null = { slug: "my-channel", name: "Night Tales" },
+  locale: "en" | "uz" = "en",
+  opts: { reader?: boolean | "constant"; available?: StartAvailable; fillHere?: (w: string, k: "video" | "image" | "audio") => void } = {},
+) {
+  const reader = opts.reader ?? true;
   return render(
     <I18nProvider locale={locale}>
-      <StartBox agentOpen={agentOpen} channel={channel} />
+      <StartBox
+        agentOpen={agentOpen}
+        {...(reader === "constant" ? {} : { aiReader: reader })}
+        available={opts.available ?? UNKNOWN_START}
+        channel={channel}
+        fillHere={opts.fillHere}
+      />
     </I18nProvider>,
   );
 }
@@ -421,16 +471,117 @@ describe("StartBox", () => {
     templatesResponse = async () =>
       fail ? new Response("{}", { status: 500 }) : new Response(JSON.stringify({ templates: [] }), { status: 200 });
     draw();
-    expect(screen.getByTestId("start-templates-loading")).toBeTruthy();
+    const loading = screen.getByTestId("start-templates-loading");
+    // The "loading" status is not inside the busy region, where a screen reader would hold it back.
+    expect(within(loading).getByRole("status").closest("[aria-busy]")).toBeNull();
     await screen.findByTestId("start-templates-error");
     fail = false;
     await act(async () => {
       fireEvent.click(screen.getByTestId("start-templates-retry"));
     });
+    // The retry key is gone with its error: focus stays in the section, on its title, not at the top of the page.
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: en.startBox.library.title }));
     await waitFor(() => expect(screen.getByTestId("start-templates-empty")).toBeTruthy());
     expect(screen.getByTestId("start-templates").textContent).not.toMatch(/\b0\b/);
     onlyTemplateReads();
     expect(calls.filter((c) => c.url.startsWith("/api/templates"))).toHaveLength(2);
+  });
+
+  it("an open flag without its reader (AI_READER_READY false): the chip reads closed with its reason and never sends to ai=new", () => {
+    draw(true, undefined, "en", { reader: "constant" });
+    const chip = screen.getByTestId("start-agent");
+    expect(chip.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("start-agent-reason").textContent).toContain(en.startBox.agent.closed);
+    fireEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByTestId("start-format-film")).toBeNull();
+    fireEvent.change(screen.getByTestId("start-field"), { target: { value: "An idea" } });
+    fireEvent.click(screen.getByTestId("start-submit"));
+    expect(assign).toHaveBeenCalledWith("/my-channel/create?idea=1");
+  });
+
+  it("a closed Agent chip is named \"Agent\" alone and described by the reason line under the box", () => {
+    draw(false);
+    const chip = screen.getByTestId("start-agent");
+    expect(chip.textContent).toBe("Agent");
+    expect(chip.querySelector(".sb-chip-sub")).toBeNull();
+    const reason = screen.getByTestId("start-agent-reason");
+    expect(reason.tagName).toBe("P");
+    expect(reason.className).toBe("sb-line");
+    expect(chip.getAttribute("aria-describedby")).toBe(reason.id);
+    expect(chip.contains(reason)).toBe(false);
+  });
+
+  it("a kind or the edit tab with nothing on sale says \"Not available yet\", does nothing, and the arrow keys step over it", () => {
+    draw(true, undefined, "en", { available: { video: true, image: false, audio: false, edit: false } });
+    for (const k of ["image", "audio"]) {
+      const chip = screen.getByTestId(`start-kind-${k}`);
+      expect(chip.getAttribute("aria-disabled")).toBe("true");
+      expect(chip.textContent).toContain(`· ${en.startBox.notYet}`);
+      fireEvent.click(chip);
+      expect(chip.getAttribute("aria-checked")).toBe("false");
+    }
+    const video = screen.getByTestId("start-kind-video");
+    expect(video.getAttribute("aria-disabled")).toBeNull();
+    fireEvent.keyDown(video, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(screen.getByTestId("start-format-channel"));
+    const edit = screen.getByTestId("start-tab-edit");
+    expect(edit.getAttribute("aria-disabled")).toBe("true");
+    expect(edit.textContent).toContain(en.startBox.notYet);
+    fireEvent.click(edit);
+    expect(edit.getAttribute("aria-selected")).toBe("false");
+    fireEvent.keyDown(screen.getByTestId("start-tab-create"), { key: "ArrowRight" });
+    expect(edit.getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("Video with nothing on sale: the box opens on the first kind that has something", () => {
+    draw(true, undefined, "en", { available: { video: false, image: true, audio: null, edit: null } });
+    expect(screen.getByTestId("start-kind-image").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("start-kind-video").getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("unknown availability (null) keeps every choice usable and claims nothing", () => {
+    draw();
+    expect(screen.getByTestId("start").textContent).not.toContain(en.startBox.notYet);
+    for (const k of ["video", "image", "audio"]) expect(screen.getByTestId(`start-kind-${k}`).getAttribute("aria-disabled")).toBeNull();
+    expect(screen.getByTestId("start-tab-edit").getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("no channel and Channel video: says the topic comes after connecting, that the words are not carried, and keeps nothing", () => {
+    draw(false, null);
+    fireEvent.click(screen.getByTestId("start-format-channel"));
+    const field = screen.getByTestId("start-field") as HTMLTextAreaElement;
+    expect(field.placeholder).toBe(en.startBox.placeholder.connect);
+    expect(screen.getByText(/What you typed here is not carried over\./)).toBeTruthy();
+    fireEvent.change(field, { target: { value: "A topic" } });
+    fireEvent.click(screen.getByTestId("start-submit"));
+    expect(assign).toHaveBeenCalledWith("/my-channel/channels/new");
+    // Nothing reads kept words after connecting: kept anyway, a later Create page would fill its box with them by surprise.
+    expect(localStorage.getItem(IDEA_KEY)).toBeNull();
+  });
+
+  it("on the Studio start: says it fills the box below, fills it, and empties itself", () => {
+    const fillHere = vi.fn();
+    draw(true, undefined, "en", { fillHere });
+    expect(screen.getByText(en.startBox.note.here)).toBeTruthy();
+    fireEvent.change(screen.getByTestId("start-field"), { target: { value: "A misty lake" } });
+    fireEvent.click(screen.getByTestId("start-submit"));
+    expect(fillHere).toHaveBeenCalledWith("A misty lake", "video");
+    expect((screen.getByTestId("start-field") as HTMLTextAreaElement).value).toBe("");
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("the count is not a live region; one hidden line speaks, and only at the limit", () => {
+    draw();
+    const live = screen.getByTestId("start-limit");
+    expect(live.getAttribute("aria-live")).toBe("polite");
+    expect(live.textContent).toBe("");
+    fireEvent.change(screen.getByTestId("start-field"), { target: { value: "w".repeat(1900) } });
+    expect(screen.getByTestId("start-count").getAttribute("aria-live")).toBeNull();
+    expect(live.textContent).toBe("");
+    fireEvent.change(screen.getByTestId("start-field"), { target: { value: "w".repeat(2000) } });
+    expect(screen.getByTestId("start-limit")).toBe(live);
+    expect(live.textContent).toBe("2000 of 2000");
   });
 
   it("speaks Uzbek", async () => {

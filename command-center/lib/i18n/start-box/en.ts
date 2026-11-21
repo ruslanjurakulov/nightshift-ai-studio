@@ -14,22 +14,24 @@ export const startBoxEn = {
     image: "A cosy neon-lit noodle bar on a rainy Tashkent street…",
     audio: "A warm, calm voice reading: Welcome to our channel…",
     edit: "Make it night, add soft rain, keep the faces as they are",
+    connect: "Connect a channel first; the topic is written after that.",
   },
-  submit: { create: "Continue", agent: "Open in Nightshift AI", channel: "Open the run form", connect: "Connect a channel", edit: "Open the edit desk" },
+  submit: { create: "Continue", agent: "Open in Nightshift AI", channel: "Open the run form", connect: "Connect a channel", edit: "Open the Enhance desk" },
   note: {
     create: "Nothing runs here. Create opens with your words and shows the price before you send.",
     agent: "Nightshift AI asks a few questions, shaped by the format you chose, and drafts the video. Nothing is charged until you press Create there and see the price.",
     /** {channel}: the channel's name. */
     channel: "Opens the run form for {channel} with this topic. It shows the price and asks before it runs.",
-    connect: "A channel video is made for a connected YouTube channel. Connect one first.",
+    connect: "A channel video is made for a connected YouTube channel. Connect one first. What you typed here is not carried over.",
     edit: "Opens the Enhance desk with your words. Choose the clip to change there; it shows the price before anything runs.",
+    here: "Fills the box below with your words; it shows the price before anything runs.",
   },
   empty: "Write a few words first.",
   /** {n} characters of {max}: shown only near the limit. */
   count: "{n} of {max}",
   /** {max}: TOPIC_MAX. Said before the press, so nobody finds a shorter topic on the form by surprise. */
   topicCut: "A channel video's topic is at most {max} characters: only the first {max} go to the run form.",
-  editCut: "The edit desk takes at most {max} characters: shorten the words, or only the first {max} go there.",
+  editCut: "The Enhance desk takes at most {max} characters: shorten the words, or only the first {max} go there.",
   storageRefused: "This browser would not keep your words, so they cannot be carried over. Allow site data for Nightshift, or copy them first.",
   agent: {
     label: "Agent",
@@ -37,6 +39,8 @@ export const startBoxEn = {
     hint: "Nightshift AI plans the video with you",
     closed: "Not open for this workspace yet",
   },
+  /** A kind or the edit tab with nothing on sale (lib/tool-availability.ts), the words the Studio start uses. */
+  notYet: "Not available yet",
   formatLabel: "Format",
   formats: { film: "AI film", ad: "Ad", channel: "Channel video" },
   received: { cut: "These words were longer than this tool takes, so only the first {max} characters are in the box. Check the end before you send." },

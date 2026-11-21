@@ -11,13 +11,16 @@ import { ideaWords, stashIdea } from "@/lib/site/idea-handoff";
 import { TOPIC_MAX, defaultLanguage } from "@/lib/home";
 import { CREATE_KINDS, type CreateKind } from "@/lib/customer/create";
 import {
+  AI_READER_READY,
   START_FORMATS,
   START_TABS,
+  agentUsable,
   groupTemplates,
   overLimit,
   startRoute,
   topicCut,
   wordsLimit,
+  type StartAvailable,
   type StartFormat,
   type StartTab,
 } from "@/lib/start-box";
@@ -27,12 +30,19 @@ import "@/components/prompt/start-box.css";
 /** A verified channel a channel video can be made for (rule 7: a typed name never runs). */
 export type StartChannel = { slug: string; name: string };
 
-/** Arrow keys, Home and End across a row of keys: the index to move to, or -1 for any other key. */
-function rovingIndex(key: string, at: number, n: number): number {
-  if (key === "ArrowRight" || key === "ArrowDown") return (at + 1) % n;
-  if (key === "ArrowLeft" || key === "ArrowUp") return (at + n - 1) % n;
-  if (key === "Home") return 0;
-  if (key === "End") return n - 1;
+/**
+ * Arrow keys, Home and End across a row of keys: the index to move to, or -1 for any other key (or when no other key is usable).
+ * `closed(i)` keys are stepped over: a key marked "Not available yet" is not a stop on the way.
+ */
+export function rovingIndex(key: string, at: number, n: number, closed: (i: number) => boolean = () => false): number {
+  const step = key === "ArrowRight" || key === "ArrowDown" ? 1 : key === "ArrowLeft" || key === "ArrowUp" ? -1 : 0;
+  const from = key === "Home" ? -1 : key === "End" ? n : step ? at : null;
+  const dir = key === "Home" ? 1 : key === "End" ? -1 : step;
+  if (from === null || !dir) return -1;
+  for (let k = 1; k <= n; k++) {
+    const i = (((from + dir * k) % n) + n) % n;
+    if (!closed(i)) return i === at && step ? -1 : i;
+  }
   return -1;
 }
 
@@ -54,9 +64,12 @@ const MAKE_ICON = { video: Clapperboard, image: ImageIcon, audio: AudioLines, ch
  * starts anything. The words ride in this browser (lib/site/idea-handoff.ts), not the address.
  *
  * The Agent chip can be switched on only when the SERVER's flag opens Nightshift AI for this workspace (`agentOpen`,
- * lib/nightshift-ai-flag.ts); closed, it is drawn disabled with the reason in words, never a toggle that pretends. It starts OFF even
- * when open: S5's page that reads the words arrives with PR #843 (lib/start-box.ts AI_PARAM), and a person turns it on on purpose. The plan plays no part: a free workspace
- * gets its trial messages and the upgrade offer inside the panel itself.
+ * lib/nightshift-ai-flag.ts) AND the page it opens reads the words (lib/start-box.ts AI_READER_READY, false until PR #843 merges);
+ * closed, it is drawn disabled with the reason in words, never a toggle that pretends. Open, it still starts OFF: a person turns it
+ * on on purpose. The plan plays no part: a free workspace gets its trial messages and the upgrade offer inside the panel itself.
+ *
+ * A kind or the edit tab with nothing on sale (`available`, the read the Studio start's own chips use) says "Not available yet" and
+ * does nothing; an unknown read marks nothing (rule 5).
  *
  * A full page load, not a client push: the places it opens take the kept words once, on mount, and a push to the page already
  * open (the Studio start sending to its own clip box) would not mount it again. Where the box sits on that very page, `fillHere`
@@ -64,11 +77,17 @@ const MAKE_ICON = { video: Clapperboard, image: ImageIcon, audio: AudioLines, ch
  */
 export function StartBox({
   agentOpen,
+  aiReader = AI_READER_READY,
+  available,
   channel,
   fillHere,
 }: {
   /** The server's flag (lib/nightshift-ai-flag.ts aiChatOpenFor) let this workspace into Nightshift AI. */
   agentOpen: boolean;
+  /** A test seam for lib/start-box.ts AI_READER_READY (the page `ai=new` opens reads the words). Pages never pass it. */
+  aiReader?: boolean;
+  /** Which kinds and the edit tab have something on sale (lib/start-box.ts startAvailability); null = not known. */
+  available: StartAvailable;
   /** The channel a channel video is for; null = none connected and verified (the key then leads to connecting one). */
   channel: StartChannel | null;
   /** On the Studio start: fill this page's own box for the kind rather than loading the page again. */
@@ -81,18 +100,24 @@ export function StartBox({
   const uid = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const formatRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // Open only when the server's flag lets this workspace in AND the page it opens can read the words (lib/start-box AI_READER_READY).
+  const agentOk = agentUsable(agentOpen, aiReader);
+  // Only a known "no" closes a choice; unknown (null) is drawn usable and claims nothing (rule 5).
+  const kindClosed = (k: CreateKind) => available[k] === false;
+  const tabClosed = (k: StartTab) => k === "edit" && available.edit === false;
   const [tab, setTab] = useState<StartTab>("create");
   // Off until a person turns it on, even where it is open (see above). Closed, it can never be on.
   const [agentOn, setAgentOn] = useState(false);
   const [format, setFormat] = useState<StartFormat>("film");
-  const [kind, setKind] = useState<CreateKind>("video");
+  // The first kind with something on sale, so the box never opens on a choice the app calls "Not available yet".
+  const [kind, setKind] = useState<CreateKind>(() => CREATE_KINDS.find((k) => !kindClosed(k)) ?? "video");
   const [words, setWords] = useState("");
   const [leaving, setLeaving] = useState(false);
   const [refused, setRefused] = useState(false);
 
-  const choice = { tab, agent: agentOn, agentOpen, format, kind };
+  const choice = { tab, agent: agentOn, agentOpen, aiReader, format, kind };
   const route = startRoute(choice, words, { path, channel: channel?.slug ?? null, language: defaultLanguage(locale) });
-  const viaAgent = tab === "create" && agentOn && agentOpen;
+  const viaAgent = tab === "create" && agentOn && agentOk;
   const mode: "edit" | "agent" | "channel" | "connect" | "create" =
     tab === "edit" ? "edit" : viaAgent ? "agent" : route.via === "connect" ? "connect" : route.via === "topic" ? "channel" : "create";
   const cut = mode === "channel" && topicCut(words);
@@ -112,6 +137,8 @@ export function StartBox({
     const kept = ideaWords(words);
     if (fillHere && mode === "create") {
       fillHere(kept, kind);
+      // The words are in the composer below now; left here too, they read as a second box waiting to be sent.
+      setWords("");
       return;
     }
     if (stashIdea(kept)) {
@@ -127,6 +154,7 @@ export function StartBox({
   }
 
   function pickMake(m: MakeChoice) {
+    if (m !== "channel" && kindClosed(m)) return;
     if (m === "channel") {
       setFormat("channel");
       return;
@@ -140,6 +168,7 @@ export function StartBox({
     <div role="tablist" aria-label={s.tabsLabel} className="sb-tabs" data-testid="start-tabs">
       {START_TABS.map((k, i) => {
         const Icon = k === "create" ? Clapperboard : Wand2;
+        const closed = tabClosed(k);
         return (
           <button
             key={k}
@@ -151,12 +180,16 @@ export function StartBox({
             id={`${uid}-tab-${k}`}
             aria-selected={tab === k}
             aria-controls={`${uid}-panel`}
+            aria-disabled={closed || undefined}
             tabIndex={tab === k ? 0 : -1}
             className="sb-tab"
             data-testid={`start-tab-${k}`}
-            onClick={() => setTab(k)}
+            data-unavailable={closed ? "true" : undefined}
+            onClick={() => {
+              if (!closed) setTab(k);
+            }}
             onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
-              const to = rovingIndex(e.key, i, START_TABS.length);
+              const to = rovingIndex(e.key, i, START_TABS.length, (j) => tabClosed(START_TABS[j]));
               if (to < 0) return;
               e.preventDefault();
               setTab(START_TABS[to]);
@@ -165,6 +198,7 @@ export function StartBox({
           >
             <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.9} />
             {s.tabs[k]}
+            {closed && <span className="sb-chip-sub">{` · ${s.notYet}`}</span>}
           </button>
         );
       })}
@@ -178,26 +212,21 @@ export function StartBox({
         <button
           type="button"
           className="sb-chip sb-agent"
-          aria-pressed={agentOpen ? agentOn : false}
-          aria-disabled={agentOpen ? undefined : true}
-          // Closed, the reason is part of the chip's own name already; said twice it is noise to a screen reader.
-          aria-describedby={agentOpen ? reasonId : undefined}
-          title={agentOpen ? s.agent.hint : s.agent.closed}
+          aria-pressed={agentOk ? agentOn : false}
+          aria-disabled={agentOk ? undefined : true}
+          // The chip's name is "Agent" alone; open, its hint describes it, closed, the reason line under the box does.
+          aria-describedby={reasonId}
+          title={agentOk ? s.agent.hint : s.agent.closed}
           data-testid="start-agent"
-          data-closed={agentOpen ? undefined : "true"}
+          data-closed={agentOk ? undefined : "true"}
           onClick={() => {
-            if (agentOpen) setAgentOn((v) => !v);
+            if (agentOk) setAgentOn((v) => !v);
           }}
         >
           <Sparkles aria-hidden className="size-4 shrink-0" strokeWidth={1.9} />
           <span className="sb-chip-name">{s.agent.label}</span>
-          {!agentOpen && (
-            <span className="sb-chip-sub" data-testid="start-agent-reason">
-              · {s.agent.closed}
-            </span>
-          )}
         </button>
-        {agentOpen && (
+        {agentOk && (
           <span id={reasonId} className="sr-only">
             {s.agent.hint}
           </span>
@@ -233,6 +262,7 @@ export function StartBox({
           <div role="radiogroup" aria-label={kinds.label} className="sb-formats" data-testid="start-formats" data-group="make">
             {MAKE_CHOICES.map((m, i) => {
               const Icon = MAKE_ICON[m];
+              const closed = m !== "channel" && kindClosed(m);
               return (
                 <button
                   key={m}
@@ -242,12 +272,17 @@ export function StartBox({
                   type="button"
                   role="radio"
                   aria-checked={make === m}
+                  aria-disabled={closed || undefined}
                   tabIndex={make === m ? 0 : -1}
                   className="sb-chip"
                   data-testid={m === "channel" ? "start-format-channel" : `start-kind-${m}`}
+                  data-unavailable={closed ? "true" : undefined}
                   onClick={() => pickMake(m)}
                   onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
-                    const to = rovingIndex(e.key, i, MAKE_CHOICES.length);
+                    const to = rovingIndex(e.key, i, MAKE_CHOICES.length, (j) => {
+                      const c = MAKE_CHOICES[j];
+                      return c !== "channel" && kindClosed(c);
+                    });
                     if (to < 0) return;
                     e.preventDefault();
                     pickMake(MAKE_CHOICES[to]);
@@ -255,7 +290,21 @@ export function StartBox({
                   }}
                 >
                   <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.9} />
-                  {m === "channel" ? s.formats.channel : kinds[m]}
+                  {closed ? (
+                    // Stacked, so the reason costs no row width: inline, "Audio · Not available yet" pushed the key off the chip
+                    // row at 1440 in ru and uz. The dot is for the accessible name only.
+                    <span className="sb-chip-stack">
+                      <span>{kinds[m as CreateKind]}</span>
+                      <span className="sb-chip-sub">
+                        <span className="sr-only"> · </span>
+                        {s.notYet}
+                      </span>
+                    </span>
+                  ) : m === "channel" ? (
+                    s.formats.channel
+                  ) : (
+                    kinds[m]
+                  )}
                 </button>
               );
             })}
@@ -268,7 +317,15 @@ export function StartBox({
     );
 
   const placeholder =
-    mode === "edit" ? s.placeholder.edit : format === "channel" ? s.placeholder.channel : mode === "agent" ? s.placeholder[format] : s.placeholder[kind];
+    mode === "edit"
+      ? s.placeholder.edit
+      : mode === "connect"
+        ? s.placeholder.connect
+        : format === "channel"
+          ? s.placeholder.channel
+          : mode === "agent"
+            ? s.placeholder[format]
+            : s.placeholder[kind];
   const submit =
     mode === "edit" ? s.submit.edit : mode === "agent" ? s.submit.agent : mode === "connect" ? s.submit.connect : mode === "channel" ? s.submit.channel : s.submit.create;
   const note =
@@ -276,10 +333,17 @@ export function StartBox({
       ? fmt(s.note.channel, { channel: channel.name })
       : mode === "connect"
         ? s.note.connect
-        : s.note[mode === "channel" ? "create" : mode];
+        : mode === "create" && fillHere
+          ? s.note.here
+          : s.note[mode === "channel" ? "create" : mode];
 
   const after = (
     <>
+      {tab === "create" && !agentOk && (
+        <p id={reasonId} className="sb-line" data-testid="start-agent-reason">
+          {s.agent.label}: {s.agent.closed}
+        </p>
+      )}
       {cut && (
         <p className="sb-line" role="status" data-testid="start-topic-cut">
           {fmt(s.topicCut, { max: TOPIC_MAX })}
@@ -313,6 +377,7 @@ export function StartBox({
         onBack={() => setLeaving(false)}
         allowEmpty={mode === "connect"}
         rows={3}
+        liveAtLimit
         cls="sb"
         testId="start"
         header={tabs}
@@ -341,26 +406,39 @@ function TemplateLibrary() {
   const path = useChannelPath();
   const { state, retry } = useTemplates(locale);
   const titleId = useId();
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   let body: React.ReactNode;
   if (state.phase === "loading") {
+    // The status line sits outside the busy part: a screen reader holds back what is inside an aria-busy region, the "loading" too.
     body = (
-      <div aria-busy="true" data-testid="start-templates-loading">
+      <div data-testid="start-templates-loading">
         <p className="sr-only" role="status">
           {s.loading}
         </p>
-        <ul className="sb-cards" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <li key={i} className="sb-card sb-card-skel" />
-          ))}
-        </ul>
+        <div aria-busy="true">
+          <ul className="sb-cards" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="sb-card sb-card-skel" />
+            ))}
+          </ul>
+        </div>
       </div>
     );
   } else if (state.phase === "error") {
     body = (
       <div className="sb-state" role="alert" data-testid="start-templates-error">
         <p>{s.error}</p>
-        <button type="button" className="sb-chip" onClick={retry} data-testid="start-templates-retry">
+        <button
+          type="button"
+          className="sb-chip"
+          onClick={() => {
+            retry();
+            // The key goes away with the error it answers; focus would fall to the page's top. The section's title keeps the place.
+            titleRef.current?.focus();
+          }}
+          data-testid="start-templates-retry"
+        >
           {s.retry}
         </button>
       </div>
@@ -417,7 +495,7 @@ function TemplateLibrary() {
     <section className="sb-library" aria-labelledby={titleId} data-testid="start-templates">
       <div className="sb-library-head">
         <div className="min-w-0">
-          <h2 id={titleId} className="sb-h2">
+          <h2 id={titleId} ref={titleRef} tabIndex={-1} className="sb-h2">
             {s.title}
           </h2>
           <p className="sb-lead">{s.lead}</p>

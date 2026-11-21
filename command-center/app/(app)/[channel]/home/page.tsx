@@ -10,6 +10,8 @@ import { aiChatEnv, aiChatOpenFor } from "@/lib/nightshift-ai-flag";
 import { createClient } from "@/lib/supabase/server";
 import { heldOnly } from "@/lib/heldVideos";
 import { listWaitingStoryboards } from "@/lib/server/storyboards";
+import { readToolAvailability } from "@/lib/server/tool-availability";
+import { startAvailability } from "@/lib/start-box";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,6 +62,8 @@ export default async function HomePage() {
   const channel = target ? { slug: channelSlug(target, channels), name: target.name || target.channel_id } : null;
   // The Agent chip: open only when the server's flag lets this workspace in; computed here, never in the browser.
   const agentOpen = aiChatOpenFor(orgId, aiChatEnv());
+  // Which kinds and the edit tab have something on sale: the layout's one read (React cache), so the box and the sidebar agree.
+  const available = startAvailability(await readToolAvailability(orgId));
   // The Trends templates are the start box's own library now (by purpose), so Home draws no second strip of them.
-  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} agentOpen={agentOpen} channel={channel} />;
+  return <HomeCreate orgId={orgId} projects={projects} waiting={waiting} agentOpen={agentOpen} available={available} channel={channel} />;
 }
