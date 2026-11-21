@@ -559,3 +559,25 @@ describe("the home page's kept file, after sign-up", () => {
     }
   });
 });
+
+describe("the landing's idea (lib/site/idea-handoff.ts, ?idea=1)", () => {
+  it("fills the clip box with the kept words once, sends nothing, and leaves no idea behind", async () => {
+    const { stashIdea, takeIdea } = await import("@/lib/site/idea-handoff");
+    expect(stashIdea("A whale over the city at sunset")).toBe(true);
+    window.history.replaceState(null, "", "/all-channels/create?idea=1");
+    render(home({ idea: true }));
+    await waitFor(() => expect(box().value).toBe("A whale over the city at sunset"));
+    // Filled, not sent: no quote or create was asked for, and the address no longer says idea=1.
+    expect(creates()).toEqual([]);
+    expect(calls().some((c) => c.includes("/api/creative/quote"))).toBe(false);
+    expect(window.location.search).not.toContain("idea=");
+    expect(takeIdea()).toBeNull();
+  });
+
+  it("nothing kept (another browser, expired, storage off) is an empty box and no error", async () => {
+    render(home({ idea: true }));
+    await waitFor(() => expect(box()).toBeTruthy());
+    expect(box().value).toBe("");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

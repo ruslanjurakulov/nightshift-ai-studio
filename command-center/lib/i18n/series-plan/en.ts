@@ -231,6 +231,8 @@ export const seriesPlanEn = {
       insufficient_unknown: "Not enough credits to start this episode.",
       unpriced: "This episode has no price yet, so it can't start. Nothing was held.",
       earlier_episode_not_finished: "Finish the earlier episode first. Episodes start one at a time, in order.",
+      adult_attestation_required: "Some of the AI models this uses are for adults (18+) by their makers' terms. Confirm your age in the box at the top of Create, then try again. Nothing was started or charged.",
+      adult_only_service: "Nightshift is for adults (18+). This account said it is under 18, so nothing can be made. Nothing was charged.",
       rate_limited: "Too many requests. Wait a little and try again.",
       run_limit: "Your plan's limit of runs at the same time is in use. Wait for one to finish, then try again.",
       forbidden: "You can't start an episode here. Ask someone who manages this workspace.",

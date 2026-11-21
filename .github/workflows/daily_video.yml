@@ -635,6 +635,8 @@ jobs:
           # NIGHTSHIFT_AVATAR_ENABLED is on.
           NIGHTSHIFT_AVATAR_CHARACTER_PROMPT: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_PROMPT }}
           NIGHTSHIFT_AVATAR_CHARACTER_REF: ${{ vars.NIGHTSHIFT_AVATAR_CHARACTER_REF }}
+          # The live copy of pipeline events to Supabase (modules/event_log.py): `off` stops it.
+          NIGHTSHIFT_LIVE_EVENTS: ${{ vars.NIGHTSHIFT_LIVE_EVENTS }}
           # --- Opt-in providers & agent (keys from the Command Center's -------
           # Providers board, forwarded here as Actions secrets). Every one is
           # OFF unless configured: an unset secret expands to "" (feature off),

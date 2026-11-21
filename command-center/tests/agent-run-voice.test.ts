@@ -15,8 +15,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 vi.mock("server-only", () => ({}));
-// The adult answer (0192) is read by the route too; unknown blocks no one, so this file tests what it always did.
-vi.mock("@/lib/server/age", () => ({ readAgeState: async () => "unknown" }));
+// The adult answer (0192/0196) is read by the route too: an admin who answered 18+, so this file tests what it always did.
+vi.mock("@/lib/server/age", () => ({ readAgeState: async () => "adult", readAgeAnswer: async () => "adult" }));
 
 const CLONE = "AbCdEfGhIjKlMnOpQrSt";
 const STOCK = "pNInz6obpgDQGcFmaJgB";
@@ -163,7 +163,7 @@ describe.each(["actions", "queue"] as const)("%s backend: a custom voice the cha
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(
       backend === "actions"
-        ? { ok: true, backend: "actions", credits_reserved: 36 }
+        ? { ok: true, backend: "actions", credits_reserved: 36, channel_id: expect.any(String), dispatched_at: expect.any(String) }
         : { ok: true, backend: "queue", job_id: 7, credits_reserved: 36 },
     );
     expect(h.rpcCalls).toEqual([]);

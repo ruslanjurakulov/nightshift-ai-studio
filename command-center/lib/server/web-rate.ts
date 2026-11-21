@@ -22,6 +22,8 @@ export interface RateRule {
   windowSeconds: number;
 }
 
+/** The Studio live view asking GitHub about a dispatched run (lib/server/github-runs.ts): only uncached reads count, at most one per 30 s per run. */
+export const RUN_STATUS_RATE: RateRule = { bucket: "studio.run_status", max: 240, windowSeconds: 3600 };
 export const VOICE_LIST_RATE: RateRule = { bucket: "elevenlabs.voices", max: 20, windowSeconds: 3600 };
 /**
  * The Studio's speech voice list (GET /api/creative/voices), per member. Reading the list spends no characters,

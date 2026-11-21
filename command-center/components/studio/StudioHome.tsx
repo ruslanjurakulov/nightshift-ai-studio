@@ -39,6 +39,7 @@ import { TOPIC_MAX } from "@/lib/home";
 import { attachErrorKey, attachWords, toolForAttachment, uploadAttachment } from "@/lib/creative/attach";
 import { checkAttachment, discardPending, indexedDbStore, takePending, type AttachKind } from "@/lib/site/pending-attachment";
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
+import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
 import { formatMediaBytes } from "@/lib/media";
 import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
@@ -99,6 +100,7 @@ export function StudioHome({
   projects,
   assistant = null,
   pending = null,
+  idea = false,
 }: {
   orgId: string | null;
   models: StudioModel[];
@@ -119,6 +121,8 @@ export function StudioHome({
    * with the words typed beside it (already cleaned by the page). Taken once, and uploaded only when the person answers Use.
    */
   pending?: { nonce: string; words: string } | null;
+  /** `?idea=1`: the landing's idea box kept the visitor's words in this browser (lib/site/idea-handoff.ts); the box takes them once. */
+  idea?: boolean;
 }) {
   const { t, locale, fmt } = useI18n();
   const th = t.studioHome;
@@ -419,6 +423,26 @@ export function StudioHome({
         line: p.state === "expired" ? th.attachFlow.expired : p.state === "unavailable" ? th.attachFlow.unreadable : th.attachFlow.gone,
       });
     });
+    // Once, on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The landing's idea, taken out of this browser once (read and deleted together: a reload or another tab never fills it twice) and
+  // put in the clip box, not sent: nothing is priced or started until the person presses the button and sees the price (rule 3).
+  // The address loses `idea=` either way. Nothing kept (expired, another browser, storage off) is an empty box, never an error.
+  const ideaTaken = useRef(false);
+  useEffect(() => {
+    if (!idea || ideaTaken.current) return;
+    ideaTaken.current = true;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete(IDEA_PARAM);
+      window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      // The address keeps `idea=1`; the words are taken once either way.
+    }
+    const words = takeIdea();
+    if (words) fill(form("t2v", { prompt: attachWords("t2v", words) }), "video", true);
     // Once, on load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
