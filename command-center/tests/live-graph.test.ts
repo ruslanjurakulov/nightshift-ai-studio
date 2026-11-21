@@ -240,10 +240,19 @@ describe("a channel run's live facts (workflow and hold)", () => {
     });
   });
 
-  it("GitHub saying the job failed ends the run with no synced events: stages not known, polling stops", () => {
+  it("GitHub saying the job finished does not settle the run: its events may still be syncing, so stages read not known and the view keeps reading", () => {
     const g = runGraph(coerceRunLive({ job: null, window: win, events: [], workflow: { state: "completed", conclusion: "failure" } }));
     expect(new Set(g.nodes.map((n) => n.status))).toEqual(new Set(["unknown"]));
-    expect(g.settled).toBe(true);
+    expect(g.settled).toBe(false);
+    expect(g.runError ?? null).toBeNull();
+    // A stage whose start arrived but not its end is not "working" once GitHub says the job is over, nor "stopped" or "not reached".
+    const ev = (event: string, ts: string) => ({ ts, event, status: "ok", agent: null });
+    const part = runGraph(
+      coerceRunLive({ job: null, window: win, events: [ev("topic.selected", "2026-11-21T10:01:00Z"), ev("research.started", "2026-11-21T10:02:00Z")], workflow: { state: "completed", conclusion: "failure" } }),
+    );
+    expect(part.nodes.find((n) => n.id === "topic")?.status).toBe("done");
+    expect(part.nodes.find((n) => n.id === "research")?.status).toBe("unknown");
+    expect(part.nodes.find((n) => n.id === "upload")?.status).toBe("unknown");
     expect(g.workflow).toEqual({ state: "completed", conclusion: "failure" });
   });
 
@@ -319,7 +328,8 @@ describe("the brief, before Create", () => {
     expect(briefGraph(coerceBrief({ ...raw, price: { state: "priced", nodes: { [S1]: "12; drop" } } })!).nodes.every((n) => n.price == null)).toBe(true);
   });
 
-  it("voice off is no voice step, as the live film draws it; not asked yet is still planned", () => {
+  it("voice off, or spoken by the video model inside each clip, is no voice step, as the live film draws it; not asked yet is still planned", () => {
+    expect(briefGraph(coerceBrief({ ...raw, voice: { mode: "clip_audio" } })!).nodes.find((n) => n.id === "voice")?.status).toBe("none");
     expect(briefGraph(coerceBrief({ ...raw, voice: { mode: "off" } })!).nodes.find((n) => n.id === "voice")?.status).toBe("none");
     expect(briefGraph(coerceBrief({ ...raw, voice: undefined })!).nodes.find((n) => n.id === "voice")?.status).toBe("draft");
   });
@@ -339,7 +349,7 @@ describe("the brief, before Create", () => {
 
   it("a handoff is followed only once created, and only when it names a real target", () => {
     const film = "f0000000-0000-4000-8000-0000000000f0";
-    const ch = "c0000000-0000-4000-8000-0000000000c0";
+    const ch = "ch-alpha";
     expect(coerceBrief({ ...raw, handoff: { kind: "film", film_id: film } })!.handoff).toBeNull();
     expect(coerceBrief({ ...raw, status: "created", handoff: { kind: "film", film_id: film } })!.handoff).toEqual({ kind: "film", filmId: film });
     expect(coerceBrief({ ...raw, status: "created", handoff: { kind: "run", channel_id: ch, job_id: 42 } })!.handoff).toEqual({ kind: "run", channelId: ch, jobId: "42" });

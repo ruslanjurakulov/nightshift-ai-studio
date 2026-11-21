@@ -11,8 +11,8 @@ vi.stubEnv("GITHUB_SECRETS_TOKEN", "t");
 vi.stubEnv("GITHUB_SECRETS_REPO", "o/r");
 const { dispatchedRunStatus, clearRunStatusCache } = await import("../lib/server/github-runs");
 
-const CH = "c0000000-0000-4000-8000-0000000000c0";
-const OTHER = "d0000000-0000-4000-8000-0000000000d0";
+const CH = "ch-alpha";
+const OTHER = "ch-beta";
 const AT = Date.parse("2026-11-21T10:00:00Z");
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const runs = (...xs: { id: number; created_at: string }[]) => json({ workflow_runs: xs });
@@ -72,5 +72,67 @@ describe("the dispatched run's status", () => {
     h.fetch.mockImplementation(async (u: string) => (String(u).includes("/jobs") ? jobs({ name: `make-video (${CH})`, status: "in_progress" }) : runs({ id: 1, created_at: "2026-11-21T10:00:02Z" })));
     for (let i = 0; i < 5; i++) expect(await dispatchedRunStatus(CH, AT)).toEqual({ state: "in_progress" });
     expect(h.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("which run is this dispatch's (Lens, Breach)", () => {
+  it("asks GitHub for a closed time range, so newer dispatches cannot push this run off the page", async () => {
+    h.fetch.mockResolvedValueOnce(runs());
+    await dispatchedRunStatus(CH, AT);
+    const url = decodeURIComponent(String(h.fetch.mock.calls[0][0]));
+    expect(url).toMatch(/created=2026-11-21T09:59:30Z\.\.2026-11-21T10:10:00Z/);
+  });
+
+  it("an earlier dispatch of the same channel (a minute before) is never this one", async () => {
+    h.fetch.mockResolvedValueOnce(runs({ id: 1, created_at: "2026-11-21T09:58:30Z" }));
+    expect(await dispatchedRunStatus(CH, AT)).toEqual({ state: "not_seen" });
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("while this run is still resolving, a later dispatch of the same channel does not answer for it", async () => {
+    h.fetch
+      .mockResolvedValueOnce(runs({ id: 1, created_at: "2026-11-21T10:00:02Z" }, { id: 2, created_at: "2026-11-21T10:03:00Z" }))
+      .mockResolvedValueOnce(jobs({ name: "resolve", status: "in_progress" }))
+      .mockResolvedValueOnce(jobs({ name: `make-video (${CH})`, status: "completed", conclusion: "success" }));
+    expect(await dispatchedRunStatus(CH, AT)).toEqual({ state: "not_seen" });
+    expect(h.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("a found run is pinned: later reads ask only for its jobs", async () => {
+    vi.useFakeTimers({ now: AT + 60_000 });
+    h.fetch
+      .mockResolvedValueOnce(runs({ id: 5, created_at: "2026-11-21T10:00:02Z" }))
+      .mockResolvedValueOnce(jobs({ name: `make-video (${CH})`, status: "in_progress" }))
+      .mockResolvedValueOnce(jobs({ name: `make-video (${CH})`, status: "completed", conclusion: "success" }));
+    expect(await dispatchedRunStatus(CH, AT)).toEqual({ state: "in_progress" });
+    vi.setSystemTime(AT + 120_000);
+    expect(await dispatchedRunStatus(CH, AT)).toEqual({ state: "completed", conclusion: "success" });
+    expect(String(h.fetch.mock.calls[2][0])).toContain("/actions/runs/5/jobs");
+    expect(h.fetch).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+});
+
+describe("the shared token's quota (Breach 4, Lens)", () => {
+  it("a since that differs by milliseconds is the same read", async () => {
+    h.fetch.mockResolvedValue(runs());
+    await dispatchedRunStatus(CH, AT);
+    await dispatchedRunStatus(CH, AT + 7);
+    await dispatchedRunStatus(CH, AT + 999);
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("the person's rate limit is charged before an uncached read, and a refusal asks GitHub nothing", async () => {
+    const mayAsk = vi.fn(async () => false);
+    expect(await dispatchedRunStatus(CH, AT, mayAsk)).toBeNull();
+    expect(h.fetch).not.toHaveBeenCalled();
+    expect(mayAsk).toHaveBeenCalledTimes(1);
+  });
+
+  it("past the process budget GitHub is not asked and the answer is not known", async () => {
+    h.fetch.mockImplementation(async () => runs());
+    for (let i = 0; i < 40; i++) await dispatchedRunStatus(`ch-${i}`, AT);
+    expect(h.fetch).toHaveBeenCalledTimes(30);
+    expect(await dispatchedRunStatus("ch-late", AT)).toBeNull();
   });
 });

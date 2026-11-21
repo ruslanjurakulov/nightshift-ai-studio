@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { dispatchedRunStatus } from "@/lib/server/github-runs";
+import { RUN_STATUS_RATE, takeWebRate } from "@/lib/server/web-rate";
 import { readRunHold } from "@/lib/server/run-hold";
 
 export const runtime = "nodejs";
@@ -12,7 +13,8 @@ const MAX_EVENTS = 300;
 const MAX_AGE_MS = 48 * 60 * 60 * 1000;
 /** How far after the dispatch a run's events are read: past the workflow's own time limit, with room for a queued runner. */
 const SPAN_MS = 3 * 60 * 60 * 1000;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** channels.channel_id is a slug (0001, render_jobs_channel_id_check), not a uuid. */
+const CHANNEL = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
  * GET ?channel=<uuid>&since=<ISO>: one channel video run on the GitHub Actions backend, for the Studio's live view. That backend gives
@@ -35,7 +37,7 @@ export async function GET(request: Request) {
   const sinceRaw = url.searchParams.get("since") ?? "";
   const sinceMs = Date.parse(sinceRaw);
   const nowMs = Date.now();
-  if (!UUID.test(channel) || !Number.isFinite(sinceMs) || sinceMs > nowMs + 60_000 || nowMs - sinceMs > MAX_AGE_MS) {
+  if (!CHANNEL.test(channel) || !Number.isFinite(sinceMs) || sinceMs > nowMs + 60_000 || nowMs - sinceMs > MAX_AGE_MS) {
     return NextResponse.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
   }
   const supabase = await createClient();
@@ -59,8 +61,11 @@ export async function GET(request: Request) {
     }
   }
   // GitHub is asked with the app's token: only for a channel RLS shows this person, so another workspace's channel id learns nothing.
-  const visible = await supabase.from("channels").select("id").eq("id", channel).maybeSingle();
-  const workflow = !visible.error && visible.data ? await dispatchedRunStatus(channel, sinceMs) : null;
+  const visible = await supabase.from("channels").select("channel_id").eq("channel_id", channel).maybeSingle();
+  const workflow =
+    !visible.error && visible.data
+      ? await dispatchedRunStatus(channel, sinceMs, async () => (await takeWebRate(user.id, RUN_STATUS_RATE)) === "ok")
+      : null;
   const hold = await readRunHold(supabase, url.searchParams.get("hold"));
   return NextResponse.json({ job: null, window: { since, now: new Date(nowMs).toISOString() }, events, workflow, hold }, { headers: NO_STORE });
 }

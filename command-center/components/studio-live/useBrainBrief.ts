@@ -47,14 +47,17 @@ async function readBrief(session: string): Promise<BriefLoad> {
 export function useBrainBrief(session: string | null) {
   const [load, setLoad] = useState<BriefLoad>({ state: "loading" });
   const gen = useRef(0);
+  // Each read's own number: of two overlapping reads, only the newer may land (Lens).
+  const seq = useRef(0);
   const last = useRef<BriefLoad>(load);
   last.current = load;
 
   const read = useCallback(async () => {
     if (!session) return;
     const from = gen.current;
+    const mine = ++seq.current;
     const next = await readBrief(session);
-    if (from !== gen.current) return;
+    if (from !== gen.current || mine !== seq.current) return;
     // A failed re-read keeps the brief on screen: the panel's next change reads again.
     if (next.state === "error" && last.current.state === "ready") return;
     setLoad(next);

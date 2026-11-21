@@ -155,6 +155,12 @@ describe("details", () => {
     fireEvent.keyDown(within(d).getByRole("button", { name: c.close }), { key: "Escape" });
     expect(screen.queryByTestId("live-details")).toBeNull();
     expect(document.activeElement).toBe(node(`scene:${S1}:keyframe`));
+    // Opened again and then another card clicked: focus is on that card, outside the panel, and Escape still closes it.
+    fireEvent.click(node(`scene:${S1}:keyframe`));
+    fireEvent.click(node(`scene:${S1}:clip`));
+    node(`scene:${S1}:clip`).focus();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByTestId("live-details")).toBeNull();
   });
 
   it("a scene reads as its picture then its clip in the phone list", async () => {
@@ -222,7 +228,7 @@ describe("a channel run", () => {
 describe("a channel run's live facts", () => {
   it("says GitHub's status and the hold as read, next to an honest line that stages lag", async () => {
     answer = live({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: { state: "queued" }, hold: { state: "open", amount: 40, captured: null } });
-    render(<LiveView filmStudio target={{ kind: "window", channel: "c0000000-0000-4000-8000-0000000000c0", since: "2026-11-21T10:00:00Z", hold: "gh-abc" }} />);
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z", hold: "gh-abc" }} />);
     expect((await screen.findByTestId("live-workflow")).textContent).toBe(c.workflow.queued);
     expect(screen.getByTestId("live-hold").textContent).toBe("40 credits are held for this run.");
     expect(screen.getByTestId("live-run-window").textContent).toContain(c.stagesLag);
@@ -231,7 +237,7 @@ describe("a channel run's live facts", () => {
 
   it("an unreadable GitHub status says so; no hold read says nothing about credits", async () => {
     answer = live({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: null, hold: null });
-    render(<LiveView filmStudio target={{ kind: "window", channel: "c0000000-0000-4000-8000-0000000000c0", since: "2026-11-21T10:00:00Z" }} />);
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z" }} />);
     expect((await screen.findByTestId("live-workflow")).textContent).toBe(c.workflow.unknown);
     expect(screen.queryByTestId("live-hold")).toBeNull();
   });

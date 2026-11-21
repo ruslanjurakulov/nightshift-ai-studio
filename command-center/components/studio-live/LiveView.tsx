@@ -72,12 +72,18 @@ function FitOnResize({ selected }: { selected: string | null }) {
     const { x, y, zoom } = getViewport();
     const w = (n.measured.width ?? 200) * zoom;
     const left = n.internals.positionAbsolute.x * zoom + x;
-    const room = board.clientWidth;
+    const hgt = (n.measured.height ?? 76) * zoom;
+    const top = n.internals.positionAbsolute.y * zoom + y;
     const pad = 24;
-    let nx = x;
-    if (left + w > room - pad) nx = x - (left + w - (room - pad));
-    if (left + (nx - x) < pad) nx = x + (pad - left);
-    if (nx !== x) void setViewport({ x: nx, y, zoom }, { duration: reduced() ? 0 : 200 });
+    const fit = (pos: number, size: number, room: number, at: number) => {
+      let next = at;
+      if (pos + size > room - pad) next = at - (pos + size - (room - pad));
+      if (pos + (next - at) < pad) next = at + (pad - pos);
+      return next;
+    };
+    const nx = fit(left, w, board.clientWidth, x);
+    const ny = fit(top, hgt, board.clientHeight, y);
+    if (nx !== x || ny !== y) void setViewport({ x: nx, y: ny, zoom }, { duration: reduced() ? 0 : 200 });
   }, [getInternalNode, getViewport, setViewport]);
   useEffect(() => {
     const el = ref.current?.closest(".lv-board");
@@ -136,7 +142,7 @@ function RunFacts({ graph }: { graph: LiveGraph }) {
     : h.state === "open"
       ? h.amount === null ? c.holdOpenUnknown : fmt(c.holdOpen, { n: h.amount })
       : h.state === "captured"
-        ? (h.captured ?? h.amount) === null ? c.holdCapturedUnknown : fmt(c.holdCaptured, { n: (h.captured ?? h.amount) as number })
+        ? h.captured === null ? c.holdCapturedUnknown : fmt(c.holdCaptured, { n: h.captured })
         : c.holdReleased;
   return (
     <ul className="lv-facts" data-testid="live-run-facts">
@@ -313,12 +319,6 @@ function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean;
       className="lv-details"
       aria-label={c.details}
       data-testid="live-details"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.stopPropagation();
-          onClose();
-        }
-      }}
     >
       <div className="lv-details-head">
         <h2>{nodeName(t, node)}</h2>
@@ -415,6 +415,17 @@ export function LiveView({
     if (id) [...document.querySelectorAll<HTMLElement>(".lv-card")].find((el) => el.dataset.testid === `live-node-${id}`)?.focus({ preventScroll: true });
     setSelected(null);
   };
+  // Escape closes the details wherever focus is: after a click on another card focus is on that card, not in the panel (Lens).
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) closeRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selected]);
   // The steps that turned done since the last reading: only they play the "turning on" ring, never every done card on first load.
   const seen = useRef<Map<string, LiveStatus> | null>(null);
   const [lit, setLit] = useState<ReadonlySet<string>>(new Set());

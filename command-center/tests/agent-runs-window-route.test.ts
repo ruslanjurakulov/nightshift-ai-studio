@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   reads: [] as { table: string; filters: [string, unknown][] }[],
 }));
 vi.mock("@/lib/server/github-runs", () => ({ dispatchedRunStatus: (...a: unknown[]) => h.status(...a) }));
+const rate = vi.hoisted(() => ({ take: vi.fn(async () => "ok") }));
+vi.mock("@/lib/server/web-rate", () => ({ RUN_STATUS_RATE: { bucket: "studio.run_status", max: 240, windowSeconds: 3600 }, takeWebRate: rate.take }));
 
 function query(table: string) {
   const filters: [string, unknown][] = [];
@@ -35,7 +37,7 @@ function query(table: string) {
 vi.mock("@/lib/supabase/server", () => ({ getUser: async () => ({ id: "u" }), createClient: async () => ({ from: query }) }));
 
 const { GET } = await import("../app/api/agent/runs/window/route");
-const CH = "c0000000-0000-4000-8000-0000000000c0";
+const CH = "ch-alpha";
 const since = () => new Date(Date.now() - 60_000).toISOString();
 const get = (extra = "") => GET(new Request(`http://x/api/agent/runs/window?channel=${CH}&since=${encodeURIComponent(since())}${extra}`));
 
@@ -54,7 +56,20 @@ describe("the window route's live facts", () => {
     expect(body.workflow).toBeNull();
     h.visible = true;
     expect((await (await get()).json()).workflow).toEqual({ state: "in_progress" });
-    expect(h.status).toHaveBeenCalledWith(CH, expect.any(Number));
+    expect(h.status).toHaveBeenCalledWith(CH, expect.any(Number), expect.any(Function));
+    // The channel is gated on its real key: channels has channel_id, no id (Breach 5).
+    expect(h.reads.find((r) => r.table === "channels")?.filters).toEqual([["channel_id", CH]]);
+    // The person's own rate limit is what the GitHub read is charged to.
+    const mayAsk = h.status.mock.calls.at(-1)![2] as () => Promise<boolean>;
+    rate.take.mockResolvedValueOnce("limited");
+    expect(await mayAsk()).toBe(false);
+    expect(rate.take).toHaveBeenCalledWith("u", expect.objectContaining({ bucket: "studio.run_status" }));
+  });
+
+  it("a channel id is a slug: a real one is read, anything else is not found", async () => {
+    expect((await get()).status).toBe(200);
+    const bad = await GET(new Request(`http://x/api/agent/runs/window?channel=${encodeURIComponent("a,b")}&since=${encodeURIComponent(since())}`));
+    expect(bad.status).toBe(404);
   });
 
   it("reads the hold named by &hold= through the person's own client, and a malformed ref reads nothing", async () => {

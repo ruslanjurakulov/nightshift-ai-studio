@@ -455,20 +455,12 @@ export function runGraph(r: RunReading): LiveGraph {
   const stageFailed = events.some((e) => RUN_STAGES.some((st) => st.failEvents.includes(e.event) || (e.event === "agent.failed" && !!e.agent && st.failAgents.includes(e.agent))));
   const uploaded = events.some((e) => e.event === "video.published" || e.event === "upload.completed" || e.event === "publish.held");
   const timedOut = win ? Date.parse(win.now) - Date.parse(win.since) > RUN_WINDOW_LIMIT_MS : false;
-  // GitHub saying the channel's job finished ends the run even when its events have not been synced yet (they then read unknown).
-  const wf = win && r.workflow?.state === "completed" ? r.workflow.conclusion : null;
-  const ended = r.job ? JOB_TERMINAL.has(r.job.status) : win ? stageFailed || uploaded || timedOut || wf !== null : false;
-  const jobStatus = r.job
-    ? r.job.status
-    : win
-      ? stageFailed || timedOut || (wf !== null && wf !== "success")
-        ? uploaded && !stageFailed && (wf === null || wf === "success")
-          ? "completed"
-          : "failed"
-        : uploaded || wf === "success"
-          ? "completed"
-          : "running"
-      : null;
+  // GitHub saying the channel's job finished does NOT end the run here: its events can still be on their way (Lens). It only stops
+  // the view from claiming a stage is waiting or working: such a stage is not known. The view keeps reading until an event ends
+  // the run or the time limit passes.
+  const wfDone = !!win && r.workflow?.state === "completed";
+  const ended = r.job ? JOB_TERMINAL.has(r.job.status) : win ? stageFailed || uploaded || timedOut : false;
+  const jobStatus = r.job ? r.job.status : win ? (stageFailed || timedOut ? (uploaded && !stageFailed ? "completed" : "failed") : uploaded ? "completed" : "running") : null;
   let reachedLater = false;
   const statuses: { kind: RunNodeKind; status: LiveStatus; at: string | null; privacy: string | null }[] = [];
   for (let i = RUN_STAGES.length - 1; i >= 0; i--) {
@@ -482,10 +474,10 @@ export function runGraph(r: RunReading): LiveGraph {
     // Ended with no event at all: the events have not reached us (the pipeline's mirror runs later), so nothing is claimed (Lens B1).
     else if (ended && events.length === 0) status = "unknown";
     // A run that timed out with no last event did not tell us what happened after: the steps it never reached are not known.
-    else if (!last) status = reachedLater ? "unknown" : ended ? (jobStatus === "completed" || jobStatus === "succeeded" || (timedOut && !stageFailed) ? "unknown" : "skipped") : "waiting";
+    else if (!last) status = reachedLater || (wfDone && !ended) ? "unknown" : ended ? (jobStatus === "completed" || jobStatus === "succeeded" || (timedOut && !stageFailed) ? "unknown" : "skipped") : "waiting";
     else if (st.failEvents.includes(last.event) || last.event === "agent.failed") status = "failed";
     else if (st.done.includes(last.event)) status = "done";
-    else status = ended ? "stopped" : "working";
+    else status = ended ? "stopped" : wfDone ? "unknown" : "working";
     if (last) reachedLater = true;
     const published = mine.filter((e) => e.event === "video.published").pop();
     statuses.unshift({ kind: st.kind, status, at: last?.ts ?? null, privacy: published?.privacy ?? null });
@@ -569,7 +561,8 @@ function coerceHandoff(v: unknown): BriefHandoff | null {
   }
   if (h.kind !== "run") return null;
   const channel = str(h.channel_id);
-  if (!channel || !UUID.test(channel)) return null;
+  // channels.channel_id is a slug (0001), not a uuid.
+  if (!channel || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(channel)) return null;
   const job = typeof h.job_id === "number" ? String(h.job_id) : str(h.job_id);
   if (job && /^[1-9][0-9]{0,14}$/.test(job)) return { kind: "run", channelId: channel, jobId: job };
   const at = str(h.dispatched_at);
@@ -678,8 +671,9 @@ export function briefGraph(b: Brief): LiveGraph {
   });
   const rows = Math.max(1, b.scenes.length);
   const mid = Math.floor((rows - 1) / 2);
-  // Voice "off" is a film with no narration take: the live graph draws it "none" too. Not asked yet is still a planned step.
-  const voiced = b.voice !== "off";
+  // "off" and "clip_audio" are films with no narration take (with clip_audio the video model speaks the lines inside each clip):
+  // the live graph draws the voice step "none", so the draft does too (Lens). Not asked yet is still a planned step.
+  const voiced = b.voice !== "off" && b.voice !== "clip_audio";
   nodes.push({ id: "voice", kind: "voice", status: voiced ? "draft" : "none", price: price("voice"), col: 4, row: -1 });
   edges.push({ from: "script", to: "voice" });
   const music = b.music === "library";

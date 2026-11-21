@@ -56,7 +56,8 @@ export default async function StudioPage({
     const film = parseFilmId(sp.film);
     const run = typeof sp.run === "string" && /^[1-9][0-9]{0,14}$/.test(sp.run) ? sp.run : null;
     // The Actions backend gives no run id: its run is the channel's events since the dispatch (/api/agent/run's dispatched_at).
-    const channel = typeof sp.channel === "string" && /^[0-9a-f-]{36}$/i.test(sp.channel) ? sp.channel : null;
+    // channels.channel_id is a slug (0001), not a uuid.
+    const channel = typeof sp.channel === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(sp.channel) ? sp.channel : null;
     const since = typeof sp.since === "string" && Number.isFinite(Date.parse(sp.since)) ? sp.since : null;
     const target = film
       ? { kind: "film" as const, id: film }
