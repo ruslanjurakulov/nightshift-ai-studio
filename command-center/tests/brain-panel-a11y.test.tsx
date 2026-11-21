@@ -105,4 +105,10 @@ describe("Nightshift AI panel scenario buttons", () => {
     expect(new Set(names).size).toBe(3);
     TITLES.forEach((title, i) => expect(names[i]).toContain(title));
   });
+
+  // WCAG 2.5.3: a voice-control user says what they see ("Choose this one"); a name that drops the visible words cannot be spoken.
+  it.each(["en", "ru", "uz"] as const)("keeps the visible button text inside its accessible name (%s)", (locale) => {
+    const d = dictionaries[locale].aiChat;
+    expect(d.chooseThisNamed.startsWith(d.chooseThis)).toBe(true);
+  });
 });

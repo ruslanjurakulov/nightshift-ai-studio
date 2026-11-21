@@ -21,7 +21,7 @@ export const aiChatUz: AiChatDictionary = {
   factsUnknown: "Kanal maʼlumotlarini bu safar oʻqib boʻlmadi, shuning uchun gʻoyalar faqat mavzuga asoslangan.",
   scenarioFacts: "{len} · {scenes} ta sahna · {characters} ta qahramon",
   chooseThis: "Shuni tanlash",
-  chooseThisNamed: "Tanlash: {title}",
+  chooseThisNamed: "Shuni tanlash: {title}",
   slotQuestions: {
     kind: "Kanalingiz uchun uzun YouTube videomi yoki Studiyada qisqa film yoki reklamami?",
     target_seconds: "Qancha davom etsin?",
