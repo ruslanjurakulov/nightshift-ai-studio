@@ -364,9 +364,14 @@ the two, and it rests on 0171 as written.
   Times are in the file's own time, on the film's clock: each scene's words start `NARRATION_LEAD_S` (0.25 s) into the
   scene, so a 60-scene film is one sound clip, not 60. Loudness that was not measured stays `null`, never a default
   (rule 5). **No `words` in provenance:** 0038 caps provenance at 16 KB, and about 400 words (2.7 minutes of speech)
-  already exceed it (Lens L4). The assembly times the captions with Whisper base on the file instead. Every spoken word
-  must fall inside a segment: a word outside every segment fails the captions (`captions_failed`) instead of being left
-  out quietly.
+  already exceed it (Lens L4). The assembly times the captions with Whisper base on the file instead. A word that
+  overlaps a segment is kept as it is. A word whose timings fall entirely outside every segment lies in a silence the
+  narration never speaks in: a transcription artefact (Whisper invents words in silence), not speech. It is **dropped,
+  never failing the paid film** (Atlas's decision for the owner, 21 Nov), and recorded:
+  - on the master's provenance, as `captions_dropped_words`: `{count, words: [{word, start_s, end_s}] (at most 50),
+    reason}`;
+  - in the outcome's `detail` ("N word(s) outside speech dropped from the captions: <times>") and `dropped_words`;
+  - in the worker's log.
 
 ### What the assembly refuses (no silent fallback, rule 4)
 

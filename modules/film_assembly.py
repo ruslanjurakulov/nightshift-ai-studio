@@ -140,6 +140,8 @@ class AssemblyOutcome:
     captions_asset_id: Optional[str] = None
     rendered: bool = False                # False when a crashed attempt's file was reused
     recorded: bool = False                # whether THIS call recorded the outcome with 0171
+    #: Caption words dropped as outside every scene's narration ({word, start_s, end_s}); also on the master's provenance.
+    dropped_words: tuple = ()
     segment: Optional[dict] = None        # film_record_assembly's answer, or the segment as read back
 
 
@@ -172,14 +174,17 @@ def _clean_words(words: Sequence[Mapping]) -> List[tuple]:
     return clean
 
 
-def cues_from_words(words: Sequence[Mapping], segments: Sequence[Mapping], max_chars: int) -> List[dict]:
+def cues_from_words(words: Sequence[Mapping], segments: Sequence[Mapping], max_chars: int,
+                    dropped: Optional[List[dict]] = None) -> List[dict]:
     """Word timings (the narration file's time) → caption cues, never across a scene's segment.
 
     Each word belongs to the segment it overlaps most (alignment puts a scene's first word a few ms before its
-    segment's start; Lens L3). A word that overlaps no segment is not placed: it is refused
-    (``captions_failed``), never left out of the captions quietly, because between two segments the file may
-    still be playing. Deterministic: the same words give the same cues. A word too long for a line is refused
-    by build_cut later, by name, rather than cut here."""
+    segment's start; Lens L3), and a word that overlaps a segment at all is kept as it is. A word whose timings
+    fall entirely outside every segment lies in a silence the narration never speaks in: a transcription artefact
+    (Whisper invents words in silence), not speech. It is dropped, never failing a paid film for it (Atlas's
+    decision for the owner, 21 Nov), and never quietly: each one is appended to ``dropped`` as {word, start_s,
+    end_s}, which the assembly records on the film (rule 5). Deterministic: the same words give the same cues.
+    A word too long for a line is refused by build_cut later, by name, rather than cut here."""
     spans = sorted((float(s["start_s"]), float(s["end_s"])) for s in segments)
     placed: List[List[tuple]] = [[] for _ in spans]
     for a, b, text in _clean_words(words):
@@ -189,8 +194,9 @@ def cues_from_words(words: Sequence[Mapping], segments: Sequence[Mapping], max_c
             if ov > best:
                 best, k = ov, i
         if k is None:
-            raise AssemblyFailed("captions_failed", f"the narration says \"{text}\" at {a:.2f} s, outside every scene's "
-                                 "narration segment: generate the narration again so its segments cover its words")
+            if dropped is not None:
+                dropped.append({"word": text, "start_s": round(a, 3), "end_s": round(b, 3)})
+            continue
         placed[k].append((a, b, text))
     budget = max(8, int(max_chars)) * ft.MAX_CAPTION_LINES
     cues: List[dict] = []
@@ -578,9 +584,13 @@ def assemble_segment(segment: Mapping, *, worker_id: str, media_root: Path, tool
                 raise _LeaseLost() from None
             raise AssemblyFailed("store_failed", f"the database refused the film ({e.word}): retry the assembly") from None
         logger.info("film assembly %s: completed (%s, %s s)", seg_id, result["asset_id"], result["length_s"])
-        return AssemblyOutcome(True, asset_id=result["asset_id"], cut_sha256=sha, recorded=True,
+        dw = result.get("dropped_words") or []
+        detail = (f"{len(dw)} word(s) outside speech dropped from the captions: "
+                  + ", ".join(f"{w['start_s']:.2f}-{w['end_s']:.2f} s" for w in dw[:10]) + ("…" if len(dw) > 10 else "")
+                  ) if dw else None
+        return AssemblyOutcome(True, asset_id=result["asset_id"], cut_sha256=sha, recorded=True, detail=detail,
                                captions_asset_id=result.get("captions_asset_id"), rendered=result["rendered"],
-                               segment=rec)
+                               dropped_words=tuple(dw), segment=rec)
     except _LeaseLost:
         return _lost(store, seg_id, registered)
     except AssemblyDisabled:
@@ -675,6 +685,7 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
     # from Whisper on the file itself (cached per file). Asked for and not producible: the assembly fails, by name.
     # Without segments there is nothing to time them against: build_cut refuses that by its own name.
     captions = None
+    dropped_words: List[dict] = []
     mode = film.get("captions_mode") or "sidecar"
     if narration is not None and mode != "none" and narration["segments"]:
         aspect = film.get("aspect") or "16:9"
@@ -691,7 +702,9 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
             except Exception as e:  # noqa: BLE001
                 raise AssemblyFailed("captions_failed", f"the captions could not be transcribed ({type(e).__name__}): "
                                      "retry the assembly, or set captions to none") from None
-        captions = cues_from_words(words, narration["segments"], layout["max_chars"])
+        captions = cues_from_words(words, narration["segments"], layout["max_chars"], dropped=dropped_words)
+        if dropped_words:
+            logger.warning("film assembly %s: %d word(s) outside speech dropped from the captions", seg_id, len(dropped_words))
         if not captions:
             raise AssemblyFailed("captions_failed", "no words of the narration could be timed for captions: "
                                  "retry the assembly, or set captions to none")
@@ -764,6 +777,11 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
 
     prov = {"film_segment_id": seg_id, "film_id": film_id, "film_version": segment.get("film_version"),
             "cut_sha256": sha, "cut_format": ft.FORMAT_VERSION, "tool": "film_assembly"}
+    if dropped_words:
+        # Recorded on the film itself (its library row), so "we dropped these" survives into what a person reads. At most
+        # 50 listed (0038 caps provenance at 16 KB); the count is always the whole number.
+        prov["captions_dropped_words"] = {"count": len(dropped_words), "words": dropped_words[:50],
+                                          "reason": "outside every scene's narration: a transcription artefact"}
     if vtt_id:
         vtt = work / "captions.vtt"
         vtt.write_text(vtt_text(cut.srt), encoding="utf-8")
@@ -786,7 +804,8 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
         raise AssemblyFailed("store_failed", "the film's file is not live in this workspace's library after storing it "
                              "(deleted meanwhile?): retry the assembly")
     _check_master(row, media_root, aid, cut.length_s)
-    return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": True, "captions_asset_id": vtt_id}
+    return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": True, "captions_asset_id": vtt_id,
+            "dropped_words": dropped_words}
 
 
 def _store(fn: Callable[[], dict], what: str) -> dict:

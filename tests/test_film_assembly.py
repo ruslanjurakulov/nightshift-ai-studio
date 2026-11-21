@@ -578,6 +578,19 @@ class FindingsTest(Base):
             self.assertTrue(again.ok and not again.rendered, again)
             self.assertEqual(len(db.records()), 1)
 
+    def test_dropped_words_are_recorded_on_the_film_and_in_the_outcome(self):
+        f = self.film(captions="sidecar", words=False)
+
+        def transcribe(path, language):
+            return [{"word": "Scene", "start": 0.35, "end": 0.7}, {"word": "uh", "start": 2.8, "end": 3.0}]
+        db = f.db()
+        out = run(db, self.root, deps=self.fake_deps(db, transcribe=transcribe))
+        self.assertTrue(out.ok, out)
+        self.assertEqual(out.dropped_words, ({"word": "uh", "start_s": 2.8, "end_s": 3.0},))
+        self.assertIn("1 word(s) outside speech dropped", out.detail)
+        prov = db.asset_rows[out.asset_id]["provenance"]["captions_dropped_words"]
+        self.assertEqual((prov["count"], prov["words"][0]["start_s"]), (1, 2.8))
+
     def test_a_5xx_on_begin_records_nothing(self):
         f = self.film()
         db = f.db()
@@ -731,12 +744,18 @@ class CaptionTest(unittest.TestCase):
         words = [{"word": "It", "start": 0.22, "end": 0.45}, {"word": "begins.", "start": 0.5, "end": 1.0}]
         self.assertEqual([c["text"] for c in fa.cues_from_words(words, self.SEGS, 30)], ["It begins."])
 
-    def test_a_spoken_word_outside_every_segment_fails_the_captions_never_drops_quietly(self):
+    def test_a_word_entirely_in_a_silent_gap_is_dropped_and_reported_never_fails_the_film(self):
         words = [{"word": "a", "start": 0.3, "end": 0.6}, {"word": "stray", "start": 2.8, "end": 3.0}]
-        with self.assertRaises(fa.AssemblyFailed) as cm:
-            fa.cues_from_words(words, self.SEGS, 30)
-        self.assertEqual(cm.exception.reason, "captions_failed")
-        self.assertIn("stray", cm.exception.detail)
+        dropped = []
+        cues = fa.cues_from_words(words, self.SEGS, 30, dropped=dropped)
+        self.assertEqual([c["text"] for c in cues], ["a"])
+        self.assertEqual(dropped, [{"word": "stray", "start_s": 2.8, "end_s": 3.0}])
+
+    def test_a_word_that_overlaps_a_segment_even_slightly_is_kept(self):
+        words = [{"word": "edge", "start": 2.45, "end": 2.9}]       # 50 ms inside the first segment
+        dropped = []
+        self.assertEqual([c["text"] for c in fa.cues_from_words(words, self.SEGS, 30, dropped=dropped)], ["edge"])
+        self.assertEqual(dropped, [])
 
     def test_a_sentence_end_or_three_seconds_ends_a_cue(self):
         words = [{"word": "One.", "start": 0.3, "end": 0.6}, {"word": "Two", "start": 0.7, "end": 1.0}]
