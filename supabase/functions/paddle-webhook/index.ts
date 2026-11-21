@@ -22,12 +22,21 @@
 //   PADDLE_PROMO_DISCOUNT_IDS    optional: dsc_… ids (comma-separated) that
 //                                may give credits at full value; any other
 //                                discount scales the credits to what was paid
+//   PADDLE_WEBHOOK_ENV           `production` or `sandbox`: which Paddle the
+//                                secret above belongs to. Sandbox grants only to
+//                                PADDLE_TEST_ORG_IDS; unset or anything else
+//                                grants nothing (503, so Paddle redelivers once
+//                                it is set). Refunds always land.
+//   PADDLE_TEST_ORG_IDS          sandbox only: the test workspaces (uuids,
+//                                comma-separated) a test card may credit
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //                                provided by Supabase to every Edge Function
 
 import {
   createRestStore,
   handlePaddleWebhook,
+  paddleTestOrgsFromEnv,
+  paddleWebhookEnvFromEnv,
   readBodyCapped,
   planTableFromEnv,
   priceTableFromEnv,
@@ -43,11 +52,17 @@ const prices = priceTableFromEnv(env);
 const apiProductId = env("PADDLE_API_TOPUP_PRODUCT_ID") ?? null;
 const plans = planTableFromEnv(Object.entries(Deno.env.toObject()), prices);
 const promos = promoAllowlistFromEnv(env("PADDLE_PROMO_DISCOUNT_IDS"));
+const mode = paddleWebhookEnvFromEnv(env("PADDLE_WEBHOOK_ENV"));
+const testOrgs = paddleTestOrgsFromEnv(env("PADDLE_TEST_ORG_IDS"));
 
 if (prices.size === 0) {
   // Said once at boot, by name only: every purchase would be rejected.
   console.error("paddle-webhook: no PADDLE_PRICE_* is set to a valid price id — purchases cannot be credited");
 }
+
+// Said once at boot, by name and count only.
+if (mode === "unknown") console.error("paddle-webhook: PADDLE_WEBHOOK_ENV is not production or sandbox — nothing is granted until it is set; refunds still land");
+if (mode === "sandbox") console.error(`paddle-webhook: SANDBOX — only the ${testOrgs.size} organization(s) in PADDLE_TEST_ORG_IDS are credited`);
 
 const store = createRestStore({ url: supabaseUrl, serviceKey });
 
@@ -66,7 +81,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   const res = await handlePaddleWebhook(
     { method: req.method, rawBody, signature: req.headers.get("paddle-signature") },
-    { secret, prices, store, apiProductId, plans, promos },
+    { secret, prices, store, apiProductId, plans, promos, mode, testOrgs },
   );
   return Response.json(res.body, { status: res.status });
 });

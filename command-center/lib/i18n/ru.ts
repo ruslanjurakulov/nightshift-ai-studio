@@ -3305,6 +3305,7 @@ export const ru: Dictionary = {
       adminOnly: "У вас нет доступа к покупке кредитов в этом рабочем пространстве.",
       notConfigured: "Покупка кредитов на этом развёртывании не настроена (NEXT_PUBLIC_PADDLE_* — см. docs/PADDLE_SETUP.md).",
       testOnlyDodo: "Dodo Payments на этом развёртывании в тестовом режиме: покупать могут только тестовые пространства из DODO_TEST_ORG_IDS, поэтому здесь ничего не продаётся — см. docs/DODO_SETUP.md.",
+      testOnlyPaddle: "Paddle на этом развёртывании в режиме sandbox: покупать могут только тестовые пространства из PADDLE_TEST_ORG_IDS, поэтому здесь ничего не продаётся — см. docs/PADDLE_SETUP.md.",
       notConfiguredDodo: "Продажа через Dodo Payments включена (PAYMENTS_PROVIDER=dodo), но не настроена: задайте DODO_PAYMENTS_API_KEY и id продуктов DODO_PRODUCT_* / DODO_PLAN_* — см. docs/DODO_SETUP.md.",
       merchant: "Платежи обрабатывает Paddle.com — наш Merchant of Record. Данные карты уходят в Paddle и никогда не попадают к нам.",
       merchantDodo: "Платежи обрабатывает Dodo Payments — наш Merchant of Record. Данные карты уходят в Dodo Payments и никогда не попадают к нам.",

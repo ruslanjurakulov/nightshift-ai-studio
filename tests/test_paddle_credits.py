@@ -85,8 +85,13 @@ class WebhookFunction(unittest.TestCase):
                 self.assertNotIn("PADDLE_WEBHOOK_SECRET", text)
                 # The one exception (migration 0031): the server-only Paddle API
                 # key that creates API top-up transactions, read in exactly one
-                # server-only module. Nothing else named PADDLE_* is read.
-                self.assertNotRegex(text, r"process\.env\.PADDLE_(?!API_KEY\b|API_TOPUP_PRODUCT_ID\b)")
+                # server-only module. And the sandbox allow-list (workspace ids,
+                # not a secret), read server-side in lib/server/payments.ts.
+                # Nothing else named PADDLE_* is read.
+                self.assertNotRegex(text, r"process\.env\.PADDLE_(?!API_KEY\b|API_TOPUP_PRODUCT_ID\b|TEST_ORG_IDS\b)")
+                if "process.env.PADDLE_TEST_ORG_IDS" in text:
+                    self.assertEqual(path.relative_to(APP).as_posix(), "lib/server/payments.ts")
+                    self.assertTrue(text.startswith('import "server-only";'))
                 if re.search(r"process\.env\.PADDLE_API_(KEY|TOPUP_PRODUCT_ID)\b", text):
                     self.assertEqual(path.relative_to(APP).as_posix(), "lib/server/paddle-api.ts")
                     self.assertTrue(text.startswith('import "server-only";'))

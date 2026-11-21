@@ -3323,6 +3323,7 @@ export const en = {
       adminOnly: "You don't have access to buy credits in this workspace.",
       notConfigured: "Buying credits is not configured on this deployment (NEXT_PUBLIC_PADDLE_* — see docs/PADDLE_SETUP.md).",
       testOnlyDodo: "Dodo Payments is in test mode on this deployment: only the test workspaces listed in DODO_TEST_ORG_IDS can buy, so nothing is on sale here — see docs/DODO_SETUP.md.",
+      testOnlyPaddle: "Paddle is in sandbox mode on this deployment: only the test workspaces listed in PADDLE_TEST_ORG_IDS can buy, so nothing is on sale here — see docs/PADDLE_SETUP.md.",
       notConfiguredDodo: "Selling through Dodo Payments is switched on (PAYMENTS_PROVIDER=dodo) but not configured: set DODO_PAYMENTS_API_KEY and the DODO_PRODUCT_* / DODO_PLAN_* product ids — see docs/DODO_SETUP.md.",
       merchant: "Payments are processed by Paddle.com, our Merchant of Record. Your card details go to Paddle and never reach us.",
       merchantDodo: "Payments are processed by Dodo Payments, our Merchant of Record. Your card details go to Dodo Payments and never reach us.",

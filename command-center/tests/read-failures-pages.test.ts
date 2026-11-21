@@ -276,8 +276,8 @@ describe("credits plans: unknown, never 'Free', 0 or an empty list", () => {
 
   describe("with a plan on sale", () => {
     beforeEach(() => {
-      vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "test_abcdefghijkl");
-      vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+      vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "live_abcdefghijkl");
+      vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "production");
       vi.stubEnv("NEXT_PUBLIC_PADDLE_PLAN_PRO", "pri_abcdefghij12");
       vi.resetModules();
     });

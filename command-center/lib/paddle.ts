@@ -180,6 +180,29 @@ export const paddleConfig: PaddleConfig | null = resolvePaddleConfig({
 
 export type BuyAccess = "hidden" | "admin_only" | "allowed";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** PADDLE_TEST_ORG_IDS, as the webhook reads it (paddleTestOrgsFromEnv): uuids, lower case; anything else skipped. */
+export function parsePaddleTestOrgs(raw: string | null | undefined): ReadonlySet<string> {
+  return new Set((raw ?? "").split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter((x) => UUID_RE.test(x)));
+}
+
+/**
+ * Whether Paddle's checkout may be opened for this organization. Production:
+ * yes. Sandbox on a real database: only the organizations in
+ * PADDLE_TEST_ORG_IDS — a sandbox test card is public, and the webhook grants
+ * nothing to anyone else, so offering it would take a "payment" that never
+ * arrives. The webhook (PADDLE_WEBHOOK_ENV) applies the same list.
+ */
+export function paddleSellsTo(
+  client: { environment: PaddleEnvironment } | null,
+  orgId: string | null | undefined,
+  testOrgs: ReadonlySet<string>,
+): boolean {
+  if (!client || !orgId) return false;
+  return client.environment === "production" || testOrgs.has(orgId.toLowerCase());
+}
+
 /**
  * What the Credits page offers. The operator's own organization never pays
  * (0020 exempts it), so it is never offered a checkout; nor is anyone when
@@ -189,8 +212,14 @@ export type BuyAccess = "hidden" | "admin_only" | "allowed";
  * never harmful to the organization it credits. The bar is about who decides
  * to spend the organization's money.)
  */
-export function buyAccess(orgId: string | null | undefined, role: Role | null | undefined, config: PaddleConfig | null): BuyAccess {
-  if (!config || !orgId || isCreditExempt(orgId)) return "hidden";
+export function buyAccess(
+  orgId: string | null | undefined,
+  role: Role | null | undefined,
+  config: PaddleConfig | null,
+  /** PADDLE_TEST_ORG_IDS (paddleTestOrgs): in sandbox, nobody else is offered a checkout. */
+  testOrgs: ReadonlySet<string>,
+): BuyAccess {
+  if (!config || !orgId || isCreditExempt(orgId) || !paddleSellsTo(config, orgId, testOrgs)) return "hidden";
   return role && atLeast(role, "admin") ? "allowed" : "admin_only";
 }
 

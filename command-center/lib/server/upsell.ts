@@ -1,9 +1,10 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { isCreditExempt } from "@/lib/credits";
-import { paddleClient } from "@/lib/paddle";
 import { PLAN_ENV } from "@/lib/plans";
 import { readBillingSummary, readPlanCatalog } from "@/lib/server/plans";
+import { paddleClient } from "@/lib/paddle";
+import { paddleClientFor, paymentsProvider } from "@/lib/server/payments";
 import { upsellCatalog, type UpsellCatalog } from "@/lib/upsell";
 
 /**
@@ -27,7 +28,10 @@ export async function loadUpsellCatalog(orgId: string): Promise<UpsellCatalog | 
     ]);
     const catalog = catalogRead.state === "ok" ? catalogRead.value : null;
     const summary = summaryRead.state === "ok" ? summaryRead.value : null;
-    return upsellCatalog(catalog, catalogRead.state, summary, PLAN_ENV, paddleClient, false);
+    // The sandbox allow-list is Paddle's: under Dodo the dialog keeps main's behaviour (the Paddle settings as they are),
+    // so switching provider never changes what the Studio's plan dialog offers.
+    const paddle = paymentsProvider() === "dodo" ? paddleClient : paddleClientFor(orgId);
+    return upsellCatalog(catalog, catalogRead.state, summary, PLAN_ENV, paddle, false);
   } catch {
     return upsellCatalog(null, "failed", null, PLAN_ENV, null, false);
   }

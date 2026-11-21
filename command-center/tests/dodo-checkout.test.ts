@@ -153,7 +153,7 @@ describe("PAYMENTS_PROVIDER", () => {
     const before = {
       pricing: resolvePricing(PRICING_ENV, paddleConfig),
       matrix: planMatrix(null, PLAN_ENV, paddleClient),
-      access: buyAccess(h.orgId, "owner", paddleConfig),
+      access: buyAccess(h.orgId, "owner", paddleConfig, new Set()),
     };
     for (const provider of ["", "paddle", "Paddle", "dodo-typo", "Dodo"]) {
       vi.stubEnv("PAYMENTS_PROVIDER", provider);

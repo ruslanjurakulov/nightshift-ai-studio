@@ -181,6 +181,74 @@ noto'g'ri Paddle'ni ochmasligi uchun).
 
 ## 5. Webhook: Edge Function'ni deploy qilish
 
+> **Sandbox himoyasi (`PADDLE_WEBHOOK_ENV`, `PADDLE_TEST_ORG_IDS`) — egasi
+> qiladigan qadam.** Edge Function'lar **avtomatik deploy qilinmaydi**: bu
+> o'zgarish ishlayotgan funksiyaga siz qo'lda qayta deploy qilmaguningizcha
+> yetib bormaydi, va ungacha sandbox'dagi test karta har qanday ish maydoniga
+> haqiqiy kredit qo'sha oladi. Tartib muhim:
+>
+> 1. Avval secret'larni qo'ying (pastdagi "Secret'larni Supabase'ga qo'yish"):
+>    sandbox'da `PADDLE_WEBHOOK_ENV=sandbox` va `PADDLE_TEST_ORG_IDS=<test
+>    tashkilot uuid>,…`; live'da `PADDLE_WEBHOOK_ENV=production`.
+> 2. Command Center uchun GitHub repository **variable** `PADDLE_TEST_ORG_IDS`
+>    ga xuddi shu uuid'larni yozing va `deploy_web.yml` ni qayta ishga tushiring.
+> 3. Keyin `supabase functions deploy paddle-webhook --no-verify-jwt --project-ref <REF>`.
+>
+> `PADDLE_WEBHOOK_ENV` qo'yilmagan (yoki noto'g'ri yozilgan) funksiya hech kimga
+> hech narsa bermaydi va Paddle'ga **503** qaytaradi — shunda Paddle o'sha
+> event'ni keyinroq qayta yuboradi va siz qiymatni qo'ygach u kreditlanadi.
+> Refund va chargeback har doim o'tadi. Obunaning bekor qilinishi, pauzasi va
+> `past_due` holati ham kutmaydi — darhol yoziladi (faqat beradigan holatlar,
+> `active` va `trialing`, 503 bilan kutadi).
+> Paddle o'z qayta urinishlarini tugatib qo'ygan bo'lsa ham event yo'qolmaydi:
+> uni Paddle dashboard'idagi notification'lar (webhook yetkazishlari) ro'yxatidan
+> qo'lda qayta yuborish (replay) mumkin.
+
+### 503 retry va 200 terminal rad etish — farqi
+
+`PADDLE_WEBHOOK_ENV` bo‘sh yoki noma’lum bo‘lsa, grant kutadi: HTTP **503**,
+`payment_events.status=failed`. Haqiqiy muhit va secret mosligini tuzatgach,
+Paddle retry/replay ayni event’ni bir marta qayta ishlashi mumkin; keyingi replay
+ikkinchi grant bermaydi. Bu to‘g‘ri imzolangan, qolgan tekshiruvlardan o‘tgan
+grant uchun; noto‘g‘ri imzo **401** bo‘lib, hech qanday grant/audit event yozilmaydi.
+
+Ammo qiymat haqiqiy **`sandbox`** bo‘lib, tashkilot ro‘yxatda bo‘lmasa, javob
+**200**, status **`rejected`** — terminal. Keyin `production`ga almashtirish yoki
+tashkilotni allowlist’ga qo‘shish ayni event’ni tiklamaydi: replay avvalgi
+`rejected` natijani qaytaradi. Allowlist o‘zgarishi faqat yangi event’lar uchun.
+Sinov kartasidagi pulni haqiqiy to‘lov deb qabul qilmang.
+
+### Terminal event uchun egasi nazoratidagi recovery
+
+1. Yangi live checkout’larni ochishdan oldin Edge Function secret’i haqiqatan
+   qaysi Paddle muhitiga tegishli ekanini va `PADDLE_WEBHOOK_ENV`, live narxlar,
+   Command Center muhiti mosligini tekshiring. Secret qiymatini log/chatga yozmang.
+2. Paddle’ning **live** dashboard’ida to‘lov haqiqatan yakunlanganini tekshiring:
+   transaction/event/subscription identifikatorlari, tashkilot, mahsulot, summa,
+   valyuta va davrni yozib oling. Sandbox yoki test karta tranzaksiyasi uchun
+   production kredit/balans/entitlement’ni qo‘lda bermang.
+3. Nightshift audit va ledger’larini taqqoslang: pack krediti, API balansi,
+   obuna holati va davriy entitlement’lar alohida. Shu transaction/davr uchun
+   avvalgi grant, qo‘lda tuzatish, refund, chargeback va hold recovery bor-yo‘qligini
+   tekshiring. Bir xil holatni ikki operator tuzatmasligi uchun yagona recovery
+   yozuvi va mas’ulini belgilang; noaniq holatda yangi grant bermang.
+4. Egasi aniq remedy’ni tasdiqlasin: haqiqiy to‘lovni Paddle orqali qaytarish
+   yoki faqat tekshirilgan yetishmayotgan entitlement’ni mavjud vakolatli,
+   auditli qo‘llab-quvvatlash amali orqali tiklash. API to‘lovi site-credit grant
+   emas; obuna statusi/davri ham oddiy pack grant bilan teng emas. Kerakli tur
+   uchun xavfsiz recovery amali mavjud bo‘lmasa, refund yoki alohida ko‘rib
+   chiqilgan remediation kerak; yangi SQL’ni shu runbook’dan bajarmang.
+5. Reason va original transaction/event/davrga bog‘langan recovery reference’ni
+   saqlang; qayta urinishdan oldin natijani o‘qib tasdiqlang. Manual grantning
+   idempotentligi kafolatlanmagan bo‘lsa, uni ko‘r-ko‘rona qaytarmang. Keyingi
+   refund/chargeback shu qo‘lda berilgan kompensatsiya bilan ham reconcile
+   qilinishini tekshiring — webhook uni avtomatik topadi deb hisoblamang.
+
+`payment_events` qatorini o‘chirish, statusini `failed`ga almashtirish yoki event
+ID’sini yangilab resend qilish orqali grantni majburlamang: bu idempotency va
+refund auditini buzadi. Terminal rad etilgan event saqlanadi; recovery alohida
+izchil audit iziga ega bo‘ladi. Bu yo‘riqnoma runtime semantikasini o‘zgartirmaydi.
+
 Supabase CLI kerak (<https://supabase.com/docs/guides/cli>). `<REF>` — Supabase
 loyihangiz id'si (Settings → General → Reference ID).
 
@@ -219,6 +287,8 @@ PADDLE_WEBHOOK_SECRET=pdl_ntfset_...
 PADDLE_PRICE_STARTER=pri_01...
 PADDLE_PRICE_CREATOR=pri_01...
 PADDLE_PRICE_STUDIO=pri_01...
+PADDLE_WEBHOOK_ENV=sandbox
+PADDLE_TEST_ORG_IDS=<test tashkilot uuid>,<yana biri>
 EOF
 supabase secrets set --env-file /tmp/paddle.env --project-ref <REF>
 rm /tmp/paddle.env
@@ -230,6 +300,18 @@ supabase secrets list --project-ref <REF>    # faqat nomlar va hash ko'rinadi
 `SUPABASE_URL` va `SUPABASE_SERVICE_ROLE_KEY` ni **qo'ymang** — Supabase ularni
 har bir Edge Function'ga o'zi beradi. Service key shu funksiyadan tashqariga
 chiqmaydi.
+
+`PADDLE_WEBHOOK_ENV` — funksiyadagi secret qaysi Paddle'niki: `production` yoki
+`sandbox`. Boshqa har qanday qiymat (bo'sh ham) — **hech narsa berilmaydi**, 503.
+Sandbox'da funksiya faqat `PADDLE_TEST_ORG_IDS` dagi tashkilotlarga kredit, tarif
+va API balansini beradi; qolgan har bir to'lov `rejected` ("sandbox: this
+organization is not in PADDLE_TEST_ORG_IDS") bo'lib yoziladi. Sababi: sandbox
+notification destination'ining secret'i bilan deploy qilingan funksiya sandbox
+event'ini live event'dan ajrata olmaydi — event'ning o'zida qaysi muhitdan
+kelgani yo'q — va test karta (`4242 …`) hammaga ochiq. Command Center ham
+sandbox'da Sotib olish / tarif / API to'ldirish tugmalarini faqat
+`PADDLE_TEST_ORG_IDS` dagi ish maydonlariga ko'rsatadi (`deploy/.env.web.example`);
+ikkala ro'yxat bir xil bo'lishi kerak.
 
 Price id'lar ikki joyda turadi (Command Center env'ida — tugmalar uchun;
 Supabase secret'larida — kredit hisoblash uchun). Ikkalasi bir xil bo'lishi
@@ -259,7 +341,8 @@ siz qilingan (Supabase logs'da farqini ko'rasiz: bizning funksiya
 
 ### b) Haqiqiy sandbox xaridi
 
-1. Standart bo'lmagan tashkilotni oching (owner/admin sifatida) → **Credits**.
+1. `PADDLE_TEST_ORG_IDS` dagi test tashkilotni oching (owner/admin sifatida) →
+   **Credits**. Ro'yxatda bo'lmagan tashkilotda sandbox'da tugma umuman ko'rinmaydi.
 2. Paketni tanlang → **Sotib olish** → Paddle oynasida test karta:
    `4242 4242 4242 4242`, muddati — kelajakdagi istalgan oy, CVC `100`.
 3. To'lovdan keyin sahifa "To'lov qabul qilindi…" deydi va bir necha soniyada
@@ -290,7 +373,13 @@ qaytarilgan pul ulushiga mutanosib olinadi (masalan 25% pul → 25% kredit).
    Default payment link = `https://nightshift-ai.studio/all-channels/credits`.
 4. Live notification destination (xuddi shu funksiya URL'i) → yangi secret key.
 5. Supabase secret'larini live qiymatlarga almashtiring (5-bo'limdagi fayl usuli):
-   `PADDLE_WEBHOOK_SECRET`, `PADDLE_PRICE_*`. Funksiyani qayta deploy qilish shart emas.
+   `PADDLE_WEBHOOK_SECRET`, `PADDLE_PRICE_*` va **`PADDLE_WEBHOOK_ENV=production`**
+   (bo‘sh/noma’lum qiymat — 503 retry; eski `sandbox` qiymati esa ro‘yxatda yo‘q
+   live tashkilotga **200 terminal rejected** beradi, replay uni tiklamaydi).
+   Live savdoni ochishdan oldin secret/muhit juftligini tekshiring. Sandbox himoyasi kodi bir marta
+   deploy qilingan bo'lsa, funksiyani qayta deploy qilish shart emas.
+   `PADDLE_TEST_ORG_IDS` production'da e'tiborga olinmaydi — uni ikkala joydan
+   (Supabase secret va GitHub variable) o'chirsangiz bo'ladi.
 6. Command Center env: `NEXT_PUBLIC_PADDLE_ENV=production`, live token, live
    price id'lar → qayta build.
 7. Kichik haqiqiy xarid qiling, ledger'ni tekshiring, keyin Paddle'dan refund qiling.
@@ -386,6 +475,8 @@ kerak bo'lsa Credits sahifasidan `grant` qiling.
 | "Faqat owner yoki admin…" | Siz editor/viewer'siz | Tashkilot owner'i sotib oladi |
 | Paddle oynasi "Something went wrong" | Default payment link qo'yilmagan; live'da domen tasdiqlanmagan | 2-bo'lim / 7-bo'lim |
 | Webhook 401 | Secret noto'g'ri yoki `--no-verify-jwt` yo'q | 5-bo'lim |
+| `rejected: sandbox: this organization is not in PADDLE_TEST_ORG_IDS` | Sandbox'da ro'yxatda yo'q ish maydoni to'ladi | Test to‘lovi uchun kutilgan himoya. Ro‘yxat o‘zgarishi faqat yangi event’ga; eski event replay bilan tiklanmaydi. Haqiqiy live to‘lov bo‘lsa 5-bo‘limdagi terminal recovery tartibi |
+| `failed: PADDLE_WEBHOOK_ENV is not set …`, Paddle'da 503 | Funksiyada `PADDLE_WEBHOOK_ENV` yo'q | `supabase secrets set PADDLE_WEBHOOK_ENV=production` (yoki `sandbox`); Paddle qayta yuboradi |
 | `rejected: price … is not a credit pack` | Supabase'da `PADDLE_PRICE_*` yo'q yoki boshqa | `supabase secrets set …` |
 | `rejected: organization does not exist` | Tashkilot o'chirilgan / payload qo'lda yasalgan | Paddle'da refund yoki qo'lda `grant` |
 | `failed: purchase not recorded yet` | Refund xariddan oldin keldi | Kutish — Paddle qayta yuboradi |
