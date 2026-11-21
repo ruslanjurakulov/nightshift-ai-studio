@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot, SwatchBook,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House, Sparkles, Flame, FolderOpen,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House, Sparkles, Flame, FolderOpen, MessagesSquare,
   type LucideIcon,
 } from "lucide-react";
 import type { NavKey } from "@/lib/navigation";
@@ -22,6 +22,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   command: LayoutDashboard,
   // The customer's Nightshift Brain dashboard (0201): what the Brain knows about the workspace.
   brain: Brain,
+  nightshiftAi: MessagesSquare,
   // The customer rail's Create (the sprint IA): sparkles, as Krea and Higgsfield mark the make-something screen.
   create: Sparkles,
   projects: FolderOpen,

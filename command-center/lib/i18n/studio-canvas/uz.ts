@@ -133,7 +133,7 @@ export const studioCanvasUz: StudioCanvasDictionary = {
   timelineSoon: "Taymlayn sahnalardan iborat loyihalar bilan keladi",
   mapMin: "Xaritani yigʻish",
   mapMax: "Xaritani yoyish",
-  rail: { label: "Studio navigatsiyasi", command: "Markaz", studio: "Studio", inbox: "Xabarlar", analytics: "Tahlil", admin: "Admin", home: "Bosh sahifa", channels: "Kanallar", credits: "Kreditlar", settings: "Sozlamalar", brain: "Brain" },
+  rail: { label: "Studio navigatsiyasi", command: "Markaz", studio: "Studio", inbox: "Xabarlar", analytics: "Tahlil", admin: "Admin", home: "Bosh sahifa", channels: "Kanallar", credits: "Kreditlar", settings: "Sozlamalar", brain: "Brain", nightshiftAi: "AI" },
   add: {
     title: "Tugun qoʻshish",
     close: "Yopish",
