@@ -33,7 +33,9 @@ export function toolOfTag(tag: string): SpendTool {
     if (VOICE_CAPS.has(cap)) return "voice";
     return "other";
   }
-  if (tag === "run") return "channel_videos";
+  // A channel run, a scene re-render of one, a series episode and an API run are all the channel's videos.
+  if (tag === "run" || tag === "scene_regenerate") return "channel_videos";
+  if (tag === "repurpose") return "video";
   if (tag === "film") return "film";
   if (tag === "export") return "export";
   if (tag === "chat") return "chat";
@@ -77,8 +79,13 @@ export interface BrainFacts {
   /** What can be spent now; null when unknown, "exempt" for a workspace that is never charged. */
   spendable: number | "exempt" | null;
   plan: { name: string | null; granted: number | null; spent: number | null; periodEnd: string | null } | null;
-  /** The renewal: the subscription's current period end, when there is one. */
+  /** The renewal: the period end of a subscription that WILL renew (active, not set to cancel). */
   renewsAt: string | null;
+  /** The period end of a subscription that will NOT renew (cancelled, or set to cancel at period end). */
+  endsAt: string | null;
+  /** The 14-day window's first day, and when this org could first have spent in it (a younger org starts later). */
+  windowStart: string | null;
+  historyStart: string | null;
   videosTotal: number | null;
   recentVideos: {
     videoId: string;
@@ -91,6 +98,16 @@ export interface BrainFacts {
     snapshotDate: string | null;
   }[];
   memory: { characters: number | null; styleKits: number | null; brandDomains: number | null };
+}
+
+const RENEWING = new Set(["active", "trialing", "past_due"]);
+
+/** "Renews on" only for a subscription that will; a cancelled one, or one set to cancel, "ends on" the same date. */
+function renewal(sub: Record<string, unknown> | null): { renewsAt: string | null; endsAt: string | null } {
+  const end = str(sub?.current_period_end);
+  if (!sub || !end) return { renewsAt: null, endsAt: null };
+  const renews = typeof sub.status === "string" && RENEWING.has(sub.status) && sub.cancel_at_period_end !== true;
+  return renews ? { renewsAt: end, endsAt: null } : { renewsAt: null, endsAt: end };
 }
 
 /** brain_org_facts' answer as the page reads it; null for anything that is not one. */
@@ -130,7 +147,9 @@ export function coerceFacts(raw: unknown): BrainFacts | null {
             periodEnd: str(planCredits?.period_end),
           }
         : null,
-    renewsAt: str(sub?.current_period_end) ?? str(planCredits?.period_end),
+    ...renewal(sub),
+    windowStart: str(credits.window_start),
+    historyStart: str(credits.history_start),
     videosTotal: num(projects.videos_total),
     recentVideos: Array.isArray(projects.recent_videos)
       ? (projects.recent_videos as unknown[]).flatMap((v) => {
@@ -160,36 +179,45 @@ export function coerceFacts(raw: unknown): BrainFacts | null {
   };
 }
 
+/** A forecast needs at least this many days of this org's own history: a date from two days would look measured. */
+export const FORECAST_MIN_DAYS = 7;
+
 export type Forecast =
   | { state: "exempt" }
   | { state: "unknown" }
+  | { state: "short_history"; days: number }
   | { state: "no_spend"; avgPerDay: 0 }
-  | { state: "estimate"; avgPerDay: number; daysLeft: number; runsOutOn: string; beforeRenewal: boolean | null };
+  /** At this rate the money outlasts the renewal: plan credits expire then, so no date past it is given. */
+  | { state: "past_renewal"; avgPerDay: number; renewsAt: string }
+  | { state: "estimate"; avgPerDay: number; daysLeft: number; runsOutOn: string };
 
 /**
- * "At this rate your credits last until <date>": the average of the last 14
- * calendar days (quiet days count as 0, or a busy weekend would be stretched
- * over the whole fortnight), divided into what can be spent now. An estimate
- * only. No spend, an unknown balance or a series shorter than the window give
- * no date at all: a date from three data points would look measured.
+ * "At this rate your credits last until <date>": what was charged in the 14-day window divided by the days of it this
+ * org actually existed (quiet days count as 0, days before the org existed do not), divided into what can be spent now.
+ * An estimate only. No date when nothing was spent, the balance is unknown, the org is younger than a week, or the
+ * date falls after the plan renews (plan credits expire at renewal, so a date past it would be counted from money that
+ * will be gone).
  */
-export function forecast(f: Pick<BrainFacts, "spendable" | "daily" | "renewsAt">, now: number = Date.now()): Forecast {
+export function forecast(
+  f: Pick<BrainFacts, "spendable" | "daily" | "renewsAt" | "historyStart">,
+  now: number = Date.now(),
+): Forecast {
   if (f.spendable === "exempt") return { state: "exempt" };
   if (f.spendable === null || f.daily.length < FORECAST_WINDOW_DAYS) return { state: "unknown" };
-  const window = f.daily.slice(-FORECAST_WINDOW_DAYS);
+  const start = f.historyStart ? Date.parse(f.historyStart) : NaN;
+  const days = Number.isNaN(start)
+    ? FORECAST_WINDOW_DAYS
+    : Math.min(FORECAST_WINDOW_DAYS, Math.max(1, Math.ceil((now - start) / 86_400_000)));
+  if (days < FORECAST_MIN_DAYS) return { state: "short_history", days };
+  const window = f.daily.slice(-days);
   const total = window.reduce((s, d) => s + Math.max(0, d.credits), 0);
   if (total <= 0) return { state: "no_spend", avgPerDay: 0 };
-  const avgPerDay = total / FORECAST_WINDOW_DAYS;
-  const daysLeft = Math.max(0, f.spendable) / avgPerDay;
-  const runsOut = new Date(now + Math.floor(daysLeft) * 86_400_000);
+  const avgPerDay = Math.round((total / days) * 100) / 100;
+  const daysLeft = Math.floor(Math.max(0, f.spendable) / (total / days));
+  const runsOut = now + daysLeft * 86_400_000;
   const renew = f.renewsAt ? Date.parse(f.renewsAt) : NaN;
-  return {
-    state: "estimate",
-    avgPerDay: Math.round(avgPerDay * 100) / 100,
-    daysLeft: Math.floor(daysLeft),
-    runsOutOn: runsOut.toISOString().slice(0, 10),
-    beforeRenewal: Number.isNaN(renew) ? null : runsOut.getTime() < renew,
-  };
+  if (!Number.isNaN(renew) && runsOut >= renew && f.renewsAt) return { state: "past_renewal", avgPerDay, renewsAt: f.renewsAt };
+  return { state: "estimate", avgPerDay, daysLeft, runsOutOn: new Date(runsOut).toISOString().slice(0, 10) };
 }
 
 /** The share of the plan's credits used this period; null when either figure is unknown or nothing was granted. */
@@ -261,7 +289,7 @@ export type ChannelRead =
       videoCount: number | null;
       topUploads: ChannelUpload[];
       /** The 28-day Analytics block (OAuth owners only); null when YouTube did not give one. It lags ~48 h. */
-      analytics: { views: number | null; minutesWatched: number | null; subsGained: number | null; subsLost: number | null; fetchedAt: string | null } | null;
+      analytics: { views: number | null; minutesWatched: number | null; subsGained: number | null; subsLost: number | null; dataThrough: string | null } | null;
       themes: ChannelTheme[];
       themesStatus: ChannelStatus | null;
     };
@@ -289,7 +317,9 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
   const fetchedAt = str(env.fetched_at);
   if (st !== "ok") return { state: st, channelId, fetchedAt, remedy: str(env.remedy) };
   const d = obj(env.data) ?? {};
-  const uploads = firstArray(d, ["uploads", "recent_uploads", "videos"]).flatMap((u) => {
+  // S10 (0199): the channel's counters are nested under data.channel (null when nothing is cached yet).
+  const ch = obj(d.channel);
+  const uploads = firstArray(d, ["recent_videos"]).flatMap((u) => {
     const o = obj(u);
     const id = str(o?.video_id);
     return o && id ? [{ videoId: id, title: str(o.title), publishedAt: str(o.published_at), views: num(o.view_count) }] : [];
@@ -300,22 +330,27 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
   const tEnv = obj(themes);
   const tStatus = status(tEnv?.status);
   const td = tStatus === "ok" ? (obj(tEnv?.data) ?? {}) : null;
+  const questions = num(obj(td?.questions)?.count);
   const themeRows: ChannelTheme[] = td
-    ? [...firstArray(td, ["questions"]), ...firstArray(td, ["groups", "word_groups", "themes"])].flatMap((g) => {
-        const o = obj(g);
-        const label = str(o?.label) ?? str(o?.text) ?? str(o?.word) ?? str(o?.question);
-        return label ? [{ label: label.slice(0, 80), count: num(o?.count) }] : [];
-      })
+    ? [
+        ...(questions !== null && questions > 0 ? [{ label: QUESTIONS_THEME, count: questions }] : []),
+        ...firstArray(td, ["words"]).flatMap((g) => {
+          const o = obj(g);
+          // untrusted_word: a viewer's word, rendered as plain text by React, never as markup.
+          const label = str(o?.untrusted_word);
+          return label ? [{ label: label.slice(0, 80), count: num(o?.count) }] : [];
+        }),
+      ]
     : [];
   return {
     state: "ok",
     channelId,
-    fetchedAt,
-    title: str(d.title) ?? str(d.channel_title),
-    subscribers: num(d.subscriber_count),
-    subscribersHidden: d.subscribers_hidden === true,
-    views: num(d.view_count),
-    videoCount: num(d.video_count),
+    fetchedAt: str(ch?.fetched_at) ?? fetchedAt,
+    title: str(ch?.title),
+    subscribers: ch?.subscribers_hidden === true ? null : num(ch?.subscriber_count),
+    subscribersHidden: ch?.subscribers_hidden === true,
+    views: num(ch?.view_count),
+    videoCount: num(ch?.video_count),
     topUploads: uploads.slice(0, 5),
     analytics: an
       ? {
@@ -323,10 +358,21 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
           minutesWatched: num(an.estimated_minutes_watched),
           subsGained: num(an.subscribers_gained),
           subsLost: num(an.subscribers_lost),
-          fetchedAt: str(an.fetched_at),
+          dataThrough: dataThroughDay(str(an.fetched_at)),
         }
       : null,
     themes: themeRows.slice(0, 8),
     themesStatus: tStatus,
   };
+}
+
+/** The questions group's marker: the card names it in the reader's language (the reader's own text is never a label). */
+export const QUESTIONS_THEME = "\u0000questions";
+
+/** YouTube Analytics' window ends the day BEFORE it was fetched (UTC): that is the honest "data through" day. */
+export function dataThroughDay(fetchedAt: string | null): string | null {
+  if (!fetchedAt) return null;
+  const t = Date.parse(fetchedAt);
+  if (Number.isNaN(t)) return null;
+  return new Date(t - 86_400_000).toISOString().slice(0, 10);
 }

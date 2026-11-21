@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
-const STATUSES = ["queued", "refreshing", "budget_exhausted"] as const;
+const STATUSES = ["queued", "already_queued", "recent"] as const;
 
 /**
  * POST { channel_id }: the person's "Ask for fresh numbers" on the Brain dashboard. It writes ONE request row through
@@ -34,11 +34,18 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (!supabase) return NextResponse.json({ error: "not_enabled" }, { status: 503, headers: NO_STORE });
   const { data, error } = await supabase.rpc("research_request_refresh", { p_channel: channelId, p_kind: "own_channel" });
   if (error) {
-    const missing = error.code === "PGRST202" || error.code === "42883";
-    return NextResponse.json({ error: missing ? "not_enabled" : "failed" }, { status: missing ? 503 : 502, headers: NO_STORE });
+    // S10 (0199): not_found for a channel the person cannot see, forbidden below the editor role, missing = not applied.
+    if (error.code === "PGRST202" || error.code === "42883")
+      return NextResponse.json({ error: "not_enabled" }, { status: 503, headers: NO_STORE });
+    if (error.code === "P0002") return NextResponse.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+    if (error.code === "42501") return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
+    return NextResponse.json({ error: "failed" }, { status: 502, headers: NO_STORE });
   }
-  const st = (data as { status?: unknown } | null)?.status;
-  const status = (STATUSES as readonly unknown[]).includes(st) ? (st as (typeof STATUSES)[number]) : null;
+  const out = (data ?? {}) as { ok?: unknown; status?: unknown; error?: unknown };
+  if (out.ok === false)
+    return NextResponse.json({ error: out.error === "daily_limit" ? "daily_limit" : "failed" }, { status: 429, headers: NO_STORE });
+  const status = (STATUSES as readonly unknown[]).includes(out.status) ? (out.status as (typeof STATUSES)[number]) : null;
   if (!status) return NextResponse.json({ error: "failed" }, { status: 502, headers: NO_STORE });
   return NextResponse.json({ status }, { headers: NO_STORE });
 });
+

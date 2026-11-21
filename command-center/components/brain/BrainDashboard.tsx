@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import {
+  QUESTIONS_THEME,
   SPEND_TOOLS,
   forecast,
   minutesAgo,
@@ -42,7 +43,7 @@ function useFormat(locale: string) {
   const n = (v: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(v);
   const date = (iso: string) => {
     const t = Date.parse(iso);
-    return Number.isNaN(t) ? iso : new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric" }).format(t);
+    return Number.isNaN(t) ? iso : new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(t);
   };
   return { n, date };
 }
@@ -114,7 +115,7 @@ function RefreshKey({ channelId }: { channelId: string }) {
   const tc = t.brainDash.channel;
   const router = useRouter();
   const busy = useRef(false);
-  const [state, setState] = useState<"idle" | "busy" | "asked" | "budget" | "failed">("idle");
+  const [state, setState] = useState<"idle" | "busy" | "asked" | "recent" | "limit" | "forbidden" | "failed">("idle");
   async function ask() {
     if (busy.current) return;
     busy.current = true;
@@ -125,8 +126,12 @@ function RefreshKey({ channelId }: { channelId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel_id: channelId }),
       });
-      const body = (await res.json().catch(() => ({}))) as { status?: string };
-      setState(!res.ok ? "failed" : body.status === "budget_exhausted" ? "budget" : "asked");
+      const body = (await res.json().catch(() => ({}))) as { status?: string; error?: string };
+      setState(
+        res.ok
+          ? body.status === "recent" ? "recent" : "asked"
+          : body.error === "daily_limit" ? "limit" : body.error === "forbidden" ? "forbidden" : "failed",
+      );
       if (res.ok) router.refresh();
     } catch {
       setState("failed");
@@ -141,7 +146,17 @@ function RefreshKey({ channelId }: { channelId: string }) {
         {tc.refresh}
       </button>
       <span role="status" aria-live="polite" className="text-xs text-[var(--color-muted)]">
-        {state === "asked" ? tc.refreshAsked : state === "budget" ? tc.budget : state === "failed" ? tc.refreshFailed : ""}
+        {state === "asked"
+          ? tc.refreshAsked
+          : state === "recent"
+            ? tc.refreshRecent
+            : state === "limit"
+              ? tc.budget
+              : state === "forbidden"
+                ? tc.refreshForbidden
+                : state === "failed"
+                  ? tc.refreshFailed
+                  : ""}
       </span>
     </div>
   );
@@ -168,8 +183,8 @@ function ChannelCard({ read, now }: { read: ChannelRead; now: number }) {
             <div className="flex flex-col gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3" data-analytics="">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="t-label">{tc.analytics}</span>
-                {read.analytics.fetchedAt ? (
-                  <span className="text-xs text-[var(--color-muted)]">{fmt(tc.dataThrough, { date: date(read.analytics.fetchedAt) })}</span>
+                {read.analytics.dataThrough ? (
+                  <span className="text-xs text-[var(--color-muted)]">{fmt(tc.dataThrough, { date: date(read.analytics.dataThrough) })}</span>
                 ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -201,7 +216,7 @@ function ChannelCard({ read, now }: { read: ChannelRead; now: number }) {
               <ul className="m-0 flex flex-wrap gap-1.5 p-0">
                 {read.themes.map((th) => (
                   <li key={th.label} className="list-none rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs">
-                    {th.label}
+                    {th.label === QUESTIONS_THEME ? tc.questions : th.label}
                     {th.count !== null ? <span className="ml-1 tabular-nums text-[var(--color-muted)]">{n(th.count)}</span> : null}
                   </li>
                 ))}
@@ -253,7 +268,13 @@ function CreditsCard({ facts, now }: { facts: BrainFacts; now: number }) {
           <Figure
             label={tc.balance}
             value={facts.spendable === null ? td.unknown : n(facts.spendable)}
-            sub={facts.renewsAt ? fmt(tc.renews, { date: date(facts.renewsAt) }) : undefined}
+            sub={
+              facts.renewsAt
+                ? fmt(tc.renews, { date: date(facts.renewsAt) })
+                : facts.endsAt
+                  ? fmt(tc.ends, { date: date(facts.endsAt) })
+                  : undefined
+            }
           />
           {warnUsed(facts.plan) && pct !== null ? (
             <Note tone="warn">
@@ -273,11 +294,14 @@ function CreditsCard({ facts, now }: { facts: BrainFacts; now: number }) {
               <>
                 <p className="m-0 text-sm font-semibold">{fmt(tc.lastsUntil, { date: date(f.runsOutOn) })}</p>
                 <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(tc.perDay, { n: n(f.avgPerDay) })}</p>
-                {f.beforeRenewal !== null && facts.renewsAt ? (
-                  <p className="m-0 text-xs text-[var(--color-muted)]">
-                    {fmt(f.beforeRenewal ? tc.beforeRenewal : tc.afterRenewal, { date: date(facts.renewsAt) })}
-                  </p>
+                {facts.renewsAt ? (
+                  <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(tc.beforeRenewal, { date: date(facts.renewsAt) })}</p>
                 ) : null}
+              </>
+            ) : f.state === "past_renewal" ? (
+              <>
+                <p className="m-0 text-sm font-semibold">{fmt(tc.pastRenewal, { date: date(f.renewsAt) })}</p>
+                <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(tc.perDay, { n: n(f.avgPerDay) })}</p>
               </>
             ) : (
               <p className="m-0 text-sm text-[var(--color-muted)]">{f.state === "no_spend" ? tc.noSpend : tc.noForecast}</p>
@@ -328,7 +352,7 @@ function ProjectsCard({ facts }: { facts: BrainFacts }) {
                 <span className="tabular-nums text-xs text-[var(--color-muted)]">
                   {v.views === null ? tp.noStats : fmt(tp.views, { n: n(v.views) })}
                 </span>
-                <Link href={path(`/videos/${encodeURIComponent(v.videoId)}`)} className="btn-quiet min-h-11 text-xs no-underline">
+                <Link href={v.channelId ? `/${encodeURIComponent(v.channelId)}/videos/${encodeURIComponent(v.videoId)}` : path(`/videos/${encodeURIComponent(v.videoId)}`)} className="btn-quiet min-h-11 text-xs no-underline">
                   {tp.open}
                 </Link>
               </span>
@@ -395,7 +419,9 @@ export function BrainDashboard({
   if (read.state !== "ok") {
     return (
       <div className="panel flex flex-col items-start gap-3 p-5" data-brain-state={read.state}>
-        <Note tone={read.state === "failed" ? "fail" : "muted"}>{read.state === "failed" ? td.readFailed : td.notAvailable}</Note>
+        <Note tone={read.state === "failed" ? "fail" : "muted"}>
+          {read.state === "failed" ? td.readFailed : read.state === "not_found" ? td.notMember : td.notAvailable}
+        </Note>
         {read.state === "failed" ? (
           <button type="button" className="btn-quiet min-h-11 text-sm" onClick={() => router.refresh()}>
             <RefreshCw aria-hidden className="size-4" />

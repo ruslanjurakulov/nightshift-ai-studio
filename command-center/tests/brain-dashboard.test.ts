@@ -36,23 +36,57 @@ describe("spend by tool", () => {
 });
 
 describe("the credit forecast is an estimate from the last 14 days, or no date at all", () => {
+  const OLD = "2026-01-01T00:00:00Z";
   it("averages over all 14 calendar days, quiet days included", () => {
     // 28 credits in one busy day out of 14: 2 a day, not 28.
-    const f = forecast({ spendable: 20, daily: days([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28]), renewsAt: null }, NOW);
-    expect(f).toMatchObject({ state: "estimate", avgPerDay: 2, daysLeft: 10, runsOutOn: "2026-12-01", beforeRenewal: null });
+    const f = forecast({ spendable: 20, daily: days([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28]), renewsAt: null, historyStart: OLD }, NOW);
+    expect(f).toMatchObject({ state: "estimate", avgPerDay: 2, daysLeft: 10, runsOutOn: "2026-12-01" });
   });
 
-  it("says whether the money runs out before the plan renews", () => {
+  it("a young workspace divides by the days it existed, not by 14, and gives no date before a week", () => {
+    const daily = days([0, 0, 0, 0, 0, 0, 70, 70, 70, 70, 70, 70, 70, 70]);
+    // 8 days old: 560 / 8 = 70 a day (dividing by 14 would claim 40 and a date almost twice as far).
+    const f = forecast({ spendable: 700, daily, renewsAt: null, historyStart: new Date(NOW - 8 * 86_400_000).toISOString() }, NOW);
+    expect(f).toMatchObject({ state: "estimate", avgPerDay: 70, daysLeft: 10 });
+    expect(forecast({ spendable: 700, daily, renewsAt: null, historyStart: new Date(NOW - 2 * 86_400_000).toISOString() }, NOW)).toEqual({
+      state: "short_history",
+      days: 2,
+    });
+  });
+
+  it("never gives a date past the renewal: plan credits expire then", () => {
     const daily = days(Array(14).fill(10));
-    expect(forecast({ spendable: 50, daily, renewsAt: "2026-12-20T00:00:00Z" }, NOW)).toMatchObject({ beforeRenewal: true });
-    expect(forecast({ spendable: 500, daily, renewsAt: "2026-11-25T00:00:00Z" }, NOW)).toMatchObject({ beforeRenewal: false });
+    expect(forecast({ spendable: 50, daily, renewsAt: "2026-12-20T00:00:00Z", historyStart: OLD }, NOW)).toMatchObject({ state: "estimate", daysLeft: 5 });
+    expect(forecast({ spendable: 500, daily, renewsAt: "2026-11-25T00:00:00Z", historyStart: OLD }, NOW)).toEqual({
+      state: "past_renewal",
+      avgPerDay: 10,
+      renewsAt: "2026-11-25T00:00:00Z",
+    });
   });
 
   it("no spend, an unknown balance, a short series and an exempt workspace never produce a date", () => {
-    expect(forecast({ spendable: 100, daily: days(Array(14).fill(0)), renewsAt: null }, NOW).state).toBe("no_spend");
-    expect(forecast({ spendable: null, daily: days(Array(14).fill(5)), renewsAt: null }, NOW).state).toBe("unknown");
-    expect(forecast({ spendable: 100, daily: days([5, 5, 5]), renewsAt: null }, NOW).state).toBe("unknown");
-    expect(forecast({ spendable: "exempt", daily: days(Array(14).fill(5)), renewsAt: null }, NOW).state).toBe("exempt");
+    expect(forecast({ spendable: 100, daily: days(Array(14).fill(0)), renewsAt: null, historyStart: OLD }, NOW).state).toBe("no_spend");
+    expect(forecast({ spendable: null, daily: days(Array(14).fill(5)), renewsAt: null, historyStart: OLD }, NOW).state).toBe("unknown");
+    expect(forecast({ spendable: 100, daily: days([5, 5, 5]), renewsAt: null, historyStart: OLD }, NOW).state).toBe("unknown");
+    expect(forecast({ spendable: "exempt", daily: days(Array(14).fill(5)), renewsAt: null, historyStart: OLD }, NOW).state).toBe("exempt");
+  });
+});
+
+describe("renewal", () => {
+  it("'renews on' only for a subscription that will renew; a cancelled or cancelling one 'ends on'", () => {
+    const sub = (status: string, cancel = false) =>
+      coerceFacts({ org_id: "o", credits: { usage: { subscription: { status, current_period_end: "2026-12-01T00:00:00Z", cancel_at_period_end: cancel } } } });
+    expect(sub("active")).toMatchObject({ renewsAt: "2026-12-01T00:00:00Z", endsAt: null });
+    expect(sub("active", true)).toMatchObject({ renewsAt: null, endsAt: "2026-12-01T00:00:00Z" });
+    expect(sub("canceled")).toMatchObject({ renewsAt: null, endsAt: "2026-12-01T00:00:00Z" });
+  });
+});
+
+describe("ledger tags", () => {
+  it("scene re-renders count as channel videos; reply drafts and downloads are other", () => {
+    expect(toolOfTag("scene_regenerate")).toBe("channel_videos");
+    expect(toolOfTag("reply_draft")).toBe("other");
+    expect(toolOfTag("download")).toBe("other");
   });
 });
 
@@ -84,7 +118,7 @@ describe("reading brain_org_facts", () => {
   it("reads the renewal from the subscription, and a video's latest snapshot", () => {
     const f = coerceFacts({
       org_id: "o",
-      credits: { usage: { spendable_now: 12, subscription: { current_period_end: "2026-12-01T00:00:00Z" } } },
+      credits: { usage: { spendable_now: 12, subscription: { status: "active", current_period_end: "2026-12-01T00:00:00Z" } } },
       projects: { videos_total: 1, recent_videos: [{ video_id: "v1", title: "T", latest: { views: 10, date: "2026-11-20" } }] },
     });
     expect(f?.renewsAt).toBe("2026-12-01T00:00:00Z");
@@ -105,15 +139,15 @@ describe("freshness and the spark line", () => {
   });
 });
 
-import { coerceChannel } from "@/lib/brain/dashboard";
+import { QUESTIONS_THEME, coerceChannel, dataThroughDay } from "@/lib/brain/dashboard";
 
 describe("the channel card reads S10's envelope as it comes", () => {
   const env = (status: string, data: unknown = {}) => ({ status, fetched_at: "2026-11-21T11:00:00Z", source: "youtube", data });
 
   it("a hidden subscriber count is hidden, not 0; unknown counts stay null; uploads sort by views, unknown last", () => {
     const r = coerceChannel("ch", env("ok", {
-      title: "My channel", subscriber_count: null, subscribers_hidden: true, view_count: 1200, video_count: null,
-      uploads: [{ video_id: "a", view_count: null }, { video_id: "b", view_count: 50 }, { video_id: "c", view_count: 900 }],
+      channel: { title: "My channel", subscriber_count: null, subscribers_hidden: true, view_count: 1200, video_count: null },
+      recent_videos: [{ video_id: "a", view_count: null }, { video_id: "b", view_count: 50 }, { video_id: "c", view_count: 900 }],
     }), null);
     expect(r.state).toBe("ok");
     if (r.state !== "ok") return;
@@ -134,11 +168,19 @@ describe("the channel card reads S10's envelope as it comes", () => {
   });
 
   it("themes are labels with counts, capped, only from an ok themes answer", () => {
-    const own = env("ok", { view_count: 1 });
-    const themes = env("ok", { questions: [{ text: "When is part 2?", count: 4 }], groups: [{ label: "music", count: 3 }, { nope: 1 }] });
+    const own = env("ok", { channel: { view_count: 1 } });
+    const themes = env("ok", { questions: { count: 4, samples: [] }, words: [{ untrusted_word: "<b>music</b>", count: 3 }, { nope: 1 }] });
     const r = coerceChannel("ch", own, themes);
-    expect(r.state === "ok" && r.themes).toEqual([{ label: "When is part 2?", count: 4 }, { label: "music", count: 3 }]);
+    // The questions group is named by the card; a viewer's word is kept as the plain text it is.
+    expect(r.state === "ok" && r.themes).toEqual([{ label: QUESTIONS_THEME, count: 4 }, { label: "<b>music</b>", count: 3 }]);
     const r2 = coerceChannel("ch", own, env("refreshing"));
     expect(r2.state === "ok" && r2.themes).toEqual([]);
+  });
+});
+
+describe("YouTube Analytics' window", () => {
+  it("ends the day before it was fetched (UTC)", () => {
+    expect(dataThroughDay("2026-11-21T03:00:00Z")).toBe("2026-11-20");
+    expect(dataThroughDay(null)).toBeNull();
   });
 });

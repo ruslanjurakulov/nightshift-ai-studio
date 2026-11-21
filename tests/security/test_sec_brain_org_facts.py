@@ -39,6 +39,14 @@ def _keys(v, path=""):
             yield from _keys(x, path)
 
 
+def _ledger(conn, org, job_id, amount, kind):
+    conn.execute("set local session_replication_role = replica")
+    conn.execute(
+        "insert into public.credit_transactions (org_id, kind, amount, balance_after, reserved_after, job_id) "
+        "values (%s, %s, %s, 0, 0, %s)", [org, kind, amount, job_id])
+    conn.execute("set local session_replication_role = origin")
+
+
 def _capture(conn, org, job_id, amount):
     """A capture row as the ledger records one, inside the caller's rolled-back transaction. Replica mode skips the
     lots bookkeeping trigger: this test is about what brain_org_facts READS, not about how a charge is taken."""
@@ -83,8 +91,8 @@ def test_no_cost_price_or_margin_anywhere_even_after_a_charge(conn, sc):
 def test_spend_is_this_orgs_own_and_named_by_tool(conn, sc):
     before = _facts(conn, sc.alice.actor, sc.alice.org).rows[0][0]["credits"]
     with conn.transaction(force_rollback=True):
-        _capture(conn, sc.alice.org, "rj:" + uuid.uuid4().hex[:40], 11)
-        _capture(conn, sc.bob.org, "rj:" + uuid.uuid4().hex[:40], 500)  # another tenant, same day
+        _capture(conn, sc.alice.org, "rj-" + uuid.uuid4().hex, 11)
+        _capture(conn, sc.bob.org, "rj-" + uuid.uuid4().hex, 500)  # another tenant, same day
         after = _facts(conn, sc.alice.actor, sc.alice.org).rows[0][0]["credits"]
         # Bob's own read sees his charge, never Alice's.
         bob = _facts(conn, sc.bob.actor, sc.bob.org).rows[0][0]["credits"]["spend_by_tool_14d"]
@@ -100,3 +108,33 @@ def test_another_orgs_videos_are_not_listed(conn, sc):
     ids = {v["video_id"] for v in facts["projects"]["recent_videos"]}
     assert sc.bob.video not in ids
     assert all(v["channel_id"] != sc.bob.channel for v in facts["projects"]["recent_videos"])
+
+
+def test_a_refunded_job_is_not_counted_as_spent(conn, sc):
+    """0030: a failed download is captured, then refunded under the same ref; it cost nothing."""
+    ref = f"download:{uuid.uuid4().int % 10**9}"
+    before = _facts(conn, sc.alice.actor, sc.alice.org).rows[0][0]["credits"]["spend_by_tool_14d"]
+    with conn.transaction(force_rollback=True):
+        _ledger(conn, sc.alice.org, ref, -9, "capture")
+        _ledger(conn, sc.alice.org, ref, 9, "refund")
+        after = _facts(conn, sc.alice.actor, sc.alice.org).rows[0][0]["credits"]["spend_by_tool_14d"]
+    assert float(after.get("download", 0)) == float(before.get("download", 0))
+
+
+def test_production_refs_are_named_by_their_tool(conn, sc):
+    """The refs as production writes them (lib/credits.ts newCreditRef, 0031, 0076, 0081, 0133, 0137)."""
+    refs = {
+        "gh-" + uuid.uuid4().hex: "run",
+        "ah-" + uuid.uuid4().hex: "run",
+        "rj-sr-" + uuid.uuid4().hex: "scene_regenerate",
+        "bs:" + str(uuid.uuid4()): "brand_scan",
+        "cs:" + str(uuid.uuid4()): "character_swap",
+        "rd:" + str(uuid.uuid4()): "reply_draft",
+    }
+    with conn.transaction(force_rollback=True):
+        for ref in refs:
+            _capture(conn, sc.alice.org, ref, 1)
+        got = _facts(conn, sc.alice.actor, sc.alice.org).rows[0][0]["credits"]["spend_by_tool_14d"]
+    for tool in set(refs.values()):
+        assert float(got.get(tool, 0)) >= 1.0, f"{tool} not tagged: {got}"
+    assert "other" not in got or float(got["other"]) == 0.0, got

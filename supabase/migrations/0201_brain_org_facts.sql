@@ -5,8 +5,11 @@
 -- WHAT IT ADDS
 --   brain_org_facts(p_org) jsonb   one compact, read-only answer for the
 --     caller's own organization:
---       credits.spend_by_tool_14d / _30d   credits CHARGED (ledger captures),
---                                          grouped by what charged them
+--       credits.spend_by_tool_14d / _30d   credits CHARGED (ledger captures net
+--                                          of a refund of the same job), grouped
+--                                          by what charged them
+--       credits.window_start / history_start  the 14-day window, and when this
+--                                          org could first have spent in it
 --       credits.daily_14d                  credits charged per UTC day, zeros
 --                                          included (an average needs the
 --                                          quiet days too)
@@ -43,31 +46,42 @@ begin
     return null;
   end if;
 
-  with captured as (
-    -- A capture is the final charge of one job (0020): its amount is negative.
+  with bounds as (
+    -- One window for every 14-day figure: today and the 13 calendar days (UTC) before it. The series, the bars and the
+    -- forecast then add up to the same total. history_start is when this org could first have spent (it may be younger
+    -- than the window): a forecast divides by the days that really passed, not by 14.
+    select (date_trunc('day', now() at time zone 'utc') - interval '13 days') at time zone 'utc' as win_start,
+           (select o.created_at from public.organizations o where o.id = p_org) as org_created
+  ), charged as (
+    -- What a job finally cost: its capture (negative) net of any refund of the same job (positive, 0030's download
+    -- refund). A purchase refund carries no job_id and is not spend.
     select t.job_id, t.created_at, -t.amount as credits
       from public.credit_transactions t
      where t.org_id = p_org
-       and t.kind = 'capture'
+       and t.kind in ('capture', 'refund')
+       and t.job_id is not null
        and t.created_at >= now() - interval '30 days'
   ), tagged as (
-    -- The tool is named from the ledger reference; a creative job also says
-    -- its capability (image, video and voice are told apart in the app).
+    -- The tool is named from the ledger reference as production writes it (lib/credits.ts newCreditRef, the
+    -- per-feature refs in 0031/0036/0076/0080/0081/0093/0120/0132/0133/0137/0171). A creative job also says its
+    -- capability, looked up by its uuid in this org only.
     select c.created_at, c.credits,
            case
-             when c.job_id like 'cj:%' then
+             when c.job_id ~ '^cj:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
                'cj:' || coalesce((select j.capability from public.creative_jobs j
-                                   where j.org_id = p_org and j.id::text = substr(c.job_id, 4)), 'unknown')
-             when c.job_id like 'rj:%' or c.job_id like 'gh:%' then 'run'
+                                   where j.id = substr(c.job_id, 4)::uuid and j.org_id = p_org), 'unknown')
+             when c.job_id like 'rj-sr-%' then 'scene_regenerate'
+             when c.job_id like 'rj-%' or c.job_id like 'gh-%' or c.job_id like 'ah-%' then 'run'
              when c.job_id like 'fm-%' then 'film'
              when c.job_id like 'ee:%' then 'export'
-             when c.job_id like 'ads_factory:%' then 'ads'
-             when c.job_id like 'brand_scan:%' then 'brand_scan'
-             when c.job_id like 'character_swap:%' then 'character_swap'
-             when c.job_id like 'rd:%' or c.job_id like 'download:%' then 'download'
+             when c.job_id like 'bs:%' then 'brand_scan'
+             when c.job_id like 'cs:%' then 'character_swap'
+             when c.job_id like 'rp-%' then 'repurpose'
+             when c.job_id like 'rd:%' then 'reply_draft'
+             when c.job_id like 'download:%' then 'download'
              else 'other'
            end as tool
-      from captured c
+      from charged c
   ), days as (
     select (date_trunc('day', now() at time zone 'utc') - make_interval(days => g))::date as day
       from generate_series(0, 13) g
@@ -91,10 +105,12 @@ begin
     'org_id', p_org,
     'generated_at', now(),
     'credits', jsonb_build_object(
+      'window_start', (select win_start from bounds),
+      'history_start', (select greatest(win_start, coalesce(org_created, win_start)) from bounds),
       'spend_by_tool_14d', coalesce((
         select jsonb_object_agg(tool, credits) from (
           select tool, round(sum(credits), 2) as credits from tagged
-           where created_at >= now() - interval '14 days' group by tool) x), '{}'::jsonb),
+           where created_at >= (select win_start from bounds) group by tool) x), '{}'::jsonb),
       'spend_by_tool_30d', coalesce((
         select jsonb_object_agg(tool, credits) from (
           select tool, round(sum(credits), 2) as credits from tagged group by tool) x), '{}'::jsonb),

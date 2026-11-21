@@ -13,8 +13,11 @@ export type { BrainFactsRead };
  */
 
 
+/** The function, or a table it reads (0047/0133 on an older database), is not there: "not switched on", never a retry loop. */
 function isMissingFunction(e: { code?: string; message?: string } | null): boolean {
-  return Boolean(e && (e.code === "PGRST202" || e.code === "42883" || /could not find the function/i.test(e.message ?? "")));
+  return Boolean(
+    e && (e.code === "PGRST202" || e.code === "42883" || e.code === "42P01" || /could not find the function/i.test(e.message ?? "")),
+  );
 }
 
 export async function readBrainFacts(orgId: string): Promise<BrainFactsRead> {
