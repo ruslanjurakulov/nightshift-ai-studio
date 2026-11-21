@@ -21,6 +21,8 @@ function query(table: string) {
   const q = {
     select: () => q,
     eq: (k: string, v: unknown) => (filters.push([k, v]), q),
+    is: () => q,
+    or: () => q,
     gte: () => q,
     lte: () => q,
     order: () => q,

@@ -88,6 +88,8 @@ export const studioLiveUz: StudioLiveDictionary = {
   privacyWords: { public: "ochiq", unlisted: "havola orqali" },
   privacyUnknown: "Yuklashning maxfiylik holati yozilmagan.",
   recordedAt: "Oxirgi voqea {time}",
+  openVideo: "Videoni ochish: platformalarga joylash",
+  videoAfterSync: "Video sahifasi ishga tushirish voqealari sinxronlangach paydo boʻladi.",
   download: "Yuklab olish",
   openTimeline: "Taymlaynda ochish",
   failedGeneric: "Bu qadam xato bilan tugadi ({code}).",

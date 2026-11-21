@@ -3,6 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { dispatchedRunStatus } from "@/lib/server/github-runs";
 import { RUN_STATUS_RATE, takeWebRate } from "@/lib/server/web-rate";
 import { readRunHold } from "@/lib/server/run-hold";
+import { readRunVideo } from "@/lib/server/run-video";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,5 +68,6 @@ export async function GET(request: Request) {
       ? await dispatchedRunStatus(channel, sinceMs, async () => (await takeWebRate(user.id, RUN_STATUS_RATE)) === "ok")
       : null;
   const hold = await readRunHold(supabase, url.searchParams.get("hold"));
-  return NextResponse.json({ job: null, window: { since, now: new Date(nowMs).toISOString() }, events, workflow, hold }, { headers: NO_STORE });
+  const video = await readRunVideo(supabase, channel, since, until);
+  return NextResponse.json({ job: null, window: { since, now: new Date(nowMs).toISOString() }, events, workflow, hold, video }, { headers: NO_STORE });
 }

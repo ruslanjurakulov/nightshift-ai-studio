@@ -225,6 +225,35 @@ describe("a channel run", () => {
   });
 });
 
+describe("the end step's video page (Publish to platforms lives there)", () => {
+  const W = { job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: null, hold: null };
+  const T = { kind: "window" as const, channel: "ch-alpha", since: "2026-11-21T10:00:00Z" };
+  it("with the run's video row: a link to its page, and nothing here sends", async () => {
+    answer = live({ ...W, video: { id: "yt12345678a", state: "uploaded" } });
+    render(<LiveView filmStudio target={T} />);
+    fireEvent.click(await screen.findByTestId("live-node-upload"));
+    const a = screen.getByTestId("live-open-video");
+    expect(a.getAttribute("href")).toBe("/alpha/videos/yt12345678a");
+    expect(a.textContent).toBe(c.openVideo);
+    expect(calls.every((x) => x.method === "GET")).toBe(true);
+  });
+
+  it("with no row readable yet: says the page appears after sync, and links nowhere", async () => {
+    answer = live({ ...W, video: null });
+    render(<LiveView filmStudio target={T} />);
+    fireEvent.click(await screen.findByTestId("live-node-upload"));
+    expect(screen.getByTestId("live-video-after-sync").textContent).toBe(c.videoAfterSync);
+    expect(screen.queryByTestId("live-open-video")).toBeNull();
+  });
+
+  it("only the end step offers it, and a film never does", async () => {
+    answer = live({ ...W, video: { id: "yt12345678a", state: "uploaded" } });
+    render(<LiveView filmStudio target={T} />);
+    fireEvent.click(await screen.findByTestId("live-node-render"));
+    expect(screen.queryByTestId("live-open-video")).toBeNull();
+  });
+});
+
 describe("a channel run's live facts", () => {
   it("says GitHub's status and the hold as read, next to an honest line that stages lag", async () => {
     answer = live({ job: null, window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:01:00Z" }, events: [], workflow: { state: "queued" }, hold: { state: "open", amount: 40, captured: null } });

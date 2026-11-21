@@ -13,7 +13,7 @@ import { Lamp } from "@/components/studio-canvas/parts";
 import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/runBackend";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
-import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus } from "@/lib/studio/liveGraph";
+import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-live.css";
@@ -307,7 +307,20 @@ function Output({ node }: { node: LiveNode }) {
   return <video className="lv-media" src={src} poster={m.thumb ?? undefined} controls preload="metadata" playsInline />;
 }
 
-function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean; filmId: string | null; onClose: () => void }) {
+function Details({
+  node,
+  run,
+  filmId,
+  video,
+  onClose,
+}: {
+  node: LiveNode;
+  run: boolean;
+  filmId: string | null;
+  /** undefined: the route did not say (an older answer); null: no video row readable for this run yet. */
+  video?: RunVideoRef | null;
+  onClose: () => void;
+}) {
   const { t, locale } = useI18n();
   const c = t.studioLive;
   const path = useChannelPath();
@@ -340,6 +353,18 @@ function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean;
       ) : null}
       {node.kind === "upload" ? (
         <p data-testid="live-privacy">{node.privacy === "private" ? c.privacyPrivate : node.privacy ? fmt(c.privacyOther, { privacy: c.privacyWords[node.privacy] ?? node.privacy }) : c.privacyUnknown}</p>
+      ) : null}
+      {run && node.kind === "upload" && video !== undefined ? (
+        // The run's video page holds the existing "Publish to platforms" panel: the person sends from there, after its checks.
+        video ? (
+          <Link className="cv-kbtn" href={path(`/videos/${encodeURIComponent(video.id)}`)} data-testid="live-open-video">
+            {c.openVideo}
+          </Link>
+        ) : (
+          <p className="lv-muted" data-testid="live-video-after-sync">
+            {c.videoAfterSync}
+          </p>
+        )
       ) : null}
       {!run ? (
         <p className="lv-muted" data-testid="live-credits">
@@ -524,7 +549,7 @@ export function LiveView({
           ) : (
             <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           )}
-          {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} onClose={close} /> : null}
+          {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
         </div>
       ) : null}
     </div>
