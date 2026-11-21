@@ -5978,6 +5978,8 @@ export const uz: Dictionary = {
       priceRequired: "Narx tasdiqlanmadi. Qayta bosing.",
       conflict: "Bu bosish boshqa soʻrov uchun ishlatilgan. Sahifani yangilab, qayta urinib koʻring.",
       queueRequired: "Sahnalarni qayta yaratish bu ish maydonida hali mavjud emas.",
+      adultRequired: "Bu yerda foydalaniladigan ayrim SI modellari ularni yaratganlarning shartlariga koʻra faqat kattalar uchun (18+). «Yaratish» sahifasining yuqorisidagi oynada yoshingizni tasdiqlang va qayta urinib koʻring. Hech narsa boshlanmadi va yechilmadi.",
+      adultOnly: "Nightshift kattalar uchun (18+). Bu akkaunt 18 yoshga toʻlmaganini bildirgan, shuning uchun hech narsa yaratib boʻlmaydi. Hech narsa yechilmadi.",
       invalidPrompt: "Prompt juda uzun yoki ruxsat etilmagan belgilar bor.",
       notInstalled: "Sahnalarni qayta yaratish hali sozlanmagan.",
       failed: "Boshlab boʻlmadi. Hech narsa yechilmadi.",
