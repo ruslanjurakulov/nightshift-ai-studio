@@ -70,9 +70,11 @@ describe("preview rows from operator_preview_models()", () => {
     expect(isOperatorOrg(DEFAULT_ORG_ID)).toBe(true);
     expect(isOperatorOrg("11111111-1111-4111-8111-111111111111")).toBe(false);
     expect(isOperatorOrg(null)).toBe(false);
-    // The create page asks only for the platform operator in that organization; the panel alone gets them (not the Assistant).
+    // The create page asks only for the platform operator in that organization, and only in the Owner account (the owner's
+    // User account sees exactly what a customer sees); the panel alone gets them (not the Assistant).
     const page = readFileSync(join(__dirname, "..", "app", "(app)", "[channel]", "create", "page.tsx"), "utf8");
-    expect(page).toContain("const previews = operator && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];");
+    expect(page).toContain("const previews = frame && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];");
+    expect(page).toContain("const frame = operator && ownerFrame(");
     expect(page.match(/withPreviews\(/g)).toHaveLength(1);
     expect(page).toContain("const panelModels = withPreviews(models, previews);");
     // Every generate box (the Create screen, the overview's composer kept for the site hand-off, and the desks' panel) gets them;

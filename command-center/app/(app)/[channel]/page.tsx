@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
 import { ALL_CHANNELS_SLUG, channelSlug } from "@/lib/channels";
 import { getChannelContext } from "@/lib/channels-server";
-import { isOperator } from "@/lib/auth/org-roles";
 import { landingSection } from "@/lib/navigation";
-import { cookies } from "next/headers";
-import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
+import { OWNER_CONSOLE } from "@/lib/owner-mode";
+import { isPlatformOwner, viewingAsOperator } from "@/lib/server/owner-view";
 
 /**
  * A channel on its own names no screen — it names a lens. Landing on one sends
- * you to where you start in that channel: the operator's Command Center, a
- * customer's Home (lib/navigation landingSection).
+ * you to where you start in that channel: the platform owner in the Owner account opens the Owner Console, another
+ * operator their Command Center, a customer (and the owner in the User account) Home (lib/navigation landingSection).
  *
  * The bare every-channel segment is where a sign-in with no remembered channel
  * lands (middleware.ts). It opens the first channel rather than the roll-up —
@@ -22,9 +21,10 @@ export default async function ChannelIndex({
   params: Promise<{ channel: string }>;
 }) {
   const { channel } = await params;
-  // The owner with Owner mode off lands where a customer does (lib/owner-mode): the frame decides the first screen.
-  const operator = await isOperator();
-  const landing = landingSection(operator && ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value));
+  // The owner in the User account lands where a customer does (lib/owner-mode): the account decides the first screen.
+  const asOperator = await viewingAsOperator();
+  if (asOperator && (await isPlatformOwner())) redirect(OWNER_CONSOLE);
+  const landing = landingSection(asOperator);
   if (channel === ALL_CHANNELS_SLUG) {
     const { channels } = await getChannelContext();
     const first = channels[0];

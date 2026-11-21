@@ -14,7 +14,7 @@ import { getChannelContext } from "@/lib/channels-server";
 import { isScoped } from "@/lib/channels";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
-import { isOperator } from "@/lib/auth/org-roles";
+import { viewingAsOperator } from "@/lib/server/owner-view";
 import { isOperatorOrg } from "@/lib/channel-tokens";
 import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
@@ -62,8 +62,9 @@ export default async function StudioPage({
   const [models, plans, switchedOff] = orgId
     ? await Promise.all([loadStudioModels(orgId), loadUpsellCatalog(orgId), loadSwitchedOffModels()])
     : [[], null, [] as string[]];
-  const operator = await isOperator();
-  const previews = operator && isOperatorOrg(orgId) && orgId ? await loadOperatorPreviewModels(orgId) : [];
+  // The operator's hidden preview models are drawn only in the Owner account: the owner's User account sees what a customer sees.
+  const asOperator = await viewingAsOperator();
+  const previews = asOperator && isOperatorOrg(orgId) && orgId ? await loadOperatorPreviewModels(orgId) : [];
   const dna = await channelDnaForCreate(scopedChannel);
   const [user, slug, filmStudio] = await Promise.all([getUser(), getChannelSlug(), filmStudioOpen()]);
 

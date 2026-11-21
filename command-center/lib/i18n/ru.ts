@@ -34,6 +34,7 @@ import { ownerAnalyticsRu } from "./owner-analytics/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { trendsRu } from "./trends/ru";
+import { ownerConsoleRu } from "./owner-console/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
@@ -66,6 +67,8 @@ export const ru: Dictionary = {
   presets: presetsRu,
   /** The Trends gallery (migration 0183): ./trends/ru.ts. */
   trends: trendsRu,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/ru.ts. */
+  ownerConsole: ownerConsoleRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
