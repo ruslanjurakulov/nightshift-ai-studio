@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
+import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
+
+export { sendsOnKey } from "@/components/chat/ChatShell";
 
 /**
- * The owner's Nightshift AI. A form that asks /api/brain/owner/turn and draws the answer; it holds no figure of its own (the server
- * builds the facts and the model answers from them). The conversation lives in this tab only: nothing is stored, and a reload
- * starts afresh. Nothing here acts: an answer is text, a draft is text to copy.
+ * The owner's Nightshift AI, drawn in the shared chat shell. It asks /api/brain/owner/turn and draws the answer; it holds no figure
+ * of its own (the server builds the facts and the model answers from them). The conversation lives in this tab only: nothing is
+ * stored, and a reload starts afresh. Nothing here acts: an answer is text, a draft is text to copy.
  */
 
 type A = OwnerConsoleDictionary["assistant"];
 interface Turn {
+  id: number;
   q: string;
   a: string;
   draft: { title: string | null; body: string } | null;
@@ -20,7 +25,11 @@ interface Turn {
 /** retry: whether asking again can help (a daily cap, a missing key or migration will refuse again). */
 type Failure = { message: string; verify?: boolean; clear?: boolean; signIn?: boolean; retry?: boolean };
 
-const QUESTION_MAX = 2000;
+export const QUESTION_MAX = 2000;
+/** The counter appears only near the limit: a number under every keystroke is noise until it matters. */
+export const COUNTER_FROM = 1800;
+const HISTORY = 6;
+
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
 const tashkent = (iso: string) => {
   const ms = Date.parse(iso);
@@ -45,219 +54,175 @@ export function failureText(a: A, status: number, body: Record<string, unknown> 
   return { message: a.errors.other, retry: true };
 }
 
-export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref: string; signInHref: string }) {
+export function OwnerAssistant({ a, greeting, verifyHref, signInHref }: { a: A; greeting: string; verifyHref: string; signInHref: string }) {
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [question, setQuestion] = useState("");
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [lastAsked, setLastAsked] = useState<string | null>(null);
+  /** The question in flight or the one that failed; regen: it re-asks the last answered question, whose answer it will replace. */
+  const [asking, setAsking] = useState<{ q: string; regen: boolean } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
-  const [copyFailed, setCopyFailed] = useState(false);
-  const box = useRef<HTMLTextAreaElement>(null);
   // A ref, not state: two presses before the re-render must not both pass (each would be a paid turn).
   const inFlight = useRef(false);
-
-  useEffect(() => {
-    if (copied === null) return;
-    const id = setTimeout(() => setCopied(null), 2000);
-    return () => clearTimeout(id);
-  }, [copied]);
+  const nextId = useRef(1);
 
   function clearAll() {
     setTurns([]);
     setFailure(null);
-    setLastAsked(null);
+    setAsking(null);
   }
 
-  async function ask(text: string, fromBox = false) {
+  async function ask(text: string, regen = false): Promise<boolean> {
     const q = text.trim();
-    if (!q || inFlight.current) return;
+    if (!q || inFlight.current) return false;
     if (q.length > QUESTION_MAX) {
-      setLastAsked(null);
+      setAsking(null);
       setFailure({ message: fill(a.tooLong, { n: QUESTION_MAX }) });
-      return;
+      return false;
     }
     inFlight.current = true;
     setPending(true);
     setFailure(null);
-    setLastAsked(q);
+    setAsking({ q, regen });
+    // A regenerate asks the last question again with the history before it: the answer being replaced is not context.
+    const before = regen ? turns.slice(0, -1) : turns;
     try {
       const res = await fetch("/api/brain/owner/turn", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: q, history: turns.map((t) => ({ q: t.q, a: t.a })).slice(-6) }),
+        body: JSON.stringify({ question: q, history: before.map((t) => ({ q: t.q, a: t.a })).slice(-HISTORY) }),
       });
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || typeof body?.answer !== "string") {
         setFailure(failureText(a, res.status, body));
-        return;
+        return false;
       }
       const d = body.draft as { title?: unknown; body?: unknown } | null;
-      setTurns((prev) => [
-        ...prev,
-        {
-          q,
-          a: body.answer as string,
-          draft: d && typeof d.body === "string" ? { title: typeof d.title === "string" ? d.title : null, body: d.body } : null,
-          asOf: typeof body.as_of === "string" ? body.as_of : null,
-          removedLinks: typeof body.removed_links === "number" ? body.removed_links : 0,
-        },
-      ]);
-      // A suggestion must not wipe what the owner had half-typed in the box.
-      if (fromBox) setQuestion("");
-      setLastAsked(null);
+      const turn: Turn = {
+        id: nextId.current++,
+        q,
+        a: body.answer as string,
+        draft: d && typeof d.body === "string" ? { title: typeof d.title === "string" ? d.title : null, body: d.body } : null,
+        asOf: typeof body.as_of === "string" ? body.as_of : null,
+        removedLinks: typeof body.removed_links === "number" ? body.removed_links : 0,
+      };
+      // The old answer is replaced only once the new one has arrived: a failed regenerate keeps it on screen.
+      setTurns((prev) => (regen ? [...prev.slice(0, -1), turn] : [...prev, turn]));
+      setAsking(null);
+      return true;
     } catch {
       setFailure({ message: a.errors.network, retry: true });
+      return false;
     } finally {
       inFlight.current = false;
       setPending(false);
-      box.current?.focus();
     }
   }
 
-  async function copy(i: number, text: string) {
-    setCopyFailed(false);
+  async function copyDraft(id: number, text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(i);
+      setCopied(id);
+      setTimeout(() => setCopied((c) => (c === id ? null : c)), 2000);
     } catch {
-      setCopyFailed(true);
+      setFailure({ message: a.copyFailed });
     }
   }
 
-  return (
-    <div className="oc-stack">
-      <section className="oc-card">
-        <p className="m-0">{a.intro}</p>
-        <p className="oc-note">{a.noActions}</p>
-      </section>
-
-      <section className="oc-card" aria-label={a.ai}>
-        <div role="log" aria-live="polite" className="oc-stack">
-          {turns.length === 0 ? (
-            <div className="oc-stack">
-              <p className="oc-note">{a.empty}</p>
-              <p className="oc-note">{a.suggestions}:</p>
-              <ul role="list" className="m-0 flex list-none flex-col gap-2 p-0">
-                {a.suggest.map((s) => (
-                  <li key={s}>
-                    <button type="button" className="btn-quiet justify-start py-2 text-start disabled:cursor-not-allowed disabled:opacity-40" disabled={pending} onClick={() => ask(s)}>
-                      {s}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            turns.map((t, i) => (
-              <article key={i} className="oc-ai-turn">
-                <p className="oc-ai-who">{a.you}</p>
-                <p className="oc-ai-q">{t.q}</p>
-                <p className="oc-ai-who">{a.ai}</p>
-                <p className="oc-ai-a">{t.a}</p>
-                {t.draft && (
-                  <div className="oc-ai-draft">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="m-0 min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">
-                        {t.draft.title ? `${a.draft}: ${t.draft.title}` : a.draft}
-                      </h3>
-                      <button type="button" className="btn-quiet" onClick={() => copy(i, t.draft!.title ? `${t.draft!.title}\n\n${t.draft!.body}` : t.draft!.body)}>
-                        {copied === i ? a.copied : a.copy}
-                      </button>
-                    </div>
-                    <pre className="oc-ai-draft-body">{t.draft.body}</pre>
-                  </div>
-                )}
-                {t.removedLinks > 0 && (
-                  <p className="oc-note" data-tone="warn">
-                    {a.linksRemoved}
-                  </p>
-                )}
-                {t.asOf && tashkent(t.asOf) && <p className="oc-asof">{fill(a.asOf, { time: tashkent(t.asOf)! })}</p>}
-              </article>
-            ))
-          )}
-        </div>
-        {/* Outside the log: a busy live region holds its updates back, so this would never be heard inside it. */}
-        <p className="sr-only" role="status">
-          {pending ? a.asking : ""}
-        </p>
-        {copyFailed && (
-          <p className="oc-note" role="status">
-            {a.copyFailed}
-          </p>
-        )}
-        {failure && (
-          <div className="oc-ai-error" role="alert">
-            <p className="m-0">{failure.message}</p>
-            <div className="oc-actions">
-              {failure.verify ? (
-                <a className="btn-quiet" href={verifyHref}>
-                  {a.verify}
-                </a>
-              ) : failure.signIn ? (
-                <a className="btn-quiet" href={signInHref}>
-                  {a.signIn}
-                </a>
-              ) : failure.clear ? (
-                <button type="button" className="btn-quiet" onClick={clearAll}>
-                  {a.clear}
+  const shellTurns: ChatTurn[] = turns.map((t) => ({
+    id: t.id,
+    q: t.q,
+    a: t.a,
+    extra:
+      t.draft || t.removedLinks > 0 || (t.asOf && tashkent(t.asOf)) ? (
+        <>
+          {t.draft && (
+            <div className="oc-ai-draft">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="m-0 min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">{t.draft.title ? `${a.draft}: ${t.draft.title}` : a.draft}</h3>
+                <button type="button" className="btn-quiet" onClick={() => copyDraft(t.id, t.draft!.title ? `${t.draft!.title}\n\n${t.draft!.body}` : t.draft!.body)}>
+                  {copied === t.id ? a.copied : a.copy}
                 </button>
-              ) : (
-                failure.retry &&
-                lastAsked && (
-                  <button type="button" className="btn-quiet disabled:cursor-not-allowed disabled:opacity-40" disabled={pending} onClick={() => ask(lastAsked)}>
-                    {a.retry}
-                  </button>
-                )
-              )}
+              </div>
+              <pre className="oc-ai-draft-body">{t.draft.body}</pre>
             </div>
-          </div>
-        )}
-      </section>
-
-      <form
-        className="oc-card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void ask(question, true);
-        }}
-      >
-        <label htmlFor="owner-ai-q" className="text-sm font-semibold">
-          {a.label}
-        </label>
-        <textarea
-          id="owner-ai-q"
-          ref={box}
-          className="oc-ai-input"
-          rows={3}
-          maxLength={QUESTION_MAX}
-          value={question}
-          placeholder={a.placeholder}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              void ask(question, true);
-            }
-          }}
-        />
-        <div className="oc-actions">
-          <button type="submit" className="btn-primary disabled:cursor-not-allowed disabled:opacity-40" disabled={pending || question.trim() === ""}>
-            {pending ? a.asking : a.ask}
-          </button>
-          {turns.length > 0 && !failure?.clear && (
-            <button
-              type="button"
-              className="btn-quiet disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={pending}
-              onClick={clearAll}
-            >
-              {a.clear}
-            </button>
           )}
-        </div>
-      </form>
+          {t.removedLinks > 0 && (
+            <p className="oc-note" data-tone="warn">
+              {a.linksRemoved}
+            </p>
+          )}
+          {t.asOf && tashkent(t.asOf) && <p className="oc-asof">{fill(a.asOf, { time: tashkent(t.asOf)! })}</p>}
+        </>
+      ) : undefined,
+  }));
+
+  const notice = failure && (
+    <div className="oc-ai-error ai-error" role="alert">
+      <p className="m-0 flex items-start gap-2">
+        <TriangleAlert aria-hidden size={16} className="ai-error-ic" />
+        <span>{failure.message}</span>
+      </p>
+      <div className="oc-actions">
+        {failure.verify ? (
+          <a className="btn-quiet" href={verifyHref}>
+            {a.verify}
+          </a>
+        ) : failure.signIn ? (
+          <a className="btn-quiet" href={signInHref}>
+            {a.signIn}
+          </a>
+        ) : failure.clear ? (
+          <button type="button" className="btn-quiet" onClick={clearAll}>
+            {a.clear}
+          </button>
+        ) : (
+          failure.retry &&
+          asking && (
+            <button type="button" className="btn-quiet" disabled={pending} onClick={() => void ask(asking.q, asking.regen)}>
+              {a.retry}
+            </button>
+          )
+        )}
+      </div>
     </div>
+  );
+
+  return (
+    <ChatShell
+      labels={{
+        title: a.ai,
+        newChat: a.newChat,
+        greeting,
+        label: a.label,
+        placeholder: a.placeholder,
+        send: a.ask,
+        sending: a.asking,
+        you: a.you,
+        ai: a.ai,
+        copy: a.copy,
+        copied: a.copied,
+        copyFailed: a.copyFailed,
+        regenerate: a.regenerate,
+        good: a.good,
+        bad: a.bad,
+        keys: a.keys,
+        counter: a.counter,
+        disclaimer: a.noActions,
+      }}
+      turns={shellTurns}
+      pending={pending}
+      // A regenerate's question is already on screen above its answer: drawing it again would read as a second question.
+      pendingQuestion={asking && !asking.regen ? asking.q : null}
+      notice={notice || undefined}
+      maxLength={QUESTION_MAX}
+      counterFrom={COUNTER_FROM}
+      inputId="owner-ai-q"
+      onSend={(text) => ask(text)}
+      onRegenerate={() => {
+        const last = turns[turns.length - 1];
+        if (last) void ask(last.q, true);
+      }}
+      onNewChat={clearAll}
+    />
   );
 }
