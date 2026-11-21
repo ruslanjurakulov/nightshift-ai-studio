@@ -2276,9 +2276,9 @@ organization's are on (`film_studio_on_for(org)`): `start_film` refuses `film_st
 - **Undo.** `docs/sql/rollback_0198_film_studio_org_switch.sql` (owner-applied): the nine earlier bodies, 0064's trigger and 0166's
   check back (refused while any film targets less than 60 s), the four functions dropped, the column kept.
 
-## Channel research on our own YouTube data (0201)
+## Channel research on our own YouTube data (0202)
 
-0201 (`0201_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
+0202 (`0202_channel_research.sql`) backs the page `/{channel}/research` and the Studio chat's research tools
 (`docs/studio/RESEARCH_TOOLS.md`). It is built on our own YouTube Data API calls, never on vidIQ (whose terms forbid redistribution).
 It adds six closed tables (RLS on, no policy, no grant, the service key included): `research_competitors` (up to 20 per channel,
 `pending` until the worker resolves the reference with `channels.list`, then `resolved` or `not_found`), `research_channel_cache` and
@@ -2312,4 +2312,4 @@ Third fix round: a forHandle lookup that YouTube refuses with an HTTP 400 is rec
 in a row make it `invalid_ref` (the status CHECK is swapped again, guarded). Handles are parsed with YouTube's alphabet only. A
 `channels.list` answer re-confirms an @handle competitor only while it still carries that handle; the 30-day reset skips a channel
 with a running competitors request; the claim returns the request's `started_at`, the cutoff a complete batch uses.
-Rollback: `docs/sql/rollback_0201_channel_research.sql`.
+Rollback: `docs/sql/rollback_0202_channel_research.sql`.

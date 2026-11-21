@@ -79,7 +79,7 @@ export const en = {
   trends: trendsEn,
   /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/en.ts. */
   ownerConsole: ownerConsoleEn,
-  /** Channel research (migration 0201): ./research/en.ts. */
+  /** Channel research (migration 0202): ./research/en.ts. */
   research: researchEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */

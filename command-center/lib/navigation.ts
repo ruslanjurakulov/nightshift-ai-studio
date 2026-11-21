@@ -117,7 +117,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/learning", key: "learning" },
       { href: "/memory", key: "memory" },
       { href: "/topics", key: "topics" },
-      // Channel research (migration 0201): the channel's own numbers, competitors, channels on a topic, comment themes.
+      // Channel research (migration 0202): the channel's own numbers, competitors, channels on a topic, comment themes.
       { href: "/research", key: "research" },
       { href: "/measurement", key: "measure" },
       { href: "/feedback-loop", key: "feedback" },
@@ -232,7 +232,7 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "credits",
   "usage",
   "series",
-  // Channel research (migration 0201): a customer's own channel, its competitors and its viewers' questions.
+  // Channel research (migration 0202): a customer's own channel, its competitors and its viewers' questions.
   "research",
   // The Ads workspace: a customer's own brand kits and campaigns (shown only while its switch is on).
   "ads",
@@ -347,7 +347,7 @@ export const STUDIO_TILES: readonly StudioTile[] = [
   { href: "/character-studio", key: "characterStudio", group: "make" },
   { href: "/inbox", key: "inbox", group: "channel" },
   { href: "/series", key: "series", group: "channel" },
-  // Channel research (0201): reached from Studio home by a customer, whose rail does not list it.
+  // Channel research (0202): reached from Studio home by a customer, whose rail does not list it.
   { href: "/research", key: "research", group: "channel" },
   { href: "/models", key: "models", group: "channel" },
 ];

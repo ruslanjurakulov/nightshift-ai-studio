@@ -150,8 +150,8 @@ def put_back_0145(session) -> None:
 ROLLBACK_0164 = REPO / "docs" / "sql" / "rollback_0164_public_site_stats.sql"
 #: 0164 (the site's live counters) refuses to apply without 0112's videos.cut_sha256 and 0116's video_visibility_requests: a base
 #: built without either leaves it out too (name prefix), and take_off_0164 takes it off the full chain before comparing to it.
-#: 0201 (channel research) needs 0116's youtube_quota_ledger and visibility_channel_connected the same way.
-NEEDS_0112_0116 = ("0164_", "0201_")
+#: 0202 (channel research) needs 0116's youtube_quota_ledger and visibility_channel_connected the same way.
+NEEDS_0112_0116 = ("0164_", "0202_")
 
 
 def take_off_0164(session) -> None:
@@ -167,21 +167,21 @@ def put_back_0164(session) -> None:
         session.conn.execute((MIGRATIONS / "0164_public_site_stats.sql").read_text(encoding="utf-8"))
 
 
-ROLLBACK_0201 = REPO / "docs" / "sql" / "rollback_0201_channel_research.sql"
+ROLLBACK_0202 = REPO / "docs" / "sql" / "rollback_0202_channel_research.sql"
 
 
-def take_off_0201(session) -> None:
-    """0201's own rollback, when it is there: its tables and functions go and youtube_quota_ledger's source CHECK is 0116's again (it
+def take_off_0202(session) -> None:
+    """0202's own rollback, when it is there: its tables and functions go and youtube_quota_ledger's source CHECK is 0116's again (it
     replaced nothing of 0112's or 0116's, so nothing else comes back). A test that rolls 0116 back takes it off first."""
     if session.conn.execute("select to_regprocedure('public.research_own_channel(text)') is not null").fetchone()[0]:
-        text = ROLLBACK_0201.read_text(encoding="utf-8")
+        text = ROLLBACK_0202.read_text(encoding="utf-8")
         session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
-def put_back_0201(session) -> None:
-    """0201 again, once 0116 is back (it refuses to apply without it), and only when it is not on already."""
+def put_back_0202(session) -> None:
+    """0202 again, once 0116 is back (it refuses to apply without it), and only when it is not on already."""
     if session.conn.execute("select to_regprocedure('public.research_own_channel(text)') is null").fetchone()[0]:
-        session.conn.execute((MIGRATIONS / "0201_channel_research.sql").read_text(encoding="utf-8"))
+        session.conn.execute((MIGRATIONS / "0202_channel_research.sql").read_text(encoding="utf-8"))
 
 
 MIGRATION_0127 = MIGRATIONS / "0127_series_plan_caps.sql"

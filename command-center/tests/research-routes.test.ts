@@ -3,12 +3,12 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * /api/research/* (migration 0201).
+ * /api/research/* (migration 0202).
  *
  * What would break without these: a route using anything but the person's own session (the service key skips every check); a route
  * that calls YouTube or writes a table itself instead of one writer function (rule 3); a malformed channel, kind, topic or id reaching
  * the database; another organization's channel answering differently from a missing one; the database's refusal words lost (a daily
- * limit shown as a crash), or its message passed through to the browser; 0201 not applied reading as an error instead of "not enabled".
+ * limit shown as a crash), or its message passed through to the browser; 0202 not applied reading as an error instead of "not enabled".
  */
 
 vi.mock("server-only", () => ({}));
@@ -94,7 +94,7 @@ describe("refresh", () => {
     expect(await failed.json()).toEqual({ error: "failed" });
   });
 
-  it("says not_enabled when 0201 is not applied", async () => {
+  it("says not_enabled when 0202 is not applied", async () => {
     h.rpc.research_request_refresh = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
     const res = await refresh.POST(post("/api/research/refresh", { channel: "chan-a", kind: "own_channel" }));
     expect(res.status).toBe(503);

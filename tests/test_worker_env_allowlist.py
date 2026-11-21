@@ -130,7 +130,7 @@ class EveryConfigSettingCanReachTheWorker(unittest.TestCase):
         self.assertEqual(sorted(readers), ["modules/capabilities/describe_llm.py", "modules/text_providers.py"])
 
     def test_the_research_key_is_deployed_as_a_secret_because_the_worker_reads_it(self):
-        # modules/channel_research.py (migration 0201) makes the channel research's public lookups with YOUTUBE_DATA_API_KEY; without
+        # modules/channel_research.py (migration 0202) makes the channel research's public lookups with YOUTUBE_DATA_API_KEY; without
         # it in the worker env every competitor and topic request ends not_configured even with the repository secret set.
         self.assertIn("YOUTUBE_DATA_API_KEY", example_keys())
         secrets = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", EXAMPLE.read_text().split("# ─── Behaviour")[0], re.M))

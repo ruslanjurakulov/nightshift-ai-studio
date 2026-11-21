@@ -798,8 +798,8 @@ import sec_owner_brain_0197  # noqa: E402
 
 sec_owner_brain_0197.extend(TABLES, FUNCTIONS)
 
-# Migration 0201 (channel research: closed caches and queue, member readers/writers, worker functions):
-# tests/security/sec_research_0201.py
-import sec_research_0201  # noqa: E402
+# Migration 0202 (channel research: closed caches and queue, member readers/writers, worker functions):
+# tests/security/sec_research_0202.py
+import sec_research_0202  # noqa: E402
 
-sec_research_0201.extend(TABLES, FUNCTIONS)
+sec_research_0202.extend(TABLES, FUNCTIONS)

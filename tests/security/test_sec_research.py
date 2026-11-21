@@ -1,4 +1,4 @@
-"""0201: channel research. What would break without these, proven against a real Postgres:
+"""0202: channel research. What would break without these, proven against a real Postgres:
 
 * another organization (or a stranger) reading a channel's research, or telling a channel it cannot see from one that does not exist;
 * anon or a signed-in member reaching a worker function (claim, store, purge, the research quota);

@@ -1,6 +1,6 @@
 import type { ResearchDictionary } from "./en";
 
-/** Исследование канала (миграция 0201). Источник текста — ./en.ts. */
+/** Исследование канала (миграция 0202). Источник текста — ./en.ts. */
 export const researchRu: ResearchDictionary = {
   title: "Исследование",
   subtitle: "Ваш канал, каналы для сравнения и о чём спрашивают зрители — по собственным цифрам YouTube.",

@@ -6,7 +6,7 @@ import { requireSameOrigin } from "@/lib/server/same-origin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Remove a competitor (research_remove_competitor, migration 0201). Another channel's id removes nothing. */
+/** Remove a competitor (research_remove_competitor, migration 0202). Another channel's id removes nothing. */
 export const DELETE = requireSameOrigin(async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const channel = new URL(request.url).searchParams.get("channel") ?? "";
