@@ -1013,7 +1013,42 @@ def _response_json(r, name: str):
     try:
         return json.loads(r.text, parse_int=_bounded_int)
     except ValueError:
-        raise RuntimeError(f"{name}: unreadable response") from None
+        raise MediaStoreError(name, "unreadable_response") from None
+
+
+#: reason code -> what to do about it. Codes, not HTTP statuses: 401 (a wrong key) and 429 (a rate limit)
+#: need opposite responses (CLAUDE.md rule 6).
+_STORE_REMEDIES = {
+    "unreachable": "check SUPABASE_URL and that the database host is reachable from this worker",
+    "timeout": "the database did not answer in time; it is retried on the next poll, check Supabase status",
+    "invalid_service_key": "the service key was refused; check SUPABASE_SERVICE_KEY on the worker",
+    "rate_limited": "Supabase is throttling this worker; wait, the next poll retries",
+    "server_error": "Supabase failed on its side; check its status page, the next poll retries",
+    "http_error": "the request was refused; check that migration 0038 matches this worker's version",
+    "unreadable_response": "the database answered something that is not JSON; check SUPABASE_URL points at the REST API",
+    "request_failed": "the request could not be made; check the worker's network and SUPABASE_URL",
+}
+
+
+class MediaStoreError(StoreUnavailable, RuntimeError):
+    """A MediaStore call failed. ``code`` is a short reason, ``remedy`` the fix. It is a StoreUnavailable (the
+    module's own 'could not reach the database' error, which ingest already maps to a retry) and still a
+    RuntimeError, which the service loop treats as 'queue unavailable'. The message holds the function name, the code and the remedy:
+    never the URL (it can carry a project id), a header or a payload."""
+
+    def __init__(self, name: str, code: str, status: Optional[int] = None):
+        self.name, self.code, self.status = name, code, status
+        self.remedy = _STORE_REMEDIES.get(code, _STORE_REMEDIES["request_failed"])
+        extra = f" (HTTP {status})" if status is not None else ""
+        super().__init__(f"{name}: {code}{extra}: {self.remedy}")
+
+
+def _http_failure_code(status: int) -> str:
+    if status in (401, 403):
+        return "invalid_service_key"
+    if status == 429:
+        return "rate_limited"
+    return "server_error" if status >= 500 else "http_error"
 
 
 class MediaStore:
@@ -1039,13 +1074,28 @@ class MediaStore:
         return h
 
     def _rpc(self, name: str, payload: dict):
-        r = self.http().post(f"{self.url}/rest/v1/rpc/{name}", json=payload,
-                             headers=self._h({"Content-Type": "application/json"}), timeout=self._timeout)
+        import requests  # noqa: PLC0415
+
+        try:
+            r = self.http().post(f"{self.url}/rest/v1/rpc/{name}", json=payload,
+                                 headers=self._h({"Content-Type": "application/json"}), timeout=self._timeout)
+        except requests.exceptions.Timeout:
+            raise MediaStoreError(name, "timeout") from None  # from None: requests' text can hold the full URL
+        except requests.exceptions.ConnectionError:
+            raise MediaStoreError(name, "unreachable") from None
+        except requests.exceptions.HTTPError as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            raise MediaStoreError(name, _http_failure_code(status) if status else "http_error", status) from None
+        except requests.exceptions.RequestException:
+            raise MediaStoreError(name, "request_failed") from None
         if r.status_code == 404:
             return None  # 0038 not applied: nothing to do
         if r.status_code >= 300:
-            raise RuntimeError(f"{name}: HTTP {r.status_code}")
-        return _response_json(r, name)
+            raise MediaStoreError(name, _http_failure_code(r.status_code), r.status_code)
+        try:
+            return _response_json(r, name)
+        except requests.exceptions.JSONDecodeError:
+            raise MediaStoreError(name, "unreadable_response") from None
 
     def claim(self, worker_id: str) -> Optional[dict]:
         rows = self._rpc("claim_media_upload", {"p_worker": worker_id})
@@ -1529,7 +1579,7 @@ class MediaService:
 
 
 __all__ = [
-    "ALLOWED_MIME", "DEMUXER", "EXT_MIME", "HEIF_MIMES", "IngestReject", "MediaService", "MediaStore", "Probe",
+    "ALLOWED_MIME", "DEMUXER", "EXT_MIME", "HEIF_MIMES", "IngestReject", "MediaService", "MediaStore", "MediaStoreError", "Probe",
     "Tools", "VARIANT_FILES", "asset_dir", "asset_file", "canonical_id", "check_declared", "decode_heic",
     "find_tools", "gc_staging", "heic_available", "heif_has_image_item", "ingest", "interpret_probe",
     "process_ticket", "purge_deleted", "sniff", "staged_path", "storage_key",
