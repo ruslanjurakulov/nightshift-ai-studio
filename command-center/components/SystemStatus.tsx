@@ -51,9 +51,13 @@ function ScopedSystemStatus({ initial, dbOk, scope }: SystemStatusProps) {
   const subs = useMemo(() => subsystemHealth(events, dbOk, connected ?? true), [events, dbOk, connected]);
   const overall = overallStatus(subs);
 
-  const banner =
-    overall === "operational" ? t.ops.allOperational : overall === "degraded" ? t.ops.someDegraded : t.ops.someOffline;
-  const bannerTone: LampTone = overall === "operational" ? "ok" : overall === "degraded" ? "warn" : "fail";
+  const banner = {
+    operational: t.ops.allOperational,
+    unknown: t.ops.someUnknown,
+    degraded: t.ops.someDegraded,
+    offline: t.ops.someOffline,
+  }[overall];
+  const bannerTone: LampTone = { operational: "ok", unknown: "idle", degraded: "warn", offline: "fail" }[overall] as LampTone;
 
   return (
     <div className="flex flex-col gap-4">

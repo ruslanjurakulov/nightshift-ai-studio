@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ChannelMark } from "@/components/channels/ChannelMark";
 import { Figures } from "@/components/g2/Figures";
+import { accountStanding } from "@/lib/accountStanding";
 import { num, relativeTime } from "@/lib/format";
 import type { AccountSummary, AccountsRollup } from "@/lib/channels";
 
@@ -89,11 +90,16 @@ export function AccountsBoard({
 function Row({ account: a, here }: { account: AccountSummary; here: boolean }) {
   const { t, locale } = useI18n();
 
+  const st = accountStanding(a);
   const standing = {
-    live: { tone: "ok" as const, label: t.accounts.standingLive },
-    paused: { tone: "idle" as const, label: t.accounts.standingPaused },
-    draft: { tone: "idle" as const, label: t.accounts.standingDraft },
-  }[a.standing];
+    tone: st.tone,
+    label: {
+      live: t.accounts.standingLive,
+      liveFailing: t.accounts.standingLiveFailing,
+      paused: t.accounts.standingPaused,
+      draft: t.accounts.standingDraft,
+    }[st.key],
+  };
 
   const activity = {
     "never-run": { tone: "idle" as const, label: t.accounts.activityNeverRun },

@@ -693,6 +693,20 @@ export function taskCounts(
   return out;
 }
 
+/**
+ * The section groups of the catalog, by what a model PRODUCES. This is not the
+ * task chip count: the "Image" chip counts text-to-image models only, while the
+ * "picture" section also holds editors/upscalers whose output is a picture. The
+ * two used to share the word "Rasm" and read 30 vs 35 (rule 5: same label, two
+ * different measurements). The section count is now always items.length of the
+ * group built here, and its heading names what it counts.
+ */
+export function groupByOutput(models: DiscoveryModel[]): { kind: OutputKind | null; items: DiscoveryModel[] }[] {
+  return [...OUTPUT_KINDS, null]
+    .map((kind) => ({ kind, items: models.filter((m) => m.spec.output === kind) }))
+    .filter((g) => g.items.length > 0);
+}
+
 /** The filters from a URL query; anything unknown is "all" (a stale link still opens the page). */
 export function filtersFromQuery(q: Record<string, string | string[] | undefined>): Filters {
   const one = (k: string) => (typeof q[k] === "string" ? (q[k] as string) : "");
