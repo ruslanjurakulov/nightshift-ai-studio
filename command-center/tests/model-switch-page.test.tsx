@@ -40,6 +40,8 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (s: string) => `
 vi.mock("@/lib/channels-server", () => ({ getChannelContext: async () => ({ slug: "chronos" }) }));
 vi.mock("@/components/feedback/ToastProvider", () => ({ useToast: () => ({ success: () => {}, error: () => {} }) }));
 vi.mock("@/lib/auth/org-roles", () => ({ isOperator: async () => state.operator }));
+// The Owner account in view (lib/server/owner-view): these cases are the operator looking as the operator.
+vi.mock("@/lib/server/owner-view", () => ({ viewingAsOperator: async () => state.operator }));
 vi.mock("@/lib/auth/roles", () => ({ resolvePlatformRole: async () => state.role }));
 
 function builder(name: string) {

@@ -34,6 +34,7 @@ import { ownerAnalyticsUz } from "./owner-analytics/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { trendsUz } from "./trends/uz";
+import { ownerConsoleUz } from "./owner-console/uz";
 import { researchUz } from "./research/uz";
 import { availabilityUz } from "./availability/uz";
 import { effectsUz } from "./effects/uz";
@@ -67,6 +68,8 @@ export const uz: Dictionary = {
   presets: presetsUz,
   /** The Trends gallery (migration 0183): ./trends/uz.ts. */
   trends: trendsUz,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/uz.ts. */
+  ownerConsole: ownerConsoleUz,
   research: researchUz,
   availability: availabilityUz,
   effects: effectsUz,

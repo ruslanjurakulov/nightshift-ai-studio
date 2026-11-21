@@ -1,19 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * POST /api/account/owner-mode: the avatar menu's Owner mode switch. What would break without these: a customer (or a
- * signed-out caller, or another site) setting the preference; a failed role lookup read as "not the operator" or as
- * "the operator"; a body that is not a boolean being taken as one; the cookie being readable by page scripts.
+ * POST /api/account/owner-mode: the avatar menu's account switcher (User / Owner). What would break without these: a
+ * customer (or a signed-out caller, or another site) setting the preference; an admin who is not the platform owner
+ * switching to the Owner account; a failed role or owner lookup read as "not the operator" or as "the owner"; a body that
+ * is not a boolean being taken as one; the cookie being readable by page scripts.
  */
 vi.mock("server-only", () => ({}));
 
 const h = vi.hoisted(() => ({
   user: { id: "u1" } as { id: string } | null,
   lookup: { operator: true, failed: false },
+  owner: "owner" as string,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ getUser: async () => h.user }));
 vi.mock("@/lib/auth/org-roles", () => ({ operatorLookup: async () => h.lookup }));
+vi.mock("@/lib/server/owner-analytics", () => ({ ownerAccess: async () => h.owner }));
 
 const { POST } = await import("../app/api/account/owner-mode/route");
 
@@ -28,16 +31,34 @@ const post = (body: unknown, origin: string | null = ORIGIN) =>
 beforeEach(() => {
   h.user = { id: "u1" };
   h.lookup = { operator: true, failed: false };
+  h.owner = "owner";
 });
 
-describe("Owner mode switch", () => {
-  it("lets the operator turn it off and on, as an http-only cookie", async () => {
+describe("account switcher (User / Owner)", () => {
+  it("lets the platform owner switch to User and back to Owner, as an http-only cookie", async () => {
     const off = await POST(post({ on: false }));
     expect(off.status).toBe(200);
     const cookie = off.headers.get("set-cookie") ?? "";
     expect(cookie).toContain("ns_owner_mode=off");
     expect(cookie.toLowerCase()).toContain("httponly");
     expect((await POST(post({ on: true }))).headers.get("set-cookie")).toContain("ns_owner_mode=on");
+  });
+
+  it("refuses an admin who is not the platform owner the Owner account, but lets them back to User", async () => {
+    h.owner = "denied";
+    const res = await POST(post({ on: true }));
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect((await POST(post({ on: false }))).status).toBe(200);
+  });
+
+  it("answers 503 when the owner check cannot be made, never guessing the owner", async () => {
+    for (const owner of ["error", "missing"]) {
+      h.owner = owner;
+      const res = await POST(post({ on: true }));
+      expect(res.status, owner).toBe(503);
+      expect(res.headers.get("set-cookie")).toBeNull();
+    }
   });
 
   it("refuses a customer, and sets nothing", async () => {

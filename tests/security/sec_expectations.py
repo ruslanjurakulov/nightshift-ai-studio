@@ -787,6 +787,11 @@ import sec_public_models_0193  # noqa: E402
 
 sec_public_models_0193.extend(TABLES, FUNCTIONS)
 
+# Migration 0197 (the owner's facts for Nightshift Brain: people and plans, system health): tests/security/sec_owner_brain_0197.py
+import sec_owner_brain_0197  # noqa: E402
+
+sec_owner_brain_0197.extend(TABLES, FUNCTIONS)
+
 # Migration 0200 (channel research: closed caches and queue, member readers/writers, worker functions):
 # tests/security/sec_research_0200.py
 import sec_research_0200  # noqa: E402

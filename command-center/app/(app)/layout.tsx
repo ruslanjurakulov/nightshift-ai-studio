@@ -48,6 +48,7 @@ import { characterStudioEnabled } from "@/lib/characterStudio/model";
 import { filmStudioListed, filmStudioMode } from "@/lib/server/films";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
+import { isPlatformOwner } from "@/lib/server/owner-view";
 import { GlassPointer } from "@/components/ui/GlassPointer";
 import "./app-redesign.css";
 import "./app-pages-1.css";
@@ -142,7 +143,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const sidebarCollapsed = isSidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
   // Owner mode (lib/owner-mode.ts): which frame the operator is DRAWN in. The cookie counts only once the server said
   // "operator"; the redirects above already used the real role, so every operator URL keeps working in either frame.
-  const frame = ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value);
+  // The account switcher (User / Owner) is the platform OWNER's: an admin who is not the owner has no Owner account, and a
+  // customer is never asked (no lookup). Decided by the database's own answer (lib/server/owner-view), never by the cookie.
+  const ownerAccount = operator ? await isPlatformOwner() : false;
+  const frame = ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value, ownerAccount);
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database
@@ -220,7 +224,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MotionProvider>
       <NavigationProvider channelNames={channelNames}>
         {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
-        <ShellProvider operator={frame} ownerSwitch={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmStudioMode(), operator) }} tools={tools}>
+        {/* Drawn as the account in view: the owner's User account lists only what a customer's would (Film Studio's admins-only
+            beta included); every page and route still checks the real role. */}
+        <ShellProvider operator={frame} ownerSwitch={ownerAccount} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmStudioMode(), frame) }} tools={tools}>
         <SidebarProvider initialCollapsed={!frame && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}

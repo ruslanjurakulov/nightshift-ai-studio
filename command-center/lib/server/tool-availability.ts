@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { isOperator } from "@/lib/auth/org-roles";
+import { viewingAsOperator } from "@/lib/server/owner-view";
 import { isOperatorOrg } from "@/lib/channel-tokens";
 import { withPreviews } from "@/lib/creative/studio";
 import { loadOperatorPreviewModels, readStudioModels } from "@/lib/server/creative";
@@ -38,7 +38,7 @@ export const readToolAvailability = cache(async (orgId: string | null): Promise<
   if (!orgId) return UNKNOWN_TOOLS;
   try {
     // Asked only for the operator's own organization, like the create page: one call fewer for everyone else.
-    const previewsFor = async () => (isOperatorOrg(orgId) && (await isOperator()) ? await loadOperatorPreviewModels(orgId) : []);
+    const previewsFor = async () => (isOperatorOrg(orgId) && (await viewingAsOperator()) ? await loadOperatorPreviewModels(orgId) : []);
     const [models, catalog, previews] = await Promise.all([readStudioModels(), readCatalogStates(orgId), previewsFor()]);
     if (models === null) return UNKNOWN_TOOLS;
     // Less any model no organization can buy (a plan-tier entitlement: creative_price refuses it for everyone).
