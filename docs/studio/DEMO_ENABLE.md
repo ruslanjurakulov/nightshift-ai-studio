@@ -108,8 +108,8 @@ These are not switches, but each one blocks a start:
 - The organization needs the quoted credits. One hold, `fm-<segment id>`, is taken at start.
 - Narration stays off: no TTS model is on sale.
 
-The quote names every blocker. `quote_film` runs as the signed-in member, so ask it from the Command Center (a film's Shoot step)
-or with that member's session. `startable: true` and an empty `blocked_by` mean the film can start.
+The quote names every blocker. `quote_film` runs as the signed-in member, so ask for it in the Command Center: the film's
+Assemble panel calls `/api/films/{id}/quote`. `startable: true` and an empty `blocked_by` mean the film can start.
 
 ## Rollback (switch everything off)
 
