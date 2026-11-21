@@ -20,6 +20,60 @@ const BODY_BYTES = 64_000;
  *  limit is a failure (output_too_long), never a shorter answer. */
 const OWNER_OUTPUT_TOKENS = 3000;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** 0209's caps: a stored message longer than these is refused by the database, so the answer is cut to fit, never dropped. */
+const OWNER_TEXT_MAX = 2000;
+const AI_TEXT_MAX = 12000;
+const TITLE_MAX = 60;
+
+type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+type HistoryState = "saved" | "not_saved" | "needs_migration";
+
+/**
+ * Appends the question and the answer to the owner's stored history (0209), after the turn has succeeded. Never throws and never
+ * fails the turn: the answer is already paid for. A failure is logged with a named code (the database's, never the text).
+ */
+async function saveHistory(supabase: Db, sessionId: string | null, question: string, answer: string, asOf: string | null, model: string): Promise<{ sessionId: string | null; state: HistoryState }> {
+  const missing = (code: string | undefined) => code === "42883" || code === "PGRST202";
+  let sid = sessionId;
+  try {
+    if (!sid) {
+      const title = question.replace(/\s+/g, " ").trim().slice(0, TITLE_MAX).trim();
+      const created = await supabase.rpc("owner_ai_session_create", { p_title: title });
+      const code = (created.error as { code?: string } | null)?.code;
+      if (missing(code)) {
+        console.error("owner ai: history_needs_0209");
+        return { sessionId: null, state: "needs_migration" };
+      }
+      if (created.error || typeof created.data !== "string" || !UUID.test(created.data)) {
+        console.error("owner ai: history_session_create_failed", code ?? "no_id");
+        return { sessionId: null, state: "not_saved" };
+      }
+      sid = created.data;
+    }
+    for (const [role, text, at, m] of [
+      ["owner", question.slice(0, OWNER_TEXT_MAX), null, null],
+      ["ai", answer.slice(0, AI_TEXT_MAX), asOf, model],
+    ] as const) {
+      const { error } = await supabase.rpc("owner_ai_message_append", { p_session: sid, p_role: role, p_text: text, p_as_of: at, p_model: m });
+      if (error) {
+        const code = (error as { code?: string }).code;
+        if (missing(code)) {
+          console.error("owner ai: history_needs_0209");
+          return { sessionId: null, state: "needs_migration" };
+        }
+        // P0002: the session is gone (deleted on another device) or not this person's; the page starts a new one.
+        console.error("owner ai: history_append_failed", role, code ?? "unknown");
+        return { sessionId: code === "P0002" ? null : sid, state: "not_saved" };
+      }
+    }
+    return { sessionId: sid, state: "saved" };
+  } catch (e) {
+    console.error("owner ai: history_append_failed", e instanceof Error ? e.name : "unknown");
+    return { sessionId: sid, state: "not_saved" };
+  }
+}
+
 /** The vendor gets an opaque id for abuse tracing (as S5's chat does), never the person's database key. */
 async function vendorUser(userId: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`nightshift-owner:${userId}`));
@@ -37,7 +91,8 @@ async function vendorUser(userId: string): Promise<string> {
  *     another model (rule 4).
  *  3. The owner's facts, built server side (second factor enforced there). The browser never sends a figure.
  *  4. A turn reserved in the database under the daily cap (0203) BEFORE the vendor is called; finished with how it ended.
- * Nothing about the question, the facts or the answer is logged or stored.
+ *  5. Only after a successful turn: the question and the (link-guarded) answer appended to the owner's history (0209, owner-only,
+ *     the same on every device). The facts are never stored, and nothing about the question or answer is logged.
  */
 export async function POST(request: Request) {
   const cross = rejectCrossOrigin(request);
@@ -55,6 +110,9 @@ export async function POST(request: Request) {
   if (!question) return brainJson({ error: "bad_request" }, 400);
   if (question.length > QUESTION_MAX) return brainJson({ error: "message_too_long", limit: QUESTION_MAX }, 400);
   const history = readHistory(b.history);
+  // Checked before anything is spent: a malformed id would otherwise cost a paid turn and then fail to save.
+  const sessionId = b.session_id === undefined || b.session_id === null ? null : typeof b.session_id === "string" && UUID.test(b.session_id) ? b.session_id : undefined;
+  if (sessionId === undefined) return brainJson({ error: "bad_request" }, 400);
 
   const settings = await supabase.rpc("ai_chat_owner_settings");
   if (settings.error) {
@@ -121,6 +179,8 @@ export async function POST(request: Request) {
     const a = guardLinks(answer.answer, known);
     const d = answer.draft ? guardLinks(answer.draft.body, known) : null;
     const dt = answer.draft?.title ? guardLinks(answer.draft.title, known) : null;
+    // Only the guarded text is kept: what the owner saw, never a link the guard cut.
+    const saved = await saveHistory(supabase, sessionId, question, [a.text, dt?.text, d?.text].filter(Boolean).join("\n\n"), facts.as_of, model.id);
     return brainJson({
       answer: a.text,
       draft: answer.draft && d ? { title: dt ? dt.text : null, body: d.text } : null,
@@ -128,6 +188,9 @@ export async function POST(request: Request) {
       removed_links: a.removed + (d?.removed ?? 0) + (dt?.removed ?? 0),
       as_of: facts.as_of,
       model: model.id,
+      // Whether this turn is in the stored history (0209), said rather than assumed (rule 5).
+      session_id: saved.sessionId,
+      history: saved.state,
     });
   } catch (e) {
     await finish(false, "unknown", null, null);

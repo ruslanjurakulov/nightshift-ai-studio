@@ -5,8 +5,9 @@ import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
 
 /**
  * The owner's Nightshift AI. A form that asks /api/brain/owner/turn and draws the answer; it holds no figure of its own (the server
- * builds the facts and the model answers from them). The conversation lives in this tab only: nothing is stored, and a reload
- * starts afresh. Nothing here acts: an answer is text, a draft is text to copy.
+ * builds the facts and the model answers from them). The server appends each answered turn to the owner's stored history (0209) and
+ * hands back the session id, which this tab sends with the next question; the history panel that reads it back is task C1's chat
+ * shell. Nothing here acts: an answer is text, a draft is text to copy.
  */
 
 type A = OwnerConsoleDictionary["assistant"];
@@ -56,6 +57,8 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
   const box = useRef<HTMLTextAreaElement>(null);
   // A ref, not state: two presses before the re-render must not both pass (each would be a paid turn).
   const inFlight = useRef(false);
+  // The stored conversation (0209) this tab is writing to: without it every question would start a new saved chat.
+  const sessionId = useRef<string | null>(null);
 
   useEffect(() => {
     if (copied === null) return;
@@ -67,6 +70,7 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
     setTurns([]);
     setFailure(null);
     setLastAsked(null);
+    sessionId.current = null;
   }
 
   async function ask(text: string, fromBox = false) {
@@ -85,13 +89,15 @@ export function OwnerAssistant({ a, verifyHref, signInHref }: { a: A; verifyHref
       const res = await fetch("/api/brain/owner/turn", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: q, history: turns.map((t) => ({ q: t.q, a: t.a })).slice(-6) }),
+        body: JSON.stringify({ question: q, history: turns.map((t) => ({ q: t.q, a: t.a })).slice(-6), session_id: sessionId.current }),
       });
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || typeof body?.answer !== "string") {
         setFailure(failureText(a, res.status, body));
         return;
       }
+      // null after a save that could not land (a chat deleted on another device): the next question starts a new stored chat.
+      sessionId.current = typeof body.session_id === "string" ? body.session_id : null;
       const d = body.draft as { title?: unknown; body?: unknown } | null;
       setTurns((prev) => [
         ...prev,

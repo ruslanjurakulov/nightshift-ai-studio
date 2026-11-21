@@ -2371,6 +2371,29 @@ Rollback: `docs/sql/rollback_0202_channel_research.sql`.
 - Lab: `tests/security/sec_owner_ai_0203.py`, `tests/security/test_sec_owner_ai.py`. Rollback:
   `docs/sql/rollback_0203_owner_ai_turns.sql` (drops the log).
 
+## The owner's Nightshift AI: conversation history (0209, provisional)
+
+0209 (`0209_owner_ai_history.sql`) keeps the owner's Nightshift AI conversations in the database so they are the same on every
+device (owner decision, 2026-11-21). 0203's turn log is unchanged and still holds no text; the history is a separate store.
+
+- **Tables.** `owner_ai_sessions` (id, user_id, title 1..60 characters, created_at, updated_at, deleted_at) and `owner_ai_messages`
+  (session_id, role `owner` | `ai`, text <= 2000 / <= 12000 characters, as_of, model, created_at). Both RLS on, no policy, no grant
+  to anon, authenticated or service_role. The facts behind an answer are never stored.
+- **Functions** (execute to `authenticated` only; each checks `owner_analytics_is_owner()` (42501), then 0107's second factor
+  (NS401), then that the session is the caller's (P0002 `not_found` otherwise, the same as a missing id):
+  `owner_ai_session_create(title)`, `owner_ai_session_list(limit, before)` (newest activity first, keyset by updated_at, 1..100),
+  `owner_ai_session_messages(session)` (last 400, oldest first), `owner_ai_message_append(session, role, text, as_of, model)`
+  (append-only), `owner_ai_session_rename(session, title)` (does not reorder), `owner_ai_session_delete(session)` (soft delete;
+  not listed, read or appended to afterwards; twice is not an error).
+- **Route.** `POST /api/brain/owner/turn` takes an optional `session_id`; after a successful turn it creates a session (title = the
+  first question, 60 characters) when none was given and appends the question and the link-guarded answer. It answers
+  `session_id` and `history: saved | not_saved | needs_migration`. A failed save never fails the paid answer; it is logged by code
+  (`history_append_failed`, `history_session_create_failed`, `history_needs_0209`), never with the text.
+- **Before it is applied** the owner AI answers as before and reports `history: "needs_migration"`.
+- **Requires** 0182, 0107, 0036 (`creative_refuse`).
+- Lab: `tests/security/sec_owner_ai_history_0209.py`, `tests/security/test_sec_owner_ai_history.py`. Rollback:
+  `docs/sql/rollback_0209_owner_ai_history.sql` (drops both tables: the stored conversations are lost).
+
 ## Instagram through Unified Login (0204)
 
 0204 (`0204_instagram_unified_login.sql`). Instagram now connects through Meta's "Instagram API with Unified Login": the
