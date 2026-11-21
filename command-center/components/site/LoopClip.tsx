@@ -9,8 +9,12 @@ import { useClipNear, useClipTurn, usePageVisible } from "@/components/site/clip
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 
-/** The four renditions of one loop: 1280 and 640 wide, each in WebM and MP4; and a larger one only where the source was larger (never an upscale). */
-export type ClipSources = { mp4: string; webm: string; smMp4: string; smWebm: string; lg?: { mp4: string; webm: string } };
+/**
+ * The renditions of one loop: 1280 and 640 wide, each in WebM and MP4; and a larger one only where the source was larger (never an
+ * upscale). WebM is optional: a Studio piece on the landing (components/site/StudioClip.tsx) is one MP4, and a `<source>` naming a
+ * file that is not there would cost a failed request before the browser tried the MP4.
+ */
+export type ClipSources = { mp4: string; webm?: string; smMp4: string; smWebm?: string; lg?: { mp4: string; webm: string } };
 
 /** Whether a clip may be fetched and played at all: never under reduced motion, never on Save-Data or a slow link. */
 export function clipsAllowed(): boolean {
@@ -58,8 +62,14 @@ export function LoopClip({
   position,
   compact = false,
   together = false,
+  captions,
 }: {
   poster: string;
+  /**
+   * Captions for a clip with spoken words (a Studio piece, components/site/StudioClip.tsx): shown by default, because every clip
+   * here plays muted and the words are otherwise lost.
+   */
+  captions?: { src: string; srcLang: string; label: string };
   early?: boolean;
   position?: string;
   compact?: boolean;
@@ -178,8 +188,13 @@ export function LoopClip({
   if (!allowed) return null;
   return (
     <video ref={ref} className="nx-clip" muted loop playsInline preload={wanted && near ? "auto" : "none"} poster={poster} disablePictureInPicture aria-hidden tabIndex={-1} style={position ? { objectPosition: position } : undefined}>
-      <source src={size === "sm" ? sources.smWebm : size === "lg" && sources.lg ? sources.lg.webm : sources.webm} type="video/webm" />
+      {(() => {
+        const webm = size === "sm" ? sources.smWebm : size === "lg" && sources.lg ? sources.lg.webm : sources.webm;
+        return webm ? <source src={webm} type="video/webm" /> : null;
+      })()}
       <source src={size === "sm" ? sources.smMp4 : size === "lg" && sources.lg ? sources.lg.mp4 : sources.mp4} type="video/mp4" />
+      {/* After every source: the HTML content model puts tracks last. */}
+      {captions && <track kind="captions" src={captions.src} srcLang={captions.srcLang} label={captions.label} default />}
     </video>
   );
 }
