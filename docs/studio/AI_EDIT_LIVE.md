@@ -180,6 +180,7 @@ on media-worker). There is no second renderer.
 | `title_card` / `stat_card` | `text ≤ 500, start_s, end_s, layout` | a stat card's number must be typed by the person or appear in the transcript span it cites; the AI may not invent one (rule 5) | no | T clip | inverse |
 | `transcribe` | `asr_model_id, language uz/ru/en/auto, vocabulary[]` | model on sale for that language (`model_registry.py:355-358`) | **yes** (captions job) | caption track | none (a track is evidence; it is kept) |
 | `caption_word_fix` | `word_id, text` | text only; times unchanged | no | the document's word | inverse |
+| `translate_captions` (P2+) | `track_id, target_language` | an explicit person's op only; never proposed as part of a captions op | yes if it calls a model | a second caption track; the spoken one is untouched | removes the second track |
 | `caption_emphasis`, `punch_in`, `sfx_hit` | see §4a | see §4a | no (library sfx) / yes (generated sfx) | see §4a | inverse |
 
 Caption preset mapping (proposal, Pixel to confirm by eye): Highlight → `pop_in`, Karaoke → `karaoke`, Clean → `clean`,
@@ -218,7 +219,11 @@ with a link to `/<channel>/credits#topups`. Export stays the editor's own priced
 
 ## 4a. Smart captions (P1)
 
-### Speech recognition: uz (with dialects), ru, en, code-switching
+### Speech recognition: uz, ru, en, any accent, code-switching
+
+"Dialect" here means every language: regional speech (sheva), accents (English spoken by a non-native speaker, Uzbek
+with a Russian accent), mispronunciations and small speech errors. The failure to design against is real: in a live
+voice chat elsewhere, slightly accented Uzbek was taken for another language and answered in it.
 
 | Candidate | Status in this repo | Uzbek | Notes |
 | :-- | :-- | :-- | :-- |
@@ -228,21 +233,74 @@ with a link to `/<channel>/credits#topups`. Export stays the editor's own priced
 | Whisper `large-v3` local | not installed | **UNVERIFIED** | fit in media-worker's `mem_limit: 4g` (`deploy/docker-compose.yml:227`) and CPU speed **UNVERIFIED** |
 | An LLM with audio input | not built; no audio-input text model in the registry checked | **UNVERIFIED** | timestamps per word not assumed; would need its own adapter and Scout |
 
-Dialect (sheva) and code-switching accuracy for every candidate is **UNVERIFIED**. Before a choice:
+Accuracy for every candidate on dialects, accents and code-switching is **UNVERIFIED**. Before a choice:
 
-> **Scout task S-ASR-1.** The owner provides ~20 minutes of real channel audio: Tashkent, Fergana, Khorezm and
-> Surkhandarya speech, Uzbek-Russian code-switching, Latin and Cyrillic reference transcripts. Scout runs each candidate
-> (paid probes within a stated budget the owner approves), reports WER and CER per dialect, timestamp drift against a
-> hand-aligned 2-minute slice, cost per hour, latency, and whether a vocabulary/keyterm parameter exists and helps
-> (vendor docs, verified; not assumed). Measurement is its own PR (rule 8).
+> **Scout task S-ASR-1.** The owner provides about 20 minutes of real audio, with reference transcripts in Latin and
+> Cyrillic script:
+> - Uzbek: Tashkent, Fergana, Khorezm and Surkhandarya speech, and Uzbek with a Russian accent;
+> - Russian;
+> - English with a non-native accent;
+> - mixed uz/ru speech (and uz/en where available).
+>
+> Scout runs each candidate (paid probes, within a budget the owner approves) twice: once with the language **locked**
+> (passed as the language parameter), once with **auto-detect**. Per model, per sample group and per mode it reports:
+> - WER and CER;
+> - the **wrong-language rate**: the share of recordings, and of words where the vendor reports it, labelled or
+>   transcribed as another language;
+> - whether code-switched words come back as spoken, in their own script;
+> - timestamp drift against a hand-aligned 2-minute slice;
+> - cost per hour and latency;
+> - whether a vocabulary or keyterm parameter exists and helps (from vendor docs, verified, not assumed);
+> - whether the vendor reports per-word confidence or per-word language.
+>
+> Measurement is its own PR (rule 8).
 
 **Rule 4.** The channel's (or the person's) chosen ASR model is pinned on the `transcribe` op. Not on sale, keyless, or
 failing → the op fails with the remedy ("this transcription model is switched off; choose another in Settings"), never a
-quiet re-run on Whisper `base`. "Detect language" is an explicit choice, not a fallback.
+quiet re-run on Whisper `base`.
 
-**Custom vocabulary.** Per project, ≤ 100 terms (names, brands). Sent to the vendor only where Scout verified a parameter
-for it. In every case, after ASR, the LLM proposes `caption_word_fix` ops for near-misses of a vocabulary term; they are
-proposals flagged "check", never applied silently.
+**The language is locked.** It is never decided by detection, segment by segment.
+- **Where it comes from:** the project's language (a film's own language, 0166), else the channel's
+  (`ChannelContext.language`, `modules/channels.py:185`), else the person's explicit choice.
+- **How it is used:** it is sent as the language parameter. Both adapters already send one when it is given:
+  `language_code` (`modules/capabilities/audio.py:429`; `modules/capabilities/transcribe.py:1-30`).
+- **Auto-detect is a suggestion, not a setting.** It is run only when no language is known, and then only as "this
+  sounds like Russian; transcribe as Russian?", which the person confirms before the paid job starts.
+- **When the vendor's detected language differs from the locked one**, or the vendor reports low language confidence,
+  the result is flagged for review. It is never re-labelled, re-run in another language or translated (rules 4 and 5).
+  Today's adapters keep one `language_code` for the whole recording (`modules/captions.py:138-148`), so a mismatch is
+  detectable only per recording. Flags on single spans need a per-word language or confidence field from the vendor
+  (**UNVERIFIED**; S-ASR-1 reports it) or the correction pass below.
+
+**Code-switching is kept as spoken.** A Russian or English word inside an Uzbek sentence stays that word, in its own
+script (Cyrillic for Russian, Latin for English and Uzbek Latin). It is never "corrected" into the sentence's language.
+The correction pass and the vocabulary may not change a word's language.
+
+**Captions are never auto-translated.** Translation is a separate, explicit op (`translate_captions`, P2 or later,
+priced if it calls a model). It makes a second caption track and never replaces the spoken one.
+
+**The same rule applies later to voice features.** Nightshift AI's voice messages and AI call (post-event) must use
+the same language lock: the conversation's language is set, an accent never switches the reply language, and a detected
+change is a question to the person, never a switch.
+
+**Custom vocabulary.** Per project, at most 100 terms (names, brands). It is sent to the vendor only where Scout
+verified a parameter for it.
+
+**Context-aware correction pass.** After ASR, one LLM call (counted as one Brain turn) reads:
+- the whole transcript, with word ids and times;
+- the project vocabulary;
+- the video's topic or brief;
+- the locked language.
+
+It proposes `caption_word_fix` ops only for likely mis-hearings, such as an accent-driven near-miss of a vocabulary
+term or of a word the context makes obvious.
+- **Each fix is a reviewable diff:** original word → proposed word, with the audio time and a play button for that span.
+  The fix is never applied silently.
+- **The server refuses any fix that does more than that:** a fix that changes more than one word span, changes a word's
+  script or language, merges or drops words, or rewrites grammar.
+- **It never paraphrases, translates or "improves" what was said.** A spoken mistake stays a spoken mistake. Captions
+  are what was said.
+- **Words it cannot resolve are marked "check", not guessed.**
 
 **Correction UI.** Click a word on the transcript strip or on the caption preview, type, Enter. The word's times stay;
 split/merge of words keeps the outer times and spreads the inner ones (marked "estimated"). The raw ASR track
