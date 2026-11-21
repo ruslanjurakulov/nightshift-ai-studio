@@ -7,6 +7,8 @@ import { readBrainFacts } from "@/lib/server/brain-facts";
 import { BrainDashboard } from "@/components/brain/BrainDashboard";
 import { readBrainChannel } from "@/lib/server/brain-channel";
 import { getChannelScope } from "@/lib/channels-server";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { atLeast } from "@/lib/auth/roles-shared";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,7 +28,7 @@ export default async function BrainPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
   const td = t.brainDash;
-  const header = <PageHeader icon="memory" title={td.title} subtitle={td.subtitle} />;
+  const header = <PageHeader icon="brain" title={td.title} subtitle={td.subtitle} />;
   const org = await getOrgContext();
   if (!org.supported || !org.current) {
     return (
@@ -36,11 +38,15 @@ export default async function BrainPage() {
       </div>
     );
   }
-  const [read, channel] = await Promise.all([readBrainFacts(org.current.id), getChannelScope().then(readBrainChannel)]);
+  const [read, channel, role] = await Promise.all([
+    readBrainFacts(org.current.id),
+    getChannelScope().then(readBrainChannel),
+    resolveCurrentOrgRole(),
+  ]);
   return (
     <div className="rhythm ns-open">
       {header}
-      <BrainDashboard read={read} channel={channel} renderedAt={new Date().toISOString()} />
+      <BrainDashboard read={read} channel={channel} renderedAt={new Date().toISOString()} canRefresh={atLeast(role, "editor")} />
     </div>
   );
 }
