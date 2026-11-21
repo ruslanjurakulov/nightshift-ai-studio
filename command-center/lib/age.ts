@@ -31,3 +31,23 @@ export const mustAsk = (s: AgeState) => s === "none";
 export function adultLock(model: { adultOnly?: boolean }, state: AgeState): "adult_only" | null {
   return model.adultOnly && (state === "none" || state === "minor") ? "adult_only" : null;
 }
+
+/**
+ * The answer as a paid run sees it: AgeState, plus "absent" when 0192's my_adult_attestation does not exist yet (migrations are
+ * applied by hand, so the app can ship first). Absent is not a failed read: there is no gate to back, and refusing would be a dead
+ * end ("try again" forever, with no box to answer in), so a run goes on as it did before 0192.
+ */
+export type RunAgeAnswer = AgeState | "absent";
+
+/**
+ * Whether a run started in a person's session may go on (0196: every video run spends on Gemini, whose terms are 18+). Null =
+ * go on. On the queue an unread answer goes on, because the database's render_jobs run gate refuses the row itself; on Actions
+ * nothing after the route asks again, so an unread answer stops the run (try again) rather than spending on Google for someone
+ * who may never have answered. The one rule for Run now and a storyboard approval, the two routes that dispatch a run.
+ */
+export function runAgeRefusal(answer: RunAgeAnswer, backend: "queue" | "actions"): { error: string; status: number } | null {
+  if (answer === "minor") return { error: "adult_only_service", status: 403 };
+  if (answer === "none") return { error: "adult_attestation_required", status: 428 };
+  if (answer === "unknown" && backend === "actions") return { error: "age_unavailable", status: 503 };
+  return null;
+}

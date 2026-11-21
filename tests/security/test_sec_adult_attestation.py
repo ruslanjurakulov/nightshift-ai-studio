@@ -444,6 +444,10 @@ def gate_triggers(db):
 
 
 def test_replay_and_rollback_keep_the_record(db):
+    # 0196 sits on three of 0192's bodies, and 0192's drift guard refuses them: off first, so this compares 0192 alone, and back
+    # on at the end.
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0196(c)
     before = {s: _md5(db, s) for s in GATED}
     rows = db.su("select count(*) from public.adult_attestations")[0][0]
     db.su(sec_db.MIGRATION_0192.read_text(encoding="utf-8"))
@@ -460,8 +464,11 @@ def test_replay_and_rollback_keep_the_record(db):
         assert gate_triggers(db) == [], "the hold gate goes with the rollback"
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
-            sec_db.put_back_0192(c)
+            sec_db.put_back_0192(c)   # puts 0196 back too
+            sec_db.take_off_0196(c)
     assert {s: _md5(db, s) for s in GATED} == before
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.put_back_0196(c)
     assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate"),
                                  ("download_requests", "adult_attestation_download_gate"),
                                  ("render_jobs", "adult_attestation_run_gate")]

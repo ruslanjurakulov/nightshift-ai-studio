@@ -40,7 +40,9 @@ def extend(tables: dict, functions: dict) -> None:
 def seed(conn, sc) -> None:
     from sec_db import acting
 
-    for t in sc.tenants():
-        with acting(conn, t.actor, commit=True) as s:
+    # The tenants' members and the platform operator (and Dana, the operator's viewer): since 0196 a video run spends on Google and
+    # needs an adult answer, as a real person's does. The stranger and the invitee are left unanswered.
+    for who in (*[t.actor for t in sc.tenants()], sc.operator, sc.dana):
+        with acting(conn, who, commit=True) as s:
             out = s.value("select public.record_adult_attestation(true, '2026-11-20', 'email_signup')")
             assert out["state"] == "adult" and out["recorded"] is True, out
