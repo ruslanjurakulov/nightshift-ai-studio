@@ -58,6 +58,21 @@ describe("/owner/ai", () => {
   });
 });
 
+describe("the second-factor refusal in plain words", () => {
+  // What would break: the owner reading "second factor ... verify it" and not knowing a 6-digit code is wanted.
+  it.each([
+    ["en", en, "enter the 6-digit code from your authenticator app again", "Enter code"],
+    ["ru", ru, "6-значный код", "Ввести код"],
+    ["uz", uz, "6 xonali kodni qayta kiriting", "Kodni kiritish"],
+  ] as const)("%s: names the 6-digit code, and the button says to enter it", (_loc, dict, words, button) => {
+    const da = dict.ownerConsole.assistant;
+    expect(da.errors.second_factor).toContain(words);
+    expect(da.errors.second_factor).not.toMatch(/second factor|вторым фактором|ikkinchi omil/i);
+    expect(da.verify).toBe(button);
+    expect(failureText(da, 401, { error: "second_factor" })).toEqual({ message: da.errors.second_factor, verify: true });
+  });
+});
+
 describe("the panel's failures", () => {
   it("says the remedy for each refusal the route gives", () => {
     expect(failureText(a, 409, { error: "model_unavailable", reason: "not_configured" }).message).toBe(a.errors.model_unavailable.not_configured);

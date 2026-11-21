@@ -1,5 +1,5 @@
 import { normalizeAal } from "@/lib/security/aal";
-import type { AdminMfaMode } from "@/lib/security/admin-mfa";
+import { isSecondFactorStale, type AdminMfaMode } from "@/lib/security/admin-mfa";
 
 /**
  * "Recent second factor" step-up for the few admin writes that can redirect
@@ -70,5 +70,5 @@ export function recentMfaDecision({ mode, aal, lastFactorAt, now, windowMinutes 
   if (mode !== "enforce") return "ok";
   if (normalizeAal(aal) !== "aal2") return "ok";
   if (lastFactorAt === null) return "ok";
-  return now - lastFactorAt > windowMinutes * 60_000 ? "stale" : "ok";
+  return isSecondFactorStale(lastFactorAt, now, windowMinutes) ? "stale" : "ok";
 }

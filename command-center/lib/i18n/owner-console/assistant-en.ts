@@ -60,7 +60,7 @@ export const ownerAssistantEn = {
       not_configured: "The chat model's key isn't set on this server. Add it in the server's settings, then ask again.",
     },
     daily_cap: "Today's limit of {limit} questions is reached. It frees up over the next 24 hours.",
-    second_factor: "This needs your second factor. Verify it, then ask again.",
+    second_factor: "For security, enter the 6-digit code from your authenticator app again.",
     not_enabled: "The owner AI needs a database migration ({n}) that isn't applied yet.",
     unavailable: "Couldn't answer just now. This is on our side. Ask again.",
     network: "Couldn't reach the server. Check the connection and ask again.",
@@ -69,6 +69,6 @@ export const ownerAssistantEn = {
     other: "Couldn't answer. Ask again.",
   },
   signIn: "Sign in",
-  verify: "Verify",
+  verify: "Enter code",
   retry: "Ask again",
 };
