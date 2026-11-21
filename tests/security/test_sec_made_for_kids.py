@@ -324,8 +324,10 @@ def snapshot(su):
 def test_applying_it_again_changes_nothing(conn):
     with as_superuser(conn, commit=False) as su:
         before = snapshot(su)
+        sec_db.take_off_0204(su)  # 0204 sits on 0145's audit list, and 0145's drift guard refuses any other body: off, then back
         su.conn.execute(sec_db.MIGRATION_0145.read_text(encoding="utf-8"))
         su.conn.execute(sec_db.MIGRATION_0145.read_text(encoding="utf-8"))
+        sec_db.put_back_0204(su)
         assert snapshot(su) == before
 
 
