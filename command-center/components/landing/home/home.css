@@ -107,7 +107,11 @@
   .hm-idea-field:focus-visible { outline: none; }
   .hm-idea-field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--ds-danger); }
   .hm-idea-go { white-space: nowrap; }
-  @media (max-width: 639px) { .hm-idea-go { width: 100%; justify-content: center; } }
+  @media (max-width: 639px) {
+    .hm-idea-go { width: 100%; justify-content: center; }
+    /* A phone wraps the example to three lines; two cut it mid-word. Still a fixed height: nothing moves on hydration. */
+    .hm-idea-field { min-height: calc(3 * 1.5em + 2 * var(--ds-space-3)); }
+  }
   .hm-idea-problem { color: #ffb4bd; font-size: 0.875rem; font-weight: 600; }
   .hm-idea-note { max-width: 40em; color: var(--ds-text-2); font-size: 0.875rem; line-height: 1.5; }
   .hm-idea-count { color: var(--ds-text); font-variant-numeric: tabular-nums; }
