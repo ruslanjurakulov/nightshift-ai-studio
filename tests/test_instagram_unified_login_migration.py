@@ -19,7 +19,9 @@ def store_body(sql: str) -> str:
 class Migration0204(unittest.TestCase):
     def test_is_the_next_number(self):
         numbers = sorted(int(p.name[:4]) for p in (ROOT / "supabase" / "migrations").glob("[0-9][0-9][0-9][0-9]_*.sql"))
-        self.assertEqual(numbers[-1], 204)
+        # "Is the last number" held only until 0205 (publish refusal gate verdict) merged after it; what must stay true is that
+        # 0204 is taken exactly once and 0203 exists before it, so migrations auto-apply in order.
+        self.assertIn(203, numbers)
         self.assertEqual(numbers.count(204), 1)
 
     def test_is_additive_and_keeps_every_existing_row(self):

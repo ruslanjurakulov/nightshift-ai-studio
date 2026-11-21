@@ -2392,3 +2392,21 @@ tokens do not work there.
   Instagram connect answers "needs a database update (0204)"; nothing is stored.
 - **Undo.** `docs/sql/rollback_0204_instagram_unified_login.sql` (owner-applied): 0028's `store_social_account` and 0042's
   `api_list_connected_accounts`; the columns stay.
+
+## Publish to platforms: a missing gate verdict refuses (0205)
+
+0205 (`0205_publish_refusal_gate_verdict.sql`, provisional number) replaces only `publish_request_refusal` (0029). That function
+is the check the `publish_requests` insert trigger and the queue worker's re-check (modules/social_publish.py) both ask before a
+video is cross-posted.
+
+- **Why.** Its gate check looked for `publish.allowed` / `publish.blocked` events by `video_id`, but the pipeline emits those
+  events with the channel only. Nothing ever matched: a blocked verdict did not refuse, and a video with no verdict passed
+  (ledger BR-LIVE-04).
+- **What.** It now also reads `videos.gate_verdict` (0112), with 0112's meaning:
+  - blocked → `gate_blocked`;
+  - missing or not `allowed: true` → `gate_unknown`, never a pass.
+  Every other reason and its order is unchanged.
+- **Effect.** Videos uploaded before 0112 have no stored verdict and are now refused `gate_unknown` for cross-posting. Count them
+  first: `select count(*) from public.videos where published_at is not null and gate_verdict is null;`.
+- **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
+- **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
