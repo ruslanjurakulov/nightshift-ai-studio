@@ -82,5 +82,9 @@ export const aiChatUz: AiChatDictionary = {
     card_changed: "Savol oʻzgardi. Oxirgisiga javob bering.",
     assistant_unavailable: "Nightshift AI hozir mavjud emas. Keyinroq urinib koʻring.",
     unavailable: "Nightshift AI hozir javob bera olmadi. Qayta urinib koʻring.",
+    load_timeout: "Nightshift AI juda uzoq yuklanmoqda. Ulanishni tekshirib, qayta urinib koʻring.",
+    load_offline: "Nightshift AI bilan bogʻlanib boʻlmadi. Internet ulanishini tekshirib, qayta urinib koʻring.",
+    load_server: "Nightshift AI yuklanmadi: server xato bilan javob berdi ({status}). Bir daqiqadan soʻng qayta urinib koʻring.",
+    load_bad_answer: "Nightshift AI yuklanmadi: server javobini oʻqib boʻlmadi. Sahifani yangilang; takrorlansa, qaytadan kiring.",
   },
 };

@@ -80,6 +80,11 @@ export const aiChatEn = {
     card_changed: "That question has changed. Answer the latest one.",
     assistant_unavailable: "Nightshift AI is unavailable right now. Try again later.",
     unavailable: "Nightshift AI could not answer right now. Try again.",
+    // Opening the panel failed: each says which failure it was and what to do, never a "Loading…" that stays.
+    load_timeout: "Nightshift AI took too long to load. Check your connection and try again.",
+    load_offline: "Nightshift AI could not be reached. Check your internet connection and try again.",
+    load_server: "Nightshift AI could not load: the server answered with an error ({status}). Try again in a minute.",
+    load_bad_answer: "Nightshift AI could not load: the server’s answer could not be read. Reload the page; if it happens again, sign in again.",
   },
 };
 

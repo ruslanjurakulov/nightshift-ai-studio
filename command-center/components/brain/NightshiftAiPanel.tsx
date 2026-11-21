@@ -22,12 +22,19 @@ type Msg = { key: string; role: "user" | "assistant"; content: string; scenarios
 type State =
   | { state: "loading" }
   | { state: "hidden" }
-  | { state: "failed" }
+  | { state: "failed"; why: LoadFailure; status?: number }
   | { state: "not_enabled" }
   | { state: "session_ended" }
   | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean };
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
 type Problem = { text: string; retry: (() => void) | null } | null;
+/** Why opening the panel failed: each is said by name with its remedy (timed out, unreachable, a server error, an unreadable answer). */
+type LoadFailure = "timeout" | "offline" | "server" | "bad_answer";
+/**
+ * How long the panel waits for /api/brain. The audit (2026-11-21) found it on "Loading…" with nothing else: the read had no time
+ * limit, so a request that never answered kept the panel there for good, with no error and no Retry.
+ */
+export const AI_PANEL_LOAD_TIMEOUT_MS = 15_000;
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long"];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
@@ -92,22 +99,43 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     return true;
   }, []);
 
+  // Only the newest read may set the state: a Retry pressed while an older read is still out must not be overwritten by it.
+  const readSeq = useRef(0);
   const read = useCallback(async () => {
-    setLoad({ state: "loading" });
+    const seq = ++readSeq.current;
+    const set = (s: State) => {
+      if (seq === readSeq.current) setLoad(s);
+    };
+    set({ state: "loading" });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), AI_PANEL_LOAD_TIMEOUT_MS);
     try {
-      const res = await fetch(`/api/brain${channelId ? `?channel=${encodeURIComponent(channelId)}` : ""}`, { cache: "no-store" });
-      if (res.status === 404) return setLoad({ state: "hidden" });
+      const res = await fetch(`/api/brain${channelId ? `?channel=${encodeURIComponent(channelId)}` : ""}`, { cache: "no-store", signal: ctrl.signal });
+      if (res.status === 404) return set({ state: "hidden" });
       // An expired sign-in is said as such, with the way back; a Retry would only meet the same 401.
-      if (res.status === 401) return setLoad({ state: "session_ended" });
-      const d = await res.json().catch(() => ({}));
-      if (res.status === 503 && d.error === "not_enabled") return setLoad({ state: "not_enabled" });
-      if (!res.ok) return setLoad({ state: "failed" });
-      setLoad({ state: "ready", plan: d.plan, model: d.model, canEdit: d.canEdit === true, canRun: d.canRun === true });
-      setCapped(d.plan?.limit !== null && typeof d.plan?.used === "number" && d.plan.used >= d.plan.limit);
+      if (res.status === 401) return set({ state: "session_ended" });
+      let d: { error?: unknown; plan?: Plan | null; model?: string; canEdit?: unknown; canRun?: unknown; session?: { id?: string } | null } | null = null;
+      try {
+        d = await res.json();
+      } catch (e) {
+        if (ctrl.signal.aborted) throw e;
+      }
+      if (res.status === 503 && d?.error === "not_enabled") return set({ state: "not_enabled" });
+      if (!res.ok) return set({ state: "failed", why: "server", status: res.status });
+      // A 200 that is not the panel's answer (an HTML page from a proxy, an empty body) was drawn as "ready" with no plan, and the
+      // first render that read plan.limit threw. It is said as what it is instead.
+      if (!d || typeof d.plan !== "object" || d.plan === null) return set({ state: "failed", why: "bad_answer" });
+      if (seq !== readSeq.current) return;
+      const plan = d.plan;
+      setLoad({ state: "ready", plan, model: String(d.model ?? ""), canEdit: d.canEdit === true, canRun: d.canRun === true });
+      setCapped(plan.limit !== null && typeof plan.used === "number" && plan.used >= plan.limit);
+      clearTimeout(timer);
       const sid = initialSession || (fresh ? null : d.session?.id) || null;
       if (sid) await loadSession(sid);
-    } catch {
-      setLoad({ state: "failed" });
+    } catch (e) {
+      set({ state: "failed", why: ctrl.signal.aborted ? "timeout" : e instanceof SyntaxError ? "bad_answer" : "offline" });
+    } finally {
+      clearTimeout(timer);
     }
   }, [channelId, initialSession, fresh, loadSession]);
 
@@ -324,7 +352,14 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
       {open && (
         <div id="ns-ai-body" className="flex min-w-0 flex-col gap-3">
           {!session && <p className="text-xs text-[var(--color-muted)]">{c.subtitle}</p>}
-          {load.state === "loading" && <p className="text-xs text-[var(--color-muted)]" role="status">{c.loading}</p>}
+          {/* The shape of what is coming (the box and its Send), not a line of text that looks like content. */}
+          {load.state === "loading" && (
+            <div className="flex flex-col gap-2" role="status" aria-busy="true" data-testid="ns-ai-loading">
+              <span className="sr-only">{c.loading}</span>
+              <div aria-hidden className="skeleton h-24 w-full rounded-lg" />
+              <div aria-hidden className="skeleton h-11 w-28 rounded-lg" />
+            </div>
+          )}
           {load.state === "not_enabled" && <p className="text-sm" role="status">{c.errors.not_enabled}</p>}
           {load.state === "session_ended" && (
             <div className="flex flex-col gap-2" role="alert">
@@ -337,8 +372,16 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
             <p className="text-sm" role="status">{fmt(c.errors.chat_daily_cap, { used: load.plan.used ?? load.plan.limit, limit: load.plan.limit })}</p>
           )}
           {load.state === "failed" && (
-            <div className="flex flex-wrap items-center gap-2" role="alert">
-              <p className="text-sm">{c.errors.unavailable}</p>
+            <div className="flex flex-wrap items-center gap-2" role="alert" data-testid="ns-ai-load-failed" data-why={load.why}>
+              <p className="text-sm">
+                {load.why === "timeout"
+                  ? c.errors.load_timeout
+                  : load.why === "offline"
+                    ? c.errors.load_offline
+                    : load.why === "server"
+                      ? fmt(c.errors.load_server, { status: load.status ?? "?" })
+                      : c.errors.load_bad_answer}
+              </p>
               <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void read()}>{c.retry}</button>
             </div>
           )}

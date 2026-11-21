@@ -82,5 +82,9 @@ export const aiChatRu: AiChatDictionary = {
     card_changed: "Вопрос изменился. Ответьте на последний.",
     assistant_unavailable: "Nightshift AI сейчас недоступен. Попробуйте позже.",
     unavailable: "Nightshift AI сейчас не смог ответить. Попробуйте ещё раз.",
+    load_timeout: "Nightshift AI загружается слишком долго. Проверьте подключение и попробуйте снова.",
+    load_offline: "Не удалось связаться с Nightshift AI. Проверьте подключение к интернету и попробуйте снова.",
+    load_server: "Nightshift AI не загрузился: сервер ответил ошибкой ({status}). Попробуйте через минуту.",
+    load_bad_answer: "Nightshift AI не загрузился: ответ сервера не удалось прочитать. Обновите страницу; если повторится, войдите снова.",
   },
 };
