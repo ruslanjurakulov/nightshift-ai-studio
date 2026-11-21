@@ -19,7 +19,7 @@ import {
 export type PageIcon =
   | "videos" | "pipeline" | "analytics" | "studio" | "brandLook" | "series" | "channels"
   | "accounts" | "portfolio" | "providers" | "agents" | "jobs" | "topics" | "measurement"
-  | "decisions" | "learning" | "memory" | "autonomy" | "feedback"
+  | "decisions" | "learning" | "memory" | "brain" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
   | "members" | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits" | "usage"
   | "developers" | "library" | "editor" | "models" | "margin" | "customers" | "styles" | "workflows" | "inbox" | "marketing" | "modelKeys" | "ads" | "characterStudio" | "trends";
@@ -53,6 +53,8 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   decisions: GitBranch,
   learning: GraduationCap,
   memory: Database,
+  // Nightshift Brain: the same mark its rail entry draws.
+  brain: Brain,
   autonomy: Gauge,
   feedback: RefreshCw,
   advisory: Lightbulb,

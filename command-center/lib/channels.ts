@@ -57,6 +57,8 @@ export const ALL_CHANNELS_SLUG = "all-channels";
 export const SECTIONS = [
   "command-center",
   "home",
+  // Nightshift Brain (0201): the customer's channel, credits and forecast, projects and memory.
+  "brain",
   // All sections: the operator's phone page behind the bottom bar's More tab (lib/navigation ALL_SECTIONS).
   "sections",
   "create",

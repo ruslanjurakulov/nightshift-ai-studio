@@ -804,3 +804,8 @@ sec_owner_brain_0197.extend(TABLES, FUNCTIONS)
 import sec_ai_chat_0199  # noqa: E402
 
 sec_ai_chat_0199.extend(TABLES, FUNCTIONS)
+
+# Migration 0201 (the customer's Nightshift Brain dashboard facts): tests/security/sec_brain_org_facts_0201.py
+import sec_brain_org_facts_0201  # noqa: E402
+
+sec_brain_org_facts_0201.extend(TABLES, FUNCTIONS)

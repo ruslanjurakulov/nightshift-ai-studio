@@ -11,6 +11,7 @@ import { rightsAckRu } from "./rights-acknowledgement/ru";
 import { voiceCatalogRu } from "./voice-catalog/ru";
 import { libraryUxRu } from "./library-ux/ru";
 import { assetDownloadRu } from "./asset-download/ru";
+import { brainDashRu } from "./brain-dashboard/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ageRu } from "./age/ru";
 import { aiChatRu } from "./ai-chat/ru";
@@ -78,6 +79,7 @@ export const ru: Dictionary = {
   effects: effectsRu,
   libraryUx: libraryUxRu,
   assetDownload: assetDownloadRu,
+  brainDash: brainDashRu,
   ownerShell: ownerShellRu,
   age: ageRu,
   aiChat: aiChatRu,
@@ -176,6 +178,7 @@ export const ru: Dictionary = {
     organization: "Настройки",
     credits: "Кредиты",
     usage: "Расход",
+    brain: "Nightshift Brain",
     security: "Безопасность",
     onboarding: "С чего начать",
     approvals: "Согласования",
