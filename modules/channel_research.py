@@ -62,9 +62,12 @@ UNITS_LIST = 1
 DAILY_UNITS = 1500
 DAILY_SEARCHES = 30
 ORG_DAILY_SEARCHES = 3
-#: No separate per-organization share of the 1,500 was approved, so one organization may use all of it; the database's one-hour
-#: freshness rule and the per-person rate limit keep a single tenant from emptying it by pressing.
-ORG_DAILY_UNITS = DAILY_UNITS
+#: One organization's share of the 1,500 a day, so a single tenant cannot spend every other tenant's research day.
+ORG_DAILY_UNITS = 300
+#: What one search.list call also takes from the SHARED units (``RESEARCH_SEARCH_SHARED_UNITS``, 0..100, default 0). The current
+#: determine_quota_cost page puts search.list in its own bucket; confirm in Cloud Console → Quotas, and if search.list draws from
+#: the shared 10,000, set this to 100.
+SEARCH_SHARED_UNITS_ENV = "RESEARCH_SEARCH_SHARED_UNITS"
 #: Statistics newer than this are not fetched again (a new competitor's request must not re-buy the other nineteen).
 STALE_SECONDS = 3600
 UPLOADS_PER_CHANNEL = 20
@@ -91,10 +94,12 @@ _PLAYLIST = re.compile(r"^[A-Za-z0-9_-]{2,64}$")
 class Stop(Exception):
     """End a request: ``status`` (failed | budget_exhausted | not_connected) and a closed word, never a provider's text."""
 
-    def __init__(self, status: str, code: str):
+    def __init__(self, status: str, code: str, http: int = 0):
         super().__init__(code)
         self.status = status if status in ("failed", "budget_exhausted", "not_connected") else "failed"
         self.code = code if code in ERROR_WORDS else "worker_error"
+        #: The HTTP status YouTube answered (0: none), so a caller can tell one bad lookup from a broken day.
+        self.http = int(http or 0)
 
 
 def failed(code: str) -> Stop:
@@ -145,9 +150,7 @@ def error_word(status_code: int, body, *, oauth: bool = False) -> str:
         return "not_found"
     if status_code >= 500:
         return "platform_error"
-    if status_code == 400 and not oauth:
-        # An unexplained 400 on a public call is most often a malformed key ("API key not valid", reason badRequest).
-        return "auth"
+    # Any other 400 is about the request (a malformed handle, say), not the key: a key problem names itself in _KEY above.
     return "platform_error"
 
 
@@ -187,7 +190,7 @@ class YouTubeClient:
         if r.status_code >= 300:
             word = error_word(r.status_code, _json(r), oauth=bool(token))
             # YouTube's own day is spent: the request ends like our budget does (nothing more can run today), named apart.
-            raise Stop("budget_exhausted" if word == "quota" else "failed", word)
+            raise Stop("budget_exhausted" if word == "quota" else "failed", word, r.status_code)
         body = _json(r)
         if not isinstance(body, Mapping):
             raise failed("platform_error")
@@ -216,7 +219,10 @@ class YouTubeClient:
         return out[:UPLOADS_PER_CHANNEL]
 
     def videos(self, ids: Sequence[str], *, token: str = "") -> List[dict]:
-        body = self._get(f"{DATA_API}/videos", {"part": "snippet,statistics", "id": ",".join(ids), "maxResults": 50}, token=token)
+        # part=status: on the owner's token the list includes private and unlisted uploads, and only one YouTube reports public may
+        # reach the shared cache (the API key sees public ones only; status costs nothing more).
+        body = self._get(f"{DATA_API}/videos", {"part": "snippet,statistics,status", "id": ",".join(ids), "maxResults": 50},
+                         token=token)
         return [i for i in body.get("items") or [] if isinstance(i, Mapping)]
 
     def search_channels(self, query: str) -> List[str]:
@@ -296,6 +302,13 @@ def video_row(item: Mapping) -> Optional[dict]:
         "like_count": _count(st.get("likeCount")),
         "comment_count": _count(st.get("commentCount")),
     }
+
+
+def privacy_of(item: Mapping) -> Optional[str]:
+    """The privacy YouTube reported for a video (videos.list part=status), or None when it did not say."""
+    status = item.get("status") if isinstance(item.get("status"), Mapping) else {}
+    value = status.get("privacyStatus")
+    return value if value in ("public", "unlisted", "private") else None
 
 
 # ── Supabase (the service key; only 0199's functions) ────────────────────────
@@ -385,6 +398,8 @@ class Budget:
     spent: int = 0
 
     def take(self, source: str = SOURCE_UNITS, units: int = UNITS_LIST) -> None:
+        if units <= 0:
+            return
         if source == SOURCE_SEARCH:
             ceiling, org_ceiling = DAILY_SEARCHES, ORG_DAILY_SEARCHES
         else:
@@ -412,14 +427,33 @@ def _chunks(items: Sequence[str], n: int = 50) -> Iterable[List[str]]:
         yield list(items[i:i + n])
 
 
-def _uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, *, token: str = "") -> None:
-    """The newest uploads of one channel and their statistics: 2 units."""
+def _uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, youtube_channel_id: str) -> None:
+    """A channel's newest PUBLIC uploads and their statistics, with the platform's key: 2 units. The batch is marked complete, so a
+    cached video the public lookup no longer returns (it went private, or was deleted) is removed from the shared cache."""
+    spend.take()
+    ids = yt.upload_ids(playlist_id)
+    rows = []
+    if ids:
+        spend.take()
+        rows = [r for r in (video_row(i) for i in yt.videos(ids)) if r and r["youtube_channel_id"] == youtube_channel_id]
+    store.store_videos(rows + [{"youtube_channel_id": youtube_channel_id, "complete": True}])
+
+
+def _own_uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, token: str, request_id) -> None:
+    """The channel's own newest uploads with its own token (private and unlisted included): 2 units. Stored for that channel only;
+    the database copies a video into the shared cache only when YouTube reports it public."""
     spend.take()
     ids = yt.upload_ids(playlist_id, token=token)
     if not ids:
         return
     spend.take()
-    store.store_videos([r for r in (video_row(i) for i in yt.videos(ids, token=token)) if r])
+    rows = []
+    for item in yt.videos(ids, token=token):
+        row = video_row(item)
+        if row:
+            row.update({"own_request_id": request_id, "privacy_status": privacy_of(item)})
+            rows.append(row)
+    store.store_videos(rows)
 
 
 def access_token(session, token_json: str, *, timeout: float = 20.0) -> str:
@@ -444,7 +478,11 @@ def access_token(session, token_json: str, *, timeout: float = 20.0) -> str:
     if r.status_code >= 500:
         raise failed("platform_error")
     if r.status_code >= 300:
-        # invalid_grant: revoked or expired; the person reconnects. Any other 4xx is the same remedy.
+        # invalid_grant: revoked or expired, the person reconnects. invalid_client / unauthorized_client: the server's OAuth client is
+        # wrong, which no reconnect fixes (the operator's remedy). Only the error WORD is read, never the description.
+        word = body.get("error") if isinstance(body, Mapping) else None
+        if word in ("invalid_client", "unauthorized_client"):
+            raise failed("not_configured")
         raise failed("token_expired")
     tok = body.get("access_token") if isinstance(body, Mapping) else None
     if not isinstance(tok, str) or not tok:
@@ -485,7 +523,7 @@ def _own(req: Mapping, *, yt: YouTubeClient, session, store, spend: Budget, cred
     if answer != "ok":
         raise failed("worker_error")
     if row.get("uploads_playlist_id"):
-        _uploads(yt, spend, store, row["uploads_playlist_id"], token=token)
+        _own_uploads(yt, spend, store, row["uploads_playlist_id"], token, req.get("id"))
 
 
 def _competitors(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, now: datetime) -> None:
@@ -494,9 +532,22 @@ def _competitors(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, now: 
     stale_ids: List[str] = []
     pending_ids: Dict[str, str] = {}       # UC id -> competitor id
     for c in comps:
-        if c.get("status") == "pending" and c.get("ref_kind") == "handle":
+        cached = c.get("cached_id") if isinstance(c.get("cached_id"), str) else None
+        if c.get("status") == "pending" and cached and _fresh(c.get("channel_fetched_at"), now):
+            # The channel is in the cache and younger than an hour (a competitor removed and added again, or another
+            # organization's): resolved at no cost, and its uploads fetched only if they are stale too.
+            if store.resolve(str(c["id"]), cached) == "resolved" and not _fresh(c.get("videos_fetched_at"), now):
+                playlists[cached] = c.get("uploads_playlist_id")
+        elif c.get("status") == "pending" and c.get("ref_kind") == "handle":
             spend.take()
-            items = yt.channels(handle=str(c.get("input_ref") or ""))
+            try:
+                items = yt.channels(handle=str(c.get("input_ref") or ""))
+            except Stop as e:
+                # One handle YouTube will not look up is that competitor's answer, not the whole request's.
+                if e.code == "not_found" or (e.code == "platform_error" and e.http == 400):
+                    store.resolve(str(c["id"]), None)
+                    continue
+                raise
             row = channel_row(items[0]) if items else None
             if row is None:
                 store.resolve(str(c["id"]), None)
@@ -526,15 +577,17 @@ def _competitors(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, now: 
                 playlists[cid] = rows[cid].get("uploads_playlist_id")
     for cid, playlist in playlists.items():
         if playlist:
-            _uploads(yt, spend, store, playlist)
+            _uploads(yt, spend, store, playlist, cid)
 
 
-def _topic(req: Mapping, *, yt: YouTubeClient, store, spend: Budget) -> None:
+def _topic(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, search_shared_units: int = 0) -> None:
     topic = str(req.get("topic") or "")
     if not topic:
         raise failed("worker_error")
     if not yt._key:
         raise failed("not_configured")
+    # When the project's search.list draws from the shared bucket too, those units are counted first (RESEARCH_SEARCH_SHARED_UNITS).
+    spend.take(SOURCE_UNITS, search_shared_units)
     spend.take(SOURCE_SEARCH)
     ids = yt.search_channels(topic)
     if ids:
@@ -544,8 +597,17 @@ def _topic(req: Mapping, *, yt: YouTubeClient, store, spend: Budget) -> None:
         raise failed("worker_error")
 
 
+def search_shared_units(env: Mapping[str, str]) -> int:
+    """RESEARCH_SEARCH_SHARED_UNITS as a whole number 0..100; anything else is the default, 0."""
+    try:
+        n = int(str(env.get(SEARCH_SHARED_UNITS_ENV, "") or "0").strip())
+    except ValueError:
+        return 0
+    return n if 0 <= n <= 100 else 0
+
+
 def process_request(req: Mapping, *, store, session, api_key: str, credentials: Callable[[str], tuple], worker_id: str,
-                    project: str = "default", now: Optional[datetime] = None) -> str:
+                    project: str = "default", now: Optional[datetime] = None, search_units: int = 0) -> str:
     """Carry out one claimed request and record how it ended. Returns the status written."""
     rid = req.get("id")
     kind = req.get("kind")
@@ -563,7 +625,7 @@ def process_request(req: Mapping, *, store, session, api_key: str, credentials: 
         elif kind == "competitors":
             _competitors(req, yt=yt, store=store, spend=spend, now=now)
         elif kind == "topic":
-            _topic(req, yt=yt, store=store, spend=spend)
+            _topic(req, yt=yt, store=store, spend=spend, search_shared_units=search_units)
         else:
             raise failed("worker_error")
     except Stop as e:
@@ -595,6 +657,7 @@ class ResearchService:
         self._api_key = str(env.get(API_KEY_ENV, "") or "").strip()
         raw = str(env.get("NIGHTSHIFT_YT_QUOTA_PROJECT", "") or "").strip().lower()
         self.project = raw if re.fullmatch(r"[a-z0-9._-]{1,64}", raw) else "default"
+        self.search_units = search_shared_units(env)
         self._clock = clock
         self._last_purge: Optional[float] = None
         self._warned = False
@@ -636,7 +699,7 @@ class ResearchService:
         if not req:
             return False
         process_request(req, store=self.store, session=self.http(), api_key=self._api_key, credentials=self.credentials,
-                        worker_id=self.worker_id, project=self.project)
+                        worker_id=self.worker_id, project=self.project, search_units=self.search_units)
         return True
 
 

@@ -17,6 +17,8 @@ def extend(tables: dict, functions: dict) -> None:
         "research_topic_results": Service(),
         "research_own_analytics": Service(),
         "research_requests": Service(),
+        # A channel's own uploads (private ones included): readable only through research_own_channel.
+        "research_own_videos": Service(),
     })
     functions.update({
         # A member's own session: each checks the channel's organization and the role itself.
@@ -49,6 +51,9 @@ def extend(tables: dict, functions: dict) -> None:
         "research_stopwords": SERVICE,
         "research_min_interval": SERVICE,
         "research_clean": SERVICE,
+        "research_channel_confirmed": SERVICE,
+        "research_draft_answer": SERVICE,
+        "research_own_videos_json": SERVICE,
     })
 
 
@@ -72,5 +77,7 @@ def seed(conn, sc) -> None:
                    "on conflict do nothing returning 1", [f"seedvideo{i:02d}", yid])
             s.rows("insert into public.research_topic_results (org_id, topic_norm, youtube_channel_ids) values (%s, 'seed topic', %s) "
                    "on conflict do nothing returning 1", [t.org, [yid]])
+            s.rows("insert into public.research_own_videos (channel_id, video_id, title, privacy_status) values (%s, %s, 'own', 'private') "
+                   "on conflict do nothing returning 1", [t.channel, f"ownvideo{i:03d}"])
             s.rows("insert into public.research_own_analytics (channel_id, period_days, youtube_channel_id, views) values (%s, 28, %s, 1) "
                    "on conflict do nothing returning 1", [t.channel, yid])

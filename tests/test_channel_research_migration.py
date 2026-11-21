@@ -158,6 +158,23 @@ class ChannelResearchMigration(unittest.TestCase):
         self.assertNotIn("youtube_quota_take(text, integer, integer, uuid, integer);", rb.replace(
             "to_regprocedure('public.youtube_quota_take(text, integer, integer, uuid, integer)')", ""))
 
+    def test_fix_round_pins(self):
+        # BR-R-001: own uploads have their own, channel-scoped table, and only a public one reaches the shared cache.
+        store = self.fns["research_store_videos"][0]
+        self.assertIn("delete from pg_temp.research_tmp_videos where privacy_status is distinct from 'public'", store)
+        self.assertIn("research_own_videos_json(p_channel, 10)", self.fns["research_own_channel"][0])
+        self.assertNotIn("research_videos_json(a.youtube_channel_id", self.fns["research_own_channel"][0])
+        # BR-R-005: flagged comments never sampled.
+        self.assertIn("x.flagged_injection is not true", self.fns["research_comment_themes"][0])
+        # Rule 7: every reader and writer asks whether the channel is confirmed.
+        for name in READERS + WRITERS[:2]:
+            self.assertIn("research_channel_confirmed(p_channel)", self.fns[name][0], name)
+        # BR-R-002 (contract): a youtube answer says its strings are third-party text.
+        self.assertIn("'untrusted_strings', p_source = 'youtube'", self.fns["research_answer"][0])
+        # The customer-facing remedies do not name the operator's secret.
+        self.assertNotIn("YOUTUBE_DATA_API_KEY", self.fns["research_remedy"][0])
+        self.assertIn("take_web_rate('research_competitor_remove', 40, 3600)", self.fns["research_remove_competitor"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

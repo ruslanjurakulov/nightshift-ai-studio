@@ -152,7 +152,7 @@ class BudgetComesFirst(unittest.TestCase):
         store = FakeStore()
         self.assertEqual(run(topic_req(), session, store), "done")
         self.assertEqual(store.takes[0], ("default", 1, 30, "org-1", 3, "research_search"))
-        self.assertEqual(store.takes[1], ("default", 1, 1500, "org-1", 1500, "research"))
+        self.assertEqual(store.takes[1], ("default", 1, 1500, "org-1", 300, "research"))
         self.assertEqual(store.topics, [(7, [UC1])])
         # The search bucket counts calls, not shared units: only the channels.list unit is recorded on the request.
         self.assertEqual(store.finished[-1], (7, "done", None, 1))
@@ -407,6 +407,89 @@ class WiredIntoTheQueueWorker(unittest.TestCase):
         text = (ROOT / "modules" / "channel_research.py").read_text(encoding="utf-8")
         self.assertNotRegex(text, r"\.(post|put|patch|delete)\((?!TOKEN_URI|f\"\{self\.url\}/rest/v1/rpc)")
         self.assertNotIn("VIDIQ", text.upper().replace("VIDIQ IS NOT USED", "").replace("NEVER ON VIDIQ", ""))
+
+
+class FixRound(unittest.TestCase):
+    """Lens / Breach on PR #851: what would break without these."""
+
+    def own_req(self):
+        return {"id": 11, "kind": "own_channel", "org_id": "o", "channel_id": "chan-a"}
+
+    def test_own_uploads_carry_their_privacy_and_stay_with_the_channel(self):
+        # BR-R-001: the owner's token sees private uploads; each row is marked as the channel's own, with what YouTube reported.
+        def videos(params):
+            items = [video_item("privateVid1", UC1), video_item("publicVid01", UC1)]
+            items[0]["status"] = {"privacyStatus": "private"}
+            items[1]["status"] = {"privacyStatus": "public"}
+            return Resp(200, {"items": items})
+
+        routes = OwnChannel().routes()
+        routes["/playlistItems"] = Resp(200, {"items": [{"contentDetails": {"videoId": "privateVid1"}},
+                                                        {"contentDetails": {"videoId": "publicVid01"}}]})
+        routes["/videos"] = videos
+        session, store = FakeSession(routes), FakeStore()
+        run(self.own_req(), session, store, credentials=lambda cid: (OwnChannel().token_json(), OwnChannel().ctx()))
+        self.assertEqual({(v["video_id"], v["privacy_status"], v["own_request_id"]) for v in store.videos},
+                         {("privateVid1", "private", 11), ("publicVid01", "public", 11)})
+        call = next(g for g in session.gets if g.url.endswith("/videos"))
+        self.assertIn("status", call.params["part"].split(","))
+
+    def test_a_public_lookup_is_marked_complete_so_vanished_videos_leave_the_cache(self):
+        session = FakeSession({"/playlistItems": Resp(200, {"items": []})})
+        store = FakeStore()
+        run({"id": 3, "kind": "competitors", "org_id": "o", "competitors": [
+            {"id": "c1", "input_ref": "@x", "ref_kind": "handle", "status": "resolved", "youtube_channel_id": UC1,
+             "channel_fetched_at": "2026-11-21T11:30:00+00:00", "videos_fetched_at": None, "uploads_playlist_id": "UUa"}]},
+            session, store)
+        self.assertEqual(store.videos, [{"youtube_channel_id": UC1, "complete": True}])
+
+    def test_one_bad_handle_does_not_fail_the_request(self):
+        def channels(params):
+            if params.get("forHandle") == "@bad":
+                return Resp(400, {"error": {"errors": [{"reason": "invalidParameter"}]}})
+            return Resp(200, {"items": [channel_item(UC1)]})
+
+        session = FakeSession({"/channels": channels, "/playlistItems": Resp(200, {"items": []})})
+        store = FakeStore()
+        status = run({"id": 3, "kind": "competitors", "org_id": "o", "competitors": [
+            {"id": "c1", "input_ref": "@bad", "ref_kind": "handle", "status": "pending"},
+            {"id": "c2", "input_ref": "@good", "ref_kind": "handle", "status": "pending"}]}, session, store)
+        self.assertEqual(status, "done")
+        self.assertEqual(store.resolved, [("c1", None), ("c2", UC1)])
+
+    def test_a_400_is_auth_only_when_the_reason_says_key(self):
+        self.assertEqual(cr.error_word(400, {"error": {"errors": [{"reason": "invalidParameter"}]}}), "platform_error")
+        self.assertEqual(cr.error_word(400, {"error": {"errors": [{"reason": "keyInvalid"}]}}), "auth")
+
+    def test_a_wrong_oauth_client_is_the_operators_fix_not_a_reconnect(self):
+        session = FakeSession(post=Resp(401, {"error": "invalid_client", "error_description": "secret s3cr3t"}))
+        with self.assertRaises(cr.Stop) as e:
+            cr.access_token(session, '{"refresh_token": "r", "client_id": "c", "client_secret": "s"}')
+        self.assertEqual(e.exception.code, "not_configured")
+        session = FakeSession(post=Resp(400, {"error": "invalid_grant"}))
+        with self.assertRaises(cr.Stop) as e:
+            cr.access_token(session, '{"refresh_token": "r", "client_id": "c", "client_secret": "s"}')
+        self.assertEqual(e.exception.code, "token_expired")
+
+    def test_a_search_can_be_made_to_take_shared_units_first(self):
+        self.assertEqual([cr.search_shared_units(e) for e in ({}, {"RESEARCH_SEARCH_SHARED_UNITS": "100"},
+                                                               {"RESEARCH_SEARCH_SHARED_UNITS": "101"},
+                                                               {"RESEARCH_SEARCH_SHARED_UNITS": "x"})], [0, 100, 0, 0])
+        store = FakeStore(allow=lambda source: source != "research")
+        session = FakeSession()
+        status = cr.process_request(topic_req(), store=store, session=session, api_key=KEY, worker_id="w",
+                                    credentials=lambda c: ("", None), now=NOW, search_units=100)
+        self.assertEqual(status, "budget_exhausted")
+        self.assertEqual(store.takes[0][1:], (100, 1500, "org-1", 300, "research"))
+        self.assertEqual(session.gets, [], "the search was made after the shared units said no")
+
+    def test_a_readded_competitor_reuses_a_fresh_cache_at_no_cost(self):
+        fresh = "2026-11-21T11:30:00+00:00"
+        session, store = FakeSession(), FakeStore()
+        run({"id": 3, "kind": "competitors", "org_id": "o", "competitors": [
+            {"id": "c1", "input_ref": "@rival", "ref_kind": "handle", "status": "pending", "cached_id": UC1,
+             "channel_fetched_at": fresh, "videos_fetched_at": fresh, "uploads_playlist_id": "UUa"}]}, session, store)
+        self.assertEqual((session.gets, store.takes, store.resolved), ([], [], [("c1", UC1)]))
 
 
 if __name__ == "__main__":

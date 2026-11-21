@@ -23,7 +23,9 @@
 --       20 per channel, unique per (channel, YouTube channel).
 --  2. research_channel_cache, research_video_cache   public statistics as YouTube returned them, keyed by YouTube id, with fetched_at.
 --  3. research_topic_results    the channel ids search.list returned for an organization's topic, in YouTube's order.
---  4. research_own_analytics    the customer's own channel's YouTube Analytics totals (authorized data, the channel's own token).
+--  4. research_own_analytics    the customer's own channel's YouTube Analytics totals (authorized data, the channel's own token),
+--       and research_own_videos, its own newest uploads (private and unlisted included), scoped to the channel: only a video YouTube
+--       reports public is also written to the shared video cache. Both are shown only while the channel stays connected.
 --  5. research_requests         the queue: one open request per (channel, kind, topic); a duplicate press returns the open one.
 --  6. youtube_quota_ledger      its source CHECK gains 'research' (units of the shared 10,000-unit bucket) and 'research_search'
 --       (search.list calls, YouTube's own bucket), dropped and re-added additively: 'visibility' keeps its meaning and its rows. A
@@ -78,7 +80,8 @@ create table if not exists public.research_competitors (
   ref_kind            text not null check (ref_kind in ('handle', 'id')),
   -- NULL until YouTube said which channel the reference names.
   youtube_channel_id  text check (youtube_channel_id is null or youtube_channel_id ~ '^UC[A-Za-z0-9_-]{22}$'),
-  status              text not null default 'pending' check (status in ('pending', 'resolved', 'not_found')),
+  -- own_channel: the reference turned out to name this channel itself (an @handle of its own), refused once YouTube said so.
+  status              text not null default 'pending' check (status in ('pending', 'resolved', 'not_found', 'own_channel')),
   added_by            uuid,
   created_at          timestamptz not null default now(),
   resolved_at         timestamptz,
@@ -155,6 +158,27 @@ create table if not exists public.research_own_analytics (
 
 comment on table public.research_own_analytics is
   'Channel research (0199): the customer''s own channel''s YouTube Analytics totals for the last period_days, read with that channel''s own token. Each metric as reported, never combined.';
+
+-- The customer's OWN newest uploads, read with the channel's own token, which also sees private and unlisted ones. Scoped to the
+-- channel (never the shared research_video_cache, which any organization naming that YouTube channel as a competitor reads: a
+-- channel's private upload list is its own business, and Nightshift uploads private by default, rule 2). Only a video YouTube says is
+-- public is ALSO written to the shared cache.
+create table if not exists public.research_own_videos (
+  channel_id      text not null references public.channels (channel_id) on update cascade on delete cascade,
+  video_id        text not null check (video_id ~ '^[A-Za-z0-9_-]{11}$'),
+  title           text check (title is null or char_length(title) <= 200),
+  published_at    timestamptz,
+  view_count      bigint check (view_count is null or view_count >= 0),
+  like_count      bigint check (like_count is null or like_count >= 0),
+  comment_count   bigint check (comment_count is null or comment_count >= 0),
+  -- As videos.list part=status reported it; NULL = not reported (then it is never shared).
+  privacy_status  text check (privacy_status is null or privacy_status in ('public', 'unlisted', 'private')),
+  fetched_at      timestamptz not null default now(),
+  primary key (channel_id, video_id)
+);
+
+comment on table public.research_own_videos is
+  'Channel research (0199): the customer''s own newest uploads (private and unlisted included), read with its own token and readable only through research_own_channel by that channel''s members. Deleted after 30 days or when the channel is no longer connected.';
 
 create table if not exists public.research_requests (
   id            bigint generated always as identity primary key,
@@ -340,12 +364,15 @@ create or replace function public.research_remedy(p_status text, p_error text) r
       'remedy', 'YouTube''s daily quota for this project is used up; it resets at midnight Pacific time.')
     when p_status = 'budget_exhausted' or p_error = 'budget' then jsonb_build_object('remedy_code', 'budget',
       'remedy', 'Today''s research budget is used; it resets at midnight Pacific time.')
+    -- A draft: never confirmed against YouTube (rule 7). Nothing is fetched for it, and no search is spent on it.
+    when p_error = 'not_confirmed' then jsonb_build_object('remedy_code', 'connect',
+      'remedy', 'Connect the channel to YouTube first.')
     when p_status = 'not_connected' or p_error = 'not_connected' then jsonb_build_object('remedy_code', 'connect',
       'remedy', 'Connect this channel to YouTube on the Channels page, then refresh.')
     when p_error = 'not_configured' then jsonb_build_object('remedy_code', 'not_configured',
-      'remedy', 'Research is not set up on this server yet: the operator adds the YOUTUBE_DATA_API_KEY secret.')
+      'remedy', 'Research isn''t set up on this server yet; contact support.')
     when p_error = 'auth' then jsonb_build_object('remedy_code', 'auth',
-      'remedy', 'YouTube refused the server''s API key: the operator checks the YOUTUBE_DATA_API_KEY secret.')
+      'remedy', 'Research can''t reach YouTube because of a setup problem on our side; contact support.')
     when p_error in ('scope_missing', 'token_expired') then jsonb_build_object('remedy_code', 'reconnect',
       'remedy', 'Reconnect this channel on the Channels page so Nightshift may read its analytics.')
     when p_error = 'channel_mismatch' then jsonb_build_object('remedy_code', 'channel_mismatch',
@@ -378,8 +405,10 @@ begin
           when last_s in ('not_connected', 'budget_exhausted') then last_s
           else 'no_data'
         end;
+  -- Every string inside a youtube-sourced answer's data (a channel or video title, a handle) was written by whoever owns that
+  -- channel: the flag tells the chat to treat all of it as data, never as an instruction (docs/studio/RESEARCH_TOOLS.md).
   return jsonb_build_object('status', st, 'fetched_at', p_fetched_at, 'source', p_source, 'data', coalesce(p_data, 'null'::jsonb),
-                            'last_request', p_last) || rem;
+                            'last_request', p_last, 'untrusted_strings', p_source = 'youtube') || rem;
 end
 $$;
 
@@ -418,6 +447,40 @@ create or replace function public.research_videos_json(p_youtube_channel_id text
            limit greatest(1, least(coalesce(p_limit, 10), 20))) v
 $$;
 
+-- Is the channel an account YouTube confirmed (rule 7)? The registry's rule (ChannelRegistry.active / is_verified, migration 0005):
+-- credential_ref carries verified_at AND youtube_channel_id, or it is the operator's 'default' channel; a live YouTube connection
+-- (0022 / 0116's visibility_channel_connected) is YouTube saying so too. A row made from a typed name and nothing else is a draft:
+-- research neither fetches for it nor spends a search on it.
+create or replace function public.research_channel_confirmed(p_channel text) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce((
+    select c.channel_id = 'default'
+        or (coalesce(c.credential_ref ->> 'verified_at', '') <> '' and coalesce(c.credential_ref ->> 'youtube_channel_id', '') <> '')
+        or public.visibility_channel_connected(c.channel_id)
+      from public.channels c where c.channel_id = p_channel), false)
+$$;
+
+-- What every reader answers for a draft channel.
+create or replace function public.research_draft_answer(p_source text) returns jsonb
+  language sql immutable set search_path = public, pg_temp as $$
+  select jsonb_build_object('status', 'not_connected', 'fetched_at', null, 'source', p_source, 'data', null, 'last_request', null,
+                            'untrusted_strings', p_source = 'youtube') || public.research_remedy(null, 'not_confirmed')
+$$;
+
+-- The channel's own newest uploads (its members only), fresh only, newest first, with the privacy YouTube reported.
+create or replace function public.research_own_videos_json(p_channel text, p_limit integer) returns jsonb
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(v.j order by v.published_at desc nulls last, v.video_id), '[]'::jsonb)
+    from (select x.video_id, x.published_at,
+                 jsonb_build_object('video_id', x.video_id, 'title', x.title, 'published_at', x.published_at,
+                                    'view_count', x.view_count, 'like_count', x.like_count, 'comment_count', x.comment_count,
+                                    'privacy_status', x.privacy_status, 'fetched_at', x.fetched_at) as j
+            from public.research_own_videos x
+           where x.channel_id = p_channel and x.fetched_at > now() - interval '30 days'
+           order by x.published_at desc nulls last, x.video_id
+           limit greatest(1, least(coalesce(p_limit, 10), 20))) v
+$$;
+
 -- ───────────────────────────────────────────────────────────────────────────
 -- 4. Readers: the tool contract (docs/studio/RESEARCH_TOOLS.md)
 -- ───────────────────────────────────────────────────────────────────────────
@@ -432,7 +495,16 @@ declare
   data  jsonb;
 begin
   org := public.research_channel_access(p_channel, 'viewer');
+  if not public.research_channel_confirmed(p_channel) then
+    return public.research_draft_answer('youtube');
+  end if;
   last := public.research_last_request(p_channel, 'own_channel', null);
+  -- Authorized data, held only while the channel's owner keeps the connection: a disconnected channel's analytics are not shown
+  -- (and the purge deletes them).
+  if not public.visibility_channel_connected(p_channel) then
+    return public.research_answer('youtube', false, null, null, last)
+           || jsonb_build_object('status', 'not_connected') || public.research_remedy('not_connected', null);
+  end if;
   select * into a from public.research_own_analytics x
    where x.channel_id = p_channel and x.period_days = 28 and x.fetched_at > now() - interval '30 days';
   if a.channel_id is not null then
@@ -444,13 +516,8 @@ begin
                                       'estimated_minutes_watched', a.estimated_minutes_watched,
                                       'subscribers_gained', a.subscribers_gained, 'subscribers_lost', a.subscribers_lost,
                                       'fetched_at', a.fetched_at),
-      'recent_videos', public.research_videos_json(a.youtube_channel_id, 10));
+      'recent_videos', public.research_own_videos_json(p_channel, 10));
     return public.research_answer('youtube', true, a.fetched_at, data, last);
-  end if;
-  -- Nothing fresh, and nothing can be fetched until the channel is connected: say that, not "no data".
-  if coalesce(last ->> 'status', '') not in ('queued', 'running') and not public.visibility_channel_connected(p_channel) then
-    return public.research_answer('youtube', false, null, null, last)
-           || jsonb_build_object('status', 'not_connected') || public.research_remedy('not_connected', null);
   end if;
   return public.research_answer('youtube', false, null, null, last);
 end
@@ -466,6 +533,9 @@ declare
   n        integer;
 begin
   org := public.research_channel_access(p_channel, 'viewer');
+  if not public.research_channel_confirmed(p_channel) then
+    return public.research_draft_answer('youtube');
+  end if;
   last := public.research_last_request(p_channel, 'competitors', null);
   select coalesce(jsonb_agg(jsonb_build_object(
            'id', r.id, 'input_ref', r.input_ref, 'status', r.status, 'youtube_channel_id', r.youtube_channel_id,
@@ -497,6 +567,9 @@ declare
   topics jsonb;
 begin
   org := public.research_channel_access(p_channel, 'viewer');
+  if not public.research_channel_confirmed(p_channel) then
+    return public.research_draft_answer('youtube');
+  end if;
   select coalesce(jsonb_agg(jsonb_build_object('topic', x.topic_norm, 'fetched_at', x.fetched_at) order by x.fetched_at desc), '[]'::jsonb)
     into topics
     from (select topic_norm, fetched_at from public.research_topic_results
@@ -509,7 +582,7 @@ begin
   if t is null then
     return jsonb_build_object('status', 'no_data', 'fetched_at', null, 'source', 'youtube', 'error', 'invalid_topic',
                               'data', jsonb_build_object('topic', null, 'channels', '[]'::jsonb, 'recent_topics', topics),
-                              'last_request', null);
+                              'last_request', null, 'untrusted_strings', true);
   end if;
   last := public.research_last_request(p_channel, 'topic', t);
   select * into res from public.research_topic_results x
@@ -557,6 +630,9 @@ declare
   words    jsonb;
 begin
   org := public.research_channel_access(p_channel, 'viewer');
+  if not public.research_channel_confirmed(p_channel) then
+    return public.research_draft_answer('nightshift');
+  end if;
   -- 0081 not applied: the inbox does not exist here, which is not the same as "nobody commented".
   if to_regclass('public.inbox_comments') is null then
     return jsonb_build_object('status', 'not_enabled', 'fetched_at', null, 'source', 'nightshift', 'data', null,
@@ -570,6 +646,8 @@ begin
        and coalesce(x.published_at, x.fetched_at) >= now() - make_interval(days => d)
        and x.fetched_at > now() - interval '30 days'
        and x.category is distinct from 'spam'
+       -- The inbox's classifier flagged it as a prompt injection: never sampled for the chat, not even as untrusted text.
+       and x.flagged_injection is not true
      order by coalesce(x.published_at, x.fetched_at) desc
      limit 2000
   ), toks as (
@@ -630,6 +708,9 @@ declare
   today  integer;
 begin
   org := public.research_channel_access(p_channel, 'editor');
+  if not public.research_channel_confirmed(p_channel) then
+    return jsonb_build_object('ok', false, 'error', 'not_connected') || public.research_remedy(null, 'not_confirmed');
+  end if;
   if coalesce(p_kind, '') not in ('own_channel', 'competitors', 'topic') then
     return jsonb_build_object('ok', false, 'error', 'invalid_kind');
   end if;
@@ -661,7 +742,10 @@ begin
     select max(r.finished_at) into done_at from public.research_requests r
      where r.channel_id = p_channel and r.kind = p_kind and r.status = 'done';
   end if;
-  if done_at is not null and done_at > now() - public.research_min_interval(p_kind) then
+  -- A competitor still waiting to be resolved is never "recent": the last refresh ran before it was added.
+  if done_at is not null and done_at > now() - public.research_min_interval(p_kind)
+     and not (p_kind = 'competitors'
+              and exists (select 1 from public.research_competitors c where c.channel_id = p_channel and c.status = 'pending')) then
     return jsonb_build_object('ok', true, 'status', 'recent', 'request_id', null, 'fetched_at', done_at,
                               'next_at', done_at + public.research_min_interval(p_kind));
   end if;
@@ -703,6 +787,9 @@ declare
   rid    bigint;
 begin
   org := public.research_channel_access(p_channel, 'editor');
+  if not public.research_channel_confirmed(p_channel) then
+    return jsonb_build_object('ok', false, 'error', 'not_connected') || public.research_remedy(null, 'not_confirmed');
+  end if;
   parsed := public.research_parse_ref(p_ref);
   if parsed is null then
     return jsonb_build_object('ok', false, 'error', 'invalid_ref');
@@ -747,6 +834,10 @@ begin
   org := public.research_channel_access(p_channel, 'editor');
   if p_id is null then
     return jsonb_build_object('ok', true, 'removed', false);
+  end if;
+  -- Limited like adding: remove + add again is otherwise a way around the one-hour rule.
+  if not public.take_web_rate('research_competitor_remove', 40, 3600) then
+    return jsonb_build_object('ok', false, 'error', 'rate_limited');
   end if;
   -- Scoped by the channel the caller may edit: another channel's id removes nothing and answers the same as a missing one.
   delete from public.research_competitors r where r.id = p_id and r.channel_id = p_channel;
@@ -796,12 +887,23 @@ begin
     select coalesce(jsonb_agg(jsonb_build_object(
              'id', c.id, 'input_ref', c.input_ref, 'ref_kind', c.ref_kind, 'status', c.status,
              'youtube_channel_id', c.youtube_channel_id,
-             'channel_fetched_at', (select k.fetched_at from public.research_channel_cache k where k.youtube_channel_id = c.youtube_channel_id),
-             'videos_fetched_at', (select max(v.fetched_at) from public.research_video_cache v where v.youtube_channel_id = c.youtube_channel_id),
-             'uploads_playlist_id', (select k.uploads_playlist_id from public.research_channel_cache k where k.youtube_channel_id = c.youtube_channel_id))
+             -- The cached channel this reference names, if any (a re-added competitor reuses a fresh cache at no cost): its id, or for an
+             -- @handle the channel whose handle it is.
+             'cached_id', k.youtube_channel_id,
+             'channel_fetched_at', k.fetched_at,
+             'videos_fetched_at', (select max(v.fetched_at) from public.research_video_cache v where v.youtube_channel_id = k.youtube_channel_id),
+             'uploads_playlist_id', k.uploads_playlist_id)
            order by c.created_at), '[]'::jsonb)
       into comps
       from public.research_competitors c
+      left join lateral (
+        select x.youtube_channel_id, x.fetched_at, x.uploads_playlist_id
+          from public.research_channel_cache x
+         where x.fetched_at > now() - interval '30 days'
+           and (x.youtube_channel_id = coalesce(c.youtube_channel_id, case when c.ref_kind = 'id' then c.input_ref end)
+                or (c.youtube_channel_id is null and c.ref_kind = 'handle' and lower(x.handle) = c.input_ref))
+         order by x.fetched_at desc
+         limit 1) k on true
      where c.channel_id = r.channel_id and c.status in ('pending', 'resolved');
   end if;
   return jsonb_build_object('id', r.id, 'channel_id', r.channel_id, 'org_id', r.org_id, 'kind', r.kind, 'topic', r.topic,
@@ -816,6 +918,7 @@ create or replace function public.research_finish_request(
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   n integer;
+  r public.research_requests;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may finish research' using errcode = '42501';
@@ -828,8 +931,18 @@ begin
   update public.research_requests
      set status = p_status, error_code = p_error_code, finished_at = now(), claimed_by = null, lease_until = null,
          quota_units = quota_units + greatest(coalesce(p_units, 0), 0)
-   where id = p_request_id and status = 'running' and claimed_by = p_worker;
+   where id = p_request_id and status = 'running' and claimed_by = p_worker
+  returning * into r;
   get diagnostics n = row_count;
+  -- A competitor added while this request was running was not in what the worker claimed: queue the next round now, so it is not left
+  -- pending until somebody presses Refresh (the add found this request open and queued nothing of its own).
+  if n > 0 and r.kind = 'competitors' and p_status = 'done'
+     and exists (select 1 from public.research_competitors c
+                  where c.channel_id = r.channel_id and c.status = 'pending' and c.created_at >= r.started_at) then
+    insert into public.research_requests (channel_id, org_id, kind, topic, requested_by)
+    values (r.channel_id, r.org_id, 'competitors', null, r.requested_by)
+    on conflict (channel_id, kind, coalesce(topic, '')) where status in ('queued', 'running') do nothing;
+  end if;
   return n > 0;
 end
 $$;
@@ -868,29 +981,84 @@ begin
 end
 $$;
 
+-- Videos as videos.list returned them. Three kinds of row in one batch:
+--   * a public lookup (the API key): {video_id, youtube_channel_id, ...} -> the shared cache;
+--   * a channel's complete list marker {youtube_channel_id, complete: true} (no video_id): the shared cache's other rows for that
+--     channel are deleted, so a video that went private, or was deleted, disappears instead of lingering for 30 days;
+--   * an own-channel row {own_request_id, privacy_status, ...} (the channel's own token, which sees private uploads): stored for that
+--     request's channel only (research_own_videos, whose other rows for the channel are replaced), and ALSO in the shared cache only
+--     when privacy_status is 'public'. One that YouTube reports private or unlisted is taken OUT of the shared cache.
 create or replace function public.research_store_videos(p_rows jsonb) returns integer
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  n integer;
+  n       integer := 0;
+  m       integer;
+  own_rid bigint;
+  r       public.research_requests;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may store research' using errcode = '42501';
   end if;
-  if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) > 50 then
+  if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) > 51 then
     raise exception 'invalid research rows' using errcode = '22023';
   end if;
+  create temporary table if not exists pg_temp.research_tmp_videos (
+    video_id text, youtube_channel_id text, title text, published_at timestamptz, view_count bigint, like_count bigint,
+    comment_count bigint, own_request_id bigint, privacy_status text, complete boolean
+  ) on commit drop;
+  truncate pg_temp.research_tmp_videos;
+  insert into pg_temp.research_tmp_videos
+  select x.video_id, x.youtube_channel_id, public.research_clean(x.title, 200), x.published_at, x.view_count, x.like_count,
+         x.comment_count, x.own_request_id, x.privacy_status, coalesce(x.complete, false)
+    from jsonb_to_recordset(p_rows) as x(video_id text, youtube_channel_id text, title text, published_at timestamptz,
+                                         view_count bigint, like_count bigint, comment_count bigint, own_request_id bigint,
+                                         privacy_status text, complete boolean);
+  if exists (select 1 from pg_temp.research_tmp_videos where video_id is null and not complete) then
+    raise exception 'invalid research rows' using errcode = '22023';
+  end if;
+  select min(own_request_id) into own_rid from pg_temp.research_tmp_videos;
+  if own_rid is not null then
+    if exists (select 1 from pg_temp.research_tmp_videos where own_request_id is distinct from own_rid or complete) then
+      raise exception 'an own-channel batch is one request''s, and only that' using errcode = '22023';
+    end if;
+    select * into r from public.research_requests where id = own_rid and kind = 'own_channel' and status = 'running';
+    if r.id is null then
+      return 0;
+    end if;
+    delete from public.research_own_videos o
+     where o.channel_id = r.channel_id and o.video_id not in (select video_id from pg_temp.research_tmp_videos);
+    insert into public.research_own_videos as o
+      (channel_id, video_id, title, published_at, view_count, like_count, comment_count, privacy_status, fetched_at)
+    select r.channel_id, t.video_id, t.title, t.published_at, t.view_count, t.like_count, t.comment_count,
+           case when t.privacy_status in ('public', 'unlisted', 'private') then t.privacy_status end, now()
+      from pg_temp.research_tmp_videos t
+    on conflict (channel_id, video_id) do update
+       set title = excluded.title, published_at = excluded.published_at, view_count = excluded.view_count,
+           like_count = excluded.like_count, comment_count = excluded.comment_count, privacy_status = excluded.privacy_status,
+           fetched_at = excluded.fetched_at;
+    get diagnostics n = row_count;
+    -- Not public (any more): out of what other organizations read.
+    delete from public.research_video_cache v
+     using pg_temp.research_tmp_videos t where v.video_id = t.video_id and t.privacy_status in ('private', 'unlisted');
+    delete from pg_temp.research_tmp_videos where privacy_status is distinct from 'public';
+  end if;
+  -- A complete list replaces the channel's cached videos.
+  delete from public.research_video_cache v
+   using (select distinct youtube_channel_id from pg_temp.research_tmp_videos where complete) c
+   where v.youtube_channel_id = c.youtube_channel_id
+     and v.video_id not in (select t.video_id from pg_temp.research_tmp_videos t
+                             where t.video_id is not null and t.youtube_channel_id = c.youtube_channel_id);
   insert into public.research_video_cache as v
     (video_id, youtube_channel_id, title, published_at, view_count, like_count, comment_count, fetched_at)
-  select x.video_id, x.youtube_channel_id, public.research_clean(x.title, 200), x.published_at, x.view_count, x.like_count,
-         x.comment_count, now()
-    from jsonb_to_recordset(p_rows) as x(video_id text, youtube_channel_id text, title text, published_at timestamptz,
-                                         view_count bigint, like_count bigint, comment_count bigint)
+  select t.video_id, t.youtube_channel_id, t.title, t.published_at, t.view_count, t.like_count, t.comment_count, now()
+    from pg_temp.research_tmp_videos t
+   where t.video_id is not null
   on conflict (video_id) do update
      set youtube_channel_id = excluded.youtube_channel_id, title = excluded.title, published_at = excluded.published_at,
          view_count = excluded.view_count, like_count = excluded.like_count, comment_count = excluded.comment_count,
          fetched_at = excluded.fetched_at;
-  get diagnostics n = row_count;
-  return n;
+  get diagnostics m = row_count;
+  return n + m;
 end
 $$;
 
@@ -914,6 +1082,12 @@ begin
   if p_youtube_channel_id is null then
     update public.research_competitors set status = 'not_found', youtube_channel_id = null, resolved_at = now() where id = p_id;
     return 'not_found';
+  end if;
+  -- An @handle that turned out to be this channel's own: refused, said so (status own_channel), never compared with itself.
+  if exists (select 1 from public.channels c
+              where c.channel_id = r.channel_id and c.credential_ref ->> 'youtube_channel_id' = p_youtube_channel_id) then
+    update public.research_competitors set status = 'own_channel', youtube_channel_id = null, resolved_at = now() where id = p_id;
+    return 'own_channel';
   end if;
   if exists (select 1 from public.research_competitors x
               where x.channel_id = r.channel_id and x.youtube_channel_id = p_youtube_channel_id and x.id <> p_id) then
@@ -997,6 +1171,9 @@ declare
   v_topics   integer;
   v_own      integer;
   v_requests integer;
+  v_own_videos integer;
+  v_unconnected integer;
+  v_resolved integer;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may purge research' using errcode = '42501';
@@ -1009,9 +1186,21 @@ begin
   get diagnostics v_topics = row_count;
   delete from public.research_own_analytics where fetched_at < now() - interval '30 days';
   get diagnostics v_own = row_count;
+  delete from public.research_own_videos where fetched_at < now() - interval '30 days';
+  get diagnostics v_own_videos = row_count;
+  -- Authorized data is kept only while the owner keeps the connection.
+  delete from public.research_own_analytics a where not public.visibility_channel_connected(a.channel_id);
+  get diagnostics v_unconnected = row_count;
+  delete from public.research_own_videos o where not public.visibility_channel_connected(o.channel_id);
+  -- Which YouTube channel a reference names is YouTube's answer too: after 30 days it is asked again (pending), not kept.
+  update public.research_competitors
+     set status = 'pending', youtube_channel_id = null, resolved_at = null
+   where status in ('resolved', 'not_found', 'own_channel') and resolved_at < now() - interval '30 days';
+  get diagnostics v_resolved = row_count;
   delete from public.research_requests where finished_at < now() - interval '30 days';
   get diagnostics v_requests = row_count;
-  return jsonb_build_object('channels', v_channels, 'videos', v_videos, 'topics', v_topics, 'own', v_own, 'requests', v_requests);
+  return jsonb_build_object('channels', v_channels, 'videos', v_videos, 'topics', v_topics, 'own', v_own + v_unconnected,
+                            'own_videos', v_own_videos, 'competitors_reset', v_resolved, 'requests', v_requests);
 end
 $$;
 
@@ -1025,6 +1214,7 @@ alter table public.research_video_cache enable row level security;
 alter table public.research_topic_results enable row level security;
 alter table public.research_own_analytics enable row level security;
 alter table public.research_requests enable row level security;
+alter table public.research_own_videos enable row level security;
 
 -- No API role reads or writes any of them directly, the service key included: every read and write is a function above.
 revoke all on public.research_competitors from public, anon, authenticated, service_role;
@@ -1033,6 +1223,7 @@ revoke all on public.research_video_cache from public, anon, authenticated, serv
 revoke all on public.research_topic_results from public, anon, authenticated, service_role;
 revoke all on public.research_own_analytics from public, anon, authenticated, service_role;
 revoke all on public.research_requests from public, anon, authenticated, service_role;
+revoke all on public.research_own_videos from public, anon, authenticated, service_role;
 revoke all on sequence public.research_topic_results_id_seq from public, anon, authenticated, service_role;
 revoke all on sequence public.research_requests_id_seq from public, anon, authenticated, service_role;
 
@@ -1049,6 +1240,9 @@ revoke all on function public.research_videos_json(text, integer) from public, a
 revoke all on function public.research_stopwords() from public, anon, authenticated, service_role;
 revoke all on function public.research_min_interval(text) from public, anon, authenticated, service_role;
 revoke all on function public.research_clean(text, integer) from public, anon, authenticated, service_role;
+revoke all on function public.research_channel_confirmed(text) from public, anon, authenticated, service_role;
+revoke all on function public.research_draft_answer(text) from public, anon, authenticated, service_role;
+revoke all on function public.research_own_videos_json(text, integer) from public, anon, authenticated, service_role;
 
 -- A signed-in member (each function checks the organization and the role itself): not anon, not the service key.
 revoke all on function public.research_own_channel(text) from public, anon, authenticated, service_role;
@@ -1094,7 +1288,8 @@ grant execute on function public.research_purge_stale() to service_role;
 --     (select bool_and(relrowsecurity) from pg_class
 --       where oid in ('public.research_competitors'::regclass, 'public.research_channel_cache'::regclass,
 --                     'public.research_video_cache'::regclass, 'public.research_topic_results'::regclass,
---                     'public.research_own_analytics'::regclass, 'public.research_requests'::regclass)) as rls_on,
+--                     'public.research_own_analytics'::regclass, 'public.research_requests'::regclass,
+--                     'public.research_own_videos'::regclass)) as rls_on,
 --     not has_table_privilege('authenticated', 'public.research_requests', 'INSERT')
 --       and not has_table_privilege('authenticated', 'public.research_channel_cache', 'SELECT')
 --       and not has_table_privilege('service_role', 'public.research_video_cache', 'INSERT')

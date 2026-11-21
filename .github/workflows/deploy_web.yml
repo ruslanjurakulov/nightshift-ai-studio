@@ -417,6 +417,7 @@ jobs:
           # Models, hosts, per-run and per-day USD caps and unit prices: variables only
           # (deploy/.env.worker.example, "Models, hosts and caps" and "Spend").
           WORKERENV_GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          WORKERENV_RESEARCH_SEARCH_SHARED_UNITS: ${{ vars.RESEARCH_SEARCH_SHARED_UNITS }}
           WORKERENV_EDGE_TTS_VOICE: ${{ vars.EDGE_TTS_VOICE }}
           WORKERENV_MINIMAX_BASE_URL: ${{ vars.MINIMAX_BASE_URL }}
           WORKERENV_CHRONOS_MINIMAX_BROLL_MAX_CLIPS: ${{ vars.CHRONOS_MINIMAX_BROLL_MAX_CLIPS }}

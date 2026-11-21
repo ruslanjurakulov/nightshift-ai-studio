@@ -40,9 +40,13 @@ drop function if exists public.research_parse_ref(text);
 drop function if exists public.research_stopwords();
 drop function if exists public.research_min_interval(text);
 drop function if exists public.research_clean(text, integer);
+drop function if exists public.research_channel_confirmed(text);
+drop function if exists public.research_draft_answer(text);
+drop function if exists public.research_own_videos_json(text, integer);
 
 drop table if exists public.research_requests;
 drop table if exists public.research_own_analytics;
+drop table if exists public.research_own_videos;
 drop table if exists public.research_topic_results;
 drop table if exists public.research_video_cache;
 drop table if exists public.research_channel_cache;
