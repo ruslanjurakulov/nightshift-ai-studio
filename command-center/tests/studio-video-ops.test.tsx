@@ -366,7 +366,7 @@ describe("pinned to 0100", () => {
       expect(CAPABILITIES as readonly string[]).toContain(c);
       expect(REGISTRY_CAPABILITIES as readonly string[]).toContain(c);
     }
-    // No new param key: 0100 reuses prompt and aspect_ratio (the 18th, image_size, is 0208's: tests/geo-google.test.ts).
+    // No new param key: 0100 reuses prompt and aspect_ratio (the 18th, image_size, is 0208's: tests/test_geo_gate_image_size_migration.py).
     expect(PARAM_KEYS.filter((k) => k !== "image_size")).toHaveLength(17);
   });
 
