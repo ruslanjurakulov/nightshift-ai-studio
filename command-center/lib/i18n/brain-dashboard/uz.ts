@@ -93,6 +93,5 @@ export const brainDashUz: BrainDashDictionary = {
     published: "YouTube yoki Instagramʼda eʼlon qilingan: video fayl yaratilganidan 10 kun oʻtib serverimizdan oʻchiriladi. Havola, muqova, sarlavha va jonli statistika qoladi.",
     unpublished: "Eʼlon qilinmagan: fayl 10 kundan soʻng butunlay oʻchiriladi. Bundan 3 kun oldin «Yuklab olish» tugmasi bilan ogohlantirish olasiz.",
     memory: "Brain eslab qolganlari (personajlar, logotip, uslub) saqlanadi.",
-    soon: "tez orada",
   },
 };

@@ -441,9 +441,6 @@ export function BrainDashboard({
       <section className="panel flex min-w-0 flex-col gap-2 p-4 sm:p-5 lg:col-span-2" aria-label={td.retention.title}>
         <header className="flex flex-wrap items-center gap-2">
           <h2 className="m-0 text-[15px] font-semibold">{td.retention.title}</h2>
-          <span className="rounded-full bg-[var(--color-panel-2)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-            {td.retention.soon}
-          </span>
         </header>
         <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-sm text-[var(--color-muted)]">
           <li>{td.retention.published}</li>

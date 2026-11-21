@@ -95,7 +95,6 @@ export const brainDashEn = {
     published: "Published to YouTube or Instagram: the video file is removed from our server 10 days after it was made. The link, thumbnail, title and live statistics stay.",
     unpublished: "Not published: the file is removed entirely after 10 days. You get a warning with a Download button 3 days before.",
     memory: "What the Brain remembers (characters, logo, style) is kept.",
-    soon: "coming soon",
   },
 };
 
