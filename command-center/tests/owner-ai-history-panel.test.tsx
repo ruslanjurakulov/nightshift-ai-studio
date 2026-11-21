@@ -78,16 +78,28 @@ describe("/api/brain/owner/history", () => {
     expect(s.rpcCalls).toEqual([]);
   });
 
-  it("lists through owner_ai_session_list with the page size and the cursor, and hands back the next cursor only on a full page", async () => {
+  it("lists through owner_ai_session_list with the page size and the (updated_at, id) cursor, and hands back the next cursor only on a full page", async () => {
     const rows = Array.from({ length: 30 }, (_, i) => ({ id: `${S1.slice(0, -2)}${String(i).padStart(2, "0")}`, title: `t${i}`, created_at: "x", updated_at: `2026-11-21T0${i % 10}:00:00Z` }));
     s.rpc.owner_ai_session_list = { data: rows, error: null };
-    const res = await route.GET(req("/api/brain/owner/history?before=2026-11-21T10:00:00Z"));
+    const res = await route.GET(req(`/api/brain/owner/history?before=${encodeURIComponent(`2026-11-21T10:00:00Z|${S2}`)}`));
     const body = await res.json();
-    expect(s.rpcCalls).toEqual([{ name: "owner_ai_session_list", args: { p_limit: 30, p_before: "2026-11-21T10:00:00Z" } }]);
+    // Both halves reach the database: two chats saved in the same microsecond are neither skipped nor shown twice.
+    expect(s.rpcCalls).toEqual([{ name: "owner_ai_session_list", args: { p_limit: 30, p_before: "2026-11-21T10:00:00Z", p_before_id: S2 } }]);
     expect(body.sessions).toHaveLength(30);
-    expect(body.next_before).toBe(rows[29].updated_at);
+    expect(body.next_before).toBe(`${rows[29].updated_at}|${rows[29].id}`);
     s.rpc.owner_ai_session_list = { data: rows.slice(0, 3), error: null };
     expect((await (await route.GET(req("/api/brain/owner/history"))).json()).next_before).toBeNull();
+  });
+
+  it("refuses a cursor whose id is not a uuid before the database", async () => {
+    expect((await route.GET(req(`/api/brain/owner/history?before=${encodeURIComponent("2026-11-21T10:00:00Z|x' or 1=1")}`))).status).toBe(400);
+    expect(s.rpcCalls).toEqual([]);
+  });
+
+  it("counts a rename's length in characters as the database does: 60 emoji are a valid title", async () => {
+    const title = "😀".repeat(60);
+    expect((await route.PATCH(req("/api/brain/owner/history", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ session: S1, title }) }))).status).toBe(200);
+    expect((await route.PATCH(req("/api/brain/owner/history", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ session: S1, title: title + "😀" }) }))).status).toBe(400);
   });
 
   it("names a session deleted elsewhere as gone, a missing migration as not_enabled 0209, and the second factor as such", async () => {
@@ -284,6 +296,26 @@ describe("the history panel", () => {
     await act(async () => fireEvent.submit(screen.getByLabelText(a.label).closest("form")!));
     expect((await row("Which API?")).getAttribute("aria-current")).toBe("true");
     expect(fetchMock.mock.calls[2][0]).toBe("/api/brain/owner/history");
+    // The answer says it was saved, because the route said so.
+    expect(screen.getByText(a.saveState.saved).getAttribute("data-history")).toBe("saved");
+  });
+
+  it.each([
+    ["not_saved", a.saveState.not_saved],
+    ["needs_migration", a.saveState.needs_migration],
+    // A route that does not say is not read as saved (rule 5).
+    [undefined, a.saveState.not_saved],
+  ])("an answer the route reports as %s says so under the answer, as a warning", async (state, text) => {
+    fetchMock
+      .mockResolvedValueOnce(json(200, { sessions: [], next_before: null }))
+      .mockResolvedValueOnce(json(200, { answer: "Pay Lab Vendor.", draft: null, removed_links: 0, as_of: null, model: "m", session_id: null, history: state }));
+    mount();
+    await panel().findByText(h.empty);
+    fireEvent.change(screen.getByLabelText(a.label), { target: { value: "Which API?" } });
+    await act(async () => fireEvent.submit(screen.getByLabelText(a.label).closest("form")!));
+    const line = await screen.findByText(text);
+    expect(line.getAttribute("data-tone")).toBe("warn");
+    expect(screen.queryByText(a.saveState.saved)).toBeNull();
   });
 
   it("remembers the desktop collapse, and survives storage that throws", async () => {

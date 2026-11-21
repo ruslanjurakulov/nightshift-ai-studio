@@ -24,7 +24,12 @@ interface Turn {
   draft: { title: string | null; body: string } | null;
   asOf: string | null;
   removedLinks: number;
+  /** Whether the server stored this turn (0209), as the route said it; absent for turns read back from the history (stored by
+   *  definition). Shown, never assumed: an unsaved answer must not look like it will be there tomorrow (rule 5). */
+  saved?: SaveState;
 }
+type SaveState = keyof A["saveState"];
+const readSaveState = (v: unknown): SaveState => (v === "saved" || v === "needs_migration" ? v : "not_saved");
 /** retry: whether asking again can help (a daily cap, a missing key or migration will refuse again). */
 type Failure = { message: string; verify?: boolean; clear?: boolean; signIn?: boolean; retry?: boolean };
 
@@ -215,6 +220,7 @@ export function OwnerAssistant({
         draft: d && typeof d.body === "string" ? { title: typeof d.title === "string" ? d.title : null, body: d.body } : null,
         asOf: typeof body.as_of === "string" ? body.as_of : null,
         removedLinks: typeof body.removed_links === "number" ? body.removed_links : 0,
+        saved: readSaveState(body.history),
       };
       // The old answer is replaced only once the new one has arrived: a failed regenerate keeps it on screen.
       setTurns((prev) => (regen ? [...prev.slice(0, -1), turn] : [...prev, turn]));
@@ -244,7 +250,7 @@ export function OwnerAssistant({
     q: t.q,
     a: t.a,
     extra:
-      t.draft || t.removedLinks > 0 || (t.asOf && tashkent(t.asOf)) ? (
+      t.draft || t.removedLinks > 0 || t.saved || (t.asOf && tashkent(t.asOf)) ? (
         <>
           {t.draft && (
             <div className="oc-ai-draft">
@@ -263,6 +269,11 @@ export function OwnerAssistant({
             </p>
           )}
           {t.asOf && tashkent(t.asOf) && <p className="oc-asof">{fill(a.asOf, { time: tashkent(t.asOf)! })}</p>}
+          {t.saved && (
+            <p className="oc-asof" data-history={t.saved} data-tone={t.saved === "saved" ? undefined : "warn"}>
+              {a.saveState[t.saved]}
+            </p>
+          )}
         </>
       ) : undefined,
   }));

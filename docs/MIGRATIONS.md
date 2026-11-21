@@ -2376,21 +2376,33 @@ Rollback: `docs/sql/rollback_0202_channel_research.sql`.
 0209 (`0209_owner_ai_history.sql`) keeps the owner's Nightshift AI conversations in the database so they are the same on every
 device (owner decision, 2026-11-21). 0203's turn log is unchanged and still holds no text; the history is a separate store.
 
-- **Tables.** `owner_ai_sessions` (id, user_id, title 1..60 characters, created_at, updated_at, deleted_at) and `owner_ai_messages`
-  (session_id, role `owner` | `ai`, text <= 2000 / <= 12000 characters, as_of, model, created_at). Both RLS on, no policy, no grant
-  to anon, authenticated or service_role. The facts behind an answer are never stored.
-- **Functions** (execute to `authenticated` only; each checks `owner_analytics_is_owner()` (42501), then 0107's second factor
-  (NS401), then that the session is the caller's (P0002 `not_found` otherwise, the same as a missing id):
-  `owner_ai_session_create(title)`, `owner_ai_session_list(limit, before)` (newest activity first, keyset by updated_at, 1..100),
-  `owner_ai_session_messages(session)` (last 400, oldest first), `owner_ai_message_append(session, role, text, as_of, model)`
-  (append-only), `owner_ai_session_rename(session, title)` (does not reorder), `owner_ai_session_delete(session)` (soft delete;
-  not listed, read or appended to afterwards; twice is not an error).
-- **Route.** `POST /api/brain/owner/turn` takes an optional `session_id`; after a successful turn it creates a session (title = the
-  first question, 60 characters) when none was given and appends the question and the link-guarded answer. It answers
-  `session_id` and `history: saved | not_saved | needs_migration`. A failed save never fails the paid answer; it is logged by code
-  (`history_append_failed`, `history_session_create_failed`, `history_needs_0209`), never with the text.
+- **What is stored, plainly.** The owner's questions and the AI's answers ARE stored as plain text, owner-only, until the owner
+  deletes the chat. Answers are written from the live figures, so they can contain revenue and other business figures and customer
+  names or emails. The facts document behind an answer, secrets and vendor costs are never stored.
+- **Tables.** `owner_ai_sessions` (id, user_id, title 1..60 characters without control or bidi-override characters, created_at,
+  updated_at) and `owner_ai_messages` (session_id, turn_id, role `owner` | `ai`, text <= 2000 / <= 12000 characters, as_of, model,
+  created_at; unique (turn_id, role); a question carries no as_of or model). Both RLS on, no policy, no grant to anon,
+  authenticated or service_role (checked at the end of the file for every table privilege and the messages sequence).
+- **Bounded, atomic writes.** History is written only by `owner_ai_turn_save(turn, session, question, answer, as_of, model)`, and
+  only for a 0203 turn of the caller that ended `answered` and was not saved before (P0002 `turn_not_answered`, 23505
+  `turn_already_saved`); as_of must be within a day of now and the model must be the turn's. The question and the answer are
+  inserted in one transaction, so storage grows by at most one pair per paid turn (0203's 200 per 24 hours). A null session, or
+  one that is gone or not the caller's, starts a new session (title = the question, control/bidi characters removed, 60
+  characters) — the paid turn is kept and nothing is written into another person's conversation. There is no free append or
+  create function.
+- **Other functions** (execute to `authenticated` only; each checks `owner_analytics_is_owner()` (42501), then 0107's second
+  factor (NS401), then that the session is the caller's (P0002 `not_found` otherwise, the same as a missing id):
+  `owner_ai_session_list(limit, before, before_id)` (newest activity first, keyset by (updated_at, id), 1..100),
+  `owner_ai_session_messages(session)` (last 400, oldest first), `owner_ai_session_rename(session, title)` (does not reorder),
+  `owner_ai_session_delete(session)` (a real DELETE; the messages go by `on delete cascade`; a second delete is P0002).
+- **Route.** `POST /api/brain/owner/turn` takes an optional `session_id`; after the turn is recorded as answered it makes one
+  `owner_ai_turn_save` call (texts cut by code points, U+0000 removed). It answers `session_id` and
+  `history: saved | not_saved | needs_migration`, and the chat shows that state under each answer in en/ru/uz. A failed save never
+  fails the paid answer; it is logged by code (`history_save_failed`, `history_needs_0209`), never with the text.
+  `GET /api/brain/owner/history?before=<updated_at>|<id>` pages the list.
 - **Before it is applied** the owner AI answers as before and reports `history: "needs_migration"`.
-- **Requires** 0182, 0107, 0036 (`creative_refuse`).
+- **Requires** 0182, 0107, 0203 (`owner_ai_turns`), 0036 (`creative_refuse`). A database holding the earlier, never-merged draft
+  of 0209 (no `turn_id`) is refused with the remedy: run the rollback, then apply 0209 again.
 - Lab: `tests/security/sec_owner_ai_history_0209.py`, `tests/security/test_sec_owner_ai_history.py`. Rollback:
   `docs/sql/rollback_0209_owner_ai_history.sql` (drops both tables: the stored conversations are lost).
 

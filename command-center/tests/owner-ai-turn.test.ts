@@ -95,7 +95,7 @@ beforeEach(() => {
   s.rpc = {
     ai_chat_owner_settings: { data: { model: "anthropic-claude-sonnet-5-5" }, error: null },
     owner_ai_reserve_turn: { data: 7, error: null },
-    owner_ai_session_create: { data: SID, error: null },
+    owner_ai_turn_save: { data: SID, error: null },
   };
   s.rpcCalls = [];
   s.model = { ok: true, id: "anthropic-claude-sonnet-5-5", state: "available" };
@@ -236,29 +236,56 @@ describe("the answer", () => {
 });
 
 describe("the stored history (0209)", () => {
-  const appends = () => s.rpcCalls.filter((c) => c.name === "owner_ai_message_append").map((c) => c.args as Record<string, unknown>);
+  const saves = () => s.rpcCalls.filter((c) => c.name === "owner_ai_turn_save").map((c) => c.args as Record<string, unknown>);
   const names = () => s.rpcCalls.map((c) => c.name);
+  const historyCalls = () => names().filter((n) => n.startsWith("owner_ai_session") || n === "owner_ai_message_append" || n === "owner_ai_turn_save");
 
-  it("a first turn creates a session titled by the question and appends the question then the guarded answer", async () => {
+  it("a first turn is ONE save call naming the paid turn, carrying the question and the guarded answer together", async () => {
     const q = "  Which   API must I pay this week, and how much is left on each provider before the month ends?  ";
     const out = await call({ question: q });
     expect(out.body).toMatchObject({ session_id: SID, history: "saved" });
-    const create = s.rpcCalls.find((c) => c.name === "owner_ai_session_create")!.args as { p_title: string };
-    expect(create.p_title.length).toBeLessThanOrEqual(60);
-    expect(create.p_title).toBe("Which API must I pay this week, and how much is left on each");
-    expect(appends()).toEqual([
-      { p_session: SID, p_role: "owner", p_text: q.trim(), p_as_of: null, p_model: null },
-      { p_session: SID, p_role: "ai", p_text: "Pay Lab Vendor.\n\nTop-up note\n\nPay on the vendor page.", p_as_of: AS_OF, p_model: "anthropic-claude-sonnet-5-5" },
+    // No free create or append call exists any more: the database writes only for a turn it recorded as answered.
+    expect(historyCalls()).toEqual(["owner_ai_turn_save"]);
+    expect(saves()).toEqual([
+      {
+        p_turn: 7,
+        p_session: null,
+        p_question: q.trim(),
+        p_answer: "Pay Lab Vendor.\n\nTop-up note\n\nPay on the vendor page.",
+        p_as_of: AS_OF,
+        p_model: "anthropic-claude-sonnet-5-5",
+      },
     ]);
-    // Appended only after the turn was recorded as answered.
-    expect(names().indexOf("owner_ai_finish_turn")).toBeLessThan(names().indexOf("owner_ai_session_create"));
+    // Saved only after the turn was recorded as answered.
+    expect(names().indexOf("owner_ai_finish_turn")).toBeLessThan(names().indexOf("owner_ai_turn_save"));
   });
 
-  it("a later turn appends to the session it names and creates none", async () => {
+  it("a later turn names its session, and the session the database answers is the one handed back", async () => {
     const other = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    s.rpc.owner_ai_turn_save = { data: other, error: null };
     expect((await call({ question: "And next week?", session_id: other })).body).toMatchObject({ session_id: other, history: "saved" });
-    expect(names()).not.toContain("owner_ai_session_create");
-    expect(appends().map((a) => a.p_session)).toEqual([other, other]);
+    expect(saves().map((a) => a.p_session)).toEqual([other]);
+  });
+
+  it("a session gone elsewhere is replaced by the new one the database started, so the page continues that one", async () => {
+    s.rpc.owner_ai_turn_save = { data: SID, error: null };
+    const stale = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    expect((await call({ question: "q", session_id: stale })).body).toMatchObject({ session_id: SID, history: "saved" });
+  });
+
+  it("a turn the log did not record as answered is said as not saved, with no save call bound to fail", async () => {
+    s.rpc.owner_ai_finish_turn = { data: null, error: { code: "XX000" } };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await call()).body).toMatchObject({ answer: "Pay Lab Vendor.", history: "not_saved", session_id: null });
+    expect(names()).not.toContain("owner_ai_turn_save");
+    log.mockRestore();
+  });
+
+  it("U+0000 is removed before saving (Postgres text cannot hold it, so the whole save would fail) and emoji arrive whole", async () => {
+    const q = "Revenue\u0000 today? " + "😀".repeat(990);
+    await call({ question: q });
+    const [save] = saves();
+    expect(save.p_question).toBe("Revenue today? " + "😀".repeat(990));
   });
 
   it("a malformed session id is refused before anything is reserved or asked", async () => {
@@ -273,40 +300,54 @@ describe("the stored history (0209)", () => {
   ])("%s stores nothing in the history", async (_n, arrange) => {
     arrange();
     await call();
-    expect(names().filter((n) => n.startsWith("owner_ai_session") || n === "owner_ai_message_append")).toEqual([]);
+    expect(historyCalls()).toEqual([]);
   });
 
-  it("a failed append never fails the paid answer, and is logged by code without the text", async () => {
-    s.rpc.owner_ai_message_append = { data: null, error: { code: "XX000", message: "boom" } };
+  it.each([
+    ["a refused save (turn already saved)", { code: "23505", message: "turn_already_saved" }],
+    ["a refused save (turn not answered)", { code: "P0002", message: "turn_not_answered" }],
+    ["an unknown database error", { code: "XX000", message: "boom" }],
+  ])("%s never fails the paid answer, keeps the page's session, and is logged by code without the text", async (_n, error) => {
+    s.rpc.owner_ai_turn_save = { data: null, error };
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    const out = await call({ question: "Secret revenue question" });
+    const out = await call({ question: "Secret revenue question", session_id: SID });
     expect(out).toMatchObject({ status: 200, body: { answer: "Pay Lab Vendor.", history: "not_saved", session_id: SID } });
-    expect(log).toHaveBeenCalledWith("owner ai: history_append_failed", "owner", "XX000");
+    expect(log).toHaveBeenCalledWith("owner ai: history_save_failed", error.code);
     expect(JSON.stringify(log.mock.calls)).not.toContain("Secret");
     log.mockRestore();
   });
 
-  it("a session deleted elsewhere (P0002) is not saved and the page is told to start a new one", async () => {
-    s.rpc.owner_ai_message_append = { data: null, error: { code: "P0002", message: "not_found" } };
+  it("a save that answers no session id is not called saved (rule 5)", async () => {
+    s.rpc.owner_ai_turn_save = { data: null, error: null };
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect((await call({ question: "q", session_id: SID })).body).toMatchObject({ answer: "Pay Lab Vendor.", history: "not_saved", session_id: null });
+    expect((await call()).body).toMatchObject({ history: "not_saved", session_id: null });
     log.mockRestore();
   });
 
   it("without 0209 the answer still arrives and the history says it needs the migration", async () => {
-    s.rpc.owner_ai_session_create = { data: null, error: { code: "PGRST202" } };
+    s.rpc.owner_ai_turn_save = { data: null, error: { code: "PGRST202" } };
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await call()).toMatchObject({ status: 200, body: { answer: "Pay Lab Vendor.", history: "needs_migration", session_id: null } });
-    expect(names()).not.toContain("owner_ai_message_append");
     log.mockRestore();
   });
 
   it("a throw inside the history write is caught: the answer is returned", async () => {
     // The mocked client reads s.rpc[name]: a getter that throws is a client that throws mid-call (a dropped connection).
-    s.rpc = new Proxy(s.rpc, { get: (t, k) => (k === "owner_ai_session_create" ? (() => { throw new Error("network"); })() : t[k as string]) });
+    s.rpc = new Proxy(s.rpc, { get: (t, k) => (k === "owner_ai_turn_save" ? (() => { throw new Error("network"); })() : t[k as string]) });
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await call()).toMatchObject({ status: 200, body: { answer: "Pay Lab Vendor.", history: "not_saved" } });
     log.mockRestore();
+  });
+});
+
+describe("the chat says the history state it was told", () => {
+  it.each(["en", "ru", "uz"] as const)("%s has all three states, and the new-chat button does not claim to clear anything", async (lang) => {
+    const dicts = { en: (await import("../lib/i18n/en")).en, ru: (await import("../lib/i18n/ru")).ru, uz: (await import("../lib/i18n/uz")).uz };
+    const a = dicts[lang].ownerConsole.assistant;
+    expect(Object.keys(a.saveState).sort()).toEqual(["needs_migration", "not_saved", "saved"]);
+    expect(a.saveState.needs_migration).toContain("0209");
+    // "Clear the conversation" read as if the stored copy were gone; it only starts a new chat on screen.
+    expect(a.clear.toLowerCase()).not.toMatch(/clear|очист|tozala/);
   });
 });
 

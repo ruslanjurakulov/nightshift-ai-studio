@@ -43,7 +43,12 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
   linksRemoved: "Javobdan provayderlarning oʻz sahifalariga tegishli boʻlmagan havola yoki hisob raqami olib tashlandi ([⚠]). Faqat provayderning oʻz sahifasida, «Provayderlar va toʻlovlar» boʻlimidan toʻlang.",
   asOf: "Koʻrsatkichlar {time} holatiga koʻra (Toshkent vaqti)",
   tooLong: "Savol {n} belgidan qisqa boʻlsin.",
-  clear: "Suhbatni tozalash",
+  clear: "Yangi suhbat boshlash",
+  saveState: {
+    saved: "Suhbatlaringizda saqlandi. Uni faqat siz koʻrasiz; «Suhbatlar»dan oʻchirishingiz mumkin.",
+    not_saved: "Suhbatlaringizda saqlanmadi. Keraklisini nusxalab oling: sahifadan chiqsangiz, u yoʻqoladi.",
+    needs_migration: "Saqlanmadi: suhbatlar tarixi uchun maʼlumotlar bazasining 0209-migratsiyasi kerak.",
+  },
   errors: {
     model_unavailable: {
       not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",
@@ -67,7 +72,7 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
     unavailable: "Hozir javob berib boʻlmadi. Muammo bizning tomonda. Qayta soʻrang.",
     network: "Serverga ulanib boʻlmadi. Aloqani tekshirib, qayta soʻrang.",
     session: "Sessiya tugadi. Qayta kiring.",
-    tooMuchHistory: "Suhbat yuborish uchun juda uzun. Uni tozalab, qayta soʻrang.",
+    tooMuchHistory: "Suhbat yuborish uchun juda uzun. Yangi suhbat boshlab, qayta soʻrang; saqlangan javoblar «Suhbatlar»da qoladi.",
     other: "Javob berib boʻlmadi. Qayta soʻrang.",
   },
   history: {
@@ -85,7 +90,7 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
     cancel: "Bekor qilish",
     delete: "Oʻchirish",
     confirmDelete: "Bu suhbat oʻchirilsinmi?",
-    confirmDeleteBody: "«{title}» barcha qurilmalardagi tarixingizdan olib tashlanadi.",
+    confirmDeleteBody: "«{title}» barcha savol va javoblari bilan butunlay oʻchiriladi, barcha qurilmalarda.",
     gone: "Bu suhbat boshqa qurilmada oʻchirilgan, shuning uchun roʻyxatdan olib tashlandi.",
     untitled: "Nomsiz suhbat",
     open: "Suhbatlar",

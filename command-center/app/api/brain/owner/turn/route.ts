@@ -21,56 +21,55 @@ const BODY_BYTES = 64_000;
 const OWNER_OUTPUT_TOKENS = 3000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** 0209's caps: a stored message longer than these is refused by the database, so the answer is cut to fit, never dropped. */
+/** 0209's caps, counted in code points as Postgres counts them: a stored message longer than these is refused, so the answer is
+ *  cut to fit, never dropped. */
 const OWNER_TEXT_MAX = 2000;
 const AI_TEXT_MAX = 12000;
-const TITLE_MAX = 60;
 
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 type HistoryState = "saved" | "not_saved" | "needs_migration";
 
+/** Cuts by code points, not UTF-16 units: `.slice` could split an emoji into a lone surrogate, which Postgres refuses as invalid
+ *  text and the whole save would fail. U+0000 is dropped because Postgres text cannot hold it at all. Not exported: a route module
+ *  may export only handlers and route config, or `next build` fails. */
+function forStorage(s: string, max: number): string {
+  return Array.from(s.replace(/\u0000/g, "")).slice(0, max).join("");
+}
+
 /**
- * Appends the question and the answer to the owner's stored history (0209), after the turn has succeeded. Never throws and never
- * fails the turn: the answer is already paid for. A failure is logged with a named code (the database's, never the text).
+ * Stores the question and the answer in the owner's history (0209) with one call, after the turn has been recorded as answered:
+ * the database accepts it only for an answered 0203 turn of this person not saved before, and writes both rows in one transaction
+ * (into this session, or a new one when it is gone or not this person's). Never throws and never fails the turn: the answer is
+ * already paid for. A failure is logged with a named code (the database's, never the text).
  */
-async function saveHistory(supabase: Db, sessionId: string | null, question: string, answer: string, asOf: string | null, model: string): Promise<{ sessionId: string | null; state: HistoryState }> {
-  const missing = (code: string | undefined) => code === "42883" || code === "PGRST202";
-  let sid = sessionId;
+async function saveHistory(supabase: Db, turn: number, sessionId: string | null, question: string, answer: string, asOf: string | null, model: string): Promise<{ sessionId: string | null; state: HistoryState }> {
   try {
-    if (!sid) {
-      const title = question.replace(/\s+/g, " ").trim().slice(0, TITLE_MAX).trim();
-      const created = await supabase.rpc("owner_ai_session_create", { p_title: title });
-      const code = (created.error as { code?: string } | null)?.code;
-      if (missing(code)) {
+    const { data, error } = await supabase.rpc("owner_ai_turn_save", {
+      p_turn: turn,
+      p_session: sessionId,
+      p_question: forStorage(question, OWNER_TEXT_MAX),
+      p_answer: forStorage(answer, AI_TEXT_MAX),
+      p_as_of: asOf,
+      p_model: model,
+    });
+    if (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "42883" || code === "PGRST202") {
         console.error("owner ai: history_needs_0209");
-        return { sessionId: null, state: "needs_migration" };
+        return { sessionId, state: "needs_migration" };
       }
-      if (created.error || typeof created.data !== "string" || !UUID.test(created.data)) {
-        console.error("owner ai: history_session_create_failed", code ?? "no_id");
-        return { sessionId: null, state: "not_saved" };
-      }
-      sid = created.data;
+      // The session the page holds is untouched by a refused save, so the next question may still continue it.
+      console.error("owner ai: history_save_failed", code ?? "unknown");
+      return { sessionId, state: "not_saved" };
     }
-    for (const [role, text, at, m] of [
-      ["owner", question.slice(0, OWNER_TEXT_MAX), null, null],
-      ["ai", answer.slice(0, AI_TEXT_MAX), asOf, model],
-    ] as const) {
-      const { error } = await supabase.rpc("owner_ai_message_append", { p_session: sid, p_role: role, p_text: text, p_as_of: at, p_model: m });
-      if (error) {
-        const code = (error as { code?: string }).code;
-        if (missing(code)) {
-          console.error("owner ai: history_needs_0209");
-          return { sessionId: null, state: "needs_migration" };
-        }
-        // P0002: the session is gone (deleted on another device) or not this person's; the page starts a new one.
-        console.error("owner ai: history_append_failed", role, code ?? "unknown");
-        return { sessionId: code === "P0002" ? null : sid, state: "not_saved" };
-      }
+    if (typeof data !== "string" || !UUID.test(data)) {
+      console.error("owner ai: history_save_failed", "no_id");
+      return { sessionId, state: "not_saved" };
     }
-    return { sessionId: sid, state: "saved" };
+    return { sessionId: data, state: "saved" };
   } catch (e) {
-    console.error("owner ai: history_append_failed", e instanceof Error ? e.name : "unknown");
-    return { sessionId: sid, state: "not_saved" };
+    console.error("owner ai: history_save_failed", e instanceof Error ? e.name : "unknown");
+    return { sessionId, state: "not_saved" };
   }
 }
 
@@ -91,8 +90,9 @@ async function vendorUser(userId: string): Promise<string> {
  *     another model (rule 4).
  *  3. The owner's facts, built server side (second factor enforced there). The browser never sends a figure.
  *  4. A turn reserved in the database under the daily cap (0203) BEFORE the vendor is called; finished with how it ended.
- *  5. Only after a successful turn: the question and the (link-guarded) answer appended to the owner's history (0209, owner-only,
- *     the same on every device). The facts are never stored, and nothing about the question or answer is logged.
+ *  5. Only after a turn recorded as answered: the question and the (link-guarded) answer stored together in the owner's history
+ *     (0209, owner-only, deletable, the same on every device; an answer can hold figures and customer names). The facts document is
+ *     never stored, and nothing about the question or answer is logged.
  */
 export async function POST(request: Request) {
   const cross = rejectCrossOrigin(request);
@@ -174,13 +174,17 @@ export async function POST(request: Request) {
     }
     // The answer is paid for whether or not the log write lands: it is returned either way, and a failed write is the
     // only thing a log line names (no question, no answer).
-    if (!(await finish(true, null, llm.tokensIn, llm.tokensOut))) console.error("owner ai: finish_turn failed", turn);
+    const finished = await finish(true, null, llm.tokensIn, llm.tokensOut);
+    if (!finished) console.error("owner ai: finish_turn failed", turn);
     const known = knownLinks(facts, BILLED_PROVIDERS.flatMap((p) => (p.billingUrl ? [p.billingUrl] : [])));
     const a = guardLinks(answer.answer, known);
     const d = answer.draft ? guardLinks(answer.draft.body, known) : null;
     const dt = answer.draft?.title ? guardLinks(answer.draft.title, known) : null;
     // Only the guarded text is kept: what the owner saw, never a link the guard cut.
-    const saved = await saveHistory(supabase, sessionId, question, [a.text, dt?.text, d?.text].filter(Boolean).join("\n\n"), facts.as_of, model.id);
+    // A turn the log did not record as answered is one 0209 refuses to store: said as not saved, without a call bound to fail.
+    const saved = finished
+      ? await saveHistory(supabase, turn, sessionId, question, [a.text, dt?.text, d?.text].filter(Boolean).join("\n\n"), facts.as_of, model.id)
+      : { sessionId, state: "not_saved" as const };
     return brainJson({
       answer: a.text,
       draft: answer.draft && d ? { title: dt ? dt.text : null, body: d.text } : null,

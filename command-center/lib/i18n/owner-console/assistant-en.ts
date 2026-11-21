@@ -41,7 +41,13 @@ export const ownerAssistantEn = {
   linksRemoved: "A link or account number that is not one of the providers' own pages was removed from this answer ([⚠]). Pay only on the provider's own page, from Providers & payments.",
   asOf: "Figures as of {time} (Tashkent)",
   tooLong: "Keep the question under {n} characters.",
-  clear: "Clear the conversation",
+  // Not "clear": the turns already saved stay in the database until deleted from Chats, and the button must not suggest otherwise.
+  clear: "Start a new chat",
+  saveState: {
+    saved: "Saved to your chats. Only you can see it; delete it from Chats.",
+    not_saved: "Not saved to your chats. Copy what you need: it will be gone when you leave this page.",
+    needs_migration: "Not saved: chat history needs database migration 0209.",
+  },
   errors: {
     model_unavailable: {
       not_configured: "The chat model's key isn't set on this server. Add it in the server's settings, then ask again.",
@@ -65,7 +71,7 @@ export const ownerAssistantEn = {
     unavailable: "Couldn't answer just now. This is on our side. Ask again.",
     network: "Couldn't reach the server. Check the connection and ask again.",
     session: "Your session ended. Sign in again.",
-    tooMuchHistory: "The conversation is too long to send. Clear it and ask again.",
+    tooMuchHistory: "The conversation is too long to send. Start a new chat and ask again; saved answers stay in Chats.",
     other: "Couldn't answer. Ask again.",
   },
   history: {
@@ -83,7 +89,7 @@ export const ownerAssistantEn = {
     cancel: "Cancel",
     delete: "Delete",
     confirmDelete: "Delete this chat?",
-    confirmDeleteBody: "“{title}” will be removed from your history on every device.",
+    confirmDeleteBody: "“{title}” and all its questions and answers will be permanently deleted, on every device.",
     gone: "That chat was deleted on another device, so it was removed from the list.",
     untitled: "Untitled chat",
     open: "Chats",
