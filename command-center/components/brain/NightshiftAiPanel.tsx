@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { takeLandingIdea } from "@/lib/brain/handoff";
+import { pluralText } from "@/lib/plural";
 import { runLink, type Brief, type BrainCard, type BrainSlots, type Scenario } from "@/lib/brain/logic";
 
 /**
@@ -23,9 +24,12 @@ type State =
   | { state: "hidden" }
   | { state: "failed" }
   | { state: "not_enabled" }
+  | { state: "session_ended" }
   | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean };
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
 type Problem = { text: string; retry: (() => void) | null } | null;
+/** Refusals a Retry cannot change: the same press would meet the same answer. */
+const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden"];
 
 export function NightshiftAiPanel({ channelId, channelSlug, initialSession, initialPrompt, fresh = false, takeIdea = false }: {
   channelId: string | null;
@@ -35,7 +39,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   fresh?: boolean;
   takeIdea?: boolean;
 }) {
-  const { t, fmt } = useI18n();
+  const { t, fmt, locale } = useI18n();
   const c = t.aiChat;
   const [load, setLoad] = useState<State>({ state: "loading" });
   const [open, setOpen] = useState(true);
@@ -83,6 +87,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     try {
       const res = await fetch(`/api/brain${channelId ? `?channel=${encodeURIComponent(channelId)}` : ""}`, { cache: "no-store" });
       if (res.status === 404) return setLoad({ state: "hidden" });
+      // An expired sign-in is said as such, with the way back; a Retry would only meet the same 401.
+      if (res.status === 401) return setLoad({ state: "session_ended" });
       const d = await res.json().catch(() => ({}));
       if (res.status === 503 && d.error === "not_enabled") return setLoad({ state: "not_enabled" });
       if (!res.ok) return setLoad({ state: "failed" });
@@ -127,6 +133,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     if (e === "chat_plan_required") return c.planLocked;
     if (e === "message_too_long") return fmt(c.errors.message_too_long, { max: load.state === "ready" ? load.plan.max_input_chars : 2000 });
     if (e === "short_not_available") return c.shortComingSoon;
+    if (e === "channel_required") return c.errors.channel_required;
+    if (e === "nothing_to_choose") return c.errors.nothing_to_choose;
     if (e === "film_refused") return c.errors.film_refused;
     if (e === "not_enabled") return c.errors.not_enabled;
     if (e === "adult_only_service") return c.errors.adult_only_service;
@@ -165,10 +173,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
         if (d.error === "chat_daily_cap") setCapped(true);
         const sid = (d.session as { id?: string } | undefined)?.id ?? session;
         if (sid && !session) setSession(sid);
-        const retryable = !["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available"].includes(String(d.error));
+        const retryable = res.status !== 401 && !NO_RETRY.includes(String(d.error));
         // A turn that was taken (the server reports its quota) already stored the message: retry it as it is, never a second copy.
+        // One that was not is sent again without a second bubble: the person's words are already on screen.
         const taken = !!d.quota && !!sid;
-        setProblem({ text: explain(res.status, d), retry: retryable ? (taken ? () => void run("", { action: "retry", session: sid }, again) : again) : null });
+        setProblem({ text: explain(res.status, d), retry: retryable ? (taken ? () => void run("", { action: "retry", session: sid }, again) : () => void run("", body, again)) : null });
         return;
       }
       const sid = (d.session as { id?: string } | undefined)?.id ?? session;
@@ -176,7 +185,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
       if (d.reply && sid) takeTurn(d, sid);
       else if (sid) announce(sid, null);
     } catch {
-      setProblem({ text: c.errors.unavailable, retry: again });
+      setProblem({ text: c.errors.unavailable, retry: () => void run("", body, again) });
     } finally {
       setBusy(false);
     }
@@ -204,7 +213,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     try {
       const { res, d } = await post({ action: "choose", session, index });
       if (!res.ok) {
-        setProblem({ text: explain(res.status, d), retry: d.error === "short_not_available" ? null : () => void choose(index) });
+        setProblem({ text: explain(res.status, d), retry: res.status === 401 || NO_RETRY.includes(String(d.error)) ? null : () => void choose(index) });
         return;
       }
       setStep("ready");
@@ -260,6 +269,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   const title = messages.find((m) => m.role === "user")?.content.slice(0, 40) || c.title;
   // No Brain on this plan: the lifetime trial while it lasts, then the upgrade.
   const trial = load.state === "ready" && load.plan.limit === null && (load.plan.trial_left ?? 0) > 0 ? load.plan.trial_left : null;
+  // A plan whose price could not be read, or a short plan whose film quote is not on screen (a reload): its scenarios come back to
+  // choose again, which re-reads the same draft and quote (the draft's idempotency key is the session and the scenario).
+  const rechoose = step === "ready" && (brief?.price?.state === "failed" || (brief?.kind === "short" && !film?.quote));
+  const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? "";
   const noBrain = load.state === "ready" && load.plan.limit === null && trial === null;
   // The trial's last answer stays on screen; only the box closes (a conversation that vanished on its last reply is a dead end).
   const locked = noBrain && messages.length === 0;
@@ -272,17 +285,24 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
       <header className="flex items-center justify-between gap-2">
         <h2 id="ns-ai-title" className="truncate text-sm font-semibold text-[var(--color-fg)]">{session ? title : c.title}</h2>
         <div className="flex items-center gap-1">
-          {session && <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={newChat} disabled={busy}>{c.newChat}</button>}
-          <button type="button" className="btn-quiet min-h-11 px-3 text-sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-            {open ? c.close : c.title}
+          {session && <button type="button" className="btn-quiet min-h-11 whitespace-nowrap px-3 text-sm" aria-label={c.newChatLabel} onClick={newChat} disabled={busy}>{c.newChat}</button>}
+          <button type="button" className="btn-quiet min-h-11 whitespace-nowrap px-3 text-sm" aria-expanded={open} aria-controls="ns-ai-body" onClick={() => setOpen((o) => !o)}>
+            {open ? c.close : c.show}
           </button>
         </div>
       </header>
       {open && (
-        <>
+        <div id="ns-ai-body" className="flex min-w-0 flex-col gap-3">
           {!session && <p className="text-xs text-[var(--color-muted)]">{c.subtitle}</p>}
           {load.state === "loading" && <p className="text-xs text-[var(--color-muted)]" role="status">{c.loading}</p>}
           {load.state === "not_enabled" && <p className="text-sm" role="status">{c.errors.not_enabled}</p>}
+          {load.state === "session_ended" && (
+            <div className="flex flex-col gap-2" role="alert">
+              <p className="text-sm">{c.errors.session_ended}</p>
+              <Link className="btn-primary inline-flex min-h-11 items-center justify-center px-4 text-sm"
+                    href={`/login?next=${encodeURIComponent(typeof window === "undefined" ? `/${channelSlug}/studio` : window.location.pathname + window.location.search)}`}>{c.signIn}</Link>
+            </div>
+          )}
           {capped && load.state === "ready" && load.plan.limit !== null && !problem && (
             <p className="text-sm" role="status">{fmt(c.errors.chat_daily_cap, { used: load.plan.used ?? load.plan.limit, limit: load.plan.limit })}</p>
           )}
@@ -303,7 +323,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
 
           {load.state === "ready" && !locked && (
             <>
-              <ol ref={listRef} className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto" aria-live="polite">
+              {/* One live region with only the newest news: a live list would read the whole history out on every load. */}
+              <p className="sr-only" aria-live="polite">{busy ? c.sending : lastReply}</p>
+              <ol ref={listRef} className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto">
                 {messages.length === 0 && <li className="text-xs text-[var(--color-muted)]">{c.empty}</li>}
                 {messages.map((m, i) => (
                   <li key={m.key} className={m.role === "user" ? "self-end max-w-[85%]" : "max-w-full"}>
@@ -311,7 +333,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                     <p className="studio-field whitespace-pre-wrap break-words p-3 text-sm">{m.content}</p>
                     {m.role === "assistant" && m.factsState === "none" && !!m.scenarios?.length && <p className="mt-1 text-xs text-[var(--color-muted)]">{c.factsNone}</p>}
                     {m.role === "assistant" && m.factsState === "unknown" && !!m.scenarios?.length && <p className="mt-1 text-xs text-[var(--color-muted)]">{c.factsUnknown}</p>}
-                    {m.role === "assistant" && i === messages.length - 1 && step === "proposing" && (m.scenarios ?? []).map((s, k) => (
+                    {m.role === "assistant" && i === messages.length - 1 && (step === "proposing" || rechoose) && (m.scenarios ?? []).map((s, k) => (
                       <article key={k} className="studio-field mt-2 flex flex-col gap-1 p-3">
                         <h3 className="text-sm font-semibold text-[var(--color-fg)]">{s.title}</h3>
                         <p className="text-sm">{s.idea}</p>
@@ -324,15 +346,15 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                     ))}
                   </li>
                 ))}
-                {busy && <li className="text-xs text-[var(--color-muted)]" role="status">{c.sending}</li>}
+                {busy && <li className="text-xs text-[var(--color-muted)]" aria-hidden="true">{c.sending}</li>}
               </ol>
 
               {card && step === "asking" && (
-                <fieldset className="studio-field flex flex-col gap-2 p-3" disabled={disabled}>
+                <fieldset className="studio-field flex min-w-0 flex-col gap-2 p-3" disabled={disabled}>
                   {card.thread_title && <legend className="studio-label">{card.thread_title}</legend>}
                   <p className="text-sm font-semibold">{card.question || c.slotQuestions[card.slot]}</p>
                   {card.options.map((o, i) => (
-                    <button key={i} type="button" className="btn-quiet flex min-h-11 items-start gap-2 px-3 text-left text-sm" onClick={() => answer(i + 1)}>
+                    <button key={i} type="button" className="btn-quiet flex min-h-11 !items-start !justify-start gap-2 px-3 text-left text-sm" onClick={() => answer(i + 1)}>
                       <span className="font-semibold">{i + 1}</span> <span className="break-words">{o}</span>
                     </button>
                   ))}
@@ -355,7 +377,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                 </div>
               )}
 
-              {(!card || step !== "asking") && step !== "ready" && (
+              {/* At the plan too: "fewer scenes", "shorter" or another idea is typed here (a plan with no way to change it is a dead end). */}
+              {(!card || step !== "asking") && step !== "created" && (
                 <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); send(text); }}>
                   <label className="sr-only" htmlFor="ns-ai-input">{c.placeholder}</label>
                   <textarea id="ns-ai-input" className="studio-field min-h-[5rem] w-full p-3 text-base" value={text} maxLength={load.plan.max_input_chars}
@@ -368,8 +391,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                     )}
                     {trial !== null && (
                       <span className="text-xs text-[var(--color-muted)]">
-                        {fmt(c.trialLeft, { n: trial })}{" "}
-                        <Link className="underline" href={`/${encodeURIComponent(channelSlug)}/credits#plans`}>{c.upgrade}</Link>
+                        {pluralText(c.trialLeft, trial, locale)}{" "}
+                        <Link className="inline-flex min-h-11 items-center px-2 underline" href={`/${encodeURIComponent(channelSlug)}/credits#plans`}>{c.upgrade}</Link>
                       </span>
                     )}
                   </div>
@@ -377,7 +400,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
               )}
             </>
           )}
-        </>
+        </div>
       )}
     </aside>
   );
@@ -386,11 +409,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
 function ReadyBlock({ brief, film, channelSlug, lengthLabel, busy, canRun, onCreateFilm }: {
   brief: Brief; film: FilmReady | null; channelSlug: string; lengthLabel: (s: number) => string; busy: boolean; canRun: boolean; onCreateFilm: () => void;
 }) {
-  const { t, fmt } = useI18n();
+  const { t, fmt, locale } = useI18n();
   const c = t.aiChat;
   const p = brief.price;
   const slots: BrainSlots = { kind: brief.kind ?? undefined };
-  const credits = (n: number) => fmt(c.price, { n });
+  const credits = (n: number) => pluralText(c.price, n, locale);
   return (
     <section className="studio-field flex flex-col gap-2 p-3" aria-label={c.planReady}>
       <h3 className="text-sm font-semibold text-[var(--color-fg)]">{brief.title}</h3>
@@ -426,11 +449,12 @@ function ReadyBlock({ brief, film, channelSlug, lengthLabel, busy, canRun, onCre
           <p className="text-xs text-[var(--color-muted)]">{canRun ? c.useHint : c.adminRuns}</p>
         </>
       )}
+      {brief.kind === "short" && !film?.quote && <p className="text-sm">{c.chooseAgain}</p>}
       {brief.kind === "short" && film?.quote && (
         film.quote.startable && film.quote.quote_id && (film.quote.total !== null || film.quote.exempt) ? (
           <>
             <button type="button" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-40" disabled={busy} onClick={onCreateFilm}>
-              {film.quote.exempt ? c.createExempt : fmt(c.createFor, { n: film.quote.total ?? 0 })}
+              {film.quote.exempt ? c.createExempt : pluralText(c.createFor, film.quote.total ?? 0, locale)}
             </button>
             <p className="text-xs text-[var(--color-muted)]">{c.createHint}</p>
           </>

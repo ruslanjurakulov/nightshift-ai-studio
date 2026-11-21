@@ -15,6 +15,7 @@ import uuid
 
 import psycopg
 
+from test_sec_series_tables import _dsn
 from sec_db import ANON, SERVICE, acting, as_superuser
 
 START = "select public.ai_chat_start(%s, %s)"
@@ -74,7 +75,7 @@ def test_one_account_with_many_workspaces_is_held_to_the_per_user_cap(conn, sc):
 def test_the_per_user_cap_holds_when_two_workspaces_race_for_the_last_turn(conn, sc):
     """Alice, an editor of her own workspace and (for this test) of Bob's, races one turn in each: the two take DIFFERENT
     workspace locks, so only the per-user lock stands between her and one turn over her own cap."""
-    dsn = conn.info.dsn
+    dsn = _dsn(conn)  # with the password (conn.info.dsn hides it: every thread failed to connect in CI)
     with as_superuser(conn, commit=True) as su:
         had_caps = su.rows("select plan_id, per_day from public.ai_chat_plan_caps")
         had_user = su.value("select per_user_daily from public.ai_chat_settings where id")

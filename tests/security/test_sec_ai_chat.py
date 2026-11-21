@@ -19,6 +19,7 @@ import threading
 import psycopg
 import pytest
 
+from test_sec_series_tables import _dsn
 from sec_db import ANON, SERVICE, acting, as_superuser
 
 RESERVE = "select public.ai_chat_reserve_turn(%s, %s)"
@@ -80,7 +81,7 @@ def test_the_trial_is_a_lifetime_count_not_a_daily_one(conn, sc):
 
 
 def test_the_last_trial_message_is_taken_once_under_a_race(conn, sc):
-    dsn = conn.info.dsn
+    dsn = _dsn(conn)  # with the password (conn.info.dsn hides it: every thread failed to connect in CI)
     with as_superuser(conn, commit=True) as su:
         kept = [str(r[0]) for r in su.rows("select id from public.ai_chat_calls where org_id = %s", [sc.bob.org])]
         plan = _plan(su, sc.bob.org)
@@ -157,7 +158,7 @@ def test_the_plans_cap_refuses_the_turn_after_the_limit_and_writes_nothing(conn,
 
 
 def test_the_last_turn_is_taken_once_under_a_race(conn, sc):
-    dsn = conn.info.dsn
+    dsn = _dsn(conn)  # with the password (conn.info.dsn hides it: every thread failed to connect in CI)
     with as_superuser(conn, commit=True) as su:
         kept = [str(r[0]) for r in su.rows("select id from public.ai_chat_calls where org_id = %s", [sc.bob.org])]
         plan = _plan(su, sc.bob.org)
