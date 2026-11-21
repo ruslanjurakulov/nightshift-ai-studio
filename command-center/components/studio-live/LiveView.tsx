@@ -14,6 +14,7 @@ import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/runBackend";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
+import { utc } from "@/lib/studio/utc";
 import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import "@/components/studio-canvas/studio-canvas.css";
@@ -121,11 +122,7 @@ function loginHref(): string {
 }
 
 /** system_events.ts is text, often a naive utcnow().isoformat(): read without an offset it would be local time (Lens M1). */
-const utcIso = (ts: string) => (/([zZ]|[+-]\d\d:?\d\d)$/.test(ts) ? ts : `${ts}Z`);
-
-export function utc(ts: string): Date {
-  return new Date(/([zZ]|[+-]\d\d:?\d\d)$/.test(ts) ? ts : `${ts}Z`);
-}
+export { utc };
 
 export function nodeName(t: T, n: LiveNode): string {
   const kind = fmt(t.studioLive.kinds[n.kind], { n: n.scene ?? "" });
@@ -436,18 +433,23 @@ export function LiveView({
     [graph, c],
   );
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
-  // The Activity lines gathered across readings: each reading gives the log's newest lines (a film's newest 50), so lines read
-  // earlier stay on screen. Keyed by line id; a different plan starts empty.
-  const planKey = target ? (target.kind === "window" ? `w:${target.channel}:${target.since}` : `${target.kind}:${target.id}`) : null;
-  const gathered = useRef<{ key: string | null; items: Map<string, ActivityItem> }>({ key: null, items: new Map() });
-  const activity = useMemo<Activity | null>(() => {
-    const a = graph && !draft ? graph.activity : null;
-    if (!a) return null;
-    if (gathered.current.key !== planKey) gathered.current = { key: planKey, items: new Map() };
-    for (const it of a.items) gathered.current.items.set(it.id, it);
-    const items = [...gathered.current.items.values()].sort((x, y) => Date.parse(utcIso(x.at)) - Date.parse(utcIso(y.at)) || x.id.localeCompare(y.id));
-    return { items, total: a.total };
-  }, [graph, draft, planKey]);
+  // The Activity lines. A film's reading gives the log's newest 50, so lines read earlier stay on screen (gathered by line id); a
+  // run's routes answer the whole window, so its lines are replaced. Only a reading of THIS plan counts: for one render after a
+  // switch the previous plan's reading is still on screen, and its lines must never land under the new plan (Lens HIGH).
+  const planKey = target ? (target.kind === "window" ? `window:${target.channel}:${target.since}` : `${target.kind}:${target.id}`) : null;
+  const reading = !draft && load.state === "ready" && load.key === planKey ? load.graph.activity ?? null : null;
+  const [gathered, setGathered] = useState<{ key: string | null; items: ActivityItem[] }>({ key: null, items: [] });
+  useEffect(() => {
+    if (!reading || !planKey) return;
+    setGathered((prev) => {
+      const byId = new Map(run || prev.key !== planKey ? [] : prev.items.map((it) => [it.id, it] as const));
+      for (const it of reading.items) byId.set(it.id, it);
+      const items = [...byId.values()].sort((x, y) => utc(x.at).getTime() - utc(y.at).getTime() || x.id.localeCompare(y.id));
+      return { key: planKey, items };
+    });
+  }, [reading, planKey, run]);
+  const activity: Activity | null =
+    reading && gathered.key === planKey ? { items: gathered.items, total: reading.total, cut: reading.cut } : null;
   // Closing the details gives focus back to the step it was opened from, not to the page (Pixel M2). The card is focused before the
   // panel unmounts: focusing it after, the browser has already dropped focus to <body>.
   const close = () => {
@@ -558,19 +560,18 @@ export function LiveView({
         </Link>
       ) : null}
       {graph ? (
-        <div className={sel || activity ? "lv-main has-details" : "lv-main"}>
+        <div className={`lv-main${sel ? " has-details" : ""}${activity ? " has-activity" : ""}`}>
           {narrow ? (
             <List graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           ) : (
             <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} lit={lit} />
           )}
-          {sel || activity ? (
-            <div className="lv-side">
-              {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
-              {activity ? <ActivityPanel activity={activity} run={run} /> : null}
-            </div>
-          ) : null}
+          {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
         </div>
+      ) : null}
+      {graph && activity ? (
+        // Below the board, never beside it: a side column narrows the board until its ends fall outside at 1280-1440 (Pixel HIGH).
+        <ActivityPanel activity={activity} run={run} />
       ) : null}
     </div>
   );

@@ -61,7 +61,6 @@
 .lv-audio { width: 100%; }
 /* 44px targets in the panel, and a long label wraps instead of overflowing (Pixel: .cv-kbtn is a fixed 40px, nowrap). */
 .lv-details .cv-kbtn { height: auto; min-height: 44px; white-space: normal; text-align: center; }
-.lv-side { display: grid; align-content: start; gap: 12px; min-width: 0; }
 /* The Activity log: a read-only list of what the plan's own log recorded, newest first. */
 .lv-activity { display: grid; align-content: start; gap: 8px; padding: 14px; border: 1px solid var(--rule); border-radius: 14px; background: var(--console); min-width: 0; }
 .lv-activity h2 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -77,8 +76,9 @@
   .lv-root { padding: 12px 16px; }
   .lv-main.has-details { grid-template-columns: minmax(0, 1fr); }
   .lv-details { order: -1; }
-  .lv-side { display: contents; }
-  .lv-activity { order: 2; margin-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  /* Activity follows the list and clears the tab bar itself: the list's own padding would leave a gap (Pixel). */
+  .lv-main.has-activity .lv-list { padding-bottom: 0; }
+  .lv-activity { margin-bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

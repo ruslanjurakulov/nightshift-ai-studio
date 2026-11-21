@@ -280,7 +280,7 @@ describe("Activity", () => {
     expect(lines[1]).toContain("Scene 1 · picture: done");
     expect(lines[2]).toContain(c.activity.words.started);
     expect(panel.textContent).not.toContain("9871");
-    expect(within(panel).getByTestId("live-activity-earlier").textContent).toBe("57 earlier events not shown.");
+    expect(within(panel).getByTestId("live-activity-earlier").textContent).toBe("57 events not shown.");
     expect(within(panel).getByTestId("live-activity-unreported").textContent).toBe(c.activity.notReportedFilm);
   });
 
@@ -306,6 +306,58 @@ describe("Activity", () => {
       await vi.advanceTimersByTimeAsync(7000);
     });
     await waitFor(() => expect(screen.getAllByTestId("live-activity-item").map((li) => li.getAttribute("data-word"))).toEqual(["assembly_completed", "started"]));
+  });
+});
+
+describe("Activity, across readings and plans (Lens)", () => {
+  const W = { window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" }, workflow: null, hold: null };
+  const ev = (event: string, ts: string) => ({ ts, event, status: "ok", agent: null });
+
+  it("a different plan never shows the previous plan's lines", async () => {
+    const F2 = "0f000000-0000-4000-8000-0000000000f2";
+    answer = (url) => {
+      const fj = film("running") as Record<string, unknown>;
+      fj.events = url.includes(F2) ? [{ id: 9, event: "assembly_completed", created_at: "2026-11-21T11:00:00Z" }] : [{ id: 1, event: "started", created_at: "2026-11-21T10:00:00Z" }];
+      return { status: 200, body: { film: fj, segments: [seg()], takes: [] } };
+    };
+    const { rerender } = render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await waitFor(() => expect(screen.getAllByTestId("live-activity-item").map((li) => li.getAttribute("data-word"))).toEqual(["started"]));
+    rerender(<LiveView filmStudio target={{ kind: "film", id: F2 }} />);
+    await waitFor(() => expect(screen.getAllByTestId("live-activity-item").map((li) => li.getAttribute("data-word"))).toEqual(["assembly_completed"]));
+  });
+
+  it("a run's event that syncs late with an earlier time takes its place, and no line shows twice", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    answer = () => {
+      n += 1;
+      const events = n === 1 ? [ev("topic.selected", "2026-11-21T10:01:00Z"), ev("script.started", "2026-11-21T10:03:00Z")] : [ev("topic.selected", "2026-11-21T10:01:00Z"), ev("research.completed", "2026-11-21T10:02:00Z"), ev("script.started", "2026-11-21T10:03:00Z")];
+      return { status: 200, body: { job: null, ...W, events } };
+    };
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z" }} />);
+    await screen.findByTestId("live-activity");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("live-activity-item").map((li) => li.getAttribute("data-word"))).toEqual(["script.started", "research.completed", "topic.selected"]),
+    );
+  });
+
+  it("a run log cut at the route's limit says its newest events may be missing", async () => {
+    answer = live({ job: null, ...W, events: [ev("topic.selected", "2026-11-21T10:01:00Z")], events_cut: true });
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z" }} />);
+    expect((await screen.findByTestId("live-activity-cut")).textContent).toBe(c.activity.cut);
+  });
+
+  it("sits below the board, not beside it, and its list is named and focusable", async () => {
+    answer = live({ job: null, ...W, events: [ev("topic.selected", "2026-11-21T10:01:00Z")] });
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z" }} />);
+    const panel = await screen.findByTestId("live-activity");
+    expect(panel.closest(".lv-main")).toBeNull();
+    const list = panel.querySelector("ol")!;
+    expect(list.getAttribute("tabindex")).toBe("0");
+    expect(list.getAttribute("aria-labelledby")).toBe("lv-activity-title");
   });
 });
 

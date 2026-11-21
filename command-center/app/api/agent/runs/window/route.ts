@@ -69,5 +69,5 @@ export async function GET(request: Request) {
       : null;
   const hold = await readRunHold(supabase, url.searchParams.get("hold"));
   const video = await readRunVideo(supabase, channel, since, until);
-  return NextResponse.json({ job: null, window: { since, now: new Date(nowMs).toISOString() }, events, workflow, hold, video }, { headers: NO_STORE });
+  return NextResponse.json({ job: null, window: { since, now: new Date(nowMs).toISOString() }, events, events_cut: Array.isArray(events) && events.length >= MAX_EVENTS, workflow, hold, video }, { headers: NO_STORE });
 }

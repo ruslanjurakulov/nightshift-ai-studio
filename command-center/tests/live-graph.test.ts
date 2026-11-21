@@ -313,14 +313,14 @@ describe("activity (the plan's own log)", () => {
     fj.events_total = 120;
     const g = filmGraph(coerceFilmLive({ film: fj, segments: [], takes: [] })!);
     expect(g.activity?.total).toBe(120);
-    expect(g.activity?.items.map((i) => [i.word, i.scene, i.kind, i.code])).toEqual([
-      ["started", null, null, null],
-      ["take_completed", 1, "keyframe", null],
-      ["take_failed", 2, "clip", "timeout"],
-      ["Bad Word!", null, null, null],
+    expect(g.activity?.items.map((i) => [i.word, i.scene, i.kind])).toEqual([
+      ["started", null, null],
+      ["take_completed", 1, "keyframe"],
+      ["take_failed", 2, "clip"],
+      ["Bad Word!", null, null],
     ]);
     // detail is never carried as text: credits, the basis and any free field stay out of the browser's lines.
-    expect(JSON.stringify(g.activity)).not.toMatch(/script|basis|confirmed|charged/);
+    expect(JSON.stringify(g.activity)).not.toMatch(/script|basis|confirmed|charged|timeout/);
   });
 
   it("a film_json without events (an older database) has no activity; a run's events become lines oldest first", () => {

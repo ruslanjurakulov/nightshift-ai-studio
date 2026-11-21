@@ -3,11 +3,11 @@
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import type { Activity, ActivityItem } from "@/lib/studio/liveGraph";
+import { utc } from "@/lib/studio/utc";
 
 type T = ReturnType<typeof useI18n>["t"];
 
-/** Event times are text, often a naive utcnow().isoformat(): read without an offset they would be local time (as LiveView.utc). */
-const utc = (ts: string) => new Date(/([zZ]|[+-]\d\d:?\d\d)$/.test(ts) ? ts : `${ts}Z`);
+
 
 /** A take's step name, as the board names it: "Scene 3 · picture", "Voice". Anything else is "A step", never a guess. */
 function stepName(t: T, it: ActivityItem): string {
@@ -40,19 +40,26 @@ export function ActivityPanel({ activity, run }: { activity: Activity; run: bool
   const items = [...activity.items].reverse();
   const hidden = activity.total !== null ? Math.max(0, activity.total - activity.items.length) : 0;
   const lang = locale === "uz" ? "uz-Latn-UZ" : locale;
+  const today = new Date().toDateString();
+  // A line from another day says its date: a plan from yesterday must not read as today's (Pixel).
+  const when = (d: Date) =>
+    d.toDateString() === today
+      ? d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      : d.toLocaleString(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   return (
     <section className="lv-activity" aria-labelledby="lv-activity-title" data-testid="live-activity">
       <h2 id="lv-activity-title">{a.title}</h2>
       {items.length === 0 ? (
         <p className="lv-muted" data-testid="live-activity-empty">{a.empty}</p>
       ) : (
-        <ol className="lv-activity-list">
+        // Scrollable at 320px: focusable and named, so a keyboard can scroll it in every browser (Pixel).
+        <ol className="lv-activity-list" tabIndex={0} aria-labelledby="lv-activity-title">
           {items.map((it) => {
             const { text, known } = activityText(t, it);
             const at = utc(it.at);
             return (
               <li key={it.id} data-testid="live-activity-item" data-word={it.word}>
-                <time dateTime={at.toISOString()}>{at.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>
+                <time dateTime={at.toISOString()}>{when(at)}</time>
                 {known ? <span>{text}</span> : <code>{text}</code>}
               </li>
             );
@@ -60,6 +67,7 @@ export function ActivityPanel({ activity, run }: { activity: Activity; run: bool
         </ol>
       )}
       {hidden > 0 ? <p className="lv-muted" data-testid="live-activity-earlier">{fmt(a.earlier, { n: hidden })}</p> : null}
+      {activity.cut ? <p className="lv-muted" data-testid="live-activity-cut">{a.cut}</p> : null}
       <p className="lv-muted" data-testid="live-activity-unreported">{run ? a.notReportedRun : a.notReportedFilm}</p>
     </section>
   );

@@ -9,7 +9,8 @@ export type LiveTarget = { kind: "film"; id: string } | { kind: "run"; id: strin
 
 export type LiveLoad =
   | { state: "loading" }
-  | { state: "ready"; graph: LiveGraph; film: FilmReading | null }
+  /** key: the plan this reading is of. A reading of the previous plan can still be on screen for one render after a switch. */
+  | { state: "ready"; graph: LiveGraph; film: FilmReading | null; key?: string }
   /** The read failed (network, 5xx, an answer that is not one): retried with backoff; the last good graph stays on screen. */
   | { state: "error" }
   | { state: "notFound" }
@@ -77,7 +78,8 @@ export function useLiveGraph(target: LiveTarget | null) {
   const read = useCallback(async (): Promise<PollVerdict> => {
     if (!target) return "stop";
     const from = gen.current;
-    const next = await readLive(target);
+    const read = await readLive(target);
+    const next: LiveLoad = read.state === "ready" ? { ...read, key: key ?? undefined } : read;
     accept(next, from);
     if (from !== gen.current || TERMINAL.includes(next.state)) return "stop";
     if (next.state === "ready") return next.graph.settled ? "stop" : "ok";
