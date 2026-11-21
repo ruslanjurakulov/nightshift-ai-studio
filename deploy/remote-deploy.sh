@@ -927,10 +927,12 @@ main() {
   # The creative worker's switch is one of the worker keys (the repository
   # variable NIGHTSHIFT_CREATIVE_WORKER): exactly `on` starts it, anything
   # else (empty, off, a typo) leaves it off. No worker, no creative worker.
-  local creative=off
+  local creative=off film=off
   if [[ "$worker" == on ]]; then
     for line in "${worker_lines[@]}"; do
       if [[ "$line" == NIGHTSHIFT_CREATIVE_WORKER=on ]]; then creative=on; fi
+      # The film worker's switch (NIGHTSHIFT_FILM_WORKER), the same rule: exactly `on`.
+      if [[ "$line" == NIGHTSHIFT_FILM_WORKER=on ]]; then film=on; fi
     done
   fi
   if (( ${#problems[@]} > 0 )); then
@@ -1038,6 +1040,17 @@ main() {
       compose rm --stop --force creative-worker >/dev/null 2>&1 || true
       log "creative-worker is off (GitHub variable NIGHTSHIFT_CREATIVE_WORKER is not 'on')"
     fi
+    # The film worker (Film Studio P3): switched by NIGHTSHIFT_FILM_WORKER, a line
+    # of the worker section like the creative worker's.
+    if [[ "$film" == on ]]; then
+      log "docker compose up -d --no-deps film-worker"
+      compose up -d --no-deps film-worker \
+        || die "the film worker did not start; on the server: dc logs --tail 100 film-worker"
+      services+=(film-worker)
+    else
+      compose rm --stop --force film-worker >/dev/null 2>&1 || true
+      log "film-worker is off (GitHub variable NIGHTSHIFT_FILM_WORKER is not 'on')"
+    fi
     compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' "${services[@]}" || true
     # A container that dies right after start still reads "Up" in the line
     # above. Wait a moment, then print how each worker is doing: state, last
@@ -1074,11 +1087,16 @@ main() {
       creative_log="$(compose logs --no-color --tail 200 creative-worker 2>&1 || true)"
       echo "creative-worker log hints: $(hint_words "$creative_log" || true)"
     fi
+    if [[ "$film" == on ]]; then
+      film_log="$(compose logs --no-color --tail 200 film-worker 2>&1 || true)"
+      echo "film-worker log hints: $(hint_words "$film_log" || true)"
+    fi
   else
     # Off: no container, and no copy of the bot's keys left on the disk.
     compose rm --stop --force media-worker >/dev/null 2>&1 || true
     compose rm --stop --force worker >/dev/null 2>&1 || true
     compose rm --stop --force creative-worker >/dev/null 2>&1 || true
+    compose rm --stop --force film-worker >/dev/null 2>&1 || true
     rm -f "$WORKER_ENV_FILE" "${WORKER_ENV_FILE}.prev"
     log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on'); creative-worker is off with it"
   fi
@@ -1114,7 +1132,7 @@ main() {
   # a disk. Only dangling images: nothing a container still uses.
   "$DOCKER" image prune -f >/dev/null 2>&1 || true
 
-  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing; brand-scan-worker $brandscan"
+  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; film-worker $film; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing; brand-scan-worker $brandscan"
 }
 
 main "$@"

@@ -70,14 +70,15 @@ export type FilmLimits = Record<(typeof LIMIT_KEYS)[number], number>;
 
 /**
  * The limits the "New project" form checks before a film exists (it has no film_json to read them from yet). The same numbers as
- * 0166's film_limits(); tests/films.test.ts pins them against the migration's text, so the two cannot drift apart unnoticed. The
- * database checks them again either way.
+ * film_limits() in the latest migration that writes it (0166, then 0198: a film may target 10 s, so a 15-30 s advert is a film);
+ * tests/films.test.ts pins them against the migration's text, so the two cannot drift apart unnoticed. The database checks them
+ * again either way.
  */
 export const CREATE_LIMITS = {
   max_title_chars: 120,
   max_topic_chars: 2000,
   max_script_chars: 40000,
-  target_seconds_min: 60,
+  target_seconds_min: 10,
   target_seconds_max: 1200,
   max_open_drafts: 50,
 } as const;
@@ -682,8 +683,18 @@ export function draftProblems(settings: SettingsDraft, scenes: readonly SceneDra
 
 // ─── where the project is (the station track) ────────────────────────────────
 
-/** The target lengths the screens offer, in minutes: inside 0166's 60-1200 s (a whole video is 3-10 minutes in the usual case). */
-export const TARGET_MINUTES = [1, 2, 3, 5, 8, 10, 15, 20] as const;
+/**
+ * The target lengths the screens offer, in seconds, all inside film_limits' 10-1200 s (0198 lowered the floor from 60). The short ones
+ * are for ads (a 15-30 s ad is 1-3 scenes of 3-30 s); the long ones are a whole video, usually 3-10 minutes.
+ */
+export const TARGET_SECONDS = [15, 30, 60, 120, 180, 300, 480, 600, 900, 1200] as const;
+
+/** How a target length reads: seconds under a minute, whole minutes, or m:ss for a length another client saved off the list. */
+export function targetLabel(seconds: number): { unit: "s" | "min" | "clock"; n: number } {
+  if (seconds < 60) return { unit: "s", n: seconds };
+  if (seconds % 60 === 0) return { unit: "min", n: seconds / 60 };
+  return { unit: "clock", n: seconds };
+}
 
 export const STATIONS = ["idea", "storyboard", "sound", "shoot", "assemble", "handoff"] as const;
 export type Station = (typeof STATIONS)[number];
