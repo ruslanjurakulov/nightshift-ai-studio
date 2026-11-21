@@ -90,7 +90,8 @@ export default async function StudioPage({
   const dna = await channelDnaForCreate(scopedChannel);
   const [user, slug, filmOpen] = await Promise.all([getUser(), getChannelSlug(), filmStudioOpen()]);
   // The admins-only beta is drawn only in the Owner account, like its nav entry; the Timeline's own link stays on the real role.
-  const filmStudio = filmOpen && filmStudioListed(filmStudioMode(), asOperator);
+  // Under `on`, filmOpen already is the open workspace's own switch (filmStudioOpen reads it), so it is the workspace answer too.
+  const filmStudio = filmOpen && filmStudioListed(filmStudioMode(), asOperator, filmOpen);
 
   return (
     <StudioCanvas

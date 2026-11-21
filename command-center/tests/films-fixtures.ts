@@ -60,3 +60,28 @@ export function sceneJson(id: string, position: number, over: Record<string, unk
     current_version: null, status: "draft", first_frame_missing: false, last_frame_missing: false, refs: [], takes: [], ...over,
   };
 }
+
+/** 0198's workspace switch as the member's client reads it: one row per workspace asked about, or none (`[]`, a workspace never switched). */
+export type OrgSwitchAnswer = { data: unknown; error: { code?: string; message?: string } | null } | Error;
+
+/**
+ * A Supabase client's `from` that answers org_film_settings (the workspace switch filmGate reads under `on`) and hands every other
+ * table to `rest`, so a test's own table mock never sees the switch read. `answer` defaults to ORG switched on.
+ */
+export function withOrgSwitch(rest: (table: string) => unknown, answer: () => OrgSwitchAnswer = () => ({ data: [{ org_id: ORG, film_studio_enabled: true }], error: null })) {
+  return (table: string) => {
+    if (table !== "org_film_settings") return rest(table);
+    return {
+      select: () => ({
+        in: async () => {
+          const a = answer();
+          if (a instanceof Error) throw a;
+          return a;
+        },
+      }),
+    };
+  };
+}
+
+/** The open workspace as getOrgContext gives it (ORG, an editor). */
+export const ORG_CONTEXT = { supported: true, orgs: [], switchable: [], current: { id: ORG, role: "editor" } };
