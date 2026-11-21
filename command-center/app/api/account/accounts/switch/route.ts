@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireSameOrigin } from "@/lib/server/same-origin";
-import { isParkedSlot } from "@/lib/device-accounts";
+import { isNonce, isParkedSlot } from "@/lib/device-accounts";
 import {
   activate,
   activeSession,
   auditSwitch,
+  discardSession,
   landingAfterSwitch,
   parkedFrom,
   readParked,
   refreshParked,
+  resetWorkspaceCookies,
+  revokeParked,
   writeParked,
 } from "@/lib/server/device-accounts";
 import { NO_STORE, fail, readBody } from "@/lib/server/device-accounts-http";
@@ -17,33 +20,46 @@ import { NO_STORE, fail, readBody } from "@/lib/server/device-accounts-http";
 export const dynamic = "force-dynamic";
 
 /**
- * POST { slot } — make a parked account the active one (lib/device-accounts.ts). The browser names a SLOT, never a user:
- * the account is whatever the auth server returns for that slot's stored refresh token, and it must be the account the slot
- * was parked as, or the switch is refused (a tampered or planted cookie). The account that was active is parked in the slot
- * it frees, so nothing is signed out. The answer names where to go, and the browser loads it in full (no router or RSC
- * cache of the previous account survives): that account's Home, or its own code page when its session is password-only and
- * it has an authenticator.
+ * POST { slot, nonce } — make a parked account the active one (lib/device-accounts.ts). The browser names a SLOT and the
+ * occupant it saw there (the nonce), never a user: the account is whatever the auth server returns for that slot's stored
+ * refresh token, and it must be the account the slot was parked as, or the switch is refused (a tampered or planted
+ * cookie). The account that was active is parked in the slot it frees, with a token refreshed here so the parked copy is
+ * the newest, so nothing is signed out. The answer names where to go, and the browser loads it in full: that account's
+ * Home, or its own code page when its session is password-only and it has an authenticator.
  *
- * - 400 not a slot; 404 nothing parked there.
+ * - 400 not a slot or nonce; 404 nothing parked there.
+ * - 409 slot_changed: another tab switched since this list was read; the browser reads the list again. Nothing changed.
  * - 409 session_expired: the auth server refused the stored session. The row is kept and reads "Sign in again"; no other
  *   account is switched to in its place.
- * - 409 account_mismatch: the session belongs to someone else than the slot says. The slot is dropped.
- * - 503 auth_unavailable: the auth server could not be asked. Nothing changed; try again.
+ * - 409 account_mismatch: the session belongs to someone else than the slot says. It is ended and the slot dropped.
+ * - 503 auth_unavailable: the auth server could not be asked (about either account). Nothing changed; try again.
  */
 export const POST = requireSameOrigin(async (request: Request) => {
   const body = await readBody(request);
   const slot = body?.slot;
-  if (!isParkedSlot(slot)) return fail("invalid_slot", 400);
+  if (!isParkedSlot(slot) || !isNonce(body?.nonce)) return fail("invalid_slot", 400);
 
   const parked = readParked(await cookies());
   const target = parked.get(slot);
   if (!target) return fail("unknown_slot", 404);
+  if (target.nonce !== body.nonce) return fail("slot_changed", 409);
 
+  // Who is active now must be KNOWN before anything is replaced: an outage is not "nobody", or that account would be lost.
   const active = await activeSession();
-  // Already the account in use (a stale duplicate): there is nothing to switch to.
-  if (active && active.user.id === target.uid) {
+  if (active.kind === "unavailable") return fail("auth_unavailable", 503);
+  if (active.kind === "ok" && active.user.id === target.uid) {
+    // A leftover copy of the account already in use: its own session is ended, the copy removed, and nothing reloads.
+    await revokeParked(target.rt);
     await writeParked(slot, null);
-    return NextResponse.json({ to: "/" }, { headers: NO_STORE });
+    return NextResponse.json({ same: true }, { headers: NO_STORE });
+  }
+
+  // The outgoing account's newest token, so its parked copy is not a spent one (a tab may refresh it at any moment).
+  let outgoingRt: string | null = null;
+  if (active.kind === "ok") {
+    const own = await refreshParked(active.session.refresh_token);
+    if (own.kind === "unavailable") return fail("auth_unavailable", 503);
+    outgoingRt = own.kind === "ok" ? own.session.refresh_token : null;
   }
 
   const fresh = await refreshParked(target.rt);
@@ -53,6 +69,7 @@ export const POST = requireSameOrigin(async (request: Request) => {
     return fail("session_expired", 409);
   }
   if (fresh.user.id !== target.uid) {
+    await discardSession(fresh.session);
     await writeParked(slot, null);
     return fail("account_mismatch", 409);
   }
@@ -62,10 +79,22 @@ export const POST = requireSameOrigin(async (request: Request) => {
     await writeParked(slot, { ...target, rt: fresh.session.refresh_token });
     return fail("auth_unavailable", 503);
   }
-  // The account that was active takes the freed slot; a second copy of the new active account is removed.
-  await writeParked(slot, active ? parkedFrom(active.user, active.session) : null);
-  for (const [other, p] of parked) if (other !== slot && p.uid === fresh.user.id) await writeParked(other, null);
-
-  await auditSwitch(fresh.session, active?.user.id ?? null, fresh.user.id);
+  // The account that was active takes the freed slot (refused for good by the auth server: kept as "Sign in again").
+  if (active.kind === "ok") {
+    const out = parkedFrom(active.user, outgoingRt ?? active.session.refresh_token);
+    await writeParked(slot, outgoingRt ? out : { ...out, stale: true });
+  } else {
+    await writeParked(slot, null);
+  }
+  // No account kept twice: other copies of either account are ended and removed.
+  for (const [other, p] of parked) {
+    if (other === slot) continue;
+    if (p.uid === fresh.user.id || (active.kind === "ok" && p.uid === active.user.id)) {
+      await revokeParked(p.rt);
+      await writeParked(other, null);
+    }
+  }
+  await resetWorkspaceCookies();
+  await auditSwitch(fresh.session, active.kind === "ok" ? active.user.id : null);
   return NextResponse.json({ to: landingAfterSwitch(fresh.session, fresh.user) }, { headers: NO_STORE });
 });

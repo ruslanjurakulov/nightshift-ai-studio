@@ -5,19 +5,26 @@ import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
 import { clearAllDrafts } from "@/lib/create-draft";
 import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
 import { discardPendingAtSignOut } from "@/lib/site/pending-attachment";
+import { createClient } from "@/lib/supabase/client";
 import {
   DEVICE_ACCOUNTS_ADD,
   DEVICE_ACCOUNTS_API,
+  DEVICE_ACCOUNTS_CHANNEL,
   DEVICE_ACCOUNTS_LOGOUT,
   DEVICE_ACCOUNTS_SWITCH,
+  type DeviceAccountView,
   type DeviceAccountsAnswer,
   type ParkedSlot,
 } from "@/lib/device-accounts";
 
 /** Why an action did not happen, in the words the menu has for it (lib/i18n/device-accounts). */
-export type DeviceAccountsProblem = "failed" | "unavailable" | "mismatch" | "limit" | "expired";
+export type DeviceAccountsProblem = "failed" | "unavailable" | "mismatch" | "limit" | "expired" | "changed";
 
-export type ActionResult = { ok: true } | { ok: false; problem: DeviceAccountsProblem };
+export type ActionResult =
+  | { ok: true; notRevoked?: boolean; same?: boolean }
+  | { ok: false; problem: DeviceAccountsProblem };
+
+type Row = Pick<DeviceAccountView, "slot" | "nonce">;
 
 async function post(url: string, body: unknown): Promise<{ status: number; json: Record<string, unknown> | null }> {
   const res = await fetch(url, {
@@ -40,6 +47,7 @@ function problemFor(status: number, error: unknown): DeviceAccountsProblem {
   if (error === "session_expired") return "expired";
   if (error === "account_mismatch") return "mismatch";
   if (error === "account_limit") return "limit";
+  if (error === "slot_changed" || error === "unknown_slot") return "changed";
   return "failed";
 }
 
@@ -55,9 +63,15 @@ async function forgetLocalWork(): Promise<void> {
   await discardPendingAtSignOut();
 }
 
-/** Only a path on this site: the server's answer is trusted, but never as a way off the origin. */
-function samePath(to: unknown): string {
-  return typeof to === "string" && to.startsWith("/") && !to.startsWith("//") ? to : "/";
+/** Only a path on this site: the server's answer is trusted, but never as a way off the origin (`//x`, `/\x`, `https:`). */
+export function samePath(to: unknown): string {
+  if (typeof to !== "string" || !to.startsWith("/") || to.includes("\\")) return "/";
+  try {
+    const url = new URL(to, window.location.origin);
+    return url.origin === window.location.origin ? `${url.pathname}${url.search}${url.hash}` : "/";
+  } catch {
+    return "/";
+  }
 }
 
 /** A FULL load, never the client router: no cached page or server-component payload of the previous account survives. */
@@ -65,47 +79,119 @@ function hardNavigate(to: string) {
   window.location.assign(to);
 }
 
-export async function switchAccount(slot: ParkedSlot): Promise<ActionResult> {
+/** This tab, so it does not reload on its own announcement (another BroadcastChannel in the same tab hears it too). */
+const TAB = Math.random().toString(36).slice(2);
+
+/** Tells this browser's other tabs that the account in use changed, so they reload instead of acting as the old one. */
+function announce() {
   try {
-    const { status, json } = await post(DEVICE_ACCOUNTS_SWITCH, { slot });
-    if (status !== 200) return { ok: false, problem: problemFor(status, json?.error) };
-    await forgetLocalWork();
-    hardNavigate(samePath(json?.to));
-    return { ok: true };
+    const channel = new BroadcastChannel(DEVICE_ACCOUNTS_CHANNEL);
+    channel.postMessage({ type: "changed", from: TAB });
+    channel.close();
   } catch {
-    return { ok: false, problem: "unavailable" };
+    /* no BroadcastChannel: the other tabs reload on their next navigation instead */
   }
+}
+
+/**
+ * One account change at a time in this browser: two tabs switching at the same moment would each park the account the
+ * other is activating, and the browser keeps only the last cookie of each name. Without Web Locks, it runs as it is.
+ */
+async function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== "undefined" ? (navigator as Navigator & { locks?: LockManager }).locks : undefined;
+  if (!locks) return fn();
+  return locks.request(DEVICE_ACCOUNTS_CHANNEL, fn) as Promise<T>;
+}
+
+/** The browser client refreshing the outgoing session mid-switch would write it back over the new one: it stops first. */
+function holdBrowserRefresh() {
+  try {
+    void createClient()?.auth.stopAutoRefresh();
+  } catch {
+    /* nothing to stop */
+  }
+}
+
+async function leaveTo(json: Record<string, unknown> | null): Promise<void> {
+  await forgetLocalWork();
+  announce();
+  hardNavigate(samePath(json?.to));
+}
+
+export function switchAccount(row: Row): Promise<ActionResult> {
+  return exclusive(async () => {
+    try {
+      holdBrowserRefresh();
+      const { status, json } = await post(DEVICE_ACCOUNTS_SWITCH, { slot: row.slot, nonce: row.nonce });
+      if (status !== 200) return { ok: false, problem: problemFor(status, json?.error) };
+      if (json?.same === true) return { ok: true, same: true };
+      await leaveTo(json);
+      return { ok: true };
+    } catch {
+      return { ok: false, problem: "unavailable" };
+    }
+  });
 }
 
 /** "Add account", or "Sign in again" for a refused row (`replace`). The browser then signs in as anyone does. */
-export async function addAccount(replace?: ParkedSlot): Promise<ActionResult> {
-  try {
-    const { status, json } = await post(DEVICE_ACCOUNTS_ADD, replace === undefined ? {} : { replace });
-    if (status !== 200) return { ok: false, problem: problemFor(status, json?.error) };
-    await forgetLocalWork();
-    hardNavigate(samePath(json?.to));
-    return { ok: true };
-  } catch {
-    return { ok: false, problem: "unavailable" };
-  }
+export function addAccount(replace?: Row): Promise<ActionResult> {
+  return exclusive(async () => {
+    try {
+      holdBrowserRefresh();
+      const body = replace ? { replace: replace.slot, nonce: replace.nonce } : {};
+      const { status, json } = await post(DEVICE_ACCOUNTS_ADD, body);
+      if (status !== 200) return { ok: false, problem: problemFor(status, json?.error) };
+      await leaveTo(json);
+      return { ok: true };
+    } catch {
+      return { ok: false, problem: "unavailable" };
+    }
+  });
 }
 
-export async function logOutParked(slot: ParkedSlot): Promise<ActionResult> {
-  try {
-    const { status, json } = await post(DEVICE_ACCOUNTS_LOGOUT, { slot });
-    return status === 200 ? { ok: true } : { ok: false, problem: problemFor(status, json?.error) };
-  } catch {
-    return { ok: false, problem: "unavailable" };
-  }
+export function logOutParked(row: Row): Promise<ActionResult> {
+  return exclusive(async () => {
+    try {
+      const { status, json } = await post(DEVICE_ACCOUNTS_LOGOUT, { slot: row.slot, nonce: row.nonce });
+      if (status !== 200) return { ok: false, problem: problemFor(status, json?.error) };
+      announce();
+      return { ok: true, notRevoked: json?.revoked === false };
+    } catch {
+      return { ok: false, problem: "unavailable" };
+    }
+  });
 }
 
-export async function logOutAllParked(): Promise<ActionResult> {
-  try {
-    const { status, json } = await post(DEVICE_ACCOUNTS_LOGOUT, { all: true });
-    return status === 200 ? { ok: true } : { ok: false, problem: problemFor(status, json?.error) };
-  } catch {
-    return { ok: false, problem: "unavailable" };
-  }
+export function logOutAllParked(): Promise<ActionResult> {
+  return exclusive(async () => {
+    try {
+      const { status, json } = await post(DEVICE_ACCOUNTS_LOGOUT, { all: true });
+      if (status !== 200) return { ok: false, problem: problemFor(status, json?.error) };
+      return { ok: true, notRevoked: typeof json?.unrevoked === "number" && json.unrevoked > 0 };
+    } catch {
+      return { ok: false, problem: "unavailable" };
+    }
+  });
+}
+
+/**
+ * Every tab of the app listens: when another tab switched, added or signed out an account, this one reloads, so its forms
+ * never submit as an account it is not showing. Mounted once per frame (the avatar menu, the Owner Console's shell).
+ */
+export function useDeviceAccountsSync(): void {
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(DEVICE_ACCOUNTS_CHANNEL);
+      channel.onmessage = (e: MessageEvent) => {
+        const data = e.data as { type?: unknown; from?: unknown } | null;
+        if (data?.type === "changed" && data.from !== TAB) window.location.reload();
+      };
+    } catch {
+      channel = null;
+    }
+    return () => channel?.close();
+  }, []);
 }
 
 export type AccountsState = { state: "loading" } | { state: "failed" } | { state: "ready"; data: DeviceAccountsAnswer };
@@ -135,3 +221,5 @@ export function useDeviceAccounts(enabled: boolean): { accounts: AccountsState; 
   }, [enabled, tick]);
   return { accounts, reload };
 }
+
+export type { ParkedSlot };

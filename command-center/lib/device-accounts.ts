@@ -22,9 +22,12 @@ export function isParkedSlot(value: unknown): value is ParkedSlot {
 /** What the menu draws for one account. `slot` is null for the active account. */
 export interface DeviceAccountView {
   slot: ParkedSlot | null;
+  /** The slot's current occupant, as a precondition a request names back (lib/server/device-accounts.ts); null when active. */
+  nonce: string | null;
   current: boolean;
   /** The profile name when there is one, else null (the masked email stands in). */
   name: string | null;
+  /** Masked (j***@gmail.com) for a parked account; the active account's own address in full, for the person using it. */
   maskedEmail: string;
   initial: string;
   /** The stored session was refused by the auth server: the row reads "Sign in again", it is never dropped silently. */
@@ -74,3 +77,11 @@ export const DEVICE_ACCOUNTS_ADD = `${DEVICE_ACCOUNTS_API}/add`;
 export const DEVICE_ACCOUNTS_LOGOUT = `${DEVICE_ACCOUNTS_API}/logout`;
 /** Where "Add account" sends the browser: the normal sign-in page, with nothing skipped. */
 export const ADD_ACCOUNT_LOGIN = "/login?add=1";
+
+/** A slot's nonce as the browser names it back: 16 hex characters, or not one. */
+export function isNonce(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{16}$/.test(value);
+}
+
+/** The BroadcastChannel this browser's tabs hear a switch, an add or a sign-out on, so none keeps acting as the old account. */
+export const DEVICE_ACCOUNTS_CHANNEL = "ns-device-accounts";

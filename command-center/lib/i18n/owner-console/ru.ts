@@ -2,6 +2,10 @@ import type { OwnerConsoleDictionary } from "./en";
 
 /** Консоль владельца (/owner) и переключатель аккаунтов. Источник текста — ./en.ts. */
 export const ownerConsoleRu: OwnerConsoleDictionary = {
+  studioNotice: "Чтобы открыть Studio и рабочее пространство, переключитесь на «Пользователь».",
+  studioSwitch: "Переключиться на «Пользователь»",
+  studioSwitching: "Переключаем…",
+  studioSwitchFailed: "Не удалось переключиться. Попробуйте ещё раз.",
   title: "Консоль владельца",
   navLabel: "Навигация консоли владельца",
   nav: {

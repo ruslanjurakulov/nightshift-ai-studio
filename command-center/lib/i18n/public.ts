@@ -46,7 +46,7 @@ export type PublicDictionary = {
   /** The sign-in page's "continue as" for the accounts kept on this device (components/auth/SavedAccounts.tsx). */
   deviceAccounts: Pick<
     Dictionary["deviceAccounts"],
-    "savedTitle" | "continueAs" | "signInAgain" | "expired" | "failed" | "unavailable" | "mismatch" | "working" | "logOutOf" | "logOut"
+    "savedTitle" | "continueAs" | "signInAgain" | "expired" | "expiredMessage" | "staleBelow" | "failed" | "unavailable" | "mismatch" | "changed" | "notRevoked" | "working" | "logOutOf" | "logOut" | "loadFailed" | "retry"
   >;
   /** The error screen (components/feedback/ErrorScreen), shown by app/error.tsx on any page. */
   ux: Pick<Dictionary["ux"], "errorTitle" | "errorBody" | "errorRetry" | "errorHome" | "errorRef">;
@@ -77,6 +77,12 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
       continueAs: t.deviceAccounts.continueAs,
       signInAgain: t.deviceAccounts.signInAgain,
       expired: t.deviceAccounts.expired,
+      expiredMessage: t.deviceAccounts.expiredMessage,
+      staleBelow: t.deviceAccounts.staleBelow,
+      changed: t.deviceAccounts.changed,
+      notRevoked: t.deviceAccounts.notRevoked,
+      loadFailed: t.deviceAccounts.loadFailed,
+      retry: t.deviceAccounts.retry,
       failed: t.deviceAccounts.failed,
       unavailable: t.deviceAccounts.unavailable,
       mismatch: t.deviceAccounts.mismatch,

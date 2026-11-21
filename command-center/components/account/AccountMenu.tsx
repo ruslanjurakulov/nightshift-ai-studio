@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Activity, Coins, Gift, Inbox, LogOut, Settings, Tv, X } from "lucide-react";
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
 import { DeviceAccounts } from "@/components/account/DeviceAccounts";
+import { useDeviceAccountsSync } from "@/lib/device-accounts-client";
 import { useShell } from "@/components/shell/ShellContext";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
@@ -116,6 +117,8 @@ export function AccountMenu({
   }, [open, close]);
 
   const signOut = useSignOut();
+  // Another tab switched, added or signed out an account: this one reloads rather than acting as the old account.
+  useDeviceAccountsSync();
 
   const shownEmail = data?.email ?? email;
   const dash = t.common.dash;
@@ -199,7 +202,7 @@ export function AccountMenu({
           </header>
 
           {/* The accounts kept on this device, first, as a messenger lists them; each switch is the server's (lib/device-accounts.ts). */}
-          <DeviceAccounts enabled={open} onSignOutCurrent={signOut} />
+          <DeviceAccounts enabled={open} onSignOutCurrent={signOut} avatarV={avatarV} />
 
           {/* The platform owner's two views of their own account (decided on the server: ownerSwitch), only under the owner's account. */}
           {ownerSwitch && <AccountSwitcher current={operatorFrame ? "owner" : "user"} onDone={() => close(false)} inMenu />}

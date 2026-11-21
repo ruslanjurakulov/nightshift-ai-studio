@@ -46,7 +46,8 @@ describe("the Studio bar's menu is never drawn under the rail", () => {
 
   it("in the owner's frame the rail follows the bar in the page (why the tie was lost)", () => {
     const layout = readFileSync(path.join(root, "app/(app)/layout.tsx"), "utf8");
-    const frame = layout.slice(layout.indexOf("{frame ? ("));
+    // The operator frame (after the Owner view branch, which draws the Owner Console frame instead).
+    const frame = layout.slice(layout.indexOf(") : frame ? ("));
     expect(frame.indexOf("{header}")).toBeGreaterThan(-1);
     expect(frame.indexOf("<SideNav operator />")).toBeGreaterThan(frame.indexOf("{header}"));
   });
