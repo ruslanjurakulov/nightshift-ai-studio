@@ -438,6 +438,10 @@ class CharacterSwapWorker:
                                           media_root=self.library.media_root, tools=self.library.tools, provenance=provenance,
                                           expect_kind="video", parent_asset_id=str((job.get("input") or {}).get("id") or "") or None,
                                           source="generated", project_id=job.get("project_id") or None)
-        except (media_library.IngestReject, media_library.StoreUnavailable, OSError, ValueError):
+        except media_library.MediaStoreUnavailable as e:
+            # The vendor's result is paid for: an outage while registering it leaves the job for the next claim (which resumes the
+            # recorded task and fetches again) instead of a terminal store_failed that loses it.
+            raise StoreUnavailable(f"register_asset: {e.code}") from None
+        except (media_library.IngestReject, media_library.StoreUnavailable, media_library.MediaStoreRefused, OSError, ValueError):
             return None
         return out_id

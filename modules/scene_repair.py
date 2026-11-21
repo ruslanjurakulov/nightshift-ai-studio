@@ -64,6 +64,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from modules import video_ir
+from modules.postgrest_chunks import in_filters, update_in
 
 logger = logging.getLogger(__name__)
 
@@ -583,18 +584,20 @@ def invalidate_approvals(channel_id: str, slug: str, scene_ids: Iterable[str], *
         result["videos_reset"] = (client.update("videos", where, {"review_state": "pending", **NO_APPROVAL})
                                   or client.update("videos", where, {"review_state": "pending"}))
         now = _now_iso()
-        in_videos = "in.(" + ",".join(vids) + ")"
-        result["approve_intents_consumed"] = client.update(
+        # Chunked: a channel with thousands of videos would make one in.() URL too long to send.
+        result["approve_intents_consumed"] = update_in(vids, lambda in_videos: client.update(
             "review_intents",
             {"video_id": in_videos, "action": "eq.approve", "consumed_at": "is.null"},
-            {"consumed_at": now, "outcome": "superseded_by_repair"})
+            {"consumed_at": now, "outcome": "superseded_by_repair"}))
         sids = [s for s in scene_ids if _ID_RE.match(str(s))]
         if sids:
-            result["scene_intents_consumed"] = client.update(
-                "review_intents",
-                {"video_id": in_videos, "action": "eq.regenerate_scene",
-                 "scene_id": "in.(" + ",".join(sids) + ")", "consumed_at": "is.null"},
-                {"consumed_at": now, "outcome": "repaired"})
+            result["scene_intents_consumed"] = update_in(vids, lambda in_videos: all([
+                client.update(
+                    "review_intents",
+                    {"video_id": in_videos, "action": "eq.regenerate_scene",
+                     "scene_id": in_scenes, "consumed_at": "is.null"},
+                    {"consumed_at": now, "outcome": "repaired"})
+                for in_scenes in in_filters(sids)]))
     except Exception as e:
         logger.warning("Could not invalidate approvals for %s (%s: %s)", slug, type(e).__name__, e)
         result["error"] = type(e).__name__

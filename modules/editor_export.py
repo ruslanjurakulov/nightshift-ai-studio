@@ -490,8 +490,14 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                                     provenance={"tool": "editor", "editor_project": project,
                                                 "editor_export": eid, "rev": export.get("rev"),
                                                 **({"frame": frame.id} if frame is not None else {})})
-            except (ml.IngestReject, ml.StoreUnavailable) as e:
-                logger.warning("editor export %s: storing failed (%s)", eid, type(e).__name__)
+            except ml.MediaStoreUnavailable as e:
+                # No answer is not a decision: nothing is recorded and the stale export is handed out again, instead of
+                # a finished (possibly paid) render being reported as store_failed.
+                logger.warning("editor export %s: the database did not answer while storing (%s); left for a re-claim",
+                               eid, e.code)
+                raise
+            except (ml.IngestReject, ml.StoreUnavailable, ml.MediaStoreRefused) as e:
+                logger.warning("editor export %s: storing failed (%s)", eid, getattr(e, "code", type(e).__name__))
                 raise ExportFailed("store_failed") from None
             asset_id = str(stored.get("id"))
     except ExportFailed as e:
