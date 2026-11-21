@@ -5,6 +5,7 @@
     "deploymentEnabled": {
       "main": false,
       "claude/**": false,
+      "codex/**": false,
       "showcase/**": false
     }
   }
