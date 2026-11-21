@@ -14,6 +14,7 @@ import { assetDownloadEn } from "./asset-download/en";
 import { brainDashEn } from "./brain-dashboard/en";
 import { ownerShellEn } from "./owner-shell/en";
 import { ageEn } from "./age/en";
+import { paymeEn } from "./payme/en";
 import { aiChatEn } from "./ai-chat/en";
 import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
@@ -94,6 +95,7 @@ export const en = {
   brainDash: brainDashEn,
   ownerShell: ownerShellEn,
   age: ageEn,
+  payme: paymeEn,
   /** Nightshift AI, the Studio's planning chat: ./ai-chat/en.ts. */
   aiChat: aiChatEn,
   customerApp: customerAppEn,

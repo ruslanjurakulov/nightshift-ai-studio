@@ -14,6 +14,7 @@ import { assetDownloadUz } from "./asset-download/uz";
 import { brainDashUz } from "./brain-dashboard/uz";
 import { ownerShellUz } from "./owner-shell/uz";
 import { ageUz } from "./age/uz";
+import { paymeUz } from "./payme/uz";
 import { aiChatUz } from "./ai-chat/uz";
 import { customerAppUz } from "./customer-app/uz";
 import { studioHubUz } from "./studio-hub/uz";
@@ -84,6 +85,7 @@ export const uz: Dictionary = {
   brainDash: brainDashUz,
   ownerShell: ownerShellUz,
   age: ageUz,
+  payme: paymeUz,
   aiChat: aiChatUz,
   customerApp: customerAppUz,
   studioHub: studioHubUz,

@@ -20,7 +20,9 @@ import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
 import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess, dodoViewFor } from "@/lib/dodo";
 import { withDodoPlans } from "@/lib/payments";
-import { paymentsProvider } from "@/lib/server/payments";
+import { paymeListed, paymentsProvider, paymeServer } from "@/lib/server/payments";
+import { paymeBuyAllowed, paymeViewFor } from "@/lib/payme";
+import { PaymeBuyCredits } from "@/components/credits/PaymeBuyCredits";
 import { dodoServer } from "@/lib/server/dodo-api";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { readSellableModels } from "@/lib/creative/registry";
@@ -179,6 +181,9 @@ export default async function CreditsPage() {
   // and their invoices stay theirs). The function refuses anyone else; it is not even asked for them.
   const showHistory = dodoMode && dodoCfg !== null && !exempt && Boolean(org.current.role && atLeast(org.current.role, "admin"));
   const history = showHistory ? await readDodoPurchaseHistory(supabase, orgId) : null;
+  // Payme (Uzcard/Humo) sells next to the primary seller, only when PAYMENTS_PROVIDER lists it, it is configured, it sells to
+  // this workspace and a pack carries a UZS price (paymeViewFor); an owner/admin act, like every other purchase.
+  const payme = paymeListed() && !exempt && paymeBuyAllowed(org.current.role) ? paymeViewFor(paymeServer(), orgId) : null;
 
   return (
     <div className="rhythm ns-open">
@@ -239,6 +244,7 @@ export default async function CreditsPage() {
           extraOff={extraOff}
         />
       )}
+      {payme && <PaymeBuyCredits view={payme} />}
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
       {history && <DodoPurchaseHistory read={history} />}
 

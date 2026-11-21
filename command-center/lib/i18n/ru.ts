@@ -14,6 +14,7 @@ import { assetDownloadRu } from "./asset-download/ru";
 import { brainDashRu } from "./brain-dashboard/ru";
 import { ownerShellRu } from "./owner-shell/ru";
 import { ageRu } from "./age/ru";
+import { paymeRu } from "./payme/ru";
 import { aiChatRu } from "./ai-chat/ru";
 import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
@@ -84,6 +85,7 @@ export const ru: Dictionary = {
   brainDash: brainDashRu,
   ownerShell: ownerShellRu,
   age: ageRu,
+  payme: paymeRu,
   aiChat: aiChatRu,
   customerApp: customerAppRu,
   studioHub: studioHubRu,

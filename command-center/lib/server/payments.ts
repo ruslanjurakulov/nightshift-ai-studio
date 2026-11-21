@@ -2,7 +2,8 @@ import "server-only";
 import type { Role } from "@/lib/auth/roles-shared";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess, dodoViewFor } from "@/lib/dodo";
-import { dodoPricing, resolvePaymentsProvider, withDodoPlans, type PaymentsProvider } from "@/lib/payments";
+import { dodoPricing, parsePaymentsProviders, resolvePaymentsProvider, withDodoPlans, type PaymentsProvider } from "@/lib/payments";
+import { resolvePaymeServer, type PaymeServerConfig } from "@/lib/payme";
 import { PLAN_ENV, planMatrix, type PlanCatalog, type PlanMatrix } from "@/lib/plans";
 import { PRICING_ENV, resolvePricing, type Pricing } from "@/lib/pricing";
 import { dodoEnvironment, dodoPageView, dodoServer } from "@/lib/server/dodo-api";
@@ -15,6 +16,20 @@ import { dodoEnvironment, dodoPageView, dodoServer } from "@/lib/server/dodo-api
  */
 export function paymentsProvider(): PaymentsProvider {
   return resolvePaymentsProvider(process.env.PAYMENTS_PROVIDER);
+}
+
+/** Whether PAYMENTS_PROVIDER lists Payme (Uzcard/Humo top-ups next to the primary seller). Off unless listed. */
+export function paymeListed(): boolean {
+  return parsePaymentsProviders(process.env.PAYMENTS_PROVIDER).payme;
+}
+
+/** This deployment's Payme settings, read per request like the switch; null when not configured. */
+export function paymeServer(): PaymeServerConfig | null {
+  return resolvePaymeServer({
+    PAYME_MERCHANT_ID: process.env.PAYME_MERCHANT_ID,
+    PAYME_ENV: process.env.PAYME_ENV,
+    PAYME_TEST_ORG_IDS: process.env.PAYME_TEST_ORG_IDS,
+  });
 }
 
 /**
