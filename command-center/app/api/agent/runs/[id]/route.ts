@@ -40,6 +40,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .maybeSingle();
   // credit_ref is read apart: a database without 0020 must still show the run.
   const refRead = jr.data ? await supabase.from("render_jobs").select("credit_ref").eq("id", Number(id)).maybeSingle() : null;
+  // The video the run made, by its own slug (0189 result_slug, written by the worker); a database without 0189 reads none.
+  const slugRead = jr.data ? await supabase.from("render_jobs").select("result_slug").eq("id", Number(id)).maybeSingle() : null;
+  const resultSlug =
+    slugRead && !slugRead.error && typeof (slugRead.data as { result_slug?: unknown } | null)?.result_slug === "string"
+      ? (slugRead.data as { result_slug: string }).result_slug
+      : null;
   const creditRef = refRead && !refRead.error && typeof (refRead.data as { credit_ref?: unknown } | null)?.credit_ref === "string" ? ((refRead.data as { credit_ref: string }).credit_ref) : null;
   if (jr.error) return NextResponse.json({ error: "failed" }, { status: 502, headers: NO_STORE });
   if (!jr.data) return NextResponse.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
@@ -72,7 +78,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         break;
       }
     }
-    video = await readRunVideo(supabase, channelId, from, until);
+    video = await readRunVideo(supabase, channelId, from, until, resultSlug);
   }
 
   return NextResponse.json(
