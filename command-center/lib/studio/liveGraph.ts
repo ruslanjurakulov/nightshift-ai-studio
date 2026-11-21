@@ -4,7 +4,14 @@
  * own event log) wrote; a step with no row says so. A missing reading is "unknown", never "done" (CLAUDE.md rule 5), and nothing
  * here ever starts, retries or prices anything (rule 3): the view only reads.
  */
-import { chosenClip, chosenKeyframe, chosenShots, narrationTake, type TakeMedia, type TimelineFilm } from "@/lib/studio/timeline";
+import { chosenClip, chosenKeyframe, chosenShots, coerceTimelineFilm, narrationTake, type TakeMedia, type TimelineFilm } from "@/lib/studio/timeline";
+
+const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+const num = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
 /**
  * - waiting: in the plan, not started yet (a planned or queued row, or no row while the project has not reached it)
@@ -73,6 +80,7 @@ export interface LiveSegment {
   assemblyAssetId: string | null;
   confirmedCredits: number | null;
   chargedCredits: number | null;
+  assemblyConfirmedCredits: number | null;
   assemblyChargedCredits: number | null;
   createdAt: string | null;
 }
@@ -89,6 +97,44 @@ export interface FilmReading {
   segments: LiveSegment[] | null;
   money: TakeMoney;
   errors: TakeErrors;
+}
+
+/**
+ * GET /api/films/[id]/live's answer as the graph reads it, or null when the film itself is not a film_json (the caller says so).
+ * `segments` or `takes` null in the answer stay "not known": null segments, and no money or error words.
+ */
+export function coerceFilmLive(raw: unknown): FilmReading | null {
+  const r = rec(raw);
+  if (!r) return null;
+  const film = coerceTimelineFilm(r.film);
+  if (!film) return null;
+  const segments = Array.isArray(r.segments)
+    ? r.segments
+        .map(rec)
+        .filter((s): s is Record<string, unknown> => !!s && !!str(s.id))
+        .map((s) => ({
+          id: str(s.id)!,
+          status: str(s.status) ?? "unknown",
+          assemblyStatus: str(s.assembly_status),
+          assemblyAssetId: str(s.assembly_asset_id),
+          confirmedCredits: num(s.confirmed_credits),
+          chargedCredits: num(s.captured_credits),
+          assemblyConfirmedCredits: num(s.assembly_confirmed_credits),
+          assemblyChargedCredits: num(s.assembly_charged_credits),
+          createdAt: str(s.created_at),
+        }))
+    : null;
+  const money = new Map<string, LiveCredits>();
+  const errors = new Map<string, string>();
+  for (const t of Array.isArray(r.takes) ? r.takes : []) {
+    const o = rec(t);
+    const id = o && str(o.id);
+    if (!o || !id) continue;
+    const err = str(o.error_code);
+    if (err) errors.set(id, err);
+    if ("confirmed_credits" in o || "charged_credits" in o) money.set(id, { held: num(o.confirmed_credits), charged: num(o.charged_credits) });
+  }
+  return { film, segments, money, errors };
 }
 
 const BEFORE_WORK = new Set(["draft", "planning", "planned", "queued"]);
@@ -275,7 +321,7 @@ export function filmGraph(r: FilmReading): LiveGraph {
     id: "assembly",
     kind: "assembly",
     status: asm,
-    credits: seg ? { held: seg.confirmedCredits, charged: seg.assemblyChargedCredits } : null,
+    credits: seg ? { held: seg.assemblyConfirmedCredits, charged: seg.assemblyChargedCredits } : null,
     error: asm === "failed" ? "assembly_failed" : null,
     col: 5,
     row: mid,
@@ -315,7 +361,22 @@ export interface RunJob {
 export interface RunReading {
   /** Null: the run's row could not be read (another backend, or not this person's channel): the stages are unknown. */
   job: RunJob | null;
-  events: RunEvent[];
+  /** Null: the events could not be read, so no stage is claimed either way. */
+  events: RunEvent[] | null;
+}
+
+/** GET /api/agent/runs/[id]'s answer as runGraph reads it. A missing or malformed job is null: every stage then reads unknown. */
+export function coerceRunLive(raw: unknown): RunReading {
+  const r = rec(raw);
+  const j = r ? rec(r.job) : null;
+  const job: RunJob | null = j && str(j.status) ? { status: str(j.status)!, startedAt: str(j.startedAt), finishedAt: str(j.finishedAt), error: str(j.error) } : null;
+  const events = r && Array.isArray(r.events)
+    ? r.events
+        .map(rec)
+        .filter((e): e is Record<string, unknown> => !!e && !!str(e.ts) && !!str(e.event))
+        .map((e) => ({ ts: str(e.ts)!, event: str(e.event)!, status: str(e.status), agent: str(e.agent), privacy: str(e.privacy) }))
+    : null;
+  return { job, events };
 }
 
 /** Which events speak for which stage, in pipeline order (main.py and modules/event_log.py name them). */
@@ -334,7 +395,8 @@ const RUN_STAGES: { kind: RunNodeKind; start: string[]; done: string[]; failAgen
 const JOB_TERMINAL = new Set(["completed", "failed", "cancelled", "canceled", "succeeded"]);
 
 export function runGraph(r: RunReading): LiveGraph {
-  const events = [...r.events].sort((a, b) => a.ts.localeCompare(b.ts));
+  const events = [...(r.events ?? [])].sort((a, b) => a.ts.localeCompare(b.ts));
+  const readable = r.job !== null && r.events !== null;
   const ended = r.job ? JOB_TERMINAL.has(r.job.status) : false;
   let reachedLater = false;
   const statuses: { kind: RunNodeKind; status: LiveStatus; at: string | null; privacy: string | null }[] = [];
@@ -345,7 +407,7 @@ export function runGraph(r: RunReading): LiveGraph {
     );
     const last = mine[mine.length - 1];
     let status: LiveStatus;
-    if (!r.job) status = "unknown";
+    if (!readable || !r.job) status = "unknown";
     else if (!last) status = reachedLater ? "unknown" : ended ? (r.job.status === "completed" || r.job.status === "succeeded" ? "unknown" : "skipped") : "waiting";
     else if (st.failEvents.includes(last.event) || last.event === "agent.failed") status = "failed";
     else if (st.done.includes(last.event)) status = "done";

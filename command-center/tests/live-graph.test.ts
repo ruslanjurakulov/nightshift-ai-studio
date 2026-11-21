@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { coerceTimelineFilm } from "../lib/studio/timeline";
-import { filmGraph, runGraph, type LiveSegment, type RunEvent } from "../lib/studio/liveGraph";
+import { coerceFilmLive, coerceRunLive, filmGraph, runGraph, type LiveSegment, type RunEvent } from "../lib/studio/liveGraph";
 import { S1, S2, filmJson, sceneJson } from "./films-fixtures";
 
 const PIC = "a1000000-0000-4000-8000-0000000000a1";
@@ -75,14 +75,14 @@ describe("a film", () => {
 
   it("the final video is done only when the segment recorded the file", () => {
     const seg = (over: Partial<LiveSegment>): LiveSegment => ({
-      id: "s", status: "settled", assemblyStatus: "completed", assemblyAssetId: null, confirmedCredits: 40, chargedCredits: 30, assemblyChargedCredits: 6, createdAt: "2026-11-21T00:00:00Z", ...over,
+      id: "s", status: "settled", assemblyStatus: "completed", assemblyAssetId: null, confirmedCredits: 40, chargedCredits: 30, assemblyConfirmedCredits: 8, assemblyChargedCredits: 6, createdAt: "2026-11-21T00:00:00Z", ...over,
     });
     const without = byId(filmGraph(reading({ status: "ready" }, [sceneJson(S1, 0)], { segments: [seg({})] })));
     expect(without.get("assembly")?.status).toBe("done");
     expect(without.get("final")?.status).toBe("unknown");
     const withFile = byId(filmGraph(reading({ status: "ready" }, [sceneJson(S1, 0)], { segments: [seg({ assemblyAssetId: MP4 })] })));
     expect(withFile.get("final")).toMatchObject({ status: "done", assetId: MP4 });
-    expect(withFile.get("assembly")?.credits).toEqual({ held: 40, charged: 6 });
+    expect(withFile.get("assembly")?.credits).toEqual({ held: 8, charged: 6 });
   });
 
   it("music that is gone from the library is said, not drawn as present", () => {
@@ -106,6 +106,17 @@ describe("a film", () => {
   });
 });
 
+describe("the live route's answer", () => {
+  it("segments or takes null stay not known; the money and error words come through", () => {
+    const raw = { film: filmJson({ status: "running" }, [sceneJson(S1, 0)]), segments: null, takes: [{ id: "t1", error_code: "provider_timeout", confirmed_credits: "4.00", charged_credits: null }] };
+    const r = coerceFilmLive(raw)!;
+    expect(r.segments).toBeNull();
+    expect(r.errors.get("t1")).toBe("provider_timeout");
+    expect(r.money.get("t1")).toEqual({ held: 4, charged: null });
+    expect(coerceFilmLive({ film: { nope: true } })).toBeNull();
+  });
+});
+
 describe("a channel run", () => {
   const ev = (ts: string, event: string, over: Partial<RunEvent> = {}): RunEvent => ({ ts, event, status: null, agent: null, ...over });
   const stages = (g: ReturnType<typeof runGraph>) => Object.fromEntries(g.nodes.map((n) => [n.id, n.status]));
@@ -113,6 +124,16 @@ describe("a channel run", () => {
   it("with no readable run row every stage is unknown", () => {
     const g = runGraph({ job: null, events: [ev("2026-11-21T00:00:01Z", "script.completed")] });
     expect(new Set(Object.values(stages(g)))).toEqual(new Set(["unknown"]));
+  });
+
+  it("events that could not be read leave every stage unknown, even with the job row", () => {
+    const g = runGraph(coerceRunLive({ job: { status: "running", startedAt: "t0", finishedAt: null, error: null }, events: null }));
+    expect(new Set(Object.values(stages(g)))).toEqual(new Set(["unknown"]));
+  });
+
+  it("a malformed answer has no job: unknown, never waiting", () => {
+    expect(coerceRunLive({ events: [] }).job).toBeNull();
+    expect(coerceRunLive(null)).toEqual({ job: null, events: null });
   });
 
   it("a running run: done, working and waiting stages come from their own events", () => {
