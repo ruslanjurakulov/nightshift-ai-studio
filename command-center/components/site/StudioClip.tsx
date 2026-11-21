@@ -2,6 +2,8 @@
 
 import { LoopClip } from "@/components/site/LoopClip";
 import { SHOWCASE_ITEMS, showcaseCaptions, showcasePoster, showcaseVideo } from "@/lib/showcase/items";
+import { templateMediaUrl, type MediaManifest } from "@/lib/templates/trends";
+import mediaManifest from "@/lib/templates/media-manifest.json";
 
 /**
  * A Studio piece's loop on the landing (lib/showcase/items.ts: made in our own Studio, served from public/showcase/). Its files
@@ -16,4 +18,16 @@ export function StudioClip({ slug, captionsLabel }: { slug: string; captionsLabe
   const lang = SHOWCASE_ITEMS.find((x) => x.slug === slug)?.captions;
   const captions = lang ? { src: showcaseCaptions(slug), srcLang: lang, label: captionsLabel } : undefined;
   return <LoopClip sources={{ mp4, smMp4: mp4 }} poster={showcasePoster(slug)} together captions={captions} />;
+}
+
+/**
+ * A Trends template's preview on the landing (public/templates/<slug>/preview.mp4, made through our own Studio API with the
+ * template's prompt and model). Only a file the manifest says ships can be named, so nothing outside our own previews is
+ * reachable. A 480p H.264 file with no audio, so it is already the small rendition. Every LoopClip rule holds.
+ */
+export function TemplateClip({ slug }: { slug: string }) {
+  const mp4 = templateMediaUrl(mediaManifest as MediaManifest, slug, "preview");
+  const poster = templateMediaUrl(mediaManifest as MediaManifest, slug, "poster");
+  if (!mp4 || !poster) return null;
+  return <LoopClip sources={{ mp4, smMp4: mp4 }} poster={poster} together />;
 }

@@ -104,6 +104,9 @@ def db():
     d = Db(sec_db.build(admin, name))
     d.su("insert into auth.users (id, email) values (%s,'a@d3.io'),(%s,'b@d3.io'),(%s,'f@d3.io'),(%s,'op@d3.io')",
          [UA, UB, UF, UOP])
+    # 0196: a video run spends on Google, and these people make them: they have answered 18+, as real ones do.
+    with psycopg.connect(d.dsn, autocommit=True) as c:
+        sec_db.attest_adults(c, UA, UB, UF, UOP)
     d.su("insert into public.organizations (id, name, slug) values (%s,'A','org-a-d3'),(%s,'B','org-b-d3'),(%s,'F','org-f-d3'),(%s,'P','org-p-d3')",
          [ORG_A, ORG_B, ORG_F, ORG_P])
     d.su("insert into public.org_members (org_id, user_id, email, role) values (%s,%s,'a@d3.io','owner'),(%s,%s,'b@d3.io','owner'),"
@@ -1249,7 +1252,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     # drift guard and would silently put its own oauth_create_video back; 0147 and 0170 refuse. Off first, on again last.
     adult = sec_db.MIGRATION_0192.exists()
     if adult:
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0192])
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0196, sec_db.ROLLBACK_0192])  # 0196 sits on 0192's video bodies
     sec_db.apply_files(db.dsn, [path, path])
     after = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
              db.su("select pepper from public.oauth_settings")[0][0])
@@ -1277,7 +1280,8 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     if adult:
         # 0094 sits on 0093's oauth_create_video, and 0192 on 0094's: 0094 again (it has no guard and changes nothing else that
         # 0093 replaced), then 0192.
-        sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192])
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192,
+                                    sec_db.MIGRATION_0196])
         assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 
