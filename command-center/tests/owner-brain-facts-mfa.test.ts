@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-// Breach round 1 on PR #848. With 0107's second-factor gate on, the database refuses a password-only owner the two 0196/0200
+// Breach round 1 on PR #848. With 0107's second-factor gate on, the database refuses a password-only owner the two 0196/0197
 // blocks (NS401), and the PR's lab test says why: "these facts are what the owner's AI hands a model: a stolen password must not
 // read them". buildOwnerFacts() only turns that refusal into people/health "unknown" and goes on: revenue (0182
 // owner_analytics_money) and provider balances, pace and the payment plan (0184 + the provider tables) have no second-factor
@@ -20,7 +20,7 @@ describe("owner facts with the second-factor gate on", () => {
     vi.doMock("@/lib/server/owner-runway", () => ({ readRunway }));
     vi.doMock("@/lib/owner-analytics/runway", () => ({ providerRunways: () => [] }));
     vi.doMock("@/lib/supabase/server", () => ({
-      // What PostgREST answers a password-only owner while the gate is on: 0196/0200 raise mfa_required (NS401).
+      // What PostgREST answers a password-only owner while the gate is on: 0196/0197 raise mfa_required (NS401).
       createClient: async () => ({
         rpc: async (name: string) =>
           name === "admin_aal_ok" ? { data: false, error: null } : { data: null, error: { code: "NS401", message: "mfa_required" } },

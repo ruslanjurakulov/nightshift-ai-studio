@@ -13,7 +13,7 @@ import { paymentPlan, PLAN_DAYS, type PaymentPlan } from "@/lib/owner-analytics/
  * owner and no one else. It is what the owner's Nightshift AI is given as data, and what the Owner Console's pages read.
  *
  * WHO. buildOwnerFacts() throws OwnerOnlyError unless ownerAccess() says "owner"; the database refuses everyone else too
- * (0182's gate, 0200's functions, 0107's second factor). Nothing in a customer path may import this module — a test reads the
+ * (0182's gate, 0197's functions, 0107's second factor). Nothing in a customer path may import this module — a test reads the
  * import graph and fails the build if one does (tests/owner-brain-facts.test.ts).
  *
  * WHAT. Every figure is tagged: `measured` (read from a record of what happened), `estimated` (arithmetic on measurements, e.g.
@@ -52,7 +52,7 @@ async function rpcJson(name: "owner_brain_people" | "owner_brain_health"): Promi
     const code = (error as { code?: string }).code;
     return {
       state: "unknown",
-      why: code === "42883" || code === "PGRST202" ? "migration 0200 is not applied" : code === "NS401" ? "second factor required" : "read failed",
+      why: code === "42883" || code === "PGRST202" ? "migration 0197 is not applied" : code === "NS401" ? "second factor required" : "read failed",
     };
   }
   if (!data || typeof data !== "object") return { state: "unknown", why: "empty answer" };

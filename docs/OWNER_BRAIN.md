@@ -9,8 +9,8 @@ pays, changes a price or a plan, or edits anyone's data. This file is the data l
 
 | Block | From | Tag |
 | :-- | :-- | :-- |
-| `people` | `owner_brain_people()` (0200) | measured |
-| `health` | `owner_brain_health()` (0200) | measured; CI/deploy `not_in_database` |
+| `people` | `owner_brain_people()` (0197) | measured |
+| `health` | `owner_brain_health()` (0197) | measured; CI/deploy `not_in_database` |
 | `revenue` | `owner_analytics_money` (0182) → `summarize`, `mrrAt`, `churn` | measured, net before fees |
 | `providers` | the provider runway (0184 + the Billing ledger) → `paymentPlan()` | measured (provider's reading) or estimated (top-ups − spend) |
 
@@ -29,7 +29,7 @@ listed as unknown, never as fine. Days are UTC calendar days.
 
 ## Isolation (an owner-data leak is CRITICAL)
 
-- Database: 0200's functions, 0182's and 0184's all check the platform owner before reading anything; the lab proves a customer,
+- Database: 0197's functions, 0182's and 0184's all check the platform owner before reading anything; the lab proves a customer,
   a workspace admin, a platform admin, anon and the service key get 42501 (`tests/security/test_sec_owner_brain.py`).
 - Code: `buildOwnerFacts()` throws `OwnerOnlyError` unless `ownerAccess()` is "owner", and `SecondFactorRequiredError` when
   0107's second-factor gate refuses the session (`admin_aal_ok()`), both before any read: a stolen password gets no part of it.

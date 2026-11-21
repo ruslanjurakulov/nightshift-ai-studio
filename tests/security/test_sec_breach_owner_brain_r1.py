@@ -1,4 +1,4 @@
-"""Breach round 1 on the owner's facts (owner_brain_health, migration 0196/0200): a customer writes the owner's health.
+"""Breach round 1 on the owner's facts (owner_brain_health, migration 0196/0197): a customer writes the owner's health.
 
 alert_events is a mixed stream: a channel member may append a row for a channel they can see (0033's alert_events_insert),
 and only a platform admin may append a channel-less one. The bot's real readiness check (tools/doctor_report.py) writes

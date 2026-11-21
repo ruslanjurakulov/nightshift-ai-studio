@@ -1,5 +1,5 @@
--- 0200_owner_brain_facts.sql — the owner's facts for Nightshift Brain: people and plans, and system health, as compact JSON.
--- docs/MIGRATIONS.md "0200", docs/OWNER_BRAIN.md.
+-- 0197_owner_brain_facts.sql — the owner's facts for Nightshift Brain: people and plans, and system health, as compact JSON.
+-- docs/MIGRATIONS.md "0197", docs/OWNER_BRAIN.md.
 --
 -- *** LIVE ON APPLY. *** Two read-only functions. No table, no write, nothing replaced.
 --
@@ -17,17 +17,17 @@
 -- (the owner asked "who bought which plan"), a person is not. Every figure that could not be read is JSON null, never 0.
 --
 -- REQUIRES 0182 (owner gate, internal workspaces) and 0107 (admin_aal_ok). Additive and idempotent.
--- Undo: docs/sql/rollback_0200_owner_brain_facts.sql.
--- NUMBER. 0200 is provisional; the final number is assigned at merge.
+-- Undo: docs/sql/rollback_0197_owner_brain_facts.sql.
+-- NUMBER. 0197, assigned at merge (it merged before 0197–0199 reserved by other streams, which renumber at theirs).
 set local lock_timeout = '5s';
 
 do $$
 begin
   if to_regprocedure('public.owner_analytics_is_owner()') is null then
-    raise exception '0200 needs 0182_owner_analytics.sql: apply it first';
+    raise exception '0197 needs 0182_owner_analytics.sql: apply it first';
   end if;
   if to_regprocedure('public.admin_aal_ok()') is null then
-    raise exception '0200 needs 0107_owner_safety.sql (admin_aal_ok): apply it first';
+    raise exception '0197 needs 0107_owner_safety.sql (admin_aal_ok): apply it first';
   end if;
 end $$;
 
@@ -126,7 +126,7 @@ end
 $$;
 
 comment on function public.owner_brain_people() is
-  'Migration 0200: the owner''s people-and-plans facts for Nightshift Brain as one JSON object — confirmed signups (1/7/30 days), last sign-ins (a floor), paying workspaces by plan, past due, cancelling, canceled in 30 days, and the 20 newest plan changes by workspace name. Internal and owner-flagged workspaces are excluded. Platform owner only, second factor when 0107''s gate is on; read-only.';
+  'Migration 0197: the owner''s people-and-plans facts for Nightshift Brain as one JSON object — confirmed signups (1/7/30 days), last sign-ins (a floor), paying workspaces by plan, past due, cancelling, canceled in 30 days, and the 20 newest plan changes by workspace name. Internal and owner-flagged workspaces are excluded. Platform owner only, second factor when 0107''s gate is on; read-only.';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 2. System health
@@ -255,7 +255,7 @@ end
 $$;
 
 comment on function public.owner_brain_health() is
-  'Migration 0200: the owner''s system-health facts for Nightshift Brain as one JSON object — per channel the newest run evidence, failures in 24 h / 7 days, held videos and the YouTube token''s stored/verified state (no token bytes); creative and render queues (queued, oldest, running, stuck, failed); workers and their staleness; the doctor''s verdict; alerts; the pipeline mirror''s time; provider readings'' times. CI and deploys are not in the database and say so. Platform owner only, second factor when 0107''s gate is on; read-only.';
+  'Migration 0197: the owner''s system-health facts for Nightshift Brain as one JSON object — per channel the newest run evidence, failures in 24 h / 7 days, held videos and the YouTube token''s stored/verified state (no token bytes); creative and render queues (queued, oldest, running, stuck, failed); workers and their staleness; the doctor''s verdict; alerts; the pipeline mirror''s time; provider readings'' times. CI and deploys are not in the database and say so. Platform owner only, second factor when 0107''s gate is on; read-only.';
 
 revoke all on function public.owner_brain_people() from public, anon, authenticated, service_role;
 revoke all on function public.owner_brain_health() from public, anon, authenticated, service_role;
@@ -273,18 +273,18 @@ begin
   foreach sig in array array['public.owner_brain_people()', 'public.owner_brain_health()'] loop
     fn := to_regprocedure(sig);
     if fn is null then
-      raise exception '0200 end state: % does not exist', sig;
+      raise exception '0197 end state: % does not exist', sig;
     end if;
     if not has_function_privilege('authenticated', fn, 'EXECUTE')
        or has_function_privilege('anon', fn, 'EXECUTE')
        or has_function_privilege('service_role', fn, 'EXECUTE') then
-      raise exception '0200 end state: % has the wrong grants', sig;
+      raise exception '0197 end state: % has the wrong grants', sig;
     end if;
     if exists (select 1 from pg_proc p where p.oid = fn
                 and (not p.prosecdef or p.proacl is null
                      or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-      raise exception '0200 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
+      raise exception '0197 end state: % is not a SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', sig;
     end if;
   end loop;
 end $$;
