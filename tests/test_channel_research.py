@@ -482,6 +482,21 @@ class FixRound(unittest.TestCase):
         # The uploads' complete marker carries the database's start time from the claim, not this machine's clock.
         self.assertEqual(store.videos[-1]["fetched_since"], "2026-11-21T11:59:00+00:00")
 
+    def test_a_bad_key_on_a_handle_lookup_fails_the_request_and_blames_no_competitor(self):
+        # Lens (round 3 re-check): Google answers a bad key with HTTP 400 too. That is the operator's key, not the customer's
+        # handle: three such refreshes must not turn every handle into invalid_ref while the request reads "done".
+        bad_key = Resp(400, {"error": {"status": "INVALID_ARGUMENT", "errors": [{"reason": "keyInvalid"}],
+                                       "details": [{"reason": "API_KEY_INVALID"}]}})
+        session = FakeSession({"/channels": bad_key, "/playlistItems": Resp(200, {"items": []})})
+        store = FakeStore()
+        status = run({"id": 3, "kind": "competitors", "org_id": "o", "competitors": [
+            {"id": "c1", "input_ref": "@one", "ref_kind": "handle", "status": "pending"},
+            {"id": "c2", "input_ref": "@two", "ref_kind": "handle", "status": "pending"}]}, session, store)
+        self.assertEqual(status, "failed")
+        self.assertEqual(store.finished[-1][1:3], ("failed", "auth"))
+        self.assertEqual(getattr(store, "failed_lookups", []), [])
+        self.assertEqual(store.resolved, [])
+
     def test_an_empty_own_playlist_replaces_the_stored_list(self):
         routes = OwnChannel().routes()
         session, store = FakeSession(routes), FakeStore()

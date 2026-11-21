@@ -561,7 +561,9 @@ def _competitors(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, now: 
                 if e.code == "not_found":
                     store.resolve(str(c["id"]), None)
                     continue
-                if e.http == 400:
+                # Only a 400 whose reason names no key, quota or rate problem: Google answers a bad key with 400 too, and that is
+                # the operator's key, not this handle (it ends the request with its own remedy below).
+                if e.code == "platform_error" and e.http == 400:
                     store.lookup_failed(str(c["id"]))
                     continue
                 raise
