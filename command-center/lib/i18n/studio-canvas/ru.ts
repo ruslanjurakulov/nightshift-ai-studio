@@ -133,7 +133,7 @@ export const studioCanvasRu: StudioCanvasDictionary = {
   timelineSoon: "Таймлайн появится вместе с проектами из сцен",
   mapMin: "Свернуть карту",
   mapMax: "Развернуть карту",
-  rail: { label: "Навигация Studio", command: "Центр", studio: "Studio", inbox: "Входящие", analytics: "Аналитика", admin: "Админ", home: "Главная", channels: "Каналы", credits: "Кредиты", settings: "Настройки", brain: "Brain" },
+  rail: { label: "Навигация Studio", command: "Центр", studio: "Studio", inbox: "Входящие", analytics: "Аналитика", admin: "Админ", home: "Главная", channels: "Каналы", credits: "Кредиты", settings: "Настройки", brain: "Brain", nightshiftAi: "AI" },
   add: {
     title: "Добавить узел",
     close: "Закрыть",

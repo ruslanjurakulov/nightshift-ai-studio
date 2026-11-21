@@ -166,6 +166,11 @@ export interface NavFeatures {
    * Studio's desks (the desk bar, the customer sidebar's Create group and Studio's overview).
    */
   filmStudio?: boolean;
+  /**
+   * NIGHTSHIFT_AI_CHAT / _ORGS (lib/brain/flag.ts), already resolved for this workspace by the layout: the customer rail's
+   * "Nightshift AI" entry. Absent reads as off, so a workspace the flag does not let in never sees a door to a closed panel.
+   */
+  aiChat?: boolean;
 }
 
 /** Studio → Projects: a whole video planned scene by scene (migration 0166). Under /create, the Studio's own address. */
@@ -278,6 +283,9 @@ export const PROJECTS = "/studio?shelf=projects";
  * Credits and Settings sit at the foot of the desktop sidebar (and behind the credit pill and the avatar on a phone).
  * Channels, the Inbox and Nightshift Studio's canvas keep their URLs and are reached from Projects, the avatar menu and ⌘K.
  */
+/** The Studio's planning chat opens on the canvas with its panel up (#843: /studio?ai=new). */
+export const NIGHTSHIFT_AI_ENTRY: NavItem = { href: "/studio?ai=new", key: "nightshiftAi" };
+
 export const CUSTOMER_RAIL: readonly NavItem[] = [
   { href: CUSTOMER_HOME, key: "home" },
   { href: "/create", key: "create" },
@@ -289,6 +297,14 @@ export const CUSTOMER_RAIL: readonly NavItem[] = [
   { href: "/brain", key: "brain" },
   { href: "/library", key: "library" },
 ];
+
+/**
+ * The customer rail for this request: CUSTOMER_RAIL, with Nightshift AI second (the owner's order: Home, Nightshift AI,
+ * Studio, Brain, the rest) only while the server's flag is on for this workspace. The phone's bottom bar keeps its five.
+ */
+export function customerRail(features: NavFeatures = NO_NAV_FEATURES): readonly NavItem[] {
+  return features.aiChat === true ? [CUSTOMER_RAIL[0], NIGHTSHIFT_AI_ENTRY, ...CUSTOMER_RAIL.slice(1)] : CUSTOMER_RAIL;
+}
 
 /**
  * Tab bars under a rail entry. Neither has one any more: Studio's tools are tiles on Studio home
