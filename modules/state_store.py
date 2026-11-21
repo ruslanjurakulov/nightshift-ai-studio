@@ -943,7 +943,7 @@ class StateStore:
         duration_ms: float | None = None,
         metadata: str | None = None,
         channel_id: str | None = None,
-    ):
+    ) -> int | None:
         """Append one observability event (append-only — the event stream is a
         log, never deduplicated). `metadata` is an already-serialized JSON string
         (see modules/event_log.py, which sanitizes it first).

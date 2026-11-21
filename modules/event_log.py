@@ -25,7 +25,9 @@ Live copy: where the runner has Supabase credentials (SUPABASE_URL and SUPABASE_
 run step has), each event is also upserted into Supabase's `system_events` as it happens, so the Studio's live view
 sees a run's stages while it runs instead of after the nightly mirror. It is the mirror's own row and `event_key`
 (`supabase_sync._event_row`), so the mirror later finds it there and changes nothing. It is best-effort: a short
-timeout, one warning, and after the first failure no further attempt in this process. `NIGHTSHIFT_LIVE_EVENTS=off`
+timeout, one warning, and after a failure a two-minute pause, after which it also sends what it missed. The slot-
+evidence events (operator_bot.sources.RUN_EVENTS) are never copied live: the dead-man switch and the catch-up rely on
+them arriving with the mirror. `NIGHTSHIFT_LIVE_EVENTS=off`
 switches it off.
 
 Storage note: `emit()` opens a short-lived StateStore per call when one isn't
@@ -39,6 +41,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
+import time
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -326,49 +330,107 @@ def _sanitize(metadata: dict | None) -> str | None:
         return json.dumps({"_unserializable": repr(safe)}, ensure_ascii=False)
 
 
-#: A slow Supabase must not slow the run: a dozen events per run, each waiting this long at most, once.
-_LIVE_TIMEOUT_S = 3
-#: Turned off for the rest of the process by the first failure (or when there is nothing to send to).
-_live_state: dict = {"sync": None, "off": False}
+#: requests' (connect, read) timeouts, each its own limit (DNS is not covered): a slow Supabase costs a run a few seconds
+#: once, because a failure pauses the copy (below).
+_LIVE_TIMEOUT_S = (2.0, 2.0)
+#: After a failure the copy pauses this long, then tries again and also sends what it missed: an Actions run is often
+#: over by then, but the queue worker lives for days and one network blip must not silence the live view for good.
+_LIVE_PAUSE_S = 120
+#: How many missed events one catch-up sends at most (a run writes a few dozen).
+_LIVE_BACKFILL = 200
+
+
+def _evidence_events() -> frozenset[str]:
+    """The events the dead-man switch and the scheduler's catch-up read as proof that a slot was worked
+    (modules/operator_bot/sources.RUN_EVENTS). They are NOT copied live: both readers are built on these arriving
+    with the nightly mirror (a run that dies after ``system.started`` is retried and alerted on today, and would not
+    be if its start arrived at once). Copying them would change reliability, not just the view (Lens, PR (A))."""
+    from modules.operator_bot.sources import RUN_EVENTS
+
+    return frozenset(RUN_EVENTS)
+
+
+class _LiveState:
+    """The process's live-copy client and its failure. Guarded by a lock: emit() may be called from threads."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.sync = None
+        #: monotonic time until which nothing is sent; None = sending.
+        self.paused_until: float | None = None
+        #: The ts of the first event a failure kept back: the catch-up sends from there.
+        self.missed_since: str | None = None
+        #: No credentials: nothing to send to, for the life of the process.
+        self.disabled = False
+
+
+_live = _LiveState()
 
 
 def _reset_live_sync() -> None:
     """Tests only: forget the process's live-copy client and its failure."""
-    _live_state["sync"] = None
-    _live_state["off"] = False
+    global _live
+    _live = _LiveState()
 
 
-def _live_copy(store, event_id) -> None:
+def _live_copy(store, event_id: int | None) -> None:
     """Send one stored event to Supabase's system_events, as the nightly mirror would. Never raises.
 
-    A swallowed error here is acceptable only because the event is already in the local store, and the nightly mirror
-    (tools/run_intelligence_poll.py → SupabaseSync.mirror_from_store) sends that same row under the same event_key
-    later. Nothing is lost by failing; only the live view waits. Anywhere that is not true, this must not be copied.
+    A swallowed error here is acceptable only because the event stays in the local store and is sent later under the
+    same event_key: by this copy's own catch-up once the pause ends, and, for an Actions run, by the nightly mirror
+    (tools/run_intelligence_poll.py → SupabaseSync.mirror_from_store). On the queue worker no mirror covers the store,
+    so the catch-up is the only later route; an event kept back when its process ends inside a pause never reaches
+    Supabase, which is also where every such event stood before this copy existed. Anywhere that is not acceptable,
+    this must not be copied.
     """
-    if _live_state["off"] or not isinstance(event_id, int):
+    # A store that is not a StateStore (a test double) gives no row id: nothing to send.
+    if type(event_id) is not int:
         return
     if os.environ.get("NIGHTSHIFT_LIVE_EVENTS", "").strip().lower() in ("off", "0", "false", "no"):
         return
-    try:
-        sync = _live_state["sync"]
-        if sync is None:
-            from modules.supabase_sync import SupabaseSync
-
-            sync = SupabaseSync()
-            if not sync.enabled:
-                _live_state["off"] = True
-                return
-            _live_state["sync"] = sync
-        row = store.get_event(event_id)
-        if not row:
+    state = _live
+    failure = None
+    row: dict | None = None
+    with state.lock:
+        if state.disabled:
             return
-        sent = sync.upsert("system_events", [sync._event_row(row)], on_conflict="event_key", timeout=_LIVE_TIMEOUT_S)
-        if sent != 1:
-            _live_state["off"] = True
-            logger.warning("Live event copy to Supabase failed (%s); the nightly mirror will send this run's events", sync.last_failure)
-    except Exception as e:
-        _live_state["off"] = True
-        logger.warning("Live event copy to Supabase errored (%s); the nightly mirror will send this run's events", type(e).__name__)
+        try:
+            row = store.get_event(event_id)
+            if not row or row.get("event") in _evidence_events():
+                return
+            if state.paused_until is not None and time.monotonic() < state.paused_until:
+                if state.missed_since is None:
+                    state.missed_since = row.get("ts")
+                return
+            sync = state.sync
+            if sync is None:
+                from modules.supabase_sync import SupabaseSync
+
+                sync = SupabaseSync()
+                if not sync.enabled:
+                    state.disabled = True
+                    return
+                state.sync = sync
+            rows = [row]
+            if state.missed_since is not None:
+                evidence = _evidence_events()
+                back = [r for r in store.list_events(since=state.missed_since, limit=_LIVE_BACKFILL) if r.get("event") not in evidence]
+                rows = list({r["id"]: r for r in back + [row]}.values())
+            payload = [sync._event_row(r) for r in rows]
+            sent = sync.upsert("system_events", payload, on_conflict="event_key", timeout=_LIVE_TIMEOUT_S, quiet=True)
+            if sent == len(payload):
+                state.paused_until = None
+                state.missed_since = None
+                return
+            failure = sync.last_failure
+        except Exception as e:
+            failure = type(e).__name__
+        state.paused_until = time.monotonic() + _LIVE_PAUSE_S
+        if state.missed_since is None and row is not None:
+            state.missed_since = row.get("ts")
+    # Only an HTTP status and PostgREST's error code, or an exception's class name: never a body or an exception's text,
+    # which can carry the Supabase host (a secret on the worker) or a header.
+    logger.warning("Live event copy to Supabase failed (%s); paused for %d s, then it sends what it missed", failure, _LIVE_PAUSE_S)
 
 
 def emit(
