@@ -26,7 +26,7 @@ run step has), each event is also upserted into Supabase's `system_events` as it
 sees a run's stages while it runs instead of after the nightly mirror. It is the mirror's own row and `event_key`
 (`supabase_sync._event_row`), so the mirror later finds it there and changes nothing. It is best-effort: a short
 timeout, one warning, and after a failure a two-minute pause, after which it also sends what it missed. The slot-
-evidence events (operator_bot.sources.RUN_EVENTS) are never copied live: the dead-man switch and the catch-up rely on
+evidence events (operator_bot.sources.RUN_EVENTS, and the failures counted beside them) are never copied live: the dead-man switch and the catch-up rely on
 them arriving with the mirror. `NIGHTSHIFT_LIVE_EVENTS=off`
 switches it off.
 
@@ -347,7 +347,16 @@ def _evidence_events() -> frozenset[str]:
     be if its start arrived at once). Copying them would change reliability, not just the view (Lens, PR (A))."""
     from modules.operator_bot.sources import RUN_EVENTS
 
-    return frozenset(RUN_EVENTS)
+    # The failures the owner's /today, /errors and digest count next to them: one of a pair arriving a day before the
+    # other would read "made 0, failed 1" for a day that made one (Lens).
+    return frozenset(RUN_EVENTS) | _COUNTED_FAILURES
+
+
+#: Failure events the operator views count beside RUN_EVENTS (modules/operator_bot/views.py, owner_digest.py).
+_COUNTED_FAILURES = frozenset({"render.failed", "short.failed", "repair.failed"})
+#: Consecutive failures after which the copy stops for the life of the process: a fault that keeps happening (a schema
+#: the table lacks, a refused key) is not a blip, and retrying it every pause only repeats the warning.
+_LIVE_MAX_FAILURES = 5
 
 
 class _LiveState:
@@ -360,8 +369,9 @@ class _LiveState:
         self.paused_until: float | None = None
         #: The ts of the first event a failure kept back: the catch-up sends from there.
         self.missed_since: str | None = None
-        #: No credentials: nothing to send to, for the life of the process.
+        #: No credentials, or a fault that is not transient: nothing more is sent for the life of the process.
         self.disabled = False
+        self.failures = 0
 
 
 _live = _LiveState()
@@ -414,13 +424,18 @@ def _live_copy(store, event_id: int | None) -> None:
             rows = [row]
             if state.missed_since is not None:
                 evidence = _evidence_events()
-                back = [r for r in store.list_events(since=state.missed_since, limit=_LIVE_BACKFILL) if r.get("event") not in evidence]
+                listed = store.list_events(since=state.missed_since, limit=_LIVE_BACKFILL)
+                if len(listed) >= _LIVE_BACKFILL:
+                    # Newest first: the oldest missed events are cut here; the nightly mirror (Actions runs) still sends them.
+                    logger.warning("Live event copy: more than %d events were kept back; the oldest are not re-sent live", _LIVE_BACKFILL)
+                back = [r for r in listed if r.get("event") not in evidence]
                 rows = list({r["id"]: r for r in back + [row]}.values())
             payload = [sync._event_row(r) for r in rows]
             sent = sync.upsert("system_events", payload, on_conflict="event_key", timeout=_LIVE_TIMEOUT_S, quiet=True)
             if sent == len(payload):
                 state.paused_until = None
                 state.missed_since = None
+                state.failures = 0
                 return
             failure = sync.last_failure
         except Exception as e:
@@ -428,6 +443,15 @@ def _live_copy(store, event_id: int | None) -> None:
         state.paused_until = time.monotonic() + _LIVE_PAUSE_S
         if state.missed_since is None and row is not None:
             state.missed_since = row.get("ts")
+        state.failures += 1
+        status = failure[0] if isinstance(failure, tuple) else None
+        # A refusal (4xx other than a timeout or a rate limit) will be refused again: stop instead of retrying forever.
+        permanent = isinstance(status, int) and 400 <= status < 500 and status not in (408, 429)
+        if permanent or state.failures >= _LIVE_MAX_FAILURES:
+            state.disabled = True
+    if state.disabled:
+        logger.warning("Live event copy to Supabase stopped for this process (%s); the events stay local", failure)
+        return
     # Only an HTTP status and PostgREST's error code, or an exception's class name: never a body or an exception's text,
     # which can carry the Supabase host (a secret on the worker) or a header.
     logger.warning("Live event copy to Supabase failed (%s); paused for %d s, then it sends what it missed", failure, _LIVE_PAUSE_S)

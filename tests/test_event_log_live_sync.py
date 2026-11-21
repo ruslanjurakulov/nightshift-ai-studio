@@ -99,7 +99,9 @@ class LiveSyncCase(unittest.TestCase):
     def test_slot_evidence_events_are_never_copied_live_even_in_a_catch_up(self):
         from modules.operator_bot.sources import RUN_EVENTS
 
-        self.assertEqual(events._evidence_events(), frozenset(RUN_EVENTS))
+        self.assertTrue(frozenset(RUN_EVENTS) <= events._evidence_events())
+        # The failures the owner's views count beside them wait too, or a day reads "made 0, failed 1".
+        self.assertTrue({"render.failed", "short.failed", "repair.failed"} <= events._evidence_events())
         clock = [1000.0]
         with patch.dict(os.environ, CREDS), patch("modules.event_log.time.monotonic", lambda: clock[0]), \
                 patch("modules.supabase_sync.requests.post", side_effect=[TimeoutError("blip"), ok_response()]) as post:
@@ -156,14 +158,26 @@ class LiveSyncCase(unittest.TestCase):
         self.assertNotIn("secret-project", text)
         self.assertIn("500", text)
 
-    def test_a_refused_write_is_a_failure_too(self):
+    def test_a_refused_write_stops_the_copy_for_good_instead_of_retrying_every_pause(self):
         bad = MagicMock()
         bad.status_code = 401
         bad.text = "invalid key"
-        with patch.dict(os.environ, CREDS), patch("modules.supabase_sync.requests.post", return_value=bad) as post:
+        clock = [1000.0]
+        with patch.dict(os.environ, CREDS), patch("modules.event_log.time.monotonic", lambda: clock[0]), \
+                patch("modules.supabase_sync.requests.post", return_value=bad) as post:
             self.assertTrue(events.emit(events.TOPIC_SELECTED, store=self.store))
+            clock[0] += events._LIVE_PAUSE_S + 1
             self.assertTrue(events.emit(events.TOPIC_SELECTED, store=self.store))
         self.assertEqual(post.call_count, 1)
+
+    def test_a_transient_failure_that_keeps_happening_stops_after_a_few_tries(self):
+        clock = [1000.0]
+        with patch.dict(os.environ, CREDS), patch("modules.event_log.time.monotonic", lambda: clock[0]), \
+                patch("modules.supabase_sync.requests.post", side_effect=TimeoutError("down")) as post:
+            for _ in range(events._LIVE_MAX_FAILURES + 3):
+                events.emit(events.TOPIC_SELECTED, store=self.store)
+                clock[0] += events._LIVE_PAUSE_S + 1
+        self.assertEqual(post.call_count, events._LIVE_MAX_FAILURES)
 
     def test_secrets_are_redacted_before_they_leave_the_runner(self):
         with patch.dict(os.environ, CREDS), patch("modules.supabase_sync.requests.post", return_value=ok_response()) as post:
