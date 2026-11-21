@@ -32,12 +32,14 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
   if (!user) redirect(`/login?next=${encodeURIComponent(OWNER_CONSOLE)}`);
 
   const lookup = await operatorLookup();
-  const mfa = await currentMfaAction(user, lookup.operator);
+  const access = await ownerAccess();
+  // The second factor is the admin's rule, and the platform owner is an admin: when the database has said "owner", that is
+  // the answer even if the separate admin lookup failed — otherwise a failed lookup would let the owner in without the code.
+  const mfa = await currentMfaAction(user, lookup.operator || access === "owner");
   const path = (await headers()).get(PATH_HEADER) ?? OWNER_CONSOLE;
   if (mfa === "challenge") redirect(mfaVerifyUrl(path));
   if (mfa === "enrol_only") redirect(ENROL_PATH);
 
-  const access = await ownerAccess();
   const { t } = await getDictionary();
   const locale = await getLocale();
 
