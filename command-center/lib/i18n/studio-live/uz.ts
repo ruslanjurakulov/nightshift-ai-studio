@@ -1,6 +1,6 @@
 import type { StudioLiveDictionary } from "./en";
 
-/** Nightshift Studio'dagi rejaning jonli koʻrinishi. Manba — ./en.ts. «Loyiha» — sahnalar → video. */
+/** Nightshift Studio’dagi rejaning jonli koʻrinishi. Manba — ./en.ts. «Loyiha» — sahnalar → video. */
 export const studioLiveUz: StudioLiveDictionary = {
   label: "Jonli koʻrinish",
   filmTitle: "Loyiha",
@@ -16,6 +16,7 @@ export const studioLiveUz: StudioLiveDictionary = {
   closed: "Bu ish maydoni uchun loyihalar hali ochilmagan.",
   runWindow: "Bosqichlar ushbu kanal ishga tushirish davomida yozgan voqealardan olingan.",
   runWindowSince: "Bosqichlar ushbu kanal ishga tushirilgandan beri yozgan voqealardan olingan. Voqea kelmasa, ishga tushirish hali boshlanmagan boʻlishi mumkin.",
+  runFailed: "Bu ishga tushirish yakunlanmadi:",
   settled: "Barcha qadamlar tugadi. Koʻrinish yangilanishni toʻxtatdi.",
   readOnly: "Bu koʻrinish faqat oʻqiydi. Bu yerda hech qanday qadam boshlanmaydi, takrorlanmaydi va pul yechilmaydi.",
   kinds: {
@@ -27,14 +28,18 @@ export const studioLiveUz: StudioLiveDictionary = {
     music: "Musiqa",
     assembly: "Yigʻish",
     final: "Tayyor video",
+    character: "Personaj",
+    location: "Joy",
+    prop: "Rekvizit",
     topic: "Mavzu",
     research: "Tadqiqot",
-    factcheck: "Faktlarni tekshirish",
     visuals: "Tasvirlar",
     render: "Render",
+    gate: "Nashr oldidan tekshiruv",
     upload: "Yuklash",
   },
   status: {
+    draft: "Rejalashtirilgan",
     waiting: "Kutmoqda",
     working: "Ishlanmoqda",
     done: "Tayyor",
@@ -44,6 +49,8 @@ export const studioLiveUz: StudioLiveDictionary = {
     unknown: "Nomaʼlum",
     none: "Bu rejada yoʻq",
   },
+  price: "{n} kredit",
+  draftNote: "Hozirgacha tuzilgan reja. «Yaratish» tugmasini bosmaguningizcha hech narsa ishga tushmaydi.",
   details: "Qadam tafsilotlari",
   close: "Yopish",
   noOutput: "Hozircha koʻrsatadigan narsa yoʻq.",
@@ -51,7 +58,7 @@ export const studioLiveUz: StudioLiveDictionary = {
   credits: "Band qilingan {held} · yechilgan {charged} kredit",
   creditsNone: "Bu qadam uchun kredit yozilmagan.",
   creditsUnrecorded: "yozilmagan",
-  privacyPrivate: "Shaxsiy (private) sifatida yuklandi. Inson uni YouTube'da ochiq qilmaguncha hech kim koʻrmaydi.",
+  privacyPrivate: "Shaxsiy (private) sifatida yuklandi. Inson uni YouTube’da ochiq qilmaguncha hech kim koʻrmaydi.",
   privacyOther: "{privacy} sifatida yuklandi.",
   privacyUnknown: "Yuklashning maxfiylik holati yozilmagan.",
   recordedAt: "Oxirgi voqea {time}",

@@ -20,11 +20,12 @@ const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === "
  * - stopped: it was running when the whole run ended without finishing it
  * - unknown: what it is cannot be read (a missing table, an unreadable answer, a run whose events are not here)
  * - none: not part of this plan (no music chosen, no voice asked for)
+ * - draft: planned in the conversation, before Create: nothing runs, no lamp (the brief, not the database)
  */
-export type LiveStatus = "waiting" | "working" | "done" | "failed" | "skipped" | "stopped" | "unknown" | "none";
+export type LiveStatus = "draft" | "waiting" | "working" | "done" | "failed" | "skipped" | "stopped" | "unknown" | "none";
 
-export type FilmNodeKind = "idea" | "script" | "keyframe" | "clip" | "voice" | "music" | "assembly" | "final";
-export type RunNodeKind = "topic" | "research" | "script" | "factcheck" | "voice" | "visuals" | "render" | "upload";
+export type FilmNodeKind = "idea" | "script" | "keyframe" | "clip" | "voice" | "music" | "assembly" | "final" | "character" | "location" | "prop";
+export type RunNodeKind = "topic" | "research" | "script" | "voice" | "visuals" | "render" | "gate" | "upload";
 export type LiveNodeKind = FilmNodeKind | RunNodeKind;
 
 /** Credits a step held and was charged, as stored: null is "not recorded", never 0. */
@@ -49,6 +50,9 @@ export interface LiveNode {
   error?: string | null;
   /** upload: the privacy the uploader recorded (video.published metadata), or null when it was not recorded. */
   privacy?: string | null;
+  /** Draft nodes: the price the backend already gave for this step, or null (no number is guessed). */
+  price?: number | null;
+  /** Draft reference nodes: the generated reference picture, once there is one. */
   /** When the step's last event was recorded (runs only). */
   at?: string | null;
   /** Column and row on the board. */
@@ -64,6 +68,8 @@ export interface LiveEdge {
 export interface LiveGraph {
   nodes: LiveNode[];
   edges: LiveEdge[];
+  /** A run's own failure code (render_jobs.error's code), shown for the whole run: many failures belong to no stage (Lens M4). */
+  runError?: string | null;
   /** Every step is done, failed, skipped, stopped or not in the plan: polling can stop. */
   settled: boolean;
 }
@@ -280,7 +286,8 @@ export function filmGraph(r: FilmReading): LiveGraph {
       status: clipStatus,
       scene: i + 1,
       sceneTitle: scene.title,
-      assetId: chosenClip(scene, takes)?.resultAssetId ?? null,
+      // film_scenes.current_version is never written by any migration yet (Lens M2): without it, the newest finished first shot.
+      assetId: chosenClip(scene, takes)?.resultAssetId ?? shots.find((t) => t.shotIndex === 1 && t.status === "completed")?.resultAssetId ?? null,
       text: scene.narration || null,
       credits: sumCredits(shots.map((s) => r.money.get(s.id))),
       error: failedShot ? (r.errors.get(failedShot.id) ?? null) : null,
@@ -394,11 +401,12 @@ const RUN_STAGES: { kind: RunNodeKind; start: string[]; done: string[]; failAgen
   { kind: "topic", start: [], done: ["topic.selected"], failAgents: ["topic_manager"], failEvents: ["topic.rejected"] },
   { kind: "research", start: ["research.started"], done: ["research.completed"], failAgents: ["research_engine"], failEvents: [] },
   { kind: "script", start: ["script.started"], done: ["script.completed"], failAgents: ["script_engine", "storyboard"], failEvents: [] },
-  // The fact-check has no event of its own: the publish gate's verdict is it. Without one the stage is "not recorded".
-  { kind: "factcheck", start: [], done: ["publish.allowed"], failAgents: [], failEvents: ["publish.blocked"] },
   { kind: "voice", start: ["voice.started"], done: ["voice.completed"], failAgents: ["voice_gate", "audio_mixer"], failEvents: [] },
   { kind: "visuals", start: ["media.started"], done: ["media.completed"], failAgents: ["media_fetcher", "image_providers", "minimax_broll", "media_preflight"], failEvents: [] },
   { kind: "render", start: ["render.started"], done: ["render.completed"], failAgents: ["compositor"], failEvents: ["render.failed"] },
+  // The publish gate's verdict on the finished cut (main.py emits it after the render). It is the gate's, not only the fact-check's:
+  // the view names it "Publish gate" and never claims a fact-check ran from it (Lens H1).
+  { kind: "gate", start: [], done: ["publish.allowed"], failAgents: [], failEvents: ["publish.blocked"] },
   { kind: "upload", start: ["upload.started"], done: ["upload.completed", "video.published"], failAgents: ["youtube_uploader"], failEvents: ["upload.failed"] },
 ];
 
@@ -423,6 +431,8 @@ export function runGraph(r: RunReading): LiveGraph {
     const last = mine[mine.length - 1];
     let status: LiveStatus;
     if (!readable || !jobStatus) status = "unknown";
+    // Ended with no event at all: the events have not reached us (the pipeline's mirror runs later), so nothing is claimed (Lens B1).
+    else if (ended && events.length === 0) status = "unknown";
     // A run that timed out with no last event did not tell us what happened after: the steps it never reached are not known.
     else if (!last) status = reachedLater ? "unknown" : ended ? (jobStatus === "completed" || jobStatus === "succeeded" || (timedOut && !stageFailed) ? "unknown" : "skipped") : "waiting";
     else if (st.failEvents.includes(last.event) || last.event === "agent.failed") status = "failed";
@@ -444,5 +454,77 @@ export function runGraph(r: RunReading): LiveGraph {
     row: 0,
   }));
   const edges: LiveEdge[] = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id }));
-  return { nodes, edges, settled: ended && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown") };
+  const runError = r.job && (jobStatus === "failed" || jobStatus === "cancelled") ? (r.job.error ?? null) : null;
+  return { nodes, edges, runError, settled: ended && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown") };
+}
+
+/* ------------------------------------------------------------------ the brief (before Create) ---------------------------------- */
+
+/**
+ * The plan as Nightshift AI's conversation has it so far (S5's brief, docs/studio/NIGHTSHIFT_AI.md). Every field is optional: the
+ * graph draws what the person has answered and nothing more. PROVISIONAL field names until S5 publishes the schema.
+ */
+export interface BriefRef {
+  id: string;
+  name: string;
+  assetId?: string | null;
+}
+export interface Brief {
+  idea?: string | null;
+  story?: string | null;
+  scenes?: { id: string; summary?: string | null; seconds?: number | null; refs?: string[]; price?: number | null }[];
+  characters?: BriefRef[];
+  locations?: BriefRef[];
+  props?: BriefRef[];
+  voice?: string | null;
+  music?: string | null;
+  prices?: { voice?: number | null; assembly?: number | null } | null;
+}
+
+/** The brief as a graph of DRAFT steps, in the same ids and places the live film graph will use, so Create lights it without a redraw. */
+export function briefGraph(b: Brief): LiveGraph {
+  const nodes: LiveNode[] = [];
+  const edges: LiveEdge[] = [];
+  const idea = (b.idea ?? "").trim();
+  nodes.push({ id: "idea", kind: "idea", status: "draft", text: idea || null, col: 0, row: 0 });
+  const story = (b.story ?? "").trim();
+  nodes.push({ id: "script", kind: "script", status: "draft", text: story || null, col: 1, row: 0 });
+  edges.push({ from: "idea", to: "script" });
+  const refs: { list: BriefRef[] | undefined; kind: "character" | "location" | "prop" }[] = [
+    { list: b.characters, kind: "character" },
+    { list: b.locations, kind: "location" },
+    { list: b.props, kind: "prop" },
+  ];
+  let refRow = 0;
+  const refIds = new Set<string>();
+  for (const { list, kind } of refs) {
+    for (const r of list ?? []) {
+      const id = `ref:${r.id}`;
+      refIds.add(r.id);
+      nodes.push({ id, kind, status: r.assetId ? "done" : "draft", sceneTitle: r.name, assetId: r.assetId ?? null, col: 1, row: ++refRow });
+      edges.push({ from: "script", to: id });
+    }
+  }
+  const scenes = b.scenes ?? [];
+  scenes.forEach((s, i) => {
+    const kf = `scene:${s.id}:keyframe`;
+    const clip = `scene:${s.id}:clip`;
+    nodes.push({ id: kf, kind: "keyframe", status: "draft", scene: i + 1, text: s.summary ?? null, col: 2, row: i });
+    nodes.push({ id: clip, kind: "clip", status: "draft", scene: i + 1, text: s.summary ?? null, price: s.price ?? null, col: 3, row: i });
+    edges.push({ from: "script", to: kf }, { from: kf, to: clip });
+    // A character, place or prop made once and reused in every shot that names it: how the scenes stay consistent.
+    for (const r of s.refs ?? []) if (refIds.has(r)) edges.push({ from: `ref:${r}`, to: kf });
+  });
+  const rows = Math.max(1, scenes.length);
+  const mid = Math.floor((rows - 1) / 2);
+  nodes.push({ id: "voice", kind: "voice", status: b.voice === null ? "none" : "draft", text: b.voice ?? null, price: b.prices?.voice ?? null, col: 4, row: Math.max(0, mid - 1) });
+  edges.push({ from: "script", to: "voice" });
+  nodes.push({ id: "music", kind: "music", status: b.music ? "draft" : "none", text: b.music ?? null, col: 4, row: mid + 1 });
+  nodes.push({ id: "assembly", kind: "assembly", status: "draft", price: b.prices?.assembly ?? null, col: 5, row: mid });
+  for (const s of scenes) edges.push({ from: `scene:${s.id}:clip`, to: "assembly" });
+  edges.push({ from: "voice", to: "assembly" });
+  if (b.music) edges.push({ from: "music", to: "assembly" });
+  nodes.push({ id: "final", kind: "final", status: "draft", col: 6, row: mid });
+  edges.push({ from: "assembly", to: "final" });
+  return { nodes, edges, settled: false };
 }

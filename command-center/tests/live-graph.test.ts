@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { coerceTimelineFilm } from "../lib/studio/timeline";
-import { coerceFilmLive, coerceRunLive, filmGraph, runGraph, type LiveSegment, type RunEvent } from "../lib/studio/liveGraph";
+import { briefGraph, coerceFilmLive, coerceRunLive, filmGraph, runGraph, type LiveSegment, type RunEvent } from "../lib/studio/liveGraph";
 import { S1, S2, filmJson, sceneJson } from "./films-fixtures";
 
 const PIC = "a1000000-0000-4000-8000-0000000000a1";
@@ -55,6 +55,11 @@ describe("a film", () => {
     r.errors.set("c1", "provider_timeout");
     const n = byId(filmGraph(r));
     expect(n.get(`scene:${S1}:clip`)).toMatchObject({ status: "failed", error: "provider_timeout" });
+  });
+
+  it("without current_version (no migration writes it yet) a finished clip still shows its file", () => {
+    const g = filmGraph(reading({ status: "running" }, [sceneJson(S1, 0, { current_version: null, takes: [take("c1", "clip", "completed", { result_asset_id: CLIP })] })]));
+    expect(byId(g).get(`scene:${S1}:clip`)).toMatchObject({ status: "done", assetId: CLIP });
   });
 
   it("a superseded attempt is history: the newest attempt speaks for the step", () => {
@@ -162,11 +167,20 @@ describe("a channel run", () => {
     expect(stages(g).render).toBe("stopped");
   });
 
-  it("the fact-check is lit only by the publish gate's verdict; without one it is not claimed", () => {
-    const passed = runGraph({ job: { status: "running", startedAt: "t0", finishedAt: null, error: null }, events: [ev("2026-11-21T00:00:01Z", "publish.allowed"), ev("2026-11-21T00:00:02Z", "voice.started")] });
-    expect(stages(passed).factcheck).toBe("done");
-    const silent = runGraph({ job: { status: "running", startedAt: "t0", finishedAt: null, error: null }, events: [ev("2026-11-21T00:00:02Z", "voice.started")] });
-    expect(stages(silent).factcheck).toBe("unknown");
+  it("the publish gate comes after the render and is lit only by its own verdict; no fact-check node is claimed", () => {
+    const g = runGraph({ job: { status: "running", startedAt: "t0", finishedAt: null, error: null }, events: [ev("2026-11-21T00:00:02Z", "voice.started")] });
+    const ids = g.nodes.map((n) => n.id);
+    expect(ids).not.toContain("factcheck");
+    expect(ids.indexOf("gate")).toBe(ids.indexOf("render") + 1);
+    expect(stages(g).gate).toBe("waiting");
+    const passed = runGraph({ job: { status: "running", startedAt: "t0", finishedAt: null, error: null }, events: [ev("2026-11-21T00:00:09Z", "render.completed"), ev("2026-11-21T00:00:10Z", "publish.allowed")] });
+    expect(stages(passed).gate).toBe("done");
+  });
+
+  it("a run that ended with no events reaching us: every stage unknown, and the run's own failure is said", () => {
+    const g = runGraph({ job: { status: "failed", startedAt: "t0", finishedAt: "t9", error: "render" }, events: [] });
+    expect(new Set(Object.values(stages(g)))).toEqual(new Set(["unknown"]));
+    expect(g.runError).toBe("render");
   });
 
   it("the upload says private only when the uploader recorded it", () => {
@@ -206,5 +220,52 @@ describe("a channel run", () => {
       const g = runGraph({ job: null, window: win(1), events: [] });
       expect(new Set(Object.values(stages(g)))).toEqual(new Set(["waiting"]));
     });
+  });
+});
+
+describe("the brief, before Create", () => {
+  const brief = {
+    idea: "Two heroes cross the desert",
+    story: "A sword is lost; it must be found before sunset.",
+    characters: [{ id: "hero", name: "Aziz" }],
+    locations: [{ id: "desert", name: "Desert", assetId: PIC }],
+    props: [{ id: "sword", name: "Sword" }],
+    scenes: [
+      { id: S1, summary: "Aziz in the dunes", refs: ["hero", "desert"], price: 12 },
+      { id: S2, summary: "The sword in the sand", refs: ["sword", "ghost"] },
+    ],
+    voice: "Narrator",
+    music: null,
+  };
+
+  it("draws every step as a draft: no lamp is lit, nothing reads as running or done but a reference already made", () => {
+    const g = briefGraph(brief);
+    const statuses = new Set(g.nodes.map((n) => n.status));
+    expect(statuses.has("working")).toBe(false);
+    expect(g.nodes.find((n) => n.id === "ref:desert")?.status).toBe("done");
+    expect(g.nodes.filter((n) => n.id !== "ref:desert" && n.status !== "none").every((n) => n.status === "draft")).toBe(true);
+    expect(g.settled).toBe(false);
+  });
+
+  it("a reference reused by a scene is wired into that scene's picture; an unknown reference is not drawn", () => {
+    const g = briefGraph(brief);
+    const into = (to: string) => g.edges.filter((e) => e.to === to).map((e) => e.from);
+    expect(into(`scene:${S1}:keyframe`)).toEqual(expect.arrayContaining(["ref:hero", "ref:desert"]));
+    expect(into(`scene:${S2}:keyframe`)).toContain("ref:sword");
+    expect(g.edges.some((e) => e.from === "ref:ghost")).toBe(false);
+  });
+
+  it("a price is only where the backend gave one, never guessed", () => {
+    const g = briefGraph(brief);
+    expect(g.nodes.find((n) => n.id === `scene:${S1}:clip`)?.price).toBe(12);
+    expect(g.nodes.find((n) => n.id === `scene:${S2}:clip`)?.price).toBeNull();
+    expect(g.nodes.find((n) => n.id === "assembly")?.price).toBeNull();
+    expect(g.nodes.find((n) => n.id === "music")?.status).toBe("none");
+  });
+
+  it("the steps keep the ids the live film uses, so Create lights them without a redraw", () => {
+    const draftIds = new Set(briefGraph(brief).nodes.map((n) => n.id));
+    const live = filmGraph(reading({ status: "running" }, [sceneJson(S1, 0), sceneJson(S2, 1)]));
+    for (const n of live.nodes) expect(draftIds.has(n.id)).toBe(true);
   });
 });

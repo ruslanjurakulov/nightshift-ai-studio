@@ -36,6 +36,8 @@ beforeEach(() => {
   calls = [];
   // Phone width: the same steps as a list (the board is React Flow's, measured by a browser).
   vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {} }));
+  // The board's first render comes before the width is read; jsdom has no ResizeObserver for React Flow to measure with.
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -207,5 +209,16 @@ describe("the board", () => {
     expect(board.querySelectorAll(".react-flow__handle.connectable")).toHaveLength(0);
     fireEvent.click(within(board).getByTestId("live-node-assembly"));
     expect(screen.getByTestId("live-details")).toBeTruthy();
+  });
+});
+
+describe("before Create", () => {
+  it("the brief is drawn as planned steps, nothing is read, and the note says nothing runs yet", () => {
+    answer = live({});
+    render(<LiveView filmStudio target={null} brief={{ idea: "x", scenes: [{ id: S1, summary: "A dune", price: 12 }] }} />);
+    expect(screen.getByTestId("live-draft-note").textContent).toBe(c.draftNote);
+    expect(node(`scene:${S1}:clip`).getAttribute("data-status")).toBe("draft");
+    expect(node(`scene:${S1}:clip`).textContent).toContain("12 credits");
+    expect(calls).toEqual([]);
   });
 });

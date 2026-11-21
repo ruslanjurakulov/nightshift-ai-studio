@@ -22,6 +22,9 @@
 .lv-card.is-failed { border-color: var(--tally); background: color-mix(in srgb, var(--tally) 8%, var(--key)); }
 .lv-card.is-unknown, .lv-card.is-stopped { border-style: dashed; }
 .lv-card.is-none, .lv-card.is-skipped { opacity: 0.6; }
+/* Planned in the conversation, before Create: a sketch, not a running step. */
+.lv-card.is-draft { border-style: dashed; background: color-mix(in srgb, var(--key) 60%, transparent); }
+.lv-price { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .lv-card.is-selected { outline: 2px solid var(--sel, var(--run)); outline-offset: 1px; }
 
 .lv-board .react-flow__edge-path { stroke: var(--rule-strong, var(--rule)); stroke-width: 1.5; transition: stroke 280ms ease; }

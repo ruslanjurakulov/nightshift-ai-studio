@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position, ReactFlow, ReactFlowProvider, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
-import { AudioLines, Clapperboard, FileText, Film, Flag, Image as ImageIcon, Lightbulb, Music, Search, ShieldCheck, Upload, Wand2, X, type LucideIcon } from "lucide-react";
+import { AudioLines, Clapperboard, FileText, Film, Flag, Image as ImageIcon, Lightbulb, MapPin, Music, Search, ShieldCheck, Sword, Upload, UserRound, Wand2, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
@@ -12,7 +12,7 @@ import { AssetDownloads } from "@/components/media/AssetDownloads";
 import { Lamp } from "@/components/studio-canvas/parts";
 import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/runBackend";
-import type { LiveGraph, LiveNode, LiveNodeKind, LiveStatus } from "@/lib/studio/liveGraph";
+import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-live.css";
@@ -26,15 +26,19 @@ const ICONS: Record<LiveNodeKind, LucideIcon> = {
   music: Music,
   assembly: Wand2,
   final: Film,
+  character: UserRound,
+  location: MapPin,
+  prop: Sword,
   topic: Flag,
   research: Search,
-  factcheck: ShieldCheck,
   visuals: ImageIcon,
   render: Clapperboard,
+  gate: ShieldCheck,
   upload: Upload,
 };
 
 const TONE: Record<LiveStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
+  draft: "idle",
   waiting: "idle",
   working: "run",
   done: "ok",
@@ -64,8 +68,15 @@ function useNarrow(): boolean {
 
 type T = ReturnType<typeof useI18n>["t"];
 
+/** system_events.ts is text, often a naive utcnow().isoformat(): read without an offset it would be local time (Lens M1). */
+export function utc(ts: string): Date {
+  return new Date(/([zZ]|[+-]\d\d:?\d\d)$/.test(ts) ? ts : `${ts}Z`);
+}
+
 export function nodeName(t: T, n: LiveNode): string {
-  return fmt(t.studioLive.kinds[n.kind], { n: n.scene ?? "" });
+  const kind = fmt(t.studioLive.kinds[n.kind], { n: n.scene ?? "" });
+  // A character, place or prop is named by the brief: "Character · Aziz".
+  return (n.kind === "character" || n.kind === "location" || n.kind === "prop") && n.sceneTitle ? `${kind} · ${n.sceneTitle}` : kind;
 }
 
 /** A failed step's reason and remedy, never a guess: a known word gets its sentence, any other is named as it was stored. */
@@ -79,7 +90,7 @@ export function failureText(t: T, n: LiveNode, run: boolean): { reason: string; 
   return { reason: n.error ? fmt(c.failedGeneric, { code: n.error }) : c.failedNoCode, remedy: c.remedyGeneric };
 }
 
-type CardData = { node: LiveNode; name: string; statusWord: string; selected: boolean; onOpen: (id: string) => void };
+type CardData = { node: LiveNode; name: string; statusWord: string; price: string | null; selected: boolean; onOpen: (id: string) => void };
 
 function CardView({ data }: NodeProps<Node<CardData, "step">>) {
   const Icon = ICONS[data.node.kind];
@@ -99,6 +110,7 @@ function CardView({ data }: NodeProps<Node<CardData, "step">>) {
           <span className="lv-card-name">{data.name}</span>
         </span>
         <Lamp tone={TONE[data.node.status]} live={data.node.status === "working"} label={data.statusWord} />
+        {data.price ? <span className="lv-price">{data.price}</span> : null}
       </button>
       <Handle type="source" position={Position.Right} className="lv-handle" isConnectable={false} />
     </>
@@ -107,19 +119,21 @@ function CardView({ data }: NodeProps<Node<CardData, "step">>) {
 
 const NODE_TYPES = { step: CardView };
 
-function Board({ graph, selected, onOpen, names, words }: { graph: LiveGraph; selected: string | null; onOpen: (id: string) => void; names: Map<string, string>; words: Map<string, string> }) {
+type ViewProps = { graph: LiveGraph; selected: string | null; onOpen: (id: string) => void; names: Map<string, string>; words: Map<string, string>; prices: Map<string, string> };
+
+function Board({ graph, selected, onOpen, names, words, prices }: ViewProps) {
   const nodes = useMemo<Node<CardData, "step">[]>(
     () =>
       graph.nodes.map((n) => ({
         id: n.id,
         type: "step",
         position: { x: n.col * COL_W, y: n.row * ROW_H },
-        data: { node: n, name: names.get(n.id) ?? n.id, statusWord: words.get(n.id) ?? "", selected: selected === n.id, onOpen },
+        data: { node: n, name: names.get(n.id) ?? n.id, statusWord: words.get(n.id) ?? "", price: prices.get(n.id) ?? null, selected: selected === n.id, onOpen },
         draggable: false,
         connectable: false,
         selectable: false,
       })),
-    [graph, selected, onOpen, names, words],
+    [graph, selected, onOpen, names, words, prices],
   );
   const status = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n.status])), [graph]);
   const edges = useMemo<Edge[]>(
@@ -156,7 +170,7 @@ function Board({ graph, selected, onOpen, names, words }: { graph: LiveGraph; se
   );
 }
 
-function List({ graph, selected, onOpen, names, words }: { graph: LiveGraph; selected: string | null; onOpen: (id: string) => void; names: Map<string, string>; words: Map<string, string> }) {
+function List({ graph, selected, onOpen, names, words, prices }: ViewProps) {
   const order = [...graph.nodes].sort((a, b) => a.col - b.col || a.row - b.row);
   return (
     <ol className="lv-list" data-testid="live-list">
@@ -177,6 +191,7 @@ function List({ graph, selected, onOpen, names, words }: { graph: LiveGraph; sel
                 <span className="lv-card-name">{names.get(n.id)}</span>
               </span>
               <Lamp tone={TONE[n.status]} live={n.status === "working"} label={words.get(n.id) ?? ""} />
+              {prices.get(n.id) ? <span className="lv-price">{prices.get(n.id)}</span> : null}
             </button>
           </li>
         );
@@ -234,7 +249,7 @@ function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean;
           {node.credits ? fmt(c.credits, { held: credit(node.credits.held), charged: credit(node.credits.charged) }) : c.creditsNone}
         </p>
       ) : node.at ? (
-        <p className="lv-muted">{fmt(c.recordedAt, { time: new Date(node.at).toLocaleString() })}</p>
+        <p className="lv-muted">{fmt(c.recordedAt, { time: utc(node.at).toLocaleString() })}</p>
       ) : null}
       {!run ? <Output node={node} /> : null}
       {node.kind === "final" && node.assetId ? (
@@ -256,7 +271,7 @@ function Details({ node, run, filmId, onClose }: { node: LiveNode; run: boolean;
  * rows as they change. Read-only: no drag, no wiring, no key that starts, repeats or charges anything (CLAUDE.md rule 3); a failed
  * step shows its reason and remedy only. At phone width the board becomes a list of the same steps.
  */
-export function LiveView({ filmStudio, target }: { filmStudio: boolean; target: LiveTarget | null }) {
+export function LiveView({ filmStudio, target, brief = null }: { filmStudio: boolean; target: LiveTarget | null; brief?: Brief | null }) {
   const { t } = useI18n();
   const c = t.studioLive;
   const narrow = useNarrow();
@@ -264,13 +279,21 @@ export function LiveView({ filmStudio, target }: { filmStudio: boolean; target: 
   const shown = filmStudio || run ? target : null;
   const { load, stale, retry } = useLiveGraph(shown);
   const [selected, setSelected] = useState<string | null>(null);
-  const graph = load.state === "ready" ? load.graph : null;
+  // Before Create there is no target: the brief so far is drawn as DRAFT steps (no lamp, a price only where the backend gave one).
+  // After Create the same ids light from the database, so nothing is redrawn.
+  const draft = useMemo(() => (!target && brief ? briefGraph(brief) : null), [target, brief]);
+  const graph = draft ?? (load.state === "ready" ? load.graph : null);
   const names = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, nodeName(t, n)])), [graph, t]);
   const words = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, c.status[n.status]])), [graph, c]);
+  const prices = useMemo(
+    () => new Map((graph?.nodes ?? []).filter((n) => typeof n.price === "number").map((n) => [n.id, fmt(c.price, { n: n.price as number })])),
+    [graph, c],
+  );
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
 
   let body: React.ReactNode;
-  if (!target) body = <p className="lv-muted" data-testid="live-notfound">{c.notFound}</p>;
+  if (draft) body = null;
+  else if (!target) body = <p className="lv-muted" data-testid="live-notfound">{c.notFound}</p>;
   else if (!shown) body = <p className="lv-muted" data-testid="live-closed">{c.closed}</p>;
   else if (load.state === "loading") body = <p className="lv-muted" role="status" data-testid="live-loading">{c.loading}</p>;
   else if (load.state === "error")
@@ -296,21 +319,26 @@ export function LiveView({ filmStudio, target }: { filmStudio: boolean; target: 
     <div className="cv-root lv-root" data-studio-live="" data-testid="live-view">
       <header className="lv-head">
         <h1>{run ? c.runTitle : (load.state === "ready" && load.film?.film.view.film.title) || c.filmTitle}</h1>
-        <p className="lv-muted">{c.readOnly}</p>
+        <p className="lv-muted" data-testid={draft ? "live-draft-note" : undefined}>{draft ? c.draftNote : c.readOnly}</p>
         {run ? <p className="lv-muted" data-testid="live-run-window">{target?.kind === "window" ? c.runWindowSince : c.runWindow}</p> : null}
         <p className="sr-only" role="status" aria-live="polite">
           {stale ? c.stale : graph?.settled ? c.settled : ""}
         </p>
         {stale ? <p className="lv-stale" data-testid="live-stale">{c.stale}</p> : null}
+        {graph?.runError ? (
+          <p className="lv-fail" role="status" data-testid="live-run-error">
+            {c.runFailed} {failureText(t, { id: "run", kind: "render", status: "failed", error: graph.runError, col: 0, row: 0 }, true).reason}
+          </p>
+        ) : null}
         {graph?.settled ? <p className="lv-muted" data-testid="live-settled">{c.settled}</p> : null}
       </header>
       {body}
       {graph ? (
         <div className={sel ? "lv-main has-details" : "lv-main"}>
           {narrow ? (
-            <List graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} />
+            <List graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} />
           ) : (
-            <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} />
+            <Board graph={graph} selected={selected} onOpen={setSelected} names={names} words={words} prices={prices} />
           )}
           {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} onClose={() => setSelected(null)} /> : null}
         </div>
