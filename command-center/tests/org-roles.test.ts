@@ -15,6 +15,8 @@ import type { OrgContext } from "../lib/orgs-server";
  */
 
 vi.mock("server-only", () => ({}));
+// The adult answer (0192/0196) is read by POST /api/agent/run too: an admin who answered 18+, so the role tests stay as they were.
+vi.mock("@/lib/server/age", () => ({ readAgeState: async () => "adult", readAgeAnswer: async () => "adult" }));
 
 type Row = Record<string, unknown>;
 

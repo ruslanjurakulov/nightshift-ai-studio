@@ -17,6 +17,7 @@ import { customerAppRu } from "./customer-app/ru";
 import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
+import { studioLiveRu } from "./studio-live/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -34,6 +35,7 @@ import { ownerAnalyticsRu } from "./owner-analytics/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { trendsRu } from "./trends/ru";
+import { ownerConsoleRu } from "./owner-console/ru";
 import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
@@ -66,6 +68,8 @@ export const ru: Dictionary = {
   presets: presetsRu,
   /** The Trends gallery (migration 0183): ./trends/ru.ts. */
   trends: trendsRu,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/ru.ts. */
+  ownerConsole: ownerConsoleRu,
   availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
@@ -76,6 +80,7 @@ export const ru: Dictionary = {
   studioHub: studioHubRu,
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
+  studioLive: studioLiveRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
@@ -825,6 +830,9 @@ export const ru: Dictionary = {
     errRunLimit: "Достигнут лимит одновременных запусков вашего тарифа. Попробуйте, когда запуск завершится.",
     errUnavailable: "Раскадровки пока недоступны в этой установке.",
     errDispatch: "Не удалось запустить рендер. Ничего не списано — попробуйте ещё раз.",
+    errAdultRequired: "Некоторые модели ИИ, которые использует этот рендер, по условиям их создателей доступны только взрослым (18+). Подтвердите возраст в блоке вверху страницы «Создать» и одобрите снова. Ничего не запущено и не списано.",
+    errAdultOnly: "Nightshift — для взрослых (18+). Для этого аккаунта указан возраст младше 18, поэтому рендер недоступен. Ничего не списано.",
+    errAgeUnavailable: "Сейчас не удалось прочитать ваш ответ о возрасте, поэтому рендер не запущен. Ничего не списано. Попробуйте ещё раз через минуту.",
     errGeneric: "Не получилось. Ничего не списано. Попробуйте ещё раз.",
     readErr: "Не удалось загрузить раскадровку.",
     notFound: "Такой раскадровки нет или она не в этой организации.",
@@ -3379,6 +3387,8 @@ export const ru: Dictionary = {
     runLimit: "Ваш тариф запускает до {n} видео одновременно, и столько уже в работе. Запустите это, когда один из запусков завершится, или перейдите на тариф с большим числом параллельных запусков.",
     runLimitShort: "Все параллельные запуски вашего тарифа заняты. Запустите это, когда один из них завершится.",
     notEnforced: "Запуски этой организации оплачиваются кредитами, но в этом развёртывании они не включены (NIGHTSHIFT_CREDITS_ENFORCE). Попросите оператора включить кредиты.",
+    adultRequired: "Некоторые модели ИИ, которые использует запуск видео, по условиям их создателей доступны только взрослым (18+). Подтвердите возраст в блоке вверху страницы «Создать» и запустите снова. Ничего не запущено и не списано.",
+    ageUnavailable: "Сейчас не удалось прочитать ваш ответ о возрасте, поэтому запуск не начат. Ничего не списано. Попробуйте ещё раз через минуту.",
     estimateUnavailable: "Стоимость запуска пока нельзя оценить, поэтому при включённых кредитах он не стартует.",
     unavailable: "Кредиты включены, но недоступны в этой базе (применена ли миграция 0020?).",
     readFailedRun: "Не удалось прочитать данные о кредитах, поэтому запуск не начат и ничего не заблокировано. Повторите через минуту.",
@@ -5973,6 +5983,8 @@ export const ru: Dictionary = {
       priceRequired: "Цена не подтверждена. Нажмите снова.",
       conflict: "Это нажатие уже использовано для другого запроса. Обновите страницу и попробуйте снова.",
       queueRequired: "Пересоздание сцен пока недоступно в этом рабочем пространстве.",
+      adultRequired: "Некоторые модели ИИ, которые здесь используются, по условиям их создателей доступны только взрослым (18+). Подтвердите возраст в блоке вверху страницы «Создать» и попробуйте снова. Ничего не запущено и не списано.",
+      adultOnly: "Nightshift — для взрослых (18+). Для этого аккаунта указан возраст младше 18, поэтому создание недоступно. Ничего не списано.",
       invalidPrompt: "Промпт слишком длинный или содержит недопустимые символы.",
       notInstalled: "Пересоздание сцен ещё не настроено.",
       failed: "Не удалось запустить. Ничего не списано.",

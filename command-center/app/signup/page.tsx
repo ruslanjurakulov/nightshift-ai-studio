@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -12,7 +12,7 @@ import { useInvited } from "@/components/auth/InvitedContext";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { useGoogleEnabled } from "@/components/auth/google-enabled-context";
 import { AUTH_CALLBACK_PATH, HANDLE_CHECK_PATH } from "@/lib/public-paths";
-import { afterSignupPath } from "@/lib/safe-redirect";
+import { afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { HandleInput } from "@/components/account/HandleInput";
 import { useHandleCheck } from "@/components/account/useHandleCheck";
 import { HANDLE_META_KEY, applyPendingHandle, handleAllowsSubmit, type HandleClient } from "@/lib/handles";
@@ -66,6 +66,13 @@ export default function SignupPage() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<SignupFieldError | Exclude<SignupOutcome, "already_registered"> | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  // A Studio form to come back to (the landing's idea box, a sample's "Try this prompt") is carried to sign-in as well, so someone
+  // who already has an account and follows "Sign in" still lands on it. Read after mount: the page is static.
+  const [loginHref, setLoginHref] = useState("/login");
+  useEffect(() => {
+    const next = studioNext(new URLSearchParams(window.location.search).get("next"));
+    if (next) setLoginHref(`/login?next=${encodeURIComponent(next)}`);
+  }, []);
 
   const messages: Record<SignupFieldError | Exclude<SignupOutcome, "check_email" | "signed_in" | "already_registered">, string> = {
     email_invalid: t.signup.errEmail,
@@ -143,7 +150,7 @@ export default function SignupPage() {
         </p>
         <p className="st-small mt-3">{t.signup.checkHint}</p>
         <div className="mt-8 flex flex-col gap-3">
-          <Link href="/login" className="st-key" data-block="true">
+          <Link href={loginHref} className="st-key" data-block="true">
             {t.signup.signIn}
           </Link>
           <button
@@ -282,7 +289,7 @@ export default function SignupPage() {
 
       <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
         {t.signup.haveAccount}
-        <Link href="/login" className="st-link text-[15px]">
+        <Link href={loginHref} className="st-link text-[15px]">
           {t.signup.signIn}
         </Link>
       </p>

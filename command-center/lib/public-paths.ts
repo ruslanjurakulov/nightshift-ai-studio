@@ -338,6 +338,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "atelier",
   // The Agent Builder page (/agent-builder) and its draft routes (migration 0130): a channel of that id would be shadowed by it.
   "agent-builder",
+  // The platform owner's console (/owner, the account switcher's Owner account): a channel of that id would be shadowed by it.
+  "owner",
   // The public /roadmap page (ROADMAP_PATH): a channel of that id would be shadowed by it.
   "roadmap",
   // The Refund Policy (REFUND_PATH): a channel of that id would be shadowed by it.

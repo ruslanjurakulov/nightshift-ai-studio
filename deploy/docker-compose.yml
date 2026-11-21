@@ -227,6 +227,55 @@ services:
     mem_limit: 4g
     logging: *default-logging
 
+  # ── Film worker (Film Studio P3, tools/film_worker.py) ─────────────────────
+  # Drives Film Studio segments through migration 0171's state machine: the
+  # takes through the creative adapters, the files into the media library, a
+  # clip's last frame (ffmpeg), the assembly and the settle. Same image, env
+  # file and `media` volume (uid 1000) as media-worker, in a container of its
+  # own: media-worker's 4g was measured for one upload and one export at once
+  # (3289 MB at worst), and an assembly beside them would put both past it. Switched by the GitHub repository
+  # variable NIGHTSHIFT_FILM_WORKER (with NIGHTSHIFT_WORKER on too): `on` and
+  # every deploy starts or recreates it, anything else and it is removed
+  # (deploy/remote-deploy.sh). The process reads the same word from the env
+  # file and claims nothing unless it is exactly `on` AND NIGHTSHIFT_FILM_ASSEMBLY
+  # is `on` with modules.film_assembly installed (otherwise it only sweeps).
+  film-worker:
+    profiles: ["worker"]
+    image: nightshift-worker:latest
+    command: ["python", "tools/film_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-film-01
+      # The creative worker's adapters: a take runs through exactly the adapter
+      # a Studio job of that model would.
+      NIGHTSHIFT_CREATIVE_ADAPTERS: modules.creative_adapters:resolve
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      # One scratch folder per segment, on the media volume (same filesystem).
+      NIGHTSHIFT_FILM_DIR: /app/media/.film-segments
+      HOME: /tmp
+    # Stops between calls; a take waiting on its provider keeps its task id and
+    # is polled again by the next claim, never paid for twice.
+    stop_grace_period: 2m
+    volumes:
+      - media:/app/media
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 256
+    # 3g: the assembly peaked at about 3 GB, page cache included (S11's measurement), and on the AX42's 64 GB the
+    # other limits already add up to 58.5 GB (web 2, worker 48, media 4, creative 2, four at 256m, brand-scan 1.5),
+    # so 4g would put the caps at 62.5 of 64.
+    mem_limit: 3g
+    logging: *default-logging
+
   # ── Creative worker (migration 0036, tools/creative_worker.py) ─────────────
   # Runs creative_jobs — image / video / speech generations started from the
   # Command Center — in its own process, so a generation never waits behind a

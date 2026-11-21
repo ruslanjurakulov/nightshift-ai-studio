@@ -444,6 +444,11 @@ def gate_triggers(db):
 
 
 def test_replay_and_rollback_keep_the_record(db):
+    # 0196 sits on three of 0192's bodies and 0198 on two others (quote_film, start_film), and 0192's drift guard refuses them all:
+    # both off first, so this compares 0192 alone, and both back on at the end.
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0198(c)
+        sec_db.take_off_0196(c)
     before = {s: _md5(db, s) for s in GATED}
     rows = db.su("select count(*) from public.adult_attestations")[0][0]
     db.su(sec_db.MIGRATION_0192.read_text(encoding="utf-8"))
@@ -460,8 +465,19 @@ def test_replay_and_rollback_keep_the_record(db):
         assert gate_triggers(db) == [], "the hold gate goes with the rollback"
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
-            sec_db.put_back_0192(c)
+            sec_db.put_back_0192(c)   # puts 0196 and 0198 back too
+            sec_db.take_off_0198(c)
+            sec_db.take_off_0196(c)
+    # 0192 alone is exactly what it was before the round trip.
     assert {s: _md5(db, s) for s in GATED} == before
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.put_back_0196(c)
+        sec_db.put_back_0198(c)
+    # Both layers are back on top of 0192: 0198's quote and start ask the organization's switch too, and every other gated body is
+    # 0192's or 0196's own (0196 replaces route_model and api_create_video).
+    film = ("public.quote_film(uuid,integer)", "public.start_film(uuid,text,text)")
+    assert [_md5(db, s) for s in film] == ["99d01240ed2df7fb002f674df8891608", "7971355d754165affaf3e08904b4b078"]
+    assert sec_db.has_0196(psycopg.connect(db.dsn, autocommit=True)) and sec_db.has_0198(psycopg.connect(db.dsn, autocommit=True))
     assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate"),
                                  ("download_requests", "adult_attestation_download_gate"),
                                  ("render_jobs", "adult_attestation_run_gate")]
@@ -478,7 +494,8 @@ def test_0174_and_0125_refuse_to_replay_over_0192(db):
     assert "0125 found a sellable_models()" in msg
     # The Film Studio's money pins its bodies too: it does not replay over the film gate.
     st, msg, _ = err(lambda: db.su(sec_db.MIGRATION_0171.read_text(encoding="utf-8")))
-    assert "0171 found public.quote_film(uuid, integer) with a body that is not this file's" in msg
+    # 0198 replaces 0171 bodies too (film_fail_locked comes first in 0171's own list), so the refusal may name one of those.
+    assert msg.startswith("0171 found public.") and "with a body that is not this file's" in msg, msg
 
 
 # ── F4: the session, not the caller, decides the method; only the current words are recorded ─────────────────────────────────

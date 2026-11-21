@@ -488,7 +488,7 @@ def test_two_creates_at_once_with_one_key_make_one_film(db, a):
     ({"title": ""}, "invalid_params", "title must not be empty"),
     ({"title": "​⁠ "}, "invalid_params", "title must not be empty"),
     ({"title": "t" * 121}, "invalid_params", "title"),
-    ({"target_seconds": 59}, "invalid_params", "target_seconds"),
+    ({"target_seconds": 9}, "invalid_params", "target_seconds"),  # 0198: a film targets 10-1200 s (0166 said 60)
     ({"target_seconds": 1201}, "invalid_params", "target_seconds"),
     ({"source_text": "s" * 2001}, "invalid_params", "at most 2000"),
     ({"language": "de"}, "invalid_params", "language"),
@@ -956,12 +956,15 @@ def test_reapplying_the_migration_changes_nothing(db, a):
 def test_the_migration_refuses_a_body_or_a_table_that_is_not_its_own(db):
     text = MIGRATION.read_text(encoding="utf-8")
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0198 replaces 0166's film_limits (10-second films), which 0166's guard refuses: off first, inside the transaction.
+        sec_db.take_off_0198(c)
         c.execute("create or replace function public.film_is_editable(p_status text) returns boolean "
                   "language sql immutable set search_path = public, pg_temp as $$ select true $$")
         with pytest.raises(psycopg.Error) as e:
             c.execute(text)
         assert "film_is_editable(text) with a body that is not this file's" in str(e.value)
         c.rollback()
+        sec_db.take_off_0198(c)
         c.execute("alter table public.film_events rename column actor_role to role_of_actor")
         with pytest.raises(psycopg.Error) as e:
             c.execute(text)

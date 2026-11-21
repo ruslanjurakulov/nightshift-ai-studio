@@ -1,14 +1,27 @@
 /** Shared fixtures for the Studio → Projects tests (a film_json answer as 0166 shapes it, with the migration's own limits). */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIMIT_KEYS, type FilmLimits } from "../lib/films";
 
 export const root = join(__dirname, "..");
 export const migration = readFileSync(join(root, "..", "supabase", "migrations", "0166_films_core.sql"), "utf8");
 
-/** film_limits() as 0166 writes it, read from the migration's text. */
+/** The latest migration that writes film_limits() (0166, then 0198's 10-second films), read from the directory, not named. */
+export function limitsMigration(): string {
+  const dir = join(root, "..", "supabase", "migrations");
+  const files = readdirSync(dir).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort();
+  let out = migration;
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), "utf8");
+    if (text.includes("create or replace function public.film_limits()")) out = text;
+  }
+  return out;
+}
+
+/** film_limits() as the latest migration writes it, read from its text. */
 export function migrationLimits(): Record<string, number> {
-  const body = migration.slice(migration.indexOf("create or replace function public.film_limits()"));
+  const text = limitsMigration();
+  const body = text.slice(text.indexOf("create or replace function public.film_limits()"));
   const obj = body.slice(body.indexOf("jsonb_build_object("), body.indexOf("$$;"));
   return Object.fromEntries([...obj.matchAll(/'([a-z_]+)',\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]));
 }

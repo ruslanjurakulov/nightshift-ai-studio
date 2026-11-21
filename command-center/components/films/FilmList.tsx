@@ -10,11 +10,12 @@ import { useChannelPath } from "@/lib/channels-client";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { STUDIO_PROJECTS } from "@/lib/navigation";
 import { filmStudioStrings, type FilmStudioDictionary } from "@/lib/i18n/film-studio";
+import { lengthText as lengthFor } from "@/components/films/lengthText";
 import {
   CREATE_LIMITS,
   FILM_ASPECTS,
   FILM_LANGUAGES,
-  TARGET_MINUTES,
+  TARGET_SECONDS,
   clock,
   filmsApi,
   newIdempotencyKey,
@@ -237,7 +238,7 @@ function NewProject({
   const [kind, setKind] = useState<SourceKind>("topic");
   const [source, setSource] = useState("");
   const [title, setTitle] = useState("");
-  const [minutes, setMinutes] = useState<number>(5);
+  const [seconds, setSeconds] = useState<number>(300);
   const [language, setLanguage] = useState<FilmLanguage>((FILM_LANGUAGES as readonly string[]).includes(locale) ? (locale as FilmLanguage) : "en");
   const [aspect, setAspect] = useState<FilmAspect>("16:9");
   const [busy, setBusy] = useState(false);
@@ -274,7 +275,7 @@ function NewProject({
       title: title.trim(),
       language,
       aspect,
-      target_seconds: minutes * 60,
+      target_seconds: seconds,
       channel_id: channel?.id ?? null,
       idem: idem.current,
     });
@@ -351,10 +352,10 @@ function NewProject({
         </div>
         <div className="fs-field">
           <label htmlFor={`${id}-len`}>{t.create.lengthLabel}</label>
-          <select id={`${id}-len`} className="ns-field" value={minutes} onChange={(e) => changed(setMinutes)(Number(e.target.value))}>
-            {TARGET_MINUTES.map((m) => (
-              <option key={m} value={m}>
-                {fmt(t.create.minutes, { n: m })}
+          <select id={`${id}-len`} className="ns-field" value={seconds} onChange={(e) => changed(setSeconds)(Number(e.target.value))}>
+            {TARGET_SECONDS.map((s) => (
+              <option key={s} value={s}>
+                {lengthFor(t, s)}
               </option>
             ))}
           </select>

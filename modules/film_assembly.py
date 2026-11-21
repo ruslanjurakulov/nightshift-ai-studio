@@ -519,13 +519,29 @@ class Deps:
     env: Mapping[str, str] = field(default_factory=lambda: os.environ)
 
 
-def assemble_segment(segment: Mapping, *, worker_id: str, store: AssemblyStore, media: ml.MediaStore,
-                     media_root: Path, tools: ml.Tools, deps: Optional[Deps] = None) -> AssemblyOutcome:
+def clients_from(db) -> tuple:
+    """The assembly's own REST clients from the film worker's (modules/film_orchestrator.FilmRest): the same Supabase
+    URL and service key, server-side, never logged. The assembly keeps its own clients because its refusal rules (only
+    the database's code and word are a refusal; Sentinel R2) and its library calls are its own."""
+    url, key = getattr(db, "url", None), getattr(db, "_key", None)
+    if not url or not key:
+        raise TypeError("assemble_segment needs db with the Supabase url and service key (FilmRest), or store and media")
+    media = ml.MediaStore(url, key)
+    return AssemblyStore(media), media
+
+
+def assemble_segment(segment: Mapping, *, worker_id: str, media_root: Path, tools: ml.Tools,
+                     db=None, store: Optional[AssemblyStore] = None, media: Optional[ml.MediaStore] = None,
+                     deps: Optional[Deps] = None) -> AssemblyOutcome:
     """Assemble one segment whose ``assembly_status`` is running, and record the outcome with 0171.
 
-    Returns the outcome. A decision is always recorded (``outcome.recorded``); a database that does not answer
-    raises :class:`DbUnavailable` and leaves the assembly running for the next claim (see the module docstring)."""
+    The film worker calls it as ``assemble_segment(segment, worker_id=..., db=<FilmRest>, media_root=..., tools=...)``
+    (modules/film_orchestrator.py); tests pass ``store`` and ``media`` instead. Returns the outcome. A decision is always
+    recorded (``outcome.recorded``); a database that does not answer raises :class:`DbUnavailable` and leaves the
+    assembly running for the next claim (see the module docstring)."""
     deps = deps or Deps()
+    if store is None or media is None:
+        store, media = clients_from(db)
     seg_id = ml.canonical_id(segment.get("id"))
     org = ml.canonical_id(segment.get("org_id"))
     work = Path(media_root) / WORK_DIRNAME / seg_id / f"{uuid.uuid4().hex}"
@@ -805,6 +821,6 @@ def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> 
                              "above the 50 MB a review object may be: shorten the film")
 
 
-__all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "DbRefused", "DbUnavailable", "Deps", "REASONS",
+__all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "clients_from", "DbRefused", "DbUnavailable", "Deps", "REASONS",
            "assemble_segment", "cached_words", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
            "master_asset_id", "render_strict", "store_caption", "vtt_text", "whisper_words"]

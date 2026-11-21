@@ -17,6 +17,7 @@ import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
 import { cleanLinkWords, parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
+import { IDEA_PARAM } from "@/lib/site/idea-handoff";
 import { NONCE_RE } from "@/lib/site/pending-attachment";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
@@ -39,6 +40,7 @@ import { LEGAL } from "@/lib/legal";
 import { CreateScreen } from "@/components/customer/CreateScreen";
 import { cookies } from "next/headers";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
+import { isPlatformOwner } from "@/lib/server/owner-view";
 import { SLUG_RE, cleanLinkPrompt, isCreateKind } from "@/lib/customer/create";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -97,11 +99,12 @@ export default async function CreatePage({
   // How the page is DRAWN (lib/owner-mode): the owner's console keeps its overview (the Assistant, the side panels); the
   // customer's frame — a customer, or the owner with Owner mode off — gets the Create screen. Permissions keep `operator`.
   // Only the operator's cookie is ever read: for anyone else the frame is the customer's whatever it says.
-  const frame = operator && ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value);
+  const frame = operator && ownerFrame(operator, (await cookies()).get(OWNER_MODE_COOKIE)?.value, await isPlatformOwner());
   // 0139: the platform operator, in the operator's own organization only, may also try a hidden model marked operator_preview. The
   // database answers no rows to anyone else; asking only here keeps every customer's page exactly as it was (one call fewer, too).
   // Only the generate panel gets them: the Assistant's plans and the automatic pick stay on the models that are on sale.
-  const previews = operator && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];
+  // In the owner's User account (frame off) none: that account sees exactly what a customer sees (lib/server/owner-view).
+  const previews = frame && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];
   // Both generate boxes get them: the overview's composer is the first one the operator meets, and without the previews it read
   // "no model can do this" while the Image desk offered the model. The Assistant below keeps `models`, the ones on sale.
   const panelModels = withPreviews(models, previews);
@@ -130,7 +133,8 @@ export default async function CreatePage({
       backend={runBackend}
       agentConfig={scopedChannel?.agent_config ?? null}
       canRun={canRun}
-      operator={operator}
+      // Drawing only (console links, provider routing, internal names): the owner's User account sees the customer's form.
+      operator={frame}
       targets={targets}
       initial={runInitial}
       dna={dna.run}
@@ -167,7 +171,9 @@ export default async function CreatePage({
   // Unreadable is unknown, never a zero; the operator's own organization is not charged.
   let credits: CreditsReading = { state: "unknown" };
   let projects: ProjectsReading = { state: "not_available" };
-  const createScreen = desk === "overview" && !pendingNonce && !frame;
+  // The landing's idea box kept the visitor's words in this browser (lib/site/idea-handoff.ts): the composer takes them once.
+  const ideaPickup = one(q[IDEA_PARAM]) === "1";
+  const createScreen = desk === "overview" && !pendingNonce && !ideaPickup && !frame;
   if (desk === "overview" && !createScreen && org.supported && org.current) {
     const orgId = org.current.id;
     const supabase = await createClient();
@@ -243,6 +249,7 @@ export default async function CreatePage({
           // The public home page's composer kept a file in this browser for this link (lib/site/pending-attachment.ts): the box asks
           // whether to use it. Its words are cleaned and bounded as any link's; the tool's own limit applies once the tool is known.
           pending={pendingNonce ? { nonce: pendingNonce, words: cleanLinkWords(one(q.prompt)) } : null}
+          idea={ideaPickup}
         />
       )}
       {desk === "effects" &&

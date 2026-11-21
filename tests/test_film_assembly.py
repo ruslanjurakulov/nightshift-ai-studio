@@ -522,6 +522,27 @@ class RestStoreTest(unittest.TestCase):
         self.assertTrue(all(c.count(",") < fa.ID_CHUNK for c in calls))
 
 
+class FilmWorkerCallTest(Base):
+    """The film worker's exact call (modules/film_orchestrator.FilmOrchestrator._run_assembly): a TypeError there would
+    record every assembly as failed."""
+
+    def test_the_film_workers_call_and_its_rest_client_are_accepted(self):
+        import inspect
+        from modules import film_orchestrator as fo
+        src = inspect.getsource(fo.FilmOrchestrator._run_assembly)
+        self.assertIn("assemble(dict(seg), worker_id=self.worker_id, db=self.db, media_root=self.media_root, "
+                      "tools=self.tools)", src)
+        rest = fo.FilmRest("http://db.invalid", "service-key-placeholder", session=FakeHttp({}))
+        st, media = fa.clients_from(rest)
+        self.assertEqual((st.media.url, media.url), ("http://db.invalid", "http://db.invalid"))
+        sig = inspect.signature(fa.assemble_segment)
+        sig.bind({}, worker_id="w-1", db=rest, media_root=self.root, tools=None)   # raises TypeError if the call drifts
+
+    def test_a_db_without_its_url_and_key_is_a_clear_error(self):
+        with self.assertRaises(TypeError):
+            fa.clients_from(object())
+
+
 class FindingsTest(Base):
     def test_a_5xx_on_the_success_record_keeps_the_rendered_film_and_the_assembly_running(self):
         f = self.film()

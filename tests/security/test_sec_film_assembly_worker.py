@@ -38,15 +38,16 @@ ASSEMBLY_CHARGE = Decimal(5)     # 18 s → 1 whole minute × the lab's film_ass
 class PgStore:
     """AssemblyStore over the lab database, reading as the service role (0166/0171's SELECT grants) and calling 0171 as it."""
 
-    #: Which organizations film_studio_on_for answers true for. That function is S6's migration (not on this branch):
-    #: the lab stands in for it here, and test_the_flag_function_is_read_when_it_exists checks the real one when present.
-    enabled_orgs: set = set()
-
     def __init__(self, d: Db):
         self.d = d
 
     def org_enabled(self, org):
-        return str(org) in self.enabled_orgs
+        """0198's film_studio_on_for, read as the service role exactly as the REST store reads it (the money lab's new_org
+        switches each organization on with set_org_film_studio_enabled)."""
+        answer = self._call("select public.film_studio_on_for(%s::uuid)", [org])
+        if answer is True or answer is False:
+            return answer
+        raise fa.DbUnavailable("film_studio_on_for did not answer true or false")
 
     def heartbeat(self, sid, worker):
         return self._call("select public.film_heartbeat_segment(%s::uuid, %s)", [sid, worker]) is True
@@ -126,7 +127,6 @@ render.calls = 0
 
 
 def deps(org, **kw):
-    PgStore.enabled_orgs.add(str(org))
     d = dict(env={fa.ENABLE_ENV: "on"}, render=render, store_file=store_file,
              probe=lambda p: fa.Probed(FILM_S, 1920, 1080, True), has_audio=lambda p, m: False, free_mb=lambda p: 1e9)
     d.update(kw)
@@ -270,13 +270,19 @@ def test_a_worker_that_lost_the_lease_records_nothing(db, a, root):
     assert db.su("select assembly_status from public.film_segments where id = %s", [seg["id"]])[0][0] == "running"
 
 
-def test_the_flag_function_is_read_when_it_exists(db, a, root):
-    """S6's film_studio_on_for(org): absent on this branch (the real store then answers not enabled, never true)."""
-    exists = db.su("select to_regprocedure('public.film_studio_on_for(uuid)') is not null")[0][0]
-    if not exists:
-        pytest.skip("film_studio_on_for is S6's migration; not applied on this branch")
-    answer = db.one("service_role", None, "select public.film_studio_on_for(%s::uuid)", [a.org])
-    assert answer in (True, False)
+def test_an_org_switched_off_in_the_database_is_recorded_at_zero_and_never_assembled(db, a, root):
+    """0198's film_studio_on_for answers false once the org's switch is off: the database's decision, recorded at 0."""
+    film, seg = assembling(db, a, root)
+    render.calls = 0
+    db.su("select public.set_org_film_studio_enabled(%s, false)", [a.org])
+    try:
+        out = run(db, seg, root)
+    finally:
+        db.su("select public.set_org_film_studio_enabled(%s, true)", [a.org])
+    assert (out.ok, out.reason, out.recorded) == (False, "assembly_not_enabled", True) and render.calls == 0
+    s = seg_json(db, seg["id"])
+    assert s["assembly"]["status"] == "failed" and Decimal(str(s["assembly"]["charged_credits"])) == 0
+    db.settle(seg["id"], out.reason)
 
 
 def test_the_orphan_discard_is_the_service_roles_only(db, a):

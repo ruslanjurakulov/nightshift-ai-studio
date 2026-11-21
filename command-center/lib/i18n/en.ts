@@ -17,6 +17,7 @@ import { customerAppEn } from "./customer-app/en";
 import { studioHubEn } from "./studio-hub/en";
 import { studioCanvasEn } from "./studio-canvas/en";
 import { studioTimelineEn } from "./studio-timeline/en";
+import { studioLiveEn } from "./studio-live/en";
 import { ownerSafetyEn } from "./owner-safety/en";
 import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
@@ -34,6 +35,7 @@ import { ownerAnalyticsEn } from "./owner-analytics/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
 import { trendsEn } from "./trends/en";
+import { ownerConsoleEn } from "./owner-console/en";
 import { availabilityEn } from "./availability/en";
 import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
@@ -74,6 +76,8 @@ export const en = {
   presets: presetsEn,
   /** The Trends gallery (migration 0183): ./trends/en.ts. */
   trends: trendsEn,
+  /** The Owner Console (/owner) and the User / Owner account switcher: ./owner-console/en.ts. */
+  ownerConsole: ownerConsoleEn,
   availability: availabilityEn,
   /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
   effects: effectsEn,
@@ -85,6 +89,7 @@ export const en = {
   studioHub: studioHubEn,
   studioCanvas: studioCanvasEn,
   studioTimeline: studioTimelineEn,
+  studioLive: studioLiveEn,
   ownerSafety: ownerSafetyEn,
   confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,
@@ -842,6 +847,9 @@ export const en = {
     errRunLimit: "Your plan's limit of runs at once is reached. Try again when a run finishes.",
     errUnavailable: "Storyboards aren't available on this deployment yet.",
     errDispatch: "The render could not be started. Nothing was charged — try again.",
+    errAdultRequired: "Some of the AI models this render uses are for adults (18+) by their makers' terms. Confirm your age in the box at the top of Create, then approve again. Nothing was started or charged.",
+    errAdultOnly: "Nightshift is for adults (18+). This account said it is under 18, so nothing can be rendered. Nothing was charged.",
+    errAgeUnavailable: "We could not read your age answer just now, so the render was not started. Nothing was charged. Try again in a moment.",
     errGeneric: "That didn't work. Nothing was charged. Try again.",
     readErr: "Couldn't load this storyboard.",
     notFound: "This storyboard doesn't exist, or it isn't in this organization.",
@@ -3397,6 +3405,8 @@ export const en = {
     runLimit: "Your plan runs {n} video(s) at a time, and that many are already in progress. Start this one when a run finishes, or upgrade for more parallel runs.",
     runLimitShort: "Your plan's parallel runs are all in use. Start this one when a run finishes.",
     notEnforced: "Runs for this organization are paid with credits, which this deployment has not switched on (NIGHTSHIFT_CREDITS_ENFORCE). Ask the operator to enable credits.",
+    adultRequired: "Some of the AI models a video run uses are for adults (18+) by their makers' terms. Confirm your age in the box at the top of Create, then run again. Nothing was started or charged.",
+    ageUnavailable: "We could not read your age answer just now, so the run was not started. Nothing was charged. Try again in a moment.",
     estimateUnavailable: "This run's cost can't be estimated yet, so it can't start while credits are enforced.",
     unavailable: "Credits are enforced but unavailable on this database (is migration 0020 applied?).",
     readFailedRun: "Credits could not be read just now, so this run was not started and nothing was put on hold. Retry in a moment.",
@@ -5995,6 +6005,8 @@ export const en = {
       priceRequired: "The price wasn't confirmed. Press again.",
       conflict: "This press was already used for a different request. Reload and try again.",
       queueRequired: "Scene regeneration isn't available on this workspace yet.",
+      adultRequired: "Some of the AI models this uses are for adults (18+) by their makers' terms. Confirm your age in the box at the top of Create, then try again. Nothing was started or charged.",
+      adultOnly: "Nightshift is for adults (18+). This account said it is under 18, so nothing can be made. Nothing was charged.",
       invalidPrompt: "The prompt is too long or has characters that aren't allowed.",
       notInstalled: "Scene regeneration isn't set up yet.",
       failed: "It could not be started. Nothing was charged.",
