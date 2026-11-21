@@ -5,7 +5,8 @@ functions it calls in production (LabStore below), and against a fake YouTube th
 matter: an owner's OAuth token sees the channel's private and unlisted uploads (and videos.list part=status says which), the
 platform's API key sees public ones only, and a channel's customUrl is its @handle. Nothing here opens a socket.
 
-Round 1 (0199) found five holes; the fix round (0201) closed them, and these tests now pin the fixes:
+Round 1 (the file was numbered 0199 then) found five holes; the fix rounds closed them (the migration is now 0201), and these
+tests now pin the fixes:
   * BR-R-001 (high)   an own-channel refresh read private uploads with the channel's token into the SHARED video cache, which any
                       organization naming that channel as a competitor reads. Now research_own_videos (channel-scoped), and only a
                       video YouTube reports public reaches the shared cache; a complete public batch removes one that went private.

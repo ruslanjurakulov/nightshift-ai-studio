@@ -280,6 +280,17 @@ describe("fix round", () => {
     expect(within(box).getAllByText("@waiting").length).toBe(1);
   });
 
+  it("a lookup YouTube refused is said on its row, and three make it invalid", () => {
+    const list = answer("ok", { max: 20, competitors: [
+      { id: "11111111-1111-4111-8111-111111111111", input_ref: "@odd", status: "pending", last_error: "lookup_failed", channel: null, videos: [] },
+      { id: "22222222-2222-4222-8222-222222222222", input_ref: "@odder", status: "invalid_ref", last_error: "lookup_failed", channel: null, videos: [] }] });
+    show(props({ competitors: parsePanel({ ...list, last_request: { status: "queued" } }, parseCompetitors) }));
+    const box = screen.getByTestId("research-competitors");
+    expect(within(box).getByText(en.competitors.lookupFailed)).toBeTruthy();
+    expect(within(box).getByText(en.competitors.invalidRef)).toBeTruthy();
+    expect(within(box).queryByText(en.competitors.pending)).toBeNull();
+  });
+
   it("a topic with nothing yet says to press Search", () => {
     show(props({ topic: parsePanel(answer("no_data", { topic: "deep sea", channels: [], recent_topics: [] }), parseTopic), topicQuery: "deep sea" }));
     expect(screen.getByText(en.topic.noDataYet)).toBeTruthy();

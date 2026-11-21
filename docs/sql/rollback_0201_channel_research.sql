@@ -28,6 +28,7 @@ drop function if exists public.research_resolve_competitor(uuid, text);
 drop function if exists public.research_store_topic(bigint, text[]);
 drop function if exists public.research_store_own(bigint, text, integer, bigint, bigint, bigint, bigint);
 drop function if exists public.research_purge_stale();
+drop function if exists public.research_competitor_lookup_failed(uuid);
 drop function if exists public.youtube_quota_take(text, integer, integer, uuid, integer, text);
 drop function if exists public.research_answer(text, boolean, timestamptz, jsonb, jsonb);
 drop function if exists public.research_remedy(text, text);

@@ -97,6 +97,8 @@ export const researchEn = {
     empty: "No competitors yet. Add the channels you want to compare with.",
     pending: "Checking with YouTube…",
     notAsked: "Not checked yet. Press Refresh to check it.",
+    lookupFailed: "YouTube could not look this one up; check the link or remove it.",
+    invalidRef: "YouTube could not look this one up three times. Remove it and add the channel's link again.",
     notFound: "YouTube does not know this channel.",
     remove: "Remove",
     removeAria: "Remove {name}",

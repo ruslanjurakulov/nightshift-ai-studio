@@ -38,6 +38,7 @@ def extend(tables: dict, functions: dict) -> None:
         "research_store_topic": SERVICE,
         "research_store_own": SERVICE,
         "research_purge_stale": SERVICE,
+        "research_competitor_lookup_failed": SERVICE,
         # Internal helpers, called only inside the functions above (they run as the owner).
         "research_error_words": SERVICE,
         "research_channel_access": SERVICE,

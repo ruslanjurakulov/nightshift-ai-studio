@@ -190,6 +190,16 @@ class ChannelResearchMigration(unittest.TestCase):
         self.assertIn("clock_timestamp()", self.fns["research_add_competitor"][0])
         self.assertIn("research_current_youtube_id(p_channel)", self.fns["research_own_channel"][0])
 
+    def test_third_fix_round_pins(self):
+        self.assertIn("check (status in ('pending', 'resolved', 'not_found', 'own_channel', 'invalid_ref'))", self.src)
+        self.assertIn("add column if not exists last_error text", self.src)
+        self.assertIn("'^@[[:alpha:][:digit:]_.-]{3,30}$'", self.fns["research_parse_ref"][0])
+        self.assertIn("lower(x.handle) = c.input_ref", self.fns["research_store_channels"][0])
+        self.assertIn("q.status = 'running'", self.fns["research_purge_stale"][0])
+        self.assertIn("late.created_at >= r.started_at", self.fns["research_finish_request"][0])
+        self.assertIn("'started_at', coalesce(r.started_at, now())", self.fns["research_claim_request"][0])
+        self.assertIn("lookup_failures + 1 >= 3", self.fns["research_competitor_lookup_failed"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

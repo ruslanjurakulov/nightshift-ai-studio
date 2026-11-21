@@ -81,7 +81,7 @@ create table if not exists public.research_competitors (
   -- NULL until YouTube said which channel the reference names.
   youtube_channel_id  text check (youtube_channel_id is null or youtube_channel_id ~ '^UC[A-Za-z0-9_-]{22}$'),
   -- own_channel: the reference turned out to name this channel itself (an @handle of its own), refused once YouTube said so.
-  status              text not null default 'pending' check (status in ('pending', 'resolved', 'not_found', 'own_channel')),
+  status              text not null default 'pending' check (status in ('pending', 'resolved', 'not_found', 'own_channel', 'invalid_ref')),
   added_by            uuid,
   created_at          timestamptz not null default now(),
   resolved_at         timestamptz,
@@ -92,11 +92,19 @@ create table if not exists public.research_competitors (
 
 create index if not exists research_competitors_channel_idx on public.research_competitors (channel_id, created_at);
 
--- A database that ran an earlier draft of this file has the status CHECK without own_channel: swapped in place, every existing row
--- stays valid (the new list is a superset).
+-- A database that ran an earlier draft of this file has the status CHECK without own_channel / invalid_ref: swapped in place, every
+-- existing row stays valid (the new list is a superset).
 alter table public.research_competitors drop constraint if exists research_competitors_status_check;
 alter table public.research_competitors add constraint research_competitors_status_check
-  check (status in ('pending', 'resolved', 'not_found', 'own_channel'));
+  check (status in ('pending', 'resolved', 'not_found', 'own_channel', 'invalid_ref'));
+
+-- A lookup YouTube refused without saying the channel does not exist (an HTTP 400 on forHandle): recorded on THAT row, which stays
+-- pending, so one odd handle neither fails the whole refresh nor passes for "not found". After three in a row it is invalid_ref.
+alter table public.research_competitors add column if not exists last_error text
+  check (last_error is null or last_error in ('lookup_failed'));
+alter table public.research_competitors add column if not exists last_error_at timestamptz;
+alter table public.research_competitors add column if not exists lookup_failures integer not null default 0
+  check (lookup_failures between 0 and 100);
 
 comment on table public.research_competitors is
   'Channel research (migration 0201): a competitor channel a customer named. pending until the worker resolved it with channels.list; not_found when YouTube knows no such channel. Written only by research_add_competitor / research_remove_competitor / research_resolve_competitor.';
@@ -362,7 +370,8 @@ begin
   if v ~ '^UC[A-Za-z0-9_-]{22}$' then
     return jsonb_build_object('kind', 'id', 'ref', v);
   end if;
-  if v ~ '^@[^[:space:][:cntrl:]/?#&=@%<>"''\\]{3,30}$' then
+  -- YouTube's handle alphabet: letters (any script), digits, underscore, hyphen and period. Anything else ("!", "$") is not a handle.
+  if v ~ '^@[[:alpha:][:digit:]_.-]{3,30}$' then
     return jsonb_build_object('kind', 'handle', 'ref', lower(v));
   end if;
   return null;
@@ -574,7 +583,7 @@ begin
   last := public.research_last_request(p_channel, 'competitors', null);
   select coalesce(jsonb_agg(jsonb_build_object(
            'id', r.id, 'input_ref', r.input_ref, 'status', r.status, 'youtube_channel_id', r.youtube_channel_id,
-           'created_at', r.created_at, 'resolved_at', r.resolved_at,
+           'created_at', r.created_at, 'resolved_at', r.resolved_at, 'last_error', r.last_error, 'last_error_at', r.last_error_at,
            'channel', case when r.status = 'resolved' then public.research_channel_json(r.youtube_channel_id) end,
            'videos', case when r.status = 'resolved' then public.research_videos_json(r.youtube_channel_id, 10) else '[]'::jsonb end)
          order by r.created_at, r.id), '[]'::jsonb),
@@ -960,6 +969,8 @@ begin
   end if;
   return jsonb_build_object('id', r.id, 'channel_id', r.channel_id, 'org_id', r.org_id, 'kind', r.kind, 'topic', r.topic,
                             'attempts', r.attempts + 1, 'youtube_channel_id', nullif(ch.credential_ref ->> 'youtube_channel_id', ''),
+                            -- The database's clock: the worker's cutoff for "rows written before this fetch began" (complete batches).
+                            'started_at', coalesce(r.started_at, now()),
                             'competitors', coalesce(comps, '[]'::jsonb));
 end
 $$;
@@ -992,8 +1003,9 @@ begin
   -- who asked, and that was them.
   if n > 0 and r.kind = 'competitors' and p_status = 'done' and public.research_channel_confirmed(r.channel_id) then
     insert into public.research_requests (channel_id, org_id, kind, topic, requested_by)
-    select r.channel_id, r.org_id, 'competitors', null, late.added_by
-      from (select c.added_by from public.research_competitors c
+    -- Only a competitor added after this request started names who asked; otherwise nobody in particular did (null).
+    select r.channel_id, r.org_id, 'competitors', null, case when late.created_at >= r.started_at then late.added_by end
+      from (select c.added_by, c.created_at from public.research_competitors c
              where c.channel_id = r.channel_id and c.status = 'pending'
                and not (c.id = any (coalesce(r.claimed_competitor_ids, '{}')))
              order by c.created_at desc limit 1) late
@@ -1035,10 +1047,14 @@ begin
   get diagnostics n = row_count;
   -- YouTube just answered for these channels: a competitor list in active use is re-confirmed here, so the 30-day reset (purge)
   -- only reaches a reference nobody refreshed for 30 days.
+  -- Only where this answer confirms THIS reference: an id reference by its id, an @handle only when the answer still carries that
+  -- handle (another tenant's id lookup says nothing about whether a handle still names the same channel).
   update public.research_competitors c
      set resolved_at = now()
+    from jsonb_to_recordset(p_rows) as x(youtube_channel_id text, handle text)
    where c.status = 'resolved'
-     and c.youtube_channel_id in (select x.youtube_channel_id from jsonb_to_recordset(p_rows) as x(youtube_channel_id text));
+     and c.youtube_channel_id = x.youtube_channel_id
+     and (c.ref_kind = 'id' or lower(x.handle) = c.input_ref);
   return n;
 end
 $$;
@@ -1150,13 +1166,13 @@ begin
     return 'gone';
   end if;
   if p_youtube_channel_id is null then
-    update public.research_competitors set status = 'not_found', youtube_channel_id = null, resolved_at = now() where id = p_id;
+    update public.research_competitors set status = 'not_found', youtube_channel_id = null, resolved_at = now(), last_error = null, last_error_at = null, lookup_failures = 0 where id = p_id;
     return 'not_found';
   end if;
   -- An @handle that turned out to be this channel's own: refused, said so (status own_channel), never compared with itself.
   if exists (select 1 from public.channels c
               where c.channel_id = r.channel_id and c.credential_ref ->> 'youtube_channel_id' = p_youtube_channel_id) then
-    update public.research_competitors set status = 'own_channel', youtube_channel_id = null, resolved_at = now() where id = p_id;
+    update public.research_competitors set status = 'own_channel', youtube_channel_id = null, resolved_at = now(), last_error = null, last_error_at = null, lookup_failures = 0 where id = p_id;
     return 'own_channel';
   end if;
   if exists (select 1 from public.research_competitors x
@@ -1165,9 +1181,30 @@ begin
     return 'duplicate';
   end if;
   update public.research_competitors
-     set status = 'resolved', youtube_channel_id = p_youtube_channel_id, resolved_at = now()
+     set status = 'resolved', youtube_channel_id = p_youtube_channel_id, resolved_at = now(),
+         last_error = null, last_error_at = null, lookup_failures = 0
    where id = p_id;
   return 'resolved';
+end
+$$;
+
+-- One failed lookup of a pending reference (HTTP 400, not "no such channel"): counted on the row, which stays pending; the third in a
+-- row makes it invalid_ref, a terminal state the person fixes by removing it and adding the channel's link.
+create or replace function public.research_competitor_lookup_failed(p_id uuid) returns text
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_status text;
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'only the platform may record a lookup' using errcode = '42501';
+  end if;
+  update public.research_competitors
+     set lookup_failures = lookup_failures + 1, last_error = 'lookup_failed', last_error_at = now(),
+         status = case when lookup_failures + 1 >= 3 then 'invalid_ref' else status end,
+         resolved_at = case when lookup_failures + 1 >= 3 then now() else resolved_at end
+   where id = p_id and status = 'pending'
+  returning status into v_status;
+  return coalesce(v_status, 'gone');
 end
 $$;
 
@@ -1267,6 +1304,9 @@ begin
     update public.research_competitors
        set status = 'pending', youtube_channel_id = null, resolved_at = null
      where status in ('resolved', 'not_found', 'own_channel') and resolved_at < now() - interval '30 days'
+       -- Not under a running competitors request: it would finish without them and queue nothing. The next purge reaches them.
+       and not exists (select 1 from public.research_requests q
+                        where q.channel_id = research_competitors.channel_id and q.kind = 'competitors' and q.status = 'running')
     returning channel_id, org_id
   ), asked as (
     -- ... and asked: one competitors request per affected confirmed channel, so none waits on "checking" with nothing queued.
@@ -1362,6 +1402,8 @@ grant execute on function public.research_resolve_competitor(uuid, text) to serv
 grant execute on function public.research_store_topic(bigint, text[]) to service_role;
 grant execute on function public.research_store_own(bigint, text, integer, bigint, bigint, bigint, bigint) to service_role;
 grant execute on function public.research_purge_stale() to service_role;
+revoke all on function public.research_competitor_lookup_failed(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.research_competitor_lookup_failed(uuid) to service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Verify (run as the SQL editor; every column should read true)

@@ -236,7 +236,7 @@ def test_the_ledger_check_was_extended_not_replaced(conn):
     assert "'visibility'" in d and "'research'" in d and "'research_search'" in d
 
 
-@pytest.mark.parametrize("ref", ["https://youtube.com/c/legacy", "javascript:alert(1)", "@a", "UCshort", "@has space"])
+@pytest.mark.parametrize("ref", ["https://youtube.com/c/legacy", "javascript:alert(1)", "@a", "UCshort", "@has space", "@bad!", "@pay$me"])
 def test_unusable_references_are_refused(conn, sc, ref):
     with acting(conn, sc.alice.actor) as s:
         out = s.value("select public.research_add_competitor(%s, %s)", [sc.alice.channel, ref])
@@ -381,7 +381,7 @@ def test_a_list_in_use_is_reconfirmed_and_a_reset_one_is_asked_again(conn, sc):
         s.owner("update public.research_competitors set status = 'resolved', youtube_channel_id = %s, resolved_at = now() - interval '40 days' "
                 "where id = %s", [COMP2, idle["id"]])
         _quiet(s)
-        ok(s.call(SERVICE, "select public.research_store_channels(%s::jsonb)", [json.dumps([{"youtube_channel_id": COMP, "title": "x"}])]))
+        ok(s.call(SERVICE, "select public.research_store_channels(%s::jsonb)", [json.dumps([{"youtube_channel_id": COMP, "title": "x", "handle": "@InUse"}])]))
         ok(s.call(SERVICE, "select public.research_purge_stale()"))
         assert s.owner("select status from public.research_competitors where id = %s", [used["id"]]) == "resolved"
         assert s.owner("select status from public.research_competitors where id = %s", [idle["id"]]) == "pending"
@@ -430,3 +430,81 @@ def test_an_empty_own_playlist_clears_the_stored_list(conn, sc):
         assert s.owner("select count(*) from public.research_own_videos where channel_id = %s", [alice.channel]) >= 1
         ok(s.call(SERVICE, "select public.research_store_videos(%s::jsonb)", [json.dumps([{"own_request_id": rid, "complete": True}])]))
         assert s.owner("select count(*) from public.research_own_videos where channel_id = %s", [alice.channel]) == 0
+
+
+# ── third fix round (PR #851) ───────────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_handles_in_any_script_are_accepted(conn, sc):
+    with scratch(conn) as s:
+        for ref in ("@кирилл_канал", "@oʻzbek.tv", "@a-b_c.d"):
+            assert ok(s.call(sc.alice.actor, "select public.research_add_competitor(%s, %s)", [sc.alice.channel, ref]))["ok"], ref
+
+
+def test_three_failed_lookups_make_a_reference_invalid(conn, sc):
+    alice = sc.alice
+    with scratch(conn) as s:
+        added = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@oddhandle')", [alice.channel]))
+        for expected in ("pending", "pending", "invalid_ref"):
+            assert ok(s.call(SERVICE, "select public.research_competitor_lookup_failed(%s)", [added["id"]])) == expected
+        view = ok(s.call(alice.actor, "select public.research_competitors_view(%s)", [alice.channel]))
+        row = next(c for c in view["data"]["competitors"] if c["id"] == added["id"])
+        assert row["status"] == "invalid_ref" and row["last_error"] == "lookup_failed" and row["last_error_at"]
+        assert s.call(alice.actor, "select public.research_competitor_lookup_failed(%s)", [added["id"]]) == (False, "42501")
+        # A later success clears the record.
+        other = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@flaky')", [alice.channel]))
+        ok(s.call(SERVICE, "select public.research_competitor_lookup_failed(%s)", [other["id"]]))
+        ok(s.call(SERVICE, "select public.research_resolve_competitor(%s, %s)", [other["id"], COMP]))
+        assert s.owner("select (last_error is null and lookup_failures = 0)::text from public.research_competitors where id = %s",
+                       [other["id"]]) == "true"
+
+
+def test_another_tenants_id_lookup_does_not_reconfirm_a_handle(conn, sc):
+    alice = sc.alice
+    with scratch(conn) as s:
+        h = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@oldhandle')", [alice.channel]))
+        i = ok(s.call(alice.actor, "select public.research_add_competitor(%s, %s)", [alice.channel, COMP2]))
+        for cid, uc in ((h["id"], COMP), (i["id"], COMP2)):
+            s.owner("update public.research_competitors set status = 'resolved', youtube_channel_id = %s, resolved_at = now() - interval '20 days' "
+                    "where id = %s", [uc, cid])
+        rows = [{"youtube_channel_id": COMP, "handle": "@renamed"}, {"youtube_channel_id": COMP2, "handle": "@whatever"}]
+        ok(s.call(SERVICE, "select public.research_store_channels(%s::jsonb)", [json.dumps(rows)]))
+        old = s.owner("select (resolved_at < now() - interval '19 days')::text from public.research_competitors where id = %s", [h["id"]])
+        new = s.owner("select (resolved_at > now() - interval '1 minute')::text from public.research_competitors where id = %s", [i["id"]])
+        assert (old, new) == ("true", "true")
+        ok(s.call(SERVICE, "select public.research_store_channels(%s::jsonb)", [json.dumps([{"youtube_channel_id": COMP, "handle": "@OldHandle"}])]))
+        assert s.owner("select (resolved_at > now() - interval '1 minute')::text from public.research_competitors where id = %s",
+                       [h["id"]]) == "true"
+
+
+def test_the_purge_leaves_a_channel_with_a_running_refresh_for_next_time(conn, sc):
+    alice = sc.alice
+    with scratch(conn) as s:
+        _quiet(s)
+        added = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@stalerival')", [alice.channel]))
+        s.owner("update public.research_competitors set status = 'resolved', youtube_channel_id = %s, resolved_at = now() - interval '31 days' "
+                "where id = %s", [COMP, added["id"]])
+        claimed = ok(s.call(SERVICE, "select public.research_claim_request('lab-worker')"))
+        assert claimed["kind"] == "competitors" and claimed["started_at"]
+        ok(s.call(SERVICE, "select public.research_purge_stale()"))
+        assert s.owner("select status from public.research_competitors where id = %s", [added["id"]]) == "resolved"
+        ok(s.call(SERVICE, "select public.research_finish_request(%s, 'lab-worker', 'failed', 'platform_error', 0)", [claimed["id"]]))
+        ok(s.call(SERVICE, "select public.research_purge_stale()"))
+        assert s.owner("select status from public.research_competitors where id = %s", [added["id"]]) == "pending"
+        assert s.owner("select count(*) from public.research_requests where channel_id = %s and kind = 'competitors' and status = 'queued'",
+                       [alice.channel]) == 1
+
+
+def test_a_follow_up_for_a_competitor_older_than_the_request_names_nobody(conn, sc):
+    alice = sc.alice
+    with scratch(conn) as s:
+        _quiet(s)
+        first = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@first')", [alice.channel]))
+        claimed = ok(s.call(SERVICE, "select public.research_claim_request('lab-worker')"))
+        late = ok(s.call(alice.actor, "select public.research_add_competitor(%s, '@notclaimed')", [alice.channel]))
+        # It was not in the claim, but its row says it is older than the request (a clock that disagrees): nobody named.
+        s.owner("update public.research_competitors set created_at = now() - interval '1 hour' where id = %s", [late["id"]])
+        ok(s.call(SERVICE, "select public.research_resolve_competitor(%s, %s)", [first["id"], COMP]))
+        ok(s.call(SERVICE, "select public.research_finish_request(%s, 'lab-worker', 'done', null, 1)", [claimed["id"]]))
+        assert s.owner("select requested_by is null from public.research_requests where channel_id = %s and kind = 'competitors' "
+                       "and status = 'queued'", [alice.channel]) is True

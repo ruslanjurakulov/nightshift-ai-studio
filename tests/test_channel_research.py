@@ -91,6 +91,10 @@ class FakeStore:
     def store_videos(self, rows):
         self.videos.extend(rows)
 
+    def lookup_failed(self, cid):
+        self.failed_lookups = getattr(self, "failed_lookups", []) + [cid]
+        return "pending"
+
     def resolve(self, cid, yid):
         self.resolved.append((cid, yid))
         return "resolved" if yid else "not_found"
@@ -441,11 +445,7 @@ class FixRound(unittest.TestCase):
             {"id": "c1", "input_ref": "@x", "ref_kind": "handle", "status": "resolved", "youtube_channel_id": UC1,
              "channel_fetched_at": "2026-11-21T11:30:00+00:00", "videos_fetched_at": None, "uploads_playlist_id": "UUa"}]},
             session, store)
-        self.assertEqual(len(store.videos), 1)
-        marker = store.videos[0]
-        self.assertEqual((marker["youtube_channel_id"], marker["complete"]), (UC1, True))
-        # The fetch's start time: only rows older than it may be removed.
-        self.assertTrue(datetime.fromisoformat(marker["fetched_since"]))
+        self.assertEqual(store.videos, [{"youtube_channel_id": UC1, "complete": True}])
 
     def test_a_missing_handle_is_not_found_and_the_loop_goes_on(self):
         def channels(params):
@@ -461,15 +461,26 @@ class FixRound(unittest.TestCase):
         self.assertEqual(status, "done")
         self.assertEqual(store.resolved, [("c1", None), ("c2", UC1)])
 
-    def test_a_400_on_a_handle_says_nothing_about_the_channel(self):
-        # Lens M2: an unexplained 400 is not "no such channel": the competitor stays pending and the request names the error.
-        session = FakeSession({"/channels": Resp(400, {"error": {"errors": [{"reason": "invalidParameter"}]}})})
+    def test_a_400_on_a_handle_is_recorded_on_that_row_and_the_rest_still_runs(self):
+        # Lens (third round): one odd handle is that row's problem; a stale resolved competitor is still refreshed, and the request is
+        # done. It is never called not_found.
+        def channels(params):
+            if params.get("forHandle"):
+                return Resp(400, {"error": {"errors": [{"reason": "invalidParameter"}]}})
+            return Resp(200, {"items": [channel_item(UC2)]})
+
+        session = FakeSession({"/channels": channels, "/playlistItems": Resp(200, {"items": []})})
         store = FakeStore()
-        status = run({"id": 3, "kind": "competitors", "org_id": "o", "competitors": [
-            {"id": "c1", "input_ref": "@odd", "ref_kind": "handle", "status": "pending"}]}, session, store)
-        self.assertEqual(status, "failed")
+        status = run({"id": 3, "kind": "competitors", "org_id": "o", "started_at": "2026-11-21T11:59:00+00:00", "competitors": [
+            {"id": "c1", "input_ref": "@odd", "ref_kind": "handle", "status": "pending"},
+            {"id": "c2", "input_ref": UC2, "ref_kind": "id", "status": "resolved", "youtube_channel_id": UC2,
+             "channel_fetched_at": "2026-11-01T00:00:00+00:00", "uploads_playlist_id": "UUb"}]}, session, store)
+        self.assertEqual(status, "done")
+        self.assertEqual(store.failed_lookups, ["c1"])
         self.assertEqual(store.resolved, [])
-        self.assertEqual(store.finished[-1][1:3], ("failed", "platform_error"))
+        self.assertEqual([r["youtube_channel_id"] for r in store.channels], [UC2])
+        # The uploads' complete marker carries the database's start time from the claim, not this machine's clock.
+        self.assertEqual(store.videos[-1]["fetched_since"], "2026-11-21T11:59:00+00:00")
 
     def test_an_empty_own_playlist_replaces_the_stored_list(self):
         routes = OwnChannel().routes()

@@ -2307,4 +2307,9 @@ competitor's `resolved_at`, and the 30-day reset queues one competitors request 
 removes only rows older than its fetch's start, and an empty own playlist clears the stored list; own numbers read from another
 YouTube account than the channel's current one are not shown (`channel_mismatch`); the competitors status CHECK is swapped in
 place (guarded), so a database that ran an earlier draft gains `own_channel`.
+Third fix round: a forHandle lookup that YouTube refuses with an HTTP 400 is recorded on that competitor (new columns
+`last_error`, `last_error_at`, `lookup_failures`; worker function `research_competitor_lookup_failed`) and the refresh goes on; three
+in a row make it `invalid_ref` (the status CHECK is swapped again, guarded). Handles are parsed with YouTube's alphabet only. A
+`channels.list` answer re-confirms an @handle competitor only while it still carries that handle; the 30-day reset skips a channel
+with a running competitors request; the claim returns the request's `started_at`, the cutoff a complete batch uses.
 Rollback: `docs/sql/rollback_0201_channel_research.sql`.

@@ -480,7 +480,11 @@ function CompetitorsPanel({ ctx, panel }: { ctx: Ctx; panel: Panel<CompetitorsDa
                   </div>
                   <RemoveButton ctx={ctx} id={c.id} name={name} />
                 </div>
-                {c.status === "pending" && (asked(panel)
+                {c.status === "pending" && c.lastError === "lookup_failed" && (
+                  <p className="m-0 text-sm text-[var(--color-warn)]">{r.competitors.lookupFailed}</p>
+                )}
+                {c.status === "invalid_ref" && <p className="m-0 text-sm text-[var(--color-warn)]">{r.competitors.invalidRef}</p>}
+                {c.status === "pending" && !c.lastError && (asked(panel)
                   ? <p role="status" className="m-0 text-sm">{r.competitors.pending}</p>
                   : <p className="m-0 text-sm text-[var(--color-muted)]">{r.competitors.notAsked}</p>)}
                 {c.status === "not_found" && <p className="m-0 text-sm text-[var(--color-warn)]">{r.competitors.notFound}</p>}

@@ -80,11 +80,14 @@ remedy next to the numbers.
   channel's **own** uploads read with its own token, so they include private and unlisted ones (`privacy_status`
   `public|unlisted|private`, or `null` when YouTube did not say): they are shown only to that channel's members and never reach
   another organization. Say which are private when you list them. If the stored numbers were read with a token that reached a
-different YouTube account than the one the channel is confirmed as now, the answer is `no_data` with `remedy_code:
-"channel_mismatch"` and nothing of them is shown. The whole answer is `not_connected` while the channel is not
+different YouTube account than the one the channel is confirmed as now, nothing of them is shown and `remedy_code` is
+`"channel_mismatch"`; the status is `refreshing` while a request is open, else `no_data`. The whole answer is `not_connected` while the channel is not
   connected to YouTube (its analytics are not shown, and the purge deletes them).
-* **Competitors**: `{max: 20, competitors: [{id, input_ref, status: pending|resolved|not_found|own_channel, youtube_channel_id,
-  channel, videos}]}`. `pending` means YouTube has not answered yet which channel the reference names. Tell "asked" from "not asked
+* **Competitors**: `{max: 20, competitors: [{id, input_ref, status: pending|resolved|not_found|own_channel|invalid_ref,
+  youtube_channel_id, last_error, last_error_at, channel, videos}]}`. `last_error: "lookup_failed"` on a `pending` row means YouTube
+  refused to look that reference up (an HTTP 400, which does not mean "no such channel"): say "YouTube could not look this one up;
+  check the link or remove it". The rest of the refresh still ran. After three such failures in a row the row is `invalid_ref`, a
+  terminal state: the person removes it and adds the channel's link again. `pending` means YouTube has not answered yet which channel the reference names. Tell "asked" from "not asked
   yet" by `last_request`: while it is `queued` or `running` the reference is being checked; otherwise say "not checked yet" and offer a
   refresh. A resolved competitor is re-confirmed whenever YouTube answers for it; one nobody refreshed for 30 days is reset to
   `pending` and a refresh is queued for it automatically; `not_found` means YouTube knows no such channel; `own_channel` means the @handle turned out to be this
@@ -131,8 +134,10 @@ still pending, and a competitor added while a refresh is running is queued for t
 `{ok: false, error}` with `rate_limited`, `daily_limit` (three topic searches per organization per Pacific day), `invalid_topic`,
 `not_connected` (own channel not connected, or a draft channel for any kind), `no_competitors`, `invalid_kind`.
 
-A refresh that fails on a lookup YouTube refused without saying the channel does not exist (an HTTP 400) ends `failed` with
-`remedy_code: "retry"`; the competitor stays `pending` rather than being called "not found".
+`remedy_code: "retry"` goes with ANY refresh that ended `failed` for a reason with no remedy of its own (a YouTube 5xx or transport
+error, an unexpected answer), whatever the kind, own channel included. A handle that YouTube refuses with an HTTP 400 does not fail
+the refresh: it is recorded on that competitor (`last_error`, see above) and the rest goes on. Handles are YouTube's alphabet only:
+letters of any script, digits, `_`, `-` and `.`; anything else is `invalid_ref` when it is added.
 
 `research_remove_competitor(p_channel, p_id)` answers `{ok: true, removed: true|false}` (an id that is not this channel's removes
 nothing and answers `false`), or `{ok: false, error: "rate_limited"}`: removing is limited like adding, 40 per person per hour.

@@ -71,7 +71,9 @@ export interface OwnData {
 export interface Competitor {
   id: string;
   inputRef: string;
-  status: "pending" | "resolved" | "not_found" | "own_channel";
+  status: "pending" | "resolved" | "not_found" | "own_channel" | "invalid_ref";
+  /** A lookup YouTube refused (HTTP 400) on this row; it stays pending until the third, then invalid_ref. */
+  lastError: "lookup_failed" | null;
   channel: ChannelStats | null;
   videos: VideoStats[];
 }
@@ -213,8 +215,9 @@ export function parseCompetitors(d: unknown): CompetitorsData | null {
     const c = obj(raw);
     const id = c ? str(c.id, 40) : null;
     const st = c?.status;
-    if (!c || !id || (st !== "pending" && st !== "resolved" && st !== "not_found" && st !== "own_channel")) continue;
-    competitors.push({ id, inputRef: str(c.input_ref, 64) ?? "", status: st, channel: parseChannel(c.channel), videos: videos(c.videos) });
+    if (!c || !id || (st !== "pending" && st !== "resolved" && st !== "not_found" && st !== "own_channel" && st !== "invalid_ref")) continue;
+    competitors.push({ id, inputRef: str(c.input_ref, 64) ?? "", status: st, lastError: c.last_error === "lookup_failed" ? "lookup_failed" : null,
+                       channel: parseChannel(c.channel), videos: videos(c.videos) });
   }
   return { competitors, max: count(o.max) ?? 20 };
 }

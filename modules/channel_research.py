@@ -366,6 +366,10 @@ class ResearchStore:
         if rows:
             self._rpc("research_store_videos", {"p_rows": rows})
 
+    def lookup_failed(self, competitor_id: str) -> str:
+        out = self._rpc("research_competitor_lookup_failed", {"p_id": competitor_id})
+        return out if isinstance(out, str) else ""
+
     def resolve(self, competitor_id: str, youtube_channel_id: Optional[str]) -> str:
         out = self._rpc("research_resolve_competitor", {"p_id": competitor_id, "p_youtube_channel_id": youtube_channel_id})
         return out if isinstance(out, str) else ""
@@ -427,18 +431,22 @@ def _chunks(items: Sequence[str], n: int = 50) -> Iterable[List[str]]:
         yield list(items[i:i + n])
 
 
-def _uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, youtube_channel_id: str) -> None:
+def _uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, youtube_channel_id: str,
+             since: Optional[str] = None) -> None:
     """A channel's newest PUBLIC uploads and their statistics, with the platform's key: 2 units. The batch is marked complete, so a
     cached video the public lookup no longer returns (it went private, or was deleted) is removed from the shared cache: only rows
-    written before this fetch began, so another worker's newer rows for the channel stay."""
-    since = datetime.now(timezone.utc).isoformat()
+    written before this fetch began (``since``, the request's start by the DATABASE's clock, from the claim), so another worker's
+    newer rows for the channel stay."""
     spend.take()
     ids = yt.upload_ids(playlist_id)
     rows = []
     if ids:
         spend.take()
         rows = [r for r in (video_row(i) for i in yt.videos(ids)) if r and r["youtube_channel_id"] == youtube_channel_id]
-    store.store_videos(rows + [{"youtube_channel_id": youtube_channel_id, "complete": True, "fetched_since": since}])
+    marker = {"youtube_channel_id": youtube_channel_id, "complete": True}
+    if since:
+        marker["fetched_since"] = since
+    store.store_videos(rows + [marker])
 
 
 def _own_uploads(yt: YouTubeClient, spend: Budget, store, playlist_id: str, token: str, request_id) -> None:
@@ -547,10 +555,14 @@ def _competitors(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, now: 
             try:
                 items = yt.channels(handle=str(c.get("input_ref") or ""))
             except Stop as e:
-                # Only YouTube saying "no such channel" (404 / a gone reason) is that competitor's answer. Any other refusal, a 400
-                # included, says nothing about the channel: it stays pending and the request ends with the error's own remedy.
+                # Only YouTube saying "no such channel" (404 / a gone reason) is that competitor's not_found. A 400 says nothing about
+                # the channel: it is recorded on that row (pending; the third in a row makes it invalid_ref) and the rest of the
+                # request goes on, so one odd handle cannot stop every other competitor's refresh. Anything else ends the request.
                 if e.code == "not_found":
                     store.resolve(str(c["id"]), None)
+                    continue
+                if e.http == 400:
+                    store.lookup_failed(str(c["id"]))
                     continue
                 raise
             row = channel_row(items[0]) if items else None
@@ -580,9 +592,10 @@ def _competitors(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, now: 
                     playlists[cid] = rows[cid].get("uploads_playlist_id")
             elif cid in rows:
                 playlists[cid] = rows[cid].get("uploads_playlist_id")
+    since = req.get("started_at") if isinstance(req.get("started_at"), str) else None
     for cid, playlist in playlists.items():
         if playlist:
-            _uploads(yt, spend, store, playlist, cid)
+            _uploads(yt, spend, store, playlist, cid, since)
 
 
 def _topic(req: Mapping, *, yt: YouTubeClient, store, spend: Budget, search_shared_units: int = 0) -> None:
