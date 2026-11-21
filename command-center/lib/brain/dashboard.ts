@@ -257,6 +257,13 @@ export type BrainFactsRead =
  *  drawn (S10, 21 Nov). */
 export type ChannelStatus = "ok" | "no_data" | "not_connected" | "refreshing" | "budget_exhausted" | "not_enabled";
 
+/**
+ * S10's stable remedy codes. The page words each one in en/ru/uz itself: the envelope's `remedy` text is English-only
+ * and meant for the chat, so it is never shown. An unknown code is null (the state's own sentence stands).
+ */
+export const REMEDY_CODES = ["connect", "budget", "not_configured", "token_expired", "daily_limit"] as const;
+export type RemedyCode = (typeof REMEDY_CODES)[number];
+
 export interface ChannelUpload {
   videoId: string;
   title: string | null;
@@ -278,7 +285,7 @@ export type ChannelRead =
   | { state: "pick_channel" }
   | { state: "no_channel" }
   | { state: "failed" }
-  | { state: Exclude<ChannelStatus, "ok" | "not_enabled">; channelId: string; fetchedAt: string | null; remedy: string | null }
+  | { state: Exclude<ChannelStatus, "ok" | "not_enabled">; channelId: string; fetchedAt: string | null; remedy: RemedyCode | null }
   | {
       state: "ok";
       channelId: string;
@@ -317,7 +324,11 @@ export function coerceChannel(channelId: string, own: unknown, themes: unknown):
   if (!env || !st) return { state: "failed" };
   if (st === "not_enabled") return { state: "not_enabled" };
   const fetchedAt = str(env.fetched_at);
-  if (st !== "ok") return { state: st, channelId, fetchedAt, remedy: str(env.remedy) };
+  if (st !== "ok") {
+    const code = env.remedy_code;
+    const remedy = (REMEDY_CODES as readonly unknown[]).includes(code) ? (code as RemedyCode) : null;
+    return { state: st, channelId, fetchedAt, remedy };
+  }
   const d = obj(env.data) ?? {};
   // S10 (0199): the channel's counters are nested under data.channel (null when nothing is cached yet).
   const ch = obj(d.channel);

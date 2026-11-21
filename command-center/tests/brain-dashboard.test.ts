@@ -205,3 +205,12 @@ describe("coerceChannel: the channel's own uploads", () => {
     expect(r.topUploads.map((u) => [u.videoId, u.privacy])).toEqual([["a", "private"], ["b", "public"], ["c", null]]);
   });
 });
+
+describe("coerceChannel: remedy codes", () => {
+  it("keeps S10's stable remedy_code and never the English remedy text; an unknown code is null", () => {
+    const env = (code: unknown) => ({ status: "not_connected", fetched_at: null, data: null, remedy: "Please reconnect in English", remedy_code: code });
+    expect(coerceChannel("ch", env("token_expired"), null)).toMatchObject({ state: "not_connected", remedy: "token_expired" });
+    expect(coerceChannel("ch", env("drop table"), null)).toMatchObject({ remedy: null });
+    expect(JSON.stringify(coerceChannel("ch", env("connect"), null))).not.toContain("English");
+  });
+});

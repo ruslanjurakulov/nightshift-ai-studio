@@ -320,6 +320,17 @@ function ChannelCard({ read, now, canRefresh }: { read: ChannelRead; now: number
       ) : (
         <Note>{tc.waiting}</Note>
       )}
+      {/* Only the codes whose fix the state's own sentence does not already say. */}
+      {"remedy" in read && (read.remedy === "token_expired" || read.remedy === "not_configured") ? (
+        <StateBlock
+          compact
+          tone="warn"
+          data-remedy={read.remedy}
+          actions={read.remedy === "token_expired" ? connect : undefined}
+        >
+          {tc.remedy[read.remedy]}
+        </StateBlock>
+      ) : null}
       {/* Out of today's reading budget, a press could only be refused, so it is not offered. */}
       {channelId && read.state !== "not_connected" && read.state !== "budget_exhausted" ? (
         <RefreshKey channelId={channelId} canRefresh={canRefresh} />
