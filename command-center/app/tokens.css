@@ -366,11 +366,11 @@
   --glass-primary-edge-lo: #0d3f96;
   --glass-primary-glow: 0 1px 2px rgb(13 63 150 / 0.3), 0 8px 20px -8px rgb(47 139 255 / 0.6);
   --glass-sheen: rgb(47 139 255 / 0.07);
-  /* The public site's product stage, a dark box in either theme. */
-  --nx-stage: #0f1626;
-  --nx-stage-edge: rgb(80 140 220 / 0.18);
-  --nx-stage-text: #e6eefc;
-  --nx-stage-dim: #a9b8d4;
+  /* The public site's product stage, a dark box in either theme: the neutral near-black (owner, 22 Nov 2026). */
+  --nx-stage: #0f1115;
+  --nx-stage-edge: rgb(236 238 242 / 0.1);
+  --nx-stage-text: #eceef2;
+  --nx-stage-dim: #b1b7c3;
   --nx-stage-act: #57a2ff;
   --nx-stage-amber: #c8ff2e;
   --nx-stage-go: #3dff8a;

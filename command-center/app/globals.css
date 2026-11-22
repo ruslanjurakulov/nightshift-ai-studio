@@ -259,14 +259,14 @@
     --ns-section-ground: rgb(0 0 0 / 0.55);
     /* The identity — control room. The console leans ink-blue, the type is
        lamp-warmed, amber is the lit thing: the meter, the key, the mark. */
-    --ns-ground: #131210;
-    --ns-console: #1b1a17;
-    --ns-key: #25231f;
-    --ns-key-hi: #2e2b26;
-    --ns-rule: #2d2b26;
-    --ns-rule-strong: #6f695f;
-    --ns-text: #f1ede6;
-    --ns-text-dim: #b4aea1;
+    --ns-ground: #0a0b0e;
+    --ns-console: #0f1115;
+    --ns-key: #15181d;
+    --ns-key-hi: #1e2229;
+    --ns-rule: #262a31;
+    --ns-rule-strong: #6b717c;
+    --ns-text: #eceef2;
+    --ns-text-dim: #b1b7c3;
     --ns-fold: #000000;
     --ns-amber: #ffa940;
     --ns-amber-ink: #ffa940;
@@ -289,7 +289,7 @@
     --ns-go: #5fd49a;
     --ns-cue: #8db4ff;
     --ns-caution: #f3d36b;
-    --ns-lamp-off: #4a463f;
+    --ns-lamp-off: #474b52;
     --ns-hover: rgba(241, 237, 230, 0.05);
     --ns-select: rgba(255, 169, 64, 0.14);
     --ns-scrim: rgba(8, 7, 6, 0.72);
@@ -359,14 +359,14 @@
   --ns-section-ground: rgb(0 0 0 / 0.55);
   /* The identity — control room. The console leans ink-blue, the type is
      lamp-warmed, amber is the lit thing: the meter, the key, the mark. */
-  --ns-ground: #131210;
-  --ns-console: #1b1a17;
-  --ns-key: #25231f;
-  --ns-key-hi: #2e2b26;
-  --ns-rule: #2d2b26;
-  --ns-rule-strong: #6f695f;
-  --ns-text: #f1ede6;
-  --ns-text-dim: #b4aea1;
+  --ns-ground: #0a0b0e;
+  --ns-console: #0f1115;
+  --ns-key: #15181d;
+  --ns-key-hi: #1e2229;
+  --ns-rule: #262a31;
+  --ns-rule-strong: #6b717c;
+  --ns-text: #eceef2;
+  --ns-text-dim: #b1b7c3;
   --ns-fold: #000000;
   --ns-amber: #ffa940;
   --ns-amber-ink: #ffa940;
@@ -389,7 +389,7 @@
   --ns-go: #5fd49a;
   --ns-cue: #8db4ff;
   --ns-caution: #f3d36b;
-  --ns-lamp-off: #4a463f;
+  --ns-lamp-off: #474b52;
   --ns-hover: rgba(241, 237, 230, 0.05);
   --ns-select: rgba(255, 169, 64, 0.14);
   --ns-scrim: rgba(8, 7, 6, 0.72);
