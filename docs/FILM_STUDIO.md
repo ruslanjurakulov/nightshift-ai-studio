@@ -138,7 +138,18 @@ editor changes it, with `set_film_studio_enabled(true|false)`, and every change 
 **Switch-on gates.** `film_studio_enabled` stays off until all of these hold:
 
 - archive and resume exist for `paused` and `cancelled` projects, so no project a person paid into is left without a way forward;
-- P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open;
+- P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open.
+  **Built (0212, `claude/nsai-s2-sweep`); met once 0212 is applied and the workflow has run.** Three runners call the same
+  `film_sweep(runner)`, which runs `film_expire_segments` and records the run in `film_sweep_runs`:
+  - `.github/workflows/film_sweep.yml` every 10 minutes (`tools/film_sweep.py`, runner `actions`): the **guaranteed** schedule,
+    independent of the server and the worker. It needs the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` Actions secrets; without them
+    it logs that it is off. A run that could not sweep fails (red), and a sweep that failed in the database records its SQLSTATE;
+  - pg_cron every 5 minutes (job `nightshift-film-sweep`, runner `pg_cron`), **only once pg_cron is installed** on the project
+    (it is not today; docs/MIGRATIONS.md, 0111 D15). Install it, then apply 0212 again (or schedule it by hand, 0212's entry);
+  - the film worker's own thread (runner `worker`), while it runs. Where 0212 is not applied it calls `film_expire_segments`
+    directly (the same function, unrecorded) and says so once.
+  "It ran" is a measurement: `film_sweep_status()` (service role) gives each runner's last sweep (null: never), and `overdue` is
+  true when a segment is open and no runner completed a sweep in 20 minutes, null when no sweep was ever recorded;
 - P3 alerts on every `segment_settled` event with `not_captured` (charges a hold could no longer pay), and on every
   `segment_skipped` event (a segment the claim or the sweep could not touch).
 
@@ -260,6 +271,7 @@ The same result handed in again answers as its first answer, accepted or rejecte
 | `film_begin_assembly`, `film_record_assembly(segment, worker, ok, result)` | The assembly line, captions included, charged by its registered file's recorded length |
 | `film_settle_segment(segment, worker, reason)` | Drains while something is in flight. Then it skips every take that never began, captures the charges once (never above the hold) and releases the rest. |
 | `film_cancel_segment(segment, reason)` | Releases every take that never began, and settles now or when the takes in flight end |
+| `film_sweep(runner)`, `film_sweep_status()` (0212) | `film_expire_segments()`, recorded per runner (`worker`, `actions`, `pg_cron`), and whether a sweep is overdue. See "Switch-on gates". |
 | `film_expire_segments()` | Each segment in its own subtransaction. A hold 0020 released, or a segment nobody claimed in 3 hours, settles. Past the deadline the segment drains. Past the deadline plus 2 hours (before 0020's 24) the takes in flight fail as `worker_lost`, a running assembly fails, and it settles while the hold is still open. |
 
 Where a film goes after a settle:

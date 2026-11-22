@@ -21,7 +21,9 @@ What one segment does is ``modules/film_orchestrator.py``. This file wires it up
   into the library and a clip's last frame is extracted, and without them no take could be delivered, so the worker refuses to start
   (rule 6: say it before anything is spent) rather than claim segments it cannot finish;
 * ``film_expire_segments`` runs on its own thread every ``FILM_EXPIRE_EVERY_SECONDS`` (default 300, never more than 900): a segment past
-  its deadline and grace, or one nobody claimed, settles while its hold is open, even while this worker drives a long film;
+  its deadline and grace, or one nobody claimed, settles while its hold is open, even while this worker drives a long film. It is
+  called through 0212's ``film_sweep('worker')``, which records the run; the worker is one of three runners (with
+  ``.github/workflows/film_sweep.yml`` and, where installed, pg_cron), so a stopped worker no longer stops the sweep;
 * stored error text is scrubbed of every secret in this process's environment (the pipeline worker's scrubber).
 
 SIGTERM (``docker stop``) stops between calls: a take waiting on its provider leaves its task id stored, and the next claim polls it.
@@ -89,13 +91,30 @@ def expire_every(env: Mapping[str, str]) -> int:
     return cw.parse_int(env, "FILM_EXPIRE_EVERY_SECONDS", DEFAULT_EXPIRE_EVERY_SECONDS, 30, MAX_EXPIRE_EVERY_SECONDS)
 
 
+#: Set once the worker has said that 0212 is missing, so a sweep every 5 minutes does not repeat it.
+_SWEEP_UNRECORDED = threading.Event()
+
+
 def sweep_once(db) -> None:
     try:
-        n = db.expire()
+        try:
+            n = db.sweep("worker")
+        except fo.FilmFunctionMissing as e:
+            # 0212 is not applied here. Calling film_expire_segments directly is NOT a quality fallback (CLAUDE.md #4): film_sweep
+            # runs exactly this function and only adds the record of the run. What is lost until 0212 is applied is the record,
+            # never a rule of the sweep, so the sweep must not stop because its bookkeeping is missing.
+            if not _SWEEP_UNRECORDED.is_set():
+                _SWEEP_UNRECORDED.set()
+                logger.warning("%s: calling film_expire_segments directly; this worker's sweeps are not recorded until it is", e)
+            n = db.expire()
         if n:
             logger.info("the sweep settled or drained %s film segment(s)", n)
+    except fo.FilmUnavailable as e:  # its text is a function name and a status or SQLSTATE, never a key or a body
+        logger.warning("the film sweep failed (%s); the next one tries again", e)
+    except fo.FilmRefused as e:
+        logger.warning("the film sweep was refused (%s); the next one tries again", e.word)
     except Exception as e:  # the next sweep tries again; the claim does not depend on it
-        logger.warning("film_expire_segments failed (%s)", type(e).__name__)
+        logger.warning("the film sweep failed (%s)", type(e).__name__)
 
 
 def prune_cache(media_root: Path) -> None:

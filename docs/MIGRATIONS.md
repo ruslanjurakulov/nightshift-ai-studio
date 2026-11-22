@@ -2445,3 +2445,35 @@ video is cross-posted.
   first: `select count(*) from public.videos where published_at is not null and gate_verdict is null;`.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
+
+## Film Studio: the sweep runs without the worker, and every run is recorded (0212)
+
+0212 (`0212_film_sweep.sql`, provisional number; `docs/studio/S2_GAPS.md` also pencils 0212 in for the archive branch, and
+whichever merges second renumbers) closes switch-on gate G2 (`docs/FILM_STUDIO.md`). Before it, 0171's `film_expire_segments` ran
+only on a thread of `tools/film_worker.py`: no worker, no sweep, and no record that one ever ran. It changes no existing function,
+table or grant; `film_expire_segments` is called, never replaced. It spends nothing.
+
+- **The record.** `film_sweep_runs`: one row per runner (`worker`, `actions`, `pg_cron`); `last_at` / `last_settled` for the last
+  completed sweep, `last_error` / `last_error_at` (a SQLSTATE only, never a message) for the last failed one. RLS on, no policy; no
+  API role writes it, the service role reads it.
+- **The sweep.** `film_sweep(runner)` (service role only): `film_expire_segments()`, then the record. `{ok:true, settled, at}`, or
+  `{ok:false, error, at}` when the sweep itself failed. It answers instead of raising because a raise would roll the record of the
+  failure back with it; every caller treats `ok:false` as a failure. An unknown runner is refused (22023 `unknown_runner`).
+- **The measurement.** `film_sweep_status()` (service role only): each runner's row or null, the newest completed sweep, the open
+  segments (`queued` / `running` / `draining`), and `overdue`: true when one is open and no runner completed a sweep in 20 minutes,
+  false otherwise, **null when nothing was ever recorded** (unknown is not fine).
+- **The schedules.** `.github/workflows/film_sweep.yml` every 10 minutes (the guaranteed one); pg_cron `nightshift-film-sweep`
+  every 5 minutes where pg_cron is installed (unscheduled first, so a replay leaves one; without pg_cron a NOTICE, as 0111 and
+  0164); the worker's thread. Several at once are safe: the sweep takes rows `for update skip locked` (lab test: two at the same
+  moment settle a segment once).
+- **pg_cron is not installed on the live project**, so applying 0212 there prints the NOTICE and creates no job. To get the
+  5-minute schedule: install it (Supabase > Database > Extensions > pg_cron), then re-apply 0212, or run once
+  `select cron.schedule('nightshift-film-sweep','*/5 * * * *','select public.film_sweep(''pg_cron'')');`.
+- **Owner steps.** Apply 0212; make sure the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` Actions secrets exist (operator_alerts.yml
+  uses the same two); after about 10 minutes `select public.film_sweep_status();` shows `actions` with a `last_at`.
+- **Without it.** The workflow fails and names 0212; the worker calls `film_expire_segments` directly, unrecorded, and says so once.
+- **Is it working?** The verify block at the bottom of the file, then `select public.film_sweep_status();` and, if pg_cron is on,
+  `select jobname, schedule, command from cron.job where jobname = 'nightshift-film-sweep';`.
+- **Undo.** `docs/sql/rollback_0212_film_sweep.sql` (owner-applied): unschedules the job, drops the two functions and the table
+  (the record is lost; no money is), and leaves `film_expire_segments`. Refused while either body is not 0212's. Disable the
+  workflow first, or it fails every 10 minutes.
