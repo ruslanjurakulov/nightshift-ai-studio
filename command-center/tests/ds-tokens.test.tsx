@@ -235,9 +235,9 @@ describe("the skin (html.ds-skin) leaves no old colour behind", () => {
     expect(missing, "a new colour role in globals.css needs a line in the skin (app/tokens.css) or in UNTOUCHED here").toEqual([]);
   });
 
-  it("is on the root of every page, and reaches the public shell and scoped boxes", () => {
+  it("is on the root of every signed-in app page (public-site.test.tsx pins which), and reaches scoped boxes", () => {
     const layout = readFileSync(path.join(root, "app/layout.tsx"), "utf8");
-    expect(layout).toMatch(/<html lang=\{locale\} className="ds-skin"/);
+    expect(layout).toMatch(/<html lang=\{locale\} className=\{skin\}/);
     expect(css).toMatch(/:root\.ds-skin\.ds-skin,\n\.ds-skin :is\(\.st, \.nx-final, \.nx-bar, \.st-auth-aside\),\n\.ds-skin \[data-theme-scope\] \{/);
   });
 });
