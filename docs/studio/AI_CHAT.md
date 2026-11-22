@@ -8,6 +8,9 @@ docs/studio/NIGHTSHIFT_AI.md.
 1. Apply migration **0199**.
 2. Add the repository secret of the chat's model: `AI_CHAT_GEMINI_API_KEY` for the customer chat on Gemini Flash, and
    `AI_CHAT_ANTHROPIC_API_KEY` for the owner's chat (optionally `AI_CHAT_OPENAI_API_KEY`).
+   - Add them on GitHub: the repository's **Settings → Secrets and variables → Actions → New repository secret**. The Command
+     Center's Providers board cannot set them: it writes only the provider keys on its own list (`isWritableSecretName`,
+     lib/server/github-secrets.ts), and the chat's keys are deliberately not on it. `deploy_web.yml` hands them to the web server.
    - These are the chat's own keys, not the worker's. With them unset, the web server holds no LLM key.
    - A key with its own spend limit is the safer choice.
 3. Set the repository variables:
@@ -47,7 +50,8 @@ What the flag values do:
 - It must be a registry text model. Each turn also checks that it is on sale (`sellable_models('describe','web')`) and keyed on this server.
 - Customers never see or pick it. When it is down, the panel says "Nightshift AI is unavailable right now". No other model is tried.
 - **Gemini Flash needs**, before it answers anyone:
-  - the repository secret `AI_CHAT_GEMINI_API_KEY` (the chat's own key, never the worker's `GEMINI_API_KEY`), then a redeploy;
+  - the repository secret `AI_CHAT_GEMINI_API_KEY` (the chat's own key, never the worker's `GEMINI_API_KEY`), set on GitHub under
+    Settings → Secrets and variables → Actions (not through the Command Center, which cannot write it), then a redeploy;
   - the model on sale on the web: its registry row carries `terms_gate: terms_review_required` (the Gemini API terms' 18+,
     "not for consumer use" and available-regions clauses), so `sellable_models` does not list it until the owner's lawyer has read
     them and the gate is cleared; and a `credit_prices` row for `model_gemini_3_6_flash_request`;
@@ -57,7 +61,15 @@ What the flag values do:
   person with an adult attestation (0192; `none` 428 `adult_attestation_required`, an unread answer or 0192 missing 503
   `age_unavailable`, under 18 403 `adult_only_service`); only a known country on no block list (451 `country_blocked`), and an
   unknown country is refused for every reason (451 `country_unverified`). A chat turn has no database gate behind it, so these are
-  the only place they hold. A refused turn is not a turn: nothing is reserved, nothing is charged.
+  the only place they hold. A refused turn is not a turn: nothing is reserved, nothing is charged. The panel's read
+  (`GET /api/brain`) asks the same gate and returns its verdict as `gate: { code, remedy }` (null when nothing stands in the way;
+  the codes and remedy keys are in lib/brain/chat-gate.ts), so the box can close with the reason before anyone presses.
+- **Thinking.** Every Gemini call sends `thinkingConfig.thinkingLevel: "LOW"`. Google's default for gemini-3.6-flash is
+  `medium`, and thinking counts against the output ceiling, so an unpinned turn could spend its 8k tokens thinking and come back cut
+  off. Thought tokens are still metered as output.
+- **Google's errors, by remedy.** A wrong key is `vendor_auth`; "User location is not supported" is `vendor_region` (the server's
+  address: move the server, a new key does not help); a 404 is `model_not_found`; a 429 with `limit: 0`, billing off, or credits
+  used up is `vendor_quota`; any other 429 is `vendor_rate_limited` (it clears by itself).
 - Read the settings with `select public.ai_chat_owner_settings();`.
 
 ## Caps (enforced in the database before any LLM call)

@@ -71,6 +71,10 @@ describe("the panel's failures", () => {
     expect(failureText(a, 429, { error: "daily_cap", limit: 200 }).retry).toBeFalsy();
     expect(failureText(a, 502, { error: "model_failed", reason: "vendor_auth" }).retry).toBe(false);
     expect(failureText(a, 502, { error: "model_failed", reason: "timeout" }).retry).toBe(true);
+    // The server's region and a model the vendor does not know refuse again on every ask: each says its own fix, and no "ask again".
+    for (const reason of ["vendor_region", "model_not_found"] as const) {
+      expect(failureText(a, 502, { error: "model_failed", reason })).toEqual({ message: a.errors.model_failed[reason], retry: false });
+    }
     expect(failureText(a, 503, { error: "unavailable" }).retry).toBe(true);
     // A conversation too long to send says how to get out of it, not "ask again".
     expect(failureText(a, 413, { error: "payload_too_large" })).toEqual({ message: a.errors.tooMuchHistory, clear: true });

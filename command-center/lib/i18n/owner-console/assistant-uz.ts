@@ -64,6 +64,8 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
       output_too_long: "Javob juda uzun boʻldi. Qisqaroq javob yoki qoralama soʻrang.",
       timeout: "Model juda uzoq javob berdi. Qayta soʻrang yoki torroq savol bering.",
       bad_answer: "Model javobi kutilgan koʻrinishda kelmadi. Qayta soʻrang.",
+      vendor_region: "Chat modeli provayderi bu server ishlayotgan hududga xizmat koʻrsatmaydi. Yangi kalit yordam bermaydi: serverni provayder qoʻllab-quvvatlaydigan hududda ishga tushiring.",
+      model_not_found: "Chat modeli provayderi bu modelga xizmat koʻrsatmaydi. Kutish yordam bermaydi: modelni modellar reyestrida almashtirish kerak.",
       not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",
     },
     daily_cap: "Bugungi {limit} ta savol chegarasiga yetildi. U 24 soat ichida tiklanadi.",

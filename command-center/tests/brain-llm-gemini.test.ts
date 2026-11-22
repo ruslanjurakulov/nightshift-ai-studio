@@ -7,7 +7,9 @@ import { describe, expect, it, vi } from "vitest";
  */
 
 vi.mock("server-only", () => ({}));
-import { callChatModel, chatModelConfigured, CHAT_MODELS, OWNER_CHAT_MODEL } from "@/lib/server/brain/llm";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { callChatModel, chatModelConfigured, CHAT_MODELS, GEMINI_THINKING_LEVEL, OWNER_CHAT_MODEL } from "@/lib/server/brain/llm";
 
 const KEY = "AIza-test-secret-value-1234567890";
 const GEMINI = "gemini-3.6-flash" as const;
@@ -25,6 +27,16 @@ describe("Gemini Flash in the chat's model table", () => {
   it("is the registry's own row, on Google, and the owner's chat is not on it", () => {
     expect(CHAT_MODELS[GEMINI]).toEqual({ provider: "google", vendorModel: "gemini-3.6-flash" });
     expect(OWNER_CHAT_MODEL).toBe("anthropic-claude-sonnet-5-5");
+  });
+
+  it("the owner's chat stays on the model production runs today (0199's default), so a deploy does not move it to another vendor", () => {
+    // ai_chat_settings.model in production is 0199's default; were the owner chat pinned to anything else, the deploy that moved the
+    // customer chat to Gemini would also, silently, change the owner's vendor and its meter.
+    const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0199_studio_ai_chat.sql"), "utf8");
+    const dflt = /model\s+text not null default '([^']+)'/.exec(sql)?.[1];
+    expect(dflt).toBe("anthropic-claude-sonnet-5-5");
+    expect(OWNER_CHAT_MODEL).toBe(dflt);
+    expect(CHAT_MODELS[OWNER_CHAT_MODEL].provider).toBe("anthropic");
   });
 
   it("is configured only by its own key: the Anthropic and OpenAI keys do not count", () => {
@@ -52,11 +64,31 @@ describe("the Gemini request", () => {
     expect(body).toEqual({
       systemInstruction: { parts: [{ text: "SYS" }] },
       contents: [{ role: "user", parts: [{ text: "DATA" }] }],
-      generationConfig: { maxOutputTokens: 8_000 },
+      generationConfig: { maxOutputTokens: 8_000, thinkingConfig: { thinkingLevel: "LOW" } },
     });
     // No invented end-user field: the person's workspace hash is not sent to Google under a guessed name.
     expect(String(init.body)).not.toContain("org-hash");
     expect(String(init.body)).not.toContain(KEY);
+  });
+
+  it("pins thinking to LOW on every size, so thinking (Google's default is medium, and it counts against the ceiling) cannot eat the 8k", async () => {
+    expect(GEMINI_THINKING_LEVEL).toBe("LOW");
+    for (const opts of [{ size: "card" as const }, { size: "proposal" as const }, { maxOutputTokens: 300 }]) {
+      const f = reply(200, ok([{ text: "{}" }]));
+      await callChatModel(GEMINI, "s", "u", { fetchImpl: f, keys: { gemini: KEY }, ...opts });
+      const cfg = JSON.parse(String(callsOf(f)[0][1].body)).generationConfig;
+      expect(cfg.thinkingConfig).toEqual({ thinkingLevel: "LOW" });
+      // A level, never also a budget: the two are different controls, and sending both is not what the docs describe for 3.x.
+      expect(cfg.thinkingConfig).not.toHaveProperty("thinkingBudget");
+      // Thoughts are not asked for back: they are never shown, only metered (thoughtsTokenCount).
+      expect(cfg.thinkingConfig).not.toHaveProperty("includeThoughts");
+    }
+  });
+
+  it("the other vendors' requests carry no Gemini thinking field", async () => {
+    const f = reply(200, { content: [{ type: "text", text: "{}" }], usage: { input_tokens: 1, output_tokens: 1 } });
+    await callChatModel("anthropic-claude-sonnet-5-5", "s", "u", { fetchImpl: f, keys: { anthropic: KEY } });
+    expect(String(callsOf(f)[0][1].body)).not.toContain("thinking");
   });
 
   it("without the Gemini key nothing is called, and no other vendor answers instead", async () => {
@@ -131,9 +163,33 @@ describe("Gemini's errors, by their remedy", () => {
     expect(await ask(err(429, "RESOURCE_EXHAUSTED", "You exceeded your current quota.", perMinute))).toMatchObject({ error: "vendor_rate_limited" });
   });
 
-  it("billing on the account is vendor_quota; the server's region is the key's remedy", async () => {
+  it("billing on the account is vendor_quota", async () => {
     expect(await ask(err(400, "FAILED_PRECONDITION", "Gemini API free tier is not available; enable billing."))).toMatchObject({ error: "vendor_quota" });
-    expect(await ask(err(400, "FAILED_PRECONDITION", "User location is not supported for the API use."))).toMatchObject({ error: "vendor_auth" });
+  });
+
+  it("'User location is not supported' is the server's region (vendor_region), not a key a replacement would fix", async () => {
+    expect(await ask(err(400, "FAILED_PRECONDITION", "User location is not supported for the API use."))).toMatchObject({ error: "vendor_region" });
+  });
+
+  it("a model Google does not know (404 NOT_FOUND) is model_not_found, not an outage to wait out", async () => {
+    const f = err(404, "NOT_FOUND", "models/gemini-3.6-flash is not found for API version v1beta, or is not supported for generateContent.");
+    expect(await ask(f)).toMatchObject({ ok: false, error: "model_not_found" });
+    expect(callsOf(f)).toHaveLength(1);
+    // A key Google cannot find is still the key's remedy, even when it comes back as a 404's words.
+    expect(await ask(err(400, "INVALID_ARGUMENT", "API key not found. Please pass a valid API key."))).toMatchObject({ error: "vendor_auth" });
+  });
+
+  it("a 429 with an allowance of zero, or billing off or used up, is the billing remedy; Google's ordinary 429 is still a busy vendor", async () => {
+    const perMinute = [{ "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{ quotaId: "GenerateRequestsPerMinutePerProjectPerModel" }] }];
+    const generic = "You exceeded your current quota, please check your plan and billing details.";
+    expect(await ask(err(429, "RESOURCE_EXHAUSTED", `${generic} Quota exceeded for metric: generate_content_free_tier_requests, limit: 0, model: gemini-3.6-flash`, perMinute)))
+      .toMatchObject({ error: "vendor_quota" });
+    expect(await ask(err(429, "RESOURCE_EXHAUSTED", "Billing is not enabled for this project."))).toMatchObject({ error: "vendor_quota" });
+    expect(await ask(err(429, "RESOURCE_EXHAUSTED", "Your prepayment credits are depleted."))).toMatchObject({ error: "vendor_quota" });
+    // The bare words "billing details" ride on every per-minute 429: reading them as an empty account would send the owner to top up
+    // for a limit that clears in a minute. "limit: 10" is a ceiling, not zero.
+    expect(await ask(err(429, "RESOURCE_EXHAUSTED", generic, perMinute))).toMatchObject({ error: "vendor_rate_limited" });
+    expect(await ask(err(429, "RESOURCE_EXHAUSTED", `${generic} limit: 10, model: gemini-3.6-flash`, perMinute))).toMatchObject({ error: "vendor_rate_limited" });
   });
 
   it("an error never carries the key", async () => {

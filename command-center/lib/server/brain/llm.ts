@@ -60,7 +60,13 @@ export function isChatModelId(v: unknown): v is ChatModelId {
   return typeof v === "string" && Object.prototype.hasOwnProperty.call(CHAT_MODELS, v);
 }
 
-export type LlmFailure = "not_configured" | "vendor_auth" | "vendor_quota" | "vendor_rate_limited" | "vendor_refused" | "vendor_error" | "timeout" | "output_too_long";
+/**
+ * vendor_region and model_not_found are Google's alone so far: a server whose ADDRESS Google does not serve (moving the server, not
+ * replacing the key, is the fix) and a model id Google does not know (the model table or the registry is wrong, not the vendor down).
+ */
+export type LlmFailure =
+  | "not_configured" | "vendor_auth" | "vendor_quota" | "vendor_rate_limited" | "vendor_refused" | "vendor_error" | "timeout" | "output_too_long"
+  | "vendor_region" | "model_not_found";
 
 export type LlmResult =
   | { ok: true; text: string; tokensIn: number | null; tokensOut: number | null }
@@ -89,10 +95,18 @@ const GOOGLE_KEY_WORDS = /api key not valid|api_key_invalid|api key expired|api 
 const GOOGLE_QUOTA_WORDS = /billing|paid tier|free tier|quota|credit|payment|spending/i;
 const GOOGLE_REGION_WORDS = /location|region|country|territory/i;
 const GOOGLE_POLICY_WORDS = /safety|blocked|prohibited|policy|violat|harm/i;
+/**
+ * A 429 that no wait clears: "limit: 0" is an allowance of nothing (a free tier this model or region does not have, or billing never
+ * enabled), and a billing state that is off or used up. Deliberately NOT the bare word "billing": Google's ordinary per-minute 429
+ * says "please check your plan and billing details" too, and reading that as an empty account would tell the owner to top up for a
+ * limit that clears in a minute.
+ */
+const GOOGLE_EMPTY_ALLOWANCE = /\blimit:\s*0\b|billing (?:is )?(?:not enabled|disabled)|enable billing|billing_disabled|credits? (?:are |is )?(?:depleted|exhausted)/i;
 
 /**
  * A non-2xx from Gemini, by the remedy. Google answers a wrong key with 400 INVALID_ARGUMENT, not 401, and every 429 says "quota":
- * only a per-day quota (a QuotaFailure whose quotaId has PerDay) is an empty allowance; a per-minute one clears by itself.
+ * only a per-day quota (a QuotaFailure whose quotaId has PerDay) or an allowance of nothing (GOOGLE_EMPTY_ALLOWANCE) is an empty
+ * allowance; a per-minute one clears by itself.
  */
 function googleFailure(status: number, body: string): LlmFailure {
   let name = "";
@@ -107,17 +121,23 @@ function googleFailure(status: number, body: string): LlmFailure {
     // Not JSON: the status alone decides.
   }
   if (GOOGLE_KEY_WORDS.test(message)) return "vendor_auth";
-  if (status === 429) return /PerDay/.test(body) ? "vendor_quota" : "vendor_rate_limited";
+  if (status === 429) return /PerDay/.test(body) || GOOGLE_EMPTY_ALLOWANCE.test(body) ? "vendor_quota" : "vendor_rate_limited";
   if (name === "FAILED_PRECONDITION") {
     if (GOOGLE_QUOTA_WORDS.test(message)) return "vendor_quota";
-    // The ACCOUNT's region (the server's, not the person's: the person's country is checked before any call), the same remedy as a key.
-    if (GOOGLE_REGION_WORDS.test(message)) return "vendor_auth";
+    // "User location is not supported": the SERVER's address, not the person's (the person's country is checked before any call). A new
+    // key from the same server gets the same answer, so this is not vendor_auth: the remedy is where the server runs.
+    if (GOOGLE_REGION_WORDS.test(message)) return "vendor_region";
   }
+  // A model id Google does not serve (renamed, retired, or never on this key's API version): waiting does not fix it.
+  if (status === 404 || name === "NOT_FOUND") return "model_not_found";
   if (status === 401 || status === 403) return name === "PERMISSION_DENIED" && GOOGLE_QUOTA_WORDS.test(message) ? "vendor_quota" : "vendor_auth";
   if (status === 402) return "vendor_quota";
   if ((name === "INVALID_ARGUMENT" || name === "FAILED_PRECONDITION") && GOOGLE_POLICY_WORDS.test(message)) return "vendor_refused";
   return "vendor_error";
 }
+
+/** The Gemini chat's thinking depth, sent on every call (see the request below for why, and the doc it was read from). */
+export const GEMINI_THINKING_LEVEL = "LOW";
 
 /** A candidate Gemini stopped for its content (modules/capabilities/image.py GeminiDescribeAdapter.submit). */
 const GOOGLE_REFUSED_FINISH = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"]);
@@ -164,7 +184,15 @@ export async function callChatModel(
             body: {
               systemInstruction: { parts: [{ text: system }] },
               contents: [{ role: "user", parts: [{ text: user }] }],
-              generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+              // Thinking pinned, never Google's default. aistudio.google.com/docs/thinking (read 2026-11-22; ai.google.dev/gemini-api/docs/
+              // thinking redirects there): "Gemini models engage in dynamic thinking by default", gemini-3.6-flash's default is
+              // medium (it takes minimal | low | medium | high), and the output-token ceiling covers the response "including thought
+              // tokens". So an unpinned turn could spend its 8k on thinking and come back cut off (MAX_TOKENS), billed. LOW, the
+              // lowest level the docs give that still reasons (minimal is "near-off"), over a budget: thinkingLevel is the field the
+              // generateContent reference recommends for Gemini 3 and later, and the enum is spelled MINIMAL | LOW | MEDIUM | HIGH there.
+              // Not settled by those pages: whether generateContent's maxOutputTokens (described only as "the maximum number of tokens
+              // to include in a response candidate") counts thoughts the same way the thinking page says; pinning LOW holds either way.
+              generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: GEMINI_THINKING_LEVEL } },
             },
           }
         : {
