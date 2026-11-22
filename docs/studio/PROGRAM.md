@@ -71,7 +71,7 @@ The owner approved every non-code step the program needs. Atlas carries them out
 - **Vendor plans:** ElevenLabs on the plan its OEM terms require for resale, and a Kling API package with lip-sync. Purchases are the owner's own act on the vendor's site (Atlas tells him when the adapter is ready, so no month is paid for nothing); keys go to GitHub Actions secrets through the Command Center, never into chat.
 - **Kling letter of authorization:** signed and submitted by the owner himself.
 - **Storage:** film masters and film review copies live on our own server's media volume and are served through the session + RLS library route. They are never copied to Supabase Storage, whose free tier (1 GB total, 50 MB per object) stays for the per-channel review copies. Supabase holds rows, not film media.
-- **Design:** the app's dark ground is neutral near-black, not navy (owner's choice after S5's benchmark); accent colours stay.
+- **Design:** the app's AND the public site's dark ground is neutral near-black, not navy (owner's choices of 22 Nov after S5's benchmark); accent colours stay.
 
 ## Rules every stream keeps (from CLAUDE.md; the ones this program touches most)
 
