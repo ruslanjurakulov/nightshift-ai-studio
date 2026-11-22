@@ -11,7 +11,8 @@ import "./chat-shell.css";
  * way, and a notice (an error with its remedy) to show under the thread. That keeps the paid call and its refusals in one place
  * per product while the two chats look and behave the same.
  *
- * Nothing is shown that does not work: no attach "+", no microphone, no history button until a history exists (C3).
+ * Nothing is shown that does not work: no attach "+", no microphone. The history panel (ChatHistory.tsx) wraps the shell and hands
+ * it the header's menu button as `lead`; without a history the header has none.
  * Thumbs up/down are kept in this tab only: nothing is stored server-side yet, and nothing here claims otherwise.
  */
 
@@ -86,6 +87,7 @@ export function ChatShell({
   onSend,
   onRegenerate,
   onNewChat,
+  lead,
 }: {
   labels: ChatLabels;
   turns: ChatTurn[];
@@ -102,6 +104,8 @@ export function ChatShell({
   /** Asks the last question again through the same route (and meter) as a send. */
   onRegenerate: () => void;
   onNewChat: () => void;
+  /** Drawn before the title: the history drawer's menu button on a phone. */
+  lead?: ReactNode;
 }) {
   const [question, setQuestion] = useState("");
   const [votes, setVotes] = useState<Record<number, Vote>>({});
@@ -171,6 +175,7 @@ export function ChatShell({
       </div>
 
       <header className="chat-head">
+        {lead}
         <h1 className="chat-title">{l.title}</h1>
         <IconButton label={l.newChat} onClick={onNewChat} disabled={pending || empty}>
           <SquarePen aria-hidden size={18} />

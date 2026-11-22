@@ -825,3 +825,8 @@ sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
 # request headers for the gate trigger. No API role may call it, service_role included: a caller who could ask it directly could
 # probe which claims the database accepts (tests/test_geo_gate_image_size_migration.py pins the revoke).
 FUNCTIONS.update({"geo_claim_country": SERVICE})
+
+# Migration 0209 (the owner's Nightshift AI conversation history): tests/security/sec_owner_ai_history_0209.py
+import sec_owner_ai_history_0209  # noqa: E402
+
+sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
