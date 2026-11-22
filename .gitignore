@@ -86,3 +86,6 @@ assets/music/*.wav
 # The project's Claude Code settings: permission rules only (today: WebFetch allowed), never a
 # credential. settings.local.json stays ignored by the rule above: it is per person.
 !.claude/settings.json
+
+# Scratch copies a task run makes; never part of a change.
+.vera_tmp/
