@@ -35,7 +35,8 @@ def test_a_second_plan_of_one_conversation_is_refused_while_the_first_runs(conn,
     with as_superuser(conn, commit=False):
         with acting(conn, sc.alice.actor) as s:
             first = s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])
-            assert first["attempt"] == 1 and first["expires_at"] and isinstance(first["user_left"], int), first
+            # The scenario seeds a finished lease (sec_ai_chat_plan_0211): this is the next attempt after it, whatever its number.
+            assert first["attempt"] >= 1 and first["expires_at"] and isinstance(first["user_left"], int), first
             # The same outline from a second tab, and another outline of the same proposal: both refused, with the first's end.
             for index in (0, 1):
                 out = s.run(BEGIN, [sc.alice.ai_chat_session, 41, index])
@@ -129,7 +130,7 @@ def test_no_api_role_reaches_the_lease_table_directly(conn, sc):
 def test_taking_over_an_expired_plan_finishes_its_stale_pending_calls_only(conn, sc):
     with as_superuser(conn, commit=False) as su:
         with acting(conn, sc.alice.actor, commit=True) as s:
-            s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])
+            one = s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])["attempt"]
         conn.execute("reset role")
         su.rows("update public.ai_chat_plan_leases set started_at = now() - interval '10 minutes', "
                 "expires_at = now() - interval '4 minutes' where session_id = %s returning 1", [sc.alice.ai_chat_session])
@@ -141,7 +142,7 @@ def test_taking_over_an_expired_plan_finishes_its_stale_pending_calls_only(conn,
                         "values (%s, %s, %s, 'anthropic-claude-sonnet-5-5', 'pending', now()) returning id",
                         [sc.alice.org, sc.alice.actor.uid, sc.alice.ai_chat_session])
         with acting(conn, sc.alice.actor, commit=True) as s:
-            assert s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])["attempt"] == 2
+            assert s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])["attempt"] == one + 1
         conn.execute("reset role")
         row = su.rows("select outcome, tokens_in, tokens_out, finished_at is not null from public.ai_chat_calls where id = %s", [stale])[0]
         assert row == ("vendor_error", None, None, True), row

@@ -20,3 +20,15 @@ def extend(tables: dict, functions: dict) -> None:
         # The shared guard (author, still an editor, not handed off): internal, called inside begin and end.
         "ai_chat_plan_session": SERVICE,
     })
+
+
+def seed(conn, sc) -> None:
+    """One finished lease on Alice's and on Bob's seeded conversation (sec_ai_chat_0199), so the isolation suite attacks real rows of
+    the closed table. Written as the database owner: no API role can write it (the point of the attacks)."""
+    from sec_db import as_superuser
+
+    with as_superuser(conn, commit=True) as s:
+        for t in (sc.alice, sc.bob):
+            s.rows("insert into public.ai_chat_plan_leases (session_id, created_by, proposal_id, scenario_index, attempt, state, "
+                   "expires_at, finished_at) values (%s, %s, 1, 0, 1, 'done', now(), now()) returning 1",
+                   [t.ai_chat_session, t.actor.uid])
