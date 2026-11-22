@@ -118,6 +118,15 @@ describe("a film", () => {
   });
 });
 
+describe("the activity panel's order", () => {
+  it("two events in the same instant keep the database's order: f:999 before f:1000, not string order", () => {
+    const at = "2026-11-22T10:00:00Z";
+    const raw = { film: { ...filmJson({ status: "running" }, [sceneJson(S1, 0)]), events: [{ id: 1000, event: "segment_settled", created_at: at, detail: {} }, { id: 999, event: "segment_claimed", created_at: at, detail: {} }] }, segments: [], takes: [] };
+    const g = filmGraph(coerceFilmLive(raw)!);
+    expect(g.activity?.items.map((i) => i.id)).toEqual(["f:999", "f:1000"]);
+  });
+});
+
 describe("the live route's answer", () => {
   it("segments or takes null stay not known; the money and error words come through", () => {
     const raw = { film: filmJson({ status: "running" }, [sceneJson(S1, 0)]), segments: null, takes: [{ id: "t1", error_code: "provider_timeout", confirmed_credits: "4.00", charged_credits: null }] };

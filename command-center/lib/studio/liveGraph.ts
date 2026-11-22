@@ -152,6 +152,20 @@ export interface Activity {
 
 const KIND_WORD = /^[a-z][a-z_]{0,30}$/;
 
+/**
+ * Two film_events lines recorded in the same instant, in the order the database wrote them: `f:<id>` compared as numbers (the id is
+ * a bigserial, and as strings f:1000 sorts before f:999), any other key as a string after them. The Activity panel and the live
+ * lane's log (lib/studio/liveLane.ts) both sort with this, so they never disagree on the order.
+ */
+export function compareEventIds(a: string, b: string): number {
+  const na = /^f:\d{1,15}$/.test(a) ? Number(a.slice(2)) : null;
+  const nb = /^f:\d{1,15}$/.test(b) ? Number(b.slice(2)) : null;
+  if (na !== null && nb !== null) return na - nb;
+  if (na !== null) return -1;
+  if (nb !== null) return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function filmActivity(raw: { rows: Record<string, unknown>[]; total: number | null }, sceneNo: Map<string, number>): Activity {
   const items: ActivityItem[] = [];
   for (const e of raw.rows) {
@@ -164,7 +178,7 @@ function filmActivity(raw: { rows: Record<string, unknown>[]; total: number | nu
     const sceneId = str(e.scene_id);
     items.push({ id: `f:${id}`, at, word, scene: sceneId ? sceneNo.get(sceneId) ?? null : null, kind });
   }
-  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
+  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || compareEventIds(a.id, b.id));
   return { items, total: raw.total };
 }
 
