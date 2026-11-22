@@ -2480,3 +2480,38 @@ reads `model_registry.spec -> 'languages'`, which `schemas/model_registry.json` 
 - **Requires** 0035. **Undo.** `docs/sql/rollback_0214_voice_language_check.sql` (refuses while any function still calls it).
 - Lab: `tests/security/sec_voice_language_0214.py`, `tests/security/test_sec_voice_language.py`. Static:
   `tests/test_voice_language_check_migration.py`.
+
+## Film voice language at the quote and the start (0220)
+
+0220 (`0220_film_voice_language.sql`, provisional number) wires 0214's `voice_language_problem` into the two places a film's money is
+decided. It replaces two 0171 bodies, each with one marked 0220 hunk; `quote_film` and `start_film` (0198's bodies) are unchanged,
+because they price through `film_price` and precheck through `film_precheck`.
+
+- **Why.** Without it, an Uzbek film whose voice is Eleven Multilingual v2 is quoted, started and held, and fails only at the
+  narration take after its clips were paid for (rule 6; docs/studio/S6_GAPS.md, G1).
+- **What.**
+  - `film_price`: the narration line asks `film_model_problem` (role) first, then `voice_language_problem`, then `film_try_price`.
+    A hidden model still reads `model_not_available`. A refused language makes the line `priced: false` with 0214's reason and
+    detail, the total `null` and no `quote_id`, so nothing is stored that `start_film` could accept.
+  - `film_precheck`: after every role check, the same question for a `creative_tts` voice with narration. `start_film` raises it
+    (NS400 `voice_language_unsupported` / `voice_language_unknown`) before its rate step, so a film whose voice stopped listing its
+    language since the quote is refused before anything is counted, priced or held.
+  - The detail is 0214's: "choose a voice model that lists <language>", and for Uzbek "choose Eleven v3, a voice model that lists
+    Uzbek". A supported pair is priced exactly as before (same lines, total and `quote_id`).
+- **Apply order.**
+  1. 0214, and its Verify block.
+  2. The next registry sync (any Probe models run).
+  3. Probe the four ElevenLabs tts models by name, with a voice id from the account's list: `python tools/probe_models.py --sync
+     --model elevenlabs-v4 --model elevenlabs-v3 --model elevenlabs-multilingual-v2 --model elevenlabs-flash-v2.5 --voice-id <id>`.
+  4. The owner puts the re-verified models back on sale.
+  5. Only then 0220, and its Verify block.
+  Applied earlier, every narration film whose voice model has no `spec.languages` reads `voice_language_unknown`: fail-closed and
+  honest, but no narration film can be quoted or started until the sync. The opening block raises a NOTICE with the count of tts
+  rows that list no languages.
+- **Guards.** Refuses unless `voice_language_problem(text, text)` holds 0214's body (md5 `6d5025fd76e3b8b4d731e2d98f65db6e`) and
+  each replaced body is 0171's or 0220's own. End-state block inside the transaction. Re-running 0171 after it fails loudly;
+  `rollback_0171` and `rollback_0214` refuse while 0220 is on.
+- **Requires** 0171, 0214. **Undo.** `docs/sql/rollback_0220_film_voice_language.sql` (0171's two bodies back; refuses any body
+  that is not 0220's).
+- Lab: `tests/security/test_sec_film_voice_language_0220.py` (sec_db `take_off_0220` / `put_back_0220`, through `take_off_0187` /
+  `put_back_0187`). Static: `tests/test_film_voice_language_migration.py`.

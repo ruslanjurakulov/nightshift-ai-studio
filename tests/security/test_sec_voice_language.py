@@ -111,6 +111,7 @@ def test_the_rollback_removes_it_and_the_file_applies_again(conn):
     rollback = (sec_db.REPO / "docs" / "sql" / "rollback_0214_voice_language_check.sql").read_text(encoding="utf-8")
     migration = (sec_db.MIGRATIONS / "0214_voice_language_check.sql").read_text(encoding="utf-8")
     with conn.transaction(force_rollback=True):
+        sec_db.take_off_0220(conn)  # 0220's film_price and film_precheck call it, and this rollback refuses while anything does
         conn.execute(rollback)
         assert conn.execute("select to_regprocedure('public.voice_language_problem(text,text)')").fetchone()[0] is None
         conn.execute(migration)

@@ -732,12 +732,43 @@ def put_back_0200(conn_or_session) -> None:
         conn.execute(MIGRATION_0200.read_text(encoding="utf-8"))
 
 
+MIGRATION_0220 = MIGRATIONS / "0220_film_voice_language.sql"
+ROLLBACK_0220 = REPO / "docs" / "sql" / "rollback_0220_film_voice_language.sql"
+
+
+def has_0220(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select coalesce((select prosrc like '%voice_language_problem%' from pg_proc "
+                             "where oid = to_regprocedure('public.film_price(public.films)')), false)").fetchone()[0])
+
+
+def take_off_0220(conn_or_session) -> None:
+    """0220 replaces 0171's film_price and film_precheck (each now asks 0214's voice_language_problem). 0171's drift guard and
+    rollback refuse any other body, and rollback_0214 refuses while either calls the helper, so, like 0200, it comes off before 0171
+    (take_off_0187 does it) and goes back with put_back_0171 / put_back_0187."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0220(conn):
+        text = ROLLBACK_0220.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0220(conn_or_session) -> None:
+    """0220 again, once 0171 (whose bodies it builds on) and 0214 (whose helper it calls) are on, and only when it is not on."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0220(conn) or not has_0171(conn):
+        return
+    if not conn.execute("select to_regprocedure('public.voice_language_problem(text, text)') is not null").fetchone()[0]:
+        return
+    conn.execute(MIGRATION_0220.read_text(encoding="utf-8"))
+
+
 def take_off_0187(conn_or_session) -> None:
     """0187 replaces rights_acknowledgement_missing() (0174's body), reroute_creative_job() (0088's) and start_film() (0171's). 0174's
     and 0171's drift guards and rollbacks refuse any body but their own, so a test that replays or rolls back 0174 or 0171 takes 0187
     off first (take_off_0174 and take_off_0171 do it), and put_back_0174 / put_back_0171 put it back once both are on again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     take_off_0200(conn)  # 0200 reads 0171's film_segments: off before anything under it
+    take_off_0220(conn)  # 0220 replaces 0171's film_price and film_precheck, which 0171's rollback refuses
     take_off_0192(conn)  # 0192 sits on 0187's start_film, and 0187's rollback refuses any other body
     if has_0187(conn):
         text = ROLLBACK_0187.read_text(encoding="utf-8")
@@ -750,6 +781,7 @@ def put_back_0187(conn_or_session) -> None:
         conn.execute(MIGRATION_0187.read_text(encoding="utf-8"))
     put_back_0192(conn)
     put_back_0200(conn)
+    put_back_0220(conn)
 
 
 MIGRATION_0189 = MIGRATIONS / "0189_job_video_and_list_order.sql"

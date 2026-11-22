@@ -55,7 +55,8 @@ MODELS = [
     ("vid-hh", "alibaba", "video.happyhorse", ["i2v"], "model_vid_hh_second", 2, {"durations_s": [5, 10]}),
     # Sellable as far as the registry is concerned: 0166's film_check_model must still refuse it at the quote.
     ("seedance-lab", "acme", "video.acme", ["i2v"], "model_seedance_lab_second", 2, {"durations_s": [5, 10]}),
-    ("tts-a", "acme", "audio.acme", ["tts"], "model_tts_a_character", Decimal("0.01"), {}),
+    # 0220: a voice model is quoted for a film only in a language its registry row lists (0214's spec.languages).
+    ("tts-a", "acme", "audio.acme", ["tts"], "model_tts_a_character", Decimal("0.01"), {"languages": ["en", "ru", "uz"]}),
 ]
 ASSEMBLY_RATE = 5
 JOB_MINIMUM = 1
