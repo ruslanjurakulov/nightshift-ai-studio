@@ -705,3 +705,132 @@ textarea.ds-input { padding: var(--ds-space-3) var(--ds-space-4); min-height: 96
 .ds-input[aria-invalid="true"]:focus-visible { outline-color: var(--ds-danger); }
 .ds-chip:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-pill); }
 .ds-toggle:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-pill); }
+
+/* ── The system: type scale, rhythm, motion (S5, docs/design/SYSTEM.md) ───────────────────────
+   Why this exists: the benchmark (docs/design/S5_BENCHMARK.md, gap 2) measured our type jumping from 56–74 px display
+   straight to 13–20 px, with nothing in between, and display set at weight 600 — the page alternates between shouting and
+   small print. The leaders run display at 400–500 with −1…−2.5 % tracking and a clear middle step. Every size here is
+   fluid between a 360 px phone and a 1440 px desk, so no stream writes its own breakpoint ladder for a heading.
+   Additive: nothing existing reads these yet; a screen moves over when its owner edits it. */
+:root {
+  /* Faces. Display is whatever --ds-font-display says (Onest on the public site since #889); mono is the system stack,
+     never a downloaded face: a timecode must not wait for a font. */
+  --ds-font-mono: var(--font-mono, ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace);
+
+  /* Type scale. Size / line-height / tracking / weight per step. Nothing under 13 px carries prose; 12 px is labels only. */
+  --ds-fs-display-xl: clamp(2.5rem, 1.6rem + 4vw, 4.5rem);      /* 40 → 72: the one hero line per page */
+  --ds-lh-display-xl: 1.04;
+  --ds-ls-display-xl: -0.025em;
+  --ds-fs-display-lg: clamp(2rem, 1.4rem + 2.7vw, 3.5rem);      /* 32 → 56: a section's opening line */
+  --ds-lh-display-lg: 1.08;
+  --ds-ls-display-lg: -0.02em;
+  --ds-fw-display: 500;
+  --ds-fs-heading-xl: clamp(1.75rem, 1.4rem + 1.5vw, 2.5rem);   /* 28 → 40: the missing middle */
+  --ds-lh-heading-xl: 1.12;
+  --ds-ls-heading-xl: -0.015em;
+  --ds-fs-heading-lg: clamp(1.375rem, 1.2rem + 0.75vw, 1.75rem); /* 22 → 28: a card or panel title that leads */
+  --ds-lh-heading-lg: 1.2;
+  --ds-ls-heading-lg: -0.01em;
+  --ds-fs-heading-md: 1.25rem;                                   /* 20 */
+  --ds-lh-heading-md: 1.3;
+  --ds-fs-heading-sm: 1rem;                                      /* 16 */
+  --ds-lh-heading-sm: 1.4;
+  --ds-fw-heading: 600;
+  --ds-fs-body-lg: 1.125rem;                                     /* 18: a lede under a display line */
+  --ds-lh-body-lg: 1.6;
+  --ds-fs-body: 1rem;                                            /* 16 */
+  --ds-lh-body: 1.6;
+  --ds-fs-body-sm: 0.875rem;                                     /* 14: dense UI */
+  --ds-lh-body-sm: 1.5;
+  --ds-fs-caption: 0.8125rem;                                    /* 13: the honest note next to a key, the floor for prose */
+  --ds-lh-caption: 1.45;
+  --ds-fs-label: 0.75rem;                                        /* 12: uppercase mono labels, track headers, eyebrows */
+  --ds-lh-label: 1.3;
+  --ds-ls-label: 0.08em;
+  --ds-fs-timecode: clamp(1.5rem, 1.2rem + 1.2vw, 2.25rem);     /* 24 → 36: the transport's clock */
+  --ds-measure: 62ch;                                            /* the longest line prose may run */
+
+  /* Rhythm. One gutter, one container, one section step; a section is title → (one line) → media, not title → paragraph. */
+  --ds-gutter: clamp(16px, 3vw + 4px, 40px);
+  --ds-container: 1200px;
+  --ds-container-wide: 1440px;
+  --ds-section-y: clamp(4rem, 1rem + 9.5vw, 9rem);              /* 64 → 144 between sections */
+  --ds-section-head-gap: clamp(1.5rem, 1rem + 2vw, 3rem);        /* 24 → 48 from a section's title to its content */
+  --ds-stack-tight: var(--ds-space-2);
+  --ds-stack: var(--ds-space-4);
+  --ds-stack-loose: var(--ds-space-8);
+  --ds-hairline: 1px;
+
+  /* Motion beyond the press/panel/page trio: media arriving, a frame that is alive, a list that lands in order. */
+  --ds-dur-reveal: 480ms;
+  --ds-dur-ambient: 2400ms;                                      /* skeleton shimmer, a "working" pulse */
+  --ds-ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ds-ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ds-stagger: 40ms;
+  --ds-reveal-shift: 12px;
+}
+/* The reduced-motion path for the tokens above: nothing travels, nothing pulses, a reveal is an instant appearance. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ds-dur-reveal: 0ms;
+    --ds-dur-ambient: 0ms;
+    --ds-stagger: 0ms;
+    --ds-reveal-shift: 0px;
+  }
+}
+
+@layer components {
+/* Type roles. One class per role; a component never sets font-size by hand. */
+.ds-t-display-xl,
+.ds-t-display-lg {
+  font-family: var(--ds-font-display);
+  font-weight: var(--ds-fw-display);
+  text-wrap: balance;
+}
+.ds-t-display-xl { font-size: var(--ds-fs-display-xl); line-height: var(--ds-lh-display-xl); letter-spacing: var(--ds-ls-display-xl); }
+.ds-t-display-lg { font-size: var(--ds-fs-display-lg); line-height: var(--ds-lh-display-lg); letter-spacing: var(--ds-ls-display-lg); }
+.ds-t-heading-xl { font-family: var(--ds-font-display); font-weight: var(--ds-fw-display); font-size: var(--ds-fs-heading-xl); line-height: var(--ds-lh-heading-xl); letter-spacing: var(--ds-ls-heading-xl); text-wrap: balance; }
+.ds-t-heading-lg { font-weight: var(--ds-fw-heading); font-size: var(--ds-fs-heading-lg); line-height: var(--ds-lh-heading-lg); letter-spacing: var(--ds-ls-heading-lg); text-wrap: balance; }
+.ds-t-heading-md { font-weight: var(--ds-fw-heading); font-size: var(--ds-fs-heading-md); line-height: var(--ds-lh-heading-md); }
+.ds-t-heading-sm { font-weight: var(--ds-fw-heading); font-size: var(--ds-fs-heading-sm); line-height: var(--ds-lh-heading-sm); }
+.ds-t-body-lg { font-size: var(--ds-fs-body-lg); line-height: var(--ds-lh-body-lg); max-width: var(--ds-measure); text-wrap: pretty; }
+.ds-t-body { font-size: var(--ds-fs-body); line-height: var(--ds-lh-body); max-width: var(--ds-measure); text-wrap: pretty; }
+.ds-t-body-sm { font-size: var(--ds-fs-body-sm); line-height: var(--ds-lh-body-sm); }
+.ds-t-caption { font-size: var(--ds-fs-caption); line-height: var(--ds-lh-caption); color: var(--ds-muted); }
+/* Labels: track headers, eyebrows, node titles. Uppercase mono reads as "machine label", never as a sentence. */
+.ds-t-label {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-fs-label);
+  line-height: var(--ds-lh-label);
+  letter-spacing: var(--ds-ls-label);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.ds-mono { font-family: var(--ds-font-mono); font-variant-numeric: tabular-nums; }
+/* The transport clock: big, mono, tabular, in the accent — the one place the accent is text at size. */
+.ds-timecode {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-fs-timecode);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--ds-accent);
+}
+.ds-timecode [data-part="total"] { color: var(--ds-muted); font-size: 0.5em; letter-spacing: 0; }
+
+/* Rhythm. */
+.ds-container { width: 100%; max-width: var(--ds-container); margin-inline: auto; padding-inline: var(--ds-gutter); }
+.ds-container--wide { max-width: var(--ds-container-wide); }
+.ds-section { padding-block: var(--ds-section-y); }
+.ds-section-head { display: grid; gap: var(--ds-space-3); margin-bottom: var(--ds-section-head-gap); }
+
+/* Reveal: media and cards arriving. Set --i on each child for the stagger; under reduced motion it is instant. */
+.ds-reveal {
+  animation: ds-reveal var(--ds-dur-reveal) var(--ds-ease-emphasized) both;
+  animation-delay: calc(var(--i, 0) * var(--ds-stagger));
+}
+@keyframes ds-reveal {
+  from { opacity: 0; transform: translateY(var(--ds-reveal-shift)); }
+  to { opacity: 1; transform: none; }
+}
+}
