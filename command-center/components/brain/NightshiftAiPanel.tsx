@@ -9,6 +9,9 @@ import { pluralText } from "@/lib/plural";
 import { runLink, type Brief, type BrainCard, type BrainSlots, type Scenario } from "@/lib/brain/logic";
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
 import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
+import { StateBlock } from "@/components/states/StateBlock";
+// A type only (erased at build): the codes are the gate's own, never retyped here.
+import type { ChatGateError } from "@/lib/server/brain/google-gate";
 import "./nightshift-ai-panel.css";
 
 /**
@@ -41,13 +44,16 @@ type State =
   | { state: "session_ended" }
   | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean };
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
-type Problem = { text: string; retry: (() => void) | null } | null;
+/** The model gate's refusals (#898 lib/server/brain/google-gate), by its own union: adult_only_service has its own line already. */
+type GateCode = Exclude<ChatGateError, "adult_only_service">;
+const GATE_CODES: Record<GateCode, true> = { country_blocked: true, country_unverified: true, adult_attestation_required: true, age_unavailable: true };
+const gateCode = (e: unknown): GateCode | null => (typeof e === "string" && Object.prototype.hasOwnProperty.call(GATE_CODES, e) ? (e as GateCode) : null);
+type Problem = { text: string; retry: (() => void) | null; code?: string } | null;
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
-const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap",
-  // The model's own conditions (lib/server/brain/google-gate): the same press meets the same country and the same missing confirmation.
-  // age_unavailable is not here: the confirmation could not be READ, and a moment later it may be.
-  "country_blocked", "country_unverified", "adult_attestation_required"];
-const GATE_REFUSALS = ["country_blocked", "country_unverified", "adult_attestation_required", "age_unavailable"] as const;
+const NO_RETRY: string[] = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap",
+  // The gate: the same press meets the same region and the same missing confirmation. age_unavailable is not here: the
+  // confirmation could not be READ (#898: 503), and a moment later it may be.
+  ...(["country_blocked", "country_unverified", "adult_attestation_required"] satisfies GateCode[])];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
 const pressId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 /**
@@ -261,7 +267,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "session_closed") return c.errors.session_closed;
     if (e === "card_changed") return c.errors.card_changed;
     // Each with its own remedy, never "unavailable" (a VPN to turn off, an age to confirm, a moment to wait).
-    const gate = GATE_REFUSALS.find((g) => g === e);
+    const gate = gateCode(e);
     if (gate) return c.errors[gate];
     // Which chapter failed is the server's count, not the model's words; nothing was priced either way.
     const step = d.step && typeof d.step === "object" ? (d.step as { chapter?: unknown; chapters?: unknown }) : null;
@@ -319,7 +325,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         // A turn that was taken (the server reports its quota) already stored the message: retry it as it is, never a second copy.
         // One that was not is sent again with the same press id: a press that did land is answered as a duplicate.
         const taken = !!d.quota && !!sid;
-        setProblem({ text: explain(res.status, d), retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null });
+        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""),
+                     retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null });
         return false;
       }
       if (d.reply && sid) {
@@ -423,7 +430,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       keepPlan(session, null);
       if (!res.ok) {
         // A failed plan's calls were recorded under this press's ids: a Retry is a new press (a new id), never refused as a repeat.
-        setProblem({ text: explain(res.status, d), retry: res.status === 401 || NO_RETRY.includes(String(d.error)) ? null : () => void choose(index) });
+        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""),
+                     retry: res.status === 401 || NO_RETRY.includes(String(d.error)) ? null : () => void choose(index) });
         return;
       }
       setAsking(null);
@@ -640,7 +648,17 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     <>
       {hasTail && turns.length === 0 && tail}
       {planning && <p className="chat-note" role="status">{c.planWriting}</p>}
-      {problem && (
+      {problem && gateCode(problem.code) && (
+        // S5's shared state (one lamp, one line, one way on): the region is said without the vendor, and an age to confirm links to
+        // where it is confirmed (Create's 18+ box, 0192). No ProviderUnavailable: its words name a provider and offer another model.
+        <StateBlock role="alert" tone={problem.code === "age_unavailable" ? "warn" : "fail"} compact data-gate={problem.code}
+          actions={problem.code === "adult_attestation_required"
+            ? <Link className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={`/${encodeURIComponent(channelSlug)}/create`}>{c.errors.confirmAge}</Link>
+            : problem.retry ? <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={problem.retry} disabled={busy}>{c.retry}</button> : undefined}>
+          {problem.text}
+        </StateBlock>
+      )}
+      {problem && !gateCode(problem.code) && (
         <div className="ns-ai-problem" role="alert">
           <p className="m-0 flex items-start gap-2">
             <TriangleAlert aria-hidden size={16} className="ns-ai-problem-ic" />

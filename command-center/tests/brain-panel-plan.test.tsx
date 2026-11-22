@@ -112,6 +112,14 @@ describe("Nightshift AI panel: the model's own conditions, each with its remedy"
         expect(alert.textContent).toContain(a.errors[code]);
         expect(alert.textContent).not.toContain(a.errors.unavailable);
         expect(!!screen.queryByRole("button", { name: a.retry })).toBe(retryable);
+        // S5's shared state, not the generic problem box.
+        expect(alert.classList.contains("g5-state")).toBe(true);
+        expect(alert.getAttribute("data-gate")).toBe(code);
+        // Only the age confirmation links somewhere: Create's 18+ box (0192).
+        const link = screen.queryByRole("link", { name: a.errors.confirmAge });
+        expect(link?.getAttribute("href") ?? null).toBe(code === "adult_attestation_required" ? "/chronos/create" : null);
+        // Neutral: the region is never said with a vendor's name, and never by a country name the server did not send.
+        expect(a.errors[code]).not.toMatch(/google|gemini|anthropic|openai/i);
         // Uzbek's oʻ and gʻ with U+02BB, never a typed apostrophe.
         if (locale === "uz") expect(a.errors[code]).not.toMatch(/[a-z]['’][a-z]/i);
         view.unmount();
