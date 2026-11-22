@@ -132,10 +132,21 @@ def test_the_constraint_is_validated_and_the_grants_are_what_the_file_says(conn)
         assert su.value("select prosecdef from pg_proc where oid = %s::regprocedure", [SIG]) is True
 
 
+def live_list(su) -> set[str]:
+    """The words of the function as the database holds it: the array literal of its live definition."""
+    src = su.value("select prosrc from pg_proc where oid = 'public.is_reserved_channel_id(text)'::regprocedure")
+    array = re.search(r"= any \(array\[(.*?)\]::text\[\]\)", src, re.S)
+    assert array, src
+    return set(re.findall(r"'([^']*)'", array.group(1)))
+
+
 def test_the_live_list_is_the_apps_list(conn):
     words = app_list()
     assert {"privacy", "en", "ru", "uz"} <= words
     with as_superuser(conn, commit=False) as su:
+        live = live_list(su)
+        assert sorted(live - words) == [], "the database reserves words the app does not"
+        assert sorted(words - live) == [], "the app reserves words the database does not"
         for w in sorted(words):
             assert su.value("select public.is_reserved_channel_id(%s)", [w]) is True, w
             assert su.value("select public.is_reserved_channel_id(%s)", [w.upper()]) is True, w

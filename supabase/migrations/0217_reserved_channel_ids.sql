@@ -15,20 +15,23 @@
 --      RESERVED_ROOT_SEGMENTS as a set; command-center/tests/reserved-channel-ids.test.ts parses the array out of the
 --      newest migration that defines this function and fails when the two lists differ, so a word added to the app's
 --      list needs a migration that adds it here. Executable by authenticated and service_role, because a CHECK
---      constraint runs its function as the role writing the row: an editor renaming their channel (an UPDATE of
---      public.channels through PostgREST) must be able to evaluate it. It is a pure function of its argument and reveals
---      nothing; anon writes no channel and gets nothing.
+--      constraint runs its function as the role writing the row, on EVERY update of the row, not only one that touches
+--      channel_id: a member editing their channel's name or agent_config through PostgREST evaluates it (and without the
+--      grant that edit fails with "permission denied for function"; browsers have no column grant on channel_id itself).
+--      It is a pure function of its argument and reveals nothing; anon writes no channel and gets nothing.
 --   2. create_channel() (0114's body, every line and literal kept) refuses a reserved id right after the shape check,
 --      before anything is looked up or written, the same way it already reports a bad id: SQLSTATE 22023, message prefix
 --      'reserved_channel_id:' naming the id and the remedy, hint 'reserved_channel_id'. Without it the refusal would be
 --      the CHECK below firing on the insert, a raw 23514 naming a constraint, which says nothing a person can act on.
 --   3. CHECK channels_channel_id_not_reserved on public.channels.channel_id, added NOT VALID and then validated, so it
---      holds for every writer: the service role (modules/supabase_sync.py upserts channel rows), the SQL editor, and
---      any later definer function. An INSERT or UPDATE that would leave a reserved id is refused with 23514.
+--      holds for every writer: the service role (modules/supabase_sync.py bootstraps channel rows into an empty
+--      table), the SQL editor, and any later definer function. An INSERT or UPDATE that would leave a reserved id is refused with 23514.
 --      Before adding it, the file looks for existing rows with a reserved id. If there are any, it raises a WARNING that
 --      names each one and does NOT add the constraint: a constraint added NOT VALID still checks every new row version,
---      so every later write to such a row (the bot's own sync upsert included) would start failing, and a live channel
---      would stop updating with no word as to why. The remedy is in the warning; after it, run this file again.
+--      so every later write to such a row would start failing (a member's name or agent_config edit, and the definer
+--      functions that update a channel: set_channel_status, set_channel_credential, set_channel_dna,
+--      set_channel_publish_on_approve, the verification stamp), and a live channel would stop updating with no word as
+--      to why. The remedy is in the warning; after it, run this file again.
 --      (The live check before this file found no channel with the id en, ru or uz.)
 --
 -- WHAT IT DOES NOT CHANGE
@@ -44,9 +47,14 @@
 -- REQUIRES 0018 (is_org_member), 0020 (credits_trusted_caller), 0086 (create_channel, channel_secret_name,
 -- channel_may_stamp, channel_credential_build, channel_controls_changed) and 0114 (create_channel's latest body,
 -- channel_label_lowering). Additive and idempotent: create or replace, revoke then grant, the constraint added only if
--- it is missing and validated only when no row breaks it. Adding the constraint takes a short ACCESS EXCLUSIVE lock on
--- public.channels (lock_timeout below); validating it takes a SHARE UPDATE EXCLUSIVE lock, which does not block reads or
--- writes of the table.
+-- it is missing and validated only when no row breaks it.
+-- LOCKS. Section 3 first takes SHARE ROW EXCLUSIVE on public.channels (writes wait, reads do not), so no reserved row can
+-- be inserted between its scan and the ALTER and come back as a raw 23514. ADD CONSTRAINT then takes ACCESS EXCLUSIVE,
+-- and because the ADD and the VALIDATE run in the same transaction that lock is held until commit: reads AND writes of
+-- public.channels wait for the whole validating scan. The table holds one row per channel, so that is a short wait, and
+-- lock_timeout (below) makes the file fail rather than queue behind a long transaction.
+-- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local
+-- lock_timeout` assumes it, and section 3 holds its locks to the commit.
 -- Rollback: docs/sql/rollback_0217_reserved_channel_ids.sql (puts 0114's create_channel back, drops the constraint and
 -- the helper).
 
@@ -193,6 +201,9 @@ do $$
 declare
   taken text;
 begin
+  -- Before the scan, not after: a reserved row inserted between the scan and the ALTER would make the VALIDATE fail with
+  -- a raw 23514 instead of the warning below. Writes wait from here to the commit; reads go on until the ALTER.
+  lock table public.channels in share row exclusive mode;
   select string_agg(format('%s (organization %s)', channel_id, coalesce(org_id::text, 'none')), ', ' order by channel_id)
     into taken
     from public.channels
@@ -203,6 +214,7 @@ begin
       taken;
     return;
   end if;
+  -- ADD takes ACCESS EXCLUSIVE, held to the commit (one transaction), so the VALIDATE below scans with reads blocked too.
   if not exists (select 1 from pg_constraint
                   where conrelid = 'public.channels'::regclass and conname = 'channels_channel_id_not_reserved') then
     alter table public.channels

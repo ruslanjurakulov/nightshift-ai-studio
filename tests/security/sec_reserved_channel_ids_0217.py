@@ -11,8 +11,9 @@ def extend(tables: dict, functions: dict) -> None:
     from sec_expectations import HELPER
 
     functions.update({
-        # The list behind the CHECK on channels.channel_id. A CHECK runs its function as the role writing the row, so a
-        # signed-in editor renaming their channel must be able to execute it; it is a pure function of its argument and
-        # anon, which writes no channel, gets nothing.
+        # The list behind the CHECK on channels.channel_id. A CHECK runs its function as the role writing the row, on
+        # every UPDATE of the row (a member's name or agent_config edit), not only one touching channel_id, which browsers
+        # have no column grant on; so authenticated must be able to execute it. A pure function of its argument; anon,
+        # which writes no channel, gets nothing.
         "is_reserved_channel_id": HELPER,
     })

@@ -11,34 +11,60 @@ import { RESERVED_ROOT_SEGMENTS } from "@/lib/public-paths";
 // the database accepts (the API, the service role) whose every screen a page of the site shadows. This holds them equal.
 
 const MIGRATIONS = join(__dirname, "..", "..", "supabase", "migrations");
-const DEFINES = /create or replace function public\.is_reserved_channel_id\(/;
+// Tolerant of spacing and case, and of a plain `create function`: a later redefinition written differently must still be found.
+const DEFINES = /create\s+(or\s+replace\s+)?function\s+public\.is_reserved_channel_id\s*\(/i;
+// Looser still: anything that looks like a definition of the function at all (quoted names, another schema spelling).
+const MENTIONS = /create\s+(or\s+replace\s+)?function\s+[^(;]*is_reserved_channel_id[^(;]*\(/gi;
 
-/** The newest migration that defines the function: a later one that widens the list is the one in force. */
-function newestDefinition(): { file: string; sql: string } {
-  const files = readdirSync(MIGRATIONS)
-    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
-    .sort();
-  const defining = files.filter((f) => DEFINES.test(readFileSync(join(MIGRATIONS, f), "utf8")));
-  const file = defining[defining.length - 1];
-  return { file, sql: readFileSync(join(MIGRATIONS, file), "utf8") };
-}
-
-/** The quoted words of the function's array literal, comments dropped. */
-function sqlWords(sql: string): string[] {
-  const code = sql
+function stripComments(sql: string): string {
+  return sql
     .split("\n")
     .map((l) => l.split("--")[0])
     .join("\n");
-  const fn = code.slice(code.search(DEFINES));
-  const body = fn.slice(0, fn.indexOf("\n$$;"));
-  const array = /= any \(array\[([\s\S]*?)\]::text\[\]\)/.exec(body);
+}
+
+function migrationFiles(): string[] {
+  return readdirSync(MIGRATIONS)
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .sort();
+}
+
+/** Every migration that defines the function, in order: the last one is the list in force. */
+function definitions(): { file: string; sql: string }[] {
+  return migrationFiles()
+    .map((file) => ({ file, sql: stripComments(readFileSync(join(MIGRATIONS, file), "utf8")) }))
+    .filter(({ sql }) => DEFINES.test(sql));
+}
+
+function newestDefinition(): { file: string; sql: string } {
+  const defs = definitions();
+  return defs[defs.length - 1];
+}
+
+/** The quoted words of the function's array literal. Throws when the body is not in the shape this test reads. */
+function sqlWords(sql: string): string[] {
+  const fn = sql.slice(sql.search(DEFINES));
+  const end = fn.indexOf("$$;");
+  if (end < 0) throw new Error("is_reserved_channel_id has no $$-quoted body the test can read");
+  const array = /= any \(array\[([\s\S]*?)\]::text\[\]\)/.exec(fn.slice(0, end));
   if (!array) throw new Error("is_reserved_channel_id has no array literal the test can read");
   return [...array[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
 }
 
 describe("reserved channel ids: the app and the database agree", () => {
   it("0217 is where the function is first defined", () => {
-    expect(readFileSync(join(MIGRATIONS, "0217_reserved_channel_ids.sql"), "utf8")).toMatch(DEFINES);
+    expect(definitions()[0]?.file).toBe("0217_reserved_channel_ids.sql");
+  });
+
+  it("every definition of the function is one this test can read", () => {
+    for (const file of migrationFiles()) {
+      const sql = stripComments(readFileSync(join(MIGRATIONS, file), "utf8"));
+      for (const m of sql.matchAll(MENTIONS)) {
+        // A definition the tolerant pattern does not see would be a list nobody compares with the app's.
+        expect(DEFINES.test(m[0]), `${file}: "${m[0]}" defines is_reserved_channel_id in a form the drift test cannot read`).toBe(true);
+      }
+      if (DEFINES.test(sql)) expect(() => sqlWords(sql), file).not.toThrow();
+    }
   });
 
   it("the SQL list equals RESERVED_ROOT_SEGMENTS as a set", () => {

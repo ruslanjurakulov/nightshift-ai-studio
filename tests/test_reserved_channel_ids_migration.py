@@ -103,6 +103,44 @@ class BuiltOn0114(unittest.TestCase):
         self.assertLess(CODE.index("0217 needs 0114_ai_disclosure_admin_lock.sql"), CODE.index("create or replace function"))
 
 
+class LocksAndTransaction(unittest.TestCase):
+    def test_writes_are_locked_out_before_the_scan_so_the_validate_cannot_meet_a_new_reserved_row(self):
+        i_lock = CODE.index("lock table public.channels in share row exclusive mode;")
+        self.assertLess(i_lock, CODE.index("where public.is_reserved_channel_id(channel_id);"))
+        self.assertLess(i_lock, CODE.index("add constraint channels_channel_id_not_reserved"))
+
+    def test_it_says_to_apply_it_as_one_transaction(self):
+        self.assertIn("-- APPLY AS ONE TRANSACTION", SQL)
+        self.assertLess(SQL.index("-- APPLY AS ONE TRANSACTION"), SQL.index("set local lock_timeout"))
+        self.assertNotIn("does not block reads or", SQL)   # the ADD's ACCESS EXCLUSIVE is held to the commit
+
+
+class ALaterListMustRecheckTheRows(unittest.TestCase):
+    """Postgres trusts an immutable function: a create or replace with a longer list leaves rows already stored unchecked.
+    So a later migration that redefines the list must scan for rows it now refuses and validate the constraint again."""
+
+    DEFINES = re.compile(r"create\s+(or\s+replace\s+)?function\s+public\.is_reserved_channel_id\s*\(", re.I)
+
+    def test_every_later_redefinition_rescans_and_revalidates(self):
+        for f in sorted(MIGRATIONS.glob("*.sql")):
+            if f.name[:4] <= "0217":
+                continue
+            text = code(f.read_text(encoding="utf-8"))
+            if not self.DEFINES.search(text):
+                continue
+            low = text.lower()
+            self.assertIn("lock table public.channels", low, f.name)
+            self.assertRegex(low, r"where\s+public\.is_reserved_channel_id\(channel_id\)", f.name)
+            self.assertRegex(low, r"validate\s+constraint\s+channels_channel_id_not_reserved", f.name)
+
+    def test_the_markers_are_the_ones_0217_itself_carries(self):
+        low = CODE.lower()
+        self.assertTrue(self.DEFINES.search(CODE))
+        self.assertIn("lock table public.channels", low)
+        self.assertRegex(low, r"where\s+public\.is_reserved_channel_id\(channel_id\)")
+        self.assertRegex(low, r"validate\s+constraint\s+channels_channel_id_not_reserved")
+
+
 class RollbackPutsBack0114(unittest.TestCase):
     def test_the_rollback_holds_0114s_body_byte_for_byte_and_drops_the_rest(self):
         rb = bodies(ROLLBACK)
