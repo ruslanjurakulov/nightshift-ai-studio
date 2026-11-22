@@ -320,6 +320,8 @@ const CANVAS_ASSETS = [
   { id: "0c000000-0000-4000-8000-0000000000a2", kind: "image", mime: "image/jpeg", bytes: 180000, width: 1080, height: 1080, duration_s: null, source: "upload", original_name: "Samarkand gate", variants: ["thumb", "display"], version: 1, created_at: "2026-11-13T08:00:00Z", folder_id: null },
   { id: "0c000000-0000-4000-8000-0000000000a3", kind: "image", mime: "image/png", bytes: 90000, width: 1024, height: 1024, duration_s: null, source: "upload", original_name: "Logo", variants: ["thumb", "display"], version: 1, created_at: "2026-11-12T08:00:00Z", folder_id: null },
   { id: "0c000000-0000-4000-8000-0000000000a4", kind: "audio", mime: "audio/mpeg", bytes: 400000, width: null, height: null, duration_s: 31, source: "generated", original_name: "Narration take 1", variants: {}, version: 1, created_at: "2026-11-11T08:00:00Z", folder_id: null },
+  // A finished clip with a measured length (the timeline lane draws it to scale; studio-canvas.mjs --media draws its thumbnail).
+  { id: "0c000000-0000-4000-8000-0000000000a5", kind: "video", mime: "video/mp4", bytes: 2400000, width: 1280, height: 720, duration_s: 6, source: "generated", original_name: "Fox on the ridge", variants: ["thumb", "display"], version: 1, created_at: "2026-11-15T08:00:00Z", folder_id: null },
 ];
 const CANVAS_JOBS = () => {
   const base = {
@@ -330,6 +332,11 @@ const CANVAS_JOBS = () => {
     { ...base, id: "0c000000-0000-4000-8000-0000000000c1", capability: "t2i", status: "completed", charged_credits: 8, error_code: null, result_asset_ids: [CANVAS_ASSETS[0].id], created_at: iso(-3_600_000), finished_at: iso(-3_500_000) },
     { ...base, id: "0c000000-0000-4000-8000-0000000000c2", capability: "i2v", status: "failed", charged_credits: 0, error_code: "provider_timeout", result_asset_ids: [], created_at: iso(-1_800_000), finished_at: iso(-1_700_000), params: { ...base.params, source_asset_id: CANVAS_ASSETS[0].id } },
     { ...base, id: "0c000000-0000-4000-8000-0000000000c3", capability: "t2v", status: "running", charged_credits: null, error_code: null, result_asset_ids: [], created_at: iso(-90_000), started_at: iso(-80_000), finished_at: null },
+    // For the timeline lane: a finished clip (its file measured at 6 s, asked for 5), a finished voice-over (its file 31 s), and a
+    // clip being made that was asked for 8 s (drawn as requested, never as measured).
+    { ...base, id: "0c000000-0000-4000-8000-0000000000c4", capability: "t2v", status: "completed", charged_credits: 40, error_code: null, result_asset_ids: [CANVAS_ASSETS[4].id], created_at: iso(-7_200_000), finished_at: iso(-7_000_000), params: { ...base.params, duration_s: 5 } },
+    { ...base, id: "0c000000-0000-4000-8000-0000000000c5", capability: "tts", status: "completed", charged_credits: 6, error_code: null, result_asset_ids: [CANVAS_ASSETS[3].id], created_at: iso(-5_400_000), finished_at: iso(-5_300_000), params: { prompt: "At dawn the fox crosses the ridge." } },
+    { ...base, id: "0c000000-0000-4000-8000-0000000000c6", capability: "t2v", status: "running", charged_credits: null, error_code: null, result_asset_ids: [], created_at: iso(-60_000), started_at: iso(-50_000), finished_at: null, params: { ...base.params, duration_s: 8 } },
   ];
 };
 
