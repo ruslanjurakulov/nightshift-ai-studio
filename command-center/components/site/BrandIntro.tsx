@@ -11,6 +11,7 @@ import {
   INTRO_TOTAL_MS,
   introBlocked,
 } from "@/lib/site/brand-intro";
+import { startIntroCue } from "@/lib/site/brand-intro-sound";
 import "@/components/site/brand-intro.css";
 
 /**
@@ -43,6 +44,8 @@ export function BrandIntro() {
     if (shift === null) return;
     // The overlay is committed and opaque black, the same as the cover: lifting the cover now is invisible.
     document.documentElement.removeAttribute(INTRO_COVER_ATTR);
+    // The sound, where the browser already allows it (lib/site/brand-intro-sound.ts); null, and no AudioContext, elsewhere.
+    const cue = startIntroCue(performance.now() - shift);
     let done = false;
     const end = () => {
       if (done) return;
@@ -55,6 +58,8 @@ export function BrandIntro() {
     return () => {
       window.clearTimeout(timer);
       for (const e of INTRO_SKIP_EVENTS) window.removeEventListener(e, end, opts);
+      // Skip or the end: silent within 30 ms, then the context is closed.
+      cue?.stop();
     };
   }, [shift]);
 
