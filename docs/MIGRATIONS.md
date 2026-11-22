@@ -2469,3 +2469,73 @@ list off sale, and every model priced by size carries a terms gate). Post-event:
   `provider = 'google'` row has no `blocked_countries`), the Vault key, then the web's key.
 - Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
   `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.
+
+## Dated credit prices (0224)
+
+0224 (`0224_dated_credit_price.sql`) lets a credit price change at an exact moment, so our price rises when a vendor's does, not
+when someone remembers (owner decision D7, 2026-11-22). By itself it changes no quote: the table starts empty and no price is
+inserted. Prices are the owner's.
+
+- **`credit_price_schedule`** (unit, credits_per_unit, effective_at, reason, created_by, created_at). Append-only: update, delete
+  and truncate are refused by trigger, so a mistake is corrected by a new row (the same `effective_at`: the later row wins).
+  `credits_per_unit > 0`. `created_by` / `created_at` are stamped by the database. RLS on, no policy, no privilege for anon,
+  authenticated or service_role: written in the SQL editor only. A row is accepted only for a model's credit unit (or a variant of
+  it) that already has a `credit_prices` row. Any other unit (job_minimum, video_minute, downloads, reply_draft …) is refused,
+  because nothing reads a dated price for it.
+- **`credits_per_unit_now(unit)`**: the latest row with `effective_at <= now()`, else `credit_prices.credits_per_unit`, else null
+  (never 0). No API role may call it.
+- **`creative_price`**: 0208's body plus one line, `rate.credits_per_unit := public.credits_per_unit_now(rate.unit);`, right after
+  it reads the `credit_prices` row. The margin, the job minimum and every refusal are unchanged. md5 guard: 0208's
+  `f61aaddd5686045961addd6f14a02c32` → `d5bc7c5ef1c3d823ece05b9d00274042`.
+- **Not changed**: the catalog's per-unit figure (`sellable_models`, `credit_rates`) still reads `credit_prices`. After a dated row
+  takes effect, the catalog shows the earlier rate until `credit_prices` is updated too. The quote the person confirms, and the hold,
+  are the dated ones. A job held before `effective_at` keeps its hold. Once a dated row is in force for a unit, a Credits-page edit
+  of that unit's `credits_per_unit` no longer changes the quote. Change it with a new dated row (`effective_at = now()`).
+- Lab: `tests/security/test_sec_dated_price_0224.py`; pins: `tests/test_dated_credit_price_migration.py`; registry check:
+  `tests/test_dated_vendor_prices.py`. Rollback: `docs/sql/rollback_0224_dated_credit_price.sql`. It puts 0208's `creative_price`
+  back and drops the reader. The table and its rows are kept, and they change no quote afterwards. After an `effective_at` has
+  passed, set `credit_prices` to the rate in force before rolling back.
+
+### D7: gemini-3.6-flash doubles on 2027-01-01T00:00:00Z
+
+Google's paid tier (aistudio.google.com/docs/pricing, read 2026-11-22), per 1M tokens: input $0.75 → $1.50, output (thinking
+included) $3.75 → $7.50. The registry records this as `pricing.changes` on `gemini-3.6-flash`. The Studio's describe tool on that
+model is quoted from `model_gemini_3_6_flash_request`, one request per job. The Studio's Nightshift AI chat (0199) runs on the same
+model but is not charged per turn (plan daily caps only), so nothing here prices it.
+
+The formula (1 credit = 1 US cent, the convention of `docs/sql/prices_2026_10_01.sql`):
+
+    vendor cost per request (credits) = 100 × (T_in × P_in + T_out × P_out) / 1,000,000
+    customer price per request        = max(job_minimum, round_up(credits_per_unit × (1 + margin)))
+
+T_in and T_out are a request's tokens. P_in and P_out are the vendor's prices per 1M tokens. Both P_in and P_out double, so the cost
+doubles whatever the token mix (2 = 1.50/0.75 = 7.50/3.75). So **new credits_per_unit = live credits_per_unit × 2**, with the margin
+unchanged, keeps price/cost exactly as it is today: if the live rate covers today's cost, the new one covers the new cost. The SQL
+below computes the new rate from the live row, so it does not depend on a number typed into this document.
+`tests/test_dated_vendor_prices.py` fails if the factor written here is ever smaller than the largest to/from ratio in the registry.
+
+Read the live row first. The note on the row written by `docs/sql/prices_corrections_2026_10_01.sql` says its 0.4 was already
+sized to the 2027 cost of an estimated 1.5K-input + 200-output request: 100 × (1500 × 1.50 + 200 × 7.50) / 10⁶ = 0.375 credits.
+If that is the live row, today's rate already covers the 2027 cost estimate (an estimate: those token counts are not measured), and
+doubling keeps today's margin over cost instead of restoring a lost one. D7 says raise it at that moment, so the row below doubles
+the rate:
+
+```sql
+-- 1. Read first: the live rate and margin, and what one describe is sold at today.
+select unit, credits_per_unit, margin, credits_per_unit * (1 + margin) as sold_per_request, note
+  from public.credit_prices where unit = 'model_gemini_3_6_flash_request';
+
+-- 2. The dated rise. Must report INSERT 0 1 (0 rows: the unit has no credit_prices row, and nothing was scheduled).
+insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason)
+select unit, credits_per_unit * (1.50 / 0.75), '2027-01-01T00:00:00Z',
+       'D7: Google doubles gemini-3.6-flash on 2027-01-01 (input $0.75->$1.50, output $3.75->$7.50 per 1M tokens; aistudio.google.com/docs/pricing, read 2026-11-22)'
+  from public.credit_prices where unit = 'model_gemini_3_6_flash_request';
+
+-- 3. Check: the list rate, the rate in force now (until 2027-01-01 the same), and what is scheduled.
+select s.unit, cp.credits_per_unit as list_rate, public.credits_per_unit_now(s.unit) as rate_now,
+       s.credits_per_unit as scheduled_rate, s.effective_at
+  from public.credit_price_schedule s join public.credit_prices cp using (unit)
+ where s.unit = 'model_gemini_3_6_flash_request';
+```
+
+After 2027-01-01, optionally set `credit_prices` to the same rate, so the catalog and the Credits page show what is charged.

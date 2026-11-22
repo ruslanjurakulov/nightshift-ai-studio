@@ -830,3 +830,9 @@ FUNCTIONS.update({"geo_claim_country": SERVICE})
 import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
+
+# Migration 0224 (dated credit prices, owner decision D7): credit_price_schedule is the owner's, written in the SQL editor; RLS on, no
+# policy and no privilege for any API role, service_role included (tests/security/test_sec_dated_price_0224.py). credits_per_unit_now
+# is creative_price's internal reader: no API role may call it (the schedule's future rows are the owner's plans).
+TABLES.update({"credit_price_schedule": Service()})
+FUNCTIONS.update({"credits_per_unit_now": SERVICE})

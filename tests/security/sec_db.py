@@ -343,7 +343,7 @@ MIGRATION_0208 = MIGRATIONS / "0208_geo_gate_and_image_size_price.sql"
 ROLLBACK_0208 = REPO / "docs" / "sql" / "rollback_0208_geo_gate_and_image_size_price.sql"
 #: Migrations written on 0156's creative_price, which refuse to apply without it: a sequence that leaves 0156 out leaves these out too.
 #: 0208 sits on 0159's creative_price (and 0156's creative_params_problem).
-ON_0156 = (MIGRATION_0159.name, MIGRATION_0208.name)
+ON_0156 = (MIGRATION_0159.name, MIGRATION_0208.name, "0224_dated_credit_price.sql")
 #: Migrations written on 0155's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0155 out
 #: leaves these out too, in this order. (0156 also sits on 0126's creative_params_problem, which every sequence that reaches 0155 has
 #: applied already.)
@@ -372,6 +372,8 @@ ON_0139 = (*ON_0139, "0198_film_studio_org_switch.sql")
 #: 0208 also replaces 0196's reroute_creative_job and refuses to apply without it, so it moves from its place in ON_0156 to the end:
 #: a sequence that puts these back in this order reaches 0196 before 0208.
 ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0208.name), MIGRATION_0208.name)
+#: 0224 (dated credit prices) sits on 0208's creative_price and refuses any other body: right after 0208, wherever 0208 goes.
+ON_0139 = (*(f for f in ON_0139 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -384,7 +386,9 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0174_rights_acknowledgement.sql", "0187_rights_acknowledgement_inputs.sql", "0191_mcp_oauth_creative.sql",
            "0192_adult_attestation.sql", "0196_adult_attestation_google_runs.sql", "0198_film_studio_org_switch.sql",
            # 0208 sits on 0196's reroute_creative_job (and refuses to apply without it): out and back with it, last.
-           "0208_geo_gate_and_image_size_price.sql")
+           "0208_geo_gate_and_image_size_price.sql",
+           # 0224 sits on 0208's creative_price (and refuses any other body): out and back with it, after it.
+           "0224_dated_credit_price.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -558,27 +562,57 @@ CREATIVE_PRICE_0159 = "dafc5edae0000e741ac1b19bd0075790"
 #: md5 of 0208's creative_price body: 0208 replaces 0159's (and 0156's creative_params_problem).
 CREATIVE_PRICE_0208 = "f61aaddd5686045961addd6f14a02c32"
 CREATIVE_PARAMS_PROBLEM_0208 = "7ccde072309a637d9b07e59f1be45d20"
+#: md5 of 0224's creative_price body: 0208's plus one line that reads the rate through credits_per_unit_now (the dated price).
+CREATIVE_PRICE_0224 = "d5bc7c5ef1c3d823ece05b9d00274042"
+MIGRATION_0224 = MIGRATIONS / "0224_dated_credit_price.sql"
+ROLLBACK_0224 = REPO / "docs" / "sql" / "rollback_0224_dated_credit_price.sql"
 
 
 def has_0159(conn_or_session) -> bool:
-    """0159's creative_price, or 0208's on top of it (take_off_0159 takes 0208 off first)."""
+    """0159's creative_price, or 0208's (or 0224's) on top of it (take_off_0159 takes them off first)."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
         "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
-        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208]]).fetchone()[0])
+        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208, CREATIVE_PRICE_0224]]).fetchone()[0])
 
 
 def has_0208(conn_or_session) -> bool:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = %s from pg_proc "
-        "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)", [CREATIVE_PRICE_0208]).fetchone()[0])
+        "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)", [CREATIVE_PRICE_0208]).fetchone()[0]) \
+        or has_0224(conn)
+
+
+def has_0224(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute(
+        "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = %s from pg_proc "
+        "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)", [CREATIVE_PRICE_0224]).fetchone()[0])
+
+
+def rollback_0224_body() -> str:
+    """0224's rollback without its own begin / commit. On a database without 0224 it finds 0208's creative_price and leaves it, so it is
+    harmless where 0224 was never applied; the schedule table stays either way (the rollback keeps the owner's rows)."""
+    text = ROLLBACK_0224.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def put_back_0224(conn_or_session) -> None:
+    """0224 again, only on 0208's exact creative_price (its drift guard refuses any other body) and when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0224(conn) or not conn.execute(
+            "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = %s from pg_proc "
+            "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)", [CREATIVE_PRICE_0208]).fetchone()[0]:
+        return
+    conn.execute(MIGRATION_0224.read_text(encoding="utf-8"))
 
 
 def rollback_0208_body() -> str:
+    """0208's rollback, after 0224's: 0224 sits on 0208's creative_price, and 0208's rollback refuses any other body."""
     text = ROLLBACK_0208.read_text(encoding="utf-8")
-    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    return rollback_0224_body() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
 def take_off_0208(conn_or_session) -> None:
@@ -590,11 +624,12 @@ def take_off_0208(conn_or_session) -> None:
 
 
 def put_back_0208(conn_or_session) -> None:
-    """0208 again, only where it can apply (0159's creative_price and 0196's reroute_creative_job are on) and is not on already."""
+    """0208 again, only where it can apply (0159's creative_price and 0196's reroute_creative_job are on) and is not on already; then
+    0224 on it."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if has_0208(conn) or not has_0159(conn) or not has_0196(conn):
-        return
-    conn.execute(MIGRATION_0208.read_text(encoding="utf-8"))
+    if not has_0208(conn) and has_0159(conn) and has_0196(conn):
+        conn.execute(MIGRATION_0208.read_text(encoding="utf-8"))
+    put_back_0224(conn)
 
 
 def rollback_0159_body() -> str:

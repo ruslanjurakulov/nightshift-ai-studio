@@ -593,6 +593,19 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 and not (pricing["source_url"] and pricing["as_of"]):
             # A price without where and when it came from is a guess (CLAUDE.md #5).
             errors.append(_err(mid, "a provider price needs source_url and as_of"))
+        for i, change in enumerate(pricing.get("changes") or ()):
+            # The patterns only check the shape. tests/test_dated_vendor_prices.py compares effective_at with the moment written in
+            # the documented credit_price_schedule row (0224), so an impossible date would be a change nobody can schedule.
+            try:
+                datetime.strptime(change["effective_at"], "%Y-%m-%dT%H:%M:%SZ")
+                date.fromisoformat(change["as_of"])
+            except ValueError:
+                errors.append(_err(mid, f"pricing.changes[{i}] has a date that is not on the calendar"))
+            if all(r["from"] == r["to"] for r in change["rates"].values()):
+                errors.append(_err(mid, f"pricing.changes[{i}] changes no rate"))
+            if any(r["from"] <= 0 or r["to"] <= 0 for r in change["rates"].values()):
+                # A ratio to/from is what the schedule's rate is scaled by: a rate from or to nothing has no ratio to scale by.
+                errors.append(_err(mid, f"pricing.changes[{i}] needs every rate above 0, before and after"))
         units = [m["credit_unit"]]
         if m["credit_unit"] != credit_unit_for(mid, pricing["unit"]):
             errors.append(_err(mid, f"credit_unit must be {credit_unit_for(mid, pricing['unit'])}"))

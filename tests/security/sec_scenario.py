@@ -517,6 +517,11 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The owner's Nightshift AI history (0209): tests/security/sec_owner_ai_history_0209.py — one owner conversation, two messages.
     import sec_owner_ai_history_0209
     sec_owner_ai_history_0209.seed(conn, sc)
+    # Dated credit prices (0224): one owner row, so the closed-table attacks hit a real row. It is for the hidden lab model and dated
+    # 2099, so it changes no quote any other test makes.
+    with as_superuser(conn) as s:
+        s.rows("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
+               "values (%s, 5, '2099-01-01T00:00:00Z', 'security lab seed') returning 1", [f"model_{MODEL_HIDDEN.replace('-', '_')}_image"])
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
