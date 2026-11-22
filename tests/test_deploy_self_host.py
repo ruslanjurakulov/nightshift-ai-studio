@@ -24,7 +24,10 @@ COMPOSE = DEPLOY / "docker-compose.yml"
 DOCKERFILE = APP / "Dockerfile"
 
 SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".cjs"}
-SKIP_DIRS = {"node_modules", ".next", "tests", "out", "build"}
+# e2e/ and playwright.config.ts are the opt-in live smoke suite (PR #888): it runs on a developer machine against the
+# deployed site and reads BASE_URL there, never on the server, so the server env template must not have to list it.
+SKIP_DIRS = {"node_modules", ".next", "tests", "e2e", "out", "build"}
+SKIP_FILES = {"vitest.config.ts", "playwright.config.ts"}
 
 # Set by the Dockerfile itself (build or runtime); not something an operator sets.
 BUILD_ONLY = {"NEXT_OUTPUT", "NODE_ENV"}
@@ -50,7 +53,7 @@ def app_sources():
             continue
         if path.suffix not in SOURCE_SUFFIXES or path.name.endswith((".test.ts", ".test.tsx")):
             continue
-        if path.name == "vitest.config.ts":
+        if path.name in SKIP_FILES:
             continue
         yield path
 
