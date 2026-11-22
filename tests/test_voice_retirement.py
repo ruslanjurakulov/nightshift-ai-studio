@@ -175,6 +175,25 @@ class TheFilmNarrationAdapter(unittest.TestCase):
                                          http_status=getattr(e, "http_status", None), capability="tts"),
                          "voice_not_found")
 
+    def test_a_later_refusal_on_the_same_adapter_does_not_inherit_voice_not_found(self):
+        """The worker reuses an adapter; a language refusal after a retired-voice one must read as itself."""
+        from types import SimpleNamespace
+        from modules import creative_worker as cw
+        from modules.capabilities.base import AdapterError, CapabilityRequest
+        from modules.film_orchestrator import _vendor_code, film_error_code
+        with patch("modules.voice_retirement.utc_today", return_value=AFTER):
+            with self.assertRaises(AdapterError):
+                self.adapter.submit(self.request(GEORGE), "eleven_v3")
+            self.assertEqual(self.adapter.last_vendor_code, "voice_not_found")
+            uzbek = CapabilityRequest("tts", "Salom", voice_id=ADAM, text_language="uz")
+            with self.assertRaises(AdapterError) as caught:
+                self.adapter.submit(uzbek, "eleven_multilingual_v2")
+        self.assertIn("Uzbek", str(caught.exception))
+        self.assertEqual(self.adapter.last_vendor_code, "")
+        code = film_error_code(cw.error_code_of(caught.exception), vendor_code=_vendor_code(SimpleNamespace(adapter=self.adapter)),
+                               http_status=getattr(caught.exception, "http_status", None), capability="tts")
+        self.assertNotEqual(code, "voice_not_found")
+
     def test_before_the_date_the_adapter_does_not_refuse_it(self):
         with patch("modules.voice_retirement.utc_today", return_value=BEFORE):
             problems = self.adapter.problems(self.request(GEORGE), self.entry)

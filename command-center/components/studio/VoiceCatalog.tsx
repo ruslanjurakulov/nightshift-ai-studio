@@ -257,17 +257,17 @@ export function VoiceCatalog({
       {state.plan === "free" && <p className="text-xs text-[var(--color-muted)]">{c.planFree}</p>}
       {state.plan === "unknown" && <p className="text-xs text-[var(--color-muted)]">{c.planUnknown}</p>}
       {pickedBlocked && (
-        <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
+        <p role="alert" className="text-xs text-[var(--color-fail)]">
           {c.pickedNeedsPaid}
         </p>
       )}
       {pickedRetired && (
-        <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
+        <p role="alert" className="text-xs text-[var(--color-fail)]">
           {fmt(t.create.flow.voiceRetired, { name: pickedRetired.name })}
         </p>
       )}
       {pickedMissing && (
-        <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
+        <p role="alert" className="text-xs text-[var(--color-fail)]">
           {c.pickedMissing}
         </p>
       )}
@@ -328,6 +328,12 @@ export function VoiceCatalog({
                       <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-[var(--color-warn,#b45309)]">
                         <TriangleAlert aria-hidden className="size-3" />
                         {c.library}
+                      </span>
+                    )}
+                    {voiceRetirement(v.voiceId, now) === "retired" && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-[var(--color-warn,#b45309)]">
+                        <TriangleAlert aria-hidden className="size-3" />
+                        {t.voice.retiredTag}
                       </span>
                     )}
                     {v.library && state.plan !== "paid" && (

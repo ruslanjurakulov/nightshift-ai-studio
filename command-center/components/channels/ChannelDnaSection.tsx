@@ -192,7 +192,7 @@ export function ChannelDnaSection({
               {fmt(n.state === "retired" ? t.voice.retireGone : t.voice.retireLeaving, { slot: t.voice.pickNarrator, name: n.name })}
             </p>
           ))}
-          <Link href={channelPath(channelId, "/agents")} className="tap-link">
+          <Link href={channelPath(channelId, "/agents")} className="tap-link text-[var(--color-primary)] underline">
             {t.create.flow.voiceChange}
           </Link>
         </div>
@@ -301,6 +301,9 @@ export function ChannelDnaSection({
                 </option>
               ))}
             </select>
+            {offeredVoices(VOICES, now).some((v) => voiceRetirement(v.id, now) === "leaving") && (
+              <span className="g2-note">{t.create.flow.voiceLeaves}</span>
+            )}
             {standardVoice && (
               <span id={`${uid}-voice-note`} className="g2-note">
                 {t.dna.standardVoiceNote}

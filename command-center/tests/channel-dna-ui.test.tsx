@@ -167,7 +167,9 @@ describe("the channel's DNA card", () => {
       section({ dna: { ...DNA, voiceId: GEORGE } });
       expect(screen.getByText(fmt(t.dna.retiredVoiceName, { name: "George" }))).toBeTruthy();
       expect(screen.getByText(fmt(t.voice.retireGone, { slot: t.voice.pickNarrator, name: "George" }))).toBeTruthy();
-      expect(screen.getByRole("link", { name: t.create.flow.voiceChange }).getAttribute("href")).toBe("/chan-a/agents");
+      const link = screen.getByRole("link", { name: t.create.flow.voiceChange });
+      expect(link.getAttribute("href")).toBe("/chan-a/agents");
+      expect(link.className).toContain("underline");
       fireEvent.click(screen.getByRole("button", { name: t.dna.edit }));
       const select = screen.getByLabelText(t.dna.voice) as HTMLSelectElement;
       expect(select.value).toBe("");
@@ -191,6 +193,8 @@ describe("the channel's DNA card", () => {
       const select = screen.getByLabelText(t.dna.voice) as HTMLSelectElement;
       expect(select.value).toBe(GEORGE);
       expect(select.selectedOptions[0].textContent).toContain(t.create.flow.voiceLeavingTag);
+      // What the tag means, said once under the select.
+      expect(screen.getAllByText(t.create.flow.voiceLeaves)).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }

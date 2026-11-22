@@ -34,10 +34,15 @@ const h = {
   reserve: vi.fn(),
   dispatch: vi.fn(),
   audit: vi.fn(),
+  /** The channel row's agent_config as the signed-in user reads it (null: no row readable). */
+  channelConfig: null as null | Record<string, unknown>,
 };
 
 const fakeClient = {
-  from: () => ({ insert: (row: unknown) => ({ select: () => ({ single: async () => h.insert(row) }) }) }),
+  from: () => ({
+    insert: (row: unknown) => ({ select: () => ({ single: async () => h.insert(row) }) }),
+    select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: h.channelConfig ? { agent_config: h.channelConfig } : null, error: null }) }) }),
+  }),
   rpc: async (fn: string, args: Record<string, unknown>): Promise<RpcAnswer> => {
     h.rpcCalls.push({ fn, args });
     if (h.rpcOverride) return h.rpcOverride();
@@ -95,6 +100,7 @@ beforeEach(() => {
   h.rpcCalls = [];
   h.rpcOverride = null;
   h.client = "present";
+  h.channelConfig = null;
   h.dispatch.mockReset().mockResolvedValue(undefined);
   h.insert.mockReset().mockResolvedValue({ data: { id: 7 }, error: null, status: 201 });
   h.audit.mockReset();
@@ -346,6 +352,39 @@ describe.each(["actions", "queue"] as const)("%s backend: a retired ElevenLabs D
     vi.setSystemTime(new Date("2026-12-31T23:00:00Z"));
     const res = await post({ voice_id: GEORGE });
     expect(res.status).toBe(200);
+  });
+
+  it("no voice_id, but the channel's saved narrator is retired: refused before the hold", async () => {
+    vi.setSystemTime(new Date("2027-01-01T00:00:00Z"));
+    h.channelConfig = { tts_provider: "elevenlabs", elevenlabs_voice_id: GEORGE, elevenlabs_secondary_voice_id: "narrator" };
+    const res = await post({ topic: "t" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "voice_retired" });
+    nothingStarted();
+  });
+
+  it("a voice picked for this run replaces a retired narrator, but not a retired quote voice", async () => {
+    vi.setSystemTime(new Date("2027-01-01T00:00:00Z"));
+    h.channelConfig = { tts_provider: "elevenlabs", elevenlabs_voice_id: GEORGE, elevenlabs_secondary_voice_id: "narrator" };
+    expect((await post({ voice_id: STOCK })).status).toBe(200);
+    h.reserve.mockClear();
+    h.dispatch.mockClear();
+    h.insert.mockClear();
+    h.channelConfig = { tts_provider: "elevenlabs", elevenlabs_voice_id: STOCK, elevenlabs_secondary_voice_id: GEORGE };
+    const res = await post({ voice_id: STOCK });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "voice_retired" });
+    nothingStarted();
+  });
+
+  it("an Edge channel, a channel with no Default voice, and an unreadable row all go on", async () => {
+    vi.setSystemTime(new Date("2027-01-01T00:00:00Z"));
+    h.channelConfig = { tts_provider: "edge", elevenlabs_voice_id: GEORGE };
+    expect((await post({ topic: "t" })).status).toBe(200);
+    h.channelConfig = { tts_provider: "elevenlabs", elevenlabs_voice_id: STOCK, elevenlabs_secondary_voice_id: "narrator" };
+    expect((await post({ topic: "t" })).status).toBe(200);
+    h.channelConfig = null;
+    expect((await post({ topic: "t" })).status).toBe(200);
   });
 
   it("reads as the remedy in every language, and says nothing was held", () => {

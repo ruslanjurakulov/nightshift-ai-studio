@@ -153,6 +153,14 @@ describe("the account's plan and library voices", () => {
       expect(await screen.findByText(t.create.flow.voiceRetired.replace("{name}", "George"))).toBeTruthy();
       expect((screen.getByRole("radio", { name: /George/ }) as HTMLButtonElement).disabled).toBe(true);
       expect(screen.queryByText(c.pickedNeedsPaid)).toBeNull();
+      // Nothing is priced for it, and Generate is off with the reason in the status line it points at.
+      await new Promise((r) => setTimeout(r, 700));
+      expect(quotes).toEqual([]);
+      const status = document.getElementById("gen-status");
+      expect(status?.textContent).toContain(t.create.flow.voiceRetired.replace("{name}", "George"));
+      const generate = Array.from(document.querySelectorAll("button[aria-describedby~='gen-status']")) as HTMLButtonElement[];
+      expect(generate.length).toBeGreaterThan(0);
+      for (const b of generate) expect(b.disabled || b.getAttribute("aria-disabled") === "true").toBe(true);
     } finally {
       vi.useRealTimers();
     }

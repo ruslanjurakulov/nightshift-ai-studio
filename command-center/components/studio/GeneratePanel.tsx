@@ -90,7 +90,7 @@ import {
   type UpscaleFactor,
   type UpscaleTarget,
 } from "@/lib/creative/studio";
-import { voiceRetirement } from "@/lib/voiceRetirement";
+import { defaultVoice, voiceRetirement } from "@/lib/voiceRetirement";
 
 const QUOTE_DELAY_MS = 500;
 
@@ -484,6 +484,12 @@ export function GeneratePanel({
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
   const ready = canQuote(form, current);
+  // A picked voice ElevenLabs has retired (a retried job's, a link's): the adapter would refuse it after the hold, so it is not
+  // priced and Generate stays off, with the reason in the status line Generate points at. Nothing is picked instead.
+  const retiredVoice =
+    (capability === "tts" || capability === "voice_change") && voiceId && voiceRetirement(voiceId, new Date()) === "retired"
+      ? (defaultVoice(voiceId)?.name ?? voiceId)
+      : null;
 
   // The phone's sticky Generate dock would cover the length chips on the first view;
   // it rests in the flow until the page is scrolled, then sticks above the tab bar.
@@ -499,7 +505,7 @@ export function GeneratePanel({
   }, []);
 
   useEffect(() => {
-    if (!ready || (!routed && !effectiveModel) || locked || noLength) {
+    if (!ready || (!routed && !effectiveModel) || locked || noLength || retiredVoice) {
       setQuote({ status: "idle" });
       return;
     }
@@ -538,7 +544,7 @@ export function GeneratePanel({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [orgId, capability, effectiveModel, paramsKey, ready, requote, routed, modelNames, locked, noLength]);
+  }, [orgId, capability, effectiveModel, paramsKey, ready, requote, routed, modelNames, locked, noLength, retiredVoice]);
 
   // "Use as picture": applied once per request, never on the mount that a
   // template or Try again caused (that request was already used or cleared).
@@ -748,7 +754,7 @@ export function GeneratePanel({
   }
 
   const disabled =
-    submitting || quote.status !== "ready" || !ready || quoteSpent || !!locked || noLength || (routed ? !quote.routed : !effectiveModel);
+    submitting || quote.status !== "ready" || !ready || quoteSpent || !!locked || noLength || !!retiredVoice || (routed ? !quote.routed : !effectiveModel);
   const errorCode = notice?.kind === "error" ? notice.code : quote.status === "error" ? quote.code : null;
   const errorDetail = notice?.kind === "error" ? notice.detail : quote.status === "error" ? quote.detail : undefined;
   // An entitlement refusal in its own words: a first purchase opens it, or nothing does yet (entitlementReason).
@@ -768,6 +774,8 @@ export function GeneratePanel({
   // An AI edit tool nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
   const blockedText = pickedOff
     ? t.modelSwitch.studio.offBody
+    : retiredVoice
+      ? fmt(t.create.flow.voiceRetired, { name: retiredVoice })
     : noLength && current
       ? fmt(t.gen.noLength, { model: current.displayName })
       : blocked === "no_model" && isAiEdit(capability)
@@ -1327,6 +1335,10 @@ export function GeneratePanel({
   const builtIn = studioVoices(now);
   const leavingNote = (id: string) => (voiceRetirement(id, now) === "leaving" ? ` · ${t.create.flow.voiceLeavingTag}` : "");
   const castPicked = builtIn.some((v) => v.id === voiceId);
+  // What the short "leaving" tag means, said once under the label rather than on every voice.
+  const leavingLine = builtIn.some((v) => voiceRetirement(v.id, now) === "leaving") ? (
+    <span className="text-xs text-[var(--color-muted)]">{t.create.flow.voiceLeaves}</span>
+  ) : null;
   function onCastKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
     const n = builtIn.length;
     let to = -1;
@@ -1347,6 +1359,7 @@ export function GeneratePanel({
           <span className="studio-label" id="gen-voice-label">
             {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
           </span>
+          {leavingLine}
           <div role="radiogroup" aria-labelledby="gen-voice-label" className="desk-cast" data-testid="gen-voice-cast">
             {builtIn.map((v, i) => {
               const on = voiceId === v.id;
@@ -1369,10 +1382,11 @@ export function GeneratePanel({
                   <span aria-hidden className="ns-lamp" data-tone={on ? "run" : "off"} />
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-semibold text-[var(--color-fg)]">{v.name}</span>
-                    <span className="truncate text-xs text-[var(--color-muted)]">
-                      {voiceStyle(v)}
-                      {leavingNote(v.id)}
-                    </span>
+                    <span className="truncate text-xs text-[var(--color-muted)]">{voiceStyle(v)}</span>
+                    {/* Its own line, outside the truncated style, so it is never cut. */}
+                    {voiceRetirement(v.id, now) === "leaving" && (
+                      <span className="text-xs text-[var(--color-warn)]">{t.create.flow.voiceLeavingTag}</span>
+                    )}
                   </span>
                 </button>
               );
@@ -1384,6 +1398,7 @@ export function GeneratePanel({
           <label htmlFor="gen-voice" className="studio-label">
             {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
           </label>
+          {leavingLine}
           <select
             id="gen-voice"
             value={voiceId ?? ""}

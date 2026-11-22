@@ -193,6 +193,9 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        # A reused adapter must not carry the last job's code into this one's refusal: the film worker reads it after any
+        # failure, and a stale voice_not_found would turn a language refusal into "pick another voice".
+        self.last_vendor_code = ""
         self.require_key()
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             raise AdapterError(E_BAD_REQUEST, "a voice_id from the account's voice list is required")
@@ -305,6 +308,9 @@ class ElevenLabsVoiceChangerAdapter(_ElevenLabs):
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        # A reused adapter must not carry the last job's code into this one's refusal: the film worker reads it after any
+        # failure, and a stale voice_not_found would turn a language refusal into "pick another voice".
+        self.last_vendor_code = ""
         self.require_key()
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             raise AdapterError(E_BAD_REQUEST, "a voice_id from the account's voice list is required")
