@@ -114,6 +114,7 @@ all behave. Every screen on the way meets S5's bar.
 | 0223 | S10 | Omni 1.2 registry row (hidden until probed) + EEA/CH/UK gate on minors' uploads and video edit/extend (D6, after 0208) |
 | 0224 | S10 | dated price row: gemini-3.6-flash customer price rises 2027-01-01 00:00 UTC (D7) |
 | 0225 | S2 | worker identity: table SELECT revoked, named column grants (BR-0036-01/02, BR-S-031) |
+| 0226 | S2 | is_org_spender everywhere credits are spent: a non-member platform admin cannot spend a customer org's credits (owner decision 22 Nov); helper introduced in 0215 |
 
 Streams S7 (language URLs), S8 (media-first cards, sound), S9 (MCP Studio tools), S10 (Google models) were added on 22 Nov.
 
