@@ -1,0 +1,85 @@
+# Nightshift AI · Studio · Brain — the build program (22 Nov 2026)
+
+Owner of this file: **Atlas** (the coordinating session). Every stream reads it first, then `CLAUDE.md`, then the contract it builds
+against. A change to anything a second stream depends on (a field, a route, a table, a file another stream owns) goes to Atlas
+first; it is never silent.
+
+## The goal, in the owner's words
+
+> Give Nightshift AI a topic, and it works live, like the reference videos: the AI plans the film, the cards appear on the canvas,
+> the pieces are generated and fall into the timeline one by one, and a finished video comes out. The site must justify a
+> $1.5M budget in every respect and stand first among its competitors.
+
+Reference material (frames, in Atlas's session; described here so every stream has them):
+
+- **The timeline** ("agentcut" editor): near-black panel; transport row with play/step, a large monospace timecode in an accent
+  colour, `/ total`, a status word; a ruler with timecodes and a thin playhead with a flag; track headers in small uppercase
+  monospace with a dim second line; segments as rounded saturated pills, one tone per track, monospace label inside, 1–2 px gaps;
+  labelled agent tags (`caps-01`, `fx-02`) that fly to where a piece lands; a live "activity" log of what each worker did.
+- **The canvas** (buzzy.now): dark canvas, image/video cards with 1 px borders and a small title above, soft grey bezier wires
+  converging into a round "+" merge hub, cards grouped in subtle rounded frames, a floating dock.
+- **Public site benchmarks**: Higgsfield, Krea, Runway, Buzzy, OpenArt (screens in Atlas's scratchpad `comp/`). We never publish
+  a vendor price or a competitor comparison (owner's rule: project secret).
+
+## What already exists (do not rebuild it)
+
+| Piece | Where | State |
+| :-- | :-- | :-- |
+| The shared contract (names, BRIEF v1, question cards, handoff, film run status, assembly handoff) | `docs/studio/NIGHTSHIFT_AI.md` | merged; binding |
+| Brain on the Studio canvas, question cards, BRIEF store | 0199, `lib/brain/*`, `/api/brain/*` (#843) | merged, behind `NIGHTSHIFT_AI_CHAT` |
+| Film data, money, per-org switch, 10 s films | 0166, 0171, 0198, `docs/FILM_STUDIO.md` | merged, switched **off** |
+| Film worker (P3) | `tools/film_worker.py`, `modules/film_orchestrator.py` (#853) | built, not switched on; switch-on gates open |
+| Assembly (P4a/P4b) | `modules/film_timeline.py`, `modules/film_assembly.py`, 0200 (#845) | built, behind `NIGHTSHIFT_FILM_ASSEMBLY` |
+| Live view of a run, activity log | #852, #865 | merged, read-only |
+| Film timeline UI | `components/studio-timeline/*`, `lib/studio/timeline.ts` | merged |
+| Workflow runs (one total, confirmed, ordinary jobs) | 0073 | merged |
+
+In flight (other agents of Atlas; build on them, do not duplicate): customer chat shell (`claude/c2-customer-chat-shell`), Gemini
+Flash for the customer chat (`claude/chat-gemini-flash`), the canvas dock + timeline lane (`claude/canvas-timeline-lane`), the public
+homepage (PR #889, `vera/landing-models-ribbon-font`).
+
+## The streams
+
+Each stream is one session, a team of the project subagents (`.claude/agents/`), and one or more **draft** PRs. The session is the
+stream lead; its subagents write, review, test and attack the code. Pipeline per PR (CLAUDE.md "The team"): Scout (if a provider is
+involved) → Forge → Lens (+ a specialist reviewer) → Probe → Breach (money, auth, uploads, prompts) → Sentinel → Forge fixes → Pixel
+(any UI) → the lead's final check → CI green → report to Atlas. No stream merges; Atlas merges in migration order after the owner's OK.
+
+| Stream | Branch prefix | Owns (may edit) | Must not edit | Migration |
+| :-- | :-- | :-- | :-- | :-- |
+| **S1 Brain & plan** — topic → questions → a complete BRIEF with scenes, characters, locations, dialogue → draft nodes on the canvas → Create hands off to `create_film_draft`/`save_film` with the server's price | `claude/nsai-s1-` | `lib/brain/**`, `app/api/brain/**`, the Brain panel components, BRIEF → draft-node mapping (S6b) | money functions, worker, assembly, the lane files | 0211 (only if needed) |
+| **S2 Run & money** — the film run switch-on gates (`docs/FILM_STUDIO.md` "Switch-on gates": the sweep every ≤15 min, `not_captured` alerts, the rest), end-to-end on the local Postgres lab with fake adapters, security pass on every money path, Create → `quote_film` → `start_film` wiring | `claude/nsai-s2-` | `modules/film_orchestrator.py`, `tools/film_worker.py`, money migrations, `.github/workflows/*film*`, `tests/security/` additions | Brain prompts, UI except the Create/price button | 0212 |
+| **S3 Live canvas & timeline** — a started film lights the canvas cards from real status and fills the lane piece by piece (take → segment), agent tags, the activity log in the reference style, refresh-safe, realtime or polling with backoff | `claude/nsai-s3-` | the live view, the lane's data layer, activity log | money, worker, Brain | none expected |
+| **S4 Assembly & export** — P4b on the real media worker (measure first, rule 8), the finished master in the lane, 480p review copy, download/export, the private upload stays behind the publish gate | `claude/nsai-s4-` | `modules/film_assembly.py`, `modules/film_timeline.py`, assembly workflow/docs | publish behaviour (rule 2) | 0213 (only if needed) |
+| **S5 Design & benchmark** — the "$1.5M" bar: one visual language for the public site and the Studio (tokens, type scale, spacing, motion, dark-first), competitor benchmark, a Pixel audit of every stream's PR, and the app-shell polish in files no other stream owns | `claude/nsai-s5-` | `app/tokens.css`, `components/ds/**`, shell/rail/header styles, `docs/design/**` | another stream's components (send it findings instead) | none |
+
+Dependencies: S1 → (BRIEF, film id) → S2 → (film status, takes, events) → S3 → (segment order) → S4 → (master) → S3 shows it.
+S3 builds against the contract's status tables now and rebases on `claude/canvas-timeline-lane` once that is pushed. S5 reviews
+everyone and lands tokens early so others consume them.
+
+Migration numbers: applied live up to 0209 (0206/0207 reserved, 0208 in PR #881, 0210 provisional elsewhere). Numbers above are
+provisional; Atlas renumbers at merge. Additive only, applied by hand.
+
+## Rules every stream keeps (from CLAUDE.md; the ones this program touches most)
+
+- No browser publishes, renders or spends. The person's Create is a database call with the backend's price, confirmed.
+- No silent fallback: a model, voice or source that is down stops the run with the remedy named.
+- Unknown is shown as unknown (a duration, a price, a verdict).
+- Every upload is private; nothing here adds a publish path. Film Studio and the Brain stay behind their switches; the owner turns
+  them on.
+- No secret in code, logs, events, chat or PR text. Keys go to GitHub Actions secrets.
+- Every user-visible string in en/ru/uz; Uzbek with ʻ (U+02BB) and ʼ (U+02BC).
+- No vendor price, margin or competitor comparison on any public page.
+- Real spend (a live film run against a vendor) only after the owner's explicit go-ahead, asked through Atlas.
+
+## Definition of done for the program
+
+A signed-in member of a switched-on workspace types a topic; the Brain asks its cards; the canvas draws the plan; Create shows one
+backend price; after the press the cards light up and the lane fills piece by piece; the assembled video appears at the end of the
+lane and can be downloaded; it is uploaded private; refresh, provider outage, insufficient credits, duplicate press and a phone width
+all behave. Every screen on the way meets S5's bar.
+
+## Reporting
+
+Each lead sends Atlas a short report when a PR is ready (branch, PR link, what was verified, screenshots, open risks) with the
+session messaging tool to Atlas's session, and immediately when blocked or when a contract change is needed.
