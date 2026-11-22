@@ -44,6 +44,14 @@ describe("the canvas's docks never cover what is not theirs", () => {
     expect(css).toMatch(/\.cv-kbtn \{ border-color: var\(--edge\); \}/);
     expect(css).toMatch(/\.cv-deck,\n\.cv-flow-dock \{ border-color: var\(--edge\); \}/);
   });
+  it("below lg, typing in the Nightshift AI panel puts the canvas's dock and lane away (a phone keyboard leaves 500px)", () => {
+    expect(css).toMatch(/@media \(max-width: 1023px\) \{\s*:root:has\(\[data-testid="nightshift-ai-panel"\]:focus-within\) :is\(\.cv-flow-dock, \.cv-lane\) \{ display: none; \}/);
+  });
+  it("the dock's main key wraps in a long language instead of pushing the page sideways (ru, uz measured +101px)", () => {
+    const b = block(":is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary");
+    expect(b).toMatch(/white-space:\s*normal/);
+    expect(b).toMatch(/min-width:\s*0/);
+  });
   it("the lane scrolls sideways inside itself", () => {
     expect(block(".cv-lane-scroll")).toMatch(/overflow-x:\s*auto/);
   });

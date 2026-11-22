@@ -1321,6 +1321,15 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
     --ln-video: #5b47e0; --ln-video-ink: #ffffff; --ln-audio: #0a7a3a; --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
   }
 }
+/* The dock's main key says its step in the reader's language ("Выберите шаг", "Qadamni tanlang"): a long one wraps to two lines
+   inside its 40px rather than pushing the dock, or the page, sideways. */
+:is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary { flex-shrink: 1; min-width: 0; max-width: 220px; white-space: normal; text-align: center; line-height: 1.15; }
+/* Below lg the Nightshift AI panel stacks above the canvas. While the person is typing in it (focus inside), the canvas's dock and
+   lane step aside, so nothing of the canvas can sit on its box, its Send key or its "nothing is charged" note while a phone's
+   keyboard leaves half a screen. The dock is sticky to the canvas besides (above), so it cannot leave the canvas's box anyway. */
+@media (max-width: 1023px) {
+  :root:has([data-testid="nightshift-ai-panel"]:focus-within) :is(.cv-flow-dock, .cv-lane) { display: none; }
+}
 /* Keys and the docks show their edge at 3:1 (a key that cannot be pressed keeps the hairline: it is exempt, and should recede). */
 .cv-kbtn { border-color: var(--edge); }
 .cv-deck,

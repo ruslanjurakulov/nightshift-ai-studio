@@ -14,7 +14,12 @@
  * throwaway string of 32+ characters (local QA only; never a real key). The script draws the fake's pictures into <dir> in the
  * worker's layout (<dir>/<aa>/<uuid>/thumb.jpg, display.jpg), so a done image shows its actual thumbnail.
  *
- * Fails (exit 1) on horizontal overflow, a page error, or a scene whose landmark is missing. Reads and
+ * Start the app with NIGHTSHIFT_AI_CHAT=on as well, and every phone scene also checks that nothing of the canvas covers the
+ * Nightshift AI panel stacked above it: its last key in the band a phone's dock rides in, and its Send key at 390×500 with the
+ * chat box focused (the panel's read is answered as ready by a route in this script; nothing is sent). Run with --locales en,ru,uz
+ * to check the long Russian and Uzbek labels never push the page sideways.
+ *
+ * Fails (exit 1) on horizontal overflow, a page error, a covered panel key, or a scene whose landmark is missing. Reads and
  * screenshots only; spends nothing (the fake refuses every write). Not part of the product.
  */
 import { createRequire } from "node:module";
@@ -184,6 +189,51 @@ async function aiKeyCovered(page, width) {
   }, KEYS);
 }
 
+/**
+ * A phone with its keyboard up (390×500): the person focuses the Nightshift AI chat box (or, when the panel has no box, its last
+ * key). The Send key (or that key) must be what is on top at its centre, and the canvas's dock and lane must have stepped aside.
+ * A fixed dock once sat on the box and its Send key here, so a tap landed on "Add node".
+ */
+async function aiTypingCovered(page, width) {
+  if (!(await page.$("[data-testid=nightshift-ai-panel]"))) return null;
+  // The fake has no Nightshift AI: the panel's own read is answered as a workspace whose chat is ready, so its box and Send key
+  // are drawn. Its turn (POST) is refused; nothing is sent.
+  await page.route(/\/api\/brain(\?.*)?$/, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ plan: { used: 1, limit: 30, max_input_chars: 2000, trial_left: null }, model: "qa", canEdit: true, canRun: true, session: null }) })
+      : route.fulfill({ status: 503, contentType: "application/json", body: "{}" }),
+  );
+  await page.setViewportSize({ width, height: 500 });
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(1500);
+  return page.evaluate(() => {
+    if (document.querySelector('.cv-scrim, [aria-modal="true"], .is-sheet')) return null;
+    const panel = document.querySelector("[data-testid=nightshift-ai-panel]");
+    if (!panel) return null;
+    const box = panel.querySelector("textarea");
+    const keys = [...panel.querySelectorAll("button, a")].filter((k) => k.getClientRects().length > 0);
+    const send = (box && panel.querySelector("form button[type=submit]")) || keys[keys.length - 1];
+    if (!send) return null;
+    // The box, else the first thing in the panel that takes focus (a Send with nothing typed is disabled and cannot).
+    [box, send, ...keys].some((el) => {
+      el?.focus();
+      return panel.contains(document.activeElement);
+    });
+    // Where a keyboard-up phone leaves the key: low in the 500px window, in the band a fixed dock used to take (y 358–420).
+    window.scrollTo(0, send.getBoundingClientRect().top + window.scrollY - 370);
+    const r = send.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const shown = (sel) => [...document.querySelectorAll(sel)].some((el) => getComputedStyle(el).display !== "none");
+    return {
+      covered: !top || !(send === top || send.contains(top)),
+      by: top ? `${top.tagName}.${String(top.className).slice(0, 40)}` : "nothing",
+      key: send.textContent.trim().slice(0, 30),
+      focused: panel.contains(document.activeElement),
+      canvasShown: shown(".cv-flow-dock") || shown(".cv-lane"),
+    };
+  });
+}
+
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: exe });
 const MEDIA = arg("media", null);
@@ -288,6 +338,9 @@ for (const loc of LOCALES)
       // a phone; its last key (Upgrade / Buy credits when short) must be what is on top in the band where a phone's dock rides.
       const ai = phone ? await aiKeyCovered(page, v.width) : null;
       if (ai?.covered) bad.push(`${name}: ${ai.by} covers the Nightshift AI panel's last key ("${ai.key}")`);
+      const typing = phone ? await aiTypingCovered(page, v.width) : null;
+      if (typing?.covered) bad.push(`${name}: typing at 390×500, ${typing.by} covers the panel's "${typing.key}"`);
+      if (typing?.canvasShown) bad.push(`${name}: typing at 390×500, the canvas dock or lane is still drawn under the panel (focus in panel: ${typing.focused})`);
       if (m.sheet && (m.sheet.bottom !== 0 || m.sheet.top <= 0)) bad.push(`${name}: sheet not anchored to the bottom (${JSON.stringify(m.sheet)})`);
       if (m.overflow > 0) bad.push(`${name}: ${m.overflow}px sideways`);
       if (!m.landmark) bad.push(`${name}: ${s.check} missing`);
