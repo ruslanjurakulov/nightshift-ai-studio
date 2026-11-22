@@ -111,7 +111,8 @@ How: the real `/[channel]/studio` route in the real `(app)` shell, `next dev` wi
 the layout a mock workspace and balance, every `/api/*` answered by Playwright with fixed data, pictures as flat
 gradients (judge layout, not art). 22 states × 1440/390, dark, `ds-skin`. Files: `<surface>-<state>-<width>-dark.jpg`
 (canvas ×3, brain ×7, timeline ×6, library ×4, pricing ×2). Mock artefacts are marked **(mock?)** — check the real route
-before treating them as product bugs.
+before treating them as product bugs. The round black "N" at the bottom left of every
+shot is the Next.js dev indicator (`next dev`), not product UI.
 
 **Blocking finding (for S1/S3 via Atlas).** At 390, in the Brain's insufficient-credits state, the canvas's floating action
 bar ("Add node / library / Choose a step") sits over the bottom of the panel, on the "Make it 30 s instead" key and the
@@ -122,7 +123,7 @@ Measured [M, getComputedStyle]:
 
 | Surface | Sizes on one screen | Radii | Notable |
 | :-- | :-- | :-- | :-- |
-| Canvas | 11, 13, 14, 15, 16, 21 px | 8, 9, 10, 11, 12, 14, 16 (+ 5.6 composer) | ~160 px of chrome (60 app bar with 11 controls, 44 status strip, 56 dock with 10); minimap permanently over the canvas; in-progress card has no progress; failed card's reason truncated with an ellipsis; at 390 a "+" covers the prompt text and the dock overlaps the last row; the "N" badge overlaps the rail's "Admin" label at both widths |
+| Canvas | 11, 13, 14, 15, 16, 21 px | 8, 9, 10, 11, 12, 14, 16 (+ 5.6 composer) | ~160 px of chrome (60 app bar with 11 controls, 44 status strip, 56 dock with 10); minimap permanently over the canvas; in-progress card has no progress; failed card's reason truncated with an ellipsis; at 390 a "+" covers the prompt text and the dock overlaps the last row |
 | Brain panel | 13, 14, 15, 16 px (5 sizes in a 300–380 px column) | — | placeholder clipped mid-line; title truncated next to two 44 px keys; answer labels sit at the top of 44 px keys; panel `rgb(10,15,28)` vs bubbles `rgb(15,22,38)` too close to separate; empty state ≈ 650 px of blank column at 1440 |
 | Timeline | **11 px is the main size (~40 elements), some 10 px** vs a 24 px timecode | — | 64 px clips cut labels to "01 · Ha…"; the scene-2 refusal text spills out of its block over the label and ruler; four placeholder tracks at full 78 px height; viewer only ~573 × 322 between a 390 library and 470 inspector; at 390 the primary key wraps to three lines and the "Geolocation by DB-IP" credit sits on the transport bar |
 | Library drawer | 12 px names | 16 (desk), **22** (phone sheet, matches nothing) | names truncated on a gradient; the 32 px "+" covers every picture's corner; loading is one line, no skeleton; when the library read fails, finished canvas cards also say "Result can't be shown" |
@@ -165,9 +166,10 @@ These raise gaps 2 (type) and 4 (chrome) and add gaps 9 and 10 below.
 
 9. **The timeline is set too small** (11 px body, 10 px in places) and its refusal text overflows its block. → finding to
    S3 via Atlas; `SYSTEM.md` sets 12 px uppercase mono for labels and 13 px as the prose floor.
-10. **Floating controls cover content at 390** (dock over the Brain's purchase keys, "N" badge over the rail and the
-    library link, "+" over prompt text). → S5 owns the shell/rail styles (the "N" badge); the dock and panel go to S3/S1 via
-    Atlas.
+10. **Floating controls cover content at 390** (dock over the Brain's purchase keys, "+" over prompt text). → the dock and
+    panel go to S3/S1 via Atlas.
+    *Correction: an earlier push listed a round "N" badge over the rail and the library link as ours. It is the Next.js
+    development indicator, present only under `next dev` (the harness); it does not ship. Discard it in every screenshot.*
 
 Gap 10 is the only one that blocks a person from a remedy today; it is reported to Atlas as blocking for the
 Brain/canvas streams regardless of its place in this list, which ranks distance from first place, not urgency.
