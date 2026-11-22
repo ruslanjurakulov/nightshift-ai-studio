@@ -33,7 +33,7 @@ import { fmt } from "@/lib/i18n/core";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { SHOWCASE_ENTRIES, modelLeftOut } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { signupTryHref, studioTryHref } from "@/lib/site/showcase-link";
+import { linksSample, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
 import { SAMPLE_PARAM, isShippedPicture, resolveSampleSource, sampleSourcePicture, type SampleSource } from "@/lib/site/sample-source";
 import { SAMPLE_ASSET_KEY } from "@/lib/creative/sample-preload";
 import { cleanLinkPrompt, prefillFromImprove } from "@/lib/creative/improve";
@@ -56,6 +56,9 @@ const FILES = Object.fromEntries(Object.keys(SHOWCASE_FILES).map((k) => [k, { po
 const shipsSource = (e: (typeof I2V)[number]) =>
   e.input.kind === "operator_job" && SHOWCASE_ENTRIES.some((s) => s.jobId === (e.input as { jobId: string }).jobId && s.kind === "image");
 const RESOLVABLE = I2V.filter(shipsSource);
+/** The data the link builder resolves against, as a build gives it (see FILES). */
+const DATA = { entries: SHOWCASE_ENTRIES, files: FILES };
+const NOW = new Date();
 
 /** Sign-up -> the e-mailed callback -> /welcome -> its last button, as each step reads `next` (tests/security-studio-link-handoff). */
 function followSignup(href: string): URL {
@@ -79,10 +82,10 @@ describe("an i2v sample's link carries its words, its sample and its model", () 
   });
 
   it.each(I2V.map((e) => [e.jobId, e]))("signed in (%s): tool, model, sample and the words round-trip to the form", (_id, e) => {
-    const u = new URL(studioTryHref(e)!, ORIGIN);
+    const u = new URL(studioTryHref(e, NOW, DATA)!, ORIGIN);
     expect(u.pathname).toBe("/all-channels/create");
     expect(u.searchParams.get("tool")).toBe("i2v");
-    expect(u.searchParams.get(SAMPLE_PARAM)).toBe(e.jobId);
+    expect(u.searchParams.get(SAMPLE_PARAM)).toBe(shipsSource(e) ? e.jobId : null);
     expect(u.searchParams.get("model")).toBe(modelLeftOut(e) ? null : e.modelId);
     const words = cleanLinkPrompt("i2v", e.prompt);
     expect(words.length).toBeGreaterThan(0);
@@ -94,12 +97,12 @@ describe("an i2v sample's link carries its words, its sample and its model", () 
   });
 
   it.each(I2V.map((e) => [e.jobId, e]))("signed out (%s): through /signup?next=, the callback and /welcome, sample and words intact", (_id, e) => {
-    const href = signupTryHref(e)!;
+    const href = signupTryHref(e, NOW, DATA)!;
     expect(href.startsWith("/signup?next=")).toBe(true);
     const u = followSignup(href);
     expect(u.pathname).toBe("/all-channels/create");
     expect(u.searchParams.get("tool")).toBe("i2v");
-    expect(u.searchParams.get(SAMPLE_PARAM)).toBe(e.jobId);
+    expect(u.searchParams.get(SAMPLE_PARAM)).toBe(shipsSource(e) ? e.jobId : null);
     const kept = u.searchParams.get("prompt") ?? "";
     expect(kept.length).toBeGreaterThan(0);
     expect(cleanLinkPrompt("i2v", e.prompt).startsWith(kept)).toBe(true);
@@ -107,21 +110,58 @@ describe("an i2v sample's link carries its words, its sample and its model", () 
   });
 
   it("long words are still cut to fit sign-up with the sample in the link", () => {
-    const e = { ...I2V[0], prompt: "фонарь над тёмным озером ".repeat(60) };
-    const u = followSignup(signupTryHref(e)!);
+    const e = { ...RESOLVABLE[0], prompt: "фонарь над тёмным озером ".repeat(60) };
+    const u = followSignup(signupTryHref(e, NOW, DATA)!);
     expect(u.searchParams.get(SAMPLE_PARAM)).toBe(e.jobId);
     expect((u.searchParams.get("prompt") ?? "").length).toBeGreaterThan(0);
   });
 
   it("an operator preview still leaves the model out, and keeps the sample and the words", () => {
-    const u = new URL(studioTryHref({ ...I2V[0], operatorPreview: true })!, ORIGIN);
+    const u = new URL(studioTryHref({ ...RESOLVABLE[0], operatorPreview: true }, NOW, DATA)!, ORIGIN);
     expect(u.searchParams.has("model")).toBe(false);
-    expect(u.searchParams.get(SAMPLE_PARAM)).toBe(I2V[0].jobId);
+    expect(u.searchParams.get(SAMPLE_PARAM)).toBe(RESOLVABLE[0].jobId);
+  });
+
+  it("the two animations whose starting picture does not ship get no reference; the four that do, get theirs", () => {
+    expect(RESOLVABLE.length).toBe(4);
+    const unshipped = I2V.filter((e) => !shipsSource(e)).map((e) => e.jobId).sort();
+    expect(unshipped).toEqual(["49af4517-9ebf-44d9-80ed-f652cea6e071", "cf2af7b1-5433-4661-979b-f65f3f8a4dbf"]);
+    for (const id of unshipped) {
+      const e = I2V.find((x) => x.jobId === id)!;
+      for (const href of [tryHref(e, true, NOW, DATA)!, tryHref(e, false, NOW, DATA)!]) {
+        const u = href.startsWith("/signup") ? followSignup(href) : new URL(href, ORIGIN);
+        expect(u.searchParams.has(SAMPLE_PARAM), id).toBe(false);
+        // The words and the tool still go: the i2v form asks for a picture itself.
+        expect(u.searchParams.get("tool")).toBe("i2v");
+        expect((u.searchParams.get("prompt") ?? "").length).toBeGreaterThan(0);
+        // ...and the Studio, reading that link, says nothing about a sample.
+        expect(pageReads(u).sample).toBeNull();
+      }
+    }
+  });
+
+  it("the builder and the Studio's resolver agree for every entry, signed in and out", () => {
+    for (const e of SHOWCASE_ENTRIES) {
+      for (const signedIn of [true, false]) {
+        const href = tryHref(e, signedIn, NOW, DATA);
+        if (!href) continue;
+        const u = signedIn ? new URL(href, ORIGIN) : followSignup(href);
+        const named = u.searchParams.get(SAMPLE_PARAM);
+        const read = pageReads(u).sample;
+        expect(named !== null, e.jobId).toBe(linksSample(e, DATA));
+        // A link that names a sample is always resolved to a picture; one that names none is never refused.
+        expect(read?.state ?? null, e.jobId).toBe(named === null ? null : "ready");
+      }
+    }
+  });
+
+  it("without the files a build gives, no link claims a picture (the builder never names a sample the Studio would refuse)", () => {
+    for (const e of I2V) expect(new URL(studioTryHref(e, NOW, { entries: SHOWCASE_ENTRIES, files: {} })!, ORIGIN).searchParams.has(SAMPLE_PARAM)).toBe(false);
   });
 
   it("a text sample carries no sample reference", () => {
-    expect(new URL(studioTryHref(T2V)!, ORIGIN).searchParams.has(SAMPLE_PARAM)).toBe(false);
-    expect(new URL(studioTryHref(T2I)!, ORIGIN).searchParams.has(SAMPLE_PARAM)).toBe(false);
+    expect(new URL(studioTryHref(T2V, NOW, DATA)!, ORIGIN).searchParams.has(SAMPLE_PARAM)).toBe(false);
+    expect(new URL(studioTryHref(T2I, NOW, DATA)!, ORIGIN).searchParams.has(SAMPLE_PARAM)).toBe(false);
   });
 });
 
