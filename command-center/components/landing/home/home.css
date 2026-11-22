@@ -2,10 +2,14 @@
    and the closing band are dark in either theme (data-theme-scope="dark"), every other section follows the page's theme.
    In @layer components, like the rest of the public site's stylesheets, so a utility can still win. */
 @layer components {
-  .hm-root {
+  /* The hero is also Landing's first screen (HomeHero.tsx), where no .hm-root is around it: it carries the column itself. */
+  .hm-root,
+  .hm-hero {
     /* The public shell's own column (site.css --st-max / --st-gutter), so every section, new or reused, starts at one edge. */
     --hm-gutter: var(--st-gutter, 16px);
     --hm-max: calc(var(--st-max, 1240px) - 2 * var(--hm-gutter));
+  }
+  .hm-root {
     background: var(--ds-bg);
     color: var(--ds-text);
   }

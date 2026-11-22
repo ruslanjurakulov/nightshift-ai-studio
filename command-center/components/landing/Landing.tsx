@@ -14,22 +14,19 @@ import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { TryDemo, type TryThumb } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
-import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
 import { EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB, exampleMedia, landingExcludedJobs, landingPlacedJobs, slotMedia } from "@/components/site/samples";
 import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
-import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
-import { studioToolsOpen } from "@/lib/site/tool-samples";
 import { TypedText } from "@/components/site/TypedText";
-import { TEXT_TOOL } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
+import { HomeHero } from "@/components/landing/home/HomeHero";
 import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import { LiveStats } from "@/components/site/LiveStats";
@@ -95,7 +92,8 @@ export function Landing({
   const formats = formatsFor(t);
   return (
     <div className="lp-root">
-      <Hero t={t} formats={formats} />
+      {/* The first screen the owner kept (2026-11-22): our Studio clip of the steaming street stall, shared with HomePage. */}
+      <HomeHero t={t} />
       <SampleTicker t={t} locale={locale} exclude={leftOut} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
       <LiveStats t={t} locale={locale} stats={liveStats} />
@@ -133,72 +131,6 @@ function formatsFor(t: Dictionary): LandingFormat[] {
     const copy = t.site.formats.items.find((i) => i.id === f.id);
     return entry && copy && SHOWCASE_FILES[entry.jobId] ? [{ id: f.id, job: f.job, title: copy.title, body: copy.body, entry }] : [];
   });
-}
-
-/**
- * The first screen, lean as an AI studio's is: the hero slot's picture edge to edge (one of our generations once its job is
- * merged, labelled AI-generated; until then the stock fallback, labelled stock), under a veil that keeps the words at 4.5:1;
- * the headline, one sentence, the prompt bar (it only opens the Studio form) with real prompts to start from, one primary and
- * one secondary action. The welcome grant, the price and the three promises are just under it (Facts). The picture is the
- * page's LCP: eager, high priority, its clip started only after load and idle.
- */
-function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
-  const h = t.site.hero;
-  const m = slotMedia("hero");
-  const moving = m.kind === "ai" ? m.moving : m.clip !== null;
-  // The bar makes a clip from words when nothing is attached, so its starting points are the clips' own prompts: a picture's words
-  // sent as a clip's would open a form for something the sample never was.
-  const ideas: PromptIdea[] = formats.flatMap(({ id, title, entry }) =>
-    entry.capability === TEXT_TOOL && entry.prompt.trim() ? [{ id, label: title, tool: TEXT_TOOL, prompt: entry.prompt }] : [],
-  );
-  return (
-    <section aria-labelledby="hero-title" className="nx-hero nx-sh">
-      <div className="nx-sh-media" {...placeBox(m, true)}>
-        <PlaceFill media={m} s={t.site} eager early labels={false} sizes="100vw" />
-      </div>
-      <div className="nx-wrap nx-sh-in">
-        <h1 id="hero-title" className="nx-h1 nx-sh-h1">
-          {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
-        </h1>
-        {/* While no Studio model is on sale (lib/site/tool-samples.ts), the sentence offers no picture or clip a visitor can make. */}
-        <p className="nx-sh-lead">{studioToolsOpen() ? h.leadShort : h.leadShortClosed}</p>
-        {/* Four starting points, one row: the first screen stays lean (the rest of the formats are in the gallery). */}
-        <PromptBar copy={t.site.prompt} ideas={ideas.slice(0, 4)} studioOpen={studioToolsOpen()} />
-        <div className="nx-sh-actions">
-          <Link href="/signup" className="nx-btn">
-            {h.cta}
-            <ArrowRight aria-hidden />
-          </Link>
-          {/* The one secondary action, and not a second button: it jumps to the plan demo below, which shows a plan and creates nothing. */}
-          <a href="#try" className="nx-sample">
-            <span className="nx-sample-label">{h.demo}</span>
-            <span className="nx-sample-note">{h.demoNote}</span>
-          </a>
-        </div>
-      </div>
-      <div className="nx-wrap nx-sh-foot">
-        {/* What the picture behind the words is, on it: our sample's AI-generated badge, or the stock contributor's credit. */}
-        {m.kind === "ai" ? (
-          <p className="nx-sh-credit" {...placeBox({ ...m, moving: false })}>
-            <AiBadge g={t.site.gallery} />
-          </p>
-        ) : (
-          <p className="nx-sh-credit" data-media="stock">
-            <span className="nx-result-badge" data-kind="still">
-              {m.footage ? t.site.samples.frameTag : t.site.samples.tag}
-            </span>
-            {m.clip && (
-              <span className="nx-result-badge" data-kind="clip">
-                {t.site.samples.clipTag}
-              </span>
-            )}
-            <span className="nx-result-credit">{creditLine(m.id, t.site.samples.credit)}</span>
-          </p>
-        )}
-        {moving && <MotionToggle pause={t.site.fx.pause} />}
-      </div>
-    </section>
-  );
 }
 
 /**

@@ -1,28 +1,22 @@
 import Link from "next/link";
-import { preload } from "react-dom";
 import { ArrowRight, Download, Lightbulb, ShieldCheck, Sparkles } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n/core";
 import type { PricingTeaser } from "@/lib/landing";
 import type { PriceRates } from "@/lib/site/price-check";
 import type { PublicModel } from "@/lib/public-models";
-import { posterSrcSet } from "@/lib/site/renditions";
 import { buttonClass } from "@/components/ds/button-class";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
-import { MotionToggle } from "@/components/site/MotionToggle";
 import { ClipPause } from "@/components/site/ClipPause";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { Faq } from "@/components/landing/Faq";
 import { GoogleData } from "@/components/landing/Landing";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import type { PackExpiry } from "@/lib/plans";
-import { HERO_JOB, PIECE_SIZE, reelItem, studioPieces } from "@/components/landing/home/home-reel";
+import { PIECE_SIZE, studioPieces } from "@/components/landing/home/home-reel";
 import { StudioClip, TemplateClip } from "@/components/site/StudioClip";
-import { IdeaBox } from "@/components/landing/home/IdeaBox";
+import { HomeHero } from "@/components/landing/home/HomeHero";
 import "@/components/landing/home/home.css";
-
-/** The hero picture's widths, as the browser should choose them: the whole screen. */
-const HERO_SIZES = "100vw";
 
 /**
  * The public landing page "/" (S4 sprint): a cinematic first screen, the Studio's own clips, how it works in three steps, the
@@ -57,11 +51,9 @@ export function HomePage({
   dodo: boolean;
 }) {
   const h = t.landingHome;
-  const hero = reelItem(HERO_JOB);
-  if (hero) preload(hero.f.posterSm, { as: "image", imageSrcSet: posterSrcSet(hero.f), imageSizes: HERO_SIZES, fetchPriority: "high" });
   return (
     <div className="hm-root">
-      <Hero t={t} />
+      <HomeHero t={t} />
       <Reel t={t} locale={locale} />
       <How t={t} />
       {/* The stages of one real run, each with its real file (id="autopilot": /solutions links here). */}
@@ -77,50 +69,6 @@ export function HomePage({
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} dodo={dodo} />
       <Final h={h} />
     </div>
-  );
-}
-
-function Hero({ t }: { t: Dictionary }) {
-  const h = t.landingHome.hero;
-  const item = reelItem(HERO_JOB);
-  return (
-    // Dark whatever the page's theme: the words sit on a moving picture, and the picture is night.
-    <section aria-labelledby="hm-hero-title" className="hm-hero" data-theme-scope="dark">
-      {item && (
-        <div className="hm-hero-media" data-clip="sample" aria-hidden="true">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={item.f.posterSm}
-            srcSet={posterSrcSet(item.f)}
-            sizes={HERO_SIZES}
-            width={item.e.width}
-            height={item.e.height}
-            alt=""
-            className="hm-hero-still"
-            fetchPriority="high"
-          />
-          <ShowcaseClip jobId={item.e.jobId} compact={false} early />
-        </div>
-      )}
-      <div className="hm-hero-veil" aria-hidden="true" />
-      <div className="hm-wrap hm-hero-body">
-        <p className="hm-eyebrow">{h.eyebrow}</p>
-        <h1 id="hm-hero-title" className="ds-display hm-hero-title">
-          {h.title}
-        </h1>
-        <p className="hm-hero-lead">{h.lead}</p>
-        <IdeaBox copy={h.idea} />
-        <a href="#how" className="hm-idea-more">
-          {h.secondary}
-        </a>
-      </div>
-      {item && (
-        <p className="hm-hero-credit">
-          <span className="hm-badge">{h.ai}</span> {h.reelLabel}
-        </p>
-      )}
-      <MotionToggle pause={t.site.fx.pause} />
-    </section>
   );
 }
 
