@@ -58,6 +58,7 @@ export const studioLiveEn = {
   status: {
     draft: "Planned",
     waiting: "Waiting",
+    retried: "Waiting to retry",
     working: "Working",
     done: "Done",
     failed: "Failed",
@@ -173,7 +174,7 @@ export const studioLiveEn = {
     step: "A step",
     made: "{step}: done",
     failed: "{step}: failed",
-    retried: "{step}: trying again",
+    retried: "{step}: waiting to retry",
     words: {
       "created": "Project created",
       "saved": "Plan saved",
