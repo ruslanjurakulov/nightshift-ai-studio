@@ -17,7 +17,7 @@ import { isVoiceId } from "@/lib/ttsModels";
  * played as it is, so no clip is looked up or prepared and nothing is spent on the operator's account.
  */
 
-type State = "idle" | "loading" | "preparing" | "playing" | "failed" | "operator_only" | "rate_limited";
+type State = "idle" | "loading" | "preparing" | "playing" | "failed" | "operator_only" | "rate_limited" | "retired";
 
 const POLL_MS = 5000;
 const POLL_TRIES = 36; // three minutes
@@ -89,6 +89,8 @@ export function VoicePreviewButton({
       });
       if (res.status === 403) return setState("operator_only");
       if (res.status === 429) return setState("rate_limited");
+      if (res.status === 400 && ((await res.json().catch(() => ({}))) as { error?: unknown }).error === "voice_retired")
+        return setState("retired");
       if (!res.ok) return setState("failed");
       setState("preparing");
       for (let i = 0; i < POLL_TRIES; i++) {
@@ -134,7 +136,9 @@ export function VoicePreviewButton({
               ? t.create.voicePreviewOperatorOnly
               : state === "rate_limited"
                 ? t.create.voicePreviewRateLimited
-                : ""}
+                : state === "retired"
+                  ? t.agents.runVoiceRetired
+                  : ""}
       </span>
     </div>
   );

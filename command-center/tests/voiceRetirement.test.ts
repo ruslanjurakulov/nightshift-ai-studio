@@ -52,6 +52,11 @@ describe("a channel's saved Default voices", () => {
     expect(channelVoiceNotices({ elevenlabs_voice_id: GEORGE }, new Date("2027-01-01T00:00:00Z"))[0].state).toBe("retired");
   });
 
+  it("is one notice when the narrator and the quote voice are the same Default voice", () => {
+    const notices = channelVoiceNotices({ elevenlabs_voice_id: GEORGE, elevenlabs_secondary_voice_id: ` ${GEORGE}` }, before);
+    expect(notices.map((n) => [n.slot, n.name])).toEqual([["both", "George"]]);
+  });
+
   it("says nothing for an Edge channel, a non-Default voice, the narrator sentinel or no config", () => {
     expect(channelVoiceNotices({ tts_provider: "edge", elevenlabs_voice_id: GEORGE }, before)).toEqual([]);
     expect(channelVoiceNotices({ elevenlabs_voice_id: ADAM, elevenlabs_secondary_voice_id: "narrator" }, before)).toEqual([]);

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * POST /api/agent/run with a `voice_id`: the Custom Voice hard gate on the Actions backend (docs/CUSTOM_VOICE.md).
@@ -322,5 +322,40 @@ describe("the route source", () => {
     expect(src.indexOf("runVoiceProblem(")).toBeGreaterThan(-1);
     expect(src.indexOf("runVoiceProblem(")).toBeLessThan(src.indexOf("reserveRunCredits(supabase"));
     expect(src).toContain("access.orgId");
+  });
+});
+
+describe.each(["actions", "queue"] as const)("%s backend: a retired ElevenLabs Default voice", (backend) => {
+  const GEORGE = "JBFqnCBsd6RMkjVDRZzb";
+  beforeEach(() => {
+    useBackend(backend);
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("from 1 Jan 2027 is refused 400 voice_retired before any hold, dispatch, job or database question", async () => {
+    vi.setSystemTime(new Date("2027-01-01T00:00:00Z"));
+    const res = await post({ voice_id: GEORGE });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "voice_retired" });
+    nothingStarted();
+    expect(h.rpcCalls).toEqual([]);
+  });
+
+  it("on 31 Dec 2026 still runs: the voice works until then", async () => {
+    vi.setSystemTime(new Date("2026-12-31T23:00:00Z"));
+    const res = await post({ voice_id: GEORGE });
+    expect(res.status).toBe(200);
+  });
+
+  it("reads as the remedy in every language, and says nothing was held", () => {
+    for (const locale of ["en", "ru", "uz"] as const) {
+      const t = dictionaries[locale];
+      const a = readRunAnswer({ ok: false, status: 400 }, { error: "voice_retired" }, t, locale);
+      if (a.outcome !== "failed") throw new Error("expected a failure");
+      expect(a.message).toBe(`${t.agents.runVoiceRetired} ${t.create.flow.notTaken}`);
+    }
+    expect(dictionaries.ru.agents.runVoiceRetired).not.toBe(dictionaries.en.agents.runVoiceRetired);
+    expect(dictionaries.uz.agents.runVoiceRetired).not.toBe(dictionaries.en.agents.runVoiceRetired);
   });
 });

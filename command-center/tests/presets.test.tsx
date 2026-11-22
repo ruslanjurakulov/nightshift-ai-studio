@@ -42,7 +42,7 @@ import {
   type PresetCard,
 } from "@/lib/presets";
 import { HOME_FORMATS, defaultLanguage, lengthSeconds, runPrefillFromQuery } from "@/lib/home";
-import { STUDIO_VOICES, prefillFromQuery } from "@/lib/creative/studio";
+import { STUDIO_VOICES, prefillFromQuery, studioVoices } from "@/lib/creative/studio";
 import { STUDIO_TEMPLATES } from "@/lib/creative/templates";
 import { STYLE_LIBRARY } from "@/lib/styles/library";
 import { deskFor, deskFromQuery } from "@/lib/creative/desks";
@@ -64,7 +64,7 @@ describe("preset cards", () => {
       const cards = cardsFor(locale);
 
       it("covers every format, look, template and voice once, with words and a channel link", () => {
-        expect(cards.length).toBe(HOME_FORMATS.length + STYLE_LIBRARY.length + STUDIO_TEMPLATES.length + STUDIO_VOICES.length);
+        expect(cards.length).toBe(HOME_FORMATS.length + STYLE_LIBRARY.length + STUDIO_TEMPLATES.length + studioVoices(new Date()).length);
         expect(new Set(cards.map((c) => c.key)).size).toBe(cards.length);
         for (const c of cards) {
           expect(c.title.trim(), c.key).not.toBe("");
@@ -121,7 +121,7 @@ describe("preset cards", () => {
       });
 
       it("a voice opens Voice-over with that voice picked", () => {
-        for (const v of STUDIO_VOICES) {
+        for (const v of studioVoices(new Date())) {
           const c = cards.find((x) => x.key === `voice:${v.id}`)!;
           const { path, q } = open(c.href);
           expect(path).toBe(`/${SLUG}/create`);
@@ -150,6 +150,13 @@ describe("presetPrefill", () => {
     expect(presetPrefill(tts, { voice: "A".repeat(20) })).toEqual(tts);
     expect(presetPrefill(base, { voice: STUDIO_VOICES[0].id })).toEqual(base);
     expect(presetPrefill(null, { template: "broll" })).toBeNull();
+  });
+
+  it("takes a Default voice from ?voice= until 31 Dec 2026, and refuses it from 1 Jan 2027", () => {
+    const tts = prefillFromQuery("tts", undefined)!;
+    const george = "JBFqnCBsd6RMkjVDRZzb";
+    expect(presetPrefill(tts, { voice: george }, new Date("2026-12-31T23:00:00Z"))?.voiceId).toBe(george);
+    expect(presetPrefill(tts, { voice: george }, new Date("2027-01-01T00:00:00Z"))).toEqual(tts);
   });
 
   it("keeps a library picture when a template for a picture tool is applied", () => {
@@ -250,7 +257,7 @@ describe("PresetsGallery", () => {
     const voices = screen.getByRole("button", { name: presetsEn.kinds.voice });
     fireEvent.click(voices);
     expect(voices.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getAllByRole("link")).toHaveLength(STUDIO_VOICES.length);
+    expect(screen.getAllByRole("link")).toHaveLength(studioVoices(new Date()).length);
 
     fireEvent.click(screen.getByRole("button", { name: presetsEn.kinds.all }));
     fireEvent.change(screen.getByRole("searchbox", { name: presetsEn.searchLabel }), { target: { value: "shorts" } });

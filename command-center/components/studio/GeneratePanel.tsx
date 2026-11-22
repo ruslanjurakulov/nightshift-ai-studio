@@ -35,7 +35,7 @@ import {
   PANEL_CAPABILITIES,
   DUB_LANGUAGES,
   PROMPT_MAX,
-  STUDIO_VOICES,
+  studioVoices,
   apiErrorMessage,
   asCreativeError,
   blockedReason,
@@ -90,6 +90,7 @@ import {
   type UpscaleFactor,
   type UpscaleTarget,
 } from "@/lib/creative/studio";
+import { voiceRetirement } from "@/lib/voiceRetirement";
 
 const QUOTE_DELAY_MS = 500;
 
@@ -1321,9 +1322,13 @@ export function GeneratePanel({
   };
   // The cast is a radio group: arrows move and pick, Home/End jump, one tab stop.
   const castRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const castPicked = STUDIO_VOICES.some((v) => v.id === voiceId);
+  // Read per render: a tab left open over 31 Dec stops offering a retired Default voice on its next render.
+  const now = new Date();
+  const builtIn = studioVoices(now);
+  const leavingTag = (id: string) => (voiceRetirement(id, now) === "leaving" ? ` · ${t.create.flow.voiceLeavingTag}` : "");
+  const castPicked = builtIn.some((v) => v.id === voiceId);
   function onCastKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
-    const n = STUDIO_VOICES.length;
+    const n = builtIn.length;
     let to = -1;
     if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
@@ -1331,7 +1336,7 @@ export function GeneratePanel({
     else if (e.key === "End") to = n - 1;
     if (to < 0) return;
     e.preventDefault();
-    pickVoice(STUDIO_VOICES[to].id);
+    pickVoice(builtIn[to].id);
     castRefs.current[to]?.focus();
   }
   const builtInVoices =
@@ -1343,7 +1348,7 @@ export function GeneratePanel({
             {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
           </span>
           <div role="radiogroup" aria-labelledby="gen-voice-label" className="desk-cast" data-testid="gen-voice-cast">
-            {STUDIO_VOICES.map((v, i) => {
+            {builtIn.map((v, i) => {
               const on = voiceId === v.id;
               // One tab stop: the picked voice, or the first when none is picked yet.
               const stop = on || (!castPicked && i === 0);
@@ -1364,7 +1369,10 @@ export function GeneratePanel({
                   <span aria-hidden className="ns-lamp" data-tone={on ? "run" : "off"} />
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-semibold text-[var(--color-fg)]">{v.name}</span>
-                    <span className="truncate text-xs text-[var(--color-muted)]">{voiceStyle(v)}</span>
+                    <span className="truncate text-xs text-[var(--color-muted)]">
+                      {voiceStyle(v)}
+                      {leavingTag(v.id)}
+                    </span>
                   </span>
                 </button>
               );
@@ -1383,9 +1391,10 @@ export function GeneratePanel({
             className="studio-field w-full px-3 py-2.5 text-base text-[var(--color-fg)] outline-none sm:text-[14px]"
           >
             <option value="">{t.gen.voicePick}</option>
-            {STUDIO_VOICES.map((v) => (
+            {builtIn.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.name} — {voiceStyle(v)}
+                {leavingTag(v.id)}
               </option>
             ))}
           </select>

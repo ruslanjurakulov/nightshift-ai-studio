@@ -167,12 +167,17 @@ export function isUpscaleTarget(v: unknown): v is UpscaleTarget {
   return typeof v === "string" && (UPSCALE_TARGETS as readonly string[]).includes(v);
 }
 
+/** The Studio's built-in voice catalogue: the same list the Create page offers for narration. Not filtered; offer studioVoices(now). */
+export const STUDIO_VOICES = VOICES;
+
 /**
- * The voices offered for a voice change: the same list the Create page offers for narration, without a retired
- * Default voice (the TTS adapter refuses one). Read once per page load, so a tab left open over 31 Dec still offers
- * it until reload, and then the adapter's refusal names the remedy.
+ * The built-in voices that may be offered at `now`: a retired Default voice is left out (the TTS adapter refuses one). A
+ * function of the moment, called per render or request, so a server process or a tab that outlives 31 Dec does not keep
+ * offering it.
  */
-export const STUDIO_VOICES = offeredVoices(VOICES, new Date());
+export function studioVoices(now: Date) {
+  return offeredVoices(VOICES, now);
+}
 export { DUB_LANGUAGES, type DubLanguage };
 
 export function isDubLanguage(v: unknown): v is DubLanguage {
@@ -1009,7 +1014,7 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
   // Speech is priced by its words, not its voice: with the words typed, the
   // sheet can show prices before a voice is picked.
   if (form.capability === "tts" && form.prompt.trim()) {
-    return buildParams({ ...form, voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null) });
+    return buildParams({ ...form, voiceId: isVoiceId(form.voiceId) ? form.voiceId : (studioVoices(new Date())[0]?.id ?? null) });
   }
   if ((needsSource(form.capability) || needsRecording(form.capability) || needsVideo(form.capability)) && !isUuid(form.sourceId))
     return null;
@@ -1021,7 +1026,7 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
   return buildParams({
     ...form,
     prompt: PRICE_STAND_IN,
-    voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null),
+    voiceId: isVoiceId(form.voiceId) ? form.voiceId : (studioVoices(new Date())[0]?.id ?? null),
     targetLanguage: isDubLanguage(form.targetLanguage) ? form.targetLanguage : DUB_LANGUAGES[0],
   });
 }

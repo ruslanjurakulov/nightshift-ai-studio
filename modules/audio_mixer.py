@@ -180,7 +180,12 @@ def _verify_voice_not_retired(narrator: str, secondary: str, today=None) -> None
 
     The vendor's suggested replacement is only named in the message. It is not
     picked: it may not be in this account's list, and a voice the audience has not
-    heard on this channel is the wrong voice (rule 4)."""
+    heard on this channel is the wrong voice (rule 4).
+
+    A run that passes this on 31 Dec shortly before midnight UTC can reach synthesis
+    on 1 Jan. Synthesis asks again (``_tts_elevenlabs``) and stops there, after the
+    script was paid for; that window is one night, and the alternative, refusing a
+    voice that still works, would stop runs on its last day."""
     for slot, vid in (("narrator", narrator), ("quote voice", secondary)):
         if not vid or vid == NARRATOR:
             continue

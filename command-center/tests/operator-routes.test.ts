@@ -226,6 +226,21 @@ describe("C8: nobody but the operator spends the operator's ElevenLabs quota", (
     expect(dispatchWorkflow).toHaveBeenCalledTimes(1);
   });
 
+  it("a retired ElevenLabs Default voice gets no clip prepared from 1 Jan 2027: no rate taken, nothing dispatched", async () => {
+    operator();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2027-01-01T00:00:00Z"));
+    try {
+      const res = await preview.POST(post({ voice_id: "JBFqnCBsd6RMkjVDRZzb" }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "voice_retired" });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(dispatchWorkflow).not.toHaveBeenCalled();
+    expect(rpcCalls.some((c) => c.fn === "take_web_rate")).toBe(false);
+  });
+
   it("a clip that already exists is never prepared (paid for) again", async () => {
     operator();
     state.clipExists = true;

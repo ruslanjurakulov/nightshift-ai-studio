@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Dna } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { VOICES } from "@/lib/ttsModels";
-import { offeredVoices } from "@/lib/voiceRetirement";
+import { channelVoiceNotices, offeredVoices, voiceRetirement } from "@/lib/voiceRetirement";
+import { channelPath } from "@/lib/channels";
 import {
   DNA_ASPECTS,
   DNA_FORMATS,
@@ -78,8 +79,15 @@ export function ChannelDnaSection({
 
   const [kit, setKit] = useState<string | null>(dna.styleKitId);
   const [chars, setChars] = useState<string[]>(dna.characterIds);
-  // "" keeps the voice as it is (a custom id the list cannot show, or none).
-  const [voice, setVoice] = useState<string>(knownVoice(dna.voiceId)?.id ?? "");
+  const now = new Date();
+  // A stored voice ElevenLabs has retired is shown as retired, never as a choice: the editor starts on "keep" (null, which
+  // set_channel_dna reads as "leave it"), so Save does not send the retired id again, and the keep option names it.
+  const storedRetired = voiceRetirement(dna.voiceId, now) === "retired" ? (knownVoice(dna.voiceId)?.name ?? null) : null;
+  const startVoice = storedRetired ? "" : (knownVoice(dna.voiceId)?.id ?? "");
+  // The runs' notice; on a channel whose runs read the standard voice this voice is the Studio's only, so it would be false.
+  const notices = standardVoice ? [] : channelVoiceNotices({ elevenlabs_voice_id: dna.voiceId ?? undefined }, now);
+  // "" keeps the voice as it is (a custom id the list cannot show, a retired one, or none).
+  const [voice, setVoice] = useState<string>(startVoice);
   const [language, setLanguage] = useState<DnaLanguage | null>(dna.language);
   const [format, setFormat] = useState<DnaFormat | null>(dna.format);
   const [aspect, setAspect] = useState<DnaAspect | null>(dna.aspect);
@@ -90,7 +98,9 @@ export function ChannelDnaSection({
     const c = characters.find((x) => x.id === id);
     return c ? `@${c.name}` : t.dna.unavailableItem;
   };
-  const voiceName = knownVoice(dna.voiceId)?.name ?? (dna.voiceId ? t.dna.customVoice : t.dna.notSet);
+  const voiceName = storedRetired
+    ? fmt(t.dna.retiredVoiceName, { name: storedRetired })
+    : (knownVoice(dna.voiceId)?.name ?? (dna.voiceId ? t.dna.customVoice : t.dna.notSet));
   const languageText = dna.language ? languageLabel(dna.language) : dna.languageRaw || t.dna.notSet;
   const shownAspect = dnaAspect(dna);
   const styleReady = styleState === "ready";
@@ -98,7 +108,7 @@ export function ChannelDnaSection({
   function reset() {
     setKit(dna.styleKitId);
     setChars(dna.characterIds);
-    setVoice(knownVoice(dna.voiceId)?.id ?? "");
+    setVoice(startVoice);
     setLanguage(dna.language);
     setFormat(dna.format);
     setAspect(dna.aspect);
@@ -175,6 +185,18 @@ export function ChannelDnaSection({
         )}
       </div>
       <p className="g2-note">{t.dna.hint}</p>
+      {available && notices.length > 0 && (
+        <div className="g2-warn">
+          {notices.map((n) => (
+            <p key={n.slot}>
+              {fmt(n.state === "retired" ? t.voice.retireGone : t.voice.retireLeaving, { slot: t.voice.pickNarrator, name: n.name })}
+            </p>
+          ))}
+          <Link href={channelPath(channelId, "/agents")} className="tap-link">
+            {t.create.flow.voiceChange}
+          </Link>
+        </div>
+      )}
 
       {!available ? (
         <p className="g2-note">{t.dna.notEnabled}</p>
@@ -268,11 +290,14 @@ export function ChannelDnaSection({
               className="ns-field w-full"
               aria-describedby={standardVoice ? `${uid}-voice-note` : undefined}
             >
-              <option value="">{dna.voiceId ? t.dna.keepVoice : t.dna.notSet}</option>
+              <option value="">
+                {storedRetired ? fmt(t.dna.keepRetiredVoice, { name: storedRetired }) : dna.voiceId ? t.dna.keepVoice : t.dna.notSet}
+              </option>
               {/* A retired Default voice is not offered again; the run refuses it (modules/voice_retirement). */}
-              {offeredVoices(VOICES, new Date()).map((v) => (
+              {offeredVoices(VOICES, now).map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.name} — {v.style}
+                  {voiceRetirement(v.id, now) === "leaving" ? ` · ${t.create.flow.voiceLeavingTag}` : ""}
                 </option>
               ))}
             </select>

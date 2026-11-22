@@ -5,6 +5,7 @@ import { Loader2, Lock, RotateCw, Search, TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import { VOICE_ID_RE } from "@/lib/creative/operations";
+import { voiceRetirement } from "@/lib/voiceRetirement";
 import {
   VOICE_FACETS,
   facetValues,
@@ -181,7 +182,9 @@ export function VoiceCatalog({
   const pickedMissing = Boolean(value) && !state.truncated && !all.some((v) => v.voiceId === value);
   // On the free plan ElevenLabs refuses a library voice through the API (402 paid_plan_required): it is shown, so the
   // person sees why it is missing, but it cannot be picked. An unknown plan blocks nothing and says it does not know.
-  const blocked = (v: CatalogVoice) => v.library && state.plan === "free";
+  const now = new Date();
+  // A retired ElevenLabs Default voice is shown but not pickable: the TTS adapter refuses it (modules/voice_retirement).
+  const blocked = (v: CatalogVoice) => (v.library && state.plan === "free") || voiceRetirement(v.voiceId, now) === "retired";
   const pickedBlocked = all.some((v) => v.voiceId === value && blocked(v));
   const pickedShown = shown.some((v) => v.voiceId === value && !blocked(v));
   const firstOpen = shown.findIndex((v) => !blocked(v));
@@ -303,6 +306,9 @@ export function VoiceCatalog({
                     <span className="flex flex-wrap items-center gap-x-2 font-semibold text-[var(--color-fg)]">
                       <span className="truncate">{v.name}</span>
                       {category && <span className="text-[11px] font-normal text-[var(--color-muted)]">{category}</span>}
+                      {voiceRetirement(v.voiceId, now) === "leaving" && (
+                        <span className="text-[11px] font-normal text-[var(--color-warn,#b45309)]">{t.create.flow.voiceLeavingTag}</span>
+                      )}
                     </span>
                     {traits.length > 0 && (
                       <span className="truncate text-xs text-[var(--color-muted)]">{traits.map(traitText).join(" · ")}</span>

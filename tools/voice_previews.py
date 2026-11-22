@@ -38,6 +38,8 @@ import requests
 logger = logging.getLogger("voice_previews")
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 VOICES_FILE = ROOT / "command-center" / "lib" / "voices.json"
 ELEVENLABS_API = "https://api.elevenlabs.io/v1"
 BUCKET = "voice-previews"
@@ -54,8 +56,12 @@ class PreviewError(RuntimeError):
     """One voice's clip could not be prepared. The message never holds a key."""
 
 
-def listed_voice_ids(path: Path = VOICES_FILE) -> List[str]:
-    return [v["id"] for v in json.loads(path.read_text(encoding="utf-8")) if VOICE_ID.match(v.get("id", ""))]
+def listed_voice_ids(path: Path = VOICES_FILE, today=None) -> List[str]:
+    """The catalogue's voices that still speak: a retired ElevenLabs Default voice is skipped, since preparing its clip
+    would only collect ElevenLabs' refusal (modules/voice_retirement)."""
+    from modules import voice_retirement
+    return [v["id"] for v in json.loads(path.read_text(encoding="utf-8"))
+            if VOICE_ID.match(v.get("id", "")) and voice_retirement.refusal(v["id"], today) is None]
 
 
 class Previewer:
@@ -155,7 +161,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     previewer = Previewer(os.environ["ELEVENLABS_API_KEY"].strip(), os.environ["SUPABASE_URL"].strip(),
                           os.environ["SUPABASE_SERVICE_KEY"].strip())
-    ids = [args.voice_id.strip()] if args.voice_id.strip() else listed_voice_ids()
+    one = args.voice_id.strip()
+    if one:
+        from modules import voice_retirement
+        retired = voice_retirement.refusal(one)
+        if retired:
+            logger.error("%s", retired)
+            return 2
+    ids = [one] if one else listed_voice_ids()
     return run(ids, previewer, force=args.force)
 
 

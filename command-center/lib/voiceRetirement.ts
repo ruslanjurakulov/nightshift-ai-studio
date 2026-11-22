@@ -66,22 +66,34 @@ export function offeredVoices<V extends { id: string }>(voices: readonly V[], no
   return voices.filter((v) => voiceRetirement(v.id, now) !== "retired");
 }
 
-export type ChannelVoiceNotice = { slot: "narrator" | "quote"; id: string; state: Retirement } & DefaultVoice;
+export type ChannelVoiceNotice = { slot: "narrator" | "quote" | "both"; id: string; state: Retirement } & DefaultVoice;
 
 /**
- * The channel's saved ElevenLabs voices that are Default voices, narrator first. An Edge channel has none: its
- * voice is not an ElevenLabs id. "narrator" as the quote voice is the narrator's voice, already covered.
+ * The channel's saved ElevenLabs voices that are Default voices, narrator first; one notice ("both") when the narrator and
+ * the quote voice are the same voice. An Edge channel has none: its voice is not an ElevenLabs id. "narrator" as the quote
+ * voice is the narrator's voice, already covered.
+ *
+ * Only what the channel row says is judged. A run also falls back to deployment settings the browser cannot see
+ * (config.ELEVENLABS_VOICE_ID / ELEVENLABS_SECONDARY_VOICE_ID when a channel has none, config.TTS_PROVIDER when it names no
+ * provider), so a channel that saved nothing gets no notice here; the run's own preflight still refuses a retired fallback.
  */
 export function channelVoiceNotices(
   cfg: { tts_provider?: string; elevenlabs_voice_id?: string; elevenlabs_secondary_voice_id?: string } | null | undefined,
   now: Date,
 ): ChannelVoiceNotice[] {
   if (!cfg || cfg.tts_provider === "edge") return [];
+  const narrator = own(cfg.elevenlabs_voice_id);
+  const quote = own(cfg.elevenlabs_secondary_voice_id);
   const out: ChannelVoiceNotice[] = [];
-  for (const [slot, raw] of [["narrator", cfg.elevenlabs_voice_id], ["quote", cfg.elevenlabs_secondary_voice_id]] as const) {
-    const row = defaultVoice(raw);
-    const state = voiceRetirement(raw, now);
-    if (row && state) out.push({ slot, id: own(raw), state, ...row });
+  const add = (slot: ChannelVoiceNotice["slot"], id: string) => {
+    const row = defaultVoice(id);
+    const state = voiceRetirement(id, now);
+    if (row && state) out.push({ slot, id, state, ...row });
+  };
+  if (narrator && narrator === quote) add("both", narrator);
+  else {
+    add("narrator", narrator);
+    add("quote", quote);
   }
   return out;
 }

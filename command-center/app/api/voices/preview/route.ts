@@ -4,6 +4,7 @@ import { requireOperator } from "@/lib/auth/org-roles";
 import { VOICE_PREVIEW_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
 import { dispatchWorkflow, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isVoiceId } from "@/lib/ttsModels";
+import { voiceRetirement } from "@/lib/voiceRetirement";
 import { guardAdminPost } from "@/lib/server/admin-post-guard";
 import { parseJsonCapped } from "@/lib/server/json-body";
 
@@ -55,6 +56,8 @@ export async function POST(request: Request) {
   }
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
   if (!isVoiceId(voiceId)) return NextResponse.json({ error: "bad_voice_id" }, { status: 400 });
+  // A retired Default voice no longer speaks: the workflow would spend an Actions run to be refused by ElevenLabs.
+  if (voiceRetirement(voiceId, new Date()) === "retired") return NextResponse.json({ error: "voice_retired" }, { status: 400 });
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "supabase_not_configured" }, { status: 503 });

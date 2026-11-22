@@ -72,6 +72,11 @@ export function VoiceEditor({
   const notices = channelVoiceNotices(savedConfig, now);
   const accountIds = voices ? voices.map((v) => v.voiceId) : null;
   const suggestedIds = new Set(notices.filter((n) => suggestionInAccount(n, accountIds) === "in").map((n) => n.suggestedId));
+  // After the date a retired voice is not offered (L2), and ElevenLabs' suggestion, when the account has it, comes first (L3).
+  // Neither picks anything: the order is a pointer, the click is the person's.
+  const listed = (voices ?? [])
+    .filter((v) => voiceRetirement(v.voiceId, now) !== "retired")
+    .sort((a, b) => Number(suggestedIds.has(b.voiceId)) - Number(suggestedIds.has(a.voiceId)));
   const retiredPick =
     provider === "elevenlabs" && [selected, secondary].some((id) => voiceRetirement(id, now) === "retired");
 
@@ -147,20 +152,23 @@ export function VoiceEditor({
       {disabled && <p className="text-sm text-[var(--color-warn)]">{t.voice.pickChannel}</p>}
 
       {!disabled && notices.length > 0 && (
-        <div role="status" className="flex flex-col gap-1 text-sm leading-relaxed text-[var(--color-warn)]">
+        <div className="flex flex-col gap-1 text-sm leading-relaxed text-[var(--color-warn)]" data-testid="voice-retirement">
           {notices.map((n) => {
             const where = suggestionInAccount(n, accountIds);
             return (
               <p key={n.slot} className="max-w-[72ch]">
                 {fmt(n.state === "retired" ? t.voice.retireGone : t.voice.retireLeaving, {
-                  slot: n.slot === "narrator" ? t.voice.pickNarrator : t.voice.pickQuote,
+                  slot: n.slot === "narrator" ? t.voice.pickNarrator : n.slot === "quote" ? t.voice.pickQuote : t.voice.pickBoth,
                   name: n.name,
                 })}{" "}
-                {where === "in"
-                  ? fmt(t.voice.suggestIn, { name: n.suggested })
-                  : where === "missing"
-                    ? fmt(t.voice.suggestMissing, { name: n.suggested })
-                    : t.voice.suggestLoad}
+                {/* Only this part changes (when the account's voices load), so only it is announced. */}
+                <span aria-live="polite">
+                  {where === "in"
+                    ? fmt(t.voice.suggestIn, { name: n.suggested })
+                    : where === "missing"
+                      ? fmt(t.voice.suggestMissing, { name: n.suggested })
+                      : t.voice.suggestLoad}
+                </span>
               </p>
             );
           })}
@@ -263,16 +271,16 @@ export function VoiceEditor({
               </div>
 
               {/* Tap a voice to hear it; the highlighted one is the selection. */}
-              {voices && voices.length > 0 && (
+              {listed.length > 0 && (
                 <ul className="flex max-h-[380px] flex-col gap-2 overflow-y-auto">
-                  {voices.map((v) => {
+                  {listed.map((v) => {
                     const isSel = selected === v.voiceId;
                     const isQuote = secondary === v.voiceId;
                     const leaving = voiceRetirement(v.voiceId, now);
                     return (
                       <li key={v.voiceId}>
                         <div
-                          className="flex items-center gap-3 rounded-[var(--ns-r-panel)] border p-2.5 transition-colors"
+                          className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-panel)] border p-2.5 transition-colors"
                           style={{
                             borderColor: isSel || isQuote ? "var(--color-primary)" : "var(--color-border)",
                             background: isSel || isQuote ? "var(--color-panel-2)" : "transparent",
@@ -294,7 +302,7 @@ export function VoiceEditor({
                               else setSecondary(v.voiceId);
                               touch();
                             }}
-                            className="min-w-0 flex-1 text-left"
+                            className="min-w-[8rem] flex-1 text-left"
                           >
                             <div className="truncate text-sm text-[var(--color-fg)]">{v.name}</div>
                             {v.labels && (
@@ -302,15 +310,14 @@ export function VoiceEditor({
                                 {v.labels}
                               </div>
                             )}
+                            {/* Under the name and wrapping, so at 360 px the tags never squeeze the name to nothing. */}
+                            {(suggestedIds.has(v.voiceId) || leaving) && (
+                              <div className="flex flex-wrap gap-x-2 text-sm">
+                                {suggestedIds.has(v.voiceId) && <span className="text-[var(--color-primary)]">{t.voice.suggestedTag}</span>}
+                                {leaving === "leaving" && <span className="text-[var(--color-warn)]">{t.voice.leavesTag}</span>}
+                              </div>
+                            )}
                           </button>
-                          {suggestedIds.has(v.voiceId) && (
-                            <span className="shrink-0 text-sm text-[var(--color-primary)]">{t.voice.suggestedTag}</span>
-                          )}
-                          {leaving && (
-                            <span className="shrink-0 text-sm text-[var(--color-warn)]">
-                              {leaving === "retired" ? t.voice.retiredTag : t.voice.leavesTag}
-                            </span>
-                          )}
                           {isSel && (
                             <span className="tnum shrink-0 text-sm text-[var(--color-primary)]">
                               {t.voice.selected}

@@ -24,6 +24,7 @@
  */
 import { HOME_LANGUAGES } from "@/lib/home";
 import { VOICES } from "@/lib/ttsModels";
+import { voiceRetirement } from "@/lib/voiceRetirement";
 import { charLength, parseChannelRef, parseStyleId } from "@/lib/style-kits";
 import type { StudioPrefill } from "@/lib/creative/studio";
 import type { ChannelRow } from "@/lib/types";
@@ -213,6 +214,7 @@ export type DnaInputError =
   | "too_many_characters"
   | "duplicate_character"
   | "invalid_voice"
+  | "voice_retired"
   | "invalid_language"
   | "invalid_format"
   | "invalid_aspect"
@@ -236,7 +238,7 @@ export type ParsedDna = { ok: true; value: DnaInput } | { ok: false; error: DnaI
 const nil = (v: unknown) => v === undefined || v === null || v === "";
 
 /** `{ channel_id, style_kit_id?, character_ids?, voice_id?, language?, format?, aspect?, tone? }`. */
-export function parseDnaInput(raw: unknown): ParsedDna {
+export function parseDnaInput(raw: unknown, now: Date = new Date()): ParsedDna {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "bad_request" };
   const b = raw as Record<string, unknown>;
   const channelId = parseChannelRef(b.channel_id);
@@ -257,6 +259,8 @@ export function parseDnaInput(raw: unknown): ParsedDna {
   }
 
   if (!nil(b.voice_id) && !(typeof b.voice_id === "string" && VOICE_RE.test(b.voice_id))) return { ok: false, error: "invalid_voice" };
+  // Saving a retired ElevenLabs Default voice would save a channel whose runs stop: refused here, whatever the form offered.
+  if (!nil(b.voice_id) && voiceRetirement(b.voice_id, now) === "retired") return { ok: false, error: "voice_retired" };
   if (!nil(b.language) && !isDnaLanguage(b.language)) return { ok: false, error: "invalid_language" };
   if (!nil(b.format) && !isDnaFormat(b.format)) return { ok: false, error: "invalid_format" };
   if (!nil(b.aspect) && !isDnaAspect(b.aspect)) return { ok: false, error: "invalid_aspect" };
@@ -303,6 +307,7 @@ const INPUT_WORDS: readonly DnaInputError[] = [
   "too_many_characters",
   "duplicate_character",
   "invalid_voice",
+  "voice_retired",
   "invalid_language",
   "invalid_format",
   "invalid_aspect",

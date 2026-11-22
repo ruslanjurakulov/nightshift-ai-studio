@@ -96,6 +96,7 @@ export function readRunAnswer(
   // A voice for this run that this channel may not use, or one that could not be checked: refused before anything was held. The same
   // sentence for every reason (docs/CUSTOM_VOICE.md, "Hard gate"): it must not tell a stranger which voices exist, or whose.
   if (data.error === "voice_not_allowed") return fail(`${t.agents.runVoiceNotAllowed} ${f.notTaken}`);
+  if (data.error === "voice_retired") return fail(`${t.agents.runVoiceRetired} ${f.notTaken}`);
   if (data.error === "voice_check_unavailable") return fail(`${t.agents.runVoiceCheckUnavailable} ${f.notTaken}`);
 
   const unauthorized = data.error === "github_unauthorized";

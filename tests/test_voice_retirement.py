@@ -145,7 +145,7 @@ class TheFilmNarrationAdapter(unittest.TestCase):
         from modules.capabilities.base import CapabilityRequest
         return CapabilityRequest("tts", "Hello", voice_id=voice, text_language="en")
 
-    def test_problems_names_the_retirement_before_any_hold(self):
+    def test_problems_names_the_retirement_before_the_vendor_call(self):
         with patch("modules.voice_retirement.utc_today", return_value=AFTER):
             problems = self.adapter.problems(self.request(GEORGE), self.entry)
         self.assertTrue(any("No voice is substituted" in p for p in problems), problems)
@@ -158,7 +158,64 @@ class TheFilmNarrationAdapter(unittest.TestCase):
         self.assertEqual(caught.exception.code, E_BAD_REQUEST)
         self.assertIn("George", str(caught.exception))
 
+    def test_the_film_worker_reads_it_as_voice_not_found_not_as_edit_the_scene(self):
+        """film_error_code maps a plain bad_request to "edit the scene"; a retired voice is the person's voice to
+        change, so the refusal carries ElevenLabs' closed code for a voice that is gone."""
+        from types import SimpleNamespace
+        from modules import creative_worker as cw
+        from modules.capabilities.base import AdapterError
+        from modules.film_orchestrator import _vendor_code, film_error_code
+        with patch("modules.voice_retirement.utc_today", return_value=AFTER), \
+                self.assertRaises(AdapterError) as caught:
+            self.adapter.submit(self.request(GEORGE), "eleven_v3")
+        e = caught.exception
+        self.assertTrue(e.not_accepted)
+        wrapped = SimpleNamespace(adapter=self.adapter)  # the worker's view: a creative adapter around this one
+        self.assertEqual(film_error_code(cw.error_code_of(e), vendor_code=_vendor_code(wrapped),
+                                         http_status=getattr(e, "http_status", None), capability="tts"),
+                         "voice_not_found")
+
     def test_before_the_date_the_adapter_does_not_refuse_it(self):
+        with patch("modules.voice_retirement.utc_today", return_value=BEFORE):
+            problems = self.adapter.problems(self.request(GEORGE), self.entry)
+        self.assertFalse(any("Default voice" in p for p in problems), problems)
+
+
+class TheVoiceChanger(unittest.TestCase):
+    """The voice changer speaks in the chosen voice too; a retired one is refused the same way, before the upload."""
+
+    def setUp(self):
+        import tempfile
+        from modules import model_registry as reg
+        from modules.capabilities import build_adapter
+
+        class NoHttp:
+            def request(self, *a, **k):
+                raise AssertionError("the vendor was called")
+            get = post = request
+
+        self.entry = reg.load()["elevenlabs-voice-changer"]
+        self.adapter = build_adapter("audio.elevenlabs_sts", env={"ELEVENLABS_API_KEY": "k"}, session=NoHttp())
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.source = Path(self.dir.name) / "source.mp3"
+        self.source.write_bytes(b"ID3fake")
+
+    def request(self, voice):
+        from modules.capabilities.base import CapabilityRequest
+        return CapabilityRequest("voice_change", "", voice_id=voice, input_media=[str(self.source)])
+
+    def test_problems_and_submit_refuse_a_retired_voice_without_calling_the_vendor(self):
+        from modules.capabilities.base import E_BAD_REQUEST, AdapterError
+        with patch("modules.voice_retirement.utc_today", return_value=AFTER):
+            problems = self.adapter.problems(self.request(GEORGE), self.entry)
+            self.assertTrue(any("No voice is substituted" in p for p in problems), problems)
+            with self.assertRaises(AdapterError) as caught:
+                self.adapter.submit(self.request(GEORGE), "eleven_multilingual_sts_v2")
+        self.assertEqual(caught.exception.code, E_BAD_REQUEST)
+        self.assertEqual(self.adapter.last_vendor_code, "voice_not_found")
+
+    def test_before_the_date_it_is_not_refused(self):
         with patch("modules.voice_retirement.utc_today", return_value=BEFORE):
             problems = self.adapter.problems(self.request(GEORGE), self.entry)
         self.assertFalse(any("Default voice" in p for p in problems), problems)
