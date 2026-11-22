@@ -820,3 +820,8 @@ sec_research_0202.extend(TABLES, FUNCTIONS)
 import sec_owner_ai_0203  # noqa: E402
 
 sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
+
+# Migration 0209 (the owner's Nightshift AI conversation history): tests/security/sec_owner_ai_history_0209.py
+import sec_owner_ai_history_0209  # noqa: E402
+
+sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)

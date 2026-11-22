@@ -52,6 +52,11 @@ listed as unknown, never as fine. Days are UTC calendar days.
   (`lib/owner-console/ai-prompt.ts`) forbid inventing, keep the measured / estimated / unknown tags, and treat customer-typed
   text in the facts as data; a closing tag inside a value is defused so it cannot end the data block.
 - **What reaches the browser.** The answer, an optional draft, the facts' time and the model id — never the facts or the raw reply.
-  Nothing about the question or the answer is logged or stored; the conversation lives in the tab.
+  Nothing about the question or the answer is logged. The questions and answers ARE stored (migration 0209): after a turn recorded
+  as answered, the question and the link-guarded answer are saved in the owner's history, readable only by the owner who asked,
+  the same on every device, until the owner deletes the chat (a real delete of the chat and its messages). An answer is written
+  from the live figures, so a stored answer can contain revenue and other business figures and customer names or emails. The facts
+  document itself is never stored. Each answer in the chat says whether it was saved ("saved", "not saved", or "history needs
+  migration 0209"); "Start a new chat" only clears the screen and never deletes what is saved.
 - **Failures name their remedy** (rule 6): a missing key, a model switched off, the provider out of balance, rate limits, a
   timeout, a reply in the wrong shape, the daily cap, a migration not applied.
