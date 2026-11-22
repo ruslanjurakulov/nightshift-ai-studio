@@ -12,7 +12,7 @@ import { NightshiftAiPanel } from "@/components/brain/NightshiftAiPanel";
  * panel from a field elsewhere on the page when an answer arrives; three scenario buttons all announced as "Choose this one", so the
  * person cannot tell which plan they are choosing.
  */
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), usePathname: () => "/chronos/studio" }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }), usePathname: () => "/chronos/studio" }));
 
 const scenario = (title: string) => ({ title, idea: `idea ${title}`, target_seconds: 60, scenes: [{}], characters: [{}] });
 const TITLES = ["Alpha heist", "Beta storm", "Gamma tide"];

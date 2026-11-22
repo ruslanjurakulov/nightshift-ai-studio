@@ -8,16 +8,23 @@
  *  - the history listing or opening anything but this person's own conversations here (only /api/brain/history, scoped by channel);
  *  - a reached daily cap, a plan without the chat, a dead model or a viewer's seat drawn as a usable box, or said without its remedy;
  *  - the side panel's history drawn as a desktop column (no room for the chat), or a drawer that cannot be closed;
- *  - the meter (used of the plan's daily cap, a trial's messages left) lost in the move.
+ *  - the meter (used of the plan's daily cap, a trial's messages left) lost in the move;
+ *  - a conversation that could not be read dropped silently (an empty chat with no reason and no Retry), or the words of a press
+ *    that was stored but not shown cleared from the box;
+ *  - a pick from the history while an answer is on its way taken as opened, when nothing was;
+ *  - a gone ?brain= left on the URL, so the canvas draws a conversation the panel is not showing;
+ *  - a refusal no retry can change (403, 400) told to "try again".
  * Every fetch is mocked.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { NightshiftAiPanel, pairTurns } from "@/components/brain/NightshiftAiPanel";
+import { useBrainBrief } from "@/components/studio-live/useBrainBrief";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), usePathname: () => "/chronos/studio" }));
+const nav = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: nav.replace }), usePathname: () => "/chronos/studio" }));
 
 const S1 = "aaaaaaaa-0000-4000-8000-000000000001";
 const S2 = "aaaaaaaa-0000-4000-8000-000000000002";
@@ -34,6 +41,8 @@ const f = {
   opened: {} as Record<string, Reply>,
   turn: { status: 200, body: { session: { id: S1 }, reply: "Which length?", step: "asking", card: null, scenarios: [] } } as Reply,
   urls: [] as string[],
+  /** While set, a turn's answer waits for it. */
+  hold: null as Promise<void> | null,
 };
 
 function stub() {
@@ -45,18 +54,26 @@ function stub() {
       if (m) return json(f.opened[m[1]]?.status ?? 404, f.opened[m[1]]?.body ?? { error: "gone" });
       return json(200, { sessions: f.sessions, next_before: null });
     }
-    if (url.startsWith("/api/brain/turn")) return json(f.turn.status, f.turn.body);
+    if (url.startsWith("/api/brain/turn")) {
+      if (f.hold) await f.hold;
+      return json(f.turn.status, f.turn.body);
+    }
     return json(f.brainStatus, f.brainBody ?? { plan: f.plan, model: f.model, canEdit: f.canEdit, canRun: true, session: null });
   }));
 }
 
-function mount(locale: Locale = "en", name: string | null = "Aziz") {
+function mount(locale: Locale = "en", name: string | null = "Aziz", initialSession: string | null = null) {
   return render(
     <I18nProvider locale={locale}>
-      <NightshiftAiPanel channelId="c1" channelSlug="chronos" greetingName={name} fresh />
+      <NightshiftAiPanel channelId="c1" channelSlug="chronos" greetingName={name} initialSession={initialSession} fresh={!initialSession} />
     </I18nProvider>,
   );
 }
+const stored = (text: string): Reply => ({
+  status: 200,
+  body: { session: { id: S1, step: "asking" }, card: null, brief: null, messages: [{ id: 1, role: "user", content: "A heist", payload: null }, { id: 2, role: "assistant", content: text, payload: null }] },
+});
+const turnCalls = () => (fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls.filter((c) => c[0] === "/api/brain/turn");
 const box = () => document.getElementById("ns-ai-input") as HTMLTextAreaElement;
 const panel = () => screen.getByTestId("nightshift-ai-panel");
 
@@ -70,6 +87,9 @@ beforeEach(() => {
   f.opened = {};
   f.turn = { status: 200, body: { session: { id: S1 }, reply: "Which length?", step: "asking", card: null, scenarios: [] } };
   f.urls = [];
+  f.hold = null;
+  nav.replace.mockReset();
+  window.history.replaceState(null, "", "/chronos/studio");
   Element.prototype.scrollIntoView = vi.fn();
   stub();
 });
@@ -239,6 +259,120 @@ describe("caps and refusals, inside the shell, with their remedy", () => {
       .filter((c) => c[0] === "/api/brain/turn").map((c) => JSON.parse(String(c[1].body)));
     // The same press both times: a first copy that did land is answered as a duplicate, never stored twice.
     expect(bodies[1].request_id).toBe(bodies[0].request_id);
+  });
+});
+
+describe("a conversation that could not be read", () => {
+  it("the panel's ?brain= conversation answers 503: the problem and a Retry, which opens it", async () => {
+    f.opened[S1] = { status: 503, body: { error: "unavailable" } };
+    mount("en", "Aziz", S1);
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(en.history.failed)).toBeTruthy();
+    f.opened[S1] = stored("How long should it be?");
+    await act(async () => fireEvent.click(within(alert).getByRole("button", { name: en.retry })));
+    expect(await screen.findByText("How long should it be?")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a duplicate press whose conversation answers 503: the words stay in the box, and Retry reads it without sending them again", async () => {
+    f.turn = { status: 409, body: { error: "duplicate_request", session: { id: S1 } } };
+    f.opened[S1] = { status: 503, body: { error: "unavailable" } };
+    mount();
+    await waitFor(() => expect(box().disabled).toBe(false));
+    fireEvent.change(box(), { target: { value: "A heist" } });
+    await act(async () => fireEvent.keyDown(box(), { key: "Enter" }));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(en.history.failed)).toBeTruthy();
+    expect(box().value).toBe("A heist");
+    f.opened[S1] = stored("Which length?");
+    await act(async () => fireEvent.click(within(alert).getByRole("button", { name: en.retry })));
+    expect(await screen.findByText("Which length?")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(turnCalls()).toHaveLength(1);
+  });
+
+  it("a refusal a retry cannot change (403) is said without \"try again\" and offers no Retry", async () => {
+    f.opened[S1] = { status: 403, body: { error: "forbidden" } };
+    mount("en", "Aziz", S1);
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(en.history.forbidden)).toBeTruthy();
+    expect(within(alert).queryByRole("button", { name: en.retry })).toBeNull();
+  });
+
+  it("each refusal from the history has its own words, and only a passing failure says to try again", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const h = dictionaries[loc].aiChat.history;
+      const words = new Set([h.forbidden, h.badRequest, h.notHere, h.busy, h.failed, h.gone]);
+      expect(words.size).toBe(6);
+    }
+    for (const k of ["forbidden", "badRequest", "notHere", "busy"] as const) expect(en.history[k]).not.toMatch(/try again/i);
+  });
+
+  it("opening from the list: 403 and 400 each say their own reason, never \"try again\"", async () => {
+    f.sessions = [{ id: S1, title: "Desert heist", updated_at: new Date().toISOString() }, { id: S2, title: "Night train", updated_at: new Date().toISOString() }];
+    f.opened[S1] = { status: 403, body: { error: "forbidden" } };
+    f.opened[S2] = { status: 400, body: { error: "bad_request" } };
+    mount();
+    const first = await screen.findByRole("button", { name: /Desert heist/ });
+    await act(async () => fireEvent.click(first));
+    expect(await screen.findByText(en.history.forbidden)).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Night train/ })));
+    expect(await screen.findByText(en.history.badRequest)).toBeTruthy();
+    expect(screen.queryByText(/try again/i)).toBeNull();
+    // Neither was dropped from the list: only "gone" removes a row.
+    expect(screen.getByRole("button", { name: /Desert heist/ })).toBeTruthy();
+  });
+});
+
+describe("a pick from the history while an answer is on its way", () => {
+  it("is refused and said, and nothing is opened", async () => {
+    f.sessions = [{ id: S1, title: "Desert heist", updated_at: new Date().toISOString() }];
+    f.opened[S1] = stored("Stored answer");
+    let release = () => {};
+    f.hold = new Promise<void>((r) => { release = r; });
+    mount();
+    const item = await screen.findByRole("button", { name: /Desert heist/ });
+    await waitFor(() => expect(box().disabled).toBe(false));
+    fireEvent.change(box(), { target: { value: "A heist" } });
+    // The send and the pick land before React draws the busy state, so the row is still enabled when it is pressed.
+    await act(async () => {
+      fireEvent.keyDown(box(), { key: "Enter" });
+      fireEvent.click(item);
+    });
+    expect(await screen.findByText(en.history.busy)).toBeTruthy();
+    expect(f.urls.some((u) => u.includes(`session=${S1}`))).toBe(false);
+    expect(screen.queryByText("Stored answer")).toBeNull();
+    await act(async () => release());
+    expect(await screen.findByText("Which length?")).toBeTruthy();
+  });
+});
+
+describe("a ?brain= conversation that is gone", () => {
+  it("is taken off the URL with a router replace (no new history entry), and a new chat is shown", async () => {
+    window.history.replaceState(null, "", `/chronos/studio?view=live&brain=${S2}`);
+    const view = mount("en", "Aziz", S2);
+    await waitFor(() => expect(nav.replace).toHaveBeenCalledTimes(1));
+    expect(nav.replace).toHaveBeenCalledWith("/chronos/studio?view=live", { scroll: false });
+    expect(screen.getByText("Hello, Aziz")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The page comes back without ?brain=: that is the panel's own doing, not a reason to read again and open the latest chat.
+    const reads = () => f.urls.filter((u) => u.startsWith("GET /api/brain?")).length;
+    expect(reads()).toBe(1);
+    view.rerender(
+      <I18nProvider locale="en">
+        <NightshiftAiPanel channelId="c1" channelSlug="chronos" greetingName="Aziz" initialSession={null} fresh={false} />
+      </I18nProvider>,
+    );
+    await act(async () => {});
+    expect(reads()).toBe(1);
+  });
+
+  it("the canvas draws nothing of it once ?brain= is gone", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404, json: async () => ({ error: "not_found" }) })));
+    const { result, rerender } = renderHook(({ s }: { s: string | null }) => useBrainBrief(s), { initialProps: { s: S2 as string | null } });
+    await waitFor(() => expect(result.current.load.state).toBe("notFound"));
+    rerender({ s: null });
+    expect(result.current.load.state).toBe("loading");
   });
 });
 

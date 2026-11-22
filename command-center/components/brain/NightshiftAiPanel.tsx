@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -42,6 +43,8 @@ type State =
   | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean };
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
 type Problem = { text: string; retry: (() => void) | null } | null;
+/** The history route's answer, with whether the same request could go differently a moment later (a 503, a dropped connection). */
+type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; message: string; retry: boolean };
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long"];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
@@ -130,24 +133,65 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (b) setBrief(b);
   }, []);
 
+  // A ref: the router's identity is not a reason to read the conversation again.
+  const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  // Set when the panel itself took a gone conversation off the URL: the page comes back without ?brain=, which is no reason to
+  // read again (that would open the latest conversation in place of the new chat the person was left with).
+  const dropped = useRef(false);
+
+  /** Back to a new chat, the state only (the URL is the caller's). */
+  const clear = useCallback(() => {
+    setSession(null);
+    setMessages([]);
+    setCard(null);
+    setBrief(null);
+    setFilm(null);
+    setStep("asking");
+    setProblem(null);
+    setAsking(null);
+  }, [setSession]);
+
+  /** A conversation that is not this person's here (gone): never continued, and taken off the URL. The canvas draws ?brain= from the
+   *  page (LiveView), so it is a router replace, not history.replaceState: otherwise the canvas would keep drawing a conversation the
+   *  panel is not showing. A replace, so Back does not return to it. */
+  const forget = useCallback(
+    (sid: string) => {
+      if (sessionRef.current === sid) clear();
+      if (typeof window === "undefined") return;
+      const u = new URL(window.location.href);
+      if (u.searchParams.get("brain") !== sid) return;
+      u.searchParams.delete("brain");
+      // Only a page that was drawn with ?brain= comes back with different props; otherwise there is no re-read to skip.
+      if (initialSession) dropped.current = true;
+      routerRef.current.replace(`${u.pathname}${u.search}${u.hash}`, { scroll: false });
+    },
+    [clear, initialSession],
+  );
+
   const historyUrl = useCallback(
     (extra: string) => `${HISTORY_ROUTE}?${[channelId ? `channel=${encodeURIComponent(channelId)}` : "", extra].filter(Boolean).join("&")}`,
     [channelId],
   );
 
   const historyCall = useCallback(
-    async <T,>(url: string, read: (b: Record<string, unknown>) => T): Promise<HistoryResult<T>> => {
+    async <T,>(url: string, read: (b: Record<string, unknown>) => T): Promise<HistoryRead<T>> => {
       try {
         const res = await fetch(url, { cache: "no-store" });
         const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         if (res.ok && body) return { ok: true, value: read(body) };
         const err = typeof body?.error === "string" ? body.error : "";
-        if (err === "gone") return { ok: false, gone: true, message: c.history.gone };
-        if (res.status === 401) return { ok: false, message: c.errors.session_ended };
-        if (err === "not_enabled") return { ok: false, message: c.errors.not_enabled };
-        return { ok: false, message: c.history.failed };
+        if (err === "gone") return { ok: false, gone: true, message: c.history.gone, retry: false };
+        // A refusal that the same request would meet again is said without "try again", and offers no Retry.
+        if (res.status === 401) return { ok: false, message: c.errors.session_ended, retry: false };
+        if (err === "not_enabled") return { ok: false, message: c.errors.not_enabled, retry: false };
+        if (res.status === 403) return { ok: false, message: c.history.forbidden, retry: false };
+        if (res.status === 400) return { ok: false, message: c.history.badRequest, retry: false };
+        if (res.status === 404) return { ok: false, message: c.history.notHere, retry: false };
+        return { ok: false, message: c.history.failed, retry: true };
       } catch {
-        return { ok: false, message: c.history.network };
+        return { ok: false, message: c.history.network, retry: true };
       }
     },
     [c],
@@ -155,7 +199,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
 
   /** One of this person's conversations here, through the scoped history route; switching to another clears the last one's film. */
   const loadSession = useCallback(
-    async (sid: string): Promise<HistoryResult<null>> => {
+    async (sid: string): Promise<HistoryRead<null>> => {
       const r = await historyCall(historyUrl(`session=${encodeURIComponent(sid)}`), (b) => b);
       if (!r.ok) return r;
       const d = r.value as { session?: { step?: string }; card?: BrainCard | null; brief?: Brief | null; messages?: StoredMessage[] };
@@ -172,6 +216,31 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     [historyCall, historyUrl, setSession],
   );
 
+  /** Retry of a conversation that could not be read: the same scoped read, in the turn's lock so it cannot race a message. */
+  const reopen = useRef<(sid: string) => Promise<void>>(async () => {});
+  reopen.current = async (sid: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const r = await loadSession(sid);
+      if (r.ok) {
+        // The words a duplicate press left on screen are in the conversation now.
+        setAsking(null);
+        return;
+      }
+      if (r.gone) {
+        forget(sid);
+        setReloadKey((k) => k + 1);
+      }
+      setProblem({ text: r.message, retry: r.retry ? () => void reopen.current(sid) : null });
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
+
   const read = useCallback(async () => {
     setLoad({ state: "loading" });
     try {
@@ -185,16 +254,30 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       setLoad({ state: "ready", plan: d.plan, model: d.model, canEdit: d.canEdit === true, canRun: d.canRun === true });
       setCapped(d.plan?.limit !== null && typeof d.plan?.used === "number" && d.plan.used >= d.plan.limit);
       const sid = initialSession || (fresh ? null : d.session?.id) || null;
+      if (!sid) return;
+      const r = await loadSession(sid);
+      if (r.ok) return;
       // A link to a conversation that is not this person's here (another workspace or channel) opens nothing: a new chat.
-      if (sid) await loadSession(sid);
+      if (r.gone) forget(sid);
+      // One that could not be read is said, with a Retry when another try could go differently: never a silent empty chat.
+      else setProblem({ text: r.message, retry: r.retry ? () => void reopen.current(sid) : null });
     } catch {
       setLoad({ state: "failed" });
     }
-  }, [channelId, initialSession, fresh, loadSession]);
+  }, [channelId, initialSession, fresh, loadSession, forget]);
 
+  // The props the last read ran with: the panel's own removal of a gone ?brain= (forget) is skipped once, any other change reads.
+  const readWith = useRef<{ initialSession: string | null } | null>(null);
   useEffect(() => {
+    const prev = readWith.current;
+    readWith.current = { initialSession: initialSession ?? null };
+    if (dropped.current && prev?.initialSession && !initialSession) {
+      dropped.current = false;
+      return;
+    }
     void read();
-  }, [read]);
+  }, [read, initialSession]);
+
   // The landing page's idea: put in the box once, for the person to send (or not). Nothing is sent on their behalf.
   useEffect(() => {
     if (!takeIdea || typeof window === "undefined") return;
@@ -264,9 +347,19 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       const sid = (d.session as { id?: string } | undefined)?.id ?? sessionRef.current;
       if (res.status === 409 && d.error === "duplicate_request") {
         // That press already went through (a network retry): show what the server has, add nothing.
-        if (sid) await loadSession(sid);
-        setAsking(null);
-        return true;
+        const r = sid ? await loadSession(sid) : null;
+        if (!sid || !r || r.ok) {
+          setAsking(null);
+          return true;
+        }
+        // Stored, but it could not be shown: the words stay (in the box and under the thread) until the conversation opens, and the
+        // Retry reads it again rather than sending them twice.
+        if (r.gone) {
+          forget(sid);
+          setReloadKey((k) => k + 1);
+        }
+        setProblem({ text: r.message, retry: r.retry ? () => void reopen.current(sid) : null });
+        return false;
       }
       // A chat the server just created is listed straight away.
       const isNew = !!sid && sid !== sessionRef.current;
@@ -371,14 +464,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     }
   };
   const newChat = () => {
-    setSession(null);
-    setMessages([]);
-    setCard(null);
-    setBrief(null);
-    setFilm(null);
-    setStep("asking");
-    setProblem(null);
-    setAsking(null);
+    clear();
     if (typeof window !== "undefined") {
       const u = new URL(window.location.href);
       u.searchParams.delete("brain");
@@ -402,13 +488,14 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   );
 
   async function openSession(id: string): Promise<HistoryResult<null>> {
-    if (inFlight.current) return { ok: true, value: null };
+    // An answer on its way belongs to the chat on screen: the pick is refused and said, never taken as opened.
+    if (inFlight.current) return { ok: false, message: c.history.busy };
     setOpening(true);
     const r = await loadSession(id);
     setOpening(false);
     if (!r.ok) {
       // The chat on screen is no longer this person's here: the next message must not try to continue it.
-      if (r.gone && sessionRef.current === id) newChat();
+      if (r.gone) forget(id);
       return r;
     }
     setProblem(null);

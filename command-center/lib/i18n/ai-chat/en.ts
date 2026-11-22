@@ -93,6 +93,10 @@ export const aiChatEn = {
     noAnswer: "This message has no saved answer.",
     failed: "Couldn't open that chat just now. Try again.",
     network: "Couldn't reach the server. Check the connection and try again.",
+    forbidden: "Your role in this workspace doesn't let you open its chats. Ask a workspace admin for access.",
+    badRequest: "That chat link isn't valid, so nothing was opened.",
+    notHere: "Nightshift AI chats aren't open on this channel.",
+    busy: "An answer is still on its way. Open that chat once it has arrived.",
   },
   errors: {
     session_ended: "Your session ended. Sign in again to continue.",
