@@ -141,7 +141,8 @@ class ProbeTests(unittest.TestCase):
         ids = {e.id for e in chosen}
         self.assertTrue(set(VIDEO) <= ids)
         self.assertFalse([e.id for e in chosen if e.terms_gate])
-        gated = {e.id for e in self.r.values() if e.terms_gate}
+        # A gated model past its shutdown (the Veo rows) is reported as shutdown instead (tools/probe_models.shutdown_left_out).
+        gated = {e.id for e in self.r.values() if e.terms_gate and not e.shut_down()}
         self.assertEqual({e.id for e in probe_models.gated_left_out(self.r.values(), [], None, True)}, gated)
 
     def test_the_gen45_probe_sends_a_drawn_first_frame_to_image_to_video(self):
