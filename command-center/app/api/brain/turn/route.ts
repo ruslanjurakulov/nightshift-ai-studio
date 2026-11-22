@@ -64,7 +64,8 @@ export const maxDuration = 300;
  *   4. ONE call to the model, its answer checked by lib/brain/logic.ts (links and prices removed, slots validated, the next question
  *      the server's);
  *   5. ai_chat_finish_turn: the assistant's message, the tokens (unknown stays unknown), the BRIEF and card.
- * `choose` prices: a long video by the Run now estimator, a short film by quote_film on a DRAFT film it saves from the BRIEF. Nothing
+ * `choose` prices: a long video by the Run now estimator, a short film by quote_film on a DRAFT film (the storyboard saved into it
+ * once, under the plan's lease, and never over scenes the draft already has). Nothing
  * here holds credits, starts anything or publishes (CLAUDE.md rule 3): the person's Create is the film route's or Run now's own.
  */
 

@@ -847,8 +847,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const ready = load.state === "ready";
   // No Brain on this plan: the lifetime trial while it lasts, then the upgrade.
   const trial = ready && load.plan.limit === null && (load.plan.trial_left ?? 0) > 0 ? load.plan.trial_left : null;
-  // A plan whose price could not be read, or a short plan whose film quote is not on screen (a reload): its scenarios come back to
-  // choose again, which re-reads the same draft and quote (the draft's idempotency key is the session and the scenario).
+  // A plan whose price could not be read, or a short plan with no film on screen (a reload): its scenarios come back to choose
+  // again. That replays the same draft (its key is the session, proposal and outline) and prices it as it is now; a draft that has
+  // scenes is never written over (the route, Lens H1).
   const rechoose = step === "ready" && (brief?.price?.state === "failed" || (brief?.kind === "short" && !film));
   const noBrain = ready && load.plan.limit === null && trial === null;
   const down = ready && load.model !== "available";
