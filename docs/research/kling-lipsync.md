@@ -36,7 +36,8 @@ real call through the adapter has succeeded and a migration teaches the database
   10^6 bytes and "720p/1080p" as the frame's short side: our readings, the stricter ones.
 - One face, never a guess: no `face_id` in the request means exactly one face must be found. Zero, two or more, a named face that is
   not there, or speech that overlaps the face for under 2 s stop the job before the lip-sync call (`no_face`, `several_faces`,
-  `face_not_found`, `face_overlap`).
+  `face_not_found`, `face_overlap`, and `ambiguous_face` when Kling lists the named id twice). A malformed face item fails the
+  whole answer; it is never filtered out. Speech placed so it runs past the video's end is refused before the face check.
 - Sends `sound_file` (our signed link) always and `audio_id` never: Kling's TTS cannot speak Uzbek or Russian.
 - Sends no `watermark_info` and no volume field; stores the default `url` (docs/AI_DISCLOSURE.md, "Vendor watermarks").
 - Task id `<session_id>/<face_id>/<task_id>`: a crash polls instead of paying again, and the moved face survives for provenance.
@@ -52,5 +53,7 @@ needs Kling's written confirmation. Hence `web_only` and `terms_review_required`
 ## Still open
 
 - the session's lifetime, the callback schema, and the package to buy;
+- what Kling does when the placed speech runs past the end of the video (cuts it, refuses, or stretches): **not stated**. The
+  adapter refuses such a request before the face check, so a line is never silently cut;
 - how a part of 5 s is rounded in the price;
 - lip-sync quality on Uzbek and Russian speech (a paid probe, the owner's call).

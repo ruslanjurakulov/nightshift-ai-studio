@@ -373,8 +373,9 @@ class ModelEntry:
         # A lip-sync is a video and a speech file; its face and its window mean nothing to any other tool.
         if cap == LIPSYNC and not request.input_audio:
             out.append("lipsync needs the speech to move the mouth to")
-        if cap != LIPSYNC and (request.input_audio or request.face_id is not None or request.sound_window_ms is not None):
-            out.append(f"a speech file, a face or a sound window does not apply to {cap}")
+        if cap != LIPSYNC and (request.input_audio or request.face_id is not None or request.sound_window_ms is not None
+                               or request.input_media_facts is not None or request.input_audio_facts is not None):
+            out.append(f"a speech file, a face, a sound window or measured file facts do not apply to {cap}")
         return out
 
     def probe_request(self, *, voice_id: Optional[str] = None,
@@ -689,9 +690,10 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                                       generated_video="probe_video.mp4")
             # A placeholder vendor model is how a gated entry with no vendor assigned ships (the
             # adapter refuses it at run time); it is not a fault of the probe request.
-            # "was not measured": the worker measures the real files at run time (a lip-sync's facts); a registry file has none.
+            # "was not measured": a lip-sync's worker measures the real files at run time; a registry file has none. Only a lip-sync.
             problems = [p for p in cls(env={}).problems(req, entry)
-                        if "https URL" not in p and "placeholder vendor model" not in p and "was not measured" not in p]
+                        if "https URL" not in p and "placeholder vendor model" not in p
+                        and not (LIPSYNC in caps and "was not measured" in p)]
             if problems:
                 errors.append(_err(mid, "probe request is not servable: " + "; ".join(problems)))
     return errors

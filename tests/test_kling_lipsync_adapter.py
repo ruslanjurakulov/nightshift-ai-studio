@@ -157,7 +157,7 @@ class RefusedBeforeAnyCall(unittest.TestCase):
         self.assert_refused(req(), model="kling-v3")
 
     def test_a_window_kling_would_refuse(self):
-        for w in ((0, 1999, 0), (-1, 4000, 0), (0, 4000, -5), (0, 7000, 0), (0, 4000, 8000), (0, 4000), (0.5, 4000, 0), "0,4000,0"):
+        for w in ((0, 1999, 0), (-1, 4000, 0), (0, 4000, -5), (0, 7000, 0), (0, 4000, 8000), (0, 4000, 5000), (0, 4000), (0.5, 4000, 0), "0,4000,0"):
             self.assert_refused(req(sound_window_ms=w))
 
     def test_the_legacy_access_secret_pair_is_not_configured(self):
@@ -199,7 +199,37 @@ class OneFaceNeverAGuess(unittest.TestCase):
         self.assert_stops_after_the_face_check(late, lip.FACE_OVERLAP, sound_window_ms=(0, 4000, 0))
 
     def test_the_reasons_are_a_closed_list(self):
-        self.assertEqual(lip.REASONS, ("no_face", "several_faces", "face_not_found", "face_overlap"))
+        self.assertEqual(lip.REASONS, ("no_face", "several_faces", "face_not_found", "face_overlap", "ambiguous_face"))
+
+    def test_a_named_face_kling_lists_twice_is_ambiguous(self):
+        twice = {"code": 0, "data": {"session_id": "sess-1", "face_data": [{"face_id": "0", "start_time": 0, "end_time": 8000},
+                                                                         {"face_id": "0", "start_time": 0, "end_time": 8000}]}}
+        self.assert_stops_after_the_face_check(twice, lip.AMBIGUOUS_FACE, face_id="0")
+
+    def test_a_whole_number_face_id_is_a_face_and_none_is_not(self):
+        a, s = adapter(happy(identify={"code": 0, "data": {"session_id": "sess-1",
+                                                           "face_data": [{"face_id": 0, "start_time": 0, "end_time": 8000}]}}))
+        self.assertEqual(a.submit(req(), MODEL).task_id, "sess-1/0/T-77")
+        self.assertEqual(posted(s, LIPSYNC_URL)[0][2]["json"]["face_choose"][0]["face_id"], 0, "sent as Kling gave it")
+        for bad in (None, True, 1.5, "", "a b"):
+            a, s = adapter(happy(identify={"code": 0, "data": {"session_id": "sess-1",
+                                                               "face_data": [{"face_id": bad, "start_time": 0, "end_time": 8000}]}}))
+            with self.assertRaises(AdapterError) as cm:
+                a.submit(req(face_id="None") if bad is None else req(), MODEL)
+            self.assertEqual(cm.exception.code, "bad_response", bad)
+            self.assertFalse(cm.exception.not_accepted)
+            self.assertEqual(posted(s, LIPSYNC_URL), [], bad)
+
+    def test_one_malformed_item_fails_the_answer_instead_of_being_dropped(self):
+        # Dropping the broken item would turn two faces into one and move a mouth nobody chose.
+        for broken in ("x", None, {"face_id": "1"}, {"face_id": "1", "start_time": "0", "end_time": 7000}):
+            body = {"code": 0, "data": {"session_id": "sess-1", "face_data": [ONE_FACE["data"]["face_data"][0], broken]}}
+            a, s = adapter(happy(identify=body))
+            with self.assertRaises(AdapterError) as cm:
+                a.submit(req(), MODEL)
+            self.assertEqual(cm.exception.code, "bad_response", broken)
+            self.assertIn("sess-1", cm.exception.message)
+            self.assertEqual(posted(s, LIPSYNC_URL), [], broken)
 
     def test_a_face_without_an_interval_or_with_an_odd_id_is_not_moved(self):
         for face in ({"face_id": "0"}, {"face_id": "0/../x", "start_time": 0, "end_time": 8000}):
@@ -237,6 +267,20 @@ class LostAnswersAndVendorCodes(unittest.TestCase):
                 a.submit(req(), MODEL)
             self.assertEqual(cm.exception.code, "rate_limited")
             self.assertTrue(cm.exception.retryable)
+
+    def test_a_refused_lip_sync_after_a_paid_face_check_is_never_not_accepted(self):
+        # The vendor's refusal proves the lip-sync was not taken, but the face check before it was billed: the job spent.
+        for resp, code in ((Resp(429, {"code": 1303, "message": "parallel task limit"}), "rate_limited"),
+                           (Resp(402, {"code": 1102, "message": f"package used up for {KEY}"}), "quota"),
+                           (Resp(401, {"code": 1000, "message": "auth failed"}), "auth")):
+            a, s = adapter([("POST", IDENTIFY, Resp(200, ONE_FACE)), ("POST", LIPSYNC_URL, resp)])
+            with self.assertRaises(AdapterError) as cm:
+                a.submit(req(), MODEL)
+            self.assertEqual(cm.exception.code, code)
+            self.assertFalse(cm.exception.not_accepted, code)
+            self.assertTrue(cm.exception.message.startswith("the face check (session sess-1) was billed; no lip-sync was started"))
+            self.assertNotIn(KEY, cm.exception.message)
+            self.assertEqual(len(posted(s, IDENTIFY)), 1)
 
     def test_an_empty_package_is_quota_and_the_key_never_appears(self):
         a, _ = adapter([("POST", IDENTIFY, Resp(402, {"code": 1102, "message": f"package used up for {KEY}"}))])
@@ -285,6 +329,7 @@ class Poll(unittest.TestCase):
         out = polled({"task_id": "T-77", "task_status": "failed", "task_status_msg": "face lost in frame"}).poll(TASK)
         self.assertEqual(out.state, FAILED)
         self.assertIn("face lost", out.error.message)
+        self.assertIn("a retry pays for another face check", out.error.message)
 
     def test_another_tasks_answer_is_not_ours(self):
         with self.assertRaises(AdapterError):
@@ -386,8 +431,9 @@ class RegistryEntry(unittest.TestCase):
 
     def test_the_entry_refuses_a_speech_file_on_any_other_tool(self):
         t2v = reg.registry()["kling-v2.6"]
-        r = CapabilityRequest("t2v", "a boat", input_audio=SPEECH)
-        self.assertTrue(any("does not apply" in p for p in t2v.problems(r)))
+        for r in (CapabilityRequest("t2v", "a boat", input_audio=SPEECH), CapabilityRequest("t2v", "a boat", input_media_facts=CLIP),
+                  CapabilityRequest("t2v", "a boat", input_audio_facts=LINE)):
+            self.assertTrue(any("do not apply to t2v" in p for p in t2v.problems(r)), r)
         self.assertTrue(any("needs the speech" in p for p in ENTRY.problems(req(input_audio=None))))
         self.assertEqual(ENTRY.problems(req()), [])
 

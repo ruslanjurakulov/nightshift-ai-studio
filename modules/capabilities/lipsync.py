@@ -65,7 +65,7 @@ from modules.capabilities.base import (
     is_url,
 )
 from modules.capabilities.character_swap import KlingOmniEditAdapter
-from modules.capabilities.safe_fetch import after_completion, unconfirmed
+from modules.capabilities.safe_fetch import UNCONFIRMED, after_completion, unconfirmed
 from modules.capabilities.video import _failed
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -90,7 +90,8 @@ NO_FACE = "no_face"
 SEVERAL_FACES = "several_faces"
 FACE_NOT_FOUND = "face_not_found"
 FACE_OVERLAP = "face_overlap"
-REASONS = (NO_FACE, SEVERAL_FACES, FACE_NOT_FOUND, FACE_OVERLAP)
+AMBIGUOUS_FACE = "ambiguous_face"
+REASONS = (NO_FACE, SEVERAL_FACES, FACE_NOT_FOUND, FACE_OVERLAP, AMBIGUOUS_FACE)
 
 #: Kling's task states. Anything else fails closed: a word we do not know is not "still running".
 _RUNNING = ("submitted", "processing")
@@ -158,13 +159,37 @@ def window_problems(request: CapabilityRequest) -> List[str]:
         out.append("the sound window ends after the speech file does")
     if request.input_media_facts is not None and insert >= _ms(request.input_media_facts.duration_s):
         out.append("the speech is placed after the video ends")
+    elif request.input_media_facts is not None and insert + (end - start) > _ms(request.input_media_facts.duration_s):
+        # Whether Kling cuts the line, refuses or stretches is not documented; a line cut short is a silent quality loss
+        # (CLAUDE.md #4), so it is refused here. Open question in docs/research/kling-lipsync.md.
+        out.append("the speech runs past the end of the video: shorten the sound window or use a longer clip")
     return out
+
+
+_BILLED = "it was billed; no lip-sync was started"
+
+
+def _whole(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def face_key(face: Dict) -> Optional[str]:
+    """Kling's ``face_id`` as text, only when it is a string or a whole number of our shape (never ``None`` read as "None")."""
+    fid = face.get("face_id") if isinstance(face, dict) else None
+    if isinstance(fid, str) or _whole(fid):
+        text = str(fid)
+        return text if _FACE_ID.fullmatch(text) else None
+    return None
+
+
+def _well_formed_face(face) -> bool:
+    return isinstance(face, dict) and face_key(face) is not None and _whole(face.get("start_time")) and _whole(face.get("end_time"))
 
 
 def overlap_ms(face: Dict, window: Tuple[int, int, int]) -> Optional[int]:
     """How long the placed speech and the face's interval share, in ms; None when the face carries no interval."""
     fs, fe = face.get("start_time"), face.get("end_time")
-    if not all(isinstance(v, int) and not isinstance(v, bool) for v in (fs, fe)):
+    if not (_whole(fs) and _whole(fe)):
         return None
     start, end, insert = window
     return min(fe, insert + (end - start)) - max(fs, insert)
@@ -215,23 +240,28 @@ class KlingLipsyncAdapter(KlingOmniEditAdapter):
         faces = dig(data, "face_data") if isinstance(data, dict) else None
         if not isinstance(sid, str) or not _ID.fullmatch(sid) or not isinstance(faces, list):
             raise unconfirmed("the face check answered without a usable session id or face list")
-        return sid, [f for f in faces if isinstance(f, dict)]
+        # Every item must be a face we can name, or none is counted: dropping a broken item could turn "two faces" into
+        # "one face" and move the wrong mouth (CLAUDE.md #4).
+        if not all(_well_formed_face(f) for f in faces):
+            raise AdapterError(E_BAD_RESPONSE, f"the face check (session {sid}) listed a face without a usable face_id or whole-"
+                                               f"millisecond interval; {_BILLED}")
+        return sid, list(faces)
 
     @staticmethod
     def choose_face(faces: Sequence[Dict], wanted: Optional[str], session_id: str) -> Dict:
         """The one face to move, or a bad_request naming why none can be. Never the first of several."""
         billed = f"the face check (session {session_id}) was billed; no lip-sync was started"
-        # Vendor values reach a stored message only in a shape we checked: an id of our pattern and whole milliseconds.
-        def shown(f: Dict) -> str:
-            fid = str(f.get("face_id"))
-            times = [v if isinstance(v, int) and not isinstance(v, bool) else "?" for v in (f.get("start_time"), f.get("end_time"))]
-            return f"{fid if _FACE_ID.fullmatch(fid) else '?'} ({times[0]}-{times[1]} ms)"
-
-        listed = ", ".join(shown(f) for f in list(faces)[:8])
+        if not all(_well_formed_face(f) for f in faces):
+            raise AdapterError(E_BAD_RESPONSE, f"the face check (session {session_id}) listed a malformed face; {_BILLED}")
+        # identify_face checked every item, so only ids of our pattern and whole milliseconds reach a stored message.
+        listed = ", ".join(f"{face_key(f)} ({f['start_time']}-{f['end_time']} ms)" for f in list(faces)[:8])
         if wanted is not None:
-            match = [f for f in faces if str(f.get("face_id")) == str(wanted)]
+            match = [f for f in faces if face_key(f) == str(wanted)]
             if len(match) == 1:
                 return match[0]
+            if len(match) > 1:
+                raise AdapterError(E_BAD_REQUEST, f"{AMBIGUOUS_FACE}: Kling listed face {wanted} {len(match)} times ({listed}); "
+                                                  f"it cannot be told which one is meant. Use a clip with one person. {billed}")
             raise AdapterError(E_BAD_REQUEST, f"{FACE_NOT_FOUND}: the video has no face {wanted}; faces found: "
                                               f"{listed or 'none'}. Pick one of those, or use a clip of that person. {billed}")
         if not faces:
@@ -273,11 +303,16 @@ class KlingLipsyncAdapter(KlingOmniEditAdapter):
                                               f"speech where the face is on screen. The face check (session {sid}) was billed; "
                                               f"no lip-sync was started")
         fid = face.get("face_id")
-        if not _FACE_ID.fullmatch(str(fid)):
-            raise AdapterError(E_BAD_RESPONSE, f"the face check (session {sid}) named a face id of an unexpected shape; "
-                                               f"no lip-sync was started")
-        data = self._check(self.submit_json(f"{self.base_url}/v1/videos/advanced-lip-sync",
-                                            self.build_body(request, session_id=sid, face_id=fid, external_id=external_id)))
+        try:
+            data = self._check(self.submit_json(f"{self.base_url}/v1/videos/advanced-lip-sync",
+                                                self.build_body(request, session_id=sid, face_id=fid, external_id=external_id)))
+        except AdapterError as e:
+            if e.message.startswith(UNCONFIRMED):
+                raise
+            # A proven refusal of step 2 (401, 402, 429 ...) still comes after a paid face check: the job DID spend, so it is
+            # never not_accepted, whatever proves the lip-sync itself was refused.
+            raise AdapterError(e.code, f"the face check (session {sid}) was billed; no lip-sync was started. {e.message}",
+                               http_status=e.http_status, not_accepted=False) from None
         tid = dig(data, "task_id") if isinstance(data, dict) else None
         if not isinstance(tid, str) or not _ID.fullmatch(tid):
             raise unconfirmed(f"the lip-sync answer (session {sid}) carries no usable task id")
@@ -308,7 +343,12 @@ class KlingLipsyncAdapter(KlingOmniEditAdapter):
                 raise after_completion(AdapterError(E_BAD_RESPONSE, "succeeded without a video URL"))
             return self.checked_outputs(PollResult(SUCCEEDED, [Output("video/mp4", url=url)]))
         if status == "failed":
-            return _failed(self, data.get("task_status_msg") or "task failed")
+            failed = _failed(self, data.get("task_status_msg") or "task failed")
+            if failed.error is not None:
+                # A rerun starts over from the face check: it is paid again, so the message says so.
+                failed.error = AdapterError(failed.error.code, f"{failed.error.message} (a retry pays for another face check "
+                                                               f"and lip-sync)")
+            return failed
         raise AdapterError(E_BAD_RESPONSE, f"unknown task status {self.message(status)[:40]!r}")
 
 
