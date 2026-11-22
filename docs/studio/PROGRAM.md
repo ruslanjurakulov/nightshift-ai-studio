@@ -71,6 +71,7 @@ The owner approved every non-code step the program needs. Atlas carries them out
 - **Vendor plans:** ElevenLabs on the plan its OEM terms require for resale, and a Kling API package with lip-sync. Purchases are the owner's own act on the vendor's site (Atlas tells him when the adapter is ready, so no month is paid for nothing); keys go to GitHub Actions secrets through the Command Center, never into chat.
 - **Kling letter of authorization:** signed and submitted by the owner himself.
 - **Storage:** film masters and film review copies live on our own server's media volume and are served through the session + RLS library route. They are never copied to Supabase Storage, whose free tier (1 GB total, 50 MB per object) stays for the per-channel review copies. Supabase holds rows, not film media.
+- **Spending a customer's credits (22 Nov):** only members of the customer's organisation may start or resume a paid film (or any paid job) on its credits; a platform admin who is not a member may not. Support staff who need to help are added as members by the customer.
 - **Google models (S10 decisions D1–D7, 22 Nov):** D1 the "not for consumer use" clause is read as applying to the API itself, not to the Studio on top of it; D2 the 0192 18+ self-attestation is the gate; D3 the Studio shows model names (e.g. "Nano Banana") in its list, no Google logos and no partnership claim; D4 follow Google's own available-regions list (#881 GOOGLE_BLOCKED is the single source); D5 the privacy policy and ToS get Google as sub-processor, its 55-day retention and the pass-down of Google's terms (en/ru/uz); D6 Omni refuses uploads of minors and video edit/extend for EEA/CH/UK, server-side; D7 when gemini-3.6-flash doubles on 2027-01-01 the customer price rises, the model stays. A Google model reaches customers only after its paid probe succeeded (cap USD 0.50, inside the USD 15 live-test cap), #881 is live, the D5 text is merged and, for Omni, the D6 gate.
 - **Design:** the app's AND the public site's dark ground is neutral near-black, not navy (owner's choices of 22 Nov after S5's benchmark); accent colours stay.
 
@@ -112,6 +113,7 @@ all behave. Every screen on the way meets S5's bar.
 | 0222 | S10 | retire gemini-omni-1.1-flash before Google re-routes it to 1.2 on 2026-12-03 |
 | 0223 | S10 | Omni 1.2 registry row (hidden until probed) + EEA/CH/UK gate on minors' uploads and video edit/extend (D6, after 0208) |
 | 0224 | S10 | dated price row: gemini-3.6-flash customer price rises 2027-01-01 00:00 UTC (D7) |
+| 0225 | S2 | worker identity: table SELECT revoked, named column grants (BR-0036-01/02, BR-S-031) |
 
 Streams S7 (language URLs), S8 (media-first cards, sound), S9 (MCP Studio tools), S10 (Google models) were added on 22 Nov.
 
