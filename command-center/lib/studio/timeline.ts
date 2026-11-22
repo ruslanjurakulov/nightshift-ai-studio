@@ -430,6 +430,8 @@ export interface FilmQuote {
   blockedBy: QuoteBlock[];
   /** The first unpriced line's reason (model_not_available, unpriced…), when the film could not be priced. */
   refusal: string | null;
+  /** That line's own sentence from the database ("Eleven v3 does not speak Uzbek"), when it gave one. English, untranslated. */
+  refusalDetail: string | null;
   /** Minutes of assembly the quote counts (film_assembly_minute). */
   assemblyMinutes: number | null;
   available: number | null;
@@ -451,6 +453,7 @@ export function coerceQuote(raw: unknown): FilmQuote | null {
   });
   const refusals = Array.isArray(q.refusals) ? q.refusals : [];
   const first = refusals[0] && typeof refusals[0] === "object" ? (refusals[0] as Record<string, unknown>).reason : null;
+  const firstDetail = refusals[0] && typeof refusals[0] === "object" ? (refusals[0] as Record<string, unknown>).detail : null;
   return {
     priced,
     total: priced ? total : null,
@@ -459,6 +462,7 @@ export function coerceQuote(raw: unknown): FilmQuote | null {
     mayStart: q.may_start === true,
     blockedBy,
     refusal: typeof first === "string" && /^[a-z0-9_]{1,64}$/.test(first) ? first : null,
+    refusalDetail: typeof firstDetail === "string" && firstDetail.trim() ? firstDetail.trim().slice(0, 300) : null,
     assemblyMinutes: num(q.assembly_minutes),
     available: num(q.available),
     exempt: q.exempt === true,

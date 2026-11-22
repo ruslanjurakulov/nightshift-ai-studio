@@ -179,6 +179,8 @@ export const studioTimelineEn = {
       channel_voice_not_priced: "The channel's narration voice has no price on the server, so the project cannot be priced.",
       no_scenes: "This project has no scenes yet.",
       unpriced: "A line of this project has no price on the server today.",
+      voice_language_unsupported: "The voice model does not speak this project's language. Choose a voice model that does, in the project.",
+      voice_language_unknown: "We could not confirm that the voice model speaks this project's language. Choose a voice model whose languages are listed, in the project.",
       other: "A line of this project could not be priced.",
     },
     // Start-specific words for every refusal the start and quote paths can answer that startFailed does not already say.

@@ -40,7 +40,8 @@ export interface FilmCreateButtonProps {
   className?: string;
 }
 
-const FOCUS_RING = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
+const VOICE_LANGUAGE_WORDS: readonly string[] = ["voice_language_unsupported", "voice_language_unknown"];
+const FOCUS_RING ="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
 
 /**
  * "Create" for a project started outside the timeline: the server's quote → the person confirms that number → the start route holds
@@ -132,7 +133,23 @@ export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHr
     if (r.kind === "no_quote") return k.noQuote;
     if (r.kind === "not_admin") return c.notAdmin;
     // A model that is down is said by ProviderUnavailable, beside the list.
-    if (r.kind === "unpriced") return isProviderDown(r.word) ? null : (reasonText(r.word) ?? k.unpriced.other);
+    if (r.kind === "unpriced") {
+      if (isProviderDown(r.word)) return null;
+      const text = reasonText(r.word) ?? k.unpriced.other;
+      // The database names what it checked ("Eleven v3 does not speak Uzbek"): shown under the reason for a voice's language, where
+      // "choose another voice model" alone does not say which one failed.
+      const detail = r.detail && r.word !== null && VOICE_LANGUAGE_WORDS.includes(r.word) ? r.detail : null;
+      return detail ? (
+        <>
+          {text}
+          <span className="block text-xs opacity-80" data-testid="film-create-line-detail">
+            {detail}
+          </span>
+        </>
+      ) : (
+        text
+      );
+    }
     return c.blocked[r.block];
   };
 

@@ -228,6 +228,15 @@ describe("FilmCreateButton", () => {
     expect(key()!.getAttribute("aria-describedby")).toBe(screen.getByTestId("film-create-note").id);
   });
 
+  it("a voice that does not speak the project's language says so, names the database's finding, and offers Check again", () => {
+    mount(q({ priced: false, total: null, quote_id: null, startable: false, refusals: [{ reason: "voice_language_unsupported", detail: "Eleven v3 does not speak Uzbek" }] }));
+    const line = screen.getByTestId("film-create-reasons").textContent;
+    expect(line).toContain(k.unpriced.voice_language_unsupported);
+    expect(screen.getByTestId("film-create-line-detail").textContent).toBe("Eleven v3 does not speak Uzbek");
+    expect(screen.getByRole("button", { name: k.checkAgain })).toBeTruthy();
+    expect(startRemedy("voice_language_unknown")).toBe("fix_and_requote");
+  });
+
   it("every blocked reason has one way forward", () => {
     expect(blockRemedy({ kind: "no_quote" })).toBe("get_price");
     expect(blockRemedy({ kind: "block", block: "cap_exceeded" })).toBe("plans");
@@ -453,6 +462,9 @@ function wordsTheStartCanAnswer(): string[] {
     for (const m of last!.matchAll(/creative_refuse\('([a-z_]+)'/g)) words.add(m[1]);
   }
   for (const e of FILM_ERRORS) words.add(e);
+  // S6's #915 adds these to FILM_ERRORS (0214's voice_language_problem); pinned here until it is on main, so they are mapped already.
+  words.add("voice_language_unsupported");
+  words.add("voice_language_unknown");
   return [...words].sort();
 }
 

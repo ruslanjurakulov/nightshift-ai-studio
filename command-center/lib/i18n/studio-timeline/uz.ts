@@ -198,6 +198,8 @@ export const studioTimelineUz: StudioTimelineDictionary = {
       channel_voice_not_priced: "Kanal ovozining serverda narxi yoʻq, shuning uchun loyihani baholab boʻlmaydi.",
       no_scenes: "Bu loyihada hali sahnalar yoʻq.",
       unpriced: "Bu loyiha qatorining bugun serverda narxi yoʻq.",
+      voice_language_unsupported: "Ovoz modeli bu loyiha tilida gapirmaydi. Loyihada shu tilda gapiradigan ovoz modelini tanlang.",
+      voice_language_unknown: "Ovoz modeli bu loyiha tilida gapirishini tasdiqlay olmadik. Loyihada tillari koʻrsatilgan ovoz modelini tanlang.",
       other: "Bu loyiha qatorini baholab boʻlmadi.",
     },
     errors: {
