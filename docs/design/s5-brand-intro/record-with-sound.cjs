@@ -1,11 +1,14 @@
 // Records the intro at 1440x900 and muxes in its sound. Playwright's video has no audio track, so the sound is the offline
-// render of the same cue (render-cue.cjs -> intro-timeline.wav, the timeline from the moment the black cover goes up), placed
-// at the moment the page's inline script put the cover up, measured in the page against the video's start.
-// Usage: node record-with-sound.cjs <command-center dir> <base url> <intro-timeline.wav> <out mp4> <work dir>
+// render of the same cue (render-cue.cjs -> intro-timeline.wav, the intro's timeline from its zero), placed at the moment the
+// overlay's first animation started in the page (its animationstart, which is also when the page starts the live cue), measured
+// against the video's start. In the committed intro-1440x900.mp4 the visible slit came ~160 ms after that estimate (the
+// screencast's frames lag), so the sound was placed by the picture instead: the slit's first frame at 1.48 s, minus the slit's
+// 820 ms on the timeline, gives 650 ms, passed as [offset ms]. ffmpeg's signalstats on a box on the diagonal finds that frame.
+// Usage: node record-with-sound.cjs <command-center dir> <base url> <intro-timeline.wav> <out mp4> <work dir> [offset ms]
 const path = require("node:path");
 const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
-const [cc, BASE, WAV, OUT, WORK] = process.argv.slice(2);
+const [cc, BASE, WAV, OUT, WORK, OFFSET] = process.argv.slice(2);
 const { chromium } = require(path.join(cc, "node_modules", "playwright"));
 
 (async () => {
@@ -19,19 +22,20 @@ const { chromium } = require(path.join(cc, "node_modules", "playwright"));
   const page = await ctx.newPage();
   const videoStart = Date.now();
   await page.addInitScript(() => {
-    new MutationObserver(() => {
-      const v = document.documentElement.getAttribute("data-ns-intro");
-      if (v !== null && window.__coverWall === undefined) window.__coverWall = performance.timeOrigin + Number(v);
-    }).observe(document, { attributes: true, subtree: true, attributeFilter: ["data-ns-intro"] });
+    document.addEventListener("animationstart", (e) => {
+      if (e.target instanceof Element && e.target.classList.contains("ns-intro-stage") && window.__startWall === undefined) {
+        window.__startWall = performance.timeOrigin + performance.now();
+      }
+    }, true);
   });
   await page.goto(BASE + "/", { waitUntil: "commit" });
   await page.waitForTimeout(3200);
-  const coverWall = await page.evaluate(() => window.__coverWall);
+  const startWall = await page.evaluate(() => window.__startWall);
   const video = page.video();
   await ctx.close();
   await browser.close();
-  if (!coverWall) throw new Error("the intro did not play");
-  const offsetMs = Math.max(0, Math.round(coverWall - videoStart));
+  if (!startWall) throw new Error("the intro did not play");
+  const offsetMs = OFFSET !== undefined ? Number(OFFSET) : Math.max(0, Math.round(startWall - videoStart));
   const webm = await video.path();
   execFileSync("ffmpeg", [
     "-loglevel", "error", "-y", "-i", webm, "-i", WAV,
