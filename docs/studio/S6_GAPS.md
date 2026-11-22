@@ -181,12 +181,26 @@ lines. Each file is registered with this provenance:
 - the dialogue audio burned into the clip.
 
 It carries `{"lipsync_of_asset_id": "<clip>", "dialogue_asset_id": "<dialogue>", "face_id": "...", "model": "kling-lipsync"}`.
+There is no `dialogue_start_s`/`dialogue_end_s`, because the dialogue file is the scene's whole dialogue.
 
-When the master is assembled from lip-synced clips, the assembly keeps the clip's own audio for those scenes and does not lay the
-dialogue file on top a second time. Whether that is a new `film_timeline` rule or a flag on the take is **S4's decision**. S6 asks,
-it does not edit assembly.
+**Agreed with S4 and Atlas (22 Nov).** S6 builds no film-wide dialogue mix in the worker. The assembly handles it with a
+`film_timeline` rule read from the provenance; there is no flag on the take:
 
-A refusal S4 should add: `dialogue_missing`, the same rule as `narration_missing`.
+- **One stem.** Before the final mix, the assembly pre-mixes every scene's dialogue file into one dialogue stem on the film's clock,
+  each file placed at its scene's start + lead.
+- **Lip-synced clips play muted.** A lip-synced clip's own audio does not enter the mix: the scene's dialogue reaches the film
+  through the stem.
+- **Mismatch.** The clip's `dialogue_asset_id` must equal that scene's current completed dialogue result. If it does not, the
+  assembly refuses `dialogue_mismatch` ("re-sync the scene's lips to its current dialogue").
+- **Missing.** A scene has lines, the voice mode is not `clip_audio`, and there is neither a completed dialogue take nor a
+  lip-synced clip that carries one: the assembly refuses `dialogue_missing`, the same shape as `narration_missing`.
+- **Outside the scene.** A line whose `start_s`/`end_s` does not fit the scene's planned seconds: the assembly refuses
+  `dialogue_outside_scene`. It is never trimmed.
+
+The sound budget is then narration 1 + dialogue stem 1 + music ≤ 4, whatever the number of talking scenes. That fits under
+`film_timeline.MAX_SOUND_CLIPS` (32, measured in `docs/FILM_ASSEMBLY_MEASUREMENT.md`).
+
+S4 builds this after S2 adds the `dialogue` and `lipsync` take kinds (0166's check).
 
 ## 5. Plan (draft PRs, in this order)
 
