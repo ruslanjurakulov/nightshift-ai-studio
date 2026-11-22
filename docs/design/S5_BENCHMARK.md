@@ -11,7 +11,7 @@ repeated here), `docs/design/TOKENS.md`, `docs/design/SITE_KREA.md`, `docs/desig
 
 - Signed-out public pages only, Chromium (preinstalled Playwright), dark colour scheme, 1440 × 900 and 390 × 844,
   deviceScaleFactor 2 for the fold shots, 1 for the scroll strips. No sign-in, no form submitted, cookie banners dismissed
-  where a "Dismiss"/"Deny" key existed. Sites: higgsfield.ai, krea.ai, runwayml.com, buzzy.now, openart.ai, and our own
+  where a "Dismiss"/"Deny" key existed. Sites: higgsfield.ai, krea.ai, runwayml.com, buzzy.now, openart.ai (and kling.ai, §8), and our own
   nightshift-ai.studio (`/` and `/pricing`) **as deployed on 22 Nov, i.e. before PR #889** (the deployed site still sets
   headings in Unbounded; #889 returns the public site to Onest headings and no `ds-skin`).
 - A text census in the page (`getComputedStyle` over every visible text node, counted in words): distinct font sizes, share
@@ -134,6 +134,60 @@ Add credits); "Not available yet" on controls whose backend is not there; the Br
 both server numbers and offers a cheaper option.
 
 These raise gaps 2 (type) and 4 (chrome) and add gaps 9 and 10 below.
+
+## 8. Kling (kling.ai), added 22 Nov at the owner's request
+
+Captured the same way (signed out, Chromium, dark), plus an iPhone 13 emulation. Files: `web/kling-390-fold.jpg`,
+`web/kling-1440-scroll.jpg`, `web/kling-390-scroll.jpg`. The desktop hero is a video that stayed black in headless Chromium,
+so the 1440 hero is described from Atlas's own captures and marked **[A]**. The text census is not usable here: the page
+carries ~49,800 words of hidden text (99 % under 14 px, invisible), so only the visible headings were measured.
+
+**What they do [M, O, A]:**
+
+1. **Hero = film, title, one key.** Full-bleed cinematic video, sound off with a mute toggle [A]; a serif italic display line
+   "All-New Kling 4.0" (PP Editorial New Ultrabold Italic, **58 px / 600** at 1440 [M]); one sub-line "You call the shots"
+   (28 px / 400 [M]); at 1440 one glass prompt bar with a thumbnail and a single black "Create Now" key [A]. On a phone: the
+   video, the title, the sub-line and **one** "Create Now" key — no prompt bar — and the header key becomes "Download App"
+   [O `kling-390-fold.jpg`]. Nothing else on the first screen.
+2. **One section skeleton, repeated.** Centred heading (**39 px / 700** at 1440, 35 px at 390 [M], Google Sans), 3–5 pill
+   tabs or feature titles that switch the media, one large rounded media card, then a single outlined "Try Now →" (36 px high,
+   radius 18 [M]). Very little text per section [O scroll strips].
+3. **Real product on the page.** The Canvas section shows a screenshot of their canvas with its agent side panel, tabbed
+   One-Stop / Create With Agent / Flexible Node Editing [O].
+4. **Cases as proof.** "Industry Applications": category pills, then case cards (title over the video, two-line caption) [O].
+5. **Ground is pure `#000`** [M]; headings white, body small and grey.
+
+**Do not copy** (rule 5 and the owner's rule): partner/"Partnerships" logo walls, "Cannes-Winning" titles, creator
+testimonials, "World's first" — we can back none of them. Their partner wall even names our other benchmark leaders; ours
+names no one.
+
+### Recommendations for our "/" (owner of "/" is #889's agent; routed via Atlas)
+
+Ranked by how much of the gap to first place each closes; each keeps our honesty rules.
+
+1. **First screen = one of our own films + one line + one key.** Use our best real Studio clip full-bleed (sound off, a
+   visible mute and pause key, a still poster under reduced motion — the clip carries the "made with Nightshift" label it
+   already has), the display line, one sub-line, and the prompt bar as the *only* control at ≥ 768 px. On a phone: film, line,
+   one "Start" key; the prompt bar moves to the second screen. The "nothing is charged" note sits under the key at caption
+   size (13 px), not in the hero copy.
+2. **One section skeleton for every section below the fold:** `.ds-section` → centred `.ds-t-display-lg` title (one line) →
+   3–4 `.ds-chip` tabs that switch the media (each tab = one real capability: Idea → film, Canvas, Timeline, Voice) → one large
+   media card (`--ds-r-sheet`) → one quiet "Try it →" key. Remove the icon + "01/02/03" "How it works" cards and the
+   nine-step stepper's paragraphs; the tabs carry the same story with pictures.
+3. **Show the real Studio.** A section with a real screenshot (or a recorded loop) of our canvas with the Brain panel and the
+   lane — the thing no leader can claim: a plan you approve, a price before the press, a private upload at the end. Label
+   it as a recording of the product.
+4. **Cases, honestly.** Category chips (Explainer, Story, Shorts, Ads) over our own sample clips, title over the video and a
+   two-line caption that says what was asked and which model made it. No customer names, no awards, no counts we cannot read.
+5. **Type:** display at weight 500 on the `.ds-t-display-*` roles (Kling's serif italic is not ours to copy; Onest at 500 with
+   tight tracking gives the same calm), section titles at display-lg, body 16/1.6 grey, captions 13. Today's hero is
+   104 px / 600 (Pixel on #889) — about 1.8× Kling's 58 px.
+6. **Ground:** the public site stays without `ds-skin` (owner, #889); if the owner wants the public dark ground to match the
+   app's new neutral near-black (#904), it is one token. Kling's pure `#000` is a choice we do not need: `#0a0b0e` keeps
+   surfaces distinguishable.
+
+S5 implements 5 and the shared section/tab/media-card classes in its follow-up type PR (after #896 and #889 land);
+1–4 are the homepage owner's.
 
 ## Ranked gaps — what most separates us from first place
 
