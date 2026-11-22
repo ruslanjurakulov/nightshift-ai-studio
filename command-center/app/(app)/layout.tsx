@@ -192,7 +192,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const geo = (
     // app-geo-credit: on a full-height screen (the Studio canvas) it is a small right-aligned line under the page, not a stray one
     // at its foot (components/studio-canvas/studio-canvas.css).
-    <div className="app-geo-credit mt-10">
+    // relative z-10: an operator section draws a fixed, dimmed and blurred scrim at z-0 over the whole window (SectionShell), and
+    // the page's card at z-10. Without a z-index of its own this line painted UNDER the scrim (audit 2026-11-21: a blurred ghost
+    // "IP geolokatsiyasi: DB-IP" on /videos, /research, /editor) and its licence link was unclickable: a click hit the scrim.
+    <div className="app-geo-credit relative z-10 mt-10">
       <GeoAttribution label={tt.create.geoAttribution} />
     </div>
   );

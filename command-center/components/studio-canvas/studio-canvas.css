@@ -660,7 +660,13 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-mv { fill: none; stroke: var(--text); stroke-width: 1.5; }
 
 /* ── deck: the canvas's controls, a row under the work area ──────────────── */
+/* What broke (audit 2026-11-21, /all-channels/studio at 1920 px): the deck's last key ("Qadamni tanlang") was cut off and the page
+   grew a horizontal scrollbar. The deck dropped its words by the WINDOW's width (@media 1180/1100), but with Nightshift AI docked
+   beside the canvas the deck is ~400 px narrower than the window, so at 1920 its row (~1340 px in Uzbek) overflowed its ~1310 px
+   column and spilled past the viewport. Now it drops words by its OWN width (a container query), the note gives way first
+   (ellipsis), and a row that still cannot fit (a phone, a long "Make for N credits") scrolls inside the deck: never the page. */
 .cv-deck {
+  container: cv-deck / inline-size;
   display: flex;
   flex: none;
   align-items: center;
@@ -668,24 +674,37 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
   height: 60px;
   min-width: 0;
   padding: 0 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
   border-top: 1px solid var(--rule);
   background: color-mix(in srgb, var(--console) 85%, transparent);
 }
+/* Keys keep their size; only the texts shrink (ellipsis; the key beside the reason carries it whole in its title). */
+.cv-deck > * { flex-shrink: 0; }
+.cv-deck > .cv-grow,
+.cv-deck > .cv-qnote,
+.cv-deck > .cv-qwhy { flex-shrink: 1; min-width: 0; }
 .cv-zoom { display: inline-flex; align-items: center; gap: 2px; }
 .cv-zoom output { width: 56px; text-align: center; font-size: 14px; font-weight: 600; }
 .cv-vsep { width: 1px; height: 26px; margin: 0 4px; background: var(--rule); }
-.cv-qnote { color: var(--dim); font-size: 13px; white-space: nowrap; }
+.cv-qnote { min-width: 0; overflow: hidden; color: var(--dim); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 /* Why the price cannot form (a locked model, no length, a refused quote), beside the key that would get it. */
 .cv-qwhy { max-width: 320px; overflow: hidden; color: var(--caution); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .cv-link:disabled { opacity: 0.5; cursor: not-allowed; text-decoration: none; }
 .cv-nchip.is-flow { margin-top: 6px; }
 @media (max-width: 1180px) {
   .cv-root { --insp-w: 360px; --drawer-w: 260px; }
+}
+/* The deck's words go by the deck's width (above): a cut note of a few letters says nothing, so under ~1180 px it goes. */
+@container cv-deck (max-width: 1180px) {
   .cv-qnote { display: none; }
+}
+@container cv-deck (max-width: 1100px) {
+  .cv-klabel { display: none; }
 }
 /* A narrower window keeps every control and drops words, never the other way round. */
 @media (max-width: 1100px) {
-  .cv-klabel,
   .cv-chip-label,
   .cv-search-label { display: none; }
   .cv-chip-link { width: 38px; justify-content: center; padding: 0; }

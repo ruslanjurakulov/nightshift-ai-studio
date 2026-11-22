@@ -1031,7 +1031,7 @@ export function StudioCanvas({
           </button>
         </div>
         <span className="cv-grow" />
-        <span className="cv-qnote">{c.nothingSpends}</span>
+        <span className="cv-qnote" title={c.nothingSpends}>{c.nothingSpends}</span>
         {quote}
       </div>
       {paletteEl}
