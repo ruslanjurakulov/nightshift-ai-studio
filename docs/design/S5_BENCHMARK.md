@@ -103,12 +103,19 @@ agent tags. What separates it from the reference: [O]
 - Leaders signed out show none of these, so the benchmark is our own Definition of Done. Ours has the right words (the
   canvas says "Empty canvas · nothing spent"; the Create key says "Nothing spends without a quote"), but **each surface draws
   its own**: a status strip on the canvas, inline text in the timeline, a toast elsewhere [O, code]. There is no shared
-  empty/loading/error/insufficient-credits component in `components/ds/` — only `Button`.
+  empty/loading/error/insufficient-credits component in either primitive layer (gap 1).
 
 ## Ranked gaps — what most separates us from first place
 
-1. **No shared component layer.** `components/ds/` holds one file (`Button`). Every stream draws its own card, panel, chip,
-   empty state, timecode. Consistency cannot be reviewed into existence; it has to be importable. → S5 PR "ds components".
+1. **Two primitive layers, and the states half-shared.** `components/ui/` (Panel, Chip, Timecode, StatusLamp, Meter,
+   PriceButton, StepCard … on the older `--ns-*` names) and `components/ds/` (`Button`, plus `.ds-chip`/`.ds-input`/
+   `.ds-toggle` CSS on `--ds-*`) live side by side. Shared states exist for empty (`components/ui.tsx` `EmptyState`), error
+   (`ReadError.tsx` `ErrorState`) and loading (`feedback/Skeleton`, `motion/LoadingGrace`), but four surfaces still draw
+   their own empty state (the timeline's `Empty`, `AdvisoryPanel`'s `Empty`, `EmptyHint`, `EmptyCard`) [M grep], and there
+   is **no shared insufficient-credits, provider-unavailable or session-expired state** [M grep]. → S5 PR "ds states":
+   the three missing states, the existing three moved onto `--ds-*`, one spec for all six.
+   *Correction: the first push of this document said `components/ds/` held only `Button` and implied no shared states
+   existed; `components/ui/` and the shared Empty/Error/Skeleton were missed.*
 2. **Type has no middle.** Display (56–74 px) and body/labels (13–20 px), nothing at 24–40 px; display weight 600 with
    heavy tracking. Leaders run display at 400–500 with −1 to −1.5 % tracking and a clear 5–6 step scale. → S5 PR
    "type scale" (Onest display, per #889).
