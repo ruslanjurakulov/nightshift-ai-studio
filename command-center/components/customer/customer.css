@@ -433,7 +433,7 @@
   aspect-ratio: 16 / 9;
   margin: -0.9rem -1rem 0.5rem;
   border-radius: 15px 15px 0 0;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--cs-kind, var(--cs-blue)) 55%, #070a14), #070a14);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cs-kind, var(--cs-blue)) 55%, #0a0b0e), #0a0b0e);
   background-size: cover;
   background-position: center;
 }

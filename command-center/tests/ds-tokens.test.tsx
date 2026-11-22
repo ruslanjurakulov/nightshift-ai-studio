@@ -55,8 +55,14 @@ describe("--ds-* colour tokens", () => {
     expect(darkExplicit).toEqual(darkMedia);
   });
 
-  it("is the owner's approved navy/neon in dark", () => {
-    expect(darkMedia["--ds-bg"]).toBe("#070a14");
+  it("is the owner's approved look in dark: a neutral near-black ground (22 Nov 2026), the same neon accents", () => {
+    expect(darkMedia["--ds-bg"]).toBe("#0a0b0e");
+    // Neutral: no channel of a ground leads another by more than a few steps, so no blue (or any) tint creeps back.
+    for (const k of ["--ds-bg", "--ds-surface-1", "--ds-surface-2", "--ds-surface-3"]) {
+      const h = darkMedia[k].replace("#", "");
+      const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+      expect(Math.max(r, g, b) - Math.min(r, g, b), k).toBeLessThanOrEqual(12);
+    }
     expect(darkMedia["--ds-accent"]).toBe("#2f8bff");
     expect(darkMedia["--ds-select"]).toBe("#c8ff2e");
     expect([darkMedia["--ds-type-text"], darkMedia["--ds-type-image"], darkMedia["--ds-type-video"], darkMedia["--ds-type-audio"]]).toEqual([
@@ -246,5 +252,26 @@ describe("the skin (html.ds-skin) leaves no old colour behind", () => {
     const layout = readFileSync(path.join(root, "app/layout.tsx"), "utf8");
     expect(layout).toMatch(/<html lang=\{locale\} className="ds-skin"/);
     expect(css).toMatch(/:root\.ds-skin\.ds-skin,\n\.ds-skin :is\(\.st, \.nx-final, \.nx-bar, \.st-auth-aside\),\n\.ds-skin \[data-theme-scope\] \{/);
+  });
+});
+
+describe("the Studio canvas's own ground (components/studio-canvas/studio-canvas.css)", () => {
+  // The canvas declares its own names on its own elements; the neutral ground has to be there too, or the biggest screen in
+  // the app stays navy while everything around it turns near-black.
+  const cv = readFileSync(path.join(root, "components/studio-canvas/studio-canvas.css"), "utf8");
+  const dark = cv.slice(cv.indexOf(".cv-root,"), cv.indexOf("}", cv.indexOf(".cv-root,")));
+  const v = (name: string) => dark.match(new RegExp(`${name}: (#[0-9a-f]{6})`))![1];
+
+  it("is neutral near-black, the same ground as --ds-bg", () => {
+    expect(v("--canvas")).toBe(darkMedia["--ds-bg"]);
+    expect(dark).not.toMatch(/80 140 220|#070a14|#0a0f1c|#0f1626|#19243b/);
+  });
+
+  it("keeps its text >= 4.5:1 and its strong edge >= 3:1 on every canvas surface", () => {
+    const grounds = ["--canvas", "--console", "--raise", "--key", "--key-hi"].map(v);
+    for (const g of grounds) {
+      for (const t of ["--text", "--dim", "--faint"]) expect(contrast(v(t), g), `${t} on ${g}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(v("--rule-strong"), g), `edge on ${g}`).toBeGreaterThanOrEqual(3);
+    }
   });
 });
