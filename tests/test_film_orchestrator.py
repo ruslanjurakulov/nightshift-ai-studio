@@ -68,6 +68,8 @@ class FakeDb:
         self.assets = {}
         self.settles = []
         self.failed = []
+        self.off_sale = set()
+        self.sale_down = False
 
     @staticmethod
     def _take(kind, scene, shot, model, params, duration=None):
@@ -215,6 +217,19 @@ class FakeDb:
 
     def record_cost(self, job, usage):
         pass
+
+    # still on sale (cw.not_on_sale): every model is, unless a test took it off
+    def on_sale(self, capability):
+        self.calls.append(("on_sale", capability))
+        if self.sale_down:
+            raise cw.CreativeUnavailable("sellable_models: HTTP 503")
+        return [m for m in ("img-key", "vid-clip", "tts-a") if m not in self.off_sale]
+
+    def model_switched_on(self, model):
+        return True
+
+    def registry_row(self, model):
+        raise AssertionError("a film take never reads a registry row: Film Studio sells no operator preview")
 
     def count(self, name):
         return sum(1 for c in self.calls if c[0] == name)

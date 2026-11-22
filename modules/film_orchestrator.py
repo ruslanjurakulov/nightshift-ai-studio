@@ -678,6 +678,7 @@ class FilmOrchestrator:
         if kind == "narration":
             return self._narration(seg, take, tj, job, request, adapter, work, lease)
         request = self._inputs(request, tj, adapter, work)
+        self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
             raise _TakeFailed("provider_error", "the take's job could not be sent (the model may be switched off)")
         try:
@@ -692,6 +693,18 @@ class FilmOrchestrator:
             raise _Stop("job_lost")
         files = self._poll(adapter, task, request, work / "out", lease)
         return self._deliver(seg, take, tj, job, request, files, task, work, None)
+
+    def _still_on_sale(self, request: cw.GenerationRequest) -> None:
+        """The take's model must still be on sale for the take's capability right before the paid call (the creative worker's rule,
+        modules/creative_worker.py "Still on sale"): a film is priced at start, and its takes run for hours after. Not on sale fails the
+        take as ``bad_request`` (the closest word the live view has copy for: the person picks another model and starts again), charged
+        0 by 0171; its one retry meets the same answer and fails for good, and the segment settles as takes_failed. Never another model.
+        An answer that cannot be read raises CreativeUnavailable: nothing is sent, and the drive is left for the next claim."""
+        gone = cw.not_on_sale(self.db, request.model, request.capability, request.org_id, previews=False)
+        if gone is not None:
+            code, _ = gone
+            raise _TakeFailed("bad_request", f"{request.model} is no longer on sale for {request.capability} ({code}); "
+                                             "nothing was sent and this take is not charged. Choose another model and start again")
 
     def _inputs(self, request: cw.GenerationRequest, tj: Mapping[str, Any], adapter, work: Path) -> cw.GenerationRequest:
         """The take's pictures, as the database named them (film_take_job), copied by id; the style kit and @characters through the
@@ -767,6 +780,7 @@ class FilmOrchestrator:
             start += float(s["planned_seconds"])
         if not plan:
             raise _TakeFailed("bad_request", "the film has no narration text")
+        self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
             raise _TakeFailed("provider_error", "the narration's job could not be sent (the model may be switched off)")
         voiced, clips, segments, first_task = 0, [], [], None
@@ -984,6 +998,16 @@ class FilmRest:
 
     def record_cost(self, job, usage):
         return self.creative.record_cost(job, usage)
+
+    # still on sale, right before a take's paid call (cw.not_on_sale)
+    def on_sale(self, capability):
+        return self.creative.on_sale(capability)
+
+    def model_switched_on(self, model):
+        return self.creative.model_switched_on(model)
+
+    def registry_row(self, model):
+        return self.creative.registry_row(model)
 
 
 __all__ = ["AssemblyOutcome", "DriveOutcome", "FILM_ERROR_CODES", "FilmOrchestrator", "FilmRefused", "FilmRest", "FilmUnavailable",
