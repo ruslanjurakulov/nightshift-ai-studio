@@ -147,3 +147,69 @@ def test_taking_over_an_expired_plan_finishes_its_stale_pending_calls_only(conn,
         row = su.rows("select outcome, tokens_in, tokens_out, finished_at is not null from public.ai_chat_calls where id = %s", [stale])[0]
         assert row == ("vendor_error", None, None, True), row
         assert su.value("select outcome from public.ai_chat_calls where id = %s", [live]) == "pending"
+
+
+PLAN_SAVE = "select public.ai_chat_plan_save_brief(%s, %s, %s::jsonb, %s)"
+
+
+def test_the_takeover_sweeps_the_dead_plans_calls_up_to_its_last_second_and_nothing_after(conn, sc):
+    """Lens L4: the sweep used to skip the dead plan's last ~160 s, so a call it made just before its expiry stayed pending and
+    counted against the cap forever. Now every pending call from the old lease's start to its expiry is finished; a turn made after
+    the expiry is not touched."""
+    with as_superuser(conn, commit=False) as su:
+        with acting(conn, sc.alice.actor, commit=True) as s:
+            s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])
+        conn.execute("reset role")
+        su.rows("update public.ai_chat_plan_leases set started_at = now() - interval '6 minutes', "
+                "expires_at = now() - interval '10 seconds' where session_id = %s returning 1", [sc.alice.ai_chat_session])
+
+        def pending(ago: str):
+            return su.value("insert into public.ai_chat_calls (org_id, user_id, session_id, model, outcome, created_at) "
+                            f"values (%s, %s, %s, 'anthropic-claude-sonnet-5-5', 'pending', now() - interval '{ago}') returning id",
+                            [sc.alice.org, sc.alice.actor.uid, sc.alice.ai_chat_session])
+
+        last_second = pending("20 seconds")   # inside the old lease, newer than the old 160 s cut-off
+        after = pending("5 seconds")          # made after the old lease expired: not that plan's
+        with acting(conn, sc.alice.actor, commit=True) as s:
+            assert s.run(BEGIN, [sc.alice.ai_chat_session, 41, 0]).ok
+        conn.execute("reset role")
+        assert su.value("select outcome from public.ai_chat_calls where id = %s", [last_second]) == "vendor_error"
+        assert su.value("select outcome from public.ai_chat_calls where id = %s", [after]) == "pending"
+
+
+def test_a_taken_over_plan_cannot_write_its_brief_through_the_lease_checked_save(conn, sc):
+    """Breach BR-S1-08: the late first plan's BRIEF must never replace the one the plan that took its lease over wrote. The route
+    writes a plan's BRIEF only through ai_chat_plan_save_brief, which refuses any attempt but the running, unexpired one."""
+    with as_superuser(conn, commit=False) as su:
+        with acting(conn, sc.alice.actor, commit=True) as s:
+            old = s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])["attempt"]
+            assert s.run(PLAN_SAVE, [sc.alice.ai_chat_session, old, '{"v": 1, "by": "old-early"}', "ready"]).ok
+        conn.execute("reset role")
+        su.rows("update public.ai_chat_plan_leases set expires_at = now() - interval '1 second' where session_id = %s returning 1",
+                [sc.alice.ai_chat_session])
+        with acting(conn, sc.alice.actor, commit=True) as s:
+            # Expired and not yet taken over: no longer the running plan either.
+            out = s.run(PLAN_SAVE, [sc.alice.ai_chat_session, old, '{"v": 1, "by": "old-expired"}', "ready"])
+            assert not out.ok and out.error == "plan_not_current", out
+            new = s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])["attempt"]
+            assert s.run(PLAN_SAVE, [sc.alice.ai_chat_session, new, '{"v": 1, "by": "new"}', "ready"]).ok
+            out = s.run(PLAN_SAVE, [sc.alice.ai_chat_session, old, '{"v": 1, "by": "old-late"}', "ready"])
+            assert not out.ok and out.error == "plan_not_current", out
+        conn.execute("reset role")
+        assert su.value("select brief ->> 'by' from public.ai_chat_sessions where id = %s", [sc.alice.ai_chat_session]) == "new"
+
+
+def test_nobody_but_the_author_writes_a_plans_brief(conn, sc):
+    with as_superuser(conn, commit=False) as su:
+        colleague = _member(su, sc.alice.org, "editor")
+        with acting(conn, sc.alice.actor, commit=True) as s:
+            attempt = s.value(BEGIN, [sc.alice.ai_chat_session, 41, 0])["attempt"]
+        conn.execute("reset role")
+        for who in (colleague, sc.bob.actor):
+            with acting(conn, who) as s:
+                out = s.run(PLAN_SAVE, [sc.alice.ai_chat_session, attempt, '{"v": 1, "by": "intruder"}', "ready"])
+                assert not out.ok and out.error == "session_not_found", (who.name, out)
+        for who in (ANON, SERVICE):
+            with acting(conn, who) as s:
+                out = s.run(PLAN_SAVE, [sc.alice.ai_chat_session, attempt, '{"v": 1}', "ready"])
+                assert not out.ok and out.sqlstate == "42501", (who.name, out)
