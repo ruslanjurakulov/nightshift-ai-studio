@@ -390,8 +390,10 @@ Each of these fails the assembly at 0, by name, with the remedy in `detail`. A s
 - `output_mismatch`: the length is more than 0.12 s off the sum of the scenes, the frame is not the aspect's, or a film
   with sound came out without it;
 - `store_failed`: also a library row whose recorded length is not the film's, since 0171 charges by that length;
-- `review_copy_missing` or `review_copy_too_large`. The review copy is the library's 480p proxy of the master, and it must
-  fit the 50 MB Supabase object ceiling;
+- `review_copy_missing` or `review_copy_too_large`. The review copy is the library's 480p proxy of the master, encoded
+  with its video capped at the rate that fits 45 MB for the film's length (crf 28 below the cap; 504 kb/s at 10 minutes,
+  recorded on the master's provenance as `review_copy`), and it must fit the 50 MB Supabase object ceiling. Too large
+  even capped is the last guard: retry the assembly, never "shorten the film" (S4_GAPS.md G2);
 - `assembly_not_enabled`.
 
 ### The flag

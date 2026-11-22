@@ -80,6 +80,16 @@ DURATION_TOLERANCE_S = 0.12
 #: The review copy (the library's 480p proxy) must fit one object of the Supabase free tier
 #: (CLAUDE.md "Known ceilings": 50 MB), so it can be copied to the previews bucket as it is.
 REVIEW_COPY_MAX_BYTES = 50 * 1000 * 1000
+#: What the review copy is encoded to fit, below REVIEW_COPY_MAX_BYTES: crf 28 alone is constant quality, so its size
+#: follows the footage, and real AI clips gave 49.37 MB for a 10-minute 16:9 film (98.7 % of the ceiling; cross-fades
+#: about 1.28 times more, so ~63 MB expected), which failed a paid, rendered film over its preview
+#: (docs/studio/S4_GAPS.md G2). 5 MB of headroom is for the mp4 container and the VBV's overshoot of its average.
+REVIEW_TARGET_BYTES = 45 * 1000 * 1000
+#: The review copy's AAC rate (media_library.proxy_command, -b:a 96k), taken off the budget before the video's cap.
+REVIEW_AUDIO_KBPS = 96
+#: The lowest video cap: a guard only. At film_timeline.MAX_FILM_S (600 s) the cap is 504 kb/s, so no film reaches it;
+#: it stops a length the timeline someday allows from asking libx264 for an unwatchable preview.
+REVIEW_MIN_VIDEO_KBPS = 150
 #: Free space the work folder needs, per second of film, on top of the fast intermediates (the render_backend
 #: figure for 1080p scaled by the frame's pixels): the output (measured 4.95 Mb/s at 1080p) and the library's
 #: copy of it with its proxy. Measured use was 3.8 MB/s against 9 asked (docs/FILM_ASSEMBLY_MEASUREMENT.md);
@@ -653,7 +663,9 @@ def assemble_segment(segment: Mapping, *, worker_id: str, media_root: Path, tool
             if e.word == "lease_lost":
                 raise _LeaseLost() from None
             raise AssemblyFailed("store_failed", f"the database refused the film ({e.word}): retry the assembly") from None
-        logger.info("film assembly %s: completed (%s, %s s)", seg_id, result["asset_id"], result["length_s"])
+        cap = result.get("review_maxrate_kbps")
+        logger.info("film assembly %s: completed (%s, %s s, %s)", seg_id, result["asset_id"], result["length_s"],
+                    f"review copy video capped at {cap} kb/s" if cap else "an earlier attempt's file, reused")
         dw = result.get("dropped_words") or []
         detail = (f"{len(dw)} word(s) outside speech dropped from the captions: "
                   + ", ".join(f"{w['start_s']:.2f}-{w['end_s']:.2f} s" for w in dw[:10]) + ("…" if len(dw) > 10 else "")
@@ -862,9 +874,14 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
             raise AssemblyFailed("store_failed", "the captions are not this workspace's file after storing them: retry "
                                  "the assembly")
         prov["captions_asset_id"] = vtt_id
+    # The review copy is capped for the 50 MB object ceiling (S4_GAPS.md G2), and the row says so: a preview encoded
+    # below crf 28's choice is recorded, not silent (rule 5). The master itself is untouched.
+    cap = review_maxrate_kbps(cut.length_s)
+    prov["review_copy"] = {"video_maxrate_kbps": cap, "target_bytes": REVIEW_TARGET_BYTES}
     stored = _store(lambda: deps.store_file(out, asset_id=aid, org_id=org, store=media, media_root=media_root,
                                             tools=tools, expect_kind="video", source="generated",
-                                            original_name="film.mp4", provenance=prov), "film")
+                                            original_name="film.mp4", provenance=prov,
+                                            proxy_maxrate_kbps=cap), "film")
     registered.append(aid)
     if ml.canonical_id(stored.get("id")) != aid:
         raise AssemblyFailed("store_failed", "the library recorded another file: retry the assembly")
@@ -875,7 +892,7 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
                              "(deleted meanwhile?): retry the assembly")
     _check_master(row, media_root, aid, cut.length_s)
     return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": True, "captions_asset_id": vtt_id,
-            "dropped_words": dropped_words}
+            "dropped_words": dropped_words, "review_maxrate_kbps": cap}
 
 
 def _store(fn: Callable[[], dict], what: str) -> dict:
@@ -890,6 +907,14 @@ def _store(fn: Callable[[], dict], what: str) -> dict:
         if _transient_store_error(e):
             raise DbUnavailable(f"storing the {what}: {e}") from None
         raise
+
+
+def review_maxrate_kbps(length_s: float) -> int:
+    """The review copy's video cap (kb/s) for a film of ``length_s``: what fits REVIEW_TARGET_BYTES with the sound,
+    never below REVIEW_MIN_VIDEO_KBPS. Only the preview is capped; the master is encoded as it always was. crf still
+    governs below the cap, so a short film's review copy is in practice what it was before (S4_GAPS.md G2)."""
+    secs = max(float(length_s), 1.0)
+    return max(REVIEW_MIN_VIDEO_KBPS, math.floor(REVIEW_TARGET_BYTES * 8 / secs / 1000) - REVIEW_AUDIO_KBPS)
 
 
 def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> None:
@@ -908,10 +933,13 @@ def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> 
     if "proxy" not in variants or not proxy.is_file():
         raise AssemblyFailed("review_copy_missing", "the 480p review copy could not be made: retry the assembly")
     if proxy.stat().st_size > REVIEW_COPY_MAX_BYTES:
-        raise AssemblyFailed("review_copy_too_large", f"the 480p review copy is {proxy.stat().st_size // 1_000_000} MB, "
-                             "above the 50 MB a review object may be: shorten the film")
+        # The last guard: the copy is already capped to fit, so reaching this is the encoder overshooting its cap, not
+        # the film being too long. The film is fine; shortening it is the wrong remedy (S4_GAPS.md G2).
+        raise AssemblyFailed("review_copy_too_large", f"the 480p review copy came out {proxy.stat().st_size / 1e6:.1f} "
+                             "MB, above the 50 MB a review object may be, even capped: retry the assembly; report it if it "
+                             "repeats")
 
 
 __all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "clients_from", "DbRefused", "DbUnavailable", "Deps", "REASONS",
            "assemble_segment", "cached_words", "prune_word_cache", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
-           "master_asset_id", "render_strict", "store_caption", "vtt_text", "whisper_words"]
+           "master_asset_id", "render_strict", "review_maxrate_kbps", "store_caption", "vtt_text", "whisper_words"]

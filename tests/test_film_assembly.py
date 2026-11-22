@@ -473,6 +473,62 @@ class FakeHttp:
         return FakeResponse(*a)
 
 
+class ReviewCopyCapTest(Base):
+    """The review copy is encoded for the 50 MB object ceiling (docs/studio/S4_GAPS.md G2): a 10-minute film of real
+    AI clips gave a 49.37 MB uncapped proxy, and a cross-fade film is expected near 63 MB. What would break: a paid,
+    rendered film failed over its preview, or the cap made silently."""
+
+    def test_the_cap_is_what_fits_45_mb_with_the_sound(self):
+        self.assertEqual(fa.review_maxrate_kbps(600), 504)        # 45 MB x 8 / 600 s = 600 kb/s, less 96 of AAC
+        self.assertEqual(fa.review_maxrate_kbps(10), 35904)       # far above crf 28's choice: a short film is unchanged
+        self.assertEqual(fa.review_maxrate_kbps(180), 1904)
+        # A guard only: no film the timeline allows reaches the floor.
+        self.assertGreater(fa.review_maxrate_kbps(ft.MAX_FILM_S), fa.REVIEW_MIN_VIDEO_KBPS)
+        self.assertEqual(fa.review_maxrate_kbps(10_000), fa.REVIEW_MIN_VIDEO_KBPS)
+        # What it allows, sound and video at the cap, fits the ceiling with room for the container.
+        self.assertLessEqual((fa.review_maxrate_kbps(600) + fa.REVIEW_AUDIO_KBPS) * 1000 / 8 * 600,
+                             fa.REVIEW_TARGET_BYTES)
+        self.assertLess(fa.REVIEW_TARGET_BYTES, fa.REVIEW_COPY_MAX_BYTES)
+
+    def stored_with(self, scenes: int, seconds: int):
+        f = self.film(scenes=scenes, seconds=seconds)
+        db = f.db()
+        length = float(scenes * seconds)
+        inner = fake_store_file(db, self.root, duration=length)
+        calls = []
+
+        def store_file(path, **kw):
+            calls.append(kw)
+            return inner(path, **kw)
+        out = run(db, self.root, deps=self.fake_deps(db, length=length, store_file=store_file))
+        self.assertTrue(out.ok, (out.reason, out.detail))
+        (call,) = calls
+        return call, db.asset_rows[out.asset_id]
+
+    def test_a_ten_minute_film_stores_its_master_with_the_review_copy_capped_at_504_kbps_and_says_so(self):
+        call, row = self.stored_with(60, 10)
+        self.assertEqual(call["proxy_maxrate_kbps"], 504)
+        # Recorded on the film's own row: "we capped the preview" survives into what a person reads (rule 5).
+        self.assertEqual(row["provenance"]["review_copy"],
+                         {"video_maxrate_kbps": 504, "target_bytes": fa.REVIEW_TARGET_BYTES})
+
+    def test_a_ten_second_film_gets_the_cap_for_its_own_length(self):
+        call, row = self.stored_with(2, 5)
+        self.assertEqual(call["proxy_maxrate_kbps"], fa.review_maxrate_kbps(10.0))
+        self.assertEqual(row["provenance"]["review_copy"]["video_maxrate_kbps"], 35904)
+
+    def test_a_review_copy_still_too_large_names_the_copy_not_the_film(self):
+        f = self.film()
+        db = f.db()
+        out = self.assert_fails(db, "review_copy_too_large",
+                                store_file=fake_store_file(db, self.root, proxy_bytes=fa.REVIEW_COPY_MAX_BYTES + 1))
+        self.assertNotIn("shorten", out.detail)
+        self.assertIn("even capped", out.detail)
+        self.assertIn("retry the assembly", out.detail)
+
+    assert_fails = LoudFailureTest.assert_fails
+
+
 class RestStoreTest(unittest.TestCase):
     def store(self, answers):
         media = ml.MediaStore("http://db.invalid", "service-key-placeholder", session=FakeHttp(answers))

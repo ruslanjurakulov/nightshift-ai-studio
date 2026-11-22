@@ -178,6 +178,20 @@ In order of what would hurt a paid film first.
   measurement predicted this (22 MB on synthetic clips, "real provider footage could give a larger proxy") and named the
   remedy: a bitrate-capped review encode. The remedy in today's detail, "shorten the film", is the wrong one: the master
   is fine, only its preview is too big.
+- **After** (`claude/nsai-s4-review-copy`, same machine, same harness, same clips): the film's review copy is the same
+  480p crf 28 encode with a VBV cap, `-maxrate <cap>k -bufsize <2 × cap>k`, cap = `⌊45 MB × 8 / length⌋ − 96` kb/s
+  (`film_assembly.review_maxrate_kbps`; 504 kb/s at 600 s, 1,904 at 180 s, 35,904 at 10 s), recorded on the master's
+  provenance as `review_copy: {video_maxrate_kbps, target_bytes}`. The master is not touched.
+  - 10-minute 16:9, cuts: review copy **45.49 MB, 91.0 % of 50 MB** (606 kb/s overall with the sound, against 658
+    before); wall **834.5 s** (794.0 before; not a cost of the cap alone, the encode is the same preset and the run had
+    load 4.0 from its own threads); sync 0.001 s (60/60), cuts 0.000 s (59/59), length error 0.000 s, master 324.01 MB.
+  - 180 s 16:9, cross-fades: review copy **15.62 MB, unchanged** (crf 28 chose about 694 kb/s, under the 1,904 cap);
+    wall 297.2 s.
+  - A 10-minute cross-fade film could not be run: the harness's showcase clips are shorter than a 10 s scene plus the
+    cross-fade's overlap. Under the cap its review copy is bounded by the same 504 kb/s, so about 45 MB is expected
+    where about 63 MB was before. That is a bound, not a measurement.
+  - `review_copy_too_large` stays as the last guard; its detail now says the copy came out too large even capped and
+    to retry, never "shorten the film".
 
 ### G3 — A film's captions cannot be downloaded (medium)
 
@@ -230,7 +244,7 @@ In order of what would hurt a paid film first.
 | PR | Gap | Change | Files |
 | :-- | :-- | :-- | :-- |
 | `claude/nsai-s4-gaps` (this) | - | This document and `tools/film_assembly_e2e_measure.py` | docs, tools |
-| `claude/nsai-s4-review-copy` | G2 | The film's review copy is encoded for the ceiling: 480p, crf 28 *capped* at the bitrate that fits 45 MB for the film's length (`45 MB × 8 / length − 96 kb/s`). It replaces the library's proxy variant of the master; the master is untouched. The review copy is a preview, not the film, so a lower bitrate there is not a quality fallback of what is delivered. Measured before and after on the 10-minute 16:9 film. `review_copy_too_large` stays as the last guard, with a remedy that names the real cause | `modules/film_assembly.py`, tests |
+| `claude/nsai-s4-review-copy` | G2 | The film's review copy is encoded for the ceiling: 480p, crf 28 *capped* at the bitrate that fits 45 MB for the film's length (`45 MB × 8 / length − 96 kb/s`). It replaces the library's proxy variant of the master; the master is untouched. The review copy is a preview, not the film, so a lower bitrate there is not a quality fallback of what is delivered. Measured before and after on the 10-minute 16:9 film. `review_copy_too_large` stays as the last guard, with a remedy that names the real cause | `modules/film_assembly.py`, `modules/media_library.py` (an additive, default-off proxy cap), tests |
 | `claude/nsai-s4-whisper-model` | G1, G4 | `whisper_words` loads from an explicit, read-only model folder baked into the image (`download_root`), never downloads at run time, and refuses by name (`captions_unavailable`: "the captions model is not installed on this worker") when the file is not there. Transcription moves to a child process, so its 800 MB is returned before the render. The worker image and the film-worker's environment change with it, which is **a shared file: Atlas first** (Dockerfile.worker, deploy/docker-compose.yml). The fail-early check of the model at the worker's start is S2's file (`tools/film_worker.py`); S4 hands S2 the function | `modules/film_assembly.py`, tests; Dockerfile.worker / compose via Atlas |
 | `claude/nsai-s4-film-captions-download` | G3 | `?variant=captions` on a film master serves its captions file (provenance `captions_asset_id`, read as the member under RLS, `kind = caption`, the same workspace) as an SRT attachment. The editor-export path is unchanged. S3 is told the live view can pass `captions` | `app/api/library/[asset]/download/route.ts`, `lib/libraryDownload.ts`, tests, i18n if any string |
 

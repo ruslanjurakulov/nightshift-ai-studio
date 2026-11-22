@@ -846,5 +846,81 @@ class Housekeeping(unittest.TestCase):
         self.assertTrue(new.exists())
 
 
+class CappedProxy(unittest.TestCase):
+    """A capped proxy (``proxy_maxrate_kbps``) exists for the film's review copy, which must fit the 50 MB Supabase
+    object ceiling: crf 28 alone gave 49.37 MB for a 10-minute film of real AI clips (docs/studio/S4_GAPS.md G2).
+    What would break: every other caller's proxy changing with it, or the cap never reaching ffmpeg."""
+
+    #: Today's proxy command, literally: an upload's, an export's and a creative job's proxy must not move.
+    DEFAULT = ["ffmpeg", "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-filter_threads", "2",
+               "-filter_complex_threads", "2", "-protocol_whitelist", "file", "-f", "mov", "-max_pixels", "36683776",
+               "-threads", "2", "-i", "/m/o", "-map", "0:v:0", "-map", "0:a:0?", "-vf",
+               "scale='if(gte(iw,ih),-2,min(480,iw))':'if(gte(iw,ih),min(480,ih),-2)'", "-c:v", "libx264",
+               "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p", "-threads", "2", "-c:a", "aac", "-b:a",
+               "96k", "-movflags", "+faststart", "-f", "mp4", "/m/p.mp4"]
+
+    def test_the_default_proxy_command_is_byte_for_byte_unchanged(self):
+        self.assertEqual(ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), "video/mp4"), self.DEFAULT)
+        self.assertEqual(ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), "video/mp4", None), self.DEFAULT)
+
+    def test_a_cap_adds_only_a_vbv_cap_under_the_same_crf(self):
+        argv = ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), "video/mp4", 504)
+        i = argv.index("-maxrate")
+        self.assertEqual(argv[i:i + 4], ["-maxrate", "504k", "-bufsize", "1008k"])
+        self.assertEqual(argv[:i] + argv[i + 4:], self.DEFAULT)  # same scale, preset, crf, sound
+        self.assertEqual(argv, ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), "video/mp4", 504))
+
+    def store(self, tmp: Path, **kw):
+        src = tmp / "film.mp4"
+        src.write_bytes(MP4)
+        argvs, store = [], FakeStore()
+
+        def runner(argv, beat, **_k):
+            argvs.append(argv)
+            Path(argv[-1]).write_bytes(b"\0" * 10)
+            return 0
+        ml.store_generated(src, asset_id=str(uuid.uuid4()), org_id="org", store=store, media_root=tmp / "media",
+                           tools=ml.Tools("ffprobe", "ffmpeg"), provenance={}, runner=runner,
+                           prober=lambda *a: ml.Probe("video", "video/mp4", 1920, 1080, 600.0), **kw)
+        return [a for a in argvs if a[-1].endswith("proxy.mp4")], store
+
+    def test_store_generated_passes_the_cap_to_the_proxy_and_only_when_asked(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (capped,), _ = self.store(tmp, proxy_maxrate_kbps=504)
+        self.assertIn("504k", capped)
+        (plain,), _ = self.store(tmp)
+        self.assertNotIn("-maxrate", plain)
+
+    @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg is not installed")
+    def test_a_detailed_1080p_clip_gets_a_proxy_that_fits_its_cap_and_derived_bytes_is_its_size(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        secs, cap = 3, 300
+        src = tmp / "noise.mp4"
+        # Full-frame temporal noise: the most detail per pixel there is, so crf 28 alone spends far above the cap.
+        subprocess.run([shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        f"color=c=gray:s=1920x1080:r=24:d={secs},noise=alls=80:allf=t+u", "-f", "lavfi", "-i",
+                        f"sine=f=440:d={secs}", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "32",
+                        "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(src)], check=True, timeout=120)
+        tools = ml.find_tools()
+        sizes = {}
+        for label, kw in (("plain", {}), ("capped", {"proxy_maxrate_kbps": cap})):
+            store = FakeStore()
+            aid = str(uuid.uuid4())
+            ml.store_generated(src, asset_id=aid, org_id="org", store=store, media_root=tmp / "media", tools=tools,
+                               provenance={}, **kw)
+            proxy = ml.asset_file(tmp / "media", aid, "proxy")
+            sizes[label] = proxy.stat().st_size
+            # The proxy is made before register_asset, so the row counts the copy that is really there.
+            thumb = ml.asset_file(tmp / "media", aid, "thumb")
+            self.assertEqual(store.registered[0]["derived_bytes"], sizes[label] + thumb.stat().st_size)
+        # The cap's budget with the sound, plus one VBV buffer (2 x cap) the encoder may spend up front on a clip this
+        # short; a 10-minute film amortises that buffer to nothing.
+        budget = ((cap + 96) * secs + 2 * cap) * 1000 / 8
+        self.assertLessEqual(sizes["capped"], budget, sizes)
+        self.assertGreater(sizes["plain"], 2 * budget, sizes)  # the clip is one the cap actually bites on
+
+
 if __name__ == "__main__":
     unittest.main()
