@@ -4,7 +4,7 @@ import { readJsonBodyCapped } from "@/lib/server/json-body";
 import { getLocale } from "@/lib/i18n/server";
 import { ownerAccess } from "@/lib/server/owner-analytics";
 import { buildOwnerFacts, OwnerOnlyError, SecondFactorRequiredError } from "@/lib/server/owner-brain-facts";
-import { callChatModel } from "@/lib/server/brain/llm";
+import { callChatModel, OWNER_CHAT_MODEL } from "@/lib/server/brain/llm";
 import { brainJson, chosenModelState, notFound } from "@/lib/server/brain/session";
 import { extractJson } from "@/lib/brain/logic";
 import { guardLinks, knownLinks, OWNER_AI_SYSTEM, ownerUserBlock, QUESTION_MAX, readHistory, readOwnerAnswer } from "@/lib/owner-console/ai-prompt";
@@ -86,8 +86,8 @@ async function vendorUser(userId: string): Promise<string> {
  * Order, and why:
  *  1. Same-origin POST, a signed-in user, and the platform owner (0182) — anyone else gets the plain 404 before anything is read,
  *     so the route's existence says nothing.
- *  2. The owner's chosen model (0199 ai_chat_owner_settings), on sale and keyed on this server — or the reason it is not. Never
- *     another model (rule 4).
+ *  2. The owner chat's own model (OWNER_CHAT_MODEL, lib/server/brain/llm; ai_chat_settings.model is the customer chat's), on sale and
+ *     keyed on this server — or the reason it is not. Never another model (rule 4).
  *  3. The owner's facts, built server side (second factor enforced there). The browser never sends a figure.
  *  4. A turn reserved in the database under the daily cap (0203) BEFORE the vendor is called; finished with how it ended.
  *  5. Only after a turn recorded as answered: the question and the (link-guarded) answer stored together in the owner's history
@@ -114,13 +114,14 @@ export async function POST(request: Request) {
   const sessionId = b.session_id === undefined || b.session_id === null ? null : typeof b.session_id === "string" && UUID.test(b.session_id) ? b.session_id : undefined;
   if (sessionId === undefined) return brainJson({ error: "bad_request" }, 400);
 
+  // Still asked: it is how this route knows 0199 is applied. Its `model` is the customer chat's now (OWNER_CHAT_MODEL says why).
   const settings = await supabase.rpc("ai_chat_owner_settings");
   if (settings.error) {
     const code = (settings.error as { code?: string }).code;
     if (code === "42883" || code === "PGRST202") return brainJson({ error: "not_enabled", needs: "0199" }, 503);
     return brainJson({ error: "unavailable" }, 503);
   }
-  const model = await chosenModelState(supabase, (settings.data as { model?: unknown } | null)?.model);
+  const model = await chosenModelState(supabase, OWNER_CHAT_MODEL);
   if (!model.ok) return brainJson({ error: "unavailable" }, 503);
   if (model.state !== "available" || !model.id) return brainJson({ error: "model_unavailable", reason: model.state }, 409);
 

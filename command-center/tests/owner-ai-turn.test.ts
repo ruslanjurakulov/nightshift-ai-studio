@@ -33,6 +33,7 @@ const s = vi.hoisted(() => ({
   rpc: {} as Record<string, { data?: unknown; error?: unknown }>,
   rpcCalls: [] as { name: string; args: unknown }[],
   model: { ok: true, id: "anthropic-claude-sonnet-5-5", state: "available" } as Record<string, unknown>,
+  modelAsked: [] as unknown[],
   facts: null as unknown,
   factsErr: null as unknown,
   llm: { ok: true, text: '{"answer":"Pay Lab Vendor.","draft":null}', tokensIn: 10, tokensOut: 5 } as Record<string, unknown>,
@@ -68,6 +69,7 @@ vi.mock("@/lib/server/owner-brain-facts", () => {
   };
 });
 vi.mock("@/lib/server/brain/llm", () => ({
+  OWNER_CHAT_MODEL: "anthropic-claude-sonnet-5-5",
   callChatModel: async (id: string, system: string, user: string, opts: Record<string, unknown>) => {
     s.llmCalls.push({ id, system, user, opts });
     if (s.llmThrow) throw new Error("socket hang up");
@@ -77,7 +79,14 @@ vi.mock("@/lib/server/brain/llm", () => ({
 vi.mock("@/lib/server/brain/session", async () => {
   const { NextResponse } = await import("next/server");
   const brainJson = (body: unknown, status = 200) => NextResponse.json(body, { status });
-  return { brainJson, notFound: () => brainJson({ error: "not_found" }, 404), chosenModelState: async () => s.model };
+  return {
+    brainJson,
+    notFound: () => brainJson({ error: "not_found" }, 404),
+    chosenModelState: async (_db: unknown, model: unknown) => {
+      s.modelAsked.push(model);
+      return s.model;
+    },
+  };
 });
 
 const post = (body: unknown) =>
@@ -99,6 +108,7 @@ beforeEach(() => {
   };
   s.rpcCalls = [];
   s.model = { ok: true, id: "anthropic-claude-sonnet-5-5", state: "available" };
+  s.modelAsked = [];
   s.facts = FACTS;
   s.factsErr = null;
   s.llm = { ok: true, text: 'Sure: {"answer":"Pay Lab Vendor.","draft":{"title":"Top-up note","body":"Pay on the vendor page."}}', tokensIn: 10, tokensOut: 5 };
@@ -154,6 +164,15 @@ describe("the model", () => {
     expect(await call()).toMatchObject({ status: 409, body: { error: "model_unavailable", reason: state } });
     expect(s.llmCalls).toEqual([]);
     expect(s.rpcCalls.map((c) => c.name)).not.toContain("owner_ai_reserve_turn");
+  });
+
+  it("the owner's chat stays on its own model when the customer chat's setting moves to Gemini Flash", async () => {
+    // ai_chat_settings.model is the customer chat's (owner, 2026-11-22): the owner's turn must not follow it to another vendor.
+    s.rpc.ai_chat_owner_settings = { data: { model: "gemini-3.6-flash" }, error: null };
+    expect((await call()).status).toBe(200);
+    expect(s.modelAsked).toEqual(["anthropic-claude-sonnet-5-5"]);
+    expect(s.llmCalls.map((c) => c.id)).toEqual(["anthropic-claude-sonnet-5-5"]);
+    expect(s.rpcCalls.find((c) => c.name === "owner_ai_reserve_turn")?.args).toMatchObject({ p_model: "anthropic-claude-sonnet-5-5" });
   });
 
   it("without 0199 the route says which migration it needs", async () => {

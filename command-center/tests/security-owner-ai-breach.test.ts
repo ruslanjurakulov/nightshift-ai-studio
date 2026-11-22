@@ -83,6 +83,7 @@ vi.mock("@/lib/server/owner-brain-facts", () => ({
   buildOwnerFacts: async () => s.facts,
 }));
 vi.mock("@/lib/server/brain/llm", () => ({
+  OWNER_CHAT_MODEL: "anthropic-claude-sonnet-5-5",
   callChatModel: async () => ({ ok: true, text: s.llmText, tokensIn: 10, tokensOut: 5 }),
 }));
 vi.mock("@/lib/server/brain/session", async () => {
