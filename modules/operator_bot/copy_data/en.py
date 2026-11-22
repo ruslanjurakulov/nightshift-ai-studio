@@ -521,4 +521,23 @@ TABLE = {
     "rel.cell_unknown": "unknown",
     "rel.cell_none": "not due",
     "rel.cell_paused": "paused",
+
+    # -- film studio (gates G3 and G4) --------------------------------------
+    "kind.film": "film projects",
+    "st.draining": "draining",
+    "alert.film_not_captured": "Film charge NOT captured: {amount} credits the hold could no longer pay — org {org}, film {film}. The providers were paid; the customer was not charged for it. Check the credit ledger for this film.",
+    "alert.film_skipped": "Film segment {segment} was skipped by the {call} ({state}) — org {org}, film {film}. It is tried again on the next pass; if it repeats, the database log has the WARNING.",
+    "alert.film_skipped_fallback": "Film segment {segment} was skipped by the {call} ({state}), and its film event could not be written either (security_events fallback). The database log has the WARNING.",
+    "alert.film_queued_stuck": "Film segment {segment} has been {status} for {age} with no claim — org {org}. Is the film worker running, with NIGHTSHIFT_FILM_WORKER and NIGHTSHIFT_FILM_ASSEMBLY on?",
+    "alert.film_lease_stuck": "Film segment {segment} is {status}, last heartbeat {age} ago — org {org}. Its worker is gone: a running film worker takes it over, or the sweep settles it.",
+    "alert.film_sweep_overdue": "Film sweep OVERDUE: no completed sweep in {minutes} min while {open} segment(s) are open ({last}). Holds past their deadline are not being settled: check the film_sweep workflow and the film worker.",
+    "film.sweep_last": "last completed {age} ago",
+    "film.sweep_never_completed": "no sweep has completed yet",
+    "film.segments": "Film segments: {open} open, {stuck} stuck{cut}",
+    "film.segments_unknown": "Film segments: {why}",
+    "film.sweep_unknown": "Film sweep: {why}",
+    "film.sweep_never": "Film sweep: never recorded (unknown, not fine)",
+    "film.sweep_unreadable": "Film sweep: unknown (its status did not say whether it is overdue)",
+    "film.sweep_overdue": "Film sweep: <b>OVERDUE</b> — {last}",
+    "film.sweep_ok": "Film sweep: on time — {last}",
 }
