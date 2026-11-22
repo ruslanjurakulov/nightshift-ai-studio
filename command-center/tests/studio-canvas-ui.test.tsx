@@ -438,6 +438,35 @@ describe("the board's hand", () => {
   });
 });
 
+describe("the timeline lane under the dock", () => {
+  it("a wired clip is on the lane; pressing its segment selects that card on the board and opens no form", async () => {
+    store({
+      nodes: [node("p", "prompt", -400, { draft: "a fox" }), node("clip", "video", 0), node("alone", "video", 900)],
+      wires: [{ id: "w1", from: "p", to: "clip" }],
+    });
+    mount();
+    await screen.findByTestId("canvas-board");
+    const seg = await screen.findByTestId("lane-seg-clip");
+    // A clip card with no wire is not on the lane.
+    expect(screen.queryByTestId("lane-seg-alone")).toBeNull();
+    fireEvent.click(seg);
+    await waitFor(() => expect(document.querySelector('[data-node-id="clip"]')!.className).toContain("is-sel"));
+    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
+    expect(panel.generateClicks).toBe(0);
+  });
+
+  it("the dock floats inside the board, and the board's keys stay off it: Backspace on a dock key deletes nothing", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    const key = screen.getByTestId("dock-add");
+    expect(key.closest(".cv-stage")).not.toBeNull();
+    fireEvent.keyDown(key, { key: "Backspace" });
+    expect(document.querySelector('[data-node-id="img"]')).not.toBeNull();
+  });
+});
+
 describe("quick add: \"+\" by a card's output", () => {
   it("lists only the next steps that take this output, and a step with nothing on sale is there but disabled", async () => {
     store({ nodes: [node("img", "image")], wires: [] });
