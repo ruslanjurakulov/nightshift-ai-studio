@@ -87,7 +87,7 @@
     padding: var(--ds-space-2);
     border: 1px solid var(--ds-border-strong);
     border-radius: var(--ds-r-panel);
-    background: rgb(15 22 38 / 0.86);
+    background: rgb(15 17 21 / 0.86);
     backdrop-filter: blur(10px);
   }
   /* Only the field's focus: the button draws its own ring, and two would show at once. */
@@ -148,7 +148,7 @@
     padding: 2px 8px;
     border-radius: var(--ds-r-pill);
     border: 1px solid rgb(255 255 255 / 0.35);
-    background: rgb(7 10 20 / 0.72);
+    background: rgb(10 11 14 / 0.72);
     color: #e6eefc;
     font-size: 0.75rem;
     font-weight: 600;
