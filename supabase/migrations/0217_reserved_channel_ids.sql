@@ -68,8 +68,7 @@ begin
   if to_regprocedure('public.credits_trusted_caller()') is null then
     raise exception '0217 needs 0020_credits.sql (credits_trusted_caller): apply it first';
   end if;
-  if to_regprocedure('public.create_channel(text, uuid, text, text, jsonb, jsonb, jsonb, boolean)') is null
-     or to_regprocedure('public.channel_secret_name(text)') is null then
+  if to_regprocedure('public.create_channel(text, uuid, text, text, jsonb, jsonb, jsonb, boolean)') is null then
     raise exception '0217 needs 0086_channel_config_lock.sql (create_channel): apply it first';
   end if;
   if to_regprocedure('public.channel_label_lowering(jsonb)') is null then
