@@ -825,3 +825,8 @@ sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
 import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
+
+# Migration 0211 (one storyboard plan at a time per Nightshift AI conversation): tests/security/sec_ai_chat_plan_0211.py
+import sec_ai_chat_plan_0211  # noqa: E402
+
+sec_ai_chat_plan_0211.extend(TABLES, FUNCTIONS)
