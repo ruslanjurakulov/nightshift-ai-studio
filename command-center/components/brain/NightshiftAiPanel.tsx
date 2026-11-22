@@ -29,7 +29,11 @@ type State =
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
 type Problem = { text: string; retry: (() => void) | null } | null;
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
-const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap"];
+const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap",
+  // The model's own conditions (lib/server/brain/google-gate): the same press meets the same country and the same missing confirmation.
+  // age_unavailable is not here: the confirmation could not be READ, and a moment later it may be.
+  "country_blocked", "country_unverified", "adult_attestation_required"];
+const GATE_REFUSALS = ["country_blocked", "country_unverified", "adult_attestation_required", "age_unavailable"] as const;
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
 const pressId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 /**
@@ -183,6 +187,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     if (e === "adult_only_service") return c.errors.adult_only_service;
     if (e === "session_closed") return c.errors.session_closed;
     if (e === "card_changed") return c.errors.card_changed;
+    // Each with its own remedy, never "unavailable" (a VPN to turn off, an age to confirm, a moment to wait).
+    const gate = GATE_REFUSALS.find((g) => g === e);
+    if (gate) return c.errors[gate];
     // Which chapter failed is the server's count, not the model's words; nothing was priced either way.
     const step = d.step && typeof d.step === "object" ? (d.step as { chapter?: unknown; chapters?: unknown }) : null;
     const at = step && typeof step.chapter === "number" && typeof step.chapters === "number" ? { n: step.chapter, total: step.chapters } : null;

@@ -73,3 +73,38 @@ describe("Nightshift AI panel: writing the storyboard", () => {
     expect(container.querySelector("#ns-ai-body")?.className).toContain("max-[640px]:pb-[calc(env(safe-area-inset-bottom)+172px)]");
   });
 });
+
+describe("Nightshift AI panel: the model's own conditions, each with its remedy", () => {
+  const cases = [
+    ["country_blocked", 451, false],
+    ["country_unverified", 451, false],
+    ["adult_attestation_required", 428, false],
+    ["age_unavailable", 503, true],
+  ] as const;
+  for (const [code, status, retryable] of cases) {
+    it(`${code} is said in its own words in en, ru and uz, never "unavailable"`, async () => {
+      for (const locale of ["en", "ru", "uz"] as const) {
+        const a = dictionaries[locale].aiChat;
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+          const json = (s: number, body: unknown) => ({ ok: s < 400, status: s, json: async () => body });
+          if (url.startsWith("/api/brain/session/")) return json(200, { session: { step: "asking" }, card: null, brief: null, messages: [] });
+          if (url.startsWith("/api/brain/turn")) return json(status, { error: code });
+          return json(200, { plan: { used: 0, limit: 30, trial_left: null, max_input_chars: 2000 }, model: "available", canEdit: true, canRun: true, session: { id: "s1" } });
+        }));
+        const view = render(<I18nProvider locale={locale}><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+        const box = await screen.findByPlaceholderText(a.placeholder);
+        fireEvent.change(box, { target: { value: "a film about the sea" } });
+        fireEvent.click(screen.getByRole("button", { name: a.send }));
+        const alert = await screen.findByRole("alert");
+        expect(a.errors[code].length).toBeGreaterThan(20);
+        expect(alert.textContent).toContain(a.errors[code]);
+        expect(alert.textContent).not.toContain(a.errors.unavailable);
+        expect(!!screen.queryByRole("button", { name: a.retry })).toBe(retryable);
+        // Uzbek's oʻ and gʻ with U+02BB, never a typed apostrophe.
+        if (locale === "uz") expect(a.errors[code]).not.toMatch(/[a-z]['’][a-z]/i);
+        view.unmount();
+        vi.unstubAllGlobals();
+      }
+    });
+  }
+});

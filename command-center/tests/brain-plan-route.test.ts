@@ -98,6 +98,8 @@ vi.mock("@/lib/i18n/server", () => ({ getLocale: async () => "en" }));
 vi.mock("@/lib/server/films", () => ({ filmGate: async () => ({ ok: true, supabase: client, userId: "user-1" }) }));
 vi.mock("@/lib/server/brain/facts", () => ({ readChannelFacts: async () => ({ state: "none", source: null, name: "Chan", statuses: {}, ownRecent: [], competitorTop: [], audienceAsks: [] }) }));
 vi.mock("@/lib/server/brain/quote", () => ({ chatPricing: async () => ({ ok: false }) }));
+const gate = { refusal: null as null | { status: number; error: string } };
+vi.mock("@/lib/server/brain/google-gate", () => ({ chatModelGate: async () => gate.refusal }));
 vi.mock("@/lib/server/brain/llm", async () => {
   const real = await vi.importActual<typeof import("@/lib/server/brain/llm")>("@/lib/server/brain/llm");
   return {
@@ -144,6 +146,7 @@ beforeEach(() => {
   state.answer = exact;
   state.clipModel = null;
   state.clipSpec = null;
+  gate.refusal = null;
   reserved = 0;
   calls = 0;
   inFlight = 0;
@@ -295,6 +298,19 @@ describe("choose → the plan step", () => {
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     expect(llm).not.toHaveBeenCalled();
     expect(called("create_film_draft")[0].p_idempotency_key).toBe(key);
+  });
+
+  it("a plan call meets the same model gate as a turn: refused before any turn or vendor call, never another model", async () => {
+    setup(60, [60]);
+    for (const refusal of [{ status: 451, error: "country_unverified" }, { status: 428, error: "adult_attestation_required" }]) {
+      gate.refusal = refusal;
+      const res = await choose();
+      expect(res.status).toBe(refusal.status);
+      expect(await res.json()).toEqual({ error: refusal.error });
+    }
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(llm).not.toHaveBeenCalled();
+    nothingPriced();
   });
 
   it("the plan's own safety refusal is said as such and not priced", async () => {

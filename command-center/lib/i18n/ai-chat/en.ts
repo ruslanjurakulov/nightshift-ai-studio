@@ -86,6 +86,10 @@ export const aiChatEn = {
     plan_failed_plain: "The storyboard could not be written. Nothing was priced. Try again.",
     plan_length_mismatch: "Chapter {n} of {total} did not add up to its length, even when asked again, so the storyboard was not used. Nothing was priced. Try again.",
     plan_length_mismatch_plain: "The storyboard did not add up to the length you chose, so it was not used. Nothing was priced. Try again.",
+    country_blocked: "Nightshift AI isn’t available in the country you are connecting from. Nothing was used or charged.",
+    country_unverified: "Nightshift AI couldn’t confirm which country you are connecting from, so it can’t answer. If you use a VPN or proxy, turn it off and reload the page.",
+    adult_attestation_required: "Nightshift AI is for adults (18+). Confirm your age in the box at the top of Create, then try again. Nothing was used or charged.",
+    age_unavailable: "Your age confirmation couldn’t be read just now, so Nightshift AI didn’t answer. Try again in a moment.",
     plan_over_cap: "Writing this storyboard takes {needed} messages, and {left} are left today. Choose a shorter film, or try again within 24 hours.",
   },
 };
