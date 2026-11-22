@@ -60,14 +60,15 @@ Vendors take three different kinds of picture. The schema keeps the three apart:
 | :-- | :-- | :-- |
 | `create_film_draft(org, channel, source_kind, source_text, settings, idempotency_key)` | editor+ | A new `draft`. `settings` needs `title`, `language` and `target_seconds`. A replayed key answers the first film. The same key with another request is `idempotency_conflict`. |
 | `save_film(film, version, patch)` | editor+ | Edits a `draft` or `planned` film at its current version. In `scenes` (the whole ordered list), a scene with an `id` keeps it and any fields it does not send, and a scene left out is deleted. `refs` is the whole film-wide list. |
-| `archive_film(film)` | editor+ | Puts a draft away so it stops counting toward the 50 open drafts. |
+| `archive_film(film)` | editor+ | Puts a draft away so it stops counting toward the 50 open drafts. Since 0215 also a `paused` or `cancelled` film, never while one of its segments is open or a refund waits on its hold ("Resume", below). |
 | `film_json(film)` | viewer+ | The read model. It flags `missing` for any reference, frame, kit or track that no longer exists, and includes `limits`, the one list of limits that the app shows. |
 
 Errors are SQLSTATE plus a machine word:
 
 - `42501 forbidden`, `P0002 not_found`;
 - `NS400 invalid_params | invalid_idempotency_key | limit_reached | model_not_offered | model_not_available | asset_not_usable`;
-- `NS409 film_changed | film_not_editable | idempotency_conflict | scene_has_takes`;
+- `NS409 film_changed | film_not_editable | idempotency_conflict | scene_has_takes`, and since 0215 `segment_open | refund_pending`
+  (archive);
 - `NS429 rate_limited`.
 
 A signed-in member reads the tables through **column grants**, not a table grant. A column that a later migration adds, such as
@@ -137,7 +138,8 @@ editor changes it, with `set_film_studio_enabled(true|false)`, and every change 
 
 **Switch-on gates.** `film_studio_enabled` stays off until all of these hold:
 
-- archive and resume exist for `paused` and `cancelled` projects, so no project a person paid into is left without a way forward;
+- archive and resume exist for `paused` and `cancelled` projects, so no project a person paid into is left without a way forward
+  (**met by 0215**: "Resume", below. A cancelled project is archived, not resumed);
 - P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open;
 - P3 alerts on every `segment_settled` event with `not_captured` (charges a hold could no longer pay), and on every
   `segment_skipped` event (a segment the claim or the sweep could not touch).
@@ -277,9 +279,60 @@ A segment the claim or the sweep cannot touch is skipped, never the whole call. 
 What a segment captured is the ledger's own answer: a hold that 0020 expired under a half-made film reads as captured 0, and the
 `segment_settled` event says how much was not captured.
 
+### Resume (migration 0215)
+
+A film that paused (something was charged, and the run stopped short: a take failed twice, the deadline, the switch, a lost hold)
+can go on, paying only for what it has not made yet. Contract approved by the coordinator; switch-on gate G1.
+
+| Call | Role | What it does |
+| :-- | :-- | :-- |
+| `quote_film_resume(film, version)` | owners and admins (`start_film`'s rules; in the exempt organization a platform owner or admin) | Prices, at today's rates and through 0171's own `film_price`, only the lines the film's newest segment did not complete: a take that failed for good, was skipped, or never began, and the assembly. Each remaining line also carries `original_credits` (what the earlier segment confirmed for it), `delta` and `changed`; the answer has `total`, `original_remaining`, `delta`, `changed`, the `carried` lines (made, at 0), `available`, `blocked_by`, `startable`. Stored in `film_quotes` (`purpose 'resume'`, `from_segment`, 30 minutes). |
+| `start_film_resume(film, quote_id, idempotency_key)` | the same | `start_film`'s refusal order and counting (the same `db.film.start` bucket and the same per-organization lock). One new segment (`purpose 'resume'`, `resumed_from`, `n + 1`) and one new hold `fm-<segment id>` of the resume total only. The film goes `paused` → `queued`, with one `resumed` event. |
+
+- **Carried takes are never charged again.** Each take the earlier segment completed is copied into the new segment, completed, with
+  the same result and last frame, confirmed 0 and charged 0 (`charge_basis carried_not_charged`, `carried_from_take_id`). The table
+  itself refuses a charge on such a take (`film_takes_carried_check`). So 0198's `film_take_job` finds a next take's inputs (a key
+  frame, a last frame) in the segment, and the assembly cuts the segment's takes as it always does. Every take of a scene in the new
+  segment is one version, past every earlier one.
+- **Done means the file is still there.** A completed take whose result (or extracted last frame) a person has since deleted from
+  the library is not carried: its line is priced and made again, so no next take starts from a picture that is gone and the cut
+  never names a missing file (`film_resume_done`).
+- **A failed assembly, made again.** When every take is made and only the assembly failed, the resume quote prices the assembly
+  line only (`rerun: true`, `previous_failure`). `rerun_film_assembly(film, quote_id, idempotency_key)` (the same callers) is the
+  thin door for it: `not_assembly_failure` unless the newest segment's assembly failed and every take completed, `film_changed` when a
+  made take's file was deleted, then `start_film_resume` as it is (the replay, the lock, the hold of the assembly line only), audited
+  as `assembly_rerun` with the previous failure word. The word is the segment's `settle_reason` (the worker settles a failed
+  assembly with the assembly's own reason). Only S4's retryable words are made again (`film_assembly_retryable`: assembly_crashed,
+  render_failed, render_timed_out, render_degraded, store_failed, disk_low, output_mismatch, captions_failed, captions_unavailable);
+  any other (a film_timeline refusal, a review copy, narration_missing, film_unavailable, assembly_not_enabled, the worker's generic
+  assembly_failed, a deadline) is `assembly_not_retryable` with the word, and the quote lists it in `blocked_by`.
+- **What was carried must not move.** The resume quote stores each carried take with its result and last frame (`film_quotes.carried`);
+  the start refuses `film_changed`, before anything is counted, when any of them changed or its file was deleted since the quote.
+- **The worker is unchanged.** It skips the completed takes, makes the rest, assembles, and settles; 0171 captures the new segment's
+  charges, never above its hold (lab: `test_sec_film_e2e_lab.py::test_a_paused_film_resumed_is_driven_by_the_real_worker_…`).
+- **Unknown stays unknown (rule 5).** One unpriced line makes `total` and `quote_id` null, and nothing starts. An earlier price that
+  is not known makes `original_remaining`, `delta` and `changed` null, never 0.
+- **Refusals.** Raised before the count: `forbidden`, `not_found`, 0192's adult refusals, `invalid_idempotency_key`,
+  `invalid_params`, the replay (`idempotency_conflict`), `film_not_resumable` (NS409: not paused; a film that already resumed is
+  `queued`, so a new key is refused here), `film_changed`, `film_studio_disabled`, `nothing_to_resume` (NS409), and a model, reference
+  or picture that a remaining line needs and that is gone (its own word). Returned after it: `price_changed`, `quote_expired`,
+  `insufficient_credits` (NS402), `cap_exceeded`, `limit_reached`, a line's own word, `acknowledgement_required`, `run_slots_full`,
+  `hold_refused`.
+- **Where the film goes.** As after any segment (0171): `completed` → `ready`; any other reason → `paused` again (its carried takes
+  are made takes), so a resume that made nothing new never sends a film with paid results back to `draft`.
+- **Cancelled is not resumable.** 0171 leaves a film `cancelled` only for a cancel after a charge (a cancel that charged nothing sends
+  it back to `draft`, where `start_film` starts it again), and `start_film` never restarts a cancelled film: a person stopped it. It
+  can be archived.
+- **Archive** (0215's `archive_film`) takes a draft, planned, paused or cancelled film, never while one of its segments is open
+  (`segment_open`) or a refund waits to collect from one of its holds (`refund_pending`). It moves no money and deletes no take or
+  result.
+- **Browser routes** for the resume calls (and the archive of a paused film in the canvas) are a follow-up; nothing in the Command
+  Center calls them yet.
+
 **Open for later phases.**
 - A person's cancel and the organization's settings have no browser function yet.
-- A paused film cannot be resumed until a resume quote exists (P7).
+- ~~A paused film cannot be resumed until a resume quote exists (P7).~~ Resume exists since 0215 ("Resume", below); its browser
+  routes are a follow-up.
 
 **Number.** 0166's header names "0167" for this phase. That was the plan's number; the file is **0171**, and a merged migration is
 never edited.

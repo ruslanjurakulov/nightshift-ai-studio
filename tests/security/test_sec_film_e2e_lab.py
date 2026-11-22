@@ -484,6 +484,47 @@ def test_a_clip_that_fails_twice_is_charged_nothing_the_film_pauses_and_the_rest
     assert lab.d.film_row(fid) == ("paused", "takes_failed")
 
 
+def test_a_paused_film_resumed_is_driven_by_the_real_worker_unchanged_and_nothing_made_is_made_or_paid_again(lab, a):
+    """0215 (gate G1): the film above pauses (scene 2's clip failed twice). Its admin quotes and starts the resume through the real
+    SQL; the same worker, unchanged, claims the resume segment, skips the carried takes (completed, at 0), makes only scene 2's clip
+    from scene 1's carried last frame, assembles, and settles. The new hold pays only what was left."""
+    fid, seg = lab.started(a)
+    out = lab.worker(adapters(vid=[None, ProviderErr("provider_error"), ProviderErr("provider_error")])).run_once()
+    assert (out.result, out.reason) == ("settled", "takes_failed"), out
+    first = Decimal(lab.d.segment(seg["id"])[1])
+    balance = lab.d.account(a.org)[0]
+    q = lab.d.one("authenticated", a.admin, "select public.quote_film_resume(%s::uuid, %s::integer)", [fid, lab.d.version(fid)])
+    assert sorted(ln["line"] for ln in q["lines"]) == ["assembly", "clip"] and q["startable"] is True, q
+    r = lab.d.one("authenticated", a.admin, "select public.start_film_resume(%s::uuid, %s, %s)", [fid, q["quote_id"], lab.d.key()])
+    assert r["ok"] is True and r["carried"] == 3, r
+    ads = adapters()
+    out = lab.worker(ads).run_once()
+    assert out.segment_id == r["id"] and (out.result, out.reason) == ("settled", "completed"), (out, lab.take_rows(r["id"]))
+    # Only scene 2's clip reached a vendor: the key frame, scene 1's clip and the narration were carried, not made again.
+    assert (len(ads["img-key"].submits), len(ads["vid-clip"].submits), len(ads["tts-a"].submits)) == (0, 1, 0)
+    assert ads["vid-clip"].inputs == [[PNG]]
+    carried_last, new_first = lab.d.su(
+        "select (select t.result_last_frame_asset_id from public.film_takes t join public.film_scenes s on s.id = t.scene_id "
+        "         where t.segment_id = %s and t.kind = 'clip' and s.position = 0), "
+        "       (select t.first_frame_asset_id from public.film_takes t join public.film_scenes s on s.id = t.scene_id "
+        "         where t.segment_id = %s and t.kind = 'clip' and s.position = 1)", [r["id"], r["id"]])[0]
+    assert carried_last is not None and new_first == carried_last
+    assert lab.assembled == [(r["id"], "w-1")]
+    rows = lab.take_rows(r["id"])
+    assert sorted((x[0], x[1], x[3], Decimal(x[4]), x[5]) for x in rows) == sorted([
+        ("keyframe", 0, "completed", Decimal(0), "carried_not_charged"), ("clip", 0, "completed", Decimal(0), "carried_not_charged"),
+        ("narration", None, "completed", Decimal(0), "carried_not_charged"), ("clip", 1, "completed", Decimal(20), "full_line")]), rows
+    status, captured, _reason, ref, confirmed, _att = lab.d.segment(r["id"])
+    takes, asm = lab.money(r["id"])
+    assert status == "settled" and Decimal(captured) == takes + asm == Decimal(25) <= Decimal(confirmed)
+    hold = [h for h in lab.d.holds(a.org) if h[0] == ref][0]
+    assert hold[2] == "captured" and Decimal(hold[1]) == Decimal(confirmed) and Decimal(hold[3]) == Decimal(captured)
+    assert lab.d.account(a.org) == (balance - Decimal(captured), 0)
+    assert lab.d.ledger(a.org, "capture") == [-first, -Decimal(captured)]  # the film's 49, once: 24 then 25
+    assert lab.d.film_row(fid) == ("ready", None)
+    assert lab.worker(adapters()).run_once() is None
+
+
 def test_a_key_frame_that_fails_twice_skips_both_clips_at_zero_but_the_narration_is_still_voiced_and_charged(lab, a):
     """The key frame fails, and so does its retry: neither clip can begin (no picture to start from). What the run still spends is
     measured here: the narration is still voiced and charged, which is what 0171's settle captures."""

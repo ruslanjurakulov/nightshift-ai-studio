@@ -343,15 +343,19 @@ def test_a_take_job_never_follows_an_input_the_caller_names(db, a):
 # ── the migration ───────────────────────────────────────────────────────────
 
 def test_a_replay_changes_nothing_and_the_guard_refuses_a_body_that_is_not_its_own(db):
-    before = db.su("select md5(string_agg(md5(prosrc), '' order by oid)) from pg_proc "
-                   "where proname in ('start_film', 'quote_film', 'film_claim_segment', 'film_take_job', 'film_studio_on_for')")
+    bodies = ("select md5(string_agg(md5(prosrc), '' order by oid)) from pg_proc "
+              "where proname in ('start_film', 'quote_film', 'film_claim_segment', 'film_take_job', 'film_studio_on_for')")
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0215 replaces 0198's start_film and film_claim_segment (0198's guard refuses its bodies): compared on 0198 alone, inside
+        # one transaction.
+        sec_db.take_off_0215(c)
+        before = c.execute(bodies).fetchone()
         c.execute(MIGRATION.read_text(encoding="utf-8"))
-        c.commit()
-    assert db.su("select md5(string_agg(md5(prosrc), '' order by oid)) from pg_proc "
-                 "where proname in ('start_film', 'quote_film', 'film_claim_segment', 'film_take_job', 'film_studio_on_for')") == before
+        assert c.execute(bodies).fetchone() == before
+        c.rollback()
     assert db.su("select public.film_studio_on()")[0][0] is True  # the lab turned it on; a replay never writes the switch
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0215(c)
         c.execute("create or replace function public.film_studio_on_for(p_org uuid) returns boolean "
                   "language sql stable security definer set search_path = public, pg_temp as $$ select true $$")
         with pytest.raises(psycopg.Error) as e:
