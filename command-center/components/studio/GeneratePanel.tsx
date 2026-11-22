@@ -1734,7 +1734,7 @@ export function GeneratePanel({
       className={`ns-price-button${size === "md" ? " sc-send" : ""}`}
       data-size={size}
       data-testid="gen-need-credits"
-      aria-describedby="gen-status"
+      aria-describedby={`gen-status${goneRef}`}
       aria-label={
         live && quote.status === "ready"
           ? fmt(t.gen.needMoreLabel, { cost: formatCredits(quote.credits, locale), available: formatCredits(live.available, locale) })
