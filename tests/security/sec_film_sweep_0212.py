@@ -22,3 +22,15 @@ def extend(tables: dict, functions: dict) -> None:
         "film_sweep": SERVICE,
         "film_sweep_status": SERVICE,
     })
+
+
+def seed(conn, sc) -> None:
+    """One recorded sweep, written the only way it can be: film_sweep as the service role. film_sweep_runs has no organization
+    column, so the isolation tests aim their reads and their insert attacks at this one platform row."""
+    from sec_db import SERVICE, acting, as_superuser
+
+    with as_superuser(conn, commit=False) as s:
+        if s.value("select to_regprocedure('public.film_sweep(text)') is null"):
+            return
+    with acting(conn, SERVICE, commit=True) as s:
+        s.value("select public.film_sweep('worker')")
