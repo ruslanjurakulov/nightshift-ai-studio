@@ -63,6 +63,8 @@ export const ownerAssistantEn = {
       output_too_long: "The reply ran too long. Ask for a shorter answer or draft.",
       timeout: "The model took too long. Ask again, or ask a narrower question.",
       bad_answer: "The model's reply wasn't in the expected form. Ask again.",
+      vendor_region: "The chat model's provider does not serve the region this server runs in. A new key will not help: run the server in a region the provider supports.",
+      model_not_found: "The chat model's provider does not serve this model. Waiting will not help: the model needs replacing in the model registry.",
       not_configured: "The chat model's key isn't set on this server. Add it in the server's settings, then ask again.",
     },
     daily_cap: "Today's limit of {limit} questions is reached. It frees up over the next 24 hours.",

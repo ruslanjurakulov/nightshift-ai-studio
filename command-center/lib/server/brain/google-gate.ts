@@ -5,6 +5,7 @@ import { BLOCKED_COUNTRIES, blockedCountriesOf, type BlockedMap } from "@/lib/ge
 import { readAgeAnswer } from "@/lib/server/age";
 import { readCountry, type CountryReading } from "@/lib/server/geo";
 import { CHAT_MODELS, type ChatModelId } from "@/lib/server/brain/llm";
+import { CHAT_GATE_REMEDY, type ChatGateError, type ChatGateVerdict } from "@/lib/brain/chat-gate";
 
 /**
  * Google's two conditions on a Gemini chat turn, asked BEFORE the cap is touched and before any call to Google. A creative job has
@@ -22,8 +23,13 @@ import { CHAT_MODELS, type ChatModelId } from "@/lib/server/brain/llm";
  * never another model (CLAUDE.md rule 4).
  */
 
-export type ChatGateError = "adult_only_service" | "adult_attestation_required" | "age_unavailable" | "country_blocked" | "country_unverified";
+export type { ChatGateCode, ChatGateError, ChatGateRemedy, ChatGateVerdict } from "@/lib/brain/chat-gate";
 export type ChatGateRefusal = { status: number; error: ChatGateError };
+
+/** The verdict as GET /api/brain hands it to the panel before any press: the code and its remedy, or null (nothing stands in the way). */
+export function chatGateVerdict(refusal: ChatGateRefusal | null): ChatGateVerdict | null {
+  return refusal ? { code: refusal.error, remedy: CHAT_GATE_REMEDY[refusal.error] } : null;
+}
 
 export function chatGateDecision(
   id: ChatModelId,

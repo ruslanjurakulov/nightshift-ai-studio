@@ -53,7 +53,7 @@ export function failureText(a: A, status: number, body: Record<string, unknown> 
   if (err === "model_unavailable" && Object.hasOwn(a.errors.model_unavailable, reason))
     return { message: a.errors.model_unavailable[reason as keyof A["errors"]["model_unavailable"]] };
   if (err === "model_failed" && Object.hasOwn(a.errors.model_failed, reason))
-    return { message: a.errors.model_failed[reason as keyof A["errors"]["model_failed"]], retry: !["vendor_auth", "vendor_quota", "not_configured"].includes(reason) };
+    return { message: a.errors.model_failed[reason as keyof A["errors"]["model_failed"]], retry: !["vendor_auth", "vendor_quota", "not_configured", "vendor_region", "model_not_found"].includes(reason) };
   if (err === "daily_cap") return { message: fill(a.errors.daily_cap, { limit: typeof body?.limit === "number" ? body.limit : "—" }) };
   if (err === "not_enabled") return { message: fill(a.errors.not_enabled, { n: typeof body?.needs === "string" ? body.needs : "—" }) };
   if (err === "message_too_long") return { message: fill(a.tooLong, { n: QUESTION_MAX }) };
