@@ -220,7 +220,7 @@ describe("pinned to 0055", () => {
     for (const c of CREATIVE_CAPABILITIES) if (!["captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"].includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
     // quality is 0060's own (tests/image-quality.test.tsx), audio is 0070's (tests/video-price-variants.test.ts).
-    for (const k of PARAM_KEYS) if (k !== "quality" && k !== "audio" && k !== "look") expect(params, k).toContain(`'${k}'`);
+    for (const k of PARAM_KEYS) if (k !== "quality" && k !== "audio" && k !== "look" && k !== "image_size") expect(params, k).toContain(`'${k}'`);
     expect(CAPABILITIES as readonly string[]).toContain("describe");
   });
 

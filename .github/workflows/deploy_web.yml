@@ -149,6 +149,9 @@ jobs:
           WEBENV_DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}
           WEBENV_DODO_METADATA_SECRET: ${{ secrets.DODO_METADATA_SECRET }}
           WEBENV_DODO_TEST_ORG_IDS: ${{ vars.DODO_TEST_ORG_IDS }}
+          # 0208: signs the caller's country for the database's gate on Google models; the same value is in Supabase Vault as
+          # nightshift_geo_claim_key. Unset, every job on a model with a country list is refused (closed, never open).
+          WEBENV_NIGHTSHIFT_GEO_CLAIM_KEY: ${{ secrets.NIGHTSHIFT_GEO_CLAIM_KEY }}
           WEBENV_DODO_PRODUCT_STARTER: ${{ vars.DODO_PRODUCT_STARTER }}
           WEBENV_DODO_PRODUCT_CREATOR: ${{ vars.DODO_PRODUCT_CREATOR }}
           WEBENV_DODO_PRODUCT_STUDIO: ${{ vars.DODO_PRODUCT_STUDIO }}
