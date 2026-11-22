@@ -96,7 +96,7 @@ export function ShowcaseGallery({
         </h2>
         <p className="nx-sub">{g.lead}</p>
         {/* Phones only (CSS): the vertical clips as a full-screen feed (components/site/ShortsFeed.tsx). */}
-        <ShortsFeed items={shortsItems(items, signedIn, now)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, try: g.try, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
+        <ShortsFeed items={shortsItems(items, signedIn, now, locale)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
         <div className="nx-gallery-box">
           {/* One pause key for the whole grid, for a keyboard (hidden until focused; the page's pause switch stops them too): one Tab
               stop, not one per card. */}
@@ -107,9 +107,33 @@ export function ShowcaseGallery({
               const clip = e.kind === "video" && f.clip !== null;
               const format = formats.find((x) => x.job === e.jobId);
               const shape = e.height > e.width * 1.15 ? "tall" : e.width > e.height * 1.15 ? "wide" : "square";
-              const line = cardWords(e, locale) || g.noPrompt;
-              const body = (
-                <>
+              const words = cardWords(e, locale);
+              // A sample with no words of its own (made from a picture alone) says so, in the page's language.
+              const line = words.text ? words : { text: g.noPrompt, lang: locale, source: "cardLine" as const };
+              const aiId = `sample-ai-${e.jobId}`;
+              const caption = (hidden: boolean) => (
+                // aria-hidden on a link card: the link's own name says the same words once.
+                <span className="mf-cap" data-title={format ? undefined : "none"} aria-hidden={hidden || undefined}>
+                  {format && (
+                    <span className="mf-title" data-format={format.id}>
+                      {format.title}
+                    </span>
+                  )}
+                  <span className="mf-desc" lang={line.lang} data-src={line.source === "prompt" ? "prompt" : undefined}>
+                    {line.text}
+                  </span>
+                </span>
+              );
+              return (
+                <li
+                  key={e.jobId}
+                  id={`sample-${e.jobId}`}
+                  className="nx-gallery-card mf-card"
+                  data-mf-card=""
+                  data-showcase-entry={e.jobId}
+                  data-shape={shape}
+                  style={place(i)}
+                >
                   <div className="nx-gallery-pic" data-clip={clip ? "sample" : undefined} style={{ aspectRatio: `${e.width} / ${e.height}` }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -125,31 +149,31 @@ export function ShowcaseGallery({
                     />
                     {clip && <ShowcaseClip jobId={e.jobId} together />}
                   </div>
-                  {/* aria-hidden: the picture's alt already says AI-generated, so a screen reader hears it once. */}
+                  {/* "AI" on screen in every language (owner decision 22 Nov); its meaning, "AI-generated", is read from aiId. */}
                   <span className="mf-ai" aria-hidden>
+                    {g.mark}
+                  </span>
+                  <span id={aiId} className="sr-only">
                     {g.badge}
                   </span>
-                  <span className="mf-cap" data-title={format ? undefined : "none"}>
-                    {format && (
-                      <span className="mf-title" data-format={format.id}>
-                        {format.title}
-                      </span>
-                    )}
-                    <span className="mf-desc">{line}</span>
-                  </span>
-                </>
-              );
-              return (
-                <li key={e.jobId} id={`sample-${e.jobId}`} className="nx-gallery-card" data-showcase-entry={e.jobId} data-shape={shape} style={place(i)}>
                   {href ? (
-                    <Link href={href} prefetch={false} className="mf-card" data-mf-card="">
-                      {body}
-                    </Link>
+                    <>
+                      {caption(true)}
+                      {/* The stretched link over the whole card (media-card.css): its name is the caption's words and what it does,
+                          described by the AI label and the note under the grid (sign-up, then the Studio form). */}
+                      <Link href={href} prefetch={false} className="mf-card-link" aria-describedby={`${aiId} samples-note`}>
+                        <span className="sr-only">
+                          {format && <>{format.title}. </>}
+                          <span lang={line.lang} data-src={line.source === "prompt" ? "prompt" : undefined}>
+                            {line.text}
+                          </span>{" "}
+                          {g.use}
+                        </span>
+                      </Link>
+                    </>
                   ) : (
-                    // No Studio form for its tool: the same card and caption, not a link (a dead link would promise a form).
-                    <div className="mf-card" data-mf-card="" tabIndex={0} role="group" aria-label={line}>
-                      {body}
-                    </div>
+                    // No Studio form for its tool: the same card and caption, and no link (a dead link would promise a form).
+                    caption(false)
                   )}
                 </li>
               );
@@ -158,7 +182,9 @@ export function ShowcaseGallery({
           <TapReveal />
         </div>
         {/* Said once for every card, not under each one: what the links do and that nothing starts until the Studio's own button. */}
-        <p className="nx-show-note">{signedIn ? g.tryNote : g.tryNoteSignedOut}</p>
+        <p id="samples-note" className="nx-show-note">
+          {signedIn ? g.tryNote : g.tryNoteSignedOut}
+        </p>
       </div>
     </section>
   );

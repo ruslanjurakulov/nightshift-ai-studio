@@ -62,7 +62,6 @@
    The frame starts at its real shape (its aspect-ratio) and grows into the rows the levelled columns give its card
    (lib/effects/masonry.ts levelSpans), the picture cut from the centre; it never shrinks below its shape. The frame's own long
    badge stays for a screen reader, and the corner mark says the same in a word. */
-.efx-link { display: flex; flex: 1 1 auto; flex-direction: column; height: auto; }
 .efx-frame { flex: 1 0 auto; border-radius: 0; background: #12151c; }
 .efx-frame > img { z-index: 0; }
 .efx-card .fx-badge { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

@@ -143,6 +143,5 @@ export const siteAutopilotRu: SiteAutopilotDictionary = {
     noSound: "В этом клипе нет звука",
     position: "{n} из {total}",
     hint: "Смахните вверх, чтобы перейти к следующему",
-    prompt: "Промпт",
   },
 };

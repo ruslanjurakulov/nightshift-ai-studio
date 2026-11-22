@@ -206,11 +206,12 @@ export const siteEn = {
   gallery: {
     label: "Made in Nightshift Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in Nightshift Studio. Point at one to read what it is; open it to start from its words in the Studio.",
+    lead: "Real generations, made by our team in Nightshift Studio. Point at or tap one to read what it is; open it to start from its words in the Studio.",
     badge: "AI-generated",
+    /** The visible mark on every public card (owner decision 22 Nov: "AI" in every language); `badge` stays its accessible meaning. */
+    mark: "AI",
     model: "Model",
     noPrompt: "No words: made from the picture alone.",
-    try: "Try this prompt",
     /** On a card whose model only the operator can try yet: its button opens the tool with the words, without the model. */
     notInStudio: "This model is not in the Studio yet",
     /** On a card whose model the vendor has shut down (its announced date has come): the button no longer names it. */

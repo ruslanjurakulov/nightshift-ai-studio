@@ -63,7 +63,8 @@ describe("with one sample merged", () => {
     // The card is its picture and the AI mark (media first), one link into the Studio through sign-up, and no dialog. Owner
     // decision 22 Nov: no model name on public cards; it travels only in the Studio link.
     const card = section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
-    expect(card.querySelector(".mf-ai")?.textContent).toBe(t.site.gallery.badge);
+    expect(card.querySelector(".mf-ai")?.textContent).toBe("AI");
+    expect(card.textContent).toContain(t.site.gallery.badge);
     expect(card.textContent).not.toMatch(PROVIDER_BRANDS);
     expect(card.querySelector("a")?.getAttribute("href")?.startsWith("/signup?next=")).toBe(true);
     expect(card.querySelector("button, [aria-haspopup]")).toBeNull();

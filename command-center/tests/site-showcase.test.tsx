@@ -159,26 +159,44 @@ describe("the gallery", () => {
     expect(showcaseItems(SHOWCASE_ENTRIES, {})).toEqual([]);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: a card is one link to the Studio: its media, one AI mark, and a caption (title, line) for hover; no model anywhere but the link's model=", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: a card is its media, the AI mark, a caption for hover and one stretched link to the Studio over them; no model anywhere but the link's model=", (code) => {
     const d = dictionaries[code];
     const g = d.site.gallery;
     const { container } = render(<ShowcaseGallery t={d} locale={code} entries={[onSale]} files={FIXTURE_FILES} />);
     const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
     expect(card).toBeTruthy();
     // Owner decision 22 Nov: the card is one link, straight to the Studio; no dialog (the dialog named the model).
+    expect(card.classList.contains("mf-card")).toBe(true);
+    expect(card.hasAttribute("data-mf-card")).toBe(true);
     const links = [...card.querySelectorAll("a[href]")];
     expect(links).toHaveLength(1);
     const link = links[0] as HTMLAnchorElement;
-    expect(link.classList.contains("mf-card")).toBe(true);
-    expect(link.hasAttribute("data-mf-card")).toBe(true);
+    // A stretched link (an overlay over the card), not a wrapper: the media and the caption are its siblings, so a control laid
+    // over the clip later can take its own clicks.
+    expect(link.classList.contains("mf-card-link")).toBe(true);
+    expect(link.parentElement).toBe(card);
+    expect(link.querySelector(".nx-gallery-pic, .mf-cap, .mf-ai")).toBeNull();
     expect(link.getAttribute("href")).toBe(tryHref(onSale, false));
     expect(card.querySelector("button, [aria-haspopup]")).toBeNull();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    // At rest: the media, and the AI mark always present; the picture's description says what it is, never by whom.
-    expect(link.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(g.bgClip);
-    expect(link.querySelector(".mf-ai")?.textContent).toBe(g.badge);
-    // The caption: no format here, so no title and the line may take two rows; the line is the prompt's first sentence (no cardLine).
-    const cap = link.querySelector(".mf-cap") as HTMLElement;
+    // At rest: the media, and the mark "AI" in every language (owner decision 22 Nov); the picture's description says what it is,
+    // never by whom, and the link's description carries the mark's full meaning.
+    expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(g.bgClip);
+    expect(card.querySelector(".mf-ai")?.textContent).toBe("AI");
+    expect(card.querySelector(".mf-ai")?.getAttribute("aria-hidden")).toBe("true");
+    const described = link.getAttribute("aria-describedby")!.split(" ").map((id) => document.getElementById(id)?.textContent);
+    expect(described).toContain(g.badge);
+    // The link's purpose (WCAG 2.4.4): its name ends with "Use this prompt", and it is described by the note under the grid
+    // (sign-up first, then the Studio form).
+    expect(link.textContent).toContain(g.use);
+    expect(described).toContain(g.tryNoteSignedOut);
+    // The caption: no format here, so no title and the line may take two rows; the line is the prompt's first sentence (no
+    // cardLine), marked as English and as the prompt's own words. It is hidden from a screen reader: the link says the same once.
+    const cap = card.querySelector(".mf-cap") as HTMLElement;
+    expect(cap.getAttribute("aria-hidden")).toBe("true");
+    expect(cap.querySelector(".mf-desc")?.getAttribute("lang")).toBe("en");
+    expect(cap.querySelector(".mf-desc")?.getAttribute("data-src")).toBe("prompt");
+    expect(link.textContent).toContain(onSale.prompt);
     expect(cap.dataset.title).toBe("none");
     expect(cap.querySelector(".mf-title")).toBeNull();
     expect(cap.querySelector(".mf-desc")?.textContent).toBe(onSale.prompt);
@@ -235,12 +253,15 @@ describe("the gallery", () => {
     const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[sfx]} files={FIXTURE_FILES} />);
     const card = container.querySelector(SAMPLE_CARD)!;
     expect(card.querySelector("a")).toBeNull();
-    const box = card.querySelector("[data-mf-card]") as HTMLElement;
-    expect(box.classList.contains("mf-card")).toBe(true);
-    expect(box.querySelector(".mf-ai")?.textContent).toBe(t.site.gallery.badge);
+    const box = card as HTMLElement;
+    expect(box.hasAttribute("data-mf-card")).toBe(true);
+    expect(box.querySelector(".mf-ai")?.textContent).toBe("AI");
     expect(box.querySelector(".mf-cap .mf-desc")?.textContent).toBe(sfx.prompt);
-    // Reachable by the keyboard, so focus can show the caption the way hover does.
-    expect(box.getAttribute("tabindex")).toBe("0");
+    // Not a fake control: no tab stop and no name of its own; its caption is read as text (not hidden), with the AI label.
+    expect(box.querySelector("[tabindex]")).toBeNull();
+    expect(box.hasAttribute("tabindex")).toBe(false);
+    expect(box.querySelector(".mf-cap")?.hasAttribute("aria-hidden")).toBe(false);
+    expect(box.textContent).toContain(t.site.gallery.badge);
     expect(modelLeaks(card, sfx)).toEqual([]);
   });
 
@@ -249,6 +270,10 @@ describe("the gallery", () => {
     const { container } = render(<ShowcaseGallery t={dictionaries[code]} locale={code} entries={[lined]} files={FIXTURE_FILES} />);
     const card = container.querySelector(SAMPLE_CARD)!;
     expect(card.querySelector(".mf-desc")?.textContent).toBe(LINES[code]);
+    // Its own language, not the prompt's: a screen reader pronounces it right, and the claims scan reads it (it is our copy).
+    expect(card.querySelector(".mf-desc")?.getAttribute("lang")).toBe(code);
+    expect(card.querySelector(".mf-desc")?.hasAttribute("data-src")).toBe(false);
+    expect(card.querySelector(".mf-card-link span[lang]")?.getAttribute("lang")).toBe(code);
     expect(cardWordsExceptLinks(card)).not.toContain(lined.prompt);
     const href = card.querySelector("a")!.getAttribute("href")!;
     const next = new URL(new URL(href, "https://x.test").searchParams.get("next")!, "https://x.test");
@@ -299,7 +324,9 @@ describe("the gallery", () => {
     // The words under the grid say what a card does, not which model it opens (the Studio says that, with the price).
     for (const w of [s.gallery.lead, s.gallery.tryNote, s.gallery.tryNoteSignedOut]) expect(w).not.toMatch(/\{model\}/);
     expect(s.gallery.notInStudio + s.gallery.gone + s.gallery.useNote).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
-    expect(s.gallery.use).not.toBe(s.gallery.try);
+    // The mark on screen is "AI" in every language (owner decision 22 Nov); the long label is its accessible meaning.
+    expect(s.gallery.mark).toBe("AI");
+    expect(Object.keys(s.gallery)).not.toContain("try");
     expect(s.gallery.title).toContain("Nightshift");
   });
 
@@ -391,7 +418,8 @@ describe("the shipped samples", () => {
       const m = MODELS.get(e.modelId);
       if (!m) throw new Error(`${e.jobId}: ${e.modelId} is not in schemas/model_registry.json`);
       const clip = e.kind === "video" && f.clip !== null;
-      expect(card.querySelector(".mf-ai")?.textContent, e.jobId).toBe(g.badge);
+      expect(card.querySelector(".mf-ai")?.textContent, e.jobId).toBe("AI");
+      expect(card.textContent, e.jobId).toContain(g.badge);
       expect(card.querySelector(".mf-cap .mf-desc")?.textContent?.trim().length, e.jobId).toBeGreaterThan(0);
       expect(card.querySelector(".nx-gallery-pic")?.getAttribute("data-clip") ?? null).toBe(clip ? "sample" : null);
       expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(clip ? g.bgClip : g.bgImage);

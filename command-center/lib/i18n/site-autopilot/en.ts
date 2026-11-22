@@ -150,7 +150,6 @@ export const siteAutopilotEn = {
     noSound: "This clip has no sound",
     position: "{n} of {total}",
     hint: "Swipe up for the next one",
-    prompt: "Prompt",
   },
 };
 

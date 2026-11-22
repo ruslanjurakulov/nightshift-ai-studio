@@ -1,6 +1,8 @@
 import type { ShowcaseEntry, ShowcaseFiles } from "@/lib/site/showcase";
 import { modelLeftOut } from "@/lib/site/showcase";
 import { tryHref } from "@/lib/site/showcase-link";
+import { cardWords } from "@/lib/site/card-words";
+import type { Locale } from "@/lib/i18n/core";
 import type { ClipSources } from "@/components/site/LoopClip";
 
 /**
@@ -16,8 +18,12 @@ const VERTICAL = 1.6;
 /** One clip of the phone's Shorts feed: everything the Client Component needs, as plain data. */
 export type ShortsItem = {
   jobId: string;
-  /** No model name (owner decision 22 Nov: no model name on public cards; it travels only in the Studio link `href`). */
-  prompt: string;
+  /**
+   * The card's one line (lib/site/card-words.ts), and its language: never the whole prompt, which travels only in `href`, and no
+   * model name (owner decision 22 Nov: no model name on public cards; it travels only in the Studio link). "" when it has none.
+   */
+  line: string;
+  lang: string;
   poster: string;
   posterSm: string;
   sources: ClipSources;
@@ -25,19 +31,20 @@ export type ShortsItem = {
   height: number;
   /** "Use this prompt" (lib/site/showcase-link.ts tryHref): a link that fills the Studio form, nothing more. */
   href: string | null;
-  /** The model is not on sale (operator preview or shut down): the button says "Use", not "Try" this model. */
+  /** The model is not on sale (operator preview or shut down): the link opens the tool without it, and a note says so. */
   leftOut: boolean;
   sound: boolean;
 };
 
 /** The samples the feed shows: the vertical clips among the gallery's, in its order. */
-export function shortsItems(items: readonly { e: ShowcaseEntry; f: ShowcaseFiles }[], signedIn: boolean, now: Date): ShortsItem[] {
+export function shortsItems(items: readonly { e: ShowcaseEntry; f: ShowcaseFiles }[], signedIn: boolean, now: Date, locale: Locale): ShortsItem[] {
   return items.flatMap(({ e, f }) =>
     e.kind === "video" && f.clip && e.height >= e.width * VERTICAL
       ? [
           {
             jobId: e.jobId,
-            prompt: e.prompt,
+            line: cardWords(e, locale).text,
+            lang: cardWords(e, locale).lang,
             poster: f.poster,
             posterSm: f.posterSm,
             sources: f.clip,

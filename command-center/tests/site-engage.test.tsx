@@ -299,8 +299,9 @@ describe("the landing page's reasons to stay", () => {
     const trust = container.querySelector(".nx-trust") as HTMLElement;
     expect([...trust.querySelectorAll("li")].map((li) => li.textContent)).toEqual(t.rules.items.map((i) => i.title));
     // A merged model sample's caption is its card line or its prompt's first sentence ("stars over a lake" is a prompt, not a
-    // rating), so those are left out of the claims; everything the page says in its own words, the gallery's included, is read.
-    const text = without(container, ".mf-desc").textContent ?? "";
+    // rating): the prompt's words (data-src="prompt") are left out of the claims; a card line is our own copy and is read, as is
+    // everything else the page says in its own words.
+    const text = without(container, '[data-src="prompt"]').textContent ?? "";
     expect(text).not.toMatch(/trusted by|testimonials?\b|customers\b|\breviews?\b|\brated\b|\bstars?\b|\d+\s*(?:\+|k|m)?\s*(?:users|creators|channels|people)|only \d+|ends in|left today/i);
     // No card names its model (owner decision 22 Nov, tests/site-showcase.test.tsx); outside the sample boxes nothing does either.
     expect(without(container, SAMPLE_CARD).textContent).not.toMatch(PROVIDER_BRANDS);

@@ -170,13 +170,13 @@ function renderFeed(code: "en" | "ru" | "uz" = "en") {
   const t = dictionaries[code];
   const g = t.site.gallery;
   return render(
-    <ShortsFeed items={shortsItems(items, false, NOW)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, try: g.try, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />,
+    <ShortsFeed items={shortsItems(items, false, NOW, code)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />,
   );
 }
 
 describe("the Shorts feed", () => {
   it("takes the 9:16 clips only, and knows the site's clips are silent", () => {
-    expect(shortsItems(items, false, NOW).map((i) => i.jobId)).toEqual([TALL]);
+    expect(shortsItems(items, false, NOW, "en").map((i) => i.jobId)).toEqual([TALL]);
     // tools/export_showcase.py encodes every rendition with -an: the sound key must not promise sound.
     const exporter = readFileSync(join(REPO, "tools/export_showcase.py"), "utf8");
     expect(exporter).toMatch(/"-an"/);

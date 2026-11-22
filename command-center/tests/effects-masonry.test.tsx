@@ -98,6 +98,10 @@ describe("the Effects gallery's masonry", () => {
       for (const c of cols) expect(c >= 1 && c <= n).toBe(true);
       // The placement alone leaves the columns apart (a card is its frame alone since the cards went media first, owner decision
       // 22 Nov); levelSpans stretches the shorter ones to end exactly level, cutting no frame by more than a fifth of its height.
+      // The placement itself still has to be good (a masonryColumns regression must fail here, not hide behind the stretching):
+      // within 40 rows (about 240 px at three columns) before stretching; the multi-column layout left 600 px and more.
+      const placed = ends(spans, cols, n);
+      expect(Math.max(...placed) - Math.min(...placed), `${n} columns placed: ${placed}`).toBeLessThanOrEqual(40);
       const levelled = levelSpans(spans, cols, n);
       const e = ends(levelled, cols, n);
       expect(Math.max(...e) - Math.min(...e), `${n} columns: ${e}`).toBe(0);

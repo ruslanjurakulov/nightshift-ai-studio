@@ -143,6 +143,5 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
     noSound: "Bu klipda ovoz yoʻq",
     position: "{total} tadan {n}",
     hint: "Keyingisi uchun yuqoriga suring",
-    prompt: "Soʻrov",
   },
 };

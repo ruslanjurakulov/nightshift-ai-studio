@@ -13,7 +13,7 @@ import { holdClips } from "@/lib/site/clip-hold";
 import type { ShortsItem } from "@/components/site/shorts";
 
 type NetworkInformation = { saveData?: boolean };
-type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "try" | "use" | "useNote" | "noPrompt">;
+type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "use" | "useNote" | "noPrompt">;
 
 /** The marker of the history entry the feed adds, so the phone's back button closes the feed instead of leaving the page. */
 const HISTORY_KEY = "nsShorts";
@@ -277,9 +277,9 @@ function Feed({
               {i === 0 && total > 1 && here && <p className="nx-shorts-hint" aria-hidden>{copy.hint}</p>}
               <div className="nx-shorts-cap" inert={!here}>
                 <span className="nx-shorts-badge">{g.badge}</span>
-                <p id={promptId} className="nx-shorts-prompt" lang="en">
-                  <span className="nx-ap-sr">{copy.prompt}: </span>
-                  {it.prompt.trim() ? it.prompt : g.noPrompt}
+                <p id={promptId} className="nx-shorts-prompt" lang={it.line ? it.lang : undefined}>
+                  {/* The card's one line, not the whole prompt: that travels only in the link (owner decision 22 Nov). */}
+                  {it.line || g.noPrompt}
                 </p>
                 {it.href && (
                   <>
@@ -293,7 +293,8 @@ function Feed({
                       className="nx-shorts-use"
                       aria-describedby={it.leftOut ? `${promptId} shorts-use-${it.jobId}` : promptId}
                     >
-                      {it.leftOut ? g.use : g.try}
+                      {/* Always "Use this prompt": no model is named here, so the link never says "try" one. */}
+                      {g.use}
                       <ArrowRight aria-hidden />
                     </Link>
                     {it.leftOut && (

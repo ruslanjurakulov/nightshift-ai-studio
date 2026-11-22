@@ -7,19 +7,28 @@
    Type follows S5's scale as literals, so it holds with or without the design tokens: the caption title is heading-lg's floor
    (22 px, bold), its line the body size (16 px), as Kling's cards set them. */
 
-.mf-card {
-  position: relative; display: block; width: 100%; height: 100%; overflow: hidden; isolation: isolate;
-  border-radius: inherit; color: #fff; text-decoration: none; -webkit-tap-highlight-color: transparent;
+/* The card (the grid's <li>) holds its media, the mark and the caption, and over them all one stretched link (.mf-card-link,
+   inset 0, z-index 1) that carries the card's accessible name. The media and the caption are not inside the link, so a control
+   laid over the clip later (the sound key from another branch) can sit at z-index 5 or above, marked data-tap-ignore, and take
+   its own clicks; the mark and the caption take none (pointer-events: none), so a click on them reaches the link.
+   Layers: media 0, link 1, caption 2, mark 3, focus ring 4, controls 5+. */
+.mf-card { position: relative; overflow: hidden; isolation: isolate; color: #fff; -webkit-tap-highlight-color: transparent; }
+.mf-card-link { position: absolute; inset: 0; z-index: 1; border-radius: inherit; color: inherit; text-decoration: none; }
+.mf-card-link:focus-visible { outline: none; }
+/* The keyboard's ring, drawn over everything but the controls, so the caption sliding in never covers it. */
+.mf-card::after {
+  content: ""; position: absolute; inset: 0; z-index: 4; border-radius: inherit; pointer-events: none; box-shadow: none;
 }
-.mf-card:focus-visible { outline: 3px solid #ffa940; outline-offset: -3px; }
+.mf-card:has(.mf-card-link:focus-visible)::after { box-shadow: inset 0 0 0 3px #ffa940; }
 
 /* The mark: always there, never covering the picture. Labelling generated media is a duty (synthetic-media transparency rules
-   and the platforms' own), and it is not a model name, so it does not undo the media-first rule. */
+   and the platforms' own), and it is not a model name, so it does not undo the media-first rule. It reads "AI" in every language
+   (owner decision 22 Nov); its full meaning ("AI-generated") is in the link's description for a screen reader. */
 .mf-ai {
   position: absolute; z-index: 3; top: 8px; right: 8px; max-width: calc(100% - 16px);
   padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(10, 10, 14, 0.72);
   color: rgba(255, 255, 255, 0.92); font-size: 13px; font-weight: 600; line-height: 1.35; letter-spacing: 0.01em;
-  /* It wraps on a narrow phone card rather than being cut: a label cut to "Создано нейро…" no longer says what it must. */
+  /* It wraps rather than being cut (an Effects drawing's mark is a word, "Рисунок"): a cut label no longer says what it must. */
   overflow-wrap: anywhere; text-align: right; pointer-events: none;
 }
 
@@ -43,17 +52,26 @@
 .mf-cap[data-title="none"] .mf-desc { -webkit-line-clamp: 2; line-clamp: 2; }
 .mf-facts { margin: 2px 0 0; font-size: 13px; line-height: 1.35; color: rgba(255, 255, 255, 0.66); overflow-wrap: anywhere; }
 
-.mf-card:focus-visible .mf-cap, .mf-card:focus-within .mf-cap, .mf-card[data-revealed="true"] .mf-cap { opacity: 1; }
+.mf-card:focus-within .mf-cap, .mf-card:has(.mf-card-link:focus-visible) .mf-cap, .mf-card[data-revealed="true"] .mf-cap { opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
   .mf-card:hover .mf-cap { opacity: 1; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .mf-cap { transform: translateY(8px); transition: opacity 200ms var(--ns-ease, ease), transform 240ms var(--ns-ease, ease); }
-  .mf-card:focus-visible .mf-cap, .mf-card:focus-within .mf-cap, .mf-card[data-revealed="true"] .mf-cap { transform: none; }
+  .mf-card:focus-within .mf-cap, .mf-card:has(.mf-card-link:focus-visible) .mf-cap, .mf-card[data-revealed="true"] .mf-cap { transform: none; }
   @media (hover: hover) and (pointer: fine) { .mf-card:hover .mf-cap { transform: none; } }
 }
 /* The page's pause switch: the caption still fades in, nothing slides. */
 html[data-motion="paused"] .mf-cap { transform: none; transition: opacity 200ms var(--ns-ease, ease); }
+
+/* A phone's explore grid is two columns of ~165 px cards: at 22/16 px a title showed four letters ("Street-siz…"). Up to 480 px
+   the caption steps down to 17/14 px there; from 481 px up it is the 22/16 px scale above. The Effects cards are full width on a
+   phone and keep it. */
+@media (max-width: 480px) {
+  .nx-gallery .mf-title { font-size: 1.0625rem; }
+  .nx-gallery .mf-desc { font-size: 0.875rem; }
+  .nx-gallery .mf-cap { padding: 40px 10px 10px; }
+}
 
 /* Section headings of the media sections: bold display size (S5's display-lg, ~48 px at 1440), scoped to these sections only so
    the site's other headings keep theirs. */

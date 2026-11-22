@@ -58,29 +58,38 @@ export function EffectsGallery({ t, effects = EFFECTS }: { t: Dictionary; effect
               ...(c3 && { "--efx-c3": c3[i] }),
             } as CSSProperties;
             const capId = `efx-cap-${e.id}`;
+            const badgeId = `efx-badge-${e.id}`;
+            const aiId = `efx-ai-${e.id}`;
+            const sampled = effectSample(e) !== null;
             return (
-              <li key={e.id} className="efx-card" data-effect={e.id} style={rows}>
-                {/* One link, its name the effect's ("Use this effect: …"); the caption's line and facts describe it. */}
+              <li key={e.id} className="efx-card mf-card" data-mf-card="" data-effect={e.id} style={rows}>
+                <EffectFrame effect={e} label={label} className="fx-frame efx-frame" badgeId={badgeId} />
+                {/* "AI" on a real result (owner decision 22 Nov: the mark is "AI" in every language); a drawing is not one, and says
+                    "Drawing". The frame's badge (badgeId) says which in full, and the link's description reads it. */}
+                <span className="mf-ai" aria-hidden>
+                  {sampled ? t.site.gallery.mark : s.drawing}
+                </span>
+                {sampled && (
+                  <span id={aiId} className="sr-only">
+                    {t.site.gallery.badge}
+                  </span>
+                )}
+                <span id={capId} className="mf-cap" aria-hidden>
+                  <span className="mf-title efx-name">{copy.name}</span>
+                  <span className="mf-desc efx-line">{copy.line}</span>
+                  <span className="mf-facts efx-kind">
+                    {fx.kinds[e.capability]} · {fmt(fx.desk.seconds, { n: e.duration })} · {fx.needs[e.input]}
+                  </span>
+                </span>
+                {/* The stretched link over the whole card (media-card.css): named "Use this effect: …", described by the caption's
+                    line and facts, and by whether the frame is a real result (AI-generated) or a drawing. */}
                 <Link
                   href={publicEffectHref(e)}
                   prefetch={false}
-                  className="mf-card efx-link"
-                  data-mf-card=""
+                  className="mf-card-link"
                   aria-label={fmt(s.useAria, { name: copy.name })}
-                  aria-describedby={capId}
-                >
-                  <EffectFrame effect={e} label={label} className="fx-frame efx-frame" />
-                  <span className="mf-ai" aria-hidden>
-                    {effectSample(e) ? t.site.gallery.badge : s.drawing}
-                  </span>
-                  <span id={capId} className="mf-cap">
-                    <span className="mf-title efx-name">{copy.name}</span>
-                    <span className="mf-desc efx-line">{copy.line}</span>
-                    <span className="mf-facts efx-kind">
-                      {fx.kinds[e.capability]} · {fmt(fx.desk.seconds, { n: e.duration })} · {fx.needs[e.input]}
-                    </span>
-                  </span>
-                </Link>
+                  aria-describedby={[capId, badgeId, sampled ? aiId : null].filter(Boolean).join(" ")}
+                />
               </li>
             );
           })}

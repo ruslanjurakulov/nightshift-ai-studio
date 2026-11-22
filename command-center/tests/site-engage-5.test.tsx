@@ -272,7 +272,9 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
       expect(b.getAttribute("data-clip")).toBe("sample");
       expect(b.closest(SAMPLE_CARD)).toBeTruthy();
       // The AI mark sits on the card over its media (components/site/media-card.css), never a stock label.
-      expect(b.closest("[data-mf-card]")?.querySelector(".mf-ai")?.textContent).toBe(t.site.gallery.badge);
+      // "AI" on screen in every language (owner decision 22 Nov); the card says "AI-generated" in full for a screen reader.
+      expect(b.closest("[data-mf-card]")?.querySelector(".mf-ai")?.textContent).toBe(t.site.gallery.mark);
+      expect(b.closest("[data-mf-card]")?.textContent).toContain(t.site.gallery.badge);
       expect(b.closest("[data-mf-card]")?.querySelector(".nx-result-badge[data-kind]")).toBeNull();
     }
     const sampleVideos = [...container.querySelectorAll(`${GALLERY} video`)];
