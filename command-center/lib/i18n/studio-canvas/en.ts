@@ -199,7 +199,8 @@ export const studioCanvasEn = {
     audio: "Voice",
     audioSub: "voice-over",
     empty: "Connect a video or voice card and it lands here, in the order of its chain.",
-    loose: "Cards with no wire stay off the timeline: {n}",
+    // After a count: "2 without a wire, off the timeline".
+    loose: "without a wire, off the timeline",
     legendRequested: "~ requested length",
     legendUnknown: "? length unknown",
     nothingRenders: "Order only · nothing renders or spends here",

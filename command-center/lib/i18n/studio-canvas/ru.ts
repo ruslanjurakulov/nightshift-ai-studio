@@ -189,7 +189,7 @@ export const studioCanvasRu: StudioCanvasDictionary = {
     audio: "Голос",
     audioSub: "озвучка",
     empty: "Подключите карточку видео или голоса — она появится здесь, в порядке цепочки.",
-    loose: "Карточки без связи не попадают в ленту: {n}",
+    loose: "без связи — не в ленте",
     legendRequested: "~ запрошенная длина",
     legendUnknown: "? длина неизвестна",
     nothingRenders: "Только порядок · здесь ничего не рендерится и не тратится",

@@ -96,6 +96,32 @@ export function laneOf(state: Graph): LaneModel {
 
 export type LaneLength = { seconds: number; basis: "measured" | "requested" } | null;
 
+// ── what the strip draws ────────────────────────────────────────────────────────
+
+/** A row's lamp: the same five tones as a canvas card's (components/studio-canvas/nodeState LAMP). "run" = really working now. */
+export type LaneTone = "ok" | "run" | "fail" | "warn" | "idle";
+
+/**
+ * One segment, as the presentational strip (components/studio-canvas/LaneStrip) draws it, whoever read it: the canvas
+ * (CanvasLane, from cards and their jobs) or a live film view (from its takes). Rows of a track are drawn in the order given.
+ * Every field is a reading, never a stand-in (CLAUDE.md rule 5): `thumb` only from a real result, `made` only for a file that
+ * exists, `length` null when nobody measured or asked for one.
+ */
+export interface LaneRow {
+  /** Stable across renders: what a press hands back, and what tells a new segment from one already there. */
+  id: string;
+  track: LaneTrack;
+  name: string;
+  /** The short label on the tag that flies to a newly landed segment (a card's name, a take's "S3 · T2"). */
+  tag: string;
+  status: LaneTone;
+  /** The status in words, always shown beside the lamp for what is not made yet (never a colour alone). */
+  statusWords: string;
+  length: LaneLength;
+  thumb: string | null;
+  made: boolean;
+}
+
 const positive = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0 && v < 86_400;
 
 /**

@@ -1336,10 +1336,12 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   font-size: 13px;
   font-weight: 600;
 }
-.cv-lane-tog:hover { background: var(--key); }
+@media (hover: hover) { .cv-lane-tog:hover { background: var(--key); } }
 .cv-lane-chev { color: var(--dim); transition: transform var(--d-state) var(--ease); }
 .cv-lane.is-closed .cv-lane-chev { transform: rotate(-90deg); }
-.cv-lane-tc { color: var(--amber-ink); font: 600 15px/1 var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; letter-spacing: 0.02em; }
+/* The transport clock, as docs/design/SYSTEM.md's .ds-timecode (mono, tabular, the accent, -0.01em), at the lane bar's size. */
+.cv-lane-tc { color: var(--amber-ink); font: 600 18px/1 var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; letter-spacing: -0.01em; }
+.cv-lane-tc.is-unknown { color: var(--dim); font: 500 13px var(--font-sans); letter-spacing: 0; }
 .cv-lane-unk { color: var(--dim); font: 500 12px var(--font-mono); }
 .cv-lane-counts { display: inline-flex; gap: 6px; }
 .cv-lane-chip {
@@ -1359,13 +1361,14 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-lane-chip.t-audio, .cv-th.t-audio, .cv-pill.t-audio, .cv-fly.t-audio { --ln: var(--ln-audio); --ln-ink: var(--ln-audio-ink); }
 .cv-lane-meta { overflow: hidden; color: var(--dim); font-size: 12px; text-overflow: ellipsis; }
 .cv-lane-meta.is-loose { color: var(--caution); }
+.cv-lane-meta.is-loose b { font: 600 12px var(--font-mono); }
 .cv-lane-meta + .cv-lane-meta::before { content: "·"; margin-right: 12px; color: var(--faint); }
 @container (max-width: 1100px) { .cv-lane-meta.is-legend { display: none; } }
-@container (max-width: 860px) { .cv-lane-meta.is-note { display: none; } }
+@container (max-width: 1040px) { .cv-lane-meta.is-note { display: none; } }
 @container (max-width: 620px) { .cv-lane-meta.is-loose { display: none; } }
 
 .cv-lane-body { display: grid; grid-template-columns: var(--lh-w) minmax(0, 1fr); }
-.cv-lane-heads { display: grid; grid-template-rows: var(--ruler-h) var(--tv-h) var(--ta-h); border-right: 1px solid var(--rule); }
+.cv-lane-heads { display: grid; grid-template-rows: var(--ruler-h) var(--tv-h) var(--ta-h); padding-bottom: 6px; border-right: 1px solid var(--rule); }
 .cv-lane-hgap { border-bottom: 1px solid var(--rule); }
 .cv-th { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0 10px 0 12px; border-bottom: 1px solid var(--rule); }
 .cv-th:last-child { border-bottom: 0; }
@@ -1383,11 +1386,12 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-th-badge b { font: 700 12px var(--font-mono); }
 .cv-th-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
 /* The editor's track label (the owner's reference): small capitals in the reading face, here and nowhere else in the app. */
-.cv-th-nm { overflow: hidden; font: 600 11px/1.3 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; text-overflow: ellipsis; }
+/* As .ds-t-label (docs/design/SYSTEM.md): 12px mono capitals, 1.3, 0.08em, weight 500. */
+.cv-th-nm { overflow: hidden; font: 500 12px/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; text-overflow: ellipsis; }
 .cv-th-sub { overflow: hidden; color: var(--faint); font-size: 12px; text-overflow: ellipsis; }
 
 .cv-lane-scroll { position: relative; min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
-.cv-lane-in { position: relative; display: grid; grid-template-rows: var(--ruler-h) var(--tv-h) var(--ta-h); min-width: 100%; }
+.cv-lane-in { position: relative; display: grid; grid-template-rows: var(--ruler-h) var(--tv-h) var(--ta-h); min-width: 100%; padding-bottom: 6px; }
 /* A tick each second, a longer one each five; the labels are elements, and stop where times stop being known. */
 .cv-ruler {
   position: relative;
@@ -1397,7 +1401,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
     linear-gradient(90deg, var(--rule-strong) 1px, transparent 1px) 0 100% / calc(var(--pxs) * 5) 9px repeat-x,
     linear-gradient(90deg, var(--rule) 1px, transparent 1px) 0 100% / var(--pxs) 5px repeat-x;
 }
-.cv-ruler i { position: absolute; top: 4px; padding-left: 4px; color: var(--faint); font: 500 11px/1 var(--font-mono); font-style: normal; font-variant-numeric: tabular-nums; }
+.cv-ruler i { position: absolute; top: 5px; padding-left: 5px; color: var(--faint); font: 500 11px/1 var(--font-mono); font-style: normal; font-variant-numeric: tabular-nums; }
 .cv-ruler-unk {
   position: absolute;
   top: 0;
@@ -1405,9 +1409,10 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   right: 0;
   background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--faint) 16%, transparent) 0 4px, transparent 4px 9px);
 }
+.cv-ruler i:first-child { padding-left: 13px; }
 /* Where the lane starts: a thin lime line with its flag. It marks 0; nothing plays here, so it never moves. */
-.cv-lane-head { position: absolute; top: 0; bottom: 0; left: 0; z-index: 3; width: 1px; background: var(--amber); pointer-events: none; }
-.cv-lane-head::before { content: ""; position: absolute; top: 0; left: 0; width: 9px; height: 10px; border-radius: 0 2px 2px 0; background: var(--amber); clip-path: polygon(0 0, 100% 0, 100% 70%, 0 100%); }
+.cv-lane-head { position: absolute; top: 0; bottom: 0; left: 0; z-index: 3; width: 1px; background: var(--text); pointer-events: none; }
+.cv-lane-head::before { content: ""; position: absolute; top: 0; left: 0; width: 9px; height: 10px; border-radius: 0 2px 2px 0; background: var(--text); clip-path: polygon(0 0, 100% 0, 100% 70%, 0 100%); }
 .cv-track { position: relative; margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--rule); background: linear-gradient(90deg, color-mix(in srgb, var(--rule) 55%, transparent) 1px, transparent 1px) 0 0 / calc(var(--pxs) * 5) 100%; }
 .cv-track.t-audio { border-bottom: 0; }
 .cv-pill-li { position: absolute; top: 6px; bottom: 6px; padding-right: 2px; }
@@ -1430,11 +1435,19 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   transition: box-shadow var(--d-state) var(--ease), border-color var(--d-state) var(--ease), filter var(--d-state) var(--ease);
 }
 .cv-pill:hover { filter: brightness(1.12); }
-.cv-pill.is-made { border: 1px solid color-mix(in srgb, var(--ln) 85%, white 15%); color: var(--ln-ink); background: linear-gradient(180deg, color-mix(in srgb, var(--ln) 100%, white 8%), var(--ln)); }
-.cv-pill.is-made .cv-pill-meta { color: color-mix(in srgb, var(--ln-ink) 72%, transparent); }
+/* Made: the soft fill docs/design/SYSTEM.md §6 sets (the hue at 22% over the key surface, the name in the hue, a 2px edge in
+   full hue), so a long voice-over is a band, not a glare. A plan stays dashed and paler. */
+.cv-pill.is-made {
+  --fill: color-mix(in srgb, var(--ln) 22%, var(--key));
+  border: 1px solid color-mix(in srgb, var(--ln) 60%, transparent);
+  border-left: 2px solid var(--ln);
+  background: var(--fill);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+.cv-pill.is-made .cv-pill-nm { color: var(--ln); }
 .cv-pill.is-unk { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ln) 22%, transparent) 0 5px, transparent 5px 11px), var(--fill); }
-.cv-pill.is-made.is-unk { background: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.18) 0 5px, transparent 5px 11px), var(--ln); }
-.cv-pill.s-failed { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
+.cv-pill.is-made.is-unk { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ln) 26%, transparent) 0 5px, transparent 5px 11px), var(--fill); }
+.cv-pill.s-fail { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
 .cv-pill.is-sel { outline: 2px solid var(--amber); outline-offset: 1px; box-shadow: 0 0 0 5px var(--amber-soft), 0 0 18px -4px var(--amber); z-index: 2; }
 .cv-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .cv-pill-art { flex: none; align-self: stretch; width: 64px; margin: 3px 0 3px -1px; overflow: hidden; border-radius: 5px; background: var(--film); }
@@ -1504,7 +1517,11 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 }
 /* The phone: a compact strip at the top of the flow, closed until opened; the same tracks, narrower. */
 .cv-lane.is-phone { --lh-w: 76px; --tv-h: 50px; --ta-h: 36px; margin: 0 0 4px; border-bottom: 1px solid var(--rule); }
-.cv-lane.is-phone .cv-lane-bar { height: 44px; gap: 10px; }
+.cv-lane.is-phone .cv-lane-bar { height: 44px; gap: 10px; overflow: hidden; }
+/* A phone's bar keeps the name, the timecode and what is unknown; the counts are the tracks themselves once open. */
+.cv-lane.is-phone .cv-lane-counts { display: none; }
+.cv-lane.is-phone .cv-lane-tc { font-size: 13px; }
+.cv-lane.is-phone .cv-lane-unk { font-size: 11px; }
 .cv-lane.is-phone .cv-lane-tog { height: 44px; }
 .cv-lane.is-phone .cv-th { padding: 0 6px 0 8px; }
 .cv-lane.is-phone .cv-th-txt { display: none; }

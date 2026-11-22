@@ -189,7 +189,7 @@ export const studioCanvasUz: StudioCanvasDictionary = {
     audio: "Ovoz",
     audioSub: "ovoz yozuvi",
     empty: "Video yoki ovoz kartasini ulang — u shu yerga, zanjir tartibida tushadi.",
-    loose: "Ulanmagan kartalar lentaga tushmaydi: {n}",
+    loose: "ta ulanmagan — lentada emas",
     legendRequested: "~ soʻralgan davomiylik",
     legendUnknown: "? davomiylik nomaʼlum",
     nothingRenders: "Faqat tartib · bu yerda hech narsa yigʻilmaydi va sarflanmaydi",
