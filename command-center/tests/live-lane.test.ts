@@ -191,7 +191,60 @@ describe("the lane's video pieces", () => {
 
 describe("the lane and the canvas agree on which take drives a slot", () => {
   // filmGraph's LiveStatus as the lane names it (a completed take WITH its file, so "done" is "landed" on both).
-  const AS_LANE: Partial<Record<LiveStatus, PieceState>> = { done: "landed", working: "working", waiting: "pending", failed: "failed", skipped: "skipped", unknown: "unknown" };
+  const AS_LANE: Partial<Record<LiveStatus, PieceState>> = { done: "landed", working: "working", waiting: "pending", retried: "retried", failed: "failed", skipped: "skipped", stopped: "skipped", unknown: "unknown" };
+  const both = (r: FilmReading) => ({ nodes: new Map(filmGraph(r).nodes.map((n) => [n.id, n.status])), lane: liveLane(r, none) });
+  const retry = (second: string, extra: { status?: string; bases?: Map<string, string> | null } = {}) => {
+    const r = reading(
+      { status: extra.status ?? "running" },
+      [sceneJson(S1, 0, { current_version: 1, takes: [take("c1", "clip", "superseded"), take("c2", "clip", second, { attempt: 2 })] })],
+      { takes: [take("n1", "narration", "superseded"), take("n2", "narration", second, { attempt: 2 })], segments: [seg({ status: extra.status === "paused" ? "settled" : "running" })] },
+    );
+    if (extra.bases !== undefined) r.bases = extra.bases;
+    return r;
+  };
+
+  it("a retry waiting to begin is `retried` on the canvas node and on the lane piece, clip and narration alike", () => {
+    const { nodes, lane } = both(retry("planned"));
+    expect(nodes.get(`scene:${S1}:clip`)).toBe("retried");
+    expect(nodes.get("voice")).toBe("retried");
+    expect(lane.video[0]).toMatchObject({ takeId: "c2", state: "retried" });
+    expect(lane.audio[0]).toMatchObject({ takeId: "n2", state: "retried" });
+    // Once attempt 2 runs, both say working.
+    const run = both(retry("running"));
+    expect(run.nodes.get(`scene:${S1}:clip`)).toBe("working");
+    expect(run.lane.video[0].state).toBe("working");
+  });
+
+  it("only 0171's retry basis makes a superseded sibling a retry, when the basis was read; unread, it is 0171's retry", () => {
+    const other = both(retry("planned", { bases: new Map([["c1", "reshoot_not_charged"], ["n1", "reshoot_not_charged"]]) }));
+    expect(other.nodes.get(`scene:${S1}:clip`)).toBe("waiting");
+    expect(other.lane.video[0].state).toBe("pending");
+    const named = both(retry("planned", { bases: new Map([["c1", "retried_not_charged"], ["n1", "retried_not_charged"]]) }));
+    expect(named.nodes.get(`scene:${S1}:clip`)).toBe("retried");
+    expect(named.lane.video[0].state).toBe("retried");
+  });
+
+  it.each(["cancelled", "ready", "paused"])("on a %s film that is over, a slot still waiting or waiting to retry is skipped on both", (status) => {
+    const { nodes, lane } = both(retry("planned", { status }));
+    expect(nodes.get(`scene:${S1}:clip`)).toBe("skipped");
+    expect(nodes.get("voice")).toBe("skipped");
+    expect(lane.video[0].state).toBe("skipped");
+    expect(lane.audio[0].state).toBe("skipped");
+  });
+
+  it("a paused film with a segment still open is not over: its waiting slot stays pending", () => {
+    const r = reading({ status: "paused" }, [sceneJson(S1, 0, { current_version: 1, takes: [take("c1", "clip", "planned")] })], { segments: [seg({ status: "running" })] });
+    const { nodes, lane } = both(r);
+    expect(nodes.get(`scene:${S1}:clip`)).toBe("waiting");
+    expect(lane.video[0].state).toBe("pending");
+  });
+
+  it("a cancelled film's slot with no row is stopped on the canvas and skipped on the lane, never unknown", () => {
+    const { nodes, lane } = both(reading({ status: "cancelled" }, [sceneJson(S1, 0, { current_version: 1 })], { segments: [seg({ status: "released" })] }));
+    expect(nodes.get(`scene:${S1}:clip`)).toBe("stopped");
+    expect(lane.video[0].state).toBe("skipped");
+    expect(AS_LANE.stopped).toBe(lane.video[0].state);
+  });
 
   it("with current_version null, a completed v1 and a v2 that is only superseded: both read the v1 take", () => {
     const r = reading({ status: "running" }, [

@@ -43,6 +43,8 @@ const ICONS: Record<LiveNodeKind, LucideIcon> = {
 const TONE: Record<LiveStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
   draft: "idle",
   waiting: "idle",
+  // Its first attempt failed; the retry has not begun: not fine, not running.
+  retried: "warn",
   working: "run",
   done: "ok",
   failed: "fail",

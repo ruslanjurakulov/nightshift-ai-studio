@@ -428,3 +428,13 @@ describe("the brief, before Create", () => {
     expect(coerceBrief("nope")).toBeNull();
   });
 });
+
+describe("the live route's charge_basis", () => {
+  it("is read per take when the route sent it, and is 'not read' (null) when no row carried the column", () => {
+    const film = filmJson({ status: "running" }, [sceneJson(S1, 0)]);
+    const read = coerceFilmLive({ film, segments: [], takes: [{ id: "t1", error_code: "timeout", charge_basis: "retried_not_charged" }, { id: "t2", charge_basis: null }] })!;
+    expect(read.bases?.get("t1")).toBe("retried_not_charged");
+    expect(read.bases?.has("t2")).toBe(false);
+    expect(coerceFilmLive({ film, segments: [], takes: [{ id: "t1", error_code: "timeout" }] })!.bases).toBeNull();
+  });
+});

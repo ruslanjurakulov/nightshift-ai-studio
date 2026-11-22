@@ -7,7 +7,7 @@
  * whether it is where the worker will cut it (`startKnown`) or where the plan puts it. A master whose table cannot be read is
  * `unknown`, never `pending`.
  */
-import { compareEventIds, type Activity, type FilmReading } from "@/lib/studio/liveGraph";
+import { compareEventIds, filmPhase, pickSlot, type Activity, type FilmPhase, type FilmReading, type TakeBases } from "@/lib/studio/liveGraph";
 import { sceneWindow, type AssetDurations, type TakeMedia } from "@/lib/studio/timeline";
 
 export type { AssetDurations } from "@/lib/studio/timeline";
@@ -100,9 +100,14 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 const positive = (n: number | null | undefined): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
 const shotsOf = (shotCount: number) => Math.min(MAX_SHOTS, Math.max(1, shotCount));
 
-/** A slot with no row: pending while the film has not got there; once the run is over, nothing can say. */
-function noRow(filmStatus: string): PieceState {
-  return BEFORE_WORK.has(filmStatus) || IN_FLIGHT.has(filmStatus) ? "pending" : "unknown";
+/**
+ * A slot with no row: pending while the film has not got there or is running. Once it is over: skipped for a film that ended
+ * without it (cancelled, failed, paused after its segments settled: the canvas's "stopped"), unknown for one that finished (ready,
+ * archived), where a missing row cannot be explained.
+ */
+function noRow(filmStatus: string, phase: FilmPhase): PieceState {
+  if (phase !== "over") return "pending";
+  return filmStatus === "cancelled" || filmStatus === "failed" || filmStatus === "paused" ? "skipped" : "unknown";
 }
 
 function takeState(t: TakeMedia): PieceState {
@@ -131,25 +136,29 @@ interface Slot {
 }
 
 /**
- * One slot's rows (one kind and shot) read as a piece's take and state, picked exactly as filmGraph's `latestTake` picks a node's:
- * the newest non-superseded row of the scene's current version, or of any version while current_version is null (no migration
- * writes it yet). Superseded rows are history, except that while the attempt+1 sibling still waits the slot says `retried` (and
- * why). That reading assumes 0171's only superseding today, `charge_basis = retried_not_charged`; P7's re-shoot may supersede with
- * another basis, and then this needs the basis column.
+ * One slot (one kind and shot) as a piece's take and state, by the rule the canvas uses too (liveGraph's pickSlot): a node and its
+ * piece never disagree. A superseded row with no sibling is a row this build cannot place: unknown, never a guess. Once the film is
+ * over, a slot still pending or waiting to retry will never be made: skipped.
  */
-function slot(all: readonly TakeMedia[], version: number | null, errors: ReadonlyMap<string, string>, filmStatus: string): Slot {
-  const rows = version === null ? all : all.filter((t) => t.version === version);
-  const newestFirst = (a: TakeMedia, b: TakeMedia) => b.version - a.version || b.attempt - a.attempt;
-  const take = rows.filter((t) => t.status !== "superseded").sort(newestFirst)[0] ?? null;
-  if (!take) {
-    if (rows.length === 0) return { take: null, state: noRow(filmStatus), error: null };
-    // Superseded with no sibling: a row this build cannot place, not a state to guess.
-    const newest = [...rows].sort(newestFirst)[0];
-    return { take: newest, state: "unknown", error: errors.get(newest.id) ?? null };
+function slot(
+  all: readonly TakeMedia[],
+  kind: string,
+  shotIndex: number,
+  version: number | null,
+  errors: ReadonlyMap<string, string>,
+  bases: TakeBases | null | undefined,
+  filmStatus: string,
+  phase: FilmPhase,
+): Slot {
+  const pick = pickSlot(all, kind, shotIndex, version, bases);
+  if (!pick.take) {
+    if (!pick.orphan) return { take: null, state: noRow(filmStatus, phase), error: null };
+    return { take: pick.orphan, state: "unknown", error: errors.get(pick.orphan.id) ?? null };
   }
-  const state = takeState(take);
-  const before = rows.find((t) => t.status === "superseded" && t.version === take.version && t.attempt === take.attempt - 1);
-  if (before && state === "pending") return { take, state: "retried", error: errors.get(before.id) ?? null };
+  const take = pick.take;
+  let state: PieceState = pick.retriedFrom ? "retried" : takeState(take);
+  if (phase === "over" && (state === "pending" || state === "retried")) state = "skipped";
+  if (state === "retried") return { take, state, error: errors.get(pick.retriedFrom!.id) ?? null };
   return { take, state, error: state === "failed" ? (errors.get(take.id) ?? null) : null };
 }
 
@@ -169,7 +178,8 @@ export function masterFromSegments(reading: FilmReading): MasterReading | null {
   }
   switch (seg.assemblyStatus) {
     case "planned":
-      return { state: "not_assembled", assetId: null, reason: null };
+      // A film that is over will not assemble this segment: not "not assembled yet".
+      return filmPhase(fs, reading.segments) === "over" ? { state: "skipped", assetId: null, reason: null } : { state: "not_assembled", assetId: null, reason: null };
     // The segment settled without an assembly (filmGraph's `skipped`): not "not assembled yet", the run is over.
     case "skipped":
       return { state: "skipped", assetId: null, reason: null };
@@ -216,6 +226,7 @@ type Place = Pick<PieceBase, "start" | "startKnown" | "length" | "lengthBasis">;
  */
 export function liveLane(reading: FilmReading, durations: AssetDurations, master?: MasterReading | null): LiveLane {
   const fs = reading.film.view.film.status;
+  const phase = filmPhase(fs, reading.segments);
   const scenes = [...reading.film.view.scenes].sort((a, b) => a.position - b.position);
   const video: VideoPiece[] = [];
   // A scene with no planned seconds leaves every later start, and the film's total, unknown: a position after a guessed gap is a
@@ -227,14 +238,7 @@ export function liveLane(reading: FilmReading, durations: AssetDurations, master
     const sceneSeconds = positive(scene.plannedSeconds) ? scene.plannedSeconds : null;
     const share = sceneSeconds !== null ? sceneSeconds / n : null;
     const takes = reading.film.sceneTakes.get(scene.id) ?? [];
-    const slots = Array.from({ length: n }, (_, k) =>
-      slot(
-        takes.filter((t) => t.kind === (k === 0 ? "clip" : "extend") && t.shotIndex === k + 1),
-        scene.currentVersion,
-        reading.errors,
-        fs,
-      ),
-    );
+    const slots = Array.from({ length: n }, (_, k) => slot(takes, k === 0 ? "clip" : "extend", k + 1, scene.currentVersion, reading.errors, reading.bases, fs, phase));
     // Every shot landed and measured: the pieces are where the worker will cut them (the Timeline's own sceneWindow), not the plan.
     // Anything short of "ok" (a shot not measured, footage too short or too long to trim) leaves the plan's positions.
     const shot = slots.every((s) => s.state === "landed") ? slots.map((s) => s.take as TakeMedia) : null;
@@ -282,7 +286,7 @@ export function liveLane(reading: FilmReading, durations: AssetDurations, master
   // The same presence rule as filmGraph's voice node: once work started, a film with no narration row did not ask for one, so it
   // has no audio piece rather than a pending one that will never come.
   if (narration.length > 0 || BEFORE_WORK.has(fs) || fs === "running") {
-    const s = slot(narration, null, reading.errors, fs);
+    const s = slot(narration, "narration", 0, null, reading.errors, reading.bases, fs, phase);
     const assetId = s.state === "landed" ? (s.take?.resultAssetId ?? null) : null;
     const fileS = fileOf(assetId, durations);
     audio.push({
