@@ -446,6 +446,13 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-menu-btn svg, .st-menu-close svg { width: 20px; height: 20px; }
 .st-menu-btn:hover, .st-menu-close:hover { background: var(--ns-hover); }
 .st-menu-btn[aria-expanded="true"] { background: var(--ns-hover); }
+/* The bar's quiet controls (language, theme, view, the menu key) are found by their edge alone: on the dark ground the shared
+   quiet border measured 1.37:1 (S5 Pixel on #889/#906), under the 3:1 a control's boundary needs (WCAG 1.4.11). The strong rule
+   is 3:1 or better on every public ground; hover keeps the app's accent edge. A listbox row keeps its transparent edge. */
+.st-header .btn-sky.is-quiet:not(.border-transparent),
+.st-menu-btn,
+.st-menu-close { border-color: var(--ns-rule-strong); }
+.st-header .btn-sky.is-quiet:not(.border-transparent):hover:where(:not(:disabled, [aria-disabled="true"])) { border-color: var(--color-primary); }
 .st-menu-root { position: fixed; inset: 0; z-index: 60; }
 .st-menu-root[hidden] { display: none; }
 @media (min-width: 768px) { .st-menu-root { display: none; } }
