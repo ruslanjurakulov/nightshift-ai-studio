@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 /**
  * Evidence for the Studio live view's Activity log (components/studio-live/ActivityPanel.tsx) against the stand-in Supabase
- * (state `live_run`: a film mid-run with twelve film_events rows, one a word with no sentence, two `segment_claimed` rows whose
- * detail names a worker host). The log is drawn from those rows only; the worker's host name must never reach the page.
+ * (state `live_run`: a film mid-run with twelve film_events rows in 0198's shapes, one a word with no sentence, three rows whose
+ * detail names a worker host; `live_long`: the same plus a row whose kind is a 31-character word). The log is drawn from those rows
+ * only; the worker's host name must never reach the page.
  *
  *   PORT=54399 node tools/visual-qa/fake-supabase.mjs &
  *   cd command-center && NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 NEXT_PUBLIC_SUPABASE_ANON_KEY=visual-qa-not-a-key \
  *     npx next build && NIGHTSHIFT_FILM_STUDIO=on npx next start -p 3417 &
  *   node tools/visual-qa/studio-live.mjs --base http://localhost:3417 --out /tmp/studio-live-shots
  *
- * Fails (exit 1) on horizontal page overflow, a page error, a missing log, the worker host name anywhere in the page, a line marked
- * new on the first reading (a load must replay nothing), or prose under 13px. Reads and screenshots only; the fake refuses writes.
+ * Fails (exit 1) on horizontal page overflow, a page error, a missing log, the worker host name anywhere in the page text or HTML,
+ * a line marked new on the first reading (a load must replay nothing), prose under 13px, a tag under 24px high, or (live_long) a
+ * long tag that is not cut with its whole word kept as the title. Reads and screenshots only; the fake refuses writes.
  */
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
@@ -63,73 +65,85 @@ const URL_ = `/${SLUG}/studio?view=live&film=${FILM}`;
 const VIEWS = [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
+  { width: 360, height: 780 },
 ];
 const THEMES = ["dark", "light"];
 const LOCALES = ["en", "ru", "uz"];
+const LONG_KIND = "a_kind_word_of_thirty_one_chars";
+// [state, rows the fake recorded, view, theme, locale]
+const RUNS = [];
+for (const v of VIEWS) for (const theme of THEMES) for (const locale of LOCALES) RUNS.push(["live_run", 12, v, theme, locale]);
+for (const v of [VIEWS[0], VIEWS[2]]) for (const theme of THEMES) RUNS.push(["live_long", 13, v, theme, "ru"]);
 
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: exe });
 const bad = [];
 const lines = [];
-for (const v of VIEWS)
-  for (const theme of THEMES)
-    for (const locale of LOCALES) {
-      const phone = v.width < 600;
-      const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height }, colorScheme: theme, isMobile: phone, hasTouch: phone, deviceScaleFactor: 1 });
-      await ctx.addCookies([{ name: "chronos_locale", value: locale, url: BASE }, { ...sessionCookie(FAKE, "live_run"), url: BASE }]);
-      // The app's theme is the stored choice (lib/theme.ts, default dark), not the system's: store it before the first paint.
-      await ctx.addInitScript((t) => localStorage.setItem("chronos_theme", t), theme);
-      const page = await ctx.newPage();
-      const errors = [];
-      page.on("pageerror", (e) => errors.push(String(e)));
-      await page.goto(`${BASE}${URL_}`, { waitUntil: "load", timeout: 120000 });
-      const found = await page.waitForSelector("[data-testid=live-activity] .lv-log", { timeout: 30000 }).then(() => true, () => false);
-      await page.waitForTimeout(800);
-      const m = await page.evaluate((worker) => {
-        const panel = document.querySelector("[data-testid=live-activity]");
-        const list = panel?.querySelector("ol");
-        const rows = [...document.querySelectorAll("[data-testid=live-activity-item]")];
-        const px = (el) => (el ? parseFloat(getComputedStyle(el).fontSize) : null);
-        const text = document.body.innerText;
-        const html = document.documentElement.outerHTML;
-        return {
-          overflow: document.documentElement.scrollWidth - window.innerWidth,
-          listOverflow: list ? list.scrollWidth - list.clientWidth : null,
-          listFocusable: list?.getAttribute("tabindex") === "0",
-          rows: rows.length,
-          tags: rows.map((r) => r.querySelector("[data-testid=live-activity-tag] [aria-hidden]")?.textContent ?? "").join(" "),
-          fresh: document.querySelectorAll("[data-testid=live-activity] .is-new").length,
-          unknownCode: rows.some((r) => r.getAttribute("data-word") === "lease_extended" && r.querySelector("code")?.textContent === "lease_extended"),
-          worker: text.includes(worker) || html.includes(worker) || text.includes(worker.split(".")[0]) || html.includes(worker.split(".")[0]),
-          sentencePx: Math.min(...rows.map((r) => px(r.querySelector(".lv-log-text")) ?? 99)),
-          timePx: Math.min(...rows.map((r) => px(r.querySelector("time")) ?? 99)),
-          tagPx: px(rows[0]?.querySelector("[data-testid=live-activity-tag]")),
-          panelBg: panel ? getComputedStyle(panel).backgroundColor : null,
-        };
-      }, WORKER);
-      const base = `live-${v.width}-${theme}-${locale}`;
-      await page.screenshot({ path: path.join(OUT, `${base}.png`), fullPage: true });
-      if (found) {
-        const panel = page.locator("[data-testid=live-activity]");
-        await panel.scrollIntoViewIfNeeded();
-        await panel.screenshot({ path: path.join(OUT, `activity-${v.width}-${theme}-${locale}.png`) });
-      }
-      lines.push(
-        `${base}  overflow=${m.overflow}  list-overflow=${m.listOverflow}  rows=${m.rows}  fresh=${m.fresh}  worker=${m.worker}  ` +
-          `px(sentence/time/tag)=${m.sentencePx}/${m.timePx}/${m.tagPx}  bg=${m.panelBg}  tags="${m.tags}"`,
-      );
-      if (!found) bad.push(`${base}: the Activity log did not render`);
-      if (m.overflow > 0) bad.push(`${base}: ${m.overflow}px sideways`);
-      if (m.listOverflow !== null && m.listOverflow > 0) bad.push(`${base}: the log is ${m.listOverflow}px wider than its panel`);
-      if (!m.listFocusable) bad.push(`${base}: the log list is not keyboard focusable`);
-      if (m.worker) bad.push(`${base}: the worker's host name is in the page`);
-      if (m.fresh > 0) bad.push(`${base}: ${m.fresh} line(s) marked new on the first reading`);
-      if (found && m.rows !== 13) bad.push(`${base}: ${m.rows} lines, the fake recorded 13 rows`);
-      if (found && !m.unknownCode) bad.push(`${base}: the unknown word did not show as its code`);
-      if (found && (m.sentencePx < 13 || m.timePx < 13)) bad.push(`${base}: prose under 13px`);
-      for (const e of errors) bad.push(`${base}: ${e}`);
-      await ctx.close();
-    }
+for (const [state, expected, v, theme, locale] of RUNS) {
+  const phone = v.width < 600;
+  const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height }, colorScheme: theme, isMobile: phone, hasTouch: phone, deviceScaleFactor: 1 });
+  await ctx.addCookies([{ name: "chronos_locale", value: locale, url: BASE }, { ...sessionCookie(FAKE, state), url: BASE }]);
+  // The app's theme is the stored choice (lib/theme.ts, default dark), not the system's: store it before the first paint.
+  await ctx.addInitScript((t) => localStorage.setItem("chronos_theme", t), theme);
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.goto(`${BASE}${URL_}`, { waitUntil: "load", timeout: 120000 });
+  const found = await page.waitForSelector("[data-testid=live-activity] .lv-log", { timeout: 30000 }).then(() => true, () => false);
+  await page.waitForTimeout(800);
+  const m = await page.evaluate(([worker, long]) => {
+    const panel = document.querySelector("[data-testid=live-activity]");
+    const list = panel?.querySelector("ol");
+    const rows = [...document.querySelectorAll("[data-testid=live-activity-item]")];
+    const px = (el) => (el ? parseFloat(getComputedStyle(el).fontSize) : null);
+    const text = document.body.innerText;
+    const html = document.documentElement.outerHTML;
+    return {
+      overflow: document.documentElement.scrollWidth - window.innerWidth,
+      listOverflow: list ? list.scrollWidth - list.clientWidth : null,
+      listFocusable: list?.getAttribute("tabindex") === "0",
+      rows: rows.length,
+      tags: rows.map((r) => r.querySelector("[data-testid=live-activity-tag] [aria-hidden]")?.textContent ?? "").join(" "),
+      fresh: document.querySelectorAll("[data-testid=live-activity] .is-new").length,
+      unknownCode: rows.some((r) => r.getAttribute("data-word") === "lease_extended" && r.querySelector("code")?.textContent === "lease_extended"),
+      worker: text.includes(worker) || html.includes(worker) || text.includes(worker.split(".")[0]) || html.includes(worker.split(".")[0]),
+      sentencePx: Math.min(...rows.map((r) => px(r.querySelector(".lv-log-text")) ?? 99)),
+      timePx: Math.min(...rows.map((r) => px(r.querySelector("time")) ?? 99)),
+      tagPx: px(rows[0]?.querySelector("[data-testid=live-activity-tag]")),
+      tagMinH: Math.min(...rows.map((r) => r.querySelector("[data-testid=live-activity-tag]")?.getBoundingClientRect().height ?? 99)),
+      long: (() => {
+        const tag = [...document.querySelectorAll("[data-testid=live-activity-tag]")].find((t) => t.getAttribute("title") === long);
+        const code = tag?.querySelector(".lv-tag-code");
+        return tag ? { cut: !!code && code.scrollWidth > code.clientWidth, inside: tag.getBoundingClientRect().right <= (tag.closest("li")?.getBoundingClientRect().right ?? 0) + 0.5 } : null;
+      })(),
+      panelBg: panel ? getComputedStyle(panel).backgroundColor : null,
+    };
+  }, [WORKER, LONG_KIND]);
+  const base = `${state === "live_long" ? "long" : "live"}-${v.width}-${theme}-${locale}`;
+  await page.screenshot({ path: path.join(OUT, `${base}.png`), fullPage: true });
+  if (found) {
+    const panel = page.locator("[data-testid=live-activity]");
+    await panel.scrollIntoViewIfNeeded();
+    await panel.screenshot({ path: path.join(OUT, `activity-${base}.png`) });
+  }
+  lines.push(
+    `${base}  overflow=${m.overflow}  list-overflow=${m.listOverflow}  rows=${m.rows}  fresh=${m.fresh}  worker=${m.worker}  ` +
+      `px(sentence/time/tag)=${m.sentencePx}/${m.timePx}/${m.tagPx}  tag-h=${m.tagMinH}  long=${JSON.stringify(m.long)}  bg=${m.panelBg}  tags="${m.tags}"`,
+  );
+  if (!found) bad.push(`${base}: the Activity log did not render`);
+  if (m.overflow > 0) bad.push(`${base}: ${m.overflow}px sideways`);
+  if (m.listOverflow !== null && m.listOverflow > 0) bad.push(`${base}: the log is ${m.listOverflow}px wider than its panel`);
+  if (!m.listFocusable) bad.push(`${base}: the log list is not keyboard focusable`);
+  if (m.worker) bad.push(`${base}: the worker's host name is in the page`);
+  if (m.fresh > 0) bad.push(`${base}: ${m.fresh} line(s) marked new on the first reading`);
+  if (found && m.rows !== expected) bad.push(`${base}: ${m.rows} lines, the fake recorded ${expected} rows`);
+  if (found && m.tagMinH < 23.5) bad.push(`${base}: a tag is ${m.tagMinH}px high, under 24`);
+  if (state === "live_long" && !(m.long && m.long.cut && m.long.inside)) bad.push(`${base}: the long tag is not cut inside its row (${JSON.stringify(m.long)})`);
+  if (found && !m.unknownCode) bad.push(`${base}: the unknown word did not show as its code`);
+  if (found && (m.sentencePx < 13 || m.timePx < 13)) bad.push(`${base}: prose under 13px`);
+  for (const e of errors) bad.push(`${base}: ${e}`);
+  await ctx.close();
+}
 await browser.close();
 process.stdout.write(lines.join("\n") + "\n");
 if (bad.length) {

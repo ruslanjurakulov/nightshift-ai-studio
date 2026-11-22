@@ -256,8 +256,8 @@ const TIMELINE_QUOTE = {
   blocked_by: [], may_start: true, startable: true,
 };
 function filmJson(state) {
-  if (state === "live_run") {
-    const events = LIVE_EVENTS();
+  if (isLive(state)) {
+    const events = LIVE_EVENTS(state);
     return {
       film: { ...FILM_ROW, status: "running", language: "en" }, editable: false, style_kit_missing: false, music_missing: false,
       totals: { scenes: LIVE_SCENES.length, planned_seconds: LIVE_SCENES.reduce((s, x) => s + x.planned_seconds, 0) },
@@ -275,9 +275,10 @@ function filmJson(state) {
 
 // `live_run`: the Studio live view's evidence (tools/visual-qa/studio-live.mjs, ?view=live&film=). A film mid-run: scene 1 shot,
 // scene 2's second shot failed once and is being tried again, scene 3's clip failed, scene 4's picture is being made, the narration
-// is done, the first funding segment assembled. Its log is twelve film_events rows, one of them a word this build has no sentence
-// for; segment_claimed carries a worker host name in its detail, which the page must never show. Times are relative to now, so the
-// log reads as today's (HH:MM:SS).
+// is done, the first funding segment assembled. Its log is twelve film_events rows in 0198's shapes (a retryable failure writes only
+// take_retried, never take_failed), one of them a word this build has no sentence for; three rows (both segment_claimed and the
+// unknown word) carry a worker host name in their detail, which the page must never show. Times are relative to now, so the log
+// reads as today's (HH:MM:SS). `live_long` is the same film with one more row whose kind is a 31-character word (the tag's ellipsis).
 const LIVE_WORKER = "film-worker-qa-host-7.internal";
 const LIVE_TAKE = (n, sceneId, kind, status, over = {}) => ({
   id: `7d000000-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`, scene_id: sceneId, version: 1, shot_index: kind === "keyframe" || kind === "narration" ? 0 : 1,
@@ -293,7 +294,8 @@ const LIVE_TAKES = {
     LIVE_TAKE(3, LIVE_SCENE_ID(1), "keyframe", "completed"),
     LIVE_TAKE(4, LIVE_SCENE_ID(1), "clip", "completed"),
     LIVE_TAKE(5, LIVE_SCENE_ID(1), "extend", "superseded", { shot_index: 2, error_code: "provider_timeout" }),
-    LIVE_TAKE(6, LIVE_SCENE_ID(1), "extend", "running", { shot_index: 2, attempt: 2, parent_take_id: "7d000000-0000-4000-8000-000000000005" }),
+    // 0198 inserts the retry with the superseded take's own parent (here none), not the superseded take.
+    LIVE_TAKE(6, LIVE_SCENE_ID(1), "extend", "running", { shot_index: 2, attempt: 2, parent_take_id: null }),
   ],
   2: [LIVE_TAKE(7, LIVE_SCENE_ID(2), "clip", "failed")],
   3: [LIVE_TAKE(8, LIVE_SCENE_ID(3), "keyframe", "running")],
@@ -305,7 +307,9 @@ const LIVE_SEGMENTS = () => [
   { id: "5e000000-0000-4000-8000-000000000002", status: "running", assembly_status: "planned", assembly_asset_id: null, confirmed_credits: 96, captured_credits: null, assembly_confirmed_credits: 8, assembly_charged_credits: null, created_at: iso(-300_000) },
   { id: "5e000000-0000-4000-8000-000000000001", status: "settled", assembly_status: "completed", assembly_asset_id: "7e000000-0000-4000-8000-0000000000aa", confirmed_credits: 48, captured_credits: 48, assembly_confirmed_credits: 8, assembly_charged_credits: 8, created_at: iso(-900_000) },
 ];
-const LIVE_EVENTS = () => {
+const LIVE_LONG_KIND = "a_kind_word_of_thirty_one_chars";
+const isLive = (state) => state === "live_run" || state === "live_long";
+const LIVE_EVENTS = (state) => {
   const take = (n) => `7d000000-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
   const rows = [
     ["started", null, { by: "qa" }],
@@ -317,14 +321,14 @@ const LIVE_EVENTS = () => {
     ["segment_claimed", null, { segment_id: "5e000000-0000-4000-8000-000000000002", worker: LIVE_WORKER, attempt: 1 }],
     ["take_completed", LIVE_SCENE_ID(1), { take_id: take(3), kind: "keyframe", shot_index: 0, attempt: 1 }],
     ["take_completed", LIVE_SCENE_ID(1), { take_id: take(4), kind: "clip", shot_index: 1, attempt: 1 }],
-    ["take_failed", LIVE_SCENE_ID(1), { take_id: take(5), failure: "upstream said: timeout at qa-host" }],
-    ["take_retried", LIVE_SCENE_ID(1), { take_id: take(5), attempt: 2 }],
-    ["take_failed", LIVE_SCENE_ID(2), { take_id: take(7), failure: "upstream said: timeout" }],
+    ["take_retried", LIVE_SCENE_ID(1), { take_id: take(5), retry_take_id: take(6), kind: "extend", failure: "provider_timeout", error_code: "timeout", charged: 0 }],
+    ["take_failed", LIVE_SCENE_ID(2), { take_id: take(7), kind: "clip", failure: "provider_timeout", error_code: "timeout", confirmed: 12, charged: 0, basis: "failed_not_charged", units_done: null }],
     ["lease_extended", null, { worker: LIVE_WORKER }],
+    ...(state === "live_long" ? [["take_completed", LIVE_SCENE_ID(4), { kind: LIVE_LONG_KIND, shot_index: 0, attempt: 1 }]] : []),
   ];
   return rows.map(([event, scene_id, detail], i) => ({ id: 400 + i, film_id: FILM_ID, scene_id, event, detail, created_by: null, created_at: iso(-(rows.length - i) * 45_000) }));
 };
-const APP_STATES = new Set(["timeline", "timeline_missing", "live_run", "owner", "new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool", "canvas"]);
+const APP_STATES = new Set(["timeline", "timeline_missing", "live_run", "live_long", "owner", "new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool", "canvas"]);
 // Made-up held @usernames: the check says "taken" for these and "free" for anything else well formed.
 const TAKEN_HANDLES = new Set(["taken.name", "maria.k", "alice.lab", "night.owl"]);
 const handleRow = (state) =>
@@ -645,12 +649,12 @@ export function startFakeSupabase(port = 54399) {
       }
       if (table[1] === "films") rows = state === "new" ? [] : FILM_LIST;
       // filmGateFor reads one project's org_id with maybeSingle(), which refuses more than one row: answer the id asked for.
-      if (state === "live_run" && table[1] === "films" && url.searchParams.get("id")?.startsWith("eq.")) rows = rows.filter((f) => f.id === url.searchParams.get("id").slice(3));
+      if (isLive(state) && table[1] === "films" && url.searchParams.get("id")?.startsWith("eq.")) rows = rows.filter((f) => f.id === url.searchParams.get("id").slice(3));
       // The live route's own reads (app/api/films/[id]/live): the funding segments and each take's money and error word.
-      if (state === "live_run" && table[1] === "film_segments") rows = LIVE_SEGMENTS();
-      if (state === "live_run" && table[1] === "film_takes") rows = LIVE_TAKE_ROWS;
+      if (isLive(state) && table[1] === "film_segments") rows = LIVE_SEGMENTS();
+      if (isLive(state) && table[1] === "film_takes") rows = LIVE_TAKE_ROWS;
       // 0198's workspace switch: on for this workspace, so the live view and its route open (filmStudioOpen, filmGateFor).
-      if (state === "live_run" && table[1] === "org_film_settings") rows = [{ org_id: ORG.id, film_studio_enabled: true }];
+      if (isLive(state) && table[1] === "org_film_settings") rows = [{ org_id: ORG.id, film_studio_enabled: true }];
       if (state === "owner") {
         if (table[1] === "channels") rows = OWNER_CHANNELS;
         if (table[1] === "system_events") rows = OWNER_EVENTS();

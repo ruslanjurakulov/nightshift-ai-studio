@@ -73,50 +73,75 @@
 .lv-activity-list code { font-size: 12px; color: var(--dim); }
 /* A project's log in the reference ("agentcut") style: time, a tag per worker family, the sentence; 1px rules between rows.
    S5's tokens (#896, docs/design/SYSTEM.md) with local fallbacks, so it reads the same before and after they land. Near-black in
-   dark (--ground), the canvas's own light ground in light. */
+   dark (--ground), the white console in light. */
 .lv-activity.is-log {
-  --lv-mono: var(--ds-font-mono, ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace);
-  /* No --ds token for violet: the segment family's own, picked for 4.5:1 on its chip in both themes. */
-  --lv-tone-seg: #b993ff;
+  --lv-mono: var(--ds-font-mono, var(--font-mono, ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace));
   --lv-log-bg: var(--ground, #050811);
   /* Measured (WCAG): every tag at rest is at least 4.5:1 on its chip in both themes; light needs the white console and a thinner tint. */
   --lv-chip: 14%;
+  --lv-bad: var(--ds-danger, var(--tally, #ff5c6c));
+  --lv-warn: var(--ds-warning, var(--caution, #ffd23f));
+  border-radius: var(--ds-r-panel, 16px);
   background: var(--lv-log-bg);
 }
-:root[data-theme="light"] .lv-activity.is-log { --lv-tone-seg: #5d33c4; --lv-log-bg: var(--console, #ffffff); --lv-chip: 10%; }
+:root[data-theme="light"] .lv-activity.is-log { --lv-log-bg: var(--console, #ffffff); --lv-chip: 10%; }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .lv-activity.is-log { --lv-tone-seg: #5d33c4; --lv-log-bg: var(--console, #ffffff); --lv-chip: 10%; }
+  :root:not([data-theme="dark"]) .lv-activity.is-log { --lv-log-bg: var(--console, #ffffff); --lv-chip: 10%; }
 }
-.lv-log { gap: 0; grid-template-columns: max-content max-content minmax(0, 1fr); max-height: 360px; overscroll-behavior: contain; }
+.lv-activity.is-log h2 { font-size: var(--ds-fs-heading-sm, 1rem); line-height: var(--ds-lh-heading-sm, 1.4); font-weight: var(--ds-fw-heading, 600); }
+/* The tag column fits its tag up to 16ch; a longer tag (a kind word up to 31 characters) is cut with an ellipsis, never the page. */
+.lv-log {
+  gap: 0; grid-template-columns: max-content fit-content(16ch) minmax(0, 1fr); max-height: 360px; overscroll-behavior: contain;
+  padding-bottom: 4px; border-bottom: 1px solid var(--rule); margin-bottom: 4px;
+}
+/* More lines below the edge: the last visible pixels fade, so a row against the footnote never reads as cut in half. */
+.lv-log[data-more] { mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); }
 .lv-log:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Each row shares the list's columns, so times and tags line up down the log. */
-.lv-activity-list.lv-log li { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 12px; align-items: baseline; padding: 7px 6px; border-top: 1px solid var(--rule); }
+.lv-activity-list.lv-log li { position: relative; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 12px; align-items: center; padding: 7px 6px 7px 12px; border-top: 1px solid var(--rule); }
 .lv-activity-list.lv-log li:first-child { border-top: 0; }
+.lv-activity-list.lv-log li.lv-log-day {
+  display: block; padding: 10px 6px 4px 12px; font-family: var(--lv-mono); font-size: var(--ds-fs-label, 0.75rem);
+  letter-spacing: var(--ds-ls-label, 0.08em); text-transform: uppercase; color: var(--dim);
+}
 .lv-log [data-family="clip"] { --lv-tone: var(--ds-type-video, var(--p-video, #ff4fa3)); }
 .lv-log [data-family="key"] { --lv-tone: var(--ds-type-image, var(--p-image, #33d6ff)); }
 .lv-log [data-family="voice"] { --lv-tone: var(--ds-type-audio, var(--p-audio, #3dff8a)); }
 .lv-log [data-family="asm"] { --lv-tone: var(--ds-accent-hover, var(--run-hi, #57a2ff)); }
-.lv-log [data-family="seg"] { --lv-tone: var(--lv-tone-seg); }
-.lv-log [data-family="film"] { --lv-tone: var(--ds-text-2, var(--text, #a9b8d4)); }
-.lv-log [data-family="log"] { --lv-tone: var(--ds-muted, var(--dim, #8a9bbd)); }
+/* SYSTEM §1/§6: a hue is for media identity (and the machine's blue); the bookkeeping families are neutral tags. */
+.lv-log :is([data-family="seg"], [data-family="film"], [data-family="log"]) { --lv-tone: var(--ds-muted, var(--dim, #8a9bbd)); }
 .lv-log-time { font-family: var(--lv-mono); font-variant-numeric: tabular-nums; font-size: var(--ds-fs-caption, 0.8125rem); color: var(--dim); white-space: nowrap; }
 /* The tag takes .ds-t-label's size (12px, uppercase mono): a label, never a sentence. */
 .lv-tag {
-  justify-self: start; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--ds-r-pill, 999px);
+  justify-self: start; display: inline-flex; align-items: center; max-width: 100%; min-width: 0; min-height: 24px; box-sizing: border-box;
+  padding: 2px 8px; border-radius: var(--ds-r-pill, 999px);
   font-family: var(--lv-mono); font-size: var(--ds-fs-label, 0.75rem); line-height: var(--ds-lh-label, 1.3);
   letter-spacing: var(--ds-ls-label, 0.08em); text-transform: uppercase; font-weight: 500; white-space: nowrap;
   color: var(--lv-tone); background: color-mix(in srgb, var(--lv-tone) var(--lv-chip), transparent);
   border: 1px solid color-mix(in srgb, var(--lv-tone) 45%, transparent);
 }
+.lv-log :is([data-family="seg"], [data-family="film"], [data-family="log"]).lv-tag { background: var(--ds-surface-3, var(--key-hi, #19243b)); border-color: var(--rule); }
+.lv-tag-code { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lv-log-text { min-width: 0; font-size: var(--ds-fs-body-sm, 0.875rem); line-height: var(--ds-lh-body-sm, 1.5); color: var(--text); }
 .lv-activity-list.lv-log code.lv-log-text { font-family: var(--lv-mono); font-size: var(--ds-fs-caption, 0.8125rem); color: var(--dim); }
-/* A line that arrived on a later poll: one short wash in its family's tone. Only a real new row gets the class (ActivityPanel). */
-.lv-activity-list.lv-log li.is-new { animation: lv-log-in calc(var(--ds-dur-reveal, 480ms) * 3) var(--ds-ease-emphasized, cubic-bezier(0.05, 0.7, 0.1, 1)) 1 both; }
+/* How it ended, in words first (the sentence says "failed"), then in colour: a failure is red with a bar, a retry amber. */
+.lv-log li[data-outcome="bad"] .lv-log-text { color: var(--lv-bad); }
+.lv-log li[data-outcome="warn"] .lv-log-text { color: var(--lv-warn); }
+.lv-log li[data-outcome="bad"]::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--lv-bad); }
+/* A line that arrived on a later poll: a wash in its family's tone held for a third of the time, then gone; a bar beside it fades
+   with it. Under reduced motion the bar stays, still, until the next reading (is-still). Only a real new row gets either class. */
+.lv-log li.is-new::after { content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--lv-tone); }
+.lv-activity-list.lv-log li.is-arriving { animation: lv-log-in calc(var(--ds-dur-reveal, 480ms) * 3) var(--ds-ease-out, ease-out) 1 both; }
+.lv-activity-list.lv-log li.is-arriving::after { animation: lv-log-bar calc(var(--ds-dur-reveal, 480ms) * 3) var(--ds-ease-out, ease-out) 1 both; }
 @keyframes lv-log-in {
-  0% { background-color: color-mix(in srgb, var(--lv-tone) 18%, transparent); box-shadow: inset 2px 0 0 var(--lv-tone); }
-  100% { background-color: transparent; box-shadow: inset 2px 0 0 transparent; }
+  0%, 35% { background-color: color-mix(in srgb, var(--lv-tone) 18%, transparent); }
+  100% { background-color: transparent; }
 }
-/* A phone: the sentence goes under its time and tag, so a dated line ("21/11/26, 10:02") never squeezes it to a word a row. */
+@keyframes lv-log-bar {
+  0%, 35% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* A phone: the sentence goes under its time and tag, so it is never squeezed to a word a row. */
 @media (max-width: 599px) {
   .lv-log { grid-template-columns: max-content minmax(0, 1fr); }
   .lv-activity-list.lv-log li { row-gap: 2px; }
@@ -141,5 +166,5 @@
   .lv-card.is-working { transform: none; }
   .lv-card.is-working::after, .lv-card[data-lit] { animation: none; }
   .lv-board .lv-edge.is-live .react-flow__edge-path { animation: none; }
-  .lv-activity-list.lv-log li.is-new { animation: none; }
+  .lv-activity-list.lv-log li.is-arriving, .lv-activity-list.lv-log li.is-arriving::after { animation: none; }
 }
