@@ -449,6 +449,8 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       ...(quota !== undefined ? { quota } : {}),
       // The film route starts it, at this quote, on the person's press ("Create — N credits"): /api/films/<id>/start.
       quote: quoteRead ? { quote_id: quoteRead.quoteId, total: quoteRead.total, startable: quoteRead.startable, blocked_by: quoteRead.blockedBy, refusal: quoteRead.refusal, exempt: quoteRead.exempt } : null,
+      // quote_film's own answer, which S2's Create reads through coerceQuote (#905): the panel never reshapes a price.
+      film_quote: q.error ? null : q.data,
     });
   } finally {
     // 9. Released however this request ends, by its own attempt: a later attempt's lease is never closed by this one.

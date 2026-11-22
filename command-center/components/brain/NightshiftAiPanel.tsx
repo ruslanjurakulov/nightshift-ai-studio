@@ -12,6 +12,9 @@ import { LEGAL } from "@/lib/legal";
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
 import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
 import { StateBlock } from "@/components/states/StateBlock";
+// S2's Create (#905): the quote, the person's confirmation and the start route, with every refusal's remedy. Not redone here.
+import { FilmCreateButton } from "@/components/studio-timeline/FilmCreateButton";
+import { coerceQuote, type FilmQuote } from "@/lib/studio/timeline";
 // The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
 import { CHAT_GATE_REMEDY, isChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
 import "./nightshift-ai-panel.css";
@@ -26,8 +29,8 @@ import "./nightshift-ai-panel.css";
  * /api/brain/history, which pins them to this workspace, this channel and this person. Its buttons ask questions, pick answers and
  * choose a scenario; the one that spends is the existing one:
  *   - long: a LINK to the Run now form, prefilled — that form's own priced button holds and starts (CLAUDE.md rule 3);
- *   - short: "Create — N credits" posts to the film route's start (/api/films/<id>/start) at the quote the server read, with one
- *     idempotency key per press; the database re-prices and refuses with its own reason.
+ *   - short: S2's FilmCreateButton (#905), given the draft and quote_film's answer: it asks the person to confirm that number and
+ *     starts the film through the film route; this panel only records the handoff once it went through and opens the live view.
  * Every price shown is the server's; with none, no number is shown (rule 5). Every BRIEF change is announced to the canvas (S6b) with
  * the browser event `nightshift:brain-brief`.
  *
@@ -45,7 +48,8 @@ type State =
   | { state: "not_enabled" }
   | { state: "session_ended" }
   | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean; gate: ChatGateVerdict | null };
-type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
+/** The draft the plan priced: its id, quote_film's answer as S2 reads it (coerceQuote), and which outline it came from. */
+type FilmReady = { id: string; quote: FilmQuote | null; index: number };
 /** The age refusals (0192) are #900's state: its words, no Retry, and the way to Create's 18+ box or support (actionFor). They
  *  never reach the gate block too, before a press or after one, so the age state is said once. */
 const AGE_CODES: ReadonlySet<string> = new Set(["adult_only_service", "adult_attestation_required"]);
@@ -196,7 +200,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const [opening, setOpening] = useState(false);
   // A ref, not state: two presses before the re-render must not both pass (each would be a turn on the meter).
   const inFlight = useRef(false);
-  const idem = useRef<string | null>(null);
+  /** The film whose start this conversation already recorded (the handoff): a replayed start, or a second one, records nothing. */
+  const handedOff = useRef<string | null>(null);
   const keySeq = useRef(0);
   const localKey = (p: string) => `${p}${Date.now().toString(36)}-${++keySeq.current}`;
   // The shell's ids are numbers, stable per message: a thumb given to one answer stays on that answer, never on the next chat's.
@@ -704,9 +709,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       }
       setAsking(null);
       setStep("ready");
-      setFilm(d.film ? { id: (d.film as { id: string }).id, quote: (d.quote as FilmReady["quote"]) ?? null } : null);
+      setFilm(d.film ? { id: (d.film as { id: string }).id, quote: coerceQuote(d.film_quote), index } : null);
       setModels(readModels(d.models));
-      idem.current = null;
       announce(session, d.brief as Brief);
     } catch {
       setProblem({ text: c.errors.unavailable, retry: () => void choose(index, rid) });
@@ -721,34 +725,23 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   useEffect(() => {
     chooseRef.current = choose;
   });
-  const createFilm = async () => {
-    if (!film?.quote?.quote_id || !session || inFlight.current) return;
-    inFlight.current = true;
-    setBusy(true);
-    setProblem(null);
-    // One key per press of this quote: a double press or a retry answers the first start, never a second hold.
-    idem.current ??= `brain-${session.slice(0, 8)}-${Date.now().toString(36)}`;
-    try {
-      const res = await fetch(`/api/films/${encodeURIComponent(film.id)}/start`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote_id: film.quote.quote_id, idem: idem.current }),
-      });
-      const d = (await res.json().catch(() => ({}))) as { start?: { ok?: boolean; reason?: string } };
-      if (!res.ok || !d.start?.ok) {
-        // The film route's own reason, in the person's language (never a raw code): the Studio timeline's words for it.
-        const reasons = t.studioTimeline.startFailed as Record<string, string>;
-        const reason = d.start?.reason;
-        // An own key only ("constructor" is not a reason).
-        setProblem({ text: reason ? (Object.prototype.hasOwnProperty.call(reasons, reason) ? reasons[reason] : reasons.other) : c.errors.unavailable, retry: null });
-        return;
-      }
-      await post({ action: "handoff", session, handoff: { kind: "film", film_id: film.id } });
-      window.location.assign(`/${encodeURIComponent(channelSlug)}/studio?view=live&film=${encodeURIComponent(film.id)}`);
-    } catch {
-      setProblem({ text: c.errors.unavailable, retry: null });
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
+  /** A start went through (S2's button): the conversation records which film it became, once, and the live view opens. A replay
+   *  (this press already counted) is the same start: recorded once all the same. */
+  const filmStarted = async (filmId: string) => {
+    if (session && handedOff.current !== filmId) {
+      handedOff.current = filmId;
+      await post({ action: "handoff", session, handoff: { kind: "film", film_id: filmId } }).catch(() => undefined);
     }
+    window.location.assign(liveHref(filmId));
+  };
+  const liveHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/studio?view=live&film=${encodeURIComponent(filmId)}`;
+  /** A new price through our own choose: the stored storyboard and draft are reused, so no turn is taken and nothing is planned. */
+  const requoteFilm = async (index: number): Promise<FilmQuote | null> => {
+    if (!session) return null;
+    const { res, d } = await post({ action: "choose", session, index, request_id: pressId() });
+    if (!res.ok) return null;
+    if (d.brief) announce(session, d.brief as Brief);
+    return coerceQuote(d.film_quote);
   };
   const newChat = () => {
     clear();
@@ -828,7 +821,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const trial = ready && load.plan.limit === null && (load.plan.trial_left ?? 0) > 0 ? load.plan.trial_left : null;
   // A plan whose price could not be read, or a short plan whose film quote is not on screen (a reload): its scenarios come back to
   // choose again, which re-reads the same draft and quote (the draft's idempotency key is the session and the scenario).
-  const rechoose = step === "ready" && (brief?.price?.state === "failed" || (brief?.kind === "short" && !film?.quote));
+  const rechoose = step === "ready" && (brief?.price?.state === "failed" || (brief?.kind === "short" && !film));
   const noBrain = ready && load.plan.limit === null && trial === null;
   const down = ready && load.model !== "available";
   const viewer = ready && !load.canEdit;
@@ -924,7 +917,15 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           {card.slot === "target_seconds" && brief?.kind === "short" && <p className="text-xs text-[var(--color-muted)]">{c.shortMinNote}</p>}
         </fieldset>
       )}
-      {step === "ready" && brief && <ReadyBlock brief={brief} film={film} models={models} channelSlug={channelSlug} lengthLabel={lengthLabel} busy={busy} canRun={ready && load.canRun} onCreateFilm={() => void createFilm()} />}
+      {step === "ready" && brief && (
+        <ReadyBlock brief={brief} film={film} models={models} channelSlug={channelSlug} lengthLabel={lengthLabel} canRun={ready && load.canRun}
+          create={brief.kind === "short" && film ? (
+            <FilmCreateButton key={film.id} filmId={film.id} quote={film.quote} onStarted={() => void filmStarted(film.id)}
+              requote={() => requoteFilm(film.index)} progressHref={liveHref(film.id)}
+              // A model that is down: back to the outlines, to choose again (a new draft, the server's pick); never a silent swap.
+              onChooseAnother={() => { setFilm(null); setModels(null); }} />
+          ) : null} />
+      )}
     </>
   );
   const hasTail = (card && step === "asking") || (step === "ready" && brief);
@@ -1062,8 +1063,10 @@ function StatusWithAction({ text, label, onPress }: { text: string; label: strin
   );
 }
 
-function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, busy, canRun, onCreateFilm }: {
-  brief: Brief; film: FilmReady | null; models: FilmModels | null; channelSlug: string; lengthLabel: (s: number) => string; busy: boolean; canRun: boolean; onCreateFilm: () => void;
+function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, create }: {
+  brief: Brief; film: FilmReady | null; models: FilmModels | null; channelSlug: string; lengthLabel: (s: number) => string; canRun: boolean;
+  /** S2's Create for a short film's draft; its own states say a short film's credits, blocks and refusals. */
+  create: ReactNode;
 }) {
   const { t, fmt, locale } = useI18n();
   const c = t.aiChat;
@@ -1088,15 +1091,16 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, busy, canRu
         {!p && c.priceUnpriced}
       </p>
       {p?.state === "priced" && p.spendable === "unknown" && <p className="text-xs">{c.balanceUnknown}</p>}
-      {p?.state === "priced" && !p.fits && typeof p.spendable === "number" && (
+      {/* A short film's credits are said by S2's Create below (its InsufficientCredits), never twice. */}
+      {p?.state === "priced" && !p.fits && typeof p.spendable === "number" && slots.kind === "long" && (
         <div className="flex flex-col gap-2" role="note">
           <p className="text-sm">{fmt(c.insufficient, { len: lengthLabel(brief.target_seconds ?? 0), need: p.total_credits, have: p.spendable })}</p>
-          {p.shorter && slots.kind === "long" && (
+          {p.shorter && (
             <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={runLink(channelSlug, { ...brief, target_seconds: p.shorter.target_seconds })}>
               {fmt(c.useShorter, { len: lengthLabel(p.shorter.target_seconds), credits: p.shorter.credits })}
             </Link>
           )}
-          {!p.shorter && <p className="text-sm">{slots.kind === "long" ? c.noneFits : c.shortenFilm}</p>}
+          {!p.shorter && <p className="text-sm">{c.noneFits}</p>}
           <div className="flex flex-wrap gap-2">
             <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#plans`}>{c.upgrade}</Link>
             <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#topups`}>{c.topUp}</Link>
@@ -1109,34 +1113,8 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, busy, canRu
           <p className="text-xs text-[var(--color-muted)]">{canRun ? c.useHint : c.adminRuns}</p>
         </>
       )}
-      {brief.kind === "short" && !film?.quote && <p className="text-sm">{c.chooseAgain}</p>}
-      {brief.kind === "short" && film?.quote && (
-        film.quote.startable && film.quote.quote_id && (film.quote.total !== null || film.quote.exempt) ? (
-          <>
-            <button type="button" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-40" disabled={busy} onClick={onCreateFilm}>
-              {film.quote.exempt ? c.createExempt : pluralText(c.createFor, film.quote.total ?? 0, locale)}
-            </button>
-            <p className="text-xs text-[var(--color-muted)]">{c.createHint}</p>
-          </>
-        ) : (
-          <div className="flex flex-col gap-2" role="note">
-            {/* Why it cannot start, in the person's language: the Studio timeline's words for each block (never a raw code). */}
-            <p className="text-sm">{film.quote.blocked_by.length
-              ? (Object.prototype.hasOwnProperty.call(t.studioTimeline.blocked, film.quote.blocked_by[0])
-                  ? (t.studioTimeline.blocked as Record<string, string>)[film.quote.blocked_by[0]] : t.studioTimeline.blocked.other)
-              : c.priceUnpriced}</p>
-            {film.quote.blocked_by.includes("insufficient_credits") && (
-              <>
-                <p className="text-sm">{c.shortenFilm}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#plans`}>{c.upgrade}</Link>
-                  <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#topups`}>{c.topUp}</Link>
-                </div>
-              </>
-            )}
-          </div>
-        )
-      )}
+      {brief.kind === "short" && !film && <p className="text-sm">{c.chooseAgain}</p>}
+      {create}
     </section>
   );
 }

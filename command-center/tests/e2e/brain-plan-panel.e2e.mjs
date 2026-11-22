@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Browser check for the Nightshift AI panel's plan step on the real Studio page (Probe on S1): the storyboard being written, a
- * failed plan with Retry, a plan priced past the workspace's credits (Upgrade / Top up), and a model-gate refusal (Confirm your
+ * failed plan with Retry, a plan priced past the workspace's credits (S2's Add credits), and a model-gate refusal (Confirm your
  * age), at 390, 768 and 1440 px in dark mode. At 390 the remedy keys must never sit under the canvas's fixed phone dock
  * (.cv-flow-dock): after scrolling each key into view, and with the page scrolled to its end, their boxes must not intersect.
  *
@@ -62,6 +62,8 @@ const POOR = {
            price: { state: "priced", total_credits: 4800, spendable: 1060, fits: false, shorter: null } },
   film: { id: FILM, version: 2 },
   quote: { quote_id: `fq-2-${"a".repeat(32)}`, total: 4800, startable: false, blocked_by: ["insufficient_credits"], refusal: "insufficient_credits", exempt: false },
+  // quote_film's own answer, which S2's Create reads (#905): it says the shortfall with its own "Add credits".
+  film_quote: { priced: true, total: 4800, quote_id: `fq-2-${"a".repeat(32)}`, startable: false, may_start: true, available: 1060, blocked_by: [{ reason: "insufficient_credits" }] },
 };
 const BRAIN = (session) => ({ plan: { used: 6, limit: 30, trial_left: null, max_input_chars: 2000 }, model: "available", canEdit: true, canRun: true, session });
 
@@ -70,14 +72,14 @@ const STATES = [
   { name: "plan-failed", url: `/${SLUG}/studio?brain=${S1}`, act: "choose",
     turn: { status: 502, body: { error: "plan_failed", reason: "timeout", step: { window: 5, windows: 8, chapter: 3, chapters: 4 }, quota: { used: 11, limit: 30, trial_left: null } } },
     keys: ["retry"] },
-  { name: "insufficient-credits", url: `/${SLUG}/studio?brain=${S1}`, act: "choose", turn: { status: 200, body: POOR }, keys: ["upgrade", "topUp"] },
+  { name: "insufficient-credits", url: `/${SLUG}/studio?brain=${S1}`, act: "choose", turn: { status: 200, body: POOR }, keys: ["addCredits"] },
   { name: "gate-adult", url: `/${SLUG}/studio?ai=new`, act: "send", turn: { status: 428, body: { error: "adult_attestation_required" } }, keys: ["confirmAge"] },
   { name: "gate-country", url: `/${SLUG}/studio?ai=new`, act: "send", turn: { status: 451, body: { error: "country_unverified" } }, keys: [] },
 ];
 const VIEWS = [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }];
 const EN = {
   // en.ts (lib/i18n/ai-chat): chooseThisNamed, retry, upgrade, topUp, errors.confirmAge, planReady, planWriting.
-  choose: "Choose this one: The lost caravan", retry: "Try again", upgrade: "Upgrade plan", topUp: "Buy credits", confirmAge: "Confirm your age", planReady: "The plan",
+  choose: "Choose this one: The lost caravan", retry: "Try again", upgrade: "Upgrade plan", topUp: "Buy credits", confirmAge: "Confirm your age", addCredits: "Add credits", planReady: "The plan",
 };
 
 const browser = await chromium.launch({ executablePath: exe, args: ["--no-sandbox"] });
