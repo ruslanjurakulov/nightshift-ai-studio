@@ -13,7 +13,7 @@ import { holdClips } from "@/lib/site/clip-hold";
 import type { ShortsItem } from "@/components/site/shorts";
 
 type NetworkInformation = { saveData?: boolean };
-type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "try" | "tryAria" | "use" | "useNote" | "noPrompt">;
+type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "try" | "use" | "useNote" | "noPrompt">;
 
 /** The marker of the history entry the feed adds, so the phone's back button closes the feed instead of leaving the page. */
 const HISTORY_KEY = "nsShorts";
@@ -45,9 +45,10 @@ const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1
  * with `preload="none"` and everything further is a poster, so opening the feed fetches one clip. Muted from the start; the
  * sound key is disabled with "This clip has no sound" for a clip without sound (components/site/shorts.ts: today every one).
  *
- * Each slide is the sample's own box (`data-showcase-entry`), the only kind of element on the public pages that may name a model:
- * the AI label, its prompt, the model's name, and "Use this prompt" / "Try this prompt" exactly as the gallery card. No maker's
- * "Powered by" line or link, and no visible pause key: a tap on the clip pauses or plays it, and a keyboard-only key (hidden
+ * Each slide is the sample's own box (`data-showcase-entry`): the AI label, its prompt and "Try this prompt" / "Use this prompt",
+ * which opens the Studio form with the sample's tool, model and words. No model name in its text or its accessible names (owner
+ * decision 22 Nov: no model name on public cards; it travels only in the Studio link), no maker's "Powered by" line or link,
+ * and no visible pause key: a tap on the clip pauses or plays it, and a keyboard-only key (hidden
  * until it has focus) does the same (the owner's rules for the public site, 2026-11-13).
  *
  * A modal dialog: focus moves to Close and stays inside (Tab wraps), Escape and the back button close it (an entry is pushed on
@@ -276,10 +277,6 @@ function Feed({
               {i === 0 && total > 1 && here && <p className="nx-shorts-hint" aria-hidden>{copy.hint}</p>}
               <div className="nx-shorts-cap" inert={!here}>
                 <span className="nx-shorts-badge">{g.badge}</span>
-                <p className="nx-shorts-model">
-                  {/* The model's name and the AI label, and no maker's "Powered by" line or link (owner's rule, 2026-11-13). */}
-                  {copy.madeBy} <strong>{it.modelName}</strong>
-                </p>
                 <p id={promptId} className="nx-shorts-prompt" lang="en">
                   <span className="nx-ap-sr">{copy.prompt}: </span>
                   {it.prompt.trim() ? it.prompt : g.noPrompt}
@@ -294,7 +291,6 @@ function Feed({
                       replace
                       onClick={dropMarker}
                       className="nx-shorts-use"
-                      aria-label={it.leftOut ? undefined : fmt(g.tryAria, { model: it.modelName })}
                       aria-describedby={it.leftOut ? `${promptId} shorts-use-${it.jobId}` : promptId}
                     >
                       {it.leftOut ? g.use : g.try}

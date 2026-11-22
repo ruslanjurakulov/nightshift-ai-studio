@@ -199,27 +199,24 @@ export const siteEn = {
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
-   * here; each card names its own, from the data file. "Try this prompt" only opens the Studio form. Nothing here says a model is on
-   * sale: some samples are made with models only the operator can try yet (`notInStudio` on their card).
+   * on a card (owner decision 22 Nov: no model name on public cards; it travels only in the Studio link). A card only opens the
+   * Studio form. `model`, `altClip`, `altImage`, `notInStudio` and `gone` are for the sample pieces a page may still draw on its own
+   * (components/site/landing-samples.tsx), which the landing does not mount.
    */
   gallery: {
     label: "Made in Nightshift Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in Nightshift Studio. Open one to see the model that made it and the words it was given.",
+    lead: "Real generations, made by our team in Nightshift Studio. Point at one to read what it is; open it to start from its words in the Studio.",
     badge: "AI-generated",
     model: "Model",
-    prompt: "Prompt",
     noPrompt: "No words: made from the picture alone.",
-    made: "Made {date}",
     try: "Try this prompt",
-    /** The button's accessible name where its link names the model too, so each card's button says which sample it opens. */
-    tryAria: "Try this prompt: {model}",
     /** On a card whose model only the operator can try yet: its button opens the tool with the words, without the model. */
     notInStudio: "This model is not in the Studio yet",
     /** On a card whose model the vendor has shut down (its announced date has come): the button no longer names it. */
     gone: "This model is no longer in the Studio",
-    tryNote: "“Try this prompt” and “Use this prompt” open the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
-    tryNoteSignedOut: "“Try this prompt” and “Use this prompt” ask you to create an account first, then open the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
+    tryNote: "Each card opens the Studio with its tool and its words in the form. The Studio shows which model it will use, and the price, before anything starts.",
+    tryNoteSignedOut: "Each card asks you to create an account first, then opens the Studio with its tool and its words in the form. Nothing starts until you press Generate there, and the Studio shows which model and the price before you do.",
     altClip: "AI-generated clip made by {model}",
     altImage: "AI-generated picture made by {model}",
     /**
@@ -231,14 +228,6 @@ export const siteEn = {
     /** A page's backdrop when it is one of our samples (components/site/PlaceFill.tsx placeAlt): what it is, without the model. */
     bgClip: "AI-generated clip",
     bgImage: "AI-generated picture",
-    /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
-    source: "Made from this picture:",
-    altSource: "The AI-generated picture this clip was made from, made by {model}",
-    /** The explore grid's card is the picture alone: pressing it opens the sample in a dialog with its prompt, model and day. */
-    open: "Open this sample",
-    /** The dialog's name. */
-    detail: "About this sample",
-    close: "Close",
   },
   /**
    * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words (and, once a file is
@@ -294,18 +283,6 @@ export const siteEn = {
       { id: "pov", title: "Time-travel POV", body: "Walk into another century, filmed like a travel vlog." },
       { id: "soap", title: "Fruit soap opera", body: "Talking food in a dramatic scene, played completely straight." },
     ],
-  },
-  /**
-   * The models behind the samples (components/landing/Landing.tsx ModelTiles): one tile per model that made a sample on this page, each
-   * inside that sample's own box (the only place a model may be named). No tile says a model is on sale: a model only the
-   * operator can try yet carries the gallery's "not in the Studio yet".
-   */
-  models: {
-    label: "Models",
-    title: "The models behind these samples",
-    lead: "Each tile is a model that made a sample on this page. A model you cannot choose in the Studio yet says so.",
-    count: "Samples on this page: {n}",
-    see: "Watch its sample",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

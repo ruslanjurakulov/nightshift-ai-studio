@@ -14,10 +14,9 @@ import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import { dictionaries } from "@/lib/i18n";
 import { EFFECTS } from "@/lib/effects/catalog";
-import { MASONRY_COLUMN, MASONRY_REF, MASONRY_UNITS, masonryColumns, masonrySpan } from "@/lib/effects/masonry";
+import { MASONRY_COLUMN, MASONRY_REF, MASONRY_UNITS, levelSpans, masonryColumns, masonrySpan } from "@/lib/effects/masonry";
 import { effectFrameRatio, effectSample } from "@/components/effects/effect-sample";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
-import { modelTileColumns } from "@/components/landing/Landing";
 
 const ROOT = join(__dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -41,12 +40,12 @@ describe("the Effects gallery's masonry", () => {
     expect(css).toMatch(/grid-auto-rows: minmax\(calc\([^;]*\), auto\);/);
     expect(css).toContain("grid-row-end: span var(--efx-n2)");
     expect(css).toContain("grid-row-end: span var(--efx-n3)");
-    // The picture keeps its shape in a card its rows stretch; the spare height goes to the words.
-    expect(css).toMatch(/\.efx-frame \{ flex: none;/);
+    // Media first (owner decision 22 Nov): the frame is the card, starting at its shape and growing into its levelled rows.
+    expect(css).toMatch(/\.efx-frame \{ flex: 1 0 auto;/);
     expect(css).toMatch(/\.nx-section#effects > \.nx-wrap \{ container-type: inline-size; \}/);
   });
 
-  it("gives a card enough rows for its picture and its words at the width it is laid out for", () => {
+  it("gives a card enough rows for its picture and the gap under it at the width it is laid out for", () => {
     for (const ratio of [16 / 9, 2240 / 1280, 1, 732 / 1280, 9 / 16]) {
       for (const cols of [2, 3] as const) {
         const w = MASONRY_COLUMN[cols];
@@ -78,8 +77,9 @@ describe("the Effects gallery's masonry", () => {
       const frame = li.querySelector<HTMLElement>(".fx-frame, .efx-frame")!;
       const [w, h] = frame.style.aspectRatio.split("/").map(Number);
       expect(h / w, e.id).toBeCloseTo(ratio, 6);
-      expect(li.style.getPropertyValue("--efx-n2"), e.id).toBe(String(masonrySpan(ratio, 2)));
-      expect(li.style.getPropertyValue("--efx-n3"), e.id).toBe(String(masonrySpan(ratio, 3)));
+      // Never fewer rows than its shape needs; the levelled columns may add some (levelSpans).
+      expect(Number(li.style.getPropertyValue("--efx-n2")), e.id).toBeGreaterThanOrEqual(masonrySpan(ratio, 2));
+      expect(Number(li.style.getPropertyValue("--efx-n3")), e.id).toBeGreaterThanOrEqual(masonrySpan(ratio, 3));
     }
     unmount();
   });
@@ -96,9 +96,15 @@ describe("the Effects gallery's masonry", () => {
       expect(cols, `${n} columns`).toHaveLength(EFFECTS.length);
       expect(cols.slice(0, n)).toEqual(Array.from({ length: n }, (_, i) => i + 1));
       for (const c of cols) expect(c >= 1 && c <= n).toBe(true);
-      const e = ends(spans, cols, n);
-      // Within six rows (about 60 px) of each other: the multi-column layout left 600 px and more.
-      expect(Math.max(...e) - Math.min(...e), `${n} columns: ${e}`).toBeLessThanOrEqual(6);
+      // The placement alone leaves the columns apart (a card is its frame alone since the cards went media first, owner decision
+      // 22 Nov); levelSpans stretches the shorter ones to end exactly level, cutting no frame by more than a fifth of its height.
+      const levelled = levelSpans(spans, cols, n);
+      const e = ends(levelled, cols, n);
+      expect(Math.max(...e) - Math.min(...e), `${n} columns: ${e}`).toBe(0);
+      levelled.forEach((v, i) => {
+        expect(v).toBeGreaterThanOrEqual(spans[i]);
+        expect((v - spans[i]) / spans[i], `${EFFECTS[i].id} at ${n}`).toBeLessThanOrEqual(0.2);
+      });
     }
     // product-burst's sample came from a 4:5 still: at 4:5 no arrangement of the eight is level (13 rows apart at two columns),
     // so it is shown in its effect's square and only a sample of its effect's shape sets a frame of its own.
@@ -112,6 +118,9 @@ describe("the Effects gallery's masonry", () => {
     // Too many cards to weigh every layout: the grid places them itself.
     expect(masonryColumns(new Array(40).fill(64), 3)).toBeNull();
     expect(masonryColumns([64, 64], 3)).toEqual([1, 2]);
+    // No plan, no stretching; a plan's shorter column shares its spare rows in proportion.
+    expect(levelSpans([64, 48], null, 2)).toEqual([64, 48]);
+    expect(levelSpans([100, 40, 20], [1, 2, 2], 2)).toEqual([100, 67, 33]);
   });
 
   it("gives the stylesheet each card's column and flows the grid densely, so a card goes straight under the one above it", () => {
@@ -136,31 +145,11 @@ describe("the Effects gallery's masonry", () => {
   });
 });
 
+// Owner decision 22 Nov: model tiles dropped; they named models and would duplicate the gallery. Their styles go with them.
 describe("the model tiles", () => {
-  it("never leave one tile alone under a full row when three or four across can avoid it", () => {
-    expect(modelTileColumns(9)).toBe(3);
-    expect(modelTileColumns(8)).toBe(4);
-    expect(modelTileColumns(6)).toBe(3);
-    expect(modelTileColumns(2)).toBe(2);
-    for (let n = 2; n <= 12; n++) {
-      const c = modelTileColumns(n);
-      const last = n % c || c;
-      expect(last, `${n} tiles at ${c} across`).toBeGreaterThan(1);
-    }
-  });
-
-  // 2026-11-22: the sample fills the whole card (the AI studios' model cards), the name at its top, the prompt over a dark foot.
-  it("lead with the sample filling a tall card, the label on its corner, and scroll sideways on a phone", () => {
-    const css = rules(read("components/site/site-next.css"));
-    expect(css).toMatch(/\.nx-model \{ position: relative; display: flex; flex-direction: column; min-width: 0; aspect-ratio: 4 \/ 5;/);
-    expect(css).toMatch(/\.nx-model-media \{ position: absolute; inset: 0;/);
-    expect(css).toMatch(/\.nx-model-media::after \{[^}]*rgba\(5, 5, 9, 0\.86\) 62%, rgba\(5, 5, 9, 0\.94\) 100%/);
-    expect(css).toMatch(/\.nx-model \.nx-ai-badge \{ position: absolute;/);
-    // The stale fixed size that pinned the still at 76 px is gone.
-    expect(css).not.toMatch(/\.nx-model-pic \{[^}]*76px/);
-    const phone = css.slice(css.indexOf("@media (max-width: 639.98px) {\n  .nx-models-grid"));
-    expect(phone).toMatch(/scroll-snap-type: x mandatory/);
-    expect(phone).toMatch(/scroll-snap-align: start/);
+  it("are gone from the landing and from the stylesheet", () => {
+    expect(read("components/landing/Landing.tsx")).not.toMatch(/ModelTiles|modelTileColumns|id="models"/);
+    expect(rules(read("components/site/site-next.css"))).not.toMatch(/\.nx-model(?:s-grid|-media|-name|-quote|-see)?\b/);
   });
 });
 

@@ -20,6 +20,7 @@
  * Kept free of file imports (those are components/site/showcase-assets.ts), so the tests and the footer can read it.
  */
 import data from "@/lib/site/showcase.json";
+import type { Locale } from "@/lib/i18n/core";
 
 /** Where the job's input picture came from. A stock photograph or someone's upload is never one (the export refuses it). */
 export type ShowcaseInput =
@@ -88,7 +89,40 @@ export interface ShowcaseEntry {
   slot: string | null;
   /** The owner's note from the workflow's input. Not shown on the site (it is one language). */
   caption: string | null;
+  /**
+   * The card's one short visual line in each language ("Registan at blue hour."), written at export (tools/export_showcase.py),
+   * or null. The public card shows this on hover, not the generation prompt: the prompt travels only in the Studio link (owner
+   * decision 22 Nov, Kling-style cards). A malformed one is null, never a reason to drop the whole sample.
+   */
+  cardLine: CardLine | null;
   exportedAt: string;
+}
+
+/** One card line per site language. */
+export type CardLine = Record<Locale, string>;
+
+/** The longest card line kept: one line on a 300 px card at 16 px is far shorter, and CSS clamps it to one line anyway. */
+export const CARD_LINE_MAX = 140;
+// C0/C1 controls, zero-width and bidi overrides: a line written by a tool must not reorder or hide the card's text.
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+
+/**
+ * An entry's `cardLine`, or null when it is absent, null or malformed: every language must be there and non-empty after its
+ * controls are stripped, and at most CARD_LINE_MAX characters. All three or none, so a card never shows English words on the
+ * Russian page as if they were its own line.
+ */
+export function parseCardLine(v: unknown): CardLine | null {
+  if (!isObj(v)) return null;
+  const out: Partial<CardLine> = {};
+  for (const l of ["en", "ru", "uz"] as const) {
+    const raw = v[l];
+    if (typeof raw !== "string") return null;
+    // Line breaks become spaces first, so "at\nblue" stays two words once the other controls are taken out.
+    const line = raw.replace(/[\t\n\r\f\v]/g, " ").replace(CONTROLS, "").replace(/\s+/g, " ").trim();
+    if (line.length === 0 || Array.from(line).length > CARD_LINE_MAX) return null;
+    out[l] = line;
+  }
+  return out as CardLine;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -157,7 +191,7 @@ export function parseShowcaseEntry(v: unknown): ShowcaseEntry | null {
   if (!(v.caption === null || str(v.caption, 200))) return null;
   return {
     jobId, assetId, sha256, modelId, modelName: modelName as string, provider, operatorPreview, shutdownOn, attribution, capability, kind, prompt, createdAt, input: inp, endFrame: end, cost: c,
-    width, height, slot: v.slot as string | null, caption: v.caption as string | null, exportedAt,
+    width, height, slot: v.slot as string | null, caption: v.caption as string | null, cardLine: parseCardLine(v.cardLine), exportedAt,
   };
 }
 

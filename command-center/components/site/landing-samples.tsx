@@ -97,7 +97,9 @@ export const LANDING_GALLERY_MIN = 12;
 export const LANDING_GALLERY_MAX = 16;
 
 /**
- * The sample each model tile on the landing links to (`#sample-<job>`, components/landing/Landing.tsx ModelTiles): per model, the
+ * One sample per model that seeds the landing's explore grid (it was the sample each model tile linked to; the tiles were dropped
+ * on 22 Nov, owner decision: they named models and would duplicate the gallery, and the grid keeps this seed so its set and its
+ * level plan do not move): per model, the
  * first of the landing's samples (not in `exclude`) in the gallery's order that is not an effect's preview (its first preview only
  * when the model has nothing else), unless another of that model's samples lets the grid end more level. Its box must be on the
  * page, once: the grid takes every one of them (landingSplit).

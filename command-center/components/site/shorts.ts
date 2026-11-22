@@ -16,7 +16,7 @@ const VERTICAL = 1.6;
 /** One clip of the phone's Shorts feed: everything the Client Component needs, as plain data. */
 export type ShortsItem = {
   jobId: string;
-  modelName: string;
+  /** No model name (owner decision 22 Nov: no model name on public cards; it travels only in the Studio link `href`). */
   prompt: string;
   poster: string;
   posterSm: string;
@@ -37,7 +37,6 @@ export function shortsItems(items: readonly { e: ShowcaseEntry; f: ShowcaseFiles
       ? [
           {
             jobId: e.jobId,
-            modelName: e.modelName,
             prompt: e.prompt,
             poster: f.poster,
             posterSm: f.posterSm,

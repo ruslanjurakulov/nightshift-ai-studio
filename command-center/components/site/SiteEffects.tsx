@@ -29,9 +29,8 @@ const REVEAL = [
   ".nx .st-section .st-wrap > *",
   ".nx .st-ways > *",
   ".nx .st-sol-list > li",
-  // The explore grid, the model tiles and the facts arrive one by one (each staggered by its index).
+  // The explore grid and the facts arrive one by one (each staggered by its index).
   ".nx-gallery > li",
-  ".nx-models-grid > li",
   ".nx-facts-list > li",
   // /mcp is on the site's older frame (no .nx); its sections arrive the same way (site-motion.css draws the reveal there).
   ".ml-land .ml-land-in > *",

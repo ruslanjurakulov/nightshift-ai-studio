@@ -1,0 +1,62 @@
+/* The public site's media-first card (owner decision 22 Nov): at rest a card is its picture or clip and one small AI mark,
+   nothing else, no model name. The title and the one line appear over a dark foot only when a fine pointer is over the card,
+   when the keyboard is on it, or after a first tap on a phone (components/site/TapReveal.tsx sets data-revealed). The click opens
+   the Studio with the sample's words and model in the form; the model is named only there.
+
+   Used by the explore grid (components/site/ShowcaseGallery.tsx) and the Effects section (components/site/EffectsGallery.tsx).
+   Type follows S5's scale as literals, so it holds with or without the design tokens: the caption title is heading-lg's floor
+   (22 px, bold), its line the body size (16 px), as Kling's cards set them. */
+
+.mf-card {
+  position: relative; display: block; width: 100%; height: 100%; overflow: hidden; isolation: isolate;
+  border-radius: inherit; color: #fff; text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.mf-card:focus-visible { outline: 3px solid #ffa940; outline-offset: -3px; }
+
+/* The mark: always there, never covering the picture. Labelling generated media is a duty (synthetic-media transparency rules
+   and the platforms' own), and it is not a model name, so it does not undo the media-first rule. */
+.mf-ai {
+  position: absolute; z-index: 3; top: 8px; right: 8px; max-width: calc(100% - 16px);
+  padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(10, 10, 14, 0.72);
+  color: rgba(255, 255, 255, 0.92); font-size: 13px; font-weight: 600; line-height: 1.35; letter-spacing: 0.01em;
+  /* It wraps on a narrow phone card rather than being cut: a label cut to "Создано нейро…" no longer says what it must. */
+  overflow-wrap: anywhere; text-align: right; pointer-events: none;
+}
+
+/* The foot: transparent at its top edge, near-black under the words, so white and grey text read over a white sky as well as
+   over night (the grey line is above 4.5:1 against the foot's darkest part it sits on). */
+.mf-cap {
+  position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 56px 16px 14px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.62) 38%, rgba(0, 0, 0, 0.78) 62%, rgba(0, 0, 0, 0.82) 100%);
+  opacity: 0; pointer-events: none;
+}
+.mf-title {
+  margin: 0; font-family: var(--font-display); font-size: 1.375rem; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em;
+  color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mf-desc {
+  margin: 0; font-size: 1rem; font-weight: 400; line-height: 1.4; color: rgba(255, 255, 255, 0.66); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden;
+}
+/* A card with no title may give its line two rows. */
+.mf-cap[data-title="none"] .mf-desc { -webkit-line-clamp: 2; line-clamp: 2; }
+.mf-facts { margin: 2px 0 0; font-size: 13px; line-height: 1.35; color: rgba(255, 255, 255, 0.66); overflow-wrap: anywhere; }
+
+.mf-card:focus-visible .mf-cap, .mf-card:focus-within .mf-cap, .mf-card[data-revealed="true"] .mf-cap { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .mf-card:hover .mf-cap { opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mf-cap { transform: translateY(8px); transition: opacity 200ms var(--ns-ease, ease), transform 240ms var(--ns-ease, ease); }
+  .mf-card:focus-visible .mf-cap, .mf-card:focus-within .mf-cap, .mf-card[data-revealed="true"] .mf-cap { transform: none; }
+  @media (hover: hover) and (pointer: fine) { .mf-card:hover .mf-cap { transform: none; } }
+}
+/* The page's pause switch: the caption still fades in, nothing slides. */
+html[data-motion="paused"] .mf-cap { transform: none; transition: opacity 200ms var(--ns-ease, ease); }
+
+/* Section headings of the media sections: bold display size (S5's display-lg, ~48 px at 1440), scoped to these sections only so
+   the site's other headings keep theirs. */
+.nx-section:is(#samples, #effects) .nx-h2 {
+  font-size: var(--ds-fs-display-lg, clamp(2rem, 1.5rem + 2.2222vw, 3.5rem)); font-weight: 700;
+}

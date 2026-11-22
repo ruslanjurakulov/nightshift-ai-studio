@@ -30,10 +30,10 @@
       /* dense: a card given a column (--efx-c2/--efx-c3) goes straight under the card above it in that column; the default
          (sparse) flow would never place it higher than the card placed before it, in any column, and leave a hole. */
       grid-auto-flow: row dense;
-      /* A row is (column width + MASONRY_REF) / MASONRY_UNITS (lib/effects/masonry.ts: 256 px, 64; tests/effects-masonry.test.tsx
+      /* A row is (column width + MASONRY_REF) / MASONRY_UNITS (lib/effects/masonry.ts: 20 px, 64; tests/effects-masonry.test.tsx
          holds the two files to the same numbers). minmax(…, auto): a card that needs more than its rows makes them grow
          instead of spilling over the card below. */
-      grid-auto-rows: minmax(calc(((100cqi - (var(--efx-cols) - 1) * 20px) / var(--efx-cols) + 256px) / 64), auto);
+      grid-auto-rows: minmax(calc(((100cqi - (var(--efx-cols) - 1) * 20px) / var(--efx-cols) + 20px) / 64), auto);
     }
     /* The 20 px under each card is inside its rows (MASONRY_REF counts it). */
     .efx-card { grid-column: var(--efx-c2, auto); grid-row-end: span var(--efx-n2); margin-bottom: 20px; }
@@ -49,7 +49,7 @@
 .efx-card {
   display: flex; flex-direction: column; min-width: 0; overflow: hidden;
   border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025));
+  background: #12151c;
   box-shadow: 0 24px 64px -32px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -58,16 +58,12 @@
   html[data-motion="paused"] .efx-card { transition: none; transform: none; }
 }
 
-/* The picture keeps its real shape however tall the card's rows make the card (flex: none); any spare height goes to the text
-   block, with the key held at its foot. */
-.efx-frame { flex: none; border-radius: 0; background: #12151c; }
+/* The card is its frame (owner decision 22 Nov: media first, components/site/media-card.css) and the caption lies over its foot.
+   The frame starts at its real shape (its aspect-ratio) and grows into the rows the levelled columns give its card
+   (lib/effects/masonry.ts levelSpans), the picture cut from the centre; it never shrinks below its shape. The frame's own long
+   badge stays for a screen reader, and the corner mark says the same in a word. */
+.efx-link { display: flex; flex: 1 1 auto; flex-direction: column; height: auto; }
+.efx-frame { flex: 1 0 auto; border-radius: 0; background: #12151c; }
 .efx-frame > img { z-index: 0; }
-.efx-frame .fx-badge { z-index: 2; }
-.efx-body { display: flex; flex: 1 1 auto; flex-direction: column; align-items: flex-start; gap: 6px; padding: 18px 20px 20px; min-width: 0; }
-.efx-kind { margin: 0; font-size: 14px; color: var(--ns-text-dim); overflow-wrap: anywhere; }
-.efx-name { margin: 0; font-family: var(--font-display); font-size: 20px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
-.efx-line { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ns-text); overflow-wrap: anywhere; text-wrap: pretty; }
-.efx-needs { margin: 0 0 10px; font-size: 14px; color: var(--ns-text-dim); overflow-wrap: anywhere; }
-.efx-use { margin-top: auto; min-height: 48px; padding: 0 20px; font-size: 16px; }
-.efx-use:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+.efx-card .fx-badge { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .nx-section#effects .nx-show-note { color: var(--ns-text-dim); }

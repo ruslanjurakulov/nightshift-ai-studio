@@ -592,16 +592,16 @@ describe("the models strip", () => {
     expect(render(<ModelMarquee entries={[]} pause="Pause motion" />).container.innerHTML).toBe("");
   });
 
-  it.each(["en", "ru", "uz"] as const)("%s landing: the strip sits between the explore grid and the model tiles, and the facts carry their true numbers", (code) => {
+  it.each(["en", "ru", "uz"] as const)("%s landing: the strip sits after the explore grid (and the effects), with no model tiles under it, and the facts carry their true numbers", (code) => {
     const { container } = render(<Landing t={dictionaries[code]} locale={code} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
     const strip = container.querySelector(".nx-marquee");
     if (strip) {
       expect(strip.closest("section")).toBeNull();
-      // After the explore grid (and the effects, when the page has them), right before the model tiles.
+      // After the explore grid (and the effects, when the page has them).
       expect(["samples", "effects"]).toContain(strip.previousElementSibling?.id);
-      const models = container.querySelector("#models");
-      if (models) expect(strip.nextElementSibling).toBe(models);
     }
+    // Owner decision 22 Nov: model tiles dropped; they named models and would duplicate the gallery. The strip stays.
+    expect(container.querySelector("#models")).toBeNull();
     for (const n of container.querySelectorAll<HTMLElement>(".nx-facts-n")) {
       expect(n.dataset.count).toMatch(/^\d+$/);
       // The digits in the page are the server's: the count-up only ever draws over them.

@@ -96,10 +96,10 @@ describe("public landing page", () => {
     const { container } = renderLanding({ kind: "announced" });
     // Outside the model samples (each a real generation, never a stock example: tests/site-showcase.test.tsx), whose number is
     // whatever the owner has merged.
-    // The model tiles' small stills are their samples' posters, each inside that sample's box (checked below).
+    // The tool wall's small stills are their samples' posters, each inside that sample's box (checked below).
     const all = outsideGallery(container.querySelectorAll("img"));
-    const tiles = all.filter((i) => i.closest("#models, #tools"));
-    const imgs = all.filter((i) => !i.closest("#models, #tools"));
+    const tiles = all.filter((i) => i.closest("#tools"));
+    const imgs = all.filter((i) => !i.closest("#tools"));
     // The first screen's clip (our sample, data-sample-job inside its own box), the closing panel's slot (a stock still with a
     // data-sample, or one of our samples), and the example topic's own clip's first frame beside that topic: the third step's phone.
     // Round 10: no clay pictures for the steps and the tools (live pieces and real outputs instead, each in its sample's box).
@@ -129,8 +129,7 @@ describe("public landing page", () => {
     const gallery = container.querySelector(GALLERY);
     expect(gallery === null).toBe(shipped.cards === 0);
     const samplePics = [...(gallery?.querySelectorAll("img") ?? [])];
-    // One per card: the card is its picture alone (media first). The picture a clip was animated from is shown in that sample's
-    // dialog (components/site/SampleDetail.tsx), which is not in the page until it is opened (tests/site-showcase.test.tsx).
+    // One per card: the card is its picture alone (media first; owner decision 22 Nov: the card opens the Studio, no dialog).
     expect(samplePics).toHaveLength(shipped.cards);
     for (const img of samplePics) {
       expect(img.closest(SAMPLE_CARD)).toBeTruthy();
@@ -512,26 +511,22 @@ describe("public pricing page", () => {
  * "Powered by" a model's maker or links one (Runway, Ideogram): their required credit is shown in the Studio, where the models are
  * used (components/studio/ModelAttribution.tsx, tests/model-attribution.test.tsx). Over the shipped samples, in every language.
  */
-// What would break: a model tile's "Watch its sample" jumping nowhere, because its sample is shown only on the tool wall or the
-// approval screen and had no id there (the review of #734 found two). Over the shipped samples.
-describe("the model tiles' links", () => {
-  it("every #models a.nx-model-see resolves to exactly one element on the landing, the box of that tile's sample", () => {
+// What would break: an in-page link to a sample jumping nowhere (the model tiles' "Watch its sample" once did; the tiles were
+// dropped on 22 Nov, owner decision: they named models and would duplicate the gallery). Over the shipped samples.
+describe("in-page links to a sample", () => {
+  it("every a[href^='#sample-'] on the landing resolves to exactly one element, and there are no model tiles", () => {
     const { container } = renderLanding({ kind: "announced" });
-    const links = [...container.querySelectorAll<HTMLAnchorElement>("#models a.nx-model-see")];
-    expect(links.length).toBe(container.querySelectorAll("#models .nx-model").length);
-    for (const a of links) {
+    expect(container.querySelector("#models, .nx-model")).toBeNull();
+    for (const a of container.querySelectorAll<HTMLAnchorElement>('a[href^="#sample-"]')) {
       const href = a.getAttribute("href")!;
       expect(href).toMatch(/^#sample-[0-9a-f-]{36}$/);
       expect(container.querySelectorAll(href), href).toHaveLength(1);
-      const job = href.slice("#sample-".length);
-      const target = container.querySelector(href)!;
-      expect(target.closest(`[data-showcase-entry="${job}"]`) ?? target.querySelector(`[data-sample-job="${job}"], img`), href).toBeTruthy();
     }
   });
 });
 
 describe("no maker's credit on the public site", () => {
-  it.each(["en", "ru", "uz"] as const)("%s: the landing (gallery, model tiles, tool wall, slots), /pricing and the footer link no model maker and never say \"Powered by\"", (locale) => {
+  it.each(["en", "ru", "uz"] as const)("%s: the landing (gallery, tool wall, slots), /pricing and the footer link no model maker and never say \"Powered by\"", (locale) => {
     const t = dictionaries[locale];
     const landing = renderLanding({ kind: "announced" }, locale).container;
     expect(makerCreditProblems(landing)).toEqual([]);
