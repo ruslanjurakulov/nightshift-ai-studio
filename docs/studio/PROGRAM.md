@@ -70,6 +70,7 @@ The owner approved every non-code step the program needs. Atlas carries them out
 - **One real paid test film** through the whole chain, run by Atlas in the owner's workspace once S1–S4 are merged; budget cap **USD 15 total** for the program's live tests unless the owner raises it. Streams test with fakes and the local lab only.
 - **Vendor plans:** ElevenLabs on the plan its OEM terms require for resale, and a Kling API package with lip-sync. Purchases are the owner's own act on the vendor's site (Atlas tells him when the adapter is ready, so no month is paid for nothing); keys go to GitHub Actions secrets through the Command Center, never into chat.
 - **Kling letter of authorization:** signed and submitted by the owner himself.
+- **Design:** the app's dark ground is neutral near-black, not navy (owner's choice after S5's benchmark); accent colours stay.
 
 ## Rules every stream keeps (from CLAUDE.md; the ones this program touches most)
 
