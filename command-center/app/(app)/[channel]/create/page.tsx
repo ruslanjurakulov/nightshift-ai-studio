@@ -45,6 +45,9 @@ import { KIND_TOOL, SLUG_RE, cleanLinkPrompt, drawsCreateScreen, isCreateKind } 
 import { aiChatEnv, aiChatOpenFor } from "@/lib/brain/flag";
 import { readToolAvailability } from "@/lib/server/tool-availability";
 import { startAvailability } from "@/lib/start-box";
+import { SAMPLE_PARAM, resolveSampleSource } from "@/lib/site/sample-source";
+import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
+import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -127,6 +130,9 @@ export default async function CreatePage({
     effectAsk && effectPick?.state === "ready"
       ? effectPrefill(effectAsk.effect, effectPick.modelId, effectAsk.subject, effectAsk.sourceId)
       : initial;
+  // A public animation sample's link (`sample=<its job>`, lib/site/sample-source.ts): resolved here against the shipped showcase data
+  // only, to the sample's own starting picture; anything else is a refusal the form says out loud. The address never names a file.
+  const sampleSource = resolveSampleSource(q[SAMPLE_PARAM], formInitial, SHOWCASE_ENTRIES, SHOWCASE_FILES);
   // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
   const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
@@ -317,6 +323,7 @@ export default async function CreatePage({
             project={parseIdParam(q.project)}
             // The start box's "AI edit" kept its words in this browser (lib/site/idea-handoff.ts): the composer takes them once.
             idea={ideaPickup}
+            sample={sampleSource}
           />
         ) : (
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>

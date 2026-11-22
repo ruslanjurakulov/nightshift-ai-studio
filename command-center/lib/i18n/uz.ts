@@ -3945,6 +3945,16 @@ export const uz: Dictionary = {
     noLength: "{model} bu yerda hech qanday klip davomiyligini taklif qilmaydi, shuning uchun narxini aytib boʻlmaydi. Boshqa model tanlang.",
     modelGone: "Soʻralgan model bu vosita uchun mavjud emas, shuning uchun {default} tanlandi.",
     modelGoneNamed: "{model} modeli bu vosita uchun mavjud emas, shuning uchun {default} tanlandi.",
+    // Ommaviy namunaning «rasmdan video» havolasi (lib/site/sample-source.ts): uning boshlangʻich rasmi kutubxonaga forma manbasi sifatida qoʻyiladi.
+    sampleSource: {
+      loading: "Namunaning boshlangʻich rasmi kutubxonangizga qoʻyilmoqda…",
+      ready: "Namunaning boshlangʻich rasmi kutubxonangizda va shu formada tanlangan. «Yaratish»ni bosmaguningizcha hech narsa yaratilmaydi.",
+      inLibrary: "Namunaning boshlangʻich rasmi kutubxonangizda. Undan foydalanish uchun uni oʻsha yerdan tanlang.",
+      refused: "Namuna rasmini yuklab boʻlmadi, shuning uchun boshlangʻich rasm tanlanmadi. Uni kutubxonangizdan tanlang.",
+      failed: "Namuna rasmini kutubxonangizga qoʻyib boʻlmadi, shuning uchun boshlangʻich rasm tanlanmadi. Uni kutubxonangizdan tanlang.",
+      failedWhy: "Namuna rasmini kutubxonangizga qoʻyib boʻlmadi: {reason}",
+      checking: "Namuna rasmi yuklandi va hali tekshirilmoqda. Tez orada kutubxonangizda paydo boʻladi — uni oʻsha yerdan tanlang.",
+    },
     sheetAt: "{settings} uchun",
     modelLabel: "Model",
     beta: "beta",

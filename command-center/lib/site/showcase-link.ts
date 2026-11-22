@@ -4,6 +4,9 @@
  * presses Generate there and sees the price (CLAUDE.md #3). The panel keeps the model only if it offers it to that workspace
  * (lib/models-discovery prefillModel), and shows which model and price it will use before anything runs.
  *
+ * An animation (i2v) also carries `sample=<its job id>`: the Studio puts that sample's own starting picture in the person's library
+ * as the form's picture (lib/site/sample-source.ts), and only one the site ships.
+ *
  * Signed out, the link is sign-up with the Studio form as `next`: lib/safe-redirect.ts afterSignupPath carries it through the
  * e-mail confirmation and /welcome, and only a same-origin Studio path survives that (anything else falls back to /welcome).
  */
@@ -14,18 +17,24 @@ import { cleanLinkPrompt, isLinkPromptTool } from "@/lib/creative/improve";
 import { fitsAfterSignup } from "@/lib/safe-redirect";
 import { SIGNUP_PATH } from "@/lib/public-paths";
 import { modelLeftOut } from "@/lib/site/showcase";
+import { SAMPLE_PARAM } from "@/lib/site/sample-source";
 
 /**
  * `operatorPreview` (not in the Studio yet) or a `shutdownOn` that has come (no longer in it): the link opens the tool with the
  * words and does not name the model (lib/site/showcase.ts modelLeftOut).
  */
-type Sample = { capability: string; modelId: string; prompt: string; operatorPreview?: boolean; shutdownOn?: string | null };
+type Sample = { capability: string; modelId: string; prompt: string; operatorPreview?: boolean; shutdownOn?: string | null; jobId?: string };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The Studio form for a sample, under the all-channels workspace, with its words cut to `max` characters; null for a tool the Studio has no form for. */
 function studioPath(s: Sample, max: number, now: Date): string | null {
   if (!(STUDIO_TOOL_CAPS as readonly string[]).includes(s.capability) || !MODEL_ID_RE.test(s.modelId)) return null;
   const q = new URLSearchParams({ tool: s.capability });
   if (!modelLeftOut(s, now)) q.set("model", s.modelId);
+  // An animation names its own sample, by id only: the Studio looks its starting picture up in the shipped showcase data
+  // (lib/site/sample-source.ts) and says so when it cannot; the link never carries a picture's address.
+  if (s.capability === "i2v" && s.jobId && UUID.test(s.jobId)) q.set(SAMPLE_PARAM, s.jobId);
   const words = isLinkPromptTool(s.capability) ? cleanLinkPrompt(s.capability, s.prompt) : "";
   const cut = cutWords(words, max);
   if (cut) q.set("prompt", cut);

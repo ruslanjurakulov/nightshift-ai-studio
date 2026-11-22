@@ -3966,6 +3966,16 @@ export const en = {
     // A requested model this workspace is not offered for this tool (owner decision 22 Nov): the default is taken and named, never swapped silently.
     modelGone: "The requested model isn't offered for this tool here, so {default} is selected.",
     modelGoneNamed: "{model} isn't offered for this tool here, so {default} is selected.",
+    // A public sample's picture-to-video link (lib/site/sample-source.ts): its own source picture, put in the library as the form's source.
+    sampleSource: {
+      loading: "Putting the sample's starting picture in your library…",
+      ready: "The sample's starting picture is in your library and is this form's picture. Nothing is made until you press Generate.",
+      inLibrary: "The sample's starting picture is in your library. Choose it there to use it.",
+      refused: "The sample's picture couldn't be loaded, so no starting picture is chosen. Choose one from your library.",
+      failed: "The sample's picture couldn't be put in your library, so no starting picture is chosen. Choose one from your library.",
+      failedWhy: "The sample's picture couldn't be put in your library: {reason}",
+      checking: "The sample's picture is uploaded and still being checked. It will be in your library shortly; choose it there.",
+    },
     sheetAt: "at {settings}",
     modelLabel: "Model",
     beta: "beta",

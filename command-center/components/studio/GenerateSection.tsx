@@ -15,7 +15,10 @@ import { useShell } from "@/components/shell/ShellContext";
 import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
 import { toolOpen } from "@/lib/tool-availability";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
-import { attachWords } from "@/lib/creative/attach";
+import { attachErrorKey, attachWords } from "@/lib/creative/attach";
+import { preloadSampleOnce } from "@/lib/creative/sample-preload";
+import { SAMPLE_PARAM, type SampleSource } from "@/lib/site/sample-source";
+import { formatMediaBytes } from "@/lib/media";
 import "@/components/studio/desk.css";
 
 /** How each desk shows what it made (components/studio/JobFeed variants). */
@@ -45,6 +48,7 @@ export function GenerateSection({
   project = null,
   unavailable = [],
   idea = false,
+  sample = null,
 }: {
   /**
    * The desk this section is (lib/creative/desks): its tools only, laid out
@@ -71,6 +75,11 @@ export function GenerateSection({
   unavailable?: readonly string[];
   /** `?idea=1`: the start box's "AI edit" kept the words in this browser (lib/site/idea-handoff.ts); the composer takes them once. */
   idea?: boolean;
+  /**
+   * `?sample=<job>` on a picture-to-video form, as the create page resolved it against the shipped showcase data
+   * (lib/site/sample-source.ts): the sample's own starting picture, put in the library and set as the source, or a refusal said.
+   */
+  sample?: SampleSource | null;
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
@@ -124,6 +133,59 @@ export function GenerateSection({
     toComposer();
   };
 
+  // A sample's starting picture (`sample=`): into the library through the ordinary upload, then the form's source, once per link
+  // visit (lib/creative/sample-preload.ts). The upload is the only write; the person still presses the priced key (rule 3). A
+  // refused or failed one says so: never a form that looks as if the picture were there (rule 5).
+  const [sampleLine, setSampleLine] = useState<{ tone: "ok" | "error" | "busy"; text: string } | null>(
+    sample?.state === "refused" ? { tone: "error", text: t.gen.sampleSource.refused } : null,
+  );
+  // Another form put in the composer meanwhile (a template, "Try again"): the picture is not forced into it.
+  const prefillNonce = useRef(prefill?.nonce ?? 0);
+  prefillNonce.current = prefill?.nonce ?? 0;
+  useEffect(() => {
+    if (sample?.state !== "ready") return;
+    let live = true;
+    const startedOn = prefillNonce.current;
+    setSampleLine({ tone: "busy", text: t.gen.sampleSource.loading });
+    void preloadSampleOnce({ orgId, sample }).then((r) => {
+      if (!live) return;
+      if (!r.ok) {
+        const key = r.error === "picture_unavailable" ? null : attachErrorKey(r.error);
+        const media = t.media.errors as Record<string, string>;
+        const text =
+          key && "flow" in key && key.flow === "stillChecking"
+            ? t.gen.sampleSource.checking
+            : key && "media" in key && media[key.media] && key.media !== "failed"
+              ? fmt(t.gen.sampleSource.failedWhy, { reason: fmt(media[key.media], { max: formatMediaBytes(r.maxBytes ?? null) || "—" }) })
+              : key === null
+                ? t.gen.sampleSource.refused
+                : t.gen.sampleSource.failed;
+        setSampleLine({ tone: "error", text });
+        return;
+      }
+      // The address now names the library file: a reload opens the form on it and uploads nothing.
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete(SAMPLE_PARAM);
+        u.searchParams.set("source", r.assetId);
+        window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
+      } catch {
+        // The tab's storage still remembers the file for this sample.
+      }
+      if (prefillNonce.current !== startedOn) {
+        setSampleLine({ tone: "ok", text: t.gen.sampleSource.inLibrary });
+        return;
+      }
+      pickAsSource(r.assetId);
+      setSampleLine({ tone: "ok", text: t.gen.sampleSource.ready });
+    });
+    return () => {
+      live = false;
+    };
+    // Once per link: the resolved sample is fixed for this mount (the page keys the section by the form).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const describe = (id: string) => {
     const value = describePrefill(id, defaultDescribeLanguage(locale));
     if (value) fill(value);
@@ -147,6 +209,17 @@ export function GenerateSection({
       onCreated={() => setRefreshKey((k) => k + 1)}
     />
   );
+
+  const sampleNote = sampleLine ? (
+    <p
+      className="m-0 text-sm text-[var(--color-muted)]"
+      role="status"
+      data-testid="sample-source"
+      data-tone={sampleLine.tone}
+    >
+      {sampleLine.text}
+    </p>
+  ) : null;
 
   const cutNote =
     ideaCut !== null ? (
@@ -172,6 +245,7 @@ export function GenerateSection({
       <div className="flex flex-col gap-4">
       {fromProject}
       {cutNote}
+      {sampleNote}
       {/* Which of this desk's tools have nothing on sale, said before a tab is pressed (lib/tool-availability.ts). */}
       <DeskAvailabilityNote desk={desk} />
       <div className="desk-layout" data-desk={desk} style={dock}>
@@ -210,6 +284,7 @@ export function GenerateSection({
     <div className="flex flex-col gap-4">
     {fromProject}
     {cutNote}
+    {sampleNote}
     <NothingOnSaleNote />
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]" style={dock}>
       <div
