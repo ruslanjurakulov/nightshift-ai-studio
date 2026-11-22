@@ -20,7 +20,7 @@ vi.mock("next/link", () => ({
 import { dictionaries, fmt, type Locale } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import type { MoneyAnchor } from "@/lib/landing";
-import { studioToolsOpen } from "@/lib/site/tool-samples";
+import { IDEA_NEXT } from "@/lib/site/idea-handoff";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 
 afterEach(cleanup);
@@ -32,60 +32,74 @@ function renderLanding(locale: Locale) {
   return render(<Landing t={dictionaries[locale]} locale={locale} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
 }
 
-/** What the note must say, per locale: this shows a plan and nothing is made. */
-const NOT_CREATED = { en: /nothing is created/i, ru: /ничего не создаётся/i, uz: /hech narsa yaratilmaydi/i } as const;
-/** Words that would promise a result, a render or a speed from a link that only scrolls. */
+/** Words that would promise a result, a render or a speed from a box that only carries words to sign-up. */
 const CLAIMS = {
-  en: /\b(video is ready|generated|rendered|in \d+ (?:seconds|minutes)|instantly|free video)\b/i,
-  ru: /(видео готово|сгенерир|отрендер|за \d+ (?:сек|мин)|мгновенно|бесплатное видео)/i,
-  uz: /(video tayyor|generatsiya|render qilin|\d+ (?:soniya|daqiqa)da|bir zumda|bepul video)/i,
+  en: /\b(video is ready|rendered|in \d+ (?:seconds|minutes)|instantly|free video)\b/i,
+  ru: /(видео готово|отрендер|за \d+ (?:сек|мин)|мгновенно|бесплатное видео)/i,
+  uz: /(video tayyor|render qilin|\d+ (?:soniya|daqiqa)da|bir zumda|bepul video)/i,
 } as const;
 
-describe("landing hero → existing #try demo", () => {
-  it.each(LOCALES)("%s: one primary button (sign-up), the example is a quiet anchor to #try", (locale) => {
+/**
+ * The first screen is the street-stall hero the owner kept (components/landing/home/HomeHero.tsx, 2026-11-22). Its old #try demo
+ * left the landing with it (a second "type a topic" box under the idea box said the same thing twice); what the old pins guarded
+ * still holds and is pinned here: one quiet way down the page that lands on a real section, an entry that starts and spends
+ * nothing (CLAUDE.md #3), and the pricing link and the welcome promise just under the first screen.
+ */
+describe("landing hero → the idea box and #how", () => {
+  it.each(LOCALES)("%s: the only ways out of the first screen are the idea box (to sign-up, the Studio next) and a quiet link to #how", (locale) => {
     const { container } = renderLanding(locale);
-    const hero = container.querySelector(".nx-sh-in") as HTMLElement;
+    const hero = container.querySelector("section.hm-hero") as HTMLElement;
     expect(hero).toBeTruthy();
-    const buttons = hero.querySelectorAll("a.nx-btn");
-    expect(buttons).toHaveLength(1);
-    expect(buttons[0].getAttribute("href")).toBe("/signup");
-    const sample = hero.querySelector("a.nx-sample") as HTMLAnchorElement;
-    expect(sample).toBeTruthy();
-    expect(sample.getAttribute("href")).toBe("#try");
-    expect(sample.classList.contains("nx-btn")).toBe(false);
-    expect(sample.querySelector(".nx-sample-label")?.textContent).toBe(dictionaries[locale].site.hero.demo);
-    // Lean, as an AI studio's first screen is: the headline, one sentence, the prompt bar and these two actions. No pill, no
-    // price, no promises list and no third link above the fold (they are just under it, in .nx-facts).
-    const h = dictionaries[locale].site.hero;
-    expect(hero.querySelectorAll("a")).toHaveLength(2);
-    expect(hero.querySelector(".nx-pill, .nx-note, .nx-price, .nx-trust")).toBeNull();
-    // While no Studio model is on sale it is the closed sentence, which offers no picture or clip a visitor can make today.
-    expect(hero.querySelector(".nx-sh-lead")?.textContent).toBe(studioToolsOpen() ? h.leadShort : h.leadShortClosed);
-    for (const v of [h.leadShort, h.leadShortClosed]) expect(v.split(/[.!?](?:\s|$)/).filter((x) => x.trim()).length).toBe(1);
+    const h = dictionaries[locale].landingHome.hero;
+    // One link, and it is not a button: the idea box's own key is the first screen's one call to action.
+    const links = hero.querySelectorAll("a");
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute("href")).toBe("#how");
+    expect(links[0].textContent).toBe(h.secondary);
+    expect(links[0].classList.contains("nx-btn")).toBe(false);
+    // The box is a GET form to sign-up with the Studio as `next`; its field has no name, so the words never enter an address.
+    const form = hero.querySelector("form") as HTMLFormElement;
+    expect(form.getAttribute("action")).toBe("/signup");
+    expect(form.getAttribute("method")).toBe("get");
+    expect(hero.querySelectorAll("form")).toHaveLength(1);
+    const named = [...form.querySelectorAll("[name]")].map((el) => [el.getAttribute("name"), el.getAttribute("value")]);
+    expect(named).toEqual([["next", IDEA_NEXT]]);
+    expect(form.querySelector("textarea")?.hasAttribute("name")).toBe(false);
+    expect(form.querySelectorAll("button[type='submit']")).toHaveLength(1);
+    // Lean: no price, no promises list and no pill above the fold (they are just under it, in .nx-facts).
+    expect(hero.querySelector(".nx-pill, .nx-note, .nx-price, .nx-trust, .nx-btn")).toBeNull();
   });
 
-  it.each(LOCALES)("%s: #try is exactly one labelled section, the same one the anchor targets", (locale) => {
+  it.each(LOCALES)("%s: #how is exactly one labelled section, the same one the hero's link targets", (locale) => {
     const { container } = renderLanding(locale);
-    const targets = container.querySelectorAll("#try");
+    const targets = container.querySelectorAll("#how");
     expect(targets).toHaveLength(1);
     expect(targets[0].tagName).toBe("SECTION");
     const labelled = targets[0].getAttribute("aria-labelledby");
-    expect(labelled).toBe("try-title");
+    expect(labelled).toBe("how-title");
     expect(container.querySelector(`#${labelled}`)).toBeTruthy();
+    // The old demo's anchor is gone with it: no link on the page may point at a section that is not there.
+    for (const a of container.querySelectorAll('a[href^="#"]')) {
+      const id = a.getAttribute("href")!.slice(1);
+      if (id) expect(container.querySelector(`[id="${id}"]`), `#${id}`).toBeTruthy();
+    }
   });
 
-  it.each(LOCALES)("%s: says it is a plan only, makes no outcome or speed claim, keeps the pricing link and the welcome promise", (locale) => {
+  it.each(LOCALES)("%s: says nothing starts and nothing is charged, makes no outcome or speed claim, keeps the pricing link and the welcome promise", (locale) => {
     const t = dictionaries[locale];
+    const h = t.landingHome.hero;
     const { container } = renderLanding(locale);
-    const sample = container.querySelector("a.nx-sample") as HTMLElement;
-    expect(sample.textContent).toMatch(NOT_CREATED[locale]);
-    expect(sample.textContent).not.toMatch(CLAIMS[locale]);
-    // The pricing link and the one place the free-credits promise is made: just under the first screen (round 10, a lean hero).
+    const hero = container.querySelector("section.hm-hero") as HTMLElement;
+    expect(hero.textContent).toContain(h.idea.note);
+    for (const words of [h.title, h.lead, h.idea.note, h.idea.submit, h.secondary]) {
+      expect(words).not.toMatch(CLAIMS[locale]);
+      expect(words).not.toMatch(/\d/);
+    }
+    // The pricing link and the one place the free-credits promise is made: just under the first screen.
     const pricing = container.querySelector('.nx-facts a.nx-link[href="/pricing"]');
     expect(pricing?.textContent).toBe(t.site.hero.secondary);
     const note = container.querySelector(".nx-facts .nx-note");
     expect(note?.textContent).toBe(fmt(t.site.hero.note, { n: String(WELCOME_CREDITS) }));
-    expect(sample.textContent).not.toMatch(/\d/);
   });
 
   it("the sample is written in each language and is not the sign-up label", () => {

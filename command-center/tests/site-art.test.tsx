@@ -14,7 +14,10 @@ import { HeroBackdrop, SLOT_ART } from "@/components/site/art";
 import { ART_IDS, ART_SIZE, HERO_ART, HERO_ART_SM, SLOT_DEFS } from "@/lib/site/art";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { EXAMPLE_JOBS, EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB, landingExcludedJobs } from "@/components/site/slots";
+import { EXAMPLE_JOBS, EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB, exampleMedia, landingExcludedJobs } from "@/components/site/slots";
+import { APPROVALS_HREF } from "@/components/landing/Showcases";
+import { ApprovalCard } from "@/components/landing/ApprovalCard";
+import { TryDemo } from "@/components/landing/TryDemo";
 import { effectPreviewJobs, landingGalleryJobs, sampleSectionJobs } from "@/components/site/landing-samples";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
@@ -172,9 +175,10 @@ describe("the hero's backdrop", () => {
   // no longer printed on the landing, and the credits no longer say there is one.
   it("is no longer on the landing, and the credits do not claim it", () => {
     const { container } = landing();
-    const hero = container.querySelector("section.nx-hero")!;
-    expect(hero.querySelector("picture.nx-hero-bg-wide, picture.nx-hero-bg-phone, [data-art-id^='hero-night']")).toBeNull();
-    expect(hero.firstElementChild?.matches(".nx-sh-media")).toBe(true);
+    // The first screen is our own Studio clip (components/landing/home/HomeHero.tsx): no drawn backdrop under it or beside it.
+    const hero = container.querySelector("section.hm-hero")!;
+    expect(container.querySelector("picture.nx-hero-bg-wide, picture.nx-hero-bg-phone, [data-art-id^='hero-night']")).toBeNull();
+    expect(hero.firstElementChild?.matches(".hm-hero-media")).toBe(true);
     for (const l of LOCALES) expect(dictionaries[l.code].site.credits.lead).not.toMatch(/hero’s backdrop|фон главного экрана|bosh ekran foni/);
   });
 });
@@ -188,12 +192,13 @@ describe("the steps and the tool wall", () => {
     const steps = [...container.querySelectorAll(".nx-strip-step")];
     expect(steps).toHaveLength(3);
     expect(steps.map((li) => li.firstElementChild?.getAttribute("data-step"))).toEqual(["topic", "price", "approve"]);
-    // The third step's words stop at two sentences; the whole approval story is behind the Approvals band's own link.
+    // The third step's words stop at two sentences; the whole approval story is behind its own link.
     expect(steps.map((li) => [...li.children].slice(1).map((c) => c.tagName))).toEqual([["SPAN", "H3", "P"], ["SPAN", "H3", "P"], ["SPAN", "H3", "P", "A"]]);
     const more = steps[2].lastElementChild as HTMLAnchorElement;
     expect(more.getAttribute("href")).toBe("/solutions/youtube-channels");
     expect(more.textContent).toBe(t.site.caps.items.find((i) => i.id === "approvals")!.cta);
-    expect(container.querySelector("#approvals .nx-show-cta")?.getAttribute("href")).toBe(more.getAttribute("href"));
+    // The same page the Approvals band linked to (components/landing/Showcases.tsx APPROVALS_HREF), which is off the landing now.
+    expect(APPROVALS_HREF).toBe(more.getAttribute("href"));
     const approveBody = steps[2].querySelector("p")!.textContent!;
     expect(approveBody.split(/(?<=[.!?])\s+/).filter(Boolean)).toHaveLength(2);
     // 1: the chat card's own example ask, typed; a picture of a box, hidden from assistive tech.
@@ -300,8 +305,12 @@ describe("the steps and the tool wall", () => {
 });
 
 describe("the sample thumbnail", () => {
+  // The plan demo left the landing on 2026-11-22 (the first screen's idea box says what it said); the demo itself keeps its rule.
   it("shows the example clip's first frame only behind the example topic, with the words kept over a scrim", () => {
-    const { container } = landing();
+    const t = dictionaries.en;
+    const m = exampleMedia(EXAMPLE_THUMB_JOB)!;
+    const thumb = { src: m.files.posterSm, width: m.entry.width, height: m.entry.height, job: m.entry.jobId, alt: t.site.how.thumbAlt };
+    const { container } = render(<TryDemo copy={t.site.try} thumb={thumb} note="" />);
     const pic = container.querySelector(".nx-try-thumb-pic")!;
     expect(pic.getAttribute("data-picture")).toBe("true");
     expect(pic.querySelector("img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
@@ -379,14 +388,20 @@ describe("the example topic: beside it there are only its own two football clips
     }
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: on the landing (the steps, the Approvals card, the chat card, the plan demo)", (code) => {
-    const t = dictionaries[code];
+  it.each(LOCALES.map((l) => l.code))("%s: on the landing (the steps and the chat card under them)", (code) => {
     const { container } = landing(code);
     const pieces = besideTopic(container, code);
-    // The steps, the Approvals card, the chat card and the plan demo at least: the check cannot pass by finding nothing.
-    for (const sel of [".nx-strip", ".nx-approve-art", "figure.nx-chat", ".nx-try"]) expect(pieces.some((p) => p.matches(sel)), sel).toBe(true);
+    // The steps and the chat card at least: the check cannot pass by finding nothing. (The Approvals card and the plan demo left the
+    // landing on 2026-11-22; the card is checked on its own below.)
+    for (const sel of [".nx-strip", "figure.nx-chat"]) expect(pieces.some((p) => p.matches(sel)), sel).toBe(true);
     for (const p of pieces) expect(problems(p), p.className).toEqual([]);
-    // The Approvals card's thumbnail plays the wide clip, labelled AI-generated and private; the step-3 phone plays the vertical one.
+    expect(container.querySelector(".nx-step-phone img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_PHONE_JOB);
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: on the drawn approval screen (components/landing/ApprovalCard.tsx)", (code) => {
+    const t = dictionaries[code];
+    const { container } = render(<ApprovalCard t={t} />);
+    // The Approvals card's thumbnail plays the wide clip, labelled AI-generated and private.
     const thumb = container.querySelector(".nx-approve-thumb")!;
     expect(thumb.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
     expect(thumb.getAttribute("data-clip")).toBe("sample");
@@ -394,7 +409,6 @@ describe("the example topic: beside it there are only its own two football clips
     expect(container.querySelector(".nx-approve-art")?.hasAttribute("id")).toBe(false);
     expect(thumb.querySelector(".nx-ai-badge")?.textContent).toBe(t.site.gallery.badge);
     expect(thumb.querySelector(".nx-approve-private")?.textContent).toBe((t.site.stage.steps.find((s) => s.id === "approve") as { lamp: string }).lamp);
-    expect(container.querySelector(".nx-step-phone img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_PHONE_JOB);
   });
 
   it.each(LOCALES.map((l) => l.code))("%s: on the /pricing chat card, the publish desk of /solutions and the sign-in stage", (code) => {

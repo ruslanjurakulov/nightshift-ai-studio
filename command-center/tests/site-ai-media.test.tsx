@@ -28,13 +28,16 @@ vi.mock("@/lib/site/showcase.json", async () => {
       entries: [
         { ...FIXTURE_ENTRY, slot: "hero" },
         { ...FIXTURE_ENTRY, jobId: "0d0d0d0d-1111-4222-8333-444455556666", modelId: "minimax-h3", modelName: "MiniMax H3", provider: "minimax", attribution: null, capability: "t2v", width: 1280, height: 2240, prompt: "A lemon whispers to an avocado in a fridge", createdAt: "2026-11-11T09:30:00Z" },
+        // The landing's first screen (components/site/slots.ts HERO_JOB, written out: a hoisted factory cannot import it), a Runway
+        // clip with a maker's credit in its entry, as the real one is.
+        { ...FIXTURE_ENTRY, jobId: "4e85c7e4-fd1a-4771-97ee-66c1fb853367", capability: "t2v", prompt: "Orbit, then a night city, then a steaming street stall", createdAt: "2026-11-10T09:30:00Z" },
       ],
     },
   };
 });
 vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES, FIXTURE_JOB } = await import("./fixtures/showcase-entry");
-  return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB] } };
+  return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB], "4e85c7e4-fd1a-4771-97ee-66c1fb853367": FIXTURE_FILES[FIXTURE_JOB] } };
 });
 // The hero's line as it is before its id is set (`ai` null), so the fixture's `slot: "hero"` export fills it; every other slot names a
 // real job that is not in this fixture data, so it shows its stock fallback here.
@@ -68,6 +71,7 @@ import { PublicFooter } from "@/components/legal/PublicFooter";
 import { LoopClip } from "@/components/site/LoopClip";
 import { motionTap } from "@/lib/site/motion";
 import { SLOTS, placeMedia, slotJobs, slotMedia, LANDING_SLOTS } from "@/components/site/samples";
+import { HERO_JOB } from "@/components/site/slots";
 import { stockInUse } from "@/components/site/stock-in-use";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
@@ -87,6 +91,7 @@ const ROOT = join(__dirname, "..");
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
 const NO_MONEY: MoneyAnchor = { pack: { kind: "none" }, api: null, site: null };
 const OTHER = "0d0d0d0d-1111-4222-8333-444455556666";
+const HERO = "4e85c7e4-fd1a-4771-97ee-66c1fb853367";
 
 afterEach(() => {
   cleanup();
@@ -136,29 +141,49 @@ describe("a slot is one line: a sample when it is merged, the stock picture unti
   });
 });
 
-describe("the landing with a sample in its hero slot", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the first screen plays our sample edge to edge, labelled AI-generated only: no model name, no prompt button, no footnote, no maker's credit, no stock word", (code) => {
+describe("the landing with our own clip on its first screen", () => {
+  it("the fixture's first-screen entry is the landing's HERO_JOB", () => {
+    expect(HERO_JOB).toBe(HERO);
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen plays our own Studio clip edge to edge, labelled AI-generated: no model name, no prompt button, no maker's credit, no stock word, no price", (code) => {
     const t = dictionaries[code];
+    const h = t.landingHome.hero;
     const { container } = landing(code);
-    const m = slotMedia("hero");
-    expect(m.kind).toBe("ai");
-    const media = container.querySelector(".nx-sh-media") as HTMLElement;
-    expect(media.dataset.showcaseEntry).toBe(FIXTURE_JOB);
-    expect(media.dataset.model).toBe(FIXTURE_ENTRY.modelId);
+    const hero = container.querySelector("section.hm-hero") as HTMLElement;
+    const media = hero.querySelector(".hm-hero-media") as HTMLElement;
+    expect(media.dataset.showcaseEntry).toBe(HERO);
+    expect(media.dataset.clip).toBe("sample");
     const img = media.querySelector("img")!;
-    // A backdrop: described as what it is, without the model (the owner, 2026-11-13: the model and the prompt belong on the
-    // sample's own card, not under copy about something else).
-    expect(img.getAttribute("alt")).toBe(t.site.gallery.bgClip);
-    expect(img.getAttribute("loading")).toBe("eager");
+    // A backdrop under the headline: decorative (the box is hidden from assistive tech), the page's one high-priority picture (never lazy).
+    expect(img.getAttribute("alt")).toBe("");
+    expect(media.getAttribute("aria-hidden")).toBe("true");
+    expect(img.getAttribute("loading")).not.toBe("lazy");
+    expect(img.getAttribute("fetchpriority")).toBe("high");
+    expect(img.getAttribute("data-sample-job")).toBe(HERO);
     expect(img.hasAttribute("data-sample")).toBe(false);
-    const credit = container.querySelector(".nx-sh-credit") as HTMLElement;
-    expect(placeLabelProblems(credit, m, t.site)).toEqual([]);
-    expect(credit.textContent).toBe(t.site.gallery.badge);
-    expect(within(credit).queryAllByRole("link")).toHaveLength(0);
-    expect(media.textContent).not.toContain(FIXTURE_ENTRY.modelName);
-    // The hero's sample is not shown again in the gallery; the other sample is.
-    expect(slotJobs(LANDING_SLOTS)).toEqual([FIXTURE_JOB]);
-    expect(container.querySelector(`${GALLERY} [data-showcase-entry="${FIXTURE_JOB}"]`)).toBeNull();
+    // Labelled for what it is, once, in the visitor's language: AI-generated, made in our Studio. No link in the label.
+    const credit = hero.querySelector(".hm-hero-credit") as HTMLElement;
+    expect(credit.querySelector(".hm-badge")?.textContent).toBe(h.ai);
+    expect(credit.textContent).toContain(h.reelLabel);
+    expect(credit.querySelectorAll("a")).toHaveLength(0);
+    // The entry asks for "Powered by Runway"; the public site does not show it, nor the model, nor its prompt.
+    expect(FIXTURE_ENTRY.attribution).not.toBeNull();
+    expect(makerCreditProblems(hero)).toEqual([]);
+    expect(hero.textContent).not.toContain(FIXTURE_ENTRY.modelName);
+    expect(hero.textContent).not.toMatch(PROVIDER_BRANDS);
+    // Not even in an attribute: the first screen names no model at all (a gallery card carries its model in data-model; this box does not).
+    expect(hero.innerHTML).not.toMatch(PROVIDER_BRANDS);
+    expect(hero.textContent).not.toContain("Orbit, then a night city");
+    expect(hero.querySelector(".nx-ai-model, .nx-ai-try, .nx-gallery-try")).toBeNull();
+    for (const w of [t.site.samples.tag, t.site.samples.frameTag, t.site.samples.clipTag, t.site.gallery.use, t.site.gallery.useNote]) expect(hero.textContent).not.toContain(w);
+    expect(hero.innerHTML).not.toMatch(/pexels/i);
+    expect(hero.textContent).not.toMatch(/[$€£₽]/);
+    // The first screen's clip is not shown again anywhere on the page. The landing draws no other slot than its closing panel
+    // (stock in this fixture), so the old hero slot's sample is free for the gallery, with the other one.
+    expect(slotJobs(LANDING_SLOTS)).toEqual([]);
+    expect(container.querySelectorAll(`[data-showcase-entry="${HERO}"]:not(#models *)`)).toHaveLength(1);
+    expect(container.querySelector(`${GALLERY} [data-showcase-entry="${FIXTURE_JOB}"]`)).toBeTruthy();
     expect(container.querySelector(`${GALLERY} [data-showcase-entry="${OTHER}"]`)).toBeTruthy();
     // A model is named only inside a sample's own box.
     expect(without(container, SAMPLE_CARD).textContent).not.toMatch(PROVIDER_BRANDS);
@@ -168,31 +193,38 @@ describe("the landing with a sample in its hero slot", () => {
   it("counts what the page holds: the samples on it and the models that made them, and the welcome grant", () => {
     const { container } = landing();
     const facts = Object.fromEntries([...container.querySelectorAll(".nx-facts-list li")].map((li) => [li.getAttribute("data-fact"), li.querySelector(".nx-facts-n")?.textContent]));
-    expect(facts).toEqual({ samples: "2", models: "2", credits: String(WELCOME_CREDITS) });
+    // The first screen's clip, and the gallery's two.
+    expect(facts).toEqual({ samples: "3", models: "2", credits: String(WELCOME_CREDITS) });
   });
 
   it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with no maker's credit, the truth about the Studio and no price", () => {
     const t = dictionaries.en;
     const { container } = landing();
     const tiles = [...container.querySelectorAll<HTMLElement>("#models .nx-model")];
-    // The gallery's sample, then the hero's: two models, the number the facts row says.
-    expect(tiles.map((x) => x.dataset.model)).toEqual(["minimax-h3", "runway-gen4.5"]);
+    // In the page's order: Runway (the gallery's first card, and the first screen's clip), then MiniMax. Two models, the number the
+    // facts row says.
+    expect(tiles.map((x) => x.dataset.model)).toEqual(["runway-gen4.5", "minimax-h3"]);
     expect(container.querySelector("[data-fact='models'] .nx-facts-n")?.textContent).toBe(String(tiles.length));
-    // Each tile links to its sample on this page: the gallery card, or the box of the slot that shows it (the hero).
+    // Each tile links to its sample on this page, once: a gallery card, or the box of a place that shows it.
     for (const tile of tiles) {
       const href = tile.querySelector(".nx-model-see")!.getAttribute("href")!;
       expect(href).toBe(`#sample-${tile.dataset.showcaseEntry}`);
       expect(container.querySelectorAll(href)).toHaveLength(1);
     }
-    expect(container.querySelector(`#sample-${FIXTURE_JOB}`)?.matches(".nx-sh-media")).toBe(true);
-    const runway = tiles[1];
-    expect(runway.querySelector(".nx-model-count")?.textContent).toBe(fmt(t.site.models.count, { n: "1" }));
+    // The first screen's box is such a place: a model whose only sample here is that clip has its tile land on it.
+    expect(container.querySelector(`#sample-${HERO}`)?.matches(".hm-hero-media")).toBe(true);
+    const runway = tiles[0];
+    expect(runway.querySelector(".nx-model-count")?.textContent).toBe(fmt(t.site.models.count, { n: "2" }));
     // Runway asks for "Powered by Runway"; the public site does not show it (it is shown in the Studio, where the model is used).
     expect(FIXTURE_ENTRY.attribution).not.toBeNull();
     expect(makerCreditProblems(runway)).toEqual([]);
-    const tile = tiles[0];
+    const tile = tiles[1];
     expect(tile.dataset.showcaseEntry).toBe(OTHER);
     expect(tile.querySelector(".nx-model-name")?.textContent).toBe("MiniMax H3");
+    // The card quotes the words its sample was made from, under a "Prompt" caption, inside the sample's own box.
+    expect(tile.querySelector(".nx-model-kicker")?.textContent).toBe(t.site.gallery.prompt);
+    expect(tile.querySelector("q.nx-model-quote")?.textContent).toBe("A lemon whispers to an avocado in a fridge");
+    expect(tile.querySelector(".nx-model-quote")?.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(OTHER);
     expect(tile.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.notInStudio);
     expect(tile.querySelector(`a[href="#sample-${OTHER}"]`)?.textContent).toBe(t.site.models.see);
     expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
@@ -418,11 +450,13 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(render(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />).container.querySelector(".nx-pbar-go")?.hasAttribute("disabled")).toBe(false);
   });
 
-  it("is fed only real prompts on the landing: each chip is a format whose clip sample is merged, with that sample's words (nothing attached makes a clip)", () => {
+  // The landing's first screen is the idea box now (components/landing/home/IdeaBox.tsx, tests/landing-example-entry.test.tsx); the
+  // bar, its chips and its dock are not drawn there, so a second, docked box can never sit over the page.
+  it("is not on the landing: the first screen's idea box is the page's one place to type", () => {
     const { container } = landing();
-    const chips = [...container.querySelectorAll(".nx-pbar-idea")].map((b) => b.textContent);
-    const merged = FORMATS.filter((f) => SHOWCASE_ENTRIES.some((e) => e.jobId === f.job && e.capability === TEXT_TOOL && e.prompt.trim()));
-    expect(chips).toEqual(merged.slice(0, 4).map((f) => dictionaries.en.site.formats.items.find((i) => i.id === f.id)!.title));
+    expect(container.querySelector(".nx-pbar, .nx-pbar-idea, .nx-pbar-slot")).toBeNull();
+    expect(container.querySelectorAll("textarea")).toHaveLength(1);
+    expect(container.querySelector("section.hm-hero textarea")).toBeTruthy();
   });
 });
 

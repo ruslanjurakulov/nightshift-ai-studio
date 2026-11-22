@@ -21,6 +21,7 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { LoopClip } from "@/components/site/LoopClip";
 import { StickyCta } from "@/components/site/StickyCta";
 import { Landing } from "@/components/landing/Landing";
+import { Showcases } from "@/components/landing/Showcases";
 import { CLIPS, SLOTS, slotMedia, type PlaceDef } from "@/components/site/samples";
 import { TOOL_SAMPLES, studioToolsOpen, toolSource } from "@/lib/site/tool-samples";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
@@ -31,6 +32,7 @@ import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblem
 const ROOT = join(__dirname, "..");
 const SRC = CLIPS.caravan;
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
+const homeCss = readFileSync(join(ROOT, "components/landing/home/home.css"), "utf8");
 
 /** What the page environment looks like to a clip: reduced motion, Save-Data, a visible element. */
 function env({ reduce = false, saveData = false, effectiveType = "4g", wide = false }: { reduce?: boolean; saveData?: boolean; effectiveType?: string; wide?: boolean } = {}) {
@@ -229,17 +231,19 @@ describe("LoopClip", () => {
 });
 
 describe("the landing's clips are labelled for what they are (round 5)", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the first screen, the Studio showcase and the closing panel each carry the labels of what they show (stock, or one of our samples with its badge only), and no stock clip claims to be Nightshift's output", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen and the closing panel each carry the labels of what they show (stock, or one of our samples with its badge only), and no stock clip claims to be Nightshift's output", (code) => {
     const t = dictionaries[code];
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     // Round 10: each slot shows one of our samples once its job is merged and named on its `ai` line, the stock picture until then.
     // Either way the labels are the ones for what is there (tests/helpers/showcase-scope.ts placeLabelProblems).
-    const places: [Element, keyof typeof SLOTS][] = [
-      [container.querySelector(".nx-sh-credit")!, "hero"],
-      [container.querySelector("#studio .nx-show-pic")!, "show.studio"],
-    ];
-    for (const [el, slot] of places) expect(placeLabelProblems(el, slotMedia(slot), t.site), slot).toEqual([]);
+    // The first screen is our own clip (components/landing/home/HomeHero.tsx, no stock fallback): labelled AI-generated, never stock.
+    const hero = container.querySelector("section.hm-hero")!;
+    const heroClip = hero.querySelector(".hm-hero-media");
+    if (heroClip) {
+      expect(hero.querySelector(".hm-hero-credit .hm-badge")?.textContent).toBe(t.landingHome.hero.ai);
+      for (const w of [t.site.samples.tag, t.site.samples.frameTag, t.site.samples.clipTag]) expect(hero.textContent).not.toContain(w);
+    }
     const fin = slotMedia("landing.final");
     const finCredit = container.querySelector(".nx-final-credit")!;
     if (fin.kind === "ai") {
@@ -250,10 +254,13 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     // A box that plays something says what it plays: a stock clip by its name, a sample's as "sample".
     // (The model tiles, the tool wall, the third step and the Approvals card play samples' loops too, each inside its sample's box: checked on their own.)
     const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models, #tools, .nx-step-live, .nx-approve-art"));
-    const expected = (["hero", "show.studio", "landing.final"] as const).flatMap((s) => {
-      const m = slotMedia(s);
-      return m.kind === "ai" ? (m.moving ? ["sample"] : []) : m.clip ? [m.clip] : [];
-    });
+    const expected = [
+      ...(heroClip ? ["sample"] : []),
+      ...(["landing.final"] as const).flatMap((s) => {
+        const m = slotMedia(s);
+        return m.kind === "ai" ? (m.moving ? ["sample"] : []) : m.clip ? [m.clip] : [];
+      }),
+    ];
     expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(expected);
     for (const b of clipBoxes) expect(b.querySelector("img")?.hasAttribute("alt")).toBe(true);
     expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models, #tools, .nx-step-live, .nx-approve-art"))).toHaveLength(expected.length);
@@ -275,10 +282,11 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
   });
 
-  it("puts the keyboard's pause switch on the moving Studio picture (the hero has the page's switch) and none on the drawn approval screen, the same switch, named \"Pause motion\" and visually hidden until focused", () => {
+  // The two showcases left the landing on 2026-11-22 (components/landing/Showcases.tsx, kept for a page that draws them).
+  it("puts the keyboard's pause switch on the moving Studio picture and none on the drawn approval screen, the same switch, named \"Pause motion\" and visually hidden until focused", () => {
     const t = dictionaries.en;
     env();
-    const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
+    const { container } = render(<Showcases t={t} />);
     expect(container.querySelector("#video .nx-clip-pause")).toBeNull();
     expect(container.querySelector("#approvals .nx-clip-pause")).toBeNull();
     const m = slotMedia("show.studio");
@@ -403,24 +411,25 @@ describe("one Start free at a time (round 5)", () => {
 });
 
 describe("the hero and the Try grid (round 5)", () => {
-  it("sets the first screen as the picture with the words and the prompt bar over it, and moves the chat card into How it works (round 10)", () => {
+  it("sets the first screen as our clip with the words and the idea box over it, and keeps the chat card in How it works (round 10)", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
-    const hero = container.querySelector("section.nx-sh")!;
-    expect([...hero.children].map((c) => c.className)).toEqual(["nx-sh-media", "nx-wrap nx-sh-in", "nx-wrap nx-sh-foot"]);
-    const order = [...hero.querySelector(".nx-sh-in")!.children].map((c) => c.className.split(" ")[0] || c.tagName);
-    // The composer's place (it docks to the bottom on scroll), then its note and the real prompts, which stay in the first screen.
-    expect(order).toEqual(["nx-h1", "nx-sh-lead", "nx-pbar-slot", "nx-pbar-note", "nx-pbar-ideas", "nx-sh-actions"]);
-    // The headline is a display size above every section heading: on a desktop its smallest is above .nx-h2's largest.
+    // The first screen the owner kept (components/landing/home/HomeHero.tsx, 2026-11-22): the clip, the veil, the words, the label
+    // and the page's pause switch.
+    const hero = container.querySelector("section.hm-hero")!;
+    expect([...hero.children].map((c) => c.className.split(" ")[0])).toEqual(["hm-hero-media", "hm-hero-veil", "hm-wrap", "hm-hero-credit", "nx-motion"]);
+    const order = [...hero.querySelector(".hm-hero-body")!.children].map((c) => c.className.split(" ")[0] || c.tagName);
+    expect(order).toEqual(["hm-eyebrow", "ds-display", "hm-hero-lead", "hm-idea", "hm-idea-more"]);
+    // The headline is a display size above every section heading: on a desktop its largest is above .nx-h2's largest.
     const h2max = Number(css.match(/\.nx-h2 \{[^}]*font-size: clamp\(\d+px, [\d.]+vw, (\d+)px\)/)![1]);
-    const h1min = Number(css.match(/  \.nx-sh \.nx-sh-h1 \{ max-width: 16ch; font-size: clamp\((\d+)px/)![1]);
-    expect(h1min).toBeGreaterThan(h2max * 1.15);
+    const h1max = Number(homeCss.match(/\.hm-hero-title \{[^}]*font-size: clamp\([^,]+, [^,]+, ([\d.]+)rem\)/)![1]) * 16;
+    expect(h1max).toBeGreaterThan(h2max);
     // The chat card is the idea, not the picture: it sits under the steps, with no picture of its own.
     const card = container.querySelector("#how figure.nx-chat")!;
     expect(card.querySelector("img, video, .nx-result-art")).toBeNull();
-    // The box takes 16 px or more (no zoom on a phone), and the promises wrap in a row under the words.
-    expect(css).toMatch(/\.nx-pbar-box \{[^}]*font-size: 16px;/);
+    // The box takes 16 px or more (no zoom on a phone), and the promises wrap in a row under the facts.
+    expect(homeCss).toMatch(/\.hm-idea-field \{[^}]*font-size: 1rem;/);
     expect(css).toMatch(/\.nx-facts-more \.nx-trust \{ display: flex; flex-wrap: wrap;/);
   });
 

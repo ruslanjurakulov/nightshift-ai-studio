@@ -138,7 +138,8 @@
     color: var(--ds-text-2);
     font-size: 0.8125rem;
   }
-  @media (max-width: 767px) { .hm-hero-credit { display: none; } }
+  /* A phone keeps the label (every picture says what it is): at the top, clear of the words at the bottom. */
+  @media (max-width: 767px) { .hm-hero-credit { top: 14px; bottom: auto; left: var(--hm-gutter); right: auto; } }
   .hm-hero .nx-motion { position: absolute; top: 12px; right: var(--hm-gutter); }
 
   .hm-badge {

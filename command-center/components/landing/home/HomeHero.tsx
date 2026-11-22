@@ -27,9 +27,13 @@ export function HomeHero({ t }: { t: Dictionary }) {
     // Dark whatever the page's theme: the words sit on a moving picture, and the picture is night.
     <section aria-labelledby="hm-hero-title" className="hm-hero" data-theme-scope="dark">
       {item && (
-        <div className="hm-hero-media" data-clip="sample" aria-hidden="true">
+        // The page's mark for "one of our samples, in its own box", as every other sample place carries it: the landing's
+        // no-clip-twice check (tests/site-landing-dedupe.test.tsx) sees the first screen too, and a model tile whose only sample on
+        // the page is this one lands here (#sample-<job>, as on a slot's box).
+        <div id={`sample-${item.e.jobId}`} className="hm-hero-media" data-clip="sample" data-showcase-entry={item.e.jobId} aria-hidden="true">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
+            data-sample-job={item.e.jobId}
             src={item.f.posterSm}
             srcSet={posterSrcSet(item.f)}
             sizes={HERO_SIZES}

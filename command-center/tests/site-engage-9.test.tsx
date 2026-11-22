@@ -26,10 +26,12 @@ import { placeLabelProblems } from "./helpers/showcase-scope";
 import { SCENE_SAMPLE } from "@/components/docs/SampleFrame";
 import { MEDIA, MEDIA_IDS } from "@/lib/site/media";
 import { setMotionPaused } from "@/lib/site/motion";
+import { HERO_JOB } from "@/components/site/slots";
 
 const ROOT = join(__dirname, "..");
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
 const siteCss = readFileSync(join(ROOT, "components/site/site.css"), "utf8");
+const homeCss = readFileSync(join(ROOT, "components/landing/home/home.css"), "utf8");
 
 function env({ wide = false }: { wide?: boolean } = {}) {
   vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("min-width: 860px") ? wide : false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
@@ -56,27 +58,39 @@ afterEach(() => {
 const landing = (code: "en" | "ru" | "uz" = "en") => render(<Landing t={dictionaries[code]} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
 
 describe("a phone's first screen is the picture (round 9; the footage moved into the chat card when the studio backdrop took the panel)", () => {
-  // Round 10: the first screen is the hero slot's own picture edge to edge (one of our samples once its job is merged, until then
-  // the stock fallback), behind the pill, the headline, the prompt bar and the one button.
-  it.each(LOCALES.map((l) => l.code))("%s: the first screen is the hero slot's picture edge to edge, then the pill, the headline, the prompt bar and the one button; the picture is labelled for what it is", (code) => {
+  // The first screen the owner kept (components/landing/home/HomeHero.tsx, 2026-11-22): our own Studio clip edge to edge (orbit, the
+  // night city, the steaming street stall), behind the eyebrow, the headline, the idea box and the quiet link down the page.
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen is our own Studio clip edge to edge, then the eyebrow, the headline, the idea box and the link down; the picture is labelled AI-generated", (code) => {
     env();
-    const t = dictionaries[code];
+    const h = dictionaries[code].landingHome.hero;
     const { container } = landing(code);
-    const hero = container.querySelector("section.nx-sh")!;
+    const hero = container.querySelector("section.hm-hero")!;
+    // Dark whatever the page's theme: the words sit on a night picture.
+    expect(hero.getAttribute("data-theme-scope")).toBe("dark");
     const media = hero.firstElementChild!;
-    expect(media.matches(".nx-sh-media")).toBe(true);
-    const m = slotMedia("hero");
+    expect(media.matches(".hm-hero-media")).toBe(true);
     const img = media.querySelector("img")!;
-    expect(img.getAttribute("loading")).toBe("eager");
-    expect(img.getAttribute(m.kind === "ai" ? "data-sample-job" : "data-sample")).toBe(m.kind === "ai" ? m.entry.jobId : m.id);
-    expect(media.getAttribute("data-media")).toBe(m.kind);
-    expect(placeLabelProblems(hero.querySelector(".nx-sh-credit")!, m, t.site)).toEqual([]);
-    const copy = hero.querySelector(".nx-sh-in")!;
-    expect(copy.querySelector("h1")).toBeTruthy();
-    expect(copy.querySelector("form.nx-pbar")).toBeTruthy();
-    expect(copy.querySelectorAll("a.nx-btn")).toHaveLength(1);
-    // No old backdrop and no second copy of the picture on the first screen.
-    expect(container.querySelector(".nx-hero-bg, .nx-hero-bleed, .nx-hero-visual")).toBeNull();
+    expect(img.getAttribute("loading")).not.toBe("lazy");
+    expect(img.getAttribute("fetchpriority")).toBe("high");
+    expect(img.getAttribute("data-sample-job")).toBe(HERO_JOB);
+    expect(img.hasAttribute("data-sample")).toBe(false);
+    expect(hero.querySelector(".hm-hero-credit .hm-badge")?.textContent).toBe(h.ai);
+    const copy = hero.querySelector(".hm-hero-body")!;
+    expect(copy.querySelector("h1")?.textContent).toBe(h.title);
+    expect(copy.querySelector("form.hm-idea")).toBeTruthy();
+    expect(copy.querySelectorAll("a.nx-btn")).toHaveLength(0);
+    // No old backdrop, no old prompt bar and no second copy of the picture on the first screen.
+    expect(container.querySelector(".nx-hero-bg, .nx-hero-bleed, .nx-hero-visual, .nx-sh, form.nx-pbar")).toBeNull();
+  });
+
+  it("veils the clip under the words: at least 0.78 black where the words are on a wide screen, 0.82 under them below 1024 px", () => {
+    const veil = homeCss.match(/\.hm-hero-veil \{[^}]*\}/)![0];
+    const wide = [...veil.matchAll(/rgb\(7 10 20 \/ ([\d.]+)\)/g)].map((x) => Number(x[1]));
+    // 0% and 45% of the width hold the words (max-width 11em / 24em / 44rem from the left gutter).
+    expect(wide.slice(0, 2).every((a) => a >= 0.78)).toBe(true);
+    const narrow = homeCss.match(/@media \(max-width: 1023px\) \{\s*\.hm-hero-veil \{[^}]*\}/)![0];
+    const stops = [...narrow.matchAll(/rgb\(7 10 20 \/ ([\d.]+)\)/g)].map((x) => Number(x[1]));
+    expect(stops.slice(0, 2).every((a) => a >= 0.82)).toBe(true);
   });
 
   it("keeps the first screen dark in both themes, with a veil under the words that is never lighter than 0.62 black under the text", () => {
@@ -92,14 +106,13 @@ describe("a phone's first screen is the picture (round 9; the footage moved into
     expect(css).toMatch(/\.nx-bleed \.nx-clip \{ left: 3px; width: calc\(100% - 6px\);/);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: the page's own pause switch (under the first screen's picture, visually hidden until a keyboard focuses it) stops the footage, and the picture panels' 44 px pause button keeps its rules (/mcp's header is still one)", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the page's own pause switch (on the first screen's picture, visually hidden until a keyboard focuses it) stops the footage, and the picture panels' 44 px pause button keeps its rules (/mcp's header is still one)", (code) => {
     env();
     const t = dictionaries[code];
     const { container } = landing(code);
-    const m = slotMedia("hero");
-    // A still hero has nothing to pause; the switch is there whenever the picture moves.
-    if (!(m.kind === "ai" ? m.moving : m.clip)) return expect(container.querySelector(".nx-sh-foot .nx-motion-btn")).toBeNull();
-    const sw = container.querySelector(".nx-sh-foot .nx-motion-btn") as HTMLButtonElement;
+    // The first screen always carries it (components/landing/home/HomeHero.tsx): its clip moves, and so does the page under it.
+    const sw = container.querySelector("section.hm-hero .nx-motion-btn") as HTMLButtonElement;
+    expect(container.querySelectorAll(".nx-motion-btn")).toHaveLength(1);
     expect(sw.textContent).toBe(t.site.fx.pause);
     expect(sw.getAttribute("aria-pressed")).toBe("false");
     act(() => sw.click());
@@ -129,10 +142,11 @@ describe("a phone's first screen is the picture (round 9; the footage moved into
     expect(css).toMatch(/\.nx-bleed \.nx-clip \{ left: 3px; width: calc\(100% - 6px\);/);
   });
 
-  it("drops the first of three showcases (a still photograph) from the landing: two remain, each with a clip", () => {
+  // Round 9 dropped the first of three (a still photograph); 2026-11-22 the other two (the first screen and the autopilot say theirs).
+  it("draws none of the full-width showcases on the landing any more", () => {
     env();
     const { container } = landing();
-    expect([...container.querySelectorAll("section.nx-show")].map((s) => s.id)).toEqual(["studio", "approvals"]);
+    expect(container.querySelectorAll("section.nx-show")).toHaveLength(0);
     expect(Object.keys(SLOTS)).not.toContain("show.video");
   });
 });

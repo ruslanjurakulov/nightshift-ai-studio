@@ -8,14 +8,13 @@ import { packExpiry, type PackExpiry } from "@/lib/plans";
 import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
-import { APPROVALS_HREF, Showcases } from "@/components/landing/Showcases";
+import { APPROVALS_HREF } from "@/components/landing/Showcases";
 import { ShowcaseGallery, showcaseItems, type LandingFormat } from "@/components/site/ShowcaseGallery";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
-import { TryDemo, type TryThumb } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
 import { StickyCta } from "@/components/site/StickyCta";
-import { EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB, exampleMedia, landingExcludedJobs, landingPlacedJobs, slotMedia } from "@/components/site/samples";
+import { EXAMPLE_PHONE_JOB, exampleMedia, landingExcludedJobs, landingPlacedJobs, slotMedia } from "@/components/site/samples";
 import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
@@ -31,19 +30,17 @@ import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import { LiveStats } from "@/components/site/LiveStats";
 import type { PublicStats } from "@/lib/public-stats";
-import { SampleCarousel, SampleCompare, SampleTicker, landingGalleryExclude, landingTileJobs } from "@/components/site/landing-samples";
+import { landingGalleryExclude, landingTileJobs } from "@/components/site/landing-samples";
 import "@/components/site/explore-hover.css";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
 /**
- * The signed-out homepage, laid out as an AI studio's (round 10): the first
- * screen is the hero slot's picture edge to edge with the headline and a prompt
- * bar over it; then three facts the page can count, the explore grid of our own
- * generations, the models behind them, two full-width showcases, how it works
- * (three steps and the idea in one card), a hands-on example that needs no
- * account and no server, what it costs, the questions and the button again over
- * the closing slot's picture.
+ * The signed-out homepage. The first screen is our own Studio's clip edge to edge with the headline and the idea box over it
+ * (components/landing/home/HomeHero.tsx, the one the owner kept on 2026-11-22). Then, each idea once (2026-11-22, after a study of
+ * the AI studios' pages: they show each piece once, in one strong grid): three facts the page can count, the one gallery of our
+ * own generations, the effects, the models behind the samples (the ribbon and one tile per model), how it works, the autopilot,
+ * what it costs, the questions and the button again over the closing slot's picture.
  *
  * Every claim on it is one the code backs; the only figures are the welcome
  * grant (WELCOME_CREDITS, pinned to the database by a test), counts of what the
@@ -54,9 +51,8 @@ const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
  * picture says what it is: one of our samples (AI-generated; its model on its gallery card) or a
  * stock example (its contributor), from components/site/samples.tsx slotMedia.
  *
- * A Server Component. The client code on the page is the header's menu and its
- * theme and language keys, the prompt bar, the pause switches, the clips, the
- * example, the price slider, the start bar and the effects script.
+ * A Server Component. The client code on the page is the header's menu and its theme and language keys, the idea box, the pause
+ * switches, the clips, the price slider, the start bar and the effects script.
  */
 export function Landing({
   t,
@@ -81,8 +77,9 @@ export function Landing({
   /** The live counters (lib/server/public-stats.ts): null while the owner's switch is off, and then nothing is drawn. */
   liveStats?: PublicStats | null;
 }) {
-  // The samples the landing's own places show (slots, tool wall, steps, approval screen) are left out of its gallery, so no clip
-  // is on the page twice, and so are the repeated sea and sky samples: one list (components/site/slots.ts landingExcludedJobs).
+  // The samples the landing's own places draw (the first screen, the closing panel, the tool wall, the third step's phone) are left
+  // out of its gallery, so no clip is on the page twice, and so are the repeated sea and sky samples: one list
+  // (components/site/slots.ts landingExcludedJobs).
   const inSlots = landingPlacedJobs();
   const leftOut = landingExcludedJobs();
   const gallery = showcaseItems().filter(({ e }) => !leftOut.includes(e.jobId));
@@ -94,18 +91,15 @@ export function Landing({
     <div className="lp-root">
       {/* The first screen the owner kept (2026-11-22): our Studio clip of the steaming street stall, shared with HomePage. */}
       <HomeHero t={t} />
-      <SampleTicker t={t} locale={locale} exclude={leftOut} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
       <LiveStats t={t} locale={locale} stats={liveStats} />
-      <SampleCarousel t={t} locale={locale} exclude={leftOut} />
-      {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
+      {/* The one gallery (2026-11-22): each of our samples once, in one grid, as the AI studios show theirs. It was one of six
+          sample blocks (a ticker, a carousel, picture → video, two showcases and a demo), and a visitor met the same idea six times. */}
       <ShowcaseGallery t={t} locale={locale} exclude={landingGalleryExclude(leftOut)} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
       <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
       <ModelTiles t={t} items={onPage} tiles={landingTileJobs(leftOut)} />
-      <SampleCompare t={t} locale={locale} exclude={leftOut} />
-      <Showcases t={t} />
       <How t={t} locale={locale} anchor={anchor} />
       <AutopilotDemo copy={t.site.autopilot.demo} />
       {showcase.length > 0 && (
@@ -115,7 +109,6 @@ export function Landing({
           </div>
         </div>
       )}
-      <Try t={t} locale={locale} />
       <PriceBlock t={t} locale={locale} teaser={pricing} rates={priceRatesFrom(anchor)} />
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} dodo={dodo} />
       <FinalCta t={t} />
@@ -199,9 +192,10 @@ export function modelTileColumns(n: number): number {
 
 /**
  * The models behind the samples: one tile per model, each inside the box of that model's first sample on the page (the only kind
- * of element that may name a model), with its AI-generated label, how many of the page's samples it made, whether the Studio offers
- * it (an operator preview says it does not yet), and a link down to its sample. No price: the site has no public per-model price
- * to read, and a typed one would be a promise (CLAUDE.md #5).
+ * of element that may name a model), laid out as the AI studios show theirs (2026-11-22): the sample fills a tall rounded card, the
+ * model's name at its top, the words it was made from quoted large over a dark foot. With its AI-generated label, how many of the
+ * page's samples it made, whether the Studio offers it (an operator preview says it does not yet), and a link down to its sample.
+ * No price: the site has no public per-model price to read, and a typed one would be a promise (CLAUDE.md #5).
  */
 function ModelTiles({ t, items, tiles }: { t: Dictionary; items: { e: ShowcaseEntry; f: ShowcaseFiles }[]; tiles: readonly string[] }) {
   const c = t.site.models;
@@ -233,17 +227,21 @@ function ModelTiles({ t, items, tiles }: { t: Dictionary; items: { e: ShowcaseEn
             const leftOut = modelLeftOut(e);
             return (
               <li key={e.modelId} className="nx-model" data-showcase-entry={e.jobId} data-model={e.modelId} data-spot>
-                {/* The model's sample, alive: its loop plays with the grid's rules (LoopClip `together`), a still drifts slowly. */}
+                {/* The model's sample fills the card, alive: its loop plays with the grid's rules (LoopClip `together`), a still drifts. */}
                 <div className="nx-model-media" data-clip={e.kind === "video" && f.clip ? "sample" : undefined}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={f.posterSm} width={e.width} height={e.height} alt="" className="nx-model-pic nx-drift-pic" loading="lazy" decoding="async" />
                   {e.kind === "video" && f.clip && <ShowcaseClip jobId={e.jobId} together />}
                 </div>
+                {/* Over the top corner of the picture, read before the name: what the picture is. */}
+                <span className="nx-ai-badge">{g.badge}</span>
+                <h3 className="nx-model-name">{e.modelName}</h3>
                 <div className="nx-model-body">
-                  {/* Drawn over the top corner of the picture (site-next.css), still read before the name. */}
-                  <span className="nx-ai-badge">{g.badge}</span>
-                  <h3 className="nx-model-name">{e.modelName}</h3>
-                  {/* Under the name: how many samples, then whether the Studio offers it. */}
+                  {/* The words the sample was made from, quoted (the browser's own quotes for the page's language), over the
+                      picture's dark foot; a picture made from a picture alone says so instead of quoting nothing. */}
+                  <p className="nx-model-kicker">{g.prompt}</p>
+                  {e.prompt.trim() ? <q className="nx-model-quote">{e.prompt.trim()}</q> : <p className="nx-model-quote" data-empty="true">{g.noPrompt}</p>}
+                  {/* How many samples, then whether the Studio offers it. */}
                   <p className="nx-model-meta">
                     <span className="nx-model-count">{fmt(c.count, { n: String(n) })}</span>
                     {leftOut && <span className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</span>}
@@ -352,32 +350,6 @@ function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mon
           <ChatCard copy={chatCopy(t, "hero", undefined, { note: t.site.stage.bareNote })} bare />
         </div>
         <CapabilityWall t={t} />
-      </div>
-    </section>
-  );
-}
-
-/**
- * The plan demo's sample thumbnail under the example topic: the first frame of the example's own 16:9 clip (a thumbnail is a still),
- * or none while its files are not here (slots.ts exampleMedia). Read on the server: the demo is a Client Component.
- */
-function tryThumb(t: Dictionary): TryThumb | null {
-  const m = exampleMedia(EXAMPLE_THUMB_JOB);
-  return m ? { src: m.files.posterSm, width: m.entry.width, height: m.entry.height, job: m.entry.jobId, alt: t.site.how.thumbAlt } : null;
-}
-
-/** The hands-on example, under the showcases: type a topic, watch a plan take shape. */
-function Try({ t, locale }: { t: Dictionary; locale: Locale }) {
-  const c = t.site.try;
-  return (
-    <section id="try" aria-labelledby="try-title" className="nx-section" data-tone="raised">
-      <div className="nx-wrap">
-        <p className="nx-label">{c.label}</p>
-        <h2 id="try-title" className="nx-h2">
-          {c.title}
-        </h2>
-        <p className="nx-sub">{c.lead}</p>
-        <TryDemo copy={c} thumb={tryThumb(t)} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
       </div>
     </section>
   );
