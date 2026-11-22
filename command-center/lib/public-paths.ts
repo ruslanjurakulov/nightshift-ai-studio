@@ -311,6 +311,11 @@ export const PUBLIC_PATHS = [
  * Top-level URL segments that are pages of their own, so no channel may take
  * one as its id — a channel called "privacy" would have its index shadowed by
  * the Privacy Policy.
+ *
+ * The database refuses the same words (migration 0217, is_reserved_channel_id),
+ * so a channel created through the API or the SQL editor cannot take one either.
+ * tests/reserved-channel-ids.test.ts holds the two lists equal: a word added
+ * here needs a migration that adds it there.
  */
 export const RESERVED_ROOT_SEGMENTS = [
   "login",
@@ -357,6 +362,10 @@ export const RESERVED_ROOT_SEGMENTS = [
   "referral",
   // The public /trust page (TRUST_PATH): a channel of that id would be shadowed by it.
   "trust",
+  // The public site's language prefixes (/ru/pricing, /uz; /en redirects to the unprefixed URL — docs/studio/S7_LOCALE_URLS.md): a channel of that id would be shadowed by them.
+  "en",
+  "ru",
+  "uz",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */
