@@ -95,10 +95,12 @@ lane and can be downloaded; it is uploaded private; refresh, provider outage, in
 all behave. Every screen on the way meets S5's bar.
 
 
+**creative_price apply order (22 Nov):** 0208 (live) → 0218 → 0219 → 0224. 0224 re-points onto 0218's body; 0218's drift guard also accepts the 0208+0224 body, so either order is safe. 0222 is live.
+
 ## Migration numbers assigned (provisional; Atlas renumbers at merge)
 | No. | Stream | What |
 | :-- | :-- | :-- |
-| 0208 | (#881) | Google country gate + image price by size |
+| 0208 | (#881) | Google country gate + image price by size (LIVE) |
 | 0211 | S1 | ai_chat_plan_leases (one plan at a time per conversation) |
 | 0212 | S2 | film sweep schedule + film_sweep_status |
 | 0213 | S4 | (only if needed) |
@@ -110,7 +112,7 @@ all behave. Every screen on the way meets S5's bar.
 | 0219 | S9 | operator-only assistant exposure for web_only models; Seedance never exposed (applied with 0218) |
 | 0220 | S2 | quote_film/start_film call voice_language_problem (after 0214 + probe sync) |
 | 0221 | S9 | oauth_creative_list (MCP list_creative_jobs) |
-| 0222 | S10 | retire gemini-omni-1.1-flash before Google re-routes it to 1.2 on 2026-12-03 |
+| 0222 | S10 | retire gemini-omni-1.1-flash before Google re-routes it to 1.2 on 2026-12-03 (LIVE 22 Nov) |
 | 0223 | S10 | Omni 1.2 registry row (hidden until probed) + EEA/CH/UK gate on minors' uploads and video edit/extend (D6, after 0208) |
 | 0224 | S10 | dated price row: gemini-3.6-flash customer price rises 2027-01-01 00:00 UTC (D7) |
 | 0225 | S2 | worker identity: table SELECT revoked, named column grants (BR-0036-01/02, BR-S-031) |
