@@ -53,7 +53,10 @@ class SelectTests(unittest.TestCase):
             self.assertEqual(named, self.clear | {mid}, mid)
             self.assertEqual([e.id for e in probe_models.select(self.entries, [mid], None, False)], [mid])
         left = {e.id for e in probe_models.shutdown_left_out(self.entries, ["veo-3.1"], None, True)}
-        self.assertEqual(left, {i for i in self.shut if not reg.get(i).terms_gate} - {"veo-3.1"})
+        # Gated or not: the Veo rows carry a terms gate since their country list (docs/GEO_BLOCK.md), and the shutdown is the
+        # reason that stays when the terms are cleared, so it is the one reported.
+        self.assertEqual(left, self.shut - {"veo-3.1"})
+        self.assertTrue(all(reg.get(i).terms_gate for i in ("veo-3.1-fast", "veo-3.1-lite")))
         self.assertEqual(probe_models.shutdown_left_out(self.entries, [], None, False), [])
 
     def test_all_skips_every_gated_model_and_keeps_every_clear_one(self):
@@ -90,7 +93,10 @@ class SelectTests(unittest.TestCase):
 
     def test_the_skipped_gated_models_are_reported(self):
         left = {e.id for e in probe_models.gated_left_out(self.entries, ["luma-ray-3.2"], None, True)}
-        self.assertEqual(left, self.gated - {"luma-ray-3.2"})
+        # A gated model past its shutdown is reported as shutdown (shutdown_left_out), not twice and not as "gated".
+        self.assertEqual(left, self.gated - self.shut - {"luma-ray-3.2"})
+        down = {e.id for e in probe_models.shutdown_left_out(self.entries, [], None, True)}
+        self.assertFalse(left & down, left & down)
         self.assertEqual(probe_models.gated_left_out(self.entries, [], None, False), [])
 
 
