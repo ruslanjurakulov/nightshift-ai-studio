@@ -56,7 +56,7 @@ export async function conversationView(supabase: SupabaseClient, s: Conversation
 async function planState(supabase: SupabaseClient, session: string) {
   const r = await supabase.rpc("ai_chat_plan_state", { p_session: session });
   if (r.error) return { state: "unknown" as const };
-  const d = r.data as { state?: unknown; reason?: unknown; expires_at?: unknown; scenario_index?: unknown; attempt?: unknown } | null;
+  const d = r.data as { state?: unknown; reason?: unknown; expires_at?: unknown; scenario_index?: unknown; proposal_id?: unknown } | null;
   if (!d || typeof d !== "object") return null;
   const state = d.state === "running" || d.state === "failed" || d.state === "done" ? d.state : "unknown";
   return {
@@ -64,5 +64,7 @@ async function planState(supabase: SupabaseClient, session: string) {
     reason: typeof d.reason === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(d.reason) ? d.reason : null,
     expires_at: typeof d.expires_at === "string" ? d.expires_at : null,
     scenario_index: typeof d.scenario_index === "number" ? d.scenario_index : null,
+    // Which proposal it planned (its assistant message's id): a failure is the panel's news only while that proposal is on screen.
+    proposal_id: typeof d.proposal_id === "number" ? d.proposal_id : null,
   };
 }

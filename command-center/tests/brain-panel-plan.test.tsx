@@ -231,6 +231,14 @@ describe("Nightshift AI panel: the plan's lease (0211), followed across tabs and
     expect(screen.getByRole("button", { name: en.retry })).toBeTruthy();
   });
 
+  it("an older proposal's failed plan is not news once new scenarios are on screen", async () => {
+    // The proposal on screen is message 1; the lease planned proposal 0 (an earlier one).
+    extra.plan = { state: "failed", reason: "vendor_error", expires_at: new Date().toISOString(), scenario_index: 0, proposal_id: 0 };
+    mountProposal();
+    await screen.findByText("Alpha");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("L7: a failure no new attempt can change offers no Retry", async () => {
     for (const reason of ["not_plannable", "vendor_auth", "not_configured"]) {
       extra.plan = { state: "failed", reason, expires_at: new Date().toISOString(), scenario_index: 0 };

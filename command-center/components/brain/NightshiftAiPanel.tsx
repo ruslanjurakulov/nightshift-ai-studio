@@ -63,14 +63,14 @@ function readModels(v: unknown): FilmModels | null {
 /** A failed plan's reasons a new attempt cannot change (Lens L7): the outline cannot fit, the model is not set up or not allowed. */
 const NO_RETRY_REASONS = new Set(["not_plannable", "vendor_auth", "not_configured"]);
 /** 0211's lease, as the history read says it (lib/server/brain/conversation.ts planState). `until` is when a running one ends. */
-type PlanLease = { state: "running" | "failed" | "done" | "unknown"; reason: string | null; until: number; index: number | null };
+type PlanLease = { state: "running" | "failed" | "done" | "unknown"; reason: string | null; until: number; index: number | null; proposal: number | null };
 function readLease(v: unknown): PlanLease | null {
   if (!v || typeof v !== "object") return null;
-  const o = v as { state?: unknown; reason?: unknown; expires_at?: unknown; scenario_index?: unknown };
+  const o = v as { state?: unknown; reason?: unknown; expires_at?: unknown; scenario_index?: unknown; proposal_id?: unknown };
   const state = o.state === "running" || o.state === "failed" || o.state === "done" ? o.state : "unknown";
   const until = typeof o.expires_at === "string" ? Date.parse(o.expires_at) : NaN;
   return { state, reason: typeof o.reason === "string" ? o.reason : null, until: Number.isFinite(until) ? until : 0,
-           index: typeof o.scenario_index === "number" ? o.scenario_index : null };
+           index: typeof o.scenario_index === "number" ? o.scenario_index : null, proposal: typeof o.proposal_id === "number" ? o.proposal_id : null };
 }
 /** The history route's answer, with whether the same request could go differently a moment later (a 503, a dropped connection). */
 type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; message: string; retry: boolean };
@@ -594,7 +594,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       if (lease?.state === "running" && lease.until > Date.now()) {
         const index = lease.index ?? 0;
         void waitRef.current(session, { title: outlines[index]?.title ?? "", index, until: lease.until }, ctl.signal);
-      } else if (lease?.state === "failed" && step === "proposing" && !inFlight.current) {
+      } else if (lease?.state === "failed" && step === "proposing" && !inFlight.current
+                 // Only for the proposal on screen: an older one's failure is not news once new scenarios were asked for.
+                 && (lease.proposal === null || [...messages].reverse().find((m) => m.role === "assistant")?.key === `m${lease.proposal}`)) {
         // A plan that failed while this tab was not looking: said at once, with its reason, never a silent empty choice.
         const reason = lease.reason ?? "unavailable";
         setProblem({ text: explain(502, { error: "plan_failed", reason }), code: "plan_failed",
