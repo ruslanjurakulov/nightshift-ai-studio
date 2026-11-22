@@ -1033,6 +1033,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
     with psycopg.connect(db.dsn, autocommit=True) as c:
         sec_db.take_off_0174(c)
         sec_db.take_off_0188(c)  # 0188 sits on 0125's sellable_models and 0124's api_creative_model_ok
+    db.su(sec_db.rollback_0218_body())  # 0218 sits on 0159's creative_price: off first
     db.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
     db.su(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
     db.su(sec_db.rollback_0155_body())
@@ -1052,6 +1053,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
         db.su(sec_db.MIGRATION_0155.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))  # and 0159 back on it
+        db.su(sec_db.MIGRATION_0218.read_text(encoding="utf-8"))  # and 0218 back on 0159
         with psycopg.connect(db.dsn, autocommit=True) as c:
             sec_db.put_back_0188(c)
             sec_db.put_back_0174(c)  # and 0174 last, on 0124's api_creative_refusal again

@@ -196,6 +196,7 @@ def test_without_0159_the_same_job_is_queued_and_every_other_answer_is_0156s(con
                (who, org, UNSTATED, _params(duration_s=6), "t2v")]
         with_0159 = [_quote(conn, *c) for c in others + bad]
         _become(conn, None)
+        conn.execute(sec_db.rollback_0218_body())  # 0218 sits on 0159's creative_price: off first
         conn.execute(sec_db.rollback_0159_body())
         assert sec_db.has_0156(conn)
         without = [_quote(conn, *c) for c in others + bad]

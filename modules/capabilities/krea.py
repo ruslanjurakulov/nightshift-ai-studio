@@ -91,6 +91,8 @@ class KreaImageAdapter(SafeResultMixin, HttpAdapter):
     """Krea 3 text-to-image and edit, one image per job."""
 
     key = "image.krea"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("KREA_API_KEY",)
     base_url_env = "KREA_BASE_URL"
     default_base_url = "https://api.krea.ai"

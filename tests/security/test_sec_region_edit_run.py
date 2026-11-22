@@ -215,9 +215,12 @@ def test_every_other_parameter_next_to_regions_is_refused(db, extra):
 
 
 def test_unknown_parameter_keys_are_still_refused_without_regions(db):
-    assert problem(db, "edit", {"prompt": "x", "source_asset_id": db.src, "foo": 1}) == "unknown parameter foo"
-    assert problem(db, "t2i", {"prompt": "x", "bar": 1}) == "unknown parameter bar"
-    assert problem(db, "edit", P(db, 1, foo=1)) == "unknown parameter foo"
+    # 0218: refused by how many and which keys are known, never by the caller's key (it is the caller's text, not ours to repeat).
+    for cap, params in (("edit", {"prompt": "x", "source_asset_id": db.src, "foo": 1}), ("t2i", {"prompt": "x", "bar": 1}),
+                        ("edit", P(db, 1, foo=1))):
+        msg = problem(db, cap, params)
+        assert msg.startswith("unknown parameter (1); allowed: ") and "regions, region_feather" in msg, msg
+        assert "foo" not in msg and "bar" not in msg, msg
 
 
 @pytest.mark.parametrize("feather", [1, 9, 0, -1, 4.5, "4", None, True, [4], 100])
@@ -339,6 +342,7 @@ def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0126(db):
     diffs = []
     # 0156 replaced creative_params_problem on 0126's body (the resolution words, which this corpus touches with "9p"): judge 0126's own
     # body here, and put 0156 back after.
+    db.su(sec_db.rollback_0218_body())  # 0218 sits on 0159's creative_price: off first
     db.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
     db.su(sec_db.rollback_0156_body())
     try:
@@ -346,6 +350,7 @@ def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0126(db):
     finally:
         db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))  # and 0159 back on it
+        db.su(sec_db.MIGRATION_0218.read_text(encoding="utf-8"))  # and 0218 back on 0159
     assert not diffs, diffs[:5]
 
 
@@ -787,6 +792,7 @@ def test_a_replay_changes_nothing_and_a_foreign_body_is_refused(db):
     try:
         text = MIGRATION.read_text(encoding="utf-8")
         # 0156 sits on 0126's creative_params_problem, and 0126's guard refuses any other body: it comes off first.
+        d.su(sec_db.rollback_0218_body())  # 0218 sits on 0159's creative_price: off first
         d.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         d.su(sec_db.rollback_0156_body())
         mine = _md5s(d)  # the lab applied 0126 already
@@ -808,6 +814,7 @@ def test_the_rollback_restores_the_three_bodies_refuses_while_a_region_edit_is_i
     name, d = _fresh(admin, "roll")
     try:
         # 0156 sits on 0126's creative_params_problem, and 0126's rollback refuses any other body: it comes off first.
+        d.su(sec_db.rollback_0218_body())  # 0218 sits on 0159's creative_price: off first
         d.su(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         d.su(sec_db.rollback_0156_body())
         mine = _md5s(d)
