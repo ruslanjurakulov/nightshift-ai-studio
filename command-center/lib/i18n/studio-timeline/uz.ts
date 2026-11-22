@@ -104,6 +104,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
     cap_exceeded: "Loyiha ish maydoni bitta loyihaga ruxsat bergan narxdan qimmat.",
     limit_reached: "Bu ish maydonining boshqa loyihasi ishlayapti. U tugashini kuting.",
     run_slots_full: "Tarifingizdagi barcha parallel ishga tushirishlar band.",
+    not_a_member: "Pullik loyihani faqat shu ish maydoni aʼzolari boshlay oladi. Ish maydoni egasidan sizni aʼzo sifatida qoʻshishini soʻrang.",
     other: "Server hozir bu loyihani boshlamaydi.",
   },
   startFailed: {
@@ -173,6 +174,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
     noQuote: "Bu loyihaning hali narxi yoʻq, shuning uchun uni boshlab boʻlmaydi.",
     getPrice: "Narxni bilish",
     getNewPrice: "Yangi narxni bilish",
+    openToFix: "Tuzatish uchun loyihani ochish",
     checkAgain: "Qayta tekshirish",
     tryAgain: "Qayta urinish",
     retryIn: "Taxminan {n} daqiqadan soʻng qayta urinib koʻring.",
@@ -198,9 +200,12 @@ export const studioTimelineUz: StudioTimelineDictionary = {
       channel_voice_not_priced: "Kanal ovozining serverda narxi yoʻq, shuning uchun loyihani baholab boʻlmaydi.",
       no_scenes: "Bu loyihada hali sahnalar yoʻq.",
       unpriced: "Bu loyiha qatorining bugun serverda narxi yoʻq.",
+      voice_language_unsupported: "Ovoz modeli bu loyiha tilida gapirmaydi. Loyihada shu tilda gapiradigan ovoz modelini tanlang.",
+      voice_language_unknown: "Ovoz modeli bu loyiha tilida gapirishini tasdiqlay olmadik. Loyihada tillari koʻrsatilgan ovoz modelini tanlang.",
       other: "Bu loyiha qatorini baholab boʻlmadi.",
     },
     errors: {
+      not_a_member: "Pullik loyihani faqat shu ish maydoni aʼzolari boshlay oladi. Ish maydoni egasidan sizni aʼzo sifatida qoʻshishini soʻrang.",
       rate_limited: "Qisqa vaqtda juda koʻp boshlash. Kutib, qayta urinib koʻring. Hech narsa band qilinmadi.",
       rate_limit_unavailable: "Server hozir limitlarni tekshira olmadi. Birozdan soʻng urinib koʻring. Hech narsa band qilinmadi.",
       idempotency_conflict: "Bu bosish boshqa narx uchun ishlatilgan. Yangi narxni biling. Hech narsa band qilinmadi.",

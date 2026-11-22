@@ -14,7 +14,7 @@ import { coerceQuote, startOnce, type FilmQuote, type QuoteBlock } from "@/lib/s
 export type BlockReason =
   | { kind: "block"; block: QuoteBlock }
   /** quote_film answered, but a line has no price: its own word (model_not_set, model_not_available…), not "pricing is not live". */
-  | { kind: "unpriced"; word: string | null }
+  | { kind: "unpriced"; word: string | null; detail?: string | null }
   | { kind: "not_admin" }
   | { kind: "no_quote" };
 
@@ -81,6 +81,10 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   style_unavailable: "fix_and_requote",
   capability_not_supported: "fix_and_requote",
   unpriced: "fix_and_requote",
+  // S6 (#915, 0214 voice_language_problem): the voice model does not speak the film's language, or it could not be confirmed. Only
+  // the person picks another voice model; nothing is swapped (rule 4).
+  voice_language_unsupported: "fix_and_requote",
+  voice_language_unknown: "fix_and_requote",
   limit_reached: "wait",
   rate_limited: "wait",
   rate_limit_unavailable: "wait",
@@ -103,6 +107,8 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   not_available: "none",
   scene_has_takes: "none",
   adult_only_service: "none",
+  // 0215: only a member may start a paid project; there is nothing to retry, only someone to ask.
+  not_a_member: "none",
 };
 
 const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
@@ -139,6 +145,8 @@ export function blockRemedy(r: BlockReason): BlockRemedy {
       return "plans";
     case "limit_reached":
       return "recheck";
+    case "not_a_member":
+      return "none";
     default:
       return "support";
   }
@@ -167,7 +175,7 @@ const WORD_RE = /^[a-z0-9_]{1,64}$/;
 export function stateOfQuote(q: FilmQuote | null): Extract<FilmStartState, { at: "idle" | "blocked" }> {
   if (!q) return { at: "blocked", quote: null, reasons: [{ kind: "no_quote" }] };
   const reasons: BlockReason[] = q.blockedBy.map((block) => ({ kind: "block", block }));
-  if (!q.priced) reasons.push({ kind: "unpriced", word: q.refusal });
+  if (!q.priced) reasons.push({ kind: "unpriced", word: q.refusal, detail: q.refusalDetail });
   else if (!q.mayStart) reasons.push({ kind: "not_admin" });
   if (q.startable && q.quoteId && q.total !== null && reasons.length === 0) return { at: "idle", quote: q };
   if (reasons.length === 0) reasons.push({ kind: "block", block: "other" });

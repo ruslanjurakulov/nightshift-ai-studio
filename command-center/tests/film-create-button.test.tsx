@@ -228,6 +228,71 @@ describe("FilmCreateButton", () => {
     expect(key()!.getAttribute("aria-describedby")).toBe(screen.getByTestId("film-create-note").id);
   });
 
+  it("a voice that does not speak the project's language says so, names the database's finding, and offers Check again", () => {
+    mount(q({ priced: false, total: null, quote_id: null, startable: false, refusals: [{ reason: "voice_language_unsupported", detail: "Eleven v3 does not speak Uzbek" }] }));
+    const line = screen.getByTestId("film-create-reasons").textContent;
+    expect(line).toContain(k.unpriced.voice_language_unsupported);
+    expect(screen.getByTestId("film-create-line-detail").textContent).toBe("Eleven v3 does not speak Uzbek");
+    expect(screen.getByRole("button", { name: k.checkAgain })).toBeTruthy();
+    expect(startRemedy("voice_language_unknown")).toBe("fix_and_requote");
+  });
+
+  describe("fixHref: a refusal fixed in the project links to the editor first (S1: Check again alone loops)", () => {
+    const FIX = "/synthetic-channel/studio?film=synthetic";
+    const withFix = (quote: FilmQuote, fixHref?: string) =>
+      render(<FilmCreateButton filmId="synthetic" quote={quote} onStarted={started} requote={async () => quote} fixHref={fixHref} />);
+
+    it("a blocked model_not_set: Open the project is the primary, Check again the secondary", () => {
+      withFix(q({ priced: false, total: null, quote_id: null, startable: false, refusals: [{ reason: "model_not_set" }] }), FIX);
+      const fix = screen.getByRole("link", { name: k.openToFix });
+      expect(fix.getAttribute("href")).toBe(FIX);
+      expect(fix.hasAttribute("data-primary")).toBe(true);
+      expect(fix.className).toContain("min-h-11");
+      const again = screen.getByRole("button", { name: k.checkAgain });
+      expect(again.hasAttribute("data-primary")).toBe(false);
+    });
+
+    it("a start refused for reference_missing: the editor link replaces the key, Check again beside it", async () => {
+      answers = [{ ok: false, reason: "reference_missing" }];
+      withFix(q(), FIX);
+      fireEvent.click(screen.getByTestId("film-create-key"));
+      fireEvent.click(await screen.findByTestId("film-create-confirm-key"));
+      const fix = await screen.findByRole("link", { name: k.openToFix });
+      expect(fix.getAttribute("href")).toBe(FIX);
+      expect(screen.queryByTestId("film-create-key")).toBeNull();
+      expect(screen.getByRole("button", { name: k.checkAgain })).toBeTruthy();
+      await waitFor(() => expect(document.activeElement).toBe(fix));
+    });
+
+    it("without fixHref nothing changes: Check again for the blocked line, Get a new price for the refusal", async () => {
+      answers = [{ ok: false, reason: "reference_missing" }];
+      const view = withFix(q({ priced: false, total: null, quote_id: null, startable: false, refusals: [{ reason: "model_not_set" }] }));
+      expect(screen.queryByRole("link", { name: k.openToFix })).toBeNull();
+      expect(screen.getByRole("button", { name: k.checkAgain })).toBeTruthy();
+      view.unmount();
+      withFix(q());
+      fireEvent.click(screen.getByTestId("film-create-key"));
+      fireEvent.click(await screen.findByTestId("film-create-confirm-key"));
+      await waitFor(() => expect(screen.getByTestId("film-create-key").textContent).toBe(k.getNewPrice));
+      expect(screen.queryByRole("link", { name: k.openToFix })).toBeNull();
+    });
+  });
+
+  it("not_a_member, blocked or refused, says who can start it and offers no retry", async () => {
+    const blocked = mount(q({ startable: false, blocked_by: [{ reason: "not_a_member" }] }));
+    expect(screen.getByTestId("film-create-reasons").textContent).toBe(c.blocked.not_a_member);
+    expect(blocked.key()!.disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: k.checkAgain })).toBeNull();
+    expect(screen.queryByRole("button", { name: k.getNewPrice })).toBeNull();
+    blocked.view.unmount();
+    answers = [{ ok: false, reason: "not_a_member" }];
+    const { key } = mount(q());
+    await pressAndConfirm(key());
+    await waitFor(() => expect(screen.getByTestId("film-create-refusal").textContent).toBe(k.errors.not_a_member));
+    expect(key()).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("every blocked reason has one way forward", () => {
     expect(blockRemedy({ kind: "no_quote" })).toBe("get_price");
     expect(blockRemedy({ kind: "block", block: "cap_exceeded" })).toBe("plans");
@@ -453,6 +518,11 @@ function wordsTheStartCanAnswer(): string[] {
     for (const m of last!.matchAll(/creative_refuse\('([a-z_]+)'/g)) words.add(m[1]);
   }
   for (const e of FILM_ERRORS) words.add(e);
+  // S6's #915 adds these to FILM_ERRORS (0214's voice_language_problem); pinned here until it is on main, so they are mapped already.
+  words.add("voice_language_unsupported");
+  words.add("voice_language_unknown");
+  // 0215 (not on main yet): a platform admin who is not a member of the workspace cannot spend its credits.
+  words.add("not_a_member");
   return [...words].sort();
 }
 

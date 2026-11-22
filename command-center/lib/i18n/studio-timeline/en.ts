@@ -111,6 +111,7 @@ export const studioTimelineEn = {
     cap_exceeded: "This project costs more than the workspace allows one project to cost.",
     limit_reached: "Another project of this workspace is running. Wait for it to finish.",
     run_slots_full: "All of your plan's parallel runs are in use.",
+    not_a_member: "Only members of this workspace can start a paid project. Ask the workspace's owner to add you as a member.",
     other: "The server will not start this project right now.",
   },
   startFailed: {
@@ -154,6 +155,7 @@ export const studioTimelineEn = {
     noQuote: "There is no price for this project yet, so it cannot start.",
     getPrice: "Get a price",
     getNewPrice: "Get a new price",
+    openToFix: "Open the project to fix it",
     checkAgain: "Check again",
     tryAgain: "Try again",
     retryIn: "Try again in about {n} min.",
@@ -179,10 +181,13 @@ export const studioTimelineEn = {
       channel_voice_not_priced: "The channel's narration voice has no price on the server, so the project cannot be priced.",
       no_scenes: "This project has no scenes yet.",
       unpriced: "A line of this project has no price on the server today.",
+      voice_language_unsupported: "The voice model does not speak this project's language. Choose a voice model that does, in the project.",
+      voice_language_unknown: "We could not confirm that the voice model speaks this project's language. Choose a voice model whose languages are listed, in the project.",
       other: "A line of this project could not be priced.",
     },
     // Start-specific words for every refusal the start and quote paths can answer that startFailed does not already say.
     errors: {
+      not_a_member: "Only members of this workspace can start a paid project. Ask the workspace's owner to add you as a member.",
       rate_limited: "Too many starts in a short time. Wait, then try again. Nothing was held.",
       rate_limit_unavailable: "The server could not check its limits just now. Try again in a moment. Nothing was held.",
       idempotency_conflict: "This press was already used for another price. Get a new price. Nothing was held.",
