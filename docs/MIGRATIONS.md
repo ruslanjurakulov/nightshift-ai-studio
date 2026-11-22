@@ -2445,3 +2445,19 @@ video is cross-posted.
   first: `select count(*) from public.videos where published_at is not null and gate_verdict is null;`.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
+
+## Retire gemini-omni-1.1-flash (0222)
+
+0222 (`0222_retire_gemini_omni_1_1.sql`, number from Atlas, stream S10) sets `model_registry.availability = 'disabled'` for
+`gemini-omni-1.1-flash`. It writes nothing else.
+
+- **Why.** Google's deprecations page (read 2026-11-22; `docs/studio/S10_GOOGLE_MODELS.md`) says this endpoint is routed to
+  `gemini-omni-1.2-flash` from 2026-12-03 and billed at 1.2's rates. Selling "Omni 1.1" after that would be a substitute the vendor
+  makes silently (CLAUDE.md rule 4).
+- **Why not just the shutdown date.** The registry's `shutdown.on` (2026-12-03) already stops the sale that day (0125). But the
+  schema keeps it the vendor's date, never ours. `disabled` is the one state that is permanent: every open migration refuses to
+  touch it, `sellable_models` and `creative_price` never offer it, and an operator preview needs `hidden`.
+- **Not added.** `gemini-omni-1.2-flash` waits for the owner's terms decisions and a real probe.
+- **Before the sync.** A missing row is only a NOTICE; apply the file again after the registry sync.
+- **Undo.** `docs/sql/rollback_0222_retire_gemini_omni_1_1.sql` (owner-applied) sets the row back to `hidden`. That is still not sold.
+- **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
