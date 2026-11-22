@@ -1,20 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { takeLandingIdea } from "@/lib/brain/handoff";
 import { pluralText } from "@/lib/plural";
 import { runLink, type Brief, type BrainCard, type BrainSlots, type Scenario } from "@/lib/brain/logic";
+import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
+import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
+import "./nightshift-ai-panel.css";
 
 /**
- * Nightshift AI, docked on the left of the Studio canvas (docs/studio/NIGHTSHIFT_AI.md). It talks only to /api/brain (the browser
- * never reaches a vendor). Its buttons ask questions, pick answers and choose a scenario; the one that spends is the existing one:
+ * Nightshift AI, docked on the left of the Studio canvas (docs/studio/NIGHTSHIFT_AI.md), drawn in the same shell as the owner's
+ * (components/chat): the bare N, "Salom, {name}", the pill composer, Copy and the thumbs, the aurora while an answer is on its way,
+ * and the person's own stored conversations (0199) in the history drawer. The shell draws; this file owns the route, the meter and
+ * every refusal, as the owner's console does for its own.
+ *
+ * It talks only to /api/brain (the browser never reaches a vendor) and lists and opens conversations only through
+ * /api/brain/history, which pins them to this workspace, this channel and this person. Its buttons ask questions, pick answers and
+ * choose a scenario; the one that spends is the existing one:
  *   - long: a LINK to the Run now form, prefilled — that form's own priced button holds and starts (CLAUDE.md rule 3);
  *   - short: "Create — N credits" posts to the film route's start (/api/films/<id>/start) at the quote the server read, with one
  *     idempotency key per press; the database re-prices and refuses with its own reason.
  * Every price shown is the server's; with none, no number is shown (rule 5). Every BRIEF change is announced to the canvas (S6b) with
  * the browser event `nightshift:brain-brief`.
+ *
+ * No Regenerate: the conversation is stored turn by turn and each turn moves the plan on, so an answer cannot be swapped for another
+ * (asking again would store the question twice and answer it from the next step). Rename and delete are not offered either: 0199
+ * has no function for them, and the panel shows nothing that does not work.
  */
 
 type Plan = { used: number | null; limit: number | null; trial_left: number | null; max_input_chars: number };
@@ -32,10 +46,35 @@ type Problem = { text: string; retry: (() => void) | null } | null;
 const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long"];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
 const pressId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+const HISTORY_ROUTE = "/api/brain/history";
+const INPUT_ID = "ns-ai-input";
 
-export function NightshiftAiPanel({ channelId, channelSlug, initialSession, initialPrompt, fresh = false, takeIdea = false }: {
+type StoredMessage = { id: number; role: "user" | "assistant"; content: string; payload?: { scenarios?: Scenario[]; factsState?: string } | null };
+type PairedTurn = { key: string; q: string; a: string; msg: Msg | null };
+
+/** The stored messages as the shell's question-and-answer turns. A conversation can open with the assistant (no question above it),
+ *  and a question whose answer was never stored keeps a line saying so, rather than vanishing or borrowing the next answer. */
+export function pairTurns(messages: Msg[], noAnswer: string): PairedTurn[] {
+  const out: PairedTurn[] = [];
+  let q: Msg | null = null;
+  for (const m of messages) {
+    if (m.role === "user") {
+      if (q) out.push({ key: `${q.key}-none`, q: q.content, a: noAnswer, msg: null });
+      q = m;
+    } else {
+      out.push({ key: m.key, q: q?.content ?? "", a: m.content, msg: m });
+      q = null;
+    }
+  }
+  if (q) out.push({ key: `${q.key}-none`, q: q.content, a: noAnswer, msg: null });
+  return out;
+}
+
+export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null, initialSession, initialPrompt, fresh = false, takeIdea = false }: {
   channelId: string | null;
   channelSlug: string;
+  /** The first name the greeting uses (lib/owner-console/greeting.ts firstNameOf); none: a plain hello, never an address. */
+  greetingName?: string | null;
   initialSession?: string | null;
   initialPrompt?: string | null;
   fresh?: boolean;
@@ -44,27 +83,40 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   const { t, fmt, locale } = useI18n();
   const c = t.aiChat;
   const [load, setLoad] = useState<State>({ state: "loading" });
-  const [open, setOpen] = useState(true);
-  const [session, setSession] = useState<string | null>(null);
+  const [session, setSessionState] = useState<string | null>(null);
+  // A mirror of `session` for the closures a Retry keeps: one made before a Start returned its id must still continue that chat.
+  const sessionRef = useRef<string | null>(null);
+  const setSession = useCallback((sid: string | null) => {
+    sessionRef.current = sid;
+    setSessionState(sid);
+  }, []);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [card, setCard] = useState<BrainCard | null>(null);
   const [brief, setBrief] = useState<Brief | null>(null);
   const [step, setStep] = useState<string>("asking");
   const [film, setFilm] = useState<FilmReady | null>(null);
-  const [text, setText] = useState(initialPrompt ?? "");
-  const [own, setOwn] = useState("");
+  const [prefill, setPrefill] = useState<string | null>(initialPrompt ?? null);
   const [busy, setBusy] = useState(false);
+  /** The words in flight, or the ones whose turn failed: drawn as the person's bubble under the thread until answered. */
+  const [asking, setAsking] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem>(null);
   const [capped, setCapped] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [opening, setOpening] = useState(false);
+  // A ref, not state: two presses before the re-render must not both pass (each would be a turn on the meter).
+  const inFlight = useRef(false);
   const idem = useRef<string | null>(null);
-  const listRef = useRef<HTMLOListElement>(null);
-  const panelRef = useRef<HTMLElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  // Set when a turn starts with focus inside the panel. The box is disabled for the turn, which drops focus to <body>, so it is given
-  // back once the turn is over. Never set when focus was elsewhere: nothing here may take focus from the rest of the page.
-  const returnFocus = useRef(false);
-  const noteFocus = () => {
-    returnFocus.current = !!panelRef.current && panelRef.current.contains(document.activeElement);
+  const keySeq = useRef(0);
+  const localKey = (p: string) => `${p}${Date.now().toString(36)}-${++keySeq.current}`;
+  // The shell's ids are numbers, stable per message: a thumb given to one answer stays on that answer, never on the next chat's.
+  const turnIds = useRef(new Map<string, number>());
+  const idFor = (key: string) => {
+    let id = turnIds.current.get(key);
+    if (id === undefined) {
+      id = turnIds.current.size + 1;
+      turnIds.current.set(key, id);
+    }
+    return id;
   };
 
   const announce = useCallback((sid: string, b: Brief | null) => {
@@ -78,19 +130,47 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     if (b) setBrief(b);
   }, []);
 
-  const loadSession = useCallback(async (sid: string) => {
-    const res = await fetch(`/api/brain/session/${encodeURIComponent(sid)}`, { cache: "no-store" });
-    if (!res.ok) return false;
-    const d = await res.json();
-    setSession(sid);
-    setStep(d.session?.step ?? "asking");
-    setCard(d.card ?? null);
-    setBrief(d.brief && d.brief.version === 1 ? d.brief : null);
-    setMessages((d.messages ?? []).map((m: { id: number; role: "user" | "assistant"; content: string; payload?: { scenarios?: Scenario[]; factsState?: string } | null }) => ({
-      key: `m${m.id}`, role: m.role, content: m.content, scenarios: m.payload?.scenarios, factsState: m.payload?.factsState,
-    })));
-    return true;
-  }, []);
+  const historyUrl = useCallback(
+    (extra: string) => `${HISTORY_ROUTE}?${[channelId ? `channel=${encodeURIComponent(channelId)}` : "", extra].filter(Boolean).join("&")}`,
+    [channelId],
+  );
+
+  const historyCall = useCallback(
+    async <T,>(url: string, read: (b: Record<string, unknown>) => T): Promise<HistoryResult<T>> => {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        if (res.ok && body) return { ok: true, value: read(body) };
+        const err = typeof body?.error === "string" ? body.error : "";
+        if (err === "gone") return { ok: false, gone: true, message: c.history.gone };
+        if (res.status === 401) return { ok: false, message: c.errors.session_ended };
+        if (err === "not_enabled") return { ok: false, message: c.errors.not_enabled };
+        return { ok: false, message: c.history.failed };
+      } catch {
+        return { ok: false, message: c.history.network };
+      }
+    },
+    [c],
+  );
+
+  /** One of this person's conversations here, through the scoped history route; switching to another clears the last one's film. */
+  const loadSession = useCallback(
+    async (sid: string): Promise<HistoryResult<null>> => {
+      const r = await historyCall(historyUrl(`session=${encodeURIComponent(sid)}`), (b) => b);
+      if (!r.ok) return r;
+      const d = r.value as { session?: { step?: string }; card?: BrainCard | null; brief?: Brief | null; messages?: StoredMessage[] };
+      if (sessionRef.current !== sid) setFilm(null);
+      setSession(sid);
+      setStep(d.session?.step ?? "asking");
+      setCard(d.card ?? null);
+      setBrief(d.brief && d.brief.version === 1 ? d.brief : null);
+      setMessages((d.messages ?? []).map((m) => ({
+        key: `m${m.id}`, role: m.role, content: m.content, scenarios: m.payload?.scenarios, factsState: m.payload?.factsState,
+      })));
+      return { ok: true, value: null };
+    },
+    [historyCall, historyUrl, setSession],
+  );
 
   const read = useCallback(async () => {
     setLoad({ state: "loading" });
@@ -105,6 +185,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
       setLoad({ state: "ready", plan: d.plan, model: d.model, canEdit: d.canEdit === true, canRun: d.canRun === true });
       setCapped(d.plan?.limit !== null && typeof d.plan?.used === "number" && d.plan.used >= d.plan.limit);
       const sid = initialSession || (fresh ? null : d.session?.id) || null;
+      // A link to a conversation that is not this person's here (another workspace or channel) opens nothing: a new chat.
       if (sid) await loadSession(sid);
     } catch {
       setLoad({ state: "failed" });
@@ -124,20 +205,12 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
       store = null;
     }
     const idea = takeLandingIdea(store);
-    if (idea) setText((cur) => cur || idea);
+    if (idea) setPrefill(idea);
     const u = new URL(window.location.href);
     u.searchParams.delete("idea");
     u.searchParams.delete("ai");
     window.history.replaceState(null, "", u.toString());
   }, [takeIdea]);
-  useEffect(() => {
-    if (busy || !returnFocus.current) return;
-    returnFocus.current = false;
-    inputRef.current?.focus();
-  }, [busy]);
-  useEffect(() => {
-    listRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
-  }, [messages.length, card]);
 
   const explain = (status: number, d: Record<string, unknown>): string => {
     const e = typeof d.error === "string" ? d.error : "";
@@ -165,75 +238,89 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   const post = async (body: Record<string, unknown>) => {
     const res = await fetch("/api/brain/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const d = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (d.quota && typeof d.quota === "object" && load.state === "ready") {
+    if (d.quota && typeof d.quota === "object") {
       const q = d.quota as { used: number; limit: number | null; trial_left?: number | null };
-      setLoad({ ...load, plan: { ...load.plan, used: q.used, limit: q.limit, trial_left: q.trial_left ?? null } });
+      setLoad((cur) => (cur.state === "ready" ? { ...cur, plan: { ...cur.plan, used: q.used, limit: q.limit, trial_left: q.trial_left ?? null } } : cur));
     }
     return { res, d };
   };
 
-  const takeTurn = (d: Record<string, unknown>, sid: string) => {
-    setStep(String(d.step ?? "asking"));
-    setCard((d.card as BrainCard | null) ?? null);
-    setMessages((m) => [...m, { key: `a${Date.now()}`, role: "assistant", content: String(d.reply ?? ""), scenarios: (d.scenarios as Scenario[]) ?? [], factsState: d.factsState as string }]);
-    announce(sid, (d.brief as Brief) ?? null);
+  // A chooser or Create button is disabled for its turn, which drops focus to <body>: it goes to the box once the turn is over, and
+  // only then (focus a person put elsewhere on the page stays there).
+  const refocus = () => {
+    if (typeof document === "undefined" || document.activeElement !== document.body) return;
+    (document.getElementById(INPUT_ID) as HTMLTextAreaElement | null)?.focus();
   };
 
-  const run = async (label: string, body: Record<string, unknown>, again: () => void) => {
-    if (busy) return;
-    noteFocus();
+  /** One turn. `label` is the person's words for it (their message, the option they picked); it stays on screen if the turn fails. */
+  const run = async (label: string, body: Record<string, unknown>): Promise<boolean> => {
+    if (inFlight.current) return false;
+    inFlight.current = true;
     setBusy(true);
     setProblem(null);
+    setAsking(label || null);
     try {
-      if (label) setMessages((m) => [...m, { key: `u${Date.now()}`, role: "user", content: label }]);
       const { res, d } = await post(body);
+      const sid = (d.session as { id?: string } | undefined)?.id ?? sessionRef.current;
       if (res.status === 409 && d.error === "duplicate_request") {
         // That press already went through (a network retry): show what the server has, add nothing.
-        const sid = (d.session as { id?: string } | undefined)?.id ?? session;
         if (sid) await loadSession(sid);
-        return;
+        setAsking(null);
+        return true;
+      }
+      // A chat the server just created is listed straight away.
+      const isNew = !!sid && sid !== sessionRef.current;
+      if (isNew) {
+        setSession(sid);
+        setReloadKey((k) => k + 1);
       }
       if (!res.ok) {
         if (d.error === "chat_daily_cap") setCapped(true);
-        const sid = (d.session as { id?: string } | undefined)?.id ?? session;
-        if (sid && !session) setSession(sid);
         const retryable = res.status !== 401 && !NO_RETRY.includes(String(d.error));
         // A turn that was taken (the server reports its quota) already stored the message: retry it as it is, never a second copy.
-        // One that was not is sent again without a second bubble: the person's words are already on screen.
+        // One that was not is sent again with the same press id: a press that did land is answered as a duplicate.
         const taken = !!d.quota && !!sid;
-        setProblem({ text: explain(res.status, d), retry: retryable ? (taken ? () => void run("", { action: "retry", session: sid }, again) : () => void run("", body, again)) : null });
-        return;
+        setProblem({ text: explain(res.status, d), retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null });
+        return false;
       }
-      const sid = (d.session as { id?: string } | undefined)?.id ?? session;
-      if (sid && !session) setSession(sid);
-      if (d.reply && sid) takeTurn(d, sid);
-      else if (sid) announce(sid, null);
+      if (d.reply && sid) {
+        setStep(String(d.step ?? "asking"));
+        setCard((d.card as BrainCard | null) ?? null);
+        setMessages((m) => [
+          ...m,
+          ...(label ? [{ key: localKey("u"), role: "user" as const, content: label }] : []),
+          { key: localKey("a"), role: "assistant" as const, content: String(d.reply ?? ""), scenarios: (d.scenarios as Scenario[]) ?? [], factsState: d.factsState as string },
+        ]);
+        announce(sid, (d.brief as Brief) ?? null);
+      } else if (sid) announce(sid, null);
+      setAsking(null);
+      return true;
     } catch {
-      setProblem({ text: c.errors.unavailable, retry: () => void run("", body, again) });
+      setProblem({ text: c.errors.unavailable, retry: () => void run(label, body) });
+      return false;
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
-  const send = (raw: string) => {
-    const words = raw.trim();
-    if (!words || capped) return;
-    setText("");
-    const request_id = pressId();
-    const body = session ? { action: "turn", session, text: words, request_id } : { action: "start", channel: channelId, prompt: words, request_id };
-    void run(words, body, () => send(words));
+  const answer = (choice: number | null, ownWords = ""): Promise<boolean> => {
+    if (!card || !session) return Promise.resolve(false);
+    const label = choice ? card.options[choice - 1] : ownWords.trim();
+    if (!label) return Promise.resolve(false);
+    return run(label, { action: "answer", session, card: card.id, request_id: pressId(), ...(choice ? { choice } : { own: label }) });
   };
-  const answer = (choice: number | null) => {
-    if (!card || !session) return;
-    const label = choice ? card.options[choice - 1] : own.trim();
-    if (!label) return;
-    setOwn("");
-    const body = { action: "answer", session, card: card.id, request_id: pressId(), ...(choice ? { choice } : { own: label }) };
-    void run(label, body, () => answer(choice));
+  const send = (raw: string): Promise<boolean> => {
+    const words = raw.trim();
+    if (!words || capped) return Promise.resolve(false);
+    // While a question card is open the box is its "own answer" (the card's options are buttons above it).
+    if (card && step === "asking" && session) return answer(null, words);
+    const request_id = pressId();
+    return run(words, session ? { action: "turn", session, text: words, request_id } : { action: "start", channel: channelId, prompt: words, request_id });
   };
   const choose = async (index: number) => {
-    if (!session || busy) return;
-    noteFocus();
+    if (!session || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setProblem(null);
     try {
@@ -249,11 +336,14 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     } catch {
       setProblem({ text: c.errors.unavailable, retry: () => void choose(index) });
     } finally {
+      inFlight.current = false;
       setBusy(false);
+      setTimeout(refocus, 0);
     }
   };
   const createFilm = async () => {
-    if (!film?.quote?.quote_id || !session || busy) return;
+    if (!film?.quote?.quote_id || !session || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setProblem(null);
     // One key per press of this quote: a double press or a retry answers the first start, never a second hold.
@@ -276,6 +366,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     } catch {
       setProblem({ text: c.errors.unavailable, retry: null });
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -287,6 +378,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     setFilm(null);
     setStep("asking");
     setProblem(null);
+    setAsking(null);
     if (typeof window !== "undefined") {
       const u = new URL(window.location.href);
       u.searchParams.delete("brain");
@@ -294,147 +386,229 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     }
   };
 
+  const source = useMemo<ChatHistorySource>(
+    () => ({
+      list: (before) =>
+        historyCall(historyUrl(before ? `before=${encodeURIComponent(before)}` : ""), (b) => ({
+          items: (Array.isArray(b.sessions) ? (b.sessions as { id: string; title: string; updated_at: string }[]) : []).map((r) => ({
+            id: r.id,
+            title: r.title,
+            updatedAt: r.updated_at,
+          })),
+          nextBefore: typeof b.next_before === "string" ? b.next_before : null,
+        })),
+    }),
+    [historyCall, historyUrl],
+  );
+
+  async function openSession(id: string): Promise<HistoryResult<null>> {
+    if (inFlight.current) return { ok: true, value: null };
+    setOpening(true);
+    const r = await loadSession(id);
+    setOpening(false);
+    if (!r.ok) {
+      // The chat on screen is no longer this person's here: the next message must not try to continue it.
+      if (r.gone && sessionRef.current === id) newChat();
+      return r;
+    }
+    setProblem(null);
+    setAsking(null);
+    announce(id, null);
+    return r;
+  }
+
   if (load.state === "hidden") return null;
   const lengthLabel = (s: number) => (s >= 60 ? fmt(c.minutes, { n: Math.round((s / 60) * 10) / 10 }) : fmt(c.seconds, { n: s }));
-  const title = messages.find((m) => m.role === "user")?.content.slice(0, 40) || c.title;
+  const ready = load.state === "ready";
   // No Brain on this plan: the lifetime trial while it lasts, then the upgrade.
-  const trial = load.state === "ready" && load.plan.limit === null && (load.plan.trial_left ?? 0) > 0 ? load.plan.trial_left : null;
+  const trial = ready && load.plan.limit === null && (load.plan.trial_left ?? 0) > 0 ? load.plan.trial_left : null;
   // A plan whose price could not be read, or a short plan whose film quote is not on screen (a reload): its scenarios come back to
   // choose again, which re-reads the same draft and quote (the draft's idempotency key is the session and the scenario).
   const rechoose = step === "ready" && (brief?.price?.state === "failed" || (brief?.kind === "short" && !film?.quote));
-  const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? "";
-  const noBrain = load.state === "ready" && load.plan.limit === null && trial === null;
-  // The trial's last answer stays on screen; only the box closes (a conversation that vanished on its last reply is a dead end).
-  const locked = noBrain && messages.length === 0;
-  const down = load.state === "ready" && load.model !== "available";
-  const viewer = load.state === "ready" && !load.canEdit;
-  const disabled = busy || capped || noBrain || down || viewer;
+  const noBrain = ready && load.plan.limit === null && trial === null;
+  const down = ready && load.model !== "available";
+  const viewer = ready && !load.canEdit;
+  const closed = step === "created";
+  // The box cannot be used at all: the status above it says why and what to do.
+  const blocked = !ready || capped || noBrain || down || viewer || closed;
+  const disabled = busy || blocked;
+  const plansHref = `/${encodeURIComponent(channelSlug)}/credits#plans`;
+  const maxChars = ready ? load.plan.max_input_chars : 2000;
 
-  return (
-    <aside className="studio-surface flex min-w-0 flex-col gap-3 p-4" aria-labelledby="ns-ai-title" data-testid="nightshift-ai-panel" ref={panelRef}>
-      <header className="flex items-center justify-between gap-2">
-        <h2 id="ns-ai-title" className="truncate text-sm font-semibold text-[var(--color-fg)]">{session ? title : c.title}</h2>
-        <div className="flex items-center gap-1">
-          {session && <button type="button" className="btn-quiet min-h-11 whitespace-nowrap px-3 text-sm" aria-label={c.newChatLabel} onClick={newChat} disabled={busy}>{c.newChat}</button>}
-          <button type="button" className="btn-quiet min-h-11 whitespace-nowrap px-3 text-sm" aria-expanded={open} aria-controls="ns-ai-body" onClick={() => setOpen((o) => !o)}>
-            {open ? c.close : c.show}
-          </button>
+  const status: ReactNode = (() => {
+    if (load.state === "loading") return <p role="status">{c.loading}</p>;
+    if (load.state === "failed")
+      return (
+        <div role="alert" className="flex flex-wrap items-center gap-2">
+          <p>{c.errors.unavailable}</p>
+          <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void read()}>{c.retry}</button>
         </div>
-      </header>
-      {open && (
-        <div id="ns-ai-body" className="flex min-w-0 flex-col gap-3">
-          {!session && <p className="text-xs text-[var(--color-muted)]">{c.subtitle}</p>}
-          {load.state === "loading" && <p className="text-xs text-[var(--color-muted)]" role="status">{c.loading}</p>}
-          {load.state === "not_enabled" && <p className="text-sm" role="status">{c.errors.not_enabled}</p>}
-          {load.state === "session_ended" && (
-            <div className="flex flex-col gap-2" role="alert">
-              <p className="text-sm">{c.errors.session_ended}</p>
-              <Link className="btn-primary inline-flex min-h-11 items-center justify-center px-4 text-sm"
-                    href={`/login?next=${encodeURIComponent(typeof window === "undefined" ? `/${channelSlug}/studio` : window.location.pathname + window.location.search)}`}>{c.signIn}</Link>
-            </div>
-          )}
-          {capped && load.state === "ready" && load.plan.limit !== null && !problem && (
-            <p className="text-sm" role="status">{fmt(c.errors.chat_daily_cap, { used: load.plan.used ?? load.plan.limit, limit: load.plan.limit })}</p>
-          )}
-          {load.state === "failed" && (
-            <div className="flex flex-wrap items-center gap-2" role="alert">
-              <p className="text-sm">{c.errors.unavailable}</p>
-              <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void read()}>{c.retry}</button>
-            </div>
-          )}
-          {noBrain && (
-            <div className="flex flex-col gap-2" role="note">
-              <p className="text-sm">{c.planLocked}</p>
-              <Link className="btn-primary inline-flex min-h-11 items-center justify-center px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#plans`}>{c.upgrade}</Link>
-            </div>
-          )}
-          {down && !locked && <p className="text-sm" role="status">{c.errors.assistant_unavailable}</p>}
-          {viewer && !locked && <p className="text-sm" role="status">{c.viewerOnly}</p>}
+      );
+    if (load.state === "not_enabled") return <p role="status">{c.errors.not_enabled}</p>;
+    if (load.state === "session_ended")
+      return (
+        <div role="alert" className="flex flex-col gap-2">
+          <p>{c.errors.session_ended}</p>
+          <Link className="btn-primary inline-flex min-h-11 items-center justify-center px-4 text-sm"
+                href={`/login?next=${encodeURIComponent(typeof window === "undefined" ? `/${channelSlug}/studio` : window.location.pathname + window.location.search)}`}>{c.signIn}</Link>
+        </div>
+      );
+    if (noBrain)
+      return (
+        <div role="note" className="flex flex-col gap-2">
+          <p>{c.planLocked}</p>
+          <Link className="btn-primary inline-flex min-h-11 items-center justify-center px-4 text-sm" href={plansHref}>{c.upgrade}</Link>
+        </div>
+      );
+    // The turn's own refusal already says it in the thread: once is enough.
+    if (capped && !problem)
+      return <p role="status">{load.plan.limit !== null ? fmt(c.errors.chat_daily_cap, { used: load.plan.used ?? load.plan.limit, limit: load.plan.limit }) : c.errors.chat_daily_cap_plain}</p>;
+    if (down) return <p role="status">{c.errors.assistant_unavailable}</p>;
+    if (viewer) return <p role="status">{c.viewerOnly}</p>;
+    if (closed) return <p role="status">{c.errors.session_closed}</p>;
+    return null;
+  })();
 
-          {load.state === "ready" && !locked && (
-            <>
-              {/* One live region with only the newest news: a live list would read the whole history out on every load. */}
-              <p className="sr-only" aria-live="polite">{busy ? c.sending : lastReply}</p>
-              <ol ref={listRef} className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto">
-                {messages.length === 0 && <li className="text-xs text-[var(--color-muted)]">{c.empty}</li>}
-                {messages.map((m, i) => (
-                  <li key={m.key} className={m.role === "user" ? "self-end max-w-[85%]" : "max-w-full"}>
-                    <p className="text-xs text-[var(--color-muted)]">{m.role === "user" ? c.you : c.ai}</p>
-                    <p className="studio-field whitespace-pre-wrap break-words p-3 text-sm">{m.content}</p>
-                    {m.role === "assistant" && m.factsState === "none" && !!m.scenarios?.length && <p className="mt-1 text-xs text-[var(--color-muted)]">{c.factsNone}</p>}
-                    {m.role === "assistant" && m.factsState === "unknown" && !!m.scenarios?.length && <p className="mt-1 text-xs text-[var(--color-muted)]">{c.factsUnknown}</p>}
-                    {m.role === "assistant" && i === messages.length - 1 && (step === "proposing" || rechoose) && (m.scenarios ?? []).map((s, k) => (
-                      <article key={k} className="studio-field mt-2 flex flex-col gap-1 p-3">
-                        <h3 className="text-sm font-semibold text-[var(--color-fg)]">{s.title}</h3>
-                        <p className="text-sm">{s.idea}</p>
-                        {s.story?.conflict && <p className="text-xs text-[var(--color-muted)]">{s.story.conflict}</p>}
-                        <p className="text-xs text-[var(--color-muted)]">
-                          {fmt(c.scenarioFacts, { len: lengthLabel(s.target_seconds), scenes: s.scenes.length, characters: s.characters.length })}
-                        </p>
-                        <button type="button" className="btn-quiet mt-1 min-h-11 px-4 text-sm" disabled={disabled} aria-label={fmt(c.chooseThisNamed, { title: s.title })} onClick={() => void choose(k)}>{c.chooseThis}</button>
-                      </article>
-                    ))}
-                  </li>
-                ))}
-                {busy && <li className="text-xs text-[var(--color-muted)]" aria-hidden="true">{c.sending}</li>}
-              </ol>
+  const meter: ReactNode = ready && ((load.plan.limit !== null && load.plan.used !== null) || trial !== null) ? (
+    <p className="chat-meter">
+      {load.plan.limit !== null && load.plan.used !== null && fmt(c.quota, { used: load.plan.used, limit: load.plan.limit })}
+      {trial !== null && (
+        <>
+          {pluralText(c.trialLeft, trial, locale)}{" "}
+          <Link className="chat-meter-link" href={plansHref}>{c.upgrade}</Link>
+        </>
+      )}
+    </p>
+  ) : null;
 
-              {card && step === "asking" && (
-                <fieldset className="studio-field flex min-w-0 flex-col gap-2 p-3" disabled={disabled}>
-                  {card.thread_title && <legend className="studio-label">{card.thread_title}</legend>}
-                  <p className="text-sm font-semibold">{card.question || c.slotQuestions[card.slot]}</p>
-                  {card.options.map((o, i) => (
-                    <button key={i} type="button" className="btn-quiet flex min-h-11 !items-start !justify-start gap-2 px-3 text-left text-sm" onClick={() => answer(i + 1)}>
-                      <span className="font-semibold">{i + 1}</span> <span className="break-words">{o}</span>
-                    </button>
-                  ))}
-                  <label className="sr-only" htmlFor="ns-ai-own">{c.ownAnswer}</label>
-                  <div className="flex gap-2">
-                    <input id="ns-ai-own" className="studio-field min-h-11 min-w-0 flex-1 px-3 text-base" placeholder={c.ownAnswer} value={own}
-                           onChange={(e) => setOwn(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); answer(null); } }} />
-                    <button type="button" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-40" disabled={!own.trim()} onClick={() => answer(null)}>{c.confirm}</button>
-                  </div>
-                  {card.slot === "target_seconds" && brief?.kind === "short" && <p className="text-xs text-[var(--color-muted)]">{c.shortMinNote}</p>}
-                </fieldset>
-              )}
+  const paired = pairTurns(messages, c.history.noAnswer);
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant") ?? null;
+  const isLast = (m: Msg | null) => !!m && m === lastAssistant && messages[messages.length - 1] === m;
 
-              {step === "ready" && brief && <ReadyBlock brief={brief} film={film} channelSlug={channelSlug} lengthLabel={lengthLabel} busy={busy} canRun={load.canRun} onCreateFilm={() => void createFilm()} />}
+  // Under the newest answer: its question card, or the plan with its price and its one way on.
+  const tail: ReactNode = (
+    <>
+      {card && step === "asking" && (
+        <fieldset className="studio-field flex min-w-0 flex-col gap-2 p-3" disabled={disabled}>
+          {card.thread_title && <legend className="studio-label">{card.thread_title}</legend>}
+          <p className="text-sm font-semibold">{card.question || c.slotQuestions[card.slot]}</p>
+          {card.options.map((o, i) => (
+            <button key={i} type="button" className="btn-quiet flex min-h-11 !items-start !justify-start gap-2 px-3 text-left text-sm" onClick={() => void answer(i + 1)}>
+              <span className="font-semibold">{i + 1}</span> <span className="break-words">{o}</span>
+            </button>
+          ))}
+          {card.slot === "target_seconds" && brief?.kind === "short" && <p className="text-xs text-[var(--color-muted)]">{c.shortMinNote}</p>}
+        </fieldset>
+      )}
+      {step === "ready" && brief && <ReadyBlock brief={brief} film={film} channelSlug={channelSlug} lengthLabel={lengthLabel} busy={busy} canRun={ready && load.canRun} onCreateFilm={() => void createFilm()} />}
+    </>
+  );
+  const hasTail = (card && step === "asking") || (step === "ready" && brief);
 
-              {problem && (
-                <div className="flex flex-wrap items-center gap-2" role="alert">
-                  <p className="text-sm">{problem.text}</p>
-                  {problem.retry && <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={problem.retry} disabled={busy}>{c.retry}</button>}
-                </div>
-              )}
+  const turns: ChatTurn[] = paired.map((p, i) => {
+    const m = p.msg;
+    const last = i === paired.length - 1;
+    const scenarios = m && isLast(m) && (step === "proposing" || rechoose) ? (m.scenarios ?? []) : [];
+    const facts = m && m.scenarios?.length ? (m.factsState === "none" ? c.factsNone : m.factsState === "unknown" ? c.factsUnknown : null) : null;
+    const extra = facts || scenarios.length > 0 || (last && hasTail) ? (
+      <>
+        {facts && <p className="chat-note">{facts}</p>}
+        {scenarios.map((s, k) => (
+          <article key={k} className="studio-field flex flex-col gap-1 p-3">
+            <h3 className="text-sm font-semibold text-[var(--color-fg)]">{s.title}</h3>
+            <p className="text-sm">{s.idea}</p>
+            {s.story?.conflict && <p className="text-xs text-[var(--color-muted)]">{s.story.conflict}</p>}
+            <p className="text-xs text-[var(--color-muted)]">
+              {fmt(c.scenarioFacts, { len: lengthLabel(s.target_seconds), scenes: s.scenes.length, characters: s.characters.length })}
+            </p>
+            <button type="button" className="btn-quiet mt-1 min-h-11 px-4 text-sm" disabled={disabled} aria-label={fmt(c.chooseThisNamed, { title: s.title })} onClick={() => void choose(k)}>{c.chooseThis}</button>
+          </article>
+        ))}
+        {last && hasTail && tail}
+      </>
+    ) : undefined;
+    return { id: idFor(p.key), q: p.q, a: p.a, extra };
+  });
 
-              {/* At the plan too: "fewer scenes", "shorter" or another idea is typed here (a plan with no way to change it is a dead end). */}
-              {(!card || step !== "asking") && step !== "created" && (
-                <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); send(text); }}>
-                  <label className="sr-only" htmlFor="ns-ai-input">{c.placeholder}</label>
-                  <textarea id="ns-ai-input" ref={inputRef} className="studio-field min-h-[5rem] w-full p-3 text-base" value={text} maxLength={load.plan.max_input_chars}
-                            placeholder={c.placeholder} disabled={disabled} onChange={(e) => setText(e.target.value)} aria-describedby="ns-ai-count"
-                            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(text); } }} />
-                  {/* The limit is shown, never applied silently (Lens on 0199). */}
-                  <p id="ns-ai-count" className="self-end text-xs text-[var(--color-muted)]">{fmt(c.charCount, { n: Array.from(text).length, max: load.plan.max_input_chars })}</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button type="submit" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-40" disabled={disabled || !text.trim()}>{busy ? c.sending : c.send}</button>
-                    {load.plan.limit !== null && load.plan.used !== null && (
-                      <span className="text-xs text-[var(--color-muted)]">{fmt(c.quota, { used: load.plan.used, limit: load.plan.limit })}</span>
-                    )}
-                    {trial !== null && (
-                      <span className="text-xs text-[var(--color-muted)]">
-                        {pluralText(c.trialLeft, trial, locale)}{" "}
-                        <Link className="inline-flex min-h-11 items-center px-2 underline" href={`/${encodeURIComponent(channelSlug)}/credits#plans`}>{c.upgrade}</Link>
-                      </span>
-                    )}
-                  </div>
-                </form>
-              )}
-            </>
-          )}
+  const notice: ReactNode = problem || (hasTail && turns.length === 0) ? (
+    <>
+      {hasTail && turns.length === 0 && tail}
+      {problem && (
+        <div className="ns-ai-problem" role="alert">
+          <p className="m-0 flex items-start gap-2">
+            <TriangleAlert aria-hidden size={16} className="ns-ai-problem-ic" />
+            <span>{problem.text}</span>
+          </p>
+          {problem.retry && <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={problem.retry} disabled={busy}>{c.retry}</button>}
         </div>
       )}
-    </aside>
+    </>
+  ) : undefined;
+
+  const chat = (lead?: ReactNode) => (
+    <ChatShell
+      lead={lead}
+      contained
+      titleAs="h2"
+      labels={{
+        title: c.title,
+        newChat: c.shell.newChat,
+        greeting: greetingName ? fmt(c.shell.greeting, { name: greetingName }) : c.shell.greetingNoName,
+        label: c.shell.label,
+        placeholder: card && step === "asking" ? c.shell.ownAnswer : c.shell.placeholder,
+        send: c.send,
+        sending: c.sending,
+        you: c.you,
+        ai: c.ai,
+        copy: c.shell.copy,
+        copied: c.shell.copied,
+        copyFailed: c.shell.copyFailed,
+        good: c.shell.good,
+        bad: c.shell.bad,
+        keys: c.shell.keys,
+        counter: c.shell.counter,
+        disclaimer: c.shell.disclaimer,
+      }}
+      turns={turns}
+      pending={busy}
+      pendingQuestion={asking}
+      notice={notice}
+      maxLength={maxChars}
+      // The limit is shown before it is applied, never applied silently (Lens on 0199).
+      counterFrom={Math.floor(maxChars * 0.9)}
+      inputId={INPUT_ID}
+      onSend={send}
+      onNewChat={newChat}
+      disabled={blocked}
+      status={status}
+      meter={meter}
+      prefill={prefill}
+    />
+  );
+
+  return (
+    <div className="ns-ai-dock" data-testid="nightshift-ai-panel">
+      {ready ? (
+        // The side panel is narrow: the history is the drawer at every width (a 268px column would leave no room for the chat).
+        <ChatHistoryFrame
+          variant="drawer"
+          labels={c.history}
+          source={source}
+          storageKey="ns.studio-ai.history-collapsed"
+          activeId={session}
+          busy={busy || opening}
+          reloadKey={reloadKey}
+          onSelect={openSession}
+          onNewChat={newChat}
+          onRemoved={(id) => {
+            if (sessionRef.current === id) newChat();
+          }}
+          renderChat={chat}
+        />
+      ) : (
+        chat()
+      )}
+    </div>
   );
 }
 
