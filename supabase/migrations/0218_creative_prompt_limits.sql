@@ -2,7 +2,7 @@
 -- drop, and a seed (no adapter receives one), before anything is held; and an unknown parameter is refused without repeating its name.
 --
 -- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It replaces THREE functions that exist there and adds
--- nothing: creative_params_problem (0156's body plus two hunks), creative_price (0159's body plus two hunks) and film_price (0171's body
+-- nothing: creative_params_problem (0208's body plus two hunks), creative_price (0208's body plus two hunks) and film_price (0171's body
 -- plus four hunks). It writes no row, alters no table, policy or constraint, and grants nothing: all three stay revoked from every API
 -- role. It must apply BEFORE 0219.
 --
@@ -29,7 +29,7 @@
 --     1024, counted in code points as that adapter counts) -> `prompt_too_long` ("<N> characters over this model's limit of <M>;
 --     shorten the prompt"). No other word is added.
 --   * creative_params_problem: an unknown key is refused as 'unknown parameter (<how many>); allowed: <the keys it knows>'. Never the
---     key. Every other answer is 0156's.
+--     key. Every other answer is 0208's.
 --   * film_price: the key-frame line prices the scene's negative prompt, and each clip line its visual prompt and negative prompt: the
 --     words 0198's take sends to the worker. The line's own params (what start_film copies into the take, and what the quote_id hashes)
 --     leave them out exactly as before, so a quote that is not refused keeps its quote_id.
@@ -55,8 +55,8 @@
 --
 -- REPLACES (md5 of prosrc with every run of white space read as one space; tests/test_creative_prompt_limits_migration.py undoes each
 -- hunk and compares the rest with the old body byte for byte):
---   creative_params_problem   0156 25ee9cc62a27ad3a19e71008b04f3f36 -> 0218 e3aaf0c6a9eb07841b4d847558eb727a
---   creative_price            0159 dafc5edae0000e741ac1b19bd0075790 -> 0218 a271d7fe71fec2995ac1bf7414b1a995
+--   creative_params_problem   0208 7ccde072309a637d9b07e59f1be45d20 -> 0218 0f4b7b7ba92bb20432841a4a5d5f8917
+--   creative_price            0208 f61aaddd5686045961addd6f14a02c32 -> 0218 34ae574dc0261251139c48b6ca1e1983
 --   film_price                0171 5de6c9bb2a74079e2078cad2d91b3c34 -> 0218 3c22f87be736c073d17d93e040e914e1
 --
 -- NOT CHANGED: create_creative_job, quote_creative_job, quote_creative_route, oauth_creative_quote / _create (0191 / 0192: the create
@@ -67,18 +67,19 @@
 -- LOCKS AND GRANTS: unchanged. The three functions take no lock (immutable / stable) and stay revoked from public, anon, authenticated
 -- and service_role.
 --
--- NUMBER AND ORDER. 0218, the number this stream was given (main's newest is 0209; 0219, the operator-only assistant exposure, comes
--- after it). No file between replaces these functions on main. Written on 0156's
--- creative_params_problem, 0159's creative_price and 0171's film_price, so it REFUSES to apply without them, and its drift guards accept
--- only those bodies or its own. 0156's, 0159's and 0171's replays and rollbacks refuse any other body: run
--- docs/sql/rollback_0218_creative_prompt_limits.sql FIRST (the security lab does: sec_db.take_off_0218, called by take_off_0159 and
+-- NUMBER AND ORDER. 0218, the number this stream was given. Apply order 0208 -> 0218 -> 0219 (0219, the operator-only assistant
+-- exposure, comes after it). Written on 0208's creative_params_problem and creative_price (0208: image size prices and the country gate,
+-- whose size checks this file keeps exactly; its gate is a trigger on creative_jobs and is not touched) and on 0171's film_price, so it
+-- REFUSES to apply without them, and its drift guards accept only those bodies or its own. 0208's and 0171's replays and rollbacks refuse
+-- any other body: run docs/sql/rollback_0218_creative_prompt_limits.sql FIRST (the security lab does: sec_db.take_off_0218, called by
+-- take_off_0208 (and so by take_off_0159) and
 -- take_off_0171). If another branch replaces one of the three and merges first, this file's guard refuses its body: rebase the hunks.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---            where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) = '25ee9cc62a27ad3a19e71008b04f3f36' as params_is_0156s,
+--            where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) = '7ccde072309a637d9b07e59f1be45d20' as params_is_0208s,
 --          (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---            where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) = 'dafc5edae0000e741ac1b19bd0075790' as price_is_0159s,
+--            where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) = 'f61aaddd5686045961addd6f14a02c32' as price_is_0208s,
 --          (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --            where oid = 'public.film_price(public.films)'::regprocedure) = '5de6c9bb2a74079e2078cad2d91b3c34' as film_price_is_0171s;
 -- And, so that the models which take a negative prompt keep taking it: run Actions -> Probe models with --sync (it copies the registry's
@@ -88,7 +89,7 @@
 -- assumes it, and the last block asserts the end state. Additive and idempotent: create or replace, then revoke; a replay finds this
 -- file's bodies and changes nothing.
 -- Rollback: docs/sql/rollback_0218_creative_prompt_limits.sql (owner-applied; refuses a body that is neither 0218's nor the one it was
--- written on; puts 0156's, 0159's and 0171's bodies back byte for byte). Docs: docs/MIGRATIONS.md, "A quote refuses a prompt longer than
+-- written on; puts 0208's two bodies and 0171's back byte for byte). Docs: docs/MIGRATIONS.md, "A quote refuses a prompt longer than
 -- the model takes, and settings its adapter would drop (0218)".
 
 set local lock_timeout = '5s';
@@ -104,7 +105,10 @@ begin
      or to_regprocedure('public.model_is_available(text)') is null
      or to_regclass('public.films') is null
      or to_regprocedure('public.film_try_price(uuid, text, text, jsonb)') is null then
-    raise exception '0218 needs 0159_duration_offered_by_model.sql, 0156_named_resolution_params.sql and 0171_films_money.sql (and what they need): apply them first';
+    raise exception '0218 needs 0208_geo_gate_and_image_size_price.sql and 0171_films_money.sql (and what they need: 0159, 0156): apply them first';
+  end if;
+  if to_regprocedure('public.creative_jobs_geo_gate()') is null or to_regprocedure('public.geo_claim_country()') is null then
+    raise exception '0218 needs 0208_geo_gate_and_image_size_price.sql (the country gate and image size prices): apply it first';
   end if;
   if to_regprocedure('public.film_price(public.films)') is null then
     raise exception '0218 needs 0171_films_money.sql (film_price): apply it first';
@@ -118,12 +122,12 @@ declare
   h text;
 begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_params_problem(text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['25ee9cc62a27ad3a19e71008b04f3f36', 'e3aaf0c6a9eb07841b4d847558eb727a']) then
-    raise exception '0218 found a creative_params_problem() that is neither 0156''s body nor 0218''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['7ccde072309a637d9b07e59f1be45d20', '0f4b7b7ba92bb20432841a4a5d5f8917']) then
+    raise exception '0218 found a creative_params_problem() that is neither 0208''s body nor 0218''s (md5 %): read the live body first (0208 must be applied before 0218)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['dafc5edae0000e741ac1b19bd0075790', 'a271d7fe71fec2995ac1bf7414b1a995']) then
-    raise exception '0218 found a creative_price() that is neither 0159''s body nor 0218''s (md5 %): read the live body first (0159 must be applied before 0218)', h;
+  if h is null or h <> all (array['f61aaddd5686045961addd6f14a02c32', '34ae574dc0261251139c48b6ca1e1983']) then
+    raise exception '0218 found a creative_price() that is neither 0208''s body nor 0218''s (md5 %): read the live body first (0208 must be applied before 0218)', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.film_price(public.films)'::regprocedure;
   if h is null or h <> all (array['5de6c9bb2a74079e2078cad2d91b3c34', '3c22f87be736c073d17d93e040e914e1']) then
@@ -131,7 +135,7 @@ begin
   end if;
 end $$;
 
--- 0156's params check, refusing an unknown key without repeating it (the two hunks in the header).
+-- 0208's params check, refusing an unknown key without repeating it (the two hunks in the header).
 create or replace function public.creative_params_problem(p_capability text, p_params jsonb)
   returns text
   language plpgsql immutable set search_path = public, pg_temp as $$
@@ -172,7 +176,7 @@ declare
   known    constant text[] := array['prompt', 'negative_prompt', 'aspect_ratio', 'resolution', 'duration_s',
                                     'voice_id', 'seed', 'source_asset_id', 'factor', 'style_kit_id', 'target_language',
                                     'target_resolution', 'end_asset_id', 'language', 'quality', 'audio', 'look',
-                                    'regions', 'region_feather'];
+                                    'regions', 'region_feather', 'image_size'];
 begin
   if p_params is null or jsonb_typeof(p_params) <> 'object' then
     return 'params must be a JSON object';
@@ -375,6 +379,17 @@ begin
       return 'quality must be one of low, medium, high';
     end if;
   end if;
+  -- 0208: the size of a picture from a model that bills by it (the registry schema's closed list): t2i and edit only. Whether THIS
+  -- model is sold by size and lists the size (and has a price for it) is creative_price's question. Absent = no size named.
+  if p_params ? 'image_size' then
+    if p_capability not in ('t2i', 'edit') then
+      return format('image_size does not apply to %s', p_capability);
+    end if;
+    if jsonb_typeof(p_params -> 'image_size') is distinct from 'string'
+       or (p_params ->> 'image_size') not in ('512', '1K', '2K', '4K') then
+      return 'image_size must be one of 512, 1K, 2K, 4K';
+    end if;
+  end if;
   if p_params ? 'audio' then
     -- The soundtrack of a video (0070): t2v and i2v only, a JSON boolean.
     -- Whether THIS model offers the choice is creative_price's question.
@@ -442,7 +457,7 @@ $$;
 
 revoke all on function public.creative_params_problem(text, jsonb) from public, anon, authenticated, service_role;
 
--- 0159's quote, also refusing a seed, a negative prompt the model does not take and a prompt longer than the model takes (the two hunks
+-- 0208's quote, also refusing a seed, a negative prompt the model does not take and a prompt longer than the model takes (the two hunks
 -- in the header).
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
@@ -473,6 +488,8 @@ declare
   -- 0149: the vendor's figure for exactly the setting a preview is quoted at, and that figure as a number.
   vusd    jsonb;
   vcost   numeric;
+  -- 0208: the picture size this quote is for (spec.pricing.variants.by = image_size).
+  vsize   text;
   -- 0218: a limit from the model's spec, and the prompt's length in the worker's units.
   lim     numeric;
   units   integer;
@@ -693,6 +710,28 @@ begin
     end if;
     m_unit := m_unit || '_' || regexp_replace(lower(tier), '[^a-z0-9]', '_', 'g');
   end if;
+  -- 0208: a picture size only on a model whose price follows it (spec.pricing.variants.by = image_size) and that lists the size
+  -- (spec.image_sizes, the list the worker checks: ModelEntry.problems "image size <s> is not offered by <model>"). On any other
+  -- model the size would reach a vendor that bills its own way under a price that was not read for it: refused, never ignored.
+  if p_params ? 'image_size'
+     and (coalesce(m_spec -> 'pricing' -> 'variants' ->> 'by', '') <> 'image_size'
+          or not coalesce(jsonb_typeof(m_spec -> 'image_sizes') = 'array'
+                          and (m_spec -> 'image_sizes') @> jsonb_build_array(p_params ->> 'image_size'), false)) then
+    perform public.creative_refuse('invalid_params',
+      format('%s does not offer the %s size', mdl, p_params ->> 'image_size'));
+  end if;
+  -- 0208: one price per size when the registry prices the sizes apart (model_registry.credit_unit_for: model_<id>_<unit>_<size>).
+  -- The size must be named: the worker sends it as the vendor's imageSize, and with none the vendor makes (and bills) its own
+  -- default under a price read for no size. A size without its own row is unpriced: never another size's rate, never the base row.
+  if cap in ('t2i', 'edit') and m_unit is not null
+     and m_spec -> 'pricing' -> 'variants' ->> 'by' = 'image_size' then
+    vsize := p_params ->> 'image_size';
+    if vsize is null then
+      perform public.creative_refuse('invalid_params',
+        format('%s is sold by picture size: name image_size', mdl));
+    end if;
+    m_unit := m_unit || '_' || regexp_replace(lower(vsize), '[^a-z0-9]', '_', 'g');
+  end if;
   -- The video settings (0070).
   if cap in ('t2v', 'i2v') then
     vby := m_spec -> 'pricing' -> 'variants' ->> 'by';
@@ -843,6 +882,8 @@ begin
     'credits_per_unit', rate.credits_per_unit * (1 + rate.margin), 'minimum', minimum)
     -- The tier this price is for, so what the person confirms names it.
     || case when tier is null then '{}'::jsonb else jsonb_build_object('quality', tier) end
+    -- 0208: the picture size this price is for.
+    || case when vsize is null then '{}'::jsonb else jsonb_build_object('image_size', vsize) end
     -- The resolution and soundtrack this price is for (0070).
     || variant
     -- 0139: a preview says so, and the Studio shows it as the operator's record, never as a price on sale.
@@ -1112,11 +1153,11 @@ declare
   bad text;
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = pp;
-  if got <> 'e3aaf0c6a9eb07841b4d847558eb727a' then
+  if got <> '0f4b7b7ba92bb20432841a4a5d5f8917' then
     raise exception '0218 end state: creative_params_problem does not hold this file''s body (md5 %)', got;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = cp;
-  if got <> 'a271d7fe71fec2995ac1bf7414b1a995' then
+  if got <> '34ae574dc0261251139c48b6ca1e1983' then
     raise exception '0218 end state: creative_price does not hold this file''s body (md5 %)', got;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = fp;
@@ -1142,13 +1183,13 @@ begin
     raise exception '0218 end state: a function changed its volatility or security';
   end if;
   -- The guards every creative_price keeps (0124's switch, 0125's date, 0139's preview rule, 0155's shape check, 0156's resolution rule,
-  -- 0159's length check) and this file's three words.
+  -- 0159's length check, 0208's size rule) and this file's three words.
   def := pg_get_functiondef(cp);
   if position('model_is_available' in def) = 0 or position('model_past_shutdown' in def) = 0
      or position('creative_operator_preview' in def) = 0 or position('does not offer the %s shape for %s' in def) = 0
      or position('is not sold at %s yet' in def) = 0 or position('does not offer a %s-second clip for %s' in def) = 0
      or position('''seed_not_supported''' in def) = 0 or position('''negative_prompt_not_supported''' in def) = 0
-     or position('''prompt_too_long''' in def) = 0 then
+     or position('''prompt_too_long''' in def) = 0 or position('vsize' in def) = 0 then
     raise exception '0218 end state: creative_price lost a guard';
   end if;
   -- What the params check is about, read back from the function itself: a caller's key never comes back, the count and the known
@@ -1170,9 +1211,9 @@ notify pgrst, 'reload schema';
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.creative_params_problem(text,jsonb)'::regprocedure) = 'e3aaf0c6a9eb07841b4d847558eb727a' as params_is_0218s,
+--     where oid = 'public.creative_params_problem(text,jsonb)'::regprocedure) = '0f4b7b7ba92bb20432841a4a5d5f8917' as params_is_0218s,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = 'a271d7fe71fec2995ac1bf7414b1a995' as creative_price_is_0218s,
+--     where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = '34ae574dc0261251139c48b6ca1e1983' as creative_price_is_0218s,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.film_price(public.films)'::regprocedure) = '3c22f87be736c073d17d93e040e914e1' as film_price_is_0218s,
 --   not has_function_privilege('authenticated', 'public.creative_price(uuid,text,text,jsonb)', 'EXECUTE')

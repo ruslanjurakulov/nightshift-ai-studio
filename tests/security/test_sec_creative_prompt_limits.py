@@ -10,7 +10,7 @@ What would break without each pin:
   * quote_film: a scene whose clip model does not take its negative prompt, or whose visual prompt is longer than the clip model takes,
     is refused on THAT scene's line with the word (film_try_price catches NS400), not as an error for the whole quote; and a priced
     line's params (what start_film copies into the take and the quote_id hashes) still carry no prompt;
-  * the file: it needs 0159's creative_price, its guard refuses any other body, a replay changes nothing, and its rollback puts the three
+  * the file: it needs 0208's creative_price, its guard refuses any other body, a replay changes nothing, and its rollback puts the three
     bodies back byte for byte (and the lab's take_off_0159 / take_off_0171 take it off first).
 
 Runs in test_sec_films_money's module database (it commits; every row this file adds is its own) and, for the file itself, a scratch
@@ -76,6 +76,8 @@ def _params(row, **extra):
     p = {"prompt": "a lighthouse at dawn"}
     if cap == "t2v":
         p["duration_s"] = row["spec"]["durations_s"][0]
+    if (row["spec"]["pricing"].get("variants") or {}).get("by") == "image_size":
+        p["image_size"] = row["spec"]["image_sizes"][0]  # 0208: a model priced by size is asked one
     return cap, {**p, **extra}
 
 
@@ -152,9 +154,9 @@ def test_krea_s_own_negative_prompt_limit_is_the_quotes(db):
     rows = _sell_real_rows(db, ["krea-3"])
     assert rows["krea-3"]["spec"]["limits"]["max_negative_prompt_chars"] == 1024
     o = db.new_org(image=False)
-    got = _quote(db, o, "t2i", "krea-3", {"prompt": "x", "negative_prompt": "n" * 1025})
+    got = _quote(db, o, "t2i", "krea-3", {"prompt": "x", "image_size": "1K", "negative_prompt": "n" * 1025})
     assert got == ("NS400", "prompt_too_long", "1 characters over this model's limit of 1024 for a negative prompt; shorten it"), got
-    got = _quote(db, o, "t2i", "krea-3", {"prompt": "x", "negative_prompt": "n" * 1024})
+    got = _quote(db, o, "t2i", "krea-3", {"prompt": "x", "image_size": "1K", "negative_prompt": "n" * 1024})
     assert got is None or got[1] != "prompt_too_long", got
 
 
@@ -219,11 +221,11 @@ def _md5s(d):
 
 AFTER = {"creative_params_problem": sec_db.CREATIVE_PARAMS_PROBLEM_0218, "creative_price": sec_db.CREATIVE_PRICE_0218,
          "film_price": sec_db.FILM_PRICE_0218}
-BEFORE = {"creative_params_problem": sec_db.CREATIVE_PARAMS_PROBLEM_0156, "creative_price": sec_db.CREATIVE_PRICE_0159,
+BEFORE = {"creative_params_problem": sec_db.CREATIVE_PARAMS_PROBLEM_0208, "creative_price": sec_db.CREATIVE_PRICE_0208,
           "film_price": "5de6c9bb2a74079e2078cad2d91b3c34"}
 
 
-def test_the_file_needs_0159_its_guard_refuses_a_hand_edit_and_its_rollback_restores_every_body(lab):
+def test_the_file_needs_0208_its_guard_refuses_a_hand_edit_and_its_rollback_restores_every_body(lab):
     from test_sec_api_creative import Db
 
     admin = sec_db.admin_dsn()
@@ -234,19 +236,22 @@ def test_the_file_needs_0159_its_guard_refuses_a_hand_edit_and_its_rollback_rest
         d = Db(base)
         assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0156
         m = sec_db.MIGRATION_0218.read_text(encoding="utf-8")
+        # without 0208 (0159 alone, or neither) the file refuses and changes nothing
+        d.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))
         with pytest.raises(Exception) as cm:
             d.su(m)
-        assert "0218 found a creative_price() that is neither 0159''s body nor 0218''s".replace("''", "'") in str(cm.value)
-        d.su(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))
+        assert "0218 needs 0208_geo_gate_and_image_size_price.sql" in str(cm.value)
+        assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0159
+        d.su(sec_db.MIGRATION_0208.read_text(encoding="utf-8"))
         assert _md5s(d) == BEFORE
         d.su(m)
         assert _md5s(d) == AFTER
         d.su(m)  # the replay
         assert _md5s(d) == AFTER
-        # 0159's replay and rollback refuse 0218's body: the chain comes off from the top
-        with pytest.raises(Exception) as cm:
-            d.su(sec_db.ROLLBACK_0159.read_text(encoding="utf-8"))
-        assert "rollback 0159 found a creative_price() that is neither 0159's body nor 0156's" in str(cm.value)
+        # 0208's replay refuses 0218's body: the chain comes off from the top
+        with pytest.raises(Exception):
+            d.su(sec_db.MIGRATION_0208.read_text(encoding="utf-8"))
+        assert _md5s(d) == AFTER
         d.su(sec_db.ROLLBACK_0218.read_text(encoding="utf-8"))
         assert _md5s(d) == BEFORE, "byte for byte"
         d.su(m)

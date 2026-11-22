@@ -1,6 +1,6 @@
 -- rollback_0218_creative_prompt_limits.sql — takes migration 0218 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHEN YOU NEED IT. If one of 0218's refusals refuses something it should not, or before the rollback of 0156, 0159 or 0171 (each refuses
+-- WHEN YOU NEED IT. If one of 0218's refusals refuses something it should not, or before the rollback of 0208 or 0171 (each refuses
 -- a body that is not its own). Afterwards a prompt longer than the model takes, a negative prompt the model's adapter drops and a seed
 -- are quoted and held again (the worker refuses or drops them after the hold, exactly as before 0218), an unknown parameter is refused
 -- naming the caller's key again, and Film's quote stops pricing the words its takes send.
@@ -8,7 +8,7 @@
 -- WHAT IT DOES, in one transaction:
 --   1. Refuses to run if any of the three functions is neither 0218's body nor the one 0218 was written on (something redefined it
 --      since: running this would silently undo that change). Compared as md5 of the body with every run of white space read as one space.
---   2. Puts creative_params_problem back to 0156's body, creative_price to 0159's and film_price to 0171's, byte for byte, with their
+--   2. Puts creative_params_problem and creative_price back to 0208's bodies and film_price to 0171's, byte for byte, with their
 --      grants (none: revoked from every API role).
 -- It rewrites no row and drops nothing (0218 added nothing). The registry's takes_negative_prompt stays in model_registry.spec, unread.
 -- tests/security/test_sec_creative_prompt_limits.py applies this file to a lab database and re-applies 0218.
@@ -21,12 +21,12 @@ declare
   h text;
 begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_params_problem(text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['e3aaf0c6a9eb07841b4d847558eb727a', '25ee9cc62a27ad3a19e71008b04f3f36']) then
-    raise exception 'rollback 0218 found a creative_params_problem() that is neither 0218''s body nor 0156''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['0f4b7b7ba92bb20432841a4a5d5f8917', '7ccde072309a637d9b07e59f1be45d20']) then
+    raise exception 'rollback 0218 found a creative_params_problem() that is neither 0218''s body nor 0208''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['a271d7fe71fec2995ac1bf7414b1a995', 'dafc5edae0000e741ac1b19bd0075790']) then
-    raise exception 'rollback 0218 found a creative_price() that is neither 0218''s body nor 0159''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['34ae574dc0261251139c48b6ca1e1983', 'f61aaddd5686045961addd6f14a02c32']) then
+    raise exception 'rollback 0218 found a creative_price() that is neither 0218''s body nor 0208''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.film_price(public.films)'::regprocedure;
   if h is null or h <> all (array['3c22f87be736c073d17d93e040e914e1', '5de6c9bb2a74079e2078cad2d91b3c34']) then
@@ -34,7 +34,7 @@ begin
   end if;
 end $$;
 
--- 0156's creative_params_problem, byte for byte.
+-- 0208's creative_params_problem, byte for byte.
 create or replace function public.creative_params_problem(p_capability text, p_params jsonb)
   returns text
   language plpgsql immutable set search_path = public, pg_temp as $$
@@ -83,7 +83,9 @@ begin
                  'voice_id', 'seed', 'source_asset_id', 'factor', 'style_kit_id', 'target_language',
                  'target_resolution', 'end_asset_id', 'language', 'quality', 'audio', 'look',
                  -- 0126
-                 'regions', 'region_feather') then
+                 'regions', 'region_feather',
+                 -- 0208
+                 'image_size') then
       return format('unknown parameter %s', k);
     end if;
   end loop;
@@ -276,6 +278,17 @@ begin
       return 'quality must be one of low, medium, high';
     end if;
   end if;
+  -- 0208: the size of a picture from a model that bills by it (the registry schema's closed list): t2i and edit only. Whether THIS
+  -- model is sold by size and lists the size (and has a price for it) is creative_price's question. Absent = no size named.
+  if p_params ? 'image_size' then
+    if p_capability not in ('t2i', 'edit') then
+      return format('image_size does not apply to %s', p_capability);
+    end if;
+    if jsonb_typeof(p_params -> 'image_size') is distinct from 'string'
+       or (p_params ->> 'image_size') not in ('512', '1K', '2K', '4K') then
+      return 'image_size must be one of 512, 1K, 2K, 4K';
+    end if;
+  end if;
   if p_params ? 'audio' then
     -- The soundtrack of a video (0070): t2v and i2v only, a JSON boolean.
     -- Whether THIS model offers the choice is creative_price's question.
@@ -343,7 +356,7 @@ $$;
 
 revoke all on function public.creative_params_problem(text, jsonb) from public, anon, authenticated, service_role;
 
--- 0159's creative_price, byte for byte.
+-- 0208's creative_price, byte for byte.
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -373,6 +386,8 @@ declare
   -- 0149: the vendor's figure for exactly the setting a preview is quoted at, and that figure as a number.
   vusd    jsonb;
   vcost   numeric;
+  -- 0208: the picture size this quote is for (spec.pricing.variants.by = image_size).
+  vsize   text;
 begin
   if cap !~ '^[a-z][a-z0-9_]{0,31}$' then
     perform public.creative_refuse('invalid_params', 'capability is required');
@@ -552,6 +567,28 @@ begin
     end if;
     m_unit := m_unit || '_' || regexp_replace(lower(tier), '[^a-z0-9]', '_', 'g');
   end if;
+  -- 0208: a picture size only on a model whose price follows it (spec.pricing.variants.by = image_size) and that lists the size
+  -- (spec.image_sizes, the list the worker checks: ModelEntry.problems "image size <s> is not offered by <model>"). On any other
+  -- model the size would reach a vendor that bills its own way under a price that was not read for it: refused, never ignored.
+  if p_params ? 'image_size'
+     and (coalesce(m_spec -> 'pricing' -> 'variants' ->> 'by', '') <> 'image_size'
+          or not coalesce(jsonb_typeof(m_spec -> 'image_sizes') = 'array'
+                          and (m_spec -> 'image_sizes') @> jsonb_build_array(p_params ->> 'image_size'), false)) then
+    perform public.creative_refuse('invalid_params',
+      format('%s does not offer the %s size', mdl, p_params ->> 'image_size'));
+  end if;
+  -- 0208: one price per size when the registry prices the sizes apart (model_registry.credit_unit_for: model_<id>_<unit>_<size>).
+  -- The size must be named: the worker sends it as the vendor's imageSize, and with none the vendor makes (and bills) its own
+  -- default under a price read for no size. A size without its own row is unpriced: never another size's rate, never the base row.
+  if cap in ('t2i', 'edit') and m_unit is not null
+     and m_spec -> 'pricing' -> 'variants' ->> 'by' = 'image_size' then
+    vsize := p_params ->> 'image_size';
+    if vsize is null then
+      perform public.creative_refuse('invalid_params',
+        format('%s is sold by picture size: name image_size', mdl));
+    end if;
+    m_unit := m_unit || '_' || regexp_replace(lower(vsize), '[^a-z0-9]', '_', 'g');
+  end if;
   -- The video settings (0070).
   if cap in ('t2v', 'i2v') then
     vby := m_spec -> 'pricing' -> 'variants' ->> 'by';
@@ -702,6 +739,8 @@ begin
     'credits_per_unit', rate.credits_per_unit * (1 + rate.margin), 'minimum', minimum)
     -- The tier this price is for, so what the person confirms names it.
     || case when tier is null then '{}'::jsonb else jsonb_build_object('quality', tier) end
+    -- 0208: the picture size this price is for.
+    || case when vsize is null then '{}'::jsonb else jsonb_build_object('image_size', vsize) end
     -- The resolution and soundtrack this price is for (0070).
     || variant
     -- 0139: a preview says so, and the Studio shows it as the operator's record, never as a price on sale.

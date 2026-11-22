@@ -32,12 +32,12 @@ def md5_of(fn):
 
 
 NEW = bodies(NEW_TEXT)
-OLD = {"creative_params_problem": bodies((MIG / "0156_named_resolution_params.sql").read_text(encoding="utf-8"))["creative_params_problem"],
-       "creative_price": bodies((MIG / "0159_duration_offered_by_model.sql").read_text(encoding="utf-8"))["creative_price"],
+BASE = bodies((MIG / "0208_geo_gate_and_image_size_price.sql").read_text(encoding="utf-8"))
+OLD = {"creative_params_problem": BASE["creative_params_problem"], "creative_price": BASE["creative_price"],
        "film_price": bodies((MIG / "0171_films_money.sql").read_text(encoding="utf-8"))["film_price"]}
-BEFORE = {"creative_params_problem": "25ee9cc62a27ad3a19e71008b04f3f36", "creative_price": "dafc5edae0000e741ac1b19bd0075790",
+BEFORE = {"creative_params_problem": "7ccde072309a637d9b07e59f1be45d20", "creative_price": "f61aaddd5686045961addd6f14a02c32",
           "film_price": "5de6c9bb2a74079e2078cad2d91b3c34"}
-AFTER = {"creative_params_problem": "e3aaf0c6a9eb07841b4d847558eb727a", "creative_price": "a271d7fe71fec2995ac1bf7414b1a995",
+AFTER = {"creative_params_problem": "0f4b7b7ba92bb20432841a4a5d5f8917", "creative_price": "34ae574dc0261251139c48b6ca1e1983",
          "film_price": "3c22f87be736c073d17d93e040e914e1"}
 
 #: (old text, new text): every change 0218 makes. Nothing else may differ from the old bodies.
@@ -50,7 +50,7 @@ begin
   known    constant text[] := array['prompt', 'negative_prompt', 'aspect_ratio', 'resolution', 'duration_s',
                                     'voice_id', 'seed', 'source_asset_id', 'factor', 'style_kit_id', 'target_language',
                                     'target_resolution', 'end_asset_id', 'language', 'quality', 'audio', 'look',
-                                    'regions', 'region_feather'];
+                                    'regions', 'region_feather', 'image_size'];
 begin
 """),
     ("""  for k in select jsonb_object_keys(p_params) loop
@@ -58,7 +58,9 @@ begin
                  'voice_id', 'seed', 'source_asset_id', 'factor', 'style_kit_id', 'target_language',
                  'target_resolution', 'end_asset_id', 'language', 'quality', 'audio', 'look',
                  -- 0126
-                 'regions', 'region_feather') then
+                 'regions', 'region_feather',
+                 -- 0208
+                 'image_size') then
       return format('unknown parameter %s', k);
     end if;
   end loop;
@@ -73,10 +75,10 @@ begin
 ]
 
 PRICE_HUNKS = [
-    ("""  vcost   numeric;
+    ("""  vsize   text;
 begin
 """,
-     """  vcost   numeric;
+     """  vsize   text;
   -- 0218: a limit from the model's spec, and the prompt's length in the worker's units.
   lim     numeric;
   units   integer;
@@ -192,6 +194,12 @@ class CreativePromptLimitsMigration(unittest.TestCase):
             for name in HUNKS:
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
+    def test_0208s_size_rule_is_kept_exactly(self):
+        # the size hunks of 0208 survive unchanged: every line of 0208's body that names image_size / vsize is still there
+        for line in OLD["creative_price"].splitlines():
+            if "vsize" in line or "image_size" in line:
+                self.assertIn(line, NEW["creative_price"])
+
     def test_the_refusals_are_raised_as_every_other_one_and_before_any_rate(self):
         cp = NEW["creative_price"]
         for word in ("seed_not_supported", "negative_prompt_not_supported", "prompt_too_long"):
@@ -225,7 +233,7 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         ts = (ROOT / "command-center" / "lib" / "creative" / "operations.ts").read_text(encoding="utf-8")
         keys = re.findall(r'^\s+"(\w+)",$', ts[ts.index("export const PARAM_KEYS = ["):ts.index("] as const;", ts.index("PARAM_KEYS"))], re.M)
         known = re.findall(r"'(\w+)'", pp[pp.index("known    constant text[] := array["):pp.index("];", pp.index("known    constant"))])
-        self.assertEqual(known, keys + ["regions", "region_feather"])
+        self.assertEqual(sorted(known), sorted(keys + ["regions", "region_feather"]))
         self.assertLessEqual(len("unknown parameter (99); allowed: " + ", ".join(known)), 300, "api_creative_refusal keeps 300")
 
     def test_film_prices_the_words_and_keeps_them_out_of_the_lines_params(self):
@@ -247,7 +255,8 @@ class CreativePromptLimitsMigration(unittest.TestCase):
             self.assertIn(f"array['{AFTER[name]}', '{BEFORE[name]}']", ROLLBACK_TEXT, name)
             self.assertGreaterEqual(NEW_TEXT.count(AFTER[name]), 4, name)  # header, guard, end state, verify
         first = NEW_TEXT.index("create or replace function")
-        self.assertLess(NEW_TEXT.index("0218 needs 0159_duration_offered_by_model.sql"), first)
+        self.assertLess(NEW_TEXT.index("0218 needs 0208_geo_gate_and_image_size_price.sql"), first)
+        self.assertLess(NEW_TEXT.index("to_regprocedure('public.creative_jobs_geo_gate()') is null"), first)
         self.assertLess(NEW_TEXT.index("0218 found a creative_price()"), first)
         self.assertLess(NEW_TEXT.rindex("create or replace function"), NEW_TEXT.index("The end state, asserted inside the transaction"))
         for needle in ("set local lock_timeout = '5s';", "APPLY AS ONE TRANSACTION", "WHAT TO VERIFY BEFORE YOU APPLY", "-- Verify",
@@ -267,8 +276,12 @@ class CreativePromptLimitsMigration(unittest.TestCase):
                         ("FILM_PRICE_0218", AFTER["film_price"])):
             self.assertIn(f'{name} = "{h}"', LAB)
         self.assertIn("ON_0156 = (*ON_0156, MIGRATION_0218.name)", LAB)
-        off = LAB[LAB.index("def take_off_0159("):LAB.index("def put_back_0159(")]
-        self.assertLess(off.index("take_off_0218(session)"), off.index("rollback_0159_body()"))
+        off = LAB[LAB.index("def take_off_0208("):LAB.index("def put_back_0208(")]
+        self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0208_body()"))
+        self.assertIn("return rollback_0218_if_on() +", LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")])
+        self.assertIn("put_back_0218(conn)", LAB[LAB.index("def put_back_0208("):LAB.index("def rollback_0159_body(")])
+        self.assertIn("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)", LAB)
+        self.assertIn('"0218_creative_prompt_limits.sql")', LAB[LAB.index("ON_0124 = ("):])
         off = LAB[LAB.index("def take_off_0171("):LAB.index("def put_back_0171(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0171_body("))
         self.assertIn("put_back_0218(", LAB[LAB.index("def put_back_0171("):LAB.index("MIGRATION_0174 =")])

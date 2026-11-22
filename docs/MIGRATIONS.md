@@ -2446,11 +2446,35 @@ video is cross-posted.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
 
+## The database's own country gate, and the price by picture size (0208, provisional)
+
+0208 (`0208_geo_gate_and_image_size_price.sql`) changes no answer for a model on sale today (0142 keeps every model with a country
+list off sale, and every model priced by size carries a terms gate). Post-event: it prepares Google's models, it does not open them.
+
+- **Country gate.** `creative_jobs_geo_gate` (BEFORE INSERT OR UPDATE OF routed_model on `creative_jobs`): a job on a model whose
+  `spec.blocked_countries` is not empty needs a country the web server signed for this person in the last seconds
+  (`x-nightshift-geo`, an HMAC-SHA256 checked by `geo_claim_country()` against the Vault secret `nightshift_geo_claim_key`);
+  none = NS400 `country_unverified`, a listed country = NS400 `country_blocked`. Neither function is callable by an API role.
+- **Before it is useful:** `select vault.create_secret('<value>', 'nightshift_geo_claim_key');` once, and the same value as
+  `NIGHTSHIFT_GEO_CLAIM_KEY` in the web's environment (32+ characters). Until then every job on a gated model is refused.
+- **Price by picture size.** `creative_params_problem` accepts `image_size` (t2i, edit; 512 / 1K / 2K / 4K); `creative_price`
+  prices a model whose `pricing.variants.by` is `image_size` by `<credit_unit>_<size>`, refuses one with no size, a size it does not
+  list, or a size on a model not priced by size, and names the size in the quote. A size without a row is `unpriced`.
+- **Replaces** 0156's `creative_params_problem` and 0159's `creative_price` (md5 guards). The lab's `take_off_0159` takes 0208 off first.
+- **Also replaces** 0126's `creative_regions_problem` (a region edit may name `image_size`, so a model sold by size can run one; the
+  web's region editor sends the model's smallest listed size) and 0196's `reroute_creative_job` (a failover candidate the country gate
+  refuses is skipped; before, the gate's NS400 aborted the whole failover). Both md5-guarded; the rollback puts each back only where
+  it is 0208's body, and the lab's `take_off_0196` takes 0208 off first.
+- **Before it is useful, in order:** the registry sync (`python tools/probe_models.py --sync`; 0208 raises a NOTICE while any
+  `provider = 'google'` row has no `blocked_countries`), the Vault key, then the web's key.
+- Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
+  `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.
+
 ## A quote refuses a prompt longer than the model takes, and settings its adapter would drop (0218)
 
 0218 (`0218_creative_prompt_limits.sql`) is **live on apply** and writes no row. It replaces THREE functions: `creative_params_problem`
-(0156's body plus two hunks), `creative_price` (0159's body plus two hunks) and `film_price` (0171's body plus four hunks). It must be
-applied before 0219.
+(0208's body plus two hunks), `creative_price` (0208's body plus two hunks; 0208's size checks and its country gate, a trigger, are kept
+exactly) and `film_price` (0171's body plus four hunks). Apply order: 0208, then 0218, then 0219.
 
 - **Evidence.** Breach's pins (`tests/security/test_sec_breach_s9_prompt_limits.py`): a model's own `limits.max_prompt_chars` was read
   only by the worker (`ModelEntry.problems`, UTF-16 units), after the hold, while the database checked 4000 code points; a prompt of 301
@@ -2470,7 +2494,8 @@ applied before 0219.
   adapter's `TAKES_NEGATIVE_PROMPT` in `_cross_errors`. True only where the adapter's `submit` puts the field in the vendor body, proved
   per model by `tests/test_negative_prompt_wiring.py`: Veo 3.1 (all three), Kling 2.6 and 3, Wan 2.7 and 3.0, Pika 2.5 and Pikaframes,
   Krea 3 and Krea 3 Regional. The worker refuses a negative prompt the entry does not take (`ModelEntry.problems`) as a backstop.
-- **Unknown keys.** `creative_params_problem` answers `unknown parameter (<count>); allowed: <the keys it knows>`, never the key.
+- **Unknown keys.** `creative_params_problem` answers `unknown parameter (<count>); allowed: <the keys it knows>` (0208's `image_size`
+  included), never the key.
 - **Film behaviour change.** `film_price` now prices the words each take sends (0198): the key frame carries the scene's negative
   prompt, each clip shot its visual prompt and negative prompt. A scene with a negative prompt on a model that does not take one, or a
   visual prompt longer than the clip model takes, is refused on that scene's lines at `quote_film` / `start_film`; the scene is never
@@ -2480,12 +2505,15 @@ applied before 0219.
   still names an unknown field inside a region; Film's narration line checks one sample.
 - **Before you apply.** Run Actions -> Probe models with `--sync`, so `spec.takes_negative_prompt` is there for the models that take one;
   until then every negative prompt is refused (never dropped).
-- **Drift guard and end state.** Live bodies must be 0156's / 0159's / 0171's or this file's (md5 in the header). The last block asserts
+- **Drift guard and end state.** Live bodies must be 0208's (`creative_params_problem` `7ccde072309a637d9b07e59f1be45d20`,
+  `creative_price` `f61aaddd5686045961addd6f14a02c32`) and 0171's (`film_price` `5de6c9bb2a74079e2078cad2d91b3c34`), or this file's
+  (`0f4b7b7ba92bb20432841a4a5d5f8917`, `34ae574dc0261251139c48b6ca1e1983`, `3c22f87be736c073d17d93e040e914e1`); 0208 must be applied. The last block asserts
   the three bodies, no API role grant, the pinned search_path, the volatility, every guard of `creative_price`, and that an unknown key
   never comes back in the refusal. Apply as ONE transaction.
-- **Order.** 0156's, 0159's and 0171's replays and rollbacks refuse 0218's bodies: run `docs/sql/rollback_0218_creative_prompt_limits.sql`
-  first (it puts the three bodies back byte for byte). The lab: `sec_db.take_off_0218`, called by `take_off_0159` and `take_off_0171`;
-  `sec_db.ON_0156` lists it, so every sequence that leaves 0156 or 0159 out leaves it out too.
+- **Order.** 0208's and 0171's replays and rollbacks refuse 0218's bodies: run `docs/sql/rollback_0218_creative_prompt_limits.sql`
+  first (it puts the three bodies back byte for byte). The lab: `sec_db.take_off_0218`, called by `take_off_0208` and `take_off_0171`;
+  `rollback_0208_body` (and so `rollback_0159_body`) starts with 0218's rollback where 0218 is on; `ON_0156`, `ON_0139` and `ON_0124`
+  list it right after 0208, so every sequence that leaves 0208 out leaves it out too.
 - **Tests.** `tests/test_creative_prompt_limits_migration.py` (the hunks, the count is the worker's, the hashes, the rollback, the lab
   chain, every synced row states a limit), `tests/test_negative_prompt_wiring.py` (the flag is what each adapter sends),
   `tests/security/test_sec_creative_prompt_limits.py` (the Studio's create and quote, the real rows, Film's lines, the file on a scratch

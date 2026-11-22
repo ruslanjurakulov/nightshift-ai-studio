@@ -269,7 +269,6 @@ def test_with_0149_rolled_back_only_the_by_resolution_preview_changes(conn, sc):
         with_0149 = [_quote(conn, *c) for c in others + ours]
         _become(conn, None)
         # 0153 sits on 0149's creative_price, and 0149's rollback refuses any other body: it comes off first (0155, on 0153's, before it).
-        conn.execute(sec_db.rollback_0218_body())  # 0218 sits on 0159's creative_price: off first
         conn.execute(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         conn.execute(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
         conn.execute(sec_db.rollback_0155_body())

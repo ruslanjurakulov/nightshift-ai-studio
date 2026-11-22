@@ -190,7 +190,6 @@ def test_without_0155_the_same_job_is_queued_and_every_other_answer_is_0153s(con
         bad = [(who, org, SHAPELESS, _params(aspect_ratio="16:9"), "t2i"), (who, org, SHAPED, _params(aspect_ratio="4:3"), "t2i")]
         with_0155 = [_quote(conn, *c) for c in others + bad]
         _become(conn, None)
-        conn.execute(sec_db.rollback_0218_body())  # 0218 sits on 0159's creative_price: off first
         conn.execute(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         conn.execute(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
         conn.execute(sec_db.rollback_0155_body())
