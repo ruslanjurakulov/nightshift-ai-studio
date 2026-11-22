@@ -357,7 +357,7 @@ describe("Activity, a project's log in the reference style", () => {
     expect(lines.map((li) => tagOf(li).querySelector(".lv-tag-code")?.textContent)).toEqual(["log", "clip-01.2", "key-01", "seg"]);
     expect(lines.map((li) => tagOf(li).querySelector(".lv-tag-code")?.getAttribute("aria-hidden"))).toEqual(["true", "true", "true", "true"]);
     expect(lines.map((li) => li.getAttribute("data-family"))).toEqual(["log", "clip", "key", "seg"]);
-    expect(lines[1].textContent).toContain("Scene 1 · clip: trying again");
+    expect(lines[1].textContent).toContain("Scene 1 · clip: waiting to retry");
     expect(lines[2].textContent).toContain("Scene 1 · picture: done");
     expect(lines[3].textContent).toContain(c.activity.words.segment_claimed);
     expect(lines[0].querySelector("time")?.className).toContain("lv-log-time");

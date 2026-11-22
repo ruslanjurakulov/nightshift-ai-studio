@@ -60,6 +60,7 @@ export const studioLiveRu: StudioLiveDictionary = {
   status: {
     draft: "Запланировано",
     waiting: "Ожидает",
+    retried: "Ждёт повтора",
     working: "В работе",
     done: "Готово",
     failed: "Ошибка",
@@ -105,7 +106,7 @@ export const studioLiveRu: StudioLiveDictionary = {
     step: "Шаг",
     made: "{step}: готово",
     failed: "{step}: ошибка",
-    retried: "{step}: повторная попытка",
+    retried: "{step}: ждёт повтора",
     tags: {
       clip: "Клип",
       clipScene: "Клип, сцена {n}",

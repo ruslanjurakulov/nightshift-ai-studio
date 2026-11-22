@@ -60,6 +60,7 @@ export const studioLiveUz: StudioLiveDictionary = {
   status: {
     draft: "Rejalashtirilgan",
     waiting: "Kutmoqda",
+    retried: "Qayta urinishni kutmoqda",
     working: "Bajarilmoqda",
     done: "Tayyor",
     failed: "Xato",
@@ -105,7 +106,7 @@ export const studioLiveUz: StudioLiveDictionary = {
     step: "Qadam",
     made: "{step}: tayyor",
     failed: "{step}: xato",
-    retried: "{step}: qayta urinildi",
+    retried: "{step}: qayta urinishni kutmoqda",
     tags: {
       clip: "Klip",
       clipScene: "Klip, {n}-sahna",
