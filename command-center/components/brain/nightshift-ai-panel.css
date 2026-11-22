@@ -1,0 +1,44 @@
+/* The customer's Nightshift AI docked beside the Studio canvas (NightshiftAiPanel.tsx), in the shared chat shell. The dock is a
+   fixed-height column: the shell runs `contained`, so the thread scrolls inside it and the composer stays in view, and the history
+   is the drawer variant, over the chat itself. */
+.ns-ai-dock {
+  /* The plan, the cards and the scenarios are the Studio's own fields: drawn dark inside the black shell, never a light card. */
+  --studio-field: #121214;
+  position: relative;
+  isolation: isolate;
+  height: min(80dvh, 760px);
+  min-height: 26rem;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #000;
+}
+.ns-ai-dock > .chat-shell { height: 100%; }
+@media (max-width: 40rem) {
+  /* On a phone the canvas's fixed dock (.cv-flow-dock: safe area + 80px up, ~62px tall) covers the bottom of the page. The page scrolls
+     this sheet (its thread scrolls inside it), so the room goes under the sheet: its composer and the last remedy keys in the thread
+     (Use shorter, Upgrade, Top up, a failed plan's Retry) can always be scrolled clear. 80 + 62 + a 16px gap + slack: the value
+     .cv-root.is-flow uses (Pixel on S5, 390px). */
+  .ns-ai-dock { margin-bottom: calc(env(safe-area-inset-bottom) + 172px); }
+}
+@media (min-width: 64rem) {
+  /* Beside the canvas: it stays on screen while the canvas scrolls. */
+  .ns-ai-dock { position: sticky; top: 1rem; }
+}
+
+.ns-ai-dock .chat-meter { margin: 0; text-align: center; font-size: 0.75rem; line-height: 1.4; color: var(--color-muted); }
+.ns-ai-dock .chat-meter-link { color: var(--color-fg); text-decoration: underline; text-underline-offset: 2px; }
+.ns-ai-dock .chat-meter-link:focus-visible { outline: 2px solid var(--chat-focus); outline-offset: 2px; }
+
+.ns-ai-problem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #a16207;
+  border-radius: 0.8rem;
+  background: var(--color-panel);
+  font-size: 0.9rem;
+}
+.ns-ai-problem-ic { flex-shrink: 0; margin-top: 0.2rem; color: #fbbf24; }

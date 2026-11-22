@@ -7,9 +7,10 @@ import type { Locale } from "@/lib/i18n";
 import { NightshiftAiPanel } from "@/components/brain/NightshiftAiPanel";
 
 /**
- * Lens 14 on PR #843. What would break without these: a keyboard or screen-reader user typing a message and finding focus on <body>
- * when the answer arrives (the box is disabled for the turn); focus pulled into the panel from a field elsewhere on the page; three
- * scenario buttons all announced as "Choose this one", so the person cannot tell which plan they are choosing.
+ * Lens 14 on PR #843, kept through the move into the shared chat shell. What would break without these: a keyboard or screen-reader
+ * user finding focus on <body> after a turn (a chooser button is disabled for its turn, which drops focus); focus pulled into the
+ * panel from a field elsewhere on the page when an answer arrives; three scenario buttons all announced as "Choose this one", so the
+ * person cannot tell which plan they are choosing.
  */
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), usePathname: () => "/chronos/studio" }));
 
@@ -23,12 +24,13 @@ let turnStatus = 200;
 function stubFetch(onTurn?: () => void) {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
-    if (url.startsWith("/api/brain/session/")) {
+    if (url.startsWith("/api/brain/history") && url.includes("session=")) {
       return json(200, {
         session: { step: "proposing" }, card: null, brief: null,
         messages: [{ id: 1, role: "assistant", content: "Pick one", payload: { scenarios: TITLES.map(scenario) } }],
       });
     }
+    if (url.startsWith("/api/brain/history")) return json(200, { sessions: [], next_before: null });
     if (url.startsWith("/api/brain/turn")) {
       onTurn?.();
       await new Promise<void>((r) => { turn = { release: r }; });
@@ -52,42 +54,52 @@ function mount(locale: Locale) {
 beforeEach(() => {
   turn = null;
   turnStatus = 200;
-  // jsdom has no layout, hence no scrollIntoView; the panel calls it to follow the newest message.
+  // jsdom has no layout, hence no scrollIntoView; the shell calls it to follow the newest message.
   Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("Nightshift AI panel focus", () => {
   const box = () => document.getElementById("ns-ai-input") as HTMLTextAreaElement;
+  const ready = async () => waitFor(() => expect(box().disabled).toBe(false));
 
-  it.each([[200], [500]])("gives focus back to the box after a turn that ended with status %i, when focus was in the panel", async (status) => {
+  it.each([[200], [500]])("keeps focus in the box through a turn that ended with status %i", async (status) => {
     turnStatus = status;
-    // A browser drops focus when a focused control becomes disabled; jsdom does not, so the turn's request does it.
-    stubFetch(() => box().blur());
+    stubFetch();
     mount("en");
-    await waitFor(() => expect(box()).toBeTruthy());
+    await ready();
     box().focus();
     fireEvent.change(box(), { target: { value: "hello" } });
     fireEvent.keyDown(box(), { key: "Enter" });
-    await waitFor(() => expect(box().disabled).toBe(true));
-    expect(document.activeElement).not.toBe(box());
+    await waitFor(() => expect(turn).not.toBeNull());
     turn!.release();
-    await waitFor(() => expect(box().disabled).toBe(false));
+    await waitFor(() => expect(screen.queryByText(dictionaries.en.aiChat.sending)).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(box()));
+  });
+
+  it("gives focus back to the box after a chooser button's turn dropped it", async () => {
+    stubFetch(() => (document.activeElement as HTMLElement | null)?.blur());
+    mount("en");
+    const choose = await screen.findByRole("button", { name: dictionaries.en.aiChat.chooseThisNamed.replace("{title}", TITLES[0]) });
+    choose.focus();
+    fireEvent.click(choose);
+    await waitFor(() => expect(turn).not.toBeNull());
+    expect(document.activeElement).toBe(document.body);
+    turn!.release();
     await waitFor(() => expect(document.activeElement).toBe(box()));
   });
 
   it("does not take focus from a field elsewhere on the page", async () => {
     stubFetch();
     mount("en");
-    await waitFor(() => expect(box()).toBeTruthy());
+    await ready();
     const other = screen.getByTestId("elsewhere");
-    // The turn is sent from the button path (no focus in the panel): focus is on the other field the whole time.
     fireEvent.change(box(), { target: { value: "hello" } });
     other.focus();
     fireEvent.submit(box().closest("form")!);
-    await waitFor(() => expect(box().disabled).toBe(true));
+    await waitFor(() => expect(turn).not.toBeNull());
     turn!.release();
-    await waitFor(() => expect(box().disabled).toBe(false));
+    await waitFor(() => expect(screen.getByText("Done")).toBeTruthy());
     expect(document.activeElement).toBe(other);
   });
 });

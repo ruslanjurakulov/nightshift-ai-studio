@@ -10,7 +10,11 @@ import "./chat-history.css";
  * product's own server route. The panel owns the list; the caller owns the thread (opening a session loads it into the chat).
  *
  * Desktop: a 268px column that collapses (remembered per product in localStorage). Phone: a drawer from the left, opened by the
- * header's menu button, closed on a pick, an outside tap or Esc, with focus kept inside while it is open.
+ * header's menu button, closed on a pick, an outside tap or Esc, with focus kept inside while it is open. `variant="drawer"` is the
+ * phone drawer at every width, over the chat itself: a 268px column would leave a side panel (the Studio's) no room for the chat.
+ *
+ * Rename and delete are drawn only when the source can do them: the customer's stored chats (0199) have no database function for
+ * either, and a menu item that cannot work is not shown.
  */
 
 export interface ChatSessionItem {
@@ -24,8 +28,8 @@ export type HistoryResult<T> = { ok: true; value: T } | { ok: false; gone?: bool
 
 export interface ChatHistorySource {
   list(before: string | null): Promise<HistoryResult<{ items: ChatSessionItem[]; nextBefore: string | null }>>;
-  rename(id: string, title: string): Promise<HistoryResult<null>>;
-  remove(id: string): Promise<HistoryResult<null>>;
+  rename?(id: string, title: string): Promise<HistoryResult<null>>;
+  remove?(id: string): Promise<HistoryResult<null>>;
 }
 
 export interface ChatHistoryLabels {
@@ -36,15 +40,6 @@ export interface ChatHistoryLabels {
   error: string;
   retry: string;
   more: string;
-  /** "{title}" is replaced: the row's menu button. */
-  options: string;
-  rename: string;
-  renameLabel: string;
-  save: string;
-  cancel: string;
-  delete: string;
-  confirmDelete: string;
-  confirmDeleteBody: string;
   gone: string;
   untitled: string;
   open: string;
@@ -61,6 +56,21 @@ export interface ChatHistoryLabels {
   /** Twelve short month names, January first, for the date shown once a chat is a week old. */
   months: readonly string[];
 }
+
+/** The row menu's words: needed only by a source that can rename or delete (a product without either writes none of them). */
+export interface ChatHistoryEditLabels {
+  /** "{title}" is replaced: the row's menu button. */
+  options: string;
+  rename: string;
+  renameLabel: string;
+  save: string;
+  cancel: string;
+  delete: string;
+  confirmDelete: string;
+  confirmDeleteBody: string;
+}
+
+const NO_EDIT: ChatHistoryEditLabels = { options: "", rename: "", renameLabel: "", save: "", cancel: "", delete: "", confirmDelete: "", confirmDeleteBody: "" };
 
 const TITLE_MAX = 60;
 
@@ -109,8 +119,9 @@ export function ChatHistoryFrame({
   onNewChat,
   onRemoved,
   renderChat,
+  variant = "panel",
 }: {
-  labels: ChatHistoryLabels;
+  labels: ChatHistoryLabels & Partial<ChatHistoryEditLabels>;
   source: ChatHistorySource;
   storageKey: string;
   activeId: string | null;
@@ -123,6 +134,7 @@ export function ChatHistoryFrame({
   onRemoved: (id: string) => void;
   /** The chat, given the header button that opens the drawer (phone) or the collapsed panel (desktop). */
   renderChat: (lead: ReactNode) => ReactNode;
+  variant?: "panel" | "drawer";
 }) {
   const [items, setItems] = useState<ChatSessionItem[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -139,7 +151,9 @@ export function ChatHistoryFrame({
   const lead = useRef<HTMLButtonElement>(null);
   const seq = useRef(0);
 
-  useEffect(() => setCollapsed(readCollapsed(storageKey)), [storageKey]);
+  const drawerOnly = variant === "drawer";
+  // A drawer has nothing to collapse: a remembered "collapsed" from a wider page must not hide it.
+  useEffect(() => setCollapsed(!drawerOnly && readCollapsed(storageKey)), [storageKey, drawerOnly]);
 
   const load = useCallback(async () => {
     const mine = ++seq.current;
@@ -248,7 +262,7 @@ export function ChatHistoryFrame({
     const title = editing.value.replace(/\s+/g, " ").trim().slice(0, TITLE_MAX);
     const before = items.find((i) => i.id === editing.id);
     setEditing(null);
-    if (!before || !title || title === before.title) return;
+    if (!source.rename || !before || !title || title === before.title) return;
     setNotice(null);
     setItems((prev) => prev.map((i) => (i.id === before.id ? { ...i, title } : i)));
     const r = await source.rename(before.id, title);
@@ -270,7 +284,7 @@ export function ChatHistoryFrame({
     if (!id) return;
     const index = items.findIndex((i) => i.id === id);
     const row = items[index];
-    if (!row) return;
+    if (!row || !source.remove) return;
     setNotice(null);
     setItems((prev) => prev.filter((i) => i.id !== id));
     const r = await source.remove(id);
@@ -302,9 +316,11 @@ export function ChatHistoryFrame({
   );
 
   const confirming = confirm ? items.find((i) => i.id === confirm) : null;
+  const hasMenu = Boolean(source.rename || source.remove);
+  const el: ChatHistoryEditLabels = { ...NO_EDIT, ...l };
 
   return (
-    <div className="chat-frame" data-collapsed={collapsed || undefined} data-open={open || undefined}>
+    <div className="chat-frame" data-variant={variant} data-collapsed={collapsed || undefined} data-open={open || undefined}>
       {open && <div className="chat-history-scrim" data-testid="history-scrim" aria-hidden onClick={closeDrawer} />}
       <aside
         id="chat-history"
@@ -326,9 +342,11 @@ export function ChatHistoryFrame({
             <SquarePen aria-hidden size={16} />
             <span>{l.newChat}</span>
           </button>
-          <button type="button" className="chat-act chat-history-collapse" aria-label={l.collapse} data-tip={l.collapse} onClick={toggleCollapsed}>
-            <PanelLeftClose aria-hidden size={18} />
-          </button>
+          {!drawerOnly && (
+            <button type="button" className="chat-act chat-history-collapse" aria-label={l.collapse} data-tip={l.collapse} onClick={toggleCollapsed}>
+              <PanelLeftClose aria-hidden size={18} />
+            </button>
+          )}
           <button type="button" className="chat-act chat-history-close" aria-label={l.close} data-tip={l.close} onClick={closeDrawer}>
             <X aria-hidden size={18} />
           </button>
@@ -370,7 +388,7 @@ export function ChatHistoryFrame({
                     >
                       <input
                         autoFocus
-                        aria-label={l.renameLabel}
+                        aria-label={el.renameLabel}
                         maxLength={TITLE_MAX}
                         value={editing.value}
                         onChange={(e) => setEditing({ id: i.id, value: e.target.value })}
@@ -383,10 +401,10 @@ export function ChatHistoryFrame({
                         }}
                       />
                       <button type="submit" className="btn-quiet">
-                        {l.save}
+                        {el.save}
                       </button>
                       <button type="button" className="btn-quiet" onClick={() => setEditing(null)}>
-                        {l.cancel}
+                        {el.cancel}
                       </button>
                     </form>
                   ) : (
@@ -403,11 +421,12 @@ export function ChatHistoryFrame({
                           {relativeTime(i.updatedAt, l)}
                         </time>
                       </button>
+                      {hasMenu && (
                       <div className="chat-history-menu" data-history-menu>
                         <button
                           type="button"
                           className="chat-act"
-                          aria-label={l.options.replace("{title}", title)}
+                          aria-label={el.options.replace("{title}", title)}
                           aria-haspopup="menu"
                           aria-expanded={menu === i.id}
                           onClick={() => setMenu((m) => (m === i.id ? null : i.id))}
@@ -416,30 +435,35 @@ export function ChatHistoryFrame({
                         </button>
                         {menu === i.id && (
                           <div role="menu" className="chat-history-pop">
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setMenu(null);
-                                setEditing({ id: i.id, value: i.title });
-                              }}
-                            >
-                              {l.rename}
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              data-tone="danger"
-                              onClick={() => {
-                                setMenu(null);
-                                setConfirm(i.id);
-                              }}
-                            >
-                              {l.delete}
-                            </button>
+                            {source.rename && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setMenu(null);
+                                  setEditing({ id: i.id, value: i.title });
+                                }}
+                              >
+                                {el.rename}
+                              </button>
+                            )}
+                            {source.remove && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                data-tone="danger"
+                                onClick={() => {
+                                  setMenu(null);
+                                  setConfirm(i.id);
+                                }}
+                              >
+                                {el.delete}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
+                      )}
                     </>
                   )}
                 </li>
@@ -455,15 +479,15 @@ export function ChatHistoryFrame({
         {confirming && (
           <div className="chat-history-confirm" role="alertdialog" aria-labelledby="chat-history-confirm-t" aria-describedby="chat-history-confirm-b">
             <p id="chat-history-confirm-t" className="chat-history-confirm-title">
-              {l.confirmDelete}
+              {el.confirmDelete}
             </p>
-            <p id="chat-history-confirm-b">{l.confirmDeleteBody.replace("{title}", confirming.title || l.untitled)}</p>
+            <p id="chat-history-confirm-b">{el.confirmDeleteBody.replace("{title}", confirming.title || l.untitled)}</p>
             <div className="chat-history-confirm-acts">
               <button type="button" className="btn-quiet" autoFocus onClick={() => setConfirm(null)}>
-                {l.cancel}
+                {el.cancel}
               </button>
               <button type="button" className="btn-quiet" data-tone="danger" onClick={() => void confirmDelete()}>
-                {l.delete}
+                {el.delete}
               </button>
             </div>
           </div>

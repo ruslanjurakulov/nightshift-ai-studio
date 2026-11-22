@@ -237,3 +237,16 @@
   .chat-typing span { animation: none; opacity: 0.8; }
   .chat-act[data-tip]::after { transition: none; }
 }
+
+/* ── the composer's state line (a cap reached, a plan without the chat) and the caller's meter ── */
+.chat-status { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.9rem; border: 1px solid var(--color-border); border-radius: 1rem; background: var(--color-panel); font-size: 0.9rem; line-height: 1.45; }
+.chat-status p { margin: 0; }
+.chat-pill[data-disabled] { opacity: 0.6; }
+.chat-input:disabled { cursor: not-allowed; }
+
+/* ── contained: a fixed-height column (the Studio's side panel) — the thread scrolls inside the shell, never the page ── */
+.chat-shell[data-contained] { min-height: 0; height: 100%; }
+.chat-shell[data-contained] .chat-thread { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.chat-shell[data-contained] .chat-empty { min-height: 0; }
+.chat-shell[data-contained] .chat-greeting { font-size: clamp(1.6rem, 5vw, 2.25rem); }
+.chat-shell[data-contained] .chat-keys { display: none; }

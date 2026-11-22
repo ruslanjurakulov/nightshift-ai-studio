@@ -134,3 +134,31 @@
   .chat-history, .chat-frame[data-open] .chat-history { transition: none; }
   .chat-history-skel { animation: none; }
 }
+
+/* variant="drawer" (the Studio's side panel): the phone drawer at every width, over the chat it belongs to rather than the
+   viewport, so it never covers the app's own navigation. After the phone rules, so on a phone these win too. */
+.chat-frame[data-variant="drawer"] { position: relative; isolation: isolate; height: 100%; overflow: hidden; }
+.chat-frame[data-variant="drawer"] .chat-frame-main { height: 100%; }
+.chat-frame[data-variant="drawer"] .chat-history-lead,
+.chat-frame[data-variant="drawer"] .chat-history-close { display: inline-flex; }
+.chat-frame[data-variant="drawer"] .chat-history,
+.chat-frame[data-variant="drawer"][data-collapsed] .chat-history {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 60;
+  width: min(85%, 300px);
+  height: 100%;
+  padding-top: 0.75rem;
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform 200ms ease, visibility 0s linear 200ms;
+}
+.chat-frame[data-variant="drawer"][data-open] .chat-history { transform: none; visibility: visible; transition: transform 200ms ease; }
+.chat-frame[data-variant="drawer"] .chat-history-scrim { position: absolute; inset: 0; z-index: 59; background: rgba(0, 0, 0, 0.6); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-frame[data-variant="drawer"] .chat-history,
+  .chat-frame[data-variant="drawer"][data-open] .chat-history { transition: none; }
+}
