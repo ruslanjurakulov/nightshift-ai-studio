@@ -413,7 +413,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
         </div>
       </header>
       {open && (
-        <div id="ns-ai-body" className="flex min-w-0 flex-col gap-3">
+        // On a phone the canvas's fixed dock (.cv-flow-dock: safe area + 80 px up, ~62 px tall) sits over the bottom of this body: the
+        // remedy keys (Use shorter, Upgrade, Top up, a failed plan's Retry) must scroll clear of it. 80 + 62 + a 16 px gap + slack, the
+        // value .cv-root.is-flow uses; the page scrolls this body, so the padding is here (Pixel on S5, 390 px).
+        <div id="ns-ai-body" className="flex min-w-0 flex-col gap-3 max-[640px]:pb-[calc(env(safe-area-inset-bottom)+172px)]">
           {!session && <p className="text-xs text-[var(--color-muted)]">{c.subtitle}</p>}
           {load.state === "loading" && <p className="text-xs text-[var(--color-muted)]" role="status">{c.loading}</p>}
           {load.state === "not_enabled" && <p className="text-sm" role="status">{c.errors.not_enabled}</p>}
