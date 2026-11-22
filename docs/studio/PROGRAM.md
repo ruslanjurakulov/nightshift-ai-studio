@@ -53,12 +53,23 @@ involved) → Forge → Lens (+ a specialist reviewer) → Probe → Breach (mon
 | **S4 Assembly & export** — P4b on the real media worker (measure first, rule 8), the finished master in the lane, 480p review copy, download/export, the private upload stays behind the publish gate | `claude/nsai-s4-` | `modules/film_assembly.py`, `modules/film_timeline.py`, assembly workflow/docs | publish behaviour (rule 2) | 0213 (only if needed) |
 | **S5 Design & benchmark** — the "$1.5M" bar: one visual language for the public site and the Studio (tokens, type scale, spacing, motion, dark-first), competitor benchmark, a Pixel audit of every stream's PR, and the app-shell polish in files no other stream owns | `claude/nsai-s5-` | `app/tokens.css`, `components/ds/**`, shell/rail/header styles, `docs/design/**` | another stream's components (send it findings instead) | none |
 
-Dependencies: S1 → (BRIEF, film id) → S2 → (film status, takes, events) → S3 → (segment order) → S4 → (master) → S3 shows it.
+| **S6 Voice & lip-sync** — a narration/voice model a customer can be sold (ElevenLabs on the plan its terms require; Uzbek only on v3/v4), lip-sync of a character's lines onto a clip (Kling lip-sync or another verified provider), both as registry entries that stay unconfirmed until a real call through the adapter succeeds; the film's voice track for S2/S4 | `claude/nsai-s6-` | `modules/audio_mixer.py` voice paths, `modules/voice_worker.py`, `modules/creative_adapters.py` (new adapters only), the model registry entries, `docs/research/**` | Brain prompts, money functions (ask S2), assembly (hand S4 the track contract) | 0214 (only if needed) |
+
+Dependencies: S1 → (BRIEF, film id) → S2 (S6 supplies the voice/lip-sync models S1 may propose and S2 may run) → (film status, takes, events) → S3 → (segment order) → S4 → (master) → S3 shows it.
 S3 builds against the contract's status tables now and rebases on `claude/canvas-timeline-lane` once that is pushed. S5 reviews
 everyone and lands tokens early so others consume them.
 
 Migration numbers: applied live up to 0209 (0206/0207 reserved, 0208 in PR #881, 0210 provisional elsewhere). Numbers above are
 provisional; Atlas renumbers at merge. Additive only, applied by hand.
+
+## The owner's approvals (22 Nov 2026, in chat with Atlas: "hammasiga ruxsat beraman")
+
+The owner approved every non-code step the program needs. Atlas carries them out and reports each; a stream never acts on them directly.
+
+- **Switches and migrations:** applying the program's migrations live and turning on Film Studio (`film_studio_enabled` / the per-org switch, first for the owner's and the demo workspace only), `NIGHTSHIFT_FILM_ASSEMBLY` and `NIGHTSHIFT_AI_CHAT` for those workspaces — each only after its PR is merged, CI is green and the switch-on gates in `docs/FILM_STUDIO.md` hold.
+- **One real paid test film** through the whole chain, run by Atlas in the owner's workspace once S1–S4 are merged; budget cap **USD 15 total** for the program's live tests unless the owner raises it. Streams test with fakes and the local lab only.
+- **Vendor plans:** ElevenLabs on the plan its OEM terms require for resale, and a Kling API package with lip-sync. Purchases are the owner's own act on the vendor's site (Atlas tells him when the adapter is ready, so no month is paid for nothing); keys go to GitHub Actions secrets through the Command Center, never into chat.
+- **Kling letter of authorization:** signed and submitted by the owner himself.
 
 ## Rules every stream keeps (from CLAUDE.md; the ones this program touches most)
 
