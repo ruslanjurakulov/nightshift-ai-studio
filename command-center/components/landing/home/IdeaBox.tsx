@@ -14,12 +14,15 @@ export type IdeaBoxCopy = PromptBoxCopy;
  *
  * The field, the key, the empty-field line, the counter and the Back reset are the shared PromptBox (components/prompt/PromptBox.tsx);
  * this file is only where the words go. The page stays static: whether the visitor is signed in is not asked here, so the first
- * paint needs no session read. The field's height is fixed by its rows, so the hero's box is the same before and after this
- * hydrates (CLS 0).
+ * paint needs no session read.
+ *
+ * Drawn as one glass bar on the first screen (the owner's "in this style", after kling.ai's hero, 2026-11-22): the hero's own still as
+ * a small thumbnail, one line to type in, the key on the right. The bar's height is set by home.css, not by its content, so the
+ * hero's box is the same before and after this hydrates (CLS 0). The label stays the field's accessible name, visually hidden.
  *
  * Without script the form still goes to sign-up with the Studio as `next` (the field has no name: its words never enter the address).
  */
-export function IdeaBox({ copy }: { copy: IdeaBoxCopy }) {
+export function IdeaBox({ copy, thumb }: { copy: IdeaBoxCopy; thumb?: string }) {
   const [text, setText] = useState("");
   const [leaving, setLeaving] = useState(false);
 
@@ -44,6 +47,14 @@ export function IdeaBox({ copy }: { copy: IdeaBoxCopy }) {
       onBack={() => setLeaving(false)}
       cls="hm-idea"
       testId="idea"
+      single
+      lead={
+        thumb ? (
+          // The hero's own still (its small rendition, the one a phone's first screen already loads), as a background: an echo of
+          // the picture behind the bar, not a sample in its own box, so it is not one of the page's labelled image elements.
+          <span className="hm-idea-thumb" aria-hidden="true" style={{ backgroundImage: `url("${thumb}")` }} />
+        ) : null
+      }
       action="/signup"
       method="get"
       hidden={<input type="hidden" name="next" value={IDEA_NEXT} />}

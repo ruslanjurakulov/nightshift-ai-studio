@@ -59,8 +59,8 @@ const landing = (code: "en" | "ru" | "uz" = "en") => render(<Landing t={dictiona
 
 describe("a phone's first screen is the picture (round 9; the footage moved into the chat card when the studio backdrop took the panel)", () => {
   // The first screen the owner kept (components/landing/home/HomeHero.tsx, 2026-11-22): our own Studio clip edge to edge (orbit, the
-  // night city, the steaming street stall), behind the eyebrow, the headline, the idea box and the quiet link down the page.
-  it.each(LOCALES.map((l) => l.code))("%s: the first screen is our own Studio clip edge to edge, then the eyebrow, the headline, the idea box and the link down; the picture is labelled AI-generated", (code) => {
+  // night city, the steaming street stall), behind the headline, one line and the idea bar, centred (kling.ai's style, same day).
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen is our own Studio clip edge to edge, then the headline, one line and the idea bar; the picture is labelled AI-generated", (code) => {
     env();
     const h = dictionaries[code].landingHome.hero;
     const { container } = landing(code);
@@ -77,20 +77,28 @@ describe("a phone's first screen is the picture (round 9; the footage moved into
     expect(hero.querySelector(".hm-hero-credit .hm-badge")?.textContent).toBe(h.ai);
     const copy = hero.querySelector(".hm-hero-body")!;
     expect(copy.querySelector("h1")?.textContent).toBe(h.title);
+    expect(copy.querySelector(".hm-hero-sub")?.textContent).toBe(h.subline);
     expect(copy.querySelector("form.hm-idea")).toBeTruthy();
-    expect(copy.querySelectorAll("a.nx-btn")).toHaveLength(0);
+    expect(copy.querySelectorAll("a")).toHaveLength(0);
     // No old backdrop, no old prompt bar and no second copy of the picture on the first screen.
     expect(container.querySelector(".nx-hero-bg, .nx-hero-bleed, .nx-hero-visual, .nx-sh, form.nx-pbar")).toBeNull();
   });
 
-  it("veils the clip under the words: at least 0.78 black where the words are on a wide screen, 0.82 under them below 1024 px", () => {
+  it("veils the clip under the words: at least 0.72 black across the centred words on a wide screen, 0.78 everywhere on a phone", () => {
+    // Measured over all 20 frames of the clip (4 a second) with the words made transparent, at 1440, 1024 and 390 px: the title,
+    // the line, the field and the note hold their ratios over the brightest frame (the orbit's cloud, the neon street).
     const veil = homeCss.match(/\.hm-hero-veil \{[^}]*\}/)![0];
-    const wide = [...veil.matchAll(/rgb\(7 10 20 \/ ([\d.]+)\)/g)].map((x) => Number(x[1]));
-    // 0% and 45% of the width hold the words (max-width 11em / 24em / 44rem from the left gutter).
-    expect(wide.slice(0, 2).every((a) => a >= 0.78)).toBe(true);
-    const narrow = homeCss.match(/@media \(max-width: 1023px\) \{\s*\.hm-hero-veil \{[^}]*\}/)![0];
-    const stops = [...narrow.matchAll(/rgb\(7 10 20 \/ ([\d.]+)\)/g)].map((x) => Number(x[1]));
-    expect(stops.slice(0, 2).every((a) => a >= 0.82)).toBe(true);
+    const centre = veil.match(/radial-gradient\(ellipse [^,]+, ([^)]+\)[^)]*\)[^)]*\)[^)]*\))/)![0];
+    const stops = [...centre.matchAll(/rgb\(7 10 20 \/ ([\d.]+)\) (\d+)%/g)].map((x) => [Number(x[1]), Number(x[2])]);
+    // The words sit inside the first 60% of the ellipse.
+    expect(stops).toEqual([[0.8, 0], [0.72, 60], [0, 100]]);
+    expect(stops.filter(([, at]) => at <= 60).every(([a]) => a >= 0.72)).toBe(true);
+    // Under everything, a wash: the picture outside the ellipse (the label's corner) is never bare.
+    expect(veil).toMatch(/rgb\(7 10 20 \/ 0\.[3-9]\d*\);\s*\}/);
+    const narrow = homeCss.match(/@media \(max-width: 640px\) \{\s*\.hm-hero-veil \{[^}]*\}/)![0];
+    const phone = [...narrow.matchAll(/rgb\(7 10 20 \/ ([\d.]+)\)/g)].map((x) => Number(x[1]));
+    expect(phone.length).toBeGreaterThan(0);
+    expect(phone.every((a) => a >= 0.78)).toBe(true);
   });
 
   it("keeps the first screen dark in both themes, with a veil under the words that is never lighter than 0.62 black under the text", () => {
@@ -121,9 +129,11 @@ describe("a phone's first screen is the picture (round 9; the footage moved into
     act(() => setMotionPaused(false));
     expect(sw.getAttribute("aria-pressed")).toBe("false");
     // Visually hidden until focused (no visible pause word or icon, owner 2026-11-13), still in the tab order and to screen readers;
-    // focused: top right, 44 px, a visible focus ring; the badge is top left and the credit bottom right; under reduced motion it is
-    // gone with the video.
+    // focused: 44 px with a visible focus ring, in the first screen's bottom right corner (where kling.ai keeps its sound key), the
+    // AI label bottom left; under reduced motion it is gone with the video.
     expect(sw.querySelector("svg")).toBeNull();
+    expect(homeCss).toMatch(/\.hm-hero \.nx-motion \{ position: absolute; top: auto; right: var\(--hm-gutter\); bottom: \d+px; \}/);
+    expect(homeCss).toMatch(/\.hm-hero-credit \{\s*position: absolute;\s*left: var\(--hm-gutter\);\s*bottom: 16px;/);
     expect(css).toMatch(/\.nx-motion-btn:not\(:focus-visible\), \.nx-clip-pause:not\(:focus-visible\) \{ position: absolute; width: 1px; height: 1px;[^}]*clip: rect\(0 0 0 0\);/);
     expect(css).toMatch(/\.nx-motion-btn:focus-visible \{[^}]*outline: 3px solid #ffa940;/);
     expect(css).toMatch(/\.nx-bleed \.nx-clip-pause \{ top: 12px; right: 12px; bottom: auto; z-index: 3; \}/);

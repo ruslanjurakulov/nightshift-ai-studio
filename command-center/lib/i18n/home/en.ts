@@ -17,6 +17,9 @@ export const homeEn = {
     /** A no-break space before the dash, so a narrow screen never starts a line with it. */
     title: "From idea to finished video — one Studio",
     lead: "Write an idea. Nightshift turns it into pictures, clips, voice and a finished video, with the price on the button before anything starts.",
+    /** The first screen's one line under the title (components/landing/home/HomeHero.tsx): the lead's promise, short enough for one
+     *  line at desktop width. `lead` stays for the sections that have room for the whole sentence. */
+    subline: "Write an idea. In the Studio, you see the price before anything starts.",
     primary: "Start creating",
     secondary: "See how it works",
     /** The "Write your idea" box (components/landing/home/IdeaBox.tsx). Nothing runs before the person presses send in the Studio. */

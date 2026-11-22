@@ -17,8 +17,9 @@ export type PromptBoxCopy = { label: string; placeholder: string; submit: string
  * problem, because it is cleared by the very keystroke that fixes it.
  *
  * The landing's markup is a contract (its testids, a field with no `name` so a no-script submit never puts the words in an address,
- * the form's action/method): with no `header`, `chips` or `after` the output is exactly the markup IdeaBox drew before this file
- * existed, pinned by tests/prompt-box.test.tsx. Kept free of the Studio's modules for the landing's first paint.
+ * the form's action/method), pinned by tests/prompt-box.test.tsx (tests/fixtures/idea-box-markup.ts). The landing draws it as one
+ * line (`single`, with its thumbnail as `lead`); the start box keeps its textarea, and with neither prop its markup is unchanged.
+ * Kept free of the Studio's modules for the landing's first paint.
  */
 export function PromptBox({
   value,
@@ -43,6 +44,8 @@ export function PromptBox({
   fieldProps,
   rowProps,
   liveAtLimit = false,
+  single = false,
+  lead,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -82,9 +85,15 @@ export function PromptBox({
   /** The visible count is not live; one always-present hidden line speaks once, at the limit. A live count re-read "1,801 of
    *  2,000" under every keystroke. Off for the landing, whose markup (tests/fixtures/idea-box-markup.ts) is a contract. */
   liveAtLimit?: boolean;
+  /** One line (an `<input>`), for a bar with a fixed height: the landing's first screen. Enter sends, through the form's own
+   *  submit, so there is no key handler to fire a second time beside it. */
+  single?: boolean;
+  /** Inside the row, before the field (the landing's thumbnail). */
+  lead?: ReactNode;
 }) {
   const id = useId();
   const own = useRef<HTMLTextAreaElement>(null);
+  const line = useRef<HTMLInputElement>(null);
   const field = fieldRef ?? own;
   const [problem, setProblem] = useState(false);
   const length = Array.from(value).length;
@@ -106,7 +115,7 @@ export function PromptBox({
     if (busy) return;
     if (!allowEmpty && !ideaWords(value)) {
       setProblem(true);
-      field.current?.focus();
+      (single ? line : field).current?.focus();
       return;
     }
     onSubmit();
@@ -116,6 +125,24 @@ export function PromptBox({
     // Enter is a new line (an idea can have paragraphs); Ctrl or Cmd with Enter sends, as in the Studio's own box.
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go();
   }
+
+  function change(next: string) {
+    onChange(next);
+    if (problem) setProblem(false);
+  }
+
+  // The same field either way: one line on the landing, the textarea in the start box.
+  const shared = {
+    maxLength: max,
+    placeholder: copy.placeholder,
+    value,
+    "aria-invalid": problem || undefined,
+    "aria-describedby": `${id}-n${problem ? ` ${id}-e` : ""}`,
+    "aria-labelledby": fieldProps?.["aria-labelledby"],
+    enterKeyHint: "send" as const,
+    autoComplete: "off",
+    "data-testid": `${testId}-field`,
+  };
 
   const submit = (
     <button type="submit" className={buttonClass({ variant: "primary", size: "lg", className: `${cls}-go` })} aria-busy={busy || undefined} data-testid={`${testId}-submit`}>
@@ -132,26 +159,12 @@ export function PromptBox({
         {copy.label}
       </label>
       <div className={`${cls}-row`} {...rowProps}>
-        <textarea
-          id={fieldId}
-          ref={field}
-          className={`${cls}-field`}
-          rows={rows}
-          maxLength={max}
-          placeholder={copy.placeholder}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            if (problem) setProblem(false);
-          }}
-          onKeyDown={onKey}
-          aria-invalid={problem || undefined}
-          aria-describedby={`${id}-n${problem ? ` ${id}-e` : ""}`}
-          aria-labelledby={fieldProps?.["aria-labelledby"]}
-          enterKeyHint="send"
-          autoComplete="off"
-          data-testid={`${testId}-field`}
-        />
+        {lead}
+        {single ? (
+          <input id={fieldId} ref={line} type="text" className={`${cls}-field`} {...shared} onChange={(e) => change(e.target.value)} />
+        ) : (
+          <textarea id={fieldId} ref={field} className={`${cls}-field`} rows={rows} {...shared} onChange={(e) => change(e.target.value)} onKeyDown={onKey} />
+        )}
         {chips ? (
           <div className={`${cls}-foot`}>
             {chips}

@@ -190,6 +190,19 @@ describe("the landing with our own clip on its first screen", () => {
     expect(without(container, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
   });
 
+  it("puts the first screen's own still in the idea bar as a thumbnail: decorative, the same picture, not a second sample", () => {
+    const { container } = landing();
+    const still = container.querySelector(".hm-hero-still") as HTMLImageElement;
+    const thumb = container.querySelector("section.hm-hero form .hm-idea-row > .hm-idea-thumb") as HTMLElement;
+    expect(thumb.getAttribute("aria-hidden")).toBe("true");
+    // The small rendition of the very still behind the words (the hero's `src`), as the reference's bar shows its own clip.
+    expect(thumb.style.backgroundImage).toBe(`url("${still.getAttribute("src")}")`);
+    // Not an <img> and no sample marks: the page's picture count and its no-clip-twice check still see the clip once.
+    expect(thumb.tagName).toBe("SPAN");
+    expect([...thumb.attributes].map((a) => a.name).sort()).toEqual(["aria-hidden", "class", "style"]);
+    expect(container.querySelectorAll(`[data-showcase-entry="${HERO}"]:not(#models *)`)).toHaveLength(1);
+  });
+
   it("counts what the page holds: the samples on it and the models that made them, and the welcome grant", () => {
     const { container } = landing();
     const facts = Object.fromEntries([...container.querySelectorAll(".nx-facts-list li")].map((li) => [li.getAttribute("data-fact"), li.querySelector(".nx-facts-n")?.textContent]));
@@ -455,8 +468,9 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
   it("is not on the landing: the first screen's idea box is the page's one place to type", () => {
     const { container } = landing();
     expect(container.querySelector(".nx-pbar, .nx-pbar-idea, .nx-pbar-slot")).toBeNull();
-    expect(container.querySelectorAll("textarea")).toHaveLength(1);
-    expect(container.querySelector("section.hm-hero textarea")).toBeTruthy();
+    // One field to type an idea in, on the whole page, and it is the first screen's (one line since the glass bar, 2026-11-22).
+    expect(container.querySelectorAll("textarea, [data-testid='idea-field']")).toHaveLength(1);
+    expect(container.querySelector("section.hm-hero input[data-testid='idea-field']")).toBeTruthy();
   });
 });
 

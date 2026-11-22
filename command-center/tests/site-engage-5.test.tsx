@@ -419,10 +419,12 @@ describe("the hero and the Try grid (round 5)", () => {
     // and the page's pause switch.
     const hero = container.querySelector("section.hm-hero")!;
     expect([...hero.children].map((c) => c.className.split(" ")[0])).toEqual(["hm-hero-media", "hm-hero-veil", "hm-wrap", "hm-hero-credit", "nx-motion"]);
+    // In the reference's order (kling.ai's first screen, the owner's "in this style", 2026-11-22): the title, one line, the bar.
     const order = [...hero.querySelector(".hm-hero-body")!.children].map((c) => c.className.split(" ")[0] || c.tagName);
-    expect(order).toEqual(["hm-eyebrow", "ds-display", "hm-hero-lead", "hm-idea", "hm-idea-more"]);
-    // The headline is a display size above every section heading: on a desktop its largest is above .nx-h2's largest.
-    const h2max = Number(css.match(/\.nx-h2 \{[^}]*font-size: clamp\(\d+px, [\d.]+vw, (\d+)px\)/)![1]);
+    expect(order).toEqual(["ds-display", "hm-hero-sub", "hm-idea"]);
+    // The headline is a display size above every section heading: on a desktop its largest is above the landing's section titles'
+    // largest (.lp-root's --lp-h2, which the landing's .nx-h2 takes).
+    const h2max = Number(css.match(/--lp-h2: clamp\(\d+px, [\d.]+vw, (\d+)px\)/)![1]);
     const h1max = Number(homeCss.match(/\.hm-hero-title \{[^}]*font-size: clamp\([^,]+, [^,]+, ([\d.]+)rem\)/)![1]) * 16;
     expect(h1max).toBeGreaterThan(h2max);
     // The chat card is the idea, not the picture: it sits under the steps, with no picture of its own.

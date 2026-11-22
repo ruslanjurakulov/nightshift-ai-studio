@@ -6,6 +6,7 @@ export const homeRu: HomeDictionary = {
     eyebrow: "Nightshift Studio",
     title: "От идеи до готового видео — одна Studio",
     lead: "Напишите идею. Nightshift превратит её в картинки, клипы, голос и готовое видео, а цена будет на кнопке ещё до начала.",
+    subline: "Напишите идею. В Studio цена видна ещё до начала.",
     primary: "Начать создавать",
     secondary: "Как это работает",
     idea: {
