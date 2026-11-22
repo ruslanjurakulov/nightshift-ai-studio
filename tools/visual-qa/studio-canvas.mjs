@@ -155,6 +155,35 @@ const VIEWS = [
   { width: 390, height: 844, theme: "dark" },
 ];
 
+/**
+ * Is the Nightshift AI panel's last key covered where a phone's dock rides (80–140px above the screen's bottom edge)? The window is
+ * made just tall enough to put the key's centre there, then elementFromPoint says what is on top. null: no panel on this page.
+ * A fixed dock was caught here covering the panel's keys (the remedy for a blocked purchase); the dock is sticky to the canvas now.
+ */
+async function aiKeyCovered(page, width) {
+  const KEYS = "[data-testid=nightshift-ai-panel] button, [data-testid=nightshift-ai-panel] a";
+  const y = await page.evaluate((sel) => {
+    // A modal the person opened (the inspector sheet, the palette) covers everything by design until it is closed: not a finding.
+    if (document.querySelector('.cv-scrim, [aria-modal="true"], .is-sheet')) return null;
+    const keys = [...document.querySelectorAll(sel)].filter((k) => k.getClientRects().length > 0);
+    const last = keys[keys.length - 1];
+    if (!last) return null;
+    const r = last.getBoundingClientRect();
+    return r.top + window.scrollY + r.height / 2;
+  }, KEYS);
+  if (y == null) return null;
+  await page.setViewportSize({ width, height: Math.max(320, Math.round(y + 110)) });
+  await page.waitForTimeout(300);
+  return page.evaluate((sel) => {
+    window.scrollTo(0, 0);
+    const keys = [...document.querySelectorAll(sel)].filter((k) => k.getClientRects().length > 0);
+    const last = keys[keys.length - 1];
+    const r = last.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { covered: !top || !(last === top || last.contains(top)), by: top ? `${top.tagName}.${String(top.className).slice(0, 40)}` : "nothing", key: last.textContent.trim().slice(0, 30) };
+  }, KEYS);
+}
+
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: exe });
 const MEDIA = arg("media", null);
@@ -255,6 +284,10 @@ for (const loc of LOCALES)
       await page.screenshot({ path: path.join(OUT, name), fullPage: false });
       lines.push(`${name}  overflow=${m.overflow}  landmark=${m.landmark}  form=${m.panel}  sheet=${JSON.stringify(m.sheet)}  ${m.nodes.join(" ")}`);
       if (m.dockCovers) bad.push(`${name}: the flow's dock covers the last card`);
+      // Last: it resizes the window. The Nightshift AI panel (start the app with NIGHTSHIFT_AI_CHAT=on) stacks above the canvas on
+      // a phone; its last key (Upgrade / Buy credits when short) must be what is on top in the band where a phone's dock rides.
+      const ai = phone ? await aiKeyCovered(page, v.width) : null;
+      if (ai?.covered) bad.push(`${name}: ${ai.by} covers the Nightshift AI panel's last key ("${ai.key}")`);
       if (m.sheet && (m.sheet.bottom !== 0 || m.sheet.top <= 0)) bad.push(`${name}: sheet not anchored to the bottom (${JSON.stringify(m.sheet)})`);
       if (m.overflow > 0) bad.push(`${name}: ${m.overflow}px sideways`);
       if (!m.landmark) bad.push(`${name}: ${s.check} missing`);

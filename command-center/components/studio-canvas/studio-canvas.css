@@ -1000,8 +1000,8 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   display: block;
   height: auto;
   min-height: calc(100dvh - var(--cv-top, 60px));
-  /* The flow's dock and the app's tab bar both sit at the bottom: the last card stays above them. */
-  padding-bottom: calc(env(safe-area-inset-bottom) + 172px);
+  /* The app's tab bar sits at the bottom: the sticky dock (in the flow) stays above it at the end. */
+  padding-bottom: calc(env(safe-area-inset-bottom) + 88px);
 }
 .is-flow .cv-toast { position: fixed; bottom: calc(env(safe-area-inset-bottom) + 150px); }
 .cv-flow { padding: 4px 0 8px; }
@@ -1054,11 +1054,13 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-ft { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .cv-ft b { display: -webkit-box; overflow: hidden; font-weight: 600; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .cv-fin { overflow: hidden; color: var(--dim); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+/* Sticky to the canvas, not fixed to the screen: it rides at the bottom only while the canvas is on screen, and can never sit
+   on anything above the canvas (the Nightshift AI panel stacks there on a phone; a fixed dock covered its Upgrade and Buy
+   credits keys, the remedy for a blocked purchase). It takes its own room in the flow, so the last card ends above it. */
 .cv-flow-dock {
-  position: fixed;
+  position: sticky;
   z-index: 35;
-  left: 12px;
-  right: 12px;
+  margin: 12px 12px 0;
   bottom: calc(env(safe-area-inset-bottom) + 80px);
   display: flex;
   align-items: center;
