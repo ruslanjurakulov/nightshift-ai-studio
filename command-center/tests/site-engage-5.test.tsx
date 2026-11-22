@@ -28,6 +28,7 @@ import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
 import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 const ROOT = join(__dirname, "..");
 const SRC = CLIPS.caravan;
@@ -241,7 +242,7 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     const hero = container.querySelector("section.hm-hero")!;
     const heroClip = hero.querySelector(".hm-hero-media");
     if (heroClip) {
-      expect(hero.querySelector(".hm-hero-credit .hm-badge")?.textContent).toBe(t.landingHome.hero.ai);
+      expect(aiMarkOf(hero.querySelector(".hm-hero-credit .hm-badge"))).toEqual({ seen: t.site.gallery.badge, said: t.landingHome.hero.aiCredit });
       for (const w of [t.site.samples.tag, t.site.samples.frameTag, t.site.samples.clipTag]) expect(hero.textContent).not.toContain(w);
     }
     const fin = slotMedia("landing.final");
@@ -271,7 +272,7 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     for (const b of sampleBoxes) {
       expect(b.getAttribute("data-clip")).toBe("sample");
       expect(b.closest(SAMPLE_CARD)).toBeTruthy();
-      expect(b.querySelector(".nx-result-badge")?.textContent).toBe(t.site.gallery.badge);
+      expect(aiMarkOf(b.querySelector(".nx-result-badge"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
       expect(b.querySelector(".nx-result-badge[data-kind]")).toBeNull();
     }
     const sampleVideos = [...container.querySelectorAll(`${GALLERY} video`)];
@@ -363,11 +364,12 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
       // A real output is that sample's own box: its job, its model's name, AI-generated; lazy; Animate shows the still too.
       if (tile.hasAttribute("data-showcase-entry")) {
         expect(tile.dataset.showcaseEntry).toBe(def.job);
-        expect(tile.querySelector(".nx-wall-credit")?.textContent).toContain(t.site.gallery.badge);
+        expect(tile.querySelector(".nx-wall-credit")?.textContent).toContain(t.site.gallery.badgeName);
         // One status line and one small credit line, and no model name anywhere on the tile, words or alt text: the owner has not
         // decided whether the public site names models, and "this model is not in the Studio" only repeated "Not available yet"
         // (owner, 2026-11-14).
-        expect(tile.querySelector(".nx-wall-credit")?.textContent).toBe(`${t.site.gallery.badge} · ${t.site.wall.byTeam}`);
+        // Seen: just "AI" (owner, 2026-11-22). Said: what it is and who made it.
+        expect(aiMarkOf(tile.querySelector(".nx-wall-credit"))).toEqual({ seen: t.site.gallery.badge, said: `${t.site.gallery.badgeName} · ${t.site.wall.byTeam}` });
         const entry = SHOWCASE_ENTRIES.find((x) => x.jobId === def.job)!;
         const names = [entry.modelName, ...(toolSource(def.job) ? [SHOWCASE_ENTRIES.find((x) => x.jobId === toolSource(def.job))!.modelName] : [])];
         const said = tile.textContent + [...tile.querySelectorAll("img")].map((i) => i.getAttribute("alt")).join(" ");

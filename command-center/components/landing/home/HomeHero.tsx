@@ -5,6 +5,7 @@ import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { HERO_JOB, reelItem } from "@/components/landing/home/home-reel";
 import { IdeaBox } from "@/components/landing/home/IdeaBox";
+import { AiMark } from "@/components/site/AiMark";
 import "@/components/landing/home/home.css";
 
 /** The hero picture's widths, as the browser should choose them: the whole screen. */
@@ -54,11 +55,14 @@ export function HomeHero({ t }: { t: Dictionary }) {
           {h.title}
         </h1>
         <p className="hm-hero-sub">{h.subline}</p>
-        <IdeaBox copy={h.idea} thumb={item?.f.posterSm} />
+        <IdeaBox copy={h.idea} thumb={item?.f.posterSm} mirror={item ? `sample-${item.e.jobId}` : undefined} />
       </div>
       {item && (
+        // Just "AI" for the eye (the owner, 2026-11-22); a screen reader hears what it means and where it was made (AiMark).
         <p className="hm-hero-credit">
-          <span className="hm-badge">{h.ai}</span> {h.reelLabel}
+          <span className="hm-badge">
+            <AiMark short={t.site.gallery.badge} name={h.aiCredit} />
+          </span>
         </p>
       )}
       <MotionToggle pause={t.site.fx.pause} />

@@ -29,6 +29,7 @@ import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, makerCreditProble
 import { slotMedia } from "@/components/site/samples";
 import { EXAMPLE_JOBS, EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 afterEach(cleanup);
 
@@ -603,7 +604,7 @@ describe("the pricing page, product first (round 3)", () => {
     expect(pic.getAttribute("alt")).toBe(dictionaries.en.site.how.thumbAlt);
     expect(chat.querySelector(".nx-result-art")?.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
     expect(chat.querySelector("[data-sample]")).toBeNull();
-    expect(chat.querySelector(".nx-result-art .nx-result-badge[data-kind='ai']")?.textContent).toBe(dictionaries.en.site.gallery.badge);
+    expect(aiMarkOf(chat.querySelector(".nx-result-art .nx-result-badge[data-kind='ai']"))).toEqual({ seen: dictionaries.en.site.gallery.badge, said: dictionaries.en.site.gallery.badgeName });
     expect(chat.querySelector("figcaption")).toBeNull();
     expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();
   });

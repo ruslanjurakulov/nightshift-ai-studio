@@ -134,7 +134,8 @@ describe("the landing's pictures are our own Studio's", () => {
     cards.forEach((card, i) => {
       const p = pieces[i];
       expect(card.dataset.piece).toBe(p.id);
-      expect(within(card).getByText(h.ai)).toBeTruthy();
+      // Just "AI" on the picture (owner, 2026-11-22); the picture's description below says it in full.
+      expect(card.querySelector(".hm-reel-badge")?.textContent).toBe(dictionaries[code].site.gallery.badge);
       const credit = card.querySelector(".hm-reel-credit")?.textContent ?? "";
       for (const m of p.models) expect(credit).toContain(m);
       expect(credit.startsWith(h.credit.split("{model}")[0])).toBe(true);

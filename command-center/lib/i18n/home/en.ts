@@ -33,6 +33,8 @@ export const homeEn = {
       count: "{n} of {max}",
     },
     reelLabel: "Made in Nightshift Studio",
+    /** What a screen reader hears for the first screen's "AI" mark (components/landing/home/HomeHero.tsx); the eye sees only "AI". */
+    aiCredit: "AI-generated, made in Nightshift Studio",
     reelNote: "Every piece here was made in our own Studio, with the models that made it named under it.",
     /** Joins the last two model names in a credit: "Ideogram 4.5 and MiniMax H3". */
     and: "and",

@@ -106,9 +106,9 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
                   {p.kind === "video" && p.media.type === "studio" && <StudioClip slug={p.media.slug} captionsLabel={h.captions} />}
                   {p.media.type === "sample" && <ShowcaseClip jobId={p.media.jobId} together />}
                   {p.media.type === "template" && <TemplateClip slug={p.media.slug} />}
-                  {/* The picture's description already says it is AI-generated; the badge is for the eye. */}
+                  {/* The picture's description already says it is AI-generated; the badge is for the eye, and reads just "AI" (owner, 2026-11-22). */}
                   <span className="hm-badge hm-reel-badge" aria-hidden="true">
-                    {h.ai}
+                    {t.site.gallery.badge}
                   </span>
                 </div>
                 <figcaption className="hm-reel-cap">

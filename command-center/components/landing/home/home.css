@@ -107,6 +107,10 @@
     border-radius: 25px;
     background: #1b1f2a center / cover no-repeat;
   }
+  /* The hero's clip, copied frame by frame (HeroThumb.tsx): over the still, shown only while the hero's own clip is shown, and
+     faded in with the hero's own timing so the two change together. Absolute: the box keeps its size with or without it. */
+  .hm-idea-thumb-live { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
+  .hm-idea-thumb[data-live="true"] > .hm-idea-thumb-live { opacity: 1; }
   /* The thin divider between the thumbnail and the words. */
   .hm-idea-thumb::after { content: ""; position: absolute; top: 14px; right: -17px; width: 1px; height: 22px; background: rgb(255 255 255 / 0.5); }
   .hm-idea-field {
@@ -200,6 +204,9 @@
     /* "Sunʼiy intellekt yaratgan" is wider than a phone's reel card: it wraps rather than being cut. */
     max-width: calc(100% - 16px);
   }
+  /* The first screen's credit is the badge alone now (just "AI", owner 2026-11-22), so its box is as wide as the badge: a share of
+     that width would cut the badge's own edge off. Nothing in it can outgrow the screen. */
+  .hm-hero-credit .hm-badge { max-width: none; }
 
   /* ── Sections ─────────────────────────────────────────────────────────── */
   .hm-section { padding-block: 72px; }
@@ -460,7 +467,7 @@ html[data-motion="paused"] .hm-ribbon-track { animation-play-state: paused !impo
 
 /* Reduced motion: the hero shows its still only (LoopClip never renders a clip), and nothing eases in. */
 @media (prefers-reduced-motion: reduce) {
-  .hm-hero-media .nx-clip { transition: none; }
+  .hm-hero-media .nx-clip, .hm-idea-thumb-live { transition: none; }
 }
 
 /* The landing's frame in the --ds-* look. The public shell (header, footer) and the reused pricing teaser paint with the

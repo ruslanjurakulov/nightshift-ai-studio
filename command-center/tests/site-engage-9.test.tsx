@@ -27,6 +27,7 @@ import { SCENE_SAMPLE } from "@/components/docs/SampleFrame";
 import { MEDIA, MEDIA_IDS } from "@/lib/site/media";
 import { setMotionPaused } from "@/lib/site/motion";
 import { HERO_JOB } from "@/components/site/slots";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 const ROOT = join(__dirname, "..");
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
@@ -74,7 +75,7 @@ describe("a phone's first screen is the picture (round 9; the footage moved into
     expect(img.getAttribute("fetchpriority")).toBe("high");
     expect(img.getAttribute("data-sample-job")).toBe(HERO_JOB);
     expect(img.hasAttribute("data-sample")).toBe(false);
-    expect(hero.querySelector(".hm-hero-credit .hm-badge")?.textContent).toBe(h.ai);
+    expect(aiMarkOf(hero.querySelector(".hm-hero-credit .hm-badge"))).toEqual({ seen: dictionaries[code].site.gallery.badge, said: h.aiCredit });
     const copy = hero.querySelector(".hm-hero-body")!;
     expect(copy.querySelector("h1")?.textContent).toBe(h.title);
     expect(copy.querySelector(".hm-hero-sub")?.textContent).toBe(h.subline);

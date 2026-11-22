@@ -18,6 +18,7 @@ export const homeUz: HomeDictionary = {
       count: "{n} / {max}",
     },
     reelLabel: "Nightshift Studio’da yaratilgan",
+    aiCredit: "Sunʼiy intellekt yaratgan, Nightshift Studio’da tayyorlangan",
     reelNote: "Bu yerdagi har bir ish oʻzimizning Studio’mizda yaratilgan, ostida uni yaratgan modellar nomi yozilgan.",
     and: "va",
     credit: "Nightshift Studio’da {model} bilan yaratilgan",

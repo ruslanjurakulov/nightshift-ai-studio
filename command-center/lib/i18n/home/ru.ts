@@ -18,6 +18,7 @@ export const homeRu: HomeDictionary = {
       count: "{n} из {max}",
     },
     reelLabel: "Сделано в Nightshift Studio",
+    aiCredit: "Создано нейросетью в Nightshift Studio",
     reelNote: "Каждая работа здесь создана в нашей собственной Studio, под ней указаны модели, которые её сделали.",
     and: "и",
     credit: "Сделано на {model} в Nightshift Studio",
