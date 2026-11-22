@@ -17,6 +17,8 @@ export type BriefLoad =
 /** The browser event the Nightshift AI panel dispatches whenever the brief changes (docs/studio/NIGHTSHIFT_AI.md). */
 export const BRAIN_BRIEF_EVENT = "nightshift:brain-brief";
 
+const IDLE: BriefLoad = { state: "loading" };
+
 export function handoffTarget(h: BriefHandoff): LiveTarget {
   if (h.kind === "film") return { kind: "film", id: h.filmId };
   if ("jobId" in h) return { kind: "run", id: h.jobId };
@@ -89,5 +91,6 @@ export function useBrainBrief(session: string | null) {
     void read();
   }, [read]);
 
-  return { load, retry };
+  // No conversation (?brain= taken off the URL: the panel found it gone, or New chat): the last one's brief is not drawn on.
+  return { load: session ? load : IDLE, retry };
 }
