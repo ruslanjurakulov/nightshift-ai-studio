@@ -171,7 +171,8 @@
   pointer-events: none;
 }
 .st .st-nav[data-ind]::before { opacity: 1; }
-.st .st-nav[data-glass] a:hover, .st .st-nav[data-glass] a:focus-visible { background: transparent; color: var(--ns-text); }
+.st .st-nav[data-glass] a:hover, .st .st-nav[data-glass] a:focus-visible,
+.st .st-nav[data-glass] .st-mm-trigger:hover, .st .st-nav[data-glass] .st-mm-trigger:focus-visible { background: transparent; color: var(--ns-text); }
 @media (prefers-reduced-motion: no-preference) {
   /* A spring-like curve (a small overshoot, then it settles), so moving across the links reads as one drop of glass. */
   .st .st-nav[data-glass]::before { transition: transform 460ms cubic-bezier(0.34, 1.32, 0.64, 1), width 460ms cubic-bezier(0.34, 1.32, 0.64, 1), height 460ms cubic-bezier(0.34, 1.32, 0.64, 1), opacity 200ms var(--ns-ease); }
@@ -360,6 +361,9 @@
     .st .st-header[data-scrolled]::before { background-color: var(--ns-ground); -webkit-backdrop-filter: none; backdrop-filter: none; }
   }
   .st .st-header[data-scrolled] .st-header-row { translate: 0 -4px; }
+  /* The panels' frame hangs from the slimmer bar's drawn edge (the backdrop is scaled to 88 % from the top), not from the
+     taller box, or a strip of page would show between them. */
+  .st .st-header[data-scrolled] .st-mm { top: 88%; }
   /* The strip under the slimmer bar is see-through, so it does not catch clicks either: the bar's own boxes stay clickable
      (they end where the bar does), and a click on the page just under it reaches the page. */
   .st .st-header[data-scrolled], .st .st-header[data-scrolled] .st-header-row { pointer-events: none; }

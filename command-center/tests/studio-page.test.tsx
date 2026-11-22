@@ -158,15 +158,22 @@ describe("/studio page", () => {
 
   it("the header and footer link to /studio, with the page's own item lit", () => {
     const { container } = renderPage("en");
+    // The bar's Studio trigger is lit, and its panel's title link is this page.
     const nav = container.querySelector("header nav")!;
-    const link = within(nav as HTMLElement).getByRole("link", { name: "Studio" });
-    expect(link.getAttribute("href")).toBe("/studio");
-    expect(link.getAttribute("aria-current")).toBe("page");
+    const trigger = within(nav as HTMLElement).getByRole("button", { name: "Studio" });
+    expect(trigger.getAttribute("data-current")).toBe("true");
+    const panel = document.getElementById(trigger.getAttribute("aria-controls")!)!;
+    const link = panel.querySelector<HTMLAnchorElement>('a.st-mm-title[href="/studio"]')!;
+    expect(link.textContent).toBe("Nightshift Studio");
     const footer = container.querySelector("footer")!;
     expect(within(footer).getAllByRole("link", { name: "Nightshift Studio" }).map((a) => a.getAttribute("href"))).toContain("/studio");
-    // The only disclosure in the header is the phone's menu button, closed, and its sheet lights the same item.
-    expect([...container.querySelectorAll("header [aria-expanded][aria-controls]")].map((b) => b.className)).toEqual(["st-menu-btn"]);
-    expect(container.querySelector('.st-menu-nav a[href="/studio"]')?.getAttribute("aria-current")).toBe("page");
+    // Every disclosure in the header starts closed: the panels' triggers, the phone's menu button and its sections.
+    const disclosures = [...container.querySelectorAll("header [aria-expanded][aria-controls]")];
+    expect(disclosures.map((b) => b.className)).toEqual(expect.arrayContaining(["st-mm-trigger", "st-menu-btn", "st-menu-sec-btn"]));
+    // The sheet's Studio section holds this page and starts open, its item lit.
+    const sec = [...container.querySelectorAll<HTMLButtonElement>(".st-menu-sec-btn")].find((b) => b.textContent === "Studio")!;
+    expect(sec.getAttribute("aria-expanded")).toBe("true");
+    expect(disclosures.filter((b) => b !== sec).every((b) => b.getAttribute("aria-expanded") === "false")).toBe(true);
   });
 });
 

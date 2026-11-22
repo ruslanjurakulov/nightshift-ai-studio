@@ -1,6 +1,7 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
 import { trustEn } from "../trust/en";
+import { megaMenuEn } from "../megamenu/en";
 import { siteAutopilotEn } from "../site-autopilot/en";
 import { publicStatsEn } from "../public-stats/en";
 
@@ -604,6 +605,8 @@ export const siteEn = {
   roadmap: roadmapEn,
   /** The public /trust page (lib/i18n/trust; English is the source). */
   trust: trustEn,
+  /** The public header's panels and the phone sheet's sections (lib/i18n/megamenu). */
+  megaMenu: megaMenuEn,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotEn,
   /** The live counters strip (components/site/LiveStats.tsx; lib/i18n/public-stats), hidden until the owner turns it on. */
