@@ -298,8 +298,8 @@ export function GeneratePanel({
   // the pick and its price; the press sends both back. Off = the picked model, exactly.
   // A link may start it on ("Improve with AI" with Auto picked); it only counts where Auto is offered (`routed` below).
   const [auto, setAuto] = useState(initial?.auto === true);
-  // The person chose a model (the sheet) or Auto themselves: from then on the model is theirs, and the link's note has done its job.
-  const [handPicked, setHandPicked] = useState(false);
+  // The tool the form came with: the model it brought was asked for that tool only, so on another tab there is nothing to say about it.
+  const prefillCap = useRef(initial?.capability);
   const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
   const [factor, setFactor] = useState<UpscaleFactor>(initial?.factor ?? 2);
   // A retried job keeps its own choice (even "none"); a fresh form starts from the channel's look.
@@ -377,12 +377,19 @@ export function GeneratePanel({
   // name sorts first), else the first at all (then its lock is named).
   const effectiveModel = pickedOff ? "" : available.some((m) => m.id === model) ? model : ((usable[0] ?? available[0])?.id ?? "");
   const current = available.find((m) => m.id === effectiveModel) ?? null;
-  // A model the form came with (a sample's "Try this prompt", a catalog link, a retried job) that is not on sale for this tool to
-  // this workspace: unknown id, not sold to this organization, an operator preview, another kind. The owner's decision (22 Nov):
-  // open on the default model AND say so — the form used to take the default without a word, so the person was quoted for model Y
-  // after clicking a sample made with X (CLAUDE.md #4, no silent fallback). Auto and a switched-off model have their own words.
-  const linkedGone =
-    !handPicked && !routed && model !== "" && model !== AUTO_MODEL && !pickedOff && current !== null && !available.some((m) => m.id === model);
+  // A model the form came with (a sample's "Try this prompt", a catalog link, a retried job) that this workspace is not offered for
+  // this tool at all: an unknown or delisted id, an operator preview on a customer's page, a model of another kind. (A model only
+  // locked for this organization IS in `available`: it is taken and its lock named.) The owner's decision (22 Nov): open on the
+  // default model AND say which one — the form used to take the default without a word, so the person was quoted for model Y after
+  // clicking a sample made with X (CLAUDE.md #4, no silent fallback). Auto and a switched-off model have their own words.
+  const modelGone =
+    !routed &&
+    capability === prefillCap.current &&
+    model !== "" &&
+    model !== AUTO_MODEL &&
+    !pickedOff &&
+    current !== null &&
+    !available.some((m) => m.id === model);
   // Why the picked model cannot be bought here: no price is asked (the database would refuse it), the reason is named instead.
   const locked: ModelLock | null = !routed && current?.lock ? current.lock : null;
   // Model ids -> the names the picker shows, for Auto's pick.
@@ -1054,12 +1061,28 @@ export function GeneratePanel({
       : undefined
     : current?.attribution;
   // Only a name the models list gives is used: an id the list does not know has nothing honest to be called, so the line names none.
-  const goneName = linkedGone ? modelNames.get(model) : undefined;
-  const goneNote = linkedGone ? (
-    <p role="status" className="text-xs text-[var(--color-muted)]" data-testid="gen-model-gone">
-      {goneName ? fmt(t.gen.linkModelGoneNamed, { model: goneName }) : t.gen.linkModelGone}
+  // The default is always named: on the video desk the model block is folded away, so this line is the only place it shows.
+  const goneName = modelGone ? modelNames.get(model) : undefined;
+  const goneText =
+    modelGone && current
+      ? goneName
+        ? fmt(t.gen.modelGoneNamed, { model: goneName, default: current.displayName })
+        : fmt(t.gen.modelGone, { default: current.displayName })
+      : "";
+  // One live region per layout, always mounted (a region added with its text already in it is often not read); empty, it takes no
+  // room. The prompt and the price key point at it while it has text, so it is read where focus lands.
+  const goneNote = (
+    <p
+      id="gen-model-gone"
+      role="status"
+      aria-live="polite"
+      className={goneText ? "text-xs text-[var(--color-muted)]" : "sr-only"}
+      data-testid="gen-model-gone"
+    >
+      {goneText}
     </p>
-  ) : null;
+  );
+  const goneRef = goneText ? " gen-model-gone" : "";
   // The model: what will make it, how fast, how good — and a way to change it.
   const modelBlock = pickedOff ? (
     <div className="studio-field flex items-center gap-3 p-3" data-testid="gen-model-off">
@@ -1136,7 +1159,9 @@ export function GeneratePanel({
           data-testid="gen-auto"
           onClick={() => {
             setAuto((a) => !a);
-            setHandPicked(true);
+            // Auto is the person's choice of model: the default they were shown becomes the model, so turning Auto off again does
+            // not bring back the note about a model they already moved on from.
+            setModel((m) => (available.some((x) => x.id === m) ? m : effectiveModel));
             edited();
           }}
           className="studio-chip tap press shrink-0 font-medium"
@@ -1472,6 +1497,7 @@ export function GeneratePanel({
             maxLength={wordsMax(capability)}
             autoFocus={initial !== null}
             placeholder={t.gen.promptPh[capability]}
+            aria-describedby={goneText ? "gen-model-gone" : undefined}
             className={`${arrange === "voice" && isVoice ? "desk-script " : ""}${isVoice ? "" : "studio-shot "}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
           />
           {settings && settingsInField && <div className="px-2 pb-2">{settings}</div>}
@@ -1751,7 +1777,7 @@ export function GeneratePanel({
         disabled={disabled}
         onClick={generate}
         aria-busy={submitting || quote.status === "quoting"}
-        aria-describedby="gen-status"
+        aria-describedby={`gen-status${goneRef}`}
         aria-label={submitting ? t.gen.starting : keyName}
         label={
           submitting
@@ -1786,7 +1812,6 @@ export function GeneratePanel({
           pricedAt={pricedAt}
           onSelect={(id) => {
             setModel(id);
-            setHandPicked(true);
             // A model picked by hand is the model: Auto is off.
             setAuto(false);
             edited();
@@ -1895,7 +1920,9 @@ export function GeneratePanel({
               data-testid="gen-auto"
               onClick={() => {
                 setAuto((a) => !a);
-                setHandPicked(true);
+                // Auto is the person's choice of model: the default they were shown becomes the model, so turning Auto off again does
+                // not bring back the note about a model they already moved on from.
+                setModel((m) => (available.some((x) => x.id === m) ? m : effectiveModel));
                 edited();
               }}
               className="studio-chip tap press font-medium"
@@ -1975,7 +2002,7 @@ export function GeneratePanel({
                   maxLength={wordsMax(capability)}
                   autoFocus={autoFocusPrompt ?? initial !== null}
                   placeholder={t.gen.promptPh[capability]}
-                  aria-describedby="gen-status sc-enter-hint"
+                  aria-describedby={`gen-status sc-enter-hint${goneRef}`}
                   className="sc-input"
                 />
               </>
@@ -2086,7 +2113,7 @@ export function GeneratePanel({
             disabled={disabled}
             onClick={generate}
             aria-busy={submitting || quote.status === "quoting"}
-            aria-describedby="gen-status"
+            aria-describedby={`gen-status${goneRef}`}
             aria-label={submitting ? t.gen.starting : keyName}
             label={<span className="sc-send-word">{sendLabel}</span>}
             credits={!submitting && quote.status === "ready" ? quote.credits : null}
@@ -2105,10 +2132,8 @@ export function GeneratePanel({
             {th.enterHint}
           </span>
         </div>
-        {goneNote && (
-          // The model's facts are folded away here; the pill shows the default's name, so why it is not the linked one is said under the box.
-          <div className="sc-foot">{goneNote}</div>
-        )}
+        {/* The model's facts are folded away here; the pill shows the default's name, so why it is not the asked one is said under the box. */}
+        <div className={goneText ? "sc-foot" : undefined}>{goneNote}</div>
         {snapText && (
           // The composer folds its settings away: the change is said under the box, where it is seen.
           <div className="sc-foot">

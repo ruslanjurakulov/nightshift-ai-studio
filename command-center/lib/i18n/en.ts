@@ -3963,9 +3963,9 @@ export const en = {
     snapAuto: "No model here makes {from} — set to {to}.",
     snapModelDefault: "its own default",
     noLength: "{model} offers no clip length here, so it cannot be priced. Pick another model.",
-    // A linked model that is not on sale for this tool here (owner decision 22 Nov): the default is taken and said, never swapped silently.
-    linkModelGone: "The model from this link isn't available for this tool right now, so the default model is selected.",
-    linkModelGoneNamed: "{model} from this link isn't available for this tool right now, so the default model is selected.",
+    // A requested model this workspace is not offered for this tool (owner decision 22 Nov): the default is taken and named, never swapped silently.
+    modelGone: "The requested model isn't offered for this tool here, so {default} is selected.",
+    modelGoneNamed: "{model} isn't offered for this tool here, so {default} is selected.",
     sheetAt: "at {settings}",
     modelLabel: "Model",
     beta: "beta",
