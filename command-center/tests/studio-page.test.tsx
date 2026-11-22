@@ -162,9 +162,11 @@ describe("/studio page", () => {
     const nav = container.querySelector("header nav")!;
     const trigger = within(nav as HTMLElement).getByRole("button", { name: "Studio" });
     expect(trigger.getAttribute("data-current")).toBe("true");
+    expect(trigger.getAttribute("aria-current")).toBe("true");
     const panel = document.getElementById(trigger.getAttribute("aria-controls")!)!;
     const link = panel.querySelector<HTMLAnchorElement>('a.st-mm-title[href="/studio"]')!;
     expect(link.textContent).toBe("Nightshift Studio");
+    expect(link.getAttribute("aria-current")).toBe("page");
     const footer = container.querySelector("footer")!;
     expect(within(footer).getAllByRole("link", { name: "Nightshift Studio" }).map((a) => a.getAttribute("href"))).toContain("/studio");
     // Every disclosure in the header starts closed: the panels' triggers, the phone's menu button and its sections.

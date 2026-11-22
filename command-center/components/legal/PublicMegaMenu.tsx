@@ -55,7 +55,6 @@ function useMenu(): MenuState {
 
 const canHover = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(HOVER).matches;
 
-
 /**
  * The public header's desktop panels: a disclosure per trigger (a <button> with aria-expanded and aria-controls, not
  * role="menu": the panels hold ordinary links, and a menu role would take Tab and the screen reader's browse mode away).
@@ -209,24 +208,29 @@ export function MegaMenu({ entries, current, children }: { entries: NavEntry[]; 
     };
   }, [openId, close]);
 
-  const value: MenuState = {
-    groups,
-    entries,
-    current,
-    pathname,
-    openId,
-    shownId,
-    ids,
-    triggers,
-    nav,
-    frame,
-    open,
-    close,
-    toggle,
-    hoverEnter,
-    hoverLeave,
-    frameEnter,
-  };
+  // Memoised: every trigger, panel and the frame read this context, and a fresh object each render re-rendered them all
+  // on any parent render.
+  const value = useMemo<MenuState>(
+    () => ({
+      groups,
+      entries,
+      current,
+      pathname,
+      openId,
+      shownId,
+      ids,
+      triggers,
+      nav,
+      frame,
+      open,
+      close,
+      toggle,
+      hoverEnter,
+      hoverLeave,
+      frameEnter,
+    }),
+    [groups, entries, current, pathname, openId, shownId, ids, open, close, toggle, hoverEnter, hoverLeave, frameEnter],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -302,20 +306,24 @@ export function MegaNav({ label }: { label: string }) {
             className="st-mm-trigger"
             data-mm={e.id}
             data-current={e.section && e.section === m.current ? "true" : undefined}
+            // The group holding this page: "true", not "page" (the trigger is not the page itself).
+            aria-current={e.section && e.section === m.current ? "true" : undefined}
             aria-expanded={expanded}
             aria-controls={panel}
-            onClick={() => m.toggle(e.id, "click")}
+            // Enter and Space are the button's own: the browser turns them into this click (Space on keyup, which a keydown
+            // preventDefault does not cancel in every browser, so handling the keys as well toggled twice). A click with no
+            // pointer behind it (detail 0: a key, or a screen reader) counts as the keyboard's, so leaving with the pointer
+            // never closes it; focus stays on the trigger (a disclosure), and ArrowDown or Tab goes in.
+            onClick={(ev) => m.toggle(e.id, ev.detail === 0 ? "key" : "click")}
             onPointerEnter={(ev) => m.hoverEnter(e.id, ev)}
             onPointerLeave={m.hoverLeave}
             onKeyDown={(ev) => {
+              // A held arrow repeats keydown: it opens the panel once, not over and over.
+              if (ev.repeat && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
+                ev.preventDefault();
+                return;
+              }
               switch (ev.key) {
-                case "Enter":
-                case " ":
-                  // Handled here, with the default prevented, so the click the browser would fire next does not toggle it
-                  // back (a screen reader's own click, with no key, still goes through onClick).
-                  ev.preventDefault();
-                  m.toggle(e.id, "key");
-                  return;
                 case "ArrowDown":
                   ev.preventDefault();
                   m.open(e.id, "key", "first");
@@ -469,7 +477,7 @@ function Panel({ group, shown }: { group: NavGroup; shown: boolean }) {
   const m = useMenu();
   const { trigger, panel } = m.ids(group.id);
   return (
-    <div id={panel} data-panel={group.id} className="st-mm-panel" aria-labelledby={trigger} hidden={!shown}>
+    <div id={panel} data-panel={group.id} className="st-mm-panel" role="group" aria-labelledby={trigger} hidden={!shown}>
       {group.columns.map((c) => {
         const titleId = `${panel}-${c.id}`;
         return (
@@ -481,6 +489,9 @@ function Panel({ group, shown }: { group: NavGroup; shown: boolean }) {
                 className="st-mm-title"
                 data-link="true"
                 aria-current={isCurrentPage(c.href, m.pathname) ? "page" : undefined}
+                // A link to this same page (or a #section of it) changes no pathname, so the route-change close never
+                // runs: the panel would stay open over the section it just scrolled to.
+                onClick={() => m.close(false)}
               >
                 {c.title}
                 <ArrowRight aria-hidden />
@@ -493,7 +504,12 @@ function Panel({ group, shown }: { group: NavGroup; shown: boolean }) {
             <ul aria-labelledby={titleId}>
               {c.links.map((l) => (
                 <li key={l.href}>
-                  <Link href={menuHref(l.href)} className="st-mm-link" aria-current={isCurrentPage(l.href, m.pathname) ? "page" : undefined}>
+                  <Link
+                    href={menuHref(l.href)}
+                    className="st-mm-link"
+                    aria-current={isCurrentPage(l.href, m.pathname) ? "page" : undefined}
+                    onClick={() => m.close(false)}
+                  >
                     <span className="st-mm-label">{l.label}</span>
                     {l.description && <span className="st-mm-desc">{l.description}</span>}
                   </Link>

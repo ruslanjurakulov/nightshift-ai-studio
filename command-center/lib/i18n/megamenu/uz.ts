@@ -7,7 +7,7 @@ export const megaMenuUz: MegaMenuDictionary = {
   desc: {
     api: "Videolarni oʻz kodingizdan yarating va kuzating",
     mcp: "Nightshiftni AI yordamchi orqali ishlating",
-    apiPricing: "Har bir soʻrov narxi — amaldagi narxlar roʻyxatidan",
+    apiPricing: "Soʻrov narxi, agar unga narx belgilangan boʻlsa",
     roadmap: "Keyingi navbatda nimalar qoʻshiladi",
     trust: "Nightshift kanalingiz, kalitlaringiz va pulingiz bilan nima qila oladi",
   },

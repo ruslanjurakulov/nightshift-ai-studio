@@ -56,9 +56,15 @@ export function PublicMenu({
   const button = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
-  const [expanded, setExpanded] = useState<ReadonlySet<NavGroupId>>(
+  const holding = useCallback(
     () => new Set(entries.flatMap((e) => (e.kind === "group" && e.section && e.section === current ? [e.id] : []))),
+    [entries, current],
   );
+  const [expanded, setExpanded] = useState<ReadonlySet<NavGroupId>>(holding);
+  // A client-side move to another section's page keeps this component mounted: the open section follows the new page.
+  useEffect(() => {
+    setExpanded(holding());
+  }, [holding]);
   const toggleSection = (id: NavGroupId) =>
     setExpanded((s) => {
       const next = new Set(s);
@@ -177,14 +183,14 @@ export function PublicMenu({
                   </Link>
                 );
               }
-              const open = expanded.has(e.id);
+              const secOpen = expanded.has(e.id);
               const secId = `${uid}-sec-${e.id}`;
               return (
                 <div key={e.id} className="st-menu-sec">
                   <button
                     type="button"
                     className="st-menu-sec-btn"
-                    aria-expanded={open}
+                    aria-expanded={secOpen}
                     aria-controls={secId}
                     data-current={e.section && e.section === current ? "true" : undefined}
                     onClick={() => toggleSection(e.id)}
@@ -192,7 +198,7 @@ export function PublicMenu({
                     {e.label}
                     <ChevronDown aria-hidden className="st-menu-chev" />
                   </button>
-                  <div id={secId} className="st-menu-sec-body" hidden={!open}>
+                  <div id={secId} className="st-menu-sec-body" hidden={!secOpen}>
                     {e.columns.map((c) => (
                       <div key={c.id} className="st-menu-col">
                         {c.href ? (

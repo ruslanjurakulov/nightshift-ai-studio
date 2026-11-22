@@ -14,8 +14,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { ReactNode } from "react";
 
+const route = vi.hoisted(() => ({ path: "/" }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/",
+  usePathname: () => route.path,
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
 }));
 vi.mock("next/link", () => ({
@@ -71,6 +72,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  route.path = "/";
 });
 
 function renderShell(locale: "en" | "ru" | "uz" = "en") {
@@ -91,6 +93,15 @@ const frame = () => document.querySelector<HTMLElement>(".st-mm")!;
 const isOpen = (b: HTMLElement) => b.getAttribute("aria-expanded") === "true" && !panelOf(b).hidden && frame().getAttribute("data-open") === "true";
 const links = (b: HTMLElement) => [...panelOf(b).querySelectorAll<HTMLAnchorElement>("a[href]")];
 const openTriggers = () => [...nav().querySelectorAll("button[aria-expanded='true']")];
+/** A key on a focused button as a browser delivers it: Enter clicks on keydown, Space on keyup; the click has detail 0. */
+function press(b: HTMLElement, key: "Enter" | " ") {
+  fireEvent.keyDown(b, { key });
+  if (key === "Enter") fireEvent.click(b, { detail: 0 });
+  fireEvent.keyUp(b, { key });
+  if (key === " ") fireEvent.click(b, { detail: 0 });
+}
+/** A mouse click: detail 1. */
+const mouseClick = (b: HTMLElement) => fireEvent.click(b, { detail: 1 });
 
 describe("the desktop panels: keyboard", () => {
   it("every trigger is a focusable <button> naming the panel it controls, closed at first (a disclosure, not role=menu)", () => {
@@ -102,6 +113,8 @@ describe("the desktop panels: keyboard", () => {
       expect(b.getAttribute("aria-expanded")).toBe("false");
       expect(panelOf(b).getAttribute("aria-labelledby")).toBe(b.id);
       expect(b.getAttribute("role")).toBeNull();
+      // The panel is a labelled group, so its aria-labelledby names something a screen reader announces.
+      expect(panelOf(b).getAttribute("role")).toBe("group");
     }
     expect(document.querySelector('[role="menu"], [role="menuitem"]')).toBeNull();
     // Closed, the frame is inert: nothing in it takes focus or is read.
@@ -114,14 +127,60 @@ describe("the desktop panels: keyboard", () => {
     renderShell();
     const b = trigger("Solutions");
     b.focus();
-    fireEvent.keyDown(b, { key: "Enter" });
+    press(b, "Enter");
     expect(isOpen(b)).toBe(true);
     expect(frame().hasAttribute("inert")).toBe(false);
     expect(document.activeElement).toBe(b);
-    fireEvent.keyDown(b, { key: "Enter" });
+    press(b, "Enter");
     expect(b.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.keyDown(b, { key: " " });
+    press(b, " ");
     expect(isOpen(b)).toBe(true);
+  });
+
+  // Firefox and Safari fire Space's click on keyup even when keydown was prevented: handling the key and the click both
+  // toggled twice, so the panel opened and closed in one press.
+  it("one press is one toggle: Space's keydown, keyup and click open it once, and a keyboard click (detail 0) opens it once", () => {
+    vi.useFakeTimers();
+    renderShell();
+    const b = trigger("Developers");
+    b.focus();
+    press(b, " ");
+    expect(isOpen(b)).toBe(true);
+    // Opened from the keyboard: the pointer leaving the bar does not close it.
+    fireEvent.pointerLeave(b, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(isOpen(b)).toBe(true);
+    fireEvent.click(b, { detail: 0 });
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(b, { detail: 0 });
+    expect(isOpen(b)).toBe(true);
+  });
+
+  it("a held ArrowDown (keydown repeat) does not open the panel", () => {
+    renderShell();
+    const b = trigger("Studio");
+    b.focus();
+    fireEvent.keyDown(b, { key: "ArrowDown", repeat: true });
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(b);
+  });
+
+  // A link to the page already shown (or one of its #sections) changes no pathname, so the route-change close never ran.
+  it("following a panel link to the current page closes the panel (/studio#plan on /studio, /#how on /)", () => {
+    for (const [path, href] of [
+      ["/studio", "/studio#plan"],
+      ["/", "/#how"],
+      ["/studio", "/studio"],
+    ] as const) {
+      route.path = path;
+      renderShell();
+      const b = trigger("Studio");
+      press(b, "Enter");
+      expect(isOpen(b)).toBe(true);
+      fireEvent.click(panelOf(b).querySelector<HTMLAnchorElement>(`a[href="${href}"]`)!);
+      expect(b.getAttribute("aria-expanded"), href).toBe("false");
+      cleanup();
+    }
   });
 
   it("ArrowDown opens and moves focus to the first link; ArrowUp to the last", () => {
@@ -171,7 +230,7 @@ describe("the desktop panels: keyboard", () => {
     renderShell();
     const studio = trigger("Studio");
     studio.focus();
-    fireEvent.keyDown(studio, { key: "Enter" });
+    press(studio, "Enter");
     fireEvent.keyDown(studio, { key: "ArrowRight" });
     const solutions = trigger("Solutions");
     expect(document.activeElement).toBe(solutions);
@@ -187,7 +246,7 @@ describe("the desktop panels: keyboard", () => {
     renderShell();
     const b = trigger("Resources");
     b.focus();
-    fireEvent.keyDown(b, { key: "Enter" });
+    press(b, "Enter");
     fireEvent.keyDown(b, { key: "Tab" });
     const all = links(b);
     expect(document.activeElement).toBe(all[0]);
@@ -204,13 +263,13 @@ describe("the desktop panels: keyboard", () => {
   it("focus leaving the header, or a press outside it, closes the panel", () => {
     renderShell();
     const b = trigger("Studio");
-    fireEvent.keyDown(b, { key: "Enter" });
+    press(b, "Enter");
     expect(isOpen(b)).toBe(true);
     const outside = document.createElement("button");
     document.body.appendChild(outside);
     act(() => outside.focus());
     expect(b.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.keyDown(b, { key: "Enter" });
+    press(b, "Enter");
     fireEvent.pointerDown(screen.getByText("Behind the header"));
     expect(b.getAttribute("aria-expanded")).toBe("false");
     outside.remove();
@@ -327,12 +386,12 @@ describe("the desktop panels: pointer", () => {
     const b = trigger("Studio");
     enter(b);
     act(() => vi.advanceTimersByTime(OPEN_DELAY_MS));
-    fireEvent.click(b);
+    mouseClick(b);
     expect(isOpen(b)).toBe(true);
     leave(b);
     act(() => vi.advanceTimersByTime(1000));
     expect(isOpen(b)).toBe(true);
-    fireEvent.click(b);
+    mouseClick(b);
     expect(b.getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -343,12 +402,12 @@ describe("the desktop panels: pointer", () => {
     enter(b, "touch");
     act(() => vi.advanceTimersByTime(1000));
     expect(b.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(b);
+    mouseClick(b);
     expect(isOpen(b)).toBe(true);
     leave(b, "touch");
     act(() => vi.advanceTimersByTime(1000));
     expect(isOpen(b)).toBe(true);
-    fireEvent.click(b);
+    mouseClick(b);
     expect(b.getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -375,7 +434,9 @@ describe("motion and layout (components/site/site.css)", () => {
     expect(base).not.toMatch(/height/);
     expect(base).not.toMatch(/transition/);
     // The header is the frame's anchor at every width that draws it.
-    expect(css).toMatch(/@media \(max-width: 1023px\) \{ \.st-header \{ position: relative; \} \}/);
+    expect(css).toMatch(/@media \(min-width: 768px\) and \(max-width: 1023px\) \{ \.st-header \{ position: relative; \} \}/);
+    // Never below 768px: there a positioned header (z-index 40) would cap the phone sheet's z-index 60 inside it.
+    expect(css).not.toMatch(/@media \(max-width: 1023px\) \{ \.st-header \{ position: relative/);
   });
 
   it("moves only with prefers-reduced-motion: no-preference, and not at all under the site's Pause motion", () => {
@@ -546,6 +607,25 @@ describe("the phone sheet's sections", () => {
     expect(body.hidden).toBe(true);
     // Pricing is a plain link in the sheet too.
     expect(within(sheet).getByRole("link", { name: "Pricing" }).getAttribute("href")).toBe("/pricing");
+  });
+
+  // A client-side move keeps the shell (and the sheet) mounted: the open section must follow the new page's group.
+  it("the open section follows the page: a new `current` reseeds which group starts expanded", () => {
+    const t = dictionaries.en;
+    const shell = (current: "studio" | "docs") => (
+      <PublicI18nProvider locale="en" t={publicDictionary(t)}>
+        <PublicShell t={t} current={current}>
+          <p>page</p>
+        </PublicShell>
+      </PublicI18nProvider>
+    );
+    const { rerender } = render(shell("studio"));
+    const sec = (name: string) => [...document.querySelectorAll<HTMLButtonElement>(".st-menu-sec-btn")].find((b) => b.textContent === name)!;
+    expect(sec("Studio").getAttribute("aria-expanded")).toBe("true");
+    expect(sec("Developers").getAttribute("aria-expanded")).toBe("false");
+    rerender(shell("docs"));
+    expect(sec("Developers").getAttribute("aria-expanded")).toBe("true");
+    expect(sec("Studio").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("the focus trap skips a collapsed section's links, and the primary key is the sheet's last stop (pinned at its foot)", () => {

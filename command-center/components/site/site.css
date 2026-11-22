@@ -580,7 +580,10 @@ a.st-menu-col-title { color: var(--ns-text); text-decoration: underline; text-de
    header (sticky from 1024px, positioned below that so the frame has the header to hang from), so opening it moves nothing
    and the bar's height never changes. It slides down by its clip (not its height: no box is laid out again) and fades,
    300ms; under reduced motion or the site's "Pause motion" it is simply there. Panels swap inside it at once. */
-@media (max-width: 1023px) { .st-header { position: relative; } }
+/* Positioned only where a panel is drawn (768 to 1023px; sticky above). Below 768px the header stays unpositioned: a
+   positioned header with its z-index 40 is a stacking context, and the phone sheet (fixed, z-index 60, inside it) would
+   then be ranked as 40 against the page: none of the public pages draws above 40 today, but the sheet must not depend on it. */
+@media (min-width: 768px) and (max-width: 1023px) { .st-header { position: relative; } }
 .st-nav .st-mm-trigger {
   position: relative;
   flex: none;

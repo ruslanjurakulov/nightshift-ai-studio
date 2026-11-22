@@ -14,7 +14,7 @@ export const megaMenuEn = {
   desc: {
     api: "Make and follow videos from your own code",
     mcp: "Use Nightshift from an AI assistant",
-    apiPricing: "What each call costs, from the live price list",
+    apiPricing: "What a call costs, when it is priced",
     roadmap: "What we are building next",
     trust: "What Nightshift may do with your channel, keys and money",
   },
