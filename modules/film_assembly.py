@@ -51,6 +51,8 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -93,7 +95,7 @@ ENABLE_ENV = "NIGHTSHIFT_FILM_ASSEMBLY"
 #: The machine words this module fails an assembly with (film_timeline's own refusals pass through as
 #: they are, so the canvas shows the same word the cut used).
 REASONS = ("assembly_not_enabled", "not_running", "lease_lost", "film_unavailable", "narration_missing",
-           "captions_failed", "disk_low", "asset_unavailable", "render_timed_out", "render_failed",
+           "captions_failed", "captions_unavailable", "disk_low", "asset_unavailable", "render_timed_out", "render_failed",
            "render_degraded", "output_mismatch", "store_failed", "review_copy_missing", "review_copy_too_large",
            "assembly_crashed") + ft.REASONS
 
@@ -222,20 +224,137 @@ def cues_from_words(words: Sequence[Mapping], segments: Sequence[Mapping], max_c
     return [c for c in cues if c["end_s"] > c["start_s"]]
 
 
+#: The folder holding Whisper's ``base.pt``, set by the worker image (Dockerfile.worker ENV). Explicit because
+#: Whisper's default (``$XDG_CACHE_HOME`` or ``~/.cache``, then ``/whisper``) resolved to the film-worker's empty
+#: tmpfs ``/tmp/.cache/whisper`` while the image had baked it under another user's home: every container start's
+#: first captioned film downloaded 139 MB into memory, or failed after its takes were paid (S4_GAPS G1).
+WHISPER_DIR_ENV = "NIGHTSHIFT_WHISPER_DIR"
+WHISPER_MODEL_FILE = "base.pt"
+#: Whisper base measured 31 s per 600 s of narration on 4 vCPU (S4_GAPS "Results: Whisper"). Ten times that plus
+#: two minutes for the start (torch import, a checksum of 139 MB, the model load) leaves room for a busy host (a run
+#: on a host at load 7 of 4 cores took 412 s of its 6,120 s) and still stops a hung child.
+WHISPER_TIMEOUT_PER_AUDIO_S = 10.0
+WHISPER_TIMEOUT_BASE_S = 120.0
+#: The child's command; tests point it at a fake transcriber.
+WHISPER_CHILD = (sys.executable, "-m", "modules.film_whisper")
+#: The only variables the child inherits. The film-worker's environment holds the provider keys and the service key;
+#: a transcription needs none of them, so none of them is handed over (CLAUDE.md rule 1).
+_CHILD_ENV_KEYS = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TZ", "PYTHONPATH", "PYTHONUNBUFFERED",
+                   "PYTHONDONTWRITEBYTECODE", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+#: film_whisper's exit codes (its docstring is the contract).
+_EXIT_MODEL, _EXIT_AUDIO = 3, 4
+
+CAPTIONS_UNAVAILABLE_REMEDY = ("the captions model is not installed on this worker: rebuild the worker image "
+                               "(Dockerfile.worker bakes it), or set captions to none")
+
+
+class CaptionsUnavailable(RuntimeError):
+    """The Whisper model is not on this worker: no retry helps, the image does (``captions_unavailable``)."""
+
+
+class TranscriptionFailed(RuntimeError):
+    """The transcription child failed; ``remedy`` is the fix to show (``captions_failed``)."""
+
+    def __init__(self, remedy: str):
+        super().__init__(remedy)
+        self.remedy = remedy
+
+
+def captions_model_ready(env: Optional[Mapping[str, str]] = None) -> tuple[bool, str]:
+    """``(True, folder)`` when this worker can time captions without a download, else ``(False, why and the fix)``.
+
+    Cheap (no torch import, only the path checks): this is the call S2's film worker makes at start, so a worker
+    without the model says so before any take of a captioned film is paid for (rule 6). The assembly checks the same
+    thing again before it transcribes, and the child verifies the checksum."""
+    env = os.environ if env is None else env
+    raw = (env.get(WHISPER_DIR_ENV) or "").strip()
+    if not raw:
+        return False, f"{WHISPER_DIR_ENV} is not set: {CAPTIONS_UNAVAILABLE_REMEDY}"
+    folder = Path(raw)
+    if not folder.is_absolute():
+        return False, f"{WHISPER_DIR_ENV} is not an absolute path: {CAPTIONS_UNAVAILABLE_REMEDY}"
+    model = folder / WHISPER_MODEL_FILE
+    try:
+        if not model.is_file() or model.stat().st_size == 0:
+            return False, f"{model} is missing: {CAPTIONS_UNAVAILABLE_REMEDY}"
+        # Opened rather than os.access: that answers for the real uid, not for what this process can actually read.
+        with open(model, "rb") as f:
+            f.read(1)
+    except OSError:
+        return False, f"{model} cannot be read by this worker: {CAPTIONS_UNAVAILABLE_REMEDY}"
+    return True, str(folder)
+
+
+def _audio_seconds(path: Path) -> Optional[float]:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        r = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                           capture_output=True, text=True, timeout=60)
+        s = float(r.stdout.strip())
+        return s if math.isfinite(s) and s > 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def whisper_timeout_s(audio_s: Optional[float]) -> float:
+    # An unknown length is budgeted as the longest film (film_timeline.MAX_FILM_S): a narration is never longer.
+    length = audio_s if audio_s is not None else ft.MAX_FILM_S
+    return WHISPER_TIMEOUT_PER_AUDIO_S * min(length, ft.MAX_FILM_S) + WHISPER_TIMEOUT_BASE_S
+
+
 def whisper_words(path: Path, language: Optional[str]) -> List[dict]:
-    """Word timings of the narration file from Whisper base (the worker image caches it at build time).
+    """Word timings of the narration file from Whisper base, read from the image's model folder, in a child process.
 
-    Temperature 0 with no fallback: the same file gives the same words, so a retry builds the same cut."""
-    import whisper  # noqa: PLC0415 — only the worker image has it
-
-    model = whisper.load_model("base")
-    out = model.transcribe(str(path), language=(language or None), word_timestamps=True, fp16=False,
-                           condition_on_previous_text=False, temperature=0.0)
-    words: List[dict] = []
-    for seg in out.get("segments") or []:
-        for w in seg.get("words") or []:
-            words.append({"word": w.get("word"), "start": w.get("start"), "end": w.get("end")})
-    return words
+    Never downloads: no model folder, no captions (``CaptionsUnavailable``), not a fetch in the middle of a paid film
+    (S4_GAPS G1). In a child because Whisper keeps about 810 MB of the 3 GiB container after it returns, and the
+    render comes next (G4). Temperature 0 with no fallback: the same file gives the same words, so a retry builds the
+    same cut."""
+    ready, info = captions_model_ready()
+    if not ready:
+        raise CaptionsUnavailable(info)
+    audio_s = _audio_seconds(Path(path))
+    timeout = whisper_timeout_s(audio_s)
+    env = {k: os.environ[k] for k in _CHILD_ENV_KEYS if k in os.environ}
+    with tempfile.TemporaryDirectory(prefix="film-whisper-") as tmp:
+        out = Path(tmp) / "words.json"
+        cmd = [*WHISPER_CHILD, "--model-dir", info, "--language", language or "", "--out", str(out), str(path)]
+        try:
+            r = subprocess.run(cmd, cwd=str(_REPO_ROOT), env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise TranscriptionFailed(
+                f"the captions transcription did not finish within {timeout:.0f} s for a "
+                f"{(audio_s if audio_s is not None else ft.MAX_FILM_S):.0f} s narration and was stopped: the worker is "
+                "overloaded; retry the assembly when it is idle, or set captions to none") from None
+        except OSError as e:
+            raise TranscriptionFailed(f"the captions transcription could not start ({type(e).__name__}): rebuild the "
+                                      "worker image, or set captions to none") from None
+        tail = (r.stderr or b"")[-600:].decode("utf-8", "replace").strip()
+        if r.returncode != 0:
+            # The child's stderr carries no secret (its argv and environment hold none); it names what went wrong.
+            logger.warning("film assembly: whisper child exited %s: %s", r.returncode, tail)
+            if r.returncode == _EXIT_MODEL:
+                raise CaptionsUnavailable(f"the captions model on this worker did not load: {CAPTIONS_UNAVAILABLE_REMEDY}")
+            if r.returncode == _EXIT_AUDIO:
+                raise TranscriptionFailed("the narration file could not be decoded for captions: generate the "
+                                          "narration again, or set captions to none")
+            if r.returncode < 0:
+                raise TranscriptionFailed(
+                    f"the captions transcription was killed (signal {-r.returncode}), most likely for memory: retry the "
+                    "assembly when the worker is idle, or set captions to none")
+            raise TranscriptionFailed(f"the captions transcription failed (exit {r.returncode}; the worker log has its "
+                                      "message): retry the assembly once, and if it fails again set captions to none")
+        try:
+            words = json.loads(out.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            words = None
+        if not isinstance(words, list) or not all(isinstance(w, dict) for w in words):
+            raise TranscriptionFailed("the captions transcription returned no readable words: this worker's Whisper "
+                                      "install is broken; rebuild the worker image, or set captions to none")
+        return words
 
 
 def cached_words(media_root: Path, narration_id: str, path: Path, language: Optional[str],
@@ -769,6 +888,12 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
                                      "the narration again")
             try:
                 words = cached_words(media_root, nid, path, film.get("language"), deps.transcribe)
+            except CaptionsUnavailable as e:
+                # Not "retry": a retry finds the same image without the model (S4_GAPS G1, rule 6).
+                logger.warning("film assembly %s: %s", seg_id, e)
+                raise AssemblyFailed("captions_unavailable", CAPTIONS_UNAVAILABLE_REMEDY) from None
+            except TranscriptionFailed as e:
+                raise AssemblyFailed("captions_failed", e.remedy) from None
             except Exception as e:  # noqa: BLE001
                 raise AssemblyFailed("captions_failed", f"the captions could not be transcribed ({type(e).__name__}): "
                                      "retry the assembly, or set captions to none") from None
@@ -912,6 +1037,6 @@ def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> 
                              "above the 50 MB a review object may be: shorten the film")
 
 
-__all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "clients_from", "DbRefused", "DbUnavailable", "Deps", "REASONS",
+__all__ = ["AssemblyDisabled", "AssemblyFailed", "CaptionsUnavailable", "TranscriptionFailed", "captions_model_ready", "AssemblyOutcome", "AssemblyStore", "clients_from", "DbRefused", "DbUnavailable", "Deps", "REASONS",
            "assemble_segment", "cached_words", "prune_word_cache", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
            "master_asset_id", "render_strict", "store_caption", "vtt_text", "whisper_words"]

@@ -8,15 +8,21 @@ shorter than its scenes, a 9:16 film rendered 16:9, or captions that cross from 
 The fixture renders use the real editor path (timeline_render → render_backend → ffmpeg) on tiny clips
 made here by ffmpeg; they skip where ffmpeg is not installed."""
 
+import hashlib
 import json
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import types
+import urllib.request
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from modules import film_assembly as fa
+from modules import film_whisper as fw
 from modules import film_timeline as ft
 from modules import media_library as ml
 
@@ -857,6 +863,274 @@ class RenderTest(Base):
         self.assertIn("Scene 1 speaks.", vtt)
         self.assertEqual(db.asset_rows[out.captions_asset_id]["kind"], "caption")
         self.assertEqual(db.asset_rows[out.asset_id]["provenance"]["captions_asset_id"], out.captions_asset_id)
+
+
+# ── Whisper: the model folder and the child process (docs/studio/S4_GAPS.md G1, G4) ──────────────────────────
+
+# A stand-in for `python -m modules.film_whisper`: the first argument picks what it does, the rest is the real argv.
+FAKE_CHILD = r"""
+import json, os, signal, sys, time
+mode = sys.argv[1]
+args = sys.argv[2:]
+out = args[args.index("--out") + 1]
+if mode == "ok":
+    json.dump([{"word": "Scene", "start": 0.35, "end": 0.7}, {"word": "speaks.", "start": 0.7, "end": 1.2}], open(out, "w"))
+elif mode == "seen":
+    json.dump([{"argv": args, "env": sorted(os.environ)}], open(out, "w"))
+elif mode == "sleep":
+    time.sleep(30)
+elif mode == "badjson":
+    open(out, "w").write("{not json")
+elif mode == "notalist":
+    json.dump({"words": []}, open(out, "w"))
+elif mode == "kill":
+    os.kill(os.getpid(), signal.SIGKILL)
+elif mode == "marker":
+    open(os.path.join(os.environ["TMPDIR"], "never"), "w").write("started")
+else:
+    sys.stderr.write("boom\n")
+    sys.exit(int(mode))
+"""
+
+
+class WhisperModelDirTest(unittest.TestCase):
+    """What would break: a worker that downloads 139 MB into its tmpfs per start, or tells the person to retry an
+    assembly that can only fail the same way (S4_GAPS G1)."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def test_a_folder_with_the_model_is_ready(self):
+        (self.dir / "base.pt").write_bytes(b"model")
+        self.assertEqual(fa.captions_model_ready({fa.WHISPER_DIR_ENV: str(self.dir)}), (True, str(self.dir)))
+
+    def test_no_variable_is_not_ready_and_never_means_the_default_cache(self):
+        (self.dir / "whisper").mkdir()
+        (self.dir / "whisper" / "base.pt").write_bytes(b"model")
+        ok, why = fa.captions_model_ready({"HOME": str(self.dir), "XDG_CACHE_HOME": str(self.dir)})
+        self.assertFalse(ok)
+        self.assertIn(fa.WHISPER_DIR_ENV, why)
+        self.assertIn("rebuild the worker image", why)
+
+    def test_a_folder_without_the_model_is_not_ready(self):
+        ok, why = fa.captions_model_ready({fa.WHISPER_DIR_ENV: str(self.dir)})
+        self.assertFalse(ok)
+        self.assertIn("missing", why)
+        (self.dir / "base.pt").write_bytes(b"")
+        self.assertFalse(fa.captions_model_ready({fa.WHISPER_DIR_ENV: str(self.dir)})[0], "an empty file is no model")
+
+    def test_a_relative_folder_is_not_ready(self):
+        self.assertFalse(fa.captions_model_ready({fa.WHISPER_DIR_ENV: "whisper"})[0])
+
+    def test_an_unreadable_model_is_not_ready(self):
+        (self.dir / "base.pt").write_bytes(b"model")
+        with mock.patch("builtins.open", side_effect=PermissionError(13, "denied")):
+            ok, why = fa.captions_model_ready({fa.WHISPER_DIR_ENV: str(self.dir)})
+        self.assertFalse(ok)
+        self.assertIn("cannot be read", why)
+
+    def test_no_model_raises_captions_unavailable_and_never_starts_the_child(self):
+        with mock.patch.dict(os.environ, {fa.WHISPER_DIR_ENV: str(self.dir)}), \
+                mock.patch.object(fa.subprocess, "run", side_effect=AssertionError("the child was started")):
+            with self.assertRaises(fa.CaptionsUnavailable):
+                fa.whisper_words(self.dir / "n.mp3", "en")
+
+    def test_the_timeout_follows_the_narration_and_is_capped_at_the_longest_film(self):
+        self.assertEqual(fa.whisper_timeout_s(600.0), 6120.0)
+        self.assertEqual(fa.whisper_timeout_s(30.0), 420.0)
+        self.assertEqual(fa.whisper_timeout_s(None), 6120.0)
+        self.assertEqual(fa.whisper_timeout_s(10_000.0), 6120.0)
+
+
+class FilmWhisperChildMainTest(unittest.TestCase):
+    """The child itself, with a fake whisper: it loads "base" from the given folder only, and never downloads."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.blob = b"the base checkpoint"
+        self.loads, self.heard = [], []
+        self.fetch = False     # True: the fake loader behaves as whisper's does on a checksum mismatch
+        sha = hashlib.sha256(self.blob).hexdigest()
+        fake = types.ModuleType("whisper")
+        fake._MODELS = {"base": f"https://example.invalid/models/{sha}/base.pt"}
+        test = self
+
+        class Model:
+            def transcribe(self, audio, **kw):
+                test.heard.append((audio, kw))
+                return {"segments": [{"words": [{"word": " Hi", "start": 0.1, "end": 0.4, "probability": 0.9}]}]}
+
+        def load_model(name, device=None, download_root=None, in_memory=False):
+            if name != "base" or download_root != str(test.dir):
+                raise AssertionError(f"load_model({name!r}, download_root={download_root!r}) could download")
+            if test.fetch:
+                urllib.request.urlopen(fake._MODELS["base"])
+            test.loads.append(download_root)
+            return Model()
+
+        def load_audio(path, sr=16000):
+            if "bad" in str(path):
+                raise RuntimeError("Failed to load audio")
+            return ["samples-of", str(path)]
+        fake.load_model, fake.load_audio = load_model, load_audio
+        self.fake = fake
+        self.out = self.dir / "words.json"
+
+    def main(self, audio="n.mp3", language="en"):
+        # urlopen is restored afterwards: main() disables it for the rest of its (child) process.
+        with mock.patch.dict(sys.modules, {"whisper": self.fake}), mock.patch.object(urllib.request, "urlopen"):
+            return fw.main(["--model-dir", str(self.dir), "--language", language, "--out", str(self.out), audio])
+
+    def test_it_loads_base_from_the_folder_with_the_same_arguments_as_before(self):
+        (self.dir / "base.pt").write_bytes(self.blob)
+        self.assertEqual(self.main(), 0)
+        self.assertEqual(json.loads(self.out.read_text()), [{"word": " Hi", "start": 0.1, "end": 0.4}])
+        self.assertEqual(self.loads, [str(self.dir)])
+        audio, kw = self.heard[0]
+        self.assertEqual(audio, ["samples-of", "n.mp3"])
+        self.assertEqual(kw, {"language": "en", "word_timestamps": True, "fp16": False,
+                              "condition_on_previous_text": False, "temperature": 0.0})
+
+    def test_a_download_attempt_is_refused_inside_the_child(self):
+        (self.dir / "base.pt").write_bytes(self.blob)
+        self.fetch = True
+        self.assertEqual(self.main(), fw.EXIT_MODEL, "a loader that tried to fetch was let through")
+        self.assertEqual(self.loads, [])
+
+    def test_a_model_that_is_not_the_checkpoint_is_refused_before_whisper_could_re_download_it(self):
+        (self.dir / "base.pt").write_bytes(b"truncated")
+        self.fake.load_model = mock.Mock(side_effect=AssertionError("loaded a corrupt model"))
+        self.assertEqual(self.main(), fw.EXIT_MODEL)
+        self.fake.load_model.assert_not_called()
+
+    def test_a_missing_model_is_exit_model(self):
+        self.assertEqual(self.main(), fw.EXIT_MODEL)
+
+    def test_an_undecodable_narration_is_exit_audio(self):
+        (self.dir / "base.pt").write_bytes(self.blob)
+        self.assertEqual(self.main(audio="bad.mp3"), fw.EXIT_AUDIO)
+        self.assertFalse(self.out.exists())
+
+
+class WhisperChildProcessTest(unittest.TestCase):
+    """The parent side: a real child process (a fake transcriber), so the 800 MB Whisper keeps goes back to the kernel
+    before the render (S4_GAPS G4), and every way it can fail has a true remedy."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        (self.dir / "base.pt").write_bytes(b"model")
+        self.script = self.dir / "fake_child.py"
+        self.script.write_text(FAKE_CHILD)
+        env = {fa.WHISPER_DIR_ENV: str(self.dir), "TMPDIR": str(self.dir),
+               "SUPABASE_SERVICE_ROLE_KEY": "sk-never-in-the-child", "ELEVENLABS_API_KEY": "el-never"}
+        p = mock.patch.dict(os.environ, env)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def words(self, mode, timeout=None):
+        with mock.patch.object(fa, "WHISPER_CHILD", (sys.executable, str(self.script), mode)):
+            if timeout is None:
+                return fa.whisper_words(self.dir / "n.mp3", "en")
+            with mock.patch.object(fa, "whisper_timeout_s", lambda s: timeout):
+                return fa.whisper_words(self.dir / "n.mp3", "en")
+
+    def test_success_returns_the_childs_words(self):
+        self.assertEqual(self.words("ok")[1], {"word": "speaks.", "start": 0.7, "end": 1.2})
+
+    def test_the_child_gets_no_secret_in_its_argv_or_environment(self):
+        seen = self.words("seen")[0]
+        self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", seen["env"])
+        self.assertNotIn("ELEVENLABS_API_KEY", seen["env"])
+        self.assertFalse(any("never" in a for a in seen["argv"]), seen["argv"])
+        self.assertEqual(seen["argv"][seen["argv"].index("--model-dir") + 1], str(self.dir))
+        self.assertEqual(seen["argv"][seen["argv"].index("--language") + 1], "en")
+
+    def test_a_non_zero_exit_is_captions_failed_with_a_remedy(self):
+        with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
+            self.words("1")
+        self.assertIn("exit 1", c.exception.remedy)
+        self.assertIn("set captions to none", c.exception.remedy)
+
+    def test_the_childs_model_refusal_is_captions_unavailable(self):
+        with self.assertRaises(fa.CaptionsUnavailable), self.assertLogs(fa.logger, "WARNING"):
+            self.words(str(fw.EXIT_MODEL))
+
+    def test_an_undecodable_narration_names_the_narration(self):
+        with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
+            self.words(str(fw.EXIT_AUDIO))
+        self.assertIn("generate the narration again", c.exception.remedy)
+
+    def test_a_killed_child_says_memory_not_a_bare_retry(self):
+        with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
+            self.words("kill")
+        self.assertIn("signal 9", c.exception.remedy)
+
+    def test_a_hung_child_is_stopped_at_its_budget(self):
+        with self.assertRaises(fa.TranscriptionFailed) as c:
+            self.words("sleep", timeout=1.0)
+        self.assertIn("did not finish within 1 s", c.exception.remedy)
+        self.assertIn("idle", c.exception.remedy)
+
+    def test_bad_json_or_not_a_list_is_captions_failed(self):
+        for mode in ("badjson", "notalist"):
+            with self.assertRaises(fa.TranscriptionFailed, msg=mode) as c:
+                self.words(mode)
+            self.assertIn("rebuild the worker image", c.exception.remedy)
+
+
+class AssembleWithWhisperChildTest(Base):
+    """The whole assembly with the default transcriber (the real child path, a fake transcriber behind it)."""
+
+    def setUp(self):
+        super().setUp()
+        self.mdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.mdir, ignore_errors=True)
+        self.script = self.mdir / "fake_child.py"
+        self.script.write_text(FAKE_CHILD)
+
+    def assemble(self, mode, model_dir):
+        f = self.film(captions="sidecar", words=False)
+        db = f.db()
+        deps = self.fake_deps(db)
+        self.assertIs(deps.transcribe, fa.whisper_words)
+        with mock.patch.dict(os.environ, {"TMPDIR": str(self.mdir)}), \
+                mock.patch.object(fa, "WHISPER_CHILD", (sys.executable, str(self.script), mode)):
+            os.environ.pop(fa.WHISPER_DIR_ENV, None)
+            if model_dir:
+                os.environ[fa.WHISPER_DIR_ENV] = str(model_dir)
+            return db, run(db, self.root, deps=deps)
+
+    def test_a_captioned_film_is_assembled_through_the_child(self):
+        (self.mdir / "base.pt").write_bytes(b"model")
+        db, out = self.assemble("ok", self.mdir)
+        self.assertTrue(out.ok, out)
+        self.assertTrue(out.captions_asset_id)
+        cache = list((self.root / fa.CACHE_DIRNAME).glob("*.json"))
+        self.assertEqual(len(cache), 1, "the words were not cached per narration file")
+
+    def test_no_model_on_the_worker_is_captions_unavailable_not_retry(self):
+        db, out = self.assemble("marker", self.mdir)
+        self.assertEqual((out.ok, out.reason), (False, "captions_unavailable"), out.detail)
+        self.assertEqual(out.detail, fa.CAPTIONS_UNAVAILABLE_REMEDY)
+        self.assertNotIn("retry", out.detail)
+        self.assertEqual(db.seg["assembly"]["charged_credits"], 0.0)
+        self.assertFalse((self.mdir / "never").exists(), "the transcription started without a model")
+        self.assertEqual(self.render_calls, [])
+
+    def test_no_model_folder_variable_is_captions_unavailable(self):
+        db, out = self.assemble("marker", None)
+        self.assertEqual(out.reason, "captions_unavailable")
+        self.assertFalse((self.mdir / "never").exists())
+
+    def test_a_failing_child_is_captions_failed_with_its_remedy(self):
+        (self.mdir / "base.pt").write_bytes(b"model")
+        with self.assertLogs(fa.logger, "WARNING"):
+            db, out = self.assemble(str(fw.EXIT_AUDIO), self.mdir)
+        self.assertEqual(out.reason, "captions_failed")
+        self.assertIn("generate the narration again", out.detail)
 
 
 if __name__ == "__main__":

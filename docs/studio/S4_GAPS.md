@@ -165,6 +165,25 @@ In order of what would hurt a paid film first.
   which would fail the same way. That is rule 6 twice: the run fails late, and the remedy named is the wrong one.
 - **Download succeeds**: it works, silently depending on the network, which the Dockerfile set out to avoid.
 
+**After (`claude/nsai-s4-whisper-model`).**
+
+- The image keeps the baked model where it was downloaded, `/opt/whisper-cache/whisper`, root-owned and readable by
+  every uid (`chmod -R a+rX,go-w`). It names that folder with `ENV NIGHTSHIFT_WHISPER_DIR=/opt/whisper-cache/whisper`.
+  An image ENV and not a compose line: every service started from the image inherits it, and the film-worker block is
+  unchanged. The pipeline worker's `~/.cache/whisper/base.pt` is now a symlink to the same file, so its default lookup
+  works as before without a second 139 MB copy.
+- `film_assembly.whisper_words` reads only `NIGHTSHIFT_WHISPER_DIR` and never downloads:
+  - It checks the file before it starts anything. The child verifies Whisper's own sha256 before `load_model("base",
+    download_root=…)`, so Whisper's re-download on a checksum mismatch is never reached, and the child disables
+    `urllib.request.urlopen` anyway.
+  - A missing variable, a missing, empty, unreadable or wrong `base.pt`: the assembly refuses with the new
+    `captions_unavailable` ("rebuild the worker image (Dockerfile.worker bakes it), or set captions to none"), not
+    "retry".
+- `film_assembly.captions_model_ready() -> (bool, str)` is the path-only check (no torch import). S2's film worker
+  calls it at start.
+- Not run here: the film-worker container as built (no image build in this container). The image and compose are
+  checked by tests (`tests/test_worker_image_pins.py`, `tests/test_deploy_self_host.py`).
+
 ### G2 — The review copy is at its ceiling at the longest film (high, at 10 minutes)
 
 - The library's proxy (`media_library.proxy_command`: 480p, libx264 veryfast crf 28, AAC 96 kb/s) is constant-quality,
@@ -197,6 +216,42 @@ In order of what would hurt a paid film first.
   torch) + 585 MB (the largest ffmpeg) + 139 MB (shmem) ≈ 1.5 GB of 3 GiB.
 - That fits, at half the margin the matrix shows. It is not a failure today. It is the number to keep in mind before the
   limit, the resolution or the length grows.
+
+**After (`claude/nsai-s4-whisper-model`).** The transcription runs in a child, `python -m modules.film_whisper`. Its
+environment is reduced to PATH, HOME, TMPDIR, locale and thread variables, so no key reaches it. Its arguments are the
+model folder, the language and two paths. The words come back as a JSON file.
+
+The timeout is `10 × narration length + 120 s`, with the length read by ffprobe and capped at the longest film (600 s,
+so at most 6,120 s). An unknown length is budgeted as 600 s. The failures map like this:
+
+| child outcome | refusal | remedy |
+| :-- | :-- | :-- |
+| exit 3 (the model would not load) | `captions_unavailable` | rebuild the worker image |
+| exit 4 (the narration would not decode) | `captions_failed` | generate the narration again |
+| killed by a signal | `captions_failed` | most likely memory; retry when the worker is idle |
+| timeout | `captions_failed` | the worker is overloaded; retry when it is idle |
+| unreadable JSON | `captions_failed` | rebuild the worker image |
+| any other exit | `captions_failed` | retry the assembly once |
+
+Every one also offers "or set captions to none".
+
+Measured with the same venv (openai-whisper 20250625, torch 2.15 CPU) and the same synthetic 600 s mp3, on the same 4
+vCPU. This time the container was shared with other test runs (load average 5.5 to 7.7):
+
+| path | process that goes on to render: RSS before → after | its peak | transcriber peak | wall | words |
+| :-- | --: | --: | --: | --: | --: |
+| in-process (as before) | 401 → **771 to 812 MB** | 1,261 to 1,267 MB | (the same process) | 71 to 258 s | 385 |
+| child (now) | 20 → **20 to 21 MB** | 21 MB | 1,292 to 1,304 MB, returned at exit | 46 to 412 s | 385 |
+
+- The words the child returned are byte-identical to the in-process call's, compared over three pairs. The child
+  passes Whisper the decoded samples instead of the path. That is what `transcribe` does with a path itself
+  (`log_mel_spectrogram` calls `load_audio` at 16 kHz), so the output is the same.
+- The wall times here measure the shared host, not the change. The unloaded figure stays the one above (31 s). The
+  child adds a torch import and one extra sha256 of 139 MB; that overhead was not measured on an idle host. The slowest loaded run (412 s) still used
+  7 % of its 6,120 s budget.
+- The parent's RSS is that of the measurement harness (`film_assembly` imported, no torch). In the film-worker it is
+  the worker's own, which is also no longer raised by Whisper's 800 MB: the anonymous floor during the render goes from
+  about 1.5 GB to the largest ffmpeg plus the worker itself.
 
 ### G5 — Not gaps (measured fine; no change)
 

@@ -911,5 +911,26 @@ class ComposeBrandScanProfileTests(unittest.TestCase):
             self.assertNotIn(".env.brandscan", json.dumps(self.config["services"][name]))
 
 
+class FilmWorkerWhisperFolderTests(unittest.TestCase):
+    """S4_GAPS G1: the film-worker inherits the image's Whisper folder; compose must not point it anywhere else."""
+
+    def service_block(self, name):
+        text = COMPOSE.read_text(encoding="utf-8")
+        m = re.search(r"^  " + re.escape(name) + r":\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|^[a-z])", text, re.M | re.S)
+        self.assertIsNotNone(m, name)
+        return m.group(1)
+
+    def test_no_service_overrides_the_whisper_folder_or_its_cache_root(self):
+        keys = compose_environment_keys()
+        self.assertNotIn("NIGHTSHIFT_WHISPER_DIR", keys)
+        self.assertNotIn("XDG_CACHE_HOME", keys)
+
+    def test_the_film_worker_runs_the_worker_image_that_sets_it(self):
+        block = self.service_block("film-worker")
+        self.assertIn("image: nightshift-worker:latest", block)
+        self.assertIn("user: \"1000:1000\"", block)
+        self.assertRegex((ROOT / "Dockerfile.worker").read_text(), r"(?m)^ENV NIGHTSHIFT_WHISPER_DIR=/opt/whisper-cache/whisper$")
+
+
 if __name__ == "__main__":
     unittest.main()

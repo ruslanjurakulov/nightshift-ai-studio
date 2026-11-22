@@ -53,6 +53,7 @@ INTENTIONALLY_UNREACHABLE = {
     "CHRONOS_CHANNELS_FILE": "a local channels.json path for a laptop run; the managed path reads the channels table",
     "CHRONOS_STATE_DB": "a local sqlite path; the container's default (inside the history volume) is the intended one",
     "NIGHTSHIFT_EMAIL_FAKE_DIR": "test transport: writes mail to a folder instead of sending it",
+    "NIGHTSHIFT_WHISPER_DIR": "fixed by the image: Dockerfile.worker's ENV names the folder it bakes Whisper's model into (S4_GAPS G1); any other value could only name a folder without the model",
     # -- tuning with a tested default ---------------------------------------------
     "CHRONOS_DEFAULT_CHANNEL_NAME": "label of the single-channel fallback; the registry names real channels",
     "CHRONOS_DEFAULT_CHANNEL_NICHE": "niche of the single-channel fallback; the registry names real channels",

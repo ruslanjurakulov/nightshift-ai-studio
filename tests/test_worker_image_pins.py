@@ -48,9 +48,26 @@ class WorkerImagePins(unittest.TestCase):
         self.assertLess(text.index("pip install -c constraints.txt"), preload)
         self.assertLess(preload, re.search(r"^COPY \. \.", text, re.M).start())
         self.assertIn("/home/nightshift/.cache/whisper", text)
+        # the pipeline worker's default cache links to the one baked copy instead of a second 139 MB file
+        self.assertIn("ln -s /opt/whisper-cache/whisper/base.pt /home/nightshift/.cache/whisper/base.pt", text)
         # the model name the pipeline loads is the one baked in
         from modules import subtitle_generator  # noqa: PLC0415
         self.assertEqual(subtitle_generator.WHISPER_MODEL, "base")
+
+    def test_the_image_names_a_read_only_whisper_folder_the_film_assembly_reads(self):
+        # S4_GAPS G1: the film-worker (uid 1000, HOME=/tmp) found no model in Whisper's default cache and downloaded
+        # 139 MB into its tmpfs per start. The baked folder must stay where it was downloaded, readable by every uid,
+        # and be named by the image itself so every service started from it inherits the name.
+        from modules import film_assembly  # noqa: PLC0415
+        text = (ROOT / "Dockerfile.worker").read_text()
+        env = re.search(r"^ENV " + re.escape(film_assembly.WHISPER_DIR_ENV) + r"=(\S+)$", text, re.M)
+        self.assertIsNotNone(env, "Dockerfile.worker does not set the Whisper model folder")
+        self.assertEqual(env.group(1), "/opt/whisper-cache/whisper")
+        self.assertIn("XDG_CACHE_HOME=/opt/whisper-cache python -c \"import whisper; whisper.load_model('base')", text)
+        self.assertIn("chmod -R a+rX,go-w /opt/whisper-cache", text)
+        self.assertNotRegex(text, r"mv /opt/whisper-cache", "the baked folder was moved away from the path the ENV names")
+        self.assertLess(text.index("whisper.load_model('base')"), env.start())
+        self.assertLess(env.start(), text.index("USER nightshift"))
 
     def test_every_workflow_that_installs_requirements_uses_the_constraints(self):
         seen = 0
