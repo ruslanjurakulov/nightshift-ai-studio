@@ -165,6 +165,17 @@ outlines, not storyboards:
 Code merges the answers into one BRIEF: scenes `s1..sN` in order, at most 60, adding up to `target_seconds` exactly, and referring
 only to the outline's ids. A plan answer may not name a vendor the outline does not, and may never claim that a vendor made it.
 
+**A scene's prompt is never cut** (S9's contract for `creative_price`, migration 0218, which refuses an over-long prompt, a
+`negative_prompt` on a model whose registry row has `takes_negative_prompt = false`, and a `seed` on any model, before the quote):
+- The film gets each scene's whole prompt (`scenePrompt` in `lib/brain/logic.ts`): its visual prompt, then the descriptions of its
+  characters and setting, its spoken lines and the film's style.
+- The limit is the smaller of the picked clip and key-frame models' `limits.max_prompt_chars`, read server-side from their registry
+  rows (`promptLimitOf` in `lib/server/brain/clip.ts`), never typed in code. With neither known, it is the film's own 2000
+  (`film_limits.max_prompt_chars`). It is counted as 0218 counts it, in UTF-16 units (`.length`): an emoji is two.
+- Every plan call is told the limit (`limits.prompt_max_chars`). A scene over it is asked again once with the limit, then refused
+  as `prompt_too_long`. A stored storyboard over it is refused before the draft and before any turn.
+- The BRIEF never carries a `negative_prompt` or a `seed`, so neither reaches the film.
+
 **The models a film is made with are the server's choice** (`lib/brain/film-models.ts`). The model never names one.
 - At `choose`, the server reads the models on sale now (`sellable_models`, web) for clips (i2v) and key frames (t2i). It picks the
   first one on sale from a fixed order:
@@ -190,6 +201,7 @@ only to the outline's ids. A plan answer may not name a vendor the outline does 
 | `{ "error": "plan_running", "expires_at": "iso" }` | 409 | Another plan of this conversation is running (another tab, or before a refresh). Nothing is reserved or called. The panel waits for it until `expires_at`. |
 | `{ "error": "plan_unavailable" }` | 503 | Migration 0211 is not applied here: the storyboard is not written without a lease. |
 | `{ "error": "plan_superseded", "film_id": "uuid" }` | 409 | The draft was edited while its storyboard was written. The edit is kept, the storyboard is not saved into it, and the BRIEF stays unpriced. Choosing again re-reads the draft. |
+| `{ "error": "prompt_too_long", "scene": 3, "limit": 1500 }` | 422 | Scene 3's whole prompt is over the models' limit (UTF-16 units). Nothing is cut, saved or priced. From the plan's own calls, after the one re-ask, the answer carries `chapter` and `scene` counts within that chapter. No Retry: choose another scenario. |
 | `{ "error": "proposal_outdated" }` | 409 | A proposal stored before the plan step whose scenes do not add up to the length: ask for new scenarios. |
 | `{ "error": "plan_failed", "reason": "vendor_error", "step": { "window": 2, "windows": 4, "chapter": 3, "chapters": 6 }, "quota": {…} }` | 502 | One call failed (`reason`: the vendor's failure, `timeout`, `invalid_output`, `output_too_long`, `unavailable`). `step` names which part of the plan (null when the merge failed). The panel offers Retry: a new attempt of the lease, with new request ids. |
 | `{ "error": "plan_failed", "reason": "not_plannable", "step": null }` | 409 | The film cannot fit 60 scenes within the clip model's longest scene. |

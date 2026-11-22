@@ -146,6 +146,8 @@ export const aiChatEn = {
     plan_unavailable: "Writing storyboards isn’t available in this workspace yet. Nothing was used. Please check back later.",
     plan_superseded: "The film draft was changed in the editor while its storyboard was being written, so your edit was kept and this storyboard was not saved into it. Choose again to see the draft and its price.",
     proposal_outdated: "This proposal is from an older version and doesn’t add up to the length you chose. Ask Nightshift AI for new scenarios.",
+    prompt_too_long: "Scene {scene} is too long for the models this film is made with: with its characters, setting and lines it is over {limit} characters. Nothing was cut or charged. Choose another scenario, or ask Nightshift AI for a simpler one.",
+    prompt_too_long_chapter: "A scene in chapter {chapter} is too long for the models this film is made with, even after asking again: with its characters, setting and lines it is over {limit} characters. Nothing was cut or charged. Choose another scenario, or ask Nightshift AI for a simpler one.",
   },
 };
 

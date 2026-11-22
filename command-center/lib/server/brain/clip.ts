@@ -17,8 +17,24 @@ export type FilmCatalogue = { ok: true; clip: OnSaleModel[]; keyframe: OnSaleMod
 export async function filmCatalogue(supabase: SupabaseClient): Promise<FilmCatalogue> {
   const [clip, keyframe] = await Promise.all([readSellableModels(supabase, "i2v", "web"), readSellableModels(supabase, "t2i", "web")]);
   if (clip.status !== "ok" || keyframe.status !== "ok") return { ok: false };
-  const rows = (models: typeof clip.models): OnSaleModel[] => models.map((m) => ({ id: m.id, name: m.displayName, durations: m.spec.durationsS }));
+  const rows = (models: typeof clip.models): OnSaleModel[] =>
+    models.map((m) => ({ id: m.id, name: m.displayName, durations: m.spec.durationsS, maxPromptChars: m.spec.maxPromptChars }));
   return { ok: true, clip: rows(clip.models), keyframe: rows(keyframe.models) };
+}
+
+/**
+ * The longest scene prompt the film's two models take, from their registry rows (limits.max_prompt_chars, S9 / 0218): a scene's one
+ * prompt makes its key frame and then its clip, so the smaller of the two. A model not in the catalogue (none picked, or no longer on
+ * sale) adds nothing; neither known is null, and the film's own 2000 (film_limits.max_prompt_chars, planLimits) is the limit.
+ * Never a number typed here: the registry is the only source.
+ */
+export function promptLimitOf(catalogue: { clip: OnSaleModel[]; keyframe: OnSaleModel[] }, clipModel: unknown, keyframeModel: unknown): number | null {
+  const limit = (list: OnSaleModel[], id: unknown) => {
+    const v = typeof id === "string" && id ? list.find((m) => m.id === id)?.maxPromptChars : null;
+    return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null;
+  };
+  const known = [limit(catalogue.clip, clipModel), limit(catalogue.keyframe, keyframeModel)].filter((v): v is number => v !== null);
+  return known.length ? Math.min(...known) : null;
 }
 
 /**

@@ -41,10 +41,10 @@ const exact: Answer = (parts, data) => ({ ok: true, tokensIn: 100, tokensOut: 20
 }) }) });
 
 /** One sellable_models row as the registry reader (lib/creative/registry coerceSellableModels) takes it. */
-const row = (id: string, name: string, cap: "i2v" | "t2i", durations: number[]) => ({
+const row = (id: string, name: string, cap: "i2v" | "t2i", durations: number[], maxPrompt = 2000, takesNegative = false) => ({
   id, display_name: name, provider: "x", availability: "ga", verified_at: "2026-11-01", credit_unit: cap === "i2v" ? "second" : "image",
-  credits_per_unit: 1, capabilities: [cap],
-  spec: { output: cap === "i2v" ? "video" : "image", unit: cap === "i2v" ? "second" : "image", limits: { max_prompt_chars: 2000, max_concurrent_per_org: 2 }, durations_s: durations },
+  credits_per_unit: 1, capabilities: [cap], takes_negative_prompt: takesNegative,
+  spec: { output: cap === "i2v" ? "video" : "image", unit: cap === "i2v" ? "second" : "image", limits: { max_prompt_chars: maxPrompt, max_concurrent_per_org: 2 }, durations_s: durations },
 });
 
 const state = {
@@ -429,5 +429,85 @@ describe("choose → the plan step", () => {
     expect(res.status).toBe(422);
     expect(called("ai_chat_finish_turn")[0]).toMatchObject({ p_outcome: "refused" });
     nothingPriced();
+  });
+});
+
+// ── The models' prompt limit (S9, creative_price 0218): read from the registry, counted in UTF-16 units, never cut ──────────
+describe("choose → the chosen models' prompt limit", () => {
+  /** One 30 s scene with the given visual prompt and Aziz's line: its whole prompt adds his description, the dune and "noir". */
+  const oneScene = (visual: (call: number) => string): Answer => (parts, _data, call) => ({ ok: true, tokensIn: 1, tokensOut: 1, text: JSON.stringify({
+    chapters: [{ id: parts[0].id, scenes: [{ title: "x", duration_s: 30, visual_prompt: visual(call), character_ids: ["c1"], location_id: "l1",
+      dialogue: [{ character_id: "c1", line: "Hold the line!" }] }] }] }) });
+  // 740 waves: 740 code points but 1480 UTF-16 units, and the added description, setting, line and style take it past 1500.
+  const WAVES = "🌊".repeat(740);
+  const onSale = (clipLimit: number, keyframeLimit: number) => {
+    state.catalogue.i2v = [row("kling-v3", "Kling 3.0", "i2v", [5, 10], clipLimit)];
+    state.catalogue.t2i = [row("gemini-3-pro-image", "Gemini 3 Pro Image", "t2i", [], keyframeLimit)];
+  };
+  const dataOf = (i: number) => JSON.parse(String(llm.mock.calls[i][2]).split("\n").slice(1).join("\n")) as Record<string, unknown>;
+
+  it("tells every window the smaller of the two models' registry limits, never a typed number", async () => {
+    setup(30, [30]);
+    onSale(1500, 1800);
+    expect((await choose()).status).toBe(200);
+    expect((dataOf(0).limits as Record<string, unknown>).prompt_max_chars).toBe(1500);
+  });
+
+  it("a limit that is not known keeps the film's own 2000 and says nothing more", async () => {
+    setup(30, [30]);
+    // No model on sale for either role: no registry row to read.
+    expect((await choose()).status).toBe(200);
+    expect((dataOf(0).limits as Record<string, unknown>).prompt_max_chars).toBe(2000);
+  });
+
+  it("a scene over a 1500-unit limit (emoji: UTF-16 is not code points) is asked again once, then refused by name, never cut", async () => {
+    setup(30, [30]);
+    onSale(1500, 1800);
+    state.answer = oneScene(() => WAVES);
+    expect(Array.from(WAVES).length).toBeLessThan(1500);
+    const res = await choose();
+    expect(res.status).toBe(422);
+    const d = await res.json();
+    expect(d).toMatchObject({ error: "prompt_too_long", chapter: 1, scene: 1, limit: 1500 });
+    // Asked once more, told the limit; then nothing saved, quoted or kept (a cut prompt would have gone to save_film).
+    expect(llm).toHaveBeenCalledTimes(2);
+    expect(String(dataOf(1).previous_answer_problem)).toContain("at most 1500");
+    nothingPriced();
+    expect(called("ai_chat_plan_end")[0]).toMatchObject({ p_state: "failed", p_reason: "prompt_too_long" });
+  });
+
+  it("a re-ask that fits is saved whole: the prompt the film gets is every word, within the limit in UTF-16 units", async () => {
+    setup(30, [30]);
+    onSale(1500, 1800);
+    state.answer = oneScene((call) => (call === 1 ? WAVES : "🌊".repeat(300)));
+    expect((await choose()).status).toBe(200);
+    const prompt = String((called("save_film")[0].p_patch as { scenes: { visual_prompt: string }[] }).scenes[0].visual_prompt);
+    expect(prompt.startsWith("🌊".repeat(300))).toBe(true);
+    expect(prompt).toContain("Style: noir");
+    expect(prompt).not.toContain("…");
+    expect(prompt.length).toBeLessThanOrEqual(1500);
+  });
+
+  it("a stored storyboard over the limit is refused before the draft and before any turn", async () => {
+    setup(30, [30], { scenes: [{ id: "s1", n: 1, title: "x", duration_s: 30, visual_prompt: WAVES, character_ids: ["c1"], location_id: "l1", prop_ids: [],
+      dialogue: [{ character_id: "c1", line: "Hold the line!" }] }] });
+    onSale(1500, 1800);
+    const res = await choose();
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: "prompt_too_long", scene: 1, limit: 1500 });
+    expect(called("create_film_draft")).toHaveLength(0);
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+  });
+
+  it("never sends a negative_prompt or a seed: not on a model whose registry row takes no negative prompt, not on any model", async () => {
+    setup(60, [60]);
+    onSale(2000, 2000);
+    expect((await choose()).status).toBe(200);
+    const settings = called("create_film_draft")[0].p_settings as Record<string, unknown>;
+    const scenes = (called("save_film")[0].p_patch as { scenes: Record<string, unknown>[] }).scenes;
+    for (const o of [settings, ...scenes, ...scenes.map((s) => (s.clip_params ?? {}) as Record<string, unknown>)]) {
+      expect(o).not.toHaveProperty("negative_prompt");
+      expect(o).not.toHaveProperty("seed");
+    }
   });
 });

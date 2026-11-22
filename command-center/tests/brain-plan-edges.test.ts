@@ -125,21 +125,29 @@ describe("a window's answer that is not the JSON asked for", () => {
 });
 
 describe("Unicode and very long input in a plan", () => {
-  it("Uzbek, Cyrillic and emoji survive; a 20,000-character picture is capped; half an emoji is dropped", () => {
+  it("Uzbek, Cyrillic and emoji survive; half an emoji is dropped", () => {
     const o = outline([30], 30);
     const limits = planLimits(null);
     const w = planWindows(o, limits)![0];
     const r = readWindow(JSON.stringify({ chapters: [{ id: "ch1", scenes: [scene(30, {
       title: "Qoʻriqchi va karvon 🐫 — Страж",
-      visual_prompt: "x".repeat(20_000) + "\ud83d",
+      visual_prompt: "a caravan at dusk 🐫" + "\ud83d",
       dialogue: [{ character_id: "c1", line: "Toʻxta! Стой! 🛑" }],
     })] }] }), w, refsOf(o), limits);
     expect(r.ok).toBe(true);
     const s = r.ok ? r.parts[0][0] : null;
     expect(s?.title).toBe("Qoʻriqchi va karvon 🐫 — Страж");
     expect(s?.dialogue[0].line).toBe("Toʻxta! Стой! 🛑");
-    expect(Array.from(s?.visual_prompt ?? "").length).toBeLessThanOrEqual(FILM.promptMax);
-    expect(s?.visual_prompt).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/);
+    expect(s?.visual_prompt).toBe("a caravan at dusk 🐫");
+  });
+
+  it("a 20,000-character picture is not cut to fit (S9, 0218): it goes back to the model once, with the limit", () => {
+    const o = outline([30], 30);
+    const limits = planLimits(null);
+    const w = planWindows(o, limits)![0];
+    const r = readWindow(JSON.stringify({ chapters: [{ id: "ch1", scenes: [scene(30, { visual_prompt: "x".repeat(20_000) + "\ud83d" })] }] }), w, refsOf(o), limits);
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.why === "prompt" && r.problem).toContain(`over ${FILM.promptMax} characters`);
   });
 });
 

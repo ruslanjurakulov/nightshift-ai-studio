@@ -67,7 +67,7 @@ function readModels(v: unknown): FilmModels | null {
   return { clip: one(m.clip), keyframe: one(m.keyframe) };
 }
 /** A failed plan's reasons a new attempt cannot change (Lens L7): the outline cannot fit, the model is not set up or not allowed. */
-const NO_RETRY_REASONS = new Set(["not_plannable", "vendor_auth", "not_configured"]);
+const NO_RETRY_REASONS = new Set(["not_plannable", "vendor_auth", "not_configured", "prompt_too_long"]);
 /** 0211's lease, as the history read says it (lib/server/brain/conversation.ts planState). `until` is when a running one ends. */
 type PlanLease = { state: "running" | "failed" | "done" | "unknown"; reason: string | null; until: number; index: number | null; proposal: number | null };
 function readLease(v: unknown): PlanLease | null {
@@ -86,6 +86,8 @@ const NO_RETRY = [
   "forbidden", "content_refused", "output_too_long",
   // The plan step's refusals another press cannot change (lib/server/brain/plan, 0211's lease).
   "plan_over_cap", "plan_running", "plan_unavailable", "proposal_outdated",
+  // A scene over the models' prompt limit was already asked again once: another press spends turns on the same outline.
+  "prompt_too_long",
   // The account's own 18+ answer (0192): a Retry would meet the same refusal; the remedy is where the age is answered (Pixel on #900).
   "adult_only_service", "adult_attestation_required",
   // The gate's other refusals whose remedy is not "retry": the same press meets the same region or support case.
@@ -444,6 +446,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "plan_unavailable") return c.errors.plan_unavailable;
     if (e === "plan_superseded") return c.errors.plan_superseded;
     if (e === "proposal_outdated") return c.errors.proposal_outdated;
+    // A scene the film's models cannot take whole (S9, 0218): its number and the limit as the server measured them, never cut.
+    if (e === "prompt_too_long" && typeof d.limit === "number") {
+      if (typeof d.chapter === "number") return fmt(c.errors.prompt_too_long_chapter, { chapter: d.chapter, limit: d.limit });
+      if (typeof d.scene === "number") return fmt(c.errors.prompt_too_long, { scene: d.scene, limit: d.limit });
+    }
     // The model is the owner's choice and hidden from customers: any model failure reads as "unavailable right now".
     if (e === "model_failed" || e === "model_unavailable" || e === "model_answer_invalid") return c.errors.assistant_unavailable;
     return c.errors.unavailable;

@@ -565,21 +565,48 @@ export function draftSettings(b: Brief): { settings: Record<string, unknown>; so
   };
 }
 
-/** The film a short BRIEF becomes: the settings and scenes create_film_draft / save_film take (0166). Dialogue goes into the clip
- *  prompt, which the video model speaks; narration stays empty (no TTS is on sale). */
-export function filmFromBrief(b: Brief, clip: ClipShape | null = null): { settings: Record<string, unknown>; scenes: Record<string, unknown>[]; sourceText: string } | null {
-  if (b.kind !== "short" || !b.scenes?.length || !b.language || !b.title) return null;
+/** What a scene's prompt is assembled from: its own words and references, and the film's characters, locations and style. */
+export type PromptScene = Pick<BriefScene, "visual_prompt" | "character_ids" | "location_id" | "dialogue">;
+export type PromptFilm = { characters?: BriefCharacter[] | null; locations?: BriefLocation[] | null; style?: string | null };
+
+/**
+ * The prompt a scene is made from, whole: its visual prompt, then the descriptions of its characters and setting, its spoken lines
+ * and the film's style. Never cut (S9, creative_price 0218): a prompt the models cannot take is refused by name, because a cut one
+ * drops the style or a character's description without anyone being told. Its length is counted the way 0218 counts it, in UTF-16
+ * units (`.length`), not code points: an emoji is two.
+ */
+export function scenePrompt(b: PromptFilm, s: PromptScene): string {
   const names = new Map((b.characters ?? []).map((c) => [c.id, c.name]));
-  const describe = (ids: string[]) => ids.map((id) => (b.characters ?? []).find((c) => c.id === id)).filter(Boolean)
+  const described = s.character_ids.map((id) => (b.characters ?? []).find((c) => c.id === id)).filter(Boolean)
     .map((c) => `${c!.name}: ${c!.description || c!.image_prompt}`).join(". ");
+  const loc = (b.locations ?? []).find((l) => l.id === s.location_id);
+  const lines = s.dialogue.map((d) => `${names.get(d.character_id) ?? "A character"} says: "${d.line}"`).join(" ");
+  const prompt = [s.visual_prompt, described, loc ? `Setting: ${loc.name}. ${loc.description}` : "", lines, b.style ? `Style: ${b.style}` : ""]
+    .filter(Boolean).join("\n");
+  return plain(prompt, Number.MAX_SAFE_INTEGER, true);
+}
+
+/** The first scene whose whole prompt is over `limit` UTF-16 units (1-based, in story order), or null when every one fits. */
+export function promptOverLimit(b: Brief, limit: number): { scene: number; limit: number; length: number } | null {
+  for (const [i, s] of (b.scenes ?? []).entries()) {
+    const length = scenePrompt(b, s).length;
+    if (length > limit) return { scene: i + 1, limit, length };
+  }
+  return null;
+}
+
+/** The film a short BRIEF becomes: the settings and scenes create_film_draft / save_film take (0166). Dialogue goes into the clip
+ *  prompt, which the video model speaks; narration stays empty (no TTS is on sale). `promptMax` is the plan's prompt limit
+ *  (planLimits): a scene over it makes no film at all rather than a cut one; the route refuses it first as prompt_too_long.
+ *  It writes no `negative_prompt` and no `seed`: 0218 refuses a seed on every model and a negative prompt on any model whose
+ *  registry row does not take one, and nothing here is the person's choice of either. */
+export function filmFromBrief(b: Brief, clip: ClipShape | null = null, promptMax: number = FILM.promptMax): { settings: Record<string, unknown>; scenes: Record<string, unknown>[]; sourceText: string } | null {
+  if (b.kind !== "short" || !b.scenes?.length || !b.language || !b.title) return null;
+  if (promptOverLimit(b, promptMax)) return null;
   const scenes = b.scenes.map((s) => {
-    const loc = (b.locations ?? []).find((l) => l.id === s.location_id);
-    const lines = s.dialogue.map((d) => `${names.get(d.character_id) ?? "A character"} says: "${d.line}"`).join(" ");
-    const prompt = [s.visual_prompt, describe(s.character_ids), loc ? `Setting: ${loc.name}. ${loc.description}` : "", lines, b.style ? `Style: ${b.style}` : ""]
-      .filter(Boolean).join("\n");
     const shots = shotCount(s.duration_s, clip);
     return {
-      title: s.title, narration: "", visual_prompt: plain(prompt, FILM.promptMax, true), planned_seconds: s.duration_s,
+      title: s.title, narration: "", visual_prompt: scenePrompt(b, s), planned_seconds: s.duration_s,
       ...(shots !== null ? { shot_count: shots } : {}),
       // The panel says the video model speaks these lines (G3): the clip must be asked for its sound, or a model's silent default
       // variant is priced and made. 0166 makes a clip's own audio a choice, never a default; a scene without lines keeps the default.

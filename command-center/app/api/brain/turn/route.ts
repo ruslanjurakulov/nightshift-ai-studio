@@ -19,6 +19,7 @@ import {
   priceLong,
   isSmallTalk,
   unsafeBrief,
+  promptOverLimit,
   readModelAnswer,
   readScenario,
   readSlots,
@@ -35,7 +36,7 @@ import { createHash } from "node:crypto";
 import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
-import { clipShapeOf, filmCatalogue } from "@/lib/server/brain/clip";
+import { clipShapeOf, filmCatalogue, promptLimitOf } from "@/lib/server/brain/clip";
 import { MODEL_ID, pickFilmModel, type PickedModel } from "@/lib/brain/film-models";
 import { writeStoryboard } from "@/lib/server/brain/plan";
 import { planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
@@ -297,11 +298,19 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   // The draft's key names no conversation (Breach BR-S1-04: films.idempotency_key is read by every viewer of the workspace).
   const draftKey = `brain-${digest(`nightshift-brain-draft:${s.id}:${proposalId}:${index}`).slice(0, 40)}`;
 
+  // The longest whole scene prompt the picked models take, from their registry rows (S9, 0218), else the film's own 2000.
+  const promptLimit = promptLimitOf(catalogue, pick.clip?.id, pick.keyframe?.id);
+  // A storyboard that already exists (stored, or chosen again) is measured before the draft or any turn: said before any spend.
+  if (planned) {
+    const over = promptOverLimit(buildBrief(s.id, slots, planned, "ready"), planLimits(null, promptLimit).promptMax);
+    if (over) return brainJson({ error: "prompt_too_long", scene: over.scene, limit: over.limit }, 422);
+  }
+
   // The plan's lease (0211): held from before the draft until the end of this request, released in `finally` with how it ended.
   let lease: { attempt: number } | null = null;
   let ending: { state: "done" | "failed"; reason: string } = { state: "failed", reason: "unavailable" };
   try {
-    let limits = planLimits(null);
+    let limits = planLimits(null, promptLimit);
     let model: ChatModelId | null = null;
     if (!planned) {
       const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
@@ -317,7 +326,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       model = state.id;
       // The longest scene is the picked clip model's longest shot × max_shots (G4), told to every window up front. No clip model:
       // the film's own 3–30 s, and the quote's "model_not_set" says the rest.
-      limits = planLimits(pick.clip ? { durations: pick.clip.durations, maxShots: FILM.maxShots } : null);
+      limits = planLimits(pick.clip ? { durations: pick.clip.durations, maxShots: FILM.maxShots } : null, promptLimit);
       const turns = planTurns(chosen, limits);
       // An outline no answer could fit into 60 scenes, or two short chapters no call had room for (Lens M2): said before any turn.
       if (!turns) return brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409);
@@ -389,6 +398,13 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       ending = { state: "failed", reason: "content_refused" };
       return brainJson({ error: "content_refused", ...(quota !== undefined ? { quota } : {}) }, 422);
     }
+    // Every scene's whole prompt, measured as the models will read it (UTF-16 units): one over the limit is refused by its number,
+    // never cut, before the storyboard is kept or the film saved (0218 would refuse it at the quote).
+    const tooLong = promptOverLimit(draftBrief, limits.promptMax);
+    if (tooLong) {
+      ending = { state: "failed", reason: "prompt_too_long" };
+      return brainJson({ error: "prompt_too_long", scene: tooLong.scene, limit: tooLong.limit, ...(quota !== undefined ? { quota } : {}) }, 422);
+    }
     // 5. The storyboard is kept before anything else can fail (Lens M6): a refresh, or a draft save that fails, finds it and choosing
     // again re-reads it without a turn. Unpriced until the quote below says otherwise.
     if (lease) {
@@ -397,7 +413,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     }
     // Shots per scene from the film's own clip model as the database stored it, when its lengths are listed (G4); otherwise one
     // shot, and the quote names what is missing.
-    const film = filmFromBrief(draftBrief, clipShapeOf(catalogue.clip, f.clip_model, cd?.limits?.max_shots));
+    const film = filmFromBrief(draftBrief, clipShapeOf(catalogue.clip, f.clip_model, cd?.limits?.max_shots), limits.promptMax);
     if (!film) return brainJson({ error: "nothing_to_choose" }, 409);
     // 6. Saved at the version the draft had: if someone edited it meanwhile, their edit wins and this plan says so.
     const saved = await supabase.rpc("save_film", { p_film: f.id, p_version: v0, p_patch: { scenes: film.scenes } });

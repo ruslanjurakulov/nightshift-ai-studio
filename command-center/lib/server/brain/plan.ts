@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BrainSlots, SceneParts, Scenario } from "@/lib/brain/logic";
+import { scenePrompt, type BrainSlots, type SceneParts, type Scenario } from "@/lib/brain/logic";
 import { PLAN, mergePlan, outlineText, planRequestId, planWindows, readWindow, refsOf, type PlanLimits, type PlanWindow } from "@/lib/brain/plan";
 import { PLAN_SYSTEM_PROMPT, planDataBlock } from "@/lib/brain/prompt";
 import { PLAN_CALL_TIMEOUT_MS, callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
@@ -57,7 +57,9 @@ export type PlanResult = { ok: true; scenario: Scenario; quota: Quota | null } |
 type Step =
   | { ok: true; parts: SceneParts[][] }
   | { ok: false; kind: "length"; problem: string }
+  | { ok: false; kind: "prompt"; problem: string; chapter: number; scene: number }
   | { ok: false; kind: "mismatch" }
+  | { ok: false; kind: "prompt_too_long"; chapter: number; scene: number }
   | { ok: false; kind: "failed"; reason: string }
   | { ok: false; kind: "content_refused" }
   | { ok: false; kind: "refusal"; error: { code?: string; message?: string; details?: string } | null }
@@ -73,6 +75,8 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const started = now();
   const refs = refsOf(run.outline);
   const echo = outlineText(run.outline);
+  // Each scene's whole prompt, as filmFromBrief will send it (the outline's characters, locations and the film's style appended).
+  const promptOf = (sc: SceneParts) => scenePrompt({ characters: run.outline.characters, locations: run.outline.locations, style: run.slots.style ?? null }, sc);
   let quota: Quota | null = null;
   let forgiven = 0;
   // The plan's cap forgives what was not the person's doing; the Free trial counts every outcome (0199 ai_chat_trial_left), so a
@@ -113,7 +117,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
     try {
       const llm = await callChatModel(run.model, PLAN_SYSTEM_PROMPT, planDataBlock({
         outline: run.outline, parts: w.parts, window: { n: w.n, of: windows.length },
-        limits: { sceneMin: run.limits.sceneMin, sceneMax: run.limits.sceneMax, maxScenes: w.maxScenes },
+        limits: { sceneMin: run.limits.sceneMin, sceneMax: run.limits.sceneMax, maxScenes: w.maxScenes, promptMax: run.limits.promptMax },
         style: run.slots.style ?? null, language: run.slots.language ?? null, aspect: run.slots.aspect ?? null, problem,
       }), { endUser: run.endUser, size: "plan" });
       if (!llm.ok) {
@@ -125,7 +129,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
                      llm.error === "not_configured" ? null : llm.tokensIn, llm.error === "not_configured" ? null : llm.tokensOut);
         return { ok: false, kind: "failed", reason: llm.error };
       }
-      const read = readWindow(llm.text, w, refs, run.limits, echo);
+      const read = readWindow(llm.text, w, refs, run.limits, echo, promptOf);
       if (!read.ok && read.why === "refused") {
         await finish("refused", llm.tokensIn, llm.tokensOut);
         return { ok: false, kind: "content_refused" };
@@ -133,7 +137,9 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
       const done = await finish(read.ok ? "ok" : "invalid_output", llm.tokensIn, llm.tokensOut);
       if (done.error) return { ok: false, kind: "failed", reason: "unavailable" };
       if (read.ok) return { ok: true, parts: read.parts };
-      return read.why === "length" ? { ok: false, kind: "length", problem: read.problem } : { ok: false, kind: "failed", reason: "invalid_output" };
+      if (read.why === "length") return { ok: false, kind: "length", problem: read.problem };
+      if (read.why === "prompt") return { ok: false, kind: "prompt", problem: read.problem, chapter: read.chapter, scene: read.scene };
+      return { ok: false, kind: "failed", reason: "invalid_output" };
     } catch {
       // The vendor may or may not have been paid: a failure with unknown tokens, never "pending" or "ok".
       await finish("vendor_error", null, null).then(() => undefined, () => undefined);
@@ -144,11 +150,14 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const late = () => now() - started > PLAN_BUDGET_MS - PLAN_CALL_TIMEOUT_MS - POST_PLAN_MS;
   const runWindow = async (w: PlanWindow): Promise<Step> => {
     const first = await call(w, false);
-    if (first.ok || first.kind !== "length") return first;
-    // Once, with the reason in the data block (G1). A second wrong answer fails the plan: never stretched or cut to fit.
+    if (first.ok || (first.kind !== "length" && first.kind !== "prompt")) return first;
+    // Once, with the reason in the data block (G1, and a prompt over the models' limit, S9). A second wrong answer fails the plan:
+    // never stretched, cut or shortened to fit.
     if (late()) return { ok: false, kind: "failed", reason: "timeout" };
     const again = await call(w, true, first.problem);
-    if (again.ok || again.kind !== "length") return again;
+    if (again.ok) return again;
+    if (again.kind === "prompt") return { ok: false, kind: "prompt_too_long", chapter: again.chapter, scene: again.scene };
+    if (again.kind !== "length") return again;
     return { ok: false, kind: "mismatch" };
   };
 
@@ -193,6 +202,11 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
     }
     if (s.kind === "content_refused") return { ok: false, res: brainJson(withQuota({ error: "content_refused" }), 422), reason: "content_refused" };
     if (s.kind === "mismatch") return { ok: false, res: brainJson(withQuota({ error: "plan_length_mismatch", step }), 502), reason: "plan_length_mismatch" };
+    // A scene the models cannot take whole, asked again once with the limit: refused by name, never cut (0218 would refuse it too).
+    // `scene` counts within its chapter here: the scenes before it in other windows are not known.
+    if (s.kind === "prompt_too_long") {
+      return { ok: false, reason: "prompt_too_long", res: brainJson(withQuota({ error: "prompt_too_long", scene: s.scene, chapter: s.chapter, limit: run.limits.promptMax, step }), 422) };
+    }
     const reason = s.kind === "failed" ? s.reason : "unavailable";
     return { ok: false, res: brainJson(withQuota({ error: "plan_failed", reason, step }), 502), reason };
   }

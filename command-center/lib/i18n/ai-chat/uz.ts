@@ -144,5 +144,7 @@ export const aiChatUz: AiChatDictionary = {
     plan_unavailable: "Bu ish maydonida raskadrovka yozish hozircha mavjud emas. Hech narsa ishlatilmadi. Keyinroq qayta tekshiring.",
     plan_superseded: "Raskadrovka yozilayotganda film qoralamasi muharrirda oʻzgartirildi: oʻzgarishlaringiz saqlandi, bu raskadrovka esa unga yozilmadi. Qoralama va narxini koʻrish uchun qayta tanlang.",
     proposal_outdated: "Bu taklif eski versiyadan va siz tanlagan uzunlikka mos kelmaydi. Nightshift AIʼdan yangi ssenariylar soʻrang.",
+    prompt_too_long: "{scene}-sahna bu film yaratiladigan modellar uchun juda uzun: qahramonlari, joyi va soʻzlari bilan u {limit} belgidan oshadi. Hech narsa qisqartirilmadi va yechilmadi. Boshqa ssenariyni tanlang yoki Nightshift AIʼdan soddaroq ssenariy soʻrang.",
+    prompt_too_long_chapter: "{chapter}-bobdagi sahna bu film yaratiladigan modellar uchun juda uzun, qayta soʻralgandan keyin ham: qahramonlari, joyi va soʻzlari bilan u {limit} belgidan oshadi. Hech narsa qisqartirilmadi va yechilmadi. Boshqa ssenariyni tanlang yoki Nightshift AIʼdan soddaroq ssenariy soʻrang.",
   },
 };

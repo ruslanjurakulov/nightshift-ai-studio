@@ -51,15 +51,21 @@ export interface PlanLimits {
   /** The clip model's longest shot in seconds, or null when it is not known (nothing is split on a guess). */
   clipLongest: number | null;
   maxShots: number;
+  /** The longest whole scene prompt (scenePrompt), in UTF-16 units: the film's own 2000, or less when the chosen models' registry
+   *  rows (limits.max_prompt_chars) take less. 0218 refuses anything over it before the quote. */
+  promptMax: number;
 }
 
-export function planLimits(clip: ClipShape | null): PlanLimits {
+/** `promptMax`: the chosen models' own prompt limit (lib/server/brain/clip promptLimitOf), or null when none is known; then the
+ *  film's 2000 (film_limits.max_prompt_chars) is the only one, and nothing more is said. */
+export function planLimits(clip: ClipShape | null, promptMax: number | null = null): PlanLimits {
   const longest = clip?.durations?.length ? Math.max(...clip.durations) : null;
   const maxShots = Math.max(1, clip?.maxShots ?? FILM.maxShots);
   // A scene longer than this is one quote_film refuses ("scene_too_long_for_model"): the plan is told so up front.
   const byModel = longest ? longest * maxShots : FILM.sceneMax;
   return { sceneMin: FILM.sceneMin, sceneMax: Math.max(FILM.sceneMin, Math.min(FILM.sceneMax, byModel)), maxScenes: FILM.maxScenes,
-           clipLongest: longest, maxShots };
+           clipLongest: longest, maxShots,
+           promptMax: typeof promptMax === "number" && Number.isInteger(promptMax) && promptMax > 0 ? Math.min(FILM.promptMax, promptMax) : FILM.promptMax };
 }
 
 /** One chapter (or one part of a chapter too long for one call) that a call writes. */
@@ -169,7 +175,9 @@ export type WindowRead =
   /** Not the JSON asked for, a chapter missing, a scene without a picture, or a vendor named: the plan fails, not asked again. */
   | { ok: false; why: "invalid" }
   /** The lengths are wrong. `problem` is the server's own words (numbers and ids only), for the one re-ask. */
-  | { ok: false; why: "length"; problem: string };
+  | { ok: false; why: "length"; problem: string }
+  /** Only a scene's whole prompt is over limits.promptMax (`chapter` 1-based, `scene` 1-based within it), for the one re-ask. */
+  | { ok: false; why: "prompt"; problem: string; chapter: number; scene: number };
 
 /**
  * The AI vendors and models by name, as one canonical word each (any script, look-alike letters folded first). Wider than the reply's
@@ -240,13 +248,17 @@ export function outlineText(o: Scenario): string {
           ...o.props.flatMap((p) => [p.name, p.description])].join("\n");
 }
 
-/** One call's answer, checked against what that call was asked for. `outline` is the chosen outline's own text (outlineText). */
-export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits: PlanLimits, outline = ""): WindowRead {
+/** One call's answer, checked against what that call was asked for. `outline` is the chosen outline's own text (outlineText).
+ *  `promptOf` assembles a scene's whole prompt (logic scenePrompt, with the outline's characters, locations and style): a scene
+ *  over limits.promptMax is a problem for the one re-ask, never cut. */
+export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits: PlanLimits, outline = "",
+                           promptOf?: (s: SceneParts) => string): WindowRead {
   const json = extractJson(text);
   if (!json) return { ok: false, why: "invalid" };
   if (json.refused === true || (typeof json.refused === "string" && json.refused.trim() !== "")) return { ok: false, why: "refused" };
   const answered = arr(json.chapters).map(obj);
   const problems: string[] = [];
+  const prompts: { chapter: number; at: number; text: string }[] = [];
   const out: SceneParts[][] = [];
   let count = 0;
   for (const p of w.parts) {
@@ -254,6 +266,12 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
     if (!entry) return { ok: false, why: "invalid" };
     const raw = arr(entry.scenes);
     if (raw.length === 0) return { ok: false, why: "invalid" };
+    // The model's own visual_prompt, measured before the reader caps it: a long one is sent back with the limit, never cut.
+    const longRaw = raw.findIndex((r) => { const v = obj(r).visual_prompt; return typeof v === "string" && v.length > limits.promptMax; });
+    if (longRaw >= 0) {
+      prompts.push({ chapter: p.chapter_n, at: longRaw + 1,
+                     text: `chapter ${p.chapter_id}: scene ${longRaw + 1}'s visual_prompt alone is over ${limits.promptMax} characters` });
+    }
     // One past the window's room is enough to say "too many" below; the rest is not read.
     const scenes = raw.slice(0, PLAN.windowScenes + 1).map((s) => readSceneParts(s, "short", refs));
     if (scenes.some((s) => s === null)) return { ok: false, why: "invalid" };
@@ -262,6 +280,14 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
     // spoken line carrying it (an injected chapter can ask for either).
     if (ok.some((s) => [s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line)].some((t) => planNamesVendor(t, outline)))) return { ok: false, why: "invalid" };
     count += ok.length;
+    if (promptOf && longRaw < 0) {
+      const over = ok.findIndex((s) => promptOf(s).length > limits.promptMax);
+      if (over >= 0) {
+        const n = promptOf(ok[over]).length;
+        prompts.push({ chapter: p.chapter_n, at: over + 1,
+                       text: `chapter ${p.chapter_id}: scene ${over + 1}'s whole prompt (its visual_prompt with its characters, setting, lines and style) is ${n} characters; it must be at most ${limits.promptMax}` });
+      }
+    }
     const bad = ok.findIndex((s) => s.seconds === null || s.seconds < limits.sceneMin || s.seconds > limits.sceneMax);
     if (bad >= 0) {
       problems.push(`chapter ${p.chapter_id}: scene ${bad + 1} is ${ok[bad].seconds ?? "missing a length"}${ok[bad].seconds === null ? "" : " s"}; every scene must be ${limits.sceneMin} to ${limits.sceneMax} s`);
@@ -271,7 +297,9 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
     out.push(ok);
   }
   if (count > w.maxScenes) problems.push(`this answer has ${count} scenes; at most ${w.maxScenes} are allowed`);
-  if (problems.length) return { ok: false, why: "length", problem: problems.join(". ") };
+  if (problems.length) return { ok: false, why: "length", problem: [...problems, ...prompts.map((x) => x.text)].join(". ") };
+  // Only a prompt over the limit: its own kind, so a second such answer is refused as prompt_too_long, not as a length mismatch.
+  if (prompts.length) return { ok: false, why: "prompt", problem: prompts.map((x) => x.text).join(". "), chapter: prompts[0].chapter, scene: prompts[0].at };
   return { ok: true, parts: out };
 }
 
