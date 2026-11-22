@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowUp, AtSign, ChevronDown, Clock, Languages, Lock, Maximize2, MonitorPlay, Plus, RectangleHorizontal, Settings2, X, type LucideIcon } from "lucide-react";
 import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
 import { ATTACH_ACCEPT } from "@/lib/site/pending-attachment";
+import { AUTO_MODEL } from "@/lib/creative/improve";
 import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
 import { formatCredits } from "@/lib/credits";
@@ -297,6 +298,8 @@ export function GeneratePanel({
   // the pick and its price; the press sends both back. Off = the picked model, exactly.
   // A link may start it on ("Improve with AI" with Auto picked); it only counts where Auto is offered (`routed` below).
   const [auto, setAuto] = useState(initial?.auto === true);
+  // The person chose a model (the sheet) or Auto themselves: from then on the model is theirs, and the link's note has done its job.
+  const [handPicked, setHandPicked] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
   const [factor, setFactor] = useState<UpscaleFactor>(initial?.factor ?? 2);
   // A retried job keeps its own choice (even "none"); a fresh form starts from the channel's look.
@@ -374,6 +377,12 @@ export function GeneratePanel({
   // name sorts first), else the first at all (then its lock is named).
   const effectiveModel = pickedOff ? "" : available.some((m) => m.id === model) ? model : ((usable[0] ?? available[0])?.id ?? "");
   const current = available.find((m) => m.id === effectiveModel) ?? null;
+  // A model the form came with (a sample's "Try this prompt", a catalog link, a retried job) that is not on sale for this tool to
+  // this workspace: unknown id, not sold to this organization, an operator preview, another kind. The owner's decision (22 Nov):
+  // open on the default model AND say so — the form used to take the default without a word, so the person was quoted for model Y
+  // after clicking a sample made with X (CLAUDE.md #4, no silent fallback). Auto and a switched-off model have their own words.
+  const linkedGone =
+    !handPicked && !routed && model !== "" && model !== AUTO_MODEL && !pickedOff && current !== null && !available.some((m) => m.id === model);
   // Why the picked model cannot be bought here: no price is asked (the database would refuse it), the reason is named instead.
   const locked: ModelLock | null = !routed && current?.lock ? current.lock : null;
   // Model ids -> the names the picker shows, for Auto's pick.
@@ -1044,6 +1053,13 @@ export function GeneratePanel({
       ? models.find((m) => m.id === quote.routed?.model)?.attribution
       : undefined
     : current?.attribution;
+  // Only a name the models list gives is used: an id the list does not know has nothing honest to be called, so the line names none.
+  const goneName = linkedGone ? modelNames.get(model) : undefined;
+  const goneNote = linkedGone ? (
+    <p role="status" className="text-xs text-[var(--color-muted)]" data-testid="gen-model-gone">
+      {goneName ? fmt(t.gen.linkModelGoneNamed, { model: goneName }) : t.gen.linkModelGone}
+    </p>
+  ) : null;
   // The model: what will make it, how fast, how good — and a way to change it.
   const modelBlock = pickedOff ? (
     <div className="studio-field flex items-center gap-3 p-3" data-testid="gen-model-off">
@@ -1120,6 +1136,7 @@ export function GeneratePanel({
           data-testid="gen-auto"
           onClick={() => {
             setAuto((a) => !a);
+            setHandPicked(true);
             edited();
           }}
           className="studio-chip tap press shrink-0 font-medium"
@@ -1769,6 +1786,7 @@ export function GeneratePanel({
           pricedAt={pricedAt}
           onSelect={(id) => {
             setModel(id);
+            setHandPicked(true);
             // A model picked by hand is the model: Auto is off.
             setAuto(false);
             edited();
@@ -1877,6 +1895,7 @@ export function GeneratePanel({
               data-testid="gen-auto"
               onClick={() => {
                 setAuto((a) => !a);
+                setHandPicked(true);
                 edited();
               }}
               className="studio-chip tap press font-medium"
@@ -2086,6 +2105,10 @@ export function GeneratePanel({
             {th.enterHint}
           </span>
         </div>
+        {goneNote && (
+          // The model's facts are folded away here; the pill shows the default's name, so why it is not the linked one is said under the box.
+          <div className="sc-foot">{goneNote}</div>
+        )}
         {snapText && (
           // The composer folds its settings away: the change is said under the box, where it is seen.
           <div className="sc-foot">
@@ -2123,6 +2146,8 @@ export function GeneratePanel({
               </div>
             )}
             {promptBlock}
+            {/* Outside the fold: a note inside a closed <details> would be the silent swap again. */}
+            {goneNote}
             {/* The defaults are sensible (the channel's look, the best model for the shot): sound, look and
                 model stay one tap away, folded, so the first view is the shot, its length and the price. */}
             <details className="fl-more" data-testid="gen-more">
@@ -2161,6 +2186,7 @@ export function GeneratePanel({
               {voiceBlock}
               {dubLangBlock}
               {modelBlock}
+              {goneNote}
               {dockBlock}
             </div>
           </>,
@@ -2195,6 +2221,7 @@ export function GeneratePanel({
               </div>
               <div className="desk-bench-go">
                 {modelBlock}
+                {goneNote}
                 {dockBlock}
               </div>
             </>,
@@ -2223,6 +2250,7 @@ export function GeneratePanel({
             {styleBlock}
             {qualityBlock}
             {modelBlock}
+            {goneNote}
           </>,
         )}
         {dockBlock}
@@ -2240,6 +2268,7 @@ export function GeneratePanel({
         "flex flex-col gap-4",
         <>
           {modelBlock}
+          {goneNote}
           {sourceBlock}
           {describeLangBlock}
           {endFrameBlock}
