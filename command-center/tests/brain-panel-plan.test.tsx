@@ -271,10 +271,10 @@ describe("Nightshift AI panel: the plan's lease (0211), followed across tabs and
     return render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
   };
 
-  it("a running plan (another tab, a refresh) is waited on: the writing status, the choosers closed, nothing posted", async () => {
+  it("a running plan (another tab, a refresh) is waited on: its own words as the status, the choosers closed, nothing posted", async () => {
     extra.plan = { state: "running", reason: null, expires_at: new Date(Date.now() + 200_000).toISOString(), scenario_index: 0 };
     mountProposal();
-    expect(await screen.findByText(en.planWriting)).toBeTruthy();
+    expect(await screen.findByText(en.errors.plan_running)).toBeTruthy();
     expect((screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") }) as HTMLButtonElement).disabled).toBe(true);
     expect(sent).toHaveLength(0);
   });
@@ -320,5 +320,111 @@ describe("Nightshift AI panel: the plan's lease (0211), followed across tabs and
     fireEvent.click(screen.getAllByRole("button", { name: en.shell.newChat })[0]);
     expect(replace).toHaveBeenCalledWith("/chronos/studio", { scroll: false });
     window.history.replaceState(null, "", "/");
+  });
+});
+
+describe("Nightshift AI panel: fix round 2 (Lens and Pixel)", () => {
+  const chooseAlpha = () => screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") });
+  const pressAlpha = async (reply: { status: number; body: unknown }) => {
+    holdTurn = false;
+    turnReply = reply;
+    stub(true);
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    await screen.findByText("Alpha");
+    await act(async () => fireEvent.click(chooseAlpha()));
+    return screen.findByRole("alert");
+  };
+
+  it("plan_unavailable offers \"Check again\", which asks again with a fresh press (Pixel P6)", async () => {
+    const alert = await pressAlpha({ status: 503, body: { error: "plan_unavailable" } });
+    expect(alert.textContent).toContain(en.errors.plan_unavailable);
+    expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: en.checkAgain })));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1]).toMatchObject({ action: "choose", index: 0 });
+  });
+
+  it("plan_over_cap leads to the plans, and says when the cap is the person's own (Pixel minor)", async () => {
+    const alert = await pressAlpha({ status: 429, body: { error: "plan_over_cap", needed: 8, about: 4, left: 2, scope: "person" } });
+    expect(alert.textContent).toContain(en.errors.plan_over_cap_person);
+    expect(screen.getByRole("link", { name: en.seePlans }).getAttribute("href")).toBe("/chronos/credits#plans");
+    expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
+  });
+
+  it("plan_superseded says no credits were charged and opens the project, with no Retry", async () => {
+    const alert = await pressAlpha({ status: 409, body: { error: "plan_superseded", film_id: "f-1" } });
+    expect(alert.textContent).toContain(en.errors.plan_superseded);
+    expect(en.errors.plan_superseded).toMatch(/No credits were charged/);
+    expect(en.errors.plan_superseded).not.toMatch(/choose again/i);
+    expect(screen.getByRole("link", { name: en.openProject }).getAttribute("href")).toBe("/chronos/studio?view=timeline&film=f-1");
+    expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
+  });
+
+  for (const reason of ["content_refused", "plan_over_cap", "plan_superseded"]) {
+    it(`a plan that failed as ${reason} while this tab was away offers no Retry (Lens L1)`, async () => {
+      extra.plan = { state: "failed", reason, expires_at: new Date().toISOString(), scenario_index: 0 };
+      stub(true);
+      render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+      await screen.findByRole("alert");
+      expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
+    });
+  }
+
+  it("a turn the model's gate refused closes the box, as the same gate before a press does (Pixel minor)", async () => {
+    holdTurn = false;
+    turnReply = { status: 451, body: { error: "country_blocked" } };
+    stub(false);
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" fresh /></I18nProvider>);
+    const input = () => document.getElementById("ns-ai-input") as HTMLTextAreaElement | null;
+    await waitFor(() => expect(input()?.disabled).toBe(false));
+    const box = input()!;
+    fireEvent.change(box, { target: { value: "a film about the sea" } });
+    await act(async () => fireEvent.keyDown(box, { key: "Enter" }));
+    await waitFor(() => expect(document.querySelector('[data-gate="country_blocked"]')).not.toBeNull());
+    expect((document.getElementById("ns-ai-input") as HTMLTextAreaElement).disabled).toBe(true);
+    // Said once: the refusal's block, not a second one from the gate.
+    expect(document.querySelectorAll("[data-gate]")).toHaveLength(1);
+  });
+
+  it("a short film's card shows one price, Create's, and a long one keeps its own (Pixel P3)", async () => {
+    holdTurn = false;
+    turnReply = { status: 200, body: {
+      brief: { version: 1, kind: "short", title: "Alpha", idea: "idea Alpha", target_seconds: 120, voice: { mode: "off" }, music: { mode: "off" },
+               scenes: [{ id: "s1" }], characters: [], price: { state: "priced", total_credits: 1240, spendable: 5000, fits: true, shorter: null } },
+      film: { id: "film-1", version: 2 }, models: { clip: null, keyframe: null },
+      film_quote: { priced: true, total: 1240, quote_id: `fq-2-${"a".repeat(32)}`, startable: true, may_start: true, available: 5000 },
+    } };
+    stub(true);
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    await screen.findByText("Alpha");
+    await act(async () => fireEvent.click(chooseAlpha()));
+    const card = await screen.findByRole("region", { name: en.planReady });
+    // The card's own header line would read "1,240 credits"; only Create says the price now.
+    expect(card.textContent).not.toMatch(/1[,  ]?240 credits/);
+  });
+
+  it("an answer picked from a card by keyboard gives focus back to the box, never to <body> (Pixel P5)", async () => {
+    holdTurn = false;
+    turnReply = { status: 200, body: { reply: "Next", step: "asking", card: null, session: { id: S1 } } };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
+      if (url.startsWith("/api/brain/history")) {
+        if (/session=/.test(url)) {
+          return json(200, { session: { id: S1, step: "asking" }, brief: null,
+            card: { id: "k1", slot: "kind", question: "Which kind?", options: ["Short", "Long"], thread_title: null },
+            messages: [{ id: 1, role: "assistant", content: "Which kind?", payload: null }] });
+        }
+        return json(200, { sessions: [], next_before: null });
+      }
+      if (url.startsWith("/api/brain/turn")) { sent.push(JSON.parse(String(init?.body))); return json(turnReply.status, turnReply.body); }
+      return json(200, { plan: { used: 0, limit: 30, trial_left: null, max_input_chars: 2000 }, model: "available", canEdit: true, canRun: true,
+                         session: { id: S1 }, gate: null });
+    }));
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    const option = await screen.findByRole("button", { name: /Short/ });
+    option.focus();
+    await act(async () => { fireEvent.click(option); });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    await waitFor(() => expect(document.activeElement?.id).toBe("ns-ai-input"));
   });
 });

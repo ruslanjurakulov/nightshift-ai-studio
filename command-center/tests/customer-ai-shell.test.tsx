@@ -20,6 +20,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
+import { CONTACT_HREF } from "@/lib/legal";
 import { NightshiftAiPanel, pairTurns } from "@/components/brain/NightshiftAiPanel";
 import { useBrainBrief } from "@/components/studio-live/useBrainBrief";
 
@@ -481,8 +482,8 @@ describe("Pixel on #900: every state has its remedy, and focus is never dropped"
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(en.errors.adult_only_service);
     expect(within(alert).queryByRole("button", { name: en.retry })).toBeNull();
-    // No support address configured in tests: the words say where to write instead of a link to nowhere.
-    expect(alert.textContent).toContain(dictionaries.en.age.contactNoEmail);
+    // No support address configured in tests: the link goes to the site's own contact block (lib/legal CONTACT_HREF, Pixel P1).
+    expect(within(alert).getByRole("link", { name: dictionaries.en.age.contact }).getAttribute("href")).toBe(CONTACT_HREF);
   });
 
   it("an age not yet confirmed: no Retry, and a link to Create, where the 18+ question is asked", async () => {

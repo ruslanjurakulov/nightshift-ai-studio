@@ -69,6 +69,7 @@ export const aiChatEn = {
   checkAgain: "Check again",
   seePlans: "See plans",
   confirmAge: "Confirm your age",
+  openProject: "Open the project",
   /** The shared chat shell (components/chat/ChatShell.tsx): the same look as the owner's Nightshift AI. */
   shell: {
     greeting: "Hello, {name}",
@@ -140,10 +141,11 @@ export const aiChatEn = {
     plan_over_cap: "To be sure it can finish, writing this storyboard needs at least {needed} today, and {left}. It was not started and nothing was used. Choose a shorter film, or try again within 24 hours.",
     plan_running: "This storyboard is already being written (in another tab, or before the page was refreshed). Nightshift AI waits for it here; nothing more is used.",
     plan_unavailable: "Writing storyboards isn’t available in this workspace yet. Nothing was used. Please check back later.",
-    plan_superseded: "The film draft was changed in the editor while its storyboard was being written, so your edit was kept and this storyboard was not saved into it. Choose again to see the draft and its price.",
+    plan_superseded: "This film already has a storyboard (changed in the editor, written before, or by another tab), so this one was not saved over it. The film is as you left it. No credits were charged. Open the project to see it.",
     proposal_outdated: "This proposal is from an older version and doesn’t add up to the length you chose. Ask Nightshift AI for new scenarios.",
-    prompt_too_long: "Scene {scene} is too long for the models this film is made with: with its characters, setting and lines it is over {limit} characters. Nothing was cut or charged. Choose another scenario, or ask Nightshift AI for a simpler one.",
-    prompt_too_long_chapter: "A scene in chapter {chapter} is too long for the models this film is made with, even after asking again: with its characters, setting and lines it is over {limit} characters. Nothing was cut or charged. Choose another scenario, or ask Nightshift AI for a simpler one.",
+    prompt_too_long: "Scene {scene} is too long for the models this film is made with: with its characters, setting and lines it is over {limit} characters. Nothing was cut and no credits were charged. Choose another scenario, or ask Nightshift AI for a simpler one.",
+    prompt_too_long_chapter: "A scene in chapter {chapter} is too long for the models this film is made with, even after asking again: with its characters, setting and lines it is over {limit} characters. Nothing was cut and no credits were charged. Choose another scenario, or ask Nightshift AI for a simpler one.",
+    plan_over_cap_person: "This is your own daily limit, counted across all your workspaces.",
   },
 };
 

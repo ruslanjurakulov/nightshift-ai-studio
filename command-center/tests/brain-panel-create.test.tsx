@@ -107,25 +107,15 @@ describe("Nightshift AI panel: Create is S2's FilmCreateButton", () => {
     expect(sent.filter((b) => b.action === "handoff")).toHaveLength(1);
   });
 
-  it("a new price goes through choose for the same outline, a fresh press id, and returns the coerced quote", async () => {
+  it("re-pricing is S2's own (the film's current version, nothing written): the panel passes no requote of its own", async () => {
+    // Lens H1: a requote through our choose re-saved the stored storyboard over the person's edits.
     const p = await chosen();
-    total = 55;
-    let q: Awaited<ReturnType<NonNullable<FilmCreateButtonProps["requote"]>>> = null;
-    await act(async () => { q = await p.requote!(); });
-    const chooses = sent.filter((b) => b.action === "choose");
-    expect(chooses).toHaveLength(2);
-    expect(chooses[1]).toMatchObject({ action: "choose", session: S1, index: 0 });
-    expect(chooses[1].request_id).not.toBe(chooses[0].request_id);
-    expect(q).toMatchObject({ priced: true, total: 55 });
+    expect(p.requote).toBeUndefined();
   });
 
-  it("choose another goes back to the outlines", async () => {
+  it("no \"choose another\" that would only draft the same models again (Lens M1)", async () => {
     const p = await chosen();
-    expect(screen.queryByRole("button", { name: en.chooseThisNamed.replace("{title}", "Beta") })).toBeNull();
-    await act(async () => p.onChooseAnother!());
-    expect(screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Beta") })).toBeTruthy();
-    expect(screen.queryByTestId("film-create")).toBeNull();
-    expect(screen.getByText(en.chooseAgain)).toBeTruthy();
+    expect(p.onChooseAnother).toBeUndefined();
   });
 
   it("the panel itself never calls a film's start route", async () => {

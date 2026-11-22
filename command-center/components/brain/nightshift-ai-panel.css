@@ -66,3 +66,5 @@
   font-size: 0.9rem;
 }
 .ns-ai-problem-ic { flex-shrink: 0; margin-top: 0.2rem; color: #fbbf24; }
+/* In the status slot, which is already framed: no second border inside it (Pixel minor on the age state). */
+.ns-ai-problem--bare { padding: 0; border: 0; background: none; }
