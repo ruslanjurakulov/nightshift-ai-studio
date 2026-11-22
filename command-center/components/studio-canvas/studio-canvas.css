@@ -43,7 +43,8 @@
   --lift-3: 0 0 0 1px rgb(236 238 242 / 0.06), 0 30px 70px -20px rgb(0 0 0 / 0.9);
   --flow: #57a2ff;
   --flow-glow: drop-shadow(0 0 4px #2f8bff);
-  --art-working: linear-gradient(135deg, #0b2348, #060d1c 55%, #0d2a55);
+  /* A working card's art: the ground with a breath of the machine's blue, not a navy slab (the shimmer carries the motion). */
+  --art-working: linear-gradient(135deg, #121a28, #0c0d11 55%, #13203a);
   --shimmer: rgb(47 139 255 / 0.28);
   /* The composer inside the inspector draws with the app's tokens: point them at the canvas's, so it is one surface. */
   --color-panel: var(--console);

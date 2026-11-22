@@ -1,6 +1,6 @@
 /*
  * Nightshift Studio's Timeline. Ported from docs/studio/prototype/studio-timeline-prototype.html under a `tl-` prefix, on the canvas's
- * tokens (`.cv-root` in ../studio-canvas/studio-canvas.css): navy ground, electric blue for the machine, lime for a person's selection,
+ * tokens (`.cv-root` in ../studio-canvas/studio-canvas.css): neutral near-black ground, electric blue for the machine, lime for a person's selection,
  * one neon per track. A draft block is dashed (a plan, not a picture); an empty lane says why it is empty; meters rest at zero.
  */
 .tl-root {
@@ -77,7 +77,7 @@
 .tl-video, .tl-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--film); }
 .tl-draftscreen { position: absolute; inset: 14px; display: grid; place-content: center; gap: 6px; text-align: center; border: 1.5px dashed color-mix(in srgb, var(--t-video) 55%, transparent); border-radius: 10px; color: #c9d6ee; padding: 12px; }
 .tl-draftscreen.is-shot { border-style: solid; border-color: var(--rule); }
-.tl-draftscreen span { font-size: 13px; color: #8fa3c4; }
+.tl-draftscreen span { font-size: 13px; color: var(--dim); }
 .tl-sc { position: absolute; left: 10px; top: 10px; padding: 2px 8px; border-radius: 6px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 12px; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-cap { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); max-width: 90%; padding: 4px 10px; border-radius: 6px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 14px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-vmeta { display: flex; justify-content: center; gap: 14px; margin: 0; color: var(--dim); font-size: 13px; }
