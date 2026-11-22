@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Dna } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { VOICES } from "@/lib/ttsModels";
+import { offeredVoices } from "@/lib/voiceRetirement";
 import {
   DNA_ASPECTS,
   DNA_FORMATS,
@@ -268,7 +269,8 @@ export function ChannelDnaSection({
               aria-describedby={standardVoice ? `${uid}-voice-note` : undefined}
             >
               <option value="">{dna.voiceId ? t.dna.keepVoice : t.dna.notSet}</option>
-              {VOICES.map((v) => (
+              {/* A retired Default voice is not offered again; the run refuses it (modules/voice_retirement). */}
+              {offeredVoices(VOICES, new Date()).map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.name} — {v.style}
                 </option>

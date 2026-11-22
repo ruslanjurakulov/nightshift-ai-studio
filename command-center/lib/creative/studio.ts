@@ -42,6 +42,7 @@ import {
   isUuid,
 } from "@/lib/creative/operations";
 import { VOICES } from "@/lib/ttsModels";
+import { offeredVoices } from "@/lib/voiceRetirement";
 import { registryName } from "@/lib/creative/model-names";
 import { planGate } from "@/lib/models-discovery";
 import { formatCredits } from "@/lib/credits";
@@ -166,8 +167,12 @@ export function isUpscaleTarget(v: unknown): v is UpscaleTarget {
   return typeof v === "string" && (UPSCALE_TARGETS as readonly string[]).includes(v);
 }
 
-/** The voices offered for a voice change: the same list the Create page offers for narration. */
-export const STUDIO_VOICES = VOICES;
+/**
+ * The voices offered for a voice change: the same list the Create page offers for narration, without a retired
+ * Default voice (the TTS adapter refuses one). Read once per page load, so a tab left open over 31 Dec still offers
+ * it until reload, and then the adapter's refusal names the remedy.
+ */
+export const STUDIO_VOICES = offeredVoices(VOICES, new Date());
 export { DUB_LANGUAGES, type DubLanguage };
 
 export function isDubLanguage(v: unknown): v is DubLanguage {

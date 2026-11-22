@@ -16,6 +16,7 @@ import { CreditEstimateLine, type PriceReport } from "@/components/credits/Credi
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { DEPRECATED_TTS_MODELS, TTS_LANGUAGE_NAMES, TTS_MODEL_LABELS, TTS_PICKER_MODELS, VOICES, isVoiceId, ttsModelBlock, type TtsPickerModel } from "@/lib/ttsModels";
 import { TTS_LANGUAGE_READ_ON } from "@/lib/ttsLanguages";
+import { channelVoiceNotices, defaultVoice, offeredVoices, voiceRetirement } from "@/lib/voiceRetirement";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import type { RunPrefill } from "@/lib/home";
 import { MadeForKidsSwitch } from "@/components/review/MadeForKidsSwitch";
@@ -402,7 +403,7 @@ export function CreateStudio({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Enter creates; Shift+Enter is a newline (a brief can be multi-line).
-    if (e.key === "Enter" && !e.shiftKey && !blocked && phase !== "starting" && !stopped) {
+    if (e.key === "Enter" && !e.shiftKey && !blocked && phase !== "starting" && !stopped && !voiceStops) {
       e.preventDefault();
       setPhase("confirm");
     }
@@ -457,6 +458,16 @@ export function CreateStudio({
   ];
   const lengthText = lengths.find((l) => l.value === duration)?.label ?? f.lengthDefault;
   const picked = VOICES.find((v) => v.id === voice);
+  // A retired Default voice is no longer offered, and one already chosen (a saved draft, a typed id) is named and
+  // blocks Make: the run would refuse it at preflight, and no other voice is picked in its place (rule 4).
+  const now = new Date();
+  const offered = offeredVoices(VOICES, now);
+  const retiredVoice = voiceId && voiceRetirement(voiceId, now) === "retired" ? (defaultVoice(voiceId)?.name ?? null) : null;
+  // The channel's own saved voices. A retired narrator only stops this video when no other voice is picked here
+  // (a pick replaces the narrator for this run); a retired quote voice stops it either way.
+  const channelNotices = channelVoiceNotices(agentConfig, now);
+  const channelVoiceGone = channelNotices.some((n) => n.state === "retired" && (n.slot === "quote" || !voiceId));
+  const voiceStops = retiredVoice !== null || channelVoiceGone;
   const voiceText = voice === CUSTOM_VOICE ? voiceId || f.voiceOwn : picked ? picked.name : f.voiceDefault;
   const lookText = style.trim() || f.lookDefault;
   const examples = [f.ex1, f.ex2, f.ex3];
@@ -563,6 +574,21 @@ export function CreateStudio({
         <h2 id="fl-look-title" className="fl-q">
           {f.lookTitle}
         </h2>
+        {channelNotices.length > 0 && (
+          <div role="status" className="text-sm text-[var(--color-warn)]">
+            {channelNotices.map((n) => (
+              <p key={n.slot}>
+                {fmt(n.state === "retired" ? t.voice.retireGone : t.voice.retireLeaving, {
+                  slot: n.slot === "narrator" ? t.voice.pickNarrator : t.voice.pickQuote,
+                  name: n.name,
+                })}
+              </p>
+            ))}
+            <Link href={path("/agents")} className="tap-link text-[var(--color-primary)] hover:underline">
+              {f.voiceChange}
+            </Link>
+          </div>
+        )}
         <div className="fl-choices">
           {choice(
             "length",
@@ -581,11 +607,23 @@ export function CreateStudio({
             <>
               <div role="radiogroup" aria-label={t.create.voicePick} className="fl-options">
                 {radio(voice === "", () => setVoice(""), f.voiceDefault)}
-                {VOICES.map((v) => (
-                  <span key={v.id}>{radio(voice === v.id, () => setVoice(v.id), v.name, styleOf(v))}</span>
+                {offered.map((v) => (
+                  <span key={v.id}>
+                    {radio(
+                      voice === v.id,
+                      () => setVoice(v.id),
+                      v.name,
+                      voiceRetirement(v.id, now) === "leaving" ? `${styleOf(v)} · ${f.voiceLeaves}` : styleOf(v),
+                    )}
+                  </span>
                 ))}
                 {radio(voice === CUSTOM_VOICE, () => setVoice(CUSTOM_VOICE), f.voiceOwn)}
               </div>
+              {retiredVoice && (
+                <p role="alert" className="text-[var(--color-warn)]">
+                  {fmt(f.voiceRetired, { name: retiredVoice })}
+                </p>
+              )}
               {voice === CUSTOM_VOICE && (
                 <label className="fl-field">
                   <span>{t.create.voiceCustomId}</span>
@@ -815,7 +853,7 @@ export function CreateStudio({
             <button
               key="make"
               type="button"
-              disabled={blocked || phase === "queued" || stopped}
+              disabled={blocked || phase === "queued" || stopped || voiceStops}
               onClick={() => setPhase("confirm")}
               className="studio-cta fl-go"
             >

@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from modules import captions as caption_words
-from modules import tts_languages
+from modules import tts_languages, voice_retirement
 from modules.capabilities.base import (
     CAPTIONS,
     DUB,
@@ -165,6 +165,9 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
 
     def problems(self, request: CapabilityRequest, entry) -> List[str]:
         out = super().problems(request, entry)
+        retired = voice_retirement.refusal(request.voice_id)
+        if retired:
+            out.append(retired)
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             out.append("a voice_id from the account's voice list is required")
         # Uzbek text on a model that does not speak Uzbek: refused before the vendor call,
@@ -181,6 +184,10 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
         self.require_key()
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             raise AdapterError(E_BAD_REQUEST, "a voice_id from the account's voice list is required")
+        # A retired Default voice is refused here, not by the vendor's 404: ours names the remedy.
+        retired = voice_retirement.refusal(request.voice_id)
+        if retired:
+            raise AdapterError(E_BAD_REQUEST, retired)
         reason = tts_languages.refusal(vendor_model, request.text_language)
         if reason:
             raise AdapterError(E_BAD_REQUEST, reason)
