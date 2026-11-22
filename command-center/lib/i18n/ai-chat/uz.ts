@@ -109,6 +109,10 @@ export const aiChatUz: AiChatDictionary = {
     noAnswer: "Bu xabarning saqlangan javobi yoʻq.",
     failed: "Hozir bu suhbatni ochib boʻlmadi. Qayta urinib koʻring.",
     network: "Serverga ulanib boʻlmadi. Internetni tekshirib, qayta urinib koʻring.",
+    forbidden: "Bu ish maydonidagi rolingiz uning suhbatlarini ochishga ruxsat bermaydi. Ish maydoni administratoridan ruxsat soʻrang.",
+    badRequest: "Suhbat havolasi yaroqsiz, shuning uchun hech narsa ochilmadi.",
+    notHere: "Bu kanalda Nightshift AI suhbatlari ochilmagan.",
+    busy: "Javob hali yoʻlda. U kelgach, bu suhbatni oching.",
   },
   errors: {
     session_ended: "Seans tugadi. Davom etish uchun qayta kiring.",
