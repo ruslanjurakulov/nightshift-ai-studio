@@ -179,20 +179,22 @@
   --ds-glow-select: 0 0 0 3px rgb(64 106 0 / 0.18);
 }
 
-/* Dark — the primary theme. The two dark blocks are deliberately identical:
+/* Dark — the primary theme. The ground is neutral near-black, not navy (owner, 22 Nov 2026; docs/design/SYSTEM.md §4): the
+   leaders all sit on a neutral near-black, and the blue tint read as "dashboard". The accents (blue key, lime mark, the four
+   type hues) are unchanged. The two dark blocks are deliberately identical:
    a token declared only under the media query would fall back to light when a
    viewer picks dark by hand. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ds-bg: #070a14;
-    --ds-surface-1: #0a0f1c;
-    --ds-surface-2: #0f1626;
-    --ds-surface-3: #19243b;
-    --ds-border: rgb(80 140 220 / 0.18);
-    --ds-border-strong: #56698f;
-    --ds-text: #e6eefc;
-    --ds-text-2: #a9b8d4;
-    --ds-muted: #8a9bbd;
+    --ds-bg: #0a0b0e;
+    --ds-surface-1: #0f1115;
+    --ds-surface-2: #15181d;
+    --ds-surface-3: #1e2229;
+    --ds-border: rgb(236 238 242 / 0.1);
+    --ds-border-strong: #5d6574;
+    --ds-text: #eceef2;
+    --ds-text-2: #b1b7c3;
+    --ds-muted: #9199a6;
     --ds-accent: #2f8bff;
     --ds-accent-hover: #57a2ff;
     --ds-accent-solid: #1a5fd0;
@@ -210,31 +212,31 @@
     --ds-on-danger: #1a0306;
     --ds-danger-soft: rgb(255 92 108 / 0.14);
     --ds-focus: #c8ff2e;
-    --ds-hover: rgb(230 238 252 / 0.06);
-    --ds-scrim: rgb(2 5 12 / 0.72);
-    --ds-veil-rgb: 7, 10, 20;
+    --ds-hover: rgb(236 238 242 / 0.06);
+    --ds-scrim: rgb(3 4 6 / 0.72);
+    --ds-veil-rgb: 10, 11, 14;
     --ds-type-text: #ffd23f;
     --ds-type-image: #33d6ff;
     --ds-type-video: #ff4fa3;
     --ds-type-audio: #3dff8a;
     --ds-elev-1: 0 1px 2px rgb(0 0 0 / 0.45);
     --ds-elev-2: 0 1px 2px rgb(0 0 0 / 0.45), 0 8px 20px -10px rgb(0 0 0 / 0.75);
-    --ds-elev-3: 0 0 0 1px rgb(80 140 220 / 0.08), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+    --ds-elev-3: 0 0 0 1px rgb(236 238 242 / 0.06), 0 30px 70px -20px rgb(0 0 0 / 0.9);
     --ds-glow-accent: 0 0 0 1px rgb(87 162 255 / 0.35), 0 8px 28px -6px rgb(47 139 255 / 0.6);
     --ds-glow-select: 0 0 0 1px rgb(200 255 46 / 0.5), 0 0 18px -2px rgb(200 255 46 / 0.45);
   }
 }
 :root[data-theme="dark"],
 [data-theme-scope="dark"] {
-  --ds-bg: #070a14;
-  --ds-surface-1: #0a0f1c;
-  --ds-surface-2: #0f1626;
-  --ds-surface-3: #19243b;
-  --ds-border: rgb(80 140 220 / 0.18);
-  --ds-border-strong: #56698f;
-  --ds-text: #e6eefc;
-  --ds-text-2: #a9b8d4;
-  --ds-muted: #8a9bbd;
+  --ds-bg: #0a0b0e;
+  --ds-surface-1: #0f1115;
+  --ds-surface-2: #15181d;
+  --ds-surface-3: #1e2229;
+  --ds-border: rgb(236 238 242 / 0.1);
+  --ds-border-strong: #5d6574;
+  --ds-text: #eceef2;
+  --ds-text-2: #b1b7c3;
+  --ds-muted: #9199a6;
   --ds-accent: #2f8bff;
   --ds-accent-hover: #57a2ff;
   --ds-accent-solid: #1a5fd0;
@@ -252,16 +254,16 @@
   --ds-on-danger: #1a0306;
   --ds-danger-soft: rgb(255 92 108 / 0.14);
   --ds-focus: #c8ff2e;
-  --ds-hover: rgb(230 238 252 / 0.06);
-  --ds-scrim: rgb(2 5 12 / 0.72);
-  --ds-veil-rgb: 7, 10, 20;
+  --ds-hover: rgb(236 238 242 / 0.06);
+  --ds-scrim: rgb(3 4 6 / 0.72);
+  --ds-veil-rgb: 10, 11, 14;
   --ds-type-text: #ffd23f;
   --ds-type-image: #33d6ff;
   --ds-type-video: #ff4fa3;
   --ds-type-audio: #3dff8a;
   --ds-elev-1: 0 1px 2px rgb(0 0 0 / 0.45);
   --ds-elev-2: 0 1px 2px rgb(0 0 0 / 0.45), 0 8px 20px -10px rgb(0 0 0 / 0.75);
-  --ds-elev-3: 0 0 0 1px rgb(80 140 220 / 0.08), 0 30px 70px -20px rgb(0 0 0 / 0.9);
+  --ds-elev-3: 0 0 0 1px rgb(236 238 242 / 0.06), 0 30px 70px -20px rgb(0 0 0 / 0.9);
   --ds-glow-accent: 0 0 0 1px rgb(87 162 255 / 0.35), 0 8px 28px -6px rgb(47 139 255 / 0.6);
   --ds-glow-select: 0 0 0 1px rgb(200 255 46 / 0.5), 0 0 18px -2px rgb(200 255 46 / 0.45);
 }
