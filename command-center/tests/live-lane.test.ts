@@ -17,6 +17,7 @@ const VO = "a1000000-0000-4000-8000-0000000000a1";
 const MP4 = "f1000000-0000-4000-8000-0000000000f1";
 const T1 = "71000000-0000-4000-8000-000000000001";
 const T2 = "72000000-0000-4000-8000-000000000002";
+const RETRY = "72000000-0000-4000-8000-0000000000f2";
 const OTHER_FILM = "0f000000-0000-4000-8000-0000000000ff";
 
 const take = (id: string, kind: string, status: string, over: Record<string, unknown> = {}) => ({
@@ -304,7 +305,7 @@ describe("activity lines", () => {
 
   it("event detail.worker never appears in a log line, nor credits or free text", () => {
     const r = reading({ status: "running" }, [sceneJson(S1, 0)], {
-      events: [ev(1, "segment_claimed", { segment_id: "s", worker: "film-worker-host-7", attempt: 1 }), ev(2, "take_failed", { take_id: T1, kind: "clip", failure: "vendor said: secret", confirmed: 4, charged: 0 }, { scene_id: S1 })],
+      events: [ev(1, "segment_claimed", { segment_id: "s", worker: "film-worker-host-7", attempt: 1 }), ev(2, "take_failed", { take_id: T1, kind: "clip", failure: "vendor said: secret", error_code: "provider_error", confirmed: 4, charged: 0, basis: "failed_not_charged", units_done: null }, { scene_id: S1 })],
     });
     const text = JSON.stringify(logLines(r));
     expect(text).not.toContain("film-worker-host-7");
@@ -330,8 +331,8 @@ describe("activity lines", () => {
         events: [
           ev(1, "take_completed", { take_id: "k", kind: "keyframe", shot_index: 0 }, { scene_id: S2 }),
           ev(2, "take_completed", { kind: "clip", shot_index: 1 }, { scene_id: S1 }),
-          // detail says shot 3 and a keyframe; the take it names is the extend of shot 2, and the row wins.
-          ev(3, "take_failed", { take_id: T2.toUpperCase(), kind: "keyframe", shot_index: 3 }, { scene_id: S2 }),
+          // 0198's shape: a retryable failure writes only take_retried, with kind but no shot_index. The shot (2) is the named row's.
+          ev(3, "take_retried", { take_id: T2.toUpperCase(), retry_take_id: RETRY, kind: "extend", failure: "provider_timeout", error_code: "timeout", charged: 0 }, { scene_id: S2 }),
           ev(4, "take_completed", { take_id: T1, kind: "narration", shot_index: 0 }),
           ev(5, "assembly_completed", { asset_id: MP4 }),
           ev(6, "started"),
@@ -367,6 +368,22 @@ describe("activity lines", () => {
     const at = "2026-11-22T10:00:00Z";
     const r = reading({ status: "running" }, [sceneJson(S1, 0)], { events: [ev(1000, "segment_settled", {}, { created_at: at }), ev(999, "segment_claimed", {}, { created_at: at })] });
     expect(logLines(r).map((l) => l.id)).toEqual(["f:999", "f:1000"]);
+  });
+
+  it("a line built from its row keeps clip-02.2 after the row leaves the newest 50", () => {
+    const scenes = [sceneJson(S1, 0), sceneJson(S2, 1, { shot_count: 3, takes: [take(T2, "extend", "superseded", { shot_index: 2 })] })];
+    const row = ev(7, "take_retried", { take_id: T2, retry_take_id: RETRY, kind: "extend", failure: "provider_timeout", error_code: "timeout", charged: 0 }, { scene_id: S2 });
+    const first = reading({ status: "running" }, scenes, { events: [row] });
+    const built = logLines(first);
+    expect(built[0].tag).toBe("clip-02.2");
+    // The next reading's window no longer holds the row; the panel's gathered list still does (without a shot).
+    const later = reading({ status: "running" }, scenes, { events: [ev(60, "segment_settled")] });
+    const gathered = { total: 2, items: [{ id: "f:7", at: row.created_at, word: "take_retried", scene: 2, kind: "extend" }] };
+    expect(logLines(later, gathered, built).find((l) => l.id === "f:7")).toMatchObject({ tag: "clip-02.2", family: "clip", scene: 2, shot: 2 });
+    // Without the previous lines it can only say the scene.
+    expect(logLines(later, gathered).find((l) => l.id === "f:7")?.tag).toBe("clip-02");
+    // A previous line under another word is not this line.
+    expect(logLines(later, gathered, [{ ...built[0], word: "take_completed" }]).find((l) => l.id === "f:7")?.tag).toBe("clip-02");
   });
 
   it("a gathered line with no readable time or a scene that is not a positive whole number is not trusted", () => {
