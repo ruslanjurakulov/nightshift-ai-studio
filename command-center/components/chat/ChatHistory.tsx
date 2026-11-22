@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Menu, MoreHorizontal, PanelLeftClose, PanelLeftOpen, SquarePen, X } from "lucide-react";
+// The frame's dark tokens (the ones a nested .btn-quiet reads) are declared with the shell's, in one block.
+import "./chat-shell.css";
 import "./chat-history.css";
 
 /**
@@ -247,7 +249,8 @@ export function ChatHistoryFrame({
   async function select(id: string) {
     if (busy) return;
     setNotice(null);
-    if (open) setOpen(false);
+    // The picked row is hidden with the drawer: focus goes back to the button that opened it, never down to <body> (Pixel on #900).
+    if (open) closeDrawer();
     const r = await onSelect(id);
     if (!r.ok) {
       if (r.gone) {
@@ -413,10 +416,15 @@ export function ChatHistoryFrame({
                         type="button"
                         className="chat-history-item"
                         aria-current={i.id === activeId ? "true" : undefined}
-                        disabled={busy}
+                        // aria-disabled, not disabled: a row that turned disabled under the pointer while its chat opened (the
+                        // column, no drawer) dropped focus to <body>. select() refuses while busy either way.
+                        aria-disabled={busy || undefined}
                         onClick={() => void select(i.id)}
                       >
-                        <span className="chat-history-title">{title}</span>
+                        {/* Cut to one line by CSS: the whole title is the button's name, and shown on hover. */}
+                        <span className="chat-history-title" title={title}>
+                          {title}
+                        </span>
                         <time className="chat-history-time" dateTime={i.updatedAt}>
                           {relativeTime(i.updatedAt, l)}
                         </time>

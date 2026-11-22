@@ -144,12 +144,14 @@ export function ChatShell({
     return () => clearTimeout(id);
   }, [copied]);
 
+  // The placeholder is measured too: an empty box sized to a long one (the Uzbek "describe the video" wraps to two lines in the
+  // side panel) has to shrink back when the placeholder changes to a shorter one (Pixel on #900).
   useIsoLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, BOX_MAX_PX)}px`;
-  }, [question]);
+  }, [question, l.placeholder]);
 
   // The newest exchange (or the thinking dots, or the notice) is brought into view: with a floating composer the answer would
   // otherwise land below the fold.

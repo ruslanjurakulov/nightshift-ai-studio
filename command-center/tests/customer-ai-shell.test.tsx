@@ -432,3 +432,143 @@ describe("strings", () => {
     expect(dictionaries.uz.aiChat.shell.greeting).toBe("Salom, {name}");
   });
 });
+
+describe("Pixel on #900: every state has its remedy, and focus is never dropped", () => {
+  it("a pick from the drawer puts focus back on the button that opened it, never on <body>", async () => {
+    f.sessions = [{ id: S1, title: "Desert heist", updated_at: new Date().toISOString() }];
+    f.opened[S1] = stored("Stored answer");
+    mount();
+    const open = await screen.findByRole("button", { name: en.history.open });
+    await screen.findByRole("button", { name: /Desert heist/ });
+    fireEvent.click(open);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Desert heist/ })));
+    expect(await screen.findByText("Stored answer")).toBeTruthy();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(open);
+  });
+
+  it("a truncated history title is available in full", async () => {
+    const long = "A very long title for a desert heist film that cannot fit in the narrow drawer";
+    f.sessions = [{ id: S1, title: long, updated_at: new Date().toISOString() }];
+    mount();
+    const item = await screen.findByRole("button", { name: new RegExp(long) });
+    expect(item.querySelector(".chat-history-title")?.getAttribute("title")).toBe(long);
+  });
+
+  it("a list that failed says the list's own words (history.error), not the words for a chat that would not open", async () => {
+    stub();
+    const base = fetch as unknown as (url: string, init?: RequestInit) => Promise<unknown>;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/brain/history") && !url.includes("session=")) return { ok: false, status: 503, json: async () => ({ error: "unavailable" }) };
+      return base(url, init);
+    }));
+    mount();
+    expect(await screen.findByText(en.history.error)).toBeTruthy();
+    expect(screen.queryByText(en.history.failed)).toBeNull();
+    expect(screen.getByRole("button", { name: en.history.retry })).toBeTruthy();
+  });
+
+  it("the 18+ refusal offers no Retry that cannot work, and says where the age is answered", async () => {
+    f.turn = { status: 403, body: { error: "adult_only_service" } };
+    mount();
+    await waitFor(() => expect(box().disabled).toBe(false));
+    fireEvent.change(box(), { target: { value: "A heist" } });
+    await act(async () => fireEvent.keyDown(box(), { key: "Enter" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(en.errors.adult_only_service);
+    expect(within(alert).queryByRole("button", { name: en.retry })).toBeNull();
+    // No support address configured in tests: the words say where to write instead of a link to nowhere.
+    expect(alert.textContent).toContain(dictionaries.en.age.contactNoEmail);
+  });
+
+  it("an age not yet confirmed: no Retry, and a link to Create, where the 18+ question is asked", async () => {
+    f.turn = { status: 428, body: { error: "adult_attestation_required" } };
+    mount();
+    await waitFor(() => expect(box().disabled).toBe(false));
+    fireEvent.change(box(), { target: { value: "A heist" } });
+    await act(async () => fireEvent.keyDown(box(), { key: "Enter" }));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(en.errors.adult_attestation_required)).toBeTruthy();
+    expect(within(alert).queryByRole("button", { name: en.retry })).toBeNull();
+    expect(within(alert).getByRole("link", { name: en.confirmAge }).getAttribute("href")).toBe("/chronos/create");
+  });
+
+  it("a cap met mid-turn leads to the plans, with no reset time the server did not give", async () => {
+    f.turn = { status: 429, body: { error: "chat_daily_cap", used: 15, limit: 15 } };
+    mount();
+    await waitFor(() => expect(box().disabled).toBe(false));
+    fireEvent.change(box(), { target: { value: "One more" } });
+    await act(async () => fireEvent.keyDown(box(), { key: "Enter" }));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByRole("link", { name: en.seePlans }).getAttribute("href")).toBe("/chronos/credits#plans");
+    expect(alert.textContent).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("a reached daily cap has a press: the plans", async () => {
+    f.plan = { used: 15, limit: 15, trial_left: null, max_input_chars: 2000 };
+    mount();
+    await screen.findByText(/used up \(15 of 15\)/);
+    expect(screen.getByRole("link", { name: en.seePlans }).getAttribute("href")).toBe("/chronos/credits#plans");
+  });
+
+  it("\"check back later\" and \"try again later\" each have a Check again that reads the state afresh", async () => {
+    for (const setup of [() => { f.brainStatus = 503; f.brainBody = { error: "not_enabled" }; }, () => { f.model = "not_configured"; }]) {
+      cleanup();
+      f.brainStatus = 200;
+      f.brainBody = null;
+      f.model = "available";
+      setup();
+      f.urls = [];
+      mount();
+      const again = await screen.findByRole("button", { name: en.checkAgain });
+      const reads = () => f.urls.filter((u) => u.startsWith("GET /api/brain?")).length;
+      expect(reads()).toBe(1);
+      f.brainStatus = 200;
+      f.brainBody = null;
+      f.model = "available";
+      await act(async () => fireEvent.click(again));
+      await waitFor(() => expect(box().disabled).toBe(false));
+      expect(reads()).toBe(2);
+    }
+  });
+
+  it("while loading, the title already starts where it will be (the history button's place is kept)", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const base = fetch as unknown as (url: string, init?: RequestInit) => Promise<unknown>;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/brain?")) await gate;
+      return base(url, init);
+    }));
+    mount();
+    const head = panel().querySelector(".chat-head")!;
+    expect(head.firstElementChild?.classList.contains("chat-act")).toBe(true);
+    expect(head.firstElementChild?.getAttribute("aria-hidden")).not.toBeNull();
+    await act(async () => release());
+    const open = await screen.findByRole("button", { name: en.history.open });
+    expect(panel().querySelector(".chat-head")?.firstElementChild).toBe(open);
+  });
+
+  it("focusing the box brings the box and Send into view (nearest), above the phone's canvas dock", async () => {
+    mount();
+    await waitFor(() => expect(box().disabled).toBe(false));
+    const seen: [Element, ScrollIntoViewOptions | boolean | undefined][] = [];
+    Element.prototype.scrollIntoView = function (this: Element, arg?: ScrollIntoViewOptions | boolean) {
+      seen.push([this, arg]);
+    };
+    await act(async () => box().focus());
+    const composer = box().closest(".chat-composer");
+    expect(seen.some(([el, arg]) => el === composer && typeof arg === "object" && arg.block === "nearest")).toBe(true);
+  });
+
+  it("no plan names typed into the copy, and no \"coming soon\" promise, in any language", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const d = dictionaries[loc].aiChat;
+      expect(d.planLocked).not.toMatch(/Plus|Pro\b|Business/);
+      expect(JSON.stringify(d)).not.toMatch(/coming soon|скоро|tez orada/i);
+      for (const k of ["checkAgain", "seePlans", "confirmAge"] as const) expect(d[k].length).toBeGreaterThan(0);
+      expect(d.errors.adult_attestation_required.length).toBeGreaterThan(0);
+    }
+    expect(JSON.stringify([dictionaries.uz.aiChat.planLocked, dictionaries.uz.aiChat.errors.adult_only_service, dictionaries.uz.aiChat.seePlans])).not.toMatch(/'/);
+  });
+});

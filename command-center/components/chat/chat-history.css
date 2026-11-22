@@ -1,9 +1,13 @@
-/* The chat's history panel (ChatHistory.tsx). Same dark tokens as the chat shell; contrast as there (fg 18.1:1, muted 8.3:1). */
+/* The chat's history panel (ChatHistory.tsx). The page-level tokens a nested key reads (.btn-quiet's glass, --color-fg) are pinned
+   dark on .chat-frame in chat-shell.css, with the shell's; these are the panel's own. Contrast on the panel's #0b0b0d: fg 18.0:1,
+   muted 7.7:1; --ch-edge (a control's or a field's edge) 4.07:1, 3.74:1 on the #161619 menu. --ch-border is the column's
+   separator only, which is not a control. */
 .chat-frame {
   --ch-bg: #0b0b0d;
   --ch-fg: #f4f4f5;
   --ch-muted: #a1a1aa;
   --ch-border: #34343a;
+  --ch-edge: #71717a;
   --ch-hover: #1d1d21;
   --ch-active: #232327;
   display: flex;
@@ -30,6 +34,11 @@
   color: var(--ch-fg);
 }
 .chat-frame[data-collapsed] .chat-history { display: none; }
+/* The drawer is outside .chat-shell: its icon keys take the panel's own grey, never the page's (the close X measured 1.95:1 on
+   the light theme, Pixel on #900), and its tooltip the panel's light chip. */
+.chat-history .chat-act { color: var(--ch-muted); }
+.chat-history .chat-act:hover:not(:disabled) { color: var(--ch-fg); background: var(--ch-hover); }
+.chat-history .chat-act[data-tip]::after { background: var(--ch-fg); color: #000; }
 .chat-history-top { display: flex; align-items: center; gap: 0.25rem; }
 .chat-history-new {
   flex: 1;
@@ -38,7 +47,7 @@
   gap: 0.5rem;
   min-height: 2.75rem;
   padding: 0 0.75rem;
-  border: 1px solid var(--ch-border);
+  border: 1px solid var(--ch-edge);
   border-radius: 0.6rem;
   background: transparent;
   color: var(--ch-fg);
@@ -72,7 +81,7 @@
   text-align: left;
   cursor: pointer;
 }
-.chat-history-item:disabled { cursor: not-allowed; }
+.chat-history-item:is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; }
 .chat-history-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
 .chat-history-time { font-size: 0.75rem; color: var(--ch-muted); }
 .chat-history-menu { position: relative; }
@@ -85,7 +94,7 @@
   display: flex;
   flex-direction: column;
   padding: 0.25rem;
-  border: 1px solid var(--ch-border);
+  border: 1px solid var(--ch-edge);
   border-radius: 0.6rem;
   background: #161619;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
@@ -94,14 +103,14 @@
 .chat-history-pop button:hover { background: var(--ch-hover); }
 .chat-history-pop [data-tone="danger"], .chat-history-confirm [data-tone="danger"] { color: #fca5a5; }
 .chat-history-edit { flex: 1; display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.25rem; }
-.chat-history-edit input { flex: 1 1 100%; min-height: 2.5rem; padding: 0 0.5rem; border: 1px solid var(--ch-border); border-radius: 0.4rem; background: #000; color: var(--ch-fg); }
+.chat-history-edit input { flex: 1 1 100%; min-height: 2.5rem; padding: 0 0.5rem; border: 1px solid var(--ch-edge); border-radius: 0.4rem; background: #000; color: var(--ch-fg); }
 .chat-history-skel { height: 2.75rem; border-radius: 0.5rem; background: var(--ch-hover); animation: chat-history-pulse 1.4s ease-in-out infinite; }
 @keyframes chat-history-pulse { 50% { opacity: 0.5; } }
 .chat-history-empty, .chat-history-error p, .chat-history-notice { margin: 0.25rem 0.5rem; font-size: 0.85rem; color: var(--ch-muted); }
 .chat-history-notice { color: #fcd34d; }
 .chat-history-error { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 .chat-history-more { margin: 0.25rem 0.5rem; }
-.chat-history-confirm { margin: 0.5rem; padding: 0.75rem; border: 1px solid var(--ch-border); border-radius: 0.6rem; background: #161619; font-size: 0.85rem; }
+.chat-history-confirm { margin: 0.5rem; padding: 0.75rem; border: 1px solid var(--ch-edge); border-radius: 0.6rem; background: #161619; font-size: 0.85rem; }
 .chat-history-confirm p { margin: 0 0 0.5rem; overflow-wrap: anywhere; }
 .chat-history-confirm-title { font-weight: 600; }
 .chat-history-confirm-acts { display: flex; justify-content: flex-end; gap: 0.5rem; }
