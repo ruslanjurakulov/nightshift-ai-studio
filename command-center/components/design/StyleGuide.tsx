@@ -13,6 +13,7 @@ import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { StepCard, StepList } from "@/components/ui/StepCard";
 import { Button, IconButton, Toggle } from "@/components/ds/Button";
+import { InsufficientCredits, ProviderUnavailable, SessionExpired } from "@/components/ds/States";
 
 /** The colour roles shown as swatches, in the order IDENTITY.md §2 lists them. */
 export const SWATCHES = [
@@ -83,6 +84,7 @@ function Specimen({ theme }: { theme: "dark" | "light" }) {
       <Modes />
       <Sheet />
       <Steps />
+      <DsStates />
       <Ruler />
       <DsControls />
     </section>
@@ -463,6 +465,21 @@ function Ruler() {
           ))}
         </div>
         <span className="sr-only">{t.design.seconds}</span>
+      </div>
+    </Block>
+  );
+}
+
+/** The shared states (components/ds/States.tsx) with sample server numbers, so a reviewer sees all three in both themes. */
+function DsStates() {
+  const { t } = useI18n();
+  return (
+    <Block title={t.design.ds.statesTitle}>
+      <div className="flex flex-col gap-4 rounded-[var(--ds-r-panel)] bg-[var(--ds-bg)] p-4 text-[var(--ds-text)]" data-testid="ds-states">
+        <InsufficientCredits needed={1200} available={300} addCreditsHref="#" compact />
+        <InsufficientCredits needed={null} available={300} addCreditsHref="#" compact />
+        <ProviderUnavailable provider="ElevenLabs" onChooseAnother={() => undefined} onRetry={() => undefined} compact />
+        <SessionExpired signInHref="#" draftKept compact />
       </div>
     </Block>
   );
