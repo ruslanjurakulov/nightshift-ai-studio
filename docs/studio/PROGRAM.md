@@ -92,6 +92,24 @@ backend price; after the press the cards light up and the lane fills piece by pi
 lane and can be downloaded; it is uploaded private; refresh, provider outage, insufficient credits, duplicate press and a phone width
 all behave. Every screen on the way meets S5's bar.
 
+
+## Migration numbers assigned (provisional; Atlas renumbers at merge)
+| No. | Stream | What |
+| :-- | :-- | :-- |
+| 0208 | (#881) | Google country gate + image price by size |
+| 0211 | S1 | ai_chat_plan_leases (one plan at a time per conversation) |
+| 0212 | S2 | film sweep schedule + film_sweep_status |
+| 0213 | S4 | (only if needed) |
+| 0214 | S6 | voice_language_problem |
+| 0215 | S2 | film archive/resume + opaque worker id in film events |
+| 0216 | S6 | 'lipsync' capability (when the adapter is probed) |
+| 0217 | S7 | reserved root segments refused for channel ids |
+| 0218 | S9 | operator-only assistant exposure for web_only models; Seedance never exposed |
+| 0219 | S9 | oauth_creative_list (MCP list_creative_jobs) |
+| 0220 | S2 | quote_film/start_film call voice_language_problem (after 0214 + probe sync) |
+
+Streams S7 (language URLs), S8 (media-first cards, sound), S9 (MCP Studio tools), S10 (Google models) were added on 22 Nov.
+
 ## Reporting
 
 Each lead sends Atlas a short report when a PR is ready (branch, PR link, what was verified, screenshots, open risks) with the
