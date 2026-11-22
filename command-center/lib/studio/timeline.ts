@@ -417,7 +417,8 @@ export function keyAction(e: Pick<KeyboardEvent, "key" | "code" | "metaKey" | "c
 
 // ─── the money (0171's quote_film / start_film) ──────────────────────────────
 
-export const QUOTE_BLOCKS = ["film_studio_disabled", "insufficient_credits", "cap_exceeded", "limit_reached", "run_slots_full"] as const;
+// not_a_member (0215): a platform admin who is not a member of the workspace cannot spend its credits (the owner's decision).
+export const QUOTE_BLOCKS = ["film_studio_disabled", "insufficient_credits", "cap_exceeded", "limit_reached", "run_slots_full", "not_a_member"] as const;
 export type QuoteBlock = (typeof QUOTE_BLOCKS)[number] | "other";
 
 export interface FilmQuote {

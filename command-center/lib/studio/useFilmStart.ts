@@ -107,6 +107,8 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   not_available: "none",
   scene_has_takes: "none",
   adult_only_service: "none",
+  // 0215: only a member may start a paid project; there is nothing to retry, only someone to ask.
+  not_a_member: "none",
 };
 
 const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
@@ -143,6 +145,8 @@ export function blockRemedy(r: BlockReason): BlockRemedy {
       return "plans";
     case "limit_reached":
       return "recheck";
+    case "not_a_member":
+      return "none";
     default:
       return "support";
   }

@@ -14,6 +14,7 @@ import {
   blockRemedy,
   isProviderDown,
   startReasonText,
+  startRemedy,
   useFilmStart,
   type BlockReason,
   type BlockRemedy,
@@ -37,6 +38,11 @@ export interface FilmCreateButtonProps {
   progressHref?: string;
   /** A model is down: let the person pick another (it is never swapped automatically). Without it, the way forward is support. */
   onChooseAnother?: () => void;
+  /**
+   * The project editor. A refusal the person fixes in the project (model_not_set, prompt_missing…) then links there as its primary
+   * way forward, with "Check again" beside it; without it, "Check again" alone loops on the same answer (S1).
+   */
+  fixHref?: string;
   className?: string;
 }
 
@@ -48,7 +54,7 @@ const FOCUS_RING ="focus-visible:outline focus-visible:outline-2 focus-visible:o
  * it. It only calls the routes and stops (rule 3), shows no number the server did not answer (rule 5), and every refusal and every
  * blocked reason names one way forward (rule 6). The states live in useFilmStart; this file only says them.
  */
-export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHref, onChooseAnother, className }: FilmCreateButtonProps) {
+export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHref, onChooseAnother, fixHref, className }: FilmCreateButtonProps) {
   const { t, fmt, locale: rawLocale } = useI18n();
   const locale = rawLocale ?? "en";
   const c = t.studioTimeline;
@@ -88,11 +94,19 @@ export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHr
       </div>
     );
 
+  const fixLink = () => (
+    <Link key="fix" href={fixHref ?? ""} className={keyClass("primary")} data-primary>
+      {k.openToFix}
+    </Link>
+  );
+
   /** The way forward for a refused start or a refused re-quote. The real remedy is the primary key (Pixel M1). */
   const remedyActions = (word: string, remedy: StartRemedy, q: FilmQuote | null): { key: { label: string; enabled?: boolean } | null; actions: ReactNode[] } => {
     if ((ALREADY_STARTED_WORDS as readonly string[]).includes(word)) {
       return { key: null, actions: progressHref ? [<Link key="progress" href={progressHref} className={keyClass("primary")} data-primary>{k.openProgress}</Link>] : [] };
     }
+    // Only a member may start a paid project (0215): there is nothing to retry here, only someone to ask.
+    if (word === "not_a_member") return { key: null, actions: [] };
     if (isProviderDown(word)) return { key: { label: k.tryAgain }, actions: [providerDown(true)] };
     switch (remedy) {
       case "add_credits":
@@ -103,8 +117,10 @@ export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHr
         return { key: null, actions: [supportLink("primary"), smallKey("again", k.getNewPrice, recheck, "quiet", cooling)] };
       case "wait":
         return { key: { label: k.tryAgain }, actions: [] };
-      case "requote":
       case "fix_and_requote":
+        if (fixHref) return { key: null, actions: [fixLink(), smallKey("again", k.checkAgain, recheck, "secondary", cooling)] };
+        return { key: { label: k.getNewPrice }, actions: [] };
+      case "requote":
         return { key: { label: k.getNewPrice }, actions: [] };
       default:
         // Nothing on this screen helps (not_found, forbidden…): the key stays, disabled, beside the reason (Lens M3).
@@ -182,9 +198,16 @@ export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHr
         </>
       );
       if (!onlyNoQuote) {
-        const seen = new Set<BlockRemedy>();
+        const seen = new Set<BlockRemedy | "fix">();
         for (const r of state.reasons) {
           const rem = blockRemedy(r);
+          // A line the person fixes in the project: the editor is the way forward, "Check again" once it is fixed.
+          if (fixHref && r.kind === "unpriced" && r.word !== null && startRemedy(r.word) === "fix_and_requote") {
+            if (seen.has("fix")) continue;
+            seen.add("fix");
+            actions.unshift(<span key="fix" className="flex flex-col gap-2">{fixLink()}{smallKey("recheck", k.checkAgain, recheck, "secondary")}</span>);
+            continue;
+          }
           if (seen.has(rem)) continue;
           seen.add(rem);
           const a = blockAction(rem, state.quote);
