@@ -42,6 +42,7 @@ from modules.capabilities.base import (
     FILE_INPUT,
     I2V,
     IMAGE_INPUT,
+    LIPSYNC,
     QUALITY_CAPABILITIES,
     MEDIA_INPUT,
     VIDEO_VARIANT_CAPABILITIES,
@@ -369,6 +370,11 @@ class ModelEntry:
             out.append(f"{self.id} does not relight with the {request.look} look")
         if cap != RELIGHT and request.look is not None:
             out.append(f"a look does not apply to {cap}")
+        # A lip-sync is a video and a speech file; its face and its window mean nothing to any other tool.
+        if cap == LIPSYNC and not request.input_audio:
+            out.append("lipsync needs the speech to move the mouth to")
+        if cap != LIPSYNC and (request.input_audio or request.face_id is not None or request.sound_window_ms is not None):
+            out.append(f"a speech file, a face or a sound window does not apply to {cap}")
         return out
 
     def probe_request(self, *, voice_id: Optional[str] = None,
@@ -411,7 +417,10 @@ class ModelEntry:
                                  voice_id=None if cap in (DUB, CAPTIONS) else voice_id, input_images=tuple(images),
                                  scale=p.get("factor"), input_media=tuple(media),
                                  target_language=p.get("target_language"), end_image=end,
-                                 upscale_target=p.get("upscale_target"))
+                                 upscale_target=p.get("upscale_target"),
+                                 # A lip-sync moves a mouth to speech: the probe's spoken clip is that speech. It is registry-only,
+                                 # so no probe runs it yet; the probe that does must also measure both files (input_*_facts).
+                                 input_audio=(generated_speech or "<speech>.mp3") if cap == LIPSYNC else None)
 
 
 def _entry(m: Mapping) -> ModelEntry:
@@ -552,6 +561,18 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 errors.append(_err(mid, "a character swap is priced per resolution: one price for each listed resolution"))
             if swap["real_people"] == "own_generated_clip_only" and m["provider"] != "bytedance":
                 errors.append(_err(mid, "own_generated_clip_only is BytePlus's 30-day rule"))
+        lip = m.get("lipsync")
+        if (LIPSYNC in caps) != bool(lip):
+            # The adapter refuses an input outside these before the vendor's billed face check; the entry says the same numbers.
+            errors.append(_err(mid, "lipsync is required with lipsync and only with it"))
+        elif lip:
+            for key in ("video_seconds", "audio_seconds"):
+                lo, hi = lip[key]
+                if not lo <= hi or hi > (m["limits"].get("max_source_seconds") or 0):
+                    errors.append(_err(mid, f"lipsync.{key} must be a range within limits.max_source_seconds"))
+            if not lip["video_min_side_px"] <= min(lip["video_short_sides_px"]) <= max(lip["video_short_sides_px"]) \
+                    <= lip["video_max_side_px"]:
+                errors.append(_err(mid, "lipsync.video_short_sides_px must lie within the side limits"))
         if m.get("end_frame"):
             if I2V not in caps:
                 errors.append(_err(mid, "end_frame is for a model that animates a picture (i2v)"))
@@ -668,8 +689,9 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                                       generated_video="probe_video.mp4")
             # A placeholder vendor model is how a gated entry with no vendor assigned ships (the
             # adapter refuses it at run time); it is not a fault of the probe request.
+            # "was not measured": the worker measures the real files at run time (a lip-sync's facts); a registry file has none.
             problems = [p for p in cls(env={}).problems(req, entry)
-                        if "https URL" not in p and "placeholder vendor model" not in p]
+                        if "https URL" not in p and "placeholder vendor model" not in p and "was not measured" not in p]
             if problems:
                 errors.append(_err(mid, "probe request is not servable: " + "; ".join(problems)))
     return errors

@@ -6792,6 +6792,95 @@
       }
     },
     {
+      "id": "kling-lipsync",
+      "display_name": "Kling Lip Sync",
+      "provider": "kling",
+      "adapter": "video.kling_lipsync",
+      "vendor_model": "advanced-lip-sync",
+      "capabilities": [
+        "lipsync"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "lipsync": {
+        "video_formats": [
+          "mp4",
+          "mov"
+        ],
+        "video_max_bytes": 100000000,
+        "video_seconds": [
+          2,
+          60
+        ],
+        "video_short_sides_px": [
+          720,
+          1080
+        ],
+        "video_min_side_px": 512,
+        "video_max_side_px": 2160,
+        "audio_formats": [
+          "mp3",
+          "wav",
+          "m4a",
+          "aac"
+        ],
+        "audio_max_bytes": 5000000,
+        "audio_seconds": [
+          2,
+          60
+        ],
+        "faces_per_task": 1,
+        "min_overlap_ms": 2000,
+        "speech_source": "our_file"
+      },
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://kling.ai/document-api/api/video/lip-sync.md",
+        "checked_at": "2026-11-22",
+        "source": "vendor_docs_search",
+        "evidence": "Kling's own markdown API pages read 2026-11-22: lip-sync.md (POST /v1/videos/advanced-lip-sync, session_id + face_choose[], one person, GET .../{task_id}) and https://kling.ai/document-api/api/video/lip-sync/face-detection.md (POST /v1/videos/identify-face, billed). Auth: API key (Bearer).",
+        "note": "REGISTRY-ONLY: the database has no 'lipsync' capability yet. Auth is the console API key as Bearer, not JWT (the access-key/secret JWT is legacy only). Statuses submitted, processing, succeed, failed; result task_result.videos[].url, deleted after 30 days."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.014,
+        "source_url": "https://kling.ai/document-api/pricing/base/video.md",
+        "as_of": "2026-11-22",
+        "confirmed": false,
+        "note": "ESTIMATE, read 2026-11-22: Lip Sync '0.5 Units ($0.07) /5s' (= $0.014/s; how a part of 5 s is rounded is not stated), plus Face Recognition '0.05 Units ($0.007) /call' for every identify-face call, billed whatever it finds."
+      },
+      "credit_unit": "model_kling_lipsync_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Kling Terms of API Paid Service (kling.ai/document-api/guides/protocols/paid-service, effective 2026-04-21, read 2026-11-22) 3.3: a 'non-exclusive, non-transferable or sublicensable' licence. So web_only.",
+        "Same terms 8.2.3: we may not 'sell, transfer, license or transfer any one or more API Services'. Output: 'commercial purposes is not restricted'. Use on the owner's own channels is fine; offering it to Studio customers needs Kling's written confirmation.",
+        "Kling's own TTS (audio_id) speaks only zh and en: it is never used. The speech is always our own file (sound_file), so Uzbek and Russian lines come from ElevenLabs.",
+        "A real person's face is moved to words they never said: the migration that sells this must also ask 0174's likeness_photo acknowledgement (not set here: 0174 seeds only the Runway entries, and the file must say what the database says).",
+        "Gate stays open until the owner has Kling's written answer and has bought a video resource package (which package covers lip-sync is unverified); no credit price may be added before that, and nothing is sold before a migration teaches the database the capability."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 1,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 60
+      },
+      "quality_tier": 4,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "lipsync",
+        "prompt": "lip-sync one spoken line",
+        "input_video": "generated"
+      }
+    },
+    {
       "id": "seedance-2.5-edit",
       "display_name": "Seedance 2.5 (video edit)",
       "provider": "bytedance",
