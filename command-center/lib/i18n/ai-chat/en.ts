@@ -12,7 +12,10 @@ export const aiChatEn = {
   scenarioFacts: "{len} · scenes: {scenes} · characters: {characters}",
   outlineFacts: "{len} · chapters: {chapters} · characters: {characters}",
   planWriting: "Writing the storyboard, chapter by chapter. This can take a minute or two. Nothing is priced until every chapter is written.",
-  planCost: "Choosing this uses about {about} of your {limit} messages today to write the storyboard (at most {at_most} if a chapter has to be asked again). {left} left.",
+  planCost: "Choosing this uses about {about} of your {limit} messages today to write the storyboard (at most {at_most} if a chapter has to be asked again); {left}.",
+  /** Counts said with their own plural (Probe M3: "1 are left"); {n} is the number. */
+  messageCount: { one: "{n} message", few: "{n} messages", many: "{n} messages", other: "{n} messages" },
+  messagesLeft: { one: "{n} is left", few: "{n} are left", many: "{n} are left", other: "{n} are left" },
   planCostTrial: "Choosing this uses about {about} of your {left} trial messages to write the storyboard (at most {at_most} if a chapter has to be asked again).",
   planCostPlain: "Choosing this uses about {about} of today’s messages to write the storyboard (at most {at_most} if a chapter has to be asked again).",
   modelVideo: "Video: {name}",
@@ -136,7 +139,11 @@ export const aiChatEn = {
     plan_failed_plain: "The storyboard could not be written. Nothing was priced. Try again.",
     plan_length_mismatch: "Chapter {n} of {total} did not add up to its length, even when asked again, so the storyboard was not used. Nothing was priced. Try again.",
     plan_length_mismatch_plain: "The storyboard did not add up to the length you chose, so it was not used. Nothing was priced. Try again.",
-    plan_over_cap: "Writing this storyboard can take up to {needed} of today’s messages, and {left} are left, so it was not started. Nothing was used. Choose a shorter film, or try again within 24 hours.",
+    plan_over_cap: "To be sure it can finish, writing this storyboard needs at least {needed} today, and {left}. It was not started and nothing was used. Choose a shorter film, or try again within 24 hours.",
+    plan_running: "This storyboard is already being written (in another tab, or before the page was refreshed). Nightshift AI waits for it here; nothing more is used.",
+    plan_unavailable: "Writing storyboards isn’t available in this workspace yet. Nothing was used. Please check back later.",
+    plan_superseded: "The film draft was changed in the editor while its storyboard was being written, so your edit was kept and this storyboard was not saved into it. Choose again to see the draft and its price.",
+    proposal_outdated: "This proposal is from an older version and doesn’t add up to the length you chose. Ask Nightshift AI for new scenarios.",
   },
 };
 

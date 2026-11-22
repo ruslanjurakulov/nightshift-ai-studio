@@ -17,7 +17,10 @@ vi.mock("@/lib/legal", () => ({ LEGAL: { contactEmail: "help@example.test" } }))
  * way back, or a Retry that reuses the failed press's id (the database would refuse it as a duplicate forever); a country or age
  * refusal said as "unavailable"; at 390 px the canvas dock covering the remedy keys.
  */
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), usePathname: () => "/chronos/studio" }));
+const replace = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace }), usePathname: () => "/chronos/studio" }));
+/** What the next history read says of the plan (0211's lease, lib/server/brain/conversation.ts) and the messages after the proposal. */
+const extra = { plan: null as Record<string, unknown> | null, after: [] as { id: number; role: string; content: string }[] };
 
 const S1 = "aaaaaaaa-0000-4000-8000-000000000001";
 const outline = (title: string) => ({ title, idea: `idea ${title}`, target_seconds: 120, characters: [{ id: "c1" }], scenes: [],
@@ -36,7 +39,8 @@ function stub(proposing: boolean, gate: ChatGateVerdict | null = null, planTurns
       if (/session=/.test(url)) {
         return json(200, proposing
           ? { session: { id: S1, step: "proposing" }, card: null, brief: { version: 1, kind: "short" },
-              messages: [{ id: 1, role: "assistant", content: "Pick one", payload: { scenarios: [outline("Alpha"), outline("Beta")].map((o) => (planTurns ? { ...o, plan_turns: planTurns } : o)) } }] }
+              plan: extra.plan,
+              messages: [{ id: 1, role: "assistant", content: "Pick one", payload: { scenarios: [outline("Alpha"), outline("Beta")].map((o) => (planTurns ? { ...o, plan_turns: planTurns } : o)) } }, ...extra.after] }
           : { session: { id: S1, step: "asking" }, card: null, brief: null, messages: [] });
       }
       return json(200, { sessions: [], next_before: null });
@@ -52,6 +56,9 @@ function stub(proposing: boolean, gate: ChatGateVerdict | null = null, planTurns
 }
 
 beforeEach(() => {
+  extra.plan = null;
+  extra.after = [];
+  replace.mockReset();
   sent = [];
   release = null;
   holdTurn = true;
@@ -89,7 +96,7 @@ describe("Nightshift AI panel: writing the storyboard", () => {
     stub(true, null, { about: 3, at_most: 6 });
     render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
     await screen.findByText("Alpha");
-    const line = en.planCost.replace("{about}", "3").replace("{limit}", "30").replace("{at_most}", "6").replace("{left}", "30");
+    const line = en.planCost.replace("{about}", "3").replace("{limit}", "30").replace("{at_most}", "6").replace("{left}", en.messagesLeft.other.replace("{n}", "30"));
     expect(screen.getAllByText(line)).toHaveLength(2);
   });
 
@@ -199,5 +206,55 @@ describe("Nightshift AI panel: the model's gate, worded and keyed by its remedy"
     await waitFor(() => expect((document.getElementById("ns-ai-input") as HTMLTextAreaElement).disabled).toBe(false));
     expect(document.querySelector("[data-gate]")).toBeNull();
     expect((screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("Nightshift AI panel: the plan's lease (0211), followed across tabs and refreshes", () => {
+  const mountProposal = () => {
+    stub(true);
+    return render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+  };
+
+  it("a running plan (another tab, a refresh) is waited on: the writing status, the choosers closed, nothing posted", async () => {
+    extra.plan = { state: "running", reason: null, expires_at: new Date(Date.now() + 200_000).toISOString(), scenario_index: 0 };
+    mountProposal();
+    expect(await screen.findByText(en.planWriting)).toBeTruthy();
+    expect((screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") }) as HTMLButtonElement).disabled).toBe(true);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("a plan that failed while this tab was away is said at once, with Retry", async () => {
+    extra.plan = { state: "failed", reason: "vendor_error", expires_at: new Date().toISOString(), scenario_index: 0 };
+    mountProposal();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(en.errors.plan_failed_plain);
+    expect(screen.getByRole("button", { name: en.retry })).toBeTruthy();
+  });
+
+  it("L7: a failure no new attempt can change offers no Retry", async () => {
+    for (const reason of ["not_plannable", "vendor_auth", "not_configured"]) {
+      extra.plan = { state: "failed", reason, expires_at: new Date().toISOString(), scenario_index: 0 };
+      const view = mountProposal();
+      await screen.findByRole("alert");
+      expect(screen.queryByRole("button", { name: en.retry }), reason).toBeNull();
+      view.unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("M5: the stored choice of an outline is drawn once, never as a question with no saved answer", async () => {
+    extra.after = [{ id: 2, role: "user", content: "Alpha" }];
+    mountProposal();
+    await screen.findAllByText("Alpha");
+    expect(screen.queryByText(en.history.noAnswer)).toBeNull();
+  });
+
+  it("+ New takes ?brain= off through the router (the canvas follows), never a history.replaceState it cannot see", async () => {
+    window.history.replaceState(null, "", `/chronos/studio?brain=${S1}`);
+    mountProposal();
+    await screen.findByText("Alpha");
+    fireEvent.click(screen.getAllByRole("button", { name: en.shell.newChat })[0]);
+    expect(replace).toHaveBeenCalledWith("/chronos/studio", { scroll: false });
+    window.history.replaceState(null, "", "/");
   });
 });

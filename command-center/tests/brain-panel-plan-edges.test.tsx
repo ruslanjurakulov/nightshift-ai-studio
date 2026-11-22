@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { NightshiftAiPanel } from "@/components/brain/NightshiftAiPanel";
+import { pluralText } from "@/lib/plural";
 
 /**
  * The panel's plan step at its edges (Probe on S1). What would break without these: a double press taking every turn twice; a
@@ -149,9 +150,10 @@ describe("pressing choose twice, and refreshing mid-plan", () => {
 describe("the plan's refusals, each with its own words and remedy", () => {
   const cases: { name: string; status: number; body: Record<string, unknown>; text: string; retry: boolean }[] = [
     { name: "plan_over_cap at left == needed - 1", status: 429, body: { error: "plan_over_cap", needed: 8, left: 7 },
-      text: en.errors.plan_over_cap.replace("{needed}", "8").replace("{left}", "7"), retry: false },
+      text: en.errors.plan_over_cap.replace("{needed}", pluralText(en.messageCount, 8, "en")).replace("{left}", pluralText(en.messagesLeft, 7, "en")), retry: false },
     { name: "plan_over_cap with one left", status: 429, body: { error: "plan_over_cap", needed: 2, left: 1 },
-      text: en.errors.plan_over_cap.replace("{needed}", "2").replace("{left}", "1"), retry: false },
+      // Probe M3: "1 is left", never "1 are left".
+      text: en.errors.plan_over_cap.replace("{needed}", pluralText(en.messageCount, 2, "en")).replace("{left}", pluralText(en.messagesLeft, 1, "en")), retry: false },
     { name: "plan_length_mismatch with its step", status: 502, body: { error: "plan_length_mismatch", step: { window: 2, windows: 3, chapter: 2, chapters: 3 } },
       text: en.errors.plan_length_mismatch.replace("{n}", "2").replace("{total}", "3"), retry: true },
     { name: "plan_length_mismatch from the merge (no step)", status: 502, body: { error: "plan_length_mismatch", step: null },

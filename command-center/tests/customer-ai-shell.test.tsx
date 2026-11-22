@@ -177,9 +177,13 @@ describe("history from 0199", () => {
     mount();
     const item = await screen.findByRole("button", { name: /Old one/ });
     await act(async () => fireEvent.click(item));
-    expect(await screen.findByText(en.history.gone)).toBeTruthy();
+    // Said in the chat, where it is seen: the drawer closes on a pick, so a notice inside it went unread (S1's fix of #900's
+    // leftover; the owner console keeps its notice in the frame, tests/chat-history-pick.test.tsx).
+    const said = await screen.findByText(en.history.gone);
+    expect(said.closest(".chat-history-list")).toBeNull();
     expect(screen.queryByRole("button", { name: /Old one/ })).toBeNull();
-    expect(screen.getByText("Hello, Aziz")).toBeTruthy();
+    // Nothing was opened: no conversation on screen.
+    expect(screen.queryAllByText(/Pick one/)).toHaveLength(0);
   });
 });
 

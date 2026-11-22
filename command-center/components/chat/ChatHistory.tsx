@@ -120,6 +120,7 @@ export function ChatHistoryFrame({
   onRemoved,
   renderChat,
   variant = "panel",
+  onPickMessage,
 }: {
   labels: ChatHistoryLabels & Partial<ChatHistoryEditLabels>;
   source: ChatHistorySource;
@@ -135,6 +136,12 @@ export function ChatHistoryFrame({
   /** The chat, given the header button that opens the drawer (phone) or the collapsed panel (desktop). */
   renderChat: (lead: ReactNode) => ReactNode;
   variant?: "panel" | "drawer";
+  /**
+   * Where a pick's refusal (busy, gone, failed) is said. The drawer closes on a pick, so a notice inside it is never seen: a caller
+   * that draws the chat beside it (the Studio's Nightshift AI) takes the words instead. Without it, the notice stays in the frame,
+   * as the owner console has it.
+   */
+  onPickMessage?: (message: string) => void;
 }) {
   const [items, setItems] = useState<ChatSessionItem[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -250,10 +257,10 @@ export function ChatHistoryFrame({
     if (open) setOpen(false);
     const r = await onSelect(id);
     if (!r.ok) {
-      if (r.gone) {
-        setItems((prev) => prev.filter((i) => i.id !== id));
-        setNotice(l.gone);
-      } else setNotice(r.message);
+      if (r.gone) setItems((prev) => prev.filter((i) => i.id !== id));
+      const words = r.gone ? l.gone : r.message;
+      if (onPickMessage) onPickMessage(words);
+      else setNotice(words);
     }
   }
 

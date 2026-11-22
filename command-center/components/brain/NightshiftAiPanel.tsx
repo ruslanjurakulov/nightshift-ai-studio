@@ -60,10 +60,22 @@ function readModels(v: unknown): FilmModels | null {
   const m = v as { clip?: unknown; keyframe?: unknown };
   return { clip: one(m.clip), keyframe: one(m.keyframe) };
 }
+/** A failed plan's reasons a new attempt cannot change (Lens L7): the outline cannot fit, the model is not set up or not allowed. */
+const NO_RETRY_REASONS = new Set(["not_plannable", "vendor_auth", "not_configured"]);
+/** 0211's lease, as the history read says it (lib/server/brain/conversation.ts planState). `until` is when a running one ends. */
+type PlanLease = { state: "running" | "failed" | "done" | "unknown"; reason: string | null; until: number; index: number | null };
+function readLease(v: unknown): PlanLease | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as { state?: unknown; reason?: unknown; expires_at?: unknown; scenario_index?: unknown };
+  const state = o.state === "running" || o.state === "failed" || o.state === "done" ? o.state : "unknown";
+  const until = typeof o.expires_at === "string" ? Date.parse(o.expires_at) : NaN;
+  return { state, reason: typeof o.reason === "string" ? o.reason : null, until: Number.isFinite(until) ? until : 0,
+           index: typeof o.scenario_index === "number" ? o.scenario_index : null };
+}
 /** The history route's answer, with whether the same request could go differently a moment later (a 503, a dropped connection). */
 type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; message: string; retry: boolean };
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
-const NO_RETRY: string[] = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap",
+const NO_RETRY: string[] = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap", "plan_running", "plan_unavailable", "proposal_outdated",
   // The gate's refusals whose remedy is not "retry": the same press meets the same region, confirmation or support case.
   ...Object.keys(CHAT_GATE_REMEDY).filter((k) => gateRemedy(k) !== "retry")];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
@@ -98,12 +110,25 @@ const INPUT_ID = "ns-ai-input";
 type StoredMessage = { id: number; role: "user" | "assistant"; content: string; payload?: { scenarios?: Scenario[]; factsState?: string } | null };
 type PairedTurn = { key: string; q: string; a: string; msg: Msg | null };
 
+/**
+ * A choice of an outline, as the plan step stores it (the outline's title as the person's message, lib/server/brain/plan.ts): it is
+ * the person's press, not a question waiting for an answer, so it is never drawn as "no saved answer" (Lens M5). While the plan runs
+ * the panel draws it once (`asking`); afterwards the plan card carries the title.
+ */
+export function withoutChoices(messages: Msg[]): Msg[] {
+  return messages.filter((m, i) => {
+    if (m.role !== "user") return true;
+    const prev = messages.slice(0, i).reverse().find((x) => x.role === "assistant");
+    return !prev?.scenarios?.some((s) => s.title === m.content);
+  });
+}
+
 /** The stored messages as the shell's question-and-answer turns. A conversation can open with the assistant (no question above it),
  *  and a question whose answer was never stored keeps a line saying so, rather than vanishing or borrowing the next answer. */
 export function pairTurns(messages: Msg[], noAnswer: string): PairedTurn[] {
   const out: PairedTurn[] = [];
   let q: Msg | null = null;
-  for (const m of messages) {
+  for (const m of withoutChoices(messages)) {
     if (m.role === "user") {
       if (q) out.push({ key: `${q.key}-none`, q: q.content, a: noAnswer, msg: null });
       q = m;
@@ -151,6 +176,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const [capped, setCapped] = useState(false);
   // The storyboard is being written (a short outline was chosen): its own status, never a bare "thinking".
   const [planning, setPlanning] = useState(false);
+  const [lease, setLease] = useState<PlanLease | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [opening, setOpening] = useState(false);
   // A ref, not state: two presses before the re-render must not both pass (each would be a turn on the meter).
@@ -196,6 +222,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBrief(null);
     setFilm(null);
     setModels(null);
+    setLease(null);
     setStep("asking");
     setProblem(null);
     setAsking(null);
@@ -250,11 +277,13 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     async (sid: string): Promise<HistoryRead<null>> => {
       const r = await historyCall(historyUrl(`session=${encodeURIComponent(sid)}`), (b) => b);
       if (!r.ok) return r;
-      const d = r.value as { session?: { step?: string }; card?: BrainCard | null; brief?: Brief | null; messages?: StoredMessage[] };
+      const d = r.value as { session?: { step?: string }; card?: BrainCard | null; brief?: Brief | null; messages?: StoredMessage[]; plan?: unknown };
       if (sessionRef.current !== sid) {
         setFilm(null);
         setModels(null);
       }
+      // The plan's lease as the database keeps it (0211): what the wait below follows, across tabs and refreshes (Lens M1).
+      setLease(readLease(d.plan));
       setSession(sid);
       setStep(d.session?.step ?? "asking");
       setCard(d.card ?? null);
@@ -392,7 +421,15 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const at = step && typeof step.chapter === "number" && typeof step.chapters === "number" ? { n: step.chapter, total: step.chapters } : null;
     if (e === "plan_failed") return at ? fmt(c.errors.plan_failed, at) : c.errors.plan_failed_plain;
     if (e === "plan_length_mismatch") return at ? fmt(c.errors.plan_length_mismatch, at) : c.errors.plan_length_mismatch_plain;
-    if (e === "plan_over_cap" && typeof d.needed === "number" && typeof d.left === "number") return fmt(c.errors.plan_over_cap, { needed: d.needed, left: d.left });
+    if (e === "plan_over_cap" && typeof d.needed === "number" && typeof d.left === "number") {
+      // Each count with its own plural (Probe M3: "1 are left").
+      return fmt(c.errors.plan_over_cap, { needed: pluralText(c.messageCount, d.needed, locale), left: pluralText(c.messagesLeft, d.left, locale) });
+    }
+    // 0211's lease and the plan's own refusals, each in its own words (a tab waiting, an older proposal, an edit that won).
+    if (e === "plan_running") return c.errors.plan_running;
+    if (e === "plan_unavailable") return c.errors.plan_unavailable;
+    if (e === "plan_superseded") return c.errors.plan_superseded;
+    if (e === "proposal_outdated") return c.errors.proposal_outdated;
     // The model is the owner's choice and hidden from customers: any model failure reads as "unavailable right now".
     if (e === "model_failed" || e === "model_unavailable" || e === "model_answer_invalid") return c.errors.assistant_unavailable;
     return c.errors.unavailable;
@@ -492,44 +529,82 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const request_id = pressId();
     return run(words, session ? { action: "turn", session, text: words, request_id } : { action: "start", channel: channelId, prompt: words, request_id });
   };
-  /** After a refresh mid-plan (or a repeated press): wait for the plan already running, never start a second one. */
-  const waitForPlan = async (sid: string, p: PendingPlan) => {
+  /**
+   * Wait for a plan this tab did not see finish (a refresh mid-plan, another tab, a repeated press), never start a second one. It
+   * ends when 0211's lease says so (Lens M1): done → the conversation is read again (the storyboard and its price); failed → said at
+   * once with its reason; still running at its end → failed. `until` is the lease's own end when it is known.
+   */
+  const waitForPlan = async (sid: string, w: { title: string; index: number; until: number }, signal: AbortSignal) => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setPlanning(true);
     setProblem(null);
-    setAsking(p.title);
+    setAsking(w.title);
+    let failed: string | null = null;
     try {
-      while (Date.now() - p.at < PLAN_WAIT_MS) {
+      while (Date.now() < w.until) {
         await new Promise((r) => setTimeout(r, 5_000));
-        if (sessionRef.current !== sid) return;
-        const r = await historyCall(historyUrl(`session=${encodeURIComponent(sid)}`), (b) => b as { session?: { step?: string }; brief?: Brief | null });
+        if (signal.aborted || sessionRef.current !== sid) return;
+        const r = await historyCall(historyUrl(`session=${encodeURIComponent(sid)}`),
+          (b) => b as { session?: { step?: string }; brief?: Brief | null; plan?: PlanLease | null });
+        if (signal.aborted) return;
+        const lease = r.ok ? readLease(r.value.plan) : null;
         const b = r.ok ? r.value.brief : null;
-        if (r.ok && r.value.session?.step === "ready" && b?.version === 1 && b.title === p.title && b.scenes?.length) {
+        if (lease?.state === "failed") {
+          failed = lease.reason ?? "unavailable";
+          break;
+        }
+        if (lease?.state === "done" || (r.ok && r.value.session?.step === "ready" && b?.version === 1 && b.title === w.title && b.scenes?.length)) {
           keepPlan(sid, null);
           setAsking(null);
           await loadSession(sid);
           return;
         }
       }
-      // The route's time is over and no plan was stored: it failed while this tab was away. A new press is safe now.
+      if (signal.aborted) return;
+      // Failed, or the route's time is over and nothing was stored: a new press is safe now.
       keepPlan(sid, null);
-      setProblem({ text: c.errors.plan_failed_plain, retry: () => void chooseRef.current(p.index) });
+      const reason = failed ?? "expired";
+      setProblem({ text: explain(502, { error: "plan_failed", reason }), code: "plan_failed",
+                   retry: NO_RETRY_REASONS.has(reason) ? null : () => void chooseRef.current(w.index) });
     } finally {
       inFlight.current = false;
-      setPlanning(false);
-      setBusy(false);
+      if (!signal.aborted) {
+        setPlanning(false);
+        setBusy(false);
+      }
     }
   };
   const waitRef = useRef(waitForPlan);
-  waitRef.current = waitForPlan;
+  const chooseRef = useRef<(index: number, rid?: string) => Promise<void>>(async () => {});
+  // A plan to follow on this conversation: this tab's own press (sessionStorage), or the database's lease (another tab, a refresh).
+  useEffect(() => {
+    waitRef.current = waitForPlan;
+  });
   useEffect(() => {
     if (!session || typeof window === "undefined") return;
+    const ctl = new AbortController();
+    const outlines = [...messages].reverse().find((m) => m.role === "assistant")?.scenarios ?? [];
     const p = pendingPlan(session);
-    if (p && Date.now() - p.at < PLAN_WAIT_MS) void waitRef.current(session, p);
-    else if (p) keepPlan(session, null);
-  }, [session]);
+    if (p && Date.now() - p.at < PLAN_WAIT_MS) {
+      void waitRef.current(session, { title: p.title, index: p.index, until: p.at + PLAN_WAIT_MS }, ctl.signal);
+    } else {
+      if (p) keepPlan(session, null);
+      if (lease?.state === "running" && lease.until > Date.now()) {
+        const index = lease.index ?? 0;
+        void waitRef.current(session, { title: outlines[index]?.title ?? "", index, until: lease.until }, ctl.signal);
+      } else if (lease?.state === "failed" && step === "proposing" && !inFlight.current) {
+        // A plan that failed while this tab was not looking: said at once, with its reason, never a silent empty choice.
+        const reason = lease.reason ?? "unavailable";
+        setProblem({ text: explain(502, { error: "plan_failed", reason }), code: "plan_failed",
+                     retry: NO_RETRY_REASONS.has(reason) ? null : () => void chooseRef.current(lease.index ?? 0) });
+      }
+    }
+    return () => ctl.abort();
+    // Only a new conversation or a new lease reading starts (or stops) a wait; a message added meanwhile does not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, lease]);
 
   // `rid` is kept only when the last press's answer never arrived (the network): the server answers its repeat as a duplicate.
   const choose = async (index: number, rid: string = pressId()) => {
@@ -546,20 +621,25 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       setAsking(outline.title);
       keepPlan(session, { rid, index, title: outline.title, at: Date.now() });
     }
-    let waiting: PendingPlan | null = null;
+    let waiting: { title: string; index: number; until: number } | null = null;
     try {
       const { res, d } = await post({ action: "choose", session, index, request_id: rid });
-      if (res.status === 409 && d.error === "duplicate_request") {
-        // That press is already being written (another copy of it): wait for it, spend nothing more.
-        waiting = pendingPlan(session);
+      // Another copy of this choice is being written (this press again, another tab: 0211's plan_running): wait for it, spend
+      // nothing more.
+      if (res.status === 409 && (d.error === "duplicate_request" || d.error === "plan_running")) {
+        const until = typeof d.expires_at === "string" ? Date.parse(d.expires_at) : NaN;
+        const p = pendingPlan(session);
+        waiting = Number.isFinite(until) ? { title: outline?.title ?? "", index, until }
+          : p ? { title: p.title, index: p.index, until: p.at + PLAN_WAIT_MS } : null;
         if (!waiting) await loadSession(session);
         return;
       }
       keepPlan(session, null);
       if (!res.ok) {
         // A failed plan's calls were recorded under this press's ids: a Retry is a new press (a new id), never refused as a repeat.
-        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""),
-                     retry: res.status === 401 || NO_RETRY.includes(String(d.error)) ? null : () => void choose(index) });
+        // A failure no new attempt can change (the outline cannot fit, the model is not set up here) offers none (Lens L7).
+        const noRetry = res.status === 401 || NO_RETRY.includes(String(d.error)) || (d.error === "plan_failed" && NO_RETRY_REASONS.has(String(d.reason)));
+        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""), retry: noRetry ? null : () => void choose(index) });
         return;
       }
       setAsking(null);
@@ -575,11 +655,12 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       setPlanning(false);
       setBusy(false);
       setTimeout(refocus, 0);
-      if (waiting) void waitForPlan(session, waiting);
+      if (waiting) void waitForPlan(session, waiting, new AbortController().signal);
     }
   };
-  const chooseRef = useRef(choose);
-  chooseRef.current = choose;
+  useEffect(() => {
+    chooseRef.current = choose;
+  });
   const createFilm = async () => {
     if (!film?.quote?.quote_id || !session || inFlight.current) return;
     inFlight.current = true;
@@ -611,11 +692,14 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   };
   const newChat = () => {
     clear();
-    if (typeof window !== "undefined") {
-      const u = new URL(window.location.href);
-      u.searchParams.delete("brain");
-      window.history.replaceState(null, "", u.toString());
-    }
+    if (typeof window === "undefined") return;
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has("brain")) return;
+    // The same path as forget(): the canvas draws ?brain= from the page's props, so a history.replaceState left it drawing the old
+    // conversation beside the new chat (#900's leftover). A replace, so Back does not return to it; the re-read it causes is skipped.
+    u.searchParams.delete("brain");
+    if (initialSession) dropped.current = true;
+    routerRef.current.replace(`${u.pathname}${u.search}${u.hash}`, { scroll: false });
   };
 
   const source = useMemo<ChatHistorySource>(
@@ -768,7 +852,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
             {s.plan_turns && ready && (
               <p className="text-xs text-[var(--color-muted)]" data-plan-turns={s.plan_turns.about}>
                 {load.plan.limit !== null && load.plan.used !== null
-                  ? fmt(c.planCost, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, limit: load.plan.limit, left: Math.max(0, load.plan.limit - load.plan.used) })
+                  ? fmt(c.planCost, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, limit: load.plan.limit,
+                                      left: pluralText(c.messagesLeft, Math.max(0, load.plan.limit - load.plan.used), locale) })
                   : load.plan.limit === null && load.plan.trial_left !== null
                     ? fmt(c.planCostTrial, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, left: load.plan.trial_left })
                     // What is left today could not be read: the cost alone, never a "left" made up.
@@ -862,6 +947,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
             if (sessionRef.current === id) newChat();
           }}
           renderChat={chat}
+          // The drawer closes on a pick: its refusal is said here, in the chat, not inside the closed drawer (#900's leftover).
+          onPickMessage={(text) => setProblem({ text, retry: null })}
         />
       ) : (
         chat()

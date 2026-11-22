@@ -21,7 +21,10 @@ const ai = (l: (typeof LOCALES)[number]) => dictionaries[l].aiChat as unknown as
 const NEW = [
   "outlineFacts", "planWriting",
   "errors.plan_failed", "errors.plan_failed_plain", "errors.plan_length_mismatch", "errors.plan_length_mismatch_plain", "errors.plan_over_cap",
-  "errors.country_blocked", "errors.country_unverified", "errors.adult_attestation_required", "errors.confirmAge", "errors.age_unavailable",
+  "errors.plan_running", "errors.plan_unavailable", "errors.plan_superseded", "errors.proposal_outdated", "planCost", "planCostTrial", "planCostPlain",
+  "messageCount.one", "messageCount.other", "messagesLeft.one", "messagesLeft.other", "modelVideo", "modelPictures",
+  // The model gate's words are by remedy since #898's lib/brain/chat-gate (one wording before a press and after one).
+  "gate.confirm_age", "gate.retry", "gate.not_in_region", "gate.contact_support", "gate.contact_support_no_email", "gate.confirmAge", "gate.contact",
   ...Object.keys(dictionaries.en.aiChat.shell).map((k) => `shell.${k}`),
   ...Object.keys(dictionaries.en.aiChat.history).map((k) => `history.${k}`),
 ];
@@ -45,7 +48,7 @@ describe("the plan step's strings in three languages", () => {
   }
 
   it("ru and uz are not English copies of the plan's lines", () => {
-    for (const path of NEW.filter((p) => /^(errors\.|planWriting|outlineFacts)/.test(p) && p !== "errors.confirmAge")) {
+    for (const path of NEW.filter((p) => /^(errors\.|gate\.|planWriting|outlineFacts|planCost)/.test(p))) {
       expect(at(ai("ru"), path), path).not.toBe(at(ai("en"), path));
       expect(at(ai("uz"), path), path).not.toBe(at(ai("en"), path));
     }
@@ -74,6 +77,6 @@ describe("Uzbek's two marks", () => {
   it("the plan's Uzbek lines actually carry U+02BB where the words need it (koʻring, boʻlmadi, soʻng)", () => {
     expect(dictionaries.uz.aiChat.errors.plan_failed).toContain("boʻlmadi");
     expect(dictionaries.uz.aiChat.errors.plan_failed).toContain("koʻring");
-    expect(dictionaries.uz.aiChat.errors.age_unavailable).toContain("soʻng");
+    expect(dictionaries.uz.aiChat.gate.retry).toContain("soʻng");
   });
 });

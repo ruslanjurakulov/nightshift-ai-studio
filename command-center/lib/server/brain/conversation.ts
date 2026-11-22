@@ -42,6 +42,27 @@ export async function conversationView(supabase: SupabaseClient, s: Conversation
     body: {
       session: { id: s.id, channel_id: s.channel_id, step: s.step, slots, handoff: s.handoff, updated_at: s.updated_at },
       brief: s.brief, card: s.card, updated_at: s.updated_at, messages,
+      plan: await planState(supabase, s.id),
     },
+  };
+}
+
+/**
+ * The storyboard plan of this conversation, as 0211's lease says (Lens M1): a tab that did not start it (a refresh, a second tab)
+ * waits for a running one, shows a failed one with its reason, and reads a finished one. "unknown" when it could not be read (0211
+ * not applied, a failed read): never "none", which would let a second plan begin beside a running one in the panel's eyes. The
+ * database still refuses that (plan_running).
+ */
+async function planState(supabase: SupabaseClient, session: string) {
+  const r = await supabase.rpc("ai_chat_plan_state", { p_session: session });
+  if (r.error) return { state: "unknown" as const };
+  const d = r.data as { state?: unknown; reason?: unknown; expires_at?: unknown; scenario_index?: unknown; attempt?: unknown } | null;
+  if (!d || typeof d !== "object") return null;
+  const state = d.state === "running" || d.state === "failed" || d.state === "done" ? d.state : "unknown";
+  return {
+    state,
+    reason: typeof d.reason === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(d.reason) ? d.reason : null,
+    expires_at: typeof d.expires_at === "string" ? d.expires_at : null,
+    scenario_index: typeof d.scenario_index === "number" ? d.scenario_index : null,
   };
 }
