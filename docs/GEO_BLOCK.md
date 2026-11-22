@@ -3,9 +3,59 @@
 Some vendors forbid their model in some countries. A registry entry can say so with `blocked_countries`, and the
 Command Center then neither offers nor quotes nor starts that model, through its own routes, for a request that comes
 from one of them. The database does not know where a request comes from, so the check lives in the web process, in the
-routes and pickers listed below. **It is not in front of every call that prices, holds or queues anything:** a signed-in
-user can call the database functions directly and skip it (see "What it cannot do"). So a model with a list is kept off
-sale in the database itself (migration 0142) until the database refuses by country too.
+routes and pickers listed below. **The web check alone is not in front of every call that prices, holds or queues
+anything:** a signed-in user can call the database functions directly and skip it. Migration 0208 adds the database's own
+check (below: a job on a model with a list needs a country our web server signed); until a later migration decides to open
+such a model, 0142 still keeps every model with a list off sale.
+
+## Google's models: an allow-list (2026-11-21)
+
+Google's terms allow its API only inside the regions it lists ("You may only access the Services (or make API Clients
+available to users) within an available region", Gemini API Additional Terms, effective March 23, 2026; the list:
+<https://aistudio.google.com/docs/available-regions>, read 2026-11-21, no "last updated" date on the page). So every
+`provider: google` row carries `blocked_countries` = every ISO 3166-1 alpha-2 code not on that list (19 codes: AF BV BY CN CU GP
+HK IR KP MF MM MO MQ PF RU SJ SX TF YT), computed in one place (`command-center/lib/geo/blocked.ts`: `ISO_3166_ALPHA2`,
+`GOOGLE_AVAILABLE_REGIONS`, `GOOGLE_BLOCKED`; the twin test compares each registry row). Kosovo is listed by Google and has no
+ISO code; DB-IP writes it XK, which is allowed. For these models an **unknown country is refused whatever the reason**
+(`REFUSE_UNKNOWN_COUNTRY`; 451 `country_unverified`, whose sentence says to turn off a VPN or proxy and reload), and they are
+hidden from the pickers for such a request. The three Veo rows had no terms gate (they are past their shutdown date); they
+got `terms_review_required`, because a country list needs one (0142). No Google model is opened by this.
+
+## The database's own check (0208)
+
+Since 0208 the database checks the country for every creative job on a model with a country list.
+
+A member holds the anon key and their session, so the web routes alone cannot stop a direct `create_creative_job`. 0208 puts
+a trigger on `creative_jobs` (every path writes there: the Studio, a workflow step, the API and MCP, a Film Studio take, the
+worker's failover): a job on a model with a non-empty `blocked_countries` needs the header `x-nightshift-geo` =
+`v1.<country>.<user id>.<expiry>.<HMAC-SHA256>`, signed by the web server (`command-center/lib/server/geo-claim.ts`) with the key
+it shares with Supabase Vault only, made for this user, at most 300 seconds ahead. No valid claim: `country_unverified`; a
+listed country: `country_blocked`. The header goes from our server to Supabase, never to the browser, and is sent only on a
+call that may create a job on a gated model (the Studio's create, the region editor's run, Run now and the advance of a
+workflow with such a step). The country is read in the transaction and stored nowhere.
+
+Not vouched for, so refused for a gated model: the worker moving a job onto one (failover: `reroute_creative_job` skips that
+candidate and tries the next, it does not abort the failover), a Film Studio take (the worker
+makes it; there is no visitor), the API and MCP (a server's address says nothing about the person; these models are
+`web_only` anyway), and a workflow step carried on from another member's page (the claim is bound to the person whose session
+makes the call, and the step is made as the run's starter). Setup: the same 32+ character value in the web's
+`NIGHTSHIFT_GEO_CLAIM_KEY` and in Vault as `nightshift_geo_claim_key`; without it every job on a gated model is refused and
+the web logs the remedy.
+
+**Opening steps, in this order** (before any model with a list is opened; 0208 says so with a NOTICE when a step is missing):
+
+1. **Registry sync.** `python tools/probe_models.py --sync` copies `schemas/model_registry.json` into `model_registry`. The
+   trigger reads `spec.blocked_countries` from the database row, so until the sync has run a Google row has no list there and
+   the database does not gate it at all (0208 raises a NOTICE naming how many `provider = 'google'` rows have none).
+2. **Vault key.** `select vault.create_secret('<value>', 'nightshift_geo_claim_key');` once, in the SQL editor (32+ characters;
+   the value is never written in a file). 0208 raises a NOTICE while it is missing.
+3. **Web key.** The same value as `NIGHTSHIFT_GEO_CLAIM_KEY` in the web's environment, then a redeploy. Without it the web signs
+   nothing and every gated job is refused `country_unverified`.
+
+**An unknown country fails closed in the database.** The web signs a claim only for a country it read; for a visitor whose
+address DB-IP has no country for (`not_in_table`, below) it sends none, so the database refuses a job on any model with a list
+with `country_unverified`, including a model the web allows such a visitor to see and quote (`grounded-image-1.0`, which is not
+an allow-list model). For Google's models web and database agree (both refuse an unknown country).
 
 ## How a request's country is known
 
@@ -39,7 +89,8 @@ sale in the database itself (migration 0142) until the database refuses by count
 | Studio picker, Home's assistant, Workflows, region editor (`loadStudioModels`), the operator's preview list | the model is not listed |
 | `POST /api/creative/quote`, `POST /api/creative/jobs` (a named model) | 451 `country_blocked`, before any database call |
 | the same routes, automatic choice (`auto`, `cheap`, `fast`, `quality`) | see below |
-| `POST /api/region-edit/quote`, `/run` | the model is not among the ones it may pick (`loadStudioModels`) |
+| `POST /api/region-edit/quote`, `/run` | the model is not among the ones it may pick (`loadStudioModels`); `/run` also answers 451 by name before `create_creative_job`, and sends 0208's signed country |
+| `POST /api/workflows/runs/[id]/advance` | not refused (an advance also settles the finished step); sends 0208's signed country only for a run with a gated step, and the database refuses the gated step's job without a valid one |
 | `POST /api/workflows/[id]/quote`, `/run` | 451 `country_blocked` if ANY step names such a model, before the database prices or holds anything. `/run` checks the steps of the version the body names: if the workflow reads as another version it answers 409 `workflow_changed` (an edit after the check raises the version, and the database then refuses the run, 0073); one it cannot read is refused, never passed on unchecked |
 | API and MCP | never offered: a model with a list must be `web_only` |
 
@@ -68,7 +119,7 @@ The country can be unknown for four reasons, and they are not alike (`lib/server
 
 | Reason | What it means | Production (self-hosted) | Development, tests, Vercel |
 | :-- | :-- | :-- | :-- |
-| `not_in_table` | a public address DB-IP has no country for | allowed, logged | allowed, logged |
+| `not_in_table` | a public address DB-IP has no country for | allowed, logged (the web); the job is refused `country_unverified` by the database (0208 fails closed) | the same |
 | `no_address` | no `X-Nightshift-Client-IP`: the request did not come through Caddy, or Caddy did not write it | **refused and hidden** | allowed, logged |
 | `not_public` | a private or local peer: the same | **refused and hidden** | allowed, logged |
 | `no_table` | `data/geoip/country.bin.gz` cannot be read | **refused and hidden** | allowed, logged |
@@ -86,7 +137,8 @@ works, and the listed models fail closed.
 
 ## What it cannot do
 
-- **The database does not check the country.** `create_creative_job` (0075), `start_workflow_run` (0073) and
+- **(Before 0208.) The database did not check the country.** 0208 closes this for jobs (above); the paragraph is kept for the
+  history of 0142. `create_creative_job` (0075), `start_workflow_run` (0073) and
   `advance_workflow_run` (0074) are granted to `authenticated`, and the browser holds the anon key, the project URL and the
   session (the cookie is readable by the page). A signed-in user can therefore call `supabase.rpc('create_creative_job', ...)`
   directly and skip every check on this page. What stops that from mattering today: a model with a country list cannot be on

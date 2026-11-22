@@ -11,8 +11,9 @@ import "./chat-shell.css";
  * way, and a notice (an error with its remedy) to show under the thread. That keeps the paid call and its refusals in one place
  * per product while the two chats look and behave the same.
  *
- * Nothing is shown that does not work: no attach "+", no microphone. The history panel (ChatHistory.tsx) wraps the shell and hands
- * it the header's menu button as `lead`; without a history the header has none.
+ * Nothing is shown that does not work: no attach "+", no microphone, and no Regenerate where the caller cannot re-ask (the
+ * customer's conversation is stored turn by turn, so an answer there cannot be swapped for another). The history panel
+ * (ChatHistory.tsx) wraps the shell and hands it the header's menu button as `lead`; without a history the header has none.
  * Thumbs up/down are kept in this tab only: nothing is stored server-side yet, and nothing here claims otherwise.
  */
 
@@ -30,7 +31,8 @@ export interface ChatLabels {
   copy: string;
   copied: string;
   copyFailed: string;
-  regenerate: string;
+  /** Needed only with `onRegenerate`. */
+  regenerate?: string;
   good: string;
   bad: string;
   keys: string;
@@ -88,6 +90,12 @@ export function ChatShell({
   onRegenerate,
   onNewChat,
   lead,
+  disabled = false,
+  status,
+  meter,
+  prefill,
+  contained = false,
+  titleAs: Title = "h1",
 }: {
   labels: ChatLabels;
   turns: ChatTurn[];
@@ -101,13 +109,25 @@ export function ChatShell({
   inputId: string;
   /** Resolves true when the question was answered: only then is the box emptied, so a failed send keeps what was typed. */
   onSend: (text: string) => Promise<boolean>;
-  /** Asks the last question again through the same route (and meter) as a send. */
-  onRegenerate: () => void;
+  /** Asks the last question again through the same route (and meter) as a send. Absent: no Regenerate button is drawn. */
+  onRegenerate?: () => void;
   onNewChat: () => void;
   /** Drawn before the title: the history drawer's menu button on a phone. */
   lead?: ReactNode;
+  /** The box cannot be used at all (a cap reached, a plan without it, a viewer): `status` says why and what the remedy is. */
+  disabled?: boolean;
+  /** Above the composer: the state that decides whether a question can be asked, with its remedy. */
+  status?: ReactNode;
+  /** Under the composer, before the disclaimer: the caller's own meter (what is used today, a trial's messages left). */
+  meter?: ReactNode;
+  /** Words put in the box for the person to send (or not); never sent on their behalf, never over what they already typed. */
+  prefill?: string | null;
+  /** Inside a fixed-height column (the Studio's side panel): the thread scrolls inside the shell, not the page. */
+  contained?: boolean;
+  /** The title's level: h1 on its own page, h2 where the page already has its heading (the Studio's side panel). */
+  titleAs?: "h1" | "h2";
 }) {
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(prefill ?? "");
   const [votes, setVotes] = useState<Record<number, Vote>>({});
   const [copied, setCopied] = useState<number | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -115,17 +135,23 @@ export function ChatShell({
   const tail = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (prefill) setQuestion((cur) => cur || prefill);
+  }, [prefill]);
+
+  useEffect(() => {
     if (copied === null) return;
     const id = setTimeout(() => setCopied(null), 2000);
     return () => clearTimeout(id);
   }, [copied]);
 
+  // The placeholder is measured too: an empty box sized to a long one (the Uzbek "describe the video" wraps to two lines in the
+  // side panel) has to shrink back when the placeholder changes to a shorter one (Pixel on #900).
   useIsoLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, BOX_MAX_PX)}px`;
-  }, [question]);
+  }, [question, l.placeholder]);
 
   // The newest exchange (or the thinking dots, or the notice) is brought into view: with a floating composer the answer would
   // otherwise land below the fold.
@@ -136,10 +162,14 @@ export function ChatShell({
   }, [turns.length, pending, hasNotice]);
 
   async function submit() {
-    if (pending || question.trim() === "") return;
+    if (pending || disabled || question.trim() === "") return;
     const ok = await onSend(question);
     if (ok) setQuestion("");
-    box.current?.focus();
+    // Back to the box only when focus is still in the chat (or was dropped to the page): a person who moved on to a field
+    // elsewhere while the answer was on its way keeps their place (Lens 14 on #843).
+    const now = typeof document === "undefined" ? null : document.activeElement;
+    const root = box.current?.closest(".chat-shell");
+    if (!now || now === document.body || (root && root.contains(now))) box.current?.focus();
   }
 
   async function copy(id: number, text: string) {
@@ -162,12 +192,12 @@ export function ChatShell({
     });
 
   const empty = turns.length === 0 && !pending && !pendingQuestion && !notice;
-  const canSend = !pending && question.trim() !== "";
+  const canSend = !pending && !disabled && question.trim() !== "";
   const near = question.length >= counterFrom;
   const lastId = turns.length > 0 ? turns[turns.length - 1].id : null;
 
   return (
-    <div className="chat-shell" data-state={pending ? "thinking" : "idle"}>
+    <div className="chat-shell" data-state={pending ? "thinking" : "idle"} data-contained={contained || undefined}>
       {/* The glow is two fixed layers that only cross-fade and drift (opacity and transform): the compositor does it, no repaint. */}
       <div className="chat-glow" aria-hidden>
         <span className="chat-glow-idle" />
@@ -176,7 +206,7 @@ export function ChatShell({
 
       <header className="chat-head">
         {lead}
-        <h1 className="chat-title">{l.title}</h1>
+        <Title className="chat-title">{l.title}</Title>
         <IconButton label={l.newChat} onClick={onNewChat} disabled={pending || empty}>
           <SquarePen aria-hidden size={18} />
         </IconButton>
@@ -192,10 +222,13 @@ export function ChatShell({
           ) : (
             turns.map((t) => (
               <article key={t.id} className="chat-turn">
-                <div className="chat-msg chat-msg-you">
-                  <p className="sr-only">{l.you}</p>
-                  <p className="chat-bubble-you">{t.q}</p>
-                </div>
+                {/* A conversation may open with the assistant (a stored chat whose first line is its question): no empty bubble. */}
+                {t.q !== "" && (
+                  <div className="chat-msg chat-msg-you">
+                    <p className="sr-only">{l.you}</p>
+                    <p className="chat-bubble-you">{t.q}</p>
+                  </div>
+                )}
                 <div className="chat-msg chat-msg-ai">
                   <Wordmark mark className="chat-avatar" />
                   <div className="chat-ai-body">
@@ -207,8 +240,8 @@ export function ChatShell({
                         {copied === t.id ? <Check aria-hidden size={16} /> : <Copy aria-hidden size={16} />}
                       </IconButton>
                       {/* Only the last answer: asking an earlier question again would answer it out of its place. */}
-                      {t.id === lastId && (
-                        <IconButton label={l.regenerate} onClick={onRegenerate} disabled={pending}>
+                      {t.id === lastId && onRegenerate && (
+                        <IconButton label={l.regenerate ?? ""} onClick={onRegenerate} disabled={pending}>
                           <RefreshCw aria-hidden size={16} />
                         </IconButton>
                       )}
@@ -267,19 +300,25 @@ export function ChatShell({
           void submit();
         }}
       >
+        {status && (
+          <div id={`${inputId}-status`} className="chat-status">
+            {status}
+          </div>
+        )}
         <label htmlFor={inputId} className="sr-only">
           {l.label}
         </label>
-        <div className="chat-pill">
+        <div className="chat-pill" data-disabled={disabled || undefined}>
           <textarea
             id={inputId}
             ref={box}
             className="chat-input"
             rows={1}
             maxLength={maxLength}
+            disabled={disabled}
             value={question}
             placeholder={l.placeholder}
-            aria-describedby={`${inputId}-keys ${inputId}-count`}
+            aria-describedby={`${status ? `${inputId}-status ` : ""}${inputId}-keys ${inputId}-count`}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {
               if (sendsOnKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })) {
@@ -295,6 +334,7 @@ export function ChatShell({
             <ArrowUp aria-hidden size={18} strokeWidth={2.5} />
           </button>
         </div>
+        {meter}
         <p className="chat-disclaimer">
           {l.disclaimer}{" "}
           <span id={`${inputId}-keys`} className="chat-keys">
