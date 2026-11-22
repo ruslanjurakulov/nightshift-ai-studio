@@ -1,6 +1,6 @@
 """0222 retires gemini-omni-1.1-flash, and writes nothing else.
 
-Google routes that id to gemini-omni-1.2-flash from 2026-12-03 (docs/studio/S10_GOOGLE_MODELS.md). Selling it after that would be a
+Google routes that id to gemini-omni-1.2-flash from 2026-12-03 (Google's deprecations page, read 2026-11-22; S10's research doc, PR #917). Selling it after that would be a
 silent substitute (CLAUDE.md rule 4). These pin what the file may touch (one column of one row), that the registry still agrees
 with it, and that the rollback can only hide the model, never sell it. tests/security/test_sec_retire_omni_1_1.py runs it on Postgres.
 """
@@ -41,7 +41,7 @@ class RetireOmni11(unittest.TestCase):
         self.assertEqual(m["shutdown"]["on"], "2026-12-03")
         self.assertEqual(m["shutdown"]["replacement"], "gemini-omni-1.2-flash")
         self.assertTrue(m.get("terms_gate"), "the row must stay terms-gated")
-        self.assertNotIn("gemini-omni-1.2-flash", reg, "1.2 waits for the owner's terms decisions and a probe (S10)")
+        self.assertNotIn("gemini-omni-1.2-flash", reg, "1.2 waits for the owner's terms decisions and a probe (S10): update this test when the 1.2 row lands")
 
     def test_the_rollback_only_hides_it(self):
         c = code(ROLLBACK)

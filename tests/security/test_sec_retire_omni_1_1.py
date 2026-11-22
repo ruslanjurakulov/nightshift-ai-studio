@@ -90,17 +90,34 @@ def test_an_operator_preview_of_the_retired_id_is_refused_too(conn, sc):
         assert after[0] == "ok" and MID not in after[1], after
 
 
-def test_a_replay_changes_nothing_and_a_missing_row_is_only_a_notice(conn, sc):
+def _xmin(conn):
+    # updated_at cannot show a rewrite inside one transaction (now() is fixed at its start); the row version can.
+    return conn.execute("select xmin::text from public.model_registry where id = %s", [MID]).fetchone()[0]
+
+
+def test_a_replay_rewrites_nothing(conn, sc):
     with conn.transaction(force_rollback=True):
         _on_sale(conn)
         conn.execute(MIGRATION)
-        first = _availability(conn)
+        conn.execute("savepoint replay")                         # a new subtransaction: a rewrite would carry a new xmin
+        before = _xmin(conn)
         conn.execute(MIGRATION)
-        assert _availability(conn) == first, "a replay must not touch the row (updated_at included)"
+        assert _availability(conn)[0] == "disabled"
+        assert _xmin(conn) == before, "a replay must not touch the row"
 
-        # Not synced yet (model_probe_runs is append-only, so the lab row cannot be deleted: the same file names an id with no row).
-        conn.execute(MIGRATION.replace("'gemini-omni-1.1-flash'", "'lab-not-synced-0222'"))
-        assert conn.execute("select count(*) from public.model_registry where id = 'lab-not-synced-0222'").fetchone()[0] == 0
+
+def test_a_registry_not_synced_yet_is_only_a_notice(conn, sc):
+    # model_probe_runs is append-only, so the lab row cannot be deleted: the same file, naming an id with no row, stands in.
+    notices = []
+    handler = lambda d: notices.append(d.message_primary)  # noqa: E731
+    conn.add_notice_handler(handler)
+    try:
+        with conn.transaction(force_rollback=True):
+            conn.execute(MIGRATION.replace("'gemini-omni-1.1-flash'", "'lab-not-synced-0222'"))
+            assert conn.execute("select count(*) from public.model_registry where id = 'lab-not-synced-0222'").fetchone()[0] == 0
+    finally:
+        conn.remove_notice_handler(handler)
+    assert any("not in model_registry" in n and "apply this file again after the sync" in n for n in notices), notices
 
 
 def test_only_the_owners_rollback_brings_it_back_and_then_only_hidden(conn, sc):
@@ -114,10 +131,26 @@ def test_only_the_owners_rollback_brings_it_back_and_then_only_hidden(conn, sc):
         assert _availability(conn)[0] == "disabled"
 
 
-def test_no_api_role_can_undo_it(conn, sc):
+def test_no_customer_can_undo_it(conn, sc):
     with conn.transaction(force_rollback=True):
         _on_sale(conn)
         conn.execute(MIGRATION)
         for who in (sc.alice.actor, sc.bob.actor):
-            _call(conn, who, "update public.model_registry set availability = 'beta' where id = %s returning 1", [MID])
+            _call(conn, who, "update public.model_registry set availability = 'beta' where id = %s", [MID])
+            _call(conn, who, "update public.model_registry set availability = 'hidden' where id = %s", [MID])
         assert _availability(conn)[0] == "disabled"
+
+
+def test_a_platform_admin_can_hide_it_again_but_never_sell_it_while_gated(conn, sc):
+    # Pinned as it is, not as one might wish (0035 grants update (availability) to a platform admin: the model board). The file's
+    # header says so. What holds is that the real row is terms-gated, and 0035's CHECK refuses beta or ga with a gate set.
+    with conn.transaction(force_rollback=True):
+        _on_sale(conn, availability="hidden", terms_gate="terms_review_required")
+        conn.execute(MIGRATION)
+        assert _availability(conn)[0] == "disabled"
+        state, msg = _call(conn, sc.operator, "update public.model_registry set availability = 'beta' where id = %s returning 1", [MID])
+        assert state != "ok", msg
+        assert _availability(conn)[0] == "disabled"
+        state, msg = _call(conn, sc.operator, "update public.model_registry set availability = 'hidden' where id = %s returning 1", [MID])
+        assert state == "ok", msg
+        assert _availability(conn)[0] == "hidden" and _listed(conn, sc.alice.actor) == set()

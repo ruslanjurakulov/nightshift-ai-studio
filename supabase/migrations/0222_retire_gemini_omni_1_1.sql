@@ -4,7 +4,7 @@
 -- else: no function, policy, grant, trigger, constraint, price or switch.
 --
 -- EVIDENCE. Google's deprecations page (aistudio.google.com/docs/deprecations, the redirect target of
--- ai.google.dev/gemini-api/docs/deprecations, read 2026-11-22; docs/studio/S10_GOOGLE_MODELS.md) says the gemini-omni-1.1-flash
+-- ai.google.dev/gemini-api/docs/deprecations, read 2026-11-22; S10's research, docs/studio/S10_GOOGLE_MODELS.md in PR #917) says the gemini-omni-1.1-flash
 -- endpoint "is automatically routing API requests to [gemini-omni-1.2-flash] effective December 3, 2026", billed at 1.2's rates.
 --
 -- DIAGNOSIS. From that day a call to this id returns another model's output at another model's price. Selling it would be a
@@ -14,16 +14,19 @@
 -- this file closes is the future: a later "open" file, an operator preview, or a date moved later after a probe must never put
 -- this id back on sale. 'disabled' (0035's lifecycle) is the state every open migration refuses to touch (0173, 0194, 0195:
 -- "disabled by the owner: this file does not turn it back on"), sellable_models never lists, creative_price never quotes, and
--- creative_operator_preview refuses (it accepts only 'hidden', 0139). No probe and no registry sync writes availability.
+-- creative_operator_preview refuses (it accepts only 'hidden', 0139). No probe writes availability, and the registry sync
+-- (sync_model_registry, 0035) skips a row that is already disabled.
 --
 -- CHANGE. update model_registry set availability = 'disabled' where id = 'gemini-omni-1.1-flash' (from whatever it is). A missing
 -- row (the registry not synced yet) is a NOTICE, not an error: the sync inserts it 'hidden' (still terms-gated, still past nothing
 -- until 2026-12-03) and this file, applied again after the sync, disables it. Its replacement, gemini-omni-1.2-flash, is NOT added
 -- here: it waits for the owner's terms decisions and a real probe (S10).
 --
--- WHO MAY UNDO IT. Only the owner, by hand: docs/sql/rollback_0222_retire_gemini_omni_1_1.sql (hidden again). The reason is kept
--- here and in docs/MIGRATIONS.md, because model_registry has no reason column and 0124's model_availability is the owner's
--- temporary operational switch, not the sale lifecycle.
+-- WHO CAN UNDO IT. Not a customer (RLS). Two people can: the owner, with docs/sql/rollback_0222_retire_gemini_omni_1_1.sql
+-- (hidden again), and a platform admin, through the model board's availability change (0035 grants update (availability) to a
+-- platform admin; command-center/app/api/models/availability, audited as model.availability). Neither can put it on sale while
+-- its terms_gate is set (0035's model_registry_terms_before_sale). The reason is kept here and in docs/MIGRATIONS.md, because
+-- model_registry has no reason column and 0124's model_availability is the owner's temporary switch, not the sale lifecycle.
 --
 -- NUMBER: 0222, given by Atlas (stream S10). Idempotent: a replay changes nothing (the WHERE skips a row that is already disabled,
 -- so updated_at is not touched). Apply as ONE transaction (SQL editor, apply_migration, or psql --single-transaction
