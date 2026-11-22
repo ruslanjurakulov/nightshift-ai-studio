@@ -1,12 +1,12 @@
-/* Owner analytics hub. Navy/neon on the brand canvas in both themes: this is a presentation surface, and an investor
+/* Owner analytics hub. Neutral near-black (owner, 22 Nov 2026) with the neon accents, in both themes: this is a presentation surface, and an investor
    room is dark more often than not. Numbers are tabular so columns line up while they change. */
 .oa {
-  --oa-canvas: #070a14;
-  --oa-surface: #0d1220;
-  --oa-raised: #131a2c;
-  --oa-rule: rgba(148, 170, 220, 0.14);
-  --oa-ink: #eef2ff;
-  --oa-dim: #9aa6c4;
+  --oa-canvas: #0a0b0e;
+  --oa-surface: #0f1115;
+  --oa-raised: #15181d;
+  --oa-rule: rgba(236, 238, 242, 0.1);
+  --oa-ink: #eceef2;
+  --oa-dim: #9aa1ad;
   --oa-blue: #2f8bff;
   --oa-lime: #c8ff2e;
   --oa-bad: #ff6b6b;
