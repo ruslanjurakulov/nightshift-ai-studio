@@ -141,3 +141,34 @@ Hard requirements against main:
 - **Models (owner):** Scout's terms report on `luma-ray-3.2` and `seedance-1.5-pro`. No registry change without the owner's decision.
 - **Owner, now:** reconnect the MCP app with "Studio" ticked. Recraft pictures then work through MCP today, and Atlas can run the
   first end-to-end test with a picture while the video question is open.
+
+## Decisions after the diagnosis (Atlas, 22 Nov)
+
+- **The live connector, after reconnecting with `studio:create`, lists no model at all.** Recraft is not on sale live. The models on
+  sale (Ideogram 3/4/4.5, GPT Image 2.6, MiniMax H3) are all `web_only`. Atlas therefore decided on an **operator-only route**: a
+  connection whose workspace is the operator's own (credits-exempt, first-party marketing) may use `web_only` models on sale in the
+  Studio, for every API capability. Every other workspace gets exactly today's answers. ByteDance models are excluded always, operator
+  included (`docs/FILM_STUDIO.md`, BytePlus terms §4.2.3).
+- **Breach found three LOW defects**, triaged by Sentinel; Atlas requires all three fixed before the operator route goes live:
+  - **F1:** a model's own prompt limit is not checked before the hold.
+  - **F2:** refusals echo caller-supplied parameter keys into server text, a prompt-injection vector.
+  - **F3:** settings an adapter does not wire are charged and dropped.
+
+  F1 and F3 have one root cause: `creative_price` does not know a model's full contract. They are fixed there, which covers web,
+  `/v1`, Film and MCP together.
+- **Registry corrections in 0219:**
+  - `seedance-1.5-pro` becomes `web_only`.
+  - `luma-ray-3.2` becomes `web_only` with `terms_gate: written_consent_required`, citing the Luma API Terms of Use (2026-04-28)
+    §5, items 4 and 5.
+  - The luma-uni notes now point to those terms.
+
+**Migrations and PRs (they replace the plan above):**
+
+| Number | What | Branch |
+| :-- | :-- | :-- |
+| 0218 | `creative_price`: prompt limit counted in UTF-16 units, `takes_negative_prompt`, seed refused until it is wired, no caller key echoed (SQL) | `claude/nsai-s9-creative-price` |
+| 0219 | operator-only assistant exposure, recorded per quote/job/audit, `operator_only` in the list, registry corrections | `claude/nsai-s9-operator-models` |
+| 0221 | `oauth_creative_list` and `list_creative_jobs` | `claude/nsai-s9-list-jobs` |
+| — | route-level MCP test, Breach pins, F2's TypeScript half | `claude/nsai-s9-mcp-route-test` |
+
+0218 and 0219 merge together, in that order.
