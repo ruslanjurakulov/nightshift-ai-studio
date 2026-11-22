@@ -392,8 +392,9 @@ Each of these fails the assembly at 0, by name, with the remedy in `detail`. A s
 - `store_failed`: also a library row whose recorded length is not the film's, since 0171 charges by that length;
 - `review_copy_missing` or `review_copy_too_large`. The review copy is the library's 480p proxy of the master, encoded
   with its video capped at the rate that fits 45 MB for the film's length (crf 28 below the cap; 504 kb/s at 10 minutes,
-  recorded on the master's provenance as `review_copy`), and it must fit the 50 MB Supabase object ceiling. Too large
-  even capped is the last guard: retry the assembly, never "shorten the film" (S4_GAPS.md G2);
+  at most 2,500 kb/s so the H.264 level stays phone-safe; recorded on the master's provenance as `review_copy`), and it
+  must fit the 50 MB Supabase object ceiling. Too large even capped, or missing, is a fault to report, not to retry: a
+  recorded failure is terminal and the same cut gives the same copy; never "shorten the film" (S4_GAPS.md G2);
 - `assembly_not_enabled`.
 
 ### The flag

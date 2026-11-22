@@ -870,6 +870,12 @@ class CappedProxy(unittest.TestCase):
         self.assertEqual(argv[:i] + argv[i + 4:], self.DEFAULT)  # same scale, preset, crf, sound
         self.assertEqual(argv, ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), "video/mp4", 504))
 
+    def test_a_cap_that_is_not_a_positive_whole_number_is_refused_never_passed(self):
+        # x264 reads "-maxrate 0k" as no cap at all: a silently uncapped copy.
+        for bad in (0, -5, True, False, 2.5, "500", 504.0):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), "video/mp4", bad)
+
     def store(self, tmp: Path, **kw):
         src = tmp / "film.mp4"
         src.write_bytes(MP4)
@@ -920,6 +926,31 @@ class CappedProxy(unittest.TestCase):
         budget = ((cap + 96) * secs + 2 * cap) * 1000 / 8
         self.assertLessEqual(sizes["capped"], budget, sizes)
         self.assertGreater(sizes["plain"], 2 * budget, sizes)  # the clip is one the cap actually bites on
+
+    @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg is not installed")
+    def test_the_h264_level_a_capped_proxy_is_tagged_follows_the_cap(self):
+        # x264 sizes the level it tags from the VBV: the film's top cap (2,500 kb/s) keeps a 480p copy at 3.0/3.1, which
+        # every phone decodes; the uncapped-at-the-top 35,904 of a 10 s film tagged 4.1 (Lens), which some refuse.
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        src = tmp / "clip.mp4"
+        subprocess.run([shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "testsrc2=s=1920x1080:r=24:d=10", "-f", "lavfi", "-i", "sine=f=440:d=10", "-c:v", "libx264",
+                        "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(src)],
+                       check=True, timeout=120)
+
+        def tagged(cap):
+            out = tmp / f"p{cap}.mp4"
+            subprocess.run(ml.proxy_command(shutil.which("ffmpeg"), src, out, "video/mp4", cap), check=True, timeout=120)
+            got = subprocess.run([shutil.which("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                  "stream=profile,level", "-of", "csv=p=0", str(out)],
+                                 capture_output=True, text=True, check=True).stdout.strip().split(",")
+            return got[0], int(got[1])
+        self.assertEqual(tagged(None), ("High", 30))
+        profile, level = tagged(2500)
+        self.assertEqual(profile, "High")
+        self.assertLessEqual(level, 31)
+        self.assertGreater(tagged(35904)[1], 31)  # why the film clamps its cap at the top
 
 
 if __name__ == "__main__":

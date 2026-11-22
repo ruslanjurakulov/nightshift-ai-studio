@@ -805,9 +805,15 @@ def proxy_command(exe: str, src: Path, dst: Path, mime: str,
     # of real AI clips gave 49.37 MB against the 50 MB a Supabase object may
     # be (docs/studio/S4_GAPS.md G2). A caller that must fit a ceiling passes
     # the rate that fits it; crf still governs below the cap. Absent, the
-    # command is exactly what every other caller always got.
+    # command is exactly what every other caller always got. The bound it
+    # buys: video <= maxrate x T + bufsize (one buffer, spent at most once).
+    # A non-positive or non-integer cap is refused, not passed: x264 reads
+    # "-maxrate 0k" as no cap at all, which would be a silent uncapped copy.
+    if maxrate_kbps is not None and (isinstance(maxrate_kbps, bool) or not isinstance(maxrate_kbps, int)
+                                     or maxrate_kbps <= 0):
+        raise ValueError("a proxy cap is a positive whole number of kb/s")
     vbv = ([] if maxrate_kbps is None
-           else ["-maxrate", f"{int(maxrate_kbps)}k", "-bufsize", f"{2 * int(maxrate_kbps)}k"])
+           else ["-maxrate", f"{maxrate_kbps}k", "-bufsize", f"{2 * maxrate_kbps}k"])
     return [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", *ffmpeg_limits.thread_options(),
             "-protocol_whitelist", "file",
             "-f", DEMUXER[mime], *decoder_cap(mime), "-i", str(src),
@@ -1422,6 +1428,15 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
 STORED_SOURCES = ("generated", "render", "pipeline")
 
 
+def _variant_failed(variant: str, aid: str, code: int) -> None:
+    """One line naming why a stored file has no thumb / proxy: without it a
+    caller that needs the variant (a film's review copy) can only say it is
+    missing, never why. The file is still stored without it, as before."""
+    why = ("refused (frame or memory cap)" if code == REFUSED_EXIT else f"ffmpeg exit {code}" if code != 0
+           else "an empty or missing file")
+    logger.warning("media library: no %s for %s: %s", variant, aid, why)
+
+
 def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, media_root: Path,
                     tools: Optional[Tools], provenance: Mapping, expect_kind: Optional[str] = None,
                     parent_asset_id: Optional[str] = None, source: str = "generated",
@@ -1466,12 +1481,16 @@ def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, med
                           beat, timeout_s=THUMB_TIMEOUT_S, frame_px=frame_px(info))
             if code == 0 and thumb.is_file() and thumb.stat().st_size > 0:
                 variants.append("thumb")
+            else:
+                _variant_failed("thumb", aid, code)
         if tools and info.kind == "video":
             proxy = work / VARIANT_FILES["proxy"]
             code = runner(proxy_command(tools.ffmpeg, work / "original", proxy, info.mime, proxy_maxrate_kbps), beat,
                           timeout_s=proxy_timeout_s(info, nbytes), frame_px=frame_px(info))
             if code == 0 and proxy.is_file() and proxy.stat().st_size > 0:
                 variants.append("proxy")
+            else:
+                _variant_failed("proxy", aid, code)
         derived = 0
         for f in work.iterdir():
             os.chmod(f, 0o644)  # the web container reads these as another user

@@ -180,8 +180,18 @@ In order of what would hurt a paid film first.
   is fine, only its preview is too big.
 - **After** (`claude/nsai-s4-review-copy`, same machine, same harness, same clips): the film's review copy is the same
   480p crf 28 encode with a VBV cap, `-maxrate <cap>k -bufsize <2 × cap>k`, cap = `⌊45 MB × 8 / length⌋ − 96` kb/s
-  (`film_assembly.review_maxrate_kbps`; 504 kb/s at 600 s, 1,904 at 180 s, 35,904 at 10 s), recorded on the master's
-  provenance as `review_copy: {video_maxrate_kbps, target_bytes}`. The master is not touched.
+  (`film_assembly.review_maxrate_kbps`), clamped to 150-2,500 kb/s: 504 kb/s at 600 s, 1,904 at 180 s, 2,500 up to
+  about 139 s. It is recorded on the master's provenance as `review_copy: {video_maxrate_kbps, target_bytes}`. The master
+  is not touched.
+  - **The bound, not a retry loop.** With VBV the video is at most `cap × T + bufsize`; with AAC at 96 kb/s and the mp4
+    boxes (measured 86 KB for 110 s of a 480p copy, about 0.47 MB at 600 s) that is about 45.6 MB at 600 s, under 50.
+    The measured 45.49 MB below is consistent with that bound. A copy above 50 MB is a fault to report, not something
+    to encode again.
+  - **The top clamp (2,500 kb/s).** x264 picks the H.264 level it tags from the VBV. Without the clamp a 10 s film's cap
+    is 35,904 kb/s, and Lens measured the copy tagged level 4.1 (6.2 at 1 s), which some phones refuse. Checked with
+    ffprobe on a 10 s 480p copy (`tests/test_media_library.py`): uncapped High@3.0, capped at 2,500 High@3.0, at 35,904
+    High@4.1. The bitrate at 2,500 was the same as uncapped (378 kb/s on a 10 s real-clip copy), so short films' copies are
+    what they were.
   - 10-minute 16:9, cuts: review copy **45.49 MB, 91.0 % of 50 MB** (606 kb/s overall with the sound, against 658
     before); wall **834.5 s** (794.0 before; not a cost of the cap alone, the encode is the same preset and the run had
     load 4.0 from its own threads); sync 0.001 s (60/60), cuts 0.000 s (59/59), length error 0.000 s, master 324.01 MB.
@@ -190,8 +200,11 @@ In order of what would hurt a paid film first.
   - A 10-minute cross-fade film could not be run: the harness's showcase clips are shorter than a 10 s scene plus the
     cross-fade's overlap. Under the cap its review copy is bounded by the same 504 kb/s, so about 45 MB is expected
     where about 63 MB was before. That is a bound, not a measurement.
-  - `review_copy_too_large` stays as the last guard; its detail now says the copy came out too large even capped and
-    to retry, never "shorten the film".
+  - `review_copy_too_large` stays as the last guard. Its detail now says the film rendered and its copy came out
+    X.XX MB (at the N kb/s cap, when the row records one), and to report it. It never says "shorten the film", and it
+    never says "retry": a recorded failure is terminal (0171 `film_begin_assembly` takes only `planned`), and the encode
+    is deterministic. `review_copy_missing` says the same, and `media_library.store_generated` now logs which variant
+    failed, for which asset, with the encoder's exit.
 
 ### G3 — A film's captions cannot be downloaded (medium)
 

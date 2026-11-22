@@ -476,19 +476,30 @@ class FakeHttp:
 class ReviewCopyCapTest(Base):
     """The review copy is encoded for the 50 MB object ceiling (docs/studio/S4_GAPS.md G2): a 10-minute film of real
     AI clips gave a 49.37 MB uncapped proxy, and a cross-fade film is expected near 63 MB. What would break: a paid,
-    rendered film failed over its preview, or the cap made silently."""
+    rendered film failed over its preview, the cap made silently, a short film's copy tagged at an H.264 level a
+    phone refuses, or a refusal that tells the person to retry what cannot change."""
 
     def test_the_cap_is_what_fits_45_mb_with_the_sound(self):
         self.assertEqual(fa.review_maxrate_kbps(600), 504)        # 45 MB x 8 / 600 s = 600 kb/s, less 96 of AAC
-        self.assertEqual(fa.review_maxrate_kbps(10), 35904)       # far above crf 28's choice: a short film is unchanged
         self.assertEqual(fa.review_maxrate_kbps(180), 1904)
         # A guard only: no film the timeline allows reaches the floor.
         self.assertGreater(fa.review_maxrate_kbps(ft.MAX_FILM_S), fa.REVIEW_MIN_VIDEO_KBPS)
         self.assertEqual(fa.review_maxrate_kbps(10_000), fa.REVIEW_MIN_VIDEO_KBPS)
-        # What it allows, sound and video at the cap, fits the ceiling with room for the container.
-        self.assertLessEqual((fa.review_maxrate_kbps(600) + fa.REVIEW_AUDIO_KBPS) * 1000 / 8 * 600,
-                             fa.REVIEW_TARGET_BYTES)
+        # What it allows, sound and video at the cap plus one VBV buffer, fits the ceiling with room for the container.
+        cap = fa.review_maxrate_kbps(600)
+        self.assertLessEqual(((cap + fa.REVIEW_AUDIO_KBPS) * 600 + 2 * cap) * 1000 / 8, fa.REVIEW_TARGET_BYTES + 200_000)
         self.assertLess(fa.REVIEW_TARGET_BYTES, fa.REVIEW_COPY_MAX_BYTES)
+
+    def test_a_short_film_is_capped_at_the_top_so_its_h264_level_stays_phone_safe(self):
+        # Uncapped at the top the formula gives 35,904 kb/s at 10 s, which x264 tags level 4.1 (6.2 at 1 s).
+        for secs in (0.5, 1, 10, 30, 60):
+            self.assertEqual(fa.review_maxrate_kbps(secs), fa.REVIEW_MAX_VIDEO_KBPS, secs)
+        self.assertLessEqual(fa.REVIEW_MAX_VIDEO_KBPS, 2500)
+
+    def test_a_length_that_is_not_a_positive_finite_number_is_refused(self):
+        for bad in (0, 0.0, -1, float("nan"), float("inf")):
+            with self.assertRaises(ValueError, msg=bad):
+                fa.review_maxrate_kbps(bad)
 
     def stored_with(self, scenes: int, seconds: int):
         f = self.film(scenes=scenes, seconds=seconds)
@@ -512,19 +523,65 @@ class ReviewCopyCapTest(Base):
         self.assertEqual(row["provenance"]["review_copy"],
                          {"video_maxrate_kbps": 504, "target_bytes": fa.REVIEW_TARGET_BYTES})
 
-    def test_a_ten_second_film_gets_the_cap_for_its_own_length(self):
+    def test_a_ten_second_film_gets_the_top_cap(self):
         call, row = self.stored_with(2, 5)
-        self.assertEqual(call["proxy_maxrate_kbps"], fa.review_maxrate_kbps(10.0))
-        self.assertEqual(row["provenance"]["review_copy"]["video_maxrate_kbps"], 35904)
+        self.assertEqual(call["proxy_maxrate_kbps"], fa.REVIEW_MAX_VIDEO_KBPS)
+        self.assertEqual(row["provenance"]["review_copy"]["video_maxrate_kbps"], fa.REVIEW_MAX_VIDEO_KBPS)
 
-    def test_a_review_copy_still_too_large_names_the_copy_not_the_film(self):
+    def test_a_review_copy_still_too_large_names_the_copy_and_its_cap_and_never_says_retry_or_shorten(self):
         f = self.film()
         db = f.db()
         out = self.assert_fails(db, "review_copy_too_large",
                                 store_file=fake_store_file(db, self.root, proxy_bytes=fa.REVIEW_COPY_MAX_BYTES + 1))
-        self.assertNotIn("shorten", out.detail)
-        self.assertIn("even capped", out.detail)
-        self.assertIn("retry the assembly", out.detail)
+        self.assertIn("50.00 MB at the 2500 kb/s cap", out.detail)   # .2f: never "50.0 MB, above the 50 MB"
+        self.assertIn("report it", out.detail)
+        for wrong in ("shorten", "retry"):
+            self.assertNotIn(wrong, out.detail)
+
+    def check(self, provenance):
+        aid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        d = ml.asset_dir(self.root, aid)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "proxy.mp4").write_bytes(b"\0" * (fa.REVIEW_COPY_MAX_BYTES + 1))
+        row = {"source": "generated", "duration_s": 6.0, "variants": ["proxy"], "provenance": provenance}
+        with self.assertRaises(fa.AssemblyFailed) as cm:
+            fa._check_master(row, self.root, aid, 6.0)
+        self.assertEqual(cm.exception.reason, "review_copy_too_large")
+        return cm.exception.detail
+
+    def test_a_master_stored_before_the_cap_does_not_claim_one(self):
+        # Crash recovery hands in a file an earlier attempt registered; one from before this change was not capped.
+        for prov in ({}, {"film_segment_id": SEG}, {"review_copy": "garbage"}, None):
+            detail = self.check(prov)
+            self.assertNotIn("cap", detail, prov)
+            self.assertIn("report it", detail)
+        self.assertIn("at the 504 kb/s cap", self.check({"review_copy": {"video_maxrate_kbps": 504}}))
+
+    def test_a_capped_proxy_encode_that_fails_is_review_copy_missing_named_in_the_log_and_not_retried(self):
+        f = self.film()
+        db = f.db()
+        mp4 = b"\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomiso2avc1mp41" + b"\x00" * 16
+
+        def render(norm, resolver, out, timings=None, **kw):
+            if timings is not None:
+                timings.mode, timings.intermediate = "sequential", "fast"
+            Path(out).write_bytes(mp4)
+            return out
+
+        def runner(argv, beat, **_k):
+            if "-maxrate" in argv:      # the capped review copy's encode fails
+                return 1
+            Path(argv[-1]).write_bytes(b"\xff\xd8\xff" + b"\0" * 10)
+            return 0
+
+        def store_file(path, **kw):   # the real store_generated, with ffmpeg and ffprobe faked
+            return ml.store_generated(path, runner=runner,
+                                      prober=lambda *a: ml.Probe("video", "video/mp4", 1280, 720, 6.0), **kw)
+        with self.assertLogs("modules.media_library", "WARNING") as logs:
+            out = self.assert_fails(db, "review_copy_missing", render=render, store_file=store_file)
+        self.assertTrue(any("no proxy for" in m and "ffmpeg exit 1" in m for m in logs.output), logs.output)
+        self.assertIn("report it", out.detail)
+        self.assertNotIn("retry", out.detail)
 
     assert_fails = LoudFailureTest.assert_fails
 
