@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { assetFilePath, mediaDir, mediaUrlSecret, parseRange, signedMediaPath } from "@/lib/server/media";
-import { MEDIA_ASSET_COLUMNS, coerceAssets, mapMediaError, parseMediaId, variantContentType } from "@/lib/media";
 import {
+  MEDIA_ASSET_COLUMNS,
+  coerceAssets,
+  mapMediaError,
+  parseMediaId,
+  variantContentType,
+  type MediaAsset,
+} from "@/lib/media";
+import {
+  CAPTIONS_FILE_MAX_BYTES,
   attachmentDisposition,
   downloadFileName,
   exportCues,
   downloadRefusal,
+  filmCaptionsPointer,
+  isFilmCaptionsOf,
   parseDownloadVariant,
   previewVariantFor,
+  vttToSrt,
 } from "@/lib/libraryDownload";
 import { buildSrt } from "@/lib/captions";
 import { getDictionary } from "@/lib/i18n/server";
@@ -51,6 +62,85 @@ async function refuse(request: Request, error: string, status: number) {
   });
 }
 
+/** The workspace and provenance of a row: what ties a film master to its captions file. */
+const FILM_CAPTIONS_COLUMNS = "org_id, provenance";
+
+/** One SRT answer for both sources of captions, so the two can never drift apart. */
+function srtAttachment(srt: string, asset: MediaAsset) {
+  return new Response(srt, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/x-subrip; charset=utf-8",
+      "Content-Disposition": attachmentDisposition(downloadFileName({ ...asset, width: null, height: null }, "srt")),
+      "Cache-Control": NO_STORE,
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+/**
+ * A film master's captions: the WebVTT file film_assembly stored next to it
+ * (provenance `captions_asset_id`), served as SubRip like an export's.
+ *
+ * The file's row is read under the same session as the master, so RLS answers
+ * for its workspace and its deletion, and then it must agree with the master
+ * (isFilmCaptionsOf). Anything short of that is "no captions", never another
+ * file. A read that failed is read_failed, and a file that does not parse is
+ * read_failed too: the whole file or nothing.
+ */
+async function filmCaptions(
+  request: Request,
+  supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
+  master: MediaAsset,
+  masterRow: unknown,
+) {
+  const raw = (masterRow ?? {}) as { org_id?: unknown; provenance?: unknown };
+  const capId = filmCaptionsPointer(raw.provenance);
+  if (!capId || capId === master.id) return refuse(request, "no_captions", 404);
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select(`${MEDIA_ASSET_COLUMNS}, ${FILM_CAPTIONS_COLUMNS}`)
+    .eq("id", capId)
+    .maybeSingle();
+  if (error) return refuse(request, "read_failed", 502);
+  const cap = coerceAssets(data ? [data] : [])[0];
+  const capRow = (data ?? {}) as { org_id?: unknown; provenance?: unknown };
+  if (
+    !cap ||
+    cap.id !== capId ||
+    !isFilmCaptionsOf(
+      { org_id: raw.org_id, provenance: raw.provenance },
+      { org_id: capRow.org_id, kind: cap.kind, mime: cap.mime, provenance: capRow.provenance },
+    )
+  )
+    return refuse(request, "no_captions", 404);
+
+  const dir = mediaDir();
+  if (!dir) return refuse(request, "media_unavailable", 503);
+  const file = assetFilePath(dir, cap.id, "original");
+  if (!file) return refuse(request, "bad_request", 400);
+  let size: number;
+  try {
+    const s = await stat(file);
+    if (!s.isFile()) throw new Error("not a file");
+    size = s.size;
+  } catch {
+    // The row is live but the file was purged, or never written: the same answer the original gets.
+    return refuse(request, "gone", 410);
+  }
+  // An oversized file is never read into memory: it is not one film_assembly wrote.
+  if (size > CAPTIONS_FILE_MAX_BYTES) return refuse(request, "read_failed", 502);
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(file);
+  } catch {
+    return refuse(request, "read_failed", 502);
+  }
+  const srt = vttToSrt(bytes);
+  if (!srt) return refuse(request, "read_failed", 502);
+  return srtAttachment(srt, master);
+}
+
 /**
  * GET /api/library/{asset}/download?variant=original|preview|captions
  *
@@ -68,7 +158,9 @@ async function refuse(request: Request, error: string, status: number) {
  *   "Download original" would quietly be the same file.
  * - captions: the SRT of the captions the export was rendered with
  *   (editor_exports.doc, the revision as asked for). The burned-in picture is
- *   unchanged.
+ *   unchanged. When no export made the asset and it is a film master, the
+ *   SRT of the film's own captions file (provenance captions_asset_id, read
+ *   under the same session and checked against the master).
  *
  * Read-only: nothing here renders, queues, charges or writes a row.
  */
@@ -82,7 +174,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ asse
 
   const supabase = await createClient();
   if (!supabase) return refuse(request, "not_configured", 503);
-  const { data, error } = await supabase.from("media_assets").select(MEDIA_ASSET_COLUMNS).eq("id", id).maybeSingle();
+  // The captions variant also reads the workspace and the provenance: a film master names its captions file there.
+  const columns = variant === "captions" ? `${MEDIA_ASSET_COLUMNS}, ${FILM_CAPTIONS_COLUMNS}` : MEDIA_ASSET_COLUMNS;
+  const { data, error } = await supabase.from("media_assets").select(columns).eq("id", id).maybeSingle();
   if (error) {
     const mapped = mapMediaError(error);
     return refuse(request, mapped.error, mapped.status);
@@ -100,19 +194,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ asse
       .maybeSingle();
     // A failed read is not "no captions": say it could not be read.
     if (expError) return refuse(request, "read_failed", 502);
+    // No export made this asset: it may be a film master, whose captions are a library file of their own (S4 G3).
+    if (!exp) return filmCaptions(request, supabase, asset, data);
     const cues = exportCues((exp as { captions?: unknown } | null)?.captions);
     if (cues.length === 0) return refuse(request, "no_captions", 404);
     const srt = buildSrt(cues);
     if (!srt) return refuse(request, "no_captions", 404);
-    return new Response(srt, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/x-subrip; charset=utf-8",
-        "Content-Disposition": attachmentDisposition(downloadFileName({ ...asset, width: null, height: null }, "srt")),
-        "Cache-Control": NO_STORE,
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    return srtAttachment(srt, asset);
   }
 
   const dir = mediaDir();

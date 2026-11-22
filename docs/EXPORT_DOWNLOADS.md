@@ -40,7 +40,7 @@
 | :-- | :-- | :-- |
 | `original` | streams the master (`original`): `Content-Disposition: attachment`, the real `Content-Type` and `Content-Length`, Range supported, `Cache-Control: private, no-store` | session; the asset row is read under RLS first |
 | `preview` | `303` to a freshly signed `/api/media/file/{id}/proxy` link (video) or `display` (image), so a `<video>` keeps its range requests. Audio, captions and a picture without a display copy have no preview. Another variant is never substituted | session; RLS read first |
-| `captions` | `application/x-subrip` SRT built from the export's captions (`editor_exports.doc.captions` of the export that made this asset), as an attachment | session; RLS on both tables |
+| `captions` | `application/x-subrip` SRT, as an attachment, from one of two sources: the export's captions (`editor_exports.doc.captions` of the export that made this asset), or, when no export made it, a film master's own captions file (see "A film master's captions" below). Always SRT, whichever the source | session; RLS on both tables |
 
 Answers:
 
@@ -50,13 +50,26 @@ Answers:
 | 400 | `bad_request` | not a uuid, an unknown variant, or a stored type outside the allowed list |
 | 404 | `not_found` | no such asset in any of the caller's organizations. Another tenant's asset gets the same answer, so it cannot be probed |
 | 404 | `no_preview` | this asset has no preview copy (yet). The original is **not** served instead |
-| 404 | `no_captions` | the newest export that made this asset has no caption cues, or no export made it |
+| 404 | `no_captions` | the newest export that made this asset has no caption cues; or no export made it and it names no captions file, or the file it names is not its own (below) |
 | 416 | | a Range outside the file |
-| 502 | `read_failed` | the export row could not be read (never reported as "no captions") |
-| 410 | `gone` | the row exists but the file was purged |
+| 502 | `read_failed` | the export row or the film's captions row could not be read, or the captions file is not WebVTT this route can convert as a whole (never reported as "no captions", never a partial file) |
+| 410 | `gone` | the row exists but the file was purged (the master, or a film's captions file) |
 | 503 | `media_unavailable` | this host has no media volume or no signing key (Vercel) |
 | 503 | `not_configured` | Supabase is not configured on this host |
 
 The URL is stable and holds no secret, so it never expires. Each press re-reads the row and, for a preview, signs a new link. A page left open for an hour still downloads.
 
 No route here renders, charges or writes anything: it reads under the caller's session and streams. A status re-read never creates an export. Re-export stays the explicit button that calls `request_editor_export`.
+
+### A film master's captions (S4 G3)
+
+**Before:** a film master (`modules/film_assembly.py`) has no editor export, so `?variant=captions` answered `404 no_captions` and the person could not take the film's captions with it.
+
+**After:** film_assembly stores the film's captions as their own library file (`kind = caption`, `text/vtt`, `source = generated`, provenance `film_segment_id`, `film_id`, `cut_sha256`, `role: "captions"`) and writes its id into the master's provenance as `captions_asset_id`. When no export made the asset, the route:
+
+1. reads the master's `org_id` and `provenance` in the same RLS read as the rest of its row;
+2. takes `captions_asset_id` only if it is a canonical uuid (`parseMediaId`; anything else, `../../etc/passwd` included, is `no_captions` and never reaches a query or a path);
+3. reads that row under the same session (RLS: the caller's workspace, not deleted; never the service key) and accepts it only if it is `kind = caption`, `text/vtt`, the master's own `org_id`, the same `film_segment_id` and `cut_sha256` as the master, and `role = "captions"`. Anything else is `404 no_captions`;
+4. reads the file from the media volume (`assetFilePath(dir, id, "original")`; `503 media_unavailable` without the volume, `410 gone` when purged, at most 2 MB) and converts WebVTT to SRT (`lib/libraryDownload.ts` `vttToSrt`: the `WEBVTT` header and `NOTE`/`STYLE`/`REGION` blocks dropped, cue settings and voice/class tags dropped, cues renumbered from 1, `.` to `,`). One timing line that does not parse refuses the whole file as `502 read_failed`.
+
+The answer has the same headers as an export's SRT (`application/x-subrip`, attachment, `private, no-store`, `nosniff`). `AssetDownloads` already takes `captions`, so the studio's live view can offer it on the final node by passing `captions`.

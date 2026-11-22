@@ -10,6 +10,7 @@
  * address holds no secret and never expires. Each press re-reads the asset
  * under the caller's session, so a page left open for an hour still works.
  */
+import { buildSrt, type Cue } from "@/lib/captions";
 import { parseMediaId, type MediaAsset, type MediaVariant } from "@/lib/media";
 
 export type LibraryDownloadVariant = "original" | "preview" | "captions";
@@ -136,4 +137,126 @@ export function downloadRefusal(status: number, error: unknown): DownloadRefusal
 /** Only a refusal that asking again could fix offers "Try again". */
 export function canRetryDownload(r: DownloadRefusal): boolean {
   return r === "failed" || r === "server";
+}
+
+// ── a film master's captions file (S4 G3) ──────────────────────────────────
+
+/** The most a captions file may be (modules/media_library.py CAPTION_MAX_BYTES); a bigger one is not read. */
+export const CAPTIONS_FILE_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * The id of the captions file a film master names in its provenance, or null.
+ *
+ * A film master has no editor export: film_assembly stores its captions as a
+ * library file of their own and writes that file's id into the master's
+ * provenance (`captions_asset_id`). Only a canonical uuid comes out of here, so
+ * nothing else ever reaches a path ("../../etc/passwd" is simply no captions).
+ */
+export function filmCaptionsPointer(provenance: unknown): string | null {
+  if (!provenance || typeof provenance !== "object" || Array.isArray(provenance)) return null;
+  return parseMediaId((provenance as Record<string, unknown>).captions_asset_id);
+}
+
+/**
+ * Whether a captions row really is this master's captions file. The pointer is
+ * data, so it is trusted only as far as the row it names agrees with it: a
+ * caption in WebVTT, the master's own workspace, the same film segment and the
+ * same cut, written as the film's captions. Otherwise a master's provenance
+ * could hand out another film's (or, were RLS ever wrong, another workspace's)
+ * subtitles under this film's name.
+ */
+export function isFilmCaptionsOf(
+  master: { org_id: unknown; provenance: unknown },
+  captions: { org_id: unknown; kind: unknown; mime: unknown; provenance: unknown },
+): boolean {
+  const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+  const mp = obj(master.provenance);
+  const cp = obj(captions.provenance);
+  if (!mp || !cp) return false;
+  const seg = parseMediaId(mp.film_segment_id);
+  const sha = typeof mp.cut_sha256 === "string" && /^[0-9a-f]{64}$/.test(mp.cut_sha256) ? mp.cut_sha256 : null;
+  return (
+    captions.kind === "caption" &&
+    captions.mime === "text/vtt" &&
+    typeof master.org_id === "string" &&
+    master.org_id !== "" &&
+    captions.org_id === master.org_id &&
+    seg !== null &&
+    cp.film_segment_id === seg &&
+    sha !== null &&
+    cp.cut_sha256 === sha &&
+    cp.role === "captions"
+  );
+}
+
+const VTT_TIME = /^(?:(\d{2,}):)?([0-5]\d):([0-5]\d)\.(\d{3})$/;
+
+function vttSeconds(raw: string): number | null {
+  const m = VTT_TIME.exec(raw);
+  if (!m) return null;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+}
+
+/** Cue markup SubRip has no use for (voice, class, language, ruby, inline timestamps); <b>, <i>, <u> are kept. */
+const VTT_TAG = /<\/?(?:c|v|lang|ruby|rt)(?:\.[\w-]+)*(?:[ \t][^<>\n]*)?>|<(?:\d{2,}:)?[0-5]\d:[0-5]\d\.\d{3}>/g;
+
+function vttText(lines: string[]): string {
+  return lines
+    .join("\n")
+    .replace(VTT_TAG, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lrm;|&rlm;/g, "")
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * WebVTT bytes as cues, or null when the file is not WebVTT this route can
+ * stand behind. Null is the whole answer, never a prefix: one timing line that
+ * does not parse refuses the file, because half a subtitle file saved as a
+ * whole one is found out by the audience, not by us.
+ */
+export function vttCues(bytes: Uint8Array): Cue[] | null {
+  if (bytes.byteLength === 0 || bytes.byteLength > CAPTIONS_FILE_MAX_BYTES) return null;
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+  if (text.includes("\u0000")) return null;
+  const blocks = text
+    .replace(/^﻿/, "")
+    .replace(/\r\n?/g, "\n")
+    .split(/\n[ \t]*\n/);
+  // The signature: "WEBVTT" alone or followed by a space or tab (W3C WebVTT, file structure).
+  const header = blocks.shift() ?? "";
+  if (!/^WEBVTT(?:[ \t][^\n]*)?(?:\n|$)/.test(header)) return null;
+  const cues: Cue[] = [];
+  for (const block of blocks) {
+    const lines = block.split("\n");
+    while (lines.length && lines[0].trim() === "") lines.shift();
+    if (lines.length === 0) continue;
+    if (/^(?:NOTE|STYLE|REGION)(?:[ \t]|$)/.test(lines[0])) continue;
+    // An optional identifier line, then the timing line.
+    const at = lines[0].includes("-->") ? 0 : 1;
+    const timing = lines[at];
+    if (timing === undefined || !timing.includes("-->")) return null;
+    const m = /^(\S+)[ \t]+-->[ \t]+(\S+)(?:[ \t].*)?$/.exec(timing.trim());
+    if (!m) return null;
+    const start = vttSeconds(m[1]);
+    const end = vttSeconds(m[2]);
+    if (start === null || end === null || !(end > start)) return null;
+    cues.push({ id: String(cues.length + 1), start_s: start, end_s: end, text: vttText(lines.slice(at + 1)) });
+  }
+  return cues.length > 0 ? cues : null;
+}
+
+/** The captions file as SubRip (numbered from 1, decimal comma), or null when it is not one this route serves. */
+export function vttToSrt(bytes: Uint8Array): string | null {
+  const cues = vttCues(bytes);
+  if (!cues) return null;
+  const srt = buildSrt(cues);
+  return srt === "" ? null : srt;
 }
