@@ -53,6 +53,7 @@ import { InlineComposer, QuickAddMenu, type QuickMenuState } from "./QuickAdd";
 import type { PanelQuote } from "@/components/studio/GeneratePanel";
 import { KIND_ICONS, Lamp, statusLine } from "./parts";
 import { Board } from "./FlowBoard";
+import { CanvasLane } from "./CanvasLane";
 import { LAMP, inputOf, jobAsset, kindOpen, nodeAsset, nodeStatus, resultView, type JobReading, type NodeStatus } from "./nodeState";
 import "./studio-canvas.css";
 
@@ -65,6 +66,8 @@ const HISTORY_MAX = 100;
 /** The map's corner, kept clear by Fit so the map never sits on a node. */
 const MAP_ROOM = 232;
 const MAP_TALL = 176;
+/** The band at the board's foot the floating dock sits in (56px dock, 12px under it, 12px over it): Fit keeps cards out of it. */
+const DOCK_ROOM = 80;
 /** Where a card's eye line is, from its top: a focused card is centred on its title and art, not its full layout height. */
 const FOCUS_Y = 120;
 /** Where the app's header offers this page its bar (components/Header.tsx, Studio only). */
@@ -426,6 +429,8 @@ export function StudioCanvas({
     return out;
   }, [canvas.nodes, statusOf]);
   const sel = canvas.nodes.find((n) => n.id === selected) ?? null;
+  // The media worker's measured length of each library clip and recording: the lane's only "measured" (never a guess, rule 5).
+  const measured = useMemo(() => new Map(library.recordings.map((r) => [r.id, r.durationS] as const)), [library.recordings]);
 
   // ── edits (all free: they move boxes and draw lines) ─────────────────────────
   const boardRef = useRef<HTMLDivElement>(null);
@@ -571,14 +576,50 @@ export function StudioCanvas({
   const fit = (nodes: readonly CanvasNode[] = canvas.nodes) => {
     const { w, h } = boardSize();
     // The map keeps its corner: the fit leaves that room beside or above it (whichever costs less zoom), so it never sits on a node.
-    if (!mapOpen) return setView(fitView(nodes, w, h));
-    const beside = fitView(nodes, Math.max(320, w - MAP_ROOM), h);
-    const above = fitView(nodes, w, Math.max(240, h - MAP_TALL));
+    const room = Math.max(240, h - DOCK_ROOM);
+    if (!mapOpen) return setView(fitView(nodes, w, room));
+    const beside = fitView(nodes, Math.max(320, w - MAP_ROOM), room);
+    const above = fitView(nodes, w, Math.max(240, room - MAP_TALL));
     setView(above.k > beside.k ? above : beside);
   };
   const zoomBy = (f: number) => {
     const { w, h } = boardSize();
     setView((v) => zoomAt(v, v.k * f, w / 2, h / 2));
+  };
+
+  // A press on a lane segment finds its card: selected and brought to the middle of the board, at the zoom the person chose. With
+  // the inspector open it opens that card instead (as a press on the card would); on the phone the flow scrolls to it.
+  const panFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(panFrame.current), []);
+  const pickFromLane = (id: string) => {
+    if (!narrow && inspecting) return open(id);
+    setSelected(id);
+    setSelectedWire(null);
+    const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (narrow) {
+      requestAnimationFrame(() =>
+        Array.from(document.querySelectorAll<HTMLElement>("[data-flow-id]"))
+          .find((el) => el.dataset.flowId === id)
+          ?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" }),
+      );
+      return;
+    }
+    const n = canvasRef.current.nodes.find((m) => m.id === id);
+    const r = boardRef.current?.getBoundingClientRect();
+    if (!n || !r) return;
+    const from = canvasRef.current.view;
+    const k = from.k;
+    const to = { k, x: Math.round(r.width / 2 - (n.x + NODE_W / 2) * k), y: Math.round((r.height - DOCK_ROOM) / 2 - (n.y + FOCUS_Y) * k) };
+    cancelAnimationFrame(panFrame.current);
+    if (still) return setView(to);
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / 360);
+      const e = 1 - (1 - p) ** 3;
+      setView({ k, x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e });
+      if (p < 1) panFrame.current = requestAnimationFrame(step);
+    };
+    panFrame.current = requestAnimationFrame(step);
   };
 
   // First open with a stored layout and no stored view: show all of it.
@@ -656,7 +697,7 @@ export function StudioCanvas({
       // The board's keys belong to the board: with focus in the inspector, the Library or anything else outside the stage (a
       // composer's buttons, a radio group), Backspace must not delete the node and arrows must not move it.
       const target = e.target;
-      const onBoard = !(target instanceof Element) || target === document.body || target === document.documentElement || (!!target.closest(".cv-stage") && !target.closest(".cv-drawer, .cv-ncomp"));
+      const onBoard = !(target instanceof Element) || target === document.body || target === document.documentElement || (!!target.closest(".cv-stage") && !target.closest(".cv-drawer, .cv-ncomp, .cv-dockwrap"));
       if (!onBoard) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -820,6 +861,22 @@ export function StudioCanvas({
   ) : null;
 
   const showFirstRun = loaded && canvas.nodes.length === 0 && !firstRunDone;
+  // The timeline lane: a reading of the wired chains, under the dock (on the phone, a strip at the top of the flow). Not drawn
+  // while the first run asks what to make: there is no chain yet, and that card is the one thing to look at.
+  const laneEl = showFirstRun ? null : (
+    <CanvasLane
+      canvas={canvas}
+      statusOf={statusOf}
+      nodeName={nodeName}
+      jobs={jobs}
+      previews={previews}
+      measured={measured}
+      selected={selected}
+      onPick={pickFromLane}
+      resultPending={resultPending}
+      phone={narrow}
+    />
+  );
   const firstRun = showFirstRun ? (
     <FirstRun filmStudio={filmStudio} phone={narrow} onRecipe={startRecipe} onBlank={() => setFirstRunDone(true)} />
   ) : null;
@@ -870,6 +927,7 @@ export function StudioCanvas({
       <div className="cv-root is-flow" data-studio-canvas="" ref={rootRef} data-sheet={inspector || drawerEl ? "" : undefined}>
         {barEl}
         {status}
+        {laneEl}
         {live}
         {toast}
         {firstRun ?? (
@@ -996,44 +1054,49 @@ export function StudioCanvas({
           {live}
           {/* The Library is glass over the board's left edge: the board keeps its width, so both panels can be open at once. */}
           {drawerEl}
+          {/* The dock floats over the board's foot (Fit keeps that band clear); the Library pushes it right, never under it. */}
+          <div className="cv-dockwrap" data-drawer={drawer ? "" : undefined}>
+            <div className="cv-deck" role="toolbar" aria-label={c.dock.label}>
+              <button type="button" className="cv-kbtn" onClick={() => setPalette("add")} aria-haspopup="dialog" aria-label={c.dock.add} title={c.dock.add} data-testid="dock-add">
+                <Plus aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.add}</span>
+              </button>
+              <button type="button" className="cv-kbtn" aria-pressed={drawer} onClick={() => setDrawer((d) => !d)} aria-label={c.dock.library} title={c.dock.library} data-testid="dock-library">
+                <Layers aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.library}</span>
+              </button>
+              <span className="cv-vsep" aria-hidden />
+              <div className="cv-seg" role="group">
+                <button type="button" aria-pressed={mode === "select"} onClick={() => setMode("select")} aria-label={c.dock.select} title={c.dock.select}>
+                  <MousePointer2 aria-hidden className="size-4" />
+                </button>
+                <button type="button" aria-pressed={mode === "hand"} onClick={() => setMode("hand")} aria-label={c.dock.hand} title={c.dock.hand}>
+                  <Hand aria-hidden className="size-4" />
+                </button>
+              </div>
+              <button type="button" className="cv-kbtn" onClick={() => edit((s) => tidy(s))} disabled={canvas.nodes.length < 2} aria-label={c.dock.tidy} title={c.dock.tidy}>
+                <LayoutGrid aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.tidy}</span>
+              </button>
+              <span className="cv-vsep" aria-hidden />
+              <div className="cv-zoom" role="group">
+                <button type="button" className="cv-kbtn is-icon" onClick={() => zoomBy(1 / 1.2)} aria-label={c.dock.zoomOut} title={c.dock.zoomOut}>
+                  <Minus aria-hidden className="size-4" />
+                </button>
+                <output title={fmt(c.dock.zoom, { n: Math.round(canvas.view.k * 100) })}>{Math.round(canvas.view.k * 100)}%</output>
+                <button type="button" className="cv-kbtn is-icon" onClick={() => zoomBy(1.2)} aria-label={c.dock.zoomIn} title={c.dock.zoomIn}>
+                  <ZoomIn aria-hidden className="size-4" />
+                </button>
+                <button type="button" className="cv-kbtn is-icon" onClick={() => fit()} aria-label={c.dock.fit} title={c.dock.fit}>
+                  <Maximize aria-hidden className="size-4" />
+                </button>
+              </div>
+              <span className="cv-vsep" aria-hidden />
+              <span className="cv-qnote">{c.nothingSpends}</span>
+              {quote}
+            </div>
+          </div>
         </Board>
         {inspector}
       </div>
-      <div className="cv-deck" role="toolbar" aria-label={c.dock.label}>
-        <button type="button" className="cv-kbtn" onClick={() => setPalette("add")} aria-haspopup="dialog" aria-label={c.dock.add} title={c.dock.add} data-testid="dock-add">
-          <Plus aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.add}</span>
-        </button>
-        <button type="button" className="cv-kbtn" aria-pressed={drawer} onClick={() => setDrawer((d) => !d)} aria-label={c.dock.library} title={c.dock.library} data-testid="dock-library">
-          <Layers aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.library}</span>
-        </button>
-        <div className="cv-seg" role="group">
-          <button type="button" aria-pressed={mode === "select"} onClick={() => setMode("select")} aria-label={c.dock.select} title={c.dock.select}>
-            <MousePointer2 aria-hidden className="size-4" />
-          </button>
-          <button type="button" aria-pressed={mode === "hand"} onClick={() => setMode("hand")} aria-label={c.dock.hand} title={c.dock.hand}>
-            <Hand aria-hidden className="size-4" />
-          </button>
-        </div>
-        <button type="button" className="cv-kbtn" onClick={() => edit((s) => tidy(s))} disabled={canvas.nodes.length < 2} aria-label={c.dock.tidy} title={c.dock.tidy}>
-          <LayoutGrid aria-hidden className="size-4" /> <span className="cv-klabel">{c.dock.tidy}</span>
-        </button>
-        <span className="cv-vsep" aria-hidden />
-        <div className="cv-zoom" role="group">
-          <button type="button" className="cv-kbtn is-icon" onClick={() => zoomBy(1 / 1.2)} aria-label={c.dock.zoomOut} title={c.dock.zoomOut}>
-            <Minus aria-hidden className="size-4" />
-          </button>
-          <output title={fmt(c.dock.zoom, { n: Math.round(canvas.view.k * 100) })}>{Math.round(canvas.view.k * 100)}%</output>
-          <button type="button" className="cv-kbtn is-icon" onClick={() => zoomBy(1.2)} aria-label={c.dock.zoomIn} title={c.dock.zoomIn}>
-            <ZoomIn aria-hidden className="size-4" />
-          </button>
-          <button type="button" className="cv-kbtn is-icon" onClick={() => fit()} aria-label={c.dock.fit} title={c.dock.fit}>
-            <Maximize aria-hidden className="size-4" />
-          </button>
-        </div>
-        <span className="cv-grow" />
-        <span className="cv-qnote">{c.nothingSpends}</span>
-        {quote}
-      </div>
+      {laneEl}
       {paletteEl}
       {quickEl}
     </div>
@@ -1525,6 +1588,7 @@ function FlowView({
                       data-status={s}
                       onClick={() => onOpen(n.id)}
                       data-testid={`flow-node-${n.kind}`}
+                      data-flow-id={n.id}
                     >
                       {/* A prompt's picture is its words. */}
                       {n.kind === "prompt" ? (
