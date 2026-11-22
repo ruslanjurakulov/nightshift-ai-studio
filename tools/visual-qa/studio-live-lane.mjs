@@ -15,7 +15,9 @@
  * 2. Every step pinned (the session's `ls` claim) at 1440 and 390, dark and light, en/ru/uz; and a pinned reload that must restore
  *    the same lane with zero flights.
  * Fails (exit 1) on horizontal page overflow, a page error, the worker's host name in the page, a pill whose "?" and length basis
- * disagree, a planned pill that does not say so, a download before the master is ready, or a reload that replays a landing.
+ * disagree, a planned pill that does not say so, a pill whose face is not its tag, more or fewer than one visible total, prose
+ * under 13px or a label under 12px, pill text under 4.5:1 against its painted ground, a phone pill under 44px, a phone master not
+ * on screen with the strip closed, a download before the master is ready, or a reload that replays a landing.
  * Reads and screenshots only; the fake refuses writes.
  */
 import { createRequire } from "node:module";
@@ -64,6 +66,7 @@ const exe = (() => {
 })();
 
 mkdirSync(OUT, { recursive: true });
+const ratioLines = [];
 const browser = await chromium.launch({ executablePath: exe });
 const bad = [];
 const lines = [];
@@ -89,30 +92,87 @@ async function open({ width, height, theme, locale, claims }) {
 /** The lane as the page shows it, and every check that does not depend on the step. */
 async function measure(page, locale) {
   return page.evaluate(([worker, plan]) => {
+    // A colour as the page paints it: any CSS colour string through a canvas, so color-mix() and color(srgb …) resolve too.
+    const cv = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    const rgba = (css) => {
+      cv.clearRect(0, 0, 1, 1);
+      cv.fillStyle = "rgba(0,0,0,0)";
+      cv.fillStyle = css;
+      cv.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = cv.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
+    };
+    const over = (top, under) => [0, 1, 2].map((i) => top[i] * top[3] + under[i] * (1 - top[3])).concat(1);
+    /** The element's background as painted: its own colour over its ancestors', down to the page (images ignored). */
+    const ground = (el) => {
+      const layers = [];
+      for (let e = el; e; e = e.parentElement) {
+        const c = rgba(getComputedStyle(e).backgroundColor);
+        if (c[3] > 0) layers.push(c);
+        if (c[3] >= 1) break;
+      }
+      let bg = [255, 255, 255, 1];
+      if (layers.length && layers[layers.length - 1][3] >= 1) bg = layers.pop();
+      for (let i = layers.length - 1; i >= 0; i--) bg = over(layers[i], bg);
+      return bg;
+    };
+    const lum = ([r, g, b]) => {
+      const f = (v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const ratio = (el) => {
+      const bg = ground(el);
+      const fg = over(rgba(getComputedStyle(el).color), bg);
+      const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+      return (a + 0.05) / (b + 0.05);
+    };
+    const shown = (el) => {
+      const r = el.getBoundingClientRect();
+      const st = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && st.visibility !== "hidden" && st.display !== "none" && !el.closest(".sr-only");
+    };
     const pills = [...document.querySelectorAll("[data-testid=live-lane-strip] [data-lane-seg]")].map((el) => ({
       id: el.dataset.laneSeg,
       basis: el.dataset.length,
       made: el.className.includes("is-made"),
       len: el.querySelector(".cv-pill-len")?.textContent ?? "",
+      face: el.querySelector(".cv-pill-nm")?.textContent ?? "",
+      h: el.getBoundingClientRect().height,
     }));
+    // Every visible text leaf in the lane: labels (mono capitals, lengths, ruler) may be 12px, prose never under 13.
+    const LABEL = ".ds-t-label, .is-tag, .cv-pill-len, .cv-ruler i, .cv-lane-chip, .cv-lane-chip *, .cv-lane-plan, .ll-plan, .ll-tag, .cv-lane-unk, .cv-th-nm, .cv-th-badge *, .ll-tc *";
+    const leaves = [...document.querySelectorAll("[data-testid=live-lane] *")].filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && shown(el));
+    const small = leaves
+      .map((el) => ({ el, px: parseFloat(getComputedStyle(el).fontSize), label: el.matches(LABEL) }))
+      .filter((x) => x.px < (x.label ? 12 : 13))
+      .map((x) => `${x.el.textContent.trim().slice(0, 18)}@${x.px}`);
+    const pillText = [...document.querySelectorAll("[data-testid=live-lane-strip] [data-lane-seg] :is(.cv-pill-nm, .cv-pill-len, .cv-pill-st)")].filter(shown);
+    const ratios = pillText.map((el) => ({ text: el.textContent.trim().slice(0, 14), cls: el.className, r: Math.round(ratio(el) * 100) / 100, seg: el.closest("[data-lane-seg]").dataset.laneSeg }));
+    const totals = [...document.querySelectorAll("[data-testid=lane-total], [data-testid=live-lane-total]")].filter(shown);
     const html = document.documentElement.outerHTML;
+    const master = document.querySelector("[data-testid=lane-master]");
     return {
       overflow: document.documentElement.scrollWidth - window.innerWidth,
       made: document.querySelector("[data-testid=live-lane-made]")?.textContent ?? null,
       status: document.querySelector("[data-testid=live-lane-status]")?.getAttribute("data-status") ?? null,
       clock: document.querySelector("[data-testid=live-lane-clock]")?.textContent ?? null,
-      master: document.querySelector("[data-testid=lane-master]")?.getAttribute("data-status") ?? null,
+      master: master?.getAttribute("data-status") ?? null,
+      masterShown: !!master && shown(master),
+      open: document.querySelector("[data-testid=live-lane-strip]")?.getAttribute("data-open") ?? null,
       download: !!document.querySelector("[data-testid=live-lane-download]"),
       pills,
-      // A "?" exactly where nobody knows the length; "plan" exactly where the length is the plan's.
+      totals: totals.length,
+      // The pill's face is its tag: clip-NN, clip-NN.k, or voice.
+      faceMismatch: pills.filter((p) => !/^(clip-\d\d(\.\d)?|voice)$/.test(p.face)).map((p) => `${p.id}=${p.face}`),
       qMismatch: pills.filter((p) => (p.len.trim() === "?") !== (p.basis === "unknown")).map((p) => p.id),
-      planMismatch: pills.filter((p) => (p.basis === "planned") !== p.len.includes(plan) || (p.basis === "planned" && p.len.includes("~"))).map((p) => p.id),
+      planMismatch: pills.filter((p) => (p.basis === "planned") !== p.len.toLowerCase().includes(plan) || (p.basis === "planned" && p.len.includes("~"))).map((p) => p.id),
       worker: html.includes(worker) || html.includes(worker.split(".")[0]),
       flights: window.__flights.length,
-      fresh: document.querySelectorAll("[data-testid=live-lane-strip] .is-new").length,
-      smallText: [...document.querySelectorAll("[data-testid=live-lane] .ll-transport *, [data-testid=lane-master] *")]
-        .filter((el) => el.childElementCount === 0 && el.textContent.trim() && !el.closest(".sr-only") && parseFloat(getComputedStyle(el).fontSize) < 13 && !el.classList.contains("cv-pill-len"))
-        .map((el) => el.textContent.trim().slice(0, 20)),
+      fresh: document.querySelectorAll("[data-testid=live-lane] .is-new").length,
+      small,
+      ratios,
+      minRatio: ratios.length ? Math.min(...ratios.map((x) => x.r)) : null,
+      pillMinH: pills.length ? Math.min(...pills.map((p) => p.h)) : null,
     };
   }, [LANE_WORKER, PLAN_WORD[locale]]);
 }
@@ -123,9 +183,13 @@ function check(base, m, errors, expect) {
   if (m.worker) bad.push(`${base}: the worker's host name is in the page`);
   if (m.qMismatch.length) bad.push(`${base}: "?" and length basis disagree on ${m.qMismatch.join(",")}`);
   if (m.planMismatch.length) bad.push(`${base}: a planned length that does not say so on ${m.planMismatch.join(",")}`);
+  if (m.faceMismatch.length) bad.push(`${base}: a pill's face is not its tag: ${m.faceMismatch.join(", ")}`);
+  if (m.totals !== 1) bad.push(`${base}: ${m.totals} visible totals (one only)`);
   if (m.download && m.master !== "ok") bad.push(`${base}: a download while the master is ${m.master}`);
-  if (m.smallText.length) bad.push(`${base}: text under 13px: ${m.smallText.join(" | ")}`);
+  if (m.small.length) bad.push(`${base}: text under its floor: ${m.small.join(" | ")}`);
+  if (m.minRatio !== null && m.minRatio < 4.5) bad.push(`${base}: pill text contrast ${m.minRatio} < 4.5 (${JSON.stringify(m.ratios.filter((x) => x.r < 4.5))})`);
   if (expect?.step && expect.step >= 5 && !m.download) bad.push(`${base}: the ready master offers no download`);
+  if (expect?.touch && m.pillMinH !== null && m.pillMinH < 43.5) bad.push(`${base}: a pill is ${m.pillMinH}px high on touch, under 44`);
   for (const e of errors) bad.push(`${base}: ${e}`);
 }
 
@@ -188,6 +252,7 @@ async function openLane(page, phone) {
 const VIEWS = [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
+  { width: 360, height: 780 },
 ];
 for (let step = 1; step <= 5; step++)
   for (const v of VIEWS)
@@ -195,15 +260,25 @@ for (let step = 1; step <= 5; step++)
       for (const locale of ["en", "ru", "uz"]) {
         const { ctx, page, errors, phone } = await open({ ...v, theme, locale, claims: { ls: step } });
         await page.goto(`${BASE}${URL_}`, { waitUntil: "load", timeout: 120000 });
+        const base = `step${step}-${v.width}-${theme}-${locale}`;
+        if (phone) {
+          // Before opening: the strip is closed and the master is still on screen.
+          await page.waitForSelector("[data-testid=live-lane-transport]", { timeout: 30000 });
+          await page.waitForTimeout(500);
+          const closed = await measure(page, locale);
+          await page.screenshot({ path: path.join(OUT, `${base}-closed.png`), fullPage: true });
+          if (closed.open !== "false") bad.push(`${base}: the phone strip did not start closed`);
+          if (!closed.masterShown) bad.push(`${base}: the master is not on screen with the strip closed`);
+        }
         await openLane(page, phone);
         const m = await measure(page, locale);
-        const base = `step${step}-${v.width}-${theme}-${locale}`;
         await page.screenshot({ path: path.join(OUT, `${base}.png`), fullPage: true });
         const lane = page.locator("[data-testid=live-lane]");
         await lane.scrollIntoViewIfNeeded();
         await lane.screenshot({ path: path.join(OUT, `lane-${base}.png`) });
-        lines.push(`${base}  overflow=${m.overflow} made="${m.made}" master=${m.master} download=${m.download} pills=${m.pills.map((p) => p.basis[0]).join("")} flights=${m.flights}`);
-        check(base, m, errors, { step });
+        lines.push(`${base}  overflow=${m.overflow} made="${m.made}" master=${m.master} download=${m.download} pills=${m.pills.map((p) => p.basis[0]).join("")} faces=${m.pills.map((p) => p.face).join(",")} minContrast=${m.minRatio} pillMinH=${m.pillMinH} totals=${m.totals} flights=${m.flights}`);
+        if (step === 3) ratioLines.push(`${base}  ${m.ratios.map((x) => `${x.seg}/${x.cls.replace("cv-pill-", "")}=${x.r}`).join(" ")}`);
+        check(base, m, errors, { step, touch: phone });
         if (m.flights > 0) bad.push(`${base}: a first reading flew ${m.flights} tag(s)`);
         await ctx.close();
       }
@@ -228,6 +303,7 @@ for (let step = 1; step <= 5; step++)
 
 await browser.close();
 process.stdout.write(lines.join("\n") + "\n");
+process.stdout.write("\ncontrast at step 3 (pill text over its painted ground):\n" + ratioLines.join("\n") + "\n");
 if (bad.length) {
   process.stdout.write(`\nFAILED\n${bad.join("\n")}\n`);
   process.exit(1);

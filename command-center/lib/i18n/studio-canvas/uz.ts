@@ -207,6 +207,7 @@ export const studioCanvasUz: StudioCanvasDictionary = {
     totalPlanned: "Rejadagi davomiylik {t}",
     planTag: "reja",
     master: "Yakuniy video",
+    masterSeg: "{name} · {status} · {length}",
   },
   loading: "Holst ochilmoqda…",
 };

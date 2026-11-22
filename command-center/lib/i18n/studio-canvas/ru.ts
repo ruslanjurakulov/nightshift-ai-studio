@@ -207,6 +207,7 @@ export const studioCanvasRu: StudioCanvasDictionary = {
     totalPlanned: "Длина по плану {t}",
     planTag: "план",
     master: "Итоговое видео",
+    masterSeg: "{name} · {status} · {length}",
   },
   loading: "Открываем холст…",
 };

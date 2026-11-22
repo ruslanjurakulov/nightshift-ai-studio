@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { studioLiveEn as c } from "../lib/i18n/studio-live/en";
+import { fmt } from "../lib/i18n";
 import { coerceFilmLive, filmGraph } from "../lib/studio/liveGraph";
 import type { LiveLoad } from "../components/studio-live/useLiveGraph";
 import { FILM, S1, S2, filmJson, sceneJson } from "./films-fixtures";
@@ -83,19 +84,34 @@ const TWO_CLIPS: Step = { status: "running", s1: [take("t1", "clip", "completed"
 const MORE: Step = { ...TWO_CLIPS, s2: [take("t2", "clip", "completed", { result_asset_id: C2 })] };
 const READY: Step = { ...MORE, status: "ready", narration: [take("n1", "narration", "completed", { duration_s: 14 })], segment: { status: "settled", assembly_status: "completed", assembly_asset_id: MP4, assembly_charged_credits: 8 } };
 
-const lane = (load: LiveLoad, over: Partial<Parameters<typeof LiveLane>[0]> = {}) => <LiveLane load={load} planKey={KEY} stale={false} selected={null} onOpen={() => {}} {...over} />;
-const fresh = () => document.querySelectorAll("[data-testid=live-lane] .cv-pill.is-new").length;
+const lane = (load: LiveLoad, over: Partial<Parameters<typeof LiveLane>[0]> = {}) => (
+  <LiveLane load={load} planKey={KEY} stale={false} selected={null} onOpen={() => {}} retry={() => {}} {...over} />
+);
+const fresh = () => document.querySelectorAll("[data-testid=live-lane] .is-new").length;
 const seg1 = () => screen.getByTestId(`lane-seg-v:${S1}:1`);
 const seg2 = () => screen.getByTestId(`lane-seg-v:${S2}:1`);
+const announced = () => screen.getByTestId("live-lane-announce").textContent;
 
 describe("states", () => {
-  it("loading draws a skeleton, an error says so, an empty project says it has no scenes", () => {
-    const { rerender } = render(lane({ state: "loading" }));
+  it("loading draws a busy skeleton and an error a line with 'Try now', neither a second status region (LiveView owns those)", () => {
+    const retry = vi.fn();
+    const { rerender } = render(lane({ state: "loading" }, { retry }));
     expect(screen.getByTestId("live-lane-loading")).toBeTruthy();
-    rerender(lane({ state: "error" }));
+    expect(screen.getByTestId("live-lane").getAttribute("aria-busy")).toBe("true");
+    expect(document.querySelector("[data-testid=live-lane] [role=status], [data-testid=live-lane] [role=alert]")).toBeNull();
+    rerender(lane({ state: "error" }, { retry }));
     expect(screen.getByTestId("live-lane-error").textContent).toBe(c.lane.error);
-    rerender(lane(loadOf({ status: "draft", scenes: false })));
-    expect(screen.getByTestId("live-lane-empty").textContent).toBe(c.lane.empty);
+    expect(document.querySelector("[data-testid=live-lane] [role=status], [data-testid=live-lane] [role=alert]")).toBeNull();
+    fireEvent.click(screen.getByTestId("live-lane-retry"));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("an empty project hides the clock and the count, and says so with a way to its editor", () => {
+    render(lane(loadOf({ status: "draft", scenes: false })));
+    expect(screen.getByTestId("live-lane-empty").textContent).toContain(c.lane.empty);
+    expect(screen.getByTestId("live-lane-editor").getAttribute("href")).toBe(`/alpha/studio?view=timeline&film=${FILM}`);
+    expect(screen.queryByTestId("live-lane-clock")).toBeNull();
+    expect(screen.queryByTestId("live-lane-made")).toBeNull();
     expect(screen.queryByTestId("live-lane-strip")).toBeNull();
   });
 
@@ -104,21 +120,43 @@ describe("states", () => {
     expect(screen.getByTestId("live-lane-loading")).toBeTruthy();
   });
 
-  it("stale shows the view's last-reading word; the phone width draws the phone strip", () => {
+  it("stale says when the last reading was; the phone width draws the phone strip", () => {
     phone = true;
     render(lane(loadOf(QUEUED), { stale: true }));
-    expect(screen.getByTestId("live-lane-stale").textContent).toBe(c.lane.stale);
+    expect(screen.getByTestId("live-lane-stale").textContent).toMatch(/^Last reading \d/);
     expect(screen.getByTestId("live-lane-strip").className).toContain("is-phone");
+  });
+
+  it("on a phone with the strip closed, the master is still on screen", () => {
+    phone = true;
+    render(lane(loadOf(READY)));
+    expect(screen.getByTestId("live-lane-strip").dataset.open).toBe("false");
+    expect(screen.getByTestId("lane-master")).toBeTruthy();
+    expect(screen.getByTestId("live-lane-download")).toBeTruthy();
   });
 });
 
-describe("the transport", () => {
-  it("before anything is made: the clock is the plan's total with nothing landed, the film's status in words, 0 of N made", async () => {
+describe("the progress row", () => {
+  it("one total only, marked 'plan' while it is the plan; the clock is labelled 'Made' and has no playhead flag", () => {
     render(lane(loadOf(QUEUED)));
-    expect(screen.getByTestId("live-lane-clock").textContent).toContain("00:00:00:00 / 00:00:14:00");
+    const total = screen.getByTestId("live-lane-total");
+    expect(total.textContent).toContain("00:00:14:00");
+    expect(total.textContent).toContain(c.lane.planTag);
+    expect(total.dataset.basis).toBe("planned");
+    // The strip's own total is off: the page says one length, not two.
+    expect(screen.queryByTestId("lane-total")).toBeNull();
+    expect(screen.getByTestId("live-lane-transport").textContent).toContain(c.lane.madeTag);
+    expect(document.querySelector("[data-testid=live-lane] .cv-lane-head")).toBeNull();
     expect(screen.getByTestId("live-lane-status").textContent).toBe(c.lane.film.queued);
     // Two clips, the narration (queued films have it pending) and the master.
     expect(screen.getByTestId("live-lane-made").textContent).toBe("0 of 4 pieces made");
+  });
+
+  it("once the master is ready and measured, the total is its file's length, no longer the plan", async () => {
+    render(lane(loadOf(READY)));
+    await vi.waitFor(() => expect(screen.getByTestId("live-lane-total").dataset.basis).toBe("measured"));
+    expect(screen.getByTestId("live-lane-total").textContent).toContain("00:00:14:00");
+    expect(screen.getByTestId("live-lane-total").textContent).not.toContain(c.lane.planTag);
   });
 
   it("a total nobody planned is '?', never a number", () => {
@@ -135,19 +173,60 @@ describe("the transport", () => {
   });
 });
 
+describe("pills", () => {
+  it("say their tag on their face, with the full name in the accessible name", () => {
+    render(lane(loadOf(TWO_CLIPS)));
+    expect(seg1().querySelector(".cv-pill-nm")!.textContent).toBe("clip-01");
+    expect(seg1().getAttribute("aria-label")).toContain(fmt(c.kinds.clip, { n: 1 }));
+    expect(screen.getByTestId("live-lane-strip").getAttribute("aria-label")).toBe(c.lane.label);
+  });
+});
+
 describe("pieces landing", () => {
-  it("the first reading flies nothing; the next marks only the piece that landed; a reload in the middle restores it with none", async () => {
-    const { rerender, unmount } = render(lane(loadOf(QUEUED)));
+  it("the first reading flies nothing; the next marks only the piece that landed and says it once", async () => {
+    const { rerender } = render(lane(loadOf(QUEUED)));
     expect(fresh()).toBe(0);
+    expect(announced()).toBe("");
     rerender(lane(loadOf(TWO_CLIPS)));
-    await screen.findByText((_, el) => !!el?.classList?.contains("is-new"));
-    expect(seg1().className).toContain("is-new");
+    await vi.waitFor(() => expect(seg1().className).toContain("is-new"));
     expect(seg2().className).not.toContain("is-new");
-    unmount();
-    // A reload: a new mount, its first reading already has both clips landed.
+    expect(announced()).toBe(fmt(c.lane.landedSr, { names: fmt(c.kinds.clip, { n: 1 }) }));
+    // A poll with nothing new (a new reading object, the same rows): nothing more lands, and the line clears.
+    rerender(lane(loadOf(TWO_CLIPS)));
+    expect(announced()).toBe("");
+  });
+
+  it("a reload in the middle restores the lane with nothing flying, though the reading has moved on since the last one seen", () => {
+    const first = render(lane(loadOf(QUEUED)));
+    first.rerender(lane(loadOf(TWO_CLIPS)));
+    first.unmount();
+    // In the same session MORE would fly scene 2; after a reload it is simply there.
     render(lane(loadOf(MORE)));
     expect(fresh()).toBe(0);
-    expect(seg1().dataset.length).not.toBe("unknown");
+    expect(seg2().dataset.length).not.toBe("unknown");
+    expect(seg2().className).toContain("is-made");
+    expect(announced()).toBe("");
+  });
+
+  it("a film switch flies nothing, even when the other film's clips are landed", () => {
+    const OTHER = "0f000000-0000-4000-8000-0000000000ee";
+    const { rerender } = render(lane(loadOf(QUEUED)));
+    const film = coerceFilmLive({ ...body(MORE), film: { ...body(MORE).film, film: { ...body(MORE).film.film, id: OTHER } } })!;
+    rerender(lane({ state: "ready", graph: filmGraph(film), film, key: `film:${OTHER}` }, { planKey: `film:${OTHER}` }));
+    expect(fresh()).toBe(0);
+    expect(announced()).toBe("");
+  });
+
+  it("a stale read (the same reading kept on screen) flies nothing again", () => {
+    const queued = loadOf(QUEUED);
+    const two = loadOf(TWO_CLIPS);
+    const { rerender } = render(lane(queued));
+    rerender(lane(two));
+    expect(announced()).not.toBe("");
+    rerender(lane(two, { stale: true }));
+    rerender(lane(two, { stale: true }));
+    expect(announced()).not.toBe("");
+    expect(screen.getByTestId("live-lane-stale")).toBeTruthy();
   });
 
   it("a pending piece's planned share is drawn as 'plan', a landed clip as its measured length once the library answers", async () => {
@@ -157,11 +236,14 @@ describe("pieces landing", () => {
     await vi.waitFor(() => expect(seg1().dataset.length).toBe("measured"));
   });
 
-  it("a press on a piece opens its step on the board and writes nothing", () => {
+  it("a press on a piece opens its step and writes nothing; closing the step gives focus back to that pill", () => {
     const onOpen = vi.fn();
-    render(lane(loadOf(TWO_CLIPS), { onOpen }));
+    const { rerender } = render(lane(loadOf(TWO_CLIPS), { onOpen }));
     fireEvent.click(seg2());
     expect(onOpen).toHaveBeenCalledWith(`scene:${S2}:clip`);
+    rerender(lane(loadOf(TWO_CLIPS), { onOpen, selected: `scene:${S2}:clip` }));
+    rerender(lane(loadOf(TWO_CLIPS), { onOpen, selected: null }));
+    expect(document.activeElement).toBe(seg2());
     fireEvent.click(screen.getByTestId("lane-seg-a:narration"));
     expect(onOpen).toHaveBeenLastCalledWith("voice");
     expect(calls.every((x) => x.method === "GET")).toBe(true);
@@ -177,24 +259,35 @@ describe("the master", () => {
     expect(screen.getByTestId("live-lane-nofile").textContent).toBe(c.lane.master.noFile);
   });
 
-  it("ready with its file: 'Final film', and the existing download", () => {
+  it("ready with its file: 'Final video', the existing download, and an accessible name with no position number", () => {
     render(lane(loadOf(READY)));
     const cell = screen.getByTestId("lane-master");
     expect(cell.textContent).toContain(c.lane.master.name);
     expect(cell.textContent).toContain(c.lane.master.ready);
     expect(screen.getByTestId("live-lane-download")).toBeTruthy();
+    expect(screen.getByTestId("lane-seg-m:master").getAttribute("aria-label")).not.toMatch(/^\d/);
   });
 
-  it("assembling says so; failed carries the reason", () => {
-    const { rerender } = render(lane(loadOf({ ...MORE, segment: { assembly_status: "running" } })));
+  it("a completed assembly without a file offers no download and says it cannot be read, not 'until it is assembled'", () => {
+    render(lane(loadOf({ ...MORE, status: "ready", segment: { status: "settled", assembly_status: "completed", assembly_asset_id: null, assembly_charged_credits: 8 } })));
+    expect(screen.queryByTestId("live-lane-download")).toBeNull();
+    expect(screen.getByTestId("live-lane-unknown").textContent).toBe(c.lane.master.unknownNote);
+    expect(screen.queryByTestId("live-lane-nofile")).toBeNull();
+  });
+
+  it("assembling says so; failed says 'Failed' and its reason in words, with the remedy as text; pressing it opens the assembly", () => {
+    const onOpen = vi.fn();
+    const { rerender } = render(lane(loadOf({ ...MORE, segment: { assembly_status: "running" } }), { onOpen }));
     expect(screen.getByTestId("lane-master").textContent).toContain(c.lane.master.assembling);
-    rerender(lane(loadOf({ ...MORE, status: "failed", segment: { status: "settled", assembly_status: "failed", assembly_charged_credits: 0 } })));
-    expect(screen.getByTestId("lane-master").textContent).toContain(c.lane.assembly.reasons.assembly_failed);
-    expect(screen.getByTestId("lane-master").textContent).not.toContain("assembly_failed");
-    // The remedy is words under the cell, not a key that re-runs anything.
-    expect(screen.getByTestId("live-lane-remedy").textContent).toBe(c.lane.assembly.remedy);
+    rerender(lane(loadOf({ ...MORE, status: "failed", segment: { status: "settled", assembly_status: "failed", assembly_charged_credits: 0 } }), { onOpen }));
+    const text = screen.getByTestId("lane-master").textContent!;
+    expect(text).toContain(fmt(c.lane.failedWith, { state: c.lane.state.failed, reason: c.lane.assembly.reasons.assembly_failed }));
+    expect(text).not.toContain("assembly_failed");
+    expect(screen.getByTestId("live-lane-remedy").textContent).toBe(c.lane.assembly.remedyAgain);
     expect(screen.getByTestId("live-lane-remedy").closest("button")).toBeNull();
     expect(screen.queryByTestId("live-lane-download")).toBeNull();
+    fireEvent.click(screen.getByTestId("lane-seg-m:master"));
+    expect(onOpen).toHaveBeenCalledWith("assembly");
   });
 });
 

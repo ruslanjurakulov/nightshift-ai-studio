@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { coerceTimelineFilm } from "../lib/studio/timeline";
 import type { FilmReading, LiveSegment } from "../lib/studio/liveGraph";
 import { liveLane, type LanePiece } from "../lib/studio/liveLane";
-import { assemblyReasonText, flightIds, landedSeconds, laneRows, masterCell, masterRow, pieceLength, type LaneRowWords, type MasterWords } from "../lib/studio/liveLaneRows";
+import { assemblyReasonText, filmLength, flightIds, landedSeconds, laneRows, masterCell, masterRow, pieceLength, type LaneRowWords, type MasterWords } from "../lib/studio/liveLaneRows";
 import { fmt } from "../lib/i18n";
 import { studioLiveEn as c } from "../lib/i18n/studio-live/en";
 import { S1, S2, filmJson, sceneJson } from "./films-fixtures";
@@ -32,7 +32,8 @@ function reading(filmOver: Record<string, unknown>, scenes: Record<string, unkno
 const none = new Map<string, number>();
 const failure = (code: string | null) => (code && c.errors[code] ? c.errors[code] : code ? fmt(c.failedGeneric, { code }) : c.failedNoCode);
 const W: LaneRowWords = { clip: c.kinds.clip, shot: c.lane.shot, voice: c.kinds.voice, master: c.lane.master.name, state: c.lane.state, failedWith: c.lane.failedWith, failure, fmt };
-const MW: MasterWords = { ...c.lane.master, assembly: c.lane.assembly };
+const MW: MasterWords = { ...c.lane.master, failed: c.lane.state.failed, failedWith: c.lane.failedWith, fmt, assembly: c.lane.assembly };
+const failedAs = (reason: string) => fmt(c.lane.failedWith, { state: c.lane.state.failed, reason });
 
 const twoScenes = (s1: unknown[], s2: unknown[] = [], film: Record<string, unknown> = { status: "running" }, extra = {}) =>
   reading(film, [sceneJson(S1, 0, { current_version: 1, planned_seconds: 8, takes: s1 }), sceneJson(S2, 1, { current_version: 1, planned_seconds: 6, takes: s2 })], extra);
@@ -57,9 +58,26 @@ describe("lengths keep their basis all the way to the strip", () => {
 
   it("the clock leans on no unknown: one landed piece without a length makes the made-so-far unknown, and planned is not measured", () => {
     const lane = liveLane(twoScenes([take("c1", "clip", "completed", { result_asset_id: C1 })]), none);
-    expect(landedSeconds(lane)).toEqual({ seconds: 8, measured: false });
+    expect(landedSeconds(lane)).toEqual({ seconds: 8, basis: "planned" });
     const unknown = liveLane(reading({ status: "running" }, [sceneJson(S1, 0, { current_version: 1, planned_seconds: 0, takes: [take("c1", "clip", "completed", { result_asset_id: C1 })] })]), none);
     expect(landedSeconds(unknown)).toBeNull();
+  });
+
+  it("the clock carries its weakest basis: measured only when every landed piece was measured, '~' (requested) below that", () => {
+    const measured = liveLane(twoScenes([take("c1", "clip", "completed", { result_asset_id: C1 })]), new Map([[C1, 8]]));
+    expect(landedSeconds(measured)).toEqual({ seconds: 8, basis: "measured" });
+    // A scene with no planned seconds whose take asked for 5: its landed length is only the request.
+    const requested = liveLane(reading({ status: "running" }, [sceneJson(S1, 0, { current_version: 1, planned_seconds: 0, takes: [take("c1", "clip", "completed", { result_asset_id: C1, duration_s: 5 })] })]), none);
+    expect(landedSeconds(requested)).toEqual({ seconds: 5, basis: "requested" });
+  });
+
+  it("the video's length is the master's measured file once it is ready, otherwise the plan, said to be the plan", () => {
+    expect(filmLength(liveLane(twoScenes([]), none))).toEqual({ seconds: 14, basis: "planned" });
+    const ready = liveLane(twoScenes([], [], { status: "ready" }, { segments: [seg({ assemblyStatus: "completed", assemblyAssetId: MP4 })] }), new Map([[MP4, 13.4]]));
+    expect(filmLength(ready)).toEqual({ seconds: 13.4, basis: "measured" });
+    // Ready but its file not measured: still the plan, never a guess called measured.
+    const unmeasured = liveLane(twoScenes([], [], { status: "ready" }, { segments: [seg({ assemblyStatus: "completed", assemblyAssetId: MP4 })] }), none);
+    expect(filmLength(unmeasured)).toEqual({ seconds: 14, basis: "planned" });
   });
 });
 
@@ -145,9 +163,10 @@ describe("the master", () => {
 
   it("failed gives the reason in words, never the stored word; an unreadable assembly is unknown", () => {
     const failed = liveLane(twoScenes([], [], { status: "failed" }, { segments: [seg({ assemblyStatus: "failed" })], pauseReason: "assembly_unavailable" }), none);
-    expect(masterRow(failed.master, MW)).toMatchObject({ status: "fail", statusWords: c.lane.assembly.reasons.assembly_unavailable, made: false });
+    expect(masterRow(failed.master, MW)).toMatchObject({ status: "fail", statusWords: failedAs(c.lane.assembly.reasons.assembly_unavailable), made: false });
     const odd = liveLane(twoScenes([], [], { status: "failed" }, { segments: [seg({ assemblyStatus: "failed" })], pauseReason: "gpu_on_fire" }), none);
-    expect(masterRow(odd.master, MW)!.statusWords).toBe(c.lane.assembly.generic);
+    expect(masterRow(odd.master, MW)!.statusWords).toBe(failedAs(c.lane.assembly.generic));
+    expect(masterRow(odd.master, MW)!.statusWords).not.toContain("gpu_on_fire");
     const unread = liveLane(twoScenes([], [], { status: "running" }, { segments: null }), none);
     expect(masterRow(unread.master, MW)!.statusWords).toBe(c.lane.master.unknown);
   });
@@ -161,7 +180,8 @@ describe("the master", () => {
 describe("assemblyReasonText", () => {
   const CONTRACT = [
     "assembly_failed", "assembly_unavailable", "render_failed", "render_timed_out", "render_degraded", "output_mismatch", "store_failed",
-    "narration_missing", "captions_failed", "disk_low", "review_copy_missing", "review_copy_too_large", "scene_not_shot",
+    "narration_missing", "captions_failed", "disk_low", "review_copy_missing", "review_copy_too_large", "scene_not_shot", "assembly_not_enabled",
+    "film_studio_off",
   ];
 
   it("a known reason maps to its own sentence, in every language, never the word itself", async () => {
@@ -191,5 +211,16 @@ describe("assemblyReasonText", () => {
       const w = dictionaries[loc].studioLive.lane.assembly;
       for (const r of [...CONTRACT, "gpu_on_fire", null]) expect(assemblyReasonText(r, w).remedy.length, `${loc} ${r}`).toBeGreaterThan(0);
     }
+  });
+
+  it("a cause on our side says there is nothing to do; a cause in the project says start it again; an unknown one starts again", () => {
+    const w = c.lane.assembly;
+    for (const r of ["assembly_unavailable", "assembly_not_enabled", "disk_low", "film_studio_off", "store_failed", "render_degraded"]) {
+      expect(assemblyReasonText(r, w), r).toEqual({ text: w.reasons[r], remedy: w.remedyOurs });
+    }
+    for (const r of ["narration_missing", "scene_not_shot", "captions_failed", "output_mismatch", "render_failed", "render_timed_out"]) {
+      expect(assemblyReasonText(r, w), r).toEqual({ text: w.reasons[r], remedy: w.remedyAgain });
+    }
+    expect(assemblyReasonText("gpu_on_fire", w)).toEqual({ text: w.generic, remedy: w.remedyAgain });
   });
 });

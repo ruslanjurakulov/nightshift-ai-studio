@@ -110,17 +110,30 @@ export function masterCell(m: MasterPiece | null): MasterCell | null {
 export interface AssemblyReasonWords {
   reasons: Record<string, string>;
   generic: string;
-  remedy: string;
+  /** For a cause in the person's project: start it again. */
+  remedyAgain: string;
+  /** For a cause on our side: nothing for the person to do. */
+  remedyOurs: string;
 }
+
+const has = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+/**
+ * The reasons whose cause is on our side (the server, its disk, storage, a switch, a render below its quality floor): starting the
+ * project again would spend again and fail the same way, so the remedy is that there is nothing for the person to do. Every other
+ * reason, a known content cause or a word this build does not know, is "start the project again" (S2's assembly-only re-run will
+ * change that).
+ */
+const OUR_SIDE = new Set(["assembly_unavailable", "assembly_not_enabled", "disk_low", "film_studio_off", "store_failed", "render_degraded", "review_copy_missing", "review_copy_too_large"]);
 
 /**
  * Why an assembly failed, in words, with what to do. The stored reason (films.pause_reason) is a code and is never shown: a word the
  * contract names (docs/studio/NIGHTSHIFT_AI.md, "Where an assembly failure shows") gets its sentence, any other the generic line. The
- * remedy is text only (rule 3): for now it is always to start the project again, until an assembly-only re-run exists.
+ * remedy is text only (rule 3).
  */
 export function assemblyReasonText(reason: string | null, w: AssemblyReasonWords): { text: string; remedy: string } {
-  const known = reason !== null && Object.prototype.hasOwnProperty.call(w.reasons, reason) ? w.reasons[reason] : null;
-  return { text: known ?? w.generic, remedy: w.remedy };
+  const known = reason !== null && has(w.reasons, reason) ? w.reasons[reason] : null;
+  return { text: known ?? w.generic, remedy: known !== null && OUR_SIDE.has(reason!) ? w.remedyOurs : w.remedyAgain };
 }
 
 export interface MasterWords {
@@ -130,6 +143,10 @@ export interface MasterWords {
   pending: string;
   skipped: string;
   unknown: string;
+  /** "Failed", before the reason. */
+  failed: string;
+  failedWith: string;
+  fmt: (s: string, v: Record<string, string | number>) => string;
   assembly: AssemblyReasonWords;
 }
 
@@ -146,7 +163,7 @@ export function masterRow(m: MasterPiece | null, w: MasterWords, thumb: string |
     name: w.name,
     tag: m.tag,
     status: MASTER_TONE[cell.state],
-    statusWords: cell.state === "failed" ? assemblyReasonText(cell.reason, w.assembly).text : w[cell.state],
+    statusWords: cell.state === "failed" ? w.fmt(w.failedWith, { state: w.failed, reason: assemblyReasonText(cell.reason, w.assembly).text }) : w[cell.state],
     length: ready && m.lengthBasis === "measured" ? pieceLength(m) : null,
     thumb: ready ? thumb : null,
     made: ready,
@@ -162,16 +179,30 @@ export function flightIds(prev: LiveLane | null, next: LiveLane): string[] {
  * How much footage has landed, for the transport clock: the landed video pieces' lengths. Null when any landed piece has no
  * length (a sum without it would be a smaller number, not a measurement); `measured` only when every one of them was measured.
  */
-export function landedSeconds(lane: LiveLane): { seconds: number; measured: boolean } | null {
+export type Basis = "measured" | "requested" | "planned";
+const WEAKER: Record<Basis, number> = { measured: 0, requested: 1, planned: 2 };
+
+export function landedSeconds(lane: LiveLane): { seconds: number; basis: Basis } | null {
   let seconds = 0;
-  let measured = true;
+  let basis: Basis = "measured";
   for (const p of lane.video) {
     if (p.state !== "landed") continue;
     const len = pieceLength(p);
     if (!len) return null;
     seconds += len.seconds;
-    if (len.basis !== "measured") measured = false;
+    // The sum is only as sure as its least sure part.
+    if (WEAKER[len.basis] > WEAKER[basis]) basis = len.basis;
   }
-  return { seconds, measured };
+  return { seconds, basis };
+}
+
+/**
+ * The film's length for the transport: the master's own measured length once it is ready (the film that exists), otherwise the
+ * plan's total, said to be the plan; null when neither is known.
+ */
+export function filmLength(lane: LiveLane): { seconds: number; basis: "measured" | "planned" } | null {
+  const m = lane.master;
+  if (m && m.state === "landed" && m.assetId && m.lengthBasis === "measured" && m.length !== null && m.length > 0) return { seconds: m.length, basis: "measured" };
+  return lane.planned !== null ? { seconds: lane.planned, basis: "planned" } : null;
 }
 

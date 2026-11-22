@@ -5,7 +5,7 @@
  * called "known", the master drawn as one more clip on the video track, or its control (a download) missing.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/chronos/studio",
@@ -95,5 +95,71 @@ describe("the master slot", () => {
     const cell = screen.getByTestId("lane-master");
     expect(cell.textContent).toContain("Not assembled yet");
     expect(cell.querySelector(".cv-pill-len")).toBeNull();
+  });
+});
+
+describe("a live caller's options (the canvas's defaults unchanged)", () => {
+  it("label, showTotal, startFlag, showNote and pillLabel change only what they name", () => {
+    const { unmount } = render(strip([row("a", { tag: "clip-01" })]));
+    // Defaults: the canvas's label, its total, the 0:00 flag, the note, the name on the pill.
+    expect(screen.getByTestId("canvas-lane").getAttribute("aria-label")).toBe(l.label);
+    expect(screen.getByTestId("lane-total")).toBeTruthy();
+    expect(document.querySelector(".cv-lane-head")).toBeTruthy();
+    expect(document.querySelector(".cv-lane-meta.is-note")).toBeTruthy();
+    expect(screen.getByTestId("lane-seg-a").querySelector(".cv-pill-nm")!.textContent).toBe("a");
+    unmount();
+    render(strip([row("a", { tag: "clip-01" })], { label: "Live", showTotal: false, startFlag: false, showNote: false, pillLabel: "tag" }));
+    expect(screen.getByTestId("canvas-lane").getAttribute("aria-label")).toBe("Live");
+    expect(screen.queryByTestId("lane-total")).toBeNull();
+    expect(document.querySelector(".cv-lane-head")).toBeNull();
+    expect(document.querySelector(".cv-lane-meta.is-note")).toBeNull();
+    const nm = screen.getByTestId("lane-seg-a").querySelector(".cv-pill-nm")!;
+    expect(nm.textContent).toBe("clip-01");
+    expect(nm.className).toContain("is-tag");
+    // The name stays in the accessible name.
+    expect(screen.getByTestId("lane-seg-a").getAttribute("aria-label")).toContain("a");
+  });
+
+  it("a narrow tagged pill drops its status words to its title, keeping the lamp", () => {
+    render(strip([row("a", { tag: "clip-01", made: false, status: "run", statusWords: "Making", length: { seconds: 2, basis: "planned" } })], { pillLabel: "tag" }));
+    const p = screen.getByTestId("lane-seg-a");
+    expect(p.querySelector(".cv-pill-st")).toBeNull();
+    expect(p.querySelector(".cv-lamp")).toBeTruthy();
+    expect(p.getAttribute("title")).toContain("Making");
+  });
+
+  it("the master stays on screen with the strip closed", () => {
+    window.localStorage.setItem("ns.test.lane", "closed");
+    render(strip([row("a")], { master: row("m:master", { name: "Final video" }), storageKey: "ns.test.lane" }));
+    expect(screen.getByTestId("canvas-lane").dataset.open).toBe("false");
+    expect(screen.getByTestId("lane-master")).toBeTruthy();
+    expect(screen.queryByTestId("lane-seg-a")).toBeNull();
+  });
+
+  it("a master that lands pulses once (it has no place on the time scale to fly to)", async () => {
+    const m = (made: boolean) => row("m:master", { made, status: made ? "ok" : "idle" });
+    const { rerender } = render(strip([row("a")], { master: m(false), landedIds: [] }));
+    expect(screen.getByTestId("lane-master").className).not.toContain("is-new");
+    rerender(strip([row("a")], { master: m(true), landedIds: ["m:master"] }));
+    expect(screen.getByTestId("lane-master").className).toContain("is-new");
+  });
+
+  it("a re-run of the landing bookkeeping (rows changing while the landed list stays) never leaves 'new' stuck", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(strip([row("a")], { landedIds: [] }));
+    rerender(strip([row("a")], { landedIds: ["a"] }));
+    expect(screen.getByTestId("lane-seg-a").className).toContain("is-new");
+    // Another row arrives with the same landed list: the effect runs again.
+    rerender(strip([row("a"), row("b")], { landedIds: ["a"] }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(screen.getByTestId("lane-seg-a").className).not.toContain("is-new");
+    vi.useRealTimers();
+  });
+
+  it("a pill's length is rounded, not cut: 6.6 s reads 0:07", () => {
+    render(strip([row("a", { length: { seconds: 6.6, basis: "measured" } })]));
+    expect(screen.getByTestId("lane-seg-a").querySelector(".cv-pill-len")!.textContent).toBe("0:07");
   });
 });

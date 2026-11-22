@@ -70,13 +70,14 @@ export const studioLiveEn = {
   price: "{n} credits",
   // The lane under the live view (components/studio-live/LiveLane.tsx): pieces as they land, the transport above, the master after.
   lane: {
-    label: "The project's timeline, as it is made",
+    heading: "Timeline",
+    label: "The project's clips and narration, as they are made",
     shot: "Scene {n} · shot {k}",
     state: {
       landed: "Made",
       working: "Making",
       pending: "Waiting",
-      retried: "Trying again",
+      retried: "Waiting to retry",
       failed: "Failed",
       skipped: "Not reached",
       unknown: "Unknown",
@@ -86,6 +87,8 @@ export const studioLiveEn = {
       reasons: {
         assembly_failed: "The scenes could not be put together into one video.",
         assembly_unavailable: "The assembly could not run on the server.",
+        assembly_not_enabled: "Assembly is not switched on on the server.",
+        film_studio_off: "Projects were switched off while the video was being put together.",
         render_failed: "Rendering the final video failed.",
         render_timed_out: "Rendering the final video took too long and was stopped.",
         render_degraded: "The rendered video came out below the quality it was set for, so it was not kept.",
@@ -99,7 +102,8 @@ export const studioLiveEn = {
         scene_not_shot: "A scene had no finished clip when the video was put together.",
       } as Record<string, string>,
       generic: "The assembly failed.",
-      remedy: "Start the project again.",
+      remedyAgain: "Start the project again.",
+      remedyOurs: "Nothing for you to do; we're notified.",
     },
     master: {
       name: "Final video",
@@ -109,14 +113,17 @@ export const studioLiveEn = {
       skipped: "Not assembled",
       unknown: "Unknown",
       noFile: "Nothing to play or download until the video is assembled.",
+      unknownNote: "Whether the final video exists could not be read.",
     },
-    transport: "Transport",
-    // The clock: what has landed so far, of the plan's total.
+    progress: "Progress",
+    madeTag: "Made",
+    // The clock: what has landed so far, of the video's length.
     clock: "Made so far {t} of {total}",
     clockUnknown: "How much is made so far is not known yet",
     totalUnknown: "the total length is not known",
     planTag: "plan",
     made: "{n} of {m} pieces made",
+    landedSr: "Made: {names}",
     film: {
       draft: "Draft",
       planning: "Planning",
@@ -134,8 +141,10 @@ export const studioLiveEn = {
     filmUnknown: "Status unknown",
     loading: "Reading the timeline…",
     empty: "This project has no scenes yet, so nothing is on the timeline.",
+    emptyLink: "Open the project's editor",
     error: "The timeline could not be read. It tries again by itself.",
-    stale: "Last reading",
+    tryNow: "Try now",
+    stale: "Last reading {time}",
     noPlayhead: "Nothing plays here: the final video plays once it exists.",
   },
   briefLoading: "Reading the plan from the conversation…",

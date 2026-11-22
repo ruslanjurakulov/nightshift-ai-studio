@@ -219,6 +219,7 @@ export const studioCanvasEn = {
     totalPlanned: "Planned length {t}",
     planTag: "plan",
     master: "Final video",
+    masterSeg: "{name} · {status} · {length}",
   },
   loading: "Opening the canvas…",
 };
