@@ -201,6 +201,12 @@ export const studioCanvasUz: StudioCanvasDictionary = {
     total: "Maʼlum davomiylik {t}",
     totalUnknown: "+ {n} ta nomaʼlum",
     count: "{track}: {n}",
+    lengthPlanned: "{t}, reja boʻyicha",
+    lengthPlannedShort: "{t} reja",
+    legendPlanned: "reja — rejadagi davomiylik, oʻlchanmagan",
+    totalPlanned: "Rejadagi davomiylik {t}",
+    planTag: "reja",
+    master: "Yakuniy video",
   },
   loading: "Holst ochilmoqda…",
 };

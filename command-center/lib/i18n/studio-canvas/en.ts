@@ -212,6 +212,13 @@ export const studioCanvasEn = {
     total: "Known length {t}",
     totalUnknown: "+ {n} unknown",
     count: "{track}: {n}",
+    lengthPlanned: "{t}, planned",
+    // On a pill, beside the planned length: short, so the pill keeps its name.
+    lengthPlannedShort: "{t} plan",
+    legendPlanned: "plan = the plan's length, not measured",
+    totalPlanned: "Planned length {t}",
+    planTag: "plan",
+    master: "Final video",
   },
   loading: "Opening the canvas…",
 };

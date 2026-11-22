@@ -1482,6 +1482,44 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-pill.is-unk { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ln) 22%, transparent) 0 5px, transparent 5px 11px), var(--fill); }
 .cv-pill.is-made.is-unk { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ln) 26%, transparent) 0 5px, transparent 5px 11px), var(--fill); }
 .cv-pill.s-fail { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
+/* A planned length (a live film's slot before its shots are measured): a dotted edge, made or not, so it never reads as the solid
+   edge of a measured file, nor as the dashed one of a request. Its text says "plan" too: never a line style alone. */
+.cv-pill.is-planned, .cv-pill.is-made.is-planned { border-style: dotted; border-width: 1.5px; border-left-width: 1.5px; }
+.cv-lane-plan { margin-left: 6px; color: var(--dim); font: 500 12px var(--font-mono); letter-spacing: 0; text-transform: lowercase; }
+/* The master: the film the tracks become, after them at the end of the lane (not a track: it has no place on the time scale). */
+.cv-lane-body.has-master { grid-template-columns: var(--lh-w) minmax(0, 1fr) minmax(176px, 220px); }
+.cv-master {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-left: 1px solid var(--rule);
+}
+.cv-master-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+.cv-master.is-made .cv-master-btn { border: 1px solid color-mix(in srgb, var(--go) 60%, var(--rule)); border-left: 2px solid var(--go); background: color-mix(in srgb, var(--go) 10%, var(--key)); }
+.cv-master.s-fail .cv-master-btn { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
+.cv-master.is-sel .cv-master-btn { outline: 2px solid var(--amber); outline-offset: 1px; }
+.cv-master-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cv-master-art { flex: none; width: 56px; height: 32px; overflow: hidden; border-radius: 5px; background: var(--film); }
+.cv-master-art img { width: 100%; height: 100%; object-fit: cover; }
+.cv-master-txt { display: grid; gap: 2px; min-width: 0; line-height: 1.25; }
+.cv-master-nm { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.cv-master-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; color: var(--dim); font-size: 13px; }
+.cv-master-st { overflow-wrap: anywhere; }
+.cv-master-act { min-width: 0; font-size: 13px; }
 .cv-pill.is-sel { outline: 2px solid var(--amber); outline-offset: 1px; box-shadow: 0 0 0 5px var(--amber-soft), 0 0 18px -4px var(--amber); z-index: 2; }
 .cv-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .cv-pill-art { flex: none; align-self: stretch; width: 64px; margin: 3px 0 3px -1px; overflow: hidden; border-radius: 5px; background: var(--film); }
@@ -1558,6 +1596,9 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-lane.is-phone .cv-lane-tc { font-size: 13px; }
 .cv-lane.is-phone .cv-lane-unk { font-size: 11px; }
 .cv-lane.is-phone .cv-lane-tog { height: 44px; }
+/* A phone has no room for a third column: the master takes a row of its own under the tracks. */
+.cv-lane.is-phone .cv-lane-body.has-master { grid-template-columns: var(--lh-w) minmax(0, 1fr); }
+.cv-lane.is-phone .cv-master { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); }
 .cv-lane.is-phone .cv-th { padding: 0 6px 0 8px; }
 .cv-lane.is-phone .cv-th-txt { display: none; }
 .cv-lane.is-phone .cv-pill-art { width: 48px; }

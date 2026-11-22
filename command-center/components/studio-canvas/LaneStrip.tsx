@@ -7,11 +7,15 @@
  * the landing animation. It reads no table and knows no card.
  *
  * What it never does: play, render, assemble, export or spend (CLAUDE.md rule 3); its only keys are open/close and the segments.
- * It never draws a guess as a reading (rule 5): a length is measured, or requested and marked "~", or "?" on a hatched pill at a
- * default width; the ruler stops naming times past the first unknown length; a picture is only ever the row's own `thumb`.
+ * It never draws a guess as a reading (rule 5): a length is measured, or requested and marked "~", or planned (a dotted edge and
+ * the word "plan"), or "?" on a hatched pill at a default width; the ruler stops naming times past the first unknown length; a
+ * picture is only ever the row's own `thumb`.
+ *
+ * `master` is one more row drawn after the tracks, at the end of the lane: the film the tracks are assembled into. It is not a
+ * track (nothing is placed on a time scale), and `masterAction` is what the caller puts under it (a download once a file exists).
  */
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AudioLines, ChevronDown, Film, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { laneTotal, placeTrack, type LaneLength, type LaneRow, type LaneTrack } from "@/lib/studio/lane";
@@ -68,6 +72,8 @@ export function LaneStrip({
   iconFor,
   storageKey = LANE_OPEN_KEY,
   testId = "canvas-lane",
+  master,
+  masterAction,
 }: {
   /** Each track's rows in the order they play. */
   rows: readonly LaneRow[];
@@ -87,6 +93,10 @@ export function LaneStrip({
   iconFor?: (row: LaneRow) => LucideIcon;
   storageKey?: string;
   testId?: string;
+  /** The assembled result, drawn after the tracks (a live film's master). Its `length` is shown as the others are. */
+  master?: LaneRow;
+  /** Under the master: the caller's own control for an existing file (it must not start, render or spend anything). */
+  masterAction?: ReactNode;
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -111,7 +121,15 @@ export function LaneStrip({
   // The two tracks run side by side from 0: the known length is the longer one; unknowns are counted, never summed in.
   // "~" (requested) only when the longer track's own sum leans on a requested length.
   const longer = vTotal.seconds >= aTotal.seconds ? vTotal : aTotal;
-  const total = { seconds: longer.seconds, requested: longer.requested, unknown: vTotal.unknown + aTotal.unknown };
+  // A planned length is summed like a known one, so a total that leans on one says "planned", never "known".
+  const longerRows = longer === vTotal ? video : audio;
+  const total = {
+    seconds: longer.seconds,
+    requested: longer.requested,
+    planned: longerRows.some((r) => r.length?.basis === "planned"),
+    unknown: vTotal.unknown + aTotal.unknown,
+  };
+  const anyPlanned = rows.some((r) => r.length?.basis === "planned");
   const empty = rows.length === 0;
   const innerW = Math.ceil(end) + 160;
   const rulerSpan = Math.max(innerW, 2400);
@@ -187,9 +205,20 @@ export function LaneStrip({
   const [portal, setPortal] = useState(false);
   useEffect(() => setPortal(true), []);
 
-  const lengthText = (len: LaneLength) => (!len ? "?" : `${len.basis === "requested" ? "~" : ""}${formatTimecode(len.seconds, "duration")}`);
+  const lengthText = (len: LaneLength) =>
+    !len
+      ? "?"
+      : len.basis === "planned"
+        ? fmt(l.lengthPlannedShort, { t: formatTimecode(len.seconds, "duration") })
+        : `${len.basis === "requested" ? "~" : ""}${formatTimecode(len.seconds, "duration")}`;
   const lengthWords = (len: LaneLength) =>
-    !len ? l.lengthUnknown : len.basis === "requested" ? fmt(l.lengthRequested, { t: formatTimecode(len.seconds, "duration") }) : formatTimecode(len.seconds, "duration");
+    !len
+      ? l.lengthUnknown
+      : len.basis === "requested"
+        ? fmt(l.lengthRequested, { t: formatTimecode(len.seconds, "duration") })
+        : len.basis === "planned"
+          ? fmt(l.lengthPlanned, { t: formatTimecode(len.seconds, "duration") })
+          : formatTimecode(len.seconds, "duration");
 
   const pill = (s: LaneRow, index: number, x: number, w: number) => {
     const Icon = iconFor?.(s) ?? TRACK_ICON[s.track];
@@ -199,6 +228,7 @@ export function LaneStrip({
       `s-${s.status}`,
       s.made ? "is-made" : "is-plan",
       !s.length && "is-unk",
+      s.length?.basis === "planned" && "is-planned",
       s.status === "run" && "is-working",
       selected === s.id && "is-sel",
       fresh.has(s.id) && "is-new",
@@ -244,7 +274,11 @@ export function LaneStrip({
   const ticks: number[] = [];
   for (let s = 0; s * pxPerS <= rulerSpan; s += LABEL_EVERY) ticks.push(s);
   const known = total.seconds > 0 || total.unknown === 0;
-  const totalWords = total.requested ? fmt(l.lengthRequested, { t: formatTimecode(total.seconds, "duration") }) : formatTimecode(total.seconds, "duration");
+  const totalWords = total.planned
+    ? fmt(l.totalPlanned, { t: formatTimecode(total.seconds, "duration") })
+    : total.requested
+      ? fmt(l.total, { t: fmt(l.lengthRequested, { t: formatTimecode(total.seconds, "duration") }) })
+      : fmt(l.total, { t: formatTimecode(total.seconds, "duration") });
 
   return (
     <section
@@ -260,14 +294,15 @@ export function LaneStrip({
           <span>{l.title}</span>
         </button>
         {/* Nothing known at all: the words, never a 00:00 that would read as a measurement. */}
-        <span className={!known ? "cv-lane-tc is-unknown" : empty ? "cv-lane-tc is-empty" : "cv-lane-tc"} title={known ? fmt(l.total, { t: totalWords }) : undefined} data-testid="lane-total">
+        <span className={!known ? "cv-lane-tc is-unknown" : empty ? "cv-lane-tc is-empty" : "cv-lane-tc"} title={known ? totalWords : undefined} data-testid="lane-total" data-planned={total.planned ? "true" : undefined}>
           {known ? (
             <>
               <span aria-hidden>
                 {total.requested ? "~" : ""}
                 {timecode(total.seconds)}
+                {total.planned ? <span className="cv-lane-plan">{l.planTag}</span> : null}
               </span>
-              <span className="sr-only">{fmt(l.total, { t: totalWords })}</span>
+              <span className="sr-only">{totalWords}</span>
             </>
           ) : (
             l.lengthUnknown
@@ -287,13 +322,14 @@ export function LaneStrip({
         )}
         {open && !empty && (
           <span className="cv-lane-meta is-legend">
-            {l.legendRequested} · {l.legendUnknown}
+            {l.legendRequested} · {anyPlanned ? `${l.legendPlanned} · ` : ""}
+            {l.legendUnknown}
           </span>
         )}
         <span className="cv-lane-meta is-note">{l.nothingRenders}</span>
       </div>
       {open && (
-        <div className="cv-lane-body" id={`${testId}-body`}>
+        <div className={`cv-lane-body${master ? " has-master" : ""}`} id={`${testId}-body`}>
           <div className="cv-lane-heads">
             <span className="cv-lane-hgap" aria-hidden />
             <TrackHead track="video" name={l.video} sub={l.videoSub} letter={c.ports.letters.video} />
@@ -326,6 +362,17 @@ export function LaneStrip({
               )}
             </div>
           </div>
+          {master ? (
+            <MasterCell
+              row={master}
+              selected={selected === master.id}
+              onPick={onPick}
+              action={masterAction}
+              label={l.master}
+              length={lengthText(master.length)}
+              words={fmt(l.seg, { n: video.length + 1, name: master.name, status: master.statusWords, length: lengthWords(master.length) })}
+            />
+          ) : null}
         </div>
       )}
       {portal &&
@@ -372,6 +419,49 @@ function TrackHead({ track, name, sub, letter }: { track: LaneTrack; name: strin
         <span className="cv-th-nm">{name}</span>
         <span className="cv-th-sub">{sub}</span>
       </span>
+    </div>
+  );
+}
+
+/** The film the tracks become, at the end of the lane: its state in words beside the lamp, and the caller's control under it. */
+function MasterCell({
+  row,
+  selected,
+  onPick,
+  action,
+  label,
+  length,
+  words,
+}: {
+  row: LaneRow;
+  selected: boolean;
+  onPick: (id: string) => void;
+  action?: ReactNode;
+  label: string;
+  length: string;
+  words: string;
+}) {
+  return (
+    <div className={`cv-master s-${row.status}${row.made ? " is-made" : " is-plan"}${selected ? " is-sel" : ""}`} role="group" aria-label={label} data-testid="lane-master" data-status={row.status}>
+      <button type="button" className="cv-master-btn" aria-label={words} aria-current={selected ? "true" : undefined} onClick={() => onPick(row.id)} data-testid={`lane-seg-${row.id}`}>
+        {row.thumb && row.made ? (
+          <span className="cv-master-art" aria-hidden>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={row.thumb} alt="" draggable={false} />
+          </span>
+        ) : (
+          <Film aria-hidden className="cv-pill-ic" strokeWidth={2} />
+        )}
+        <span className="cv-master-txt" aria-hidden>
+          <span className="cv-master-nm">{row.name}</span>
+          <span className="cv-master-meta">
+            <span className={`cv-lamp is-${row.status}${row.status === "run" ? " is-live" : ""}`} />
+            <span className="cv-master-st">{row.statusWords}</span>
+            {row.made && row.length ? <span className="cv-pill-len">{length}</span> : null}
+          </span>
+        </span>
+      </button>
+      {action ? <div className="cv-master-act">{action}</div> : null}
     </div>
   );
 }
