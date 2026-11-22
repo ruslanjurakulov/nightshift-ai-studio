@@ -36,7 +36,7 @@ the cap and the readings from our own `creative_job_costs` table, never a quote 
 
 **Sweep, measured:**
 
-- [ ] `select public.film_sweep_status();` shows `runners.actions.last_at` (or `worker`) within the last 15 minutes, `overdue`
+- [ ] `select public.film_sweep_status();` shows `runners.pg_cron.last_at` or `runners.server.last_at` (the `film-sweep` service, `NIGHTSHIFT_FILM_SWEEP=on`) within the last 15 minutes. Actions only watches hourly; it never sweeps, `overdue`
   = `false`, and `stuck_segments` = 0.
 
 ## 1. Make the test small enough to fit USD 15
@@ -146,7 +146,7 @@ All of these, checked and written into the report to the owner:
 2. **Cancel the segment** (SQL editor, service role): `select public.film_cancel_segment('<segment id>', 'cancelled');`
    - It releases every take that never began, and settles now, or when the takes in flight end.
 3. **The worker off:** `NIGHTSHIFT_FILM_WORKER=` (empty) in the env file, then redeploy.
-   - The sweep still runs from Actions (0212), so the segment settles by 0171's own rules while its hold is open: a deadline of
+   - The sweep still runs from pg_cron or the `film-sweep` service (0212), which is independent of the worker switch, so the segment settles by 0171's own rules while its hold is open: a deadline of
      20 h + 2 h grace, or 3 h if it was never claimed.
    - Use this only if steps 1–2 did not stop the spending.
 
