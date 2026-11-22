@@ -308,7 +308,9 @@ That is 44 % of the 50 MB Supabase object ceiling, **for synthetic content**. cr
 provider footage could give a larger proxy, and that was not measured. The worker therefore checks the proxy's size after
 storing the master. Above 50 MB it fails the assembly by name (`review_copy_too_large`) rather than keep a review copy
 that cannot be uploaded. If real films reach that limit, the remedy is a bitrate-capped review encode (about
-`45 MB × 8 / length − 96 kb/s`, which is 504 kb/s for 10 minutes), not a smaller film.
+`45 MB × 8 / length − 96 kb/s`, which is 504 kb/s for 10 minutes), not a smaller film. Real films did reach it (49.37 MB
+at 10 minutes, docs/studio/S4_GAPS.md G2), so the film's review copy is now encoded with that cap
+(`film_assembly.review_maxrate_kbps`); `review_copy_too_large` remains only as the guard behind it.
 
 **A/V sync,** checked on a real render of fixture clips (`tests/test_film_assembly.py`): a white flash in scene 1's clip
 and a beep placed at the same film time in the narration land within 50 ms of each other in the output. The narration's

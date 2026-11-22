@@ -80,11 +80,28 @@ DURATION_TOLERANCE_S = 0.12
 #: The review copy (the library's 480p proxy) must fit one object of the Supabase free tier
 #: (CLAUDE.md "Known ceilings": 50 MB), so it can be copied to the previews bucket as it is.
 REVIEW_COPY_MAX_BYTES = 50 * 1000 * 1000
+#: What the review copy is encoded to fit, below REVIEW_COPY_MAX_BYTES: crf 28 alone is constant quality, so its size
+#: follows the footage, and real AI clips gave 49.37 MB for a 10-minute 16:9 film (98.7 % of the ceiling; cross-fades
+#: about 1.28 times more, so ~63 MB expected), which failed a paid, rendered film over its preview
+#: (docs/studio/S4_GAPS.md G2). 5 MB of headroom is for the mp4 container and the VBV's overshoot of its average.
+REVIEW_TARGET_BYTES = 45 * 1000 * 1000
+#: The review copy's AAC rate (media_library.proxy_command, -b:a 96k), taken off the budget before the video's cap.
+REVIEW_AUDIO_KBPS = 96
+#: The lowest video cap: a guard only. At film_timeline.MAX_FILM_S (600 s) the cap is 504 kb/s, so no film reaches it;
+#: it stops a length the timeline someday allows from asking libx264 for an unwatchable preview.
+REVIEW_MIN_VIDEO_KBPS = 150
+#: The highest video cap. The length formula alone gives 35,904 kb/s at 10 s, and x264 sizes the H.264 level it tags
+#: from the VBV: Lens measured level 4.1 at 10 s and 6.2 at 1 s, which some phones refuse to decode (3.0 without a cap
+#: or at 504). 2,500 kb/s is far above what crf 28 spends at 480p, so a short film's copy is still crf's, and the tag
+#: stays at 3.0/3.1.
+REVIEW_MAX_VIDEO_KBPS = 2500
 #: Free space the work folder needs, per second of film, on top of the fast intermediates (the render_backend
 #: figure for 1080p scaled by the frame's pixels): the output (measured 4.95 Mb/s at 1080p) and the library's
 #: copy of it with its proxy. Measured use was 3.8 MB/s against 9 asked (docs/FILM_ASSEMBLY_MEASUREMENT.md);
 #: the headroom is for detailed real footage and for a neighbour writing to the same volume meanwhile.
 OUTPUT_MB_PER_S = 1.0
+#: The longest dropped caption word kept on the master's provenance (marked with an ellipsis when cut).
+DROPPED_WORD_CHARS = 40
 #: At most this many ids in one PostgREST ``in.(...)`` (a 60-scene film's request line stays far under 8 KB).
 ID_CHUNK = 50
 
@@ -653,7 +670,9 @@ def assemble_segment(segment: Mapping, *, worker_id: str, media_root: Path, tool
             if e.word == "lease_lost":
                 raise _LeaseLost() from None
             raise AssemblyFailed("store_failed", f"the database refused the film ({e.word}): retry the assembly") from None
-        logger.info("film assembly %s: completed (%s, %s s)", seg_id, result["asset_id"], result["length_s"])
+        logger.info("film assembly %s: completed (%s, %s s, %s)", seg_id, result["asset_id"], result["length_s"],
+                    f"review copy video capped at {result.get('review_maxrate_kbps')} kb/s" if result["rendered"]
+                    else "an earlier attempt's file, reused")
         dw = result.get("dropped_words") or []
         detail = (f"{len(dw)} word(s) outside speech dropped from the captions: "
                   + ", ".join(f"{w['start_s']:.2f}-{w['end_s']:.2f} s" for w in dw[:10]) + ("…" if len(dw) > 10 else "")
@@ -705,6 +724,8 @@ def _lost(store: AssemblyStore, seg_id: str, registered: Sequence[str]) -> Assem
 
 def _fail(store: AssemblyStore, seg_id: str, worker: str, reason: str, detail: str, sha: Optional[str],
           registered: Sequence[str]) -> AssemblyOutcome:
+    # No discard here: 0171 film_record_assembly(false) soft-deletes every file whose provenance names the segment
+    # (film_discard_assets), the master and its captions included, in the same transaction.
     logger.warning("film assembly %s: failed (%s): %s", seg_id, reason, detail)
     try:
         rec = store.record(seg_id, worker, False, None)
@@ -849,8 +870,11 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
             "cut_sha256": sha, "cut_format": ft.FORMAT_VERSION, "tool": "film_assembly"}
     if dropped_words:
         # Recorded on the film itself (its library row), so "we dropped these" survives into what a person reads. At most
-        # 50 listed (0038 caps provenance at 16 KB); the count is always the whole number.
-        prov["captions_dropped_words"] = {"count": len(dropped_words), "words": dropped_words[:50],
+        # 50 listed, each word's text at most DROPPED_WORD_CHARS: 0038 caps provenance at 16 KB, and a hallucinated
+        # "word" has no length limit, so 50 long ones would fail the store of a paid film. The count is always the
+        # whole number.
+        listed = [{**w, "word": _clip_word(w.get("word"))} for w in dropped_words[:50]]
+        prov["captions_dropped_words"] = {"count": len(dropped_words), "words": listed,
                                           "reason": "outside every scene's narration: a transcription artefact"}
     if vtt_id:
         vtt = work / "captions.vtt"
@@ -862,9 +886,14 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
             raise AssemblyFailed("store_failed", "the captions are not this workspace's file after storing them: retry "
                                  "the assembly")
         prov["captions_asset_id"] = vtt_id
+    # The review copy is capped for the 50 MB object ceiling (S4_GAPS.md G2), and the row says so: a preview encoded
+    # below crf 28's choice is recorded, not silent (rule 5). The master itself is untouched.
+    cap = review_maxrate_kbps(cut.length_s)
+    prov["review_copy"] = {"video_maxrate_kbps": cap, "target_bytes": REVIEW_TARGET_BYTES}
     stored = _store(lambda: deps.store_file(out, asset_id=aid, org_id=org, store=media, media_root=media_root,
                                             tools=tools, expect_kind="video", source="generated",
-                                            original_name="film.mp4", provenance=prov), "film")
+                                            original_name="film.mp4", provenance=prov,
+                                            proxy_maxrate_kbps=cap), "film")
     registered.append(aid)
     if ml.canonical_id(stored.get("id")) != aid:
         raise AssemblyFailed("store_failed", "the library recorded another file: retry the assembly")
@@ -875,7 +904,7 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
                              "(deleted meanwhile?): retry the assembly")
     _check_master(row, media_root, aid, cut.length_s)
     return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": True, "captions_asset_id": vtt_id,
-            "dropped_words": dropped_words}
+            "dropped_words": dropped_words, "review_maxrate_kbps": cap}
 
 
 def _store(fn: Callable[[], dict], what: str) -> dict:
@@ -892,6 +921,33 @@ def _store(fn: Callable[[], dict], what: str) -> dict:
         raise
 
 
+def _clip_word(text) -> str:
+    text = str(text or "")
+    return text if len(text) <= DROPPED_WORD_CHARS else text[:DROPPED_WORD_CHARS - 1] + "\u2026"
+
+
+def review_maxrate_kbps(length_s: float) -> int:
+    """The review copy's video cap (kb/s) for a film of ``length_s``: what fits REVIEW_TARGET_BYTES with the sound,
+    never below REVIEW_MIN_VIDEO_KBPS nor above REVIEW_MAX_VIDEO_KBPS. Only the preview is capped; the master is
+    encoded as it always was. crf still governs below the cap, so a short film's review copy is in practice what it was
+    before (S4_GAPS.md G2)."""
+    # As strict as proxy_command's cap: a number, never a bool or a string ("600" would hide a caller passing a raw
+    # row value where the cut's own length belongs).
+    if isinstance(length_s, bool) or not isinstance(length_s, (int, float)):
+        raise ValueError(f"a review copy's length is a number of seconds, not {length_s!r}")
+    secs = float(length_s)
+    if not math.isfinite(secs) or secs <= 0:
+        raise ValueError(f"a review copy needs a positive, finite length, not {length_s!r}")
+    # The bound this buys (VBV): video <= cap x T + bufsize (2 x cap, spent at most once), plus AAC 96k x T, plus the
+    # container. At 600 s: (504 x 600 + 1008) kb + 96 x 600 kb = 361.0 Mb = 45.13 MB, plus the mp4 boxes, which grow
+    # with the frame count (measured 86 KB for 110 s of a 480p copy, so about 0.47 MB at 600 s): about 45.6 MB, under
+    # the 50 MB REVIEW_COPY_MAX_BYTES. So no re-encode loop: a copy above 50 MB is a fault to report.
+    rate = REVIEW_TARGET_BYTES * 8 / secs / 1000
+    if not math.isfinite(rate):  # a subnormal length: the division is inf, and math.floor(inf) is an OverflowError
+        raise ValueError(f"a review copy needs a length a film can have, not {length_s!r}")
+    return min(REVIEW_MAX_VIDEO_KBPS, max(REVIEW_MIN_VIDEO_KBPS, math.floor(rate) - REVIEW_AUDIO_KBPS))
+
+
 def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> None:
     """What 0171 charges by and the review copy, checked before the record so a refusal names its remedy."""
     if row.get("source") not in (None, "generated"):
@@ -905,13 +961,29 @@ def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> 
                              "assembly")
     variants = row.get("variants") or []
     proxy = ml.asset_file(media_root, aid, "proxy")
+    # Neither refusal says "retry": a recorded failure is terminal (0171 film_begin_assembly takes only a planned
+    # assembly, and nothing resets a failed one), and x264 is deterministic, so the same cut gives the same copy.
     if "proxy" not in variants or not proxy.is_file():
-        raise AssemblyFailed("review_copy_missing", "the 480p review copy could not be made: retry the assembly")
-    if proxy.stat().st_size > REVIEW_COPY_MAX_BYTES:
-        raise AssemblyFailed("review_copy_too_large", f"the 480p review copy is {proxy.stat().st_size // 1_000_000} MB, "
-                             "above the 50 MB a review object may be: shorten the film")
+        raise AssemblyFailed("review_copy_missing", "the film rendered, but its 480p review copy could not be made (the "
+                             "worker's log names the encoder's exit): report it (re-assembling the same cut gives the "
+                             "same result)")
+    size = proxy.stat().st_size
+    if size > REVIEW_COPY_MAX_BYTES:
+        # The last guard: the copy is capped to fit (bound in review_maxrate_kbps), so reaching this is a fault, not the
+        # film being too long. The film is fine; shortening it is the wrong remedy (S4_GAPS.md G2). The cap is named only
+        # when this row records one: a master stored before the cap, picked up again after a crash, was not capped.
+        # Only a positive int is named: provenance is jsonb, and anything else (a string, a float, a nested object)
+        # is not a cap this code wrote.
+        prov = row.get("provenance")
+        rc = prov.get("review_copy") if isinstance(prov, Mapping) else None
+        cap = rc.get("video_maxrate_kbps") if isinstance(rc, Mapping) else None
+        at = f" at the {cap} kb/s cap" if type(cap) is int and cap > 0 else ""
+        # Rounded up, so a copy one byte over never reads "50.00 MB, above the 50 MB".
+        raise AssemblyFailed("review_copy_too_large", f"the film rendered, but its 480p review copy came out "
+                             f"{math.ceil(size / 1e4) / 100:.2f} MB{at}, above the 50 MB a review object may be: report "
+                             "it (re-assembling the same cut gives the same copy)")
 
 
 __all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "clients_from", "DbRefused", "DbUnavailable", "Deps", "REASONS",
            "assemble_segment", "cached_words", "prune_word_cache", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
-           "master_asset_id", "render_strict", "store_caption", "vtt_text", "whisper_words"]
+           "master_asset_id", "render_strict", "review_maxrate_kbps", "store_caption", "vtt_text", "whisper_words"]
