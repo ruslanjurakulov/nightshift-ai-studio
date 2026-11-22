@@ -33,7 +33,7 @@ import { dictionaries } from "@/lib/i18n";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { StudioHome, type AssistantData } from "@/components/studio/StudioHome";
 import { CREATIVE_EXAMPLES, STUDIO_MODES, examplePrompt, isStudioMode, modeDesk } from "@/lib/creative/examples";
-import { DESK_TOOLS, MEDIA_DESKS } from "@/lib/creative/desks";
+import { DESK_TOOLS, MEDIA_DESKS, offeredTools } from "@/lib/creative/desks";
 import { PANEL_CAPABILITIES, type StudioModel } from "@/lib/creative/studio";
 import { bannedHits } from "@/lib/marketing-banned";
 
@@ -141,7 +141,8 @@ describe("the mode chips", () => {
     for (const m of MEDIA_DESKS) {
       fireEvent.click(chip(th.modes[m]));
       expect(chip(th.modes[m]).getAttribute("aria-checked")).toBe("true");
-      expect(composerTools()).toEqual(DESK_TOOLS[m].map((c) => `gen-tab-${c}`));
+      // The likeness policy is off by default (lib/likeness-policy.ts), so the desk offers its tools without `dub`.
+      expect(composerTools()).toEqual(offeredTools(DESK_TOOLS[m]).map((c) => `gen-tab-${c}`));
     }
     fireEvent.keyDown(chip(th.modes.enhance), { key: "ArrowLeft" });
     expect(chip(th.modes.voice).getAttribute("aria-checked")).toBe("true");

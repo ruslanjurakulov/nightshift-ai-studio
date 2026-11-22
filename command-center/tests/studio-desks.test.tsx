@@ -87,6 +87,8 @@ const asset = (id: string, kind = "image") => ({
 });
 
 beforeEach(() => {
+  // The desks' layout with every tool; the likeness policy's off state (no dub tab) is pinned in tests/likeness-policy.test.ts.
+  vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "on");
   quotes = [];
   feed = [];
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -107,6 +109,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("the desks (pure)", () => {

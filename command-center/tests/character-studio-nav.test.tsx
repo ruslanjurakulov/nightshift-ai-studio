@@ -77,6 +77,7 @@ function flatten(node: unknown, out: ReactElement[] = []): ReactElement[] {
 describe("the page", () => {
   beforeEach(() => {
     delete process.env.NIGHTSHIFT_CHARACTER_STUDIO;
+    delete process.env.NIGHTSHIFT_LIKENESS_FEATURES;
     h.org.mockReset().mockResolvedValue({ supported: true, orgs: [], current: { id: "o1", role: "editor" } });
     h.load.mockReset().mockResolvedValue({ available: true, templates: [], jobs: [], videos: [], pictures: [] });
     h.client.mockReset().mockResolvedValue({});
@@ -97,6 +98,8 @@ describe("the page", () => {
 
   it("with the switch on, reads the open organization's studio; a viewer gets it without the button", async () => {
     vi.stubEnv("NIGHTSHIFT_CHARACTER_STUDIO", "on");
+    // The payment-terms policy (lib/likeness-policy.ts) must also allow it: the studio's own switch alone no longer opens it.
+    vi.stubEnv("NIGHTSHIFT_LIKENESS_FEATURES", "on");
     const { default: Page } = await import("../app/(app)/[channel]/character-studio/page");
     const find = async () => flatten(await Page()).find((n) => (n.props as { orgId?: string }).orgId);
     expect((await find())?.props).toMatchObject({ enabled: true, orgId: "o1", canEdit: true, libraryHref: "/alpha/library" });

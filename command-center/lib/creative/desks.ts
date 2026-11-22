@@ -10,6 +10,7 @@
  * desk never adds a setting a tool does not take.
  */
 import { PANEL_CAPABILITIES, isStudioCapability, type StudioCapability } from "@/lib/creative/studio";
+import { isLikenessCapability, likenessFeaturesAllowed } from "@/lib/likeness-policy";
 
 /** The desks that hold a composer, in the order the switcher shows them. */
 export const MEDIA_DESKS = ["video", "image", "enhance", "voice"] as const;
@@ -83,6 +84,16 @@ export function deskHref(d: Desk): string {
 export function pictureToolFor(tools: readonly StudioCapability[], current: StudioCapability, needsSource: (c: StudioCapability) => boolean): StudioCapability {
   if (needsSource(current)) return current;
   return tools.find(needsSource) ?? "edit";
+}
+
+/**
+ * The tools a composer may OFFER: the given list without the likeness tools (lib/likeness-policy.ts: `dub`) while the policy is off.
+ * DESK_TOOLS itself keeps `dub` on the Voice desk, because the desk's job history still lists the dubs made before the switch.
+ * In the browser the server-only variable reads as unset, so a dub tab stays hidden there until a server-passed flag exists: the
+ * stricter way round, never a tab whose quote the server refuses with feature_unavailable_policy.
+ */
+export function offeredTools<T extends string>(tools: readonly T[], allowed: boolean = likenessFeaturesAllowed()): readonly T[] {
+  return allowed ? tools : tools.filter((c) => !isLikenessCapability(c));
 }
 
 /** Every composer tool, for the composer outside a desk (unchanged order). */

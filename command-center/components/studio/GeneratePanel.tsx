@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowUp, AtSign, ChevronDown, Clock, Languages, Lock, Maximize2, MonitorPlay, Plus, RectangleHorizontal, Settings2, X, type LucideIcon } from "lucide-react";
-import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
+import { DESK_TOOLS, offeredTools, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
 import { ATTACH_ACCEPT } from "@/lib/site/pending-attachment";
 import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
@@ -268,7 +268,8 @@ export function GeneratePanel({
   const { t, fmt, locale } = useI18n();
   const path = useChannelPath();
   // The tools this composer offers: its desk's, or every one.
-  const tools: readonly StudioCapability[] = only && only.length > 0 ? only : desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES;
+  // Without the likeness tools while the policy is off (lib/creative/desks offeredTools): never a tab the server refuses.
+  const tools: readonly StudioCapability[] = offeredTools(only && only.length > 0 ? only : desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES);
   // `desk` picks the tools; `arrange` is the desk's own look, which the composer does not use.
   const composer = layout === "composer";
   const arrange: MediaDesk | null = composer ? null : desk;

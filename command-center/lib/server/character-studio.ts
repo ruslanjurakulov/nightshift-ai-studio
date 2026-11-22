@@ -5,6 +5,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { MEDIA_ASSET_COLUMNS, coerceAssets } from "@/lib/media";
 import { mediaDir, mediaUrlSecret, withUrls } from "@/lib/server/media";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { likenessRefusal } from "@/lib/likeness-policy";
 import {
   JOB_COLUMNS,
   SAMPLE_COLUMNS,
@@ -30,6 +31,18 @@ export const NO_STORE = { "cache-control": "no-store" };
 
 export function csFail(error: SwapError, status: number, extra: Record<string, unknown> = {}) {
   return NextResponse.json({ error, ...extra }, { status, headers: NO_STORE });
+}
+
+/**
+ * The payment-terms refusal (lib/likeness-policy.ts), first in every route that reads, quotes or starts a swap: before the session and
+ * any database call, so nothing is quoted or held. The studio's own switch is asked first: a studio that is not deployed answers the
+ * public 404 as it did before the policy, and does not reveal that it exists. The cancel route does not call it: cancelling a job that
+ * was queued before the switch went off is how its hold comes back.
+ */
+export function studioPolicyRefusal(): NextResponse | null {
+  if (!characterStudioEnabled()) return csFail("not_found", 404);
+  const refused = likenessRefusal();
+  return refused ? NextResponse.json(refused.body, { status: refused.status, headers: NO_STORE }) : null;
 }
 
 type Client = NonNullable<Awaited<ReturnType<typeof createClient>>>;

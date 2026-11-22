@@ -10,6 +10,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { characterStudioEnabled } from "@/lib/characterStudio/model";
+import { likenessFeaturesAllowed } from "@/lib/likeness-policy";
 import { characterStudioStrings } from "@/lib/i18n/character-studio";
 import { loadStudio } from "@/lib/server/character-studio";
 
@@ -23,7 +24,8 @@ export const revalidate = 0;
  * under the member's own session (RLS) and never calls a vendor.
  */
 export default async function CharacterStudioPage() {
-  if (!characterStudioEnabled()) notFound();
+  // Two switches: the studio deployed, and the payment terms allowing a person swap at all (lib/likeness-policy.ts).
+  if (!characterStudioEnabled() || !likenessFeaturesAllowed()) notFound();
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t, locale } = await getDictionary();
   const s = characterStudioStrings(locale);

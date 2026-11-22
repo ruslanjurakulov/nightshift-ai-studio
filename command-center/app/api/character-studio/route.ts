@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { NO_STORE, characterStudioGate, csFail, loadStudio, resolveStudioOrg } from "@/lib/server/character-studio";
+import { NO_STORE, characterStudioGate, csFail, loadStudio, resolveStudioOrg, studioPolicyRefusal } from "@/lib/server/character-studio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
  * and pictures the studio can pick, read under the member's own session (RLS). Nothing is priced here: the quote is its own call.
  */
 export async function GET(request: Request) {
+  const policy = studioPolicyRefusal();
+  if (policy) return policy;
   const gate = await characterStudioGate();
   if (!gate.ok) return gate.response;
   const { org, bad } = await resolveStudioOrg(new URL(request.url).searchParams.get("org"));

@@ -3788,6 +3788,7 @@ export const uz: Dictionary = {
       model_temporarily_off: "Bu model vaqtincha mavjud emas. Hech narsa yechilmadi. Boshqa modelni tanlang yoki keyinroq urinib koʻring.",
       country_blocked: "Bu model sizning hududingizda mavjud emas. Hech narsa yechilmadi. Roʻyxatdan boshqa modelni tanlang.",
       prompt_required: "Bu modelga soʻzlar kerak: harakat yoki kadrni tasvirlang, shunda narx chiqadi. Hech narsa yechilmadi.",
+      feature_unavailable_policy: "Bu vosita taklif etilmaydi. Hech narsa yechilmadi.",
       entitlement_required: "Bu model hali tashkilotingiz uchun ochiq emas.",
       unpriced: "Bu modelning hali narxi yoʻq, shuning uchun uni ishlatib boʻlmaydi.",
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",

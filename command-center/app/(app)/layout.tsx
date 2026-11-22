@@ -46,6 +46,7 @@ import { FlashNotice } from "@/components/account/FlashNotice";
 import { SkipLink } from "@/components/shell/SkipLink";
 import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 import { characterStudioEnabled } from "@/lib/characterStudio/model";
+import { likenessFeaturesAllowed } from "@/lib/likeness-policy";
 import { filmStudioListed, filmStudioMode, filmStudioViewerOn } from "@/lib/server/films";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
@@ -233,7 +234,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
         {/* Drawn as the account in view: the owner's User account lists only what a customer's would (Film Studio's admins-only
             beta included); every page and route still checks the real role. */}
-        <ShellProvider operator={frame} ownerSwitch={ownerAccount} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmMode, frame, filmOrgOn), aiChat: aiChatOpenFor(org.supported ? org.current?.id : null, aiChatEnv()) }} tools={tools}>
+        <ShellProvider operator={frame} ownerSwitch={ownerAccount} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() && likenessFeaturesAllowed(), filmStudio: filmStudioListed(filmMode, frame, filmOrgOn), aiChat: aiChatOpenFor(org.supported ? org.current?.id : null, aiChatEnv()) }} tools={tools}>
         <SidebarProvider initialCollapsed={!frame && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}

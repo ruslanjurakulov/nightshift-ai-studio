@@ -15,6 +15,7 @@
  */
 import { isUuid } from "@/lib/creative/operations";
 import { MODEL_ID_RE } from "@/lib/models-admin";
+import { isLikenessCapability, likenessFeaturesAllowed } from "@/lib/likeness-policy";
 import { modelsFor, promptRule, wordsMax, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
 
 export type ImproveKind = "image" | "video" | "audio";
@@ -38,8 +39,13 @@ export const IMPROVE_TOOLS: Record<ImproveKind, readonly ImproveTool[]> = {
   audio: ["voice_change", "dub"],
 };
 
-export function improveTools(kind: unknown): readonly ImproveTool[] {
-  return isImproveKind(kind) ? IMPROVE_TOOLS[kind] : [];
+/**
+ * What the menu lists for a file type. `dub` only while the likeness policy allows it (lib/likeness-policy.ts): "not available yet"
+ * would promise a tool the payment terms keep off, so it is left out rather than listed. IMPROVE_TOOLS keeps it for when it is allowed.
+ */
+export function improveTools(kind: unknown, allowed: boolean = likenessFeaturesAllowed()): readonly ImproveTool[] {
+  if (!isImproveKind(kind)) return [];
+  return allowed ? IMPROVE_TOOLS[kind] : IMPROVE_TOOLS[kind].filter((t) => !isLikenessCapability(t));
 }
 
 export function isStudioTool(tool: ImproveTool): tool is ImproveStudioTool {

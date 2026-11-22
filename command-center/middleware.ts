@@ -28,6 +28,7 @@ import { hardenSessionCookie } from "@/lib/supabase/cookie-options";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
 import { customVoiceDecision, customVoiceEnabled } from "@/lib/custom-voice";
+import { likenessFeaturesAllowed } from "@/lib/likeness-policy";
 import { ENROL_PATH, MFA_VERIFY_PATH, isEnrolOnlyPath, parseAdminMfaMode } from "@/lib/security/admin-mfa";
 import { mfaMiddlewareAction, type MfaMiddlewareClient } from "@/lib/security/mfa-middleware";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
@@ -191,7 +192,8 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   if (devPage === "serve") return NextResponse.next({ request });
   // The custom voice page (lib/custom-voice.ts): CUSTOM_VOICE_ENABLED=1 or the public 404, decided here, before the auth gate and
   // before any Supabase call, so a request with the flag off asks the database nothing. On, the gate below decides as usual.
-  if (customVoiceDecision(request.nextUrl.pathname, customVoiceEnabled()) === "hide") return notFoundResponse(request);
+  // The likeness policy (payment terms forbid voice cloning) hides it too, whatever CUSTOM_VOICE_ENABLED says.
+  if (customVoiceDecision(request.nextUrl.pathname, customVoiceEnabled() && likenessFeaturesAllowed()) === "hide") return notFoundResponse(request);
   // The public pages' two self-hosted font files, by exact name: static, public,
   // and on the critical path of a Russian page's first paint.
   if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next({ request });

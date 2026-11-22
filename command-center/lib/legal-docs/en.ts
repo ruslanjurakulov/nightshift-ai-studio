@@ -314,6 +314,8 @@ export const en: LegalTexts = {
           // 6.2-6.5 (generated content) are read by the payment providers' reviewers. "The Service does not offer face-swap or
           // voice-cloning features" is true only while Character Studio (NIGHTSHIFT_CHARACTER_STUDIO, migration 0137) and custom voice
           // (CUSTOM_VOICE_ENABLED, NIGHTSHIFT_VOICE_CLONING, migration 0117) stay off: switching either on must change this text first.
+          // NIGHTSHIFT_LIKENESS_FEATURES (lib/likeness-policy.ts, default off) keeps both, and `dub`, refused for customers whatever
+          // their own switches say: that is the written promise to the payment providers (21 Nov 2026).
           // 6.4 restates 8.3: a refused request is a failed run or generation, and its whole hold is returned.
           // Dubbing (registry capability `dub`, which keeps each speaker's own voice) and speech-to-speech (`voice_change`) are voice
           // cloning in effect: they stay unsold only while every such registry entry carries a terms_gate (tests/legal-docs.test.ts).

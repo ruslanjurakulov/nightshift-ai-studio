@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { NO_STORE, characterStudioGate, csFail, resolveStudioOrg, studioRefusal } from "@/lib/server/character-studio";
+import { NO_STORE, characterStudioGate, csFail, resolveStudioOrg, studioPolicyRefusal, studioRefusal } from "@/lib/server/character-studio";
 import { coerceQuote, isResolution, parseId } from "@/lib/characterStudio/model";
 
 export const runtime = "nodejs";
@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
  * for the clip's length and the resolution; the browser shows it and never computes one. A model with no price reads `on_sale: false`.
  */
 export async function GET(request: Request) {
+  const policy = studioPolicyRefusal();
+  if (policy) return policy;
   const gate = await characterStudioGate();
   if (!gate.ok) return gate.response;
   const q = new URL(request.url).searchParams;

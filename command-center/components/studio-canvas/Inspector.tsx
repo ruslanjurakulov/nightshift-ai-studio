@@ -17,7 +17,7 @@ import {
   type StudioModel,
   type StudioPrefill,
 } from "@/lib/creative/studio";
-import { DESK_TOOLS } from "@/lib/creative/desks";
+import { DESK_TOOLS, offeredTools } from "@/lib/creative/desks";
 import { EFFECTS, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { KIND_SPEC, type CanvasNode, type CanvasState, type PortType } from "@/lib/studio/canvas";
 import type { UpsellCatalog } from "@/lib/upsell";
@@ -59,7 +59,8 @@ export function toolsFor(node: CanvasNode, input: PortType | null): StudioCapabi
     case "enhance":
       return DESK_TOOLS.enhance.filter((c) => (input === "video" ? needsVideo(c) : !needsVideo(c)));
     case "voice":
-      return input === "audio" || input === "video" ? ["voice_change", "dub"] : ["tts"];
+      // `dub` only while the likeness policy allows it (lib/creative/desks offeredTools): never a tool the server refuses.
+      return input === "audio" || input === "video" ? [...offeredTools<StudioCapability>(["voice_change", "dub"])] : ["tts"];
     default:
       return [];
   }

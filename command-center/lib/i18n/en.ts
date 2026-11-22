@@ -3808,6 +3808,7 @@ export const en = {
       model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
       country_blocked: "This model is not available in your region. Nothing was charged. Choose another model from the list.",
       prompt_required: "This model needs words for this: describe the motion or the shot, then the price is shown. Nothing was charged.",
+      feature_unavailable_policy: "This tool is not offered. Nothing was charged.",
       entitlement_required: "This model isn't open to your organization yet.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",

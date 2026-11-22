@@ -16,6 +16,7 @@ import { CastEditor } from "@/components/agents/CastEditor";
 import { VoiceEditor } from "@/components/agents/VoiceEditor";
 import Link from "next/link";
 import { customVoiceEnabled } from "@/lib/custom-voice";
+import { likenessFeaturesAllowed } from "@/lib/likeness-policy";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
@@ -150,7 +151,7 @@ export default async function AgentsPage() {
       />
 
       {/* Only while CUSTOM_VOICE_ENABLED=1: the page it opens is a 404 otherwise, so a link to it must not exist either. */}
-      {customVoiceEnabled() && (
+      {customVoiceEnabled() && likenessFeaturesAllowed() && (
         <p>
           <Link href={(await getChannelPath())("agents/voice")} className="g2-link">
             {t.customVoice.title}

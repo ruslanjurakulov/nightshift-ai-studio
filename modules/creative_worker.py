@@ -179,6 +179,7 @@ from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, T
 
 from modules import creative_style as cs
 from modules import credits as credit_rules
+from modules import likeness_policy
 from modules import media_library as ml
 from modules.captions import CaptionsError, base_language, clean_words
 from modules.describe_text import clean_description
@@ -594,6 +595,7 @@ class CreativeWorker:
                  out_dir: Path, credits=None, enforce: bool = False,
                  media_root: Optional[Path] = None, library: Optional[Library] = None,
                  region_editor: bool = False,
+                 env: Optional[Mapping[str, str]] = None,
                  scrub: Callable[[str], str] = lambda s: s,
                  poll_seconds: float = DEFAULT_POLL_SECONDS,
                  max_poll_seconds: float = DEFAULT_MAX_POLL_SECONDS,
@@ -609,6 +611,8 @@ class CreativeWorker:
         self.library = library
         #: NIGHTSHIFT_REGION_EDITOR in this process (default off): a region edit is refused while it is off.
         self.region_editor = bool(region_editor)
+        #: Where NIGHTSHIFT_LIKENESS_FEATURES is read (None: this process's environment). Tests pass their own.
+        self.env = env
         self.worker_id = worker_id
         self.out_dir = Path(out_dir)
         self.credits = credits
@@ -655,6 +659,11 @@ class CreativeWorker:
 
     def _process(self, job: Mapping[str, Any], beat: _Heartbeat) -> str:
         job_id = str(job["id"])
+        # The likeness policy (modules/likeness_policy.py): a dub re-voices real speakers, which the payment terms do not let us sell.
+        # First, before the hold check, the source or any adapter: refused here, the job fails through _fail and its hold is released.
+        # A resumed job is refused too: charging it would sell the very thing the switch keeps off.
+        if likeness_policy.refused(job.get("capability"), self.env):
+            raise _Refused(likeness_policy.REFUSAL, f"this tool is not offered ({likeness_policy.FLAG} is off); nothing was charged")
         mode = str(job.get("mode") or "exact")
         if mode != "exact" and mode not in ROUTED_MODES:
             raise _Refused("mode_not_supported", "this worker runs exact and routed jobs only")
