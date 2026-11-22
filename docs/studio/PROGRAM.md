@@ -104,9 +104,11 @@ all behave. Every screen on the way meets S5's bar.
 | 0215 | S2 | film archive/resume + opaque worker id in film events |
 | 0216 | S6 | 'lipsync' capability (when the adapter is probed) |
 | 0217 | S7 | reserved root segments refused for channel ids |
-| 0218 | S9 | operator-only assistant exposure for web_only models; Seedance never exposed |
-| 0219 | S9 | oauth_creative_list (MCP list_creative_jobs) |
+| 0218 | S9 | creative_price refuses before the hold: prompt over the model's max_prompt_chars (UTF-16 units), negative_prompt unless `takes_negative_prompt`, seed everywhere; params refusal never echoes caller keys (Breach F1–F3) |
+| 0219 | S9 | operator-only assistant exposure for web_only models; Seedance never exposed (applied with 0218) |
 | 0220 | S2 | quote_film/start_film call voice_language_problem (after 0214 + probe sync) |
+| 0221 | S9 | oauth_creative_list (MCP list_creative_jobs) |
+| 0222 | S10 | retire gemini-omni-1.1-flash before Google re-routes it to 1.2 on 2026-12-03 |
 
 Streams S7 (language URLs), S8 (media-first cards, sound), S9 (MCP Studio tools), S10 (Google models) were added on 22 Nov.
 
