@@ -533,7 +533,7 @@ class ReviewCopyCapTest(Base):
         db = f.db()
         out = self.assert_fails(db, "review_copy_too_large",
                                 store_file=fake_store_file(db, self.root, proxy_bytes=fa.REVIEW_COPY_MAX_BYTES + 1))
-        self.assertIn("50.00 MB at the 2500 kb/s cap", out.detail)   # .2f: never "50.0 MB, above the 50 MB"
+        self.assertIn("50.01 MB at the 2500 kb/s cap", out.detail)   # rounded up: never "50.00 MB, above the 50 MB"
         self.assertIn("report it", out.detail)
         for wrong in ("shorten", "retry"):
             self.assertNotIn(wrong, out.detail)
@@ -703,6 +703,28 @@ class FindingsTest(Base):
         self.assertIn("1 word(s) outside speech dropped", out.detail)
         prov = db.asset_rows[out.asset_id]["provenance"]["captions_dropped_words"]
         self.assertEqual((prov["count"], prov["words"][0]["start_s"]), (1, 2.8))
+
+    def test_fifty_long_hallucinated_words_keep_the_films_provenance_under_0038s_16_kb(self):
+        # Whisper's invented "words" have no length limit; 50 x 500 characters on the row would fail 0038's
+        # pg_column_size(provenance) <= 16384 check and with it the store of a paid film.
+        f = self.film(captions="sidecar", words=False)
+
+        def transcribe(path, language):
+            return ([{"word": "Scene", "start": 0.35, "end": 0.7}]
+                    + [{"word": chr(0x41 + i % 26) * 500, "start": 2.8 + i * 0.003, "end": 2.802 + i * 0.003}
+                       for i in range(60)])
+        db = f.db()
+        out = run(db, self.root, deps=self.fake_deps(db, transcribe=transcribe))
+        self.assertTrue(out.ok, out)
+        prov = db.asset_rows[out.asset_id]["provenance"]
+        self.assertLess(len(json.dumps(prov, ensure_ascii=False).encode()), 16384)
+        dropped = prov["captions_dropped_words"]
+        self.assertEqual(dropped["count"], 60)                     # the whole number, always
+        self.assertEqual(len(dropped["words"]), 50)
+        for w in dropped["words"]:
+            self.assertLessEqual(len(w["word"]), fa.DROPPED_WORD_CHARS)
+            self.assertTrue(w["word"].endswith("\u2026"), w["word"][-3:])
+        self.assertEqual(dropped["words"][0]["start_s"], 2.8)
 
     def test_a_5xx_on_begin_records_nothing(self):
         f = self.film()

@@ -62,10 +62,10 @@ class CapClampBoundaries(unittest.TestCase):
             self.assertIn(f"{fa.review_maxrate_kbps(secs)}k", argv)
 
     def test_a_length_that_is_not_a_number_is_refused(self):
-        for bad in (None, "ten", [600]):
-            with self.assertRaises((TypeError, ValueError), msg=repr(bad)):
+        # As strict as proxy_command's cap: a numeric string or a bool is refused too, never read as a length.
+        for bad in (None, "ten", [600], "600", True, False):
+            with self.assertRaises(ValueError, msg=repr(bad)):
                 fa.review_maxrate_kbps(bad)
-        self.assertEqual(fa.review_maxrate_kbps("600"), 504)   # a numeric string, as a row may carry it
 
 
 class CapFollowsTheCut(tfa.Base):
@@ -135,7 +135,7 @@ class ReusedMasterFromBeforeTheCap(tfa.Base):
         self.assertEqual((out.ok, out.reason), (False, "review_copy_too_large"), out.detail)
         self.assertEqual(self.render_calls, [])
         self.assertNotIn("cap", out.detail)
-        self.assertIn("50.00 MB", out.detail)
+        self.assertIn("50.01 MB", out.detail)  # one byte over, rounded up
         self.assertIn("report it", out.detail)
         for wrong in ("shorten", "retry"):
             self.assertNotIn(wrong, out.detail)
