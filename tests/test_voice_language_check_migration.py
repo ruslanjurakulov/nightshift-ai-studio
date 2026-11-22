@@ -2,7 +2,11 @@
 
 What would break, and which test says so:
 
-* the helper becoming callable by the anon key or a signed-in member, or losing security definer / its pinned search_path;
+* the helper becoming callable by any API role (it runs inside quote_film as the owner, like film_model_problem), or losing
+  security definer / its pinned search_path;
+* the proposed quote_film line asking the language before the role check (a hidden model would be answered with a language
+  detail naming its row instead of model_not_available), or the remedy naming the untried Eleven v4;
+* a language outside the three that were checked answering "does not speak" instead of "unknown";
 * the helper reading anything but the registry's own list (model_registry.spec -> 'languages'), or a missing list, row or
   language reading as "speaks" (rule 5: it must say voice_language_unknown);
 * the file changing a money function: quote_film, start_film, film_price and the credit ledger are S2's, and this file only
@@ -43,10 +47,9 @@ class TheFunctionIsClosedAndPinned(unittest.TestCase):
         self.assertIn("security definer", head.group(1))
         self.assertIn("set search_path = public, pg_temp", head.group(1))
 
-    def test_only_the_service_role_may_execute_it(self):
+    def test_no_role_may_execute_it(self):
         self.assertIn(f"revoke all on function {SIG} from public, anon, authenticated, service_role;", CODE)
-        grants = re.findall(r"grant execute on function public\.voice_language_problem\(text, text\) to ([^;]+);", CODE)
-        self.assertEqual(grants, ["service_role"])
+        self.assertNotIn("grant ", CODE.lower())
 
 
 class UnknownIsNeverSpeaks(unittest.TestCase):
@@ -65,7 +68,14 @@ class UnknownIsNeverSpeaks(unittest.TestCase):
         self.assertEqual(b.count("'voice_language_unknown'"), 3, "no language, no row and no list each answer unknown")
         self.assertEqual(b.count("'voice_language_unsupported'"), 1)
         self.assertEqual(b.count("'priced', false"), 4)
-        self.assertIn("Eleven v4 or v3 for Uzbek", b)
+        self.assertIn("when lang = 'uz' then '; choose Eleven v3, a voice model that lists Uzbek'", b)
+        self.assertNotIn("v4", b, "v4 lists Uzbek but is untried: the remedy names v3 only, like tts_languages.UZBEK_FIX")
+
+    def test_a_language_outside_the_three_checked_is_unknown(self):
+        b = self.body()
+        guard = b.index("if lang = '' or lang not in ('en', 'ru', 'uz') then")
+        self.assertLess(guard, b.index("'voice_language_unsupported'"))
+        self.assertIn("'voice_language_unknown'", b[guard:b.index("end if;", guard)])
 
     def test_the_only_null_is_after_the_list_holds_the_language(self):
         b = self.body()
@@ -90,7 +100,10 @@ class ItIsAdditiveAndTouchesNoMoney(unittest.TestCase):
         self.assertNotIn("alter table", lowered)
 
     def test_it_names_the_line_s2_adds_and_ends_with_a_verify_block(self):
-        self.assertIn("q := coalesce(public.voice_language_problem(f.voice ->> 'model', f.language),", SQL)
+        line = re.search(r"q := coalesce\(public\.film_model_problem\(f\.voice ->> 'model', array\['tts'\], 'voice\.model'\),\n"
+                         r"--\s+public\.voice_language_problem\(f\.voice ->> 'model', f\.language\),\n"
+                         r"--\s+public\.film_try_price\(", SQL)
+        self.assertIsNotNone(line, "the role check first, then the language, then the price")
         self.assertIn("-- Verify (run after applying", SQL)
         self.assertIn("voice_language_unsupported", SQL.split("-- Verify", 1)[1])
 
@@ -108,6 +121,16 @@ class TheRollbackAndTheDoc(unittest.TestCase):
     def test_the_migration_is_in_the_migrations_doc(self):
         self.assertIn("0214_voice_language_check.sql", MIGRATIONS_DOC)
         self.assertIn("rollback_0214_voice_language_check.sql", MIGRATIONS_DOC)
+
+    def test_the_reprobe_names_each_model_because_all_skips_gated_ones(self):
+        cmd = "--sync --model elevenlabs-v4 --model elevenlabs-v3"
+        for text in (SQL, MIGRATIONS_DOC):
+            flat = re.sub(r"\s+", " ", text.replace("\\\n--", " ").replace("--   ", " "))
+            self.assertIn(cmd, flat)
+            self.assertIn("--model elevenlabs-multilingual-v2 --model elevenlabs-flash-v2.5", flat)
+            self.assertNotIn("--capability tts", text)
+        self.assertIn("select id, availability, verified_at from public.model_registry where 'tts' = any(capabilities);",
+                      MIGRATIONS_DOC)
 
 
 if __name__ == "__main__":

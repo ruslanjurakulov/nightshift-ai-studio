@@ -2,8 +2,8 @@
 
 Wired in at the bottom of sec_expectations.py, like the other per-migration files. One new function, no table:
 
-  voice_language_problem  service_role only. quote_film (security definer) calls it from inside; neither API role may probe the
-                          registry with it one model id at a time. test_sec_voice_language.py exercises its answers.
+  voice_language_problem  no API role at all (revoked from service_role too, like film_model_problem). quote_film runs as the
+                          owner and calls it from inside. test_sec_voice_language.py exercises its answers and grants.
 """
 
 from __future__ import annotations

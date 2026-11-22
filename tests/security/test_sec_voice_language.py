@@ -86,14 +86,25 @@ def test_a_model_whose_list_is_missing_empty_or_not_a_list_is_unknown(seeded, la
     assert q["reason"] == "voice_language_unknown"
 
 
-def test_neither_api_role_may_call_it_and_the_service_role_may(seeded):
-    for who in (ANON, user("lab-voice-lang", "voice-lang@lab.invalid")):
+def test_no_api_role_may_call_it_not_even_the_service_role(seeded):
+    """Like film_model_problem: quote_film runs as the owner and calls it from inside; nobody else needs it."""
+    for who in (ANON, user("lab-voice-lang", "voice-lang@lab.invalid"), SERVICE):
         with acting(seeded, who) as s:
             out = s.run("select public.voice_language_problem('elevenlabs-v4', 'uz')")
         assert not out.ok and out.sqlstate == "42501", who
-    with acting(seeded, SERVICE) as s:
-        assert s.value("select public.voice_language_problem('elevenlabs-multilingual-v2', 'uz') ->> 'reason'") \
-            == "voice_language_unsupported"
+
+
+@pytest.mark.parametrize("language", ["de", "ar", "uzb"])
+def test_a_language_outside_the_three_checked_is_unknown_never_unsupported(seeded, language):
+    """The lists hold only uz, ru and en: German missing from one is not known to be unspoken (rule 5)."""
+    for model in ("elevenlabs-v4", "elevenlabs-multilingual-v2"):
+        assert _ask(seeded, model, language)["reason"] == "voice_language_unknown"
+
+
+def test_the_uzbek_remedy_names_v3_only(seeded):
+    detail = _ask(seeded, "elevenlabs-multilingual-v2", "uz")["detail"]
+    assert "choose Eleven v3, a voice model that lists Uzbek" in detail
+    assert "v4" not in detail
 
 
 def test_the_rollback_removes_it_and_the_file_applies_again(conn):
