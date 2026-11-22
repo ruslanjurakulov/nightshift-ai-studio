@@ -288,7 +288,7 @@ describe("the pictures and the data", () => {
 
 describe("review fixes (PR #405)", () => {
   it("defines the stage colours on the drawn art itself, not only on `.nx`, so /mcp (a `.st` page) does not paint it black", () => {
-    expect(css).toMatch(/\n\.nx, \.nx-art-svg \{\s*\n\s*--nx-stage: #100f0d;/);
+    expect(css).toMatch(/\n\.nx, \.nx-art-svg \{\s*\n\s*--nx-stage: #0f1115;/);
     // Every var the art reads is in that rule.
     const art = readFileSync(join(ROOT, "components/site/BrandArt.tsx"), "utf8");
     const rule = css.match(/\n\.nx, \.nx-art-svg \{[^}]*\}/)![0];

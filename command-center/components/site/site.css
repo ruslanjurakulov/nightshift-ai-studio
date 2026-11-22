@@ -59,7 +59,7 @@
   --st-act-ink: #b3acff;
   --color-primary: var(--st-act-ink);
   --ns-focus: #ffc266;
-  --st-focus-gap: #131210;
+  --st-focus-gap: #0a0b0e;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .st {
@@ -71,7 +71,7 @@
     --st-act-ink: #b3acff;
   --color-primary: var(--st-act-ink);
     --ns-focus: #ffc266;
-    --st-focus-gap: #131210;
+    --st-focus-gap: #0a0b0e;
   }
 }
 html:has(.st) { scroll-padding-top: 80px; }

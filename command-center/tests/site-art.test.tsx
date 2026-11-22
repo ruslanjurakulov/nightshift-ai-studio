@@ -276,17 +276,17 @@ describe("the steps and the tool wall", () => {
 
   it("lightens the muted text of \"How it works\" in dark mode only, in that section only (the shared token is the whole site's muted text, so no global value moves)", () => {
     const g = read("app/globals.css");
-    expect(g).toContain("--ns-text-dim: #b4aea1;");
-    expect(css).toMatch(/@media \(prefers-color-scheme: dark\) \{ :root:not\(\[data-theme="light"\]\) \.nx-section#how \{ --ns-text-dim: #d3cdc1; \} \}/);
-    expect(css).toMatch(/:root\[data-theme="dark"\] \.nx-section#how \{ --ns-text-dim: #d3cdc1; \}/);
-    // 4.5:1 is the floor; the aim for this small text is about 7:1. It sits on the raised section's #1b1a17 (the ground is darker): the brighter of the two is the worst case.
+    expect(g).toContain("--ns-text-dim: #b1b7c3;");
+    expect(css).toMatch(/@media \(prefers-color-scheme: dark\) \{ :root:not\(\[data-theme="light"\]\) \.nx-section#how \{ --ns-text-dim: #d0d4dc; \} \}/);
+    expect(css).toMatch(/:root\[data-theme="dark"\] \.nx-section#how \{ --ns-text-dim: #d0d4dc; \}/);
+    // 4.5:1 is the floor; the aim for this small text is about 7:1. It sits on the raised section's #0f1115 (the ground is darker): the brighter of the two is the worst case.
     const lum = (hex: string) => {
       const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
       return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     };
     const ratio = (a: string, b: string) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
-    expect(ratio("#d3cdc1", "#1b1a17")).toBeGreaterThanOrEqual(7);
-    expect(ratio("#d3cdc1", "#1b1a17")).toBeGreaterThan(ratio("#b4aea1", "#1b1a17"));
+    expect(ratio("#d0d4dc", "#0f1115")).toBeGreaterThanOrEqual(7);
+    expect(ratio("#d0d4dc", "#0f1115")).toBeGreaterThan(ratio("#b1b7c3", "#0f1115"));
   });
 
   it("has the fallback icon's colour at 4.5:1 or better on the tile's brightest point (the icon tile never changes with the theme)", () => {

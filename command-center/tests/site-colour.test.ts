@@ -32,8 +32,9 @@ function tokens(selector: string): Record<string, string> {
 
 const light = tokens(".st {");
 const dark = tokens(':root[data-theme="dark"] .st,');
-const GROUND = { light: "#f3f3f1", dark: "#131210" };
-const STAGE = "#100f0d";
+// The dark public ground and stage are the neutral near-black (owner, 22 Nov 2026), the same family as the app's --ds-bg.
+const GROUND = { light: "#f3f3f1", dark: "#0a0b0e" };
+const STAGE = "#0f1115";
 
 describe("the public primary key is indigo with a white legend", () => {
   it.each([
@@ -135,6 +136,36 @@ describe("the signed-in app speaks the same colour: indigo key, amber accent and
       expect(globals, name).toContain(`--ns-act-ink: ${ink};`);
       expect(contrast("#ffffff", t["--st-lit-bg"]), `${name} legend`).toBeGreaterThanOrEqual(4.5);
       expect(contrast(ink, ground), `${name} ink`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+describe("the public dark ground is the neutral near-black (owner, 22 Nov 2026)", () => {
+  // Both dark blocks of globals.css (the system's preference and the explicit choice) carry the public site's --ns-* ground.
+  const darkBlocks = [...globals.matchAll(/--ns-ground: (#[0-9a-f]{6});[\s\S]*?--ns-text-dim: (#[0-9a-f]{6});/g)].slice(1);
+  const val = (block: string, k: string) => block.match(new RegExp(`${k}: (#[0-9a-f]{6});`))![1];
+
+  it("is the same in both dark blocks, neutral, and matches the app's ground", () => {
+    expect(darkBlocks.length).toBe(2);
+    for (const m of darkBlocks) {
+      expect(m[1]).toBe(GROUND.dark);
+      for (const k of ["--ns-ground", "--ns-console", "--ns-key", "--ns-key-hi"]) {
+        const h = val(m[0], k);
+        const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+        expect(Math.max(r, g, b) - Math.min(r, g, b), k).toBeLessThanOrEqual(12);
+      }
+    }
+    expect(next).toContain(`--nx-stage: ${STAGE};`);
+  });
+
+  it("keeps text 4.5:1 and the strong edge 3:1 on every dark public surface", () => {
+    const m = darkBlocks[0][0];
+    const surfaces = ["--ns-ground", "--ns-console", "--ns-key"].map((k) => val(m, k)).concat([STAGE]);
+    const strong = globals.match(/--ns-rule-strong: (#6b717c);/)![1];
+    for (const s of surfaces) {
+      expect(contrast(val(m, "--ns-text"), s), `text on ${s}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(val(m, "--ns-text-dim"), s), `dim on ${s}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(strong, s), `edge on ${s}`).toBeGreaterThanOrEqual(3);
     }
   });
 });

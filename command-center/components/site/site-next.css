@@ -28,12 +28,12 @@
 
 @layer components {
 .nx, .nx-art-svg {
-  --nx-stage: #100f0d;
-  --nx-stage-2: #1a1916;
-  --nx-stage-3: #25231f;
+  --nx-stage: #0f1115;
+  --nx-stage-2: #15181d;
+  --nx-stage-3: #1e2229;
   --nx-stage-edge: rgba(255, 255, 255, 0.1);
-  --nx-stage-text: #f4f0e9;
-  --nx-stage-dim: #bdb7aa;
+  --nx-stage-text: #eceef2;
+  --nx-stage-dim: #b1b7c3;
   --nx-stage-amber: #ffa940;
   --nx-stage-act: #a8a1ff;
   --nx-stage-go: #5fd49a;
@@ -1422,9 +1422,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 }
 
 /* ── "How it works" in dark mode: its small muted text (the steps' sentences, the wall's label, "No credits" and its note) a step lighter ── */
-/* --ns-text-dim is the whole site's muted text (#b4aea1, 7.9:1 on the dark surface); this section reads it at 15 to 16 px under 14 to 21 px headings, so it takes #d3cdc1 here (11.0:1 measured on the glyphs) and nothing else on the site moves. The three selectors are globals.css's own dark switches (the system's, and the explicit data-theme). */
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .nx-section#how { --ns-text-dim: #d3cdc1; } }
-:root[data-theme="dark"] .nx-section#how { --ns-text-dim: #d3cdc1; }
+/* --ns-text-dim is the whole site's muted text (#b1b7c3, 9.4:1 on the dark surface #0f1115); this section reads it at 15 to 16 px under 14 to 21 px headings, so it takes #d0d4dc here (12.7:1 on that surface) and nothing else on the site moves. The three selectors are globals.css's own dark switches (the system's, and the explicit data-theme). */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .nx-section#how { --ns-text-dim: #d0d4dc; } }
+:root[data-theme="dark"] .nx-section#how { --ns-text-dim: #d0d4dc; }
 
 /* ── The model samples (components/site/ShowcaseGallery.tsx): an explore grid, one card per real generation ──
    Media first, as the AI studios' explore grids are: the picture fills the card, the gutters are tight, and nothing is printed
