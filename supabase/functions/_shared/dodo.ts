@@ -145,20 +145,26 @@ export function dodoAmountFromItem(item: string | null | undefined): number | nu
  * price. This copy only bounds what a signed order may say: the webhook grants the recorded credits when Dodo reports the
  * recorded cents paid, and does not re-price it (an order opened before a rate change still fulfils as it was quoted).
  * Typed-amount items (`pack:amount_<cents>`, DODO_AMOUNT above) from checkouts opened before this change still fulfil.
+ *
+ * Top-ups are for subscribers only (owner decision 2026-11-22), but that is the CHECKOUT's gate, not this one: the webhook
+ * grants what was recorded and paid. An order recorded while the organization was subscribed stays valid even if the plan
+ * lapsed before Dodo's event arrived; refusing it here would keep a customer's money for credits we agreed to sell.
+ * The rates rose the same day (1.2 / 1.1 / 1.0 cents); no credit-count order was recorded at the earlier rates (the
+ * credit-count checkout had not shipped), so the raised floor below rejects no order already paid for.
  */
 export const TOPUP = {
   minCredits: 1000,
   maxCents: 100000,
   tiers: [
-    { fromCredits: 1000, tenthCents: 10 },
-    { fromCredits: 5000, tenthCents: 9 },
-    { fromCredits: 20000, tenthCents: 8 },
+    { fromCredits: 1000, tenthCents: 12 },
+    { fromCredits: 5000, tenthCents: 11 },
+    { fromCredits: 20000, tenthCents: 10 },
   ],
 } as const;
 
 /**
  * The order a signed item names, only in its canonical spelling (no leading zero, no sign) and inside the bounds: at least
- * the minimum credits, at most $1 000, and never cheaper than the lowest rate (cents × 10 >= credits × 8), so even a
+ * the minimum credits, at most $1 000, and never cheaper than the lowest rate (cents × 10 >= credits × 10), so even a
  * mis-signed item cannot price credits below what any tier sells them for. Null for anything else.
  */
 export function dodoTopupFromItem(item: string | null | undefined): { credits: number; cents: number } | null {

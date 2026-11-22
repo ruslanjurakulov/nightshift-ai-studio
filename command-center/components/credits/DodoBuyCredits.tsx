@@ -11,6 +11,7 @@ import { openDodoCheckout, takeBalanceBefore, takeDodoReturn, type DodoOpenResul
 import { AddCreditsSheet } from "@/components/credits/AddCreditsSheet";
 import { purchaseArrived } from "@/lib/paddle";
 import type { GenerationRates } from "@/lib/plans";
+import type { TopupEligibility } from "@/lib/topup";
 import { Equivalents } from "@/components/credits/Equivalents";
 import { Chip } from "@/components/ui/Chip";
 import { PriceButton } from "@/components/ui/PriceButton";
@@ -31,7 +32,7 @@ import { Timecode } from "@/components/ui/Timecode";
  * product the panel is the packs, as before. Both go through the same checkout route, return and wait for the balance.
  */
 
-type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "too_many" | "not_on_sale" | "outdated";
+type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "too_many" | "not_on_sale" | "outdated" | "requires_plan";
 
 const POLL_MS = 3000;
 const POLL_TRIES = 20;
@@ -42,12 +43,15 @@ export function DodoBuyCredits({
   rates = null,
   packValidMonths,
   extraOff = false,
+  eligibility,
 }: {
   view: DodoView;
   balance: number;
   rates?: GenerationRates | null;
   packValidMonths?: number | null;
   extraOff?: boolean;
+  /** topupEligibility() of the organization's billing summary, read on the server. Required: no default guesses a plan. */
+  eligibility: TopupEligibility;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -99,7 +103,17 @@ export function DodoBuyCredits({
     go("opening");
     const res: DodoOpenResult = await openDodoCheckout(item, path("/credits"), balance);
     if (res === "redirecting") return;
-    go(res === "too_many" ? "too_many" : res === "not_on_sale" ? "not_on_sale" : res === "outdated" ? "outdated" : "error");
+    go(
+      res === "too_many"
+        ? "too_many"
+        : res === "not_on_sale"
+          ? "not_on_sale"
+          : res === "outdated"
+            ? "outdated"
+            : res === "requires_plan"
+              ? "requires_plan"
+              : "error",
+    );
   }
 
   const ac = t.addCredits;
@@ -112,6 +126,8 @@ export function DodoBuyCredits({
     too_many: { text: ac.tooMany },
     not_on_sale: { text: ac.notOnSale },
     outdated: { text: ac.outdated },
+    // The plan lapsed after this page was drawn: the server refused, and says why.
+    requires_plan: { text: ac.subscribersOnly },
   };
   const amount = view.amount;
   const msg = message[phase];
@@ -152,7 +168,21 @@ export function DodoBuyCredits({
 
       {/* Owner decision 2026-11-21: with the credit-count sheet on sale it is the ONLY way to buy here, no pack cards; the
           volume rates are the old packs' own, so nothing is lost. Without the PWYW product the packs stay, as before. */}
-      {amount ? (
+      {/* Owner decision 2026-11-22: extra credits are an add-on for subscribers. Without a paid plan there is no field and no
+          price, only the honest line and the way to a plan; the checkout route refuses it too (topup_requires_plan). An
+          unread plan claims neither. */}
+      {eligibility === "no_plan" ? (
+        <p className="text-sm leading-relaxed" data-topup-gate="no_plan">
+          {ac.subscribersOnly}{" "}
+          <Link href={path("/credits") + "#plans"} className="tap-link text-[var(--color-primary)] underline underline-offset-2">
+            {ac.choosePlan}
+          </Link>
+        </p>
+      ) : eligibility === "unknown" ? (
+        <p className="text-sm leading-relaxed" style={{ color: "var(--color-fail)" }} data-topup-gate="unknown" role="status">
+          {ac.planUnknown}
+        </p>
+      ) : amount ? (
         <AddCreditsSheet amount={amount} busy={phase === "opening"} rates={rates} onSubmit={(credits) => open({ kind: "credits", credits })} />
       ) : (
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">

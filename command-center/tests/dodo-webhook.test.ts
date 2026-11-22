@@ -1073,31 +1073,45 @@ function orderPayment(credits: number, overrides: Record<string, unknown> = {}, 
 describe("a credit-count order", () => {
   it("is the same offer on both sides (the app's price table equals the webhook's bounds table)", () => {
     expect({ minCredits: APP_TOPUP.minCredits, maxCents: APP_TOPUP.maxCents, tiers: APP_TOPUP.tiers }).toEqual(WEBHOOK_TOPUP);
-    expect(dodoTopupFromItem("pack:credits_5000_4500")).toEqual({ credits: 5000, cents: 4500 });
-    expect(dodoTopupFromItem("pack:credits_125000_100000")).toEqual({ credits: 125000, cents: 100000 });
-    // Non-canonical, below the minimum, over the cap, or cheaper than the lowest rate: not an order.
-    for (const bad of ["pack:credits_999_999", "pack:credits_125001_100001", "pack:credits_05000_4500", "pack:credits_20000_1", "pack:credits_5000", "plan:credits_5000_4500", null])
+    expect(dodoTopupFromItem("pack:credits_5000_5500")).toEqual({ credits: 5000, cents: 5500 });
+    expect(dodoTopupFromItem("pack:credits_100000_100000")).toEqual({ credits: 100000, cents: 100000 });
+    // The floor is the lowest rate, 1.0 cent: exactly at it is an order, one cent under it is not.
+    expect(dodoTopupFromItem("pack:credits_20000_20000")).toEqual({ credits: 20000, cents: 20000 });
+    // Non-canonical, below the minimum, over the cap, or cheaper than the lowest rate (the retired 0.8 / 0.9 cent rates
+    // included): not an order.
+    for (const bad of [
+      "pack:credits_999_1199",
+      "pack:credits_100001_100001",
+      "pack:credits_05000_5500",
+      "pack:credits_20000_19999",
+      "pack:credits_20000_16000",
+      "pack:credits_5000_4500",
+      "pack:credits_20000_1",
+      "pack:credits_5000",
+      "plan:credits_5000_5500",
+      null,
+    ])
       expect(dodoTopupFromItem(bad), String(bad)).toBeNull();
   });
 
-  it("grants exactly the recorded credits when the paid amount matches: 20,000 credits for $160.00 + tax", async () => {
+  it("grants exactly the recorded credits when the paid amount matches: 20,000 credits for $200.00 + tax", async () => {
     const store = new FakeStore();
     const res = await deliver(store, orderPayment(20000), { taxMode: "exclusive" });
     expect(res.status).toBe(200);
     expect(store.credited.get(PAY_ORDER)).toEqual({ org: ORG, credits: 20000 });
-    expect([...store.events.values()][0]).toMatchObject({ status: "processed", credits: 20000, amountMinor: 16200, currency: "USD" });
-    expect([...store.nonces.values()][0].key).toBe(`${ORG}|${USER}|pack:credits_20000_16000`);
+    expect([...store.events.values()][0]).toMatchObject({ status: "processed", credits: 20000, amountMinor: 20200, currency: "USD" });
+    expect([...store.nonces.values()][0].key).toBe(`${ORG}|${USER}|pack:credits_20000_20000`);
   });
 
   it("refuses and records why when the paid amount is not the recorded one (a buyer-chosen PWYW price)", async () => {
-    for (const paid of [1000, 15999, 16001, 100000]) {
+    for (const paid of [1000, 19999, 20001, 100000]) {
       const store = new FakeStore();
       const res = await deliver(store, orderPayment(20000, { total_amount: paid + 200, tax: 200 }));
       expect(res.status).toBe(200);
       expect(store.credited.size).toBe(0);
       const row = [...store.events.values()][0];
       expect(row.status).toBe("rejected");
-      expect(row.detail).toContain("signed amount is 16000");
+      expect(row.detail).toContain("signed amount is 20000");
       expect(store.nonces.size).toBe(0);
     }
   });
@@ -1121,7 +1135,7 @@ describe("a credit-count order", () => {
 
   it("an order edited in the metadata (more credits under our signature) names no organization", async () => {
     const store = new FakeStore();
-    const meta = { ...signedMeta(ORG, USER, "pack:credits_1000_1000"), nightshift_item: "pack:credits_125000_1000" };
+    const meta = { ...signedMeta(ORG, USER, "pack:credits_1000_1200"), nightshift_item: "pack:credits_100000_1200" };
     await deliver(store, orderPayment(1000, { metadata: meta }));
     expect(store.credited.size).toBe(0);
     expect([...store.events.values()][0]).toMatchObject({ status: "rejected", orgId: null });

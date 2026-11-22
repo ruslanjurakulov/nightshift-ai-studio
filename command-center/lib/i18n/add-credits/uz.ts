@@ -36,6 +36,9 @@ export const addCreditsUz: AddCreditsDictionary = {
   tooMany: "Bugun toʻlov sahifasi juda koʻp marta ochildi. Ertaga qayta urinib koʻring yoki qoʻllab-quvvatlash xizmatiga yozing.",
   notOnSale: "Bu hozir sotuvda yoʻq. Sahifani yangilab, qayta urinib koʻring.",
   outdated: "Yangi toʻldirish usulini koʻrish uchun sahifani yangilang.",
+  subscribersOnly: "Qoʻshimcha kreditlar obunachilar uchun. Avval tarif tanlang.",
+  choosePlan: "Tariflarni koʻrish",
+  planUnknown: "Tarifingizni tekshirib boʻlmadi, shuning uchun qoʻshimcha kredit hozir taklif qilinmaydi. Qayta urinish uchun sahifani yangilang.",
   history: {
     title: "Xaridlar tarixi",
     lead: "Bu ish maydoniga kredit qoʻshgan toʻlovlar. Hisob-fakturalarni Merchant of Record — Dodo Payments beradi.",

@@ -27,6 +27,9 @@ const h = vi.hoisted(() => ({
   /** What take_web_rate answers (0042): true = within the limit. */
   rate: { data: true as unknown, error: null as null | { code: string; message: string } },
   subsError: null as { message: string } | null,
+  /** What billing_summary answers (0034): the organization's plan and subscription. A paid, live plan unless a test says. */
+  billing: { data: null as unknown, error: null as null | { code?: string; message: string } },
+  summaryCalls: 0,
   audit: [] as unknown[],
   getUserCalls: 0,
 }));
@@ -38,6 +41,10 @@ vi.mock("@/lib/supabase/server", () => ({
   },
   createClient: async () => ({
     rpc: async (fn: string, args: unknown) => {
+      if (fn === "billing_summary") {
+        h.summaryCalls += 1;
+        return h.billing;
+      }
       h.rpcCalls.push({ fn, args });
       if (fn === "take_web_rate") return h.rate;
       return fn === "dodo_purchase_history" ? h.history : h.nonce;
@@ -97,6 +104,16 @@ const TEST_ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 /** DODO_ENV with this test workspace allow-listed: test mode sells only to DODO_TEST_ORG_IDS. */
 const SELLING = { ...DODO_ENV, DODO_TEST_ORG_IDS: TEST_ORG };
 
+/** billing_summary()'s jsonb for an organization on `plan` with a subscription in `status` (null = no subscription row). */
+function summaryJson(plan: string, status: string | null, isDefault = false) {
+  return {
+    exempt: false,
+    plan: { id: plan, name: plan, monthly_credits: 6000, is_default: isDefault },
+    subscription: status ? { plan_id: plan, status, current_period_end: null, cancel_at_period_end: false, manageable: true } : null,
+    credits: { subscription: 0, pack: 0, other: 0, held: 0 },
+  };
+}
+
 const fetchCalls: { url: string; init: RequestInit }[] = [];
 let dodoAnswer: () => Response = () => new Response(JSON.stringify({ session_id: "cks_1", checkout_url: "https://test.checkout.dodopayments.com/session/cks_1" }), { status: 200 });
 
@@ -113,6 +130,8 @@ beforeEach(() => {
   h.role = { ok: true, role: "owner" };
   h.subs = [];
   h.subsError = null;
+  h.billing = { data: summaryJson("pro", "active"), error: null };
+  h.summaryCalls = 0;
   h.audit = [];
   h.getUserCalls = 0;
   h.nonce = { data: "0123456789abcdef0123456789abcdef", error: null };
@@ -579,22 +598,30 @@ const PDT_AMOUNT = "pdt_PWYWamount0000000000";
 const SELLING_AMOUNT = { ...SELLING, DODO_PRODUCT_AMOUNT: PDT_AMOUNT };
 
 describe("a credit count: the server's price (topupQuote), pinned at every tier edge and the cap", () => {
-  it("prices exactly today's pack rates per credit, in integer cents rounded half up", () => {
+  it("prices 1.2 / 1.1 / 1.0 cents per credit (never below a plan's own credit), in integer cents rounded half up", () => {
     const cents = (n: unknown) => {
       const q = topupQuote(n);
       return q.ok ? q.cents : q.reason;
     };
     expect(cents(999)).toBe("below");
-    expect(cents(1000)).toBe(1000); // $10.00
-    expect(cents(4999)).toBe(4999); // $49.99 at 1.0¢
-    expect(cents(5000)).toBe(4500); // $45.00 at 0.9¢
-    expect(cents(19999)).toBe(17999); // 17 999.1¢ -> $179.99
-    expect(cents(20000)).toBe(16000); // $160.00 at 0.8¢
-    expect(cents(125000)).toBe(100000); // $1 000.00, the cap
-    expect(cents(125001)).toBe("above");
-    expect(TOPUP_MAX_CREDITS).toBe(125000);
-    // Round half up, not banker's: 5 005 × 0.9¢ = 4 504.5¢ -> 4 505¢.
-    expect(cents(5005)).toBe(4505);
+    expect(cents(1000)).toBe(1200); // $12.00, the minimum order
+    expect(cents(4999)).toBe(5999); // 5 998.8¢ -> $59.99 at 1.2¢
+    expect(cents(5000)).toBe(5500); // $55.00 at 1.1¢
+    expect(cents(19999)).toBe(21999); // 21 998.9¢ -> $219.99
+    expect(cents(20000)).toBe(20000); // $200.00 at 1.0¢
+    expect(cents(100000)).toBe(100000); // $1 000.00, the cap
+    expect(cents(100001)).toBe("above");
+    expect(TOPUP_MAX_CREDITS).toBe(100000);
+    // Round half up, not banker's: 1 005 × 1.2¢ = 1 206¢ exact; 5 005 × 1.1¢ = 5 505.5¢ -> 5 506¢.
+    expect(cents(5005)).toBe(5506);
+    // The owner's bar: no tier is cheaper per credit than any plan's own credit (Plus 1 900¢ / 2 000, Pro 4 900¢ / 6 000,
+    // Business 12 900¢ / 18 000). Integer check, cents × plan credits > plan cents × credits, at every tier's edges.
+    for (const n of [1000, 4999, 5000, 19999, 20000, 100000]) {
+      const c = cents(n) as number;
+      expect(c * 18000, String(n)).toBeGreaterThan(12900 * n);
+      expect(c * 6000, String(n)).toBeGreaterThan(4900 * n);
+      expect(c * 2000, String(n)).toBeGreaterThan(1900 * n);
+    }
   });
 
   it("refuses anything that is not a whole, non-negative JSON number of credits", () => {
@@ -605,7 +632,7 @@ describe("a credit count: the server's price (topupQuote), pinned at every tier 
   });
 
   it("reads what a person types only as a whole number (a decimal is refused, never re-read as a bigger count)", () => {
-    expect(["5000", " 5 000 ", "5,000", "125,000", "5 000"].map(parseCreditsText)).toEqual([5000, 5000, 5000, 125000, 5000]);
+    expect(["5000", " 5 000 ", "5,000", "100,000", "5 000"].map(parseCreditsText)).toEqual([5000, 5000, 5000, 100000, 5000]);
     for (const bad of ["5000.5", "1000,5", "50,00", "-5000", "1e4", "５０００", "", "abc"]) expect(parseCreditsText(bad), bad).toBeNull();
   });
 
@@ -619,10 +646,10 @@ describe("a credit count: the server's price (topupQuote), pinned at every tier 
   });
 
   it("takes only the credit count from the browser; a price, cents or id beside it makes the request malformed", () => {
-    expect(parseCheckoutItem({ kind: "credits", credits: 5000 })).toEqual({ kind: "credits", credits: 5000, usdCents: 4500 });
+    expect(parseCheckoutItem({ kind: "credits", credits: 5000 })).toEqual({ kind: "credits", credits: 5000, usdCents: 5500 });
     for (const bad of [
       { kind: "credits", credits: 999 },
-      { kind: "credits", credits: 125001 },
+      { kind: "credits", credits: 100001 },
       { kind: "credits", credits: 5000.5 },
       { kind: "credits", credits: "5000" },
       { kind: "credits" },
@@ -632,9 +659,9 @@ describe("a credit count: the server's price (topupQuote), pinned at every tier 
       { kind: "amount", usd_cents: 2500 },
     ])
       expect(parseCheckoutItem(bad), JSON.stringify(bad)).toBeNull();
-    expect(dodoItemKey({ kind: "credits", credits: 125000, usdCents: 100000 })).toBe("pack:credits_125000_100000");
+    expect(dodoItemKey({ kind: "credits", credits: 100000, usdCents: 100000 })).toBe("pack:credits_100000_100000");
     // The nonce table's item check (0146) must accept the longest order the cap allows.
-    expect("pack:credits_125000_100000").toMatch(/^(pack|plan):[a-z][a-z0-9_]{0,30}$/);
+    expect("pack:credits_100000_100000").toMatch(/^(pack|plan):[a-z][a-z0-9_]{0,30}$/);
   });
 
   it("hands the sheet the configured NEXT_PUBLIC_CONTACT_EMAIL, and null when it is malformed", async () => {
@@ -656,7 +683,7 @@ describe("a credit count: the server's price (topupQuote), pinned at every tier 
     const view = dodoView(onlyAmount)!;
     expect(view.packs).toEqual([]);
     // The contact address is the validated public one (LEGAL.contactEmail), never a literal in the bundle: unset here, so null.
-    expect(view.amount).toEqual({ minCredits: 1000, maxCredits: 125000, maxCents: 100000, contactEmail: null });
+    expect(view.amount).toEqual({ minCredits: 1000, maxCredits: 100000, maxCents: 100000, contactEmail: null });
     expect(JSON.stringify(view)).not.toContain("@");
     expect(JSON.stringify(view)).not.toContain("pdt_");
     expect(dodoBuyAccess(h.orgId, "owner", view)).toBe("allowed");
@@ -674,13 +701,13 @@ describe("POST /api/billing/dodo/checkout with a credit count", () => {
     expect(res.status).toBe(200);
     const body = sentBody();
     const meta = body.metadata as Record<string, string>;
-    expect(body.product_cart).toEqual([{ product_id: PDT_AMOUNT, quantity: 1, amount: 17999 }]);
-    expect(meta.nightshift_item).toBe("pack:credits_19999_17999");
-    expect(h.rpcCalls).toEqual([{ fn: "dodo_issue_checkout_nonce", args: { p_org: h.orgId, p_item: "pack:credits_19999_17999" } }]);
+    expect(body.product_cart).toEqual([{ product_id: PDT_AMOUNT, quantity: 1, amount: 21999 }]);
+    expect(meta.nightshift_item).toBe("pack:credits_19999_21999");
+    expect(h.rpcCalls).toEqual([{ fn: "dodo_issue_checkout_nonce", args: { p_org: h.orgId, p_item: "pack:credits_19999_21999" } }]);
     // What the webhook will read back from it: our signature, over the recorded credits and cents.
     const verified = await verifyDodoMetadata(meta, dodoMetadataKey(DODO_ENV.DODO_METADATA_SECRET)!);
-    expect(verified).toMatchObject({ status: "valid", item: "pack:credits_19999_17999" });
-    expect(dodoTopupFromItem((verified as { item: string }).item)).toEqual({ credits: 19999, cents: 17999 });
+    expect(verified).toMatchObject({ status: "valid", item: "pack:credits_19999_21999" });
+    expect(dodoTopupFromItem((verified as { item: string }).item)).toEqual({ credits: 19999, cents: 21999 });
     // Back to the packs panel, which waits for the balance.
     expect(String(body.return_url)).toMatch(/&dodo=return&item=pack$/);
     expect(String(body.cancel_url)).toMatch(/&dodo=cancelled&item=pack$/);
@@ -698,7 +725,7 @@ describe("POST /api/billing/dodo/checkout with a credit count", () => {
   it("refuses a count below the minimum, over the $1 000 cap, or not a whole number, before a nonce or Dodo", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     setEnv(SELLING_AMOUNT);
-    for (const credits of [0, 999, 125001, 5000.5, "5000", -5000, 1e12])
+    for (const credits of [0, 999, 100001, 5000.5, "5000", -5000, 1e12])
       expect((await buy({ kind: "credits", credits, return_path: "/a/credits" })).status, String(credits)).toBe(400);
     // A price sent beside the count is refused, not ignored.
     expect((await buy({ kind: "credits", credits: 5000, usd_cents: 1, return_path: "/a/credits" })).status).toBe(400);
@@ -756,6 +783,76 @@ describe("POST /api/billing/dodo/checkout with a credit count", () => {
     setEnv(SELLING_AMOUNT);
     expect((await buy({ kind: "credits", credits: 5000, return_path: "/a/credits" })).status).toBe(404);
     expect(fetchCalls).toHaveLength(0);
+  });
+});
+
+describe("POST /api/billing/dodo/checkout: extra credits are for subscribers only (owner decision 2026-11-22)", () => {
+  // What would break without these: a free workspace buying credits by posting to the route the sheet no longer shows it;
+  // the legacy pack kind as a way around the gate; an unread plan read as "subscribed" (or as "free") and a checkout opened.
+  const credits = () => buy({ kind: "credits", credits: 5000, return_path: "/a/credits" });
+  const pack = () => buy({ kind: "pack", id: "starter", return_path: "/a/credits" });
+
+  it("refuses a workspace with no paid plan (topup_requires_plan, 403) before any nonce row or Dodo call, for every top-up kind", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    for (const [label, data] of [
+      ["free plan, no subscription", summaryJson("free", null, true)],
+      ["free (default) plan with a live row", summaryJson("free", "active", true)],
+      ["cancelled paid plan", summaryJson("pro", "canceled")],
+      ["paused paid plan", summaryJson("pro", "paused")],
+      ["not a member / 0034 answers null", null],
+    ] as const) {
+      h.billing = { data, error: null };
+      for (const ask of [credits, pack]) {
+        const res = await ask();
+        expect(res.status, label).toBe(403);
+        expect(await res.json(), label).toEqual({ error: "topup_requires_plan" });
+      }
+    }
+    expect(h.rpcCalls).toEqual([]);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("a subscription to one plan while the database resolves another is not read as paid", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    const mismatched = summaryJson("free", null, true) as Record<string, unknown>;
+    mismatched.subscription = { plan_id: "pro", status: "active", manageable: true };
+    h.billing = { data: mismatched, error: null };
+    expect((await credits()).status).toBe(403);
+    expect(h.rpcCalls).toEqual([]);
+  });
+
+  it("an unreadable plan opens nothing (503 subscription_unavailable), never a guess either way", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    h.billing = { data: null, error: { message: "boom" } };
+    const res = await credits();
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "subscription_unavailable" });
+    expect((await pack()).status).toBe(503);
+    expect(h.rpcCalls).toEqual([]);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("a subscriber on a live paid plan (active, trialing or past due) is sold the credits and the pack", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    for (const status of ["active", "trialing", "past_due"]) {
+      h.billing = { data: summaryJson("creator", status), error: null };
+      expect((await credits()).status, status).toBe(200);
+      expect((await pack()).status, status).toBe(200);
+    }
+    expect(h.summaryCalls).toBe(6);
+    expect(fetchCalls).toHaveLength(6);
+  });
+
+  it("buying a PLAN is not gated by it (a free workspace must be able to subscribe), and does not read the summary", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING);
+    h.billing = { data: summaryJson("free", null, true), error: null };
+    expect((await buy({ kind: "plan", id: "pro", return_path: "/a/credits" })).status).toBe(200);
+    expect(h.summaryCalls).toBe(0);
   });
 });
 

@@ -471,7 +471,7 @@ export const siteUz: SiteDictionary = {
   pricingTeaser: {
     slug: "Narxlar",
     title: "Yaratganingiz uchun toʻlang. Nosozlik uchun — hech qachon.",
-    lead: "Nightshift kreditlarda ishlaydi. Tarif oylik zaxira beradi, bir martalik paketlar balansni toʻldiradi — tarif bilan ham, tarifsiz ham.",
+    lead: "Nightshift kreditlarda ishlaydi. Tarif oylik zaxira beradi, obunachilar esa balansni bir martalik xarid bilan toʻldirishi mumkin.",
     ledger: [
       { id: "quote", word: "Narx", body: "Boshlanishdan oldin tugmada koʻrinadi" },
       { id: "hold", word: "Zaxira", body: "Ishga tushganda ajratib qoʻyiladi" },

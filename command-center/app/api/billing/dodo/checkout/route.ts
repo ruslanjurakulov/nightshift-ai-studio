@@ -9,6 +9,8 @@ import { paymentsProvider } from "@/lib/server/payments";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { readBillingSummary } from "@/lib/server/plans";
+import { topupEligibility } from "@/lib/topup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +71,18 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
 
   const productId = item.kind === "pack" ? cfg.packs[item.id] : item.kind === "plan" ? cfg.plans[item.id] : cfg.amountProduct;
   if (!productId) return NextResponse.json({ error: "not_on_sale" }, { status: 404 });
+
+  // Extra credits are an add-on for subscribers (owner decision 2026-11-22). Enforced here, not only by the sheet hiding
+  // its field: every top-up kind this route still sells (a credit count and a legacy pack alike) needs a live paid plan,
+  // checked before a nonce row or Dodo. Unknown is not "no plan" and not "subscribed": nothing opens until it reads.
+  // The webhook does not repeat this: it grants an order recorded here while the organization was subscribed.
+  if (item.kind !== "plan") {
+    const sb = await createClient();
+    if (!sb) return NextResponse.json({ error: "not_configured" }, { status: 503 });
+    const eligible = topupEligibility(await readBillingSummary(sb, orgId).catch(() => ({ state: "failed" as const })));
+    if (eligible === "unknown") return NextResponse.json({ error: "subscription_unavailable" }, { status: 503 });
+    if (eligible === "no_plan") return NextResponse.json({ error: "topup_requires_plan" }, { status: 403 });
+  }
 
   if (item.kind === "plan") {
     const supabase = await createClient();

@@ -48,8 +48,12 @@ Qoidalar (Paddle'dagi bilan bir xil):
 - **Ixtiyoriy summa ("Kredit qo'shish") — yagona istisno, lekin kreditni baribir brauzer belgilamaydi.**
   Brauzer faqat **kredit sonini** aytadi (butun son, kamida 1 000 — serverda tekshiriladi; boshqa hech
   qanday kalit, narx ham, qabul qilinmaydi). Narxni server hisoblaydi (`command-center/lib/topup.ts`, `TOPUP`):
-  1 000–4 999 kredit — kreditiga 1,0 sent; 5 000–19 999 — 0,9 sent; 20 000 va undan ko'p — 0,8 sent.
-  Eng kam buyurtma $10, bitta xarid eng ko'pi $1 000 (125 000 kredit); undan ko'pi uchun sahifa "biz bilan
+  1 000–4 999 kredit — kreditiga 1,2 sent; 5 000–19 999 — 1,1 sent; 20 000 va undan ko'p — 1,0 sent
+  (egasi qarori 2026-11-22: qo'shimcha kredit hech bir tarifning o'z kreditidan arzon emas).
+  **Faqat obunachilar uchun**: checkout route tashkilotda jonli pullik tarif bo'lmasa `kind` qanday bo'lmasin
+  (`credits` ham, eski `pack` ham) 403 `topup_requires_plan` qaytaradi — nonce va Dodo'dan oldin. Webhook buni
+  qayta tekshirmaydi: obuna paytida yozilgan buyurtma to'langan bo'lsa, kreditlanadi.
+  Eng kam buyurtma $12, bitta xarid eng ko'pi $1 000 (100 000 kredit); undan ko'pi uchun sahifa "biz bilan
   bog'laning" deydi va checkout ochilmaydi. Server buyurtmani imzoli metadata'ga yozadi
   (`nightshift_item = pack:credits_<kredit>_<sent>`, nonce qatorida ham aynan shu) va narxni
   Dodo'ning Pay What You Want mahsulotiga `amount` qilib beradi. Webhook **imzolangan kreditni** beradi va
@@ -90,7 +94,7 @@ mahsulot narxini aynan shunday qo'ying — boshqa narxda to'langan xarid kredit 
 | Plus (`creator`) | 2 000 / oy | 19 / oy | Subscription, har 1 oy | `DODO_PLAN_CREATOR` |
 | Pro (`pro`) | 6 000 / oy | 49 / oy | Subscription, har 1 oy | `DODO_PLAN_PRO` |
 | Business (`studio`) | 18 000 / oy | 129 / oy | Subscription, har 1 oy | `DODO_PLAN_STUDIO` |
-| Ixtiyoriy kredit soni ("Kredit qo'shish") | Kredit yoziladi (kamida 1 000); narx 3 hajm stavkasi: 1,0 / 0,9 / 0,8 sent | $10 (eng kam) – $1 000 (eng ko'p; undan ko'pi — "biz bilan bog'laning") | One-time, **Pay What You Want** | `DODO_PRODUCT_AMOUNT` |
+| Ixtiyoriy kredit soni ("Kredit qo'shish") | Kredit yoziladi (kamida 1 000); narx 3 hajm stavkasi: 1,2 / 1,1 / 1,0 sent; faqat obunachilar | $12 (eng kam) – $1 000 (eng ko'p; undan ko'pi — "biz bilan bog'laning") | One-time, **Pay What You Want** | `DODO_PRODUCT_AMOUNT` |
 
 Ixtiyoriy summaning stavkasi va chegaralari ham kodda (`DODO_AMOUNT`, ikkala faylda; test bir xilligini
 tekshiradi). 1 kredit = 1 sent — Starter paketining o'z stavkasi (1 000 kredit / $10), shuning uchun
@@ -203,8 +207,8 @@ Har biri uchun (6 ta, yuqoridagi katalog jadvali):
 **7-mahsulot: ixtiyoriy summa** (`DODO_PRODUCT_AMOUNT`, "Kredit qo'shish" oynasi uchun):
 
 - Pricing Type: **One Time**; valyuta **USD**; **Pay What You Want** — yoqiq.
-- **Minimum Price: eng kichik buyurtmadan (`10.00`) katta bo'lmasin** (`≤ 10.00`; `5.00` ham yaraydi — aks
-  holda eng kam $10 lik xarid Dodo'da rad etiladi). Suggested Price — ixtiyoriy. Eng ko'p summa sozlamasi
+- **Minimum Price: eng kichik buyurtmadan (`12.00`) katta bo'lmasin** (`≤ 12.00`; `10.00` ham yaraydi — aks
+  holda eng kam $12 lik xarid Dodo'da rad etiladi). Suggested Price — ixtiyoriy. Eng ko'p summa sozlamasi
   Dodo'da yo'q ("There is no maximum price setting"): $1 000 chegarasini kod qo'yadi (sahifa va checkout
   route; webhook ham imzolangan buyurtmani shu chegarada va eng arzon stavkadan past emasligini tekshiradi).
 - Soliq toifasi va `inclusive` / `exclusive` — **qolgan 6 mahsulot bilan bir xil** (`DODO_TAX_MODE`).

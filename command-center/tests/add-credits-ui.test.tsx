@@ -34,7 +34,7 @@ vi.mock("@/components/view-mode/frame-nav", () => ({
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, fmt } from "@/lib/i18n";
 import { formatUsdAmount } from "@/lib/number-format";
-import { TOPUP } from "@/lib/topup";
+import { TOPUP, type TopupEligibility } from "@/lib/topup";
 import { DodoBuyCredits } from "@/components/credits/DodoBuyCredits";
 import { DodoPurchaseHistory } from "@/components/credits/DodoPurchaseHistory";
 import { dodoView, resolveDodoServer } from "@/lib/dodo";
@@ -73,10 +73,10 @@ afterEach(() => {
 
 const withContact = (contactEmail: string | null) => ({ ...view, amount: { ...view.amount!, contactEmail } });
 
-function renderSheet(v = view, rates: GenerationRates | null = null) {
+function renderSheet(v = view, rates: GenerationRates | null = null, eligibility: TopupEligibility = "subscriber", locale: "en" | "ru" | "uz" = "en") {
   return render(
-    <I18nProvider locale="en">
-      <DodoBuyCredits view={v} balance={100} rates={rates} />
+    <I18nProvider locale={locale}>
+      <DodoBuyCredits view={v} balance={100} rates={rates} eligibility={eligibility} />
     </I18nProvider>,
   );
 }
@@ -97,27 +97,27 @@ describe("the Add credits sheet", () => {
     expect(screen.queryAllByRole("listitem")).toEqual([]);
     expect(screen.queryAllByRole("button", { name: new RegExp(`^${t.creditsPage.buy}`) })).toEqual([]);
     expect(screen.getByRole("slider", { name: ac.sliderLabel })).toBeTruthy();
-    expect([creditsToAdd(), perCredit(), totalText()]).toEqual(["5,000", "$0.009", "$45.00"]);
-    expect(sheet().textContent).toContain("Minimum 1,000 credits. One purchase is up to 125,000 credits ($1,000).");
+    expect([creditsToAdd(), perCredit(), totalText()]).toEqual(["5,000", "$0.011", "$55.00"]);
+    expect(sheet().textContent).toContain("Minimum 1,000 credits. One purchase is up to 100,000 credits ($1,000).");
     expect(sheet().textContent).toContain(ac.taxNote);
   });
 
   it("updates total, price per credit and the estimate live as the person types or drags, at the volume rates", () => {
     renderSheet(view, RATES);
     const cases: [string, string, string, string][] = [
-      ["1000", "1,000", "$0.010", "$10.00"],
-      ["4999", "4,999", "$0.010", "$49.99"],
-      ["5,000", "5,000", "$0.009", "$45.00"],
-      ["19999", "19,999", "$0.009", "$179.99"],
-      ["20 000", "20,000", "$0.008", "$160.00"],
-      ["125000", "125,000", "$0.008", "$1,000.00"],
+      ["1000", "1,000", "$0.012", "$12.00"],
+      ["4999", "4,999", "$0.012", "$59.99"],
+      ["5,000", "5,000", "$0.011", "$55.00"],
+      ["19999", "19,999", "$0.011", "$219.99"],
+      ["20 000", "20,000", "$0.010", "$200.00"],
+      ["100000", "100,000", "$0.010", "$1,000.00"],
     ];
     for (const [value, credits, rate, total] of cases) {
       fireEvent.change(input(), { target: { value } });
       expect([creditsToAdd(), perCredit(), totalText()], value).toEqual([credits, rate, total]);
     }
     fireEvent.change(screen.getByRole("slider"), { target: { value: "20000" } });
-    expect([input().value, totalText()]).toEqual(["20000", "$160.00"]);
+    expect([input().value, totalText()]).toEqual(["20000", "$200.00"]);
     // The "≈ N images / N s video" estimate is the Credits page's own helper (Equivalents), on the typed count:
     // 20,000 credits at 10 per image = 2,000 images; 40 per 5 s clip = 500 clips.
     const eq = () => (sheet().querySelector("[data-equivalents]") as HTMLElement).textContent ?? "";
@@ -129,7 +129,7 @@ describe("the Add credits sheet", () => {
 
   it("above one purchase's $1,000 cap: no price, no checkout key, a contact-us mail link instead", () => {
     renderSheet(withContact("help@example.org"));
-    fireEvent.change(input(), { target: { value: "125001" } });
+    fireEvent.change(input(), { target: { value: "100001" } });
     const contact = document.querySelector("[data-topup-contact]") as HTMLElement;
     expect(contact).toBeTruthy();
     // The address is the configured public one (LEGAL.contactEmail) handed in through the view, not a literal in the bundle.
@@ -141,9 +141,9 @@ describe("the Add credits sheet", () => {
 
   it("with no configured contact address, the contact-us text shows WITHOUT a link (never a dead mailto)", () => {
     renderSheet(withContact(null));
-    fireEvent.change(input(), { target: { value: "125001" } });
+    fireEvent.change(input(), { target: { value: "100001" } });
     const contact = document.querySelector("[data-topup-contact]") as HTMLElement;
-    expect(contact.textContent).toContain(fmt(ac.contactTitle, { max: "125,000" }));
+    expect(contact.textContent).toContain(fmt(ac.contactTitle, { max: "100,000" }));
     expect(within(contact).queryByRole("link")).toBeNull();
     expect(document.querySelector("a[href^='mailto:']")).toBeNull();
   });
@@ -167,7 +167,7 @@ describe("the Add credits sheet", () => {
     expect(line).toBe(
       fmt(ac.tiers, { lo1: n(a.fromCredits), hi1: n(b.fromCredits - 1), lo2: n(b.fromCredits), hi2: n(c.fromCredits - 1), lo3: n(c.fromCredits), p1: p(a), p2: p(b), p3: p(c) }),
     );
-    expect(line).toBe("1,000–4,999 credits: $0.010 each · 5,000–19,999: $0.009 each · 20,000 and more: $0.008 each.");
+    expect(line).toBe("1,000–4,999 credits: $0.012 each · 5,000–19,999: $0.011 each · 20,000 and more: $0.010 each.");
     // No dictionary may carry a literal number again: a change to TOPUP would then leave the sentence behind.
     for (const loc of ["en", "ru", "uz"] as const) expect(dictionaries[loc].addCredits.tiers.replace(/\{\w+\}/g, ""), loc).not.toMatch(/\d/);
   });
@@ -273,7 +273,7 @@ describe("the Add credits sheet", () => {
 
   it("states the three volume rates in every language, with Uzbek apostrophes as ʻ/ʼ", () => {
     renderSheet();
-    expect(sheet().textContent).toContain("5,000–19,999: $0.009 each");
+    expect(sheet().textContent).toContain("5,000–19,999: $0.011 each");
     // Every language's sentence names all three ranges and rates (placeholders the sheet fills from TOPUP).
     for (const lang of ["en", "ru", "uz"] as const)
       for (const key of ["lo1", "hi1", "lo2", "hi2", "lo3", "p1", "p2", "p3"]) expect(dictionaries[lang].addCredits.tiers, `${lang} ${key}`).toContain(`{${key}}`);
@@ -290,6 +290,51 @@ describe("the Add credits sheet", () => {
     expect(document.querySelector("[data-add-credits]")).toBeNull();
     expect(screen.getByRole("heading", { name: t.creditsPage.packsTitle })).toBeTruthy();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
+  });
+
+  it("a workspace without a paid plan sees no field, no price, no key: one honest line and the way to the plans", () => {
+    for (const v of [view, packsOnly]) {
+      cleanup();
+      renderSheet(v, RATES, "no_plan");
+      const gate = document.querySelector("[data-topup-gate='no_plan']") as HTMLElement;
+      expect(gate.textContent).toContain("Extra credits are for subscribers. Choose a plan first.");
+      expect(within(gate).getByRole("link", { name: ac.choosePlan }).getAttribute("href")).toBe("/my-channel/credits#plans");
+      expect(document.querySelector("[data-add-credits]")).toBeNull();
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(screen.queryAllByRole("listitem")).toEqual([]);
+      expect(document.body.textContent).not.toMatch(/\$\d/);
+    }
+    expect(fetchCalls).toEqual([]);
+  });
+
+  it("says it in Russian and Uzbek too (Uzbek with ʻ/ʼ, never an ASCII apostrophe)", () => {
+    for (const loc of ["ru", "uz"] as const) {
+      cleanup();
+      renderSheet(view, null, "no_plan", loc);
+      const d = dictionaries[loc].addCredits;
+      expect(document.querySelector("[data-topup-gate='no_plan']")!.textContent, loc).toContain(d.subscribersOnly);
+      expect(d.subscribersOnly, loc).not.toBe(ac.subscribersOnly);
+      expect(d.choosePlan, loc).not.toBe(ac.choosePlan);
+    }
+    expect(dictionaries.uz.addCredits.subscribersOnly).toContain("Qoʻshimcha");
+  });
+
+  it("an unread plan claims neither: no field, no 'subscribe first', a line that says to refresh", () => {
+    renderSheet(view, null, "unknown");
+    expect(document.querySelector("[data-topup-gate='unknown']")!.textContent).toBe(ac.planUnknown);
+    expect(document.querySelector("[data-add-credits]")).toBeNull();
+    expect(document.querySelector("[data-topup-gate='no_plan']")).toBeNull();
+  });
+
+  it("a subscriber sees the field as before; a plan that lapsed since the page was drawn is said plainly (topup_requires_plan)", async () => {
+    renderSheet(view, null, "subscriber");
+    expect(document.querySelector("[data-topup-gate]")).toBeNull();
+    answer = async () => new Response(JSON.stringify({ error: "topup_requires_plan" }), { status: 403 });
+    await act(async () => {
+      fireEvent.click(submitKey());
+    });
+    expect(document.querySelector("[data-buy-message='requires_plan']")!.textContent).toBe(ac.subscribersOnly);
+    expect(h.assigned).toEqual([]);
   });
 
   it("is written in all three languages", () => {

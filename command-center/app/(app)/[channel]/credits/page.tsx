@@ -38,6 +38,7 @@ import { readReferralAdmin } from "@/lib/server/referrals";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 import { ScrollToHash } from "@/components/navigation/ScrollToHash";
+import { topupEligibility } from "@/lib/topup";
 import { OwnerGrantForm } from "@/components/credits/OwnerGrantForm";
 import { OwnerRecentGrants } from "@/components/credits/OwnerRecentGrants";
 import { OwnerPriceHistory } from "@/components/credits/OwnerPriceHistory";
@@ -225,7 +226,15 @@ export default async function CreditsPage() {
       )}
 
       {offersPacks && dodoMode && dodo && account && (
-        <DodoBuyCredits view={dodo} balance={account.balance} rates={rates} packValidMonths={packValidMonths} extraOff={extraOff} />
+        <DodoBuyCredits
+          view={dodo}
+          balance={account.balance}
+          rates={rates}
+          packValidMonths={packValidMonths}
+          extraOff={extraOff}
+          // The same read and rule the checkout route refuses a non-subscriber with (topup_requires_plan).
+          eligibility={topupEligibility(summaryRead)}
+        />
       )}
       {offersPacks && !dodoMode && paddleConfig && account && (
         <BuyCredits

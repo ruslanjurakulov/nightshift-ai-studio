@@ -41,6 +41,11 @@ export const addCreditsEn = {
   notOnSale: "This isn't on sale right now. Refresh the page and try again.",
   /** An old tab still posting the retired typed-dollar purchase (the route answers checkout_changed). */
   outdated: "Refresh the page to see the new top-up.",
+  /** Owner decision 2026-11-22: extra credits are an add-on for subscribers; a workspace without a paid plan sees only this. */
+  subscribersOnly: "Extra credits are for subscribers. Choose a plan first.",
+  choosePlan: "See the plans",
+  /** The plan could not be read: neither "subscribe first" nor the field is claimed then. */
+  planUnknown: "We couldn't check your plan, so extra credits can't be offered right now. Refresh the page to try again.",
   history: {
     title: "Purchase history",
     lead: "Payments that added credits to this workspace. Invoices are issued by Dodo Payments, our Merchant of Record.",

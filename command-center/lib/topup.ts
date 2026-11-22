@@ -1,12 +1,15 @@
+import type { BillingSummary } from "@/lib/plans";
+
 /**
- * Buying any number of credits (owner decision 2026-11-21): no fixed packs on the Credits page, the customer types a
- * credit count, and the price per credit falls with volume at exactly the old packs' rates:
+ * Buying extra credits on top of a plan. Owner decisions: any credit count, no fixed packs (2026-11-21); an ADD-ON for
+ * subscribers only, and never cheaper per credit than any plan's own credit (2026-11-22). Plan credits expire at the
+ * period end and a top-up credit lasts longer, so every rate here is above the dearest plan's own credit:
  *
- *   1 000 – 4 999 credits   1.0 US cent each   (Starter: 1 000 for $10)
- *   5 000 – 19 999          0.9 cent each      (Creator: 5 000 for $45)
- *   20 000 and more         0.8 cent each      (Studio: 20 000 for $160)
+ *   1 000 – 4 999 credits   1.2 US cents each   (1 000 for $12.00, the minimum order)
+ *   5 000 – 19 999          1.1 cents each
+ *   20 000 and more         1.0 cent each
  *
- * One purchase is at most $1 000 (125 000 credits); above that the page says "contact us" and opens no checkout.
+ * One purchase is at most $1 000 (100 000 credits); above that the page says "contact us" and opens no checkout.
  *
  * This copy is what the page shows and what the checkout route signs. The webhook's copy (TOPUP in
  * supabase/functions/_shared/dodo.ts) checks the signed order; a test keeps the two equal. The browser only ever sends the
@@ -19,14 +22,33 @@ export const TOPUP = {
   maxCents: 100000,
   /** Rate in TENTHS of a US cent per credit, from the lowest volume up; integers so no float ever prices a purchase. */
   tiers: [
-    { fromCredits: 1000, tenthCents: 10 },
-    { fromCredits: 5000, tenthCents: 9 },
-    { fromCredits: 20000, tenthCents: 8 },
+    { fromCredits: 1000, tenthCents: 12 },
+    { fromCredits: 5000, tenthCents: 11 },
+    { fromCredits: 20000, tenthCents: 10 },
   ],
 } as const;
 
-/** The most credits one purchase can buy (125 000 at the top rate). */
+/** The most credits one purchase can buy (100 000 at the top rate). */
 export const TOPUP_MAX_CREDITS = Math.floor((TOPUP.maxCents * 10) / TOPUP.tiers[TOPUP.tiers.length - 1].tenthCents);
+
+/**
+ * Whether this organization may buy extra credits (owner decision 2026-11-22: an add-on for subscribers only). Only while
+ * it has a live subscription (active, trialing or past due) to a PAID plan, read from billing_summary() (0034) through
+ * readBillingSummary, the same read the Credits and Billing pages show the plan from. The plan the database resolves for
+ * the organization must be that subscription's plan and not the default (free) one, so a cancelled, paused or free
+ * workspace is "no_plan". A failed read, or a database without 0034, is "unknown": the checkout opens nothing and the page
+ * claims nothing then (rule 5), rather than reading an unread plan as either answer.
+ */
+export type TopupEligibility = "subscriber" | "no_plan" | "unknown";
+
+export function topupEligibility(
+  read: { state: "ok"; value: BillingSummary | null } | { state: "unsupported" } | { state: "failed" },
+): TopupEligibility {
+  if (read.state !== "ok") return "unknown";
+  const s = read.value;
+  if (!s || !s.subscription?.live || !s.plan || s.plan.isDefault || s.plan.id !== s.subscription.planId) return "no_plan";
+  return "subscriber";
+}
 
 export type TopupQuote =
   | { ok: true; credits: number; cents: number; tenthCents: number }
@@ -41,7 +63,7 @@ function tierFor(credits: number): number {
 
 /**
  * The price of `credits`, or why there is none. Only a JSON integer is a credit count: "5000", 5000.5, NaN or 1e21 is a
- * format error, never coerced into some other purchase. Cents are rounded half up (19 999 × 0.9¢ = 17 999.1¢ -> 17 999¢);
+ * format error, never coerced into some other purchase. Cents are rounded half up (19 999 × 1.1¢ = 21 998.9¢ -> 21 999¢);
  * everything is integer arithmetic, safe far beyond the cap.
  */
 export function topupQuote(credits: unknown): TopupQuote {

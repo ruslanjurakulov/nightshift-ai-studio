@@ -530,7 +530,7 @@ export const siteEn = {
   pricingTeaser: {
     slug: "Pricing",
     title: "Pay for what you make. Never for a failure.",
-    lead: "Nightshift runs on credits. A plan brings a monthly allowance; one-time packs top up with or without a plan.",
+    lead: "Nightshift runs on credits. A plan brings a monthly allowance; subscribers can top up with one-time purchases.",
     ledger: [
       { id: "quote", word: "Quote", body: "Shown on the button before anything starts" },
       { id: "hold", word: "Hold", body: "Set aside when the run starts" },
