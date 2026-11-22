@@ -82,6 +82,10 @@ export const en: LegalTexts = {
           "Google user data is used only to provide and improve the user-facing features you see in the Service: uploading and captioning your videos, adding them to your playlists, posting the engagement comment, preventing duplicate uploads, showing your channel’s performance in your dashboard, choosing future topics from what performed well and what your audience asked for, and, only where you have switched it on, making a video you approved public.",
           "“Publish when approved”. This is the only case in which Nightshift changes a video that is already on YouTube. It is off by default for every channel. An administrator of your workspace can switch it on for one channel, which requires typing a confirmation word, and can switch it off again at any time on the Channels page. When it is on and a person approves one exact version of a video that Nightshift already uploaded as private, a worker checks again that the approval still stands (it lasts 24 hours and ends if the video is rendered or repaired again) and then asks YouTube once to change that video’s visibility from private to public. The request repeats the video’s other status settings as YouTube reported them, so that they stay as they were. Nightshift then reads the video back and records only what YouTube reports; YouTube may still keep the video private. Nightshift does not change the video’s title, description, tags or thumbnail, does not delete anything, and does not edit any other video, playlist or comment.",
           "To produce those insights, the text of comments on your videos and your videos’ performance figures may be sent to our AI text provider (Google’s Gemini API) to be classified and summarised for your channel. We store the result — for example, a topic your audience requested and how often — not the comment text itself.",
+          // Added for D5 (2026-11-22) as its own paragraph so the Google-user-data statements above stay word for word what
+          // OAuth verification read: Studio prompts and pipeline text are not Google user data, but a reader of this section
+          // must not come away thinking comments are all the Gemini API ever receives.
+          "The Gemini API is also used for work that involves no Google user data: the pipeline’s research, script writing and fact-checking and, when you choose a Google model in the Studio, generating or editing an image or a video, or describing a picture. Section 7 lists what it receives for each.",
         ],
       },
       {
@@ -134,6 +138,7 @@ export const en: LegalTexts = {
                 ["Pexels, Pixabay", "Stock footage and photos", "Search terms derived from the script"],
                 ["Optional media generators, only if the operator enables them: Google Veo, Google Gemini image, OpenAI (GPT Image), Black Forest Labs (FLUX), Ideogram, fal.ai, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Generated images and video clips", "Prompts derived from the script"],
                 ["Image and video models you choose in the Studio: Ideogram, MiniMax", "Making the image or video clip you ask for", "Your prompt, and the picture you give as a first or last frame (Ideogram receives the prompt only). MiniMax may use what it receives and what it generates to improve its own services and models, under its own terms"],
+                ["Google — Gemini API, for Google models you choose in the Studio (for example Veo and Gemini image models)", "Generating or editing the image or video you ask for, or describing a picture you give it", "Your prompt and any picture or video you uploaded for that request; Google returns the generated image, video or description"],
                 ["vidIQ (optional)", "Keyword and title research", "Topic keywords and draft titles"],
                 ["Telegram (only if you connect a chat)", "Delivering the short notifications you choose to the Telegram chat you connect: one sentence and a link back to the app", "Your Telegram chat id and the sentence and link of each message; never a script, a prompt, a file name or a video title"],
                 ["Telegram, Slack (optional)", "Notifications to the operator", "Run status, video titles and links"],
@@ -144,6 +149,9 @@ export const en: LegalTexts = {
               ],
             },
           },
+          // D5 (2026-11-22): Google's own statements, read on its pages that day and restated, not improved on. If Google's pages
+          // change, this paragraph changes with them; it must never say more about Google's handling than Google does.
+          "Google’s Gemini API. We use the Gemini API as a paid service, for the pipeline and for the Google models you choose in the Studio. Google’s pages (read on 22 November 2026) say that on the paid service Google does not use prompts or responses to improve its products; that it logs prompts and responses for a limited period of time, solely for detecting and preventing violations of its [Generative AI Prohibited Use Policy](https://policies.google.com/terms/generative-ai/use-policy); and, in its [usage policies](https://aistudio.google.com/docs/usage-policies), that it retains them for fifty-five (55) days for that abuse monitoring. Google also says this data may be stored transiently or cached in any country in which Google or its agents maintain facilities. Images and videos generated by Google’s models carry Google’s SynthID watermark. The [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms) apply to this use.",
           "Only Supabase, GitHub, Google and the notification services in this list receive Google user data, and only for the purposes above. We do not sell personal information to anyone.",
           "Payments. Credits and plans are sold through Dodo Payments (“Dodo”), our Merchant of Record and payment processor: when you buy, you enter your payment and billing details on Dodo’s own checkout page, and Dodo processes them as the seller under the [Dodo Payments Privacy Policy](https://dodopayments.com/legal/privacy-policy). We never receive or store your card details or billing address. From Dodo we keep only what we need to credit a purchase and to reverse it on a refund or chargeback: the payment and refund ids, the amount and currency paid, what was bought, and the organisation (and, where known, the user) the purchase is for. We keep these records with your organisation’s credit history for as long as its account exists, or longer where tax or accounting law requires it. We are still setting up Dodo’s checkout: until it is switched on, any checkout shown in the Service is a Paddle test checkout (sandbox), which takes no real payment.",
         ],
@@ -349,6 +357,17 @@ export const en: LegalTexts = {
         heading: "7. Third-party services",
         body: [
           "The Service relies on third-party providers, listed in the Privacy Policy. Where you supply your own API keys, your use of those providers is subject to their terms and their charges, and we are not responsible for their availability or output.",
+          // D5 (2026-11-22): the pass-down the Google APIs Terms (section 2(a)) require of an app that offers Google's models. It sits
+          // here, not in section 6, because section 6 names no model maker (tests/legal-docs.test.ts).
+          "Google models. Some models in the Service are Google’s (for example Veo and Gemini image models), reached through Google’s Gemini API. If you use one, you agree to comply with applicable law, the [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms) and Google’s [Generative AI Prohibited Use Policy](https://policies.google.com/terms/generative-ai/use-policy). In particular:",
+          {
+            list: [
+              "you must be at least 18 years old (section 3);",
+              "you must not claim that content a Google model generated was made solely by a human, in order to deceive;",
+              "you must not remove, hide or alter the watermark Google puts in what its models generate (see also section 6.3);",
+              "Google’s models are offered only for use in the countries and territories Google lists as [available regions](https://ai.google.dev/gemini-api/docs/available-regions) for the Gemini API, and you must not use them from anywhere else.",
+            ],
+          },
         ],
       },
       {
