@@ -154,10 +154,14 @@ def film_sweep_state(data) -> dict:
         newest = max(stamps) if stamps else None
     open_n = _num(d.get("open_segments"))
     after = _num(d.get("overdue_after_minutes"))
+    stuck = _num(d.get("stuck_segments"))
+    oldest = _num(d.get("oldest_stuck_minutes"))
     # "answered": the function said null itself (never recorded), as opposed to a shape without the key.
     return {"overdue": overdue, "answered": "overdue" in d and (raw is None or overdue is not None),
             "last_at": newest, "open": None if open_n is None else int(open_n),
-            "after_min": None if after is None else int(after)}
+            "after_min": None if after is None else int(after),
+            # Segments 0171's sweep rules could already have settled, and for how long the oldest has waited.
+            "stuck": None if stuck is None else int(stuck), "oldest_stuck_min": None if oldest is None else int(oldest)}
 
 
 def worker_role(row) -> str:
@@ -170,6 +174,17 @@ def worker_role(row) -> str:
     if kind != "other":
         return kind
     return "other:" + str(row.get("worker_id") or "").split("-", 1)[0]
+
+
+_FILM_PID = re.compile(r"^(film-.+)-\d+$")
+
+
+def worker_self(row) -> tuple:
+    """Which single worker a row is, for "did THIS worker later say it stopped?": its kind and id, except the film
+    worker (``film-<host>-<pid>``), whose pid changes on every restart: for it, the host (``film-<host>``)."""
+    kind, wid = str(row.get("kind") or ""), str(row.get("worker_id") or "")
+    m = _FILM_PID.match(wid) if kind == "other" else None
+    return (kind, m.group(1) if m else wid)
 
 
 def balance_flags(rows, low_credits: float) -> list[dict]:

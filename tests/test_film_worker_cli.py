@@ -197,7 +197,7 @@ class WorkerStatus(Harness):
                            ({"NIGHTSHIFT_CREATIVE_ADAPTERS": "no_such_module_x9:" + KEY}, "NIGHTSHIFT_CREATIVE_ADAPTERS could not be loaded"),
                            ({"NIGHTSHIFT_MEDIA_DIR": "relative/dir"}, "NIGHTSHIFT_MEDIA_DIR must be"),
                            ({"NIGHTSHIFT_MEDIA_DIR": "/nonexistent-film-dir"}, "NIGHTSHIFT_MEDIA_DIR must be")):
-            rc, _made, _out = self.run_main(self.env(**over))
+            rc, _made, out = self.run_main(self.env(**over))
             self.assertEqual(rc, 2, over)
             self.assertEqual(self.reporter.states(), ["starting", "failed"], over)
             detail = self.reporter.calls[-1][2]
@@ -205,6 +205,7 @@ class WorkerStatus(Harness):
             # Names, never values: not the key, not the adapter spec, not the directory that was typed.
             for value in (KEY, "no_such_module_x9", "relative/dir", "/nonexistent-film-dir"):
                 self.assertNotIn(value, detail, over)
+                self.assertNotIn(value, out, over)          # nor in the log line
 
     def test_without_ffmpeg_it_reports_failed_naming_the_tools(self):
         rep = FakeReporter()

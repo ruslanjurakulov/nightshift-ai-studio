@@ -238,7 +238,7 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `stuck` | a running job has no heartbeat for 10 min (the database's own "abandoned" line); a job queued longer than `OPERATOR_STUCK_MINUTES` | warn | every 6 h while it lasts |
 | `balance` | ElevenLabs credits below `ELEVENLABS_LOW_CREDITS` | warn | every 12 h while it lasts |
 | `deploy` | the latest finished `deploy_web.yml`, `tests.yml` or `frontend.yml` run on `main` failed | warn | once per run |
-| `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that role exists, and none of that role said `stopped` after it; a role is the kind, except kind `other`, which is split by the id's prefix: `email-…`, `film-…`; the bot's own `operator-bot` row is judged on its own); a worker reported FAILED | **critical** | every 3 h while it lasts |
+| `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that role exists; a role is the kind, except kind `other`, which is split by the id's prefix: `email-…`, `film-…`; the bot's own `operator-bot` row is judged on its own. A later `stopped` excuses a silent row only from the same worker: the same id, or for the film worker, whose id carries its pid, the same host `film-<host>`; another host stopped on purpose never excuses one that crashed); a worker reported FAILED | **critical** | every 3 h while it lasts |
 | `film` | Film Studio's switch-on gates G3/G4 (see "Film Studio" below): a settle that could not capture a charge (`segment_settled` with `detail.not_captured` > 0, **critical**); a segment the claim or the sweep skipped (`segment_skipped`, or the `security_events` fallback `film.segment_skipped`, warn); a segment queued 15 min with no claim, or running/draining with a heartbeat older than 20 min (warn); the sweep overdue by `film_sweep_status()` (0212, **critical**) | critical / warn | events once each (24 h window); stuck every 6 h per segment; overdue every 3 h while it lasts |
 | `payment` | a payment-provider event the webhook **rejected** (paid but not credited, or a refund not applied: needs a person, **critical**), **failed** (the provider retries, warn), or a refund / chargeback that was applied (warn), received in the last 24 h | critical / warn | once per event and outcome |
 | `approval` | a new pending publish approval | info | once |
@@ -493,7 +493,7 @@ does not have yet is "cannot answer", which raises nothing and is said in `/heal
 | A segment was skipped: "Film segment 5e65a1b2 was skipped by the claim (40P01) — org …, film …" | `film_events.event = 'segment_skipped'` (0171 `film_record_skip`) | warn | `film:skipped:<event id>` |
 | The same, when even its film event could not be written | `security_events.kind = 'film.segment_skipped'` (the fallback in `film_record_skip`) | warn | `film:skipped:sec:<row id>` |
 | A segment `queued` 15 min with no claim (names `NIGHTSHIFT_FILM_WORKER` / `NIGHTSHIFT_FILM_ASSEMBLY`), or `running`/`draining` with a heartbeat older than 20 min | `film_segments` (id, status, the timestamps and org_id only) | warn, every 6 h | `film:stuck:<segment id>` |
-| The sweep is overdue | `film_sweep_status()` (0212): only `overdue: true` | **critical**, every 3 h | `film:sweep_overdue` |
+| The sweep is overdue, with 0212's own line, the open count and, when 0212 gives both, how many are stuck and the oldest one's age; the remedy names pg_cron (Supabase → Database → Extensions) and the `film-sweep` service (`NIGHTSHIFT_FILM_SWEEP`) | `film_sweep_status()` (0212; runners `worker`, `server`, `pg_cron`, `actions`): only `overdue: true` | **critical**, every 3 h | `film:sweep_overdue` |
 
 * **What a line carries.** Ids cut to their first 8 characters, the uncaptured amount, a status, the call (`claim` or
   `sweep`, anything else prints `?`) and a five-character SQLSTATE (anything else prints `?`). Never a prompt, a scene,
@@ -508,6 +508,10 @@ does not have yet is "cannot answer", which raises nothing and is said in `/heal
   An answer without the key, or with a non-boolean, reads "unknown (its status did not say …)". Before 0212 is applied
   the call answers 404 and the line reads "Film sweep: unknown (not set up yet)". `film_sweep_status` is the second
   read function on the bot's allow-list (`_READ_FUNCTIONS` in `modules/operator_bot/sources.py`).
+* **Proved on the real schema.** `tests/security/test_sec_operator_film_sources.py` turns the bot's own read parameters
+  into the SQL PostgREST builds and runs it as `service_role` against rows the real 0171 functions wrote: the columns,
+  the grants, the path selects and the `not_captured` filter. Its `film_sweep_status()` part is skipped until 0212 is in
+  the migration chain.
 * **The film worker's own liveness** is the `worker` kind: `tools/film_worker.py` reports `worker_status` as kind
   `other`, id `film-<host>-<pid>`: `starting`, `running` every 30 s, `failed` with the remedy when it refuses to start
   (a variable or module name, never a value; scrubbed), `stopped` at the end, and `stopped` with

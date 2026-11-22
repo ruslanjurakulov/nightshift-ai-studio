@@ -74,10 +74,14 @@ def segment(sid=SEG, status="queued", created=30, claimed=None, beat=None):
 
 
 def sweep(overdue, last_minutes=None, open_n=2, **extra):
-    data = {"runners": {"worker": None, "actions": None if last_minutes is None else {
-        "last_at": ts(last_minutes), "last_settled": 0, "last_error": None, "last_error_at": None}, "pg_cron": None},
+    # 0212's current shape (origin/claude/nsai-s2-sweep): runners worker | server | pg_cron | actions, a 30 minute line,
+    # and the stuck count with the oldest one's age (null when none is stuck).
+    data = {"runners": {"worker": None, "server": None if last_minutes is None else {
+        "last_at": ts(last_minutes), "last_settled": 0, "last_error": None, "last_error_at": None},
+        "pg_cron": None, "actions": None},
         "last_at": None if last_minutes is None else ts(last_minutes), "open_segments": open_n,
-        "overdue_after_minutes": 20, "overdue": overdue, "at": ts(0)}
+        "stuck_segments": 0, "oldest_stuck_minutes": None,
+        "overdue_after_minutes": 30, "overdue": overdue, "at": ts(0)}
     data.update(extra)
     return data
 
@@ -229,8 +233,24 @@ class SweepTestCase(unittest.TestCase):
         a = film_alerts(rpcs={"film_sweep_status": sweep(True, last_minutes=45, open_n=3)})
         self.assertEqual([(x.severity, x.key, x.cooldown_min) for x in a],
                          [("critical", "film:sweep_overdue", alerts.FILM_SWEEP_COOLDOWN)])
-        for word in ("OVERDUE", "20 min", "3 segment", "45m ago", "film_sweep"):
+        for word in ("OVERDUE", "the line is 30 min", "3 segment", "45m ago", "pg_cron (Supabase → Database → Extensions)",
+                     "film-sweep service (NIGHTSHIFT_FILM_SWEEP)"):
             self.assertIn(word, a[0].line)
+        self.assertNotIn("stuck", a[0].line)                  # 0 stuck: no stuck part
+        self.assertNotIn("workflow", a[0].line)               # Actions no longer sweeps
+
+    def test_the_overdue_line_says_how_many_are_stuck_and_for_how_long_when_0212_says_so(self):
+        for lang, want in (("en", ", 2 stuck, the oldest for 95 min"), ("ru", ", зависло 2, самый старый 95 мин"),
+                           ("uz", ", qotib qolgani 2 ta, eng eskisi 95 daqiqa")):
+            a = film_alerts(rpcs={"film_sweep_status": sweep(True, last_minutes=3, open_n=4, stuck_segments=2,
+                                                             oldest_stuck_minutes=95)}, lang=lang)
+            self.assertIn(want, a[0].line, lang)
+        # a count without an age, or keys an older 0212 does not have: the line goes without that part
+        for extra in ({"stuck_segments": 2, "oldest_stuck_minutes": None}, {"stuck_segments": None}):
+            data = sweep(True, last_minutes=3) | extra
+            self.assertNotIn("stuck", film_alerts(rpcs={"film_sweep_status": data})[0].line, extra)
+        data = {k: v for k, v in sweep(True, last_minutes=3).items() if k not in ("stuck_segments", "oldest_stuck_minutes")}
+        self.assertNotIn("stuck", film_alerts(rpcs={"film_sweep_status": data})[0].line)
 
     def test_overdue_with_no_completed_sweep_says_so(self):
         a = film_alerts(rpcs={"film_sweep_status": sweep(True, last_minutes=None)})
@@ -358,11 +378,21 @@ class WorkerLostTestCase(unittest.TestCase):
 
     def test_switched_off_is_stopped_never_lost(self):
         self.assertEqual(self.lost([self.w("film-host-1", "stopped", minutes=600)]), [])
-        # a crashed one, then restarted with the switch off: the later 'stopped' says a person acted on it
-        self.assertEqual(self.lost([self.w("film-a-1", minutes=90), self.w("film-b-1", "stopped", minutes=60)]), [])
+        # a crashed one, then the same host restarted with the switch off (a new pid): a person acted on it
+        self.assertEqual(self.lost([self.w("film-host-1", minutes=90), self.w("film-host-7", "stopped", minutes=60)]), [])
         # ... but a 'stopped' row OLDER than the silence does not excuse it
-        self.assertEqual(self.lost([self.w("film-a-1", minutes=30), self.w("film-b-1", "stopped", minutes=60)]),
+        self.assertEqual(self.lost([self.w("film-host-1", minutes=30), self.w("film-host-7", "stopped", minutes=60)]),
+                         ["worker:film-host-1"])
+        # ... and ANOTHER host stopped on purpose says nothing about the one that crashed
+        self.assertEqual(self.lost([self.w("film-a-1", minutes=90), self.w("film-b-1", "stopped", minutes=60)]),
                          ["worker:film-a-1"])
+
+    def test_a_media_worker_that_crashed_is_lost_even_if_another_media_worker_was_stopped_later(self):
+        media = [{"worker_id": "media-a", "kind": "media", "state": "running", "detail": None, "version": None,
+                  "started_at": ts(600), "updated_at": ts(90)},
+                 {"worker_id": "media-b", "kind": "media", "state": "stopped", "detail": None, "version": None,
+                  "started_at": ts(600), "updated_at": ts(60)}]
+        self.assertEqual(self.lost(media), ["worker:media-a"])
 
     def test_the_bot_row_is_still_judged_on_its_own(self):
         self.assertEqual(self.lost([self.w("operator-bot", minutes=30), self.w("email-host"),

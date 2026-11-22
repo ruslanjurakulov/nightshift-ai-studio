@@ -218,7 +218,8 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
     try:
         resolver = cw.load_resolver(spec)
     except Exception as e:
-        logger.error("%s=%s could not be loaded (%s); nothing is claimed", cw.ADAPTERS_ENV, spec, type(e).__name__)
+        # The variable's name and the exception's type only: the value is whatever was typed into the env file.
+        logger.error("%s could not be loaded (%s); nothing is claimed", cw.ADAPTERS_ENV, type(e).__name__)
         return refuse(f"{cw.ADAPTERS_ENV} could not be loaded ({type(e).__name__}); nothing is claimed")
     raw = str(env.get("NIGHTSHIFT_MEDIA_DIR", "") or "").strip()
     media_root = Path(raw) if raw else None

@@ -191,24 +191,25 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     ws = ops.workers()
     if ws.ok:
         rows = analysis.classify_workers(ws.data, now)
-        # A stale row is an old container's when a fresh one of the same role runs, or when one of that role said
-        # 'stopped' after it (restarted with its switch off, e.g. the film worker's "NIGHTSHIFT_FILM_WORKER is not
-        # on"): a person already acted on that worker. Kind "other" is split by id prefix (analysis.worker_role),
-        # and the bot's own row is judged on its own: neither may hide another worker's silence.
+        # A stale row is an old container's when a fresh one of the same role runs. Kind "other" is split by id
+        # prefix (analysis.worker_role), and the bot's own row is judged on its own: neither may hide another
+        # worker's silence. A later 'stopped' excuses a stale row ONLY from the same worker (analysis.worker_self):
+        # another host stopped on purpose says nothing about a host that crashed. The film worker's id carries its
+        # pid, so for it "the same worker" is the same host (restarted with its switch off).
         fresh_roles = {analysis.worker_role(w) for w in rows if w.get("state") in ("running", "starting")
                        and not w["stale"] and w.get("worker_id") != BOT_WORKER_ID}
         stopped_at: dict = {}
         for w in rows:
             at = parse_ts(w.get("updated_at"))
             if w.get("state") == "stopped" and at is not None and w.get("worker_id") != BOT_WORKER_ID:
-                role = analysis.worker_role(w)
-                stopped_at[role] = max(at, stopped_at.get(role, at))
+                me = analysis.worker_self(w)
+                stopped_at[me] = max(at, stopped_at.get(me, at))
 
         def accounted(w) -> bool:
             if w.get("worker_id") == BOT_WORKER_ID:
                 return False
-            role, at = analysis.worker_role(w), parse_ts(w.get("updated_at"))
-            return role in fresh_roles or (at is not None and role in stopped_at and stopped_at[role] > at)
+            me, at = analysis.worker_self(w), parse_ts(w.get("updated_at"))
+            return analysis.worker_role(w) in fresh_roles or (at is not None and me in stopped_at and stopped_at[me] > at)
 
         for w in rows:
             wid = safe_id(w.get("worker_id"), 60)
@@ -401,9 +402,12 @@ def _film_sweep_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[A
         return []
     last = (t(lang, "film.sweep_last", age=age_label(st["last_at"], now)) if st["last_at"] is not None
             else t(lang, "film.sweep_never_completed"))
+    # The stuck part only when 0212 says both numbers: a count with no age (or none at all) is not invented.
+    stuck = (t(lang, "film.sweep_stuck", n=st["stuck"], minutes=st["oldest_stuck_min"])
+             if st["stuck"] and st["oldest_stuck_min"] is not None else "")
     return [Alert("film", "film:sweep_overdue", "critical",
                   t(lang, "alert.film_sweep_overdue", minutes=st["after_min"] if st["after_min"] is not None else "?",
-                    open=st["open"] if st["open"] is not None else "?", last=views.Raw(last)),
+                    open=st["open"] if st["open"] is not None else "?", stuck=views.Raw(stuck), last=views.Raw(last)),
                   None, FILM_SWEEP_COOLDOWN)]
 
 
