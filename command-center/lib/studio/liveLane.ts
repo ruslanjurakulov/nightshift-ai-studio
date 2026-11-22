@@ -405,11 +405,17 @@ function takeTag(kind: string | null, scene: number | null, shot: number | null,
 
 /**
  * The film's recorded events (FilmReading.rawEvents, film_json's newest 50) as activity lines, oldest first. A take event's tag
- * comes from its rows: the take it names in this reading when there is one (its own kind and shot, which take_failed and
- * take_retried do not carry in detail), else `detail.kind` and `detail.shot_index` when they are plain values. `activity` is the
- * panel's gathered list: lines it holds that this reading no longer has (older than the newest 50) keep their word and time.
+ * comes from its rows: the take it names in this reading when there is one (its own kind and shot), else `detail.kind` and
+ * `detail.shot_index` when they are plain values. 0198 writes `kind` on take_failed and take_retried too, but never `shot_index`:
+ * a failure that will be retried writes ONLY take_retried ({take_id: the superseded take, retry_take_id, kind}), no take_failed,
+ * so the shot of either is known only from the take row it names.
+ *
+ * `activity` is the panel's gathered list: lines it holds that this reading no longer has (older than the newest 50) keep their
+ * word and time. `previous` is the caller's last answer from this function: a gathered line it already built from its row keeps
+ * that line (its `clip-02.2`), so a line never changes its tag when its row falls out of the window. The reading's own rows always
+ * win over `previous`, and `previous` only ever stands in for an id the gathered list still holds.
  */
-export function logLines(reading: FilmReading, activity?: Activity | null): LogLine[] {
+export function logLines(reading: FilmReading, activity?: Activity | null, previous?: readonly LogLine[] | null): LogLine[] {
   const scenes = [...reading.film.view.scenes].sort((a, b) => a.position - b.position);
   const sceneNo = new Map(scenes.map((s, i) => [s.id, i + 1]));
   const shotCount = new Map(scenes.map((s) => [s.id, shotsOf(s.shotCount)]));
@@ -444,12 +450,20 @@ export function logLines(reading: FilmReading, activity?: Activity | null): LogL
     }
     lines.set(`f:${rawId}`, { id: `f:${rawId}`, at, word, ...line });
   }
+  const before = new Map((previous ?? []).map((l) => [l.id, l]));
   for (const it of activity?.items ?? []) {
     // A line with no readable time would make the sort inconsistent; it is not placed at all.
     if (lines.has(it.id) || !it.id.startsWith("f:") || !EVENT_WORD.test(it.word) || !Number.isFinite(Date.parse(it.at))) continue;
+    const kept = before.get(it.id);
+    // Only a line of the same event and time: an id reused under another word is not the line it was.
+    if (kept && kept.word === it.word && kept.at === it.at) {
+      lines.set(it.id, kept);
+      continue;
+    }
     const scene = typeof it.scene === "number" && Number.isInteger(it.scene) && it.scene >= 1 ? it.scene : null;
     const kind = it.word.startsWith("take_") && it.kind && KIND_WORD.test(it.kind) ? it.kind : null;
-    // A gathered ActivityItem kept no shot_index, so its clip tag loses `.n` (`clip-03`, not `clip-03.2`).
+    // Never built from its row in this session (gathered before `previous` held it): an ActivityItem kept no shot, so its clip tag
+    // has no `.n` (`clip-03`, not `clip-03.2`).
     const t = kind ? takeTag(kind, scene, null, null) : { tag: familyOf(it.word), family: familyOf(it.word) };
     lines.set(it.id, { id: it.id, at: it.at, word: it.word, tag: t.tag, family: t.family, scene, shot: null, takeId: null });
   }
