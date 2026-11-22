@@ -37,7 +37,7 @@ import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
 import { clipShapeOf, filmCatalogue, promptLimitOf } from "@/lib/server/brain/clip";
-import { MODEL_ID, pickFilmModel, type PickedModel } from "@/lib/brain/film-models";
+import { FILM_MODEL_PREFERENCE, MODEL_ID, pickFilmModel, type OnSaleModel, type PickedModel } from "@/lib/brain/film-models";
 import { writeStoryboard } from "@/lib/server/brain/plan";
 import { planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
@@ -269,46 +269,103 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   // clip model's real longest scene, and the card names them. A failed read plans nothing (a pick from an unread list is a guess).
   const catalogue = await filmCatalogue(supabase);
   if (!catalogue.ok) return brainJson({ error: "unavailable" }, 503);
-  const named = (list: { id: string; name: string; durations: number[] }[], id: string | null): PickedModel | null =>
-    id ? { id, name: list.find((m) => m.id === id)?.name ?? id, durations: null } : null;
+  const keyframeAll = [...catalogue.keyframe, ...catalogue.keyframeEdit];
+  const nameOf = (list: { id: string; name: string }[], id: string | null) => (id ? { id, name: list.find((m) => m.id === id)?.name ?? id } : null);
 
   // The storyboard: one stored before the plan step that already adds up; the one this session's plan already wrote for this same
   // outline (a reload, a price that could not be read, a draft save that failed: choosing again re-reads the draft and the quote,
   // and spends no turn); or the plan step.
   let planned: Scenario | null = chosen.scenes.length ? chosen : null;
+  // The stored scenes as written, before any reader cleaned or capped them: their prompts are measured as written (never cut first).
+  let rawScenes: unknown[] = planned && raw && typeof raw === "object" && Array.isArray((raw as { scenes?: unknown }).scenes)
+    ? ((raw as { scenes: unknown[] }).scenes) : [];
   let quota: unknown = undefined;
-  let models: { clip: PickedModel | null; keyframe: PickedModel | null } | null = null;
+  // Stored model ids, only when they are the server's own (Breach BR-S1-07): the BRIEF is its author's to write (0199's
+  // ai_chat_save_brief takes any object), so an id in it is a claim, never the server's choice. One in FILM_MODEL_PREFERENCE is
+  // what this draft was made with (the draft's key would refuse another); anything else is replaced by the server's pick.
+  let storedIds: { clip: string | null; keyframe: string | null } = { clip: null, keyframe: null };
   if (!planned) {
     const stored = s.step === "ready" ? readScenario(s.brief, slots) : null;
     if (stored && stored.scenes.length && stored.title === chosen.title && stored.idea === chosen.idea) {
       planned = { ...chosen, scenes: stored.scenes };
-      // Choosing again keeps the models this draft was made with, never a fresh pick: the draft's idempotency key would refuse a
-      // different one, and a model that left the catalogue is the quote's own refusal to show, not a silent swap.
-      const first = ((s.brief as { scenes?: { clip_model?: unknown; keyframe_model?: unknown }[] } | null)?.scenes ?? [])[0];
-      const id = (v: unknown) => (typeof v === "string" && MODEL_ID.test(v) ? v : null);
-      models = { clip: named(catalogue.clip, id(first?.clip_model)), keyframe: named(catalogue.keyframe, id(first?.keyframe_model)) };
+      const scenes = (s.brief as { scenes?: unknown } | null)?.scenes;
+      rawScenes = Array.isArray(scenes) ? scenes : [];
+      const first = (rawScenes[0] ?? null) as { clip_model?: unknown; keyframe_model?: unknown } | null;
+      const ours = (role: "clip" | "keyframe", v: unknown) =>
+        typeof v === "string" && (FILM_MODEL_PREFERENCE[role] as readonly string[]).includes(v) ? v : null;
+      storedIds = { clip: ours("clip", first?.clip_model), keyframe: ours("keyframe", first?.keyframe_model) };
     }
   }
+  const asPicked = (list: OnSaleModel[], id: string): PickedModel => {
+    const m = list.find((x) => x.id === id);
+    const d = (m?.durations ?? []).filter((x) => Number.isInteger(x) && x > 0).sort((a, b) => a - b);
+    return { id, name: m?.name || id, durations: d.length ? d : null };
+  };
   // A new draft: the server's pick, in its fixed order (lib/brain/film-models). None on sale for a role: that role stays unset.
-  models ??= { clip: pickFilmModel("clip", catalogue.clip), keyframe: pickFilmModel("keyframe", catalogue.keyframe) };
-  const pick = models;
+  const pick = {
+    clip: storedIds.clip ? asPicked(catalogue.clip, storedIds.clip) : pickFilmModel("clip", catalogue.clip),
+    keyframe: storedIds.keyframe ? asPicked(keyframeAll, storedIds.keyframe) : pickFilmModel("keyframe", catalogue.keyframe),
+  };
   const base = draftSettings(buildBrief(s.id, slots, chosen, "ready"));
   if (!base) return brainJson({ error: "nothing_to_choose" }, 409);
   const settings = { ...base.settings, ...(pick.clip ? { clip_model: pick.clip.id } : {}), ...(pick.keyframe ? { keyframe_model: pick.keyframe.id } : {}) };
   // The draft's key names no conversation (Breach BR-S1-04: films.idempotency_key is read by every viewer of the workspace).
   const draftKey = `brain-${digest(`nightshift-brain-draft:${s.id}:${proposalId}:${index}`).slice(0, 40)}`;
 
+  /** A storyboard over the prompt limit, by its first scene (1-based): each stored prompt as written, then each whole prompt. */
+  const overLimit = (scenario: Scenario, limit: number): { scene: number; limit: number } | null => {
+    const asWritten = rawScenes.findIndex((r) => {
+      const v = r && typeof r === "object" ? (r as { visual_prompt?: unknown }).visual_prompt : null;
+      return typeof v === "string" && v.length > limit;
+    });
+    if (asWritten >= 0) return { scene: asWritten + 1, limit };
+    const over = promptOverLimit(buildBrief(s.id, slots, scenario, "ready"), limit);
+    return over ? { scene: over.scene, limit } : null;
+  };
+
   // The longest whole scene prompt the picked models take, from their registry rows (S9, 0218), else the film's own 2000.
   const promptLimit = promptLimitOf(catalogue, pick.clip?.id, pick.keyframe?.id);
   // A storyboard that already exists (stored, or chosen again) is measured before the draft or any turn: said before any spend.
   if (planned) {
-    const over = promptOverLimit(buildBrief(s.id, slots, planned, "ready"), planLimits(null, promptLimit).promptMax);
+    const over = overLimit(planned, planLimits(null, promptLimit).promptMax);
     if (over) return brainJson({ error: "prompt_too_long", scene: over.scene, limit: over.limit }, 422);
   }
 
   // The plan's lease (0211): held from before the draft until the end of this request, released in `finally` with how it ended.
   let lease: { attempt: number } | null = null;
   let ending: { state: "done" | "failed"; reason: string } = { state: "failed", reason: "unavailable" };
+  /** 0211's lease for this request; a refusal to say when it is not granted. */
+  const beginLease = async (turns: { at_most: number; about: number } | null): Promise<Response | null> => {
+    const begun = await supabase.rpc("ai_chat_plan_begin", { p_session: s.id, p_proposal: proposalId, p_index: index });
+    if (begun.error) {
+      const e = begun.error as { code?: string; message?: string; details?: string };
+      if (e.code === "PGRST202" || e.code === "42883" || e.code === "PGRST205" || e.code === "42P01") return brainJson({ error: "plan_unavailable" }, 503);
+      // Another tab (or this one, refreshed) is writing it: said with when that plan's time runs out, nothing spent here.
+      if (e.message === "plan_running") return brainJson({ error: "plan_running", expires_at: typeof e.details === "string" ? e.details : null }, 409);
+      return dbRefusal(e) ?? brainJson({ error: "unavailable" }, 503);
+    }
+    const b = (begun.data ?? {}) as { attempt?: unknown; user_left?: unknown };
+    if (typeof b.attempt !== "number" || !Number.isInteger(b.attempt)) return brainJson({ error: "plan_unavailable" }, 503);
+    lease = { attempt: b.attempt };
+    // The person's own turns across every workspace (0199 per_user_daily), returned by the lease: the same up-front rule.
+    if (turns && typeof b.user_left === "number" && b.user_left < turns.at_most) {
+      ending = { state: "failed", reason: "plan_over_cap" };
+      return brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left: b.user_left, scope: "person" }, 429);
+    }
+    return null;
+  };
+  /** Whether this request's attempt still holds the lease (Breach BR-S1-08): asked before every write. A plan whose server stalled
+   *  past its 320 s may have been taken over by another tab, which wrote its own storyboard; this one then writes nothing. */
+  const stillOurs = async (): Promise<boolean> => {
+    if (!lease) return false;
+    const st = await supabase.rpc("ai_chat_plan_state", { p_session: s.id });
+    const d = (st.data ?? null) as { attempt?: unknown; state?: unknown } | null;
+    return !st.error && !!d && d.attempt === (lease as { attempt: number }).attempt && d.state === "running";
+  };
+  const superseded = (filmId: string | null) => {
+    ending = { state: "failed", reason: "plan_superseded" };
+    return brainJson({ error: "plan_superseded", ...(filmId ? { film_id: filmId } : {}), ...(quota !== undefined ? { quota } : {}) }, 409);
+  };
   try {
     let limits = planLimits(null, promptLimit);
     let model: ChatModelId | null = null;
@@ -336,22 +393,8 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       const left = typeof q.limit === "number" ? (used === null ? null : Math.max(0, q.limit - used)) : typeof q.trial_left === "number" ? q.trial_left : null;
       if (left !== null && left > 0 && left < turns.at_most) return brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left }, 429);
       // 2. One plan at a time per conversation (0211). Without the lease there is no plan: never two of them, never one unguarded.
-      const begun = await supabase.rpc("ai_chat_plan_begin", { p_session: s.id, p_proposal: proposalId, p_index: index });
-      if (begun.error) {
-        const e = begun.error as { code?: string; message?: string; details?: string };
-        if (e.code === "PGRST202" || e.code === "42883" || e.code === "PGRST205" || e.code === "42P01") return brainJson({ error: "plan_unavailable" }, 503);
-        // Another tab (or this one, refreshed) is writing it: said with when that plan's time runs out, nothing spent here.
-        if (e.message === "plan_running") return brainJson({ error: "plan_running", expires_at: typeof e.details === "string" ? e.details : null }, 409);
-        return dbRefusal(e) ?? brainJson({ error: "unavailable" }, 503);
-      }
-      const b = (begun.data ?? {}) as { attempt?: unknown; user_left?: unknown };
-      if (typeof b.attempt !== "number" || !Number.isInteger(b.attempt)) return brainJson({ error: "plan_unavailable" }, 503);
-      lease = { attempt: b.attempt };
-      // The person's own turns across every workspace (0199 per_user_daily), returned by the lease: the same up-front rule.
-      if (typeof b.user_left === "number" && b.user_left < turns.at_most) {
-        ending = { state: "failed", reason: "plan_over_cap" };
-        return brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left: b.user_left, scope: "person" }, 429);
-      }
+      const refused = await beginLease(turns);
+      if (refused) return refused;
     }
 
     // 3. The draft, before any turn is spent on its storyboard (Breach BR-S1-03): settings only, no scene, so a workspace that cannot
@@ -364,10 +407,36 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       ending = { state: "failed", reason: "film_refused" };
       return brainJson({ error: "film_refused", reason: plain(created.error.message, 64) }, 409);
     }
-    const cd = (created.data ?? null) as { film?: { id?: string; version?: number; clip_model?: unknown }; limits?: { max_shots?: unknown } } | null;
+    const cd = (created.data ?? null) as {
+      film?: { id?: string; version?: number; clip_model?: unknown; keyframe_model?: unknown };
+      limits?: { max_shots?: unknown }; totals?: { scenes?: unknown }; scenes?: unknown;
+    } | null;
     const f = cd?.film;
     if (!f?.id || typeof f.version !== "number") return brainJson({ error: "unavailable" }, 503);
     const v0 = f.version;
+    // The models the film is drafted with, as the database stored them (a replayed draft keeps its own): the card names these, and a
+    // scene is measured against THEIR registry limits, a key frame read from the t2i and the edit catalogues alike (BR-S1-07).
+    const modelId = (v: unknown, fallback: string | null) => (typeof v === "string" && MODEL_ID.test(v) ? v : v === null ? null : fallback);
+    const drafted = { clip: modelId(f.clip_model, pick.clip?.id ?? null), keyframe: modelId(f.keyframe_model, pick.keyframe?.id ?? null) };
+    const draftedLimit = planLimits(null, promptLimitOf(catalogue, drafted.clip, drafted.keyframe)).promptMax;
+    const models = { clip: nameOf(catalogue.clip, drafted.clip), keyframe: nameOf(keyframeAll, drafted.keyframe) };
+    // The draft already has a storyboard: this outline's, kept from an earlier choice, and perhaps edited by the person since (Lens
+    // H1). It is never written over: choosing again only prices the film as it is now.
+    const hasScenes = Array.isArray(cd?.scenes) ? cd!.scenes.length > 0 : typeof cd?.totals?.scenes === "number" && cd.totals.scenes > 0;
+    if (hasScenes) {
+      // A plan (no storyboard in this conversation for this outline) never replaces one the film already has: said, nothing spent.
+      if (!planned) return superseded(f.id);
+      const q = await supabase.rpc("quote_film", { p_film: f.id, p_version: v0 });
+      const quoteRead = q.error ? null : coerceQuote(q.data);
+      const brief: Brief = { ...buildBrief(s.id, slots, planned, "ready"), price: priceOf(quoteRead) };
+      // Nothing is written: the conversation's BRIEF and the film are left as they are (Lens L3: a re-price takes no lease).
+      return brainJson({ brief, film: { id: f.id, version: v0 }, models, quote: legacyQuote(quoteRead), film_quote: q.error ? null : q.data });
+    }
+    // A storyboard that is not yet in the draft (stored, or chosen from an older proposal): written now, so under the lease too.
+    if (planned && !lease) {
+      const refused = await beginLease(null);
+      if (refused) return refused;
+    }
 
     // 4. The storyboard, each call's request id derived from this attempt: a repeat inside it is 0199's duplicate, a Retry is a
     // new attempt with new ids.
@@ -375,7 +444,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       const last = (lastRead.data?.[0] ?? null) as { role?: string; content?: string } | null;
       const run = await writeStoryboard({
         supabase, sessionId: s.id, model, endUser: await vendorUser(s.org_id),
-        requestBase: `pl${digest(`${s.id}:${proposalId}:${index}:${lease.attempt}`).slice(0, 40)}`,
+        requestBase: `pl${digest(`${s.id}:${proposalId}:${index}:${(lease as { attempt: number }).attempt}`).slice(0, 40)}`,
         // A Retry of this same choice after a failed plan: the person's choice is already their last, unanswered message.
         choiceStored: last?.role === "user" && last.content === chosen.title,
         choiceText: chosen.title, outline: chosen, slots, limits,
@@ -391,37 +460,34 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
 
     // BRIEF v1's own fields: "a model id the server checked is on sale" (docs/studio/NIGHTSHIFT_AI.md). The film keeps them as its
     // defaults, so every scene's own model stays unset and follows the film.
-    planned = { ...planned, scenes: planned.scenes.map((sc) => ({ ...sc, clip_model: pick.clip?.id ?? null, keyframe_model: pick.keyframe?.id ?? null })) };
+    planned = { ...planned, scenes: planned.scenes.map((sc) => ({ ...sc, clip_model: drafted.clip, keyframe_model: drafted.keyframe })) };
     const draftBrief = buildBrief(s.id, slots, planned, "ready");
     // The whole storyboard through the same floor: a chapter's own words could carry what the outline did not.
     if (unsafeBrief(draftBrief)) {
       ending = { state: "failed", reason: "content_refused" };
       return brainJson({ error: "content_refused", ...(quota !== undefined ? { quota } : {}) }, 422);
     }
-    // Every scene's whole prompt, measured as the models will read it (UTF-16 units): one over the limit is refused by its number,
-    // never cut, before the storyboard is kept or the film saved (0218 would refuse it at the quote).
-    const tooLong = promptOverLimit(draftBrief, limits.promptMax);
+    // Every scene's whole prompt, measured as the drafted models will read it (UTF-16 units): one over the limit is refused by its
+    // number, never cut, before the storyboard is kept or the film saved (0218 would refuse it at the quote).
+    const tooLong = promptOverLimit(draftBrief, Math.min(limits.promptMax, draftedLimit));
     if (tooLong) {
       ending = { state: "failed", reason: "prompt_too_long" };
       return brainJson({ error: "prompt_too_long", scene: tooLong.scene, limit: tooLong.limit, ...(quota !== undefined ? { quota } : {}) }, 422);
     }
     // 5. The storyboard is kept before anything else can fail (Lens M6): a refresh, or a draft save that fails, finds it and choosing
-    // again re-reads it without a turn. Unpriced until the quote below says otherwise.
-    if (lease) {
-      const kept = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...draftBrief, price: { state: "unpriced" } }, p_step: "ready" });
-      if (kept.error) return dbRefusal(kept.error) ?? brainJson({ error: "unavailable" }, 503);
-    }
+    // again re-reads it without a turn. Unpriced until the quote below says otherwise. Only while this attempt holds the lease.
+    if (!(await stillOurs())) return superseded(f.id);
+    const kept = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...draftBrief, price: { state: "unpriced" } }, p_step: "ready" });
+    if (kept.error) return dbRefusal(kept.error) ?? brainJson({ error: "unavailable" }, 503);
     // Shots per scene from the film's own clip model as the database stored it, when its lengths are listed (G4); otherwise one
     // shot, and the quote names what is missing.
-    const film = filmFromBrief(draftBrief, clipShapeOf(catalogue.clip, f.clip_model, cd?.limits?.max_shots), limits.promptMax);
+    const film = filmFromBrief(draftBrief, clipShapeOf(catalogue.clip, drafted.clip, cd?.limits?.max_shots), Math.min(limits.promptMax, draftedLimit));
     if (!film) return brainJson({ error: "nothing_to_choose" }, 409);
     // 6. Saved at the version the draft had: if someone edited it meanwhile, their edit wins and this plan says so.
+    if (!(await stillOurs())) return superseded(f.id);
     const saved = await supabase.rpc("save_film", { p_film: f.id, p_version: v0, p_patch: { scenes: film.scenes } });
     if (saved.error) {
-      if (saved.error.message === "film_changed") {
-        ending = { state: "failed", reason: "plan_superseded" };
-        return brainJson({ error: "plan_superseded", film_id: f.id, ...(quota !== undefined ? { quota } : {}) }, 409);
-      }
+      if (saved.error.message === "film_changed") return superseded(f.id);
       ending = { state: "failed", reason: "film_refused" };
       return brainJson({ error: "film_refused", reason: plain(saved.error.message, 64), film_id: f.id, ...(quota !== undefined ? { quota } : {}) }, 409);
     }
@@ -429,15 +495,9 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     // 7. The price.
     const q = await supabase.rpc("quote_film", { p_film: f.id, p_version: version });
     const quoteRead = q.error ? null : coerceQuote(q.data);
-    const price: BriefPrice = !quoteRead ? { state: "failed" }
-      : quoteRead.exempt ? { state: "exempt" }
-      : quoteRead.priced && quoteRead.total !== null
-        ? { state: "priced", total_credits: quoteRead.total, spendable: quoteRead.available ?? "unknown",
-            // Short of credits is "does not fit" (Shorten / Upgrade / Top up); any other block is said by its own reason on the card.
-            fits: !quoteRead.blockedBy.includes("insufficient_credits"), shorter: null }
-        : { state: "unpriced" };
-    // 8. The BRIEF with its price.
-    const brief: Brief = { ...draftBrief, price };
+    // 8. The BRIEF with its price, again only while this attempt holds the lease.
+    const brief: Brief = { ...draftBrief, price: priceOf(quoteRead) };
+    if (!(await stillOurs())) return superseded(f.id);
     const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: brief, p_step: "ready" });
     if (stored.error) return dbRefusal(stored.error) ?? brainJson({ error: "unavailable" }, 503);
     ending = { state: "done", reason: "" };
@@ -445,21 +505,38 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       brief,
       film: { id: f.id, version },
       // The models the film is made with, by name, for the card ("Video: …", "Pictures: …"); null = none was on sale for that role.
-      models: { clip: pick.clip ? { id: pick.clip.id, name: pick.clip.name } : null, keyframe: pick.keyframe ? { id: pick.keyframe.id, name: pick.keyframe.name } : null },
+      models,
       ...(quota !== undefined ? { quota } : {}),
-      // The film route starts it, at this quote, on the person's press ("Create — N credits"): /api/films/<id>/start.
-      quote: quoteRead ? { quote_id: quoteRead.quoteId, total: quoteRead.total, startable: quoteRead.startable, blocked_by: quoteRead.blockedBy, refusal: quoteRead.refusal, exempt: quoteRead.exempt } : null,
+      quote: legacyQuote(quoteRead),
       // quote_film's own answer, which S2's Create reads through coerceQuote (#905): the panel never reshapes a price.
       film_quote: q.error ? null : q.data,
     });
   } finally {
     // 9. Released however this request ends, by its own attempt: a later attempt's lease is never closed by this one.
-    if (lease) {
+    const held = lease as { attempt: number } | null;
+    if (held) {
       const reason = ending.state === "done" ? null : /^[a-z][a-z0-9_]{0,39}$/.test(ending.reason) ? ending.reason : "unavailable";
-      await Promise.resolve(supabase.rpc("ai_chat_plan_end", { p_session: s.id, p_attempt: lease.attempt, p_state: ending.state, p_reason: reason }))
+      await Promise.resolve(supabase.rpc("ai_chat_plan_end", { p_session: s.id, p_attempt: held.attempt, p_state: ending.state, p_reason: reason }))
         .then(() => undefined, () => undefined);
     }
   }
+}
+
+/** quote_film's answer as the BRIEF's price: priced, exempt, unpriced, or failed when it could not be read. */
+function priceOf(quoteRead: ReturnType<typeof coerceQuote>): BriefPrice {
+  return !quoteRead ? { state: "failed" }
+    : quoteRead.exempt ? { state: "exempt" }
+    : quoteRead.priced && quoteRead.total !== null
+      ? { state: "priced", total_credits: quoteRead.total, spendable: quoteRead.available ?? "unknown",
+          // Short of credits is "does not fit" (Upgrade / Top up); any other block is said by its own reason on the card.
+          fits: !quoteRead.blockedBy.includes("insufficient_credits"), shorter: null }
+      : { state: "unpriced" };
+}
+
+/** The reshaped quote older readers of this route take; S2's Create reads `film_quote` instead. */
+function legacyQuote(quoteRead: ReturnType<typeof coerceQuote>) {
+  return quoteRead ? { quote_id: quoteRead.quoteId, total: quoteRead.total, startable: quoteRead.startable, blocked_by: quoteRead.blockedBy,
+                       refusal: quoteRead.refusal, exempt: quoteRead.exempt } : null;
 }
 
 export async function POST(request: Request) {

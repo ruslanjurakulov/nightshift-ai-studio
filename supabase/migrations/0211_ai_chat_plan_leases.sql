@@ -1,8 +1,7 @@
 -- 0211_ai_chat_plan_leases.sql — one storyboard plan at a time per Nightshift AI conversation (S1 plan step,
 -- command-center/lib/server/brain/plan.ts; docs/studio/NIGHTSHIFT_AI.md "Proposals and the plan step").
 --
--- *** NOT APPLIED LIVE. *** One closed table and four functions a member calls (begin, end, state, the lease-checked BRIEF
--- save). Nothing replaced, nothing backfilled. Number provisional: Atlas
+-- *** NOT APPLIED LIVE. *** One closed table and three functions. Nothing replaced, nothing backfilled. Number provisional: Atlas
 -- assigns the final one at merge.
 --
 -- WHY. Choosing a short outline writes its storyboard in several model calls, each an ordinary 0199 turn. 0199 ties a turn to a
@@ -40,9 +39,6 @@ begin
   if to_regprocedure('public.is_org_member(uuid, text)') is null then
     raise exception '0211 needs is_org_member (0018)';
   end if;
-  if to_regprocedure('public.ai_chat_save_brief(uuid, jsonb, text)') is null then
-    raise exception '0211 needs ai_chat_save_brief (0199)';
-  end if;
   if to_regprocedure('public.creative_refuse(text, text, text)') is null then
     raise exception '0211 needs creative_refuse (0036)';
   end if;
@@ -69,7 +65,7 @@ drop policy if exists ai_chat_plan_leases_author_read on public.ai_chat_plan_lea
 create policy ai_chat_plan_leases_author_read on public.ai_chat_plan_leases
   for select to authenticated using (created_by = (select auth.uid()));
 comment on table public.ai_chat_plan_leases is
-  'Migration 0211: one storyboard plan at a time per Nightshift AI conversation (running | failed | done, attempt, expires_at). RLS on, an author-only SELECT policy, no grant: only ai_chat_plan_begin / ai_chat_plan_end / ai_chat_plan_state / ai_chat_plan_save_brief touch it.';
+  'Migration 0211: one storyboard plan at a time per Nightshift AI conversation (running | failed | done, attempt, expires_at). RLS on, an author-only SELECT policy, no grant: only ai_chat_plan_begin / ai_chat_plan_end / ai_chat_plan_state touch it.';
 
 -- The caller's own conversation, locked, under 0199's ai_chat_save_brief guard: author, still an editor, not handed off.
 create or replace function public.ai_chat_plan_session(p_session uuid) returns public.ai_chat_sessions
@@ -201,27 +197,6 @@ begin
 end
 $$;
 
--- The plan's BRIEF, written only while this attempt still holds the lease (Breach BR-S1-08). A plan whose server stalled past its
--- 320 s is taken over by a second tab, which writes and prices its own storyboard; the first, waking up late, must not replace that
--- BRIEF with its own. Checked and written in one transaction under the conversation's row lock, so a takeover cannot slip between
--- the check and the write (begin takes the same lock first). The write itself is 0199's ai_chat_save_brief, unchanged.
-create or replace function public.ai_chat_plan_save_brief(p_session uuid, p_attempt integer, p_brief jsonb, p_step text) returns void
-  language plpgsql volatile security definer set search_path = public, pg_temp as $$
-declare
-  s public.ai_chat_sessions;
-  l public.ai_chat_plan_leases;
-begin
-  s := public.ai_chat_plan_session(p_session);
-  select * into l from public.ai_chat_plan_leases where session_id = s.id for update;
-  if not found or l.attempt is distinct from p_attempt or l.state <> 'running' or l.expires_at <= now() then
-    perform public.creative_refuse('plan_not_current', 'that plan is no longer the running one', 'NS409');
-  end if;
-  perform public.ai_chat_save_brief(p_session, p_brief, p_step);
-end
-$$;
-
-revoke all on function public.ai_chat_plan_save_brief(uuid, integer, jsonb, text) from public, anon, authenticated, service_role;
-grant execute on function public.ai_chat_plan_save_brief(uuid, integer, jsonb, text) to authenticated;
 revoke all on function public.ai_chat_plan_session(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_plan_begin(uuid, bigint, integer) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_plan_end(uuid, integer, text, text) from public, anon, authenticated, service_role;
@@ -256,8 +231,7 @@ begin
     raise exception '0211 end state: ai_chat_plan_session must exist and be callable by no API role';
   end if;
   foreach sig in array array['public.ai_chat_plan_begin(uuid,bigint,integer)', 'public.ai_chat_plan_end(uuid,integer,text,text)',
-                             'public.ai_chat_plan_state(uuid)', 'public.ai_chat_plan_save_brief(uuid,integer,jsonb,text)',
-                             'public.ai_chat_plan_session(uuid)'] loop
+                             'public.ai_chat_plan_state(uuid)', 'public.ai_chat_plan_session(uuid)'] loop
     fn := to_regprocedure(sig);
     if fn is null then
       raise exception '0211 end state: % does not exist', sig;

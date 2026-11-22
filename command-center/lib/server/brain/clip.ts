@@ -9,17 +9,23 @@ import type { OnSaleModel } from "@/lib/brain/film-models";
  * (sellable_models, web): clips (i2v) and key frames (t2i). The server picks from these (lib/brain/film-models), names them on the
  * plan card, and reads the clip model's shot lengths (spec.durations_s), which quote_film prices a scene's shots against (0171).
  *
+ * `keyframeEdit` is the edit catalogue: 0166 film_check_model takes a t2i OR an edit model as a film's keyframe_model, so a film may
+ * be drafted with one the server would never pick (Breach BR-S1-07). Its name and prompt limit are read from there; the server's
+ * own pick is only ever from `keyframe` (t2i), in its fixed order.
+ *
  * A read that fails is not "nothing on sale": it is `ok: false`, and the plan is not begun (a pick from a list that could not be read
  * would be a guess). The database checks again anyway: create_film_draft refuses a model that is not on sale (film_check_model).
  */
-export type FilmCatalogue = { ok: true; clip: OnSaleModel[]; keyframe: OnSaleModel[] } | { ok: false };
+export type FilmCatalogue = { ok: true; clip: OnSaleModel[]; keyframe: OnSaleModel[]; keyframeEdit: OnSaleModel[] } | { ok: false };
 
 export async function filmCatalogue(supabase: SupabaseClient): Promise<FilmCatalogue> {
-  const [clip, keyframe] = await Promise.all([readSellableModels(supabase, "i2v", "web"), readSellableModels(supabase, "t2i", "web")]);
-  if (clip.status !== "ok" || keyframe.status !== "ok") return { ok: false };
+  const [clip, keyframe, edit] = await Promise.all([
+    readSellableModels(supabase, "i2v", "web"), readSellableModels(supabase, "t2i", "web"), readSellableModels(supabase, "edit", "web"),
+  ]);
+  if (clip.status !== "ok" || keyframe.status !== "ok" || edit.status !== "ok") return { ok: false };
   const rows = (models: typeof clip.models): OnSaleModel[] =>
     models.map((m) => ({ id: m.id, name: m.displayName, durations: m.spec.durationsS, maxPromptChars: m.spec.maxPromptChars }));
-  return { ok: true, clip: rows(clip.models), keyframe: rows(keyframe.models) };
+  return { ok: true, clip: rows(clip.models), keyframe: rows(keyframe.models), keyframeEdit: rows(edit.models) };
 }
 
 /**
@@ -28,12 +34,14 @@ export async function filmCatalogue(supabase: SupabaseClient): Promise<FilmCatal
  * sale) adds nothing; neither known is null, and the film's own 2000 (film_limits.max_prompt_chars, planLimits) is the limit.
  * Never a number typed here: the registry is the only source.
  */
-export function promptLimitOf(catalogue: { clip: OnSaleModel[]; keyframe: OnSaleModel[] }, clipModel: unknown, keyframeModel: unknown): number | null {
+export function promptLimitOf(catalogue: { clip: OnSaleModel[]; keyframe: OnSaleModel[]; keyframeEdit?: OnSaleModel[] }, clipModel: unknown,
+                              keyframeModel: unknown): number | null {
   const limit = (list: OnSaleModel[], id: unknown) => {
     const v = typeof id === "string" && id ? list.find((m) => m.id === id)?.maxPromptChars : null;
     return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null;
   };
-  const known = [limit(catalogue.clip, clipModel), limit(catalogue.keyframe, keyframeModel)].filter((v): v is number => v !== null);
+  const known = [limit(catalogue.clip, clipModel), limit([...catalogue.keyframe, ...(catalogue.keyframeEdit ?? [])], keyframeModel)]
+    .filter((v): v is number => v !== null);
   return known.length ? Math.min(...known) : null;
 }
 

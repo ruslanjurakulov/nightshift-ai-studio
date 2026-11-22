@@ -41,7 +41,7 @@ const exact: Answer = (parts, data) => ({ ok: true, tokensIn: 100, tokensOut: 20
 }) }) });
 
 /** One sellable_models row as the registry reader (lib/creative/registry coerceSellableModels) takes it. */
-const row = (id: string, name: string, cap: "i2v" | "t2i", durations: number[], maxPrompt = 2000, takesNegative = false) => ({
+const row = (id: string, name: string, cap: "i2v" | "t2i" | "edit", durations: number[], maxPrompt = 2000, takesNegative = false) => ({
   id, display_name: name, provider: "x", availability: "ga", verified_at: "2026-11-01", credit_unit: cap === "i2v" ? "second" : "image",
   credits_per_unit: 1, capabilities: [cap], takes_negative_prompt: takesNegative,
   spec: { output: cap === "i2v" ? "video" : "image", unit: cap === "i2v" ? "second" : "image", limits: { max_prompt_chars: maxPrompt, max_concurrent_per_org: 2 }, durations_s: durations },
@@ -55,7 +55,9 @@ const state = {
   reserveError: null as unknown,
   answer: exact as Answer,
   /** sellable_models per role: what is on sale right now, as the catalogue rows the registry reader takes. */
-  catalogue: { i2v: [] as unknown[], t2i: [] as unknown[] },
+  catalogue: { i2v: [] as unknown[], t2i: [] as unknown[], edit: [] as unknown[] },
+  /** What create_film_draft answers instead of a fresh draft: a replayed one (0166 film_read), with its own models and scenes. */
+  draft: null as Record<string, unknown> | null,
   catalogueFails: false,
   quote: null as Record<string, unknown> | null,
 };
@@ -86,9 +88,9 @@ const client = {
     const leased = lease.rpc(fn, args as Record<string, unknown>);
     if (leased) return leased;
     if (fn === "sellable_models") {
-      if (args.p_capability === "i2v" || args.p_capability === "t2i") {
+      if (args.p_capability === "i2v" || args.p_capability === "t2i" || args.p_capability === "edit") {
         if (state.catalogueFails) return { data: null, error: { code: "XX000", message: "down" } };
-        return { data: state.catalogue[args.p_capability as "i2v" | "t2i"], error: null };
+        return { data: state.catalogue[args.p_capability as "i2v" | "t2i" | "edit"], error: null };
       }
       return { data: [{ id: "anthropic-claude-sonnet-5-5" }], error: null };
     }
@@ -100,6 +102,7 @@ const client = {
     }
     // As 0166 does: the film keeps the clip model its settings named (or none).
     if (fn === "create_film_draft") {
+      if (state.draft) return { data: state.draft, error: null };
       const clip = (args.p_settings as { clip_model?: string }).clip_model ?? null;
       return { data: { film: { id: FILM, version: 1, clip_model: clip }, limits: { max_shots: 3 } }, error: null };
     }
@@ -168,7 +171,8 @@ beforeEach(() => {
   state.quota = { used: 3, limit: 30 };
   state.reserveError = null;
   state.answer = exact;
-  state.catalogue = { i2v: [], t2i: [] };
+  state.catalogue = { i2v: [], t2i: [], edit: [] };
+  state.draft = null;
   state.catalogueFails = false;
   state.quote = null;
   gate.refusal = null;
@@ -508,6 +512,104 @@ describe("choose → the chosen models' prompt limit", () => {
     for (const o of [settings, ...scenes, ...scenes.map((s) => (s.clip_params ?? {}) as Record<string, unknown>)]) {
       expect(o).not.toHaveProperty("negative_prompt");
       expect(o).not.toHaveProperty("seed");
+    }
+  });
+});
+
+// ── Choosing again never writes over the film (Lens H1), and the film's models are the server's (Breach BR-S1-07) ─────────────
+describe("choose again: the draft is the person's", () => {
+  /** A storyboard this conversation's plan already wrote for the outline, as ai_chat_save_brief keeps it. */
+  const storedBrief = (o: { clip?: string; keyframe?: string; prompt?: string } = {}) => ({
+    version: 1, session_id: SESSION, status: "ready", kind: "short", language: "English", audience: "teens", style: "noir",
+    aspect: "9:16", target_seconds: 60, title: "The lost caravan", idea: "A guard must save a caravan.",
+    story: { logline: "l", conflict: "c" }, chapters: [{ id: "ch1", title: "Chapter 1", start_s: 0, beats: [{ at_s: 0, text: "beat" }] }],
+    characters: [{ id: "c1", name: "Aziz", description: "a guard", image_prompt: "guard" }],
+    locations: [{ id: "l1", name: "Dune", description: "dunes", image_prompt: "dunes" }], props: [],
+    scenes: Array.from({ length: 6 }, (_, i) => ({ id: `s${i + 1}`, n: i + 1, title: `s${i + 1}`, duration_s: 10, visual_prompt: o.prompt ?? "a wide desert",
+      character_ids: ["c1"], location_id: "l1", prop_ids: [], dialogue: [], clip_model: o.clip ?? "minimax-h3", keyframe_model: o.keyframe ?? "gemini-3-pro-image" })),
+    voice: { mode: "off" }, music: { mode: "off" }, handoff: null, price: { state: "priced", total_credits: 240, spendable: 500, fits: true, shorter: null },
+  });
+  const ready = (brief: Record<string, unknown>) => {
+    setup(60, [60]);
+    state.session = { ...state.session!, step: "ready", brief };
+    state.catalogue.i2v = [row("minimax-h3", "MiniMax H3", "i2v", [4, 6, 10, 15]), row("luma-ray-3.2", "Luma Ray 3.2", "i2v", [5, 10])];
+    state.catalogue.t2i = [row("gemini-3-pro-image", "Gemini 3 Pro Image", "t2i", []), row("flux-3-image", "FLUX 3 Image", "t2i", [])];
+  };
+  /** A replayed draft as 0166's film_read answers it: its own version, models and (edited) scenes. */
+  const replay = (o: { version: number; scenes: unknown[]; keyframe?: string }) => ({
+    film: { id: FILM, version: o.version, clip_model: "minimax-h3", keyframe_model: o.keyframe ?? "gemini-3-pro-image" },
+    totals: { scenes: o.scenes.length }, scenes: o.scenes, limits: { max_shots: 3 },
+  });
+
+  it("a draft the person edited since (a later version, other scenes) is priced as it is now and never saved over", async () => {
+    ready(storedBrief());
+    state.draft = replay({ version: 7, scenes: [{ id: "x1", title: "My own scene", visual_prompt: "what I wrote" }] });
+    const res = await choose();
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(called("save_film")).toHaveLength(0);
+    expect(called("quote_film")).toEqual([{ p_film: FILM, p_version: 7 }]);
+    expect(d.film).toEqual({ id: FILM, version: 7 });
+    expect(d.film_quote).toMatchObject({ priced: true, total: 240 });
+    // A re-price writes nothing and takes no lease and no turn (Lens L3).
+    expect(called("ai_chat_save_brief")).toHaveLength(0);
+    expect(called("ai_chat_plan_begin")).toHaveLength(0);
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+  });
+
+  it("a plan whose replayed draft already has a storyboard writes nothing over it: plan_superseded, no turn", async () => {
+    setup(60, [60]);
+    state.draft = replay({ version: 4, scenes: [{ id: "x1" }] });
+    const res = await choose();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "plan_superseded", film_id: FILM });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(called("save_film")).toHaveLength(0);
+  });
+
+  it("models the BRIEF names outside the server's order are never drafted: the server's own pick is", async () => {
+    ready(storedBrief({ clip: "luma-ray-3.2", keyframe: "flux-3-image" }));
+    const d = await (await choose()).json();
+    expect(called("create_film_draft")[0].p_settings).toMatchObject({ clip_model: "minimax-h3", keyframe_model: "gemini-3-pro-image" });
+    expect(JSON.stringify(d.models)).not.toMatch(/luma|flux/i);
+  });
+
+  it("the server's own models in the BRIEF are kept, so the draft's key replays the same film", async () => {
+    ready(storedBrief({ clip: "minimax-h3", keyframe: "gemini-3-pro-image" }));
+    await choose();
+    expect(called("create_film_draft")[0].p_settings).toMatchObject({ clip_model: "minimax-h3", keyframe_model: "gemini-3-pro-image" });
+  });
+
+  it("a draft whose key-frame model is an edit model is measured against that model's own registry limit", async () => {
+    // 0166 takes an edit model as keyframe_model; the server never picks one, but a replayed draft may carry it. Its row takes 500.
+    ready(storedBrief({ prompt: `a wide desert ${"under a red sky ".repeat(36)}`.trim() }));
+    state.catalogue.edit = [row("flux-3-edit", "FLUX 3 Edit", "edit", [], 500)];
+    state.draft = replay({ version: 2, scenes: [], keyframe: "flux-3-edit" });
+    const res = await choose();
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: "prompt_too_long", scene: 1, limit: 500 });
+    expect(called("save_film")).toHaveLength(0);
+    expect(called("ai_chat_save_brief")).toHaveLength(0);
+  });
+
+  it("a stored prompt longer than the limit is refused as written, never cut to fit first", async () => {
+    // 2,500 characters: the scene reader caps a stored prompt at 2,000, which would have hidden it.
+    ready(storedBrief({ prompt: "x".repeat(2500) }));
+    const res = await choose();
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: "prompt_too_long", scene: 1, limit: 2000 });
+    expect(called("create_film_draft")).toHaveLength(0);
+  });
+
+  it("a stored storyboard the draft does not have yet is written under the lease, and every write asks the lease first", async () => {
+    ready(storedBrief());
+    expect((await choose()).status).toBe(200);
+    expect(called("ai_chat_plan_begin")).toHaveLength(1);
+    const order = rpc.mock.calls.map((c) => c[0]);
+    for (const write of ["ai_chat_save_brief", "save_film"]) {
+      const at = order.indexOf(write);
+      expect(at).toBeGreaterThan(0);
+      expect(order[at - 1]).toBe("ai_chat_plan_state");
     }
   });
 });

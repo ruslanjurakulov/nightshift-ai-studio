@@ -17,8 +17,6 @@ def extend(tables: dict, functions: dict) -> None:
         "ai_chat_plan_begin": USER,
         "ai_chat_plan_end": USER,
         "ai_chat_plan_state": USER,
-        # The plan's BRIEF write, only while the caller's attempt still holds the lease (Breach BR-S1-08).
-        "ai_chat_plan_save_brief": USER,
         # The shared guard (author, still an editor, not handed off): internal, called inside begin and end.
         "ai_chat_plan_session": SERVICE,
     })
