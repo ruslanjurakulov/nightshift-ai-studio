@@ -179,10 +179,14 @@ In order of what would hurt a paid film first.
   - A missing variable, a missing, empty, unreadable or wrong `base.pt`: the assembly refuses with the new
     `captions_unavailable` ("rebuild the worker image (Dockerfile.worker bakes it), or set captions to none"), not
     "retry".
-- `film_assembly.captions_model_ready() -> (bool, str)` is the path-only check (no torch import). S2's film worker
-  calls it at start.
+- `film_assembly.captions_model_ready() -> (bool, str)` is the path-only check (no torch import). S2 calls it at the
+  film worker's start (pending, in tools/film_worker.py after this change). Then a worker without the model claims
+  nothing, only sweeps, and reports `worker_status` failed. **Until then nothing calls it before the takes are paid:**
+  a missing model is found at assembly time, as `captions_unavailable`.
 - Not run here: the film-worker container as built (no image build in this container). The image and compose are
   checked by tests (`tests/test_worker_image_pins.py`, `tests/test_deploy_self_host.py`).
+- Not changed (outside this scope, same default-root lookup): `modules/voice_worker.py:331`
+  (`whisper.load_model(WHISPER_MODEL)`) and the whisper check in `tools/doctor.py` (`$HOME/.cache/whisper`).
 
 ### G2 — The review copy is at its ceiling at the longest film (high, at 10 minutes)
 
@@ -221,19 +225,28 @@ In order of what would hurt a paid film first.
 environment is reduced to PATH, HOME, TMPDIR, locale and thread variables, so no key reaches it. Its arguments are the
 model folder, the language and two paths. The words come back as a JSON file.
 
-The timeout is `10 × narration length + 120 s`, with the length read by ffprobe and capped at the longest film (600 s,
-so at most 6,120 s). An unknown length is budgeted as 600 s. The failures map like this:
+The timeout is the render's own budget for the same length, `timeline.render_timeout_s`: `3 × length + 120 s`, at
+most 5,400 s. The length is read by ffprobe. At 600 s that is 1,920 s, 4.7 times the slowest loaded run below (412 s).
+An unknown length is budgeted as the longest film, 600 s, and the detail says "a narration of unknown length (budgeted
+as the longest film, 600 s)" rather than showing 600 s as measured.
+
+Until S2's assembly-only re-run ships (0221), a failed assembly can only be answered by starting the film again, so no
+caption remedy says "retry the assembly". The failures map like this:
 
 | child outcome | refusal | remedy |
 | :-- | :-- | :-- |
-| exit 3 (the model would not load) | `captions_unavailable` | rebuild the worker image |
-| exit 4 (the narration would not decode) | `captions_failed` | generate the narration again |
-| killed by a signal | `captions_failed` | most likely memory; retry when the worker is idle |
-| timeout | `captions_failed` | the worker is overloaded; retry when it is idle |
-| unreadable JSON | `captions_failed` | rebuild the worker image |
-| any other exit | `captions_failed` | retry the assembly once |
+| exit 3 (the model is missing or would not load, this Whisper names no `base` checksum, or ffmpeg would not start) | `captions_unavailable` | rebuild the worker image |
+| exit 4 (ffmpeg ran and could not decode the narration) | `captions_failed` | generate the narration again |
+| exit 5 (out of memory in the load or the transcription) | `captions_failed` | start the film again when the worker is idle |
+| killed by a signal | `captions_failed` | most likely memory; start the film again when the worker is idle |
+| timeout | `captions_failed` | the worker is overloaded; start the film again when it is idle |
+| exit 0 with no words (`[]`) | `captions_failed` | no speech was heard: generate the narration again |
+| exit 0 with unreadable or malformed words | `captions_failed` | rebuild the worker image |
+| any other exit | `captions_failed` | start the film again |
 
-Every one also offers "or set captions to none".
+Every one also offers "or set captions to none". The child's stderr goes to a file, and its last 600 bytes are
+logged on every failure. The word cache keeps only a non-empty list of well-formed words; an empty or damaged entry is
+deleted and transcribed again.
 
 Measured with the same venv (openai-whisper 20250625, torch 2.15 CPU) and the same synthetic 600 s mp3, on the same 4
 vCPU. This time the container was shared with other test runs (load average 5.5 to 7.7):
@@ -247,8 +260,8 @@ vCPU. This time the container was shared with other test runs (load average 5.5 
   passes Whisper the decoded samples instead of the path. That is what `transcribe` does with a path itself
   (`log_mel_spectrogram` calls `load_audio` at 16 kHz), so the output is the same.
 - The wall times here measure the shared host, not the change. The unloaded figure stays the one above (31 s). The
-  child adds a torch import and one extra sha256 of 139 MB; that overhead was not measured on an idle host. The slowest loaded run (412 s) still used
-  7 % of its 6,120 s budget.
+  child adds a torch import and one extra sha256 of 139 MB; that overhead was not measured on an idle host. The
+  slowest loaded run (412 s) used 21 % of the 1,920 s budget.
 - The parent's RSS is that of the measurement harness (`film_assembly` imported, no torch). In the film-worker it is
   the worker's own, which is also no longer raised by Whisper's 800 MB: the anonymous floor during the render goes from
   about 1.5 GB to the largest ffmpeg plus the worker itself.

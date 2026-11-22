@@ -52,10 +52,11 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
 # because the services do not share a user or a HOME: the film-worker runs as
 # uid 1000 with HOME=/tmp (a tmpfs), so Whisper's default ~/.cache/whisper was an
 # empty folder there: the first captioned film after every start downloaded
-# 139 MB into memory, or failed after its takes were paid (S4_GAPS.md G1). NIGHTSHIFT_WHISPER_DIR names it for every service
-# that runs this image; modules/film_assembly.py reads only that and never
-# downloads. An image ENV rather than a compose line, so no service can be
-# started from this image without it.
+# 139 MB into memory, or failed after its takes were paid (S4_GAPS.md G1).
+# NIGHTSHIFT_WHISPER_DIR names it for every service that runs this image;
+# modules/film_assembly.py reads only that and never downloads. An image ENV
+# rather than a compose line, so no service can be started from this image
+# without it.
 RUN XDG_CACHE_HOME=/opt/whisper-cache python -c "import whisper; whisper.load_model('base'); print('whisper base cached')" \
  && chmod -R a+rX,go-w /opt/whisper-cache
 ENV NIGHTSHIFT_WHISPER_DIR=/opt/whisper-cache/whisper
@@ -67,6 +68,10 @@ RUN python -c "import pillow_heif; print('pillow-heif', pillow_heif.__version__,
 COPY . .
 
 # Refuse to ship a credential, even one .dockerignore missed.
+# The pipeline worker (the nightshift user, HOME=/home/nightshift) still loads
+# Whisper from its default ~/.cache/whisper: base.pt there is a link to the one
+# baked copy, and the folder stays its own, so it works as before without a
+# second 139 MB copy.
 RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_secret*.json' -o -name '.env' \) | grep -q .; then \
       echo "credential file in build context — remove it; secrets come from --env-file at runtime" >&2; exit 1; \
     fi \
@@ -80,9 +85,6 @@ RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_sec
  && chmod 700 output history logs \
  && mkdir -p /app/media /app/media-staging \
  && chown 1000:1000 /app/media /app/media-staging
-# The pipeline worker (this user, HOME=/home/nightshift) still loads Whisper from
-# its default ~/.cache/whisper: base.pt there is a link to the one baked copy, and
-# the folder stays its own, so it works as before without a second 139 MB copy.
 # media/ and media-staging/ belong to uid 1000: media-worker runs as the web
 # image's `node` user so both can manage staged uploads (docker-compose.yml).
 # The code must be readable by that uid too: COPY keeps the build context's

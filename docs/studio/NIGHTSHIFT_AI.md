@@ -383,8 +383,10 @@ Each of these fails the assembly at 0, by name, with the remedy in `detail`. A s
 - `captions_failed` (captions were asked for and could not be timed);
 - `captions_unavailable`: captions were asked for and the Whisper model is not on this worker (`NIGHTSHIFT_WHISPER_DIR`
   unset, `base.pt` missing, unreadable or not the real checkpoint). The model is never downloaded at run time, and a retry
-  does not help: rebuild the worker image (Dockerfile.worker bakes it), or set captions to none. A film worker checks
-  `film_assembly.captions_model_ready()` at start, before any take is paid for;
+  does not help: rebuild the worker image (Dockerfile.worker bakes it), or set captions to none. Today this is found
+  only at assembly time, after the takes were paid. `film_assembly.captions_model_ready()` is the cheap check for the
+  film worker's start; S2 wires it into tools/film_worker.py (pending), and then a worker without the model claims
+  nothing;
 - `disk_low`: less free space than the fast intermediates need, which is 8 MB per second of 1080p scaled by pixels, plus
   the output. Below that, the editor's renderer would quietly switch to a second lossy generation;
 - `render_timed_out` and `render_failed`;

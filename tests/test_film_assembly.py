@@ -876,7 +876,7 @@ out = args[args.index("--out") + 1]
 if mode == "ok":
     json.dump([{"word": "Scene", "start": 0.35, "end": 0.7}, {"word": "speaks.", "start": 0.7, "end": 1.2}], open(out, "w"))
 elif mode == "seen":
-    json.dump([{"argv": args, "env": sorted(os.environ)}], open(out, "w"))
+    json.dump([{"word": "x", "start": 0, "end": 1, "argv": args, "env": sorted(os.environ)}], open(out, "w"))
 elif mode == "sleep":
     time.sleep(30)
 elif mode == "badjson":
@@ -885,6 +885,10 @@ elif mode == "notalist":
     json.dump({"words": []}, open(out, "w"))
 elif mode == "kill":
     os.kill(os.getpid(), signal.SIGKILL)
+elif mode == "empty":
+    json.dump([], open(out, "w"))
+elif mode == "badword":
+    json.dump([{"word": "x"}], open(out, "w"))
 elif mode == "marker":
     open(os.path.join(os.environ["TMPDIR"], "never"), "w").write("started")
 else:
@@ -936,11 +940,11 @@ class WhisperModelDirTest(unittest.TestCase):
             with self.assertRaises(fa.CaptionsUnavailable):
                 fa.whisper_words(self.dir / "n.mp3", "en")
 
-    def test_the_timeout_follows_the_narration_and_is_capped_at_the_longest_film(self):
-        self.assertEqual(fa.whisper_timeout_s(600.0), 6120.0)
-        self.assertEqual(fa.whisper_timeout_s(30.0), 420.0)
-        self.assertEqual(fa.whisper_timeout_s(None), 6120.0)
-        self.assertEqual(fa.whisper_timeout_s(10_000.0), 6120.0)
+    def test_the_timeout_is_the_renders_budget_for_the_same_length(self):
+        self.assertEqual(fa.whisper_timeout_s(600.0), 1920.0)
+        self.assertEqual(fa.whisper_timeout_s(30.0), 210.0)
+        self.assertEqual(fa.whisper_timeout_s(None), 1920.0, "an unknown length is budgeted as the longest film")
+        self.assertEqual(fa.whisper_timeout_s(600.0), fa.tl.render_timeout_s(600.0))
 
 
 class FilmWhisperChildMainTest(unittest.TestCase):
@@ -1008,6 +1012,32 @@ class FilmWhisperChildMainTest(unittest.TestCase):
     def test_a_missing_model_is_exit_model(self):
         self.assertEqual(self.main(), fw.EXIT_MODEL)
 
+    def test_ffmpeg_that_cannot_start_is_a_broken_worker_not_a_bad_narration(self):
+        (self.dir / "base.pt").write_bytes(self.blob)
+
+        def no_ffmpeg(path, sr=16000):
+            raise FileNotFoundError(2, "No such file or directory: 'ffmpeg'")
+        self.fake.load_audio = no_ffmpeg
+        self.assertEqual(self.main(), fw.EXIT_MODEL)
+
+    def test_a_whisper_that_no_longer_names_the_base_checksum_is_exit_model(self):
+        (self.dir / "base.pt").write_bytes(self.blob)
+        for models in ({}, {"base": "not-a-url"}, None):
+            self.fake._MODELS = models
+            self.assertEqual(self.main(), fw.EXIT_MODEL, models)
+        self.assertEqual(self.loads, [])
+
+    def test_out_of_memory_has_its_own_exit(self):
+        (self.dir / "base.pt").write_bytes(self.blob)
+        self.fake.load_model = mock.Mock(side_effect=MemoryError())
+        self.assertEqual(self.main(), fw.EXIT_MEMORY)
+
+        class Hungry:
+            def transcribe(self, audio, **kw):
+                raise MemoryError()
+        self.fake.load_model = lambda name, download_root=None, **k: Hungry()
+        self.assertEqual(self.main(), fw.EXIT_MEMORY)
+
     def test_an_undecodable_narration_is_exit_audio(self):
         (self.dir / "base.pt").write_bytes(self.blob)
         self.assertEqual(self.main(audio="bad.mp3"), fw.EXIT_AUDIO)
@@ -1047,12 +1077,31 @@ class WhisperChildProcessTest(unittest.TestCase):
         self.assertFalse(any("never" in a for a in seen["argv"]), seen["argv"])
         self.assertEqual(seen["argv"][seen["argv"].index("--model-dir") + 1], str(self.dir))
         self.assertEqual(seen["argv"][seen["argv"].index("--language") + 1], "en")
+        self.assertEqual(seen["argv"][-2:], ["--", str(self.dir / "n.mp3")], "the narration path could be read as an option")
 
     def test_a_non_zero_exit_is_captions_failed_with_a_remedy(self):
         with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
             self.words("1")
         self.assertIn("exit 1", c.exception.remedy)
-        self.assertIn("set captions to none", c.exception.remedy)
+        self.assertIn("start the film again, or set captions to none", c.exception.remedy)
+        self.assertNotIn("retry", c.exception.remedy)
+
+    def test_out_of_memory_says_start_again_when_idle(self):
+        with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
+            self.words(str(fw.EXIT_MEMORY))
+        self.assertIn("ran out of memory", c.exception.remedy)
+        self.assertIn("start the film again when the worker is idle", c.exception.remedy)
+
+    def test_no_words_heard_is_not_a_broken_worker(self):
+        with self.assertRaises(fa.TranscriptionFailed) as c:
+            self.words("empty")
+        self.assertEqual(c.exception.remedy, "no speech was heard in the narration: generate the narration again, "
+                                             "or set captions to none")
+
+    def test_the_childs_stderr_reaches_the_log(self):
+        with self.assertRaises(fa.TranscriptionFailed), self.assertLogs(fa.logger, "WARNING") as logs:
+            self.words("7")
+        self.assertIn("boom", "\n".join(logs.output))
 
     def test_the_childs_model_refusal_is_captions_unavailable(self):
         with self.assertRaises(fa.CaptionsUnavailable), self.assertLogs(fa.logger, "WARNING"):
@@ -1067,18 +1116,116 @@ class WhisperChildProcessTest(unittest.TestCase):
         with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
             self.words("kill")
         self.assertIn("signal 9", c.exception.remedy)
+        self.assertIn("start the film again when the worker is idle", c.exception.remedy)
 
     def test_a_hung_child_is_stopped_at_its_budget(self):
-        with self.assertRaises(fa.TranscriptionFailed) as c:
+        with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
             self.words("sleep", timeout=1.0)
         self.assertIn("did not finish within 1 s", c.exception.remedy)
-        self.assertIn("idle", c.exception.remedy)
+        # n.mp3 does not exist, so ffprobe measured nothing: the detail must not present 600 s as measured (rule 5).
+        self.assertIn("a narration of unknown length (budgeted as the longest film, 600 s)", c.exception.remedy)
+        self.assertIn("start the film again when the worker is idle", c.exception.remedy)
 
     def test_bad_json_or_not_a_list_is_captions_failed(self):
-        for mode in ("badjson", "notalist"):
-            with self.assertRaises(fa.TranscriptionFailed, msg=mode) as c:
+        for mode in ("badjson", "notalist", "badword"):
+            with self.assertRaises(fa.TranscriptionFailed, msg=mode) as c, self.assertLogs(fa.logger, "WARNING"):
                 self.words(mode)
             self.assertIn("rebuild the worker image", c.exception.remedy)
+
+
+# A stub `whisper` package for the real child command: the address shape whisper 20250625 uses, with the stub
+# checkpoint's own sha256, so film_whisper's checksum and load path run exactly as in the image.
+STUB_WHISPER = r"""
+import os
+HERE = os.path.dirname(__file__)
+SHA = open(os.path.join(HERE, "SHA")).read().strip()
+_MODELS = {"base": "https://openaipublic.azureedge.net/main/whisper/models/" + SHA + "/base.pt"}
+
+class _Model:
+    def transcribe(self, audio, **kw):
+        assert kw == {"language": "en", "word_timestamps": True, "fp16": False,
+                      "condition_on_previous_text": False, "temperature": 0.0}, kw
+        return {"segments": [{"words": [{"word": " Scene", "start": 0.35, "end": 0.7},
+                                        {"word": " speaks.", "start": 0.7, "end": 1.2}]}]}
+
+def load_model(name, device=None, download_root=None, in_memory=False):
+    if name != "base" or not download_root:
+        raise AssertionError("would download")
+    return _Model()
+
+def load_audio(path, sr=16000):
+    if os.path.exists(os.path.join(HERE, "BAD_AUDIO")):
+        raise RuntimeError("Failed to load audio: invalid data")
+    return [0.0] * 16
+"""
+
+
+class RealChildCommandTest(unittest.TestCase):
+    """`python -m modules.film_whisper` itself (WHISPER_CHILD untouched), with a stub whisper on PYTHONPATH."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        blob = b"stub base checkpoint"
+        (self.dir / "models").mkdir()
+        (self.dir / "models" / "base.pt").write_bytes(blob)
+        self.pkg = self.dir / "site" / "whisper"
+        self.pkg.mkdir(parents=True)
+        (self.pkg / "__init__.py").write_text(STUB_WHISPER)
+        (self.pkg / "SHA").write_text(hashlib.sha256(blob).hexdigest())
+        p = mock.patch.dict(os.environ, {fa.WHISPER_DIR_ENV: str(self.dir / "models"),
+                                         "PYTHONPATH": str(self.dir / "site"), "TMPDIR": str(self.dir)})
+        p.start()
+        self.addCleanup(p.stop)
+        self.assertEqual(fa.WHISPER_CHILD, (sys.executable, "-m", "modules.film_whisper"))
+
+    def test_the_real_child_returns_the_words(self):
+        words = fa.whisper_words(self.dir / "n.mp3", "en")
+        self.assertEqual(words, [{"word": " Scene", "start": 0.35, "end": 0.7},
+                                 {"word": " speaks.", "start": 0.7, "end": 1.2}])
+
+    def test_the_real_child_names_an_undecodable_narration(self):
+        (self.pkg / "BAD_AUDIO").write_text("1")
+        with self.assertRaises(fa.TranscriptionFailed) as c, self.assertLogs(fa.logger, "WARNING"):
+            fa.whisper_words(self.dir / "n.mp3", "en")
+        self.assertIn("generate the narration again", c.exception.remedy)
+
+
+class WordCacheTest(unittest.TestCase):
+    """An empty or damaged cache entry must not pin a failure (or a wrong cut) on every later attempt."""
+
+    WORDS = [{"word": "Scene", "start": 0.35, "end": 0.7}]
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.entry = self.root / fa.CACHE_DIRNAME / f"{NARR}.json"
+        self.calls = 0
+
+    def transcribe(self, path, language):
+        self.calls += 1
+        return list(self.WORDS)
+
+    def words(self, transcribe=None):
+        return fa.cached_words(self.root, NARR, self.root / "n.mp3", "en", transcribe or self.transcribe)
+
+    def test_a_good_entry_is_read_back(self):
+        self.words()
+        self.assertEqual((self.words(), self.calls), (self.WORDS, 1))
+
+    def test_an_empty_list_is_never_cached(self):
+        self.assertEqual(self.words(lambda p, l: []), [])
+        self.assertFalse(self.entry.exists())
+
+    def test_an_empty_or_damaged_entry_is_a_miss_and_is_replaced(self):
+        for bad in ("[]", "{not json", '[{"word": "x"}]', '[{"word": "x", "start": true, "end": 1}]', '{"a": 1}'):
+            self.entry.parent.mkdir(parents=True, exist_ok=True)
+            self.entry.write_text(bad)
+            self.calls = 0
+            with self.assertLogs(fa.logger, "WARNING"):
+                self.assertEqual(self.words(), self.WORDS, bad)
+            self.assertEqual(self.calls, 1, bad)
+            self.assertEqual(json.loads(self.entry.read_text()), self.WORDS, bad)
 
 
 class AssembleWithWhisperChildTest(Base):
@@ -1131,6 +1278,14 @@ class AssembleWithWhisperChildTest(Base):
             db, out = self.assemble(str(fw.EXIT_AUDIO), self.mdir)
         self.assertEqual(out.reason, "captions_failed")
         self.assertIn("generate the narration again", out.detail)
+
+    def test_a_film_whose_narration_has_no_words_names_the_narration(self):
+        (self.mdir / "base.pt").write_bytes(b"model")
+        with self.assertLogs(fa.logger, "WARNING"):
+            db, out = self.assemble("empty", self.mdir)
+        self.assertEqual(out.reason, "captions_failed")
+        self.assertIn("no speech was heard", out.detail)
+        self.assertEqual(list((self.root / fa.CACHE_DIRNAME).glob("*.json")), [], "an empty transcription was cached")
 
 
 if __name__ == "__main__":

@@ -12,9 +12,11 @@ verified here first, and the network fetch is disabled in this process anyway.
 
 Exit codes are the parent's contract:
 
-* 0: the words were written to ``--out`` as a JSON list of ``{"word", "start", "end"}``.
-* 3 (``EXIT_MODEL``): the model is missing, unreadable, corrupt or would not load. Rebuild the image.
-* 4 (``EXIT_AUDIO``): the narration file could not be decoded.
+* 0: the words were written to ``--out`` as a JSON list of ``{"word", "start", "end"}`` (:class:`Word`).
+* 3 (``EXIT_MODEL``): the worker is broken, not the film: the model is missing, unreadable, corrupt or would not load,
+  this Whisper no longer names the "base" model's checksum, or ffmpeg could not be started. Rebuild the image.
+* 4 (``EXIT_AUDIO``): ffmpeg ran and could not decode the narration file. Generate the narration again.
+* 5 (``EXIT_MEMORY``): the model or the transcription ran out of memory. Start the film again when the worker is idle.
 * anything else: an unexpected failure. Its message is on stderr.
 
 The arguments are a model folder, a language code and two file paths: nothing secret is ever passed, and the parent
@@ -28,24 +30,40 @@ import hashlib
 import json
 import os
 import sys
-from typing import List, Optional
+from typing import List, NoReturn, Optional, TypedDict
 
 MODEL_NAME = "base"
 MODEL_FILE = "base.pt"
 EXIT_MODEL = 3
 EXIT_AUDIO = 4
+EXIT_MEMORY = 5
 
 
-def _refuse_download(*_a, **_k):
+class Word(TypedDict):
+    word: str
+    start: float
+    end: float
+
+
+def _refuse_download(*_a, **_k) -> NoReturn:
     raise RuntimeError("the film assembly never downloads the Whisper model at run time")
 
 
-def _model_ok(model_dir: str) -> Optional[str]:
-    """None when the folder holds Whisper's own ``base`` checkpoint byte for byte; otherwise what is wrong."""
-    import whisper  # noqa: PLC0415
+def _expected_sha256(whisper) -> Optional[str]:
+    """The checksum whisper itself checks, read from the address it would fetch from; None when that has moved."""
+    try:
+        sha = whisper._MODELS[MODEL_NAME].split("/")[-2]  # noqa: SLF001
+    except (AttributeError, KeyError, IndexError, TypeError):
+        return None
+    return sha if isinstance(sha, str) and len(sha) == 64 else None
 
+
+def _model_ok(whisper, model_dir: str) -> Optional[str]:
+    """None when the folder holds Whisper's own ``base`` checkpoint byte for byte; otherwise what is wrong."""
+    expected = _expected_sha256(whisper)
+    if expected is None:
+        return f"this Whisper does not name a {MODEL_NAME} model checksum (not the pinned version?)"
     path = os.path.join(model_dir, MODEL_FILE)
-    expected = whisper._MODELS[MODEL_NAME].split("/")[-2]  # noqa: SLF001 — the checksum whisper itself checks
     h = hashlib.sha256()
     try:
         with open(path, "rb") as f:
@@ -58,8 +76,8 @@ def _model_ok(model_dir: str) -> Optional[str]:
     return None
 
 
-def words_of(result: dict) -> List[dict]:
-    words: List[dict] = []
+def words_of(result: dict) -> List[Word]:
+    words: List[Word] = []
     for seg in result.get("segments") or []:
         for w in seg.get("words") or []:
             words.append({"word": w.get("word"), "start": w.get("start"), "end": w.get("end")})
@@ -83,13 +101,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ImportError as e:
         print(f"film_whisper: whisper is not installed ({type(e).__name__})", file=sys.stderr)
         return EXIT_MODEL
-    problem = _model_ok(a.model_dir)
+    problem = _model_ok(whisper, a.model_dir)
     if problem:
         print(f"film_whisper: {problem}", file=sys.stderr)
         return EXIT_MODEL
     try:
         # By name, not by file path: a path loads without the "base" alignment heads, and the word timings change.
         model = whisper.load_model(MODEL_NAME, download_root=a.model_dir)
+    except MemoryError:
+        print("film_whisper: out of memory loading the model", file=sys.stderr)
+        return EXIT_MEMORY
     except Exception as e:  # noqa: BLE001 — a checkpoint that does not load is the image's fault, not the film's
         print(f"film_whisper: the model did not load ({type(e).__name__})", file=sys.stderr)
         return EXIT_MODEL
@@ -97,13 +118,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         # What transcribe() would do with the path itself (log_mel_spectrogram → load_audio at 16 kHz), done here so
         # an undecodable narration is told apart from a broken worker.
         audio = whisper.load_audio(a.audio)
-    except Exception as e:  # noqa: BLE001
+    except OSError as e:
+        # ffmpeg itself could not be started (not on PATH, not executable): the image, not the narration.
+        print(f"film_whisper: ffmpeg could not be started ({type(e).__name__})", file=sys.stderr)
+        return EXIT_MODEL
+    except RuntimeError as e:
+        # whisper.load_audio's own "Failed to load audio": ffmpeg ran and refused the file.
         print(f"film_whisper: the narration could not be decoded ({type(e).__name__})", file=sys.stderr)
         return EXIT_AUDIO
-    # Same arguments as before the move to a child (temperature 0, no fallback): the same file gives the same words,
-    # so a retry builds the same cut.
-    out = model.transcribe(audio, language=(a.language or None), word_timestamps=True, fp16=False,
-                           condition_on_previous_text=False, temperature=0.0)
+    try:
+        # Same arguments as before the move to a child (temperature 0, no fallback): the same file gives the same
+        # words, so a second attempt builds the same cut.
+        out = model.transcribe(audio, language=(a.language or None), word_timestamps=True, fp16=False,
+                               condition_on_previous_text=False, temperature=0.0)
+    except MemoryError:
+        print("film_whisper: out of memory transcribing", file=sys.stderr)
+        return EXIT_MEMORY
     tmp = f"{a.out}.part"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(words_of(out), f)

@@ -925,6 +925,12 @@ class FilmWorkerWhisperFolderTests(unittest.TestCase):
         self.assertNotIn("NIGHTSHIFT_WHISPER_DIR", keys)
         self.assertNotIn("XDG_CACHE_HOME", keys)
 
+    def test_the_worker_env_file_does_not_set_it_either(self):
+        # The film-worker reads deploy/.env.worker.example's keys through its env_file, which would override the image ENV.
+        text = (DEPLOY / ".env.worker.example").read_text(encoding="utf-8")
+        for name in ("NIGHTSHIFT_WHISPER_DIR", "XDG_CACHE_HOME"):
+            self.assertNotRegex(text, r"(?m)^\s*#?\s*" + name + r"\s*=", name)
+
     def test_the_film_worker_runs_the_worker_image_that_sets_it(self):
         block = self.service_block("film-worker")
         self.assertIn("image: nightshift-worker:latest", block)
