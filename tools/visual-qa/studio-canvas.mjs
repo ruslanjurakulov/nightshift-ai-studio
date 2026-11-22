@@ -164,6 +164,8 @@ if (MEDIA) {
     "0c000000-0000-4000-8000-0000000000a1": "radial-gradient(60% 70% at 70% 30%, #ff9d4d, transparent 60%), linear-gradient(180deg, #2a4a7f 0%, #f4c38a 70%, #e9eef8 100%)",
     "0c000000-0000-4000-8000-0000000000a2": "linear-gradient(135deg, #0a7fa0, #33d6ff 50%, #ffd23f)",
     "0c000000-0000-4000-8000-0000000000a3": "radial-gradient(circle at 50% 50%, #2f8bff 0 30%, #0a0f1c 31%)",
+    // The finished clip's poster frame (the timeline lane's video segment).
+    "0c000000-0000-4000-8000-0000000000a5": "radial-gradient(50% 60% at 30% 35%, #ffb56b, transparent 60%), linear-gradient(180deg, #1d2f5c 0%, #c9845a 65%, #f1e6d8 100%)",
   };
   const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
   for (const [id, bg] of Object.entries(ART)) {
