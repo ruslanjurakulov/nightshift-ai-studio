@@ -2445,3 +2445,25 @@ video is cross-posted.
   first: `select count(*) from public.videos where published_at is not null and gate_verdict is null;`.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
+
+## Film voice: does the voice model speak the film's language (0214)
+
+0214 (`0214_voice_language_check.sql`, provisional number) adds one helper, `public.voice_language_problem(model, language)`. It
+reads `model_registry.spec -> 'languages'`, which `schemas/model_registry.json` now lists for every `tts` entry (equal to
+`modules/tts_languages.MODEL_LANGUAGES`, held by `tests/test_tts_registry_languages.py`).
+
+- **Why.** `quote_film` (0171) quotes and holds credits for an Uzbek film whose voice is Eleven Multilingual v2, which does not
+  speak Uzbek; the take then fails in the TTS adapter after the clips were paid (docs/studio/S6_GAPS.md, G1).
+- **What.** NULL when the model lists the language. Otherwise `{priced: false, reason, detail}`:
+  - `voice_language_unsupported` when the model's list does not hold it (the detail names the model and the fix: Eleven v4 or v3
+    for Uzbek);
+  - `voice_language_unknown` when there is no row, no list, or no language. Unknown is never "speaks".
+- **Who.** service_role only; `quote_film` (security definer) calls it from inside.
+- **Not done here.** No money function changes, so nothing behaves differently until S2 adds the call to `quote_film`'s
+  narration branch, first in its `coalesce` (the line is in the migration's header), and to `start_film`'s precheck.
+- **After the next registry sync** each ElevenLabs TTS model loses its verification, and one on sale (beta/ga) goes back to
+  hidden: `model_registry_guard` (0100) treats a change of `spec.languages` as a new claim. Re-probe them with
+  `tools/probe_models.py --sync --capability tts` (a real, paid call) before putting one on sale again.
+- **Requires** 0035. **Undo.** `docs/sql/rollback_0214_voice_language_check.sql` (refuses while any function still calls it).
+- Lab: `tests/security/sec_voice_language_0214.py`, `tests/security/test_sec_voice_language.py`. Static:
+  `tests/test_voice_language_check_migration.py`.

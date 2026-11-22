@@ -825,3 +825,8 @@ sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
 import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
+
+# Migration 0214 (does a film's voice model speak the film's language): tests/security/sec_voice_language_0214.py
+import sec_voice_language_0214  # noqa: E402
+
+sec_voice_language_0214.extend(TABLES, FUNCTIONS)
