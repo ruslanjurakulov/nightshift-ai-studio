@@ -205,7 +205,9 @@ clock: each scene's words start 0.25 s into the scene, and the file's provenance
 `[{scene_id, start_s, end_s}]` and the measured `loudness_lufs` / `true_peak_db` (null when not measured).
 
 The order the worker makes them in: every key frame, then the shots scene by scene (shot 1 from its first frame, shots 2-3 from the
-previous shot's last frame), then the narration. A shot whose input failed for good never begins and is `skipped` at the settle.
+previous shot's last frame), then the narration. Once any take has failed for good (its one retry failed too), or a shot can
+never begin because its input did, the film can no longer be assembled: nothing new begins, not even the narration, and the
+segment settles `takes_failed`. What was planned is `skipped` at 0; with nothing charged and nothing made the film is back in `draft`.
 
 ### Why a take failed: `film_takes.error_code`
 

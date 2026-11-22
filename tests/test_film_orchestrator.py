@@ -402,7 +402,8 @@ class NoFallback(unittest.TestCase):
         h = Harness(adapters={"img-key": FakeAdapter("img-key"), "tts-a": FakeAdapter("tts-a"), "vid-clip": bad,
                               "vid-cheap": FakeAdapter("vid-cheap")})
         h.run()
-        self.assertEqual(set(h.resolved), {"img-key", "vid-clip", "tts-a"})
+        # tts-a is never asked either: after the clip failed for good the film cannot be assembled, so nothing more begins (G5).
+        self.assertEqual(set(h.resolved), {"img-key", "vid-clip"})
         self.assertEqual(h.adapters["vid-cheap"].submits, 0)
         # Scene A's clip: attempt 1 and 0171's attempt 2, nothing more; scene B's clip never begins (its first frame is missing).
         self.assertEqual(bad.submits, 2)
@@ -562,6 +563,61 @@ class Stops(unittest.TestCase):
         h.run()
         self.assertEqual(h.db.count("begin"), 1)
         self.assertEqual(h.db.settles, ["film_studio_off"])
+
+    # S2_GAPS G5: P4a refuses a film with any missing take, so once one failed for good every further take is charged for nothing.
+
+    def test_a_key_frame_failing_twice_begins_no_clip_and_no_narration_and_settles_once_takes_failed(self):
+        img = FakeAdapter("img-key", fail=[Err("provider_error")] * 2)
+        h = Harness(adapters={"img-key": img, "vid-clip": FakeAdapter("vid-clip"), "tts-a": FakeAdapter("tts-a")})
+        out = h.run()
+        self.assertEqual(img.submits, 2)  # attempt 1 and 0171's one retry
+        self.assertEqual([c for c in h.db.calls if c[0] == "begin"], [("begin", "keyframe", SA, 1), ("begin", "keyframe", SA, 2)])
+        self.assertEqual((h.adapters["vid-clip"].submits, h.adapters["tts-a"].submits), (0, 0))
+        self.assertEqual(h.db.count("begin_assembly"), 0)
+        self.assertEqual(h.db.settles, ["takes_failed"])
+        self.assertEqual((out.result, out.reason), ("settled", "takes_failed"))
+
+    def test_a_superseded_attempt_1_with_its_attempt_2_planned_still_runs_the_retry_and_the_rest(self):
+        # The one retry is not "failed for good": stopping here would turn every single provider hiccup into a dead film.
+        img = FakeAdapter("img-key", fail=[Err("provider_error")])
+        h = Harness(adapters={"img-key": img, "vid-clip": FakeAdapter("vid-clip"), "tts-a": FakeAdapter("tts-a")})
+        h.run()
+        kf = [(t["attempt"], t["status"]) for t in h.db.takes_ if t["kind"] == "keyframe"]
+        self.assertEqual(kf, [(1, "superseded"), (2, "completed")])
+        self.assertEqual((h.adapters["vid-clip"].submits, h.adapters["tts-a"].submits), (2, 2))  # the narration is voiced per scene
+        self.assertEqual(h.db.settles, ["completed"])
+
+    def test_a_clip_of_scene_2_failing_twice_begins_neither_scene_3s_clip_nor_the_narration(self):
+        db = FakeDb()
+        sc = "53000000-0000-4000-8000-000000000003"
+        db.scenes_.append({"id": sc, "position": 2, "first_frame": "keyframe", "last_frame": "none", "shot_count": 1,
+                           "planned_seconds": 6, "narration": "Then nothing."})
+        # Scene 3 starts from its own key frame, so its clip's inputs are ready: only the film-level stop keeps it from beginning.
+        db.takes_.insert(1, db._take("keyframe", sc, 0, "img-key", {"aspect_ratio": "16:9"}))
+        db.takes_.insert(4, db._take("clip", sc, 1, "vid-clip", {"duration_s": 10}, duration=10))
+        vid = FakeAdapter("vid-clip", fail=[None, Err("provider_error"), Err("provider_error")])
+        h = Harness(db, adapters={"img-key": FakeAdapter("img-key"), "vid-clip": vid, "tts-a": FakeAdapter("tts-a")})
+        h.run()
+        self.assertEqual(vid.submits, 3)  # scene 1's clip, scene 2's clip and its one retry
+        self.assertNotIn(("begin", "clip", sc, 1), h.db.calls)
+        self.assertEqual(h.adapters["tts-a"].submits, 0)
+        self.assertFalse(any(c[:2] == ("begin", "narration") for c in h.db.calls))
+        self.assertEqual([t["status"] for t in h.db.takes_ if t["scene_id"] == sc], ["completed", "planned"])
+        self.assertEqual(h.db.settles, ["takes_failed"])
+
+    def test_a_take_running_from_an_earlier_worker_is_still_driven_after_another_failed_for_good(self):
+        # In flight is in flight: its task is polled to the end (never resubmitted), and only then does the run stop.
+        db = FakeDb()
+        kf, clip_a, clip_b, narr = db.takes_
+        kf["status"] = "failed"
+        clip_a["status"] = "running"
+        h = Harness(db)
+        h.run()
+        self.assertIn(("begin", "clip", SA, 1), h.db.calls)
+        self.assertEqual(clip_a["status"], "completed")
+        self.assertEqual((clip_b["status"], narr["status"]), ("planned", "planned"))
+        self.assertEqual(h.adapters["tts-a"].submits, 0)
+        self.assertEqual(h.db.settles, ["takes_failed"])
 
     def test_a_hold_0171_lost_ends_the_drive_without_a_settle_of_ours(self):
         h = Harness()
