@@ -98,7 +98,6 @@ export function Landing({
       <ShowcaseGallery t={t} locale={locale} exclude={landingGalleryExclude(leftOut)} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
-      <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
       <ModelTiles t={t} items={onPage} tiles={landingTileJobs(leftOut)} />
       <How t={t} locale={locale} anchor={anchor} />
       <AutopilotDemo copy={t.site.autopilot.demo} />
@@ -111,6 +110,8 @@ export function Landing({
       )}
       <PriceBlock t={t} locale={locale} teaser={pricing} rates={priceRatesFrom(anchor)} />
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} dodo={dodo} />
+      {/* The models behind this page's samples, as two drifting rows just before the closing call (the owner, 22 Nov 2026). */}
+      <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} title={t.site.fx.modelsTitle} />
       <FinalCta t={t} />
       <StickyCta label={t.site.bar.label} text={t.site.bar.text} cta={t.site.bar.cta} dismiss={t.site.bar.dismiss} />
     </div>

@@ -154,6 +154,8 @@ export const siteEn = {
   },
   fx: {
     pause: "Pause motion",
+    /** The models strip's title (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Models in Nightshift Studio",
   },
   bar: {
     label: "Quick start",
