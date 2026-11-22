@@ -104,6 +104,20 @@ export const studioLiveEn = {
     made: "{step}: done",
     failed: "{step}: failed",
     retried: "{step}: trying again",
+    /** A log line's tag, spoken: the tag itself (`clip-03.2`) is a code for the eye. */
+    tags: {
+      clip: "Clip",
+      clipScene: "Clip, scene {n}",
+      clipShot: "Clip, scene {n}, shot {shot}",
+      key: "Picture",
+      keyScene: "Picture, scene {n}",
+      voice: "Voice",
+      asm: "Assembly",
+      seg: "Work part",
+      film: "Project",
+      log: "Log",
+      logCode: "Log, {code}",
+    },
     words: {
       "created": "Project created",
       "saved": "Plan saved",

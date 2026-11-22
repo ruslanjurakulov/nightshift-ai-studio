@@ -309,6 +309,113 @@ describe("Activity", () => {
   });
 });
 
+describe("Activity, a project's log in the reference style", () => {
+  const T1 = "7a000000-0000-4000-8000-0000000000a1";
+  const T2 = "7a000000-0000-4000-8000-0000000000a2";
+  const WORKER = "film-worker-host-7.internal";
+  const takes = [
+    { id: T1, kind: "keyframe", status: "completed", version: 1, shot_index: 0, attempt: 1 },
+    { id: T2, kind: "extend", status: "failed", version: 1, shot_index: 2, attempt: 1 },
+  ];
+  const filmAt = (events: unknown[]) => {
+    const fj = filmJson({ status: "running" }, [sceneJson(S1, 0, { current_version: 1, shot_count: 2, takes })]) as Record<string, unknown>;
+    fj.events = events;
+    return { film: fj, segments: [seg()], takes: [] };
+  };
+  const EVENTS = [
+    { id: 1, event: "segment_claimed", created_at: "2026-11-21T10:00:00Z", detail: { segment_id: "seg1", worker: WORKER, attempt: 1 } },
+    { id: 2, event: "take_completed", scene_id: S1, created_at: "2026-11-21T10:01:00Z", detail: { take_id: T1, kind: "keyframe", shot_index: 0, attempt: 1, charged: 9871 } },
+    { id: 3, event: "take_failed", scene_id: S1, created_at: "2026-11-21T10:02:00Z", detail: { take_id: T2, failure: "vendor said: secret" } },
+    { id: 4, event: "brand_new_word", created_at: "2026-11-21T10:03:00Z" },
+  ];
+  const rows = () => screen.getAllByTestId("live-activity-item");
+  const reduce = (on: boolean) =>
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("max-width") || (on && q.includes("reduce")), media: q, addEventListener() {}, removeEventListener() {} }));
+
+  it("each line carries the tag made from its row, spoken in words, next to a mono time and its sentence", async () => {
+    answer = live(filmAt(EVENTS));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const lines = rows();
+    expect(lines.map((li) => within(li).getByTestId("live-activity-tag").firstElementChild?.textContent)).toEqual(["log", "clip-01.2", "key-01", "seg"]);
+    expect(lines.map((li) => li.getAttribute("data-family"))).toEqual(["log", "clip", "key", "seg"]);
+    // The tag's code is hidden from a screen reader; its name is said instead.
+    expect(within(lines[1]).getByTestId("live-activity-tag").textContent).toContain(c.activity.tags.clipShot.replace("{n}", "1").replace("{shot}", "2"));
+    expect(within(lines[2]).getByTestId("live-activity-tag").textContent).toContain("Picture, scene 1");
+    expect(lines[1].textContent).toContain("Scene 1 · clip: failed");
+    expect(lines[2].textContent).toContain("Scene 1 · picture: done");
+    expect(lines[3].textContent).toContain(c.activity.words.segment_claimed);
+    expect(lines[0].querySelector("time")?.className).toContain("lv-log-time");
+  });
+
+  it("the worker's host name, credits and free text in detail never reach the page", async () => {
+    answer = live(filmAt(EVENTS));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const html = document.body.innerHTML;
+    expect(html).not.toContain(WORKER);
+    expect(html).not.toContain("9871");
+    expect(html).not.toContain("secret");
+  });
+
+  it("an event word with no sentence is shown as its own code, under the log tag", async () => {
+    answer = live(filmAt(EVENTS));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const unknown = rows()[0];
+    expect(unknown.getAttribute("data-word")).toBe("brand_new_word");
+    expect(unknown.querySelector("code")?.textContent).toBe("brand_new_word");
+    expect(within(unknown).getByTestId("live-activity-tag").textContent).toContain(c.activity.tags.log);
+  });
+
+  it("nothing is marked new on the first reading (a refresh replays no log); a line from a later poll is", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    answer = () => {
+      n += 1;
+      return { status: 200, body: filmAt(n === 1 ? EVENTS.slice(0, 2) : EVENTS.slice(0, 3)) };
+    };
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(document.querySelectorAll(".is-new")).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    await waitFor(() => expect([...document.querySelectorAll(".is-new")].map((li) => li.getAttribute("data-word"))).toEqual(["take_failed"]));
+  });
+
+  it("under reduced motion a newly arrived line gets no animation class", async () => {
+    reduce(true);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    answer = () => {
+      n += 1;
+      return { status: 200, body: filmAt(n === 1 ? EVENTS.slice(0, 2) : EVENTS.slice(0, 3)) };
+    };
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    expect(document.querySelectorAll(".is-new")).toHaveLength(0);
+  });
+
+  it("a run's log keeps its plain lines: no tags, no log style", async () => {
+    const W = { window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" }, workflow: null, hold: null };
+    answer = live({ job: null, ...W, events: [{ ts: "2026-11-21T10:01:00Z", event: "topic.selected", status: "ok", agent: "host-x" }] });
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z" }} />);
+    const panel = await screen.findByTestId("live-activity");
+    expect(panel.className).not.toContain("is-log");
+    expect(within(panel).queryByTestId("live-activity-tag")).toBeNull();
+    const [line] = within(panel).getAllByTestId("live-activity-item");
+    expect(line.children).toHaveLength(2);
+    expect(line.textContent).toContain(c.activity.words["topic.selected"]);
+  });
+});
+
 describe("Activity, across readings and plans (Lens)", () => {
   const W = { window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" }, workflow: null, hold: null };
   const ev = (event: string, ts: string) => ({ ts, event, status: "ok", agent: null });

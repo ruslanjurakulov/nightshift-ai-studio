@@ -14,6 +14,7 @@ import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/runBackend";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
+import { logLines } from "@/lib/studio/liveLane";
 import { utc } from "@/lib/studio/utc";
 import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
@@ -449,8 +450,14 @@ export function LiveView({
       return { key: planKey, items, total: reading.total };
     });
   }, [reading, planKey, run]);
-  const activity: Activity | null =
-    reading && gathered.key === planKey ? { items: gathered.items, total: gathered.total, cut: reading.cut } : null;
+  const activity: Activity | null = useMemo(
+    () => (reading && gathered.key === planKey ? { items: gathered.items, total: gathered.total, cut: reading.cut } : null),
+    [reading, gathered, planKey],
+  );
+  // A project's log in the reference style: one line per recorded film_events row, tagged from the row (lib/studio/liveLane.ts).
+  // `activity` is non-null only for a reading of THIS plan, so load.film is that plan's reading too.
+  const filmReading = target?.kind === "film" && activity && load.state === "ready" ? load.film : null;
+  const logs = useMemo(() => (filmReading && activity ? logLines(filmReading, activity) : null), [filmReading, activity]);
   // Closing the details gives focus back to the step it was opened from, not to the page (Pixel M2). The card is focused before the
   // panel unmounts: focusing it after, the browser has already dropped focus to <body>.
   const close = () => {
@@ -572,7 +579,7 @@ export function LiveView({
       ) : null}
       {graph && activity ? (
         // Below the board, never beside it: a side column narrows the board until its ends fall outside at 1280-1440 (Pixel HIGH).
-        <ActivityPanel activity={activity} run={run} />
+        <ActivityPanel activity={activity} run={run} lines={logs} plan={planKey} />
       ) : null}
     </div>
   );
