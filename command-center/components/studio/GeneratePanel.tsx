@@ -1325,7 +1325,7 @@ export function GeneratePanel({
   // Read per render: a tab left open over 31 Dec stops offering a retired Default voice on its next render.
   const now = new Date();
   const builtIn = studioVoices(now);
-  const leavingTag = (id: string) => (voiceRetirement(id, now) === "leaving" ? ` · ${t.create.flow.voiceLeavingTag}` : "");
+  const leavingNote = (id: string) => (voiceRetirement(id, now) === "leaving" ? ` · ${t.create.flow.voiceLeavingTag}` : "");
   const castPicked = builtIn.some((v) => v.id === voiceId);
   function onCastKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
     const n = builtIn.length;
@@ -1371,7 +1371,7 @@ export function GeneratePanel({
                     <span className="truncate font-semibold text-[var(--color-fg)]">{v.name}</span>
                     <span className="truncate text-xs text-[var(--color-muted)]">
                       {voiceStyle(v)}
-                      {leavingTag(v.id)}
+                      {leavingNote(v.id)}
                     </span>
                   </span>
                 </button>
@@ -1394,7 +1394,7 @@ export function GeneratePanel({
             {builtIn.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.name} — {voiceStyle(v)}
-                {leavingTag(v.id)}
+                {leavingNote(v.id)}
               </option>
             ))}
           </select>

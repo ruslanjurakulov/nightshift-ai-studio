@@ -138,6 +138,26 @@ describe("the account's plan and library voices", () => {
     expect(await screen.findByText(c.pickedNeedsPaid)).toBeTruthy();
   });
 
+  it("an ElevenLabs Default voice is tagged as leaving, and once retired cannot be picked and is called out as retired, not as a plan", async () => {
+    const GEORGE = v({ voiceId: "JBFqnCBsd6RMkjVDRZzb", name: "George" });
+    voicesAnswer = () => json({ voices: [...ACCOUNT, GEORGE], truncated: false, plan: "paid" });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-11-22T10:00:00Z"));
+      openSpeech();
+      await waitFor(() => expect(catalog().getAttribute("data-state")).toBe("ok"));
+      expect(screen.getByRole("radio", { name: /George/ }).textContent).toContain(t.create.flow.voiceLeavingTag);
+      cleanup();
+      vi.setSystemTime(new Date("2027-01-02T10:00:00Z"));
+      render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} initial={{ capability: "tts", model: "elevenlabs-v3", prompt: "Salom", aspect: "16:9", duration: 5, voiceId: GEORGE.voiceId }} />));
+      expect(await screen.findByText(t.create.flow.voiceRetired.replace("{name}", "George"))).toBeTruthy();
+      expect((screen.getByRole("radio", { name: /George/ }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByText(c.pickedNeedsPaid)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("paid plan: a library voice can be picked and carries no plan mark", async () => {
     voicesAnswer = () => json({ voices: ACCOUNT, truncated: false, plan: "paid" });
     openSpeech();

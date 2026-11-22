@@ -108,7 +108,7 @@ export function VoiceCatalog({
   label: string;
   builtIn: ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
   const c = t.voiceCatalog;
   const [state, setState] = useState<State>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -184,8 +184,11 @@ export function VoiceCatalog({
   // person sees why it is missing, but it cannot be picked. An unknown plan blocks nothing and says it does not know.
   const now = new Date();
   // A retired ElevenLabs Default voice is shown but not pickable: the TTS adapter refuses it (modules/voice_retirement).
-  const blocked = (v: CatalogVoice) => (v.library && state.plan === "free") || voiceRetirement(v.voiceId, now) === "retired";
-  const pickedBlocked = all.some((v) => v.voiceId === value && blocked(v));
+  const needsPaid = (v: CatalogVoice) => v.library && state.plan === "free";
+  const blocked = (v: CatalogVoice) => needsPaid(v) || voiceRetirement(v.voiceId, now) === "retired";
+  // Each refusal says its own remedy: "needs a paid plan" for a retired voice would send the person to buy the wrong thing.
+  const pickedBlocked = all.some((v) => v.voiceId === value && needsPaid(v));
+  const pickedRetired = all.find((v) => v.voiceId === value && voiceRetirement(v.voiceId, now) === "retired");
   const pickedShown = shown.some((v) => v.voiceId === value && !blocked(v));
   const firstOpen = shown.findIndex((v) => !blocked(v));
 
@@ -256,6 +259,11 @@ export function VoiceCatalog({
       {pickedBlocked && (
         <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
           {c.pickedNeedsPaid}
+        </p>
+      )}
+      {pickedRetired && (
+        <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
+          {fmt(t.create.flow.voiceRetired, { name: pickedRetired.name })}
         </p>
       )}
       {pickedMissing && (
