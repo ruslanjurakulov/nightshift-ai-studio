@@ -86,7 +86,7 @@ export default async function Home() {
   const graphLd = siteGraphJsonLd({ name: t.brand.name, origin: runtimeSiteOrigin() });
 
   return (
-    <PublicShell t={t} fresh>
+    <PublicShell t={t} fresh intro>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       {graphLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(graphLd) }} />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(faqLd) }} />

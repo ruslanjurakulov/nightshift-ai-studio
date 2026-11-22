@@ -12,6 +12,8 @@ import { preloadSiteFonts } from "@/components/site/fonts";
 import { SiteEffects } from "@/components/site/SiteEffects";
 import { PageViewBeacon } from "@/components/site/PageViewBeacon";
 import { SiteMotion } from "@/components/site/motion/SiteMotion";
+import { BrandIntro } from "@/components/site/BrandIntro";
+import { BRAND_INTRO_SCRIPT } from "@/lib/site/brand-intro";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
 import { devFor } from "@/lib/i18n/dev";
 import "@/components/site/site.css";
@@ -54,12 +56,15 @@ export function PublicShell({
   t,
   current = null,
   fresh = false,
+  intro = false,
   children,
 }: {
   t: Dictionary;
   current?: PublicSection;
   /** The marketing pages' calmer frame (components/site/site-next.css): bigger type, more air, a stage for the product. */
   fresh?: boolean;
+  /** The homepage's first-visit brand intro (lib/site/brand-intro.ts). "/" alone passes it. */
+  intro?: boolean;
   children: React.ReactNode;
 }) {
   const links = publicNavLinks(t);
@@ -67,6 +72,9 @@ export function PublicShell({
   preloadSiteFonts(LOCALES.find((l) => dictionaries[l.code] === t)?.code ?? DEFAULT_LOCALE);
   return (
     <div className={`st${fresh ? " nx" : ""} relative flex min-h-dvh flex-col`}>
+      {/* First in the body, so it decides before anything below it can paint; a constant, allowed by its CSP hash. */}
+      {intro && <script dangerouslySetInnerHTML={{ __html: BRAND_INTRO_SCRIPT }} />}
+      {intro && <BrandIntro />}
       <a href="#main" className="st-skip">
         {t.landing.nav.skip}
       </a>

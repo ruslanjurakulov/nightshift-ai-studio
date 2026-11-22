@@ -47,6 +47,12 @@ export function cspMode(raw: string | undefined): CspMode {
 export const NO_FLASH_SCRIPT_HASH = "'sha256-ktjGHzaCwS/h7xFBMw1Ju+H5H5ceE/SPJVhA/X5uNUk='";
 
 /**
+ * sha256 of BRAND_INTRO_SCRIPT (lib/site/brand-intro.ts), the homepage's first-visit intro check, the second inline script we
+ * write. A hash for the same reason as the theme's; tests/csp.test.ts recomputes it. Blocked, the intro simply never plays.
+ */
+export const BRAND_INTRO_SCRIPT_HASH = "'sha256-3u27qz4pw5qYk+ZqaNqcjOJPben54V+6CVlPfYHdAm4='";
+
+/**
  * Paddle.js v2 and what it loads, read from cdn.paddle.com/paddle/v2/paddle.js
  * and the Retain snippet it injects in production (public.profitwell.com).
  * The pricing page previews prices against api.paddle.com; the Buy credits
@@ -149,6 +155,7 @@ export function buildCsp(opts: CspOptions): string {
         `'nonce-${opts.nonce}'`,
         "'strict-dynamic'",
         NO_FLASH_SCRIPT_HASH,
+        BRAND_INTRO_SCRIPT_HASH,
         ...PADDLE.script,
         ...(opts.dev ? ["'unsafe-eval'"] : []),
       ],
