@@ -825,3 +825,8 @@ sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
 import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
+
+# Migration 0217 (a channel id may not be a reserved root URL segment): tests/security/sec_reserved_channel_ids_0217.py
+import sec_reserved_channel_ids_0217  # noqa: E402
+
+sec_reserved_channel_ids_0217.extend(TABLES, FUNCTIONS)

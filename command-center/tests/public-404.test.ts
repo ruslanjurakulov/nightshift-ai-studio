@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isUnknownRootPath } from "@/lib/channels";
+import { gateDecision } from "@/lib/public-paths";
 
 // A site with no backend configured: the shape Pixel scored, and any deploy
 // that has not been given its database yet.
@@ -56,6 +57,14 @@ describe("isUnknownRootPath", () => {
     for (const p of ["/", "/videos", "/all-channels", "/welcome", "/auth", "/docs", "/api", "/login", "/a/b", "/chronos/videos"]) {
       expect(isUnknownRootPath(p)).toBe(false);
     }
+  });
+
+  // Migration 0217 reserves the public site's language prefixes, so they are no longer "unknown": signed out, /ru is
+  // sent to the sign-in page rather than the 404. That is right only once /ru is a public page (PR #910, per-language
+  // URLs), which turns this into a pass; this branch must merge after or together with it, and then this case changes.
+  it.each(["/ru", "/uz", "/en"])("treats %s as a reserved page, which today sends a signed-out visitor to sign in", (p) => {
+    expect(isUnknownRootPath(p)).toBe(false);
+    expect(gateDecision(p, false)).toBe("to-login");
   });
 });
 
