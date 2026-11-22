@@ -17,6 +17,11 @@ export type ShowcaseItem = {
    * of the clip's own audio. A separate track, never burned in, because burning them in is post-production the Studio did not do.
    */
   captions?: "en";
+  /**
+   * The file carries an audio track (measured: the MP4's sound handler, pinned by tests/clip-sound.test.tsx against the file
+   * itself). Only then does its loop offer the speaker toggle (owner decision 2026-11-22); absent means silent.
+   */
+  audio?: true;
   title: { en: string; ru: string; uz: string };
 };
 
@@ -24,7 +29,7 @@ export const SHOWCASE_ITEMS: readonly ShowcaseItem[] = [
   // Two steps in Studio: an Ideogram 4.5 picture of the two characters, then MiniMax H3 image-to-video with the dialogue written
   // into the prompt. The model speaks the lines itself; the captions are burned in from a transcript of its own audio, because
   // the landing plays clips muted.
-  { slug: "language-duo", kind: "video", modelIds: ["ideogram-4.5", "minimax-h3"], aspect: "9:16", captions: "en",
+  { slug: "language-duo", kind: "video", modelIds: ["ideogram-4.5", "minimax-h3"], aspect: "9:16", captions: "en", audio: true,
     title: { en: "One picture, two talking characters", ru: "Одна картинка, два говорящих героя", uz: "Bitta rasm, ikki gapiruvchi personaj" } },
   { slug: "registan-dusk", kind: "video", modelIds: ["minimax-h3-max"], aspect: "16:9",
     title: { en: "Registan at blue hour", ru: "Регистан в синий час", uz: "Registon, kechki moviy soat" } },

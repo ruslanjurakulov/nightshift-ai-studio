@@ -162,6 +162,11 @@ export const siteEn = {
     dismiss: "Hide this bar",
   },
   samples: {
+    /**
+     * The speaker toggle on a clip that has sound (components/site/SoundToggle.tsx): a toggle button, so one name and aria-pressed
+     * say whether it is on. Shown only where the clip's files carry an audio track.
+     */
+    sound: "Clip sound",
     tag: "Example frame (stock photo)",
     frameTag: "Example frame (stock footage)",
     clipTag: "Example clip (stock footage)",

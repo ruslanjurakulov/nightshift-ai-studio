@@ -148,6 +148,7 @@ export const siteRu: SiteDictionary = {
     dismiss: "Скрыть эту панель",
   },
   samples: {
+    sound: "Звук клипа",
     tag: "Пример кадра (стоковое фото)",
     frameTag: "Пример кадра (стоковое видео)",
     clipTag: "Пример клипа (стоковое видео)",

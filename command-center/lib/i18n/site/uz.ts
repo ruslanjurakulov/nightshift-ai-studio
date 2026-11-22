@@ -148,6 +148,7 @@ export const siteUz: SiteDictionary = {
     dismiss: "Bu panelni yashirish",
   },
   samples: {
+    sound: "Klip ovozi",
     tag: "Namuna kadr (stok surat)",
     frameTag: "Namuna kadr (stok video)",
     clipTag: "Namuna klip (stok video)",

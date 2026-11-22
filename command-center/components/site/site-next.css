@@ -911,6 +911,16 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
 @media (prefers-reduced-motion: reduce) {
   .nx-clip { display: none; }
 }
+/* The speaker toggle on a clip that has sound (components/site/SoundToggle.tsx; owner decision 2026-11-22): bottom right of the
+   clip's box, a 44 px round hit area, dark and translucent so it reads on any frame. Above a card's stretched open button
+   (.nx-gallery-open, z-index 1; a card's stretched link overlay, ~1) and its hover panel (.nx-gallery-over, 3), so a press is
+   the toggle's, never the card's. Gone
+   with the clip under reduced motion, where the still is all there is. */
+.nx-clip-sound { position: absolute; z-index: 5; right: 10px; bottom: 10px; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; margin: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(8, 8, 10, 0.62); color: #fff; cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.nx-clip-sound:hover { background: rgba(8, 8, 10, 0.82); }
+.nx-clip-sound:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.nx-clip-sound[aria-pressed="true"] { border-color: rgba(255, 255, 255, 0.7); }
+@media (prefers-reduced-motion: reduce) { .nx-clip-sound { display: none; } }
 
 /* Money: the price check beside what is on sale. */
 .nx-price-grid { display: grid; gap: 20px; margin-top: 28px; }
