@@ -13,6 +13,8 @@ The behaviour in a real database is tests/security/test_sec_film_sweep_0212.py.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import logging
 import re
 import unittest
@@ -130,6 +132,12 @@ class Cli(unittest.TestCase):
             self.assertEqual((rc, made, db.calls), (0, [], []), env)
             self.assertIn("nothing was swept", out)
 
+    def test_without_the_secrets_the_actions_page_gets_a_warning(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertLogs("film_sweep", level=logging.INFO):
+            self.assertEqual(fs.main({}, make_db=lambda u, k: self.fail("no db without the secrets")), 0)
+        self.assertRegex(out.getvalue(), r"^::warning title=Film sweep is off::.*not set")
+
     def test_one_recorded_sweep_as_actions(self):
         db = FakeDb(result=2)
         rc, made, out = self.run_cli(ENV, db)
@@ -159,7 +167,7 @@ class Workflow(unittest.TestCase):
 
     def test_it_runs_every_ten_minutes_and_by_hand(self):
         on = self.doc.get("on", self.doc.get(True))  # YAML 1.1 reads a bare `on` as true
-        self.assertEqual(on["schedule"], [{"cron": "*/10 * * * *"}])
+        self.assertEqual(on["schedule"], [{"cron": "3-59/10 * * * *"}])  # every 10 minutes, off the top of the hour
         self.assertIn("workflow_dispatch", on)
         self.assertEqual(self.doc["concurrency"], {"group": "film-sweep", "cancel-in-progress": False})
 
@@ -186,9 +194,24 @@ class MigrationText(unittest.TestCase):
 
     def test_the_pg_cron_job_runs_every_five_minutes_as_its_own_runner_and_is_unscheduled_first(self):
         self.assertIn("perform cron.unschedule('nightshift-film-sweep')", self.sql)
-        self.assertIn("perform cron.schedule('nightshift-film-sweep', '*/5 * * * *', 'select public.film_sweep(''pg_cron'')')",
-                      self.sql)
+        self.assertIn("perform cron.schedule('nightshift-film-sweep', '*/5 * * * *',", self.sql)
+        self.assertIn("from (select public.film_sweep(''pg_cron'') as r) s", self.sql)
         self.assertIn("raise notice '0212: pg_cron is not enabled", self.sql)
+
+    def test_pg_cron_never_marks_a_failed_sweep_succeeded(self):
+        self.assertIn("''film_sweep failed with SQLSTATE '' || coalesce(r ->> ''error'', ''none''))::integer", self.sql)
+
+    def test_a_schedule_that_did_not_land_is_not_a_notice(self):
+        cron = self.sql[self.sql.index("-- 4. Every 5 minutes"):self.sql.index("-- 5. End state")]
+        self.assertNotIn("exception when others", cron)
+        self.assertIn("pg_cron is installed but the job nightshift-film-sweep is not this file''s", self.sql)
+
+    def test_the_rollback_never_swallows_a_failed_unschedule(self):
+        self.assertNotIn("exception when others", ROLLBACK.read_text(encoding="utf-8"))
+
+    def test_the_header_says_a_cancelled_sweep_is_not_recorded(self):
+        self.assertIn("57014", self.sql)
+        self.assertIn("G2b", self.sql)
 
     def test_no_api_role_but_the_service_role_reaches_it(self):
         for fn in ("public.film_sweep(text)", "public.film_sweep_status()"):
@@ -198,8 +221,12 @@ class MigrationText(unittest.TestCase):
         self.assertIn("grant select on table public.film_sweep_runs to service_role;", self.sql)
         self.assertNotRegex(self.sql, r"grant [^;]*film_sweep[^;]* to [^;]*(anon|authenticated)")
 
-    def test_never_ran_is_null_not_fine(self):
-        self.assertIn("'overdue', case when not ever then null", self.sql)
+    def test_never_ran_is_null_not_fine_and_the_line_is_declared_once(self):
+        self.assertIn("when not ever then null", self.sql)
+        self.assertIn("'overdue', case when stuck_min > line then true", self.sql)
+        self.assertEqual(len(re.findall(r"line\s+constant integer := 30;", self.sql)), 1)
+        self.assertIn("'overdue_after_minutes', line,", self.sql)
+        self.assertNotRegex(self.sql, r"interval '(20|30) minutes'")
 
     def test_0171_is_called_never_replaced(self):
         self.assertNotRegex(self.sql, r"create\s+or\s+replace\s+function\s+public\.film_expire_segments")

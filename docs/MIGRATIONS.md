@@ -2459,21 +2459,38 @@ table or grant; `film_expire_segments` is called, never replaced. It spends noth
 - **The sweep.** `film_sweep(runner)` (service role only): `film_expire_segments()`, then the record. `{ok:true, settled, at}`, or
   `{ok:false, error, at}` when the sweep itself failed. It answers instead of raising because a raise would roll the record of the
   failure back with it; every caller treats `ok:false` as a failure. An unknown runner is refused (22023 `unknown_runner`).
-- **The measurement.** `film_sweep_status()` (service role only): each runner's row or null, the newest completed sweep, the open
-  segments (`queued` / `running` / `draining`), and `overdue`: true when one is open and no runner completed a sweep in 20 minutes,
-  false otherwise, **null when nothing was ever recorded** (unknown is not fine).
-- **The schedules.** `.github/workflows/film_sweep.yml` every 10 minutes (the guaranteed one); pg_cron `nightshift-film-sweep`
-  every 5 minutes where pg_cron is installed (unscheduled first, so a replay leaves one; without pg_cron a NOTICE, as 0111 and
-  0164); the worker's thread. Several at once are safe: the sweep takes rows `for update skip locked` (lab test: two at the same
+- **What is not recorded.** PL/pgSQL's `when others` does not catch `query_canceled` (57014: a statement timeout, PostgREST's
+  included) or `assert_failure`. Such a call raises and records nothing: the Actions run goes red, pg_cron marks the run failed,
+  and `overdue` trips once the last completed sweep is older than the line. `last_at` is "the last sweep that completed", not
+  "every attempt". A bounded per-pass sweep is the follow-up G2b (`docs/studio/S2_GAPS.md`), open.
+- **The measurement.** `film_sweep_status()` (service role only; counts and times, never an id):
+  `{runners: {worker|actions|pg_cron: {last_at, last_settled, last_error, last_error_at} | null}, last_at, open_segments,
+  stuck_segments, oldest_stuck_minutes, overdue_after_minutes: 30, overdue, at}`. `stuck_segments` counts open segments already
+  past 0171's settle point, from 0171's own `film_money_limits()` (a hold no longer open, queued past `unclaimed_hours`, past
+  deadline + `grace_hours`); a sweep that "completes" while 0171 skips such a segment is not a settled segment (Breach on 0212).
+  `overdue` is true when a segment has been stuck longer than the line, or one is open and no runner completed a sweep within it;
+  **null when nothing was ever recorded and nothing is stuck** (unknown is not fine); false otherwise. The line (30 minutes) is
+  declared once in the function and returned as `overdue_after_minutes`.
+- **The schedules.** `.github/workflows/film_sweep.yml` every 10 minutes at minute 3, 13, 23 ... (the guaranteed one; without
+  its secrets it exits 0 with a `::warning::` annotation); pg_cron `nightshift-film-sweep` every 5 minutes where pg_cron is
+  installed (unscheduled first, so a replay leaves one; without pg_cron a NOTICE, as 0111 and 0164; with pg_cron a schedule that
+  did not land fails the file, and the end state asserts the job); the worker's thread.
+- **pg_cron and a failed sweep.** pg_cron marks a run succeeded whenever its command returns, and `film_sweep` returns `ok:false`,
+  so the job's command raises on it (`'film_sweep failed with SQLSTATE <code>'` cast to integer): the run shows as failed in
+  `cron.job_run_details` with the SQLSTATE in its message. The raise rolls back `film_sweep`'s own `last_error` row, so for the
+  `pg_cron` runner the failure is read from `cron.job_run_details`. Several at once are safe: the sweep takes rows `for update skip locked` (lab test: two at the same
   moment settle a segment once).
 - **pg_cron is not installed on the live project**, so applying 0212 there prints the NOTICE and creates no job. To get the
   5-minute schedule: install it (Supabase > Database > Extensions > pg_cron), then re-apply 0212, or run once
-  `select cron.schedule('nightshift-film-sweep','*/5 * * * *','select public.film_sweep(''pg_cron'')');`.
+  the `cron.schedule` call in section 4 of the file (it carries the ok:false check; scheduling a bare `film_sweep('pg_cron')`
+  would let pg_cron mark a failed sweep succeeded).
 - **Owner steps.** Apply 0212; make sure the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` Actions secrets exist (operator_alerts.yml
   uses the same two); after about 10 minutes `select public.film_sweep_status();` shows `actions` with a `last_at`.
 - **Without it.** The workflow fails and names 0212; the worker calls `film_expire_segments` directly, unrecorded, and says so once.
 - **Is it working?** The verify block at the bottom of the file, then `select public.film_sweep_status();` and, if pg_cron is on,
   `select jobname, schedule, command from cron.job where jobname = 'nightshift-film-sweep';`.
 - **Undo.** `docs/sql/rollback_0212_film_sweep.sql` (owner-applied): unschedules the job, drops the two functions and the table
-  (the record is lost; no money is), and leaves `film_expire_segments`. Refused while either body is not 0212's. Disable the
+  (the record is lost; no money is), and leaves `film_expire_segments`. Refused while either body is not 0212's; if pg_cron's
+  unschedule fails it fails too and changes nothing (no job is left calling a dropped function). 0212 also refuses to apply over a
+  `film_sweep_runs` of another shape (columns, the SQLSTATE check, the runner check). Disable the
   workflow first, or it fails every 10 minutes.

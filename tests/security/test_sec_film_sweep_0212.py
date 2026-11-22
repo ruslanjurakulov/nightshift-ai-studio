@@ -7,12 +7,15 @@ What would break without each guard (each test names the guard it pins):
   * the record: a sweep that is not recorded under its own runner, or a failed sweep recorded as done, or recorded with a message
     body instead of its SQLSTATE;
   * the measurement: "overdue" read as fine when nothing ever swept (it is null: unknown), or false while a segment is open and no
-    runner swept for more than 20 minutes;
+    runner swept for more than the overdue line (30 minutes, returned as overdue_after_minutes), or false while a segment past its
+    settle point outlives the line (stuck_segments, oldest_stuck_minutes: counts, never ids);
   * the money: film_sweep is film_expire_segments, recorded: a segment past its deadline and grace settles while its hold is open,
     once, even with two sweeps at the same moment;
   * the callers: FilmRest.sweep, tools/film_sweep.py and the worker's sweep_once reach the REAL signature through the PostgREST
     stand-in of test_sec_film_e2e_lab.py (a body key the function does not have is a 404 there, never dropped);
-  * the migration: the pg_cron job is created once (unscheduled first) where pg_cron exists, and calls film_sweep('pg_cron'); a replay
+  * the migration: the pg_cron job is created once (unscheduled first) where pg_cron exists, calls film_sweep('pg_cron') and FAILS on
+    ok:false (pg_cron would otherwise mark a failed sweep succeeded); a schedule that did not land fails the file; a
+    film_sweep_runs of another shape is refused; a rollback whose unschedule fails changes nothing; a replay
     changes nothing and keeps the record; the drift guard and the rollback refuse a body that is not 0212's; the rollback takes
     everything of 0212 out and leaves 0171's sweep, after which 0212 applies again.
 
@@ -178,17 +181,18 @@ def test_never_swept_is_unknown_not_fine_even_with_a_segment_open(db, a):
     assert st["open_segments"] >= 1 and st["overdue"] is None
 
 
-def test_overdue_when_a_segment_is_open_and_no_runner_swept_for_twenty_minutes(db, a):
+def test_overdue_when_a_segment_is_open_and_no_runner_swept_within_the_line(db, a):
     db.quoted_start(a, db.film(a))  # queued: open, and nobody claims it in this test
     sweep(db, "actions")
     sweep(db, "worker")
-    assert status(db)["overdue"] is False
-    db.su("update public.film_sweep_runs set last_at = now() - interval '21 minutes'")
     st = status(db)
-    assert st["overdue"] is True and st["open_segments"] >= 1 and st["overdue_after_minutes"] == 20
-    db.su("update public.film_sweep_runs set last_at = now() - interval '19 minutes' where runner = 'worker'")
-    assert status(db)["overdue"] is False  # any one runner within 20 minutes is enough
-    db.su("update public.film_sweep_runs set last_at = now() - interval '21 minutes'")
+    assert st["overdue"] is False and st["overdue_after_minutes"] == 30
+    db.su("update public.film_sweep_runs set last_at = now() - interval '31 minutes'")
+    st = status(db)
+    assert st["overdue"] is True and st["open_segments"] >= 1
+    db.su("update public.film_sweep_runs set last_at = now() - interval '29 minutes' where runner = 'worker'")
+    assert status(db)["overdue"] is False  # any one runner within the line is enough
+    db.su("update public.film_sweep_runs set last_at = now() - interval '31 minutes'")
     sweep(db, "pg_cron")
     assert status(db)["overdue"] is False
 
@@ -205,6 +209,41 @@ def test_not_overdue_when_nothing_is_open(db):
     db.su("update public.film_sweep_runs set last_at = now() - interval '3 hours'")
     st = status(db)
     assert st["overdue"] is (st["open_segments"] > 0)
+
+
+def test_stuck_counts_a_segment_past_each_settle_point_and_names_none(db, a):
+    """0171's three settle points, from its own constants: queued past unclaimed_hours, past deadline + grace, a hold gone."""
+    sweep(db, "actions")
+    base = status(db)
+    assert base["stuck_segments"] == 0 and base["oldest_stuck_minutes"] is None
+    b, c = db.new_org(), db.new_org()  # one running film per organization (0171's limit)
+    q = db.quoted_start(a, db.film(a))
+    d = db.quoted_start(b, db.film(b))
+    h = db.quoted_start(c, db.film(c))
+    db.su("update public.film_segments set created_at = now() - interval '3 hours 10 minutes' where id = %s", [q["id"]])
+    db.su("update public.film_segments set deadline_at = now() - interval '2 hours 5 minutes' where id = %s", [d["id"]])
+    db.su("update public.credit_reservations set status = 'released', settled_at = now() - interval '40 minutes' "
+          "where job_id = (select credit_ref from public.film_segments where id = %s)", [h["id"]])
+    st = status(db)
+    assert st["stuck_segments"] == 3 and 39 <= st["oldest_stuck_minutes"] <= 41, st
+    assert st["overdue"] is True  # 40 minutes past a settle point is longer than the line, whatever last_at says
+    text = json.dumps(st, default=str)
+    assert not any(str(x["id"]) in text for x in (q, d, h)) and not any(o.org in text for o in (a, b, c))  # counts, never ids
+    db.su("update public.credit_reservations set settled_at = now() - interval '5 minutes' "
+          "where job_id = (select credit_ref from public.film_segments where id = %s)", [h["id"]])
+    st = status(db)
+    assert st["stuck_segments"] == 3 and st["oldest_stuck_minutes"] <= 10 and st["overdue"] is False  # stuck, not yet overdue
+    # The hold back as it was, so the next test's cleanup cancels through 0171's own path.
+    db.su("update public.credit_reservations set status = 'open', settled_at = null "
+          "where job_id = (select credit_ref from public.film_segments where id = %s)", [h["id"]])
+
+
+def test_a_segment_stuck_past_the_line_is_overdue_even_when_no_sweep_was_ever_recorded(db, a):
+    s = db.quoted_start(a, db.film(a))
+    assert status(db)["overdue"] is None  # open, nothing stuck, nothing recorded: unknown
+    db.su("update public.film_segments set created_at = now() - interval '4 hours' where id = %s", [s["id"]])
+    st = status(db)
+    assert st["overdue"] is True and st["stuck_segments"] == 1 and st["oldest_stuck_minutes"] >= 59
 
 
 # ── the money ───────────────────────────────────────────────────────────────
@@ -309,11 +348,61 @@ def test_with_pg_cron_one_job_every_five_minutes_runs_film_sweep_as_pg_cron_and_
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         c.execute(MIGRATION.read_text(encoding="utf-8"))  # unscheduled first: still one job
         jobs = c.execute("select jobname, schedule, command from cron.job").fetchall()
-        assert jobs == [(JOB, "*/5 * * * *", "select public.film_sweep('pg_cron')")]
-        c.execute(jobs[0][2])  # what pg_cron runs, as the database owner
+        assert jobs == [(JOB, "*/5 * * * *", "select case when (r ->> 'ok')::boolean then 1 else ('film_sweep failed with SQLSTATE ' || coalesce(r ->> 'error', 'none'))::integer end from (select public.film_sweep('pg_cron') as r) s")]
+        assert c.execute(jobs[0][2]).fetchone()[0] == 1  # what pg_cron runs, as the database owner
         assert c.execute("select runner from public.film_sweep_runs").fetchall() == [("pg_cron",)]
+        # A sweep that fails: the command raises, so pg_cron marks the run failed, with the SQLSTATE in its message.
+        c.execute("savepoint before_fail")
+        c.execute("create or replace function public.film_expire_segments() returns integer language plpgsql security definer "
+                  "set search_path = public, pg_temp as $$ begin raise exception 'x' using errcode = '55P03'; end $$")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(jobs[0][2])
+        assert "film_sweep failed with SQLSTATE 55P03" in str(e.value)
+        c.execute("rollback to savepoint before_fail")
         c.execute(body(ROLLBACK))
         assert c.execute("select count(*) from cron.job").fetchone()[0] == 0
+        c.rollback()
+
+
+def test_with_pg_cron_a_schedule_that_did_not_land_fails_the_file(db):
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(CRON_STUB)
+        c.execute("create or replace function cron.schedule(job_name text, schedule text, command text) returns bigint "
+                  "language sql as $f$ select 0::bigint $f$")  # answers, schedules nothing
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "pg_cron is installed but the job nightshift-film-sweep" in str(e.value)
+        c.rollback()
+
+
+def test_a_rollback_whose_unschedule_fails_changes_nothing(db):
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(CRON_STUB)
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        c.execute("create or replace function cron.unschedule(job_name text) returns boolean language plpgsql as $f$ "
+                  "begin raise exception 'cron is unhappy'; end $f$")
+        c.execute("savepoint before_rollback")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(body(ROLLBACK))
+        assert "cron is unhappy" in str(e.value)
+        c.execute("rollback to savepoint before_rollback")
+        assert c.execute("select to_regprocedure('public.film_sweep(text)') is not null and "
+                         "(select count(*) from cron.job where jobname = %s) = 1", [JOB]).fetchone()[0] is True
+        c.rollback()
+
+
+@pytest.mark.parametrize("change", [
+    "alter table public.film_sweep_runs add column note text",
+    "alter table public.film_sweep_runs alter column last_settled type bigint",
+    "alter table public.film_sweep_runs drop constraint film_sweep_runs_last_error_check",
+    "alter table public.film_sweep_runs drop constraint film_sweep_runs_runner_check",
+])
+def test_a_film_sweep_runs_of_another_shape_is_refused(db, change):
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(change)
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "film_sweep_runs that is not this file's" in str(e.value)
         c.rollback()
 
 

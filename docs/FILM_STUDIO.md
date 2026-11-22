@@ -142,14 +142,20 @@ editor changes it, with `set_film_studio_enabled(true|false)`, and every change 
   **Built (0212, `claude/nsai-s2-sweep`); met once 0212 is applied and the workflow has run.** Three runners call the same
   `film_sweep(runner)`, which runs `film_expire_segments` and records the run in `film_sweep_runs`:
   - `.github/workflows/film_sweep.yml` every 10 minutes (`tools/film_sweep.py`, runner `actions`): the **guaranteed** schedule,
-    independent of the server and the worker. It needs the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` Actions secrets; without them
-    it logs that it is off. A run that could not sweep fails (red), and a sweep that failed in the database records its SQLSTATE;
+    independent of the server and the worker (minutes 3, 13, 23 ...). It needs the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
+    Actions secrets; without them it exits 0 with a `::warning::` annotation saying it is not sweeping. A run that could not sweep
+    fails (red), and a sweep that failed in the database records its SQLSTATE;
   - pg_cron every 5 minutes (job `nightshift-film-sweep`, runner `pg_cron`), **only once pg_cron is installed** on the project
-    (it is not today; docs/MIGRATIONS.md, 0111 D15). Install it, then apply 0212 again (or schedule it by hand, 0212's entry);
+    (it is not today; docs/MIGRATIONS.md, 0111 D15). Install it, then apply 0212 again (or schedule it by hand, 0212's entry).
+    Its command raises on a failed sweep, so pg_cron's run history shows it as failed (with the SQLSTATE), never as succeeded;
   - the film worker's own thread (runner `worker`), while it runs. Where 0212 is not applied it calls `film_expire_segments`
     directly (the same function, unrecorded) and says so once.
-  "It ran" is a measurement: `film_sweep_status()` (service role) gives each runner's last sweep (null: never), and `overdue` is
-  true when a segment is open and no runner completed a sweep in 20 minutes, null when no sweep was ever recorded;
+  "It ran" is a measurement: `film_sweep_status()` (service role, counts only) gives each runner's last completed sweep (null:
+  never), `stuck_segments` / `oldest_stuck_minutes` (open segments already past 0171's settle point), and `overdue`: true when a
+  segment has been stuck longer than `overdue_after_minutes` (30) or a segment is open and no runner completed a sweep within it,
+  null when no sweep was ever recorded and nothing is stuck. A sweep cancelled by a statement timeout (57014) raises and records
+  nothing; `overdue` then trips once the last completed sweep is older than the line. A per-pass bound is G2b
+  (docs/studio/S2_GAPS.md), open;
 - P3 alerts on every `segment_settled` event with `not_captured` (charges a hold could no longer pay), and on every
   `segment_skipped` event (a segment the claim or the sweep could not touch).
 

@@ -6,11 +6,12 @@ name: Film Sweep
 #
 # It spends nothing. The sweep only settles segments already paid for by an open hold, by 0171's rules (capture what was made,
 # release the rest). It calls no provider, claims no segment, starts no take and publishes nothing.
-# Harmless until the secrets are set: without SUPABASE_URL + SUPABASE_SERVICE_KEY it logs that it is off and exits 0.
+# Harmless until the secrets are set: without SUPABASE_URL + SUPABASE_SERVICE_KEY it exits 0 with a ::warning:: annotation, so the
+# run's page says it is not sweeping. Minute 3, 13, 23 ...: off the top of the hour, when GitHub's scheduler starts runs latest.
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "3-59/10 * * * *"
   workflow_dispatch:
 
 # One pass at a time; a late pass waits for the running one. Two at once would be safe too (the sweep skips locked rows), but

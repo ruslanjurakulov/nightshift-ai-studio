@@ -21,27 +21,46 @@
 --                             skips a bad segment in its own subtransaction and records film.segment_skipped), its work is rolled
 --                             back, the SQLSTATE is recorded and it answers {"ok": false, "runner", "error": <SQLSTATE>, "at"}.
 --                             It answers rather than raising on purpose: a raise would roll the record of the failure back with
---                             it (PostgreSQL has no autonomous transaction), and an unrecorded failure is exactly the blind spot
---                             this file closes. Every caller treats ok:false as a failure (the workflow run fails, the worker
---                             logs a warning).
---   film_sweep_status()       service_role only (the operator alerts, G4, read it). Per runner its row or null (never ran), the
---                             newest completed sweep, how many segments are open (queued / running / draining, 0171's open
---                             statuses), and "overdue": true when a segment is open and no runner completed a sweep in the last
---                             20 minutes, false when none is open or one did, and NULL when no runner has ever recorded anything:
---                             unknown is not "fine" (rule 5).
+--                             it (PostgreSQL has no autonomous transaction). Every caller treats ok:false as a failure (the
+--                             workflow run fails, the worker logs a warning, the pg_cron command raises: see THE SCHEDULES).
+--                             NOT EVERY FAILURE IS RECORDED. PL/pgSQL's "when others" does not catch query_canceled (57014: a
+--                             statement_timeout, PostgREST's included, or a cancel) or assert_failure. Such a call raises out of
+--                             film_sweep and records nothing: the Actions run goes red (HTTP 5xx), pg_cron marks the run failed,
+--                             and "overdue" below trips once last_at is older than the overdue line. So the record is "the last
+--                             sweep that completed", never "every attempt". A per-pass bound on film_expire_segments, so a pass
+--                             finishes inside the timeout, is a follow-up (docs/studio/S2_GAPS.md, G2b).
+--   film_sweep_status()       service_role only (the operator alerts, G4, read it). Counts and times only, never an id. Per runner
+--                             its row or null (never ran); the newest completed sweep; open_segments (queued / running / draining,
+--                             0171's open statuses); stuck_segments: open segments already past their settle point by 0171's own
+--                             rules and constants (film_money_limits: a hold that is no longer open, queued past unclaimed_hours,
+--                             or past deadline + grace_hours), with oldest_stuck_minutes (null when none); overdue_after_minutes
+--                             (30, the one overdue line, declared once in the function and returned with the answer); and
+--                             "overdue":
+--                               true  when a segment has been stuck longer than the line (sweeps "complete" while 0171 skips a
+--                                     segment it cannot settle: a completed call is not a settled segment), or when a segment is
+--                                     open and no runner completed a sweep within the line;
+--                               null  otherwise, when no runner has ever recorded anything: unknown is not "fine" (rule 5);
+--                               false otherwise.
 --
 -- THE SCHEDULES (any one is enough; all three may run at once: film_expire_segments takes every row it touches with
 -- "for update skip locked", so two sweeps never settle the same segment twice)
---   pg_cron   'nightshift-film-sweep' '*/5 * * * *' select public.film_sweep('pg_cron'), only where pg_cron is installed (it is
---             not, today, on the live project: this file then prints a NOTICE and creates nothing, exactly as 0111 and 0164 do).
---   Actions   .github/workflows/film_sweep.yml, '*/10 * * * *': the guaranteed one, independent of the server and the worker.
---             GitHub may run a scheduled workflow late under load; 20 minutes is the overdue line for that reason.
+--   pg_cron   'nightshift-film-sweep' '*/5 * * * *', only where pg_cron is installed (it is not, today, on the live project: this
+--             file then prints a NOTICE and creates nothing, exactly as 0111 and 0164 do). Where pg_cron IS installed, the job must
+--             exist when the file ends (the end-state block asserts it; a failed schedule fails the file, it is not a notice).
+--             pg_cron marks a run "succeeded" whenever the command returns, and film_sweep returns {ok:false} on a failed sweep,
+--             so the command raises on ok:false (a cast of "film_sweep failed with SQLSTATE <code>" to integer: the run is
+--             marked failed in cron.job_run_details and the SQLSTATE is in its message). The raise rolls back film_sweep's own
+--             record of that failure, so on pg_cron a failed sweep is found in cron.job_run_details, not in last_error.
+--   Actions   .github/workflows/film_sweep.yml, '3-59/10 * * * *' (off the top of the hour, when GitHub's scheduler is busiest):
+--             the guaranteed one, independent of the server and the worker. GitHub may start a scheduled run late; the overdue
+--             line is 30 minutes (three missed Actions passes) for that reason.
 --   worker    tools/film_worker.py, every FILM_EXPIRE_EVERY_SECONDS (300 by default, never more than 900), while it runs.
 --
 -- WHAT IT DOES NOT CHANGE. No credit, film, take, segment or job function; no grant of any existing object. It spends nothing:
 --   film_expire_segments only settles segments by 0171's rules (capture what was made, release the rest).
 --
--- REQUIRES 0171 (film_segments, film_expire_segments). Additive and idempotent: create table if not exists, create-or-replace of
+-- REQUIRES 0171 (film_segments, film_expire_segments, film_money_limits). Additive and idempotent: create table if not exists (a
+-- film_sweep_runs of another shape is refused, not reused), create-or-replace of
 -- two functions that did not exist (under an md5 drift guard), revoke then grant, unschedule-then-schedule of this file's cron job.
 -- A replay changes nothing (the recorded runs are kept). Undo: docs/sql/rollback_0212_film_sweep.sql (owner-applied).
 --
@@ -61,13 +80,29 @@ declare
   r record;
   h text;
 begin
-  if to_regclass('public.film_segments') is null or to_regprocedure('public.film_expire_segments()') is null then
-    raise exception '0212 needs 0171_films_money.sql (film_segments, film_expire_segments): apply it first';
+  if to_regclass('public.film_segments') is null or to_regprocedure('public.film_expire_segments()') is null
+     or to_regprocedure('public.film_money_limits()') is null then
+    raise exception '0212 needs 0171_films_money.sql (film_segments, film_expire_segments, film_money_limits): apply it first';
+  end if;
+  -- A film_sweep_runs that is already there is this file's (a replay), or "create table if not exists" would quietly keep a
+  -- table whose rows the status then misreads.
+  if to_regclass('public.film_sweep_runs') is not null then
+    if (select string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod), ', ' order by a.attnum)
+          from pg_attribute a where a.attrelid = 'public.film_sweep_runs'::regclass and a.attnum > 0 and not a.attisdropped)
+       is distinct from 'runner text, last_at timestamp with time zone, last_settled integer, last_error text, '
+                        'last_error_at timestamp with time zone'
+       or not exists (select 1 from pg_constraint c where c.conrelid = 'public.film_sweep_runs'::regclass and c.contype = 'c'
+                        and pg_get_constraintdef(c.oid) like '%last_error ~ ''^[0-9A-Z]{5}$''::text%')
+       or not exists (select 1 from pg_constraint c where c.conrelid = 'public.film_sweep_runs'::regclass and c.contype = 'c'
+                        and pg_get_constraintdef(c.oid) like '%runner%''worker''%''actions''%''pg_cron''%')
+       or not exists (select 1 from pg_constraint c where c.conrelid = 'public.film_sweep_runs'::regclass and c.contype = 'p') then
+      raise exception '0212 found public.film_sweep_runs that is not this file''s (its columns or checks differ): read it first';
+    end if;
   end if;
   -- The functions this file creates: absent, or this file's own bodies (a replay).
   for r in select * from (values
       ('public.film_sweep(text)', '10dcda57c382fd7f3f2ed4a32fb62e44'),
-      ('public.film_sweep_status()', 'ac6b8f6a210ebb7ad092e1f23b78438c')) v(sig, want) loop
+      ('public.film_sweep_status()', 'accdeeb112a6eb7b86271f66b12c1b25')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
       raise exception '0212 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
@@ -141,13 +176,36 @@ comment on function public.film_sweep(text) is
 create or replace function public.film_sweep_status() returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
-  ever   boolean := exists (select 1 from public.film_sweep_runs);
-  newest timestamptz := (select max(last_at) from public.film_sweep_runs);
-  open_n integer := (select count(*) from public.film_segments where status in ('queued', 'running', 'draining'));
-  runs   jsonb := '{}'::jsonb;
-  w      text;
-  f      public.film_sweep_runs;
+  -- The one overdue line: used below and returned as overdue_after_minutes, so a reader never carries a second copy.
+  line      constant integer := 30;
+  lim       jsonb := public.film_money_limits();
+  grace     interval := make_interval(hours => (lim ->> 'grace_hours')::integer);
+  unclaimed interval := make_interval(hours => (lim ->> 'unclaimed_hours')::integer);
+  ever      boolean := exists (select 1 from public.film_sweep_runs);
+  newest    timestamptz := (select max(last_at) from public.film_sweep_runs);
+  open_n    integer;
+  stuck_n   integer;
+  oldest    timestamptz;
+  stuck_min integer;
+  runs      jsonb := '{}'::jsonb;
+  w         text;
+  f         public.film_sweep_runs;
 begin
+  -- Since when each open segment could have been settled by 0171's sweep rules (null: not yet). A hold that is gone counts from
+  -- when 0020 settled it, or from the segment's start when its row is missing.
+  select count(*), count(*) filter (where x.since <= now()), min(x.since) filter (where x.since <= now())
+    into open_n, stuck_n, oldest
+    from (select least(
+                   case when s.credit_ref is not null
+                             and not exists (select 1 from public.credit_reservations r
+                                              where r.job_id = s.credit_ref and r.status = 'open')
+                        then coalesce((select r.settled_at from public.credit_reservations r where r.job_id = s.credit_ref),
+                                      s.created_at) end,
+                   case when s.status = 'queued' then s.created_at + unclaimed end,
+                   case when s.deadline_at is not null then s.deadline_at + grace end) as since
+            from public.film_segments s
+           where s.status in ('queued', 'running', 'draining')) x;
+  stuck_min := case when oldest is null then null else floor(extract(epoch from now() - oldest) / 60)::integer end;
   foreach w in array array['worker', 'actions', 'pg_cron'] loop
     select * into f from public.film_sweep_runs where runner = w;
     runs := runs || jsonb_build_object(w, case when not found then null else jsonb_build_object(
@@ -157,17 +215,22 @@ begin
     'runners', runs,
     'last_at', newest,
     'open_segments', open_n,
-    'overdue_after_minutes', 20,
-    -- Never recorded: unknown, not "fine". Recorded but never completed counts as overdue while a segment is open.
-    'overdue', case when not ever then null
-                    else open_n > 0 and (newest is null or newest < now() - interval '20 minutes') end,
+    'stuck_segments', stuck_n,
+    'oldest_stuck_minutes', stuck_min,
+    'overdue_after_minutes', line,
+    -- A segment stuck past the line is measured whether or not a sweep was ever recorded. Otherwise: never recorded is unknown,
+    -- not "fine"; recorded but never completed counts as overdue while a segment is open.
+    'overdue', case when stuck_min > line then true
+                    when not ever then null
+                    else open_n > 0 and (newest is null or newest < now() - make_interval(mins => line)) end,
     'at', now());
 end
 $$;
 
 comment on function public.film_sweep_status() is
   'Film sweep status (0212): per runner its last run (null: never), the newest completed sweep, open segments, and overdue '
-  '(a segment open and no completed sweep in 20 minutes; null when no sweep was ever recorded). Service role only.';
+  '(a segment stuck past its settle point longer than overdue_after_minutes, or one open and no completed sweep within it; '
+  'null when no sweep was ever recorded and none is stuck). Counts only. Service role only.';
 
 revoke all on function public.film_sweep(text) from public, anon, authenticated, service_role;
 revoke all on function public.film_sweep_status() from public, anon, authenticated, service_role;
@@ -178,6 +241,8 @@ grant execute on function public.film_sweep_status() to service_role;
 -- 4. Every 5 minutes, when pg_cron is enabled (as 0111 and 0164 schedule theirs)
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- Unlike 0164, a failed schedule where pg_cron exists is not a notice: the end state below would refuse it, so it fails here, with
+-- pg_cron's own error. The command raises on {ok:false} (see THE SCHEDULES), so pg_cron never reports a failed sweep as succeeded.
 do $$
 begin
   if to_regprocedure('cron.schedule(text, text, text)') is not null
@@ -186,13 +251,13 @@ begin
     if exists (select 1 from cron.job where jobname = 'nightshift-film-sweep') then
       perform cron.unschedule('nightshift-film-sweep');
     end if;
-    perform cron.schedule('nightshift-film-sweep', '*/5 * * * *', 'select public.film_sweep(''pg_cron'')');
+    perform cron.schedule('nightshift-film-sweep', '*/5 * * * *',
+      'select case when (r ->> ''ok'')::boolean then 1 '
+      || 'else (''film_sweep failed with SQLSTATE '' || coalesce(r ->> ''error'', ''none''))::integer end '
+      || 'from (select public.film_sweep(''pg_cron'') as r) s');
   else
     raise notice '0212: pg_cron is not enabled, so no schedule was created; .github/workflows/film_sweep.yml sweeps every 10 minutes';
   end if;
-exception when others then
-  -- All or nothing: a failed schedule undoes the unschedule above (this block is one subtransaction).
-  raise notice '0212: pg_cron schedule not created (%); .github/workflows/film_sweep.yml sweeps every 10 minutes', sqlerrm;
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -204,11 +269,12 @@ declare
   r record;
   h text;
   role_ text;
+  jobs bigint;
   p text;
 begin
   for r in select * from (values
       ('public.film_sweep(text)', '10dcda57c382fd7f3f2ed4a32fb62e44'),
-      ('public.film_sweep_status()', 'ac6b8f6a210ebb7ad092e1f23b78438c')) v(sig, want) loop
+      ('public.film_sweep_status()', 'accdeeb112a6eb7b86271f66b12c1b25')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception '0212 end state: % does not hold this file''s body (md5 %)', r.sig, h;
@@ -236,6 +302,15 @@ begin
       end if;
     end loop;
   end loop;
+  -- Dynamic, because cron.job is not there to be planned against where pg_cron is not installed.
+  if to_regprocedure('cron.schedule(text, text, text)') is not null and to_regprocedure('cron.unschedule(text)') is not null
+     and to_regclass('cron.job') is not null then
+    execute 'select count(*) from cron.job where jobname = ''nightshift-film-sweep'' and schedule = ''*/5 * * * *'' '
+            'and command like ''%public.film_sweep(''''pg_cron'''')%'' and command like ''%::integer%''' into jobs;
+    if jobs <> 1 then
+      raise exception '0212 end state: pg_cron is installed but the job nightshift-film-sweep is not this file''s, once';
+    end if;
+  end if;
   if has_table_privilege('anon', 'public.film_sweep_runs', 'select')
      or has_table_privilege('authenticated', 'public.film_sweep_runs', 'select')
      or not has_table_privilege('service_role', 'public.film_sweep_runs', 'select') then
@@ -262,5 +337,7 @@ end $$;
 --   select public.film_sweep_status();
 --   select runner, last_at, last_settled, last_error, last_error_at from public.film_sweep_runs order by runner;
 --
--- And, only if pg_cron is on:
+-- And, only if pg_cron is on (a failed sweep shows here as a failed run whose message names its SQLSTATE):
 --   select jobname, schedule, command from cron.job where jobname = 'nightshift-film-sweep';
+--   select status, return_message, start_time from cron.job_run_details d join cron.job j using (jobid)
+--    where j.jobname = 'nightshift-film-sweep' order by start_time desc limit 5;

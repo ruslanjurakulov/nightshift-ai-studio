@@ -12,8 +12,8 @@ not installed on the live project, so ``.github/workflows/film_sweep.yml`` runs 
 server. Each run is recorded under the runner ``actions`` in ``film_sweep_runs``; ``film_sweep_status()`` says when any runner last
 swept, and whether that is overdue.
 
-Needs ``SUPABASE_URL`` and ``SUPABASE_SERVICE_KEY`` (Actions secrets). Without them it logs that it is off and exits 0. The key is
-never printed. Exit 1 when the sweep could not run or failed in the database (the run turns red; the database recorded the
+Needs ``SUPABASE_URL`` and ``SUPABASE_SERVICE_KEY`` (Actions secrets). Without them it logs that it is off, prints a ``::warning::``
+annotation for the Actions page, and exits 0. The key is never printed. Exit 1 when the sweep could not run or failed in the database (the run turns red; the database recorded the
 SQLSTATE), so a broken sweep is seen rather than assumed.
 """
 
@@ -41,6 +41,9 @@ def main(env: Optional[Mapping[str, str]] = None, *,
     key = str(env.get("SUPABASE_SERVICE_KEY", "") or "").strip()
     if not url or not key:
         logger.info("SUPABASE_URL and SUPABASE_SERVICE_KEY are not both set: the film sweep is off here; nothing was swept")
+        # Exit 0 (an unset secret is a choice, not a crash) but say so where the Actions page shows it: a green run that swept nothing
+        # must not read as a sweep. The annotation names only the two variable names.
+        print("::warning title=Film sweep is off::SUPABASE_URL and SUPABASE_SERVICE_KEY are not set; no film sweep ran from Actions")
         return 0
     db = make_db(url, key)
     try:

@@ -8,7 +8,8 @@
 --
 -- WHAT IT DOES, in one transaction:
 --   0. REFUSES (changes nothing) if either function is not 0212's body (a later change would be undone).
---   1. Unschedules the pg_cron job, if pg_cron exists and the job does.
+--   1. Unschedules the pg_cron job, if pg_cron exists and the job does. If that unschedule fails, the rollback fails and changes
+--      nothing (it never goes on to drop film_sweep under a job that still calls it).
 --   2. Drops the two functions and the table.
 --   3. Asserts the end state: all three are gone, and film_expire_segments is still there.
 
@@ -22,7 +23,7 @@ declare
 begin
   for r in select * from (values
       ('public.film_sweep(text)', '10dcda57c382fd7f3f2ed4a32fb62e44'),
-      ('public.film_sweep_status()', 'ac6b8f6a210ebb7ad092e1f23b78438c')) v(sig, want) loop
+      ('public.film_sweep_status()', 'accdeeb112a6eb7b86271f66b12c1b25')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
       raise exception 'rollback 0212: % is not 0212''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
@@ -30,6 +31,8 @@ begin
   end loop;
 end $$;
 
+-- No exception handler on purpose: a job left behind would call a dropped film_sweep every 5 minutes and fail forever, so a failed
+-- unschedule fails the whole rollback and changes nothing.
 do $$
 begin
   if to_regprocedure('cron.unschedule(text)') is not null and to_regclass('cron.job') is not null then
@@ -37,8 +40,6 @@ begin
       perform cron.unschedule('nightshift-film-sweep');
     end if;
   end if;
-exception when others then
-  raise notice 'rollback 0212: the pg_cron job was not removed (%); remove it by hand: select cron.unschedule(''nightshift-film-sweep'');', sqlerrm;
 end $$;
 
 drop function if exists public.film_sweep_status();
