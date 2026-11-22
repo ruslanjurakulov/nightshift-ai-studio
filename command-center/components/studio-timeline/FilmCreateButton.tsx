@@ -2,16 +2,30 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { PriceButton } from "@/components/ui/PriceButton";
+import { formatCredits } from "@/lib/credits";
 import { useI18n } from "@/lib/i18n/context";
-import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { useChannelPath } from "@/lib/channels-client";
 import { CONTACT_HREF, LEGAL } from "@/lib/legal";
+import { pluralForm } from "@/lib/plural";
 import type { FilmQuote } from "@/lib/studio/timeline";
-import { PROVIDER_DOWN_WORDS, startReasonText, useFilmStart, type BlockReason, type ReasonDictionaries } from "@/lib/studio/useFilmStart";
+import {
+  ALREADY_STARTED_WORDS,
+  blockRemedy,
+  isProviderDown,
+  startReasonText,
+  useFilmStart,
+  type BlockReason,
+  type BlockRemedy,
+  type ReasonDictionaries,
+  type StartRemedy,
+} from "@/lib/studio/useFilmStart";
 // TODO(S5): replace with `@/components/ds/States` once #899 merges (same names and props: a one-line import change).
 import { InsufficientCredits, ProviderUnavailable, SessionExpired } from "./filmStartStates";
+import { creditsText, keyClass } from "./filmStartStates";
 
 export interface FilmCreateButtonProps {
+  /** The project. Pass `key={filmId}` too, so another project mounts a fresh button (a stale answer is also dropped inside). */
   filmId: string;
   /** The server's quote (coerceQuote of quote_film's answer), or null when there is none. The button never prices. */
   quote: FilmQuote | null;
@@ -19,170 +33,267 @@ export interface FilmCreateButtonProps {
   onStarted: (result: { replayed: boolean }) => void;
   /** A fresh quote; defaults to reading the project's version and POSTing the quote route. */
   requote?: () => Promise<FilmQuote | null>;
+  /** Where a started project's progress is, when onStarted does not navigate there itself: shown as "Open progress". */
+  progressHref?: string;
+  /** A model is down: let the person pick another (it is never swapped automatically). Without it, the way forward is support. */
+  onChooseAnother?: () => void;
   className?: string;
 }
 
+const FOCUS_RING = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
+
 /**
  * "Create" for a project started outside the timeline: the server's quote → the person confirms that number → the start route holds
- * it. It only calls the routes and stops (rule 3), shows no number the server did not answer (rule 5), and every refusal names its
- * remedy (rule 6). The states live in useFilmStart; this file only says them.
+ * it. It only calls the routes and stops (rule 3), shows no number the server did not answer (rule 5), and every refusal and every
+ * blocked reason names one way forward (rule 6). The states live in useFilmStart; this file only says them.
  */
-export function FilmCreateButton({ filmId, quote, onStarted, requote, className }: FilmCreateButtonProps) {
-  const { t, fmt, locale } = useI18n();
+export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHref, onChooseAnother, className }: FilmCreateButtonProps) {
+  const { t, fmt, locale: rawLocale } = useI18n();
+  const locale = rawLocale ?? "en";
   const c = t.studioTimeline;
   const k = c.create;
   const path = useChannelPath();
-  const { state, slow, press, confirm, cancel } = useFilmStart({ filmId, quote, requote, onStarted });
+  const { state, slow, cooling, canResume, press, confirm, cancel, recheck } = useFilmStart({ filmId, quote, requote, onStarted });
   const noteId = useId();
-  const keyRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const dicts: ReasonDictionaries = {
-    create: k,
-    startFailed: c.startFailed,
-    creativeErrors: t.creative.errors,
-    filmErrors: filmStudioStrings(locale ?? "en").errors,
-  };
+  const dicts: ReasonDictionaries = { create: k, startFailed: c.startFailed };
   const reasonText = (word: string | null) => startReasonText(word, dicts);
-
   const billing = path("/billing");
   const supportHref = LEGAL.contactEmail ? `mailto:${LEGAL.contactEmail}` : CONTACT_HREF;
+  const unit = (n: number) => pluralForm(k.unit, n, locale);
 
-  // Short of credits: the price and the balance as context, both the quote's own numbers (total → needed, available → available),
-  // never a live "N credits" on the key.
-  const insufficient = (q: FilmQuote) => <InsufficientCredits needed={q.total} available={q.available} addCreditsHref={billing} compact />;
-  // The model's name is not in the quote the browser keeps, so it is said as unknown rather than guessed.
-  const providerDown = <ProviderUnavailable provider={c.unknown} compact />;
-  const isProviderDown = (w: string | null) => w !== null && (PROVIDER_DOWN_WORDS as readonly string[]).includes(w);
-  const supportLink = (
-    <a href={supportHref} className="underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" data-testid="film-create-support">
+  const supportLink = (variant: "primary" | "secondary" | "quiet") => (
+    <a key="support" href={supportHref} className={keyClass(variant)} data-primary={variant === "primary" || undefined}>
       {k.support}
     </a>
   );
+  const plansLink = (variant: "primary" | "secondary") => (
+    <Link key="plans" href={billing} className={keyClass(variant)} data-primary={variant === "primary" || undefined}>
+      {k.seePlans}
+    </Link>
+  );
+  const smallKey = (key: string, label: string, onClick: () => void, variant: "primary" | "secondary" | "quiet", disabled = false) => (
+    <button key={key} type="button" className={keyClass(variant)} onClick={onClick} disabled={disabled} data-primary={variant === "primary" || undefined}>
+      {label}
+    </button>
+  );
+  const insufficient = (q: FilmQuote | null) => <InsufficientCredits key="credits" needed={q?.total ?? null} available={q?.available ?? null} addCreditsHref={billing} compact />;
+  const providerDown = (secondary: boolean) =>
+    onChooseAnother ? <ProviderUnavailable key="provider" provider="" onChooseAnother={onChooseAnother} compact /> : (
+      <div key="provider" className="flex flex-col gap-2">
+        <ProviderUnavailable provider="" compact />
+        {supportLink(secondary ? "secondary" : "primary")}
+      </div>
+    );
+
+  /** The way forward for a refused start or a refused re-quote. The real remedy is the primary key (Pixel M1). */
+  const remedyActions = (word: string, remedy: StartRemedy, q: FilmQuote | null): { key: { label: string; enabled?: boolean } | null; actions: ReactNode[] } => {
+    if ((ALREADY_STARTED_WORDS as readonly string[]).includes(word)) {
+      return { key: null, actions: progressHref ? [<Link key="progress" href={progressHref} className={keyClass("primary")} data-primary>{k.openProgress}</Link>] : [] };
+    }
+    if (isProviderDown(word)) return { key: { label: k.tryAgain }, actions: [providerDown(true)] };
+    switch (remedy) {
+      case "add_credits":
+        return { key: null, actions: [insufficient(q), smallKey("again", k.getNewPrice, recheck, "quiet", cooling)] };
+      case "plans":
+        return { key: null, actions: [plansLink("primary"), smallKey("again", k.getNewPrice, recheck, "quiet", cooling)] };
+      case "support":
+        return { key: null, actions: [supportLink("primary"), smallKey("again", k.getNewPrice, recheck, "quiet", cooling)] };
+      case "wait":
+        return { key: { label: k.tryAgain }, actions: [] };
+      case "requote":
+      case "fix_and_requote":
+        return { key: { label: k.getNewPrice }, actions: [] };
+      default:
+        // Nothing on this screen helps (not_found, forbidden…): the key stays, disabled, beside the reason (Lens M3).
+        return { key: { label: k.create, enabled: false }, actions: [] };
+    }
+  };
+
+  const blockAction = (r: BlockRemedy, q: FilmQuote | null): ReactNode => {
+    switch (r) {
+      case "add_credits":
+        return insufficient(q);
+      case "plans":
+        return plansLink("secondary");
+      case "recheck":
+        return smallKey("recheck", k.checkAgain, recheck, "secondary");
+      case "support":
+        return supportLink("secondary");
+      case "choose_another":
+        return providerDown(true);
+      default:
+        return null;
+    }
+  };
 
   const blockLine = (r: BlockReason): ReactNode => {
     if (r.kind === "no_quote") return k.noQuote;
     if (r.kind === "not_admin") return c.notAdmin;
+    // A model that is down is said by ProviderUnavailable, beside the list.
     if (r.kind === "unpriced") return isProviderDown(r.word) ? null : (reasonText(r.word) ?? k.unpriced.other);
     return c.blocked[r.block];
   };
 
-  const busy = state.at === "starting" || state.at === "requoting";
-  const actionable =
-    state.at === "idle" ||
-    state.at === "network_error" ||
-    state.at === "requote_failed" ||
-    state.at === "session_expired" ||
-    (state.at === "refused" && state.remedy !== "none" && state.remedy !== "sign_in");
-
-  let label: string = k.create;
-  if (state.at === "idle") label = state.quote.exempt || state.quote.total === null ? k.create : fmt(k.createFor, { n: state.quote.total });
-  else if (state.at === "starting") label = c.starting;
-  else if (state.at === "requoting") label = k.requoting;
-  else if (state.at === "started") label = k.startedKey;
-  else if (state.at === "network_error" || state.at === "session_expired" || state.at === "requote_failed") label = c.retry;
-  else if (state.at === "refused" && actionable) label = k.getNewPrice;
-
+  // ── what each state shows ──
+  let key: { label: string; credits?: number | null; enabled: boolean; busy?: boolean; tone?: "primary" | "quiet"; onClick: () => void } | null = null;
   let note: ReactNode = null;
-  // The shared states (role="alert") sit beside the note, never inside its live region, so nothing is announced twice.
-  let extra: ReactNode = null;
-  if (state.at === "blocked") {
-    const lines = state.reasons.map((r) => blockLine(r)).filter((l) => l !== null);
-    note = (
-      <>
-        <span className="block">{k.blockedTitle}</span>
-        {lines.length > 0 && (
-          <ul className="list-disc ps-5" data-testid="film-create-reasons">
-            {lines.map((l, i) => (
-              <li key={i}>{l}</li>
-            ))}
-          </ul>
-        )}
-      </>
-    );
-    const q = state.quote;
-    extra = (
-      <>
-        {q && state.reasons.some((r) => r.kind === "block" && r.block === "insufficient_credits") && insufficient(q)}
-        {state.reasons.some((r) => r.kind === "unpriced" && isProviderDown(r.word)) && providerDown}
-      </>
-    );
-  } else if (state.at === "idle" && state.quote.exempt) note = k.exemptNote;
-  else if (busy) note = slow ? k.stillWorking : null;
-  else if (state.at === "started") note = state.replayed ? c.replayed : k.startedNote;
-  else if (state.at === "refused") {
-    const text = reasonText(state.word);
-    if (state.remedy === "add_credits") extra = insufficient(state.quote);
-    else if (isProviderDown(state.word)) extra = providerDown;
-    note = (
-      <>
-        {!isProviderDown(state.word) && <span className="block" data-testid="film-create-refusal">{text ?? c.startFailed.other}</span>}
-        {state.remedy === "plans" && (
-          <Link href={billing} className="underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" data-testid="film-create-plans">
-            {k.seePlans}
-          </Link>
-        )}
-        {/* An unknown word still offers a way out: a new price (the key) and a person to ask. */}
-        {(state.remedy === "support" || text === null) && supportLink}
-      </>
-    );
-  } else if (state.at === "requote_failed") note = k.requoteFailed;
-  // No answer is not a refusal: the start may have gone through, so it never says "nothing was held" (rule 5).
-  else if (state.at === "network_error") note = c.startNoAnswer;
-  // Nothing reached the database: the key resumes the same press after signing in, in a new tab so this screen stays.
-  else if (state.at === "session_expired") extra = <SessionExpired signInHref="/login" draftKept compact />;
+  let actions: ReactNode[] = [];
+
+  switch (state.at) {
+    case "idle": {
+      const q = state.quote;
+      key = { label: k.create, credits: q.exempt ? null : q.total, enabled: true, onClick: press };
+      if (q.exempt) note = k.exemptNote;
+      break;
+    }
+    case "blocked": {
+      const onlyNoQuote = state.reasons.length === 1 && state.reasons[0].kind === "no_quote";
+      key = onlyNoQuote ? { label: k.getPrice, enabled: true, onClick: recheck } : { label: k.create, credits: null, enabled: false, onClick: press };
+      const lines = state.reasons.map(blockLine).filter((l) => l !== null);
+      note = (
+        <>
+          <span className="block">{k.blockedTitle}</span>
+          {lines.length > 0 && (
+            <ul className="list-disc ps-5" data-testid="film-create-reasons">
+              {lines.map((l, i) => (
+                <li key={i}>{l}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      );
+      if (!onlyNoQuote) {
+        const seen = new Set<BlockRemedy>();
+        for (const r of state.reasons) {
+          const rem = blockRemedy(r);
+          if (seen.has(rem)) continue;
+          seen.add(rem);
+          const a = blockAction(rem, state.quote);
+          if (a) actions.push(<span key={rem}>{a}</span>);
+        }
+      }
+      break;
+    }
+    case "confirming":
+      // One primary per view: the confirmation's own key (Pixel M5).
+      break;
+    case "starting":
+      key = { label: c.starting, enabled: false, busy: true, onClick: press };
+      note = slow ? k.stillWorking : null;
+      break;
+    case "requoting":
+      key = { label: k.requoting, enabled: false, busy: true, onClick: press };
+      note = slow ? k.stillWorking : null;
+      break;
+    case "started":
+      note = state.replayed ? c.replayed : k.startedNote;
+      if (progressHref) actions = [<Link key="progress" href={progressHref} className={keyClass("primary")} data-primary>{k.openProgress}</Link>];
+      break;
+    case "refused":
+    case "requote_failed": {
+      const q = state.at === "refused" ? state.quote : state.from;
+      const text = reasonText(state.word);
+      const r = remedyActions(state.word, state.remedy, q);
+      if (r.key) key = { label: r.key.label, enabled: r.key.enabled !== false && !cooling, onClick: press };
+      actions = r.actions;
+      // An unknown word still offers a way out: a new price and a person to ask.
+      if (text === null && state.remedy !== "support") actions = [...actions, supportLink("secondary")];
+      note = (
+        <>
+          {state.at === "requote_failed" && <span className="block">{k.requoteFailed}</span>}
+          {!isProviderDown(state.word) && (
+            <span className="block" data-testid="film-create-refusal">
+              {text ?? c.startFailed.other}
+            </span>
+          )}
+          {state.detail && (
+            <span className="block text-xs opacity-80" data-testid="film-create-detail">
+              {state.detail}
+            </span>
+          )}
+          {cooling && state.retryAfter !== null && <span className="block">{fmt(k.retryIn, { n: Math.max(1, Math.ceil(state.retryAfter / 60)) })}</span>}
+        </>
+      );
+      break;
+    }
+    // No answer is not a refusal: the start may have gone through, so it never says "nothing was held" (rule 5).
+    case "network_error":
+      key = { label: k.tryAgain, enabled: true, onClick: press };
+      note = c.startNoAnswer;
+      break;
+    case "session_expired":
+      // Nothing reached the database. The sign-in is the primary; the retry waits until the person is back (Pixel L4).
+      actions = [<SessionExpired key="session" signInHref="/login" draftKept compact />];
+      key = { label: k.tryAgain, enabled: canResume, tone: "quiet", onClick: press };
+      break;
+  }
 
   // A held key never presses twice: the browser's repeat of Enter or Space on the key is dropped before it becomes a click.
   const noRepeat = (e: ReactKeyboardEvent) => {
     if (e.repeat) e.preventDefault();
   };
 
-  // The key is disabled while confirming or starting, so focus that would drop to the page body comes back to the key (or the
-  // region) once there is something to press.
+  // After an async answer, focus that sat on a key that is gone or disabled (the page body, or this region itself) goes to the way
+  // forward: the primary action, else the first usable key or link, else the region with a visible ring (Pixel H1).
   useEffect(() => {
-    const lost = !document.activeElement || document.activeElement === document.body;
-    if (!lost || state.at === "confirming") return;
-    if (keyRef.current && !keyRef.current.disabled) keyRef.current.focus();
-    else rootRef.current?.focus();
+    const root = rootRef.current;
+    if (!root || state.at === "confirming") return;
+    const a = document.activeElement;
+    const lost = !a || a === document.body || a === root;
+    if (!lost) return;
+    const usable = (el: Element | null): el is HTMLElement => !!el && !(el as HTMLButtonElement).disabled;
+    const primary = [...root.querySelectorAll("[data-primary]")].find(usable);
+    const first = [...root.querySelectorAll("button, a[href]")].find(usable);
+    (primary ?? first ?? root).focus();
   }, [state.at]);
 
+  const change = state.at === "confirming" ? state.change : null;
+  const changeText =
+    change === null
+      ? null
+      : creditsText(change.delta > 0 ? k.changedUp : change.delta < 0 ? k.changedDown : k.changedSame, change.to, locale, {
+          from: formatCredits(change.from, locale),
+          d: formatCredits(Math.abs(change.delta), locale),
+        });
+
   return (
-    <div ref={rootRef} tabIndex={-1} className={["flex min-w-0 max-w-full flex-col gap-2 outline-none", className].filter(Boolean).join(" ")} data-testid="film-create" data-state={state.at}>
-      <button
-        type="button"
-        ref={keyRef}
-        className="btn-primary min-h-11 w-full whitespace-nowrap px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 disabled:grayscale sm:w-auto sm:self-start"
-        onClick={press}
-        onKeyDown={noRepeat}
-        disabled={!actionable}
-        aria-busy={busy}
-        aria-describedby={note ? noteId : undefined}
-        data-testid="film-create-key"
-      >
-        {label}
-      </button>
-      {note && (
-        <div id={noteId} className="min-w-0 break-words text-sm" role="status" aria-live="polite" data-testid="film-create-note">
-          {note}
+    <div ref={rootRef} tabIndex={-1} className={["flex min-w-0 max-w-full flex-col gap-2 rounded-md", FOCUS_RING, className].filter(Boolean).join(" ")} data-testid="film-create" data-state={state.at}>
+      {key && (
+        <PriceButton
+          label={key.label}
+          credits={key.credits ?? null}
+          unit={typeof key.credits === "number" ? unit(key.credits) : undefined}
+          locale={locale}
+          size="md"
+          tone={key.tone}
+          className={`whitespace-nowrap ${FOCUS_RING}`}
+          onClick={key.onClick}
+          onKeyDown={noRepeat}
+          disabled={!key.enabled}
+          aria-busy={key.busy ?? false}
+          aria-describedby={note ? noteId : undefined}
+          data-primary={key.tone !== "quiet" || undefined}
+          data-testid="film-create-key"
+        />
+      )}
+      {/* Always in the page, so the first message is announced too (Pixel M6). */}
+      <div id={noteId} className="min-w-0 break-words text-sm" role="status" aria-live="polite" data-testid="film-create-note">
+        {note}
+      </div>
+      {actions.length > 0 && (
+        <div className="flex min-w-0 flex-col gap-2" data-testid="film-create-actions">
+          {actions}
         </div>
       )}
-      {extra}
       {state.at === "confirming" && (
         <ConfirmPanel
           title={k.confirmTitle}
-          change={
-            state.change === null
-              ? null
-              : state.change.delta > 0
-                ? fmt(k.changedUp, { from: state.change.from, to: state.change.to, d: state.change.delta })
-                : state.change.delta < 0
-                  ? fmt(k.changedDown, { from: state.change.from, to: state.change.to, d: -state.change.delta })
-                  : fmt(k.changedSame, { to: state.change.to })
-          }
-          // The one sentence that explains the hold (Pixel: three sentences said it three ways).
-          body={state.quote.exempt || state.quote.total === null ? k.exemptNote : fmt(c.confirmBody, { n: state.quote.total })}
+          change={changeText}
+          body={state.quote.exempt ? k.exemptNote : state.quote.total === null ? k.priceUnknown : creditsText(c.confirmBody, state.quote.total, locale)}
           cancel={c.cancel}
-          confirm={state.quote.exempt || state.quote.total === null ? k.confirmExempt : fmt(c.confirm, { n: state.quote.total })}
+          confirm={state.quote.exempt || state.quote.total === null ? k.confirmExempt : creditsText(c.confirm, state.quote.total, locale)}
           onCancel={cancel}
           onConfirm={confirm}
         />
@@ -228,7 +339,7 @@ function ConfirmPanel({
     }
   };
   return (
-    <div role="group" aria-labelledby={titleId} className="flex min-w-0 flex-col gap-2 rounded-md border border-[var(--color-line,currentColor)] p-3 text-sm" onKeyDown={onKey} data-testid="film-create-confirm">
+    <div role="group" aria-labelledby={titleId} className="flex min-w-0 flex-col gap-2 rounded-md border border-[var(--color-border)] p-3 text-sm" onKeyDown={onKey} data-testid="film-create-confirm">
       <h3 id={titleId} className="font-semibold">
         {title}
       </h3>
@@ -239,15 +350,10 @@ function ConfirmPanel({
       )}
       <p className="break-words">{body}</p>
       <div className="flex flex-wrap gap-2">
-        <button type="button" ref={first} className="btn-quiet min-h-11 px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" onClick={onCancel} data-testid="film-create-cancel">
+        <button type="button" ref={first} className={keyClass("quiet")} onClick={onCancel} data-testid="film-create-cancel">
           {cancel}
         </button>
-        <button
-          type="button"
-          className="btn-primary min-h-11 max-w-full px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-          onClick={onConfirm}
-          data-testid="film-create-confirm-key"
-        >
+        <button type="button" className={`${keyClass("primary")} max-w-full`} onClick={onConfirm} data-testid="film-create-confirm-key">
           {confirm}
         </button>
       </div>

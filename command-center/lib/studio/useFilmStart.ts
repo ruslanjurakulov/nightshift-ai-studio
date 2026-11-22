@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { filmErrorFromResponse, filmsApi, newIdempotencyKey, type FilmError } from "@/lib/films";
+import { FILM_ERRORS, filmErrorFromResponse, filmsApi, newIdempotencyKey, type FilmError } from "@/lib/films";
 import { coerceQuote, startOnce, type FilmQuote, type QuoteBlock } from "@/lib/studio/timeline";
 
 /**
@@ -20,6 +20,13 @@ export type BlockReason =
 
 export type PriceChange = { from: number; to: number; delta: number };
 
+/** What came with a refused answer: the database's own sentence for an NS400 refusal, and how long a rate limit asks to wait. */
+export interface RefusalExtra {
+  detail: string | null;
+  /** Seconds, from the answer's Retry-After. */
+  retryAfter: number | null;
+}
+
 export type FilmStartState =
   | { at: "idle"; quote: FilmQuote }
   | { at: "blocked"; quote: FilmQuote | null; reasons: BlockReason[] }
@@ -27,13 +34,14 @@ export type FilmStartState =
   | { at: "starting"; quote: FilmQuote }
   | { at: "started"; replayed: boolean }
   /** A refusal that counted (start_film's `ok: false`) or a route's refused answer. The quote it refused is spent. */
-  | { at: "refused"; word: string; remedy: StartRemedy; quote: FilmQuote }
-  | { at: "requoting"; from: FilmQuote }
-  | { at: "requote_failed"; from: FilmQuote }
+  | ({ at: "refused"; word: string; remedy: StartRemedy; quote: FilmQuote } & RefusalExtra)
+  | { at: "requoting"; from: FilmQuote | null }
+  /** The re-quote was refused or not read: its own word and remedy (a 404 is not a 429; Lens M3). */
+  | ({ at: "requote_failed"; from: FilmQuote | null; word: string; remedy: StartRemedy } & RefusalExtra)
   /** No answer: the start may have gone through, so the key is kept and a retry replays the same start. */
   | { at: "network_error"; quote: FilmQuote }
-  /** A 401. After signing in (in another tab), the key resumes what was interrupted: the same start, or the re-quote. */
-  | { at: "session_expired"; resume: { kind: "start"; quote: FilmQuote } | { kind: "requote"; from: FilmQuote } };
+  /** A 401. Once the person is back from signing in, the key resumes what was interrupted: the same start, or the re-quote. */
+  | { at: "session_expired"; resume: { kind: "start"; quote: FilmQuote } | { kind: "requote"; from: FilmQuote | null } };
 
 /**
  * What the person can do about a refusal. `requote`: ask for a new price (the old quote is spent). `fix_and_requote`: change the
@@ -49,6 +57,8 @@ export type StartRemedy = "add_credits" | "plans" | "requote" | "fix_and_requote
 export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   insufficient_credits: "add_credits",
   entitlement_required: "plans",
+  cap_exceeded: "plans",
+  run_slots_full: "plans",
   price_changed: "requote",
   quote_expired: "requote",
   film_changed: "requote",
@@ -59,7 +69,6 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   asset_not_usable: "fix_and_requote",
   acknowledgement_required: "fix_and_requote",
   adult_attestation_required: "fix_and_requote",
-  cap_exceeded: "fix_and_requote",
   invalid_params: "fix_and_requote",
   model_not_set: "fix_and_requote",
   prompt_missing: "fix_and_requote",
@@ -72,16 +81,15 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   style_unavailable: "fix_and_requote",
   capability_not_supported: "fix_and_requote",
   unpriced: "fix_and_requote",
-  run_slots_full: "wait",
   limit_reached: "wait",
   rate_limited: "wait",
   rate_limit_unavailable: "wait",
-  film_studio_disabled: "wait",
   model_not_available: "wait",
   model_not_offered: "wait",
   model_temporarily_off: "wait",
   model_not_sellable: "wait",
   network: "wait",
+  film_studio_disabled: "support",
   hold_refused: "support",
   failed: "support",
   registry_missing: "support",
@@ -105,22 +113,50 @@ export function startRemedy(word: string): StartRemedy {
 
 /** The model is down or off sale: said as such, because the run will not substitute another one (rule 4). */
 export const PROVIDER_DOWN_WORDS = ["model_not_available", "model_not_offered", "model_temporarily_off", "model_not_sellable"] as const;
+export const isProviderDown = (w: string | null) => w !== null && (PROVIDER_DOWN_WORDS as readonly string[]).includes(w);
+
+/** Words that mean this project already started: there is nothing to press, only somewhere to go. */
+export const ALREADY_STARTED_WORDS = ["film_not_startable", "film_not_editable"] as const;
+
+/**
+ * One way forward for a reason the key is blocked by (S5 SYSTEM.md §6). `recheck`: ask for the price again (after a wait, or a fix
+ * in the project); `choose_another`: a model is down, and only the person may pick another (rule 4).
+ */
+export type BlockRemedy = "add_credits" | "plans" | "recheck" | "get_price" | "support" | "choose_another" | "none";
+
+export function blockRemedy(r: BlockReason): BlockRemedy {
+  if (r.kind === "no_quote") return "get_price";
+  if (r.kind === "not_admin") return "none";
+  if (r.kind === "unpriced") {
+    if (isProviderDown(r.word)) return "choose_another";
+    return r.word !== null && own(START_REMEDIES, r.word) ? "recheck" : "support";
+  }
+  switch (r.block) {
+    case "insufficient_credits":
+      return "add_credits";
+    case "cap_exceeded":
+    case "run_slots_full":
+      return "plans";
+    case "limit_reached":
+      return "recheck";
+    default:
+      return "support";
+  }
+}
 
 type Words = Record<string, string>;
-/** The dictionaries a reason is looked up in, most specific first. */
+/** The dictionaries a reason is looked up in: the start's own words only, never another surface's (Pixel M3). */
 export interface ReasonDictionaries {
   create: { errors: Words; unpriced: Words; providerDown: string };
   startFailed: Words;
-  creativeErrors: Words;
-  filmErrors: Words;
 }
 
-/** The sentence for a word, or null when no dictionary has one (the caller then says the generic refusal and offers support). */
+/** The sentence for a word, or null when none is written (the caller then says the generic refusal and offers support). */
 export function startReasonText(word: string | null, d: ReasonDictionaries): string | null {
-  if (!word) return null;
-  if ((PROVIDER_DOWN_WORDS as readonly string[]).includes(word)) return d.create.providerDown;
-  for (const dict of [d.create.errors, d.startFailed, d.create.unpriced, d.creativeErrors, d.filmErrors]) {
-    if (word !== "other" && own(dict, word)) return dict[word];
+  if (!word || word === "other") return null;
+  if (isProviderDown(word)) return d.create.providerDown;
+  for (const dict of [d.create.errors, d.startFailed, d.create.unpriced]) {
+    if (own(dict, word)) return dict[word];
   }
   return null;
 }
@@ -143,9 +179,40 @@ function quoteKey(q: FilmQuote | null) {
   return q ? [q.quoteId, q.total, q.priced, q.startable, q.mayStart, q.blockedBy.join(","), q.refusal, q.available, q.exempt].join("|") : "none";
 }
 
-type Sent = { kind: "outcome"; ok: true; replayed: boolean } | { kind: "outcome"; ok: false; word: string } | { kind: "http"; error: FilmError } | { kind: "network" };
+type Sent =
+  | { kind: "outcome"; ok: true; replayed: boolean }
+  | { kind: "outcome"; ok: false; word: string }
+  | ({ kind: "http"; error: FilmError } & RefusalExtra)
+  | { kind: "network" };
 
-/** One POST to the start route. Never throws: no answer is `network`, which is the one case the key must survive. */
+/** A JSON object body, or null for anything else (HTML from a proxy, an empty body, a body cut off mid-way). */
+async function jsonObject(res: Response): Promise<Record<string, unknown> | null> {
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    return null;
+  }
+  try {
+    const j: unknown = JSON.parse(text);
+    return j && typeof j === "object" && !Array.isArray(j) ? (j as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function extraOf(res: Response, body: Record<string, unknown> | null): RefusalExtra {
+  const after = Number.parseInt(res.headers.get("retry-after") ?? "", 10);
+  // Only an NS400 refusal (400) carries a sentence about the project worth showing; others carry the route's own words.
+  const detail = res.status === 400 && typeof body?.detail === "string" && body.detail.trim() ? body.detail.slice(0, 300) : null;
+  return { detail, retryAfter: Number.isFinite(after) && after > 0 ? after : null };
+}
+
+/**
+ * One POST to the start route. Never throws. Only an answer our route wrote counts as an answer: a `start` object, or an `error`
+ * word it knows. Anything else (a gateway's HTML 502, a 200 cut off mid-body) is `network`: the start may have committed behind it,
+ * so the key is kept and the screen never says "nothing was held" (rule 5; Lens H1).
+ */
 async function postStart(filmId: string, quoteId: string, idem: string): Promise<Sent> {
   let res: Response;
   try {
@@ -159,19 +226,32 @@ async function postStart(filmId: string, quoteId: string, idem: string): Promise
   } catch {
     return { kind: "network" };
   }
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) return { kind: "http", error: filmErrorFromResponse(res.status, json).error };
-  const s = (json as { start?: unknown } | null)?.start;
-  const r = s && typeof s === "object" ? (s as Record<string, unknown>) : null;
-  if (!r) return { kind: "http", error: "failed" };
+  const body = await jsonObject(res);
+  if (!res.ok) {
+    // The session gate answers before the database is asked, so a 401 is never a start that went through.
+    if (res.status === 401) return { kind: "http", error: "session_expired", ...extraOf(res, body) };
+    const word = body?.error;
+    if (typeof word === "string" && (FILM_ERRORS as readonly string[]).includes(word)) return { kind: "http", error: word as FilmError, ...extraOf(res, body) };
+    return { kind: "network" };
+  }
+  const s = body?.start;
+  const r = s && typeof s === "object" && !Array.isArray(s) ? (s as Record<string, unknown>) : null;
+  if (!r) return { kind: "network" };
   if (r.ok === true) return { kind: "outcome", ok: true, replayed: r.replayed === true };
   // The raw word, not coerceStart's narrowed one: start_film also answers a line's own unpriced word (film_price's refusal), and
   // narrowing it to "other" is the "will not start right now" with no remedy that Pixel found.
   return { kind: "outcome", ok: false, word: typeof r.reason === "string" && WORD_RE.test(r.reason) ? r.reason : "unknown" };
 }
 
-/** A thrown requote whose message is a FilmError word, so a 401 can be told from a failed read. */
-class RequoteError extends Error {}
+/** A failed re-quote: its FilmError word (so a 401 is told from a 404 or a 429), and what came with it. */
+export class RequoteError extends Error {
+  constructor(
+    word: string,
+    readonly extra: RefusalExtra = { detail: null, retryAfter: null },
+  ) {
+    super(word);
+  }
+}
 
 /**
  * The default re-quote: the project's current version (an edit after the quote is also answered `price_changed`, so the version in
@@ -192,19 +272,25 @@ export async function requoteFilm(filmId: string): Promise<FilmQuote | null> {
   } catch {
     throw new RequoteError("network");
   }
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) throw new RequoteError(filmErrorFromResponse(res.status, json).error);
-  return coerceQuote((json as { quote?: unknown } | null)?.quote);
+  const body = await jsonObject(res);
+  if (!res.ok) throw new RequoteError(filmErrorFromResponse(res.status, body).error, extraOf(res, body));
+  return coerceQuote(body?.quote);
 }
 
 export interface UseFilmStart {
   state: FilmStartState;
   /** True once a start or a re-quote has waited 10 s: the screen says "Still working…" instead of looking frozen. */
   slow: boolean;
+  /** A rate limit's Retry-After has not passed yet: the key waits with it rather than spend another try. */
+  cooling: boolean;
+  /** After a 401: false until the person is back on this page (focus or visibility), so the key cannot be pressed signed out. */
+  canResume: boolean;
   /** The main key: opens the confirmation, asks for a new price after a refusal, or retries a start that got no answer. */
   press: () => void;
   confirm: () => void;
   cancel: () => void;
+  /** Ask for the price again: "Get a price" with no quote, "Check again" for a blocked one. Spends nothing. */
+  recheck: () => void;
 }
 
 export const SLOW_MS = 10_000;
@@ -215,7 +301,11 @@ export const SLOW_MS = 10_000;
  *
  * The idempotency key is minted once per confirmed press and forgotten only after a terminal answer (started, or a refusal): a retry
  * after no answer sends the same key, so it replays the first start instead of holding twice. A second press while one is in flight
- * sends nothing.
+ * sends nothing. A new `filmId` is a new press: the state goes back to what its quote allows, and an answer that arrives for the old
+ * project is dropped (each send and re-quote carries a generation; Lens M2). Callers should still pass `key={filmId}`.
+ *
+ * Known limit (Lens L4): unmounting mid-start forgets that the start may have gone through. Nothing double-charges for it: a new
+ * press mints a new key, and start_film refuses a second start of a project that already started (film_not_startable).
  */
 export function useFilmStart({
   filmId,
@@ -235,6 +325,8 @@ export function useFilmStart({
     setStateRaw(s);
   }, []);
   const [slow, setSlow] = useState(false);
+  const [cooling, setCooling] = useState(false);
+  const [canResume, setCanResume] = useState(false);
 
   // The quote a start is sent for. Read inside the starter, so a retry sends the quote of the press it repeats.
   const sending = useRef<FilmQuote | null>(null);
@@ -242,7 +334,7 @@ export function useFilmStart({
     () =>
       startOnce((idem: string) => {
         const q = sending.current;
-        if (!q?.quoteId) return Promise.resolve<Sent>({ kind: "http", error: "bad_request" });
+        if (!q?.quoteId) return Promise.resolve<Sent>({ kind: "http", error: "bad_request", detail: null, retryAfter: null });
         return postStart(filmId, q.quoteId, idem);
       }, newIdempotencyKey),
     [filmId],
@@ -252,18 +344,30 @@ export function useFilmStart({
   requoteRef.current = requote;
   const onStartedRef = useRef(onStarted);
   onStartedRef.current = onStarted;
+  const latestQuote = useRef(quote);
+  latestQuote.current = quote;
+
+  // Which project's answers count. Bumped when the project changes; an answer stamped with an older one is dropped.
+  const generation = useRef(0);
+  const shownFilm = useRef(filmId);
+  useEffect(() => {
+    if (shownFilm.current === filmId) return;
+    shownFilm.current = filmId;
+    generation.current += 1;
+    requoting.current = false;
+    sending.current = null;
+    setState(stateOfQuote(latestQuote.current));
+  }, [filmId, setState]);
 
   // A new quote from the parent replaces whatever the key showed, unless a start or a re-quote is waiting for its answer (a start
   // that may go through keeps its key) or the start already went through.
   const key = quoteKey(quote);
   const seenKey = useRef(key);
-  const latestQuote = useRef(quote);
-  latestQuote.current = quote;
   useEffect(() => {
     if (seenKey.current === key) return;
     seenKey.current = key;
     const at = stateRef.current.at;
-    if (starter.busy || requoting.current || at === "started" || at === "starting" || at === "network_error") return;
+    if (starter.busy || requoting.current || at === "started" || at === "starting" || at === "network_error" || at === "session_expired") return;
     starter.reset();
     setState(stateOfQuote(latestQuote.current));
   }, [key, starter, setState]);
@@ -280,15 +384,43 @@ export function useFilmStart({
     };
   }, [state.at]);
 
+  const retryAfter = state.at === "refused" || state.at === "requote_failed" ? state.retryAfter : null;
+  useEffect(() => {
+    if (retryAfter === null) return;
+    setCooling(true);
+    const h = setTimeout(() => setCooling(false), retryAfter * 1000);
+    return () => {
+      clearTimeout(h);
+      setCooling(false);
+    };
+  }, [retryAfter, state]);
+
+  // Signing in happens elsewhere; the key comes back once the person does.
+  useEffect(() => {
+    if (state.at !== "session_expired") return;
+    setCanResume(false);
+    const back = () => {
+      if (document.visibilityState === "visible") setCanResume(true);
+    };
+    window.addEventListener("focus", back);
+    document.addEventListener("visibilitychange", back);
+    return () => {
+      window.removeEventListener("focus", back);
+      document.removeEventListener("visibilitychange", back);
+    };
+  }, [state.at]);
+
   const askAgain = useCallback(
-    async (from: FilmQuote) => {
+    async (from: FilmQuote | null) => {
       if (requoting.current || starter.busy) return;
+      const gen = generation.current;
       requoting.current = true;
       setState({ at: "requoting", from });
       try {
         const q = await (requoteRef.current ?? (() => requoteFilm(filmId)))();
+        if (gen !== generation.current) return;
         if (!q) {
-          setState({ at: "requote_failed", from });
+          setState({ at: "requote_failed", from, word: "failed", remedy: startRemedy("failed"), detail: null, retryAfter: null });
           return;
         }
         const s = stateOfQuote(q);
@@ -297,13 +429,16 @@ export function useFilmStart({
           return;
         }
         // A new total is never started on the old confirmation: the person confirms it, seeing what it was and how far it moved.
-        const change = from.total !== null && q.total !== null ? { from: from.total, to: q.total, delta: q.total - from.total } : null;
+        const change = from && from.total !== null && q.total !== null ? { from: from.total, to: q.total, delta: q.total - from.total } : null;
         setState({ at: "confirming", quote: q, change });
       } catch (e) {
-        if (e instanceof Error && e.message === "session_expired") setState({ at: "session_expired", resume: { kind: "requote", from } });
-        else setState({ at: "requote_failed", from });
+        if (gen !== generation.current) return;
+        const word = e instanceof Error && WORD_RE.test(e.message) ? e.message : "failed";
+        const extra = e instanceof RequoteError ? e.extra : { detail: null, retryAfter: null };
+        if (word === "session_expired") setState({ at: "session_expired", resume: { kind: "requote", from } });
+        else setState({ at: "requote_failed", from, word, remedy: startRemedy(word), ...extra });
       } finally {
-        requoting.current = false;
+        if (gen === generation.current) requoting.current = false;
       }
     },
     [filmId, starter, setState],
@@ -311,9 +446,11 @@ export function useFilmStart({
 
   const send = useCallback(
     async (q: FilmQuote) => {
+      const gen = generation.current;
       sending.current = q;
       setState({ at: "starting", quote: q });
       const out = await starter.run();
+      if (gen !== generation.current) return;
       if (out.kind === "network") {
         setState({ at: "network_error", quote: q });
         return;
@@ -335,20 +472,35 @@ export function useFilmStart({
         void askAgain(q);
         return;
       }
-      setState({ at: "refused", word, remedy: startRemedy(word), quote: q });
+      const extra = out.kind === "http" ? { detail: out.detail, retryAfter: out.retryAfter } : { detail: null, retryAfter: null };
+      setState({ at: "refused", word, remedy: startRemedy(word), quote: q, ...extra });
     },
     [starter, askAgain, setState],
   );
 
+  const coolingRef = useRef(cooling);
+  coolingRef.current = cooling;
+  const resumeRef = useRef(canResume);
+  resumeRef.current = canResume;
+
   const press = useCallback(() => {
     const s = stateRef.current;
-    if (starter.busy || requoting.current) return;
+    if (starter.busy || requoting.current || coolingRef.current) return;
     if (s.at === "idle") setState({ at: "confirming", quote: s.quote, change: null });
     else if (s.at === "network_error") void send(s.quote);
-    else if (s.at === "session_expired") void (s.resume.kind === "start" ? send(s.resume.quote) : askAgain(s.resume.from));
-    else if (s.at === "refused" && s.remedy !== "none" && s.remedy !== "sign_in") void askAgain(s.quote);
-    else if (s.at === "requote_failed") void askAgain(s.from);
+    else if (s.at === "session_expired") {
+      if (resumeRef.current) void (s.resume.kind === "start" ? send(s.resume.quote) : askAgain(s.resume.from));
+    } else if (s.at === "refused" && s.remedy !== "none" && s.remedy !== "sign_in") void askAgain(s.quote);
+    else if (s.at === "requote_failed" && s.remedy !== "none") void askAgain(s.from);
   }, [starter, send, askAgain, setState]);
+
+  const recheck = useCallback(() => {
+    const s = stateRef.current;
+    if (starter.busy || requoting.current || coolingRef.current) return;
+    if (s.at === "blocked") void askAgain(s.quote);
+    else if (s.at === "refused") void askAgain(s.quote);
+    else if (s.at === "requote_failed" && s.remedy !== "none") void askAgain(s.from);
+  }, [starter, askAgain]);
 
   const confirm = useCallback(() => {
     const s = stateRef.current;
@@ -362,5 +514,5 @@ export function useFilmStart({
     setState(stateOfQuote(s.quote));
   }, [setState]);
 
-  return { state, slow, press, confirm, cancel };
+  return { state, slow, cooling, canResume, press, confirm, cancel, recheck };
 }
