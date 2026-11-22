@@ -703,6 +703,18 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-deck .cv-vsep { height: 24px; margin: 0 6px; }
 .cv-deck .cv-qnote { margin: 0 6px 0 10px; font-size: 13px; }
 .cv-deck [data-testid="dock-quote"] { flex: none; }
+/* The dock fits the board it floats in, not the window: beside the Nightshift AI panel or an open inspector the board is
+   narrower than the window says. Words go first (the keys keep their tooltips), then the note; the keys never go. */
+.cv-stage { container-type: inline-size; }
+@container (max-width: 1140px) { .cv-deck .cv-klabel { display: none; } }
+@container (max-width: 900px) { .cv-deck .cv-qnote { display: none; } }
+/* A board narrower still (a laptop with the Nightshift AI panel open): the dock takes a second row rather than hiding a key or
+   scrolling one out of sight. */
+@container (max-width: 640px) {
+  .cv-deck { flex-wrap: wrap; justify-content: center; height: auto; row-gap: 4px; padding: 6px; }
+  .cv-deck .cv-vsep { display: none; }
+  .react-flow__panel.cv-mini { margin-bottom: 128px; }
+}
 .cv-zoom { display: inline-flex; align-items: center; gap: 2px; }
 .cv-zoom output { width: 56px; text-align: center; font-size: 14px; font-weight: 600; }
 .cv-deck .cv-zoom output { width: 52px; font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--dim); }
@@ -1289,21 +1301,30 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
    length is hatched and says "?", and the ruler stops naming times where a length stops being known (CLAUDE.md rule 5).
    Track tones are their own: violet for clips (the canvas's blue means "working"), the canvas's green for voice. */
 .cv-root,
-.cv-tok {
+.cv-tok,
+.cv-appbar,
+.cv-rail {
   --ln-video: #8b7bff;
   --ln-video-ink: #0d0a24;
   --ln-audio: #3dff8a;
   --ln-audio-ink: #04210f;
   --ln-ground: color-mix(in srgb, var(--film) 55%, var(--console));
+  /* A key's or a dock's edge (WCAG 1.4.11, 3:1): #5d7096 is >= 3.2:1 on every dark ground and key surface here, the
+     near-black #0a0b0e-#1e2229 included; the hairline --rule (1.2:1) stays for dividers, which are not controls. */
+  --edge: #5d7096;
 }
-:root[data-theme="light"] :is(.cv-root, .cv-tok) {
-  --ln-video: #5b47e0; --ln-video-ink: #ffffff; --ln-audio: #0a7a3a; --ln-audio-ink: #ffffff; --ln-ground: var(--console);
+:root[data-theme="light"] :is(.cv-root, .cv-tok, .cv-appbar, .cv-rail) {
+  --ln-video: #5b47e0; --ln-video-ink: #ffffff; --ln-audio: #0a7a3a; --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
 }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) :is(.cv-root, .cv-tok) {
-    --ln-video: #5b47e0; --ln-video-ink: #ffffff; --ln-audio: #0a7a3a; --ln-audio-ink: #ffffff; --ln-ground: var(--console);
+  :root:not([data-theme="dark"]) :is(.cv-root, .cv-tok, .cv-appbar, .cv-rail) {
+    --ln-video: #5b47e0; --ln-video-ink: #ffffff; --ln-audio: #0a7a3a; --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
   }
 }
+/* Keys and the docks show their edge at 3:1 (a key that cannot be pressed keeps the hairline: it is exempt, and should recede). */
+.cv-kbtn { border-color: var(--edge); }
+.cv-deck,
+.cv-flow-dock { border-color: var(--edge); }
 .cv-lane {
   --lh-w: 132px;
   --ruler-h: 24px;
@@ -1343,6 +1364,8 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-lane.is-closed .cv-lane-chev { transform: rotate(-90deg); }
 /* The transport clock, as docs/design/SYSTEM.md's .ds-timecode (mono, tabular, the accent, -0.01em), at the lane bar's size. */
 .cv-lane-tc { color: var(--amber-ink); font: 600 18px/1 var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; letter-spacing: -0.01em; }
+/* Nothing on the lane: a true zero, but not a reading worth the accent. */
+.cv-lane-tc.is-empty { color: var(--faint); }
 .cv-lane-tc.is-unknown { color: var(--dim); font: 500 13px var(--font-sans); letter-spacing: 0; }
 .cv-lane-unk { color: var(--dim); font: 500 12px var(--font-mono); }
 .cv-lane-counts { display: inline-flex; gap: 6px; }
@@ -1481,7 +1504,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-pill.is-new { transform-origin: left center; animation: cv-seg-in 520ms var(--ease) both, cv-seg-glow 1200ms ease-out both; }
 @keyframes cv-seg-in { from { opacity: 0; transform: scaleX(0.4); } to { opacity: 1; transform: none; } }
 @keyframes cv-seg-glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ln) 70%, transparent); } 40% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ln) 35%, transparent), 0 0 22px 2px color-mix(in srgb, var(--ln) 55%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; } }
-.cv-lane-empty { position: absolute; left: 20px; right: 20px; top: calc(var(--ruler-h) + (var(--tv-h) + var(--ta-h)) / 2); margin: 0; transform: translateY(-50%); color: var(--dim); font-size: 13px; pointer-events: none; }
+.cv-lane-empty { position: absolute; left: 20px; right: 20px; top: calc(var(--ruler-h) + var(--tv-h) / 2); margin: 0; transform: translateY(-50%); color: var(--dim); font-size: 13px; pointer-events: none; }
 /* The card's name, flying from the card to where its segment lands (portalled; JS skips it under reduced motion). */
 .cv-fly {
   position: fixed;
@@ -1514,8 +1537,9 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 }
 /* A laptop beside the Nightshift AI panel: the heads narrow first. */
 @container (max-width: 720px) {
-  .cv-lane-body { --lh-w: 104px; }
-  .cv-th-sub { display: none; }
+  .cv-lane-body { --lh-w: 72px; }
+  /* The badge (icon and letter) names the track; the list itself carries the name for a screen reader. */
+  .cv-th-txt { display: none; }
 }
 /* The phone: a compact strip at the top of the flow, closed until opened; the same tracks, narrower. */
 .cv-lane.is-phone { --lh-w: 76px; --tv-h: 50px; --ta-h: 36px; margin: 0 0 4px; border-bottom: 1px solid var(--rule); }

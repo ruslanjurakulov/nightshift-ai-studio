@@ -27,6 +27,23 @@ describe("the canvas's docks never cover what is not theirs", () => {
     expect(block(".cv-dockwrap")).toMatch(/position:\s*absolute/);
     expect(block(".react-flow__panel.cv-mini")).toMatch(/margin:\s*12px 12px 80px/);
   });
+  it("keys and docks show an edge of at least 3:1 on every ground (the hairline measured 1.22:1)", () => {
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const dark = css.match(/--edge:\s*(#[0-9a-f]{6});/i)![1];
+    const light = [...css.matchAll(/--edge:\s*(#[0-9a-f]{6});/gi)].map((m) => m[1]).find((v) => v !== dark)!;
+    // The canvas's own grounds and key surfaces, and the near-black ground the owner chose (S5, #904).
+    for (const g of ["#050811", "#0a0f1c", "#121b2e", "#0a0b0e", "#0f1115", "#15181d", "#1e2229"]) expect(ratio(dark, g), g).toBeGreaterThanOrEqual(3);
+    for (const g of ["#e9f0fa", "#ffffff", "#e8eff9", "#f3f7fd"]) expect(ratio(light, g), g).toBeGreaterThanOrEqual(3);
+    expect(css).toMatch(/\.cv-kbtn \{ border-color: var\(--edge\); \}/);
+    expect(css).toMatch(/\.cv-deck,\n\.cv-flow-dock \{ border-color: var\(--edge\); \}/);
+  });
   it("the lane scrolls sideways inside itself", () => {
     expect(block(".cv-lane-scroll")).toMatch(/overflow-x:\s*auto/);
   });

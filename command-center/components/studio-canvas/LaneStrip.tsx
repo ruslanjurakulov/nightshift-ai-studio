@@ -260,7 +260,7 @@ export function LaneStrip({
           <span>{l.title}</span>
         </button>
         {/* Nothing known at all: the words, never a 00:00 that would read as a measurement. */}
-        <span className={known ? "cv-lane-tc" : "cv-lane-tc is-unknown"} title={known ? fmt(l.total, { t: totalWords }) : undefined} data-testid="lane-total">
+        <span className={!known ? "cv-lane-tc is-unknown" : empty ? "cv-lane-tc is-empty" : "cv-lane-tc"} title={known ? fmt(l.total, { t: totalWords }) : undefined} data-testid="lane-total">
           {known ? (
             <>
               <span aria-hidden>
