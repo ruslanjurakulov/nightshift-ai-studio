@@ -18,6 +18,8 @@ export const aiChatEn = {
   factsNone: "This channel has no statistics, competitor or comment data yet, so these ideas come from the topic alone.",
   factsUnknown: "The channel's data could not be read this time, so these ideas come from the topic alone.",
   scenarioFacts: "{len} · scenes: {scenes} · characters: {characters}",
+  outlineFacts: "{len} · chapters: {chapters} · characters: {characters}",
+  planWriting: "Writing the storyboard, chapter by chapter. This can take a minute or two. Nothing is priced until every chapter is written.",
   chooseThis: "Choose this one",
   chooseThisNamed: "Choose this one: {title}",
   slotQuestions: {
@@ -80,6 +82,11 @@ export const aiChatEn = {
     card_changed: "That question has changed. Answer the latest one.",
     assistant_unavailable: "Nightshift AI is unavailable right now. Try again later.",
     unavailable: "Nightshift AI could not answer right now. Try again.",
+    plan_failed: "The storyboard could not be written: chapter {n} of {total} failed. Nothing was priced. Try again.",
+    plan_failed_plain: "The storyboard could not be written. Nothing was priced. Try again.",
+    plan_length_mismatch: "Chapter {n} of {total} did not add up to its length, even when asked again, so the storyboard was not used. Nothing was priced. Try again.",
+    plan_length_mismatch_plain: "The storyboard did not add up to the length you chose, so it was not used. Nothing was priced. Try again.",
+    plan_over_cap: "Writing this storyboard takes {needed} messages, and {left} are left today. Choose a shorter film, or try again within 24 hours.",
   },
 };
 

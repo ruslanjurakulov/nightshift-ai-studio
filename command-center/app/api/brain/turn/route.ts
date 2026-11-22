@@ -9,6 +9,7 @@ import { filmGate } from "@/lib/server/films";
 import { coerceQuote } from "@/lib/studio/timeline";
 import { aiChatEnv, aiChatMode, aiChatOpenFor } from "@/lib/brain/flag";
 import {
+  FILM,
   HISTORY_TURNS,
   buildBrief,
   filmFromBrief,
@@ -31,11 +32,17 @@ import { isLocale } from "@/lib/i18n/core";
 import { callChatModel } from "@/lib/server/brain/llm";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
+import { clipShape } from "@/lib/server/brain/clip";
+import { writeStoryboard } from "@/lib/server/brain/plan";
+import { planLimits, planWindows } from "@/lib/brain/plan";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// `choose` on a short outline writes its storyboard: up to three bounded calls at a time inside this (lib/server/brain/plan.ts
+// PLAN_BUDGET_MS starts no call that could not finish before it).
+export const maxDuration = 300;
 
 /**
  * Nightshift Brain's one POST (docs/studio/NIGHTSHIFT_AI.md): `start`, `turn`, `answer` (a card), `choose` (a proposed scenario) and
@@ -200,22 +207,25 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   }
 }
 
-/** The person's choice of a proposed scenario: a BRIEF with the backend's price. Long: the Run now estimator. Short: a draft film. */
-async function choose(supabase: SupabaseClient, s: Session, index: unknown): Promise<Response> {
+/** The person's choice of a proposed scenario: a BRIEF with the backend's price. Long: the Run now estimator. Short: the plan step
+ *  writes the outline's storyboard (lib/server/brain/plan.ts), and only a complete one becomes a draft film, priced by quote_film. */
+async function choose(supabase: SupabaseClient, s: Session, index: unknown, requestId: string | null): Promise<Response> {
   if (s.step !== "proposing" && s.step !== "ready") return brainJson({ error: "nothing_to_choose" }, 409);
   if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index > 2) return brainJson({ error: "bad_request" }, 400);
-  const { data: msgs, error } = await supabase.from("ai_chat_messages").select("id,payload").eq("session_id", s.id).eq("role", "assistant")
-    .order("id", { ascending: false }).limit(1);
-  if (error) return brainJson({ error: "unavailable" }, 503);
+  const [{ data: msgs, error }, lastRead] = await Promise.all([
+    supabase.from("ai_chat_messages").select("id,payload").eq("session_id", s.id).eq("role", "assistant").order("id", { ascending: false }).limit(1),
+    supabase.from("ai_chat_messages").select("id,role,content").eq("session_id", s.id).order("id", { ascending: false }).limit(1),
+  ]);
+  if (error || lastRead.error) return brainJson({ error: "unavailable" }, 503);
   const slots = readSlots(s.slots);
   const raw = ((msgs?.[0]?.payload as { scenarios?: unknown[] } | null)?.scenarios ?? [])[index];
   // A stored scenario is data too (its author could have written it directly): read through the same rules again.
   const chosen: Scenario | null = readScenario(raw, slots);
   if (!chosen || nextSlot(slots) !== null) return brainJson({ error: "nothing_to_choose" }, 409);
-  // The floor under the prompt's and the vendors' safety rules (lib/brain/logic unsafeBrief): nothing of it is priced or drafted.
+  // The floor under the prompt's and the vendors' safety rules (lib/brain/logic unsafeBrief): nothing of it is planned, priced or drafted.
   if (unsafeBrief(buildBrief(s.id, slots, chosen, "ready"))) return brainJson({ error: "content_refused" }, 422);
   // One draft per proposal and scenario: a re-proposal is a new key, so choosing "the first one" again is not a conflict with the
-  // draft of an earlier, different first one (Lens on 0199).
+  // draft of an earlier, different first one (Lens on 0199). The plan step writes no assistant message, so the key survives it.
   const proposal = String((msgs?.[0] as { id?: number } | undefined)?.id ?? "0");
 
   if (slots.kind === "long") {
@@ -231,27 +241,75 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   // Short: a film DRAFT, priced by quote_film. Film Studio must be open here (its own flag and switch); if not, honestly not yet.
   const gate = await filmGate();
   if (!gate.ok) return brainJson({ error: "short_not_available" }, 409);
-  const draftBrief = buildBrief(s.id, slots, chosen, "ready");
-  const film = filmFromBrief(draftBrief);
-  if (!film) return brainJson({ error: "nothing_to_choose" }, 409);
+
+  // The storyboard: one stored before the plan step that already adds up; the one this session's plan already wrote for this same
+  // outline (a reload, or a price that could not be read: choosing again re-reads the draft and the quote, and spends no turn);
+  // or the plan step.
+  let planned: Scenario | null = chosen.scenes.length ? chosen : null;
+  let quota: unknown = undefined;
+  if (!planned) {
+    const stored = s.step === "ready" ? readScenario(s.brief, slots) : null;
+    if (stored && stored.scenes.length && stored.title === chosen.title && stored.idea === chosen.idea) planned = { ...chosen, scenes: stored.scenes };
+  }
+  if (!planned) {
+    const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
+    if (q0.error) return dbRefusal(q0.error) ?? brainJson({ error: "unavailable" }, 503);
+    const q = (q0.data ?? {}) as { used?: unknown; limit?: unknown; trial_left?: unknown; model_ref?: unknown };
+    // The owner's model, as for a turn: a dead one is refused before any turn is reserved, and no other model is ever tried.
+    const model = await chosenModelState(supabase, modelFromRef(q.model_ref));
+    if (!model.ok) return brainJson({ error: "unavailable" }, 503);
+    if (model.state !== "available" || !model.id) return brainJson({ error: "model_unavailable", reason: model.state }, 409);
+    // The clip model a new draft gets decides the longest scene (G4). create_film_draft sets none and no migration chooses a
+    // default, so today this is "unknown": the plan keeps to the film's own 3–30 s, and nothing is split on a guess.
+    const limits = planLimits(await clipShape(supabase, null, FILM.maxShots));
+    const windows = planWindows(chosen, limits);
+    // Proposed outlines always add up; what is left is a clip model too short for this length within 60 scenes (G4).
+    if (!windows) return brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409);
+    // Every call is a turn under the daily cap: a plan that cannot finish inside what is left is not begun (it would spend the
+    // turns and price nothing). Zero left is the database's own refusal, said as it is today.
+    const used = typeof q.used === "number" ? q.used : null;
+    const left = typeof q.limit === "number" ? (used === null ? null : Math.max(0, q.limit - used)) : typeof q.trial_left === "number" ? q.trial_left : null;
+    if (left !== null && left > 0 && left < windows.length) return brainJson({ error: "plan_over_cap", needed: windows.length, left }, 429);
+    const last = (lastRead.data?.[0] ?? null) as { role?: string; content?: string } | null;
+    const run = await writeStoryboard({
+      supabase, sessionId: s.id, model: model.id, endUser: await vendorUser(s.org_id),
+      requestBase: requestId ?? `pl${crypto.randomUUID().replace(/-/g, "")}`,
+      // A Retry of this same choice after a failed plan: the person's choice is already their last, unanswered message.
+      choiceStored: last?.role === "user" && last.content === chosen.title,
+      choiceText: chosen.title, outline: chosen, slots, limits,
+    });
+    if (!run.ok) return run.res;
+    planned = run.scenario;
+    quota = run.quota ?? undefined;
+  }
+
+  const draftBrief = buildBrief(s.id, slots, planned, "ready");
+  // The whole storyboard through the same floor: a chapter's own words could carry what the outline did not.
+  if (unsafeBrief(draftBrief)) return brainJson({ error: "content_refused", quota }, 422);
+  const first = filmFromBrief(draftBrief);
+  if (!first) return brainJson({ error: "nothing_to_choose" }, 409);
   const created = await supabase.rpc("create_film_draft", {
-    p_org: s.org_id, p_channel: s.channel_id, p_source_kind: "script", p_source_text: film.sourceText || draftBrief.title,
-    p_settings: film.settings, p_idempotency_key: `brain-${s.id}-${proposal}-${index}`.slice(0, 80),
+    p_org: s.org_id, p_channel: s.channel_id, p_source_kind: "script", p_source_text: first.sourceText || draftBrief.title,
+    p_settings: first.settings, p_idempotency_key: `brain-${s.id}-${proposal}-${index}`.slice(0, 80),
   });
-  if (created.error) return brainJson({ error: "film_refused", reason: plain(created.error.message, 64) }, 409);
-  const f = (created.data as { film?: { id?: string; version?: number } } | null)?.film;
-  if (!f?.id || typeof f.version !== "number") return brainJson({ error: "unavailable" }, 503);
+  if (created.error) return brainJson({ error: "film_refused", reason: plain(created.error.message, 64), quota }, 409);
+  const cd = (created.data ?? null) as { film?: { id?: string; version?: number; clip_model?: unknown }; limits?: { max_shots?: unknown } } | null;
+  const f = cd?.film;
+  if (!f?.id || typeof f.version !== "number") return brainJson({ error: "unavailable", quota }, 503);
+  // Shots per scene from the film's own clip model, when it has one whose lengths are listed (G4); otherwise one shot, and the quote
+  // names what is missing.
+  const film = filmFromBrief(draftBrief, await clipShape(supabase, f.clip_model, cd?.limits?.max_shots)) ?? first;
   const saved = await supabase.rpc("save_film", { p_film: f.id, p_version: f.version, p_patch: { scenes: film.scenes } });
-  if (saved.error) return brainJson({ error: "film_refused", reason: plain(saved.error.message, 64), film_id: f.id }, 409);
+  if (saved.error) return brainJson({ error: "film_refused", reason: plain(saved.error.message, 64), film_id: f.id, quota }, 409);
   const version = (saved.data as { film?: { version?: number } } | null)?.film?.version ?? f.version + 1;
   const q = await supabase.rpc("quote_film", { p_film: f.id, p_version: version });
-  const quote = q.error ? null : coerceQuote(q.data);
-  const price: BriefPrice = !quote ? { state: "failed" }
-    : quote.exempt ? { state: "exempt" }
-    : quote.priced && quote.total !== null
-      ? { state: "priced", total_credits: quote.total, spendable: quote.available ?? "unknown",
+  const quoteRead = q.error ? null : coerceQuote(q.data);
+  const price: BriefPrice = !quoteRead ? { state: "failed" }
+    : quoteRead.exempt ? { state: "exempt" }
+    : quoteRead.priced && quoteRead.total !== null
+      ? { state: "priced", total_credits: quoteRead.total, spendable: quoteRead.available ?? "unknown",
           // Short of credits is "does not fit" (Shorten / Upgrade / Top up); any other block is said by its own reason on the card.
-          fits: !quote.blockedBy.includes("insufficient_credits"), shorter: null }
+          fits: !quoteRead.blockedBy.includes("insufficient_credits"), shorter: null }
       : { state: "unpriced" };
   const brief: Brief = { ...draftBrief, price };
   const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: brief, p_step: "ready" });
@@ -259,8 +317,9 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   return brainJson({
     brief,
     film: { id: f.id, version },
+    ...(quota !== undefined ? { quota } : {}),
     // The film route starts it, at this quote, on the person's press ("Create — N credits"): /api/films/<id>/start.
-    quote: quote ? { quote_id: quote.quoteId, total: quote.total, startable: quote.startable, blocked_by: quote.blockedBy, refusal: quote.refusal, exempt: quote.exempt } : null,
+    quote: quoteRead ? { quote_id: quoteRead.quoteId, total: quoteRead.total, startable: quoteRead.startable, blocked_by: quoteRead.blockedBy, refusal: quoteRead.refusal, exempt: quoteRead.exempt } : null,
   });
 }
 
@@ -341,7 +400,7 @@ export async function POST(request: Request) {
     if (!text) return brainJson({ error: "bad_request" }, 400);
     return runTurn(supabase, s, text, false, requestId);
   }
-  if (b.action === "choose") return choose(supabase, s, b.index);
+  if (b.action === "choose") return choose(supabase, s, b.index, requestId);
   if (b.action === "handoff") {
     const h = b.handoff && typeof b.handoff === "object" ? (b.handoff as Record<string, unknown>) : null;
     if (!h) return brainJson({ error: "bad_request" }, 400);

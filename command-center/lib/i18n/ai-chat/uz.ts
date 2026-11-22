@@ -20,6 +20,8 @@ export const aiChatUz: AiChatDictionary = {
   factsNone: "Bu kanalda hali statistika, raqobatchilar yoki izohlar haqida maʼlumot yoʻq, shuning uchun gʻoyalar faqat mavzuga asoslangan.",
   factsUnknown: "Kanal maʼlumotlarini bu safar oʻqib boʻlmadi, shuning uchun gʻoyalar faqat mavzuga asoslangan.",
   scenarioFacts: "{len} · {scenes} ta sahna · {characters} ta qahramon",
+  outlineFacts: "{len} · {chapters} ta bob · {characters} ta qahramon",
+  planWriting: "Raskadrovka bobma-bob yozilmoqda. Bu bir-ikki daqiqa olishi mumkin. Barcha boblar yozilmaguncha narx hisoblanmaydi.",
   chooseThis: "Shuni tanlash",
   chooseThisNamed: "Shuni tanlash: {title}",
   slotQuestions: {
@@ -82,5 +84,10 @@ export const aiChatUz: AiChatDictionary = {
     card_changed: "Savol oʻzgardi. Oxirgisiga javob bering.",
     assistant_unavailable: "Nightshift AI hozir mavjud emas. Keyinroq urinib koʻring.",
     unavailable: "Nightshift AI hozir javob bera olmadi. Qayta urinib koʻring.",
+    plan_failed: "Raskadrovkani yozib boʻlmadi: {total} ta bobdan {n}-bob chiqmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
+    plan_failed_plain: "Raskadrovkani yozib boʻlmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
+    plan_length_mismatch: "{total} ta bobdan {n}-bob qayta soʻralganda ham oʻz uzunligiga mos kelmadi, shuning uchun raskadrovka ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
+    plan_length_mismatch_plain: "Raskadrovka siz tanlagan uzunlikka mos kelmadi, shuning uchun ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
+    plan_over_cap: "Bu raskadrovkani yozish uchun {needed} ta xabar kerak, bugun esa {left} ta qoldi. Qisqaroq film tanlang yoki 24 soat ichida qayta urinib koʻring.",
   },
 };

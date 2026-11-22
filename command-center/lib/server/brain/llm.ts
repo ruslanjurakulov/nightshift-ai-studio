@@ -52,8 +52,10 @@ export function chatModelConfigured(id: ChatModelId, keys: ChatKeys = chatKeysFr
 }
 
 /** A question card is short; two or three whole scenarios (ru and uz run longer than en) are not (Lens on 0199: 1600 cut them off). */
-export const OUTPUT_TOKENS = { card: 1_600, proposal: 8_000 } as const;
-const TIMEOUT_MS = { card: 45_000, proposal: 150_000 } as const;
+// A plan call writes at most 15 scenes (lib/brain/plan.ts PLAN.windowScenes), each up to ~2,000 characters of prompt and a few lines.
+// Its timeout is shorter than a proposal's: up to three run at once inside one route's time (app/api/brain/turn maxDuration).
+export const OUTPUT_TOKENS = { card: 1_600, proposal: 8_000, plan: 8_000 } as const;
+const TIMEOUT_MS = { card: 45_000, proposal: 150_000, plan: 110_000 } as const;
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
 
 function failure(status: number, body: string): LlmFailure {

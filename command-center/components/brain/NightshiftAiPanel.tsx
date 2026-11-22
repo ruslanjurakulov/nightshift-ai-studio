@@ -29,9 +29,33 @@ type State =
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
 type Problem = { text: string; retry: (() => void) | null } | null;
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
-const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long"];
+const NO_RETRY = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap"];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
 const pressId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+/**
+ * A short plan is written on the server in up to a few minutes, each call a turn (lib/server/brain/plan.ts). Its press id is kept
+ * in this tab's sessionStorage until the answer arrives: after a refresh the panel waits for that plan instead of offering a second
+ * press, which would take the turns again. The route's own limit (maxDuration 300 s) bounds the wait.
+ */
+const PLAN_WAIT_MS = 310_000;
+type PendingPlan = { rid: string; index: number; title: string; at: number };
+const planKey = (sid: string) => `nightshift-ai-plan:${sid}`;
+function pendingPlan(sid: string): PendingPlan | null {
+  try {
+    const v = JSON.parse(window.sessionStorage.getItem(planKey(sid)) ?? "null") as PendingPlan | null;
+    return v && typeof v.rid === "string" && typeof v.index === "number" && typeof v.title === "string" && typeof v.at === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function keepPlan(sid: string, p: PendingPlan | null) {
+  try {
+    if (p) window.sessionStorage.setItem(planKey(sid), JSON.stringify(p));
+    else window.sessionStorage.removeItem(planKey(sid));
+  } catch {
+    // No storage (private mode): the press still works; only a refresh mid-plan loses the wait.
+  }
+}
 
 export function NightshiftAiPanel({ channelId, channelSlug, initialSession, initialPrompt, fresh = false, takeIdea = false }: {
   channelId: string | null;
@@ -56,6 +80,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem>(null);
   const [capped, setCapped] = useState(false);
+  // The storyboard is being written (a short outline was chosen): its own status, never a silent spinner.
+  const [planning, setPlanning] = useState(false);
   const idem = useRef<string | null>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -157,6 +183,12 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     if (e === "adult_only_service") return c.errors.adult_only_service;
     if (e === "session_closed") return c.errors.session_closed;
     if (e === "card_changed") return c.errors.card_changed;
+    // Which chapter failed is the server's count, not the model's words; nothing was priced either way.
+    const step = d.step && typeof d.step === "object" ? (d.step as { chapter?: unknown; chapters?: unknown }) : null;
+    const at = step && typeof step.chapter === "number" && typeof step.chapters === "number" ? { n: step.chapter, total: step.chapters } : null;
+    if (e === "plan_failed") return at ? fmt(c.errors.plan_failed, at) : c.errors.plan_failed_plain;
+    if (e === "plan_length_mismatch") return at ? fmt(c.errors.plan_length_mismatch, at) : c.errors.plan_length_mismatch_plain;
+    if (e === "plan_over_cap" && typeof d.needed === "number" && typeof d.left === "number") return fmt(c.errors.plan_over_cap, { needed: d.needed, left: d.left });
     // The model is the owner's choice and hidden from customers: any model failure reads as "unavailable right now".
     if (e === "model_failed" || e === "model_unavailable" || e === "model_answer_invalid") return c.errors.assistant_unavailable;
     return c.errors.unavailable;
@@ -231,14 +263,67 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
     const body = { action: "answer", session, card: card.id, request_id: pressId(), ...(choice ? { choice } : { own: label }) };
     void run(label, body, () => answer(choice));
   };
-  const choose = async (index: number) => {
+  /** After a refresh mid-plan (or a repeated press): wait for the plan already running, never start a second one. */
+  const waitForPlan = useCallback(async (sid: string, p: PendingPlan) => {
+    setBusy(true);
+    setPlanning(true);
+    setProblem(null);
+    try {
+      while (Date.now() - p.at < PLAN_WAIT_MS) {
+        await new Promise((r) => setTimeout(r, 5_000));
+        const res = await fetch(`/api/brain/session/${encodeURIComponent(sid)}`, { cache: "no-store" }).catch(() => null);
+        const d = res && res.ok ? await res.json().catch(() => null) : null;
+        if (d?.session?.step === "ready" && d.brief?.version === 1 && d.brief.title === p.title && Array.isArray(d.brief.scenes) && d.brief.scenes.length) {
+          keepPlan(sid, null);
+          await loadSession(sid);
+          return;
+        }
+      }
+      // The route's time is over and no plan was stored: it failed while this tab was away. A new press is safe now.
+      keepPlan(sid, null);
+      setProblem({ text: c.errors.plan_failed_plain, retry: () => void chooseRef.current(p.index) });
+    } finally {
+      setPlanning(false);
+      setBusy(false);
+    }
+  }, [loadSession, c.errors.plan_failed_plain]);
+  useEffect(() => {
+    if (!session || typeof window === "undefined") return;
+    const p = pendingPlan(session);
+    if (p && Date.now() - p.at < PLAN_WAIT_MS) void waitForPlan(session, p);
+    else if (p) keepPlan(session, null);
+  }, [session, waitForPlan]);
+
+  // `rid` is kept only when the last press's answer never arrived (the network): the server answers its repeat as a duplicate.
+  const choose = async (index: number, rid: string = pressId()) => {
     if (!session || busy) return;
     noteFocus();
     setBusy(true);
     setProblem(null);
+    const outline = [...messages].reverse().find((m) => m.role === "assistant" && m.scenarios?.length)?.scenarios?.[index];
+    // Only a short outline with no storyboard yet is written now; anything else answers at once.
+    const writes = brief?.kind !== "long" && !!outline && !outline.scenes?.length;
+    if (writes && outline) {
+      setPlanning(true);
+      keepPlan(session, { rid, index, title: outline.title, at: Date.now() });
+    }
+    let waiting = false;
     try {
-      const { res, d } = await post({ action: "choose", session, index });
+      const { res, d } = await post({ action: "choose", session, index, request_id: rid });
+      if (res.status === 409 && d.error === "duplicate_request") {
+        // That press is already being written (another tab, or a repeat): wait for it, spend nothing more.
+        const p = pendingPlan(session);
+        if (p) {
+          waiting = true;
+          setBusy(false);
+          setPlanning(false);
+          void waitForPlan(session, p);
+        } else await loadSession(session);
+        return;
+      }
+      keepPlan(session, null);
       if (!res.ok) {
+        // A failed plan's calls were recorded under this press's ids: a Retry is a new press (a new id), never refused as a repeat.
         setProblem({ text: explain(res.status, d), retry: res.status === 401 || NO_RETRY.includes(String(d.error)) ? null : () => void choose(index) });
         return;
       }
@@ -247,11 +332,16 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
       idem.current = null;
       announce(session, d.brief as Brief);
     } catch {
-      setProblem({ text: c.errors.unavailable, retry: () => void choose(index) });
+      setProblem({ text: c.errors.unavailable, retry: () => void choose(index, rid) });
     } finally {
-      setBusy(false);
+      if (!waiting) {
+        setPlanning(false);
+        setBusy(false);
+      }
     }
   };
+  const chooseRef = useRef(choose);
+  chooseRef.current = choose;
   const createFilm = async () => {
     if (!film?.quote?.quote_id || !session || busy) return;
     setBusy(true);
@@ -303,6 +393,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
   // choose again, which re-reads the same draft and quote (the draft's idempotency key is the session and the scenario).
   const rechoose = step === "ready" && (brief?.price?.state === "failed" || (brief?.kind === "short" && !film?.quote));
   const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? "";
+  const lastAnswer = messages.map((m) => m.role).lastIndexOf("assistant");
   const noBrain = load.state === "ready" && load.plan.limit === null && trial === null;
   // The trial's last answer stays on screen; only the box closes (a conversation that vanished on its last reply is a dead end).
   const locked = noBrain && messages.length === 0;
@@ -354,7 +445,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
           {load.state === "ready" && !locked && (
             <>
               {/* One live region with only the newest news: a live list would read the whole history out on every load. */}
-              <p className="sr-only" aria-live="polite">{busy ? c.sending : lastReply}</p>
+              <p className="sr-only" aria-live="polite">{planning ? c.planWriting : busy ? c.sending : lastReply}</p>
               <ol ref={listRef} className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto">
                 {messages.length === 0 && <li className="text-xs text-[var(--color-muted)]">{c.empty}</li>}
                 {messages.map((m, i) => (
@@ -363,20 +454,25 @@ export function NightshiftAiPanel({ channelId, channelSlug, initialSession, init
                     <p className="studio-field whitespace-pre-wrap break-words p-3 text-sm">{m.content}</p>
                     {m.role === "assistant" && m.factsState === "none" && !!m.scenarios?.length && <p className="mt-1 text-xs text-[var(--color-muted)]">{c.factsNone}</p>}
                     {m.role === "assistant" && m.factsState === "unknown" && !!m.scenarios?.length && <p className="mt-1 text-xs text-[var(--color-muted)]">{c.factsUnknown}</p>}
-                    {m.role === "assistant" && i === messages.length - 1 && (step === "proposing" || rechoose) && (m.scenarios ?? []).map((s, k) => (
+                    {/* The last ANSWER's outlines: choosing one stores the person's choice after it (the plan step's first turn),
+                        and a failed plan must still offer them again. */}
+                    {m.role === "assistant" && i === lastAnswer && (step === "proposing" || rechoose) && (m.scenarios ?? []).map((s, k) => (
                       <article key={k} className="studio-field mt-2 flex flex-col gap-1 p-3">
                         <h3 className="text-sm font-semibold text-[var(--color-fg)]">{s.title}</h3>
                         <p className="text-sm">{s.idea}</p>
                         {s.story?.conflict && <p className="text-xs text-[var(--color-muted)]">{s.story.conflict}</p>}
                         <p className="text-xs text-[var(--color-muted)]">
-                          {fmt(c.scenarioFacts, { len: lengthLabel(s.target_seconds), scenes: s.scenes.length, characters: s.characters.length })}
+                          {s.scenes?.length
+                            ? fmt(c.scenarioFacts, { len: lengthLabel(s.target_seconds), scenes: s.scenes.length, characters: s.characters?.length ?? 0 })
+                            : fmt(c.outlineFacts, { len: lengthLabel(s.target_seconds), chapters: s.chapters?.length ?? 0, characters: s.characters?.length ?? 0 })}
                         </p>
                         <button type="button" className="btn-quiet mt-1 min-h-11 px-4 text-sm" disabled={disabled} aria-label={fmt(c.chooseThisNamed, { title: s.title })} onClick={() => void choose(k)}>{c.chooseThis}</button>
                       </article>
                     ))}
                   </li>
                 ))}
-                {busy && <li className="text-xs text-[var(--color-muted)]" aria-hidden="true">{c.sending}</li>}
+                {busy && !planning && <li className="text-xs text-[var(--color-muted)]" aria-hidden="true">{c.sending}</li>}
+                {planning && <li className="studio-field p-3 text-sm" aria-hidden="true">{c.planWriting}</li>}
               </ol>
 
               {card && step === "asking" && (
