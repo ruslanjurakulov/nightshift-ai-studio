@@ -22,8 +22,8 @@ What one segment does is ``modules/film_orchestrator.py``. This file wires it up
   (rule 6: say it before anything is spent) rather than claim segments it cannot finish;
 * ``film_expire_segments`` runs on its own thread every ``FILM_EXPIRE_EVERY_SECONDS`` (default 300, never more than 900): a segment past
   its deadline and grace, or one nobody claimed, settles while its hold is open, even while this worker drives a long film. It is
-  called through 0212's ``film_sweep('worker')``, which records the run; the worker is one of three runners (with
-  ``.github/workflows/film_sweep.yml`` and, where installed, pg_cron), so a stopped worker no longer stops the sweep;
+  called through 0212's ``film_sweep('worker')``, which records the run; the worker is one of three runners (with pg_cron where
+  installed and the film-sweep service, ``tools/film_sweep.py --loop``), so a stopped worker no longer stops the sweep;
 * stored error text is scrubbed of every secret in this process's environment (the pipeline worker's scrubber).
 
 SIGTERM (``docker stop``) stops between calls: a take waiting on its provider leaves its task id stored, and the next claim polls it.

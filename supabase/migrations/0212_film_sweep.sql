@@ -10,9 +10,12 @@
 --
 -- WHAT IT ADDS (one table, two functions, one pg_cron job when pg_cron is installed; it replaces nothing and alters no existing
 -- table or function; film_expire_segments is called, never changed)
---   film_sweep_runs(runner)   one row per runner that ever swept: 'worker' (tools/film_worker.py), 'actions'
---                             (.github/workflows/film_sweep.yml, every 10 minutes) and 'pg_cron' (this file's job, every 5 minutes,
---                             only where pg_cron is installed). last_at / last_settled: the last sweep that completed and how many
+--   film_sweep_runs(runner)   one row per runner that ever swept: 'pg_cron' (this file's job, every 5 minutes, only where pg_cron
+--                             is installed: the primary schedule), 'server' (the film-sweep service on our own server,
+--                             tools/film_sweep.py --loop, every 5 minutes while NIGHTSHIFT_FILM_SWEEP=on: the fallback), 'worker'
+--                             (tools/film_worker.py's own thread, while it runs) and 'actions' (kept for a one-off sweep from
+--                             GitHub; no workflow sweeps any more: .github/workflows/film_sweep_watchdog.yml only READS the status
+--                             once an hour). last_at / last_settled: the last sweep that completed and how many
 --                             segments it moved. last_error / last_error_at: the last sweep that failed, by SQLSTATE only (a message
 --                             body can carry a film id or a detail; a SQLSTATE cannot). RLS on, no policy; no API role writes it,
 --                             service_role may read it.
@@ -22,10 +25,10 @@
 --                             back, the SQLSTATE is recorded and it answers {"ok": false, "runner", "error": <SQLSTATE>, "at"}.
 --                             It answers rather than raising on purpose: a raise would roll the record of the failure back with
 --                             it (PostgreSQL has no autonomous transaction). Every caller treats ok:false as a failure (the
---                             workflow run fails, the worker logs a warning, the pg_cron command raises: see THE SCHEDULES).
+--                             service logs a warning, the worker logs a warning, the pg_cron command raises: THE SCHEDULES).
 --                             NOT EVERY FAILURE IS RECORDED. PL/pgSQL's "when others" does not catch query_canceled (57014: a
 --                             statement_timeout, PostgREST's included, or a cancel) or assert_failure. Such a call raises out of
---                             film_sweep and records nothing: the Actions run goes red (HTTP 5xx), pg_cron marks the run failed,
+--                             film_sweep and records nothing: the service logs it (HTTP 5xx), pg_cron marks the run failed,
 --                             and "overdue" below trips once last_at is older than the overdue line. So the record is "the last
 --                             sweep that completed", never "every attempt". A per-pass bound on film_expire_segments, so a pass
 --                             finishes inside the timeout, is a follow-up (docs/studio/S2_GAPS.md, G2b).
@@ -42,19 +45,25 @@
 --                               null  otherwise, when no runner has ever recorded anything: unknown is not "fine" (rule 5);
 --                               false otherwise.
 --
--- THE SCHEDULES (any one is enough; all three may run at once: film_expire_segments takes every row it touches with
+-- THE SCHEDULES (any one is enough; they may run at once: film_expire_segments takes every row it touches with
 -- "for update skip locked", so two sweeps never settle the same segment twice)
---   pg_cron   'nightshift-film-sweep' '*/5 * * * *', only where pg_cron is installed (it is not, today, on the live project: this
---             file then prints a NOTICE and creates nothing, exactly as 0111 and 0164 do). Where pg_cron IS installed, the job must
+--   pg_cron   PRIMARY. 'nightshift-film-sweep' '*/5 * * * *', only where pg_cron is installed. It is NOT installed today on the
+--             live project: this file then prints a NOTICE and creates nothing, exactly as 0111 and 0164 do. To turn it on, the
+--             owner enables pg_cron in the Supabase dashboard (Database -> Extensions -> pg_cron) and then applies this file
+--             again, or runs once, in the SQL editor:
+--               select cron.schedule('nightshift-film-sweep', '*/5 * * * *', 'select case when (r ->> ''ok'')::boolean then 1 else (''film_sweep failed with SQLSTATE '' || coalesce(r ->> ''error'', ''none''))::integer end from (select public.film_sweep(''pg_cron'') as r) s');
+--             (the same command section 4 schedules). Where pg_cron IS installed, the job must
 --             exist when the file ends (the end-state block asserts it; a failed schedule fails the file, it is not a notice).
 --             pg_cron marks a run "succeeded" whenever the command returns, and film_sweep returns {ok:false} on a failed sweep,
 --             so the command raises on ok:false (a cast of "film_sweep failed with SQLSTATE <code>" to integer: the run is
 --             marked failed in cron.job_run_details and the SQLSTATE is in its message). The raise rolls back film_sweep's own
 --             record of that failure, so on pg_cron a failed sweep is found in cron.job_run_details, not in last_error.
---   Actions   .github/workflows/film_sweep.yml, '3-59/10 * * * *' (off the top of the hour, when GitHub's scheduler is busiest):
---             the guaranteed one, independent of the server and the worker. GitHub may start a scheduled run late; the overdue
---             line is 30 minutes (three missed Actions passes) for that reason.
+--   server    FALLBACK. The film-sweep service (deploy/docker-compose.yml, tools/film_sweep.py --loop), every 300 s as runner
+--             'server', while NIGHTSHIFT_FILM_SWEEP=on; independent of NIGHTSHIFT_FILM_WORKER, so the sweep runs with the worker off.
 --   worker    tools/film_worker.py, every FILM_EXPIRE_EVERY_SECONDS (300 by default, never more than 900), while it runs.
+--   Actions   does NOT sweep (a 10-minute schedule would cost about 4,300 runner-minutes a month). The hourly
+--             .github/workflows/film_sweep_watchdog.yml reads film_sweep_status() and turns red when "overdue" is true.
+--   The overdue line is 30 minutes: six missed 5-minute passes.
 --
 -- WHAT IT DOES NOT CHANGE. No credit, film, take, segment or job function; no grant of any existing object. It spends nothing:
 --   film_expire_segments only settles segments by 0171's rules (capture what was made, release the rest).
@@ -94,15 +103,15 @@ begin
        or not exists (select 1 from pg_constraint c where c.conrelid = 'public.film_sweep_runs'::regclass and c.contype = 'c'
                         and pg_get_constraintdef(c.oid) like '%last_error ~ ''^[0-9A-Z]{5}$''::text%')
        or not exists (select 1 from pg_constraint c where c.conrelid = 'public.film_sweep_runs'::regclass and c.contype = 'c'
-                        and pg_get_constraintdef(c.oid) like '%runner%''worker''%''actions''%''pg_cron''%')
+                        and pg_get_constraintdef(c.oid) like '%runner%''worker''%''actions''%''pg_cron''%''server''%')
        or not exists (select 1 from pg_constraint c where c.conrelid = 'public.film_sweep_runs'::regclass and c.contype = 'p') then
       raise exception '0212 found public.film_sweep_runs that is not this file''s (its columns or checks differ): read it first';
     end if;
   end if;
   -- The functions this file creates: absent, or this file's own bodies (a replay).
   for r in select * from (values
-      ('public.film_sweep(text)', '10dcda57c382fd7f3f2ed4a32fb62e44'),
-      ('public.film_sweep_status()', 'accdeeb112a6eb7b86271f66b12c1b25')) v(sig, want) loop
+      ('public.film_sweep(text)', '7246795c29051c51a35e75ab58b38bd0'),
+      ('public.film_sweep_status()', '1f042f5c52babd1797232818231624aa')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
       raise exception '0212 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
@@ -115,7 +124,7 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 
 create table if not exists public.film_sweep_runs (
-  runner        text primary key check (runner in ('worker', 'actions', 'pg_cron')),
+  runner        text primary key check (runner in ('worker', 'actions', 'pg_cron', 'server')),
   last_at       timestamptz,
   last_settled  integer check (last_settled is null or last_settled >= 0),
   last_error    text check (last_error is null or last_error ~ '^[0-9A-Z]{5}$'),
@@ -125,7 +134,7 @@ create table if not exists public.film_sweep_runs (
 );
 
 comment on table public.film_sweep_runs is
-  'Film sweep runs (0212): one row per runner (worker, actions, pg_cron), written only by film_sweep(). last_at = the last completed '
+  'Film sweep runs (0212): one row per runner (worker, actions, pg_cron, server), written only by film_sweep(). last_at = the last completed '
   'sweep; last_error = the SQLSTATE of the last failed one. No API role writes it; service_role reads it.';
 
 alter table public.film_sweep_runs enable row level security;
@@ -144,8 +153,8 @@ declare
   st  text;
   t_at timestamptz;
 begin
-  if who not in ('worker', 'actions', 'pg_cron') then
-    raise exception 'unknown_runner' using errcode = '22023', detail = 'runner is one of worker, actions, pg_cron';
+  if who not in ('worker', 'actions', 'pg_cron', 'server') then
+    raise exception 'unknown_runner' using errcode = '22023', detail = 'runner is one of worker, actions, pg_cron, server';
   end if;
   begin
     n := public.film_expire_segments();
@@ -166,7 +175,7 @@ end
 $$;
 
 comment on function public.film_sweep(text) is
-  'Film sweep (0212): runs film_expire_segments() and records the run under the runner (worker, actions, pg_cron). '
+  'Film sweep (0212): runs film_expire_segments() and records the run under the runner (worker, actions, pg_cron, server). '
   '{ok:true, settled, at} or, when the sweep itself failed, {ok:false, error: SQLSTATE, at} with the failure recorded. Service role only.';
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -206,7 +215,7 @@ begin
             from public.film_segments s
            where s.status in ('queued', 'running', 'draining')) x;
   stuck_min := case when oldest is null then null else floor(extract(epoch from now() - oldest) / 60)::integer end;
-  foreach w in array array['worker', 'actions', 'pg_cron'] loop
+  foreach w in array array['worker', 'actions', 'pg_cron', 'server'] loop
     select * into f from public.film_sweep_runs where runner = w;
     runs := runs || jsonb_build_object(w, case when not found then null else jsonb_build_object(
       'last_at', f.last_at, 'last_settled', f.last_settled, 'last_error', f.last_error, 'last_error_at', f.last_error_at) end);
@@ -256,7 +265,9 @@ begin
       || 'else (''film_sweep failed with SQLSTATE '' || coalesce(r ->> ''error'', ''none''))::integer end '
       || 'from (select public.film_sweep(''pg_cron'') as r) s');
   else
-    raise notice '0212: pg_cron is not enabled, so no schedule was created; .github/workflows/film_sweep.yml sweeps every 10 minutes';
+    raise notice '%', '0212: pg_cron is not enabled, so the 5-minute film sweep was NOT scheduled. To schedule it: enable pg_cron in the '
+      || 'Supabase dashboard (Database -> Extensions -> pg_cron), then apply 0212 again, or run the one-line cron.schedule in 0212''s '
+      || 'header (docs/MIGRATIONS.md, 0212). Until then only the film-sweep service (NIGHTSHIFT_FILM_SWEEP=on) and the film worker sweep';
   end if;
 end $$;
 
@@ -273,8 +284,8 @@ declare
   p text;
 begin
   for r in select * from (values
-      ('public.film_sweep(text)', '10dcda57c382fd7f3f2ed4a32fb62e44'),
-      ('public.film_sweep_status()', 'accdeeb112a6eb7b86271f66b12c1b25')) v(sig, want) loop
+      ('public.film_sweep(text)', '7246795c29051c51a35e75ab58b38bd0'),
+      ('public.film_sweep_status()', '1f042f5c52babd1797232818231624aa')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception '0212 end state: % does not hold this file''s body (md5 %)', r.sig, h;
@@ -333,7 +344,7 @@ end $$;
 --       and not has_function_privilege('anon', 'public.film_sweep_status()', 'execute')
 --       and not has_function_privilege('authenticated', 'public.film_sweep_status()', 'execute') as status_service_only;
 --
--- Is it running? (after the first scheduled pass: Actions within about 10 minutes, pg_cron within 5 where installed)
+-- Is it running? (after the first scheduled pass: pg_cron or the film-sweep service within about 5 minutes)
 --   select public.film_sweep_status();
 --   select runner, last_at, last_settled, last_error, last_error_at from public.film_sweep_runs order by runner;
 --

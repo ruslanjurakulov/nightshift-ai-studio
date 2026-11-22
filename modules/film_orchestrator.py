@@ -980,6 +980,14 @@ class FilmRest:
         n = out.get("settled")
         return int(n) if isinstance(n, int) and not isinstance(n, bool) else 0
 
+    def sweep_status(self) -> Optional[dict]:
+        """0212's film_sweep_status(): counts and times, read only. None when the answer is not an object."""
+        try:
+            out = self.rpc("film_sweep_status", {})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep_status: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        return out if isinstance(out, dict) else None
+
     def takes(self, segment: str) -> list:
         return self._select("film_takes", {"segment_id": f"eq.{segment}",
                                            "select": "id,kind,scene_id,shot_index,attempt,status,model,params,quantity"})

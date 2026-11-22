@@ -1,9 +1,13 @@
-"""tools/film_sweep.py, FilmRest.sweep, .github/workflows/film_sweep.yml and the text of migration 0212 (switch-on gate G2).
+"""tools/film_sweep.py (a pass, --loop, --check), FilmRest.sweep / sweep_status, .github/workflows/film_sweep_watchdog.yml, the
+film-sweep service in deploy/docker-compose.yml, and the text of migration 0212 (switch-on gate G2).
 
 What would break, and which test says so:
 
-* the Actions sweep not recorded under its own runner, or reported as done when it failed (a green run for a sweep that did not
-  happen is the "assumed, not measured" of CLAUDE.md rule 5);
+* the server's sweep not recorded under its own runner (`server`), or reported as done when it failed (a sweep that did not happen
+  read as one is the "assumed, not measured" of CLAUDE.md rule 5);
+* the service sweeping while its switch is off, dying on one failed pass, or not stopping on its event;
+* the watchdog sweeping (it only reads), staying green while the database says overdue, or going red on "0212 not applied";
+* GitHub Actions scheduled to sweep again (it is a watchdog, hourly);
 * the CLI quietly sweeping unrecorded where 0212 is missing, instead of failing and naming the migration;
 * the service key, or a database message body, reaching the log;
 * the workflow losing its schedule, its least-privilege token, its pinned actions, or taking the key from anywhere but secrets;
@@ -17,6 +21,7 @@ import contextlib
 import io
 import logging
 import re
+import threading
 import unittest
 from pathlib import Path
 
@@ -26,7 +31,8 @@ from modules import film_orchestrator as fo
 from tools import film_sweep as fs
 
 ROOT = Path(__file__).resolve().parent.parent
-WORKFLOW = ROOT / ".github" / "workflows" / "film_sweep.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "film_sweep_watchdog.yml"
+COMPOSE = ROOT / "deploy" / "docker-compose.yml"
 MIGRATION = ROOT / "supabase" / "migrations" / "0212_film_sweep.sql"
 ROLLBACK = ROOT / "docs" / "sql" / "rollback_0212_film_sweep.sql"
 KEY = "service-key-SECRET-0212-abcdef0123456789"
@@ -105,9 +111,15 @@ class FakeDb:
             raise self.exc
         return self.result
 
-    def expire(self):  # must never be called by the Actions runner
+    def expire(self):  # must never be called: the server's runner always records
         self.calls.append(("expire",))
         return 0
+
+    def sweep_status(self):
+        self.calls.append(("status",))
+        if self.exc:
+            raise self.exc
+        return self.result
 
 
 class Cli(unittest.TestCase):
@@ -138,17 +150,17 @@ class Cli(unittest.TestCase):
             self.assertEqual(fs.main({}, make_db=lambda u, k: self.fail("no db without the secrets")), 0)
         self.assertRegex(out.getvalue(), r"^::warning title=Film sweep is off::.*not set")
 
-    def test_one_recorded_sweep_as_actions(self):
+    def test_one_recorded_sweep_as_server(self):
         db = FakeDb(result=2)
         rc, made, out = self.run_cli(ENV, db)
-        self.assertEqual((rc, db.calls), (0, [("sweep", "actions")]))
+        self.assertEqual((rc, db.calls), (0, [("sweep", "server")]))
         self.assertEqual(made, [("https://x.supabase.co", KEY)])
         self.assertIn("2 segment(s)", out)
 
     def test_without_0212_it_fails_and_names_the_migration_and_never_sweeps_unrecorded(self):
         db = FakeDb(exc=fo.FilmFunctionMissing("film_sweep: HTTP 404 (migration 0212_film_sweep.sql is not applied)"))
         rc, _, out = self.run_cli(ENV, db)
-        self.assertEqual((rc, db.calls), (1, [("sweep", "actions")]))
+        self.assertEqual((rc, db.calls), (1, [("sweep", "server")]))
         self.assertIn("0212", out)
 
     def test_a_failed_or_refused_sweep_fails_the_run(self):
@@ -160,20 +172,172 @@ class Cli(unittest.TestCase):
             self.assertIn(word, out)
 
 
+class Loop(unittest.TestCase):
+    """--loop: the film-sweep service."""
+
+    def run_loop(self, env, db, stop, passes_before_stop=None):
+        orig = fs.one_pass
+        calls = []
+
+        def counting(d):
+            calls.append(1)
+            if passes_before_stop and len(calls) >= passes_before_stop:
+                stop.set()
+            return orig(d)
+
+        fs.one_pass = counting
+        try:
+            with self.assertLogs("film_sweep", level=logging.INFO) as logs:
+                rc = fs.main(env, argv=["--loop"], make_db=lambda u, k: db, stop=stop)
+        finally:
+            fs.one_pass = orig
+        out = "\n".join(logs.output)
+        self.assertNotIn(KEY, out)
+        return rc, len(calls), out
+
+    def test_off_unless_exactly_on_and_it_waits_for_the_stop_instead_of_exiting(self):
+        for value in (None, "", "off", "ON", "true", "1"):
+            env = dict(ENV)
+            if value is not None:
+                env[fs.SWITCH] = value
+            stop = threading.Event()
+            threading.Timer(0.05, stop.set).start()
+            db = FakeDb()
+            rc, passes, out = self.run_loop(env, db, stop)
+            self.assertEqual((rc, passes, db.calls), (0, 0, []), value)
+            self.assertIn("sweeps nothing", out)
+
+    def test_without_the_service_key_it_sweeps_nothing_and_waits(self):
+        stop = threading.Event()
+        threading.Timer(0.05, stop.set).start()
+        db = FakeDb()
+        rc, passes, out = self.run_loop({fs.SWITCH: "on"}, db, stop)
+        self.assertEqual((rc, passes, db.calls), (0, 0, []))
+        self.assertIn("SUPABASE_SERVICE_KEY must be set", out)
+
+    def test_it_sweeps_as_server_every_pass_survives_a_failure_and_stops_on_its_event(self):
+        db = FakeDb(exc=fo.FilmUnavailable("film_sweep: HTTP 503"))
+        stop = threading.Event()
+        waits = []
+        real_wait = stop.wait
+        stop.wait = lambda t=None: (waits.append(t), real_wait(0))[1]
+        rc, passes, out = self.run_loop({**ENV, fs.SWITCH: "on"}, db, stop, passes_before_stop=3)
+        self.assertEqual((rc, passes), (0, 3))
+        self.assertEqual(db.calls, [("sweep", "server")] * 3)
+        self.assertEqual(waits[:2], [fs.EVERY_SECONDS, fs.EVERY_SECONDS])
+        self.assertIn("HTTP 503", out)
+
+    def test_a_crash_inside_a_pass_names_only_its_type(self):
+        db = FakeDb(exc=ValueError(f"{KEY} https://x.supabase.co"))
+        with self.assertLogs("film_sweep", level=logging.INFO) as logs:
+            self.assertEqual(fs.one_pass(db), 1)
+        self.assertNotIn(KEY, "\n".join(logs.output))
+        self.assertIn("ValueError", "\n".join(logs.output))
+
+
+class Check(unittest.TestCase):
+    """--check: the hourly watchdog. It reads film_sweep_status() and never sweeps."""
+
+    STATUS = {"runners": {}, "last_at": "2026-11-22T10:00:00+00:00", "open_segments": 2, "stuck_segments": 1,
+              "oldest_stuck_minutes": 47, "overdue_after_minutes": 30, "overdue": True, "at": "2026-11-22T10:47:00+00:00"}
+
+    def run_check(self, db, env=ENV):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = fs.main(env, argv=["--check"], make_db=lambda u, k: db)
+        text = out.getvalue()
+        self.assertNotIn(KEY, text)
+        self.assertNotIn("x.supabase.co", text)
+        self.assertFalse(any(c[0] in ("sweep", "expire") for c in db.calls), db.calls)  # it never sweeps
+        return rc, text
+
+    def test_overdue_is_red_and_names_the_stuck_counts(self):
+        rc, text = self.run_check(FakeDb(result=self.STATUS))
+        self.assertEqual(rc, 1)
+        self.assertRegex(text, r"^::error title=Film sweep overdue::stuck_segments=1 oldest_stuck_minutes=47 ")
+
+    def test_not_overdue_or_unknown_is_green_with_a_notice(self):
+        for overdue, word in ((False, "not overdue"), (None, "unknown")):
+            rc, text = self.run_check(FakeDb(result={**self.STATUS, "overdue": overdue, "stuck_segments": 0,
+                                                     "oldest_stuck_minutes": None}))
+            self.assertEqual(rc, 0, overdue)
+            self.assertRegex(text, rf"^::notice title=Film sweep {word}.*::stuck_segments=0 oldest_stuck_minutes=unknown ")
+
+    def test_0212_not_applied_is_one_neutral_notice(self):
+        rc, text = self.run_check(FakeDb(exc=fo.FilmFunctionMissing("film_sweep_status: HTTP 404")))
+        self.assertEqual(rc, 0)
+        self.assertEqual(text.count("\n"), 1)
+        self.assertTrue(text.startswith("::notice title=0212 not applied::"))
+
+    def test_an_unreadable_status_is_red(self):
+        for exc in (fo.FilmUnavailable("film_sweep_status: HTTP 503"), fo.FilmRefused("permission_denied")):
+            rc, text = self.run_check(FakeDb(exc=exc))
+            self.assertEqual(rc, 1)
+            self.assertTrue(text.startswith("::error title=Film sweep status unreadable::"))
+        rc, text = self.run_check(FakeDb(result=None))
+        self.assertEqual(rc, 1)
+
+    def test_secrets_unset_is_a_warning_and_green(self):
+        rc, text = self.run_check(FakeDb(), env={})
+        self.assertEqual(rc, 0)
+        self.assertTrue(text.startswith("::warning title=Film sweep is off::"))
+
+    def test_hostile_values_in_the_answer_never_reach_an_annotation(self):
+        rc, text = self.run_check(FakeDb(result={**self.STATUS, "stuck_segments": "1\n::error::x", "last_at": "x" * 500}))
+        self.assertEqual(rc, 1)
+        self.assertEqual(text.count("\n"), 1)
+        self.assertIn("stuck_segments=unknown", text)
+        self.assertIn("last_at=never", text)
+
+    def test_filmrest_sweep_status_reads_film_sweep_status_and_names_0212_when_missing(self):
+        r, s = rest(Resp(200, self.STATUS))
+        self.assertEqual(r.sweep_status(), self.STATUS)
+        self.assertEqual(s.posts, [("https://x.supabase.co/rest/v1/rpc/film_sweep_status", {})])
+        r, _ = rest(Resp(404, {}))
+        with self.assertRaises(fo.FilmFunctionMissing) as e:
+            r.sweep_status()
+        self.assertIn("0212_film_sweep.sql", str(e.exception))
+
+
+class Service(unittest.TestCase):
+    def test_the_film_sweep_service_runs_the_loop_from_the_worker_image_and_env_file_without_a_key_flag(self):
+        svc = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]["film-sweep"]
+        self.assertEqual(svc["command"], ["python", "tools/film_sweep.py", "--loop"])
+        self.assertEqual(svc["image"], yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]["film-worker"]["image"])
+        self.assertEqual(svc["profiles"], ["worker"])
+        self.assertIn(".env.worker", svc["env_file"][0]["path"])
+        self.assertNotIn("SUPABASE_SERVICE_KEY", str(svc.get("environment", {})) + str(svc["command"]))
+        self.assertEqual(svc["cap_drop"], ["ALL"])
+        self.assertIn("no-new-privileges:true", svc["security_opt"])
+
+    def test_the_deploy_starts_it_on_its_own_switch_not_the_film_workers(self):
+        text = (ROOT / "deploy" / "remote-deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('if [[ "$line" == NIGHTSHIFT_FILM_SWEEP=on ]]; then filmsweep=on; fi', text)
+        self.assertIn('if [[ "$filmsweep" == on ]]; then', text)
+        self.assertIn("compose up -d --no-deps film-sweep", text)
+        self.assertIn("NIGHTSHIFT_FILM_SWEEP=", (ROOT / "deploy" / ".env.worker.example").read_text(encoding="utf-8"))
+
+
 class Workflow(unittest.TestCase):
     def setUp(self):
         self.doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
         self.text = WORKFLOW.read_text(encoding="utf-8")
 
-    def test_it_runs_every_ten_minutes_and_by_hand(self):
+    def test_it_is_an_hourly_watchdog_and_nothing_in_actions_sweeps(self):
         on = self.doc.get("on", self.doc.get(True))  # YAML 1.1 reads a bare `on` as true
-        self.assertEqual(on["schedule"], [{"cron": "3-59/10 * * * *"}])  # every 10 minutes, off the top of the hour
+        self.assertEqual(on["schedule"], [{"cron": "17 * * * *"}])
         self.assertIn("workflow_dispatch", on)
-        self.assertEqual(self.doc["concurrency"], {"group": "film-sweep", "cancel-in-progress": False})
+        self.assertEqual(self.doc["concurrency"], {"group": "film-sweep-watchdog", "cancel-in-progress": False})
+        self.assertFalse((ROOT / ".github" / "workflows" / "film_sweep.yml").exists())
+        for wf in (ROOT / ".github" / "workflows").glob("*.yml"):
+            body = wf.read_text(encoding="utf-8")
+            for line in re.findall(r"python3? tools/film_sweep\.py[^\n]*", body):  # a run line, not a comment's mention
+                self.assertEqual(line, "python tools/film_sweep.py --check", wf.name)
+        self.assertIn("run: python tools/film_sweep.py --check", self.text)
 
     def test_least_privilege_and_pinned_actions(self):
         self.assertEqual(self.doc["permissions"], {"contents": "read"})
-        steps = self.doc["jobs"]["sweep"]["steps"]
+        steps = self.doc["jobs"]["watchdog"]["steps"]
         for step in steps:
             if "uses" in step:
                 self.assertRegex(step["uses"], r"^[\w.-]+/[\w.-]+@[0-9a-f]{40}$")
@@ -181,10 +345,10 @@ class Workflow(unittest.TestCase):
         self.assertEqual(checkout[0]["with"]["persist-credentials"], False)
 
     def test_the_key_comes_from_secrets_only_and_it_runs_the_cli(self):
-        step = [s for s in self.doc["jobs"]["sweep"]["steps"] if s.get("name") == "Film sweep"][0]
+        step = [s for s in self.doc["jobs"]["watchdog"]["steps"] if s.get("name") == "Is the film sweep running?"][0]
         self.assertEqual(step["env"], {"SUPABASE_URL": "${{ secrets.SUPABASE_URL }}",
                                        "SUPABASE_SERVICE_KEY": "${{ secrets.SUPABASE_SERVICE_KEY }}"})
-        self.assertEqual(step["run"], "python tools/film_sweep.py")
+        self.assertEqual(step["run"], "python tools/film_sweep.py --check")
         self.assertIn("It spends nothing", self.text)
 
 
@@ -196,7 +360,8 @@ class MigrationText(unittest.TestCase):
         self.assertIn("perform cron.unschedule('nightshift-film-sweep')", self.sql)
         self.assertIn("perform cron.schedule('nightshift-film-sweep', '*/5 * * * *',", self.sql)
         self.assertIn("from (select public.film_sweep(''pg_cron'') as r) s", self.sql)
-        self.assertIn("raise notice '0212: pg_cron is not enabled", self.sql)
+        self.assertIn("raise notice '%', '0212: pg_cron is not enabled", self.sql)
+        self.assertIn("Database -> Extensions -> pg_cron", self.sql)
 
     def test_pg_cron_never_marks_a_failed_sweep_succeeded(self):
         self.assertIn("''film_sweep failed with SQLSTATE '' || coalesce(r ->> ''error'', ''none''))::integer", self.sql)

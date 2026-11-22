@@ -43,7 +43,7 @@ from tools import film_worker as fw
 MIGRATION = sec_db.MIGRATIONS / "0212_film_sweep.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0212_film_sweep.sql"
 JOB = "nightshift-film-sweep"
-RUNNERS = ("worker", "actions", "pg_cron")
+RUNNERS = ("worker", "actions", "pg_cron", "server")
 
 # A stand-in for the pg_cron API, inside one rolled-back transaction (as test_sec_video_safety.py does for 0111).
 CRON_STUB = """
@@ -294,13 +294,35 @@ def test_filmrest_the_cli_and_the_worker_reach_the_real_signature(db, a, monkeyp
         fw._SWEEP_UNRECORDED.clear()
         fw.sweep_once(rest)
     assert not fw._SWEEP_UNRECORDED.is_set()  # 0212 is here: no unrecorded sweep
-    assert set(runs(db)) == {"worker", "actions"}
+    assert set(runs(db)) == {"worker", "server"}
     assert pg.unknown == [] and {c[1] for c in pg.calls} == {"film_sweep"}
     assert all(c[2] == ("p_runner",) for c in pg.calls)
     with pytest.raises(fo.FilmRefused) as e:  # 22023 through PostgREST is a 400 with its machine word
         rest.sweep("browser")
     assert e.value.word == "unknown_runner"
     assert KEY not in caplog.text
+
+
+def test_the_service_loop_sweeps_as_server_and_the_watchdog_only_reads(db, a, capsys):
+    pg = FakePostgrest(db.dsn)
+    rest = fo.FilmRest(URL, KEY, session=pg)
+    _fid, seg = past_deadline(db, a)
+    stop = threading.Event()
+    stop.wait = lambda t=None: (stop.set(), True)[1]  # one pass, then the "SIGTERM"
+    assert fs.loop(rest, stop) == 0
+    assert db.segment(seg["id"])[0] == "settled" and set(runs(db)) == {"server"}
+    assert status(db)["runners"]["server"]["last_settled"] == 1
+    before = (runs(db), len(pg.calls))
+    capsys.readouterr()
+    assert fs.check(rest) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("::notice title=Film sweep not overdue::") and KEY not in out
+    assert runs(db) == before[0] and [c[1] for c in pg.calls[before[1]:]] == ["film_sweep_status"]  # read, never swept
+    db.su("update public.film_sweep_runs set last_at = now() - interval '2 hours'")
+    db.quoted_start(a, db.film(a))
+    assert fs.check(rest) == 1
+    assert capsys.readouterr().out.startswith("::error title=Film sweep overdue::stuck_segments=")
+    assert pg.unknown == []
 
 
 # ── the migration ───────────────────────────────────────────────────────────
@@ -339,7 +361,8 @@ def test_without_pg_cron_it_applies_and_says_so(db):
         c.add_notice_handler(lambda d: notices.append(d.message_primary))
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         c.rollback()
-    assert any("0212: pg_cron is not enabled" in n and "film_sweep.yml" in n for n in notices), notices
+    assert any("0212: pg_cron is not enabled" in n and "Database -> Extensions -> pg_cron" in n and "apply 0212 again" in n
+               and "NIGHTSHIFT_FILM_SWEEP" in n for n in notices), notices
 
 
 def test_with_pg_cron_one_job_every_five_minutes_runs_film_sweep_as_pg_cron_and_the_rollback_removes_it(db):

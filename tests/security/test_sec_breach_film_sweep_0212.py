@@ -1,4 +1,4 @@
-"""Breach on migration 0212 (film_sweep, film_sweep_status, film_sweep_runs), tools/film_sweep.py, FilmRest.sweep and film_sweep.yml.
+"""Breach on migration 0212 (film_sweep, film_sweep_status, film_sweep_runs), tools/film_sweep.py, FilmRest.sweep and film_sweep_watchdog.yml.
 
 Attacked from the lab only (a scratch Postgres with the migrations applied, the PostgREST stand-in, fake keys), as the anon key, a signed-in
 member of another organization, a platform admin, a JWT whose claims say service_role while the role is authenticated, and the service
@@ -13,7 +13,7 @@ fails names a hole that is still open (it stays failing until the product code c
   silence    a sweep that "completes" while every pass skips a segment past its deadline and grace must not make "overdue" read
              false (OPEN: see test_overdue_is_not_false_while_every_sweep_skips_a_segment_past_its_grace); a cancelled statement
              surfaces as an error, never as a recorded success;
-  workflow   film_sweep.yml has no trigger a pull request can reach, interpolates nothing into a shell, and the CLI logs neither the
+  workflow   film_sweep_watchdog.yml has no trigger a pull request can reach, interpolates nothing into a shell, and the CLI logs neither the
              key nor the URL on any failure path.
 """
 
@@ -37,7 +37,7 @@ from modules import film_orchestrator as fo
 from tools import film_sweep as fs
 
 RUNNERS = ("worker", "actions", "pg_cron")
-WORKFLOW = sec_db.REPO / ".github" / "workflows" / "film_sweep.yml"
+WORKFLOW = sec_db.REPO / ".github" / "workflows" / "film_sweep_watchdog.yml"
 UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
@@ -379,10 +379,10 @@ def test_the_cli_fails_red_and_never_logs_the_key_or_the_url(session, code, capl
     assert SECRET_KEY not in caplog.text and "breach-lab-project" not in caplog.text, caplog.text
 
 
-def test_the_cli_against_the_lab_sweeps_as_actions_only(db, a):
+def test_the_cli_against_the_lab_sweeps_as_server_only(db, a):
     pg = FakePostgrest(db.dsn)
     assert fs.main({"SUPABASE_URL": URL, "SUPABASE_SERVICE_KEY": KEY}, make_db=lambda u, k: fo.FilmRest(u, k, session=pg)) == 0
-    assert set(runs(db)) == {"actions"} and [c[1] for c in pg.calls] == ["film_sweep"]
+    assert set(runs(db)) == {"server"} and [c[1] for c in pg.calls] == ["film_sweep"]
 
 
 def test_the_workflow_has_no_pull_request_trigger_and_no_shell_interpolation():

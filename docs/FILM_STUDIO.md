@@ -139,17 +139,18 @@ editor changes it, with `set_film_studio_enabled(true|false)`, and every change 
 
 - archive and resume exist for `paused` and `cancelled` projects, so no project a person paid into is left without a way forward;
 - P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open.
-  **Built (0212, `claude/nsai-s2-sweep`); met once 0212 is applied and the workflow has run.** Three runners call the same
-  `film_sweep(runner)`, which runs `film_expire_segments` and records the run in `film_sweep_runs`:
-  - `.github/workflows/film_sweep.yml` every 10 minutes (`tools/film_sweep.py`, runner `actions`): the **guaranteed** schedule,
-    independent of the server and the worker (minutes 3, 13, 23 ...). It needs the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
-    Actions secrets; without them it exits 0 with a `::warning::` annotation saying it is not sweeping. A run that could not sweep
-    fails (red), and a sweep that failed in the database records its SQLSTATE;
-  - pg_cron every 5 minutes (job `nightshift-film-sweep`, runner `pg_cron`), **only once pg_cron is installed** on the project
-    (it is not today; docs/MIGRATIONS.md, 0111 D15). Install it, then apply 0212 again (or schedule it by hand, 0212's entry).
-    Its command raises on a failed sweep, so pg_cron's run history shows it as failed (with the SQLSTATE), never as succeeded;
+  **Built (0212, `claude/nsai-s2-sweep`); met once 0212 is applied and pg_cron or the film-sweep service runs.** Every runner calls
+  the same `film_sweep(runner)`, which runs `film_expire_segments` and records the run in `film_sweep_runs`:
+  - **pg_cron, the primary**, every 5 minutes (job `nightshift-film-sweep`, runner `pg_cron`), **only once pg_cron is installed**
+    (it is not today; docs/MIGRATIONS.md, 0111 D15): the owner enables it in the Supabase dashboard (Database -> Extensions ->
+    pg_cron), then applies 0212 again or runs its one-line `cron.schedule` (0212's entry). Its command raises on a failed sweep, so
+    pg_cron's run history shows it as failed (with the SQLSTATE), never as succeeded;
+  - **the film-sweep service, the fallback**, on our own server (`deploy/docker-compose.yml` `film-sweep`, `tools/film_sweep.py
+    --loop`, runner `server`, every 300 s) while `NIGHTSHIFT_FILM_SWEEP=on`, independent of `NIGHTSHIFT_FILM_WORKER`;
   - the film worker's own thread (runner `worker`), while it runs. Where 0212 is not applied it calls `film_expire_segments`
     directly (the same function, unrecorded) and says so once.
+  GitHub Actions does not sweep: `.github/workflows/film_sweep_watchdog.yml` reads `film_sweep_status()` once an hour
+  (`tools/film_sweep.py --check`) and turns red only when it says overdue.
   "It ran" is a measurement: `film_sweep_status()` (service role, counts only) gives each runner's last completed sweep (null:
   never), `stuck_segments` / `oldest_stuck_minutes` (open segments already past 0171's settle point), and `overdue`: true when a
   segment has been stuck longer than `overdue_after_minutes` (30) or a segment is open and no runner completed a sweep within it,

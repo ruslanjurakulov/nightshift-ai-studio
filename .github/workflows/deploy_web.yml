@@ -24,6 +24,8 @@ name: Deploy web
 # worker (creative_jobs, migration 0036); otherwise that one is removed.
 # While NIGHTSHIFT_FILM_WORKER is `on` as well, it also starts the film worker
 # (Film Studio segments, migrations 0171 and 0198); otherwise that one is removed.
+# While NIGHTSHIFT_FILM_SWEEP is `on` as well, it also starts the film sweep (0212's fallback schedule, every 5
+# minutes, independent of the film worker); otherwise that one is removed.
 # Two small workers have a switch and an env file each, and neither is the
 # pipeline worker's: while NIGHTSHIFT_NOTIFY_WORKER is `on` the customer
 # Telegram sender (notify-worker, /opt/nightshift/.env.notify, step "Build the
@@ -431,6 +433,9 @@ jobs:
           WORKERENV_NIGHTSHIFT_FILM_WORKER: ${{ vars.NIGHTSHIFT_FILM_WORKER }}
           # The film assembly's switch: off unless exactly `on`; without it the film worker claims nothing.
           WORKERENV_NIGHTSHIFT_FILM_ASSEMBLY: ${{ vars.NIGHTSHIFT_FILM_ASSEMBLY }}
+          # The film sweep's switch (tools/film_sweep.py --loop, 0212): `on` = remote-deploy.sh starts or recreates film-sweep,
+          # anything else = it is removed. Independent of NIGHTSHIFT_FILM_WORKER. A word, not a secret.
+          WORKERENV_NIGHTSHIFT_FILM_SWEEP: ${{ vars.NIGHTSHIFT_FILM_SWEEP }}
           # Models, hosts, per-run and per-day USD caps and unit prices: variables only
           # (deploy/.env.worker.example, "Models, hosts and caps" and "Spend").
           WORKERENV_GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}

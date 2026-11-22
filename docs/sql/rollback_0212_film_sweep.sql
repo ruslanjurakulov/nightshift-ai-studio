@@ -2,9 +2,9 @@
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHAT IS LOST: the record of when each runner last swept (film_sweep_runs). Nothing a customer owns, and no money: 0212 only
--- called 0171's film_expire_segments, which is untouched and stays. After this, .github/workflows/film_sweep.yml fails (film_sweep
--- is missing: disable the workflow, or apply 0212 again), and tools/film_worker.py goes back to calling film_expire_segments
--- directly, unrecorded, as before 0212.
+-- called 0171's film_expire_segments, which is untouched and stays. After this the film-sweep service sweeps nothing and logs
+-- that film_sweep is missing (set NIGHTSHIFT_FILM_SWEEP off, or apply 0212 again), the hourly watchdog reads "0212 not applied"
+-- (green), and tools/film_worker.py goes back to calling film_expire_segments directly, unrecorded, as before 0212.
 --
 -- WHAT IT DOES, in one transaction:
 --   0. REFUSES (changes nothing) if either function is not 0212's body (a later change would be undone).
@@ -22,8 +22,8 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.film_sweep(text)', '10dcda57c382fd7f3f2ed4a32fb62e44'),
-      ('public.film_sweep_status()', 'accdeeb112a6eb7b86271f66b12c1b25')) v(sig, want) loop
+      ('public.film_sweep(text)', '7246795c29051c51a35e75ab58b38bd0'),
+      ('public.film_sweep_status()', '1f042f5c52babd1797232818231624aa')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
       raise exception 'rollback 0212: % is not 0212''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
