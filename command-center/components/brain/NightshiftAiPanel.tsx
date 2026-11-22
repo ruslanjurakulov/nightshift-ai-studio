@@ -10,8 +10,9 @@ import { runLink, type Brief, type BrainCard, type BrainSlots, type Scenario } f
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
 import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
 import { StateBlock } from "@/components/states/StateBlock";
-// A type only (erased at build): the codes are the gate's own, never retyped here.
-import type { ChatGateError } from "@/lib/server/brain/google-gate";
+// The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
+import { CHAT_GATE_REMEDY, isChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
+import { LEGAL } from "@/lib/legal";
 import "./nightshift-ai-panel.css";
 
 /**
@@ -42,18 +43,15 @@ type State =
   | { state: "failed" }
   | { state: "not_enabled" }
   | { state: "session_ended" }
-  | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean };
+  | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean; gate: ChatGateVerdict | null };
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
-/** The model gate's refusals (#898 lib/server/brain/google-gate), by its own union: adult_only_service has its own line already. */
-type GateCode = Exclude<ChatGateError, "adult_only_service">;
-const GATE_CODES: Record<GateCode, true> = { country_blocked: true, country_unverified: true, adult_attestation_required: true, age_unavailable: true };
-const gateCode = (e: unknown): GateCode | null => (typeof e === "string" && Object.prototype.hasOwnProperty.call(GATE_CODES, e) ? (e as GateCode) : null);
+/** The remedy of a refusal the model's gate gave (#898 lib/brain/chat-gate), or null when it is not the gate's. */
+const gateRemedy = (e: unknown): ChatGateRemedy | null => (isChatGateError(e) ? CHAT_GATE_REMEDY[e] : null);
 type Problem = { text: string; retry: (() => void) | null; code?: string } | null;
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY: string[] = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap",
-  // The gate: the same press meets the same region and the same missing confirmation. age_unavailable is not here: the
-  // confirmation could not be READ (#898: 503), and a moment later it may be.
-  ...(["country_blocked", "country_unverified", "adult_attestation_required"] satisfies GateCode[])];
+  // The gate's refusals whose remedy is not "retry": the same press meets the same region, confirmation or support case.
+  ...Object.keys(CHAT_GATE_REMEDY).filter((k) => gateRemedy(k) !== "retry")];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
 const pressId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 /**
@@ -218,7 +216,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       const d = await res.json().catch(() => ({}));
       if (res.status === 503 && d.error === "not_enabled") return setLoad({ state: "not_enabled" });
       if (!res.ok) return setLoad({ state: "failed" });
-      setLoad({ state: "ready", plan: d.plan, model: d.model, canEdit: d.canEdit === true, canRun: d.canRun === true });
+      // GET /api/brain's `gate` (#898): read-only, the same check a turn runs. Only a verdict in the gate's own vocabulary is taken;
+      // anything else is no verdict, and the turn's own gate still refuses after a press.
+      const g = d.gate && typeof d.gate === "object" ? (d.gate as { code?: unknown }) : null;
+      const gate: ChatGateVerdict | null = g && isChatGateError(g.code) ? { code: g.code, remedy: CHAT_GATE_REMEDY[g.code] } : null;
+      setLoad({ state: "ready", plan: d.plan, model: d.model, canEdit: d.canEdit === true, canRun: d.canRun === true, gate });
       setCapped(d.plan?.limit !== null && typeof d.plan?.used === "number" && d.plan.used >= d.plan.limit);
       const sid = initialSession || (fresh ? null : d.session?.id) || null;
       // A link to a conversation that is not this person's here (another workspace or channel) opens nothing: a new chat.
@@ -248,6 +250,23 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     window.history.replaceState(null, "", u.toString());
   }, [takeIdea]);
 
+  /** One wording per remedy, before a press (GET's gate) and after one (a turn's refusal) alike; never the vendor's name. */
+  const gateWords = (r: ChatGateRemedy): string =>
+    r === "contact_support" ? (LEGAL.contactEmail ? fmt(c.gate.contact_support, { email: LEGAL.contactEmail }) : c.gate.contact_support_no_email) : c.gate[r];
+  /** S5's shared state for the gate: one line and the one way on the remedy names (a link to confirm the age, Retry, or support). */
+  const gateBlock = (r: ChatGateRemedy, code: string, onRetry: (() => void) | null): ReactNode => (
+    <StateBlock role="alert" tone={r === "retry" ? "warn" : "fail"} compact data-gate={code} data-remedy={r}
+      actions={r === "confirm_age"
+        // Create's 18+ box (0192, components/age/AgeGate): the only place an age is confirmed.
+        ? <Link className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={`/${encodeURIComponent(channelSlug)}/create`}>{c.gate.confirmAge}</Link>
+        : r === "retry" && onRetry
+          ? <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={onRetry} disabled={busy}>{c.retry}</button>
+          : r === "contact_support" && LEGAL.contactEmail
+            ? <a className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={`mailto:${LEGAL.contactEmail}`}>{c.gate.contact}</a>
+            : undefined}>
+      {gateWords(r)}
+    </StateBlock>
+  );
   const explain = (status: number, d: Record<string, unknown>): string => {
     const e = typeof d.error === "string" ? d.error : "";
     if (status === 401) return c.errors.session_ended;
@@ -263,12 +282,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "nothing_to_choose") return c.errors.nothing_to_choose;
     if (e === "film_refused") return c.errors.film_refused;
     if (e === "not_enabled") return c.errors.not_enabled;
-    if (e === "adult_only_service") return c.errors.adult_only_service;
     if (e === "session_closed") return c.errors.session_closed;
     if (e === "card_changed") return c.errors.card_changed;
-    // Each with its own remedy, never "unavailable" (a VPN to turn off, an age to confirm, a moment to wait).
-    const gate = gateCode(e);
-    if (gate) return c.errors[gate];
+    // The gate's refusals (adult_only_service among them) are worded by their REMEDY, the same words as before a press.
+    const remedy = gateRemedy(e);
+    if (remedy) return gateWords(remedy);
     // Which chapter failed is the server's count, not the model's words; nothing was priced either way.
     const step = d.step && typeof d.step === "object" ? (d.step as { chapter?: unknown; chapters?: unknown }) : null;
     const at = step && typeof step.chapter === "number" && typeof step.chapters === "number" ? { n: step.chapter, total: step.chapters } : null;
@@ -540,7 +558,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const viewer = ready && !load.canEdit;
   const closed = step === "created";
   // The box cannot be used at all: the status above it says why and what to do.
-  const blocked = !ready || capped || noBrain || down || viewer || closed;
+  // The model's gate said before any press that this person cannot use it (#898 GET /api/brain `gate`): the box, the card's answers
+  // and choosing are closed up front, with the remedy, instead of a press that could only be refused.
+  const gated = ready ? load.gate : null;
+  const blocked = !ready || capped || noBrain || down || viewer || closed || !!gated;
   const disabled = busy || blocked;
   const plansHref = `/${encodeURIComponent(channelSlug)}/credits#plans`;
   const maxChars = ready ? load.plan.max_input_chars : 2000;
@@ -576,6 +597,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (down) return <p role="status">{c.errors.assistant_unavailable}</p>;
     if (viewer) return <p role="status">{c.viewerOnly}</p>;
     if (closed) return <p role="status">{c.errors.session_closed}</p>;
+    // A retry here asks the gate again (GET /api/brain): it reads the answer anew, and spends nothing.
+    if (gated && !problem) return gateBlock(gated.remedy, gated.code, () => void read());
     return null;
   })();
 
@@ -648,17 +671,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     <>
       {hasTail && turns.length === 0 && tail}
       {planning && <p className="chat-note" role="status">{c.planWriting}</p>}
-      {problem && gateCode(problem.code) && (
-        // S5's shared state (one lamp, one line, one way on): the region is said without the vendor, and an age to confirm links to
-        // where it is confirmed (Create's 18+ box, 0192). No ProviderUnavailable: its words name a provider and offer another model.
-        <StateBlock role="alert" tone={problem.code === "age_unavailable" ? "warn" : "fail"} compact data-gate={problem.code}
-          actions={problem.code === "adult_attestation_required"
-            ? <Link className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={`/${encodeURIComponent(channelSlug)}/create`}>{c.errors.confirmAge}</Link>
-            : problem.retry ? <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={problem.retry} disabled={busy}>{c.retry}</button> : undefined}>
-          {problem.text}
-        </StateBlock>
-      )}
-      {problem && !gateCode(problem.code) && (
+      {/* After a press: the same block as before one (gateBlock). No ProviderUnavailable: its words name a provider and offer
+          another model. */}
+      {problem && gateRemedy(problem.code) && gateBlock(gateRemedy(problem.code)!, String(problem.code), problem.retry)}
+      {problem && !gateRemedy(problem.code) && (
         <div className="ns-ai-problem" role="alert">
           <p className="m-0 flex items-start gap-2">
             <TriangleAlert aria-hidden size={16} className="ns-ai-problem-ic" />

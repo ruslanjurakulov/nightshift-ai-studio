@@ -56,6 +56,15 @@ export const aiChatUz: AiChatDictionary = {
   viewerOnly: "Nightshift AIʼdan shu ish maydonining muharriri foydalana oladi.",
   shortComingSoon: "Nightshift AIʼdan Studiyaning qisqa filmlari tez orada. Uzun YouTube videolari hozir ishlaydi.",
   retry: "Qayta urinish",
+  gate: {
+    confirm_age: "Nightshift AI faqat kattalar (18+) uchun. Yoshingizni bir marta tasdiqlang va qayting. Hech narsa ishlatilmadi va hisobdan yechilmadi.",
+    retry: "Yoshingiz tasdigʻini hozir oʻqib boʻlmadi, shuning uchun Nightshift AI hali javob bera olmaydi. Birozdan soʻng qayta urinib koʻring.",
+    not_in_region: "Nightshift AI sizning hududingizda mavjud emas. Hech narsa ishlatilmadi va hisobdan yechilmadi.",
+    contact_support: "Nightshift AI hozir bu hisobda ishlatilmaydi va buni bu yerda oʻzgartirib boʻlmaydi. {email} manziliga yozing, biz hal qilamiz.",
+    contact_support_no_email: "Nightshift AI hozir bu hisobda ishlatilmaydi va buni bu yerda oʻzgartirib boʻlmaydi. Sayt kontaktlar sahifasi orqali qoʻllab-quvvatlash xizmatiga murojaat qiling.",
+    confirmAge: "Yoshni tasdiqlash",
+    contact: "Qoʻllab-quvvatlashga yozish",
+  },
   shell: {
     greeting: "Salom, {name}",
     greetingNoName: "Salom",
@@ -117,11 +126,6 @@ export const aiChatUz: AiChatDictionary = {
     plan_failed_plain: "Raskadrovkani yozib boʻlmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
     plan_length_mismatch: "{total} ta bobdan {n}-bob qayta soʻralganda ham oʻz uzunligiga mos kelmadi, shuning uchun raskadrovka ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
     plan_length_mismatch_plain: "Raskadrovka siz tanlagan uzunlikka mos kelmadi, shuning uchun ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
-    country_blocked: "Nightshift AI sizning hududingizda mavjud emas. Hech narsa ishlatilmadi va hisobdan yechilmadi.",
-    country_unverified: "Nightshift AI hududingizni aniqlay olmadi, shuning uchun hozir bu yerda mavjud emas. VPN yoki proksi ishlatsangiz, uni oʻchirib, sahifani yangilang. Hech narsa ishlatilmadi va hisobdan yechilmadi.",
-    adult_attestation_required: "Nightshift AI faqat kattalar (18+) uchun. Yoshingizni bir marta tasdiqlang va qayta urinib koʻring. Hech narsa ishlatilmadi va hisobdan yechilmadi.",
-    confirmAge: "Yoshni tasdiqlash",
-    age_unavailable: "Yoshingiz tasdigʻini hozir oʻqib boʻlmadi, shuning uchun Nightshift AI javob bermadi. Birozdan soʻng qayta urinib koʻring.",
     plan_over_cap: "Bu raskadrovkani yozish uchun {needed} ta xabar kerak, bugun esa {left} ta qoldi. Qisqaroq film tanlang yoki 24 soat ichida qayta urinib koʻring.",
   },
 };

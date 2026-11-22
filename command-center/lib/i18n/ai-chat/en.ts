@@ -54,6 +54,16 @@ export const aiChatEn = {
   viewerOnly: "An editor of this workspace can use Nightshift AI.",
   shortComingSoon: "Short Studio films from Nightshift AI are coming soon. Long YouTube videos work now.",
   retry: "Try again",
+  /** The model gate's refusals, by remedy (lib/brain/chat-gate CHAT_GATE_REMEDY): one wording before a press and after one. */
+  gate: {
+    confirm_age: "Nightshift AI is for adults (18+). Confirm your age once, then come back. Nothing was used or charged.",
+    retry: "Your age confirmation couldn’t be read just now, so Nightshift AI can’t answer yet. Try again in a moment.",
+    not_in_region: "Nightshift AI isn’t available in your region. Nothing was used or charged.",
+    contact_support: "Nightshift AI can’t be used on this account right now, and it isn’t something you can change here. Write to {email} and we’ll sort it out.",
+    contact_support_no_email: "Nightshift AI can’t be used on this account right now, and it isn’t something you can change here. Please contact support through the site’s contact page.",
+    confirmAge: "Confirm your age",
+    contact: "Contact support",
+  },
   /** The shared chat shell (components/chat/ChatShell.tsx): the same look as the owner's Nightshift AI. */
   shell: {
     greeting: "Hello, {name}",
@@ -117,11 +127,6 @@ export const aiChatEn = {
     plan_failed_plain: "The storyboard could not be written. Nothing was priced. Try again.",
     plan_length_mismatch: "Chapter {n} of {total} did not add up to its length, even when asked again, so the storyboard was not used. Nothing was priced. Try again.",
     plan_length_mismatch_plain: "The storyboard did not add up to the length you chose, so it was not used. Nothing was priced. Try again.",
-    country_blocked: "Nightshift AI isn’t available in your region. Nothing was used or charged.",
-    country_unverified: "Nightshift AI couldn’t confirm your region, so it isn’t available here right now. If you use a VPN or proxy, turn it off and reload the page. Nothing was used or charged.",
-    adult_attestation_required: "Nightshift AI is for adults (18+). Confirm your age once, then try again. Nothing was used or charged.",
-    confirmAge: "Confirm your age",
-    age_unavailable: "Your age confirmation couldn’t be read just now, so Nightshift AI didn’t answer. Try again in a moment.",
     plan_over_cap: "Writing this storyboard takes {needed} messages, and {left} are left today. Choose a shorter film, or try again within 24 hours.",
   },
 };

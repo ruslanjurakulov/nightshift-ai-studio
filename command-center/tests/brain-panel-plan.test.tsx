@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { NightshiftAiPanel } from "@/components/brain/NightshiftAiPanel";
+import { CHAT_GATE_REMEDY, type ChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
+
+const SUPPORT = "help@example.test";
+vi.mock("@/lib/legal", () => ({ LEGAL: { contactEmail: "help@example.test" } }));
 
 /**
  * The panel's plan-step states (S1_GAPS G2) and the model gate's refusals, in #900's shell. What would break without these: a stored
@@ -25,7 +29,7 @@ let release: (() => void) | null = null;
 let turnReply: { status: number; body: unknown } = { status: 502, body: {} };
 let holdTurn = true;
 
-function stub(proposing: boolean) {
+function stub(proposing: boolean, gate: ChatGateVerdict | null = null) {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
     if (url.startsWith("/api/brain/history")) {
@@ -43,7 +47,7 @@ function stub(proposing: boolean) {
       return json(turnReply.status, turnReply.body);
     }
     return json(200, { plan: { used: 0, limit: 30, trial_left: null, max_input_chars: 2000 }, model: "available", canEdit: true, canRun: true,
-                       session: proposing ? { id: S1 } : null });
+                       session: proposing ? { id: S1 } : null, gate });
   }));
 }
 
@@ -87,19 +91,61 @@ describe("Nightshift AI panel: writing the storyboard", () => {
   });
 });
 
-describe("Nightshift AI panel: the model's own conditions, each with its remedy", () => {
-  const cases = [
-    ["country_blocked", 451, false],
-    ["country_unverified", 451, false],
-    ["adult_attestation_required", 428, false],
-    ["age_unavailable", 503, true],
-  ] as const;
-  for (const [code, status, retryable] of cases) {
-    it(`${code} is said in its own words in en, ru and uz, never "unavailable"`, async () => {
+describe("Nightshift AI panel: the model's gate, worded and keyed by its remedy", () => {
+  const CODES = Object.keys(CHAT_GATE_REMEDY) as ChatGateError[];
+  const STATUS: Record<ChatGateError, number> = { adult_only_service: 403, adult_attestation_required: 428, age_unavailable: 503, country_blocked: 451, country_unverified: 451 };
+  const words = (locale: "en" | "ru" | "uz", r: ChatGateRemedy) => {
+    const g = dictionaries[locale].aiChat.gate;
+    return r === "contact_support" ? g.contact_support.replace("{email}", SUPPORT) : g[r];
+  };
+  /** What each remedy offers, and nothing else: a link to confirm the age, Retry, support by mail, or no way on at all. */
+  const expectKeys = (locale: "en" | "ru" | "uz", r: ChatGateRemedy) => {
+    const a = dictionaries[locale].aiChat;
+    expect(!!screen.queryByRole("button", { name: a.retry })).toBe(r === "retry");
+    expect(screen.queryByRole("link", { name: a.gate.confirmAge })?.getAttribute("href") ?? null).toBe(r === "confirm_age" ? "/chronos/create" : null);
+    expect(screen.queryByRole("link", { name: a.gate.contact })?.getAttribute("href") ?? null).toBe(r === "contact_support" ? `mailto:${SUPPORT}` : null);
+  };
+
+  it("every gate code has a remedy, and every remedy its own words in en, ru and uz, never naming the vendor", () => {
+    for (const locale of ["en", "ru", "uz"] as const) {
+      for (const r of ["confirm_age", "retry", "not_in_region", "contact_support"] as const) {
+        expect(words(locale, r).length).toBeGreaterThan(20);
+        expect(words(locale, r)).not.toMatch(/google|gemini|anthropic|openai/i);
+        // Uzbek's oʻ and gʻ with U+02BB, never a typed apostrophe.
+        if (locale === "uz") expect(words(locale, r)).not.toMatch(/[a-z]['’][a-z]/i);
+      }
+    }
+    // #898's mapping, as the panel reads it: country_unverified is a support case, not "not in your region".
+    expect(CHAT_GATE_REMEDY.country_unverified).toBe("contact_support");
+  });
+
+  for (const code of CODES) {
+    const r = CHAT_GATE_REMEDY[code];
+    it(`before a press, a ${code} gate closes the box and the choosers and says "${r}" up front`, async () => {
+      for (const locale of ["en", "ru", "uz"] as const) {
+        sent = [];
+        stub(true, { code, remedy: r });
+        const view = render(<I18nProvider locale={locale}><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+        await screen.findByText("Alpha");
+        const block = document.querySelector(`[data-gate="${code}"]`);
+        expect(block?.getAttribute("data-remedy")).toBe(r);
+        expect(block?.textContent).toContain(words(locale, r));
+        expect((document.getElementById("ns-ai-input") as HTMLTextAreaElement).disabled).toBe(true);
+        const choose = screen.getByRole("button", { name: dictionaries[locale].aiChat.chooseThisNamed.replace("{title}", "Alpha") }) as HTMLButtonElement;
+        expect(choose.disabled).toBe(true);
+        fireEvent.click(choose);
+        expectKeys(locale, r);
+        expect(sent).toHaveLength(0);
+        view.unmount();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it(`after a press, ${code} is worded by its remedy "${r}", with that remedy's one way on`, async () => {
       for (const locale of ["en", "ru", "uz"] as const) {
         const a = dictionaries[locale].aiChat;
         holdTurn = false;
-        turnReply = { status, body: { error: code } };
+        turnReply = { status: STATUS[code], body: { error: code } };
         stub(false);
         const view = render(<I18nProvider locale={locale}><NightshiftAiPanel channelId="c1" channelSlug="chronos" fresh /></I18nProvider>);
         await waitFor(() => expect(document.getElementById("ns-ai-input")).not.toBeNull());
@@ -107,24 +153,25 @@ describe("Nightshift AI panel: the model's own conditions, each with its remedy"
         await waitFor(() => expect(box.disabled).toBe(false));
         fireEvent.change(box, { target: { value: "a film about the sea" } });
         await act(async () => fireEvent.keyDown(box, { key: "Enter" }));
-        const alert = await screen.findByRole("alert");
-        expect(a.errors[code].length).toBeGreaterThan(20);
-        expect(alert.textContent).toContain(a.errors[code]);
-        expect(alert.textContent).not.toContain(a.errors.unavailable);
-        expect(!!screen.queryByRole("button", { name: a.retry })).toBe(retryable);
-        // S5's shared state, not the generic problem box.
-        expect(alert.classList.contains("g5-state")).toBe(true);
-        expect(alert.getAttribute("data-gate")).toBe(code);
-        // Only the age confirmation links somewhere: Create's 18+ box (0192).
-        const link = screen.queryByRole("link", { name: a.errors.confirmAge });
-        expect(link?.getAttribute("href") ?? null).toBe(code === "adult_attestation_required" ? "/chronos/create" : null);
-        // Neutral: the region is never said with a vendor's name, and never by a country name the server did not send.
-        expect(a.errors[code]).not.toMatch(/google|gemini|anthropic|openai/i);
-        // Uzbek's oʻ and gʻ with U+02BB, never a typed apostrophe.
-        if (locale === "uz") expect(a.errors[code]).not.toMatch(/[a-z]['’][a-z]/i);
+        await waitFor(() => expect(document.querySelector(`[data-gate="${code}"]`)).not.toBeNull());
+        const block = document.querySelector(`[data-gate="${code}"]`)!;
+        expect(block.classList.contains("g5-state")).toBe(true);
+        expect(block.getAttribute("data-remedy")).toBe(r);
+        expect(block.textContent).toContain(words(locale, r));
+        expect(block.textContent).not.toContain(a.errors.unavailable);
+        expectKeys(locale, r);
         view.unmount();
         vi.unstubAllGlobals();
       }
     });
   }
+
+  it("a gate of null leaves the box open", async () => {
+    stub(true, null);
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    await screen.findByText("Alpha");
+    await waitFor(() => expect((document.getElementById("ns-ai-input") as HTMLTextAreaElement).disabled).toBe(false));
+    expect(document.querySelector("[data-gate]")).toBeNull();
+    expect((screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
