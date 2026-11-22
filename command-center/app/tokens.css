@@ -710,25 +710,25 @@ textarea.ds-input { padding: var(--ds-space-3) var(--ds-space-4); min-height: 96
    Why this exists: the benchmark (docs/design/S5_BENCHMARK.md, gap 2) measured our type jumping from 56–74 px display
    straight to 13–20 px, with nothing in between, and display set at weight 600 — the page alternates between shouting and
    small print. The leaders run display at 400–500 with −1…−2.5 % tracking and a clear middle step. Every size here is
-   fluid between a 360 px phone and a 1440 px desk, so no stream writes its own breakpoint ladder for a heading.
+   linear between a 360 px phone and a 1440 px desk (middle term = min + (max − min)·(100vw − 360px)/1080), so no stream writes its own breakpoint ladder for a heading.
    Additive: nothing existing reads these yet; a screen moves over when its owner edits it. */
 :root {
-  /* Faces. Display is whatever --ds-font-display says (Onest on the public site since #889); mono is the system stack,
+  /* Faces. Display is whatever --ds-font-display says (Onest once #889 lands; Unbounded on main before it); mono is the system stack,
      never a downloaded face: a timecode must not wait for a font. */
-  --ds-font-mono: var(--font-mono, ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace);
+  --ds-font-mono: var(--font-mono);
 
   /* Type scale. Size / line-height / tracking / weight per step. Nothing under 13 px carries prose; 12 px is labels only. */
-  --ds-fs-display-xl: clamp(2.5rem, 1.6rem + 4vw, 4.5rem);      /* 40 → 72: the one hero line per page */
+  --ds-fs-display-xl: clamp(2.5rem, 1.8333rem + 2.963vw, 4.5rem);      /* 40 → 72: the one hero line per page */
   --ds-lh-display-xl: 1.04;
   --ds-ls-display-xl: -0.025em;
-  --ds-fs-display-lg: clamp(2rem, 1.4rem + 2.7vw, 3.5rem);      /* 32 → 56: a section's opening line */
+  --ds-fs-display-lg: clamp(2rem, 1.5rem + 2.2222vw, 3.5rem);      /* 32 → 56: a section's opening line */
   --ds-lh-display-lg: 1.08;
   --ds-ls-display-lg: -0.02em;
   --ds-fw-display: 500;
-  --ds-fs-heading-xl: clamp(1.75rem, 1.4rem + 1.5vw, 2.5rem);   /* 28 → 40: the missing middle */
+  --ds-fs-heading-xl: clamp(1.75rem, 1.5rem + 1.1111vw, 2.5rem);   /* 28 → 40: the missing middle */
   --ds-lh-heading-xl: 1.12;
   --ds-ls-heading-xl: -0.015em;
-  --ds-fs-heading-lg: clamp(1.375rem, 1.2rem + 0.75vw, 1.75rem); /* 22 → 28: a card or panel title that leads */
+  --ds-fs-heading-lg: clamp(1.375rem, 1.25rem + 0.5556vw, 1.75rem); /* 22 → 28: a card or panel title that leads */
   --ds-lh-heading-lg: 1.2;
   --ds-ls-heading-lg: -0.01em;
   --ds-fs-heading-md: 1.25rem;                                   /* 20 */
@@ -747,15 +747,15 @@ textarea.ds-input { padding: var(--ds-space-3) var(--ds-space-4); min-height: 96
   --ds-fs-label: 0.75rem;                                        /* 12: uppercase mono labels, track headers, eyebrows */
   --ds-lh-label: 1.3;
   --ds-ls-label: 0.08em;
-  --ds-fs-timecode: clamp(1.5rem, 1.2rem + 1.2vw, 2.25rem);     /* 24 → 36: the transport's clock */
+  --ds-fs-timecode: clamp(1.5rem, 1.25rem + 1.1111vw, 2.25rem);     /* 24 → 36: the transport's clock */
   --ds-measure: 62ch;                                            /* the longest line prose may run */
 
   /* Rhythm. One gutter, one container, one section step; a section is title → (one line) → media, not title → paragraph. */
-  --ds-gutter: clamp(16px, 3vw + 4px, 40px);
+  --ds-gutter: clamp(16px, 8px + 2.2222vw, 40px);
   --ds-container: 1200px;
   --ds-container-wide: 1440px;
-  --ds-section-y: clamp(4rem, 1rem + 9.5vw, 9rem);              /* 64 → 144 between sections */
-  --ds-section-head-gap: clamp(1.5rem, 1rem + 2vw, 3rem);        /* 24 → 48 from a section's title to its content */
+  --ds-section-y: clamp(4rem, 2.3333rem + 7.4074vw, 9rem);              /* 64 → 144 between sections */
+  --ds-section-head-gap: clamp(1.5rem, 1rem + 2.2222vw, 3rem);        /* 24 → 48 from a section's title to its content */
   --ds-stack-tight: var(--ds-space-2);
   --ds-stack: var(--ds-space-4);
   --ds-stack-loose: var(--ds-space-8);
@@ -824,7 +824,9 @@ textarea.ds-input { padding: var(--ds-space-3) var(--ds-space-4); min-height: 96
 .ds-section { padding-block: var(--ds-section-y); }
 .ds-section-head { display: grid; gap: var(--ds-space-3); margin-bottom: var(--ds-section-head-gap); }
 
-/* Reveal: media and cards arriving. Set --i on each child for the stagger; under reduced motion it is instant. */
+/* Reveal: media and cards arriving. Set --i on each child for the stagger; under reduced motion it is instant. --i is reset
+   on a .ds-reveal nested in another, so it does not take its parent's index as its delay; set --i on the element itself. */
+.ds-reveal :where(.ds-reveal) { --i: 0; }
 .ds-reveal {
   animation: ds-reveal var(--ds-dur-reveal) var(--ds-ease-emphasized) both;
   animation-delay: calc(var(--i, 0) * var(--ds-stagger));

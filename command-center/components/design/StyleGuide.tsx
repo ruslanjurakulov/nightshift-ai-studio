@@ -473,14 +473,23 @@ function Ruler() {
 function DsScale() {
   const { t } = useI18n();
   const d = t.design.ds;
-  const roles = ["display-xl", "display-lg", "heading-xl", "heading-lg", "heading-md", "body-lg", "body"] as const;
+  // On the elements they will really sit on, so the specimen shows the cascade a page gets (globals.css styles h1–h4).
+  const roles = [
+    ["display-xl", "h2"],
+    ["display-lg", "h3"],
+    ["heading-xl", "h4"],
+    ["heading-lg", "h4"],
+    ["heading-md", "p"],
+    ["body-lg", "p"],
+    ["body", "p"],
+  ] as const;
   return (
     <Block title={d.scaleTitle}>
       <div className="flex flex-col gap-5 rounded-[var(--ds-r-panel)] bg-[var(--ds-bg)] p-4 text-[var(--ds-text)]" data-testid="ds-scale">
-        {roles.map((r, i) => (
+        {roles.map(([r, Tag], i) => (
           <div key={r} className="ds-reveal flex min-w-0 flex-col gap-1" style={{ "--i": i } as CSSProperties}>
             <code className="ds-t-label text-[var(--ds-muted)]">{r}</code>
-            <p className={`ds-t-${r}`}>{r.startsWith("display") ? d.display : t.design.typeSample}</p>
+            <Tag className={`ds-t-${r}`}>{r.startsWith("display") ? d.display : t.design.typeSample}</Tag>
           </div>
         ))}
         <p className="ds-t-caption">{d.scaleCaption}</p>

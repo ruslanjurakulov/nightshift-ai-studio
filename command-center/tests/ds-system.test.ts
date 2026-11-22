@@ -40,9 +40,22 @@ describe("type scale", () => {
     ["--ds-fs-heading-xl", 28, 40],
     ["--ds-fs-heading-lg", 22, 28],
     ["--ds-fs-timecode", 24, 36],
-  ])("%s runs from %ipx on a 360 phone to %ipx on a 1440 desk", (name, phone, desk) => {
+    ["--ds-gutter", 16, 40],
+    ["--ds-section-y", 64, 144],
+    ["--ds-section-head-gap", 24, 48],
+  ])("%s runs linearly from %ipx on a 360 phone to %ipx on a 1440 desk", (name, phone, desk) => {
     expect(clampAt(token(name), 360)).toBeCloseTo(phone, 0);
+    expect(clampAt(token(name), 900)).toBeCloseTo((phone + desk) / 2, 0);
     expect(clampAt(token(name), 1440)).toBeCloseTo(desk, 0);
+    // Not flat before the desk: one step under 1440 is still under the maximum.
+    expect(clampAt(token(name), 1400)).toBeLessThan(desk);
+  });
+
+  it("lets a role win on a real heading: the unlayered h1–h4 rule in globals.css steps aside for .ds-t-*", () => {
+    const globals = readFileSync(path.join(process.cwd(), "app/globals.css"), "utf8");
+    for (const h of ["h1", "h2", "h3", "h4"]) expect(globals).toContain(`${h}:not(:where([class*="ds-t-"]))`);
+    expect(globals).not.toMatch(/^h1, h2, h3, h4, \.font-display \{/m);
+    expect(globals).not.toMatch(/^h1 \{ letter-spacing/m);
   });
 
   it("has a middle: every step between display and body is present, each smaller than the one above at both widths", () => {
@@ -74,12 +87,9 @@ describe("type scale", () => {
 });
 
 describe("rhythm", () => {
-  it("gives one gutter (16px on a phone), one container and one section step", () => {
-    expect(clampAt(token("--ds-gutter"), 360)).toBe(16);
-    expect(clampAt(token("--ds-gutter"), 1440)).toBe(40);
-    expect(clampAt(token("--ds-section-y"), 360)).toBe(64);
-    expect(clampAt(token("--ds-section-y"), 1440)).toBe(144);
+  it("gives one container and a wide one", () => {
     expect(token("--ds-container")).toBe("1200px");
+    expect(token("--ds-container-wide")).toBe("1440px");
   });
 });
 

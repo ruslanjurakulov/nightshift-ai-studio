@@ -2,18 +2,21 @@
 
 One visual language for the public site and the Studio, dark-first. Owner of this file: stream S5. It extends
 `docs/design/TOKENS.md` (colour roles, keys, contrast) and is driven by the measured gaps in
-`docs/design/S5_BENCHMARK.md`. Tokens live in `command-center/app/tokens.css`; the "Type scale, rhythm and motion (--ds)"
+`docs/design/S5_BENCHMARK.md` (PR #894). Tokens live in `command-center/app/tokens.css`; the "Type scale, rhythm and motion (--ds)"
 block of the live specimen (`/{channel}/design`) shows every role at its real size in both themes.
 
 **What is decided by the owner and not changed here:** the navy/neon colour family (TOKENS.md), Onest as the display and
-body face (#889, 22 Nov), the public site without the `ds-skin` class (#889). Anything below that would touch those is
+body face and the public site without the `ds-skin` class (both the owner's choice of 22 Nov, carried by PR #889; until it
+merges, `--ds-font-display` on main is still Unbounded, and the roles below take whichever face that token names). Anything below that would touch those is
 written as a proposal.
 
 ## 1. Type
 
-One family (Onest) for display and body, the system monospace for machine labels and time. Hierarchy comes from **size,
+One family (Onest, per #889) for display and body, the system monospace (`--font-mono`) for machine labels and time. Hierarchy comes from **size,
 air and weight together**, never weight alone: display is 500 with tight tracking; the leaders measured at 400–500
-(benchmark §1). Every size is fluid between a 360 px phone and a 1440 px desk.
+(benchmark §1). Every fluid size is **linear** between a 360 px phone and a 1440 px desk (it reaches its maximum at 1440,
+not before). A role works on a real `<h1>`–`<h4>`: the app's unlayered heading rule (`globals.css`) skips any element with
+a `ds-t-*` class.
 
 | Role | Class | 360 → 1440 | Line height | Tracking | Weight | Use |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
@@ -34,7 +37,8 @@ Rules: a component never sets `font-size` by hand; it takes a role. A number tha
 (or `.ds-mono`). `text-wrap: balance` on display and headings, `pretty` on prose. Uzbek uses ʻ (U+02BB) and ʼ (U+02BC);
 uppercase labels in ru/uz run ~30 % longer than English — size a label's box for the Russian string.
 
-`.ds-display` (TOKENS.md, weight 600) stays for existing callers; new work uses the roles above.
+**Superseded helpers** (kept for existing callers, not for new work): `.ds-display` (weight 600) → `.ds-t-display-*`;
+`.mono` and `.tnum` (globals.css) → `.ds-mono` for monospace, `.ds-num` for tabular figures in the body face.
 
 ## 2. Space and rhythm
 
@@ -88,6 +92,9 @@ changes.
 | `--ds-stagger` | 40 ms | Order in a list: `style={{"--i": index}}` |
 | `--ds-dur-ambient` | 2400 ms | Skeleton shimmer, a "working" pulse |
 | `--ds-ease-exit` | — | Something leaving (faster in, slower never) |
+
+`.ds-reveal` supersedes the older `.reveal` / `reveal-in` (globals.css, 55 ms stagger) for new work. Set `--i` on the
+element itself; a `.ds-reveal` nested in another has its `--i` reset to 0.
 
 **Reduced motion** (`prefers-reduced-motion: reduce`): every duration above is 0, the press does not scale, nothing travels
 (`--ds-reveal-shift: 0`), the stagger is 0. A spinner becomes a still half-ring next to its spoken label (Button already
