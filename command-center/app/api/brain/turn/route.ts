@@ -264,6 +264,9 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown, requ
     const model = await chosenModelState(supabase, modelFromRef(q.model_ref));
     if (!model.ok) return brainJson({ error: "unavailable" }, 503);
     if (model.state !== "available" || !model.id) return brainJson({ error: "model_unavailable", reason: model.state }, 409);
+    // Every plan call is a turn to the same model, so the same gate as a turn (Google's 18+ and country), before any turn is reserved.
+    const modelGate = await chatModelGate(model.id);
+    if (modelGate) return brainJson({ error: modelGate.error }, modelGate.status);
     // The clip model a new draft gets decides the longest scene (G4). create_film_draft sets none and no migration chooses a
     // default, so today this is "unknown": the plan keeps to the film's own 3–30 s, and nothing is split on a guess.
     const limits = planLimits(await clipShape(supabase, null, FILM.maxShots));
