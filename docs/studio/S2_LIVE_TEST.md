@@ -34,6 +34,12 @@ the cap and the readings from our own `creative_job_costs` table, never a quote 
 - [ ] `worker_status` has a fresh `film-…` row (the alerts PR).
 - [ ] The vendor keys are in the worker's env, from GitHub Actions secrets or the server env file. Never paste one anywhere else.
 
+**Where the result goes (the owner decides, before the run):**
+
+- [ ] Ask the owner one question: which channel takes the **private** upload, or does the test stop at the assembled master in our
+  library? **The default is to stop before the upload.** Without a channel named by the owner, the film ends as a master and a
+  480p review copy in the library, and nothing is sent to YouTube. Write the answer into the report.
+
 **Sweep, measured:**
 
 - [ ] `select public.film_sweep_status();` shows `runners.pg_cron.last_at` or `runners.server.last_at` (the `film-sweep` service, `NIGHTSHIFT_FILM_SWEEP=on`) within the last 15 minutes. Actions only watches hourly; it never sweeps, `overdue`
@@ -122,7 +128,8 @@ All of these, checked and written into the report to the owner:
 - [ ] Real vendor cost (`creative_job_costs`, the query above) is ≤ USD 15. Compare it with the estimate from step 1 and give
   both numbers.
 - [ ] The master and the 480p review copy exist. The finished video plays at the end of the lane and can be downloaded.
-- [ ] **The upload is private** (rule 2). Check it on YouTube Studio itself, not on our screen.
+- [ ] Only if the owner named a channel: **the upload is private** (rule 2). Check it on YouTube Studio itself, not on our screen.
+  Without a named channel, check instead that nothing was uploaded.
 - [ ] No alert fired. `film_sweep_status()` reads `stuck_segments = 0`.
 - [ ] Refresh mid-run, done once on purpose during step 4, lost nothing and started nothing.
 
@@ -168,7 +175,8 @@ All of these, checked and written into the report to the owner:
 5. Send the owner a report with:
    - the film id and the quote total;
    - the credits captured and released;
-   - the real vendor cost against the estimate;
-   - the alerts (expected: none);
-   - the private upload's video id;
+   - the vendor cost **per take and in total**, each as *measured* (`creative_job_costs`) next to *estimated* (step 1). A take with
+     no cost row reads "not recorded", never 0 (rule 5);
+   - every refusal (quote, start, take) and every alert that fired, with its time and word. "None" only if none;
+   - where the result went: the private upload's video id, or "stopped at the master, as decided";
    - what surprised anyone.
