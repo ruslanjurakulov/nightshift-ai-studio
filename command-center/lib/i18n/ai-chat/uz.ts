@@ -14,6 +14,11 @@ export const aiChatUz: AiChatDictionary = {
   scenarioFacts: "{len} · {scenes} ta sahna · {characters} ta qahramon",
   outlineFacts: "{len} · {chapters} ta bob · {characters} ta qahramon",
   planWriting: "Raskadrovka bobma-bob yozilmoqda. Bu bir-ikki daqiqa olishi mumkin. Barcha boblar yozilmaguncha narx hisoblanmaydi.",
+  planCost: "Buni tanlash raskadrovkani yozish uchun bugungi {limit} ta xabaringizdan taxminan {about} tasini oladi (bob qayta soʻralsa, koʻpi bilan {at_most} ta). Qoldi: {left}.",
+  planCostTrial: "Buni tanlash raskadrovkani yozish uchun {left} ta sinov xabaringizdan taxminan {about} tasini oladi (bob qayta soʻralsa, koʻpi bilan {at_most} ta).",
+  planCostPlain: "Buni tanlash raskadrovkani yozish uchun bugungi xabarlardan taxminan {about} tasini oladi (bob qayta soʻralsa, koʻpi bilan {at_most} ta).",
+  modelVideo: "Video: {name}",
+  modelPictures: "Kadrlar: {name}",
   chooseThis: "Shuni tanlash",
   chooseThisNamed: "Shuni tanlash: {title}",
   slotQuestions: {
@@ -126,6 +131,6 @@ export const aiChatUz: AiChatDictionary = {
     plan_failed_plain: "Raskadrovkani yozib boʻlmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
     plan_length_mismatch: "{total} ta bobdan {n}-bob qayta soʻralganda ham oʻz uzunligiga mos kelmadi, shuning uchun raskadrovka ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
     plan_length_mismatch_plain: "Raskadrovka siz tanlagan uzunlikka mos kelmadi, shuning uchun ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
-    plan_over_cap: "Bu raskadrovkani yozish uchun {needed} ta xabar kerak, bugun esa {left} ta qoldi. Qisqaroq film tanlang yoki 24 soat ichida qayta urinib koʻring.",
+    plan_over_cap: "Bu raskadrovka bugungi xabarlardan {needed} tagacha olishi mumkin, qolgani esa {left} ta, shuning uchun u boshlanmadi. Hech narsa ishlatilmadi. Qisqaroq film tanlang yoki 24 soat ichida qayta urinib koʻring.",
   },
 };

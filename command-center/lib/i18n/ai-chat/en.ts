@@ -12,6 +12,11 @@ export const aiChatEn = {
   scenarioFacts: "{len} · scenes: {scenes} · characters: {characters}",
   outlineFacts: "{len} · chapters: {chapters} · characters: {characters}",
   planWriting: "Writing the storyboard, chapter by chapter. This can take a minute or two. Nothing is priced until every chapter is written.",
+  planCost: "Choosing this uses about {about} of your {limit} messages today to write the storyboard (at most {at_most} if a chapter has to be asked again). {left} left.",
+  planCostTrial: "Choosing this uses about {about} of your {left} trial messages to write the storyboard (at most {at_most} if a chapter has to be asked again).",
+  planCostPlain: "Choosing this uses about {about} of today’s messages to write the storyboard (at most {at_most} if a chapter has to be asked again).",
+  modelVideo: "Video: {name}",
+  modelPictures: "Pictures: {name}",
   chooseThis: "Choose this one",
   chooseThisNamed: "Choose this one: {title}",
   slotQuestions: {
@@ -127,7 +132,7 @@ export const aiChatEn = {
     plan_failed_plain: "The storyboard could not be written. Nothing was priced. Try again.",
     plan_length_mismatch: "Chapter {n} of {total} did not add up to its length, even when asked again, so the storyboard was not used. Nothing was priced. Try again.",
     plan_length_mismatch_plain: "The storyboard did not add up to the length you chose, so it was not used. Nothing was priced. Try again.",
-    plan_over_cap: "Writing this storyboard takes {needed} messages, and {left} are left today. Choose a shorter film, or try again within 24 hours.",
+    plan_over_cap: "Writing this storyboard can take up to {needed} of today’s messages, and {left} are left, so it was not started. Nothing was used. Choose a shorter film, or try again within 24 hours.",
   },
 };
 

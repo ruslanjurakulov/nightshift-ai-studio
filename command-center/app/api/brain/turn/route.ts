@@ -33,9 +33,10 @@ import { callChatModel } from "@/lib/server/brain/llm";
 import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
-import { clipShape } from "@/lib/server/brain/clip";
+import { clipShapeOf, filmCatalogue } from "@/lib/server/brain/clip";
+import { MODEL_ID, pickFilmModel, type PickedModel } from "@/lib/brain/film-models";
 import { writeStoryboard } from "@/lib/server/brain/plan";
-import { planLimits, planWindows } from "@/lib/brain/plan";
+import { planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -202,7 +203,8 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   });
   if (done.error) return dbRefusal(done.error) ?? brainJson({ error: "unavailable" }, 503);
   return brainJson({
-    reply: answer.reply, slots: answer.slots, step: answer.step, card: answer.card, scenarios: answer.scenarios,
+    // With the server's count of the messages planning each outline takes (computed, never stored: the payload above has none).
+    reply: answer.reply, slots: answer.slots, step: answer.step, card: answer.card, scenarios: withPlanTurns(answer.scenarios, answer.slots.kind),
     lengthOutOfRange: answer.lengthOutOfRange, factsState: facts.state, factsSource: facts.source, brief, quota,
   });
   } catch {
@@ -246,16 +248,33 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown, requ
   // Short: a film DRAFT, priced by quote_film. Film Studio must be open here (its own flag and switch); if not, honestly not yet.
   const gate = await filmGate();
   if (!gate.ok) return brainJson({ error: "short_not_available" }, 409);
+  // The models on sale for a film's two roles, read before anything is planned: the server picks from them, the plan is told its
+  // clip model's real longest scene, and the card names them. A failed read plans nothing (a pick from an unread list is a guess).
+  const catalogue = await filmCatalogue(supabase);
+  if (!catalogue.ok) return brainJson({ error: "unavailable" }, 503);
+  const named = (list: { id: string; name: string; durations: number[] }[], id: string | null): PickedModel | null =>
+    id ? { id, name: list.find((m) => m.id === id)?.name ?? id, durations: null } : null;
 
   // The storyboard: one stored before the plan step that already adds up; the one this session's plan already wrote for this same
   // outline (a reload, or a price that could not be read: choosing again re-reads the draft and the quote, and spends no turn);
   // or the plan step.
   let planned: Scenario | null = chosen.scenes.length ? chosen : null;
   let quota: unknown = undefined;
+  let models: { clip: PickedModel | null; keyframe: PickedModel | null } | null = null;
   if (!planned) {
     const stored = s.step === "ready" ? readScenario(s.brief, slots) : null;
-    if (stored && stored.scenes.length && stored.title === chosen.title && stored.idea === chosen.idea) planned = { ...chosen, scenes: stored.scenes };
+    if (stored && stored.scenes.length && stored.title === chosen.title && stored.idea === chosen.idea) {
+      planned = { ...chosen, scenes: stored.scenes };
+      // Choosing again keeps the models this draft was made with, never a fresh pick: the draft's idempotency key would refuse a
+      // different one, and a model that left the catalogue is the quote's own refusal to show, not a silent swap.
+      const first = ((s.brief as { scenes?: { clip_model?: unknown; keyframe_model?: unknown }[] } | null)?.scenes ?? [])[0];
+      const id = (v: unknown) => (typeof v === "string" && MODEL_ID.test(v) ? v : null);
+      models = { clip: named(catalogue.clip, id(first?.clip_model)), keyframe: named(catalogue.keyframe, id(first?.keyframe_model)) };
+    }
   }
+  // A new draft: the server's pick, in its fixed order (lib/brain/film-models). None on sale for a role: that role stays unset.
+  models ??= { clip: pickFilmModel("clip", catalogue.clip), keyframe: pickFilmModel("keyframe", catalogue.keyframe) };
+
   if (!planned) {
     const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
     if (q0.error) return dbRefusal(q0.error) ?? brainJson({ error: "unavailable" }, 503);
@@ -267,17 +286,17 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown, requ
     // Every plan call is a turn to the same model, so the same gate as a turn (Google's 18+ and country), before any turn is reserved.
     const modelGate = await chatModelGate(model.id);
     if (modelGate) return brainJson({ error: modelGate.error }, modelGate.status);
-    // The clip model a new draft gets decides the longest scene (G4). create_film_draft sets none and no migration chooses a
-    // default, so today this is "unknown": the plan keeps to the film's own 3–30 s, and nothing is split on a guess.
-    const limits = planLimits(await clipShape(supabase, null, FILM.maxShots));
-    const windows = planWindows(chosen, limits);
+    // The longest scene is the picked clip model's longest shot × max_shots (G4), told to every window up front. No clip model:
+    // the film's own 3–30 s, and the quote's "model_not_set" says the rest.
+    const limits = planLimits(models.clip ? { durations: models.clip.durations, maxShots: FILM.maxShots } : null);
+    const turns = planTurns(chosen, limits);
     // Proposed outlines always add up; what is left is a clip model too short for this length within 60 scenes (G4).
-    if (!windows) return brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409);
-    // Every call is a turn under the daily cap: a plan that cannot finish inside what is left is not begun (it would spend the
-    // turns and price nothing). Zero left is the database's own refusal, said as it is today.
+    if (!turns) return brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409);
+    // Every call is a turn under the daily cap. A plan is begun only when today's turns cover its worst case (every window asked
+    // again once), so it can never stop halfway for the plan's cap and price nothing. Zero left is the database's own refusal.
     const used = typeof q.used === "number" ? q.used : null;
     const left = typeof q.limit === "number" ? (used === null ? null : Math.max(0, q.limit - used)) : typeof q.trial_left === "number" ? q.trial_left : null;
-    if (left !== null && left > 0 && left < windows.length) return brainJson({ error: "plan_over_cap", needed: windows.length, left }, 429);
+    if (left !== null && left > 0 && left < turns.at_most) return brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left }, 429);
     const last = (lastRead.data?.[0] ?? null) as { role?: string; content?: string } | null;
     const run = await writeStoryboard({
       supabase, sessionId: s.id, model: model.id, endUser: await vendorUser(s.org_id),
@@ -291,22 +310,27 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown, requ
     quota = run.quota ?? undefined;
   }
 
+  // BRIEF v1's own fields: "a model id the server checked is on sale" (docs/studio/NIGHTSHIFT_AI.md). The film keeps them as its
+  // defaults, so every scene's own model stays unset and follows the film.
+  const pick = models;
+  planned = { ...planned, scenes: planned.scenes.map((sc) => ({ ...sc, clip_model: pick.clip?.id ?? null, keyframe_model: pick.keyframe?.id ?? null })) };
   const draftBrief = buildBrief(s.id, slots, planned, "ready");
   // The whole storyboard through the same floor: a chapter's own words could carry what the outline did not.
   if (unsafeBrief(draftBrief)) return brainJson({ error: "content_refused", quota }, 422);
   const first = filmFromBrief(draftBrief);
   if (!first) return brainJson({ error: "nothing_to_choose" }, 409);
+  const settings = { ...first.settings, ...(pick.clip ? { clip_model: pick.clip.id } : {}), ...(pick.keyframe ? { keyframe_model: pick.keyframe.id } : {}) };
   const created = await supabase.rpc("create_film_draft", {
     p_org: s.org_id, p_channel: s.channel_id, p_source_kind: "script", p_source_text: first.sourceText || draftBrief.title,
-    p_settings: first.settings, p_idempotency_key: `brain-${s.id}-${proposal}-${index}`.slice(0, 80),
+    p_settings: settings, p_idempotency_key: `brain-${s.id}-${proposal}-${index}`.slice(0, 80),
   });
   if (created.error) return brainJson({ error: "film_refused", reason: plain(created.error.message, 64), quota }, 409);
   const cd = (created.data ?? null) as { film?: { id?: string; version?: number; clip_model?: unknown }; limits?: { max_shots?: unknown } } | null;
   const f = cd?.film;
   if (!f?.id || typeof f.version !== "number") return brainJson({ error: "unavailable", quota }, 503);
-  // Shots per scene from the film's own clip model, when it has one whose lengths are listed (G4); otherwise one shot, and the quote
-  // names what is missing.
-  const film = filmFromBrief(draftBrief, await clipShape(supabase, f.clip_model, cd?.limits?.max_shots)) ?? first;
+  // Shots per scene from the film's own clip model as the database stored it, when its lengths are listed (G4); otherwise one shot,
+  // and the quote names what is missing.
+  const film = filmFromBrief(draftBrief, clipShapeOf(catalogue.clip, f.clip_model, cd?.limits?.max_shots)) ?? first;
   const saved = await supabase.rpc("save_film", { p_film: f.id, p_version: f.version, p_patch: { scenes: film.scenes } });
   if (saved.error) return brainJson({ error: "film_refused", reason: plain(saved.error.message, 64), film_id: f.id, quota }, 409);
   const version = (saved.data as { film?: { version?: number } } | null)?.film?.version ?? f.version + 1;
@@ -325,6 +349,8 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown, requ
   return brainJson({
     brief,
     film: { id: f.id, version },
+    // The models the film is made with, by name, for the card ("Video: …", "Pictures: …"); null = none was on sale for that role.
+    models: { clip: pick.clip ? { id: pick.clip.id, name: pick.clip.name } : null, keyframe: pick.keyframe ? { id: pick.keyframe.id, name: pick.keyframe.name } : null },
     ...(quota !== undefined ? { quota } : {}),
     // The film route starts it, at this quote, on the person's press ("Create — N credits"): /api/films/<id>/start.
     quote: quoteRead ? { quote_id: quoteRead.quoteId, total: quoteRead.total, startable: quoteRead.startable, blocked_by: quoteRead.blockedBy, refusal: quoteRead.refusal, exempt: quoteRead.exempt } : null,

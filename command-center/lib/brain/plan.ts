@@ -177,3 +177,30 @@ export function mergePlan(outline: Scenario, windows: PlanWindow[], answers: Sce
 export function planRequestId(base: string, w: number, reask = false): string {
   return `${base.slice(0, 56)}-w${w}${reask ? "r" : ""}`;
 }
+
+/**
+ * How many of today's messages writing an outline's storyboard takes: one turn per window, and at most one re-ask each (G1). Said
+ * "about" because the re-asks happen only when a chapter does not add up. Null for an outline with nothing to plan (a long video, or
+ * a stored storyboard that already adds up). `choose` refuses a plan whose `at_most` today's turns cannot cover before the first
+ * call, so a plan never stops halfway for the cap.
+ */
+export interface PlanTurns { about: number; at_most: number }
+
+export function planTurns(outline: Scenario, limits: PlanLimits): PlanTurns | null {
+  if (outline.scenes.length) return null;
+  const w = planWindows(outline, limits);
+  return w ? { about: w.length, at_most: w.length * 2 } : null;
+}
+
+/**
+ * The same figure on proposed outlines, before anything is chosen. It is counted with the film's own 30 s scene limit, which is what
+ * both clip models the server picks from allow (lib/brain/film-models: 15 s and 10 s shots × 3); `choose` counts again with the
+ * model it actually picked and refuses up front if that is more than today's turns.
+ */
+export function withPlanTurns(scenarios: Scenario[], kind: "long" | "short" | undefined): Scenario[] {
+  if (kind !== "short") return scenarios;
+  return scenarios.map((s) => {
+    const t = planTurns(s, planLimits(null));
+    return t ? { ...s, plan_turns: t } : s;
+  });
+}

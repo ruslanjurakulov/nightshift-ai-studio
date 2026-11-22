@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readScenario, readSlots } from "@/lib/brain/logic";
+import { readScenario, readSlots, type Scenario } from "@/lib/brain/logic";
+import { withPlanTurns } from "@/lib/brain/plan";
 
 /**
  * One stored Nightshift AI conversation (0199) as the panel draws it: the step, the open card, the BRIEF and the messages. Shared by
@@ -29,7 +30,10 @@ export async function conversationView(supabase: SupabaseClient, s: Conversation
   // forged one can neither crash the panel nor carry a price (only the server's `brief.price` ever does).
   const messages = ((m.data ?? []) as { id: number; role: string; content: string; payload: unknown; created_at: string }[]).reverse().map((row) => {
     const p = row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : null;
-    const scenarios = Array.isArray(p?.scenarios) ? p.scenarios.map((x) => readScenario(x, slots)).filter(Boolean) : undefined;
+    // With the server's count of the messages planning each would take (never stored: a stored figure would be the author's).
+    const scenarios = Array.isArray(p?.scenarios)
+      ? withPlanTurns(p.scenarios.map((x) => readScenario(x, slots)).filter((x): x is Scenario => x !== null), slots.kind)
+      : undefined;
     return { id: row.id, role: row.role, content: row.content, created_at: row.created_at,
              payload: p ? { scenarios, factsState: typeof p.factsState === "string" ? p.factsState : undefined } : null };
   });

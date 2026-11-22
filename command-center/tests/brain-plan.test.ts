@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildBrief, filmFromBrief, readModelAnswer, readScenario, shotCount, type BrainSlots, type Scenario } from "@/lib/brain/logic";
-import { PLAN, mergePlan, planLimits, planRequestId, planWindows, readWindow, refsOf } from "@/lib/brain/plan";
+import { PLAN, mergePlan, planLimits, planRequestId, planTurns, planWindows, readWindow, refsOf, withPlanTurns } from "@/lib/brain/plan";
+import { FILM_MODEL_PREFERENCE, pickFilmModel } from "@/lib/brain/film-models";
 import { PLAN_SYSTEM_PROMPT, SYSTEM_PROMPT, planDataBlock } from "@/lib/brain/prompt";
 
 /**
@@ -163,5 +164,34 @@ describe("G3: a dialogue scene asks for sound", () => {
     expect(filmFromBrief(b)!.scenes[0]).not.toHaveProperty("shot_count");
     const silent = buildBrief("s", SHORT(60), { ...o, scenes: [{ ...b.scenes![1], duration_s: 60 }] }, "ready");
     expect(silent.voice.mode).toBe("off");
+  });
+});
+
+describe("the server's model choice and the plan's cost, before anything is pressed", () => {
+  const sale = (id: string, durations: number[] = []) => ({ id, name: id.toUpperCase(), durations });
+
+  it("takes the first of its fixed order that is on sale, skips the rest, and nothing outside the order", () => {
+    expect(FILM_MODEL_PREFERENCE.clip[0]).toBe("minimax-h3");
+    expect(pickFilmModel("clip", [sale("kling-v3", [5, 10]), sale("minimax-h3", [4, 15])])).toEqual({ id: "minimax-h3", name: "MINIMAX-H3", durations: [4, 15] });
+    expect(pickFilmModel("clip", [sale("luma-ray-3.2"), sale("kling-v3", [10, 5])])).toEqual({ id: "kling-v3", name: "KLING-V3", durations: [5, 10] });
+    // On sale but not in the order (and Seedance never): nothing, so the quote's model_not_set is what the person reads.
+    expect(pickFilmModel("clip", [sale("luma-ray-3.2"), sale("seedance-2.5", [30])])).toBeNull();
+    expect(FILM_MODEL_PREFERENCE.clip.some((m) => /seedance/.test(m))).toBe(false);
+    expect(pickFilmModel("keyframe", [sale("flux-3-image"), sale("openai-gpt-image-2.6-flare")])?.id).toBe("openai-gpt-image-2.6-flare");
+    // A spec with no lengths is unknown, never an empty list read as "any length".
+    expect(pickFilmModel("clip", [sale("minimax-h3", [])])?.durations).toBeNull();
+  });
+
+  it("an outline says how many of today's messages its storyboard takes: one per window, at most one re-ask each", () => {
+    const o = outline([300, 300, 300, 300], 1200);
+    const t = planTurns(o, planLimits(null))!;
+    expect(t.about).toBe(planWindows(o, planLimits(null))!.length);
+    expect(t.at_most).toBe(t.about * 2);
+    expect(withPlanTurns([o], "short")[0].plan_turns).toEqual(t);
+    // Nothing to plan: a long video, or a stored storyboard that already adds up.
+    expect(withPlanTurns([o], "long")[0].plan_turns).toBeUndefined();
+    expect(planTurns({ ...o, scenes: [{ id: "s1" } as never] }, planLimits(null))).toBeNull();
+    // The figure is the server's: the BRIEF never carries it.
+    expect(buildBrief("s", SHORT(1200), withPlanTurns([o], "short")[0], "ready")).not.toHaveProperty("plan_turns");
   });
 });

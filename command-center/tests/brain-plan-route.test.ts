@@ -35,6 +35,13 @@ const exact: Answer = (parts, data) => ({ ok: true, tokensIn: 100, tokensOut: 20
     dialogue: k === 0 ? [{ character_id: "c1", line: "Hold the line!" }] : [] })) };
 }) }) });
 
+/** One sellable_models row as the registry reader (lib/creative/registry coerceSellableModels) takes it. */
+const row = (id: string, name: string, cap: "i2v" | "t2i", durations: number[]) => ({
+  id, display_name: name, provider: "x", availability: "ga", verified_at: "2026-11-01", credit_unit: cap === "i2v" ? "second" : "image",
+  credits_per_unit: 1, capabilities: [cap],
+  spec: { output: cap === "i2v" ? "video" : "image", unit: cap === "i2v" ? "second" : "image", limits: { max_prompt_chars: 2000, max_concurrent_per_org: 2 }, durations_s: durations },
+});
+
 const state = {
   session: null as Record<string, unknown> | null,
   proposal: null as unknown,
@@ -42,8 +49,10 @@ const state = {
   quota: { used: 3, limit: 30 } as Record<string, unknown>,
   reserveError: null as unknown,
   answer: exact as Answer,
-  clipModel: null as string | null,
-  clipSpec: null as unknown,
+  /** sellable_models per role: what is on sale right now, as the catalogue rows the registry reader takes. */
+  catalogue: { i2v: [] as unknown[], t2i: [] as unknown[] },
+  catalogueFails: false,
+  quote: null as Record<string, unknown> | null,
 };
 const rpc = vi.fn();
 const llm = vi.fn();
@@ -70,9 +79,9 @@ const client = {
   rpc: async (fn: string, args: Record<string, unknown>) => {
     rpc(fn, args);
     if (fn === "sellable_models") {
-      if (args.p_capability === "i2v") {
-        return { data: state.clipModel && state.clipSpec ? [{ id: state.clipModel, display_name: "Clip", provider: "x", availability: "ga", verified_at: "2026-11-01",
-          credit_unit: "second", credits_per_unit: 1, capabilities: ["i2v"], spec: state.clipSpec }] : [], error: null };
+      if (args.p_capability === "i2v" || args.p_capability === "t2i") {
+        if (state.catalogueFails) return { data: null, error: { code: "XX000", message: "down" } };
+        return { data: state.catalogue[args.p_capability as "i2v" | "t2i"], error: null };
       }
       return { data: [{ id: "anthropic-claude-sonnet-5-5" }], error: null };
     }
@@ -82,9 +91,13 @@ const client = {
       reserved += 1;
       return { data: { call_id: `call-${reserved}`, used: 3 + reserved, limit: 30 }, error: null };
     }
-    if (fn === "create_film_draft") return { data: { film: { id: FILM, version: 1, clip_model: state.clipModel }, limits: { max_shots: 3 } }, error: null };
+    // As 0166 does: the film keeps the clip model its settings named (or none).
+    if (fn === "create_film_draft") {
+      const clip = (args.p_settings as { clip_model?: string }).clip_model ?? null;
+      return { data: { film: { id: FILM, version: 1, clip_model: clip }, limits: { max_shots: 3 } }, error: null };
+    }
     if (fn === "save_film") return { data: { film: { id: FILM, version: 2 } }, error: null };
-    if (fn === "quote_film") return { data: { priced: true, total: 240, quote_id: `fq-2-${"a".repeat(32)}`, startable: true, available: 500 }, error: null };
+    if (fn === "quote_film") return { data: state.quote ?? { priced: true, total: 240, quote_id: `fq-2-${"a".repeat(32)}`, startable: true, available: 500 }, error: null };
     return { data: null, error: null };
   },
 };
@@ -144,8 +157,9 @@ beforeEach(() => {
   state.quota = { used: 3, limit: 30 };
   state.reserveError = null;
   state.answer = exact;
-  state.clipModel = null;
-  state.clipSpec = null;
+  state.catalogue = { i2v: [], t2i: [] };
+  state.catalogueFails = false;
+  state.quote = null;
   gate.refusal = null;
   reserved = 0;
   calls = 0;
@@ -189,11 +203,82 @@ describe("choose → the plan step", () => {
 
   it("a 30 s scene with a 10 s clip model gets 3 shots", async () => {
     setup(30, [30]);
-    state.clipModel = "clip-model-a";
-    state.clipSpec = { output: "video", unit: "second", limits: { max_prompt_chars: 2000, max_concurrent_per_org: 2 }, durations_s: [5, 10] };
+    state.catalogue.i2v = [row("kling-v3", "Kling 3.0", "i2v", [5, 10])];
     state.answer = (parts) => ({ ok: true, tokensIn: 1, tokensOut: 1, text: JSON.stringify({ chapters: [{ id: parts[0].id, scenes: [{ title: "x", duration_s: 30, visual_prompt: "v" }] }] }) });
     await choose();
     expect((called("save_film")[0].p_patch as { scenes: Record<string, unknown>[] }).scenes[0]).toMatchObject({ planned_seconds: 30, shot_count: 3 });
+  });
+
+  // ── The server's choice of models (lib/brain/film-models) ───────────────────────────────────────────────────────────────
+  it("picks in its fixed order, skips what is not on sale, sets both on the draft and names them on the card", async () => {
+    setup(60, [60]);
+    // Kling is on sale and MiniMax H3 is not: the order's next one, never the catalogue's first (luma) nor the model's choice.
+    state.catalogue.i2v = [row("luma-ray-3.2", "Luma Ray 3.2", "i2v", [5, 10]), row("kling-v3", "Kling 3.0", "i2v", [5, 10])];
+    state.catalogue.t2i = [row("flux-3-image", "FLUX 3 Image", "t2i", []), row("gemini-3-pro-image", "Gemini 3 Pro Image", "t2i", [])];
+    const d = await (await choose()).json();
+    expect(called("create_film_draft")[0].p_settings).toMatchObject({ clip_model: "kling-v3", keyframe_model: "gemini-3-pro-image" });
+    expect(d.models).toEqual({ clip: { id: "kling-v3", name: "Kling 3.0" }, keyframe: { id: "gemini-3-pro-image", name: "Gemini 3 Pro Image" } });
+    // BRIEF v1's own scene fields carry them; the film's scenes follow the film (none of their own).
+    expect(d.brief.scenes.every((s: { clip_model: string }) => s.clip_model === "kling-v3")).toBe(true);
+    const scenes = (called("save_film")[0].p_patch as { scenes: Record<string, unknown>[] }).scenes;
+    expect(scenes.some((s) => "clip_model" in s)).toBe(false);
+
+    rpc.mockReset(); calls = 0;
+    state.catalogue.i2v = [row("kling-v3", "Kling 3.0", "i2v", [5, 10]), row("minimax-h3", "MiniMax H3", "i2v", [4, 6, 10, 15])];
+    await choose({ request_id: "press44444", index: 1 });
+    expect(called("create_film_draft")[0].p_settings).toMatchObject({ clip_model: "minimax-h3" });
+  });
+
+  it("no model on sale for a role sets nothing for it, tries nothing else, and leaves quote_film's model_not_set to say so", async () => {
+    setup(60, [60]);
+    state.catalogue.i2v = [row("luma-ray-3.2", "Luma Ray 3.2", "i2v", [5, 10]), row("seedance-2.5", "Seedance 2.5", "i2v", [5, 30])];
+    state.quote = { priced: false, total: null, quote_id: null, startable: false, refusals: [{ reason: "model_not_set", detail: "choose a clip model" }] };
+    const res = await choose();
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    const settings = called("create_film_draft")[0].p_settings as Record<string, unknown>;
+    expect(settings).not.toHaveProperty("clip_model");
+    expect(settings).not.toHaveProperty("keyframe_model");
+    expect(d.models).toEqual({ clip: null, keyframe: null });
+    expect(d.quote.startable).toBe(false);
+    expect(called("create_film_draft")).toHaveLength(1);
+  });
+
+  it("the plan is told the chosen clip model's real longest scene, and G4 splits its scenes into that model's shots", async () => {
+    setup(40, [40]);
+    // A clip model whose longest shot is 6 s: 6 × 3 shots = 18 s, so no 30 s scene is asked for.
+    state.catalogue.i2v = [row("minimax-h3", "MiniMax H3", "i2v", [4, 6])];
+    state.answer = (parts, data) => {
+      expect((data.limits as { scene_seconds_max: number }).scene_seconds_max).toBe(18);
+      return { ok: true, tokensIn: 1, tokensOut: 1, text: JSON.stringify({ chapters: [{ id: parts[0].id, scenes: [
+        { title: "a", duration_s: 18, visual_prompt: "v" }, { title: "b", duration_s: 12, visual_prompt: "w" }, { title: "c", duration_s: 10, visual_prompt: "x" }] }] }) };
+    };
+    expect((await choose()).status).toBe(200);
+    const scenes = (called("save_film")[0].p_patch as { scenes: Record<string, unknown>[] }).scenes;
+    expect(scenes.map((s) => s.shot_count)).toEqual([3, 2, 2]);
+  });
+
+  it("choosing again keeps the draft's models, even when they have left the catalogue: never a silent re-pick", async () => {
+    setup(60, [60]);
+    state.catalogue.i2v = [row("minimax-h3", "MiniMax H3", "i2v", [4, 15])];
+    await choose();
+    const brief = called("ai_chat_save_brief")[0].p_brief;
+    rpc.mockReset(); llm.mockReset();
+    state.session = { ...state.session!, step: "ready", brief };
+    state.catalogue.i2v = [row("kling-v3", "Kling 3.0", "i2v", [5, 10])];
+    const d = await (await choose({ request_id: "press55555" })).json();
+    expect(called("create_film_draft")[0].p_settings).toMatchObject({ clip_model: "minimax-h3" });
+    expect(d.models.clip).toEqual({ id: "minimax-h3", name: "minimax-h3" });
+    expect(llm).not.toHaveBeenCalled();
+  });
+
+  it("a catalogue that cannot be read plans nothing and reserves no turn", async () => {
+    setup(60, [60]);
+    state.catalogueFails = true;
+    const res = await choose();
+    expect(res.status).toBe(503);
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    nothingPriced();
   });
 
   it("a long film is written in several bounded calls, at most three at a time, each its own reserved turn", async () => {
@@ -281,7 +366,8 @@ describe("choose → the plan step", () => {
     state.quota = { used: 28, limit: 30 };
     const res = await choose();
     expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: 8, left: 2 });
+    // The worst case (every window asked again once), so the cap can never stop it halfway.
+    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: 16, about: 8, left: 2 });
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     expect(llm).not.toHaveBeenCalled();
   });

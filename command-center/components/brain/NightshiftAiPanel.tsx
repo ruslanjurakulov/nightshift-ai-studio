@@ -48,6 +48,17 @@ type FilmReady = { id: string; quote: { quote_id: string | null; total: number |
 /** The remedy of a refusal the model's gate gave (#898 lib/brain/chat-gate), or null when it is not the gate's. */
 const gateRemedy = (e: unknown): ChatGateRemedy | null => (isChatGateError(e) ? CHAT_GATE_REMEDY[e] : null);
 type Problem = { text: string; retry: (() => void) | null; code?: string } | null;
+/** The server's choice of models for the draft (app/api/brain/turn `models`), by name; a role with none on sale is null. */
+type FilmModels = { clip: { id: string; name: string } | null; keyframe: { id: string; name: string } | null };
+function readModels(v: unknown): FilmModels | null {
+  if (!v || typeof v !== "object") return null;
+  const one = (x: unknown) => {
+    const o = x && typeof x === "object" ? (x as { id?: unknown; name?: unknown }) : null;
+    return o && typeof o.id === "string" && typeof o.name === "string" && o.name ? { id: o.id, name: o.name.slice(0, 80) } : null;
+  };
+  const m = v as { clip?: unknown; keyframe?: unknown };
+  return { clip: one(m.clip), keyframe: one(m.keyframe) };
+}
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY: string[] = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap",
   // The gate's refusals whose remedy is not "retry": the same press meets the same region, confirmation or support case.
@@ -127,6 +138,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const [brief, setBrief] = useState<Brief | null>(null);
   const [step, setStep] = useState<string>("asking");
   const [film, setFilm] = useState<FilmReady | null>(null);
+  // The models the server chose for the draft (the choose answer), named on the card; null = not chosen yet on this screen.
+  const [models, setModels] = useState<FilmModels | null>(null);
   const [prefill, setPrefill] = useState<string | null>(initialPrompt ?? null);
   const [busy, setBusy] = useState(false);
   /** The words in flight, or the ones whose turn failed: drawn as the person's bubble under the thread until answered. */
@@ -193,7 +206,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       const r = await historyCall(historyUrl(`session=${encodeURIComponent(sid)}`), (b) => b);
       if (!r.ok) return r;
       const d = r.value as { session?: { step?: string }; card?: BrainCard | null; brief?: Brief | null; messages?: StoredMessage[] };
-      if (sessionRef.current !== sid) setFilm(null);
+      if (sessionRef.current !== sid) {
+        setFilm(null);
+        setModels(null);
+      }
       setSession(sid);
       setStep(d.session?.step ?? "asking");
       setCard(d.card ?? null);
@@ -455,6 +471,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       setAsking(null);
       setStep("ready");
       setFilm(d.film ? { id: (d.film as { id: string }).id, quote: (d.quote as FilmReady["quote"]) ?? null } : null);
+      setModels(readModels(d.models));
       idem.current = null;
       announce(session, d.brief as Brief);
     } catch {
@@ -504,6 +521,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setCard(null);
     setBrief(null);
     setFilm(null);
+    setModels(null);
     setStep("asking");
     setProblem(null);
     setAsking(null);
@@ -635,7 +653,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           {card.slot === "target_seconds" && brief?.kind === "short" && <p className="text-xs text-[var(--color-muted)]">{c.shortMinNote}</p>}
         </fieldset>
       )}
-      {step === "ready" && brief && <ReadyBlock brief={brief} film={film} channelSlug={channelSlug} lengthLabel={lengthLabel} busy={busy} canRun={ready && load.canRun} onCreateFilm={() => void createFilm()} />}
+      {step === "ready" && brief && <ReadyBlock brief={brief} film={film} models={models} channelSlug={channelSlug} lengthLabel={lengthLabel} busy={busy} canRun={ready && load.canRun} onCreateFilm={() => void createFilm()} />}
     </>
   );
   const hasTail = (card && step === "asking") || (step === "ready" && brief);
@@ -658,6 +676,18 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
                 ? fmt(c.scenarioFacts, { len: lengthLabel(s.target_seconds), scenes: s.scenes.length, characters: s.characters?.length ?? 0 })
                 : fmt(c.outlineFacts, { len: lengthLabel(s.target_seconds), chapters: s.chapters?.length ?? 0, characters: s.characters?.length ?? 0 })}
             </p>
+            {/* What choosing it costs in today's messages, said before the press (the server's count, "about": a chapter asked again
+                is one more). No count, no line: never a guessed number. */}
+            {s.plan_turns && ready && (
+              <p className="text-xs text-[var(--color-muted)]" data-plan-turns={s.plan_turns.about}>
+                {load.plan.limit !== null && load.plan.used !== null
+                  ? fmt(c.planCost, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, limit: load.plan.limit, left: Math.max(0, load.plan.limit - load.plan.used) })
+                  : load.plan.limit === null && load.plan.trial_left !== null
+                    ? fmt(c.planCostTrial, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, left: load.plan.trial_left })
+                    // What is left today could not be read: the cost alone, never a "left" made up.
+                    : fmt(c.planCostPlain, { about: s.plan_turns.about, at_most: s.plan_turns.at_most })}
+              </p>
+            )}
             <button type="button" className="btn-quiet mt-1 min-h-11 px-4 text-sm" disabled={disabled} aria-label={fmt(c.chooseThisNamed, { title: s.title })} onClick={() => void choose(k)}>{c.chooseThis}</button>
           </article>
         ))}
@@ -753,8 +783,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   );
 }
 
-function ReadyBlock({ brief, film, channelSlug, lengthLabel, busy, canRun, onCreateFilm }: {
-  brief: Brief; film: FilmReady | null; channelSlug: string; lengthLabel: (s: number) => string; busy: boolean; canRun: boolean; onCreateFilm: () => void;
+function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, busy, canRun, onCreateFilm }: {
+  brief: Brief; film: FilmReady | null; models: FilmModels | null; channelSlug: string; lengthLabel: (s: number) => string; busy: boolean; canRun: boolean; onCreateFilm: () => void;
 }) {
   const { t, fmt, locale } = useI18n();
   const c = t.aiChat;
@@ -767,6 +797,10 @@ function ReadyBlock({ brief, film, channelSlug, lengthLabel, busy, canRun, onCre
       <p className="text-sm">{brief.idea}</p>
       <p className="text-xs text-[var(--color-muted)]">{fmt(c.scenarioFacts, { len: lengthLabel(brief.target_seconds ?? 0), scenes: brief.scenes?.length ?? 0, characters: brief.characters?.length ?? 0 })}</p>
       {brief.voice.mode === "clip_audio" && <p className="text-xs text-[var(--color-muted)]">{c.clipAudioNote}</p>}
+      {/* What the film is made with, as the server chose it (lib/brain/film-models): said, never hidden behind the price. A role
+          with no model on sale shows no line; the quote's own "choose a model" says what to do. */}
+      {brief.kind === "short" && film && models?.clip && <p className="text-xs" data-model="clip">{fmt(c.modelVideo, { name: models.clip.name })}</p>}
+      {brief.kind === "short" && film && models?.keyframe && <p className="text-xs" data-model="keyframe">{fmt(c.modelPictures, { name: models.keyframe.name })}</p>}
       <p className="text-sm font-semibold">
         {p?.state === "priced" && credits(p.total_credits)}
         {p?.state === "exempt" && c.priceExempt}

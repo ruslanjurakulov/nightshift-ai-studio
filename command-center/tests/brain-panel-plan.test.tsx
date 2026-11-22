@@ -29,14 +29,14 @@ let release: (() => void) | null = null;
 let turnReply: { status: number; body: unknown } = { status: 502, body: {} };
 let holdTurn = true;
 
-function stub(proposing: boolean, gate: ChatGateVerdict | null = null) {
+function stub(proposing: boolean, gate: ChatGateVerdict | null = null, planTurns: { about: number; at_most: number } | null = null) {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
     if (url.startsWith("/api/brain/history")) {
       if (/session=/.test(url)) {
         return json(200, proposing
           ? { session: { id: S1, step: "proposing" }, card: null, brief: { version: 1, kind: "short" },
-              messages: [{ id: 1, role: "assistant", content: "Pick one", payload: { scenarios: [outline("Alpha"), outline("Beta")] } }] }
+              messages: [{ id: 1, role: "assistant", content: "Pick one", payload: { scenarios: [outline("Alpha"), outline("Beta")].map((o) => (planTurns ? { ...o, plan_turns: planTurns } : o)) } }] }
           : { session: { id: S1, step: "asking" }, card: null, brief: null, messages: [] });
       }
       return json(200, { sessions: [], next_before: null });
@@ -83,6 +83,32 @@ describe("Nightshift AI panel: writing the storyboard", () => {
     expect(sent[1]).toMatchObject({ action: "choose", index: 0 });
     expect(sent[1].request_id).not.toBe(sent[0].request_id);
     await act(async () => release!());
+  });
+
+  it("says before the press how many of today's messages the storyboard uses, as the server counted them", async () => {
+    stub(true, null, { about: 3, at_most: 6 });
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    await screen.findByText("Alpha");
+    const line = en.planCost.replace("{about}", "3").replace("{limit}", "30").replace("{at_most}", "6").replace("{left}", "30");
+    expect(screen.getAllByText(line)).toHaveLength(2);
+  });
+
+  it("names on the card the models the server chose for the film", async () => {
+    stub(true);
+    holdTurn = false;
+    turnReply = { status: 200, body: {
+      brief: { version: 1, kind: "short", title: "Alpha", idea: "idea Alpha", target_seconds: 120, voice: { mode: "off" }, music: { mode: "off" },
+               scenes: [{ id: "s1" }], characters: [], price: { state: "priced", total_credits: 40, spendable: 100, fits: true, shorter: null } },
+      film: { id: "film-1", version: 2 },
+      quote: { quote_id: "fq-1", total: 40, startable: true, blocked_by: [], refusal: null, exempt: false },
+      models: { clip: { id: "minimax-h3", name: "MiniMax H3" }, keyframe: null },
+    } };
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    await screen.findByText("Alpha");
+    fireEvent.click(screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") }));
+    expect(await screen.findByText(en.modelVideo.replace("{name}", "MiniMax H3"))).toBeTruthy();
+    // No key-frame model on sale: no line for it, never a guessed name.
+    expect(document.querySelector('[data-model="keyframe"]')).toBeNull();
   });
 
   it("keeps every remedy key clear of the canvas's phone dock", () => {

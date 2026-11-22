@@ -65,6 +65,9 @@ export interface Scenario {
   title: string; idea: string; story: { logline: string; conflict: string };
   chapters: OutlineChapter[]; characters: BriefCharacter[]; locations: BriefLocation[]; props: BriefProp[]; scenes: BriefScene[];
   target_seconds: number;
+  /** The server's count of today's messages writing its storyboard takes (lib/brain/plan.ts planTurns); never stored, never the
+   *  model's. Absent when there is nothing to plan. */
+  plan_turns?: { about: number; at_most: number };
 }
 
 export type BriefPrice =
@@ -74,7 +77,7 @@ export type BriefPrice =
   | { state: "unpriced" }
   | { state: "failed" };
 
-export interface Brief extends Partial<Omit<Scenario, "target_seconds" | "chapters">> {
+export interface Brief extends Partial<Omit<Scenario, "target_seconds" | "chapters" | "plan_turns">> {
   chapters?: BriefChapter[];
   version: 1;
   session_id: string;
