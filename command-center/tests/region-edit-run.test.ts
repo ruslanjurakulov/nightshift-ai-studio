@@ -33,6 +33,12 @@ describe("buildRunParams", () => {
     expect(buildRunParams(model(), SRC, [region()], 4)).not.toHaveProperty("quality");
   });
 
+  it("asks a model sold by picture size its smallest listed size (0208 refuses one with none) and sends no size to any other", () => {
+    const sized: StudioModel = { ...model(), imageSizes: ["1K", "2K", "4K"] };
+    expect(buildRunParams(sized, SRC, [region()], 4).image_size).toBe("1K");
+    expect(buildRunParams(model(), SRC, [region()], 4)).not.toHaveProperty("image_size");
+  });
+
   it("uses only keys and shapes the database accepts (ids a-z 0-9 _ -, at most 5 regions as sent)", () => {
     const p = buildRunParams(model(), SRC, Array.from({ length: 5 }, (_v, i) => region({ name: `R${i}` })), 4);
     expect(p.regions.map((r) => r.id)).toEqual(["r1", "r2", "r3", "r4", "r5"]);
