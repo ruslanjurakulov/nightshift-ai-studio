@@ -55,7 +55,8 @@ describe("G2: the storyboard is written in bounded windows and merged by code", 
   it("a 1200 s film is split into windows of at most 15 scenes, whose seconds add up to every chapter's exactly", () => {
     const o = outline([400, 400, 400], 1200);
     const w = planWindows(o, planLimits(null))!;
-    expect(w.length).toBeGreaterThanOrEqual(4);
+    // 1200 s is at least 40 scenes at 30 s, and a call holds 15: never fewer than three calls.
+    expect(w.length).toBeGreaterThanOrEqual(3);
     for (const x of w) {
       expect(x.maxScenes).toBeLessThanOrEqual(PLAN.windowScenes);
       expect(x.seconds).toBeLessThanOrEqual(PLAN.windowScenes * 30);

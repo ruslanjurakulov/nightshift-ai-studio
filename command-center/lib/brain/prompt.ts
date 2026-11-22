@@ -101,7 +101,7 @@ export function dataBlock(input: TurnInput): string {
 export const PLAN_SYSTEM_PROMPT = `You are Nightshift AI, the planning assistant of Nightshift Studio. A person chose an outline for a short Studio film. You write the storyboard of the chapters named in DATA "write_chapters": the scenes, in order, that a video model will make one clip each from.
 
 Rules:
-- Write scenes only for the chapters in "write_chapters", each under its own "id". When a chapter has "parts" above 1, write only the part named, continuing the story from where the previous part ends.
+- Write scenes only for the chapters in "write_chapters", each under its own "id". When a chapter has "parts" above 1, write only the part named, with only the beats given for it, continuing the story from "previous_part_ends_with" when it is there.
 - Every scene has a length in whole seconds ("duration_s") from DATA "limits.scene_seconds_min" to "limits.scene_seconds_max". The scenes of one chapter add up to EXACTLY that chapter's "seconds". Count them before you answer. Write at most "limits.max_scenes" scenes in this answer.
 - A scene's "visual_prompt" describes what the camera sees in that clip, concretely, in the film's style and aspect. Refer to characters, locations and props only by the ids in DATA ("character_ids", "location_id", "prop_ids"); invent no new ones.
 - Characters may speak: put their lines in "dialogue" with the speaking character's id. The video model speaks them inside the clip. There is no narrator.
@@ -119,7 +119,8 @@ export interface PlanInput {
   outline: { title: string; idea: string; story: { logline: string; conflict: string }; target_seconds: number;
              characters: { id: string; name: string; description: string }[]; locations: { id: string; name: string; description: string }[];
              props: { id: string; name: string; description: string }[] };
-  parts: { chapter_id: string; title: string; beats: { at_s: number; text: string }[]; seconds: number; part: number; parts: number }[];
+  parts: { chapter_id: string; title: string; beats: { at_s: number; text: string }[]; seconds: number; part: number; parts: number;
+           previous?: string | null }[];
   window: { n: number; of: number };
   limits: { sceneMin: number; sceneMax: number; maxScenes: number };
   style: string | null;
@@ -138,7 +139,9 @@ export function planDataBlock(input: PlanInput): string {
     locations: input.outline.locations.map((l) => ({ id: l.id, name: l.name, description: l.description })),
     props: input.outline.props.map((p) => ({ id: p.id, name: p.name, description: p.description })),
     write_chapters: input.parts.map((p) => ({ id: p.chapter_id, title: p.title, beats: p.beats, seconds: p.seconds,
-                                              ...(p.parts > 1 ? { part: p.part, parts: p.parts } : {}) })),
+                                              ...(p.parts > 1 ? { part: p.part, parts: p.parts } : {}),
+                                              // Only this part's beats are above; this is where the part before it ends (Lens L3).
+                                              ...(p.part > 1 && p.previous ? { previous_part_ends_with: p.previous } : {}) })),
     this_call: `${input.window.n} of ${input.window.of}`,
     limits: { scene_seconds_min: input.limits.sceneMin, scene_seconds_max: input.limits.sceneMax, max_scenes: input.limits.maxScenes },
     ...(input.problem ? { previous_answer_problem: input.problem } : {}),

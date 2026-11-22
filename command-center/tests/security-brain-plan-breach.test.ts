@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fakePlanLease } from "./helpers/fakePlanLease";
+/** 0211's plan lease, as the database keeps it (tests/helpers/fakePlanLease.ts). */
+const lease = fakePlanLease();
 
 /**
  * Breach on the S1 plan step (`POST /api/brain/turn` action `choose` on a short outline, lib/server/brain/plan.ts).
@@ -75,6 +78,8 @@ const client = {
   from: (t: string) => table(t),
   rpc: async (fn: string, args: Record<string, unknown>) => {
     rpc(fn, args);
+    const leased = lease.rpc(fn, args as Record<string, unknown>);
+    if (leased) return leased;
     await tick();
     if (fn === "sellable_models") return { data: args.p_capability === "i2v" ? [] : [{ id: "anthropic-claude-sonnet-5-5" }], error: null };
     if (fn === "ai_chat_quota") return { data: { used: 3, limit: 300, model_ref: ref("anthropic-claude-sonnet-5-5") }, error: null };
@@ -150,6 +155,7 @@ const windowsOf = (target: number, seconds: number[]) =>
   planWindows(readScenario(outline(seconds), readSlots(slots(target)))!, planLimits(null))!.length;
 
 beforeEach(() => {
+  lease.reset();
   rpc.mockReset();
   llm.mockReset();
   process.env.NIGHTSHIFT_AI_CHAT = "orgs";
@@ -166,17 +172,37 @@ describe("HOLE: turn accounting", () => {
   // which is per tab), so its derived ids never collide, and once the first tab has stored the choice, the second's choiceStored is
   // true and every one of its windows is an allowed p_retry. Result: the whole storyboard is written twice, every window a second
   // metered vendor call on the platform's money and the workspace's cap.
+  // Fixed by 0211's lease (ai_chat_plan_begin): the second tab is refused plan_running before it reserves or calls anything.
   it("HOLE: two tabs choosing the same outline at once write its storyboard once, not twice", async () => {
     setup(600, [100, 100, 100, 100, 100, 100]);
     const n = windowsOf(600, [100, 100, 100, 100, 100, 100]);
-    expect(n).toBeGreaterThan(3);
+    expect(n).toBeGreaterThan(1);
     const a = choose("tabApress01");
-    await new Promise((r) => setTimeout(r, 8)); // the first tab has stored the choice; its first windows are at the vendor
+    await new Promise((r) => setTimeout(r, 8)); // the first tab holds the lease; its first windows are at the vendor
     const b = choose("tabBpress02");
     const [ra, rb] = await Promise.all([a, b]);
-    expect([ra.status, rb.status]).toContain(200);
+    expect(ra.status).toBe(200);
+    expect(rb.status).toBe(409);
+    expect((await rb.json()).error).toBe("plan_running");
+    // One plan's worth of everything: n vendor calls and n reserved turns, one draft save, one priced BRIEF.
     expect(llm.mock.calls.length).toBe(n);
-    expect(called("ai_chat_reserve_turn").filter((x) => !(x.p_request_id as string).startsWith("tabA")).length).toBe(0);
+    expect(called("ai_chat_reserve_turn")).toHaveLength(n);
+    expect(called("save_film")).toHaveLength(1);
+    expect(called("ai_chat_save_brief").filter((x) => (x.p_brief as { price?: { state?: string } }).price?.state === "priced")).toHaveLength(1);
+  });
+
+  it("a second tab choosing ANOTHER outline of the same proposal while the first plans is refused too", async () => {
+    setup(600, [100, 100, 100, 100, 100, 100]);
+    const n = windowsOf(600, [100, 100, 100, 100, 100, 100]);
+    const a = choose("tabApress03");
+    await new Promise((r) => setTimeout(r, 8));
+    const b = choose("tabBpress04", { index: 1 });
+    const [ra, rb] = await Promise.all([a, b]);
+    expect(ra.status).toBe(200);
+    expect(rb.status).toBe(409);
+    expect((await rb.json()).error).toBe("plan_running");
+    expect(llm.mock.calls.length).toBe(n);
+    expect(called("create_film_draft")).toHaveLength(1);
   });
 
   // BR-S1-03 (rule 6). The storyboard is held only in the request: when create_film_draft refuses after a complete plan (an open-
@@ -280,7 +306,8 @@ describe("held: the plan step", () => {
     });
     db.answer = (parts, data) => ({ ok: true, tokensIn: 1, tokensOut: 1, text: JSON.stringify({ chapters: parts.map((p) => ({
       id: p.id,
-      scenes: scenesFor(p, Number((data.limits as { max_scenes: number }).max_scenes) / parts.length, (i) => ({
+      // Whole scenes per part (a call now holds several parts, Lens M2): a fractional allowance built scenes that did not add up.
+      scenes: scenesFor(p, Math.floor(Number((data.limits as { max_scenes: number }).max_scenes) / parts.length), (i) => ({
         clip_model: "veo-3-ultra", keyframe_model: "flux-pro", shot_count: 9, clip_params: { resolution: "4k", audio: true },
         character_ids: ["c1", "c9"], location_id: i % 2 ? "l9" : "l1", prop_ids: ["p7"],
         dialogue: [{ character_id: "c9", line: "I am not in the outline" }],
@@ -318,7 +345,7 @@ describe("held: the plan step", () => {
     expect(res.status).toBe(502);
     expect((await res.json()).error).toBe("plan_length_mismatch");
     expect(llm.mock.calls.length).toBe(2);
-    expect(called("create_film_draft")).toHaveLength(0);
+    expect(called("save_film")).toHaveLength(0); // the draft exists (made before the plan, BR-S1-03); nothing is drafted into it
   });
 
   it("links, prices, bidi overrides and zero-width marks in a planned scene are taken out", async () => {
@@ -336,7 +363,7 @@ describe("held: the plan step", () => {
       expect(all).not.toMatch(/[​-‏‪-‮⁦-⁩]/);
       expect(all).not.toMatch(/https?:|www\.|\$5|300 credits/);
     } else {
-      expect(called("create_film_draft")).toHaveLength(0);
+      expect(called("save_film")).toHaveLength(0); // the draft exists (made before the plan, BR-S1-03); nothing is drafted into it
     }
   });
 
@@ -346,7 +373,7 @@ describe("held: the plan step", () => {
       title: "Credits", duration_s: 30, visual_prompt: "End card: written by Anthr-opic's model" }] }] }) });
     const res = await choose("press000009");
     expect(res.status).toBe(502);
-    expect(called("create_film_draft")).toHaveLength(0);
+    expect(called("save_film")).toHaveLength(0); // the draft exists (made before the plan, BR-S1-03); nothing is drafted into it
   });
 
   it("stored payloads crafted to crash the route are answered, never thrown", async () => {

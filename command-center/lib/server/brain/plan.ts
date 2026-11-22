@@ -1,9 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BrainSlots, SceneParts, Scenario } from "@/lib/brain/logic";
-import { PLAN, mergePlan, planRequestId, planWindows, readWindow, refsOf, type PlanLimits, type PlanWindow } from "@/lib/brain/plan";
+import { PLAN, mergePlan, outlineText, planRequestId, planWindows, readWindow, refsOf, type PlanLimits, type PlanWindow } from "@/lib/brain/plan";
 import { PLAN_SYSTEM_PROMPT, planDataBlock } from "@/lib/brain/prompt";
-import { callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
+import { PLAN_CALL_TIMEOUT_MS, callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
 import { brainJson, dbRefusal } from "@/lib/server/brain/session";
 
 /**
@@ -19,13 +19,19 @@ import { brainJson, dbRefusal } from "@/lib/server/brain/session";
  *     allows it only while the conversation's last message is the person's, unanswered;
  *   - every call is finished with no text, so no assistant message is written and the proposal stays the conversation's last
  *     answer (choosing again reads it, and the draft's idempotency key stays the same).
- * One request id per call, derived from the press's id: a repeated press (a network retry, a second tab) is refused as a duplicate
- * by the database before any vendor call, never a second turn.
+ *
+ * One plan at a time is the database's, not this file's: the route holds 0211's lease (ai_chat_plan_begin) before calling this, and
+ * a second tab or a refreshed one is refused `plan_running` there (Breach BR-S1-02: two press ids used to write the storyboard twice).
+ * Each call's request id is derived from the lease's attempt (the route's requestBase), so a repeat inside one attempt is 0199's
+ * duplicate, and a Retry after a failure is a new attempt with new ids.
  */
 
-/** The route's maxDuration is 300 s: a window is started (or asked again) only while a whole call still fits before then. */
+/**
+ * The plan's own time, inside the route's 300 s: a window is started (or asked again) only while a whole call AND the work after the
+ * plan (the draft's save, the quote, the BRIEF: POST_PLAN_MS, Lens L2) still fit.
+ */
 export const PLAN_BUDGET_MS = 280_000;
-const CALL_MS = 110_000;
+const POST_PLAN_MS = 15_000;
 
 type Quota = { used: number; limit: number | null; trial_left: number | null };
 
@@ -34,7 +40,7 @@ export interface PlanRun {
   sessionId: string;
   model: ChatModelId;
   endUser: string;
-  /** The press's request id; each call's id is derived from it. */
+  /** The lease attempt's id base (`pl` + a hash of the conversation, proposal, outline and attempt); each call's id derives from it. */
   requestBase: string;
   /** The person's choice is already the conversation's last, unanswered message (a Retry of this plan): it is not stored twice. */
   choiceStored: boolean;
@@ -46,7 +52,7 @@ export interface PlanRun {
   now?: () => number;
 }
 
-export type PlanResult = { ok: true; scenario: Scenario; quota: Quota | null } | { ok: false; res: Response };
+export type PlanResult = { ok: true; scenario: Scenario; quota: Quota | null } | { ok: false; res: Response; reason: string };
 
 type Step =
   | { ok: true; parts: SceneParts[][] }
@@ -54,7 +60,7 @@ type Step =
   | { ok: false; kind: "mismatch" }
   | { ok: false; kind: "failed"; reason: string }
   | { ok: false; kind: "content_refused" }
-  | { ok: false; kind: "refusal"; res: Response }
+  | { ok: false; kind: "refusal"; error: { code?: string; message?: string; details?: string } | null }
   | { ok: false; kind: "skipped" };
 
 /** Outcomes the paid plan's cap forgives (0199 ai_chat_used): the quota the panel shows is not charged for them. */
@@ -62,14 +68,17 @@ const UNCHARGED = new Set(["not_sent", "not_configured", "vendor_refused", "refu
 
 export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const windows = planWindows(run.outline, run.limits);
-  if (!windows) return { ok: false, res: brainJson({ error: "nothing_to_choose" }, 409) };
+  if (!windows) return { ok: false, res: brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409), reason: "not_plannable" };
   const now = run.now ?? Date.now;
   const started = now();
   const refs = refsOf(run.outline);
+  const echo = outlineText(run.outline);
   let quota: Quota | null = null;
   let forgiven = 0;
+  // The plan's cap forgives what was not the person's doing; the Free trial counts every outcome (0199 ai_chat_trial_left), so a
+  // forgiven call is never handed back to the trial (Lens M4).
   const quotaNow = (): Quota | null => quota
-    ? { used: Math.max(0, quota.used - forgiven), limit: quota.limit, trial_left: quota.trial_left === null ? null : quota.trial_left + forgiven }
+    ? { used: Math.max(0, quota.used - forgiven), limit: quota.limit, trial_left: quota.trial_left }
     : null;
 
   // The first call stores the person's choice; the others need it stored first (0199's p_retry wants the last message theirs).
@@ -90,8 +99,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
       reserve = null;
     }
     if (storesChoice) { opened = !!reserve && !reserve.error; open(opened); }
-    if (!reserve) return { ok: false, kind: "refusal", res: brainJson({ error: "unavailable", quota: quotaNow() }, 503) };
-    if (reserve.error) return { ok: false, kind: "refusal", res: dbRefusal(reserve.error) ?? brainJson({ error: "unavailable" }, 503) };
+    if (!reserve || reserve.error) return { ok: false, kind: "refusal", error: reserve?.error ?? null };
     const r = reserve.data as { call_id: string; used: number; limit: number | null; trial_left?: number | null };
     if (!quota || r.used > quota.used) quota = { used: r.used, limit: r.limit, trial_left: typeof r.trial_left === "number" ? r.trial_left : null };
     // No text, slots, step, BRIEF or card: the turn is metered, the conversation is not answered (see the header).
@@ -117,7 +125,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
                      llm.error === "not_configured" ? null : llm.tokensIn, llm.error === "not_configured" ? null : llm.tokensOut);
         return { ok: false, kind: "failed", reason: llm.error };
       }
-      const read = readWindow(llm.text, w, refs, run.limits);
+      const read = readWindow(llm.text, w, refs, run.limits, echo);
       if (!read.ok && read.why === "refused") {
         await finish("refused", llm.tokensIn, llm.tokensOut);
         return { ok: false, kind: "content_refused" };
@@ -133,7 +141,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
     }
   };
 
-  const late = () => now() - started > PLAN_BUDGET_MS - CALL_MS;
+  const late = () => now() - started > PLAN_BUDGET_MS - PLAN_CALL_TIMEOUT_MS - POST_PLAN_MS;
   const runWindow = async (w: PlanWindow): Promise<Step> => {
     const first = await call(w, false);
     if (first.ok || first.kind !== "length") return first;
@@ -144,7 +152,8 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
     return { ok: false, kind: "mismatch" };
   };
 
-  const answers: SceneParts[][][] = new Array(windows.length);
+  // A dense array, filled by index: a window that did not answer is `undefined` there, never a hole `.some` would skip.
+  const answers: (SceneParts[][] | undefined)[] = Array.from({ length: windows.length }, () => undefined);
   const failures: { w: PlanWindow; step: Exclude<Step, { ok: true }> }[] = [];
   let next = 0;
   let stop = false;
@@ -168,21 +177,31 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   await Promise.all(Array.from({ length: Math.min(PLAN.concurrency, windows.length) }, worker));
   if (!opened && !run.choiceStored) open(false);
 
-  if (failures.length || answers.some((a) => !a) || answers.length !== windows.length) {
+  const missing = answers.findIndex((a) => a === undefined) >= 0;
+  if (failures.length || missing) {
     const f = failures.sort((a, b) => a.w.n - b.w.n)[0];
     const step = f ? { window: f.w.n, windows: windows.length, chapter: f.w.parts[0].chapter_n, chapters: run.outline.chapters.length } : null;
-    if (!f) return { ok: false, res: brainJson({ error: "plan_failed", reason: "unavailable", step, quota: quotaNow() }, 502) };
+    const q = quotaNow();
+    const withQuota = (body: Record<string, unknown>) => (q ? { ...body, quota: q } : body);
+    if (!f) return { ok: false, res: brainJson(withQuota({ error: "plan_failed", reason: "unavailable", step }), 502), reason: "unavailable" };
     const s = f.step;
-    if (s.kind === "refusal") return { ok: false, res: s.res };
-    if (s.kind === "content_refused") return { ok: false, res: brainJson({ error: "content_refused", quota: quotaNow() }, 422) };
-    if (s.kind === "mismatch") return { ok: false, res: brainJson({ error: "plan_length_mismatch", step, quota: quotaNow() }, 502) };
-    return { ok: false, res: brainJson({ error: "plan_failed", reason: s.kind === "failed" ? s.reason : "unavailable", step, quota: quotaNow() }, 502) };
+    if (s.kind === "refusal") {
+      // The database's own refusal (a cap, a duplicate), said as it is, with the turns already taken by this plan (Lens M4).
+      const res = s.error ? dbRefusal(s.error) : null;
+      const body = res ? ((await res.json().catch(() => ({}))) as Record<string, unknown>) : { error: "unavailable" };
+      return { ok: false, res: brainJson(withQuota(body), res?.status ?? 503), reason: String(body.error ?? "unavailable").slice(0, 40) };
+    }
+    if (s.kind === "content_refused") return { ok: false, res: brainJson(withQuota({ error: "content_refused" }), 422), reason: "content_refused" };
+    if (s.kind === "mismatch") return { ok: false, res: brainJson(withQuota({ error: "plan_length_mismatch", step }), 502), reason: "plan_length_mismatch" };
+    const reason = s.kind === "failed" ? s.reason : "unavailable";
+    return { ok: false, res: brainJson(withQuota({ error: "plan_failed", reason, step }), 502), reason };
   }
   const merged = mergePlan(run.outline, windows, answers);
   if (!merged.ok) {
-    return { ok: false, res: brainJson(merged.why === "length"
-      ? { error: "plan_length_mismatch", step: null, quota: quotaNow() }
-      : { error: "plan_failed", reason: merged.why, step: null, quota: quotaNow() }, 502) };
+    const q = quotaNow();
+    return { ok: false, reason: merged.why, res: brainJson({
+      ...(merged.why === "length" ? { error: "plan_length_mismatch", step: null } : { error: "plan_failed", reason: merged.why, step: null }),
+      ...(q ? { quota: q } : {}) }, 502) };
   }
   return { ok: true, scenario: merged.scenario, quota: quotaNow() };
 }

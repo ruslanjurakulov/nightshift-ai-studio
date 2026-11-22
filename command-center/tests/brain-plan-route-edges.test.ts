@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakePlanLease } from "./helpers/fakePlanLease";
+import { planLimits, planWindows } from "@/lib/brain/plan";
+import { readScenario, readSlots } from "@/lib/brain/logic";
+/** 0211's plan lease, as the database keeps it (tests/helpers/fakePlanLease.ts). */
+const lease = fakePlanLease();
 
 /**
  * /api/brain/turn `choose` on a short outline, at the plan step's edges (Probe on S1), against a fake database and a fake model.
@@ -24,6 +29,10 @@ const outline = (seconds: number[], o: Record<string, unknown> = {}) => ({
   chapters: seconds.map((s, i) => ({ id: `ch${i + 1}`, title: `Chapter ${i + 1}`, seconds: s, beats: [{ at_s: 0, text: "beat" }] })),
   ...o,
 });
+/** The windows the route itself plans (no clip model on sale: the film's own 30 s scenes). Counted, not written down, so a change to
+ *  the packing (Lens M2) moves these pins with it rather than past them. */
+const windowsFor = (target: number, seconds: number[]) =>
+  planWindows(readScenario(outline(seconds), readSlots(slots(target)))!, planLimits(null))!;
 const storedScene = (d: number, o: Record<string, unknown> = {}) => ({ title: "x", duration_s: d, visual_prompt: "v", character_ids: ["c1"], location_id: "l1", ...o });
 
 type Part = { id: string; seconds: number };
@@ -74,6 +83,8 @@ const client = {
   from: (t: string) => table(t),
   rpc: async (fn: string, args: Record<string, unknown>) => {
     rpc(fn, args);
+    const leased = lease.rpc(fn, args as Record<string, unknown>);
+    if (leased) return leased;
     if (fn === "sellable_models") {
       if (args.p_capability === "i2v") {
         return { data: state.clipModel && state.clipSpec ? [{ id: state.clipModel, display_name: "Clip", provider: "x", availability: "ga", verified_at: "2026-11-01",
@@ -134,8 +145,10 @@ function readData(block: unknown): Data {
   return { ...data, window: { n, of } };
 }
 const dataOf = (i: number) => readData(llm.mock.calls[i][2]);
+/** The draft may exist: it is made before the plan's first turn (Breach BR-S1-03, Atlas's order). Nothing is saved into it, quoted,
+ *  or kept as the plan. */
 const nothingPriced = () => {
-  for (const fn of ["create_film_draft", "save_film", "quote_film", "ai_chat_save_brief"]) expect(called(fn), fn).toHaveLength(0);
+  for (const fn of ["save_film", "quote_film", "ai_chat_save_brief"]) expect(called(fn), fn).toHaveLength(0);
 };
 /** Every reserved turn was finished with a real outcome: none is left pending (0199 would count it forever). */
 const everyTurnFinished = () => {
@@ -151,6 +164,7 @@ function setup(target: number, seconds: number[], o: Record<string, unknown> = {
 }
 
 beforeEach(() => {
+  lease.reset();
   rpc.mockReset();
   llm.mockReset();
   process.env.NIGHTSHIFT_AI_CHAT = "orgs";
@@ -208,21 +222,26 @@ describe("a window that does not answer", () => {
     const res = await choose();
     expect(res.status).toBe(502);
     const d = await res.json();
-    expect(d).toMatchObject({ error: "plan_failed", reason: "timeout", step: { window: 3, windows: 8, chapter: 2, chapters: 4 } });
+    const w = windowsFor(1200, [300, 300, 300, 300]);
+    expect(w.length).toBeGreaterThanOrEqual(3);
+    expect(d).toMatchObject({ error: "plan_failed", reason: "timeout", step: { window: 3, windows: w.length, chapter: w[2].parts[0].chapter_n, chapters: 4 } });
     nothingPriced();
     everyTurnFinished();
     expect(called("ai_chat_finish_turn").find((f) => f.p_outcome === "vendor_error")).toMatchObject({ p_tokens_in: null, p_tokens_out: null });
-    // Only the windows already picked up when it failed: the rest of the eight are never reserved.
-    expect(reserved).toBeLessThan(d.step.windows);
+    // Only the windows already picked up when it failed: nothing after them is reserved.
+    expect(reserved).toBeLessThanOrEqual(d.step.windows);
     expect(d.quota).toMatchObject({ limit: 30 });
   });
 
   it("the route's own time running out mid-plan stops before a window that could not finish, said as a timeout", async () => {
-    setup(1200, [300, 300, 300, 300]);
+    // More windows than run at once (five chapters of 240 s, one call each), so the later ones wait for a free slot as the clock runs.
+    setup(1200, Array(5).fill(240));
+    expect(windowsFor(1200, Array(5).fill(240)).length).toBeGreaterThan(3);
     let t = 1_800_000_000_000;
     vi.spyOn(Date, "now").mockImplementation(() => t);
-    // Each call takes a minute; once 170 s of the route's 300 s have gone, no further window is begun (one could not finish).
-    state.answer = (parts, data, n) => { t += 60_000; return exact(parts, data, n); };
+    // Each call takes 100 s; once a whole call and the work after the plan no longer fit in the route's time (PLAN_BUDGET_MS), no
+    // further window is begun (it could not finish).
+    state.answer = (parts, data, n) => { t += 100_000; return exact(parts, data, n); };
     const res = await choose();
     expect(res.status).toBe(502);
     const d = await res.json();
@@ -251,7 +270,8 @@ describe("a window that answers invalid JSON", () => {
     state.answer = (parts, data, n) => (data.window.n === 2 ? ok('{"chapters":[{"id":"ch3","scenes":[{"title":"a",') : exact(parts, data, n));
     const res = await choose();
     expect(res.status).toBe(502);
-    expect(await res.json()).toMatchObject({ error: "plan_failed", reason: "invalid_output", step: { window: 2, chapter: 3 } });
+    expect(await res.json()).toMatchObject({ error: "plan_failed", reason: "invalid_output",
+                                             step: { window: 2, chapter: windowsFor(1200, Array(10).fill(120))[1].parts[0].chapter_n } });
     expect(llm.mock.calls.filter((_, i) => dataOf(i).window.n === 2)).toHaveLength(1);
     expect(called("ai_chat_reserve_turn").some((r) => String(r.p_request_id).endsWith("-w2r"))).toBe(false);
     expect(called("ai_chat_finish_turn").filter((f) => f.p_outcome === "invalid_output")).toHaveLength(1);
@@ -273,10 +293,12 @@ describe("the one re-ask", () => {
     expect(res.status).toBe(200);
     expect(asked).toBe(2);
     const again = llm.mock.calls.map((_, i) => dataOf(i)).find((x) => x.window.n === 2 && x.previous_answer_problem);
-    expect(again?.previous_answer_problem).toMatch(/chapter ch3: .*must add up to exactly 120 s/);
+    const second = windowsFor(1200, Array(10).fill(120))[1].parts[0].chapter_id;
+    expect(again?.previous_answer_problem).toMatch(new RegExp(`chapter ${second}: .*must add up to exactly 120 s`));
+    // Its own id, derived from the plan's lease attempt (never the browser's press id).
     const r = called("ai_chat_reserve_turn");
-    expect(r.filter((x) => String(x.p_request_id) === `${RID}-w2r`)).toHaveLength(1);
-    expect(r.find((x) => String(x.p_request_id) === `${RID}-w2r`)).toMatchObject({ p_retry: true, p_text: "" });
+    expect(r.filter((x) => /^pl[0-9a-f]{40}-w2r$/.test(String(x.p_request_id)))).toHaveLength(1);
+    expect(r.find((x) => String(x.p_request_id).endsWith("-w2r"))).toMatchObject({ p_retry: true, p_text: "" });
     everyTurnFinished();
     expect((await res.json()).brief.scenes.reduce((a: number, s: { duration_s: number }) => a + s.duration_s, 0)).toBe(1200);
   });
@@ -286,7 +308,8 @@ describe("the one re-ask", () => {
     state.answer = (parts, data, n) => (data.window.n === 2 ? shortBy(5)(parts, data, n) : exact(parts, data, n));
     const res = await choose();
     expect(res.status).toBe(502);
-    expect(await res.json()).toMatchObject({ error: "plan_length_mismatch", step: { window: 2, chapter: 3, chapters: 10 } });
+    expect(await res.json()).toMatchObject({ error: "plan_length_mismatch",
+                                             step: { window: 2, chapter: windowsFor(1200, Array(10).fill(120))[1].parts[0].chapter_n, chapters: 10 } });
     expect(llm.mock.calls.filter((_, i) => dataOf(i).window.n === 2)).toHaveLength(2);
     everyTurnFinished();
     nothingPriced();
@@ -302,14 +325,17 @@ describe("the one re-ask", () => {
   });
 
   it("a re-ask whose reservation meets today's cap is the cap's own refusal: nothing priced, no turn left pending", async () => {
-    // The plan was begun with exactly as many turns left as it has windows (left == needed is allowed); a re-ask needs one more.
+    // Begun with the worst case covered (left == at_most); another tab or workspace took a turn meanwhile, so the re-ask meets the
+    // cap. The cap's own refusal, with the turns this plan took (Lens M4).
     setup(60, [60]);
-    state.quota = { used: 29, limit: 30 };
+    state.quota = { used: 28, limit: 30 };
     state.reserveRefusal = (_a, n) => (n >= 2 ? { code: "NS429", message: "chat_daily_cap", details: "used=30 limit=30" } : null);
     state.answer = (parts, data, n) => (n === 1 ? shortBy(10)(parts, data, n) : exact(parts, data, n));
     const res = await choose();
     expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ error: "chat_daily_cap", used: 30, limit: 30 });
+    const d = await res.json();
+    expect(d).toMatchObject({ error: "chat_daily_cap", used: 30, limit: 30 });
+    expect(d.quota).toMatchObject({ limit: 30 });
     expect(llm).toHaveBeenCalledTimes(1);
     everyTurnFinished();
     nothingPriced();
@@ -317,14 +343,16 @@ describe("the one re-ask", () => {
 });
 
 describe("plan_over_cap at the boundary", () => {
-  // Ten 120 s chapters at 1200 s: five windows (asserted below, so a change to the window size shows here first).
-  const NEEDED = 5;
-  it("left == needed begins the plan and takes exactly that many turns", async () => {
+  // Ten 120 s chapters at 1200 s. NEEDED is the worst case, every window asked again once (Atlas: a plan never stops halfway for
+  // the cap), counted from the route's own windows so a change to the packing shows here first.
+  const WINDOWS = windowsFor(1200, Array(10).fill(120)).length;
+  const NEEDED = 2 * WINDOWS;
+  it("left == needed begins the plan, and an answer that adds up takes one turn per window", async () => {
     setup(1200, Array(10).fill(120));
     state.quota = { used: 30 - NEEDED, limit: 30 };
     const res = await choose();
     expect(res.status).toBe(200);
-    expect(called("ai_chat_reserve_turn")).toHaveLength(NEEDED);
+    expect(called("ai_chat_reserve_turn")).toHaveLength(WINDOWS);
   });
 
   it("left == needed - 1 is refused before any turn or vendor call, with both numbers", async () => {
@@ -332,7 +360,7 @@ describe("plan_over_cap at the boundary", () => {
     state.quota = { used: 30 - NEEDED + 1, limit: 30 };
     const res = await choose();
     expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: NEEDED, left: NEEDED - 1 });
+    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: NEEDED, about: WINDOWS, left: NEEDED - 1 });
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     expect(llm).not.toHaveBeenCalled();
     nothingPriced();
@@ -341,7 +369,7 @@ describe("plan_over_cap at the boundary", () => {
   it("the lifetime trial is held to the same count: trial_left == needed - 1 is refused, == needed begins", async () => {
     setup(1200, Array(10).fill(120));
     state.quota = { used: 0, limit: null, trial_left: NEEDED - 1 };
-    expect(await (await choose()).json()).toEqual({ error: "plan_over_cap", needed: NEEDED, left: NEEDED - 1 });
+    expect(await (await choose()).json()).toEqual({ error: "plan_over_cap", needed: NEEDED, about: WINDOWS, left: NEEDED - 1 });
     state.quota = { used: 0, limit: null, trial_left: NEEDED };
     expect((await choose({ request_id: "press55555" })).status).toBe(200);
   });
@@ -369,11 +397,12 @@ describe("an old stored payload", () => {
     expect(savedScenes()[2]).toMatchObject({ clip_params: { audio: true } });
   });
 
-  it("scenes that do not add up and no chapters: nothing to choose, nothing spent", async () => {
+  it("scenes that do not add up and no chapters: an old proposal, said as one (ask again), nothing spent", async () => {
     setup(60, [], { chapters: [], scenes: [storedScene(20), storedScene(20)] });
     const res = await choose();
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "nothing_to_choose" });
+    // Lens L4: not "no longer on screen" while it is on screen.
+    expect(await res.json()).toEqual({ error: "proposal_outdated" });
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     nothingPriced();
   });
@@ -501,10 +530,10 @@ describe("the same choice pressed in a second tab while the first is still writi
     release();
     const [a, b] = await Promise.all([tabA, tabB]);
     expect(a.status).toBe(200);
-    const windows = 3;
-    // What a second tab may cost is nothing: a refusal, or a wait for A's plan. Today it reserves (and pays the vendor for) all
-    // of them again, because 0199's p_retry allows a turn whenever the last message is the person's, unanswered.
+    const windows = windowsFor(180, [60, 60, 60]).length;
+    // What a second tab may cost is nothing: 0211's lease refuses it (plan_running) before it reserves or calls anything.
     expect({ reserved: called("ai_chat_reserve_turn").length, vendorCalls: llm.mock.calls.length }).toEqual({ reserved: windows, vendorCalls: windows });
-    expect(b.status).not.toBe(200);
+    expect(b.status).toBe(409);
+    expect((await b.json()).error).toBe("plan_running");
   });
 });

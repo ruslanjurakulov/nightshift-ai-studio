@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fakePlanLease } from "./helpers/fakePlanLease";
+import { planLimits, planWindows } from "@/lib/brain/plan";
+import { readScenario, readSlots } from "@/lib/brain/logic";
+/** 0211's plan lease, as the database keeps it (tests/helpers/fakePlanLease.ts). */
+const lease = fakePlanLease();
 
 /**
  * /api/brain/turn `choose` on a short outline: the plan step (S1_GAPS G1–G4) end to end against a fake database and a fake model.
@@ -78,6 +83,8 @@ const client = {
   from: (t: string) => table(t),
   rpc: async (fn: string, args: Record<string, unknown>) => {
     rpc(fn, args);
+    const leased = lease.rpc(fn, args as Record<string, unknown>);
+    if (leased) return leased;
     if (fn === "sellable_models") {
       if (args.p_capability === "i2v" || args.p_capability === "t2i") {
         if (state.catalogueFails) return { data: null, error: { code: "XX000", message: "down" } };
@@ -136,8 +143,11 @@ const { POST } = await import("@/app/api/brain/turn/route");
 const choose = (body: Record<string, unknown> = {}) => POST(new Request("https://x/api/brain/turn", { method: "POST", headers: { "content-type": "application/json" },
   body: JSON.stringify({ action: "choose", session: SESSION, index: 0, request_id: RID, ...body }) }));
 const called = (fn: string) => rpc.mock.calls.filter((c) => c[0] === fn).map((c) => c[1] as Record<string, unknown>);
+/** How many windows the route itself plans for this outline (no clip model on sale: the film's own 30 s scenes). */
+const windowsOf = (target: number, seconds: number[]) =>
+  planWindows(readScenario(outline(seconds), readSlots(slots(target)))!, planLimits(null))!.length;
+/** The draft may exist (it is made before the plan, Breach BR-S1-03); nothing is saved into it, quoted, or kept as the plan. */
 const nothingPriced = () => {
-  expect(called("create_film_draft")).toHaveLength(0);
   expect(called("save_film")).toHaveLength(0);
   expect(called("quote_film")).toHaveLength(0);
   expect(called("ai_chat_save_brief")).toHaveLength(0);
@@ -149,6 +159,7 @@ function setup(target: number, seconds: number[], o: Record<string, unknown> = {
 }
 
 beforeEach(() => {
+  lease.reset();
   rpc.mockReset();
   llm.mockReset();
   process.env.NIGHTSHIFT_AI_CHAT = "orgs";
@@ -177,12 +188,18 @@ describe("choose → the plan step", () => {
     expect(d.brief.scenes.reduce((a: number, s: { duration_s: number }) => a + s.duration_s, 0)).toBe(180);
     expect(d.brief.scenes.map((s: { id: string }) => s.id).slice(0, 3)).toEqual(["s1", "s2", "s3"]);
     expect(called("create_film_draft")[0].p_settings).toMatchObject({ target_seconds: 180 });
-    // Three windows: the first stores the person's choice as their message (the outline's title), the rest add none.
-    expect(called("ai_chat_reserve_turn")).toEqual([
-      { p_session: SESSION, p_text: "The lost caravan", p_retry: false, p_request_id: `${RID}-w1` },
-      { p_session: SESSION, p_text: "", p_retry: true, p_request_id: `${RID}-w2` },
-      { p_session: SESSION, p_text: "", p_retry: true, p_request_id: `${RID}-w3` },
-    ]);
+    // Three 60 s chapters fit one call (Lens M2 packs by scenes): one turn, storing the person's choice as their message. Its
+    // request id is the lease attempt's, never the browser's (and names no conversation).
+    const r = called("ai_chat_reserve_turn");
+    expect(r).toHaveLength(windowsOf(180, [60, 60, 60]));
+    expect(r[0]).toMatchObject({ p_session: SESSION, p_text: "The lost caravan", p_retry: false });
+    expect(String(r[0].p_request_id)).toMatch(/^pl[0-9a-f]{40}-w1$/);
+    expect(String(r[0].p_request_id)).not.toContain(RID);
+    // The lease was taken before the draft, and released as done.
+    const order = rpc.mock.calls.map((c) => c[0]);
+    expect(order.indexOf("ai_chat_plan_begin")).toBeLessThan(order.indexOf("create_film_draft"));
+    expect(order.indexOf("create_film_draft")).toBeLessThan(order.indexOf("ai_chat_reserve_turn"));
+    expect(called("ai_chat_plan_end")).toEqual([{ p_session: SESSION, p_attempt: 1, p_state: "done", p_reason: null }]);
     expect(called("ai_chat_finish_turn")[0]).toMatchObject({ p_outcome: "ok", p_tokens_in: 100, p_text: null, p_brief: null, p_step: null });
     expect(llm.mock.calls[0][3]).toMatchObject({ size: "plan" });
     expect(d.brief.price).toMatchObject({ state: "priced", total_credits: 240 });
@@ -286,11 +303,13 @@ describe("choose → the plan step", () => {
     const res = await choose();
     expect(res.status).toBe(200);
     const r = called("ai_chat_reserve_turn");
-    // 1200 s at the film's 60 scenes is ~20 s a scene: eight windows of 150 s, each within 15 scenes.
-    expect(r).toHaveLength(8);
+    // Several windows, each within 15 scenes (the route's own count), one reserved turn each.
+    const n = windowsOf(1200, [300, 300, 300, 300]);
+    expect(n).toBeGreaterThan(1);
+    expect(r).toHaveLength(n);
     expect(r[0]).toMatchObject({ p_retry: false, p_text: "The lost caravan" });
     expect(r.slice(1).every((x) => x.p_retry === true && x.p_text === "")).toBe(true);
-    expect(new Set(r.map((x) => x.p_request_id)).size).toBe(8);
+    expect(new Set(r.map((x) => x.p_request_id)).size).toBe(n);
     expect(maxInFlight).toBeLessThanOrEqual(3);
     expect(maxInFlight).toBeGreaterThan(1);
     const d = await res.json();
@@ -316,7 +335,8 @@ describe("choose → the plan step", () => {
     expect((await choose()).status).toBe(200);
     expect(JSON.parse(String(llm.mock.calls[1][2]).split("\n").slice(1).join("\n")).previous_answer_problem)
       .toBe("chapter ch1: the scenes add up to 30 s; they must add up to exactly 40 s");
-    expect(called("ai_chat_reserve_turn")[1]).toMatchObject({ p_retry: true, p_request_id: `${RID}-w1r` });
+    expect(called("ai_chat_reserve_turn")[1]).toMatchObject({ p_retry: true });
+    expect(String(called("ai_chat_reserve_turn")[1].p_request_id)).toMatch(/^pl[0-9a-f]{40}-w1r$/);
     expect(called("ai_chat_finish_turn")[0]).toMatchObject({ p_outcome: "invalid_output" });
 
     rpc.mockReset(); llm.mockReset(); calls = 0;
@@ -367,7 +387,10 @@ describe("choose → the plan step", () => {
     const res = await choose();
     expect(res.status).toBe(429);
     // The worst case (every window asked again once), so the cap can never stop it halfway.
-    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: 16, about: 8, left: 2 });
+    const n = windowsOf(1200, [300, 300, 300, 300]);
+    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: 2 * n, about: n, left: 2 });
+    // Refused before the lease too: nothing for a second tab to wait on.
+    expect(called("ai_chat_plan_begin")).toHaveLength(0);
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     expect(llm).not.toHaveBeenCalled();
   });

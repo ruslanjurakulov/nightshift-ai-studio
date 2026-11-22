@@ -12,16 +12,24 @@
  *     shrunk, dropped or padded to make it fit;
  *   - every scene is within the film's 3–30 s, and within what the clip model can make in max_shots shots when that is known;
  *   - scenes are s1..sN in story order, at most 60, and point only at characters, locations and props the outline defines;
+ *   - an outline that could not fit 60 scenes is refused before any turn (planWindows null);
+ *   - a plan answer carries no vendor's name the outline does not, and never a claim that a vendor made it;
  *   - a plan with any chapter missing is never returned, so it is never priced.
+ *
+ * One plan at a time per conversation is the database's (0211's lease, lib/server/brain/plan.ts), not this file's.
  */
 
 import {
   FILM,
+  arr,
   extractJson,
+  foldForCheck,
   namesVendor,
+  obj,
   readSceneParts,
   type BriefScene,
   type ClipShape,
+  type OutlineChapter,
   type SceneParts,
   type SceneRefs,
   type Scenario,
@@ -60,51 +68,92 @@ export interface PlanPart {
   /** 1-based, in the outline's order: what a failure names. */
   chapter_n: number;
   title: string;
+  /** Only this part's own beats (Lens L3): a part told the whole chapter's beats writes the whole chapter again. */
   beats: { at_s: number; text: string }[];
   seconds: number;
   part: number;
   parts: number;
+  /** For a part after the first: the beat the part before it ends on, so the story continues from there. */
+  previous: string | null;
 }
 
 export interface PlanWindow { n: number; parts: PlanPart[]; seconds: number; maxScenes: number }
 
+/** The fewest scenes a part can be written in: each at most the longest scene. */
+const fewest = (seconds: number, limits: PlanLimits) => Math.ceil(seconds / limits.sceneMax);
+
 /**
- * The calls a short outline's storyboard takes: consecutive chapters packed into windows of at most PLAN.windowScenes scenes. A
- * chapter longer than one window is written in parts whose seconds add up to the chapter's exactly. Null when the outline has no
- * lengths to plan to (it would not have been proposed).
+ * A chapter's beats split between its parts by where they fall. A beat's at_s is read inside the chapter (0 .. seconds); one the
+ * model wrote on the film's clock (start_s .. start_s + seconds) is moved onto the chapter's own.
+ */
+function beatsOf(c: OutlineChapter, from: number, to: number, last: boolean) {
+  const start = c.start_s ?? 0;
+  const seconds = c.seconds ?? 0;
+  return c.beats.filter((b) => {
+    const at = b.at_s >= start && b.at_s < start + seconds && start > 0 ? b.at_s - start : b.at_s;
+    return at >= from && (at < to || last);
+  });
+}
+
+/**
+ * The calls a short outline's storyboard takes. A chapter longer than one call's room is written in parts whose seconds add up to the
+ * chapter's exactly; consecutive parts are packed into one call while the fewest scenes they can be written in stays within
+ * PLAN.windowScenes (Lens M2: packing by seconds alone gave two short chapters one scene between them).
+ *
+ * Each call's scene allowance is its share of the film's 60, never fewer than its parts need, at most 15, and all the calls'
+ * allowances together never more than 60: an answer within its allowance can always be merged. Null when the outline cannot be
+ * planned (no lengths, lengths that do not add up, or more than 60 scenes at the longest scene): said before any turn is taken.
  */
 export function planWindows(outline: Scenario, limits: PlanLimits): PlanWindow[] | null {
   const target = outline.target_seconds;
   if (!outline.chapters.length || outline.chapters.some((c) => !c.seconds || c.seconds < limits.sceneMin)) return null;
   if (outline.chapters.reduce((a, c) => a + (c.seconds ?? 0), 0) !== target) return null;
-  // A clip model whose shots are short can make the film impossible within 60 scenes: said, never planned and refused later.
-  if (Math.ceil(target / limits.sceneMax) > limits.maxScenes) return null;
   const scene = Math.min(limits.sceneMax, Math.max(PLAN.typicalSceneS, Math.ceil(target / limits.maxScenes)));
-  const cap = Math.max(limits.sceneMin, Math.floor(PLAN.windowScenes * scene * PLAN.windowFill));
+  // A part is at most what fills a call at the typical scene, and never more than 15 of the longest scenes can make.
+  const cap = Math.max(limits.sceneMin, Math.min(PLAN.windowScenes * limits.sceneMax, Math.floor(PLAN.windowScenes * scene * PLAN.windowFill)));
   const parts: PlanPart[] = [];
   outline.chapters.forEach((c, i) => {
     const seconds = c.seconds as number;
     const k = Math.ceil(seconds / cap);
+    let from = 0;
+    let previous: string | null = null;
     for (let p = 0; p < k; p++) {
       // The remainder goes to the first parts: the parts add up to the chapter's seconds, never rounded away.
       const share = Math.floor(seconds / k) + (p < seconds % k ? 1 : 0);
-      parts.push({ chapter_id: c.id, chapter_n: i + 1, title: c.title, beats: c.beats, seconds: share, part: p + 1, parts: k });
+      const beats = k > 1 ? beatsOf(c, from, from + share, p === k - 1) : c.beats;
+      parts.push({ chapter_id: c.id, chapter_n: i + 1, title: c.title, beats, seconds: share, part: p + 1, parts: k, previous: p > 0 ? previous : null });
+      if (beats.length) previous = beats[beats.length - 1].text;
+      from += share;
     }
   });
+  // More than 60 scenes even at the longest scene: no answer could be merged, so nothing is begun.
+  if (parts.reduce((a, p) => a + fewest(p.seconds, limits), 0) > limits.maxScenes) return null;
   const windows: PlanWindow[] = [];
+  let need = 0;
   for (const p of parts) {
     const last = windows[windows.length - 1];
-    if (last && last.seconds + p.seconds <= cap) {
+    const n = fewest(p.seconds, limits);
+    if (last && need + n <= PLAN.windowScenes) {
       last.parts.push(p);
       last.seconds += p.seconds;
+      need += n;
     } else {
       windows.push({ n: windows.length + 1, parts: [p], seconds: p.seconds, maxScenes: 0 });
+      need = n;
     }
   }
-  for (const w of windows) {
-    // The film's 60 scenes shared by length, and never fewer than the window needs at its longest scene.
+  const floor = windows.map((w) => w.parts.reduce((a, p) => a + fewest(p.seconds, limits), 0));
+  windows.forEach((w, i) => {
     const share = Math.floor((limits.maxScenes * w.seconds) / target);
-    w.maxScenes = Math.min(PLAN.windowScenes, Math.max(Math.ceil(w.seconds / limits.sceneMax), share));
+    w.maxScenes = Math.min(PLAN.windowScenes, Math.max(floor[i], share));
+  });
+  // Rounding and the floors can push the sum past 60: the roomiest calls give back first, never below what they need.
+  let over = windows.reduce((a, w) => a + w.maxScenes, 0) - limits.maxScenes;
+  while (over > 0) {
+    const i = windows.reduce((best, w, k) => (w.maxScenes - floor[k] > windows[best].maxScenes - floor[best] ? k : best), 0);
+    if (windows[i].maxScenes <= floor[i]) return null;
+    windows[i].maxScenes -= 1;
+    over -= 1;
   }
   return windows;
 }
@@ -122,11 +171,77 @@ export type WindowRead =
   /** The lengths are wrong. `problem` is the server's own words (numbers and ids only), for the one re-ask. */
   | { ok: false; why: "length"; problem: string };
 
-const arr = (v: unknown) => (Array.isArray(v) ? v : []);
-const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+/**
+ * The AI vendors and models by name, as one canonical word each (any script, look-alike letters folded first). Wider than the reply's
+ * namesVendor on purpose: a plan's model may be Gemini (Breach BR-S1-05), and in a scene "Gemini" or "Bard" needs no "I am" in front
+ * to be the vendor's name on screen.
+ */
+const VENDOR_NAMES: [RegExp, string][] = [
+  [/(?<![\p{L}\p{N}])(?:claude|клод)(?![\p{L}])/giu, "claude"],
+  [/anthropic|антропик/giu, "anthropic"],
+  [/chat\s?-?\s?gpt|чат\s?-?\s?гпт/giu, "chatgpt"],
+  [/(?<![\p{L}\p{N}])(?:gpt|гпт)(?:[-\s]?\d[\w.]*)?(?![\p{L}])/giu, "gpt"],
+  [/open\s?-?\s?ai|опен\s?(?:аи|эй\s?ай)/giu, "openai"],
+  [/deep\s?mind/giu, "deepmind"],
+  [/deep\s?seek/giu, "deepseek"],
+  [/(?<![\p{L}\p{N}])(?:gemini|джемини|гемини)(?![\p{L}])/giu, "gemini"],
+  [/(?<![\p{L}\p{N}])(?:bard)(?![\p{L}])/giu, "bard"],
+  [/google\s+(?:ai|deepmind)|гугл\s+аи/giu, "google ai"],
+];
+// "Google Gemini", "Anthropic's Claude", "OpenAI ChatGPT": a maker's name in front of the model's is still the model.
+const VENDOR_ALT = `(?:(?:google|anthropic(?:'s)?|openai(?:'s)?|гугл)\\s+)?(?:${VENDOR_NAMES.map(([r]) => r.source).join("|")})`;
+/**
+ * An authorship claim: the film, a scene or a card saying a vendor made it. Always a failure, whatever the outline says (an outline
+ * about OpenAI may show OpenAI; it may not have "written by OpenAI" on screen). en, ru, uz.
+ */
+const AUTHORSHIP = new RegExp(
+  String.raw`(?:written|made|generated|created|storyboarded|directed|produced|powered|scripted)\s+(?:entirely\s+)?(?:by|with|using|on)\s+(?:the\s+)?(?:${VENDOR_ALT})`
+  + String.raw`|(?:${VENDOR_ALT})(?:'s)?\s+(?:wrote|made|created|generated|storyboarded|directed|produced|scripted)`
+  + String.raw`|(?:написан\p{L}*|создан\p{L}*|сделан\p{L}*|сгенерирован\p{L}*|снят\p{L}*)\s+(?:с\s+помощью\s+|при\s+помощи\s+|нейросетью\s+)?(?:${VENDOR_ALT})`
+  + String.raw`|(?:${VENDOR_ALT})\s+(?:написал\p{L}*|создал\p{L}*|сделал\p{L}*|сгенерировал\p{L}*)`
+  + String.raw`|(?:${VENDOR_ALT})\s+(?:tomonidan|yordamida)\s+(?:yozilgan|yaratilgan|tayyorlangan|ishlangan)`,
+  "iu",
+);
 
-/** One call's answer, checked against what that call was asked for. */
-export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits: PlanLimits): WindowRead {
+/** The canonical vendor names a text carries, by the table above, on the text as it is and on its folded copy. */
+export function vendorNames(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const t of [text, foldForCheck(text)]) {
+    for (const [r, name] of VENDOR_NAMES) {
+      r.lastIndex = 0;
+      if (r.test(t)) out.add(name);
+      r.lastIndex = 0;
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a plan answer's text names a vendor it may not (Breach BR-S1-05). Only for plan answers; replies and cards keep namesVendor:
+ *   - an authorship claim always fails;
+ *   - a vendor name the chosen outline does not already carry fails (an injected chapter asked for it);
+ *   - a name the outline carries passes: a film about "The rise of OpenAI" may show OpenAI.
+ */
+export function planNamesVendor(text: string, outlineText: string): boolean {
+  if (!text) return false;
+  if (AUTHORSHIP.test(text) || AUTHORSHIP.test(foldForCheck(text))) return true;
+  const allowed = vendorNames(outlineText);
+  for (const name of vendorNames(text)) if (!allowed.has(name)) return true;
+  // A spelling the table does not know ("Anth-ropic", "Cl aude") that namesVendor still sees: only when the outline names none.
+  return namesVendor(text) && allowed.size === 0 && !namesVendor(outlineText);
+}
+
+/** Everything of the chosen outline a plan answer may echo: its words are the person's and the proposal's, not the plan's. */
+export function outlineText(o: Scenario): string {
+  return [o.title, o.idea, o.story.logline, o.story.conflict,
+          ...o.chapters.flatMap((c) => [c.title, ...c.beats.map((b) => b.text)]),
+          ...o.characters.flatMap((c) => [c.name, c.description, c.image_prompt]),
+          ...o.locations.flatMap((l) => [l.name, l.description, l.image_prompt]),
+          ...o.props.flatMap((p) => [p.name, p.description])].join("\n");
+}
+
+/** One call's answer, checked against what that call was asked for. `outline` is the chosen outline's own text (outlineText). */
+export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits: PlanLimits, outline = ""): WindowRead {
   const json = extractJson(text);
   if (!json) return { ok: false, why: "invalid" };
   if (json.refused === true || (typeof json.refused === "string" && json.refused.trim() !== "")) return { ok: false, why: "refused" };
@@ -143,9 +258,9 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
     const scenes = raw.slice(0, PLAN.windowScenes + 1).map((s) => readSceneParts(s, "short", refs));
     if (scenes.some((s) => s === null)) return { ok: false, why: "invalid" };
     const ok = scenes as SceneParts[];
-    // The assistant naming its vendor inside a plan is the same leak as in a reply (an injected chapter can ask for it): the plan
-    // fails rather than a picture or a spoken line carrying it.
-    if (ok.some((s) => [s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line)].some((t) => t && namesVendor(t)))) return { ok: false, why: "invalid" };
+    // A vendor's name the outline does not carry, or any claim that a vendor made it: the plan fails rather than a picture or a
+    // spoken line carrying it (an injected chapter can ask for either).
+    if (ok.some((s) => [s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line)].some((t) => planNamesVendor(t, outline)))) return { ok: false, why: "invalid" };
     count += ok.length;
     const bad = ok.findIndex((s) => s.seconds === null || s.seconds < limits.sceneMin || s.seconds > limits.sceneMax);
     if (bad >= 0) {
@@ -163,9 +278,14 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
 export type MergeResult = { ok: true; scenario: Scenario } | { ok: false; why: "too_many_scenes" | "length" };
 
 /** The windows' answers, in story order, as one storyboard: s1..sN, at most 60, adding up to the person's length. */
-export function mergePlan(outline: Scenario, windows: PlanWindow[], answers: SceneParts[][][]): MergeResult {
-  if (answers.length !== windows.length || answers.some((a, i) => !a || a.length !== windows[i].parts.length)) return { ok: false, why: "length" };
-  const flat = answers.flat(2);
+export function mergePlan(outline: Scenario, windows: PlanWindow[], answers: (SceneParts[][] | undefined)[]): MergeResult {
+  // Every window answered, counted by index: `.some` skips the holes of a sparse array, so a window missing from it went unseen.
+  if (answers.length !== windows.length) return { ok: false, why: "length" };
+  for (let i = 0; i < windows.length; i++) {
+    const a = answers[i];
+    if (!a || a.length !== windows[i].parts.length) return { ok: false, why: "length" };
+  }
+  const flat = (answers as SceneParts[][][]).flat(2);
   if (flat.length > FILM.maxScenes) return { ok: false, why: "too_many_scenes" };
   const scenes = flat.map(({ seconds, ...s }, i): BriefScene => ({ ...s, id: `s${i + 1}`, n: i + 1, duration_s: seconds ?? 0 }));
   // Already true of every window; checked once more on the whole, because this is the number the person is quoted for.

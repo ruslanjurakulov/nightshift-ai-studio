@@ -45,7 +45,8 @@ export interface BrainCard {
 export interface BriefCharacter { id: string; name: string; description: string; image_prompt: string; asset_id: string | null; character_id: string | null; source: "prompt" | "upload" | "library" }
 export interface BriefLocation { id: string; name: string; description: string; image_prompt: string; asset_id: string | null }
 export interface BriefProp { id: string; name: string; description: string }
-export interface BriefChapter { id: string; title: string; start_s: number; beats: { at_s: number; text: string }[] }
+/** start_s is absent when it is not known (Probe M7): an unknown start is never drawn as 0 s (rule 5). */
+export interface BriefChapter { id: string; title: string; start_s?: number; beats: { at_s: number; text: string }[] }
 /** A proposed outline's chapter: BRIEF v1's chapter plus its length, which the plan step writes that chapter's scenes to. The
  *  BRIEF itself keeps the contract's shape (start_s carries where each chapter begins; buildBrief drops `seconds`). */
 export interface OutlineChapter extends BriefChapter { seconds: number | null }
@@ -146,15 +147,19 @@ export function plain(v: unknown, max: number, multiline = false): string {
 const LINK = /\[([^\]]{0,200})\]\([^)]*\)|\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+\.(?:com|net|org|io|ru|uz|me|app|link|xyz|ly)\/\S*/gi;
 // Every apostrophe a "soʻm" is typed with, and letters in any script (\w is ASCII: "300 кредитов" left "…ов", Lens on 0199).
 const AP = "[ʻʼ'’‘`]";
-const UNIT = String.raw`(?:usd|eur|uzs|rub|dollars?|euros?|so${AP}?m|сўм|сум(?:ы|ов|а|ах)?|рубл\p{L}*|руб\.?|долл\p{L}*|(?:credits?|кредит\p{L}*|kredit\p{L}*)(?!\s+roll))`;
+// Breach BR-S1-06: the currencies a price is written in, not only ours (GBP, the rupee, stablecoins, "bucks" all passed). TRY (the
+// lira) only AFTER a number: before one it is the English verb ("try 3 more").
+const CODES = "usd|eur|uzs|rub|gbp|inr|usdt|usdc|btc|kzt|cny|rmb|jpy";
+const UNIT = String.raw`(?:${CODES}|try|dollars?|euros?|bucks?|quid|so${AP}?m|сўм|сум(?:ы|ов|а|ах)?|рубл\p{L}*|руб\.?|долл\p{L}*|(?:credits?|кредит\p{L}*|kredit\p{L}*)(?!\s+roll))`;
 const SCALE = String.raw`(?:k|тыс\.?|тысяч\p{L}*|ming|mln|million\p{L}*|млн\.?|миллион\p{L}*)`;
 // Word numbers next to a unit. Not "on" (English): Uzbek "oʻn" (ten) only with its apostrophe (Lens on 0199: "living on credit").
 const WORDNUM = String.raw`(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|thousand|nol|bir|ikki|uch|to${AP}rt|besh|o${AP}n|yigirma|o${AP}ttiz|qirq|ellik|yuz|ming|ноль|один|два|три|четыре|пять|десять|пятнадцать|двадцать|тридцать|сорок|пятьдесят|сто|двести|триста|пятьсот|тысяч\p{L}*)`;
 const MONEY = new RegExp(
   [
-    String.raw`[$€£¥₽]\s?\d[\d\s.,]*${SCALE}?`,
-    String.raw`\d[\d\s.,]*\s?[$€£¥₽]`,
-    String.raw`(?<![\p{L}])(?:usd|eur|uzs|rub|so${AP}?m|сўм|сум|руб\.?)\s?\d[\d\s.,]*${SCALE}?`,
+    // Any currency sign (\p{Sc}: ₹ ₺ ₸ ₿ ₩ … as well as $ € £ ¥ ₽), on either side of the number.
+    String.raw`\p{Sc}\s?\d[\d\s.,]*${SCALE}?`,
+    String.raw`\d[\d\s.,]*\s?\p{Sc}`,
+    String.raw`(?<![\p{L}])(?:${CODES}|so${AP}?m|сўм|сум|руб\.?)\s?\d[\d\s.,]*${SCALE}?`,
     String.raw`\d[\d\s.,]*\s?${SCALE}?\s?(?:ta\s)?${UNIT}(?![\p{L}])`,
     String.raw`(?<![\p{L}])${WORDNUM}(?:[\s-]+${WORDNUM})*\s+(?:ta\s)?${UNIT}(?![\p{L}])`,
     String.raw`\d+\s?%\s?(?:off|discount|скидк\p{L}*|chegirma\p{L}*)`,
@@ -229,11 +234,13 @@ export function mergeSlots(prev: BrainSlots, raw: unknown): SlotRead {
   }
   if (next.kind === "long") next.aspect = "16:9";
   else if (typeof r.aspect === "string" && (BRAIN_ASPECTS as string[]).includes(r.aspect)) next.aspect = r.aspect as BrainAspect;
-  const style = plain(r.style, CAP.style);
+  // The model's words like any other (Breach BR-S1-01): the style goes into every scene's prompt and every plan call, so a link or a
+  // price in it is taken out here; unsafeBrief reads it too.
+  const style = modelText(r.style, CAP.style);
   if (style) next.style = style;
   const lang = language(r.language);
   if (lang) next.language = lang;
-  const aud = plain(r.audience, CAP.audience);
+  const aud = modelText(r.audience, CAP.audience);
   if (aud) next.audience = aud;
   return { slots: next, lengthOutOfRange };
 }
@@ -287,8 +294,8 @@ export function isSmallTalk(text: string): boolean {
 
 const ID = /^[a-z][a-z0-9_-]{0,15}$/i;
 const sid = (v: unknown, fallback: string) => (typeof v === "string" && ID.test(v) ? v.toLowerCase() : fallback);
-const arr = (v: unknown) => (Array.isArray(v) ? v : []);
-const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+export const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+export const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /** What a scenario reader is given: a fresh proposal (an outline, and nothing else), or a stored payload. */
 export interface ScenarioRules {
@@ -359,7 +366,8 @@ export function readScenario(raw: unknown, slots: BrainSlots, rules: ScenarioRul
   const known = { c: new Set(characters.map((c) => c.id)), l: new Set(locations.map((l) => l.id)), p: new Set(props.map((p) => p.id)) };
   const chapters = firstOfEach(arr(r.chapters).slice(0, CAP.chapters).map((c, i): OutlineChapter => {
     const o = obj(c);
-    return { id: sid(o.id, `ch${i + 1}`), title: modelText(o.title, CAP.title), start_s: Math.max(0, Math.round(num(o.start_s) ?? 0)),
+    const start = num(o.start_s);
+    return { id: sid(o.id, `ch${i + 1}`), title: modelText(o.title, CAP.title), ...(start !== undefined && start >= 0 ? { start_s: Math.round(start) } : {}),
              seconds: sceneSeconds(o.seconds),
              beats: arr(o.beats).slice(0, CAP.beats).map((b) => ({ at_s: Math.max(0, Math.round(num(obj(b).at_s) ?? 0)), text: modelText(obj(b).text, CAP.beat) }))
                .filter((b) => b.text) };
@@ -369,21 +377,27 @@ export function readScenario(raw: unknown, slots: BrainSlots, rules: ScenarioRul
   const story = { logline: modelText(obj(r.story).logline, CAP.logline), conflict: modelText(obj(r.story).conflict, CAP.logline) };
   const base = { title, idea, story, characters, locations, props, target_seconds };
 
+  // Where each chapter starts, from the lengths when every one is known (Probe M7: a long outline's chapters had the model's own
+  // start_s, or 0). When a length is missing, the model's start_s is kept if it gave one, else none: never a made-up 0.
+  const allTimed = chapters.length > 0 && chapters.every((c) => c.seconds !== null);
+  const fromLengths = (list: OutlineChapter[]) => {
+    let at = 0;
+    return list.map((c) => { const start_s = at; at += c.seconds ?? 0; return { ...c, start_s }; });
+  };
+
   if (slots.kind === "long") {
     // Run now cuts its own scenes: a long scenario's scenes are informational, and a fresh outline has none.
     const scenes = rules.outline ? [] : arr(r.scenes).slice(0, FILM.maxScenes).map((sc) => readSceneParts(sc, "long", known))
       .filter((x): x is SceneParts => x !== null)
       .map(({ seconds, ...x }, i): BriefScene => ({ ...x, id: `s${i + 1}`, n: i + 1, duration_s: Math.max(1, seconds ?? 10) }));
-    return { ...base, chapters, scenes };
+    return { ...base, chapters: allTimed ? fromLengths(chapters) : chapters, scenes };
   }
 
   // A short outline is usable only when its chapters add up to the person's length, each long enough for one scene. One that does
   // not is not proposed: nothing downstream stretches, shrinks or drops a chapter to make it fit.
   const outlined = chapters.length > 0 && chapters.every((c) => c.seconds !== null && c.seconds >= FILM.sceneMin)
     && chapters.reduce((a, c) => a + (c.seconds ?? 0), 0) === target_seconds;
-  // Where each chapter starts follows from the lengths, not from the model's own arithmetic.
-  let at = 0;
-  const timed = outlined ? chapters.map((c) => { const start_s = at; at += c.seconds ?? 0; return { ...c, start_s }; }) : chapters;
+  const timed = outlined ? fromLengths(chapters) : chapters;
   if (rules.outline) return outlined ? { ...base, chapters: timed, scenes: [] } : null;
 
   // A payload stored before the plan step: its storyboard is kept only when every scene is a length a film takes and they add up
@@ -495,7 +509,8 @@ export function unsafeText(text: string): boolean {
 }
 /** Every text of a chosen plan that becomes a picture, a clip or a spoken line. */
 export function unsafeBrief(b: Brief): boolean {
-  const parts: string[] = [b.title ?? "", b.idea ?? "", b.story?.logline ?? "", b.story?.conflict ?? ""];
+  // The style and the audience too: the style is appended to every scene's prompt (filmFromBrief).
+  const parts: string[] = [b.title ?? "", b.idea ?? "", b.story?.logline ?? "", b.story?.conflict ?? "", b.style ?? "", b.audience ?? ""];
   for (const c of b.characters ?? []) parts.push(c.name, c.description, c.image_prompt);
   for (const l of b.locations ?? []) parts.push(l.name, l.description, l.image_prompt);
   for (const s of b.scenes ?? []) parts.push(s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line));
@@ -535,6 +550,19 @@ export function shotCount(planned: number, clip: ClipShape | null): number | nul
   const longest = clip?.durations?.length ? Math.max(...clip.durations) : null;
   if (!longest || !Number.isFinite(planned) || planned <= 0) return null;
   return Math.min(Math.max(1, clip!.maxShots), Math.max(1, Math.ceil(planned / longest)));
+}
+
+/**
+ * A short BRIEF's draft settings and source text, without its scenes: what create_film_draft takes (0166). The draft is made before
+ * the storyboard is written (Breach BR-S1-03: a draft the workspace cannot make must be refused before the plan's turns are spent),
+ * so nothing here may depend on a scene.
+ */
+export function draftSettings(b: Brief): { settings: Record<string, unknown>; sourceText: string } | null {
+  if (b.kind !== "short" || !b.language || !b.title) return null;
+  return {
+    settings: { title: plain(b.title, FILM.titleMax), language: filmLanguage(b.language), aspect: b.aspect ?? "16:9", target_seconds: b.target_seconds },
+    sourceText: plain([b.idea, b.story?.logline].filter(Boolean).join("\n"), 2000, true),
+  };
 }
 
 /** The film a short BRIEF becomes: the settings and scenes create_film_draft / save_film take (0166). Dialogue goes into the clip
