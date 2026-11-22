@@ -315,7 +315,25 @@ class CaddyUpstreamRetryTests(unittest.TestCase):
         )
 
     def test_there_is_one_proxy_and_it_has_a_block(self):
-        self.assertEqual(self.proxies, ["\treverse_proxy web:3000 {"], self.proxies)
+        # One for every path, and one for Nightshift AI's plan step only (its own upstream timeout, below).
+        self.assertEqual(self.proxies, ["\treverse_proxy web:3000 {", "\treverse_proxy /api/brain/turn web:3000 {"], self.proxies)
+
+    def test_the_plan_step_alone_is_allowed_longer_than_its_lease_and_waits_out_a_deploy_too(self):
+        # The plan step answers after up to 280 s of model calls plus the draft's save and quote, inside a 320 s lease (0211).
+        text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        code = "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+        m = re.search(r"^[ \t]*reverse_proxy /api/brain/turn web:3000 \{\n(.*?)^\t\}", code, re.M | re.S)
+        self.assertIsNotNone(m, "the plan step's own proxy block is missing")
+        block = m.group(1)
+        opts = dict((o.group(1), o.group(2)) for o in re.finditer(r"^[ \t]*([a-z_]+)[ \t]+(\S+)[ \t]*$", block, re.M))
+        for name in ("response_header_timeout", "read_timeout", "write_timeout"):
+            self.assertIn(name, opts)
+            self.assertGreater(caddy_duration_seconds(opts[name]), 320, name)
+        self.assertGreaterEqual(caddy_duration_seconds(opts["lb_try_duration"]), 10)
+        self.assertGreater(caddy_duration_seconds(opts["lb_try_interval"]), 0)
+        self.assertNotIn("lb_retry_match", block)
+        # Only that path: the proxy for everything else carries no transport of its own.
+        self.assertNotIn("transport", self.block)
 
     def test_a_recreated_web_is_waited_for_at_least_ten_seconds(self):
         self.assertIn("lb_try_duration", self.options, "without it Caddy answers 502 the moment web:3000 is not there")
