@@ -768,8 +768,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     window.location.assign(liveHref(filmId));
   };
   const liveHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/studio?view=live&film=${encodeURIComponent(filmId)}`;
-  /** The film's own editor (the Studio timeline), where a model is set or a storyboard edited. */
-  const editorHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/studio?view=timeline&film=${encodeURIComponent(filmId)}`;
+  /** The film's project editor (/{channel}/create/projects/{id}), where a model is set or a storyboard edited: S2's Create links
+   *  there for every refusal the person fixes in the project (fixHref), and plan_superseded opens it. */
+  const editorHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/create/projects/${encodeURIComponent(filmId)}`;
   const newChat = () => {
     clear();
     if (typeof window === "undefined") return;
@@ -946,12 +947,11 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       )}
       {step === "ready" && brief && (
         <ReadyBlock brief={brief} film={film} models={models} channelSlug={channelSlug} lengthLabel={lengthLabel} canRun={ready && load.canRun}
-          editorHref={film ? editorHref(film.id) : null}
           create={brief.kind === "short" && film ? (
             // No `requote`: S2's own requoteFilm prices the film's CURRENT version and writes nothing (Lens H1). No
             // `onChooseAnother`: choosing again here would draft the same models again (Lens M1); S2 offers support instead.
             <FilmCreateButton key={film.id} filmId={film.id} quote={film.quote} onStarted={() => void filmStarted(film.id)}
-              progressHref={liveHref(film.id)} />
+              progressHref={liveHref(film.id)} fixHref={editorHref(film.id)} />
           ) : null} />
       )}
     </>
@@ -1091,10 +1091,8 @@ function StatusWithAction({ text, label, onPress }: { text: string; label: strin
   );
 }
 
-function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, create, editorHref }: {
+function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, create }: {
   brief: Brief; film: FilmReady | null; models: FilmModels | null; channelSlug: string; lengthLabel: (s: number) => string; canRun: boolean;
-  /** The film's editor, for what only the editor sets (a model). */
-  editorHref: string | null;
   /** S2's Create for a short film's draft; its own states say a short film's credits, blocks and refusals. */
   create: ReactNode;
 }) {
@@ -1151,11 +1149,6 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
       )}
       {brief.kind === "short" && !film && <p className="text-sm">{c.chooseAgain}</p>}
       {create}
-      {/* No model is set for the film (the quote's own model_not_set): S2's block says so; the model is chosen in the film's editor
-          (Pixel P2). */}
-      {brief.kind === "short" && film?.quote?.refusal === "model_not_set" && editorHref && (
-        <Link className="btn-quiet inline-flex min-h-11 items-center self-start px-4 text-sm" href={editorHref} data-testid="ns-ai-open-project">{c.openProject}</Link>
-      )}
     </section>
   );
 }

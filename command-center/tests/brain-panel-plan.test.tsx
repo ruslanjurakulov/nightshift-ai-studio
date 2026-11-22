@@ -356,7 +356,7 @@ describe("Nightshift AI panel: fix round 2 (Lens and Pixel)", () => {
     expect(alert.textContent).toContain(en.errors.plan_superseded);
     expect(en.errors.plan_superseded).toMatch(/No credits were charged/);
     expect(en.errors.plan_superseded).not.toMatch(/choose again/i);
-    expect(screen.getByRole("link", { name: en.openProject }).getAttribute("href")).toBe("/chronos/studio?view=timeline&film=f-1");
+    expect(screen.getByRole("link", { name: en.openProject }).getAttribute("href")).toBe("/chronos/create/projects/f-1");
     expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
   });
 
@@ -426,5 +426,29 @@ describe("Nightshift AI panel: fix round 2 (Lens and Pixel)", () => {
     await act(async () => { fireEvent.click(option); });
     await waitFor(() => expect(sent).toHaveLength(1));
     await waitFor(() => expect(document.activeElement?.id).toBe("ns-ai-input"));
+  });
+});
+
+describe("Nightshift AI panel: a film with no model set is fixed in its project (S2's fixHref)", () => {
+  it("model_not_set: S2's Create links to the project as its primary key, Check again beside it, and no link of the panel's own", async () => {
+    holdTurn = false;
+    turnReply = { status: 200, body: {
+      brief: { version: 1, kind: "short", title: "Alpha", idea: "idea Alpha", target_seconds: 120, voice: { mode: "off" }, music: { mode: "off" },
+               scenes: [{ id: "s1" }], characters: [], price: { state: "unpriced" } },
+      film: { id: "film-9", version: 2 }, models: { clip: null, keyframe: null },
+      film_quote: { priced: false, total: null, quote_id: null, startable: false, may_start: true, available: 500, blocked_by: [],
+                    refusals: [{ reason: "model_not_set" }] },
+    } };
+    stub(true);
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    await screen.findByText("Alpha");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") })));
+    const k = dictionaries.en.studioTimeline.create;
+    const fix = await screen.findByRole("link", { name: k.openToFix });
+    expect(fix.getAttribute("href")).toBe("/chronos/create/projects/film-9");
+    expect(fix.hasAttribute("data-primary")).toBe(true);
+    expect(screen.getByRole("button", { name: k.checkAgain })).toBeTruthy();
+    expect(document.querySelector('[data-testid="ns-ai-open-project"]')).toBeNull();
+    expect(screen.queryByRole("link", { name: en.openProject })).toBeNull();
   });
 });
