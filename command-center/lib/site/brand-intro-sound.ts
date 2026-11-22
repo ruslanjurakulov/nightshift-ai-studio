@@ -211,11 +211,11 @@ export function soundAllowed(): boolean {
 export type IntroCue = { stop: () => void };
 
 /**
- * Starts the cue for an intro that is playing, whose timeline began at `coverStart` (performance.now() ms). Returns null, and
- * creates nothing, when sound is not allowed. Never throws, never retries, never waits: the picture does not know about it.
+ * Starts the cue for an intro that is playing, whose animations started at `start` (performance.now() ms, the overlay's first
+ * animationstart). Returns null, and creates nothing, when sound is not allowed. Never throws, never retries, never waits: the picture does not know about it.
  * stop() ramps to silence in CUE_STOP_MS and closes the context; it is safe to call more than once.
  */
-export function startIntroCue(coverStart: number): IntroCue | null {
+export function startIntroCue(start: number): IntroCue | null {
   if (!soundAllowed()) return null;
   const w = window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
   const Ctor = w.AudioContext ?? w.webkitAudioContext;
@@ -263,7 +263,7 @@ export function startIntroCue(coverStart: number): IntroCue | null {
   function begin() {
     if (stopped) return;
     if (ctx.state !== "running") return stop();
-    const offset = performance.now() - coverStart;
+    const offset = performance.now() - start;
     if (!(offset <= CUE_LATEST_START_MS)) return stop();
     try {
       master = scheduleCue(ctx, ctx.destination, ctx.currentTime - offset / 1000);

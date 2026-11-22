@@ -11,13 +11,20 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { BrandIntro } from "@/components/site/BrandIntro";
-import { BRAND_INTRO_SCRIPT, INTRO, INTRO_COVER_ATTR, INTRO_TOTAL_MS } from "@/lib/site/brand-intro";
+import { BRAND_INTRO_SCRIPT, INTRO, INTRO_COVER_ATTR, INTRO_FALLBACK_MS, INTRO_TOTAL_MS } from "@/lib/site/brand-intro";
 import { CUE, CUE_LOWPASS_HZ, CUE_STOP_MS, scheduleCue, soundAllowed, startIntroCue } from "@/lib/site/brand-intro-sound";
 import { buildCsp } from "@/lib/security/csp";
 
 const html = document.documentElement;
 const overlay = () => document.querySelector<HTMLElement>("[data-testid='brand-intro']");
 const runScript = () => new Function(BRAND_INTRO_SCRIPT)();
+/** The overlay's first animation starting: the sound's cue to begin, in a browser. */
+const begin = () => {
+  const stage = document.querySelector(".ns-intro-stage");
+  if (stage) act(() => {
+    fireEvent.animationStart(stage);
+  });
+};
 
 type Call = { node: string; method: string; args: unknown[] };
 
@@ -176,8 +183,9 @@ describe("no AudioContext where there is no intro, or no sound allowed", () => {
     it(name, async () => {
       setup();
       render(<BrandIntro />);
+      begin();
       await settle();
-      act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS + 100));
+      act(() => vi.advanceTimersByTime(INTRO_FALLBACK_MS + 100));
       expect(constructed).toHaveLength(0);
     });
   }
@@ -194,12 +202,13 @@ describe("a playing intro with sound allowed", () => {
   it("makes one context, schedules the cue, and closes it when the overlay leaves", async () => {
     runScript();
     render(<BrandIntro />);
+    begin();
     await settle();
     expect(constructed).toHaveLength(1);
     const ctx = constructed[0];
     expect(ctx.resume).toHaveBeenCalledTimes(1);
     expect(ctx.calls.some((c) => c.method === "start")).toBe(true);
-    act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS));
+    act(() => vi.advanceTimersByTime(INTRO_FALLBACK_MS));
     expect(overlay()).toBeNull();
     act(() => vi.advanceTimersByTime(CUE_STOP_MS + 20));
     expect(ctx.close).toHaveBeenCalledTimes(1);
@@ -215,6 +224,7 @@ describe("a playing intro with sound allowed", () => {
     it(`goes silent within ${CUE_STOP_MS} ms on ${name}, then closes`, async () => {
       runScript();
       render(<BrandIntro />);
+      begin();
       await settle();
       const ctx = constructed[0];
       act(() => fire());
@@ -233,12 +243,13 @@ describe("a playing intro with sound allowed", () => {
     const errors = vi.spyOn(console, "error");
     runScript();
     render(<BrandIntro />);
+    begin();
     await settle();
     const ctx = constructed[0];
     expect(overlay()).not.toBeNull();
     expect(ctx.calls.some((c) => c.method === "start")).toBe(false);
     expect(ctx.close).toHaveBeenCalledTimes(1);
-    act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS));
+    act(() => vi.advanceTimersByTime(INTRO_FALLBACK_MS));
     expect(overlay()).toBeNull();
     expect(ctx.resume).toHaveBeenCalledTimes(1);
     expect(constructed).toHaveLength(1);
@@ -249,10 +260,11 @@ describe("a playing intro with sound allowed", () => {
     resumeMode = "pending";
     runScript();
     render(<BrandIntro />);
+    begin();
     await settle();
     const ctx = constructed[0];
     expect(overlay()).not.toBeNull();
-    act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS));
+    act(() => vi.advanceTimersByTime(INTRO_FALLBACK_MS));
     expect(overlay()).toBeNull();
     expect(ctx.close).toHaveBeenCalledTimes(1);
     expect(ctx.calls.some((c) => c.method === "start")).toBe(false);
@@ -262,6 +274,7 @@ describe("a playing intro with sound allowed", () => {
   it("goes silent and closes when the tab is hidden mid-intro", async () => {
     runScript();
     render(<BrandIntro />);
+    begin();
     await settle();
     const ctx = constructed[0];
     visibility = "hidden";

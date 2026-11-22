@@ -30,10 +30,14 @@ import { BRAND_MARK_ART } from "@/components/site/brandMarkArt";
 import {
   BRAND_INTRO_SCRIPT,
   INTRO,
+  INTRO_CLAIM_MS,
   INTRO_COVER_ATTR,
+  INTRO_FALLBACK_MS,
+  INTRO_HELD,
   INTRO_LATE_MS,
   INTRO_SAFETY_MS,
   INTRO_SEEN_KEY,
+  INTRO_SWALLOW_MS,
   INTRO_TOTAL_MS,
   introBlocked,
 } from "@/lib/site/brand-intro";
@@ -72,6 +76,18 @@ function clearCookies() {
 const runScript = () => new Function(BRAND_INTRO_SCRIPT)();
 const covered = () => html.hasAttribute(INTRO_COVER_ATTR);
 const overlay = () => document.querySelector<HTMLElement>("[data-testid='brand-intro']");
+/** The opening's own animationend on the first half: how the overlay ends in a browser. */
+const finishOpening = () => fireEvent.animationEnd(overlay()!.querySelector("[data-leaf='a']")!);
+let visibility: DocumentVisibilityState = "visible";
+/** A button on the page under the intro, counting its clicks. */
+function pageButton() {
+  const b = document.createElement("button");
+  b.textContent = "Bring it to the Studio";
+  const onClick = vi.fn();
+  b.addEventListener("click", onClick);
+  document.body.appendChild(b);
+  return { b, onClick };
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -82,6 +98,9 @@ beforeEach(() => {
   window.sessionStorage.clear();
   html.removeAttribute(INTRO_COVER_ATTR);
   html.removeAttribute("data-motion");
+  visibility = "visible";
+  Object.defineProperty(document, "visibilityState", { get: () => visibility, configurable: true });
+  Object.defineProperty(document, "prerendering", { value: false, configurable: true });
 });
 
 afterEach(() => {
@@ -93,6 +112,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   clearCookies();
   html.removeAttribute(INTRO_COVER_ATTR);
+  document.body.querySelectorAll("button").forEach((b) => b.remove());
 });
 
 describe("the pre-hydration script", () => {
@@ -122,7 +142,9 @@ describe("the pre-hydration script", () => {
     ["a chunked session cookie", () => { document.cookie = `${SESSION}.0=x; path=/`; }],
     ["a path other than /", () => window.history.replaceState(null, "", "/pricing")],
     ["a crawler", () => vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (compatible; Googlebot/2.1)")],
-    ["Lighthouse", () => vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 Chrome/120 Chrome-Lighthouse")],
+    ["Bing's crawler", () => vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (compatible; bingbot/2.0)")],
+    ["a hidden tab", () => { visibility = "hidden"; }],
+    ["a prerender", () => Object.defineProperty(document, "prerendering", { value: true, configurable: true })],
   ];
 
   for (const [name, setup] of blocked) {
@@ -147,27 +169,88 @@ describe("the pre-hydration script", () => {
     expect(covered()).toBe(true);
   });
 
+  // Lab tools see what a first visitor sees; a phone brand that ends in "bot" is a person, not a crawler.
+  for (const [name, ua] of [
+    ["Lighthouse / PageSpeed", "Mozilla/5.0 (Linux; Android 11; moto g power) Chrome/120 Mobile Safari/537.36 Chrome-Lighthouse"],
+    ["a CUBOT phone", "Mozilla/5.0 (Linux; Android 12; CUBOT P80) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"],
+  ]) {
+    it(`plays for ${name}`, () => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+      expect(introBlocked()).toBe(false);
+      runScript();
+      expect(covered()).toBe(true);
+    });
+  }
+
   it("does not mark the tab seen when it decided not to play", () => {
     reduced = true;
     runScript();
     expect(window.sessionStorage.getItem(INTRO_SEEN_KEY)).toBeNull();
   });
 
-  it("lifts the cover after the safety timeout even if no component ever takes over", () => {
+  it("lifts an unclaimed cover itself at INTRO_LATE_MS: a slow phone sees ~0.3 s of black, then the page", () => {
     runScript();
-    vi.advanceTimersByTime(INTRO_SAFETY_MS - 1);
+    vi.advanceTimersByTime(INTRO_LATE_MS - 1);
     expect(covered()).toBe(true);
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(2);
     expect(covered()).toBe(false);
   });
 
-  for (const e of ["pointerdown", "keydown", "wheel", "touchstart", "scroll"]) {
+  it("leaves a claimed cover to the component, and lifts even that at the safety timeout", () => {
+    runScript();
+    html.setAttribute(INTRO_COVER_ATTR, INTRO_HELD);
+    vi.advanceTimersByTime(INTRO_LATE_MS + 1);
+    expect(covered()).toBe(true);
+    vi.advanceTimersByTime(INTRO_SAFETY_MS - INTRO_LATE_MS);
+    expect(covered()).toBe(false);
+  });
+
+  for (const e of ["pointerdown", "keydown", "wheel", "touchstart", "touchmove"]) {
     it(`lifts the cover at once on ${e} before hydration`, () => {
       runScript();
       window.dispatchEvent(new Event(e));
       expect(covered()).toBe(false);
     });
   }
+
+  it("a claimed cover is lifted by an input too, so the component sees the visitor already chose the page", () => {
+    window.sessionStorage.clear();
+    runScript();
+    html.setAttribute(INTRO_COVER_ATTR, INTRO_HELD);
+    window.dispatchEvent(new Event("keydown"));
+    expect(covered()).toBe(false);
+  });
+
+  it("does not take a scroll the browser made by itself (restoring a position, a #hash) as a skip", () => {
+    runScript();
+    window.dispatchEvent(new Event("scroll"));
+    expect(covered()).toBe(true);
+  });
+
+  it("swallows the click of the tap that lifted the cover, once, so it cannot press what was under it", () => {
+    const { b, onClick } = pageButton();
+    runScript();
+    fireEvent.pointerDown(b);
+    expect(covered()).toBe(false);
+    fireEvent.click(b);
+    expect(onClick).not.toHaveBeenCalled();
+    fireEvent.click(b);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops swallowing after INTRO_SWALLOW_MS, and a key never swallows anything", () => {
+    const { b, onClick } = pageButton();
+    runScript();
+    fireEvent.touchStart(b);
+    vi.advanceTimersByTime(INTRO_SWALLOW_MS);
+    fireEvent.click(b);
+    expect(onClick).toHaveBeenCalledTimes(1);
+    window.sessionStorage.clear();
+    runScript();
+    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.click(b);
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
 
   it("is plain ES5 that cannot close its own <script> tag", () => {
     expect(BRAND_INTRO_SCRIPT).not.toMatch(/<\/?script|=>|\blet\b|\bconst\b|`/i);
@@ -180,21 +263,47 @@ describe("the overlay", () => {
     expect(overlay()).toBeNull();
   });
 
-  it("plays once the script put the cover up, takes the cover over, and leaves the DOM at the end", () => {
+  it("plays once the script put the cover up, takes the cover over, and leaves the DOM when the opening ends", () => {
     runScript();
     render(<BrandIntro />);
     expect(overlay()).not.toBeNull();
     expect(covered()).toBe(false);
-    act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS - 1));
+    // A busy main thread delays the animation; the overlay waits for it rather than cutting its end on a clock.
+    act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS));
+    expect(overlay()).not.toBeNull();
+    act(() => {
+      finishOpening();
+    });
+    expect(overlay()).toBeNull();
+  });
+
+  it("leaves anyway after INTRO_FALLBACK_MS when no animationend comes (a tab hidden mid-intro)", () => {
+    runScript();
+    render(<BrandIntro />);
+    act(() => vi.advanceTimersByTime(INTRO_FALLBACK_MS - 1));
     expect(overlay()).not.toBeNull();
     act(() => vi.advanceTimersByTime(1));
     expect(overlay()).toBeNull();
   });
 
+  it("after it ended, a tap on the page is the page's: nothing left over swallows it", () => {
+    const { b, onClick } = pageButton();
+    runScript();
+    render(<BrandIntro />);
+    act(() => {
+      finishOpening();
+    });
+    fireEvent.pointerDown(b);
+    fireEvent.click(b);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
   it("plays once per tab: a reload in the same tab gets the page directly", () => {
     runScript();
     const first = render(<BrandIntro />);
-    act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS));
+    act(() => {
+      finishOpening();
+    });
     first.unmount();
     runScript();
     render(<BrandIntro />);
@@ -207,7 +316,7 @@ describe("the overlay", () => {
     ["a key", () => fireEvent.keyDown(window, { key: "Tab" })],
     ["a wheel", () => fireEvent.wheel(window)],
     ["a touch", (el: HTMLElement) => fireEvent.touchStart(el)],
-    ["a scroll", () => fireEvent.scroll(window)],
+    ["a finger moving", (el: HTMLElement) => fireEvent.touchMove(el)],
   ] as [string, (el: HTMLElement) => void][]) {
     it(`ends at once on ${name}, straight to the end state`, () => {
       runScript();
@@ -218,6 +327,30 @@ describe("the overlay", () => {
       expect(covered()).toBe(false);
     });
   }
+
+  it("a tap that skips does not also press the button under it", () => {
+    const { b, onClick } = pageButton();
+    runScript();
+    render(<BrandIntro />);
+    act(() => {
+      fireEvent.pointerDown(overlay()!);
+    });
+    expect(overlay()).toBeNull();
+    fireEvent.click(b);
+    expect(onClick).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(INTRO_SWALLOW_MS));
+    fireEvent.click(b);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("a programmatic scroll does not end it", () => {
+    runScript();
+    render(<BrandIntro />);
+    act(() => {
+      fireEvent.scroll(window);
+    });
+    expect(overlay()).not.toBeNull();
+  });
 
   it("is aria-hidden, holds nothing focusable, and never moves focus", () => {
     const before = document.createElement("a");
@@ -252,14 +385,30 @@ describe("the overlay", () => {
     expect(covered()).toBe(false);
   });
 
-  it("starts partway when hydration took a moment, so the visitor's total never grows", () => {
+  it("does not claim a cover whose own CSS lift is about to start: no black put back over a page already showing", () => {
     runScript();
-    html.setAttribute(INTRO_COVER_ATTR, String(Math.round(performance.now() - 200)));
+    html.setAttribute(INTRO_COVER_ATTR, String(Math.round(performance.now() - INTRO_CLAIM_MS - 20)));
+    render(<BrandIntro />);
+    expect(overlay()).toBeNull();
+    expect(covered()).toBe(false);
+  });
+
+  it("the cover lifts itself in CSS at INTRO_LATE_MS (off the main thread), unless claimed", () => {
+    const css = readFileSync(path.join(ROOT, "components/site/brand-intro.css"), "utf8");
+    const rule = /html\[data-ns-intro\] body::before \{[^}]*animation: ns-intro-cover-lift (\d+)ms [a-z-]+ (\d+)ms forwards;/.exec(css);
+    expect(rule).not.toBeNull();
+    expect(Number(rule![2])).toBe(INTRO_LATE_MS);
+    expect(css).toMatch(/html\[data-ns-intro="held"\] body::before \{\s*animation: none;/);
+    expect(INTRO_CLAIM_MS).toBeLessThanOrEqual(INTRO_LATE_MS - 50);
+  });
+
+  it("starts from its beginning when it takes over, so nobody sees the logo already half faded in", () => {
+    runScript();
+    html.setAttribute(INTRO_COVER_ATTR, String(Math.round(performance.now() - INTRO_CLAIM_MS + 20)));
     render(<BrandIntro />);
     const el = overlay()!;
-    expect(el.style.getPropertyValue("--ns-in-at")).toMatch(/^-\d+ms$/);
-    act(() => vi.advanceTimersByTime(INTRO_TOTAL_MS - 150));
-    expect(overlay()).toBeNull();
+    expect(el.style.getPropertyValue("--ns-in-at")).toBe(`${INTRO.inAt}ms`);
+    expect(el.style.getPropertyValue("--ns-open-at")).toBe(`${INTRO.openAt}ms`);
   });
 
   it("draws the N with the app icon's ns-n path, byte for byte, and the header's lettering", () => {
@@ -299,6 +448,9 @@ describe("the timeline", () => {
   it("the safety timeout never cuts a running intro, and a late start is refused before it could", () => {
     expect(INTRO_LATE_MS).toBeLessThan(INTRO_SAFETY_MS);
     expect(INTRO_LATE_MS).toBeLessThan(INTRO.openAt);
+    // Nobody stands on bare black for longer than about a blink before either the logo or the page.
+    expect(INTRO_LATE_MS).toBeLessThanOrEqual(300);
+    expect(INTRO_FALLBACK_MS).toBeGreaterThan(INTRO_TOTAL_MS);
   });
 });
 

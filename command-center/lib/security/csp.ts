@@ -50,7 +50,7 @@ export const NO_FLASH_SCRIPT_HASH = "'sha256-ktjGHzaCwS/h7xFBMw1Ju+H5H5ceE/SPJVh
  * sha256 of BRAND_INTRO_SCRIPT (lib/site/brand-intro.ts), the homepage's first-visit intro check, the second inline script we
  * write. A hash for the same reason as the theme's; tests/csp.test.ts recomputes it. Blocked, the intro simply never plays.
  */
-export const BRAND_INTRO_SCRIPT_HASH = "'sha256-3u27qz4pw5qYk+ZqaNqcjOJPben54V+6CVlPfYHdAm4='";
+export const BRAND_INTRO_SCRIPT_HASH = "'sha256-TQgcmZ6jKG6vaWmkJH8xYy9G6FOf3odzodcvFTIaNe4='";
 
 /**
  * Paddle.js v2 and what it loads, read from cdn.paddle.com/paddle/v2/paddle.js

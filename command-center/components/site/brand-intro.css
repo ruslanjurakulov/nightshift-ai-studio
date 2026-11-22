@@ -1,16 +1,30 @@
 /* ── The homepage's first-visit brand intro (components/site/BrandIntro.tsx, lib/site/brand-intro.ts) ──────────────────────
-   Every delay and length is a custom property the component sets from INTRO, already shifted by how long the cover had been
-   up when hydration arrived, so the visitor's total never grows with a slow load. Only transform, translate, scale and opacity
-   move: the overlay is fixed and out of flow, so nothing on the page under it moves (CLS 0). */
+   Every delay and length is a custom property the component sets from INTRO; the timeline starts when the overlay commits.
+   Only transform, translate, scale and opacity move (and the overlay's own black, once, as the halves start to part): the
+   overlay is fixed and out of flow, so nothing on the page under it moves (CLS 0). */
 
-/* The pre-hydration cover: the inline script sets the attribute before the first paint, the component lifts it the moment its
-   own overlay is up. Pure black whatever the theme, the same black as the overlay, so the hand-over cannot be seen. */
+/* The pre-hydration cover: the inline script sets the attribute before the first paint; the component lifts it the moment its
+   own overlay is up, or the script itself lifts it at INTRO_LATE_MS if the component has not claimed it by then. Pure black whatever the theme, the same black as the overlay, so the hand-over cannot be seen. */
 html[data-ns-intro] body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 2147483000;
   background: #000;
+  /* The cover lifts itself 300 ms (INTRO_LATE_MS) after it first paints, unless the component claimed it. An animation of
+     opacity alone can run off the main thread (a `visibility` step in it measurably kept it on the main thread, behind the
+     long tasks of a slow phone's hydration), so it lifts on time; the script's own timer, which a long task delays, only tidies
+     up after it. It never takes the pointer: the script hears a tap on the window and swallows that tap's click itself.
+     tests/brand-intro.test.tsx holds the delay equal to INTRO_LATE_MS. */
+  pointer-events: none;
+  will-change: opacity;
+  animation: ns-intro-cover-lift 160ms ease-out 300ms forwards;
+}
+html[data-ns-intro="held"] body::before {
+  animation: none;
+}
+@keyframes ns-intro-cover-lift {
+  to { opacity: 0; }
 }
 
 .ns-intro {
