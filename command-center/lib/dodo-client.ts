@@ -17,7 +17,7 @@ import type { DodoCheckoutRequest } from "@/lib/dodo";
  * How opening a checkout ended. `too_many` is the database's cap (50 checkouts a day per organization, 0146) and
  * `not_on_sale` an item this deployment no longer sells: both say what to do instead of "try again".
  */
-export type DodoOpenResult = "redirecting" | "already_subscribed" | "too_many" | "not_on_sale" | "failed";
+export type DodoOpenResult = "redirecting" | "already_subscribed" | "too_many" | "not_on_sale" | "outdated" | "failed";
 
 const BALANCE_KEY = "ns:dodo:balance-before";
 
@@ -47,6 +47,7 @@ export async function openDodoCheckout(item: DodoCheckoutRequest, returnPath: st
     if (data.error === "already_subscribed") return "already_subscribed";
     if (data.error === "too_many_checkouts") return "too_many";
     if (data.error === "not_on_sale") return "not_on_sale";
+    if (data.error === "checkout_changed") return "outdated";
     return "failed";
   } catch {
     return "failed";

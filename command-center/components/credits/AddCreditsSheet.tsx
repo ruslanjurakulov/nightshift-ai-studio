@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { formatUsdAmount } from "@/lib/number-format";
 import { dodoPriceText, type DodoAmountView } from "@/lib/dodo";
-import { parseCreditsText, topupQuote } from "@/lib/topup";
+import { TOPUP, parseCreditsText, topupQuote } from "@/lib/topup";
 import type { GenerationRates } from "@/lib/plans";
 import { Equivalents } from "@/components/credits/Equivalents";
 import { Chip } from "@/components/ui/Chip";
@@ -58,6 +58,18 @@ export function AddCreditsSheet({
   const rateText = ok ? formatUsdAmount(ok.tenthCents / 1000, locale, 3, 3) : ac.totalUnknown;
   const maxPrice = dodoPriceText(amount.maxCents, locale);
   const num = (n: number) => n.toLocaleString(locale);
+  // Every number comes from TOPUP, so the line can never disagree with the price the quote above computes.
+  const [t1, t2, t3] = TOPUP.tiers;
+  const tiersText = fmt(ac.tiers, {
+    lo1: num(t1.fromCredits),
+    hi1: num(t2.fromCredits - 1),
+    lo2: num(t2.fromCredits),
+    hi2: num(t3.fromCredits - 1),
+    lo3: num(t3.fromCredits),
+    p1: formatUsdAmount(t1.tenthCents / 1000, locale, 3, 3),
+    p2: formatUsdAmount(t2.tenthCents / 1000, locale, 3, 3),
+    p3: formatUsdAmount(t3.tenthCents / 1000, locale, 3, 3),
+  });
   const error =
     text.trim() === ""
       ? ac.invalid.empty
@@ -160,9 +172,12 @@ export function AddCreditsSheet({
               <div className="flex flex-col gap-1.5 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3" data-topup-contact role="status">
                 <p className="text-sm font-medium">{fmt(ac.contactTitle, { max: num(amount.maxCredits) })}</p>
                 <p className="text-sm text-[var(--color-muted)]">{fmt(ac.contactBody, { maxPrice })}</p>
-                <a href={`mailto:${amount.contactEmail}`} className="tap-link text-sm text-[var(--color-primary)] underline underline-offset-2">
-                  {ac.contactLink}
-                </a>
+                {/* No configured address, no link: a mailto to nowhere is a dead end (the body still says to write to us). */}
+                {amount.contactEmail && (
+                  <a href={`mailto:${amount.contactEmail}`} className="tap-link text-sm text-[var(--color-primary)] underline underline-offset-2">
+                    {ac.contactLink}
+                  </a>
+                )}
               </div>
             ) : (
               <>
@@ -189,7 +204,9 @@ export function AddCreditsSheet({
                 {ok && <Equivalents credits={ok.credits} rates={rates} />}
               </>
             )}
-            <p className="text-xs leading-relaxed text-[var(--color-muted)]">{ac.tiers}</p>
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]" data-tiers>
+              {tiersText}
+            </p>
             <p className="text-xs leading-relaxed text-[var(--color-muted)]">{ac.taxNote}</p>
             <p className="text-xs leading-relaxed text-[var(--color-muted)]">
               {ac.payWith} {ac.keepAmount}

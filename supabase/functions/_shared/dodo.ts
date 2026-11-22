@@ -124,7 +124,6 @@ export const DODO_AMOUNT = {
   creditsPerCent: 1,
   minCents: 500,
   maxCents: 30000,
-  presetsCents: [1000, 2000, 5000, 10000],
 } as const;
 
 /**

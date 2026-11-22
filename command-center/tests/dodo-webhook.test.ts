@@ -1151,9 +1151,9 @@ function amountPayment(cents = 2500, overrides: Record<string, unknown> = {}, si
 }
 
 describe("a typed amount", () => {
-  it("is the same offer on both sides: 1 credit per US cent, $5 to $300, presets $10 / $20 / $50 / $100", () => {
+  it("is the same offer on both sides: 1 credit per US cent, $5 to $300 (the retired typed-dollar path, still fulfilled)", () => {
     expect(APP_AMOUNT).toEqual(DODO_AMOUNT);
-    expect(DODO_AMOUNT).toEqual({ creditsPerCent: 1, minCents: 500, maxCents: 30000, presetsCents: [1000, 2000, 5000, 10000] });
+    expect(DODO_AMOUNT).toEqual({ creditsPerCent: 1, minCents: 500, maxCents: 30000 });
     // The base rate is the Starter pack's own: a typed $10 buys exactly what the Starter pack buys.
     const starter = DODO_PACKS.find((p) => p.id === "starter")!;
     expect(starter.usdCents * DODO_AMOUNT.creditsPerCent).toBe(starter.credits);

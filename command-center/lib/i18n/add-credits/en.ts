@@ -23,7 +23,7 @@ export const addCreditsEn = {
   totalUnknown: "—",
   taxNote: "Price in US dollars. Any tax is calculated by Dodo Payments and shown on the checkout page before you pay.",
   /** The volume rates (lib/topup.ts TOPUP); the more credits, the lower the price per credit. */
-  tiers: "1,000–4,999 credits: $0.010 each · 5,000–19,999: $0.009 each · 20,000 and more: $0.008 each.",
+  tiers: "{lo1}–{hi1} credits: {p1} each · {lo2}–{hi2}: {p2} each · {lo3} and more: {p3} each.",
   contactTitle: "More than {max} credits?",
   contactBody: "One purchase is at most {maxPrice}. Write to us and we'll arrange a larger purchase.",
   contactLink: "Contact us",
@@ -39,6 +39,8 @@ export const addCreditsEn = {
   processing: "Processing…",
   tooMany: "The checkout was opened too many times today. Try again tomorrow, or contact support.",
   notOnSale: "This isn't on sale right now. Refresh the page and try again.",
+  /** An old tab still posting the retired typed-dollar purchase (the route answers checkout_changed). */
+  outdated: "Refresh the page to see the new top-up.",
   history: {
     title: "Purchase history",
     lead: "Payments that added credits to this workspace. Invoices are issued by Dodo Payments, our Merchant of Record.",

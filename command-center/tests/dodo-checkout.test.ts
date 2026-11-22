@@ -609,6 +609,15 @@ describe("a credit count: the server's price (topupQuote), pinned at every tier 
     for (const bad of ["5000.5", "1000,5", "50,00", "-5000", "1e4", "５０００", "", "abc"]) expect(parseCreditsText(bad), bad).toBeNull();
   });
 
+  it("reads a count of ten digits or more as a whole number ABOVE the cap (contact us), not as a format error", () => {
+    for (const big of ["1000000000", "12345678901234567890", "99999999999999999999999999"]) {
+      const n = parseCreditsText(big);
+      expect(n, big).not.toBeNull();
+      expect(topupQuote(n), big).toEqual({ ok: false, reason: "above" });
+    }
+    expect(topupQuote(parseCreditsText("999999999"))).toEqual({ ok: false, reason: "above" });
+  });
+
   it("takes only the credit count from the browser; a price, cents or id beside it makes the request malformed", () => {
     expect(parseCheckoutItem({ kind: "credits", credits: 5000 })).toEqual({ kind: "credits", credits: 5000, usdCents: 4500 });
     for (const bad of [
@@ -628,6 +637,17 @@ describe("a credit count: the server's price (topupQuote), pinned at every tier 
     expect("pack:credits_125000_100000").toMatch(/^(pack|plan):[a-z][a-z0-9_]{0,30}$/);
   });
 
+  it("hands the sheet the configured NEXT_PUBLIC_CONTACT_EMAIL, and null when it is malformed", async () => {
+    const onlyAmount = { DODO_PAYMENTS_API_KEY: KEY, DODO_METADATA_SECRET: DODO_ENV.DODO_METADATA_SECRET, DODO_PRODUCT_AMOUNT: PDT_AMOUNT };
+    for (const [raw, want] of [["hello@example.org", "hello@example.org"], ["not an address", null], ["a@b.co?cc=x@y.zz", null]] as const) {
+      vi.resetModules();
+      vi.stubEnv("NEXT_PUBLIC_CONTACT_EMAIL", raw);
+      const m = await import("@/lib/dodo");
+      expect(m.dodoView(m.resolveDodoServer(onlyAmount))!.amount!.contactEmail, raw).toBe(want);
+    }
+    vi.unstubAllEnvs();
+  });
+
   it("is on sale only with its own product id, which no pack or plan may share", () => {
     expect(resolveDodoServer(SELLING_AMOUNT)!.amountProduct).toBe(PDT_AMOUNT);
     expect(resolveDodoServer({ ...SELLING, DODO_PRODUCT_AMOUNT: PDT.starter })!.amountProduct).toBeNull();
@@ -635,7 +655,9 @@ describe("a credit count: the server's price (topupQuote), pinned at every tier 
     const onlyAmount = resolveDodoServer({ DODO_PAYMENTS_API_KEY: KEY, DODO_METADATA_SECRET: DODO_ENV.DODO_METADATA_SECRET, DODO_PRODUCT_AMOUNT: PDT_AMOUNT })!;
     const view = dodoView(onlyAmount)!;
     expect(view.packs).toEqual([]);
-    expect(view.amount).toEqual({ minCredits: 1000, maxCredits: 125000, maxCents: 100000, contactEmail: "ruslan@nightshift-ai.studio" });
+    // The contact address is the validated public one (LEGAL.contactEmail), never a literal in the bundle: unset here, so null.
+    expect(view.amount).toEqual({ minCredits: 1000, maxCredits: 125000, maxCents: 100000, contactEmail: null });
+    expect(JSON.stringify(view)).not.toContain("@");
     expect(JSON.stringify(view)).not.toContain("pdt_");
     expect(dodoBuyAccess(h.orgId, "owner", view)).toBe("allowed");
     expect(dodoBuyAccess(h.orgId, "editor", view)).toBe("admin_only");
@@ -648,7 +670,7 @@ describe("POST /api/billing/dodo/checkout with a credit count", () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
     setEnv(SELLING_AMOUNT);
-    const res = await buy({ kind: "credits", credits: 19999, return_path: "/all-channels/credits", product_id: PDT.starter });
+    const res = await buy({ kind: "credits", credits: 19999, return_path: "/all-channels/credits" });
     expect(res.status).toBe(200);
     const body = sentBody();
     const meta = body.metadata as Record<string, string>;
@@ -678,9 +700,27 @@ describe("POST /api/billing/dodo/checkout with a credit count", () => {
     setEnv(SELLING_AMOUNT);
     for (const credits of [0, 999, 125001, 5000.5, "5000", -5000, 1e12])
       expect((await buy({ kind: "credits", credits, return_path: "/a/credits" })).status, String(credits)).toBe(400);
-    // The typed-dollar kind is no longer sold, and a price sent beside the count is refused, not ignored.
-    expect((await buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" })).status).toBe(400);
+    // A price sent beside the count is refused, not ignored.
     expect((await buy({ kind: "credits", credits: 5000, usd_cents: 1, return_path: "/a/credits" })).status).toBe(400);
+    expect(h.rpcCalls).toEqual([]);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("refuses ANY key outside kind / credits / return_path on a credit order (price, amount, cents, product_id...), before a nonce or Dodo", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    for (const extra of [{ price: 1 }, { amount: 1 }, { cents: 1 }, { usd_cents: 1 }, { product_id: PDT.starter }, { id: "starter" }, { anything: true }])
+      expect((await buy({ kind: "credits", credits: 5000, return_path: "/a/credits", ...extra })).status, JSON.stringify(extra)).toBe(400);
+    expect(h.rpcCalls).toEqual([]);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("answers an old tab's typed-dollar request with its own error (checkout_changed), not the generic one, and opens nothing", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    const res = await buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "checkout_changed" });
     expect(h.rpcCalls).toEqual([]);
     expect(fetchCalls).toHaveLength(0);
   });

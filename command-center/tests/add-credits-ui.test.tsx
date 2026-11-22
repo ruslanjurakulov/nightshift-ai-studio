@@ -32,7 +32,9 @@ vi.mock("@/components/view-mode/frame-nav", () => ({
 }));
 
 import { I18nProvider } from "@/lib/i18n/context";
-import { dictionaries } from "@/lib/i18n";
+import { dictionaries, fmt } from "@/lib/i18n";
+import { formatUsdAmount } from "@/lib/number-format";
+import { TOPUP } from "@/lib/topup";
 import { DodoBuyCredits } from "@/components/credits/DodoBuyCredits";
 import { DodoPurchaseHistory } from "@/components/credits/DodoPurchaseHistory";
 import { dodoView, resolveDodoServer } from "@/lib/dodo";
@@ -68,6 +70,8 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+
+const withContact = (contactEmail: string | null) => ({ ...view, amount: { ...view.amount!, contactEmail } });
 
 function renderSheet(v = view, rates: GenerationRates | null = null) {
   return render(
@@ -124,14 +128,60 @@ describe("the Add credits sheet", () => {
   });
 
   it("above one purchase's $1,000 cap: no price, no checkout key, a contact-us mail link instead", () => {
-    renderSheet();
+    renderSheet(withContact("help@example.org"));
     fireEvent.change(input(), { target: { value: "125001" } });
     const contact = document.querySelector("[data-topup-contact]") as HTMLElement;
     expect(contact).toBeTruthy();
-    expect(within(contact).getByRole("link", { name: ac.contactLink }).getAttribute("href")).toBe("mailto:ruslan@nightshift-ai.studio");
+    // The address is the configured public one (LEGAL.contactEmail) handed in through the view, not a literal in the bundle.
+    expect(within(contact).getByRole("link", { name: ac.contactLink }).getAttribute("href")).toBe("mailto:help@example.org");
     expect(within(sheet()).queryByRole("button", { name: new RegExp(`^${ac.submit}`) })).toBeNull();
     expect(document.querySelector("[data-total]")).toBeNull();
     expect(fetchCalls).toEqual([]);
+  });
+
+  it("with no configured contact address, the contact-us text shows WITHOUT a link (never a dead mailto)", () => {
+    renderSheet(withContact(null));
+    fireEvent.change(input(), { target: { value: "125001" } });
+    const contact = document.querySelector("[data-topup-contact]") as HTMLElement;
+    expect(contact.textContent).toContain(fmt(ac.contactTitle, { max: "125,000" }));
+    expect(within(contact).queryByRole("link")).toBeNull();
+    expect(document.querySelector("a[href^='mailto:']")).toBeNull();
+  });
+
+  it("a count of ten digits or more is above the cap (contact us), not 'enter a whole number'", () => {
+    renderSheet(withContact("help@example.org"));
+    for (const big of ["1000000000", "99999999999999999999"]) {
+      fireEvent.change(input(), { target: { value: big } });
+      expect(document.querySelector("[data-topup-contact]"), big).toBeTruthy();
+      expect(screen.queryByText(ac.invalid.format), big).toBeNull();
+      expect(within(sheet()).queryByRole("button", { name: new RegExp(`^${ac.submit}`) }), big).toBeNull();
+    }
+  });
+
+  it("renders the tier line from TOPUP: the ranges and rates come from the table, in every language", () => {
+    renderSheet();
+    const [a, b, c] = TOPUP.tiers;
+    const n = (x: number) => x.toLocaleString("en");
+    const p = (x: { tenthCents: number }) => formatUsdAmount(x.tenthCents / 1000, "en", 3, 3);
+    const line = document.querySelector("[data-tiers]")!.textContent;
+    expect(line).toBe(
+      fmt(ac.tiers, { lo1: n(a.fromCredits), hi1: n(b.fromCredits - 1), lo2: n(b.fromCredits), hi2: n(c.fromCredits - 1), lo3: n(c.fromCredits), p1: p(a), p2: p(b), p3: p(c) }),
+    );
+    expect(line).toBe("1,000–4,999 credits: $0.010 each · 5,000–19,999: $0.009 each · 20,000 and more: $0.008 each.");
+    // No dictionary may carry a literal number again: a change to TOPUP would then leave the sentence behind.
+    for (const loc of ["en", "ru", "uz"] as const) expect(dictionaries[loc].addCredits.tiers.replace(/\{\w+\}/g, ""), loc).not.toMatch(/\d/);
+  });
+
+  it("an old tab's typed-dollar request (checkout_changed) says to refresh the page, in all three languages", async () => {
+    answer = async () => new Response(JSON.stringify({ error: "checkout_changed" }), { status: 400 });
+    renderSheet();
+    await act(async () => {
+      fireEvent.click(submitKey());
+    });
+    expect(screen.getByText(ac.outdated)).toBeTruthy();
+    expect(ac.outdated).toBe("Refresh the page to see the new top-up.");
+    expect(submitKey().disabled).toBe(false);
+    for (const loc of ["ru", "uz"] as const) expect(dictionaries[loc].addCredits.outdated.length, loc).toBeGreaterThan(10);
   });
 
   it("says what is wrong with a credit count, and the key cannot be pressed", () => {
@@ -223,8 +273,10 @@ describe("the Add credits sheet", () => {
 
   it("states the three volume rates in every language, with Uzbek apostrophes as ʻ/ʼ", () => {
     renderSheet();
-    expect(sheet().textContent).toContain(ac.tiers);
-    for (const lang of ["en", "ru", "uz"] as const) expect(dictionaries[lang].addCredits.tiers).toMatch(/0\.010[\s\S]*0\.009[\s\S]*0\.008/);
+    expect(sheet().textContent).toContain("5,000–19,999: $0.009 each");
+    // Every language's sentence names all three ranges and rates (placeholders the sheet fills from TOPUP).
+    for (const lang of ["en", "ru", "uz"] as const)
+      for (const key of ["lo1", "hi1", "lo2", "hi2", "lo3", "p1", "p2", "p3"]) expect(dictionaries[lang].addCredits.tiers, `${lang} ${key}`).toContain(`{${key}}`);
     expect(JSON.stringify(dictionaries.uz.addCredits)).not.toMatch(/[A-Za-z]'/);
   });
 

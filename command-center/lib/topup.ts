@@ -23,7 +23,6 @@ export const TOPUP = {
     { fromCredits: 5000, tenthCents: 9 },
     { fromCredits: 20000, tenthCents: 8 },
   ],
-  contactEmail: "ruslan@nightshift-ai.studio",
 } as const;
 
 /** The most credits one purchase can buy (125 000 at the top rate). */
@@ -62,7 +61,11 @@ export function parseCreditsText(text: string): number | null {
   // A comma only as a thousands separator in its place ("5,000"): "1000,5" or "5000.5" is a fraction, refused rather than
   // read as 10 005 or 50 005 credits.
   if (/^\d{1,3}(,\d{3})+$/.test(s)) s = s.replace(/,/g, "");
-  if (!/^\d{1,9}$/.test(s)) return null;
+  if (!/^\d+$/.test(s)) return null;
+  // Ten digits or more is a whole number far above the cap, not "not a number": it must reach the contact-us block, and
+  // Number() of a long digit string is no safe integer (topupQuote would call it a format error). The largest safe
+  // integer stands for "more than one purchase can buy".
+  if (s.length > 9) return Number.MAX_SAFE_INTEGER;
   return Number(s);
 }
 

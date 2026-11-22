@@ -3,7 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isCreditExempt } from "@/lib/credits";
-import { RETURN_PATH_RE, dodoItemKey, dodoReturnItem, dodoSellsTo, parseCheckoutItem } from "@/lib/dodo";
+import { RETURN_PATH_RE, dodoItemKey, dodoReturnItem, dodoSellsTo, isRetiredAmountRequest, parseCheckoutItem } from "@/lib/dodo";
 import { createDodoCheckout, dodoServer } from "@/lib/server/dodo-api";
 import { paymentsProvider } from "@/lib/server/payments";
 import { publicOrigin } from "@/lib/server/public-origin";
@@ -50,6 +50,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
+  // A tab opened before the credit-count sheet still posts `kind: "amount"`: say so, so the sheet can ask for a refresh.
+  if (isRetiredAmountRequest(body)) return NextResponse.json({ error: "checkout_changed" }, { status: 400 });
   const item = parseCheckoutItem(body);
   const returnPath = typeof body?.return_path === "string" ? body.return_path : "";
   if (!item || !RETURN_PATH_RE.test(returnPath)) return NextResponse.json({ error: "bad_request" }, { status: 400 });

@@ -20,7 +20,7 @@ export const addCreditsUz: AddCreditsDictionary = {
   total: "Jami",
   totalUnknown: "—",
   taxNote: "Narx AQSH dollarida. Soliq boʻlsa, uni Dodo Payments hisoblaydi va toʻlashdan oldin toʻlov sahifasida koʻrsatadi.",
-  tiers: "1 000–4 999 kredit: har biri $0.010 · 5 000–19 999: $0.009 · 20 000 va undan koʻp: $0.008.",
+  tiers: "{lo1}–{hi1} kredit: har biri {p1} · {lo2}–{hi2}: {p2} · {lo3} va undan koʻp: {p3}.",
   contactTitle: "{max} kreditdan koʻproq kerakmi?",
   contactBody: "Bir xarid eng koʻpi {maxPrice}. Bizga yozing, kattaroq xaridni birga rasmiylashtiramiz.",
   contactLink: "Biz bilan bogʻlaning",
@@ -35,6 +35,7 @@ export const addCreditsUz: AddCreditsDictionary = {
   processing: "Bajarilmoqda…",
   tooMany: "Bugun toʻlov sahifasi juda koʻp marta ochildi. Ertaga qayta urinib koʻring yoki qoʻllab-quvvatlash xizmatiga yozing.",
   notOnSale: "Bu hozir sotuvda yoʻq. Sahifani yangilab, qayta urinib koʻring.",
+  outdated: "Yangi toʻldirish usulini koʻrish uchun sahifani yangilang.",
   history: {
     title: "Xaridlar tarixi",
     lead: "Bu ish maydoniga kredit qoʻshgan toʻlovlar. Hisob-fakturalarni Merchant of Record — Dodo Payments beradi.",

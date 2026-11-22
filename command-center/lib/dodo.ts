@@ -22,6 +22,7 @@
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
 import { isCreditExempt } from "@/lib/credits";
 import { formatUsdAmount } from "@/lib/number-format";
+import { LEGAL } from "@/lib/legal";
 import { TOPUP, TOPUP_MAX_CREDITS, topupItemKey, topupQuote } from "@/lib/topup";
 
 /** Must equal DODO_PACKS in supabase/functions/_shared/dodo.ts (credits AND price, US cents before tax). */
@@ -49,13 +50,11 @@ export const DODO_CATALOG_PLAN_PRICES: Readonly<Record<string, number>> = {
  *   maxCents        $300. Dodo has no maximum price setting ("There is no maximum price setting. To cap the amount you
  *                   charge, enforce the cap in your own code": developer-resources/dynamic-pricing-checkout, read
  *                   2026-11-13), so this cap lives here, in the checkout route and again in the webhook.
- *   presetsCents    the sheet's four keys, $10 / $20 / $50 / $100: the same custom path at the base rate.
  */
 export const DODO_AMOUNT = {
   creditsPerCent: 1,
   minCents: 500,
   maxCents: 30000,
-  presetsCents: [1000, 2000, 5000, 10000],
 } as const;
 
 export type DodoPackId = (typeof DODO_CATALOG_PACKS)[number]["id"];
@@ -191,7 +190,8 @@ export interface DodoAmountView {
   minCredits: number;
   maxCredits: number;
   maxCents: number;
-  contactEmail: string;
+  /** The validated public contact address (LEGAL.contactEmail), or null when none is configured: then no mail link is shown. */
+  contactEmail: string | null;
 }
 
 /** What a page may know about Dodo: the mode (for the test badge) and WHICH items are on sale. No id, no key. */
@@ -215,7 +215,7 @@ export function dodoView(cfg: DodoServerConfig | null): DodoView | null {
     packs: DODO_CATALOG_PACKS.filter((p) => Boolean(cfg.packs[p.id])).map((p) => ({ id: p.id, credits: p.credits, usdCents: p.usdCents })),
     plans: Object.keys(cfg.plans),
     amount: cfg.amountProduct
-      ? { minCredits: TOPUP.minCredits, maxCredits: TOPUP_MAX_CREDITS, maxCents: TOPUP.maxCents, contactEmail: TOPUP.contactEmail }
+      ? { minCredits: TOPUP.minCredits, maxCredits: TOPUP_MAX_CREDITS, maxCents: TOPUP.maxCents, contactEmail: LEGAL.contactEmail }
       : null,
   };
 }
@@ -247,15 +247,26 @@ export type DodoCheckoutItem =
 /** What the browser sends for a credit-count purchase: the count only (the server prices it). */
 export type DodoCheckoutRequest = { kind: "pack"; id: DodoPackId } | { kind: "plan"; id: string } | { kind: "credits"; credits: number };
 
+/** The only keys a credit-count request may carry: return_path is read by the route, the rest is the order itself. */
+const CREDITS_REQUEST_KEYS: readonly string[] = ["kind", "credits", "return_path"];
+
+/**
+ * A request from the retired typed-dollar sheet (`kind: "amount"`): a tab opened before the credit-count sheet shipped. The
+ * route answers it with its own error so the sheet can say "refresh the page" instead of a generic failure.
+ */
+export function isRetiredAmountRequest(body: unknown): boolean {
+  return typeof body === "object" && body !== null && (body as { kind?: unknown }).kind === "amount";
+}
+
 export function parseCheckoutItem(body: unknown): DodoCheckoutItem | null {
-  const o = (body ?? {}) as { kind?: unknown; id?: unknown; credits?: unknown; usd_cents?: unknown };
+  const o = (body ?? {}) as { kind?: unknown; id?: unknown; credits?: unknown };
   if (o.kind === "pack" && typeof o.id === "string" && DODO_CATALOG_PACKS.some((p) => p.id === o.id)) return { kind: "pack", id: o.id as DodoPackId };
   if (o.kind === "plan" && typeof o.id === "string" && Object.prototype.hasOwnProperty.call(DODO_CATALOG_PLAN_PRICES, o.id)) return { kind: "plan", id: o.id };
-  // The browser names a credit count and nothing else: a price, an id or cents sent alongside makes the request malformed
-  // rather than being ignored, and the price is computed here (topupQuote), never read from the body. The typed-dollar
-  // `amount` kind is no longer sold (owner decision 2026-11-21: credits, minimum 1 000); its in-flight payments still
-  // fulfil in the webhook.
-  if (o.kind === "credits" && o.id === undefined && o.usd_cents === undefined) {
+  // The browser names a credit count and nothing else: any key outside CREDITS_REQUEST_KEYS (a price, an amount, cents, an
+  // id) makes the request malformed rather than being ignored, and the price is computed here (topupQuote), never read from
+  // the body. The typed-dollar `amount` kind is no longer sold (owner decision 2026-11-21: credits, minimum 1 000); its
+  // in-flight payments still fulfil in the webhook.
+  if (o.kind === "credits" && Object.keys(o).every((k) => CREDITS_REQUEST_KEYS.includes(k))) {
     const q = topupQuote(o.credits);
     return q.ok ? { kind: "credits", credits: q.credits, usdCents: q.cents } : null;
   }

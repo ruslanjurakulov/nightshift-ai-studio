@@ -108,9 +108,11 @@ class TypedAmount(unittest.TestCase):
 
     def test_credits_come_from_the_signed_item_and_only_when_paid_equals_signed(self):
         branch = SHARED.split("if (pid && amountProduct && pid === amountProduct) {")[1].split("\n  }\n")[0]
-        self.assertIn("const cents = dodoAmountFromItem(meta.item);", branch)
+        # A credit-count order (`pack:credits_<n>_<cents>`) and a legacy typed amount (`pack:amount_<cents>`) both come from the SIGNED item.
+        self.assertIn("const order = dodoTopupFromItem(meta.item);", branch)
+        self.assertIn("dodoAmountFromItem(meta.item)", branch)
         self.assertIn("if (!amountMatches(total, tax, cents, taxMode))", branch)
-        self.assertIn("const credits = cents * DODO_AMOUNT.creditsPerCent;", branch)
+        self.assertIn("const credits = order ? order.credits : cents * DODO_AMOUNT.creditsPerCent;", branch)
         self.assertIn("if (line.quantity !== 1)", branch)
         # Never from a number the payment or the buyer chose.
         self.assertNotRegex(branch, r"credits\s*=\s*(total|line\.|data\.)")

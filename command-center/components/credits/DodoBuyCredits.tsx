@@ -31,7 +31,7 @@ import { Timecode } from "@/components/ui/Timecode";
  * product the panel is the packs, as before. Both go through the same checkout route, return and wait for the balance.
  */
 
-type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "too_many" | "not_on_sale";
+type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "too_many" | "not_on_sale" | "outdated";
 
 const POLL_MS = 3000;
 const POLL_TRIES = 20;
@@ -99,7 +99,7 @@ export function DodoBuyCredits({
     go("opening");
     const res: DodoOpenResult = await openDodoCheckout(item, path("/credits"), balance);
     if (res === "redirecting") return;
-    go(res === "too_many" ? "too_many" : res === "not_on_sale" ? "not_on_sale" : "error");
+    go(res === "too_many" ? "too_many" : res === "not_on_sale" ? "not_on_sale" : res === "outdated" ? "outdated" : "error");
   }
 
   const ac = t.addCredits;
@@ -111,6 +111,7 @@ export function DodoBuyCredits({
     error: { text: cp.loadFailed },
     too_many: { text: ac.tooMany },
     not_on_sale: { text: ac.notOnSale },
+    outdated: { text: ac.outdated },
   };
   const amount = view.amount;
   const msg = message[phase];
