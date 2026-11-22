@@ -24,7 +24,7 @@ const NEW = [
   "errors.plan_running", "errors.plan_unavailable", "errors.plan_superseded", "errors.proposal_outdated", "planCost", "planCostTrial", "planCostPlain",
   "messageCount.one", "messageCount.other", "messagesLeft.one", "messagesLeft.other", "modelVideo", "modelPictures",
   // The model gate's words are by remedy since #898's lib/brain/chat-gate (one wording before a press and after one).
-  "gate.confirm_age", "gate.retry", "gate.not_in_region", "gate.contact_support", "gate.contact_support_no_email", "gate.confirmAge", "gate.contact",
+  "gate.retry", "gate.not_in_region", "gate.contact_support", "gate.contact_support_no_email", "gate.contact",
   ...Object.keys(dictionaries.en.aiChat.shell).map((k) => `shell.${k}`),
   ...Object.keys(dictionaries.en.aiChat.history).map((k) => `history.${k}`),
 ];

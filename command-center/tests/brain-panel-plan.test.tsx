@@ -125,23 +125,44 @@ describe("Nightshift AI panel: writing the storyboard", () => {
 });
 
 describe("Nightshift AI panel: the model's gate, worded and keyed by its remedy", () => {
-  const CODES = Object.keys(CHAT_GATE_REMEDY) as ChatGateError[];
+  // The age refusals are #900's state (its words, no Retry, a link to Create or support); the gate block says the rest.
+  const AGE = ["adult_only_service", "adult_attestation_required"] as const;
+  type AgeCode = (typeof AGE)[number];
+  const CODES = (Object.keys(CHAT_GATE_REMEDY) as ChatGateError[]).filter((k) => !(AGE as readonly string[]).includes(k));
   const STATUS: Record<ChatGateError, number> = { adult_only_service: 403, adult_attestation_required: 428, age_unavailable: 503, country_blocked: 451, country_unverified: 451 };
-  const words = (locale: "en" | "ru" | "uz", r: ChatGateRemedy) => {
+  type GateRemedy = Exclude<ChatGateRemedy, "confirm_age">;
+  const words = (locale: "en" | "ru" | "uz", r: GateRemedy) => {
     const g = dictionaries[locale].aiChat.gate;
     return r === "contact_support" ? g.contact_support.replace("{email}", SUPPORT) : g[r];
   };
-  /** What each remedy offers, and nothing else: a link to confirm the age, Retry, support by mail, or no way on at all. */
-  const expectKeys = (locale: "en" | "ru" | "uz", r: ChatGateRemedy) => {
+  /** What each remedy offers, and nothing else: Retry, support by mail, or no way on at all. */
+  const expectKeys = (locale: "en" | "ru" | "uz", r: GateRemedy) => {
     const a = dictionaries[locale].aiChat;
     expect(!!screen.queryByRole("button", { name: a.retry })).toBe(r === "retry");
-    expect(screen.queryByRole("link", { name: a.gate.confirmAge })?.getAttribute("href") ?? null).toBe(r === "confirm_age" ? "/chronos/create" : null);
     expect(screen.queryByRole("link", { name: a.gate.contact })?.getAttribute("href") ?? null).toBe(r === "contact_support" ? `mailto:${SUPPORT}` : null);
   };
+  /** #900's age state: its words, its one link, no Retry. */
+  const ageOf = (locale: "en" | "ru" | "uz", code: AgeCode) => {
+    const d = dictionaries[locale];
+    return code === "adult_attestation_required"
+      ? { text: d.aiChat.errors.adult_attestation_required, link: d.aiChat.confirmAge, href: "/chronos/create" }
+      : { text: d.aiChat.errors.adult_only_service, link: d.age.contact, href: `mailto:${SUPPORT}` };
+  };
+  const expectAgeOnce = (locale: "en" | "ru" | "uz", code: AgeCode) => {
+    const a = ageOf(locale, code);
+    // Said once: one block, one copy of the words, one link, and no gate block beside it.
+    expect(document.querySelectorAll(`[data-problem="${code}"]`)).toHaveLength(1);
+    expect(screen.getAllByText(a.text)).toHaveLength(1);
+    expect(document.querySelector("[data-gate]")).toBeNull();
+    const links = screen.getAllByRole("link", { name: a.link });
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute("href")).toBe(a.href);
+    expect(screen.queryByRole("button", { name: dictionaries[locale].aiChat.retry })).toBeNull();
+  };
 
-  it("every gate code has a remedy, and every remedy its own words in en, ru and uz, never naming the vendor", () => {
+  it("every non-age remedy has its own words in en, ru and uz, never naming the vendor", () => {
     for (const locale of ["en", "ru", "uz"] as const) {
-      for (const r of ["confirm_age", "retry", "not_in_region", "contact_support"] as const) {
+      for (const r of ["retry", "not_in_region", "contact_support"] as const) {
         expect(words(locale, r).length).toBeGreaterThan(20);
         expect(words(locale, r)).not.toMatch(/google|gemini|anthropic|openai/i);
         // Uzbek's oʻ and gʻ with U+02BB, never a typed apostrophe.
@@ -152,8 +173,43 @@ describe("Nightshift AI panel: the model's gate, worded and keyed by its remedy"
     expect(CHAT_GATE_REMEDY.country_unverified).toBe("contact_support");
   });
 
+  for (const code of AGE) {
+    it(`before a press, a ${code} gate is #900's age state, said once, with no Retry`, async () => {
+      for (const locale of ["en", "ru", "uz"] as const) {
+        sent = [];
+        stub(true, { code, remedy: CHAT_GATE_REMEDY[code] });
+        const view = render(<I18nProvider locale={locale}><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+        await screen.findByText("Alpha");
+        await waitFor(() => expect(document.querySelector(`[data-problem="${code}"]`)).not.toBeNull());
+        expectAgeOnce(locale, code);
+        expect((document.getElementById("ns-ai-input") as HTMLTextAreaElement).disabled).toBe(true);
+        expect(sent).toHaveLength(0);
+        view.unmount();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it(`after a press, ${code} is #900's age state, said once, with no Retry`, async () => {
+      for (const locale of ["en", "ru", "uz"] as const) {
+        holdTurn = false;
+        turnReply = { status: STATUS[code], body: { error: code } };
+        stub(false);
+        const view = render(<I18nProvider locale={locale}><NightshiftAiPanel channelId="c1" channelSlug="chronos" fresh /></I18nProvider>);
+        await waitFor(() => expect(document.getElementById("ns-ai-input")).not.toBeNull());
+        const box = document.getElementById("ns-ai-input") as HTMLTextAreaElement;
+        await waitFor(() => expect(box.disabled).toBe(false));
+        fireEvent.change(box, { target: { value: "a film about the sea" } });
+        await act(async () => fireEvent.keyDown(box, { key: "Enter" }));
+        await waitFor(() => expect(document.querySelector(`[data-problem="${code}"]`)).not.toBeNull());
+        expectAgeOnce(locale, code);
+        view.unmount();
+        vi.unstubAllGlobals();
+      }
+    });
+  }
+
   for (const code of CODES) {
-    const r = CHAT_GATE_REMEDY[code];
+    const r = CHAT_GATE_REMEDY[code] as GateRemedy;
     it(`before a press, a ${code} gate closes the box and the choosers and says "${r}" up front`, async () => {
       for (const locale of ["en", "ru", "uz"] as const) {
         sent = [];

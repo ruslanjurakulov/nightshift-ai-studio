@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { takeLandingIdea } from "@/lib/brain/handoff";
 import { pluralText } from "@/lib/plural";
 import { runLink, type Brief, type BrainCard, type BrainSlots, type Scenario } from "@/lib/brain/logic";
+import { LEGAL } from "@/lib/legal";
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
 import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
 import { StateBlock } from "@/components/states/StateBlock";
 // The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
 import { CHAT_GATE_REMEDY, isChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
-import { LEGAL } from "@/lib/legal";
 import "./nightshift-ai-panel.css";
 
 /**
@@ -46,9 +46,15 @@ type State =
   | { state: "session_ended" }
   | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean; gate: ChatGateVerdict | null };
 type FilmReady = { id: string; quote: { quote_id: string | null; total: number | null; startable: boolean; refusal: string | null; blocked_by: string[]; exempt: boolean } | null };
-/** The remedy of a refusal the model's gate gave (#898 lib/brain/chat-gate), or null when it is not the gate's. */
-const gateRemedy = (e: unknown): ChatGateRemedy | null => (isChatGateError(e) ? CHAT_GATE_REMEDY[e] : null);
-type Problem = { text: string; retry: (() => void) | null; code?: string } | null;
+/** The age refusals (0192) are #900's state: its words, no Retry, and the way to Create's 18+ box or support (actionFor). They
+ *  never reach the gate block too, before a press or after one, so the age state is said once. */
+const AGE_CODES: ReadonlySet<string> = new Set(["adult_only_service", "adult_attestation_required"]);
+type GateRemedy = Exclude<ChatGateRemedy, "confirm_age">;
+/** The remedy of a refusal the model's gate gave (#898 lib/brain/chat-gate), or null when it is not the gate's or is an age one. */
+const gateRemedy = (e: unknown): GateRemedy | null =>
+  isChatGateError(e) && !AGE_CODES.has(e) ? (CHAT_GATE_REMEDY[e] as GateRemedy) : null;
+/** A refusal with its remedy: a Retry when another press could go differently, or a link to the place the fix is made. */
+type Problem = { text: string; retry: (() => void) | null; code?: string; action?: { href: string; label: string } | null } | null;
 /** The server's choice of models for the draft (app/api/brain/turn `models`), by name; a role with none on sale is null. */
 type FilmModels = { clip: { id: string; name: string } | null; keyframe: { id: string; name: string } | null };
 function readModels(v: unknown): FilmModels | null {
@@ -75,9 +81,16 @@ function readLease(v: unknown): PlanLease | null {
 /** The history route's answer, with whether the same request could go differently a moment later (a 503, a dropped connection). */
 type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; message: string; retry: boolean };
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
-const NO_RETRY: string[] = ["chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose", "forbidden", "content_refused", "output_too_long", "plan_over_cap", "plan_running", "plan_unavailable", "proposal_outdated",
-  // The gate's refusals whose remedy is not "retry": the same press meets the same region, confirmation or support case.
-  ...Object.keys(CHAT_GATE_REMEDY).filter((k) => gateRemedy(k) !== "retry")];
+const NO_RETRY = [
+  "chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose",
+  "forbidden", "content_refused", "output_too_long",
+  // The plan step's refusals another press cannot change (lib/server/brain/plan, 0211's lease).
+  "plan_over_cap", "plan_running", "plan_unavailable", "proposal_outdated",
+  // The account's own 18+ answer (0192): a Retry would meet the same refusal; the remedy is where the age is answered (Pixel on #900).
+  "adult_only_service", "adult_attestation_required",
+  // The gate's other refusals whose remedy is not "retry": the same press meets the same region or support case.
+  ...Object.keys(CHAT_GATE_REMEDY).filter((k) => !AGE_CODES.has(k) && gateRemedy(k) !== "retry"),
+];
 /** One id per press, kept on that press's retries: the server answers a repeat of it as a duplicate, never a second message. */
 const pressId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 /**
@@ -251,7 +264,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   );
 
   const historyCall = useCallback(
-    async <T,>(url: string, read: (b: Record<string, unknown>) => T): Promise<HistoryRead<T>> => {
+    // `failed` is what a passing failure is called: opening one chat, or (the list's own words) loading the chats.
+    async <T,>(url: string, read: (b: Record<string, unknown>) => T, failed: string = c.history.failed): Promise<HistoryRead<T>> => {
       try {
         const res = await fetch(url, { cache: "no-store" });
         const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
@@ -264,7 +278,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         if (res.status === 403) return { ok: false, message: c.history.forbidden, retry: false };
         if (res.status === 400) return { ok: false, message: c.history.badRequest, retry: false };
         if (res.status === 404) return { ok: false, message: c.history.notHere, retry: false };
-        return { ok: false, message: c.history.failed, retry: true };
+        return { ok: false, message: failed, retry: true };
       } catch {
         return { ok: false, message: c.history.network, retry: true };
       }
@@ -380,19 +394,16 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   }, [takeIdea]);
 
   /** One wording per remedy, before a press (GET's gate) and after one (a turn's refusal) alike; never the vendor's name. */
-  const gateWords = (r: ChatGateRemedy): string =>
+  const gateWords = (r: GateRemedy): string =>
     r === "contact_support" ? (LEGAL.contactEmail ? fmt(c.gate.contact_support, { email: LEGAL.contactEmail }) : c.gate.contact_support_no_email) : c.gate[r];
-  /** S5's shared state for the gate: one line and the one way on the remedy names (a link to confirm the age, Retry, or support). */
-  const gateBlock = (r: ChatGateRemedy, code: string, onRetry: (() => void) | null): ReactNode => (
+  /** S5's shared state for the gate's non-age refusals: one line and the one way on the remedy names (Retry, or support). */
+  const gateBlock = (r: GateRemedy, code: string, onRetry: (() => void) | null): ReactNode => (
     <StateBlock role="alert" tone={r === "retry" ? "warn" : "fail"} compact data-gate={code} data-remedy={r}
-      actions={r === "confirm_age"
-        // Create's 18+ box (0192, components/age/AgeGate): the only place an age is confirmed.
-        ? <Link className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={`/${encodeURIComponent(channelSlug)}/create`}>{c.gate.confirmAge}</Link>
-        : r === "retry" && onRetry
-          ? <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={onRetry} disabled={busy}>{c.retry}</button>
-          : r === "contact_support" && LEGAL.contactEmail
-            ? <a className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={`mailto:${LEGAL.contactEmail}`}>{c.gate.contact}</a>
-            : undefined}>
+      actions={r === "retry" && onRetry
+        ? <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={onRetry} disabled={busy}>{c.retry}</button>
+        : r === "contact_support" && LEGAL.contactEmail
+          ? <a className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={`mailto:${LEGAL.contactEmail}`}>{c.gate.contact}</a>
+          : undefined}>
       {gateWords(r)}
     </StateBlock>
   );
@@ -404,16 +415,19 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     }
     if (e === "chat_plan_required") return c.planLocked;
     if (e === "message_too_long") return fmt(c.errors.message_too_long, { max: load.state === "ready" ? load.plan.max_input_chars : 2000 });
-    if (e === "short_not_available") return c.shortComingSoon;
+    if (e === "short_not_available") return c.shortNotAvailable;
     if (e === "channel_required") return c.errors.channel_required;
     if (e === "content_refused") return c.errors.content_refused;
     if (e === "output_too_long") return c.errors.output_too_long;
     if (e === "nothing_to_choose") return c.errors.nothing_to_choose;
     if (e === "film_refused") return c.errors.film_refused;
     if (e === "not_enabled") return c.errors.not_enabled;
+    // With no support address configured, the words say where to write instead of a link.
+    if (e === "adult_only_service") return LEGAL.contactEmail ? c.errors.adult_only_service : `${c.errors.adult_only_service} ${t.age.contactNoEmail}`;
+    if (e === "adult_attestation_required") return c.errors.adult_attestation_required;
     if (e === "session_closed") return c.errors.session_closed;
     if (e === "card_changed") return c.errors.card_changed;
-    // The gate's refusals (adult_only_service among them) are worded by their REMEDY, the same words as before a press.
+    // The gate's other refusals are worded by their REMEDY, the same words as before a press.
     const remedy = gateRemedy(e);
     if (remedy) return gateWords(remedy);
     // Which chapter failed is the server's count, not the model's words; nothing was priced either way.
@@ -434,6 +448,38 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "model_failed" || e === "model_unavailable" || e === "model_answer_invalid") return c.errors.assistant_unavailable;
     return c.errors.unavailable;
   };
+
+  /** Where a refusal is fixed, when that is a place in the app (or the support address) rather than another press. */
+  const actionFor = (e: string): NonNullable<Problem>["action"] => {
+    const plans = `/${encodeURIComponent(channelSlug)}/credits#plans`;
+    if (e === "chat_plan_required") return { href: plans, label: c.upgrade };
+    if (e === "chat_daily_cap") return { href: plans, label: c.seePlans };
+    // The 18+ question is asked once, on Create (AgeGate, 0192); an "under 18" answer is not changed in the app: support is.
+    if (e === "adult_attestation_required") return { href: `/${encodeURIComponent(channelSlug)}/create`, label: c.confirmAge };
+    if (e === "adult_only_service" && LEGAL.contactEmail) return { href: `mailto:${LEGAL.contactEmail}`, label: t.age.contact };
+    return null;
+  };
+
+  /** #900's refusal block: the words, a Retry when one can help, and the link to where the fix is made. */
+  const problemBlock = (p: NonNullable<Problem>): ReactNode => (
+    <div className="ns-ai-problem" role="alert" data-problem={p.code || undefined}>
+      <p className="m-0 flex items-start gap-2">
+        <TriangleAlert aria-hidden size={16} className="ns-ai-problem-ic" />
+        <span>{p.text}</span>
+      </p>
+      {(p.retry || p.action) && (
+        <div className="flex flex-wrap gap-2">
+          {p.retry && <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={p.retry} disabled={busy}>{c.retry}</button>}
+          {p.action &&
+            (p.action.href.startsWith("mailto:") ? (
+              <a className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={p.action.href}>{p.action.label}</a>
+            ) : (
+              <Link className="btn-quiet inline-flex min-h-11 items-center px-3 text-sm" href={p.action.href}>{p.action.label}</Link>
+            ))}
+        </div>
+      )}
+    </div>
+  );
 
   const post = async (body: Record<string, unknown>) => {
     const res = await fetch("/api/brain/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -490,8 +536,12 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         // A turn that was taken (the server reports its quota) already stored the message: retry it as it is, never a second copy.
         // One that was not is sent again with the same press id: a press that did land is answered as a duplicate.
         const taken = !!d.quota && !!sid;
-        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""),
-                     retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null });
+        setProblem({
+          text: explain(res.status, d),
+          code: String(d.error ?? ""),
+          retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null,
+          action: actionFor(String(d.error)),
+        });
         return false;
       }
       if (d.reply && sid) {
@@ -641,7 +691,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         // A failed plan's calls were recorded under this press's ids: a Retry is a new press (a new id), never refused as a repeat.
         // A failure no new attempt can change (the outline cannot fit, the model is not set up here) offers none (Lens L7).
         const noRetry = res.status === 401 || NO_RETRY.includes(String(d.error)) || (d.error === "plan_failed" && NO_RETRY_REASONS.has(String(d.reason)));
-        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""), retry: noRetry ? null : () => void choose(index) });
+        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""), retry: noRetry ? null : () => void choose(index),
+                     action: actionFor(String(d.error)) });
         return;
       }
       setAsking(null);
@@ -706,17 +757,22 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
 
   const source = useMemo<ChatHistorySource>(
     () => ({
+      // A list that failed says so in the list's words ("Couldn't load your chats"), never as a chat that would not open.
       list: (before) =>
-        historyCall(historyUrl(before ? `before=${encodeURIComponent(before)}` : ""), (b) => ({
-          items: (Array.isArray(b.sessions) ? (b.sessions as { id: string; title: string; updated_at: string }[]) : []).map((r) => ({
-            id: r.id,
-            title: r.title,
-            updatedAt: r.updated_at,
-          })),
-          nextBefore: typeof b.next_before === "string" ? b.next_before : null,
-        })),
+        historyCall(
+          historyUrl(before ? `before=${encodeURIComponent(before)}` : ""),
+          (b) => ({
+            items: (Array.isArray(b.sessions) ? (b.sessions as { id: string; title: string; updated_at: string }[]) : []).map((r) => ({
+              id: r.id,
+              title: r.title,
+              updatedAt: r.updated_at,
+            })),
+            nextBefore: typeof b.next_before === "string" ? b.next_before : null,
+          }),
+          c.history.error,
+        ),
     }),
-    [historyCall, historyUrl],
+    [historyCall, historyUrl, c],
   );
 
   async function openSession(id: string): Promise<HistoryResult<null>> {
@@ -735,6 +791,28 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     announce(id, null);
     return r;
   }
+
+  // On a phone the canvas's dock and the keyboard cover the bottom of the screen: the box and Send are brought into view when the
+  // box takes focus, and again once the keyboard has resized the viewport (Pixel on #900, 390x500 with the keyboard up). The room
+  // kept under them is the composer's scroll-margin (nightshift-ai-panel.css), so "nearest" stops above the dock, not under it.
+  const watch = useRef<(() => void) | null>(null);
+  const revealComposer = (e: FocusEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.id !== INPUT_ID) return;
+    const composer = target.closest<HTMLElement>(".chat-composer");
+    const reveal = () => composer?.scrollIntoView?.({ block: "nearest" });
+    reveal();
+    const vv = typeof window === "undefined" ? null : window.visualViewport;
+    if (!vv || watch.current) return;
+    vv.addEventListener("resize", reveal);
+    watch.current = () => vv.removeEventListener("resize", reveal);
+  };
+  const hideComposerWatch = (e: FocusEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).id !== INPUT_ID) return;
+    watch.current?.();
+    watch.current = null;
+  };
+  useEffect(() => () => watch.current?.(), []);
 
   if (load.state === "hidden") return null;
   const lengthLabel = (s: number) => (s >= 60 ? fmt(c.minutes, { n: Math.round((s / 60) * 10) / 10 }) : fmt(c.seconds, { n: s }));
@@ -758,7 +836,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const maxChars = ready ? load.plan.max_input_chars : 2000;
 
   const status: ReactNode = (() => {
-    if (load.state === "loading") return <p role="status">{c.loading}</p>;
+    if (load.state === "loading") return <p role="status" aria-busy="true">{c.loading}</p>;
     if (load.state === "failed")
       return (
         <div role="alert" className="flex flex-wrap items-center gap-2">
@@ -766,7 +844,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void read()}>{c.retry}</button>
         </div>
       );
-    if (load.state === "not_enabled") return <p role="status">{c.errors.not_enabled}</p>;
+    // "Check back later": the press that checks is here, a fresh read of the same state (nothing is sent or spent).
+    if (load.state === "not_enabled") return <StatusWithAction text={c.errors.not_enabled} label={c.checkAgain} onPress={() => void read()} />;
     if (load.state === "session_ended")
       return (
         <div role="alert" className="flex flex-col gap-2">
@@ -783,13 +862,25 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         </div>
       );
     // The turn's own refusal already says it in the thread: once is enough.
+    // The cap is a rolling 24 hours and the server reports no reset time, so none is shown; a larger plan has a larger cap.
     if (capped && !problem)
-      return <p role="status">{load.plan.limit !== null ? fmt(c.errors.chat_daily_cap, { used: load.plan.used ?? load.plan.limit, limit: load.plan.limit }) : c.errors.chat_daily_cap_plain}</p>;
-    if (down) return <p role="status">{c.errors.assistant_unavailable}</p>;
+      return (
+        <div role="status" className="flex flex-col gap-2">
+          <p>{load.plan.limit !== null ? fmt(c.errors.chat_daily_cap, { used: load.plan.used ?? load.plan.limit, limit: load.plan.limit }) : c.errors.chat_daily_cap_plain}</p>
+          <Link className="btn-quiet inline-flex min-h-11 items-center justify-center self-start px-4 text-sm" href={plansHref}>{c.seePlans}</Link>
+        </div>
+      );
+    if (down) return <StatusWithAction text={c.errors.assistant_unavailable} label={c.checkAgain} onPress={() => void read()} />;
     if (viewer) return <p role="status">{c.viewerOnly}</p>;
     if (closed) return <p role="status">{c.errors.session_closed}</p>;
     // A retry here asks the gate again (GET /api/brain): it reads the answer anew, and spends nothing.
-    if (gated && !problem) return gateBlock(gated.remedy, gated.code, () => void read());
+    // An age answer (0192) before a press reads exactly as the same refusal after one: #900's words and link, no Retry.
+    if (gated && !problem && AGE_CODES.has(gated.code))
+      return problemBlock({ text: explain(403, { error: gated.code }), retry: null, code: gated.code, action: actionFor(gated.code) });
+    if (gated && !problem) {
+      const r = gateRemedy(gated.code);
+      return r ? gateBlock(r, gated.code, () => void read()) : null;
+    }
     return null;
   })();
 
@@ -878,15 +969,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       {/* After a press: the same block as before one (gateBlock). No ProviderUnavailable: its words name a provider and offer
           another model. */}
       {problem && gateRemedy(problem.code) && gateBlock(gateRemedy(problem.code)!, String(problem.code), problem.retry)}
-      {problem && !gateRemedy(problem.code) && (
-        <div className="ns-ai-problem" role="alert">
-          <p className="m-0 flex items-start gap-2">
-            <TriangleAlert aria-hidden size={16} className="ns-ai-problem-ic" />
-            <span>{problem.text}</span>
-          </p>
-          {problem.retry && <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={problem.retry} disabled={busy}>{c.retry}</button>}
-        </div>
-      )}
+      {problem && !gateRemedy(problem.code) && problemBlock(problem)}
     </>
   ) : undefined;
 
@@ -932,7 +1015,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   );
 
   return (
-    <div className="ns-ai-dock" data-testid="nightshift-ai-panel">
+    <div className="ns-ai-dock" data-testid="nightshift-ai-panel" onFocus={revealComposer} onBlur={hideComposerWatch}>
       {ready ? (
         // The side panel is narrow: the history is the drawer at every width (a 268px column would leave no room for the chat).
         <ChatHistoryFrame
@@ -952,9 +1035,22 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           // The drawer closes on a pick: its refusal is said here, in the chat, not inside the closed drawer (#900's leftover).
           onPickMessage={(text) => setProblem({ text, retry: null })}
         />
+      ) : load.state === "loading" ? (
+        // The history's menu button arrives with the ready state: its place is kept, so the title does not jump sideways.
+        chat(<span className="chat-act ns-ai-lead-slot" aria-hidden />)
       ) : (
         chat()
       )}
+    </div>
+  );
+}
+
+/** A state line with the one press that can change it. */
+function StatusWithAction({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {
+  return (
+    <div role="status" className="flex flex-col gap-2">
+      <p>{text}</p>
+      <button type="button" className="btn-quiet min-h-11 self-start px-4 text-sm" onClick={onPress}>{label}</button>
     </div>
   );
 }
