@@ -141,6 +141,8 @@ export const siteRu: SiteDictionary = {
   },
   fx: {
     pause: "Остановить анимацию",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Модели в Nightshift Studio",
   },
   bar: {
     label: "Быстрый старт",
@@ -149,6 +151,7 @@ export const siteRu: SiteDictionary = {
     dismiss: "Скрыть эту панель",
   },
   samples: {
+    sound: "Звук клипа",
     tag: "Пример кадра (стоковое фото)",
     frameTag: "Пример кадра (стоковое видео)",
     clipTag: "Пример клипа (стоковое видео)",

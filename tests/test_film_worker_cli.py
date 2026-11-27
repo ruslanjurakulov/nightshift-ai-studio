@@ -5,6 +5,8 @@ What would break, and which test says so:
 * the worker running while NIGHTSHIFT_FILM_WORKER is anything but exactly ``on``;
 * a worker that claims segments it cannot finish (no key, no adapters, no writable library, no ffmpeg) instead of refusing to start;
 * the sweep (film_expire_segments, 0171's switch-on gate: at least every 15 minutes) not running, or configurable past 15 minutes;
+* the sweep not recorded (0212's film_sweep('worker')), or stopping where 0212 is not applied yet instead of calling the same
+  0171 function directly, or saying so on every pass;
 * the service key reaching a log line;
 * the worker invisible to the operator's "worker lost" alert (gate G4): what it reports to worker_status, and that no key
   or value ever reaches a reported detail.
@@ -30,6 +32,10 @@ class FakeDb:
 
     def expire(self):
         self.calls.append("expire")
+        return 0
+
+    def sweep(self, runner):
+        self.calls.append(f"sweep:{runner}")
         return 0
 
 
@@ -138,20 +144,20 @@ class Cli(Harness):
     def test_once_sweeps_then_claims_and_prints_no_secret(self):
         rc, made, out = self.run_main(self.env())
         self.assertEqual(rc, 0)
-        self.assertEqual(made[0].calls, ["expire", "claim"])
+        self.assertEqual(made[0].calls, ["sweep:worker", "claim"])
         self.assertNotIn(KEY, out)
 
     def test_with_the_assembly_switched_off_nothing_is_claimed_and_only_the_sweep_runs(self):
         for value in (None, "", "off", "ON"):
             rc, made, out = self.run_main(self.env(NIGHTSHIFT_FILM_ASSEMBLY=value))
             self.assertEqual(rc, 0, value)
-            self.assertEqual(made[0].calls, ["expire"], value)  # never film_claim_segment
+            self.assertEqual(made[0].calls, ["sweep:worker"], value)  # never film_claim_segment
             self.assertIn("NIGHTSHIFT_FILM_ASSEMBLY is not 'on'", out)
             self.assertNotIn(KEY, out)
 
     def test_without_the_assembly_module_nothing_is_claimed(self):
         rc, made, out = self.run_main(self.env(), assembly=False)
-        self.assertEqual((rc, made[0].calls), (0, ["expire"]))
+        self.assertEqual((rc, made[0].calls), (0, ["sweep:worker"]))
         self.assertIn("modules.film_assembly is not installed", out)
 
     def test_the_sweep_runs_at_least_every_fifteen_minutes(self):
@@ -174,6 +180,58 @@ class Cli(Harness):
         stop.wait = lambda t=None: (waits.append(t), real_wait(0))[1]
         fw.loop(Orch(), db, stop, once=False)
         self.assertEqual(waits[:2], [fw.IDLE_MIN_SECONDS, fw.IDLE_MIN_SECONDS * 2])
+
+
+class Sweep(unittest.TestCase):
+    """sweep_once: 0212's recorded sweep first; 0171's function directly only while 0212 is missing; a failure is a warning."""
+
+    def setUp(self):
+        fw._SWEEP_UNRECORDED.clear()
+        self.addCleanup(fw._SWEEP_UNRECORDED.clear)
+
+    def test_the_worker_sweeps_through_film_sweep_under_its_own_runner(self):
+        db = FakeDb()
+        with self.assertLogs("film_worker", level=logging.INFO) as logs:
+            db.sweep = lambda runner: (db.calls.append(f"sweep:{runner}"), 2)[1]
+            fw.sweep_once(db)
+        self.assertEqual(db.calls, ["sweep:worker"])  # never expire() as well: one sweep, recorded
+        self.assertIn("settled or drained 2", "\n".join(logs.output))
+
+    def test_without_0212_it_calls_the_same_0171_function_and_says_so_once(self):
+        db = FakeDb()
+
+        def missing(runner):
+            db.calls.append(f"sweep:{runner}")
+            raise fw.fo.FilmFunctionMissing("film_sweep: HTTP 404 (migration 0212_film_sweep.sql is not applied)")
+
+        db.sweep = missing
+        with self.assertLogs("film_worker", level=logging.INFO) as logs:
+            fw.sweep_once(db)
+            fw.sweep_once(db)
+        self.assertEqual(db.calls, ["sweep:worker", "expire", "sweep:worker", "expire"])  # tried again each pass, swept each pass
+        said = [ln for ln in logs.output if "0212_film_sweep.sql" in ln]
+        self.assertEqual(len(said), 1, logs.output)
+        self.assertIn("not recorded", said[0])
+
+    def test_a_sweep_that_failed_in_the_database_is_a_warning_and_not_a_second_unrecorded_sweep(self):
+        db = FakeDb()
+
+        def failed(runner):
+            db.calls.append(f"sweep:{runner}")
+            raise fw.fo.FilmUnavailable("film_sweep: the sweep failed (55P03)")
+
+        db.sweep = failed
+        with self.assertLogs("film_worker", level=logging.WARNING) as logs:
+            fw.sweep_once(db)
+        self.assertEqual(db.calls, ["sweep:worker"])
+        self.assertIn("55P03", "\n".join(logs.output))
+
+    def test_a_crash_inside_the_sweep_never_reaches_the_claim_loop(self):
+        db = FakeDb()
+        db.sweep = lambda runner: (_ for _ in ()).throw(ValueError(KEY))
+        with self.assertLogs("film_worker", level=logging.WARNING) as logs:
+            fw.sweep_once(db)  # does not raise
+        self.assertNotIn(KEY, "\n".join(logs.output))
 
 
 class WorkerStatus(Harness):
@@ -219,13 +277,13 @@ class WorkerStatus(Harness):
 
     def test_with_the_assembly_off_it_reports_failed_and_only_sweeps(self):
         rc, made, _out = self.run_main(self.env(NIGHTSHIFT_FILM_ASSEMBLY="off"))
-        self.assertEqual((rc, made[0].calls), (0, ["expire"]))
+        self.assertEqual((rc, made[0].calls), (0, ["sweep:worker"]))
         self.assertEqual(self.reporter.states(), ["starting", "failed"])
         self.assertIn("NIGHTSHIFT_FILM_ASSEMBLY is not 'on'", self.reporter.calls[-1][2])
 
     def test_a_once_pass_reports_starting_running_then_stopped(self):
         rc, made, _out = self.run_main(self.env())
-        self.assertEqual((rc, made[0].calls), (0, ["expire", "claim"]))
+        self.assertEqual((rc, made[0].calls), (0, ["sweep:worker", "claim"]))
         self.assertEqual(self.reporter.states(), ["starting", "running", "stopped"])
         self.assertEqual(self.reporter_args, [("https://x.supabase.co", "w-test")])
 

@@ -138,7 +138,25 @@ editor changes it, with `set_film_studio_enabled(true|false)`, and every change 
 **Switch-on gates.** `film_studio_enabled` stays off until all of these hold:
 
 - archive and resume exist for `paused` and `cancelled` projects, so no project a person paid into is left without a way forward;
-- P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open;
+- P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open.
+  **Built (0212, `claude/nsai-s2-sweep`); met once 0212 is applied and pg_cron or the film-sweep service runs.** Every runner calls
+  the same `film_sweep(runner)`, which runs `film_expire_segments` and records the run in `film_sweep_runs`:
+  - **pg_cron, the primary**, every 5 minutes (job `nightshift-film-sweep`, runner `pg_cron`), **only once pg_cron is installed**
+    (it is not today; docs/MIGRATIONS.md, 0111 D15): the owner enables it in the Supabase dashboard (Database -> Extensions ->
+    pg_cron), then applies 0212 again or runs its one-line `cron.schedule` (0212's entry). Its command raises on a failed sweep, so
+    pg_cron's run history shows it as failed (with the SQLSTATE), never as succeeded;
+  - **the film-sweep service, the fallback**, on our own server (`deploy/docker-compose.yml` `film-sweep`, `tools/film_sweep.py
+    --loop`, runner `server`, every 300 s) while `NIGHTSHIFT_FILM_SWEEP=on`, independent of `NIGHTSHIFT_FILM_WORKER`;
+  - the film worker's own thread (runner `worker`), while it runs. Where 0212 is not applied it calls `film_expire_segments`
+    directly (the same function, unrecorded) and says so once.
+  GitHub Actions does not sweep: `.github/workflows/film_sweep_watchdog.yml` reads `film_sweep_status()` once an hour
+  (`tools/film_sweep.py --check`) and turns red only when it says overdue.
+  "It ran" is a measurement: `film_sweep_status()` (service role, counts only) gives each runner's last completed sweep (null:
+  never), `stuck_segments` / `oldest_stuck_minutes` (open segments already past 0171's settle point), and `overdue`: true when a
+  segment has been stuck longer than `overdue_after_minutes` (30) or a segment is open and no runner completed a sweep within it,
+  null when no sweep was ever recorded and nothing is stuck. A sweep cancelled by a statement timeout (57014) raises and records
+  nothing; `overdue` then trips once the last completed sweep is older than the line. A per-pass bound is G2b
+  (docs/studio/S2_GAPS.md), open;
 - P3 alerts on every `segment_settled` event with `not_captured` (charges a hold could no longer pay), and on every
   `segment_skipped` event (a segment the claim or the sweep could not touch). **Built, not live** (`claude/nsai-s2-alerts`):
   the operator alert engine's `film` kind (`modules/operator_bot/alerts.py`, every 10 minutes by `operator_alerts.yml`, every
@@ -269,6 +287,7 @@ The same result handed in again answers as its first answer, accepted or rejecte
 | `film_begin_assembly`, `film_record_assembly(segment, worker, ok, result)` | The assembly line, captions included, charged by its registered file's recorded length |
 | `film_settle_segment(segment, worker, reason)` | Drains while something is in flight. Then it skips every take that never began, captures the charges once (never above the hold) and releases the rest. |
 | `film_cancel_segment(segment, reason)` | Releases every take that never began, and settles now or when the takes in flight end |
+| `film_sweep(runner)`, `film_sweep_status()` (0212) | `film_expire_segments()`, recorded per runner (`worker`, `actions`, `pg_cron`), and whether a sweep is overdue. See "Switch-on gates". |
 | `film_expire_segments()` | Each segment in its own subtransaction. A hold 0020 released, or a segment nobody claimed in 3 hours, settles. Past the deadline the segment drains. Past the deadline plus 2 hours (before 0020's 24) the takes in flight fail as `worker_lost`, a running assembly fails, and it settles while the hold is still open. |
 
 Where a film goes after a settle:
