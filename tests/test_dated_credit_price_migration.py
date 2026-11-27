@@ -38,12 +38,38 @@ def md5_of(fn):
     return hashlib.md5(re.sub(r"\s+", " ", b).encode()).hexdigest()
 
 
-NEW = bodies(TEXT)
+#: Every backslash of a body is written as PH in the files and put back by the database with chr(92) (no backslash survives the
+#: live apply path's escape rewriting).
+PH = "@@0224_BACKSLASH@@"
+
+
+def built(text, tag):
+    """The function statements `execute replace($tag$...$tag$, PH, chr(92))` creates, as the database will hold them."""
+    out = []
+    head = f"{EXEC} replace(${tag}$"
+    tail = f"${tag}$, '{PH}', chr(92));"
+    for part in text.split(head)[1:]:
+        out.append(part[:part.index(tail)].replace(PH, chr(92)) + ";\n")
+    return out
+
+
+NEW = {**bodies(TEXT), **bodies("".join(built(TEXT, "cp0224")))}
 CP_OLD = bodies(T218)["creative_price"]
 CP_208 = bodies(T208)["creative_price"]
 
 
 class DatedCreditPriceMigration(unittest.TestCase):
+    def test_no_backslash_survives_the_live_apply_path(self):
+        # The Supabase MCP apply_migration path turned backslash escapes in SQL text into real characters when 0218 went live,
+        # which changed bodies and their md5s. A regex uses a bracket class ([[:space:]]); a body's own backslashes are PH,
+        # put back by chr(92) in the database.
+        for label, text in (("migration", TEXT), ("rollback", ROLLBACK)):
+            self.assertNotIn(chr(92), text, label)
+        self.assertEqual(len(built(TEXT, "cp0224")), 1)
+        self.assertGreater(NEW["creative_price"].count(chr(92)), 0, "0218's prompt regexes keep their backslashes")
+        for body in (CP_OLD, CP_208):
+            self.assertNotIn(PH, body)
+
     def test_it_creates_exactly_these_functions(self):
         self.assertEqual(set(NEW), {"credit_price_schedule_guard", "credit_price_schedule_append_only", "credit_prices_dated_guard",
                                     "credits_per_unit_now", "creative_price"})
@@ -79,9 +105,12 @@ class DatedCreditPriceMigration(unittest.TestCase):
         self.assertIn("raise exception '0224 found creative_price", guard)
         self.assertNotIn(md5_of(CP_208), guard.split("do $$")[1], "0224 applies on 0218 only, never straight on 0208")
 
-    def test_it_inserts_no_price_and_grants_nothing(self):
+    def test_it_sets_no_price_and_grants_nothing(self):
         low = CODE.lower()
-        self.assertNotRegex(low, r"insert\s+into")
+        # One insert only: the dated row at a unit's own list rate when 0224 is applied again after its rollback (the quote stays).
+        self.assertEqual(len(re.findall(r"insert\s+into", low)), 1)
+        self.assertIn("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason)\n    values (r.unit, r.list_rate, now(),",
+                      CODE)
         self.assertNotRegex(low, r"update\s+public\.")
         self.assertNotIn("grant ", low)
         self.assertNotIn("create policy", low)
@@ -94,7 +123,8 @@ class DatedCreditPriceMigration(unittest.TestCase):
             self.assertIn(stmt, TEXT)
 
     def test_the_schedule_is_append_only_and_positive(self):
-        self.assertIn("check (credits_per_unit > 0)", TEXT)
+        self.assertIn("check (credits_per_unit > 0 and credits_per_unit < 'Infinity'::numeric and credits_per_unit <> 'NaN'::numeric)", TEXT)
+        self.assertIn("less than a tenth of the current rate", NEW["credit_price_schedule_guard"])
         self.assertIn("before update or delete on public.credit_price_schedule", TEXT)
         self.assertIn("before truncate on public.credit_price_schedule", TEXT)
         self.assertIn("before insert on public.credit_price_schedule", TEXT)
@@ -116,8 +146,17 @@ class DatedCreditPriceMigration(unittest.TestCase):
         code = "\n".join(ln.split("--", 1)[0] for ln in lg.split("$$")[1].splitlines())
         self.assertNotIn("margin", code, "a margin or note edit stays allowed")
         self.assertEqual(lg.count("using errcode = 'NS428'"), 2)
+        # A delete passes (the model is unpriced, never cheaper); the row comes back only at the rate the delete recorded.
+        self.assertNotIn("tg_op = 'DELETE'", lg)
+        self.assertIn("last.action is distinct from 'delete' or last.old_credits_per_unit is distinct from new.credits_per_unit", lg)
         self.assertIn("add a credit_price_schedule row (effective_at = now()) instead of editing the list price", lg)
         self.assertIn("before insert or update on public.credit_prices", TEXT)
+
+    def test_a_replay_after_the_rollback_keeps_the_quote(self):
+        # Only while creative_price is 0218's own body (0224 off), and before 0224's body replaces it.
+        block = TEXT[TEXT.index("-- Re-applied after its rollback"):TEXT.index("-- 4. The quote")]
+        self.assertIn("where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) <> '59c5c289009a874af043c534b29934ee' then\n    return;", block)
+        self.assertLess(TEXT.index("-- Re-applied after its rollback"), TEXT.index("execute replace($cp0224$"))
 
     def test_the_reader_prefers_the_newest_row_in_force_and_never_answers_zero(self):
         reader = NEW["credits_per_unit_now"]
@@ -128,9 +167,7 @@ class DatedCreditPriceMigration(unittest.TestCase):
         self.assertNotIn("security definer", reader.split("$$")[0])
 
     def test_the_rollback_puts_the_earlier_bodies_back_verbatim_and_keeps_the_table(self):
-        parts = ROLLBACK.split(f"{EXEC} $fn$")[1:]
-        restored = [p[:p.index("$fn$;")] + ";\n" for p in parts]
-        self.assertEqual(restored, [CP_OLD, CP_208])
+        self.assertEqual(built(ROLLBACK, "fn0224"), [CP_OLD, CP_208])
         for stmt in ("drop function if exists public.credits_per_unit_now(text);",
                      "drop trigger if exists credit_prices_dated_guard on public.credit_prices;",
                      "drop function if exists public.credit_prices_dated_guard();"):

@@ -2753,7 +2753,9 @@ inserted. Prices are the owner's. Apply order: 0208, then 0218, then 0224.
 
 - **`credit_price_schedule`** (unit, credits_per_unit, effective_at, reason, created_by, created_at). Append-only: update, delete
   and truncate are refused by trigger, so a mistake is corrected by a new row (the same `effective_at`: the later row wins).
-  `credits_per_unit > 0`. `created_by` / `created_at` are stamped by the database. RLS on, no policy, no privilege for anon,
+  `credits_per_unit > 0`, never NaN or Infinity, and never below a tenth of the rate in force (a slipped decimal point: 0.0000004
+  for 0.4 would quote 0 credits; a cut that deep is a list-price decision, made before scheduling). `created_by` / `created_at`
+  are stamped by the database. RLS on, no policy, no privilege for anon,
   authenticated or service_role: written in the SQL editor only. A row is accepted only for a model's credit unit (or a variant of
   it) that already has a `credit_prices` row. Refused, each with the reason:
   - any other unit (job_minimum, video_minute, downloads, reply_draft …), because nothing reads a dated price for it;
@@ -2763,8 +2765,11 @@ inserted. Prices are the owner's. Apply order: 0208, then 0218, then 0224.
 - **`credits_per_unit_now(unit)`**: the latest row with `effective_at <= now()`, else `credit_prices.credits_per_unit`, else null
   (never 0). No API role may call it.
 - **`credit_prices_dated_guard`** (BEFORE INSERT OR UPDATE on `credit_prices`): once a unit has a dated row, in force or pending, a
-  change of its `credits_per_unit` (or a new list row for it) is refused NS428 `dated_price_scheduled`: "add a
-  credit_price_schedule row (effective_at = now()) instead of editing the list price". A margin or note edit is allowed. The Credits
+  change of its `credits_per_unit` is refused NS428 `dated_price_scheduled`: "add a credit_price_schedule row (effective_at =
+  now()) instead of editing the list price". A margin or note edit is allowed. Deleting the list row is allowed (an admin may take
+  a model off sale; it is then unpriced, never cheaper), and the row comes back only at the rate it had when it was deleted (the
+  unit's newest `credit_price_history` row, which the delete writes): the Credits page's restore does exactly that. A delete and an
+  insert at another rate, in one statement or two, are refused. The Credits
   page shows that refusal in the owner's language (`dated_price_scheduled` in `lib/i18n/owner-rpc`), through the server route and
   the direct editor both.
 - **`creative_price`**: 0218's body plus one line, `rate.credits_per_unit := public.credits_per_unit_now(rate.unit);`, right after
@@ -2775,10 +2780,19 @@ inserted. Prices are the owner's. Apply order: 0208, then 0218, then 0224.
   `tests/test_dated_vendor_prices.py`. Rollback: `docs/sql/rollback_0224_dated_credit_price.sql`. It puts 0218's `creative_price`
   back and drops the reader and the list guard. The table and its rows are kept, and they change no quote afterwards. After an
   `effective_at` has passed, set `credit_prices` to the rate in force right after rolling back (the guard is gone by then).
+  Applying 0224 again later keeps every quote as it is then: for a unit whose dated row in force differs from its list rate (the
+  list moved while 0224 was off), it first adds a dated row at the list rate, effective at once, with a NOTICE.
+- **No backslash in either file.** The live apply path (Supabase MCP `apply_migration`) rewrote backslash escapes in SQL text when
+  0218 went live. The md5 folds use `[[:space:]]+` (the same class as the backslash-s form in Postgres' regular expressions; the lab
+  checks both give one md5 on every function), and `creative_price` (0218's prompt regexes carry backslashes) is built as text with
+  each backslash written `@@0224_BACKSLASH@@`, turned back by `replace(..., chr(92))` and executed. The end state checks the md5.
 - **Not covered** (follow-ups):
   - `credit_rates()` and `sellable_models()` still show the list rate after a dated row is in force: the catalog's per-unit figure
     is the earlier rate while the quote the person confirms, and the hold, are the dated one (a CLAUDE.md #5 display gap). One line
     in each body, in a later migration.
+  - A film's takes are paid from the hold `start_film` made for the whole film, and a film may run up to about 20 hours
+    (`film_money_limits`: the 20-hour deadline plus its grace). A film started just before a rise on a scheduled unit its takes use
+    (an i2v or a voice unit) keeps the earlier rate for every take. D7 (describe) is not a film unit and is unaffected.
   - `created_by` reads `postgres` for a row written in the SQL editor: it says which database role wrote it, not which person. The
     `reason` text is the record of who decided and why.
 

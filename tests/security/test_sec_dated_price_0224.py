@@ -338,3 +338,44 @@ def test_rollback_and_replay(db):
     # Out of the transaction, the live chain is unchanged and the rolled-back row never existed.
     assert db.su("select count(*) from public.credit_price_schedule where reason = 'rb'") == [(0,)]
     assert float(quote(db, "img-rb")["credits"]) == 3.0
+
+
+def test_the_lab_lists_put_0218_back_before_0224():
+    # 0224 sits on 0218's creative_price: every sequence that leaves 0218 out leaves 0224 out, and puts 0224 back after it.
+    for name in ("ON_0156", "ON_0139", "ON_0125", "ON_0124"):
+        seq = list(getattr(sec_db, name))
+        assert "0224_dated_credit_price.sql" in seq, name
+        assert seq.index("0218_creative_prompt_limits.sql") < seq.index("0224_dated_credit_price.sql"), name
+
+
+def test_the_bracket_fold_is_the_backslash_fold_on_every_live_body(db):
+    # The drift guards fold white space with '[[:space:]]+' (no backslash survives the live apply path); in Postgres' ARE it is
+    # the class backslash-s names, so every md5 an earlier file pinned with backslash-s+ is still the one 0224 compares.
+    bs = chr(92) + "s+"
+    diff = db.su("select count(*) filter (where md5(regexp_replace(prosrc, %s, ' ', 'g')) <> "
+                 "md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g'))), count(*) from pg_proc "
+                 "where pronamespace = 'public'::regnamespace", [bs])[0]
+    assert diff[0] == 0 and diff[1] > 100, diff
+
+
+def test_a_rate_below_a_tenth_of_the_rate_in_force_or_not_a_number_is_refused(db):
+    # A slipped decimal point (0.0000004 for 0.4) would quote 0 credits; NaN passes "> 0" in numeric. Both refused at the insert.
+    for credits, why in ((0.0000004, "check the decimal point"), (0.29, "check the decimal point"),
+                         ("NaN", "credit_price_schedule_rate_check")):
+        state, msg = err(lambda: schedule(db, "img-free", credits, "now() + interval '50 days'"))
+        assert state == "23514" and why in msg, (credits, msg)
+    schedule(db, "img-free", 0.3, "now() + interval '50 days'", reason="a tenth is allowed")
+
+
+def test_a_deleted_list_row_of_a_scheduled_unit_comes_back_only_at_its_rate(db):
+    u = unit_of("img-free")                                            # scheduled by the test above
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("delete from public.credit_prices where unit = %s", [u])
+        with pytest.raises(psycopg.Error) as e:
+            c.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 1, 0)", [u])
+        assert e.value.sqlstate == "NS428" and "only be put back at the rate it had" in str(e.value)
+        c.rollback()
+        c.execute("delete from public.credit_prices where unit = %s", [u])
+        c.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 3, 0)", [u])
+        c.commit()
+    assert float(quote(db, "img-free")["credits"]) == 3.0

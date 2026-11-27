@@ -8,8 +8,11 @@
 --
 -- KEPT: public.credit_price_schedule, its rows and its append-only triggers. The rows are the owner's record of price decisions; with
 -- the reader gone they change no quote. AFTER IT every quote reads credit_prices only: a dated rise that was in force is undone at
--- once, so before running this after an effective_at has passed, set credit_prices to the rate in force first (the list guard is
--- dropped by this file, so do it right after, in the same transaction, or before with the guard's remedy in mind).
+-- once, so after an effective_at has passed, set credit_prices to the rate in force right after running this (the list guard is
+-- dropped by this file).
+-- APPLYING 0224 AGAIN later keeps every quote as it is then: for each unit whose dated row in force differs from its list rate (the
+-- list was changed while 0224 was off), 0224 first inserts a dated row at the list rate, effective at that moment, and says so in a
+-- NOTICE. A kept dated row that is still pending takes effect at its moment, as planned: read the schedule before applying again.
 
 begin;
 set local lock_timeout = '5s';
@@ -18,11 +21,11 @@ do $rb$
 declare
   h text;
 begin
-  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p
+  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)');
   if h = 'ea2b58e88fe34ae18b261e5a0fbef435' then
     -- 0218's body.
-    execute $fn$create or replace function public.creative_price(
+    execute replace($fn0224$create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -212,7 +215,7 @@ begin
   -- A negative prompt only for a model whose adapter puts it in the vendor's request: the registry's takes_negative_prompt, which the
   -- sync copies into spec and modules/model_registry.py checks against the adapter. No statement = does not take one. Blank text is no
   -- negative prompt: only white space, every character Python's str.strip() removes (the worker's test), counts as blank.
-  if coalesce(p_params ->> 'negative_prompt', '') ~ '[^\t\n\u000b\f\r\u001c-\u001f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]'
+  if coalesce(p_params ->> 'negative_prompt', '') ~ '[^@@0224_BACKSLASH@@t@@0224_BACKSLASH@@n@@0224_BACKSLASH@@u000b@@0224_BACKSLASH@@f@@0224_BACKSLASH@@r@@0224_BACKSLASH@@u001c-@@0224_BACKSLASH@@u001f @@0224_BACKSLASH@@u0085@@0224_BACKSLASH@@u00a0@@0224_BACKSLASH@@u1680@@0224_BACKSLASH@@u2000-@@0224_BACKSLASH@@u200a@@0224_BACKSLASH@@u2028@@0224_BACKSLASH@@u2029@@0224_BACKSLASH@@u202f@@0224_BACKSLASH@@u205f@@0224_BACKSLASH@@u3000]'
      and coalesce(m_spec -> 'takes_negative_prompt', 'false'::jsonb) <> 'true'::jsonb then
     perform public.creative_refuse('negative_prompt_not_supported',
       format('%s does not take a negative prompt; remove it or choose a model that does', mdl), 'NS400');
@@ -224,7 +227,7 @@ begin
               then (m_spec -> 'limits' ->> 'max_prompt_chars')::numeric end;
   if lim > 0 and jsonb_typeof(p_params -> 'prompt') = 'string' then
     units := 2 * char_length(p_params ->> 'prompt')
-             - char_length(regexp_replace(p_params ->> 'prompt', '[\U00010000-\U0010FFFF]', '', 'g'));
+             - char_length(regexp_replace(p_params ->> 'prompt', '[@@0224_BACKSLASH@@U00010000-@@0224_BACKSLASH@@U0010FFFF]', '', 'g'));
     if units > lim then
       perform public.creative_refuse('prompt_too_long',
         format('%s character%s over this model''s limit of %s; shorten the prompt', units - lim,
@@ -451,10 +454,10 @@ begin
     -- 0139: a preview says so, and the Studio shows it as the operator's record, never as a price on sale.
     || case when preview then jsonb_build_object('preview', true) else '{}'::jsonb end;
 end
-$$$fn$;
+$$$fn0224$, '@@0224_BACKSLASH@@', chr(92));
   elsif h = 'd5bc7c5ef1c3d823ece05b9d00274042' then
     -- 0208's body.
-    execute $fn$create or replace function public.creative_price(
+    execute replace($fn0224$create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -843,14 +846,14 @@ begin
     -- 0139: a preview says so, and the Studio shows it as the operator's record, never as a price on sale.
     || case when preview then jsonb_build_object('preview', true) else '{}'::jsonb end;
 end
-$$$fn$;
+$$$fn0224$, '@@0224_BACKSLASH@@', chr(92));
   end if;
   if exists (select 1 from pg_proc p
-              where p.pronamespace = 'public'::regnamespace and p.proname <> 'credits_per_unit_now'
+              where p.pronamespace = 'public'::regnamespace and p.proname not in ('credits_per_unit_now', 'credit_price_schedule_guard')
                 and p.prosrc like '%credits_per_unit_now(%') then
     raise exception 'rollback 0224: % still calls credits_per_unit_now: a later file sits on 0224, undo it first',
       (select string_agg(p.proname, ', ') from pg_proc p
-        where p.pronamespace = 'public'::regnamespace and p.proname <> 'credits_per_unit_now'
+        where p.pronamespace = 'public'::regnamespace and p.proname not in ('credits_per_unit_now', 'credit_price_schedule_guard')
           and p.prosrc like '%credits_per_unit_now(%');
   end if;
 end $rb$;
@@ -863,7 +866,7 @@ drop function if exists public.credits_per_unit_now(text);
 
 do $$
 begin
-  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
        where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) in ('ea2b58e88fe34ae18b261e5a0fbef435', 'd5bc7c5ef1c3d823ece05b9d00274042')
      or to_regprocedure('public.credits_per_unit_now(text)') is not null
      or to_regprocedure('public.credit_prices_dated_guard()') is not null then
