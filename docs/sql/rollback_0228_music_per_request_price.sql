@@ -12,6 +12,11 @@ set local lock_timeout = '5s';
 
 do $$
 begin
+  -- Whether 0228 is on now, for the end state below: a rollback run where 0228 is not on (harmless, by design) asserts nothing.
+  perform set_config('nightshift.rollback_0228_was_on',
+                     case when (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')) = '33bb0ea77aedd1ffc3df339034adc6d3'
+                            or (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = to_regprocedure('public.creative_params_problem(text, jsonb)')) = '0570bb5a1f749b7e3d556c87443bf17b'
+                          then 'on' else 'off' end, true);
   -- The value can leave the checks only while no row names it; deleting such rows is the owner's decision, never a rollback's.
   if position('''music''' in coalesce(pg_get_constraintdef((select oid from pg_constraint where conname = 'model_registry_capabilities_check')), '')) > 0
      and (exists (select 1 from public.model_registry where 'music' = any (capabilities))
@@ -815,10 +820,13 @@ $c$;
 end
 $rb$;
 
--- End state: both bodies are the ones 0228 was written on (0218's creative_params_problem, 0224's creative_price), and no check
--- lists music.
+-- End state, where 0228 was on: both bodies are the ones 0228 was written on (0218's creative_params_problem, 0224's creative_price),
+-- and no check lists music.
 do $rb$
 begin
+  if coalesce(current_setting('nightshift.rollback_0228_was_on', true), 'off') <> 'on' then
+    return;
+  end if;
   if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) <> 'cb7ad6cd459f31259445bedd1a4a0c88' then
     raise exception 'rollback 0228 end state: creative_params_problem is not 0218''s body';
   end if;

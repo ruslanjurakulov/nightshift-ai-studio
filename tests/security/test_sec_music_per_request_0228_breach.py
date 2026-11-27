@@ -335,7 +335,10 @@ def test_0228_refuses_a_tampered_body_and_writes_nothing(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         src = c.execute(f"select pg_get_functiondef('{CP}'::regprocedure)").fetchone()[0]
         # A tamper that would sell every quote for one unit, on 0228's own body: the replay must not accept it as its own.
-        c.execute(src.replace("if m_spec -> 'pricing' ->> 'unit' = 'request' then", "if true then", 1))
+        # (The line as 0228 writes it since BR-0228-01/02 scoped it to music; a replace that finds nothing would test nothing.)
+        line = "if cap = 'music' and m_spec -> 'pricing' ->> 'unit' = 'request' then"
+        assert line in src
+        c.execute(src.replace(line, "if true then", 1))
         c.execute("savepoint s")
         with pytest.raises(psycopg.Error) as e:
             c.execute(mig)
@@ -352,7 +355,9 @@ def test_the_rollbacks_beneath_refuse_to_strip_0228(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0224_body())
-        assert "a later file sits on 0224" in str(e.value)
+        # After the #945 merge, sec_db's rollback_0224_body() runs 0228's rollback first, which refuses here while music rows exist;
+        # 0224's own rollback refuses 0228's body by itself. Either way 0228 is not stripped.
+        assert "a later file sits on 0224" in str(e.value) or "names music; take it out first" in str(e.value)
         c.rollback()
 
 

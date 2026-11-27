@@ -99,6 +99,9 @@ class TheBodies(unittest.TestCase):
         self.assertIn(f"<> '{BEFORE['creative_params_problem']}' then", end)
         self.assertIn(f"<> '{BEFORE['creative_price']}' then", end)
         self.assertIn("a capability check still lists music", end)
+        # Only where 0228 was on: the rollback stays harmless (and quiet) where 0228 is not, which the lab chains rely on.
+        self.assertIn("nightshift.rollback_0228_was_on", ROLLBACK[:ROLLBACK.index("-- End state")])
+        self.assertIn("'off') <> 'on' then\n    return;", end)
 
     def test_the_rollback_puts_the_old_bodies_back_byte_for_byte(self):
         m = re.search(r"\$pp0218\$(create or replace function public\.creative_params_problem\(.*?\$\$;)\$pp0218\$", ROLLBACK, re.S)
@@ -125,7 +128,12 @@ class TheGuards(unittest.TestCase):
         off = LAB[LAB.index("def take_off_0218("):LAB.index("def put_back_0218(")]
         self.assertLess(off.index("take_off_0228(conn)"), off.index("rollback_0218_body()"))
         self.assertIn("put_back_0228(conn)", LAB[LAB.index("def put_back_0218("):LAB.index("def migration_0218_lab(")])
-        self.assertIn("rollback_0228_body() +", LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")])
+        # 0208's rollback starts with 0228's: directly, or (once 0224 is merged) through 0224's rollback, which starts with it.
+        r0208 = LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")]
+        if "rollback_0228_body() +" not in r0208:
+            self.assertIn("return rollback_0224_body() + ", r0208)
+            r0224 = LAB[LAB.index("def rollback_0224_body("):]
+            self.assertIn("return rollback_0228_body() + ", r0224[:r0224.index("\ndef ")])
 
 
 class TheChecks(unittest.TestCase):
