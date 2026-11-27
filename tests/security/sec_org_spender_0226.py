@@ -1,11 +1,11 @@
 """Security-lab contract for migration 0226 (only a member spends an organization's credits, on every path: 0215's is_org_spender asked
-by the sixteen spend paths that did not ask it yet).
+by the seventeen spend paths and rules that did not ask it yet).
 
 Kept in its own module, like sec_film_resume_0215. One hook wires it in, at the bottom of sec_expectations.py:
 
         import sec_org_spender_0226; sec_org_spender_0226.extend(TABLES, FUNCTIONS)
 
-0226 adds no table and no function: it replaces sixteen bodies, each keeping its signature and its grants, so every catalog entry
+0226 adds no table and no function: it replaces seventeen bodies, each keeping its signature and its grants, so every catalog entry
 (TABLES, FUNCTIONS) stays as the earlier migrations declared it and extend() adds nothing. What this module holds is the one list
 the tests, the drift-guard pins and sec_db's chain read: each path, the role it asks of a member, and its body's md5 before and after
 (whitespace runs read as one space, the way the file's own guard reads them). The attacks are in test_sec_org_spender_0226.py.
@@ -44,9 +44,13 @@ PATHS = (
     ("public.create_api_key(uuid, text, bigint)", "admin", "0042",
      "4b311587d0f62ade8334beec83049e01", "c751606e0eafff55b916e603c1d78f2e"),
     ("public.api_begin(text, text, text)", "admin", "0093",
-     "8b3b4fb4f4a5ab698584bc4f30e9fd14", "9e9a834a16f62dc4cdfef82b718948d5"),
+     "8b3b4fb4f4a5ab698584bc4f30e9fd14", "9ff0b39b5c5f86b82a4df3054b1908e8"),
     ("public.oauth_ctx(text, text, text)", "admin", "0147",
-     "fe42c9e4f53a6c9aaba40077ce905cdc", "ebdcdaad7baea2b4e7c69735180c9393"),
+     "fe42c9e4f53a6c9aaba40077ce905cdc", "8cf90c6006cf30dc492c56fbfdcdb789"),
+    # Breach 0226-1: the rule a workflow's later step asks of its confirmer. Not is_org_spender (it is asked of the confirmer, not the
+    # caller, so it reads org_members itself): a seat of editor or above, and the platform owner or admin only in the exempt organization.
+    ("public.workflow_confirmer_may_spend(uuid, uuid)", "editor", "0074",
+     "bf5b3922c06fb82f832de36394e88ef7", "f3869c81bfc92baa38380830943f9985"),
 )
 
 

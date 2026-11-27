@@ -1,13 +1,13 @@
 -- rollback_0226_org_spender_everywhere.sql — takes migration 0226 (only a member spends an organization's credits, on every path)
 -- out. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK, verbatim: the sixteen earlier bodies below. A platform owner or admin with no seat in an organization may again
+-- WHAT COMES BACK, verbatim: the seventeen earlier bodies below. A platform owner or admin with no seat in an organization may again
 --   spend its credits on these paths (0043's accessible_org_ids), and an API key or a connected app made by one keeps spending there.
 --   The film paths keep 0215's rule (take 0215 out for those).
 -- WHAT IS KEPT: everything else. 0226 added no table, column or function; nothing it refused was written.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the sixteen bodies is not 0226's (a later change would be undone).
+--   0. REFUSES (changes nothing) if any of the seventeen bodies is not 0226's (a later change would be undone).
 --   1. Puts the earlier bodies back, verbatim, with their grants.
 --   2. Asserts the end state.
 --
@@ -26,8 +26,9 @@
 --   request_download           editor  268af77d1e00070cb96a7c98baeb51b1 (0094) -> f4ae9d569094dc50f5e9df5b36f327f0
 --   render_jobs_payment_guard  admin   3807936ade6801fa20da292e27fa7f64 (0122) -> 5f39cc352da2a0a8fd96bcc9b4ce8dd2
 --   create_api_key             admin   4b311587d0f62ade8334beec83049e01 (0042) -> c751606e0eafff55b916e603c1d78f2e
---   api_begin                  admin   8b3b4fb4f4a5ab698584bc4f30e9fd14 (0093) -> 9e9a834a16f62dc4cdfef82b718948d5
---   oauth_ctx                  admin   fe42c9e4f53a6c9aaba40077ce905cdc (0147) -> ebdcdaad7baea2b4e7c69735180c9393
+--   api_begin                  admin   8b3b4fb4f4a5ab698584bc4f30e9fd14 (0093) -> 9ff0b39b5c5f86b82a4df3054b1908e8
+--   oauth_ctx                  admin   fe42c9e4f53a6c9aaba40077ce905cdc (0147) -> 8cf90c6006cf30dc492c56fbfdcdb789
+--   workflow_confirmer_may_spend editor  bf5b3922c06fb82f832de36394e88ef7 (0074) -> f3869c81bfc92baa38380830943f9985
 
 begin;
 set local lock_timeout = '5s';
@@ -52,8 +53,9 @@ begin
       ('public.request_download(text, text, numeric)', 'f4ae9d569094dc50f5e9df5b36f327f0'),
       ('public.render_jobs_payment_guard()', '5f39cc352da2a0a8fd96bcc9b4ce8dd2'),
       ('public.create_api_key(uuid, text, bigint)', 'c751606e0eafff55b916e603c1d78f2e'),
-      ('public.api_begin(text, text, text)', '9e9a834a16f62dc4cdfef82b718948d5'),
-      ('public.oauth_ctx(text, text, text)', 'ebdcdaad7baea2b4e7c69735180c9393')) v(sig, want) loop
+      ('public.api_begin(text, text, text)', '9ff0b39b5c5f86b82a4df3054b1908e8'),
+      ('public.oauth_ctx(text, text, text)', '8cf90c6006cf30dc492c56fbfdcdb789'),
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0226: % is not 0226''s body (md5 %): if an older file was re-run over it, apply 0226 again first, then roll back; if a later file changed it, take that file out first', r.sig, h;
@@ -1905,6 +1907,37 @@ begin
 end
 $$;
 
+-- workflow_confirmer_may_spend: 0074's body, verbatim.
+create or replace function public.workflow_confirmer_may_spend(p_user uuid, p_org uuid) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  with pr as (
+    select case
+      when public.app_members_empty() then
+        case when exists (select 1 from public.org_members m
+                           where m.org_id = public.default_org_id() and m.user_id = p_user) then 'owner' end
+      else coalesce(
+        (select a.role from public.app_members a where a.user_id = p_user),
+        (select a.role from public.app_members a, auth.users u
+          where u.id = p_user and u.email_confirmed_at is not null
+            and a.user_id is null
+            and nullif(lower(btrim(coalesce(u.email, ''))), '') is not null
+            and lower(a.email) = lower(btrim(u.email))
+          limit 1))
+    end as role
+  )
+  select p_user is not null and p_org is not null and (
+    case when public.credits_exempt(p_org) then
+      exists (select 1 from pr where pr.role in ('owner', 'admin'))
+    else
+      exists (select 1 from pr where pr.role in ('owner', 'admin'))
+      or (p_org = public.default_org_id()
+          and exists (select 1 from pr where public.app_role_rank(pr.role) >= public.app_role_rank('editor')))
+      or exists (select 1 from public.org_members m
+                  where m.org_id = p_org and m.user_id = p_user
+                    and public.app_role_rank(m.role) >= public.app_role_rank('editor'))
+    end)
+$$;
+
 revoke all on function public.reserve_credits(uuid, text, numeric) from public, anon, authenticated, service_role;
 grant execute on function public.reserve_credits(uuid, text, numeric) to authenticated;
 grant execute on function public.reserve_credits(uuid, text, numeric) to service_role;
@@ -1936,6 +1969,7 @@ revoke all on function public.create_api_key(uuid, text, bigint) from public, an
 grant execute on function public.create_api_key(uuid, text, bigint) to authenticated;
 revoke all on function public.api_begin(text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_ctx(text, text, text) from public, anon, authenticated, service_role;
+revoke all on function public.workflow_confirmer_may_spend(uuid, uuid) from public, anon, authenticated, service_role;
 
 do $$
 declare
@@ -1958,7 +1992,8 @@ begin
       ('public.render_jobs_payment_guard()', '3807936ade6801fa20da292e27fa7f64'),
       ('public.create_api_key(uuid, text, bigint)', '4b311587d0f62ade8334beec83049e01'),
       ('public.api_begin(text, text, text)', '8b3b4fb4f4a5ab698584bc4f30e9fd14'),
-      ('public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc')) v(sig, want) loop
+      ('public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc'),
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'bf5b3922c06fb82f832de36394e88ef7')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0226 end state: % is not the earlier body (md5 %)', r.sig, h;

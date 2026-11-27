@@ -2660,28 +2660,44 @@ that stays read-only support access. Spending takes a seat in `org_members` (021
 organization, whose credits are the platform's own, a platform owner or admin may, as before. A read-only check before this file
 found no non-member staff activity on any of these paths in production.
 
-- **Sixteen bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Each asks
-  `is_org_spender` right after its own who-may-call check, with the role it already asked of a member, and refuses `not_a_member`
-  (NS400; `api_err` 403 for the API and connected apps) before anything is locked, counted, priced, held or written:
+- **Seventeen bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Sixteen spend paths
+  ask `is_org_spender` right after their own who-may-call check, with the role they already asked of a member, and refuse
+  `not_a_member` (NS400; `api_err` 403 for the API and connected apps) before anything is counted, priced, held or written:
   `reserve_credits` (admin; the platform's own caller is still trusted), `create_creative_job` (any member), `start_workflow_run`
   and `advance_workflow_run` (editor), `approve_storyboard`, `request_scene_regenerate`, `request_repurpose`,
   `start_series_episode` (admin), the paid four-argument `request_editor_export`, `request_brand_scan`, `request_character_swap`,
   `request_download` (editor; its exempt organization is not asked, as it has no platform-admin rule there),
   `render_jobs_payment_guard` (a signed-in browser's row, admin), `create_api_key` (admin; `create_scoped_api_key` calls it first),
   and at use time `api_begin` (the key's maker) and `oauth_ctx` (the connected app's person), both before the request is counted.
+- **Row locks.** Two paths take a row lock first, to ask who may call: `approve_storyboard` (`storyboard_lock_for_runner`'s FOR
+  UPDATE on the storyboard) and the paid `request_editor_export` (0054's FOR UPDATE on the project). The refusal is an exception,
+  so it aborts the transaction: the lock goes with it and nothing persists.
+- **The API doors** (`api_begin`, `oauth_ctx`) ask `is_org_spender` first, so a seated member pays one index probe and passes;
+  `is_org_member` is asked only to tell a refusal from the old one. The check sits in its own `begin … exception when others`
+  block (an unexpected error answers `internal_error` 500, like the block after it, never a raw SQL error), before the rate
+  counter.
+- **The confirmer** (Breach 0226-1). `workflow_confirmer_may_spend` (0074), which a workflow's later step asks of the member who
+  pressed Run now, answered yes from the platform role in every organization: a platform admin with only a viewer seat kept spending
+  on later steps. Its non-exempt branch now asks only for a seat of editor or above (0074's platform arm and its dead
+  `p_org = default_org_id()` arm go); the exempt branch keeps its platform owner or admin arm. Such a step stops with
+  `confirmation_revoked` and holds nothing.
 - **Refused as before**: a member of another organization, a viewer where an editor is asked, a key whose maker is no admin at all
   (`key_owner_not_admin`), a connection whose person lost access (`workspace_access_lost`). The new check never answers first.
-- **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`); a
-  workflow's later steps (made as the confirmer through `create_creative_job`: the step stops with `not_a_member`);
+- **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`);
   `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`, the Studio AI
   chat) and every quote are not asked.
+- **Accepted, not changed** (DB review): a `not_a_member` answer of `api_begin` / `oauth_ctx` is not logged through `api_finish`
+  (L4: the request context is not built yet, as for `api_not_activated`), and the review's I1, both left as they are.
 - **The app** reads `not_a_member` as its own word (403) in each path's map, with en / ru / uz copy (`tests/not-a-member.test.ts`):
   the run's hold, downloads, storyboard approval, scene repair, repurpose, series start, paid export, brand scan, character swap,
   generations and workflows, the Developer console's key creation, the API spec and the connected assistant's sentence.
 - **Publishing and privacy**: untouched (CLAUDE.md rule 2). No browser path gains anything; each may only refuse more.
-- **Replay**: the file replays onto itself. Re-running 0192 after it fails loudly; re-running 0042, 0057, 0074, 0080, 0085, 0093,
-  0094 or 0120 silently puts that file's body back (apply 0226 again after). The replays and rollbacks of 0122, 0133, 0136, 0137,
-  0147 and 0192 refuse while it is on: take 0226 out first.
+- **Replay.** The file replays onto itself. Any earlier file that defines one of these seventeen functions restores its older body
+  when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on the lab with 0226 applied
+  (`tests/security/test_sec_org_spender_0226.py` pins both lists): re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174
+  or 0192 fails loudly (take 0226, and whatever else sits on that file, out first), and so does 0020 on a database that holds
+  ledger rows of a later kind; re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080,
+  0085, 0093, 0094 or 0111 applies silently and puts an older body back (apply 0226 again after).
 - **Requires** 0215 (`is_org_spender`) and the files above.
-- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the sixteen earlier bodies back, verbatim, with
+- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the seventeen earlier bodies back, verbatim, with
   their grants. It adds nothing else, so nothing else is undone.

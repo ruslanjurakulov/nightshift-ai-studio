@@ -126,24 +126,34 @@ def find_problems(migrations, base, first_form):
     return problems
 
 
+def _git(*args, check=True):
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=60, check=check)
+
+
+def git_is_shallow():
+    """A shallow clone's oldest commit is a boundary, not the commit that added a file: its history cannot answer "first merged"."""
+    try:
+        return _git("rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def git_first_form(name):
+    """The file as it first reached main. main's own first-parent line answers when the clone has origin/main (CI fetches every
+    branch): a branch built on another one's draft, and merged with main since, would otherwise see that draft as the first form,
+    which never reached main or the owner's database. A file main never contained is not merged yet: its first form is the file
+    as it is now. HEAD's own history answers only when there is no origin/main."""
     rel = f"supabase/migrations/{name}"
     try:
-        # "First merged" is the commit that added the file to main: on a branch built on another one's draft (and later merged with
-        # main), the oldest add in HEAD's history is that draft, not what reached main and the owner's database. main's own
-        # first-parent line answers when the clone has it (CI fetches every branch); HEAD's history otherwise, as before.
-        shas = []
-        if subprocess.run(["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"], cwd=ROOT, capture_output=True,
-                          timeout=60).returncode == 0:
-            shas = subprocess.run(["git", "log", "--first-parent", "--diff-filter=A", "--format=%H", "refs/remotes/origin/main", "--",
-                                   rel], cwd=ROOT, capture_output=True, text=True, timeout=60, check=True).stdout.split()
-        if not shas:
-            shas = subprocess.run(["git", "log", "--diff-filter=A", "--format=%H", "--", rel], cwd=ROOT, capture_output=True,
-                                  text=True, timeout=60, check=True).stdout.split()
+        if _git("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main", check=False).returncode == 0:
+            shas = _git("log", "--first-parent", "--diff-filter=A", "--format=%H", "refs/remotes/origin/main", "--", rel).stdout.split()
+            if not shas:
+                return (MIGRATIONS / name).read_text(encoding="utf-8")
+            return _git("show", f"{shas[-1]}:{rel}").stdout
+        shas = _git("log", "--diff-filter=A", "--format=%H", "--", rel).stdout.split()
         if not shas:
             return None
-        return subprocess.run(["git", "show", f"{shas[-1]}:{rel}"], cwd=ROOT, capture_output=True, text=True,
-                              timeout=60, check=True).stdout
+        return _git("show", f"{shas[-1]}:{rel}").stdout
     except (OSError, subprocess.SubprocessError):
         return None
 
@@ -164,6 +174,9 @@ GUARD = "do $$ begin if to_regprocedure('public.notification_emit_org_role(uuid,
 
 class MigrationPrerequisites(unittest.TestCase):
     def test_every_guard_in_the_repo_names_something_that_existed_when_the_prerequisite_was_first_merged(self):
+        if git_is_shallow():
+            self.skipTest("SHALLOW CLONE: the oldest commit here is a boundary, not the one that first merged each migration; "
+                          "fetch the whole history (actions/checkout fetch-depth: 0) to run this check")
         self.assertEqual(find_problems(repo_migrations(), repo_base(), git_first_form), [])
 
     def test_the_repo_has_guards_to_check(self):

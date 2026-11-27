@@ -16,11 +16,14 @@
 --     grant's person, is_org_member admin).
 --   * A live read-only check (coordinator, before this file) found no non-member platform staff activity on any of them in production.
 --
--- CHANGE (additive; sixteen bodies replaced, each with one marked 0226 hunk and nothing else changed; nothing added): each path asks
+-- CHANGE (additive; seventeen bodies replaced, each with one marked 0226 hunk and nothing else changed; nothing added): each path asks
 --   0215's is_org_spender(org, role) right after its own who-may-call check, with the role it already demanded of a member, and
 --   refuses not_a_member (NS400, through the refusal the path already uses: creative_refuse, a raise, or api_err 403 for the API and
---   connected apps) BEFORE anything is locked, counted, priced, reserved or written. A member of another organization, a viewer where
---   an editor is needed, a call with no user: refused exactly as before, by the earlier check, with the earlier word.
+--   connected apps) BEFORE anything is counted, priced, reserved or written. Two paths take a row lock first, to ask who may call:
+--   approve_storyboard (storyboard_lock_for_runner's FOR UPDATE on the storyboard) and the paid request_editor_export (0054's FOR
+--   UPDATE on the project). The refusal is an exception, so it aborts the transaction: the lock goes with it and nothing persists.
+--   A member of another organization, a viewer where an editor is needed, a call with no user: refused exactly as before, by the
+--   earlier check, with the earlier word.
 --
 -- PATHS, their role, and the replaced body (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as
 -- one space):
@@ -38,15 +41,21 @@
 --   request_download           editor  268af77d1e00070cb96a7c98baeb51b1 (0094) -> f4ae9d569094dc50f5e9df5b36f327f0
 --   render_jobs_payment_guard  admin   3807936ade6801fa20da292e27fa7f64 (0122) -> 5f39cc352da2a0a8fd96bcc9b4ce8dd2
 --   create_api_key             admin   4b311587d0f62ade8334beec83049e01 (0042) -> c751606e0eafff55b916e603c1d78f2e
---   api_begin                  admin   8b3b4fb4f4a5ab698584bc4f30e9fd14 (0093) -> 9e9a834a16f62dc4cdfef82b718948d5
---   oauth_ctx                  admin   fe42c9e4f53a6c9aaba40077ce905cdc (0147) -> ebdcdaad7baea2b4e7c69735180c9393
+--   api_begin                  admin   8b3b4fb4f4a5ab698584bc4f30e9fd14 (0093) -> 9ff0b39b5c5f86b82a4df3054b1908e8
+--   oauth_ctx                  admin   fe42c9e4f53a6c9aaba40077ce905cdc (0147) -> 8cf90c6006cf30dc492c56fbfdcdb789
+--   workflow_confirmer_may_spend editor  bf5b3922c06fb82f832de36394e88ef7 (0074) -> f3869c81bfc92baa38380830943f9985
 --
 -- COVERED WITHOUT A BODY OF THEIR OWN:
 --   * api_create_video, api_request_download, api_creative_create and every other API endpoint open with api_begin; oauth_create_video,
 --     oauth_creative_create and the other MCP tools with oauth_ctx (api_begin hands a token to it). Refused there.
---   * create_scoped_api_key calls create_api_key before it writes anything. A workflow's later steps are made by
---     workflow_advance_locked as their confirmer, through create_creative_job: a confirmer without a seat makes the step refuse
---     not_a_member (its why_code), and nothing is held.
+--   * create_scoped_api_key calls create_api_key before it writes anything.
+--
+-- AND THE CONFIRMER (Breach 0226-1): workflow_confirmer_may_spend (0074) is what a workflow's later step asks of the member who
+--   pressed Run now before it is made as them. It answered yes from the platform role in every organization, so a platform admin
+--   whose seat there is only a viewer's (create_creative_job's is_org_spender(org, 'viewer') says yes) kept spending on later steps.
+--   Its non-exempt branch now asks only for a seat of editor or above (the platform arm and 0074's dead `p_org = default_org_id()`
+--   arm go: the default organization is the exempt one); the exempt branch keeps its platform owner or admin arm. Such a step stops
+--   with confirmation_revoked, as for any member who may no longer run workflows here, and holds nothing.
 --   * request_reply_draft (0090) already asks inbox_real_member (a bound seat, or the exempt organization's platform admin): unchanged.
 --   * creative_platform_reserve clears the claims for its reserve_credits call (the platform's own caller): the path that called it
 --     (create_creative_job, request_brand_scan, request_character_swap, request_reply_draft) asks first.
@@ -56,16 +65,21 @@
 --   asked; quotes take no hold and answer as before. There is no publish path here and nothing about privacy (CLAUDE.md rule 2): no
 --   browser path gains anything, every one may only refuse more.
 --
--- REPLAY. This file replays onto itself. Re-running 0122, 0133, 0136, 0137, 0147 or 0192 after it FAILS LOUDLY (their guards refuse
---   these bodies), and so do their rollbacks: take this file out first with its rollback. Re-running 0042, 0057, 0074, 0080, 0085,
---   0093, 0094 or 0120 after it silently puts that file's earlier body back (they have no guard for these functions): apply this
---   file again after.
+-- REPLAY. This file replays onto itself. The general rule: any earlier file that defines one of these seventeen functions restores
+--   its older body when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on a lab
+--   database with this file applied (tests/security/test_sec_org_spender_0226.py pins both lists):
+--   * re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174 or 0192 FAILS LOUDLY: take this file (and whatever else sits
+--     on that file) out first with its rollback. So does 0020 on a database that holds ledger rows of a later kind (its own
+--     credit_transactions check refuses them); on an empty one it is silent and puts 0020's reserve_credits back;
+--   * re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080, 0085, 0093, 0094
+--     or 0111 applies SILENTLY and puts an older body back: apply this file again after.
 --
 -- NUMBER. Provisionally 0226; the coordinator confirms it at merge. Needs 0215 (is_org_spender) and the files named above.
--- Undo: docs/sql/rollback_0226_org_spender_everywhere.sql (owner-applied): the sixteen earlier bodies back, verbatim. Nothing else to
+-- Undo: docs/sql/rollback_0226_org_spender_everywhere.sql (owner-applied): the seventeen earlier bodies back, verbatim. Nothing else to
 --   undo: this file adds no table, column or function.
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
+
 
 set local lock_timeout = '5s';
 
@@ -77,7 +91,7 @@ begin
   if to_regprocedure('public.is_org_spender(uuid, text)') is null then
     raise exception '0226 asks 0215''s is_org_spender: apply 0215_film_archive_resume.sql first';
   end if;
-  -- The 16 bodies this file replaces: the earlier one, or this file's own (a replay).
+  -- The 17 bodies this file replaces: the earlier one, or this file's own (a replay).
   for r in select * from (values
       ('public.reserve_credits(uuid, text, numeric)', '20800909ce4fdbcff87c5a99e735299f', '0fc6122a91a6287c632a59f2855a0d14', '0094'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', 'a5e00e65d1161bccd2acefb7745e659b', 'ab939bb64ef626e30c1438c6030d8801', '0192'),
@@ -93,8 +107,9 @@ begin
       ('public.request_download(text, text, numeric)', '268af77d1e00070cb96a7c98baeb51b1', 'f4ae9d569094dc50f5e9df5b36f327f0', '0094'),
       ('public.render_jobs_payment_guard()', '3807936ade6801fa20da292e27fa7f64', '5f39cc352da2a0a8fd96bcc9b4ce8dd2', '0122'),
       ('public.create_api_key(uuid, text, bigint)', '4b311587d0f62ade8334beec83049e01', 'c751606e0eafff55b916e603c1d78f2e', '0042'),
-      ('public.api_begin(text, text, text)', '8b3b4fb4f4a5ab698584bc4f30e9fd14', '9e9a834a16f62dc4cdfef82b718948d5', '0093'),
-      ('public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc', 'ebdcdaad7baea2b4e7c69735180c9393', '0147')) v(sig, was, now_, src) loop
+      ('public.api_begin(text, text, text)', '8b3b4fb4f4a5ab698584bc4f30e9fd14', '9ff0b39b5c5f86b82a4df3054b1908e8', '0093'),
+      ('public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc', '8cf90c6006cf30dc492c56fbfdcdb789', '0147'),
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'bf5b3922c06fb82f832de36394e88ef7', 'f3869c81bfc92baa38380830943f9985', '0074')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
       raise exception '0226 found % with a body that is neither %''s nor 0226''s (md5 %): read the live body first', r.sig, r.src, h;
@@ -1955,12 +1970,20 @@ begin
   -- organization's credits takes a seat in it. A platform owner or admin who made a key in an organization, then left it (or never
   -- sat in it), passes 0043's is_org_member below; here the key is refused, before the request is counted or anything is read or
   -- held. In the exempt organization its platform owner or admin may, as before. A person who is no admin at all is refused below,
-  -- as before (key_owner_not_admin).
-  perform public.api_act_as(k.created_by);
-  if public.is_org_member(k.org_id, 'admin') and not public.is_org_spender(k.org_id, 'admin') then
-    return public.api_err(403, 'not_a_member',
-      'The person who created this key is not an owner or admin member of its organization. A member who is an owner or admin must create a new key.');
-  end if;
+  -- as before (key_owner_not_admin). The seat is asked first (one index probe for a member, who passes); an unexpected error here
+  -- is the same 500 as in the block below, never a raw SQL error. Not logged through api_finish: ctx is not built yet.
+  begin
+    perform public.api_act_as(k.created_by);
+    if not public.is_org_spender(k.org_id, 'admin') then
+      if public.is_org_member(k.org_id, 'admin') then
+        return public.api_err(403, 'not_a_member',
+          'The person who created this key is not an owner or admin member of its organization. A member who is an owner or admin must create a new key.');
+      end if;
+    end if;
+  exception when others then
+    return public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.');
+  end;
 
   v_exempt := public.credits_exempt(k.org_id);
   select * into acc from public.api_accounts where org_id = k.org_id;
@@ -2052,11 +2075,20 @@ begin
   -- spending an organization's credits takes a seat in it. A platform owner or admin whose seat is gone passes 0043's is_org_member
   -- below; here the connection is refused, before the request is counted or anything is read or held. In the exempt organization
   -- its platform owner or admin may, as before. A person who is no admin at all is refused below, as before (workspace_access_lost).
-  perform public.api_act_as(v_user);
-  if public.is_org_member(v_org, 'admin') and not public.is_org_spender(v_org, 'admin') then
-    return public.api_err(403, 'not_a_member',
-      'The person who connected this app is not an owner or admin member of its workspace. Reconnect the app as a member.');
-  end if;
+  -- The seat is asked first (one index probe for a member, who passes); an unexpected error here is the same 500 as in the block
+  -- below, never a raw SQL error. Not logged through api_finish: ctx is not built yet.
+  begin
+    perform public.api_act_as(v_user);
+    if not public.is_org_spender(v_org, 'admin') then
+      if public.is_org_member(v_org, 'admin') then
+        return public.api_err(403, 'not_a_member',
+          'The person who connected this app is not an owner or admin member of its workspace. Reconnect the app as a member.');
+      end if;
+    end if;
+  exception when others then
+    return public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.');
+  end;
 
   v_reset := greatest(1, ceil(extract(epoch from (v_minute + interval '1 minute' - now())))::integer);
   -- 0147: the MCP route's oauth_check already took this request's unit and left a credit for its request id,
@@ -2114,6 +2146,41 @@ begin
 end
 $$;
 
+-- ───────────────────────────────────────────────────────────────────────────
+-- 17. workflow_confirmer_may_spend (0074's body, one marked 0226 hunk: editor or above, a seat)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.workflow_confirmer_may_spend(p_user uuid, p_org uuid) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  with pr as (
+    select case
+      when public.app_members_empty() then
+        case when exists (select 1 from public.org_members m
+                           where m.org_id = public.default_org_id() and m.user_id = p_user) then 'owner' end
+      else coalesce(
+        (select a.role from public.app_members a where a.user_id = p_user),
+        (select a.role from public.app_members a, auth.users u
+          where u.id = p_user and u.email_confirmed_at is not null
+            and a.user_id is null
+            and nullif(lower(btrim(coalesce(u.email, ''))), '') is not null
+            and lower(a.email) = lower(btrim(u.email))
+          limit 1))
+    end as role
+  )
+  select p_user is not null and p_org is not null and (
+    case when public.credits_exempt(p_org) then
+      exists (select 1 from pr where pr.role in ('owner', 'admin'))
+    else
+      -- 0226 (the owner's decision, 22 Nov; Breach 0226-1): in a customer's organization a later step spends on a SEAT of editor or
+      -- above, never on the platform role (0043 makes a platform owner or admin an admin of every organization; that stays read-only
+      -- support access). 0074's two platform arms go: the owner / admin one, and the default organization's, which this branch never
+      -- reaches (the default organization is the exempt one). The exempt branch above keeps its platform owner or admin arm.
+      exists (select 1 from public.org_members m
+                  where m.org_id = p_org and m.user_id = p_user
+                    and public.app_role_rank(m.role) >= public.app_role_rank('editor'))
+    end)
+$$;
+
 -- The replaced bodies keep their earlier grants (create or replace keeps them); restated so a replay leaves the same state.
 revoke all on function public.reserve_credits(uuid, text, numeric) from public, anon, authenticated, service_role;
 grant execute on function public.reserve_credits(uuid, text, numeric) to authenticated;
@@ -2146,6 +2213,7 @@ revoke all on function public.create_api_key(uuid, text, bigint) from public, an
 grant execute on function public.create_api_key(uuid, text, bigint) to authenticated;
 revoke all on function public.api_begin(text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_ctx(text, text, text) from public, anon, authenticated, service_role;
+revoke all on function public.workflow_confirmer_may_spend(uuid, uuid) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- The end state, asserted inside the transaction
@@ -2170,8 +2238,9 @@ begin
       ('public.request_download(text, text, numeric)', 'f4ae9d569094dc50f5e9df5b36f327f0'),
       ('public.render_jobs_payment_guard()', '5f39cc352da2a0a8fd96bcc9b4ce8dd2'),
       ('public.create_api_key(uuid, text, bigint)', 'c751606e0eafff55b916e603c1d78f2e'),
-      ('public.api_begin(text, text, text)', '9e9a834a16f62dc4cdfef82b718948d5'),
-      ('public.oauth_ctx(text, text, text)', 'ebdcdaad7baea2b4e7c69735180c9393')) v(sig, want) loop
+      ('public.api_begin(text, text, text)', '9ff0b39b5c5f86b82a4df3054b1908e8'),
+      ('public.oauth_ctx(text, text, text)', '8cf90c6006cf30dc492c56fbfdcdb789'),
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception '0226 end state: % does not hold this file''s body (md5 %)', r.sig, h;
@@ -2224,7 +2293,10 @@ begin
      or has_function_privilege('service_role', 'public.api_begin(text, text, text)', 'execute')
      or has_function_privilege('anon', 'public.oauth_ctx(text, text, text)', 'execute')
      or has_function_privilege('authenticated', 'public.oauth_ctx(text, text, text)', 'execute')
-     or has_function_privilege('service_role', 'public.oauth_ctx(text, text, text)', 'execute') then
+     or has_function_privilege('service_role', 'public.oauth_ctx(text, text, text)', 'execute')
+     or has_function_privilege('anon', 'public.workflow_confirmer_may_spend(uuid, uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.workflow_confirmer_may_spend(uuid, uuid)', 'execute')
+     or has_function_privilege('service_role', 'public.workflow_confirmer_may_spend(uuid, uuid)', 'execute') then
     raise exception '0226 end state: a grant is not what this file sets';
   end if;
 end $$;
@@ -2248,6 +2320,7 @@ end $$;
 --     ('public.request_download(text, text, numeric)', 'f4ae9d569094dc50f5e9df5b36f327f0'),
 --     ('public.render_jobs_payment_guard()', '5f39cc352da2a0a8fd96bcc9b4ce8dd2'),
 --     ('public.create_api_key(uuid, text, bigint)', 'c751606e0eafff55b916e603c1d78f2e'),
---     ('public.api_begin(text, text, text)', '9e9a834a16f62dc4cdfef82b718948d5'),
---     ('public.oauth_ctx(text, text, text)', 'ebdcdaad7baea2b4e7c69735180c9393')
+--     ('public.api_begin(text, text, text)', '9ff0b39b5c5f86b82a4df3054b1908e8'),
+--     ('public.oauth_ctx(text, text, text)', '8cf90c6006cf30dc492c56fbfdcdb789'),
+--     ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985')
 --   ) v(sig, want) left join pg_proc p on p.oid = to_regprocedure(v.sig);

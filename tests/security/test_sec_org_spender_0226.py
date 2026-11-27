@@ -287,9 +287,10 @@ def test_workflows_another_organizations_member_is_refused_as_before(w):
     assert not adv.ok and (adv.sqlstate, adv.error) == ("P0002", "not_found"), adv
 
 
-def test_a_later_workflow_step_of_a_confirmer_without_a_seat_is_refused_not_a_member_and_holds_nothing(w):
-    """workflow_advance_locked makes a later step as the member who confirmed the run, through create_creative_job: a confirmer who
-    is (now) a platform admin without a seat makes the step refuse with not_a_member, never spend."""
+def test_a_later_workflow_step_of_a_confirmer_without_a_seat_is_refused_and_holds_nothing(w):
+    """A later step is asked of the member who confirmed the run (workflow_confirmer_may_spend, then create_creative_job as them): a
+    confirmer who is (now) a platform admin without a seat stops it with confirmation_revoked (the confirmer rule, since Breach 0226-1)
+    and nothing is held."""
     s = w.su
     wf, ver = workflow(s, w.member, w.org)
     run = str(uuid.uuid4())
@@ -304,7 +305,7 @@ def test_a_later_workflow_step_of_a_confirmer_without_a_seat_is_refused_not_a_me
     assert as_(s, w.member, "select public.advance_workflow_run(%s)", [run]).ok
     become(s, None)
     step = s.rows("select status, error_code from public.workflow_run_steps where run_id = %s and step_index = 1", [run])[0]
-    assert step[1] == "not_a_member", step
+    assert step[1] == "confirmation_revoked", step
     assert money(s, w.org) == held
 
 
@@ -916,14 +917,28 @@ def _bodies() -> dict:
     return out
 
 
-def test_the_file_replaces_exactly_the_sixteen_paths_and_each_body_asks_is_org_spender_with_its_role(conn):
+#: The one rule that is asked of someone other than the caller (a run's confirmer): it reads org_members itself.
+CONFIRMER = "workflow_confirmer_may_spend"
+
+
+def test_the_file_replaces_exactly_the_seventeen_bodies_and_each_spend_path_asks_is_org_spender_with_its_role(conn):
     bodies = _bodies()
     assert sorted(bodies) == sorted(sig.split("(")[0].removeprefix("public.") for sig, *_ in spender.PATHS)
     for sig, role, _src, _was, now_ in spender.PATHS:
         name = sig.split("(")[0].removeprefix("public.")
+        assert md5_of(conn, sig) == now_, sig
+        if name == CONFIRMER:
+            continue
         assert f"is_org_spender(" in bodies[name] and f"'{role}')" in bodies[name].split("is_org_spender(", 1)[1].split("\n", 1)[0], name
         assert "not_a_member" in bodies[name], name
-        assert md5_of(conn, sig) == now_, sig
+
+
+def test_the_confirmer_rule_asks_a_seat_in_a_customers_organization_and_the_platform_role_only_in_the_exempt_one():
+    code = "\n".join(ln for ln in _bodies()[CONFIRMER].splitlines() if not ln.strip().startswith("--"))
+    exempt, customer = code.split("case when public.credits_exempt(p_org) then", 1)[1].split("    else", 1)
+    assert "pr.role in ('owner', 'admin')" in exempt
+    assert "pr." not in customer and "default_org_id" not in customer, customer
+    assert "m.org_id = p_org and m.user_id = p_user" in customer and "app_role_rank('editor')" in customer
 
 
 #: The first thing in a body that locks, holds, counts or writes: the spender question must come before it.
@@ -932,7 +947,7 @@ FIRST_EFFECT = re.compile(r"credit_account_lock|reserve_credits\(|creative_platf
                           r"download_fail_locked|creative_expire_locked")
 
 
-@pytest.mark.parametrize("sig", [p[0] for p in spender.PATHS])
+@pytest.mark.parametrize("sig", [p[0] for p in spender.PATHS if CONFIRMER not in p[0]])
 def test_each_path_asks_before_its_first_lock_hold_count_or_write(sig):
     name = sig.split("(")[0].removeprefix("public.")
     body = "\n".join(ln for ln in _bodies()[name].splitlines() if not ln.strip().startswith("--"))
@@ -1020,3 +1035,44 @@ def test_sec_dbs_take_off_and_put_back_chain_goes_through_0226(conn):
             for sig, *_rest, now_ in spender.PATHS:
                 assert md5_of(c, sig) == now_, (back.__name__, sig)
             c.rollback()
+
+
+def test_the_api_doors_ask_the_seat_first_inside_their_own_500_block_before_the_request_is_counted():
+    """api_begin and oauth_ctx: is_org_spender first (a seated member pays one probe and passes), is_org_member only for the refusal,
+    both inside a begin ... exception block that answers internal_error, and all of it before the rate counter is taken."""
+    for name, counted in (("api_begin", "insert into public.api_rate_counters"), ("oauth_ctx", "oauth_check_credit_take")):
+        body = _bodies()[name]
+        hunk = body[body.index("-- 0226"):]
+        block = hunk[hunk.index("begin\n"):hunk.index("end;\n")]
+        assert block.index("is_org_spender(") < block.index("is_org_member(") < block.index("'not_a_member'"), name
+        assert "exception when others then" in block and "'internal_error'" in block, name
+        assert body.index("'not_a_member'") < body.index(counted), name
+
+
+#: What re-running each earlier file that defines one of the seventeen functions does once 0226 is on (the file's REPLAY note).
+#: The lab holds ledger rows of later kinds, so 0020's own credit_transactions check refuses it here (on an empty database it is silent).
+LOUD = {"0020", "0120", "0122", "0129", "0132", "0133", "0136", "0137", "0147", "0174", "0192"}
+SILENT = {"0030", "0031", "0036", "0040", "0041", "0042", "0057", "0060", "0062", "0070", "0073", "0074", "0075",
+          "0076", "0080", "0085", "0093", "0094", "0111"}
+
+
+def test_the_replay_note_names_exactly_the_files_that_fail_loudly_and_the_ones_that_silently_put_an_older_body_back(conn):
+    names = [sig.split("(")[0].removeprefix("public.") for sig, *_ in spender.PATHS]
+    rx = re.compile(r"(?m)^create or replace function public\.(" + "|".join(names) + r")\s*\(")
+    files = [p for p in sec_db.migration_files() if p.name < MIGRATION.name and rx.search(p.read_text(encoding="utf-8"))]
+    loud, silent = set(), set()
+    for p in files:
+        with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+            before = [md5_of(c, sig) for sig, *_ in spender.PATHS]
+            try:
+                c.execute(p.read_text(encoding="utf-8"))
+            except psycopg.Error:
+                loud.add(p.name[:4])
+            else:
+                if [md5_of(c, sig) for sig, *_ in spender.PATHS] != before:
+                    silent.add(p.name[:4])
+            c.rollback()
+    assert (loud, silent) == (LOUD, SILENT)
+    note = re.sub(r"\s*\n--\s*", " ", MIGRATION.read_text(encoding="utf-8").split("-- REPLAY.", 1)[1].split("-- NUMBER.", 1)[0])
+    for n in LOUD | SILENT:
+        assert n in note, n
