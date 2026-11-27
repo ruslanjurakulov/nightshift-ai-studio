@@ -5,8 +5,10 @@
  */
 import type { ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
-import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
-import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+// The client-safe slice, not lib/site/showcase.ts: the sign-in stages (components/auth/AuthShell.tsx, a Client Component) resolve
+// their slot in the browser, so whatever this module reads is shipped. Every helper is typed on a card, which a full entry is too.
+import type { ShowcaseCard, ShowcaseFiles } from "@/lib/site/showcase";
+import { SHOWCASE_CARDS, SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { TOOL_JOBS } from "@/lib/site/tool-samples";
 
 /**
@@ -58,14 +60,14 @@ export type PlaceDef = { ai: string | null; aiPosition?: string; id: MediaId; po
  * either direction (CLAUDE.md #5), so every label on a slot is chosen from this and nothing else.
  */
 export type PlaceMedia =
-  | { kind: "ai"; entry: ShowcaseEntry; files: ShowcaseFiles; moving: boolean; position?: string }
+  | { kind: "ai"; entry: ShowcaseCard; files: ShowcaseFiles; moving: boolean; position?: string }
   | { kind: "stock"; id: MediaId; footage: boolean; clip: ClipId | null; position?: string };
 
 /** The sample a line names (or, with `ai` null, the newest entry exported for `name`) when its entry and its files are both here; else the stock fallback. */
 export function placeMedia(
   def: PlaceDef,
   name: string | null,
-  entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
+  entries: readonly ShowcaseCard[] = SHOWCASE_CARDS,
   files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
 ): PlaceMedia {
   const entry = def.ai ? entries.find((e) => e.jobId === def.ai) : name ? entries.find((e) => e.slot === name) : undefined;
@@ -75,7 +77,7 @@ export function placeMedia(
 }
 
 /** What a slot shows (placeMedia over its line). */
-export function slotMedia(slot: SlotId, entries?: readonly ShowcaseEntry[], files?: Readonly<Record<string, ShowcaseFiles>>): PlaceMedia {
+export function slotMedia(slot: SlotId, entries?: readonly ShowcaseCard[], files?: Readonly<Record<string, ShowcaseFiles>>): PlaceMedia {
   return placeMedia(SLOTS[slot], slot, entries, files);
 }
 
@@ -97,14 +99,14 @@ export const EXAMPLE_JOBS: readonly string[] = [EXAMPLE_PHONE_JOB, EXAMPLE_THUMB
  * An example clip as a place's media (placeBox, PlaceFill), or null while its entry or its files are not in the repository. No stock
  * fallback, unlike a slot: a stand-in picture beside the example topic is exactly what the owner rejected, so its place is empty.
  */
-export function exampleMedia(job: string, entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): Extract<PlaceMedia, { kind: "ai" }> | null {
+export function exampleMedia(job: string, entries: readonly ShowcaseCard[] = SHOWCASE_CARDS, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): Extract<PlaceMedia, { kind: "ai" }> | null {
   const entry = entries.find((e) => e.jobId === job);
   const f = entry ? files[entry.jobId] : undefined;
   return entry && f ? { kind: "ai", entry, files: f, moving: entry.kind === "video" && f.clip !== null } : null;
 }
 
 /** The showcase jobs these slots show right now: a page leaves them out of its own gallery, so no clip is shown twice on it. */
-export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseEntry[], files?: Readonly<Record<string, ShowcaseFiles>>): string[] {
+export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseCard[], files?: Readonly<Record<string, ShowcaseFiles>>): string[] {
   return slots.flatMap((s) => {
     const m = slotMedia(s, entries, files);
     return m.kind === "ai" ? [m.entry.jobId] : [];
@@ -144,7 +146,7 @@ export const LANDING_LEFT_OUT: readonly string[] = [
  * the page does not show would be a fact the visitor cannot check (CLAUDE.md #5). Functions, not constants, so they read the slots
  * and the data file as they are when called.
  */
-export function landingPlacedJobs(entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
+export function landingPlacedJobs(entries: readonly ShowcaseCard[] = SHOWCASE_CARDS, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
   const hero = exampleMedia(HERO_JOB, entries, files);
   return [
     ...(hero?.moving ? [HERO_JOB] : []),

@@ -18,7 +18,14 @@
  * export and the registry keep agreeing; no public surface renders it, and tests/site-showcase.test.tsx pins that.
  *
  * Kept free of file imports (those are components/site/showcase-assets.ts), so the tests and the footer can read it.
+ *
+ * SERVER ONLY. An entry carries the job's vendor, the vendor's own model, the cost, the maker's credit and the file's sha256, and
+ * the owner's rule is that vendor names and vendor costs never reach the public site. While client code imported this module, the
+ * whole data file rode in a chunk loaded on /, /login, /signup and the Studio. Client code reads the generated slice instead
+ * (components/site/showcase-assets.ts SHOWCASE_CARDS, the ShowcaseCard shape below); a type-only import of this module is erased
+ * and is fine anywhere. scripts/showcase-bundle-check.mjs checks the built chunks.
  */
+import "server-only";
 import data from "@/lib/site/showcase.json";
 import type { Locale } from "@/lib/i18n/core";
 
@@ -96,6 +103,24 @@ export interface ShowcaseEntry {
    */
   cardLine: CardLine | null;
   exportedAt: string;
+}
+
+/**
+ * What client code may know about a sample (components/site/showcase-assets.ts SHOWCASE_CARDS, written by tools/export_showcase.py
+ * with the files): its key, the model id a link and an effect match on, the tool, the kind, the size, the slot it was exported for,
+ * and for an animation the sample picture it was made from. A subset of ShowcaseEntry by construction, so every helper typed on a
+ * card takes a full entry on the server unchanged. Nothing here names a vendor, a cost or a hash.
+ */
+export interface ShowcaseCard {
+  jobId: string;
+  modelId: string;
+  capability: string;
+  kind: "video" | "image";
+  width: number;
+  height: number;
+  slot: string | null;
+  /** Only an `operator_job` input names anything (the source sample's job); the site art's file and hash stay on the server. */
+  input: { kind: "operator_job"; jobId: string } | { kind: "none" | "site_art" };
 }
 
 /** One card line per site language. */
@@ -234,6 +259,16 @@ export function parseShowcase(raw: unknown): ShowcaseEntry[] {
 
 /** The data file's entries. Empty until the owner merges the first export: the gallery then renders nothing. */
 export const SHOWCASE_ENTRIES: readonly ShowcaseEntry[] = parseShowcase(data);
+
+/**
+ * An entry's client-safe card: exactly the fields tools/export_showcase.py writes into SHOWCASE_CARDS for it. The generated slice is
+ * pinned equal to SHOWCASE_ENTRIES.map(showcaseCard) (tests/showcase-cards.test.ts), so the two parsers cannot drift apart, and a
+ * test that stands in its own data file builds its stand-in slice with this.
+ */
+export function showcaseCard(e: ShowcaseEntry): ShowcaseCard {
+  const input: ShowcaseCard["input"] = e.input.kind === "operator_job" ? { kind: "operator_job", jobId: e.input.jobId } : { kind: e.input.kind };
+  return { jobId: e.jobId, modelId: e.modelId, capability: e.capability, kind: e.kind, width: e.width, height: e.height, slot: e.slot, input };
+}
 
 /** The models the site's samples name, each once, for the footer's credits. */
 export function showcaseModels(entries: readonly ShowcaseEntry[]): { modelId: string; modelName: string; attribution: ShowcaseEntry["attribution"] }[] {
