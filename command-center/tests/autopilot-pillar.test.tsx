@@ -145,7 +145,7 @@ describe("“You stay in control” says what the code does", () => {
     const main = read("main.py");
     expect(main.indexOf("verify_voice(ctx)")).toBeGreaterThan(0);
     expect(main.indexOf("verify_voice(ctx)")).toBeLessThan(main.indexOf("# ── Stages 1-2: Topic and Script"));
-    expect(read("modules/audio_mixer.py")).toMatch(/def verify_voice\(channel=None\) -> None:/);
+    expect(read("modules/audio_mixer.py")).toMatch(/def verify_voice\(channel=None(?:, today=None)?\) -> None:/);
     expect(pillarEn.control.fallback.body).toMatch(/never narrates in a different, cheaper voice/);
   });
 

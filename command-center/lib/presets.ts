@@ -19,7 +19,7 @@ import type { Dictionary, Locale } from "@/lib/i18n";
 import { channelPath } from "@/lib/channels";
 import { HOME_FORMATS, defaultLanguage, lengthSeconds, runHandoffHref, type HomeFormatId } from "@/lib/home";
 import {
-  STUDIO_VOICES,
+  studioVoices,
   isVoiceId,
   kindLabel,
   type StudioCapability,
@@ -98,14 +98,14 @@ export function lookFromQuery(q: Query): LibraryStyle | null {
  * only one the Studio offers). Anything else leaves the prefill as it was.
  * Fills the form; prices and spends nothing.
  */
-export function presetPrefill(initial: StudioPrefill | null, q: Query): StudioPrefill | null {
+export function presetPrefill(initial: StudioPrefill | null, q: Query, now: Date = new Date()): StudioPrefill | null {
   if (!initial) return initial;
   const tpl = templateById(one(q.template));
   if (tpl && tpl.capability === initial.capability) {
     return { ...initial, ...templatePrefill(tpl), sourceId: initial.sourceId ?? null };
   }
   const voice = one(q.voice);
-  if (initial.capability === "tts" && voice && isVoiceId(voice) && STUDIO_VOICES.some((v) => v.id === voice)) {
+  if (initial.capability === "tts" && voice && isVoiceId(voice) && studioVoices(now).some((v) => v.id === voice)) {
     return { ...initial, voiceId: voice };
   }
   return initial;
@@ -170,7 +170,7 @@ export function buildPresetCards(slug: string, locale: Locale, t: Dictionary): P
   }
 
   const voiceStyles = t.desk.voiceStyles as Record<string, string>;
-  for (const v of STUDIO_VOICES) {
+  for (const v of studioVoices(new Date())) {
     const style = voiceStyles[v.id] ?? v.style;
     cards.push({
       key: `voice:${v.id}`,

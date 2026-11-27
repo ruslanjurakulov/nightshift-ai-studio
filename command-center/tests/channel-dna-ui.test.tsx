@@ -29,6 +29,7 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
+import { fmt } from "@/lib/i18n/core";
 import { ChannelDnaSection } from "@/components/channels/ChannelDnaSection";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { CreateStudio } from "@/components/create/CreateStudio";
@@ -43,7 +44,9 @@ const KIT2 = "66666666-6666-4666-8666-666666666666";
 const HERO = "77777777-7777-4777-8777-777777777777";
 const SIDE = "88888888-8888-4888-8888-888888888888";
 const ADAM = "pNInz6obpgDQGcFmaJgB";
-const BRIAN = "nPczCjzI2devNBz1zQrb";
+// Not an ElevenLabs Default voice: a Default one is no longer offered from 1 Jan 2027, and this test must not expire with it.
+const RACHEL = "21m00Tcm4TlvDq8ikWAM";
+const GEORGE = "JBFqnCBsd6RMkjVDRZzb";
 const withI18n = (ui: ReactNode) => <I18nProvider locale="en">{ui}</I18nProvider>;
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -126,7 +129,7 @@ describe("the channel's DNA card", () => {
     fireEvent.click(screen.getByRole("button", { name: t.dna.edit }));
     fireEvent.click(screen.getByRole("button", { name: "Neon night" }));
     fireEvent.click(screen.getByRole("button", { name: "@sidekick" }));
-    fireEvent.change(screen.getByLabelText(t.dna.voice), { target: { value: BRIAN } });
+    fireEvent.change(screen.getByLabelText(t.dna.voice), { target: { value: RACHEL } });
     fireEvent.click(screen.getByRole("button", { name: "Русский" }));
     fireEvent.click(screen.getByRole("button", { name: t.dna.formats.long }));
     fireEvent.click(screen.getByRole("button", { name: "1:1" }));
@@ -137,7 +140,7 @@ describe("the channel's DNA card", () => {
       channel_id: "chan-a",
       style_kit_id: KIT2,
       character_ids: [HERO, SIDE],
-      voice_id: BRIAN,
+      voice_id: RACHEL,
       language: "ru",
       format: "long",
       aspect: "1:1",
@@ -155,6 +158,58 @@ describe("the channel's DNA card", () => {
     fireEvent.click(screen.getByRole("button", { name: t.dna.save }));
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0].body.voice_id).toBeNull();
+  });
+
+  it("a stored voice ElevenLabs retired is named as retired, with the runs' notice, and Save does not send it again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2027-01-02T00:00:00Z"));
+    try {
+      section({ dna: { ...DNA, voiceId: GEORGE } });
+      expect(screen.getByText(fmt(t.dna.retiredVoiceName, { name: "George" }))).toBeTruthy();
+      expect(screen.getByText(fmt(t.voice.retireGone, { slot: t.voice.pickNarrator, name: "George" }))).toBeTruthy();
+      const link = screen.getByRole("link", { name: t.create.flow.voiceChange });
+      expect(link.getAttribute("href")).toBe("/chan-a/agents");
+      expect(link.className).toContain("underline");
+      fireEvent.click(screen.getByRole("button", { name: t.dna.edit }));
+      const select = screen.getByLabelText(t.dna.voice) as HTMLSelectElement;
+      expect(select.value).toBe("");
+      expect(select.selectedOptions[0].textContent).toBe(fmt(t.dna.keepRetiredVoice, { name: "George" }));
+      expect(Array.from(select.options).some((o) => o.value === GEORGE)).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: t.dna.save }));
+      await waitFor(() => expect(posts).toHaveLength(1));
+      expect(posts[0].body.voice_id).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("before the date a Default voice is still offered, marked as leaving, and the notice says when", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-22T10:00:00Z"));
+    try {
+      section({ dna: { ...DNA, voiceId: GEORGE } });
+      expect(screen.getByText(fmt(t.voice.retireLeaving, { slot: t.voice.pickNarrator, name: "George" }))).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: t.dna.edit }));
+      const select = screen.getByLabelText(t.dna.voice) as HTMLSelectElement;
+      expect(select.value).toBe(GEORGE);
+      expect(select.selectedOptions[0].textContent).toContain(t.create.flow.voiceLeavingTag);
+      // What the tag means, said once under the select.
+      expect(screen.getAllByText(t.create.flow.voiceLeaves)).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a channel whose runs read the standard voice gets no runs notice for its Studio voice", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2027-01-02T00:00:00Z"));
+    try {
+      section({ dna: { ...DNA, voiceId: GEORGE }, standardVoice: true });
+      expect(screen.queryByText(/ElevenLabs Default voice/)).toBeNull();
+      expect(screen.getByText(fmt(t.dna.retiredVoiceName, { name: "George" }))).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a refusal reads as a sentence and the form stays open", async () => {

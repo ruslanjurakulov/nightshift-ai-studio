@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from modules import captions as caption_words
-from modules import tts_languages
+from modules import tts_languages, voice_retirement
 from modules.capabilities.base import (
     CAPTIONS,
     DUB,
@@ -148,6 +148,18 @@ class _ElevenLabs(HttpAdapter):
             not_accepted=err.http_status == 404,
         )
 
+    def _retired(self, voice_id) -> Optional[AdapterError]:
+        """A refusal for an ElevenLabs Default voice past its retirement (modules/voice_retirement), made before any call.
+
+        It carries ElevenLabs' own closed code for a voice that is gone, the code the vendor's 404 would have named, so the
+        film worker's film_error_code reads it as voice_not_found (pick another voice) rather than a plain bad request
+        ("edit the scene"), which would send the person to fix the wrong thing (rule 6)."""
+        reason = voice_retirement.refusal(voice_id)
+        if not reason:
+            return None
+        self.last_vendor_code = "voice_not_found"
+        return AdapterError(E_BAD_REQUEST, reason, not_accepted=True)
+
     def _audio(self, url: str, body: dict) -> Output:
         resp = self._call("POST", url, json_body=body, params={"output_format": "mp3_44100_128"},
                           headers={"Accept": "audio/mpeg"}, what="generate", raw=True)
@@ -165,6 +177,9 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
 
     def problems(self, request: CapabilityRequest, entry) -> List[str]:
         out = super().problems(request, entry)
+        retired = voice_retirement.refusal(request.voice_id)
+        if retired:
+            out.append(retired)
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             out.append("a voice_id from the account's voice list is required")
         # Uzbek text on a model that does not speak Uzbek: refused before the vendor call,
@@ -180,9 +195,16 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        # A reused adapter must not carry the last job's code into this one's refusal: the film worker reads it after any
+        # failure, and a stale voice_not_found would turn a language refusal into "pick another voice".
+        self.last_vendor_code = ""
         self.require_key()
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             raise AdapterError(E_BAD_REQUEST, "a voice_id from the account's voice list is required")
+        # A retired Default voice is refused here, not by the vendor's 404: ours names the remedy.
+        retired = self._retired(request.voice_id)
+        if retired:
+            raise retired
         reason = tts_languages.refusal(vendor_model, request.text_language)
         if reason:
             raise AdapterError(E_BAD_REQUEST, reason)
@@ -279,15 +301,24 @@ class ElevenLabsVoiceChangerAdapter(_ElevenLabs):
 
     def problems(self, request: CapabilityRequest, entry) -> List[str]:
         out = super().problems(request, entry)
+        retired = voice_retirement.refusal(request.voice_id)
+        if retired:
+            out.append(retired)
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             out.append("a voice_id from the account's voice list is required")
         out.extend(_one_recording(request, VOICE_CHANGE_SUFFIXES))
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        # A reused adapter must not carry the last job's code into this one's refusal: the film worker reads it after any
+        # failure, and a stale voice_not_found would turn a language refusal into "pick another voice".
+        self.last_vendor_code = ""
         self.require_key()
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             raise AdapterError(E_BAD_REQUEST, "a voice_id from the account's voice list is required")
+        retired = self._retired(request.voice_id)
+        if retired:
+            raise retired
         bad = _one_recording(request, VOICE_CHANGE_SUFFIXES)
         if bad:
             raise AdapterError(E_BAD_REQUEST, "; ".join(bad))

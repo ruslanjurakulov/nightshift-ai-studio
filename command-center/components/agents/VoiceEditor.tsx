@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { Chip } from "@/components/ui/Chip";
 import type { ChannelAgentConfig } from "@/lib/types";
+import { fmt } from "@/lib/i18n";
+import { channelVoiceNotices, suggestionInAccount, voiceRetirement } from "@/lib/voiceRetirement";
 
 /**
  * Choose the channel's narration voice — and hear it first.
@@ -58,9 +60,25 @@ export function VoiceEditor({
   const [loadPhase, setLoadPhase] = useState<"idle" | "loading" | "error">("idle");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // What the channel's runs use now: the page's config until a save here succeeds, then what was saved.
+  const [savedConfig, setSavedConfig] = useState<ChannelAgentConfig | null>(agentConfig);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const disabled = !channelId;
+
+  // The SAVED voices, not the ones being picked: the notice is about what the channel's runs will use. A
+  // replacement is pointed at only inside the account's own list, and only the person's pick is saved (rule 4).
+  const now = new Date();
+  const notices = channelVoiceNotices(savedConfig, now);
+  const accountIds = voices ? voices.map((v) => v.voiceId) : null;
+  const suggestedIds = new Set(notices.filter((n) => suggestionInAccount(n, accountIds) === "in").map((n) => n.suggestedId));
+  // After the date a retired voice is not offered (L2), and ElevenLabs' suggestion, when the account has it, comes first (L3).
+  // Neither picks anything: the order is a pointer, the click is the person's.
+  const listed = (voices ?? [])
+    .filter((v) => voiceRetirement(v.voiceId, now) !== "retired")
+    .sort((a, b) => Number(suggestedIds.has(b.voiceId)) - Number(suggestedIds.has(a.voiceId)));
+  const retiredPick =
+    provider === "elevenlabs" && [selected, secondary].some((id) => voiceRetirement(id, now) === "retired");
 
   function touch() {
     if (state !== "idle") setState("idle");
@@ -112,6 +130,7 @@ export function VoiceEditor({
       .from("channels")
       .update({ agent_config: next, updated_at: new Date().toISOString() })
       .eq("channel_id", channelId);
+    if (!error) setSavedConfig(next);
     setState(error ? "error" : "saved");
   }
 
@@ -131,6 +150,30 @@ export function VoiceEditor({
       </div>
 
       {disabled && <p className="text-sm text-[var(--color-warn)]">{t.voice.pickChannel}</p>}
+
+      {!disabled && notices.length > 0 && (
+        <div className="flex flex-col gap-1 text-sm leading-relaxed text-[var(--color-warn)]" data-testid="voice-retirement">
+          {notices.map((n) => {
+            const where = suggestionInAccount(n, accountIds);
+            return (
+              <p key={n.slot} className="max-w-[72ch]">
+                {fmt(n.state === "retired" ? t.voice.retireGone : t.voice.retireLeaving, {
+                  slot: n.slot === "narrator" ? t.voice.pickNarrator : n.slot === "quote" ? t.voice.pickQuote : t.voice.pickBoth,
+                  name: n.name,
+                })}{" "}
+                {/* Only this part changes (when the account's voices load), so only it is announced. */}
+                <span aria-live="polite">
+                  {where === "in"
+                    ? fmt(t.voice.suggestIn, { name: n.suggested })
+                    : where === "missing"
+                      ? fmt(t.voice.suggestMissing, { name: n.suggested })
+                      : t.voice.suggestLoad}
+                </span>
+              </p>
+            );
+          })}
+        </div>
+      )}
 
       {!disabled && (
         <>
@@ -228,15 +271,16 @@ export function VoiceEditor({
               </div>
 
               {/* Tap a voice to hear it; the highlighted one is the selection. */}
-              {voices && voices.length > 0 && (
+              {listed.length > 0 && (
                 <ul className="flex max-h-[380px] flex-col gap-2 overflow-y-auto">
-                  {voices.map((v) => {
+                  {listed.map((v) => {
                     const isSel = selected === v.voiceId;
                     const isQuote = secondary === v.voiceId;
+                    const leaving = voiceRetirement(v.voiceId, now);
                     return (
                       <li key={v.voiceId}>
                         <div
-                          className="flex items-center gap-3 rounded-[var(--ns-r-panel)] border p-2.5 transition-colors"
+                          className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-panel)] border p-2.5 transition-colors"
                           style={{
                             borderColor: isSel || isQuote ? "var(--color-primary)" : "var(--color-border)",
                             background: isSel || isQuote ? "var(--color-panel-2)" : "transparent",
@@ -258,12 +302,19 @@ export function VoiceEditor({
                               else setSecondary(v.voiceId);
                               touch();
                             }}
-                            className="min-w-0 flex-1 text-left"
+                            className="min-w-[8rem] flex-1 text-left"
                           >
                             <div className="truncate text-sm text-[var(--color-fg)]">{v.name}</div>
                             {v.labels && (
                               <div className="truncate text-sm text-[var(--color-muted)]">
                                 {v.labels}
+                              </div>
+                            )}
+                            {/* Under the name and wrapping, so at 360 px the tags never squeeze the name to nothing. */}
+                            {(suggestedIds.has(v.voiceId) || leaving) && (
+                              <div className="flex flex-wrap gap-x-2 text-sm">
+                                {suggestedIds.has(v.voiceId) && <span className="text-[var(--color-primary)]">{t.voice.suggestedTag}</span>}
+                                {leaving === "leaving" && <span className="text-[var(--color-warn)]">{t.voice.leavesTag}</span>}
                               </div>
                             )}
                           </button>
@@ -295,6 +346,7 @@ export function VoiceEditor({
               disabled={
                 disabled ||
                 state === "saving" ||
+                retiredPick ||
                 (provider === "elevenlabs" && (!selected || !secondary)) ||
                 (provider === "edge" && !edgeVoice.trim())
               }
@@ -303,7 +355,9 @@ export function VoiceEditor({
               {state === "saving" ? t.voice.saving : t.voice.save}
             </button>
             <span className="tnum text-sm" aria-live="polite">
-              {provider === "elevenlabs" && selected && !secondary && state === "idle" ? (
+              {retiredPick ? (
+                <span className="text-[var(--color-warn)]">{t.voice.retiredNoSave}</span>
+              ) : provider === "elevenlabs" && selected && !secondary && state === "idle" ? (
                 <span className="text-[var(--color-warn)]">{t.voice.quoteMissing}</span>
               ) : state === "saved" ? (
                 <span className="text-[var(--color-ok)]">{t.voice.saved}</span>

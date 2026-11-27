@@ -17,6 +17,7 @@ import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 import { readAgeAnswer } from "@/lib/server/age";
 import { runAgeRefusal } from "@/lib/age";
+import { channelVoiceNotices, voiceRetirement } from "@/lib/voiceRetirement";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,6 +108,22 @@ export async function GET() {
     configured: isRunConfigured(backend, { github: isGithubConfigured, supabase: isSupabaseConfigured }),
     backend,
   });
+}
+
+async function channelVoiceRetired(channelId: string, voiceId: string): Promise<boolean> {
+  try {
+    const client = await createClient();
+    if (!client) return false;
+    const { data, error } = await client.from("channels").select("agent_config").eq("channel_id", channelId).maybeSingle();
+    if (error || !data) return false;
+    const cfg = (data as { agent_config?: unknown }).agent_config;
+    if (!cfg || typeof cfg !== "object") return false;
+    return channelVoiceNotices(cfg as Parameters<typeof channelVoiceNotices>[0], new Date()).some(
+      (n) => n.state === "retired" && (n.slot !== "narrator" || !voiceId),
+    );
+  } catch {
+    return false;
+  }
 }
 
 export const POST = requireSameOrigin(async function POST(request: Request) {
@@ -220,6 +237,13 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // database row, so migration 0117's guards never see it; ask the database function they use, as the signed-in user, before
   // anything is held or dispatched. A stock voice (no profile) answers "fine" and nothing changes; an unanswered check on an id
   // that could be a profile's is refused (docs/CUSTOM_VOICE.md, "Hard gate").
+  // A retired ElevenLabs Default voice: the run's preflight would refuse it, but only after this route held the credits and
+  // dispatched. Refused first, with its own closed code, so the answer names the remedy (pick another voice), not a failure.
+  if (voiceId && voiceRetirement(voiceId, new Date()) === "retired") return NextResponse.json({ error: "voice_retired" }, { status: 400 });
+  // The channel's own saved voices, read as the signed-in user: a retired quote voice stops the run whatever this request picks,
+  // a retired narrator unless this request picks another. An unreadable row blocks no one (the runner's preflight still refuses,
+  // naming the voice); only a row that says "retired" is refused here.
+  if (await channelVoiceRetired(channelId, voiceId)) return NextResponse.json({ error: "voice_retired" }, { status: 400 });
   if (voiceId) {
     const problem = await runVoiceProblem(await createClient(), channelId, access.orgId, voiceId);
     if (problem) {

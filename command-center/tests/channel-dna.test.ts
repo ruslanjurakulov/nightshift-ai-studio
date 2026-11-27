@@ -192,6 +192,13 @@ describe("parseDnaInput", () => {
   ])("refuses %s", (_label, body, error) => {
     expect(parseDnaInput(body)).toEqual({ ok: false, error });
   });
+  it("refuses to save a retired ElevenLabs Default voice from 1 Jan 2027, and takes it until then", () => {
+    const george = { ...ok, voice_id: "JBFqnCBsd6RMkjVDRZzb" };
+    expect(parseDnaInput(george, new Date("2027-01-01T00:00:00Z"))).toEqual({ ok: false, error: "voice_retired" });
+    expect(parseDnaInput(george, new Date("2026-12-31T23:59:00Z")).ok).toBe(true);
+    // "" / null leaves the stored voice as it is: a retired voice already saved is not re-sent, so it is not refused.
+    expect(parseDnaInput({ ...ok, voice_id: null }, new Date("2027-01-01T00:00:00Z")).ok).toBe(true);
+  });
 });
 
 describe("mapDnaError", () => {

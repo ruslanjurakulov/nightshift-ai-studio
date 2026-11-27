@@ -34,7 +34,7 @@ from config import (
     TTS_PROVIDER_EXPLICIT,
     VIDEO_DURATION_TARGET,
 )
-from modules import tts_languages
+from modules import tts_languages, voice_retirement
 from modules.script_engine import Script
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ NARRATOR = "narrator"
 _VOICE_ID = re.compile(r"[A-Za-z0-9]{20}")
 
 
-def verify_voice(channel=None) -> None:
+def verify_voice(channel=None, today=None) -> None:
     """Check the narrator before the run spends anything. Raise if it cannot speak.
 
     Why this refuses to fall back
@@ -125,6 +125,9 @@ def verify_voice(channel=None) -> None:
     _verify_model_speaks(agent, ELEVENLABS_MODEL_ID)
 
     voice_id = narrator_voice(agent)
+    # Also before any request: from 1 Jan 2027 ElevenLabs answers a Default voice with
+    # a bare 404, which names neither the voice's fate nor the fix.
+    _verify_voice_not_retired(voice_id, secondary_voice(agent), today)
     if not ELEVENLABS_API_KEY:
         raise VoiceUnavailable(
             "This channel narrates with ElevenLabs, but ELEVENLABS_API_KEY is empty. "
@@ -170,6 +173,33 @@ def script_language(agent) -> str:
     channel's (a per-run --language already overrides it in main.py), else the deployment's."""
     language = getattr(agent, "language", None) if agent is not None else None
     return language if isinstance(language, str) and language.strip() else SCRIPT_LANGUAGE
+
+
+def _verify_voice_not_retired(narrator: str, secondary: str, today=None) -> None:
+    """Refuse a narrator or quote voice ElevenLabs has retired; before that, say how long it has.
+
+    The vendor's suggested replacement is only named in the message. It is not
+    picked: it may not be in this account's list, and a voice the audience has not
+    heard on this channel is the wrong voice (rule 4).
+
+    A run that passes this on 31 Dec shortly before midnight UTC can reach synthesis
+    on 1 Jan. Synthesis asks again (``_tts_elevenlabs``) and stops there, after the
+    script was paid for; that window is one night, and the alternative, refusing a
+    voice that still works, would stop runs on its last day."""
+    for slot, vid in (("narrator", narrator), ("quote voice", secondary)):
+        if not vid or vid == NARRATOR:
+            continue
+        reason = voice_retirement.refusal(vid, today)
+        if reason:
+            raise VoiceUnavailable(f"This channel's {slot}: {reason}")
+        left = voice_retirement.days_left(vid, today)
+        if left is not None:
+            # Ids and names only, never the key. One line per run is enough to be seen in the log.
+            logger.warning(
+                "This channel's %s %s is an ElevenLabs Default voice that stops working after %s "
+                "(%d day(s) left). Pick another from the account's list in the Command Center "
+                "(Agents → Voice) before then; no voice will be substituted.",
+                slot, vid, voice_retirement.DEFAULT_EXPIRES, left)
 
 
 def _verify_model_speaks(agent, model: str) -> None:
@@ -456,6 +486,9 @@ class AudioMixer:
         # repair and other entry points build a mixer without that preflight.
         channel = getattr(self, "channel", None)
         _verify_model_speaks(channel.agent if channel is not None else None, self.elevenlabs_model)
+        retired = voice_retirement.refusal(voice_id)
+        if retired:
+            raise VoiceUnavailable(retired)
         for wait in (*BUSY_WAITS, None):
             try:
                 return self._tts_elevenlabs_once(text, voice_id, out_path)

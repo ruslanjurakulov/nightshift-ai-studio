@@ -5,6 +5,7 @@ import { Loader2, Lock, RotateCw, Search, TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import { VOICE_ID_RE } from "@/lib/creative/operations";
+import { voiceRetirement } from "@/lib/voiceRetirement";
 import {
   VOICE_FACETS,
   facetValues,
@@ -107,7 +108,7 @@ export function VoiceCatalog({
   label: string;
   builtIn: ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
   const c = t.voiceCatalog;
   const [state, setState] = useState<State>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -181,8 +182,13 @@ export function VoiceCatalog({
   const pickedMissing = Boolean(value) && !state.truncated && !all.some((v) => v.voiceId === value);
   // On the free plan ElevenLabs refuses a library voice through the API (402 paid_plan_required): it is shown, so the
   // person sees why it is missing, but it cannot be picked. An unknown plan blocks nothing and says it does not know.
-  const blocked = (v: CatalogVoice) => v.library && state.plan === "free";
-  const pickedBlocked = all.some((v) => v.voiceId === value && blocked(v));
+  const now = new Date();
+  // A retired ElevenLabs Default voice is shown but not pickable: the TTS adapter refuses it (modules/voice_retirement).
+  const needsPaid = (v: CatalogVoice) => v.library && state.plan === "free";
+  const blocked = (v: CatalogVoice) => needsPaid(v) || voiceRetirement(v.voiceId, now) === "retired";
+  // Each refusal says its own remedy: "needs a paid plan" for a retired voice would send the person to buy the wrong thing.
+  const pickedBlocked = all.some((v) => v.voiceId === value && needsPaid(v));
+  const pickedRetired = all.find((v) => v.voiceId === value && voiceRetirement(v.voiceId, now) === "retired");
   const pickedShown = shown.some((v) => v.voiceId === value && !blocked(v));
   const firstOpen = shown.findIndex((v) => !blocked(v));
 
@@ -251,12 +257,17 @@ export function VoiceCatalog({
       {state.plan === "free" && <p className="text-xs text-[var(--color-muted)]">{c.planFree}</p>}
       {state.plan === "unknown" && <p className="text-xs text-[var(--color-muted)]">{c.planUnknown}</p>}
       {pickedBlocked && (
-        <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
+        <p role="alert" className="text-xs text-[var(--color-fail)]">
           {c.pickedNeedsPaid}
         </p>
       )}
+      {pickedRetired && (
+        <p role="alert" className="text-xs text-[var(--color-fail)]">
+          {fmt(t.create.flow.voiceRetired, { name: pickedRetired.name })}
+        </p>
+      )}
       {pickedMissing && (
-        <p role="alert" className="text-xs text-[var(--color-danger,#dc2626)]">
+        <p role="alert" className="text-xs text-[var(--color-fail)]">
           {c.pickedMissing}
         </p>
       )}
@@ -303,6 +314,9 @@ export function VoiceCatalog({
                     <span className="flex flex-wrap items-center gap-x-2 font-semibold text-[var(--color-fg)]">
                       <span className="truncate">{v.name}</span>
                       {category && <span className="text-[11px] font-normal text-[var(--color-muted)]">{category}</span>}
+                      {voiceRetirement(v.voiceId, now) === "leaving" && (
+                        <span className="text-[11px] font-normal text-[var(--color-warn,#b45309)]">{t.create.flow.voiceLeavingTag}</span>
+                      )}
                     </span>
                     {traits.length > 0 && (
                       <span className="truncate text-xs text-[var(--color-muted)]">{traits.map(traitText).join(" · ")}</span>
@@ -314,6 +328,12 @@ export function VoiceCatalog({
                       <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-[var(--color-warn,#b45309)]">
                         <TriangleAlert aria-hidden className="size-3" />
                         {c.library}
+                      </span>
+                    )}
+                    {voiceRetirement(v.voiceId, now) === "retired" && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-[var(--color-warn,#b45309)]">
+                        <TriangleAlert aria-hidden className="size-3" />
+                        {t.voice.retiredTag}
                       </span>
                     )}
                     {v.library && state.plan !== "paid" && (

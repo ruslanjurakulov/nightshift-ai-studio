@@ -96,9 +96,24 @@ class PreviewerTests(unittest.TestCase):
         self.assertIn("exists", text)
 
 
+def date_before_retirement():
+    from datetime import date
+    return date(2026, 12, 31)
+
+
 class ListAndWorkflowTests(unittest.TestCase):
+    def test_a_retired_default_voice_gets_no_clip(self):
+        """From 1 Jan 2027 ElevenLabs refuses a Default voice; preparing its clip would spend an Actions run on a refusal."""
+        from datetime import date
+        from modules.voice_retirement import DEFAULT_VOICES
+        before = vp.listed_voice_ids(today=date(2026, 12, 31))
+        after = vp.listed_voice_ids(today=date(2027, 1, 1))
+        self.assertTrue(any(i in DEFAULT_VOICES for i in before))
+        self.assertFalse(any(i in DEFAULT_VOICES for i in after))
+        self.assertEqual(after, [i for i in before if i not in DEFAULT_VOICES])
+
     def test_every_listed_voice_is_a_valid_unique_id(self):
-        ids = vp.listed_voice_ids()
+        ids = vp.listed_voice_ids(today=date_before_retirement())
         raw = json.loads(vp.VOICES_FILE.read_text())
         self.assertEqual(len(ids), len(raw))
         self.assertEqual(len(set(ids)), len(ids))

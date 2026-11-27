@@ -40,33 +40,10 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-DEFAULT_VOICES_URL = "https://elevenlabs.io/docs/help-center/product/voices/my-voices/what-are-default-voices"
-LEGACY_VOICES_URL = "https://elevenlabs.io/docs/help-center/product/voices/my-voices/what-are-legacy-voices"
-READ_ON = "2026-11-14"
-DEFAULT_EXPIRES = "2026-12-31"
+# One table for the audit, the preflight and the TTS adapter (modules/voice_retirement).
+from modules.voice_retirement import DEFAULT_EXPIRES, DEFAULT_VOICES, DEFAULT_VOICES_URL, READ_ON  # noqa: E402
 
-#: Default voice id -> (old name, ElevenLabs' suggested replacement name, its id). From DEFAULT_VOICES_URL, READ_ON.
-DEFAULT_VOICES: dict[str, tuple[str, str, str]] = {
-    "CwhRBWXzGAHq8TQ4Fs17": ("Roger", "Darian - Warm Grounded Storyteller", "gOupLcAkjEnguROwi4oS"),
-    "EXAVITQu4vr4xnSDxMaL": ("Sarah", "Talia - Warm Soft Guide", "OZ0L6eISlOejga3XjDFt"),
-    "FGY2WhTYpPnrIDTdsKH5": ("Laura", "Elara - Crisp Pro Narrator", "WQP7cQUF5aAS6Axh5yaa"),
-    "IKne3meq5aSn9XLyUdCD": ("Charlie", "Baxter - Dry Calm Aussie", "jSuBIjxMKhqIfb0wCK1F"),
-    "JBFqnCBsd6RMkjVDRZzb": ("George", "Eldrin - Crisp British Baritone", "6WwXjDDEMyNmFG95zycZ"),
-    "N2lVS1w4EtoT3dr4eOWO": ("Callum", "Callum - Husky Trickster", "fs2OqxduwXgp9foh2xjK"),
-    "SAz9YHcvj6GT2YYXdXww": ("River", "Elowen - Upbeat Modern Narrator", "dvbL7qkNGZY1IqPGZAjM"),
-    "SOYHLrjzK2X1ezoPC6cr": ("Harry", "Kaelen - Amateur Warrior", "10NkTYmU7tSz3Kkl3Lex"),
-    "TX3LPaxmHKxFdv7VOQHJ": ("Liam", "Lawrence - Bright and Informative", "ktkP7Nsj67dw2zcplQYt"),
-    "Xb7hH8MSUJpSbSDYk0k2": ("Alice", "Alicia - Polished Global Anchor", "BFd5oBc2DDna33pSi4Gf"),
-    "XrExE9yKIg1WjnnlVkGX": ("Matilda", "Maisie - Friendly Casual Neighbor", "QtY3JBOUKEB5xzrRfOKc"),
-    "bIHbv24MWmeRgasZH58o": ("Will", "Warren - Effortless and Cool", "7QN34D2r3hCNwbOYIeK0"),
-    "cgSgspJ2msm6clMCkdW9": ("Jessica", "Jade - Upbeat and Natural", "g7LVvkPWALzPxOQbF6OE"),
-    "cjVigY5qzO86Huf0OWal": ("Eric", "Eddie - Natural and Helpful", "l7kNoIfnJKPg7779LI2t"),
-    "iP95p4xoKVk53GoZ742B": ("Chris", "Caleb - Trusted Guide", "AaOhDHYJ1XLZk74lXhdE"),
-    "nPczCjzI2devNBz1zQrb": ("Brian", "Sawyer - Midnight Storyteller", "8dEUmyPMdDdK91vboYih"),
-    "onwK4e9ZLuTAKqWW03F9": ("Daniel", "Finley - Articulate Anchor", "fnYMz3F5gMEDGMWcH1ex"),
-    "pFZP5JQG7iQjIQuC4Bku": ("Lily", "Florence - Atmospheric Storyteller", "22N9cF8z0o7y23njdyaY"),
-    "pqHfZKP75CvOlQylNhV4": ("Bill", "Wyatt - Seasoned Mentor", "FrS6cKLB1wg4WYgPa9GW"),
-}
+LEGACY_VOICES_URL = "https://elevenlabs.io/docs/help-center/product/voices/my-voices/what-are-legacy-voices"
 
 #: Legacy voice name -> the voice ElevenLabs re-routes it to. From LEGACY_VOICES_URL, READ_ON.
 #: That page gives names only, no ids, so an id is flagged Legacy only when this project
