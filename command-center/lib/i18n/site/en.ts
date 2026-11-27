@@ -206,7 +206,7 @@ export const siteEn = {
   gallery: {
     label: "Made in Nightshift Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in Nightshift Studio. Point at or tap one to read what it is; open it to start from its words in the Studio.",
+    lead: "Real generations, made by our team in Nightshift Studio. Hover or tap once to see what it is; tap again to start from its words in the Studio.",
     badge: "AI-generated",
     /** The visible mark on every public card (owner decision 22 Nov: "AI" in every language); `badge` stays its accessible meaning. */
     mark: "AI",

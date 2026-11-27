@@ -36,6 +36,8 @@ import { shortsItems } from "@/components/site/shorts";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { FIXTURE_ENTRY, FIXTURE_FILES } from "./fixtures/showcase-entry";
+import raw from "@/lib/site/showcase.json";
+import { CARD_TITLE_MAX, CARD_TITLES, cardTitle } from "@/lib/site/card-titles";
 
 afterEach(cleanup);
 
@@ -293,7 +295,12 @@ describe("the stylesheet", () => {
     expect(css).toMatch(/\.mf-title \{[^}]*font-size: 1\.375rem; font-weight: 700;[^}]*color: #fff;/);
     expect(css).toMatch(/\.mf-desc \{[^}]*font-size: 1rem;[^}]*color: rgba\(255, 255, 255, 0\.66\);[^}]*-webkit-line-clamp: 1;/);
     expect(css).toMatch(/\.mf-cap \{[^}]*linear-gradient\(180deg, rgba\(0, 0, 0, 0\) 0%[^)]*\)[^}]*rgba\(0, 0, 0, 0\.82\) 100%\)/);
-    expect(css).toMatch(/\.nx-section:is\(#samples, #effects\) \.nx-h2 \{\s*font-size: var\(--ds-fs-display-lg, clamp\(2rem, 1\.5rem \+ 2\.2222vw, 3\.5rem\)\); font-weight: 700;/);
+    // 48 px at 1440 (1rem + 32px), 32 px at 360: the owner's ~48 px section heads.
+    expect(css).toContain(".nx-section:is(#samples, #effects) .nx-h2 { font-size: clamp(2rem, 1rem + 2.2222vw, 3rem); font-weight: 700; }");
+    // A title may take two balanced lines (Russian and Uzbek run longer); an effect's line two rows; its facts 14 px.
+    expect(css).toMatch(/\.mf-title \{[^}]*text-wrap: balance;[^}]*-webkit-line-clamp: 2;/);
+    expect(css).toContain(".efx-card .mf-desc { -webkit-line-clamp: 2; line-clamp: 2; }");
+    expect(css).toMatch(/\.mf-facts \{[^}]*font-size: 14px;[^}]*color: rgba\(255, 255, 255, 0\.72\);/);
   });
 
   it("lays one stretched link over the card, the caption and mark above it taking no clicks, and the focus ring above them", () => {
@@ -308,6 +315,7 @@ describe("the stylesheet", () => {
     const phone = css.slice(css.indexOf("@media (max-width: 480px) {"));
     expect(phone).toMatch(/\.nx-gallery \.mf-title \{ font-size: 1\.0625rem; \}/);
     expect(phone).toMatch(/\.nx-gallery \.mf-desc \{ font-size: 0\.875rem; \}/);
+    expect(phone).toContain(".mf-ai { top: 6px; right: 6px; padding: 1px 6px; font-size: 12px; }");
     expect(css).not.toMatch(/@media \(max-width: (?:4(?:8[1-9]|9\d)|[5-9]\d\d)px\)/);
   });
 
@@ -315,5 +323,96 @@ describe("the stylesheet", () => {
     const outside = css.replace(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\}\n/g, "");
     expect(outside).not.toMatch(/translate|scale\(/);
     expect(css).toMatch(/html\[data-motion="paused"\] \.mf-cap \{ transform: none; transition: opacity/);
+  });
+});
+
+/**
+ * The cards' hand-written titles (lib/site/card-titles.ts). What would break: a card with no title showing half an English
+ * prompt on the Russian page (Pixel, 22 Nov), a title too long for a phone card, or a title that names a model or a maker
+ * (owner decision 22 Nov: no model name on public cards).
+ */
+describe("card titles", () => {
+  const entries = (raw as { entries: { jobId: string; modelId: string; modelName: string }[] }).entries;
+
+  it("every sample in the data file has a title in en, ru and uz, at most 32 characters, naming no model or maker", () => {
+    expect(entries.length).toBeGreaterThan(0);
+    for (const e of entries) {
+      const t = CARD_TITLES[e.jobId];
+      expect(t, `${e.jobId} has no title`).toBeTruthy();
+      for (const l of ["en", "ru", "uz"] as const) {
+        const title = t[l];
+        expect(title.trim().length, `${e.jobId} ${l}`).toBeGreaterThan(2);
+        expect(Array.from(title).length, `${e.jobId} ${l}: ${title}`).toBeLessThanOrEqual(CARD_TITLE_MAX);
+        expect(title, `${e.jobId} ${l}`).not.toMatch(PROVIDER_BRANDS);
+        for (const m of REGISTRY.models) {
+          expect(title, `${e.jobId} ${l}`).not.toContain(m.display_name);
+          expect(title.toLowerCase(), `${e.jobId} ${l}`).not.toContain(m.id);
+        }
+      }
+      // Russian in Cyrillic; Uzbek in its Latin script with ʻ (U+02BB) and ʼ (U+02BC), never a typewriter or curly quote.
+      expect(t.ru).toMatch(/[а-яё]/i);
+      expect(t.uz).not.toMatch(/['‘’`]/);
+      expect(t.uz).not.toMatch(/[а-яё]/i);
+    }
+    // No title for a sample that is not in the data file (a stale one would hide a missing one).
+    expect(Object.keys(CARD_TITLES).sort()).toEqual(entries.map((e) => e.jobId).sort());
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: each shipped card's caption is its title in the page's language over the prompt's first sentence marked English", (code) => {
+    const { container } = render(<ShowcaseGallery t={dictionaries[code]} locale={code} />);
+    for (const card of container.querySelectorAll<HTMLElement>("[data-showcase-entry]")) {
+      const job = card.dataset.showcaseEntry!;
+      const title = card.querySelector(".mf-cap .mf-title");
+      // A format's own title wins where the sample shows one; every other card shows its hand-written title.
+      if (!title?.hasAttribute("data-format")) expect(title?.textContent, job).toBe(cardTitle(job, code));
+      const line = card.querySelector(".mf-cap .mf-desc")!;
+      const e = SHOWCASE_ENTRIES.find((x) => x.jobId === job)!;
+      if (e.cardLine) expect([line.textContent, line.getAttribute("lang")]).toEqual([e.cardLine[code], code]);
+      else if (e.prompt.trim()) {
+        expect(line.textContent).toBe(firstSentence(e.prompt));
+        expect(line.getAttribute("lang")).toBe("en");
+        expect(line.getAttribute("data-src")).toBe("prompt");
+      }
+    }
+  });
+});
+
+describe("the Shorts feed is media first", () => {
+  it("at rest shows the clip and the AI mark; a tap on the clip shows the title, the line and Use; the next tap hides them", async () => {
+    const { ShortsFeed } = await import("@/components/site/ShortsFeed");
+    const d = dictionaries.ru;
+    const g = d.site.gallery;
+    const tallJob = SHOWCASE_ENTRIES.find((e) => e.kind === "video")?.jobId ?? FIXTURE_ENTRY.jobId;
+    const tall = { ...FIXTURE_ENTRY, jobId: tallJob, capability: "t2v", operatorPreview: false, modelId: "minimax-hailuo-2.3", width: 1280, height: 2240 };
+    const items = shortsItems([{ e: tall, f: FIXTURE_FILES[FIXTURE_ENTRY.jobId] }], false, new Date("2026-11-22T00:00:00Z"), "ru");
+    render(<ShortsFeed items={items} copy={d.site.autopilot.shorts} g={{ badge: g.badge, mark: g.mark, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />);
+    fireEvent.click(document.querySelector(".nx-shorts-open")!);
+    const slide = document.querySelector<HTMLElement>(".nx-shorts-slide")!;
+    expect(slide.querySelector(".mf-ai")?.textContent).toBe("AI");
+    expect(slide.querySelector(".mf-ai")?.getAttribute("aria-hidden")).toBe("true");
+    expect(slide.textContent).toContain(g.badge);
+    expect(slide.hasAttribute("data-shown")).toBe(false);
+    // The title in the page's language when the sample has one; the line is the card's, never the whole prompt.
+    const title = cardTitle(tallJob, "ru");
+    if (title) expect(slide.querySelector(".nx-shorts-title")?.textContent).toBe(title);
+    expect(slide.querySelector(".nx-shorts-prompt")?.textContent).toBe(firstSentence(tall.prompt));
+    // The link is in the page all along (a keyboard reaches it, and :focus-within shows the caption), always "Use".
+    const link = slide.querySelector<HTMLAnchorElement>("a.nx-shorts-use")!;
+    expect(link.textContent).toContain(g.use);
+    expect(link.getAttribute("href")).toBe(tryHref(tall, false));
+    fireEvent.click(slide.querySelector(".nx-shorts-media")!);
+    expect(slide.getAttribute("data-shown")).toBe("true");
+    fireEvent.click(slide.querySelector(".nx-shorts-media")!);
+    expect(slide.hasAttribute("data-shown")).toBe(false);
+  });
+
+  it("hides the caption until shown, takes no taps on it but the link's, and only fades", () => {
+    const css = readFileSync(join(ROOT, "components/site/autopilot-demo.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).toContain(".nx-shorts-shade, .nx-shorts-cap { opacity: 0; }");
+    expect(css).toContain(".nx-shorts-cap { pointer-events: none; }");
+    expect(css).toContain('.nx-shorts-slide:is([data-shown="true"], :focus-within) :is(.nx-shorts-shade, .nx-shorts-cap) { opacity: 1; }');
+    expect(css).toContain('.nx-shorts-slide:is([data-shown="true"], :focus-within) .nx-shorts-use { pointer-events: auto; }');
+    const shorts = css.slice(css.indexOf(".nx-shorts {"));
+    expect(shorts).not.toMatch(/\.nx-shorts-(?:cap|shade)[^{]*\{[^}]*(?:transform|translate)/);
   });
 });

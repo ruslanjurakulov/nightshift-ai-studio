@@ -75,7 +75,10 @@ export function TapReveal() {
       card.setAttribute(MF_REVEALED, "true");
     };
     const onOutside = (ev: PointerEvent) => {
-      if (!(ev.target as Element | null)?.closest?.(`[${MF_CARD}]`)) clear();
+      // A tap on a card in ANOTHER grid is outside this one: each grid only clears its own cards, so judging "inside" by any
+      // card on the page left this grid's caption up (and one tap from opening) after a tap in the next grid (Probe, S8).
+      const card = (ev.target as Element | null)?.closest?.(`[${MF_CARD}]`);
+      if (!card || !root.contains(card)) clear();
     };
     root.addEventListener("pointerdown", onDown, true);
     root.addEventListener("pointercancel", onCancel, true);

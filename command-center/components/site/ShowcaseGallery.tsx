@@ -4,6 +4,7 @@ import type { Dictionary, Locale } from "@/lib/i18n";
 import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { tryHref } from "@/lib/site/showcase-link";
 import { cardWords } from "@/lib/site/card-words";
+import { cardTitle } from "@/lib/site/card-titles";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { ClipPause } from "@/components/site/ClipPause";
@@ -33,7 +34,8 @@ export type LandingFormat = { id: string; job: string; title: string; body: stri
  *
  * Owner decision 22 Nov: no model name on public cards; it travels only in the Studio link. At rest a card is its picture or
  * clip and one small AI mark (components/site/media-card.css). On hover (a fine pointer), keyboard focus or a first tap on a phone
- * (components/site/TapReveal.tsx), a caption shows over a dark foot: the format's title when the sample shows one, and the card's
+ * (components/site/TapReveal.tsx), a caption shows over a dark foot: a bold title (the format's when the sample shows one, else
+ * its hand-written title in this language, lib/site/card-titles.ts) and one grey line under it, the card's
  * one short line (the export's `cardLine` in this language, else the prompt's first sentence, lib/site/card-words.ts). The whole
  * card is one link to the Studio form with the sample's tool, model and whole prompt (lib/site/showcase-link.ts tryHref; signed
  * out, sign-up first), so the model becomes known only in the Studio, which says which model and price it will use before
@@ -96,7 +98,7 @@ export function ShowcaseGallery({
         </h2>
         <p className="nx-sub">{g.lead}</p>
         {/* Phones only (CSS): the vertical clips as a full-screen feed (components/site/ShortsFeed.tsx). */}
-        <ShortsFeed items={shortsItems(items, signedIn, now, locale)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
+        <ShortsFeed items={shortsItems(items, signedIn, now, locale)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, mark: g.mark, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
         <div className="nx-gallery-box">
           {/* One pause key for the whole grid, for a keyboard (hidden until focused; the page's pause switch stops them too): one Tab
               stop, not one per card. */}
@@ -106,6 +108,7 @@ export function ShowcaseGallery({
               const href = tryHref(e, signedIn, now);
               const clip = e.kind === "video" && f.clip !== null;
               const format = formats.find((x) => x.job === e.jobId);
+              const title = format?.title ?? cardTitle(e.jobId, locale);
               const shape = e.height > e.width * 1.15 ? "tall" : e.width > e.height * 1.15 ? "wide" : "square";
               const words = cardWords(e, locale);
               // A sample with no words of its own (made from a picture alone) says so, in the page's language.
@@ -113,10 +116,10 @@ export function ShowcaseGallery({
               const aiId = `sample-ai-${e.jobId}`;
               const caption = (hidden: boolean) => (
                 // aria-hidden on a link card: the link's own name says the same words once.
-                <span className="mf-cap" data-title={format ? undefined : "none"} aria-hidden={hidden || undefined}>
-                  {format && (
-                    <span className="mf-title" data-format={format.id}>
-                      {format.title}
+                <span className="mf-cap" data-title={title ? undefined : "none"} aria-hidden={hidden || undefined}>
+                  {title && (
+                    <span className="mf-title" data-format={format?.id}>
+                      {title}
                     </span>
                   )}
                   <span className="mf-desc" lang={line.lang} data-src={line.source === "prompt" ? "prompt" : undefined}>
@@ -163,7 +166,7 @@ export function ShowcaseGallery({
                           described by the AI label and the note under the grid (sign-up, then the Studio form). */}
                       <Link href={href} prefetch={false} className="mf-card-link" aria-describedby={`${aiId} samples-note`}>
                         <span className="sr-only">
-                          {format && <>{format.title}. </>}
+                          {title && <>{title}. </>}
                           <span lang={line.lang} data-src={line.source === "prompt" ? "prompt" : undefined}>
                             {line.text}
                           </span>{" "}

@@ -2,6 +2,7 @@ import type { ShowcaseEntry, ShowcaseFiles } from "@/lib/site/showcase";
 import { modelLeftOut } from "@/lib/site/showcase";
 import { tryHref } from "@/lib/site/showcase-link";
 import { cardWords } from "@/lib/site/card-words";
+import { cardTitle } from "@/lib/site/card-titles";
 import type { Locale } from "@/lib/i18n/core";
 import type { ClipSources } from "@/components/site/LoopClip";
 
@@ -24,6 +25,8 @@ export type ShortsItem = {
    */
   line: string;
   lang: string;
+  /** Its hand-written title in the page's language (lib/site/card-titles.ts), or null for a sample that has none yet. */
+  title: string | null;
   poster: string;
   posterSm: string;
   sources: ClipSources;
@@ -45,6 +48,7 @@ export function shortsItems(items: readonly { e: ShowcaseEntry; f: ShowcaseFiles
             jobId: e.jobId,
             line: cardWords(e, locale).text,
             lang: cardWords(e, locale).lang,
+            title: cardTitle(e.jobId, locale),
             poster: f.poster,
             posterSm: f.posterSm,
             sources: f.clip,

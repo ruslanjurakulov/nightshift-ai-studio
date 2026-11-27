@@ -40,17 +40,22 @@
   background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.62) 38%, rgba(0, 0, 0, 0.78) 62%, rgba(0, 0, 0, 0.82) 100%);
   opacity: 0; pointer-events: none;
 }
+/* Up to two balanced lines: a Russian or Uzbek title runs longer than the English one, and one line cut it mid-word. */
 .mf-title {
   margin: 0; font-family: var(--font-display); font-size: 1.375rem; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em;
-  color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: #fff; overflow-wrap: anywhere; text-wrap: balance;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
 }
 .mf-desc {
   margin: 0; font-size: 1rem; font-weight: 400; line-height: 1.4; color: rgba(255, 255, 255, 0.66); overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden;
 }
-/* A card with no title may give its line two rows. */
+/* Every shipped sample has a title (lib/site/card-titles.ts); a sample merged before its title is written has none, and then its
+   line may take two rows. */
 .mf-cap[data-title="none"] .mf-desc { -webkit-line-clamp: 2; line-clamp: 2; }
-.mf-facts { margin: 2px 0 0; font-size: 13px; line-height: 1.35; color: rgba(255, 255, 255, 0.66); overflow-wrap: anywhere; }
+.mf-facts { margin: 2px 0 0; font-size: 14px; line-height: 1.35; color: rgba(255, 255, 255, 0.72); overflow-wrap: anywhere; }
+/* An effect's line is its whole pitch ("One moment frozen mid-air while the camera circles all the way round it"): two rows. */
+.efx-card .mf-desc { -webkit-line-clamp: 2; line-clamp: 2; }
 
 .mf-card:focus-within .mf-cap, .mf-card:has(.mf-card-link:focus-visible) .mf-cap, .mf-card[data-revealed="true"] .mf-cap { opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
@@ -71,10 +76,10 @@ html[data-motion="paused"] .mf-cap { transform: none; transition: opacity 200ms 
   .nx-gallery .mf-title { font-size: 1.0625rem; }
   .nx-gallery .mf-desc { font-size: 0.875rem; }
   .nx-gallery .mf-cap { padding: 40px 10px 10px; }
+  /* The mark stays legible but smaller than the caption it sits above. */
+  .mf-ai { top: 6px; right: 6px; padding: 1px 6px; font-size: 12px; }
 }
 
-/* Section headings of the media sections: bold display size (S5's display-lg, ~48 px at 1440), scoped to these sections only so
-   the site's other headings keep theirs. */
-.nx-section:is(#samples, #effects) .nx-h2 {
-  font-size: var(--ds-fs-display-lg, clamp(2rem, 1.5rem + 2.2222vw, 3.5rem)); font-weight: 700;
-}
+/* Section headings of the media sections: bold, 48 px at 1440 and 32 px at 360 (the owner's ~48 px, Kling's section heads),
+   scoped to these sections only so the site's other headings keep theirs. */
+.nx-section:is(#samples, #effects) .nx-h2 { font-size: clamp(2rem, 1rem + 2.2222vw, 3rem); font-weight: 700; }

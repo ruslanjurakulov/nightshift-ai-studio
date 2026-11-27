@@ -1,6 +1,7 @@
 "use client";
 
 import "./autopilot-demo.css";
+import "./media-card.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -13,7 +14,7 @@ import { holdClips } from "@/lib/site/clip-hold";
 import type { ShortsItem } from "@/components/site/shorts";
 
 type NetworkInformation = { saveData?: boolean };
-type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "use" | "useNote" | "noPrompt">;
+type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "mark" | "use" | "useNote" | "noPrompt">;
 
 /** The marker of the history entry the feed adds, so the phone's back button closes the feed instead of leaving the page. */
 const HISTORY_KEY = "nsShorts";
@@ -118,6 +119,8 @@ function Feed({
   // Whether the clip on screen should play: from the start when it may start by itself, otherwise only after its Play key.
   const [want, setWant] = useState(auto);
   const [muted, setMuted] = useState(true);
+  // Whether the clip on screen shows its caption (title, line, Use): media first, so it is hidden until a tap on the slide.
+  const [shown, setShown] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
@@ -154,6 +157,8 @@ function Feed({
 
   // A new clip on screen: it starts by itself only where that is allowed; elsewhere it waits for its own Play.
   useEffect(() => setWant(auto && !paused), [at, auto, paused]);
+  // A new clip on screen starts media first again.
+  useEffect(() => setShown(false), [at]);
 
   // One clip plays at a time: the one on screen, while wanted and the tab is showing. The rest are paused and rewound.
   useEffect(() => {
@@ -238,13 +243,27 @@ function Feed({
             <li
               key={it.jobId}
               className="nx-shorts-slide"
+              data-shown={here && shown ? "true" : undefined}
               data-index={i}
               data-showcase-entry={it.jobId}
               aria-hidden={here ? undefined : true}
               aria-roledescription="slide"
             >
-              {/* Tap the clip to pause or play it (no visible pause key: the owner's rule for the public site, 2026-11-13). */}
-              <div className="nx-shorts-media" data-live={here && want ? "true" : undefined} onClick={here ? () => setWant((w) => !w) : undefined}>
+              {/* Media first, like the cards (owner decision 22 Nov): a tap on the clip shows its caption and the Use link, and the next
+                  tap hides it again. A clip that waits for Play (reduced motion, the pause switch, Save-Data) starts on that first tap
+                  too. Pausing is the keyboard's key and the page's pause switch. */}
+              <div
+                className="nx-shorts-media"
+                data-live={here && want ? "true" : undefined}
+                onClick={
+                  here
+                    ? () => {
+                        if (!want && !auto) setWant(true);
+                        setShown((v) => !v);
+                      }
+                    : undefined
+                }
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={it.posterSm} width={it.width} height={it.height} alt="" loading={Math.abs(i - at) <= 1 ? "eager" : "lazy"} decoding="async" />
                 {mounted && (
@@ -275,8 +294,13 @@ function Feed({
                 </span>
               )}
               {i === 0 && total > 1 && here && <p className="nx-shorts-hint" aria-hidden>{copy.hint}</p>}
+              {/* At rest only the clip and this mark ("AI" in every language, owner decision 22 Nov); its meaning is read in full. */}
+              <span className="mf-ai nx-shorts-ai" aria-hidden>
+                {g.mark}
+              </span>
               <div className="nx-shorts-cap" inert={!here}>
-                <span className="nx-shorts-badge">{g.badge}</span>
+                <span className="sr-only">{g.badge}</span>
+                {it.title && <p className="nx-shorts-title">{it.title}</p>}
                 <p id={promptId} className="nx-shorts-prompt" lang={it.line ? it.lang : undefined}>
                   {/* The card's one line, not the whole prompt: that travels only in the link (owner decision 22 Nov). */}
                   {it.line || g.noPrompt}
