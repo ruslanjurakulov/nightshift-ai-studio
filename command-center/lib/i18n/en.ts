@@ -3969,7 +3969,7 @@ export const en = {
     // A requested model this workspace is not offered for this tool (owner decision 22 Nov): the default is taken and named, never swapped silently.
     modelGone: "The requested model isn't offered for this tool here, so {default} is selected.",
     modelGoneNamed: "{model} isn't offered for this tool here, so {default} is selected.",
-    // A public sample's picture-to-video link (lib/site/sample-source.ts): its own source picture, put in the library as the form's source.
+    // A public sample's picture-to-video link (lib/site/sample-source.ts): its own starting picture, proposed as the source and copied into the library only on "Use this picture".
     sampleSource: {
       label: "Sample picture",
       alt: "The picture this sample was animated from",
