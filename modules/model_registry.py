@@ -257,6 +257,11 @@ class ModelEntry:
     api_exposure: str
     max_prompt_chars: int
     max_concurrent_per_org: int
+    #: The adapter puts negative_prompt in the vendor's request (registry ``takes_negative_prompt``, default false). A model that does
+    #: not is refused one, by the quote (0218) and here: never charged for and silently dropped (CLAUDE.md #4).
+    takes_negative_prompt: bool
+    #: The adapter's own negative prompt limit, in characters (``limits.max_negative_prompt_chars``; Krea: 1024). None = none of its own.
+    max_negative_prompt_chars: Optional[int]
     quality_tier: int
     speed_tier: int
     raw: Mapping
@@ -310,6 +315,10 @@ class ModelEntry:
             out.append("prompt is empty")
         if prompt_units(request.prompt) > self.max_prompt_chars:
             out.append(f"prompt is longer than {self.max_prompt_chars} characters")
+        # The worker's backstop for 0218's quote check: a job created before it (or by a path that skipped the quote) still never
+        # reaches an adapter that would drop its negative prompt.
+        if (request.negative_prompt or "").strip() and not self.takes_negative_prompt:
+            out.append(f"{self.id} does not take a negative prompt; remove it or choose a model that does")
         aspects = self.aspects_for(cap)
         if request.aspect_ratio and request.aspect_ratio not in aspects:
             out.append(f"aspect ratio {request.aspect_ratio} is not offered for {cap} by {self.id}")
@@ -436,6 +445,8 @@ def _entry(m: Mapping) -> ModelEntry:
         credit_unit=m["credit_unit"], entitlement=m["entitlement"], terms_gate=m["terms_gate"],
         api_exposure=m["api_exposure"], max_prompt_chars=int(m["limits"]["max_prompt_chars"]),
         max_concurrent_per_org=int(m["limits"]["max_concurrent_per_org"]),
+        takes_negative_prompt=m.get("takes_negative_prompt") is True,
+        max_negative_prompt_chars=m["limits"].get("max_negative_prompt_chars"),
         quality_tier=int(m["quality_tier"]), speed_tier=int(m["speed_tier"]), raw=m,
     )
 
@@ -552,6 +563,18 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 errors.append(_err(mid, "a character swap is priced per resolution: one price for each listed resolution"))
             if swap["real_people"] == "own_generated_clip_only" and m["provider"] != "bytedance":
                 errors.append(_err(mid, "own_generated_clip_only is BytePlus's 30-day rule"))
+        if cls is not None and (m.get("takes_negative_prompt") is True) != bool(getattr(cls, "TAKES_NEGATIVE_PROMPT", False)):
+            # 0218 sells a negative prompt only to a model that says it takes one: the file must say exactly what the adapter sends
+            # (true on an adapter that drops it is a paid setting never used; false on one that sends it refuses what works).
+            errors.append(_err(mid, f"takes_negative_prompt must be {bool(getattr(cls, 'TAKES_NEGATIVE_PROMPT', False))} "
+                                    f"for adapter {m['adapter']}"))
+        neg_max = m["limits"].get("max_negative_prompt_chars")
+        if neg_max is not None and m.get("takes_negative_prompt") is not True:
+            errors.append(_err(mid, "limits.max_negative_prompt_chars is for a model that takes a negative prompt"))
+        if cls is not None and m.get("takes_negative_prompt") is True and neg_max != getattr(cls, "MAX_NEGATIVE_CHARS", None):
+            # The quote (0218) refuses past this number; the adapter refuses past its own. They must be one number.
+            errors.append(_err(mid, f"limits.max_negative_prompt_chars must be the adapter's own limit "
+                                    f"({getattr(cls, 'MAX_NEGATIVE_CHARS', None)})"))
         if m.get("end_frame"):
             if I2V not in caps:
                 errors.append(_err(mid, "end_frame is for a model that animates a picture (i2v)"))
@@ -753,6 +776,8 @@ def sync_rows(entries: Sequence[ModelEntry]) -> List[dict]:
             # sync). The entry stays in the file until a migration teaches the database its capability.
             continue
         spec = {k: v for k, v in e.raw.items() if k not in _COLUMNS}
+        # Always stated, never left to "absent means false": migration 0218 reads it, and a spec that says it is one a reader can trust.
+        spec["takes_negative_prompt"] = e.takes_negative_prompt
         rows.append({"id": e.id, "display_name": e.display_name, "provider": e.provider,
                      "adapter": e.adapter, "capabilities": list(e.capabilities),
                      "credit_unit": e.credit_unit, "entitlement": e.entitlement, "spec": spec})

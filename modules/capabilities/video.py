@@ -98,6 +98,8 @@ class VeoAdapter(HttpAdapter):
     Field names are those of google-genai's ``generate_videos``."""
 
     key = "video.veo"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("VEO_API_KEY", "GEMINI_API_KEY")
     base_url_env = "VEO_BASE_URL"
     default_base_url = "https://generativelanguage.googleapis.com"
@@ -225,6 +227,8 @@ class KlingAdapter(HttpAdapter):
     (``url``) is stored as returned. https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy"""
 
     key = "video.kling"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("KLING_API_KEY", "KLING_ACCESS_KEY", "KLING_SECRET_KEY")
     base_url_env = "KLING_BASE_URL"
     default_base_url = "https://api-singapore.klingai.com"
@@ -1002,6 +1006,8 @@ class WanAdapter(HttpAdapter):
     https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference"""
 
     key = "video.wan"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("WAN_API_KEY", "DASHSCOPE_API_KEY")
     base_url_env = "WAN_BASE_URL"
     default_base_url = "https://dashscope-intl.aliyuncs.com"
