@@ -19,12 +19,15 @@ export function EffectFrame({
   label,
   className = "fx-frame",
   sample = effectSample(effect),
+  badgeId,
 }: {
   effect: Effect;
   /** `noSample` or `sample` from the dictionary, chosen by the caller from the same `sample` it passes. */
   label: { noSample: string; sample: string };
   className?: string;
   sample?: ReturnType<typeof effectSample>;
+  /** An id for the badge, so a card's link can say in its description whether this is a real result or a drawing. */
+  badgeId?: string;
 }) {
   // A sample of another shape than its effect's is cut to the effect's shape from the centre (effect-sample.ts sampleKeepsShape).
   const own = sample && sampleKeepsShape(effect, sample.entry);
@@ -40,7 +43,7 @@ export function EffectFrame({
       ) : (
         <EffectArt motif={effect.motif} hues={effect.hues} />
       )}
-      <span className="fx-badge">{sample ? label.sample : label.noSample}</span>
+      <span id={badgeId} className="fx-badge">{sample ? label.sample : label.noSample}</span>
     </div>
   );
 }

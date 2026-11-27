@@ -12,6 +12,12 @@
   border-radius: 1rem;
   background: #000;
 }
+/* The Studio used to switch from lime on the canvas to blue inside the chat. */
+.ns-ai-dock :is(.chat-shell, .chat-frame) {
+  --chat-focus: var(--ds-focus);
+  --ns-act: #8ab4ff;
+  --ns-focus: var(--ds-focus);
+}
 .ns-ai-dock > .chat-shell { height: 100%; }
 @media (min-width: 64rem) {
   /* Beside the canvas: it stays on screen while the canvas scrolls, below the app's sticky top bar (--ns-shell-h is its measured
