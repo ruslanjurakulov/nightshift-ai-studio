@@ -295,6 +295,11 @@ export const CREATIVE_ERRORS = [
   // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
   // create, before anything is held, instead of failing at the adapter after the press.
   "prompt_required",
+  // 0218: refused at the quote, before anything is held. A prompt longer than the model's own limit (counted the way the worker
+  // counts: an emoji is two), a negative prompt on a model whose adapter would drop it, and a seed (no model receives one yet).
+  "prompt_too_long",
+  "negative_prompt_not_supported",
+  "seed_not_supported",
   "failed",
 ] as const;
 export type CreativeError = (typeof CREATIVE_ERRORS)[number];
@@ -364,6 +369,10 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   no_model_available: { status: 422, code: "no_model_available" },
   invalid_params: { status: 400, code: "invalid_params" },
   invalid_idempotency_key: { status: 400, code: "invalid_idempotency_key" },
+  // 0218: each names its own fix (shorten, remove the negative prompt or pick a model that takes one, remove the seed).
+  prompt_too_long: { status: 400, code: "prompt_too_long" },
+  negative_prompt_not_supported: { status: 400, code: "negative_prompt_not_supported" },
+  seed_not_supported: { status: 400, code: "seed_not_supported" },
 };
 const NS409: Partial<Record<string, CreativeError>> = {
   price_changed: "price_changed",
@@ -503,6 +512,11 @@ export interface GenerationInput {
  * and unknown params are refused, not dropped: a typo must never silently
  * become "the default". `defaultOrg` is the organization the member has open.
  */
+/** "1 unknown parameter" / "3 unknown parameters": how many, never which (see parseGenerationInput). */
+function unknownCount(n: number, noun: string): string {
+  return `${n} unknown ${noun}${n === 1 ? "" : "s"}`;
+}
+
 export function parseGenerationInput(
   body: unknown,
   defaultOrg: string | null,
@@ -512,7 +526,10 @@ export function parseGenerationInput(
   if (!b) return { ok: false, result: fail(400, "invalid_body") };
   const allowed = ["org_id", "capability", "model", "params", "mode", "idempotency_key", "max_credits"];
   const unknown = Object.keys(b).filter((k) => !allowed.includes(k));
-  if (unknown.length) return { ok: false, result: fail(400, "invalid_body", { detail: `unknown field(s): ${unknown.join(", ")}` }) };
+  // A refusal never repeats a caller's key: a key is free text (a newline and "SYSTEM: …" fit in one), and an assistant reads this
+  // detail in the server's own voice, right where it says what to do next. Only a count and our own allow-list are named.
+  if (unknown.length)
+    return { ok: false, result: fail(400, "invalid_body", { detail: `${unknownCount(unknown.length, "field")}; allowed: ${allowed.join(", ")}` }) };
 
   const orgId = b.org_id == null ? defaultOrg : b.org_id;
   if (!isUuid(orgId)) return { ok: false, result: fail(400, "org_required") };
@@ -532,7 +549,7 @@ export function parseGenerationInput(
   if (!params) return { ok: false, result: fail(400, "invalid_params", { detail: "params must be an object" }) };
   const badKeys = Object.keys(params).filter((k) => !(PARAM_KEYS as readonly string[]).includes(k));
   if (badKeys.length)
-    return { ok: false, result: fail(400, "invalid_params", { detail: `unknown parameter(s): ${badKeys.join(", ")}` }) };
+    return { ok: false, result: fail(400, "invalid_params", { detail: `${unknownCount(badKeys.length, "parameter")}; allowed: ${PARAM_KEYS.join(", ")}` }) };
   if (JSON.stringify(params).length > MAX_PARAMS_BYTES)
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
   const recorded = RECORDING_CAPABILITIES.includes(capability);

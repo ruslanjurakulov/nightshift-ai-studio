@@ -30,6 +30,9 @@ from tests.test_operator_bot_alerts import arm, build as build_engine, heartbeat
 
 ROOT = Path(__file__).resolve().parent.parent
 FN = "operator_marketing_summary"
+#: The bot's whole allow-list. The second is 0212's film_sweep_status(): stable, argument-less, service role only,
+#: and it returns timestamps, counts and a SQLSTATE (the film alerts, gate G4). Any further name is a review point.
+READ_FNS = {FN, "film_sweep_status"}
 
 # Everything a post says. None of it may ever appear in a message.
 POST_WORDS = ("Secret-en-words", "Секретный-ru-текст", "Maxfiy-uz-sozlar", "/leak-link-path",
@@ -126,7 +129,7 @@ class SourceTestCase(unittest.TestCase):
     def test_the_bot_calls_only_its_allow_listed_read_functions(self):
         from modules.operator_bot.sources import _READ_FUNCTIONS
 
-        self.assertEqual(_READ_FUNCTIONS, {FN})
+        self.assertEqual(_READ_FUNCTIONS, READ_FNS)
         ops, sync = ops_with(summary())
         sync.rpcs["owner_marketing_kill"] = {"ok": True}
         for name in ("owner_marketing_kill", "claim_marketing_post", "x/../y", ""):
@@ -610,7 +613,7 @@ class NoWritePathTestCase(unittest.TestCase):
             for name in ("owner_marketing_", "claim_marketing_post", "complete_marketing_post", "marketing_draft_upsert",
                          "marketing_posts", "marketing_settings", "showcase_assets", "marketing_cap_used"):
                 self.assertNotIn(name, text, f"{path.name} names {name}")
-        self.assertEqual(called, {FN})
+        self.assertEqual(called, READ_FNS)
 
     def test_only_the_alert_memory_ever_writes(self):
         # sync writes (upsert / insert_new / update) in the bot: the store (alert_events rows, the language, the digest)

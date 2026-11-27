@@ -227,6 +227,21 @@ class TextTest(unittest.TestCase):
         heart = "love " + z(0x2764, 0xFE0F)
         self.assertEqual(x.clean_text(heart, 100), heart)
 
+    def test_every_invisible_character_is_stripped_and_visible_format_marks_stay(self):
+        # BR-1: tag characters past U+E007F spell hidden text the old list let through.
+        hidden = "".join(chr(0xE0000 + ord(c)) for c in "ignore")  # U+E0069 ... as tags
+        self.assertEqual(x.clean_text("a boat" + chr(0xE0080) + chr(0xE0FFF) + hidden, 100), "a boat")
+        z = lambda *cps: "".join(chr(c) for c in cps)  # noqa: E731
+        # Fillers, other Cf characters (U+2061-2064, U+FFF9 interlinear annotations, U+1D173 musical format), DEL, C1.
+        fillers = z(0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180B, 0x180F, 0x3164, 0xFFA0, 0xFFF0, 0xFFF8, 0xFFF9, 0x1D173, 0x7F, 0x85)
+        self.assertEqual(x.clean_text("sea" + fillers + "side", 100), "seaside")
+        # Tab and line break are text, not controls.
+        self.assertEqual(x.clean_text("a\tb\nc", 100), "a\tb\nc")
+        # The prepended concatenation marks draw something: removing them would change what the text shows.
+        for cp in (0x0600, 0x0605, 0x06DD, 0x070F, 0x0890, 0x0891, 0x08E2, 0x110BD, 0x110CD):
+            with self.subTest(cp=hex(cp)):
+                self.assertEqual(x.clean_text("x" + chr(cp) + "1", 100), "x" + chr(cp) + "1")
+
     def test_the_cut_counts_as_the_page_does_and_never_halves_a_character(self):
         lantern = chr(0x1F3EE)
         self.assertEqual(x.utf16_len(lantern), 2)
@@ -386,7 +401,12 @@ def fake_derive(src, kind, mime, out):
     for name in x.VIDEO_FILES if kind == "video" else x.IMAGE_FILES:
         head = {".webp": b"RIFF\x00\x00\x00\x00WEBPVP8 ", ".mp4": b"\x00\x00\x00\x18ftypisom", ".webm": b"\x1a\x45\xdf\xa3\x00"}[Path(name).suffix]
         (out / name).write_bytes(head + b"data")
-    return (1280, 720)
+    return (1280, 720, False)
+
+
+def fake_derive_with_sound(src, kind, mime, out):
+    w, h, _ = fake_derive(src, kind, mime, out)
+    return (w, h, kind == "video")
 
 
 class ExportTest(unittest.TestCase):
@@ -407,12 +427,12 @@ class ExportTest(unittest.TestCase):
         dest.write_bytes(BYTES)
         return len(BYTES)
 
-    def run_export(self, rest, **kw):
+    def run_export(self, rest, derive=fake_derive, **kw):
         # The real art hashes are used by export(); stand the fake art in for them.
         orig = x.file_hashes
         x.file_hashes = lambda dirs: ART if dirs == [x.ART_DIR] else STOCK
         try:
-            return x.export(JOB, rest=rest, fetch=self.fetch, derive=fake_derive, data_file=self.data, assets_module=self.module,
+            return x.export(JOB, rest=rest, fetch=self.fetch, derive=derive, data_file=self.data, assets_module=self.module,
                             out_root=self.out, now=datetime(2026, 11, 13, tzinfo=timezone.utc), **kw)
         finally:
             x.file_hashes = orig
@@ -428,6 +448,36 @@ class ExportTest(unittest.TestCase):
         module = self.module.read_text(encoding="utf-8")
         self.assertEqual(module, x.render_assets_module(data["entries"]))
         self.assertIn(f'import s0Mp4 from "@/components/site/showcase/{JOB}/clip.mp4";', module)
+
+    def test_the_entry_records_no_sound_and_no_card_line_by_default(self):
+        entry = self.run_export(world())
+        self.assertIs(entry["audio"], False)
+        self.assertIsNone(entry["cardLine"])
+        self.assertNotIn("audio", self.module.read_text(encoding="utf-8"))
+
+    def test_the_entry_and_the_module_carry_the_sound_the_derivatives_found(self):
+        line = {"en": "Lanterns rise", "ru": "Фонари", "uz": "Chiroqlar"}
+        entry = self.run_export(world(), derive=fake_derive_with_sound, card_line_raw=line)
+        self.assertIs(entry["audio"], True)
+        data = json.loads(self.data.read_text(encoding="utf-8"))
+        self.assertIs(data["entries"][0]["audio"], True)
+        self.assertEqual(data["entries"][0]["cardLine"], line)
+        self.assertIn("audio: true", self.module.read_text(encoding="utf-8"))
+        self.assertIn("Sound: yes", x.summary_markdown(entry))
+        self.assertIn('Card line: en: `` "Lanterns rise" ``'.replace("``", "`"), x.summary_markdown(entry))
+
+    def test_a_prompt_with_hidden_tag_bytes_is_exported_as_its_visible_words(self):
+        # BR-1: "a boat" followed by text spelled in tag characters past U+E007F (invisible on the page, read by a model).
+        hidden = "".join(chr(0xE0080 + i) for i in range(16))
+        entry = self.run_export(world(params={"prompt": "a boat" + hidden, "source_asset_id": SRC}))
+        self.assertEqual(entry["prompt"], "a boat")
+        self.assertEqual(json.loads(self.data.read_text(encoding="utf-8"))["entries"][0]["prompt"], "a boat")
+
+    def test_a_bad_card_line_is_refused_before_anything_is_fetched(self):
+        with self.assertRaises(x.Refusal) as cm:
+            self.run_export(world(), card_line_raw={"en": "only english"})
+        self.assertEqual(cm.exception.code, "card_line_incomplete")
+        self.assertEqual(self.fetched, [])
 
     def test_the_same_job_again_changes_nothing(self):
         self.run_export(world())
@@ -606,7 +656,8 @@ class WorkflowTest(unittest.TestCase):
         export = self.doc["jobs"]["export"]
         runs = "\n".join(s.get("run", "") for s in export["steps"])
         self.assertIn("pip install -c constraints.txt", runs)
-        for flag in ('--job-id="$JOB_ID"', '--slot="$SLOT"', '--caption="$CAPTION"'):
+        for flag in ('--job-id="$JOB_ID"', '--slot="$SLOT"', '--caption="$CAPTION"', '--card-line-en="$CARD_LINE_EN"',
+                     '--card-line-ru="$CARD_LINE_RU"', '--card-line-uz="$CARD_LINE_UZ"'):
             self.assertIn(flag, runs)
 
     def test_it_never_pushes_to_main_and_opens_a_draft(self):
@@ -616,6 +667,201 @@ class WorkflowTest(unittest.TestCase):
         self.assertNotIn("refs/heads/main", run)
         self.assertIn('branch="showcase/${JOB_ID}"', run)
         self.assertIn("--verify-export", run)
+
+
+class SoundTest(unittest.TestCase):
+    """Owner decision 2026-11-22: a clip with sound keeps it in the full copies; the site learns it from the entry, never guesses."""
+
+    class Done:
+        def __init__(self, code, out):
+            self.returncode, self.stdout = code, out
+
+    def probe(self, code, out):
+        return x.has_audio("ffprobe", Path("clip"), "video/mp4", run=lambda *a, **kw: self.Done(code, out))
+
+    def test_an_audio_stream_is_read_from_the_file(self):
+        self.assertTrue(self.probe(0, b"audio\n"))
+        self.assertTrue(self.probe(0, b"audio\naudio\n"))
+        self.assertFalse(self.probe(0, b""))
+
+    def test_a_probe_that_cannot_say_is_a_refusal_not_a_silent_copy(self):
+        with self.assertRaises(x.Refusal) as cm:
+            self.probe(1, b"")
+        self.assertEqual(cm.exception.code, "audio_unknown")
+
+        def missing(*a, **kw):
+            raise FileNotFoundError("ffprobe")
+
+        with self.assertRaises(x.Refusal) as cm:
+            x.has_audio("ffprobe", Path("clip"), "video/mp4", run=missing)
+        self.assertEqual(cm.exception.code, "audio_unknown")
+
+    def test_the_audio_probe_is_forced_to_the_files_type_and_reads_no_other_protocol(self):
+        cmd = x.audio_probe_command("ffprobe", Path("clip"), "video/webm")
+        self.assertEqual(cmd[cmd.index("-f") + 1], "matroska")
+        self.assertEqual(cmd[cmd.index("-protocol_whitelist") + 1], "file")
+        self.assertEqual(cmd[cmd.index("-select_streams") + 1], "a")
+
+    @staticmethod
+    def by_output(cmds):
+        return {Path(c[-1]).name: c for c in cmds}
+
+    def test_with_sound_the_full_copies_carry_aac_and_opus_and_the_small_ones_stay_silent(self):
+        cmds = self.by_output(x.video_commands("ffmpeg", Path("src"), "video/mp4", Path("out"), audio=True))
+        mp4, webm = cmds["clip.mp4"], cmds["clip.webm"]
+        self.assertNotIn("-an", mp4)
+        self.assertNotIn("-an", webm)
+        self.assertEqual(mp4[mp4.index("-c:a") + 1], "aac")
+        self.assertEqual(mp4[mp4.index("-b:a") + 1], "128k")
+        self.assertEqual(webm[webm.index("-c:a") + 1], "libopus")
+        self.assertEqual(webm[webm.index("-b:a") + 1], "96k")
+        for c in (mp4, webm):
+            self.assertEqual(c[c.index("-ac") + 1], "2")
+            self.assertEqual(c[c.index("-ar") + 1], "48000")
+            # Exactly one audio stream and the video: a second track a source carries is never shipped.
+            self.assertIn("0:a:0", c)
+            self.assertIn("0:v:0", c)
+        for name in ("clip-sm.mp4", "clip-sm.webm"):
+            self.assertIn("-an", cmds[name])
+            self.assertNotIn("-c:a", cmds[name])
+        self.assertNotIn("-c:a", cmds["frame0.png"])
+
+    def test_without_sound_every_copy_is_silent(self):
+        # The default is silent: a caller that never probed cannot ship a track it did not check for.
+        for cmds in (x.video_commands("ffmpeg", Path("src"), "video/mp4", Path("out")),
+                     x.video_commands("ffmpeg", Path("src"), "video/mp4", Path("out"), audio=False)):
+            for name, c in self.by_output(cmds).items():
+                if name.endswith((".mp4", ".webm")):
+                    self.assertIn("-an", c, name)
+                    self.assertNotIn("-c:a", c, name)
+
+    def test_derivatives_ask_the_probe_and_pass_its_answer_on(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        ran = []
+        orig = x.write_posters
+        x.write_posters = lambda still, out: (1280, 720)
+        try:
+            got = x.make_derivatives(tmp / "src", "video", "video/mp4", tmp / "out", run=ran.append, measure=lambda *a: 5.0, sound=lambda *a: True)
+        finally:
+            x.write_posters = orig
+        self.assertEqual(got, (1280, 720, True))
+        mp4 = next(c for c in ran if c[-1].endswith("/clip.mp4"))
+        self.assertIn("aac", mp4)
+
+    def test_a_picture_has_no_sound_and_is_never_probed(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+
+        def never(*a):
+            raise AssertionError("a picture was probed for sound")
+
+        orig = x.write_posters
+        x.write_posters = lambda still, out: (1280, 720)
+        try:
+            self.assertEqual(x.make_derivatives(tmp / "src", "image", "image/png", tmp / "out", sound=never), (1280, 720, False))
+        finally:
+            x.write_posters = orig
+
+    def sound_run(self, peak, samples, code=0):
+        """ffprobe says there is a stream; ffmpeg's astats reports `peak` and `samples` (or nothing, with code != 0)."""
+        def run(cmd, **kw):
+            if Path(cmd[0]).name == "ffprobe":
+                return self.Done(0, b"audio\n")
+            text = "" if code else f"[Parsed_astats_1] Overall\n[Parsed_astats_1] Peak level dB: {peak}\n[Parsed_astats_1] Number of samples: {samples}\n"
+            d = self.Done(code, b"")
+            d.stderr = text.encode()
+            return d
+        return run
+
+    def test_only_a_track_that_is_heard_and_covers_the_picture_is_sound(self):
+        hear = lambda peak, samples: x.audio_is_sound("ffmpeg", "ffprobe", Path("c"), "video/mp4", 2.0, run=self.sound_run(peak, samples))  # noqa: E731
+        self.assertTrue(hear("-12.5", 96000))
+        # Digital silence, and a generator's near-silent padding.
+        self.assertFalse(hear("-inf", 96000))
+        self.assertFalse(hear("-75.0", 96000))
+        # A blip: 1024 samples at 48 kHz on a 2 s picture; and just under 80% of it.
+        self.assertFalse(hear("-18.0", 1024))
+        self.assertFalse(hear("-18.0", int(0.79 * 2 * 48000)))
+        self.assertTrue(hear("-18.0", int(0.8 * 2 * 48000)))
+
+    def test_a_sound_measurement_that_cannot_be_read_refuses(self):
+        with self.assertRaises(x.Refusal) as cm:
+            x.audio_is_sound("ffmpeg", "ffprobe", Path("c"), "video/mp4", 2.0, run=self.sound_run("-1", 1, code=1))
+        self.assertEqual(cm.exception.code, "audio_unknown")
+
+    def test_the_sound_measure_reads_only_the_file_through_its_forced_demuxer(self):
+        cmd = x.sound_measure_command("ffmpeg", Path("/w/src"), "video/webm")
+        self.assertEqual(cmd[cmd.index("-f") + 1], "matroska")
+        self.assertEqual(cmd[cmd.index("-protocol_whitelist") + 1], "file")
+        self.assertLess(cmd.index("-t"), cmd.index("-i"))
+
+    def test_the_kept_track_is_cut_at_the_pictures_length(self):
+        cmds = self.by_output(x.video_commands("ffmpeg", Path("src"), "video/mp4", Path("out"), audio=True, seconds=2.0))
+        for name in ("clip.mp4", "clip.webm"):
+            c = cmds[name]
+            self.assertIn("-shortest", c)
+            # The second -t (after -i) is the output's own cut.
+            after = c[c.index("-i"):]
+            self.assertEqual(after[after.index("-t") + 1], "2.000")
+
+    def test_the_length_is_the_video_streams_and_a_webm_tag_reads(self):
+        cmd = x.probe_command("ffprobe", Path("c"), "video/webm")
+        self.assertEqual(cmd[cmd.index("-select_streams") + 1], "v:0")
+        self.assertEqual(x._parse_seconds("N/A,00:00:02.500000000\n"), 2.5)
+        self.assertEqual(x._parse_seconds("5.041667\n"), 5.041667)
+        self.assertNotEqual(x._parse_seconds("N/A\n"), x._parse_seconds("N/A\n"))
+
+    def test_the_module_marks_only_a_clip_with_sound_and_an_old_entry_generates_what_it_did(self):
+        silent = {"jobId": JOB, "kind": "video"}
+        old = x.render_assets_module([silent])
+        self.assertNotIn("audio", old)
+        self.assertEqual(x.render_assets_module([dict(silent, audio=False)]), old)
+        loud = x.render_assets_module([dict(silent, audio=True)])
+        self.assertIn("smWebm: s0SmWebm, audio: true }", loud)
+
+
+class CardLineTest(unittest.TestCase):
+    def test_none_given_is_null(self):
+        self.assertIsNone(x.parse_card_line({}))
+        self.assertIsNone(x.parse_card_line({"en": " ", "ru": "", "uz": chr(0x200B)}))
+
+    def test_all_three_are_kept_cleaned(self):
+        got = x.parse_card_line({"en": " Lanterns" + chr(0x202E) + " rise ", "ru": "Фонари", "uz": "Chiroqlar"})
+        self.assertEqual(got, {"en": "Lanterns rise", "ru": "Фонари", "uz": "Chiroqlar"})
+
+    def test_one_or_two_languages_only_is_refused(self):
+        for given in ({"en": "a"}, {"en": "a", "ru": "b"}, {"ru": "b", "uz": "c"}):
+            with self.subTest(given=given), self.assertRaises(x.Refusal) as cm:
+                x.parse_card_line(given)
+            self.assertEqual(cm.exception.code, "card_line_incomplete")
+
+    def test_invisible_characters_are_stripped_from_the_card_line_too(self):
+        got = x.parse_card_line({"en": "boat" + chr(0xE0080) + chr(0x2064), "ru": "лодка" + chr(0x3164), "uz": "qayiq" + chr(0x034F)})
+        self.assertEqual(got, {"en": "boat", "ru": "лодка", "uz": "qayiq"})
+        # A line that was only invisible characters is no line.
+        self.assertIsNone(x.parse_card_line({"en": chr(0xE0080), "ru": chr(0x3164), "uz": chr(0xFFA0)}))
+
+    def test_a_line_break_or_a_tab_is_refused(self):
+        for bad in ("one\ntwo", "one\rtwo", "one\ttwo"):
+            with self.subTest(bad=bad), self.assertRaises(x.Refusal) as cm:
+                x.parse_card_line({"en": "a", "ru": bad, "uz": "c"})
+            self.assertEqual(cm.exception.code, "card_line_invalid")
+
+    def test_the_summary_shows_a_card_line_as_code_so_it_pings_nobody(self):
+        card = x.parse_card_line({"en": "thanks @octocat", "ru": "a ``b`` c", "uz": "d"})
+        self.assertEqual(x._code('"thanks @octocat"'), '` "thanks @octocat" `')
+        # A value with backticks cannot close its own span.
+        self.assertEqual(x._code('"a ``b`` c"'), '``` "a ``b`` c" ```')
+        self.assertIsNotNone(card)
+
+    def test_a_line_over_the_limit_is_refused_never_cut(self):
+        self.assertEqual(x.parse_card_line({"en": "a" * 140, "ru": "b", "uz": "c"})["en"], "a" * 140)
+        lantern = chr(0x1F3EE)  # two UTF-16 units, as the page counts it
+        for long in ("a" * 141, lantern * 71):
+            with self.subTest(n=len(long)), self.assertRaises(x.Refusal) as cm:
+                x.parse_card_line({"en": "a", "ru": long, "uz": "c"})
+            self.assertEqual(cm.exception.code, "card_line_too_long")
 
 
 class ClipLengthTest(unittest.TestCase):
@@ -683,8 +929,27 @@ class DerivativesTest(unittest.TestCase):
         for cmd in x.video_commands("ffmpeg", src, "video/mp4", tmp / "out"):
             self.assertLess(cmd.index("-t"), cmd.index("-i"))
             self.assertEqual(cmd[cmd.index("-t") + 1], "30")
-        self.assertEqual(size, (1280, 720))
+        self.assertEqual(size, (1280, 720, False))
         self.assertEqual(sorted(p.name for p in (tmp / "out").iterdir()), sorted(x.VIDEO_FILES))
+
+    def test_a_clip_with_sound_keeps_it_in_the_full_copies_only(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        src = tmp / "src.mp4"
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24:duration=1",
+                        "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest", "-pix_fmt", "yuv420p", str(src)], check=True)
+        self.assertTrue(x.has_audio("ffprobe", src, "video/mp4"))
+        self.assertEqual(x.make_derivatives(src, "video", "video/mp4", tmp / "out"), (1280, 720, True))
+
+        def codecs(name):
+            out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "csv=p=0",
+                                  str(tmp / "out" / name)], stdout=subprocess.PIPE, check=True).stdout.decode()
+            return sorted(line.strip() for line in out.splitlines() if line.strip())
+
+        self.assertIn("aac,audio", codecs("clip.mp4"))
+        self.assertIn("opus,audio", codecs("clip.webm"))
+        for name in ("clip-sm.mp4", "clip-sm.webm"):
+            self.assertFalse([c for c in codecs(name) if c.endswith(",audio")], name)
 
 
 if __name__ == "__main__":

@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { ChevronDown, Menu, X } from "lucide-react";
 import { useSessionHint } from "@/components/legal/SessionSwap";
+import { APP_HOME } from "@/lib/session-hint";
+import { isCurrentPage, menuHref } from "@/lib/public-menu-href";
+import type { NavEntry, NavGroupId, PublicSection } from "@/lib/public-nav";
 
 /** Phones only: the width below which the bar is the wordmark, Start free and this button (site.css .st-menu-btn). */
 const PHONE = "(max-width: 767px)";
@@ -21,19 +24,29 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
  * (Tab and Shift+Tab wrap), Escape or the close button closes it and focus returns to the button. Following a link,
  * a route change or widening past the phone breakpoint closes it too. Without JavaScript the button cannot open
  * anything, so a <noscript> rule shows the old wrapped rows instead (nothing is out of reach).
+ *
+ * The destinations are the desktop panels' own (lib/public-nav.ts), as collapsible sections: a button per group says
+ * whether it is open (aria-expanded) and its chevron turns; the group holding the current page starts open. The primary
+ * key (Start free, or Open app when signed in) is pinned to the sheet's foot, so it is in reach however long the list is.
  */
 export function PublicMenu({
-  links,
+  entries,
+  current,
   label,
   closeLabel,
   signIn,
+  start,
+  openApp,
   children,
 }: {
-  links: { href: string; label: string; current: boolean }[];
+  entries: NavEntry[];
+  current: PublicSection;
   /** The button's and the dialog's name ("Menu"). */
   label: string;
   closeLabel: string;
   signIn: string;
+  start: string;
+  openApp: string;
   /** Language and theme, drawn by the shell (the same controls as the bar's). */
   children: React.ReactNode;
 }) {
@@ -43,6 +56,22 @@ export function PublicMenu({
   const button = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const holding = useCallback(
+    () => new Set(entries.flatMap((e) => (e.kind === "group" && e.section && e.section === current ? [e.id] : []))),
+    [entries, current],
+  );
+  const [expanded, setExpanded] = useState<ReadonlySet<NavGroupId>>(holding);
+  // A client-side move to another section's page keeps this component mounted: the open section follows the new page.
+  useEffect(() => {
+    setExpanded(holding());
+  }, [holding]);
+  const toggleSection = (id: NavGroupId) =>
+    setExpanded((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const close = useCallback((returnFocus: boolean) => {
     setOpen(false);
@@ -71,9 +100,10 @@ export function PublicMenu({
     // <body>, and a handler on the sheet then heard neither Escape (the sheet stayed open) nor Tab (it walked into the
     // page behind the scrim).
     const items = () =>
-      // Everything in the sheet is shown while it is open (the language list is only in the page while it is open), so
-      // no visibility filter: one based on layout (offsetParent) would find nothing where there is no layout.
-      sheet.current ? Array.from(sheet.current.querySelectorAll<HTMLElement>(FOCUSABLE)) : [];
+      // A collapsed section's links are in the page but hidden; everything else is shown while the sheet is open (the
+      // language list is only in the page while it is open). The filter is the hidden attribute, not layout: one based on
+      // layout (offsetParent) would find nothing where there is no layout.
+      sheet.current ? Array.from(sheet.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.closest("[hidden]")) : [];
     const inside = (n: EventTarget | null) => n instanceof Node && Boolean(sheet.current?.contains(n));
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -140,20 +170,89 @@ export function PublicMenu({
             </button>
           </div>
           <nav aria-label={label} className="st-menu-nav">
-            {links.map((l) => (
-              <Link key={l.href} href={l.href} aria-current={l.current ? "page" : undefined} onClick={() => close(false)}>
-                {l.label}
-              </Link>
-            ))}
+            {entries.map((e) => {
+              if (e.kind === "link") {
+                return (
+                  <Link
+                    key={e.href}
+                    href={menuHref(e.href)}
+                    aria-current={e.section && e.section === current ? "page" : undefined}
+                    onClick={() => close(false)}
+                  >
+                    {e.label}
+                  </Link>
+                );
+              }
+              const secOpen = expanded.has(e.id);
+              const secId = `${uid}-sec-${e.id}`;
+              return (
+                <div key={e.id} className="st-menu-sec">
+                  <button
+                    type="button"
+                    className="st-menu-sec-btn"
+                    aria-expanded={secOpen}
+                    aria-controls={secId}
+                    data-current={e.section && e.section === current ? "true" : undefined}
+                    onClick={() => toggleSection(e.id)}
+                  >
+                    {e.label}
+                    <ChevronDown aria-hidden className="st-menu-chev" />
+                  </button>
+                  <div id={secId} className="st-menu-sec-body" hidden={!secOpen}>
+                    {e.columns.map((c) => (
+                      <div key={c.id} className="st-menu-col">
+                        {c.href ? (
+                          <Link
+                            href={menuHref(c.href)}
+                            className="st-menu-col-title"
+                            aria-current={isCurrentPage(c.href, pathname) ? "page" : undefined}
+                            onClick={() => close(false)}
+                          >
+                            {c.title}
+                          </Link>
+                        ) : (
+                          // The group's button already names a one-column group with the same title: a second heading is noise.
+                          c.title !== e.label && <p className="st-menu-col-title">{c.title}</p>
+                        )}
+                        <ul>
+                          {c.links.map((l) => (
+                            <li key={l.href}>
+                              <Link
+                                href={menuHref(l.href)}
+                                aria-current={isCurrentPage(l.href, pathname) ? "page" : undefined}
+                                onClick={() => close(false)}
+                              >
+                                {l.label}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </nav>
           <div className="st-menu-tools">{children}</div>
-          {/* Not a key: the bar's one key is Start free, which stays beside the button. Signed in, that key opens the app and
-              there is nothing to sign in to (components/legal/SessionSwap). */}
-          {!signedIn && (
-            <Link href="/login" className="st-menu-signin" onClick={() => close(false)}>
-              {signIn}
-            </Link>
-          )}
+          {/* Pinned to the sheet's foot. Signed in, the key opens the app and there is nothing to sign in to
+              (components/legal/SessionSwap); the app opens as a full load (a plain link), never a prefetched app route. */}
+          <div className="st-menu-foot">
+            {!signedIn && (
+              <Link href={menuHref("/login")} className="st-menu-signin" onClick={() => close(false)}>
+                {signIn}
+              </Link>
+            )}
+            {signedIn ? (
+              <a href={APP_HOME} className="st-key" data-sheet-key="" data-block="true" onClick={() => close(false)}>
+                {openApp}
+              </a>
+            ) : (
+              <Link href={menuHref("/signup")} className="st-key" data-sheet-key="" data-block="true" onClick={() => close(false)}>
+                {start}
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </>

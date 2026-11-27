@@ -153,3 +153,18 @@ for (const pg of PAGES) {
     });
   }
 }
+
+// "/" scrolled sideways at 360 px in ru and uz (S5's Pixel audit, 2026-11-22): the prompt ticker's meta row was a nowrap flex row
+// with min-width auto, so the badge and "Model Runway Gen-4.5" (334 px) overflowed its 294 px box. The landing no longer draws the
+// ticker, and its row now wraps; this keeps the narrowest phone we support from scrolling sideways in any language.
+for (const lang of ["en", "ru", "uz"] as const) {
+  test(`[home] [360px] [${lang}] nothing scrolls sideways`, async ({ page, context }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await context.clearCookies();
+    await context.addCookies([{ name: LOCALE_COOKIE, value: lang, url: BASE_URL }]);
+    const v = await visit(page, "/");
+    expect(v.status, "HTTP status").toBe(200);
+    const sw = await page.evaluate(() => (document.scrollingElement ?? document.documentElement).scrollWidth);
+    expect(sw, `page width at 360px (${lang})`).toBeLessThanOrEqual(360);
+  });
+}

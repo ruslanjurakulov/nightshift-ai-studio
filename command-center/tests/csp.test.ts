@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import {
+  BRAND_INTRO_SCRIPT_HASH,
   NO_FLASH_SCRIPT_HASH,
   buildCsp,
   cspHeaderName,
@@ -11,6 +12,7 @@ import {
   supabaseOrigins,
 } from "@/lib/security/csp";
 import { NO_FLASH_SCRIPT } from "@/lib/theme";
+import { BRAND_INTRO_SCRIPT } from "@/lib/site/brand-intro";
 
 // BR-S-008: a real content policy on every page, report-only until the owner
 // switches it to enforce. These pin the policy string, the mode switch, and
@@ -34,7 +36,7 @@ const { middleware } = await import("@/middleware");
 const NONCE = "AAAAAAAAAAAAAAAAAAAAAA==";
 const EXPECTED =
   "default-src 'self'; " +
-  `script-src 'self' 'nonce-${NONCE}' 'strict-dynamic' ${NO_FLASH_SCRIPT_HASH} https://cdn.paddle.com https://public.profitwell.com; ` +
+  `script-src 'self' 'nonce-${NONCE}' 'strict-dynamic' ${NO_FLASH_SCRIPT_HASH} ${BRAND_INTRO_SCRIPT_HASH} https://cdn.paddle.com https://public.profitwell.com; ` +
   "style-src 'self' 'unsafe-inline' https://cdn.paddle.com https://sandbox-cdn.paddle.com; " +
   "img-src 'self' data: blob: https:; " +
   "media-src 'self' data: blob: https:; " +
@@ -87,6 +89,11 @@ describe("the policy string (BR-S-008)", () => {
   it("hashes the theme script exactly as lib/theme.ts writes it", () => {
     const h = createHash("sha256").update(NO_FLASH_SCRIPT, "utf8").digest("base64");
     expect(NO_FLASH_SCRIPT_HASH).toBe(`'sha256-${h}'`);
+  });
+
+  it("hashes the homepage intro's script exactly as lib/site/brand-intro.ts writes it", () => {
+    const h = createHash("sha256").update(BRAND_INTRO_SCRIPT, "utf8").digest("base64");
+    expect(BRAND_INTRO_SCRIPT_HASH).toBe(`'sha256-${h}'`);
   });
 
   it("adds eval only for next dev", () => {
