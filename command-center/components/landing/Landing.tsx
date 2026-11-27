@@ -9,7 +9,7 @@ import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { APPROVALS_HREF } from "@/components/landing/Showcases";
-import { ShowcaseGallery, showcaseItems, type LandingFormat } from "@/components/site/ShowcaseGallery";
+import { ShowcaseGallery, showcaseItems, showcaseItemsWithSources, type LandingFormat } from "@/components/site/ShowcaseGallery";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
@@ -85,7 +85,8 @@ export function Landing({
   const gallery = showcaseItems().filter(({ e }) => !leftOut.includes(e.jobId));
   // Everything on the page that is one of our samples: the gallery's, then the slots' (each with its files). The facts count
   // these and the model tiles are built from these, so a tile's count and the facts can never disagree.
-  const onPage = [...gallery, ...showcaseItems().filter(({ e }) => inSlots.includes(e.jobId))];
+  // A slot may name a starting frame (it is drawn there, so it is counted there).
+  const onPage = [...gallery, ...showcaseItemsWithSources().filter(({ e }) => inSlots.includes(e.jobId))];
   const formats = formatsFor(t);
   return (
     <div className="lp-root">
