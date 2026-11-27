@@ -571,37 +571,42 @@ describe("the models strip", () => {
   const other = { ...FIXTURE_ENTRY, jobId: "0d0d0d0d-1111-4222-8333-444455556666", modelId: "minimax-h3", modelName: "MiniMax H3" };
   const same = { ...FIXTURE_ENTRY, jobId: "0e0e0e0e-1111-4222-8333-444455556666" };
 
-  it("names each model once per copy, each name inside its sample's box, all of it hidden from assistive technology", () => {
-    const { container } = render(<ModelMarquee entries={[FIXTURE_ENTRY, same, other]} pause="Pause motion" />);
-    const track = container.querySelector(".nx-marquee-track")!;
-    expect(track.getAttribute("aria-hidden")).toBe("true");
-    const rows = track.querySelectorAll(".nx-marquee-row");
-    expect(rows).toHaveLength(2);
-    for (const row of rows) expect([...row.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Runway Gen-4.5", "MiniMax H3"]);
-    for (const li of track.querySelectorAll("li")) expect(li.closest(SAMPLE_CARD)?.getAttribute("data-model")).toBeTruthy();
+  it("names each model once per copy in two opposite rows, each name inside its sample's box, all of it hidden from assistive technology", () => {
+    const { container } = render(<ModelMarquee entries={[FIXTURE_ENTRY, same, other]} pause="Pause motion" title="Models in Nightshift Studio" />);
+    const hidden = container.querySelector(".nx-marquee-inner")!;
+    expect(hidden.getAttribute("aria-hidden")).toBe("true");
+    expect(hidden.querySelector(".nx-marquee-title")?.textContent).toBe("Models in Nightshift Studio");
+    const tracks = hidden.querySelectorAll(".nx-marquee-track");
+    expect([...tracks].map((t) => t.getAttribute("data-dir"))).toEqual(["left", "right"]);
+    // Few models: both rows carry every name, the second in reverse (never a mirror of the first).
+    const names = (t: Element) => [...t.querySelectorAll(".nx-marquee-row")].map((row) => [...row.querySelectorAll("li")].map((li) => li.textContent));
+    expect(names(tracks[0])).toEqual([["Runway Gen-4.5", "MiniMax H3"], ["Runway Gen-4.5", "MiniMax H3"]]);
+    expect(names(tracks[1])).toEqual([["MiniMax H3", "Runway Gen-4.5"], ["MiniMax H3", "Runway Gen-4.5"]]);
+    for (const li of hidden.querySelectorAll("li")) expect(li.closest(SAMPLE_CARD)?.getAttribute("data-model")).toBeTruthy();
     expect(without(container, SAMPLE_CARD).textContent).not.toMatch(PROVIDER_BRANDS);
+    // Never "partner": these are models that made a sample on the page.
+    expect(container.textContent).not.toMatch(/partner|powered by/i);
     // Nothing focusable inside the hidden part; its own pause switch is outside it.
-    expect(track.querySelector("a, button, input, [tabindex]")).toBeNull();
+    expect(hidden.querySelector("a, button, input, [tabindex]")).toBeNull();
     const pause = container.querySelector(".nx-marquee > button.nx-clip-pause")!;
     expect(pause.textContent).toBe("Pause motion");
     expect(pause.closest("[aria-hidden]")).toBeNull();
   });
 
   it("is not drawn for fewer than two models (one name sliding past is not a strip)", () => {
-    expect(render(<ModelMarquee entries={[FIXTURE_ENTRY, same]} pause="Pause motion" />).container.innerHTML).toBe("");
-    expect(render(<ModelMarquee entries={[]} pause="Pause motion" />).container.innerHTML).toBe("");
+    expect(render(<ModelMarquee entries={[FIXTURE_ENTRY, same]} pause="Pause motion" title="t" />).container.innerHTML).toBe("");
+    expect(render(<ModelMarquee entries={[]} pause="Pause motion" title="t" />).container.innerHTML).toBe("");
   });
 
-  it.each(["en", "ru", "uz"] as const)("%s landing: the strip sits after the explore grid (and the effects), with no model tiles under it, and the facts carry their true numbers", (code) => {
+  it.each(["en", "ru", "uz"] as const)("%s landing: the strip sits right before the closing call, titled in the page's language, and the facts carry their true numbers", (code) => {
     const { container } = render(<Landing t={dictionaries[code]} locale={code} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
     const strip = container.querySelector(".nx-marquee");
     if (strip) {
       expect(strip.closest("section")).toBeNull();
-      // After the explore grid (and the effects, when the page has them).
-      expect(["samples", "effects"]).toContain(strip.previousElementSibling?.id);
+      // Right before the closing call to action (the owner, 22 Nov 2026), as kling.ai places its block.
+      expect(strip.nextElementSibling?.classList.contains("nx-final-wrap")).toBe(true);
+      expect(strip.querySelector(".nx-marquee-title")?.textContent).toBe(dictionaries[code].site.fx.modelsTitle);
     }
-    // Owner decision 22 Nov: model tiles dropped; they named models and would duplicate the gallery. The strip stays.
-    expect(container.querySelector("#models")).toBeNull();
     for (const n of container.querySelectorAll<HTMLElement>(".nx-facts-n")) {
       expect(n.dataset.count).toMatch(/^\d+$/);
       // The digits in the page are the server's: the count-up only ever draws over them.

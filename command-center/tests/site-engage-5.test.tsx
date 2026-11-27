@@ -253,8 +253,8 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     }
     else expect(finCredit.textContent).toMatch(/ \/ Pexels$/);
     // A box that plays something says what it plays: a stock clip by its name, a sample's as "sample".
-    // (The tool wall, the third step and the Approvals card play samples' loops too, each inside its sample's box: checked on their own.)
-    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#tools, .nx-step-live, .nx-approve-art"));
+    // (The model tiles, the tool wall, the third step and the Approvals card play samples' loops too, each inside its sample's box: checked on their own.)
+    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models, #tools, .nx-step-live, .nx-approve-art"));
     const expected = [
       ...(heroClip ? ["sample"] : []),
       ...(["landing.final"] as const).flatMap((s) => {
@@ -264,7 +264,7 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     ];
     expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(expected);
     for (const b of clipBoxes) expect(b.querySelector("img")?.hasAttribute("alt")).toBe(true);
-    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#tools, .nx-step-live, .nx-approve-art"))).toHaveLength(expected.length);
+    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models, #tools, .nx-step-live, .nx-approve-art"))).toHaveLength(expected.length);
     // Inside the gallery, a clip box is a sample's, never a stock one's: in its card, labelled AI-generated, with no stock label.
     const { clips } = landingSamples();
     const sampleBoxes = [...container.querySelectorAll(`${GALLERY} [data-clip]`)];

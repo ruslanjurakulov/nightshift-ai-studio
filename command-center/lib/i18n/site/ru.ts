@@ -141,6 +141,8 @@ export const siteRu: SiteDictionary = {
   },
   fx: {
     pause: "Остановить анимацию",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Модели в Nightshift Studio",
   },
   bar: {
     label: "Быстрый старт",
@@ -189,6 +191,7 @@ export const siteRu: SiteDictionary = {
     badge: "AI",
     badgeName: "Создано нейросетью",
     model: "Модель",
+    prompt: "Запрос",
     noPrompt: "Без слов: сделано только по картинке.",
     notInStudio: "Этой модели пока нет в Студии",
     gone: "Этой модели больше нет в Студии",
@@ -240,6 +243,13 @@ export const siteRu: SiteDictionary = {
       { id: "pov", title: "Путешествие во времени от первого лица", body: "Вход в другой век, снятый как тревел-влог." },
       { id: "soap", title: "Фруктовый сериал", body: "Говорящая еда в драматичной сцене, сыгранной абсолютно всерьёз." },
     ],
+  },
+  models: {
+    label: "Модели",
+    title: "Модели, которые сделали эти примеры",
+    lead: "Каждая плитка — модель, сделавшая пример на этой странице. Если модель пока нельзя выбрать в Студии, так и написано.",
+    count: "Примеров на этой странице: {n}",
+    see: "Смотреть её пример",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

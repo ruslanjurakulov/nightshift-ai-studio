@@ -141,6 +141,8 @@ export const siteUz: SiteDictionary = {
   },
   fx: {
     pause: "Harakatni toʻxtatish",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Nightshift Studioʼdagi modellar",
   },
   bar: {
     label: "Tez boshlash",
@@ -189,6 +191,7 @@ export const siteUz: SiteDictionary = {
     badge: "AI",
     badgeName: "Sunʼiy intellekt yaratgan",
     model: "Model",
+    prompt: "Soʻrov",
     noPrompt: "Soʻzsiz: faqat rasmdan yaratilgan.",
     notInStudio: "Bu model hozircha Studiyada yoʻq",
     gone: "Bu model endi Studiyada yoʻq",
@@ -240,6 +243,13 @@ export const siteUz: SiteDictionary = {
       { id: "pov", title: "Vaqt boʻylab sayohat, birinchi shaxsdan", body: "Boshqa asrga kirib borish, sayohat vlogidek suratga olingan." },
       { id: "soap", title: "Mevali serial", body: "Gapiradigan taomlar dramatik sahnada, mutlaqo jiddiy ijroda." },
     ],
+  },
+  models: {
+    label: "Modellar",
+    title: "Bu namunalarni yaratgan modellar",
+    lead: "Har bir plitka shu sahifadagi namunani yaratgan model. Studiyada hali tanlab boʻlmaydigan model buni ochiq aytadi.",
+    count: "Shu sahifadagi namunalar: {n}",
+    see: "Namunasini koʻrish",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

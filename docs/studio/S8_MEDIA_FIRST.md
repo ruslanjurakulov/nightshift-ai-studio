@@ -102,3 +102,15 @@ const effectiveModel = pickedOff ? "" : available.some((m) => m.id === model) ? 
   templates (business/image ones as brand-style variants); same card, same handoff.
 
 No migration is needed.
+
+## Follow-ups (open)
+
+- **Real-device sound check** (from #937, merged 27 Nov): unmuting a clip after it swaps from its 640 to its 1280 file is untested on
+  iOS Safari and Android Chrome hardware. If a browser refuses, the toggle turns itself off and the clip plays on muted. Check it once
+  the first H3 clip with audio is exported.
+- **Model tiles** (#918, owner-approved 27 Nov) still name models and repeat gallery samples. A media-first version without names
+  would be a separate small PR, put to the owner by Atlas.
+- **i2v option (a)**: a server-side allow-list so a sample's own picture is the job's source with no per-workspace copy (needs a
+  migration; see docs/studio/S8_I2V_LATER_OPTION_A.md once the i2v PR lands).
+- A person's own model pick followed by a switch to a tool that model can't do still falls back quietly (pre-existing, from #922).
+- A hand-made `?desk=overview&tool=…&model=…` link lands a customer on CreateScreen, which ignores `tool`/`model`.

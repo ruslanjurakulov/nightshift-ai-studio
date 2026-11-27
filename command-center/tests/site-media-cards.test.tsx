@@ -133,7 +133,6 @@ describe("no model name on the public cards (owner decision 22 Nov)", () => {
     const s = dictionaries[code].site;
     expect(Object.keys(s.gallery)).not.toEqual(expect.arrayContaining(["tryAria"]));
     for (const k of ["open", "detail", "close", "made", "source", "altSource"]) expect(Object.keys(s.gallery)).not.toContain(k);
-    expect(Object.keys(s)).not.toContain("models");
     expect(Object.keys(s.autopilot.shorts)).not.toContain("madeBy");
     expect(Object.keys(s.gallery)).not.toContain("try");
   });

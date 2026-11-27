@@ -180,7 +180,7 @@ describe("the landing with our own clip on its first screen", () => {
     expect(makerCreditProblems(hero)).toEqual([]);
     expect(hero.textContent).not.toContain(FIXTURE_ENTRY.modelName);
     expect(hero.textContent).not.toMatch(PROVIDER_BRANDS);
-    // Not even in an attribute: the first screen names no model at all (and since 22 Nov no gallery card does either).
+    // Not even in an attribute: the first screen names no model at all (a gallery card carries its model in data-model; this box does not).
     expect(hero.innerHTML).not.toMatch(PROVIDER_BRANDS);
     expect(hero.textContent).not.toContain("Orbit, then a night city");
     expect(hero.querySelector(".nx-ai-model, .nx-ai-try, .nx-gallery-try")).toBeNull();
@@ -190,7 +190,7 @@ describe("the landing with our own clip on its first screen", () => {
     // The first screen's clip is not shown again anywhere on the page. The landing draws no other slot than its closing panel
     // (stock in this fixture), so the old hero slot's sample is free for the gallery, with the other one.
     expect(slotJobs(LANDING_SLOTS)).toEqual([]);
-    expect(container.querySelectorAll(`[data-showcase-entry="${HERO}"]`)).toHaveLength(1);
+    expect(container.querySelectorAll(`[data-showcase-entry="${HERO}"]:not(#models *)`)).toHaveLength(1);
     expect(container.querySelector(`${GALLERY} [data-showcase-entry="${FIXTURE_JOB}"]`)).toBeTruthy();
     expect(container.querySelector(`${GALLERY} [data-showcase-entry="${OTHER}"]`)).toBeTruthy();
     // A model is named only inside a sample's own box.
@@ -246,11 +246,43 @@ describe("the landing with our own clip on its first screen", () => {
     expect(facts).toEqual({ samples: "3", models: "2", credits: String(WELCOME_CREDITS) });
   });
 
-  // Owner decision 22 Nov: model tiles dropped; they named models and would duplicate the gallery. The ribbon above stays the one
-  // place on the landing that names models; no card does.
-  it("draws no model tiles, and no gallery card names its model, in text or any attribute but its Studio link", () => {
+  it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with no maker's credit, the truth about the Studio and no price", () => {
+    const t = dictionaries.en;
     const { container } = landing();
-    expect(container.querySelector("#models, .nx-model, .nx-models-grid")).toBeNull();
+    const tiles = [...container.querySelectorAll<HTMLElement>("#models .nx-model")];
+    // In the page's order: Runway (the gallery's first card, and the first screen's clip), then MiniMax. Two models, the number the
+    // facts row says.
+    expect(tiles.map((x) => x.dataset.model)).toEqual(["runway-gen4.5", "minimax-h3"]);
+    expect(container.querySelector("[data-fact='models'] .nx-facts-n")?.textContent).toBe(String(tiles.length));
+    // Each tile links to its sample on this page, once: a gallery card, or the box of a place that shows it.
+    for (const tile of tiles) {
+      const href = tile.querySelector(".nx-model-see")!.getAttribute("href")!;
+      expect(href).toBe(`#sample-${tile.dataset.showcaseEntry}`);
+      expect(container.querySelectorAll(href)).toHaveLength(1);
+    }
+    // The first screen's box is such a place: a model whose only sample here is that clip has its tile land on it.
+    expect(container.querySelector(`#sample-${HERO}`)?.matches(".hm-hero-media")).toBe(true);
+    const runway = tiles[0];
+    expect(runway.querySelector(".nx-model-count")?.textContent).toBe(fmt(t.site.models.count, { n: "2" }));
+    // Runway asks for "Powered by Runway"; the public site does not show it (it is shown in the Studio, where the model is used).
+    expect(FIXTURE_ENTRY.attribution).not.toBeNull();
+    expect(makerCreditProblems(runway)).toEqual([]);
+    const tile = tiles[1];
+    expect(tile.dataset.showcaseEntry).toBe(OTHER);
+    expect(tile.querySelector(".nx-model-name")?.textContent).toBe("MiniMax H3");
+    // The card quotes the words its sample was made from, under a "Prompt" caption, inside the sample's own box.
+    expect(tile.querySelector(".nx-model-kicker")?.textContent).toBe(t.site.gallery.prompt);
+    expect(tile.querySelector("q.nx-model-quote")?.textContent).toBe("A lemon whispers to an avocado in a fridge");
+    expect(tile.querySelector(".nx-model-quote")?.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(OTHER);
+    expect(tile.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.notInStudio);
+    expect(tile.querySelector(`a[href="#sample-${OTHER}"]`)?.textContent).toBe(t.site.models.see);
+    expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
+  });
+
+  // Owner decision 22 Nov: no model name on a gallery card; it travels only in the Studio link. Scoped to the gallery: the model
+  // tiles and the ribbon (kept by the owner on 27 Nov) name theirs, each inside its sample's box.
+  it("no gallery card names its model, in text or any attribute but its Studio link", () => {
+    const { container } = landing();
     const gallery = container.querySelector(GALLERY)!;
     for (const card of gallery.querySelectorAll(SAMPLE_CARD)) {
       const words = [card.textContent ?? "", ...[...card.querySelectorAll("*"), card].flatMap((n) => [...n.attributes].filter((a) => a.name !== "href").map((a) => a.value))].join("\n");
@@ -258,9 +290,15 @@ describe("the landing with our own clip on its first screen", () => {
     }
   });
 
-  it("nothing in the grid looks dead: every poster drifts until its clip plays, stopped by the pause switch and absent under reduced motion", () => {
+  it("nothing in the grid or the tiles looks dead: each tile plays its sample's loop like the grid, and every poster drifts until its clip plays, stopped by the pause switch and absent under reduced motion", () => {
     const { container } = landing();
+    for (const tile of container.querySelectorAll<HTMLElement>("#models .nx-model")) {
+      expect(tile.querySelector(".nx-model-media")?.getAttribute("data-clip")).toBe("sample");
+      expect(tile.querySelector("img")?.classList.contains("nx-drift-pic")).toBe(true);
+    }
     for (const img of container.querySelectorAll(`${GALLERY} .nx-gallery-pic > img`)) expect(img.classList.contains("nx-drift-pic")).toBe(true);
+    const src = readFileSync(join(ROOT, "components/landing/Landing.tsx"), "utf8");
+    expect(src).toContain("<ShowcaseClip jobId={e.jobId} together />");
     expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\n  \.nx-drift-pic \{ animation: nx-poster-drift 16s ease-in-out infinite alternate;/);
     expect(css).toContain('html[data-motion="paused"] .nx-drift-pic { animation-play-state: paused !important; }');
     expect(css).toContain('[data-live="true"] > .nx-drift-pic { animation: none; }');
@@ -634,7 +672,7 @@ describe("the gallery's clips on a wide screen", () => {
 describe("copy and config", () => {
   it.each(LOCALES.map((l) => l.code))("%s: the new words exist, name no model or maker, and say the bar starts nothing", (code) => {
     const s = dictionaries[code].site;
-    for (const block of [s.prompt, s.facts, s.formats, s.approvalCard]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
+    for (const block of [s.prompt, s.facts, s.formats, s.models, s.approvalCard]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
     expect(s.formats.items.map((i) => i.id)).toEqual(FORMATS.map((f) => f.id));
     for (const v of [s.approvalCard.figure, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.prompt.noteInClosed, s.prompt.noteOutClosed, s.hero.leadShort, s.hero.leadShortClosed]) expect(v.trim().length).toBeGreaterThan(20);
     // The closed words claim nothing a visitor can make today: no "press Generate", and they say the models are not on sale.
@@ -644,6 +682,7 @@ describe("copy and config", () => {
     // The bar's note names the Studio's own button (ru «Создать», not «Сгенерировать»).
     expect(s.prompt.noteIn).toContain(dictionaries[code].gen.generate);
     expect(s.prompt.noteOut).toContain(dictionaries[code].gen.generate);
+    expect(s.models.count).toContain("{n}");
     // Facts are statements, not promises or claims about other people.
     expect(JSON.stringify(s.facts)).not.toMatch(/users|customers|creators|пользовател|клиент|foydalanuvchi|mijoz/i);
   });

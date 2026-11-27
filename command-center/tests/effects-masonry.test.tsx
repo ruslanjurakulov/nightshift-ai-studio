@@ -17,6 +17,7 @@ import { EFFECTS } from "@/lib/effects/catalog";
 import { MASONRY_COLUMN, MASONRY_REF, MASONRY_UNITS, levelSpans, masonryColumns, masonrySpan } from "@/lib/effects/masonry";
 import { effectFrameRatio, effectSample } from "@/components/effects/effect-sample";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
+import { modelTileColumns } from "@/components/landing/Landing";
 
 const ROOT = join(__dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -149,18 +150,43 @@ describe("the Effects gallery's masonry", () => {
   });
 });
 
-// Owner decision 22 Nov: model tiles dropped; they named models and would duplicate the gallery. Their styles go with them.
 describe("the model tiles", () => {
-  it("are gone from the landing and from the stylesheet", () => {
-    expect(read("components/landing/Landing.tsx")).not.toMatch(/ModelTiles|modelTileColumns|id="models"/);
-    expect(rules(read("components/site/site-next.css"))).not.toMatch(/\.nx-model(?:s-grid|-media|-name|-quote|-see)?\b/);
+  it("never leave one tile alone under a full row when three or four across can avoid it", () => {
+    expect(modelTileColumns(9)).toBe(3);
+    expect(modelTileColumns(8)).toBe(4);
+    expect(modelTileColumns(6)).toBe(3);
+    expect(modelTileColumns(2)).toBe(2);
+    for (let n = 2; n <= 12; n++) {
+      const c = modelTileColumns(n);
+      const last = n % c || c;
+      expect(last, `${n} tiles at ${c} across`).toBeGreaterThan(1);
+    }
+  });
+
+  // 2026-11-22: the sample fills the whole card (the AI studios' model cards), the name at its top, the prompt over a dark foot.
+  it("lead with the sample filling a tall card, the label on its corner, and scroll sideways on a phone", () => {
+    const css = rules(read("components/site/site-next.css"));
+    expect(css).toMatch(/\.nx-model \{ position: relative; display: flex; flex-direction: column; min-width: 0; aspect-ratio: 4 \/ 5;/);
+    expect(css).toMatch(/\.nx-model-media \{ position: absolute; inset: 0;/);
+    expect(css).toMatch(/\.nx-model-media::after \{[^}]*rgba\(5, 5, 9, 0\.86\) 62%, rgba\(5, 5, 9, 0\.94\) 100%/);
+    expect(css).toMatch(/\.nx-model \.nx-ai-badge \{ position: absolute;/);
+    // The stale fixed size that pinned the still at 76 px is gone.
+    expect(css).not.toMatch(/\.nx-model-pic \{[^}]*76px/);
+    const phone = css.slice(css.indexOf("@media (max-width: 639.98px) {\n  .nx-models-grid"));
+    expect(phone).toMatch(/scroll-snap-type: x mandatory/);
+    expect(phone).toMatch(/scroll-snap-align: start/);
   });
 });
 
 describe("the models strip", () => {
-  it("is not drawn where it cannot move: on a touch screen or with reduced motion", () => {
+  it("sits still where it cannot move (a touch screen, reduced motion): two centred rows, no copy, no animation", () => {
     const css = rules(read("components/site/site-motion.css"));
-    expect(css).toContain("@media (hover: none) { .nx-marquee { display: none; } }");
-    expect(css).toContain("@media (prefers-reduced-motion: reduce) { .nx-marquee { display: none; } }");
+    // Still is the default; motion, the second copy and the one-line rows exist only where the pointer can stop them.
+    expect(css).toMatch(/\.nx-marquee-row\[data-copy="1"\] \{ display: none; \}/);
+    expect(css).not.toMatch(/\.nx-marquee \{ display: none; \}/);
+    const moving = css.slice(css.indexOf("@media (prefers-reduced-motion: no-preference) and (hover: hover) {\n  .nx-marquee-track"));
+    expect(moving).toMatch(/\.nx-marquee-row\[data-copy="1"\] \{ display: flex; \}/);
+    expect(moving).toMatch(/\.nx-marquee-track\[data-dir="right"\] \{ animation: nx-marquee [^}]*reverse; \}/);
+    expect(moving).toMatch(/\.nx-marquee:is\(:hover, :has\(:focus-visible\)\) \.nx-marquee-track \{ animation-play-state: paused; \}/);
   });
 });

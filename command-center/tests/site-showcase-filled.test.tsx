@@ -49,27 +49,32 @@ describe("with one sample merged", () => {
     expect(SHOWCASE_ENTRIES.map((e) => e.jobId)).toEqual([FIXTURE_JOB]);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: the landing shows the gallery right under the first screen, then how it works; its card names no model and opens the Studio", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the landing shows the gallery right under the first screen, then the models; its card names no model and opens the Studio", (code) => {
     const t = dictionaries[code];
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
     const section = container.querySelector("section#samples") as HTMLElement;
     expect(section).toBeTruthy();
-    // The explore grid comes first (as on an AI studio's page), then how it works. Since 2026-11-22 it is the page's one gallery:
-    // no showcase band, no plan demo, and no model tiles (owner decision 22 Nov: model tiles dropped; they named models and would
-    // duplicate the gallery).
+    // The explore grid comes first (as on an AI studio's page), the model tiles after it, then how it works. Since 2026-11-22 it is
+    // the page's one gallery: no showcase band and no plan demo after it.
     const order = [...container.querySelectorAll("section[id]")].map((s) => s.id);
     expect(order.indexOf("samples")).toBeGreaterThanOrEqual(0);
-    expect(order.indexOf("samples")).toBeLessThan(order.indexOf("how"));
-    for (const gone of ["studio", "approvals", "try", "watch", "picture-to-video", "models"]) expect(order, gone).not.toContain(gone);
-    // The card is its picture and the AI mark (media first), one link into the Studio through sign-up, and no dialog. Owner
-    // decision 22 Nov: no model name on public cards; it travels only in the Studio link.
+    expect(order.indexOf("samples")).toBeLessThan(order.indexOf("models"));
+    expect(order.indexOf("models")).toBeLessThan(order.indexOf("how"));
+    for (const gone of ["studio", "approvals", "try", "watch", "picture-to-video"]) expect(order, gone).not.toContain(gone);
+    // The one model's tile is inside the sample's own box, and links down to its card (the tiles name their model: kept by the
+    // owner on 27 Nov).
+    const tile = container.querySelector(`#models [data-showcase-entry="${FIXTURE_JOB}"]`)!;
+    expect(tile.querySelector(`a[href="#sample-${FIXTURE_JOB}"]`)).toBeTruthy();
+    expect(container.querySelector(`#sample-${FIXTURE_JOB}`)).toBeTruthy();
+    // The gallery card is its picture and the AI mark (media first), one link into the Studio through sign-up, and no dialog.
+    // Owner decision 22 Nov: no model name on a gallery card; it travels only in the Studio link.
     const card = section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
     expect(aiMarkOf(card.querySelector(".mf-ai"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(card.textContent).not.toMatch(PROVIDER_BRANDS);
     expect(card.querySelector("a")?.getAttribute("href")?.startsWith("/signup?next=")).toBe(true);
     expect(card.querySelector("button, [aria-haspopup]")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Outside the sample boxes (the gallery's cards and the ribbon's names, the one place on the landing that names models),
+    // Outside the sample boxes (the gallery's cards, the model tiles and the ribbon's names, each a sample's own box),
     // nothing names a model or a maker.
     const rest = container.cloneNode(true) as HTMLElement;
     rest.querySelectorAll("[data-showcase-entry]").forEach((n) => n.remove());

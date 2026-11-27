@@ -105,7 +105,7 @@
     height: 50px;
     margin-right: 33px;
     border-radius: 25px;
-    background: #1b1f2a center / cover no-repeat;
+    background: #0f1115 center / cover no-repeat;
   }
   /* The hero's clip, copied frame by frame (HeroThumb.tsx): over the still, shown only while the hero's own clip is shown, and
      faded in with the hero's own timing so the two change together. Absolute: the box keeps its size with or without it. */
@@ -198,7 +198,8 @@
     border: 1px solid rgb(255 255 255 / 0.35);
     background: rgb(10 11 14 / 0.72);
     color: #e6eefc;
-    font-size: 0.75rem;
+    /* 13px like every other AI badge on the page (S5 Pixel on #889: this one alone was 12). */
+    font-size: 0.8125rem;
     font-weight: 600;
     line-height: 1.25;
     /* "Sunʼiy intellekt yaratgan" is wider than a phone's reel card: it wraps rather than being cut. */

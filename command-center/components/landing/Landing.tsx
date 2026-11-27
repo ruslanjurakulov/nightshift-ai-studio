@@ -19,8 +19,9 @@ import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
 import { TypedText } from "@/components/site/TypedText";
-import { SHOWCASE_ENTRIES, showcaseModels, type ShowcaseEntry } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
@@ -29,8 +30,9 @@ import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import { LiveStats } from "@/components/site/LiveStats";
 import type { PublicStats } from "@/lib/public-stats";
-import { landingGalleryExclude } from "@/components/site/landing-samples";
+import { landingGalleryExclude, landingTileJobs } from "@/components/site/landing-samples";
 import "@/components/site/explore-hover.css";
+import { AiMark } from "@/components/site/AiMark";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -38,16 +40,16 @@ const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
  * The signed-out homepage. The first screen is our own Studio's clip edge to edge with the headline and the idea box over it
  * (components/landing/home/HomeHero.tsx, the one the owner kept on 2026-11-22). Then, each idea once (2026-11-22, after a study of
  * the AI studios' pages: they show each piece once, in one strong grid): three facts the page can count, the one gallery of our
- * own generations, the effects, the ribbon of the models behind the samples, how it works, the autopilot,
+ * own generations, the effects, the models behind the samples (the ribbon and one tile per model), how it works, the autopilot,
  * what it costs, the questions and the button again over the closing slot's picture.
  *
  * Every claim on it is one the code backs; the only figures are the welcome
  * grant (WELCOME_CREDITS, pinned to the database by a test), counts of what the
  * page itself holds, and whatever the pricing source holds. No competitor is
- * named, a model only in the ribbon of the models behind the samples (owner decision 22 Nov: no model name on a card), and there are no
+ * named, a model only inside its own sample's box, and there are no
  * testimonials or logos, because there are none to show. The only usage numbers are the live counters under the facts
  * (components/site/LiveStats.tsx), counted by the database, and only once the owner turns them on. Every
- * picture says what it is: one of our samples (AI-generated; its model only in its Studio link) or a
+ * picture says what it is: one of our samples (AI-generated; its model on its gallery card) or a
  * stock example (its contributor), from components/site/samples.tsx slotMedia.
  *
  * A Server Component. The client code on the page is the header's menu and its theme and language keys, the idea box, the pause
@@ -83,8 +85,7 @@ export function Landing({
   const leftOut = landingExcludedJobs();
   const gallery = showcaseItems().filter(({ e }) => !leftOut.includes(e.jobId));
   // Everything on the page that is one of our samples: the gallery's, then the slots' (each with its files). The facts count
-  // these and the ribbon names their models, so the two can never disagree. (The model tiles under the ribbon were dropped on
-  // 22 Nov, owner decision: they named models and would duplicate the gallery.)
+  // these and the model tiles are built from these, so a tile's count and the facts can never disagree.
   const onPage = [...gallery, ...showcaseItems().filter(({ e }) => inSlots.includes(e.jobId))];
   const formats = formatsFor(t);
   return (
@@ -98,7 +99,7 @@ export function Landing({
       <ShowcaseGallery t={t} locale={locale} exclude={landingGalleryExclude(leftOut)} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
-      <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
+      <ModelTiles t={t} items={onPage} tiles={landingTileJobs(leftOut)} />
       <How t={t} locale={locale} anchor={anchor} />
       <AutopilotDemo copy={t.site.autopilot.demo} />
       {showcase.length > 0 && (
@@ -110,6 +111,8 @@ export function Landing({
       )}
       <PriceBlock t={t} locale={locale} teaser={pricing} rates={priceRatesFrom(anchor)} />
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} dodo={dodo} />
+      {/* The models behind this page's samples, as two drifting rows just before the closing call (the owner, 22 Nov 2026). */}
+      <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} title={t.site.fx.modelsTitle} />
       <FinalCta t={t} />
       <StickyCta label={t.site.bar.label} text={t.site.bar.text} cta={t.site.bar.cta} dismiss={t.site.bar.dismiss} />
     </div>
@@ -173,6 +176,87 @@ function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; 
             {h.secondary}
           </Link>
         </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * How many tiles a row holds from 1024 px, so the last row is never one tile alone under a full row (nine models left the
+ * ninth by itself at four across): three or four, whichever fills the last row more, a full one best. Fewer than four: one row.
+ * A last row that is still short is centred by the stylesheet.
+ */
+export function modelTileColumns(n: number): number {
+  if (n <= 3) return Math.max(n, 1);
+  const fill = (c: number) => (n % c === 0 ? 1 : (n % c) / c);
+  return fill(4) > fill(3) ? 4 : 3;
+}
+
+/**
+ * The models behind the samples: one tile per model, each inside the box of that model's first sample on the page (the only kind
+ * of element that may name a model), laid out as the AI studios show theirs (2026-11-22): the sample fills a tall rounded card, the
+ * model's name at its top, the words it was made from quoted large over a dark foot. With its AI-generated label, how many of the
+ * page's samples it made, whether the Studio offers it (an operator preview says it does not yet), and a link down to its sample.
+ * No price: the site has no public per-model price to read, and a typed one would be a promise (CLAUDE.md #5).
+ */
+function ModelTiles({ t, items, tiles }: { t: Dictionary; items: { e: ShowcaseEntry; f: ShowcaseFiles }[]; tiles: readonly string[] }) {
+  const c = t.site.models;
+  const g = t.site.gallery;
+  const byModel = new Map<string, { e: ShowcaseEntry; f: ShowcaseFiles; n: number }>();
+  for (const it of items) {
+    const had = byModel.get(it.e.modelId);
+    if (!had) byModel.set(it.e.modelId, { ...it, n: 1 });
+    else {
+      had.n += 1;
+      // The tile shows and links to the sample the grid holds for it (landing-samples.tsx landingTileJobs), not an effect's preview.
+      if (tiles.includes(it.e.jobId) && !tiles.includes(had.e.jobId)) Object.assign(had, { e: it.e, f: it.f });
+    }
+  }
+  if (byModel.size === 0) return null;
+  const cols = modelTileColumns(byModel.size);
+  // From 640 to 1023 px four columns would be too narrow for a name: two instead (still no tile alone when four fit evenly).
+  const grid = { "--nx-mcols": cols, "--nx-mcols-md": cols === 4 ? 2 : cols } as React.CSSProperties;
+  return (
+    <section id="models" aria-labelledby="models-title" className="nx-section nx-models" data-tone="raised">
+      <div className="nx-wrap">
+        <p className="nx-label">{c.label}</p>
+        <h2 id="models-title" className="nx-h2">
+          {c.title}
+        </h2>
+        <p className="nx-sub">{c.lead}</p>
+        <ul className="nx-models-grid" style={grid}>
+          {[...byModel.values()].map(({ e, f, n }) => {
+            const leftOut = modelLeftOut(e);
+            return (
+              <li key={e.modelId} className="nx-model" data-showcase-entry={e.jobId} data-model={e.modelId} data-spot>
+                {/* The model's sample fills the card, alive: its loop plays with the grid's rules (LoopClip `together`), a still drifts. */}
+                <div className="nx-model-media" data-clip={e.kind === "video" && f.clip ? "sample" : undefined}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={f.posterSm} width={e.width} height={e.height} alt="" className="nx-model-pic nx-drift-pic" loading="lazy" decoding="async" />
+                  {e.kind === "video" && f.clip && <ShowcaseClip jobId={e.jobId} together />}
+                </div>
+                {/* Over the top corner of the picture, read before the name: what the picture is. */}
+                <span className="nx-ai-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
+                <h3 className="nx-model-name">{e.modelName}</h3>
+                <div className="nx-model-body">
+                  {/* The words the sample was made from, quoted (the browser's own quotes for the page's language), over the
+                      picture's dark foot; a picture made from a picture alone says so instead of quoting nothing. */}
+                  <p className="nx-model-kicker">{g.prompt}</p>
+                  {e.prompt.trim() ? <q className="nx-model-quote">{e.prompt.trim()}</q> : <p className="nx-model-quote" data-empty="true">{g.noPrompt}</p>}
+                  {/* How many samples, then whether the Studio offers it. */}
+                  <p className="nx-model-meta">
+                    <span className="nx-model-count">{fmt(c.count, { n: String(n) })}</span>
+                    {leftOut && <span className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</span>}
+                  </p>
+                  <a href={`#sample-${e.jobId}`} className="nx-model-see">
+                    {c.see}
+                    <ArrowRight aria-hidden />
+                  </a>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </section>
   );
