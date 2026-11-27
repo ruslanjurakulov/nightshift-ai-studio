@@ -883,6 +883,10 @@ def _store(fn: Callable[[], dict], what: str) -> dict:
         return fn()
     except ml.IngestReject as e:
         raise AssemblyFailed("store_failed", f"the library refused the {what} ({e.reason}): retry the assembly") from None
+    except ml.MediaStoreUnavailable as e:
+        # Ahead of the StoreUnavailable branch (it is one too): register_asset may have written the master and only its
+        # answer was lost. Nothing is recorded, and the next claim reuses that master instead of failing it (Sentinel R1).
+        raise DbUnavailable(f"storing the {what}: {e.code}") from None
     except ml.StoreUnavailable as e:
         raise AssemblyFailed("store_failed", f"the {what} could not be stored ({type(e).__name__}): retry the "
                              "assembly") from None

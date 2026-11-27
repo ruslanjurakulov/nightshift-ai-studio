@@ -302,6 +302,11 @@ class BrandScanWorker:
             except media_library.IngestReject as e:
                 logger.info("scan %s: a %s picture was not stored (%s)", job.get("scan_id"), role, e.args[0] if e.args else "rejected")
                 return None
+            except media_library.MediaStoreRefused as e:
+                # A refused key or call is a decision, not an outage: the scan fails now (its hold released) and the log
+                # names the fix, instead of waiting for the stale sweep with the reason lost (CLAUDE.md rule 6).
+                logger.error("scan %s: register_asset refused (%s): %s", job.get("scan_id"), e.code, e.remedy)
+                raise _Failed("worker_error") from None
             except media_library.StoreUnavailable:
                 raise StoreUnavailable("register_asset") from None
         return str(out.get("id")) if out else None

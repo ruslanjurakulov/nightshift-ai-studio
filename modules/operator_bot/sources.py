@@ -41,6 +41,7 @@ from typing import Any, Callable, Optional
 
 from modules.log_redaction import describe_http_error
 from modules.operator_bot.config import OperatorConfig
+from modules.postgrest_chunks import in_filters
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +195,32 @@ class OperatorSources:
             out = Section.fail("unavailable")
         self._cache[key] = out
         return out
+
+    def _read_in(self, table: str, params: dict, column: str, ids: list) -> Section:
+        """:meth:`_read` with ``column`` filtered to ``ids``, one request per chunk of ids (a long ``in.()`` makes
+        a URL the proxy refuses). No ids: no request, an empty section. Any chunk that fails fails the whole
+        section: a partial list must not read as the whole answer (CLAUDE.md #5). Rows are merged and, when the
+        query is ordered by one column, sorted again and cut to the limit, since each chunk was ordered and cut
+        on its own."""
+        parts = []
+        for flt in in_filters(ids):
+            sec = self._read(table, {**params, column: flt})
+            if not sec.ok:
+                return sec
+            parts.append(sec)
+        if not parts:
+            return Section(True, [])
+        rows = [r for p in parts for r in p.data or []]
+        order, limit = str(params.get("order") or ""), int(params.get("limit") or 0)
+        if len(parts) > 1 and order.count(".") >= 1:
+            col, _, direction = order.partition(".")
+            rows.sort(key=lambda r: (r.get(col) is None, str(r.get(col) or "")), reverse=direction.startswith("desc"))
+            if direction.startswith("desc"):  # reverse also flipped the None-last rule: put the nulls back last
+                rows.sort(key=lambda r: r.get(col) is None)
+        cap = max(p.cap for p in parts)
+        if limit and len(rows) > limit:
+            rows, cap = rows[:limit], limit
+        return Section(True, rows, cap=cap)
 
     def _rpc(self, name: str) -> Section:
         """One argument-less database function, cached like a table read. Never
@@ -423,14 +450,14 @@ class OperatorSources:
         if not ids:
             return Section(True, [])
         base = "video_id,channel_id,publish_state,published_at,held_at,video_format,parent_video_id"
-        slack, chans = iso(since - timedelta(days=1)), f"in.({','.join(ids)})"
+        slack = iso(since - timedelta(days=1))
 
         def read(select: str):
-            common = {"select": select, "channel_id": chans}
-            return (self._read("videos", {**common, "published_at": f"gte.{slack}",
-                                          "order": "published_at.desc", "limit": "300"}),
-                    self._read("videos", {**common, "held_at": f"gte.{slack}",
-                                          "order": "held_at.desc", "limit": "300"}))
+            common = {"select": select}
+            return (self._read_in("videos", {**common, "published_at": f"gte.{slack}",
+                                             "order": "published_at.desc", "limit": "300"}, "channel_id", ids),
+                    self._read_in("videos", {**common, "held_at": f"gte.{slack}",
+                                             "order": "held_at.desc", "limit": "300"}, "channel_id", ids))
 
         # The cause of a hold is ONE fixed word inside the hold_detail JSON; PostgREST's path select hands back
         # just that word, so the gate verdict next to it is never read. If a server refuses the path syntax the
@@ -466,10 +493,10 @@ class OperatorSources:
         ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
         if not ids:
             return Section(True, [])
-        return self._read("storyboards", {
-            "select": "id,channel_id,status,created_at", "channel_id": f"in.({','.join(ids)})",
+        return self._read_in("storyboards", {
+            "select": "id,channel_id,status,created_at",
             "created_at": f"gte.{iso(since - timedelta(days=1))}", "order": "created_at.desc", "limit": "100",
-        })
+        }, "channel_id", ids)
 
     def run_events(self, since: datetime, channel_ids: list) -> Section:
         """The run-lifecycle events of the named channels since ``since``: name, time and channel. Never
@@ -480,11 +507,11 @@ class OperatorSources:
         ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
         if not ids:
             return Section(True, [])
-        sec = self._read("system_events", {
+        sec = self._read_in("system_events", {
             "select": "event,ts,channel_id",
-            "event": f"in.({','.join(RUN_EVENTS)})", "channel_id": f"in.({','.join(ids)})",
+            "event": f"in.({','.join(RUN_EVENTS)})",
             "ts": f"gte.{iso(since - timedelta(minutes=1))}", "order": "ts.desc", "limit": "2000",
-        })
+        }, "channel_id", ids)
         if not sec.ok:
             return sec
         # Belt and braces for a source that ignored the filter: only run events, only the named channels.
@@ -499,10 +526,10 @@ class OperatorSources:
         ids = [c for c in channel_ids if isinstance(c, str) and _CHANNEL_ID.fullmatch(c)]
         if not ids:
             return Section(True, [])
-        return self._read("system_events", {
+        return self._read_in("system_events", {
             "select": "event_key,channel_id,metadata", "event": "eq.schedule.attempt",
-            "channel_id": f"in.({','.join(ids)})", "ts": f"gte.{iso(since)}", "order": "ts.desc", "limit": "200",
-        })
+            "ts": f"gte.{iso(since)}", "order": "ts.desc", "limit": "200",
+        }, "channel_id", ids)
 
     def doctor_results(self, since: datetime) -> Section:
         """The scheduled readiness check's own rows (tools/doctor_report.py): title ``ok`` or ``fail``,
