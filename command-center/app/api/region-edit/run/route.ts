@@ -10,6 +10,8 @@ import { pickEditModel } from "@/lib/regionEdit/quote";
 import { buildRunParams, paramsFit } from "@/lib/regionEdit/run";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { geoRefusal } from "@/lib/server/geo";
+import { geoClaimHeaders } from "@/lib/server/geo-claim";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +75,10 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (!picked.ok) return NextResponse.json({ error: picked.error }, { status: 422 });
   const params = buildRunParams(picked.model, req.sourceAssetId, req.regions, req.feather);
   if (!paramsFit(params)) return NextResponse.json({ error: "params_too_large" }, { status: 422 });
+  // The picker already leaves out a model this country forbids (loadStudioModels); said again here, by name, so a refusal is the
+  // region's words and not "not sellable", and the call carries 0208's server-signed country for a model with a country list.
+  const blocked = geoRefusal(picked.model.id, request.headers);
+  if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
   const out = await createGeneration(session.db, {
     orgId: req.orgId,
     capability: "edit",
@@ -81,7 +87,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     mode: "exact",
     idempotencyKey,
     maxCredits,
-  });
+  }, geoClaimHeaders([picked.model.id], request.headers, session.userId));
   if (out.status === 201) {
     const job = out.body.job as { id?: string; quoted_credits?: number };
     await logAudit({

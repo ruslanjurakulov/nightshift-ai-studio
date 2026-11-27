@@ -97,7 +97,9 @@ export const characterStudioEn = {
     charged: "{credits} credits charged",
     open: "Open in the library",
     cancel: "Cancel",
-    aiLabel: "AI-made",
+    /** Seen on a result: just "AI" (the owner, 2026-11-22); `aiLabelName` is what a screen reader hears for it. */
+    aiLabel: "AI",
+    aiLabelName: "AI-made",
   },
 
   errors: {

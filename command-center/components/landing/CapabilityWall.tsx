@@ -5,6 +5,7 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { TOOL_SAMPLES, toolSource } from "@/lib/site/tool-samples";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { WallControls } from "@/components/landing/WallControls";
+import { AiMark } from "@/components/site/AiMark";
 
 /** The tools that cost no credits (the editor and the style library), as everywhere else on the site. */
 const FREE = new Set(["editor", "styles"]);
@@ -93,7 +94,7 @@ export function CapabilityWall({ t }: { t: Dictionary }) {
             {!def.inStudio && <small className="nx-wall-notyet">{t.availability.notYet}</small>}
             {/* A price line only on a tool that can be used: "No credits" beside "Not available yet" would read as on offer. */}
             {def.inStudio && FREE.has(tool.id) && <small className="nx-wall-price">{st.free}</small>}
-            {out && <small className="nx-wall-credit">{`${g.badge} · ${w.byTeam}`}</small>}
+            {out && <small className="nx-wall-credit"><AiMark short={g.badge} name={`${g.badgeName} · ${w.byTeam}`} /></small>}
             {from && <small className="nx-wall-from">{w.from}</small>}
           </li>
         ))}
