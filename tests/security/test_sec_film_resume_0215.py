@@ -829,9 +829,10 @@ def test_the_creative_jobs_claimed_event_records_a_reference_not_the_worker_id(d
             "quoted_credits,charged_credits,error_code,error,result,result_asset_ids,expires_at,created_at,updated_at,started_at,finished_at")
     row = db.one("authenticated", a.viewer, f"select to_jsonb(x) from (select {cols} from public.creative_jobs where id = %s) x", [jid])
     assert HOST not in json.dumps(row)
-    # Measured, not closed here (reported): 0036 grants the whole creative_jobs table to members, worker_id included, so a direct
-    # select still reads it. Pinned so that closing it is a decision of its own migration, not an accident.
-    assert db.one("authenticated", a.viewer, "select worker_id from public.creative_jobs where id = %s", [jid]) == HOST
+    # 0225 (BR-0036-01) closed what was measured here: members hold named columns of creative_jobs, not worker_id, so a direct
+    # select of it is refused rather than answered.
+    assert err(lambda: db.one("authenticated", a.viewer, "select worker_id from public.creative_jobs where id = %s", [jid]))[0] \
+        == "42501"
     db.svc("select public.finish_creative_job(%s, %s, false, p_error_code => 'provider_error', p_error => 'lab: never sent')",
            [jid, HOST])
 

@@ -173,11 +173,13 @@ class Numbering(unittest.TestCase):
         # way: it names nothing these pin.
         # 0222 (retires gemini-omni-1.1-flash: one UPDATE of model_registry.availability, no function or table) names nothing
         # these pin.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209", "0211", "0222", "0212", "0215")
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209", "0211", "0222", "0212", "0215", "0225")
         # 0199 (Nightshift AI: new ai_chat_* tables and their functions; replaces no body, names nothing these pin) was
         # reviewed the same way.
         # 0203 (the owner AI's turn log: one closed table and two owner-only functions; replaces nothing) was reviewed the same way.
         # 0209 (the owner AI's chat history: owner_ai_* tables and owner-only functions; names nothing these pin) likewise.
+        # 0225 (creative_jobs: the member grant narrowed to named columns, and detail.worker redacted in two event trails; no
+        # function, policy or table) was reviewed the same way: it names nothing these pin.
         # 0204 (Instagram through Unified Login: three columns on social_accounts, store_social_account on 0028's body) was reviewed
         # against these pins: it names nothing of this file's.
         # 0212 (the recorded film sweep: one closed table, two service-role functions over 0171's film_expire_segments, a pg_cron
