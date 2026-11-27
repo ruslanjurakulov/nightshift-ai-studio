@@ -129,10 +129,27 @@ def _live_md5(session, signature: str):
     return row[0] if row else None
 
 
+MIGRATION_0227 = MIGRATIONS / "0227_owner_model_terms_acceptance.sql"
+ROLLBACK_0227 = REPO / "docs" / "sql" / "rollback_0227_owner_model_terms_acceptance.sql"
+
+
+def take_off_0227(session) -> None:
+    """Restore 0145's audit action list before rolling back or replaying 0145."""
+    if session.value("select to_regprocedure('public.model_terms_acceptance_guard()') is not null"):
+        text = ROLLBACK_0227.read_text(encoding="utf-8")
+        session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0227(session) -> None:
+    """Restore 0227 after replaying the migrations that supply 0145's audit list."""
+    session.conn.execute(MIGRATION_0227.read_text(encoding="utf-8"))
+
+
 def take_off_0145(session) -> None:
     """0145 replaces render_job_params_valid() on 0122's body, audit_action_allowed() on 0117's, approve_video_publish() on 0116's and 0076's render_jobs_insert policy, and
     adds set_video_made_for_kids(); 0122, 0117 and their rollbacks refuse any other body. Taken off with its own rollback when it is there
     (the columns stay, as the rollback keeps them); put back with put_back_0145."""
+    take_off_0227(session)
     if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)') is not null").fetchone()[0]:
         text = ROLLBACK_0145.read_text(encoding="utf-8")
         session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))

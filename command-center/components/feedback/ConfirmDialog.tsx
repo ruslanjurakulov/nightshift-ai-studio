@@ -32,6 +32,8 @@ export interface ConfirmOptions {
   details?: ConfirmDetail[];
   /** Tier 3: this text must be typed (case, spaces and ʻ ignored) before the key works. */
   typeToConfirm?: string;
+  /** Require an exact match for identifiers that the server compares verbatim. */
+  exactConfirmation?: boolean;
   /**
    * A statement the person must tick before the key works ("I checked rights and AI-content labels"). Unticked on
    * every new question; the key stays disabled until it is ticked.
@@ -41,9 +43,10 @@ export interface ConfirmOptions {
    * The work itself. With it the sheet stays open while it runs: both keys lock
    * (a second tap does nothing), the key shows a spinner, and a failure — `false`,
    * a returned message or a throw — is shown in the sheet with the keys live
-   * again. Resolves the confirm as `true` only once the work succeeded.
+   * again. Receives the input verbatim (empty when no text is requested).
+   * Resolves the confirm as `true` only once the work succeeded.
    */
-  run?: () => Promise<boolean | string | void>;
+  run?: (typed: string) => Promise<boolean | string | void>;
   /** Shown as a toast once `run` has succeeded (so the result is seen after the sheet closes). */
   successMessage?: string;
 }
@@ -125,9 +128,11 @@ export function ConfirmDialog({
     };
   }, [open]);
 
+  const matches = (word: string) => options?.exactConfirmation ? typed === word : typedMatches(typed, word);
+
   async function go() {
     if (lock.current || !options) return;
-    if (options.typeToConfirm && !typedMatches(typed, options.typeToConfirm)) return;
+    if (options.typeToConfirm && !matches(options.typeToConfirm)) return;
     if (options.acknowledge && !acknowledged) return;
     if (!options.run) {
       onResolve(true);
@@ -138,7 +143,7 @@ export function ConfirmDialog({
     setFailure(null);
     let problem: string | null = null;
     try {
-      const out = await options.run();
+      const out = await options.run(typed);
       if (out === false) problem = t.ownerSafety.actionFailed;
       else if (typeof out === "string" && out) problem = out;
     } catch {
@@ -182,7 +187,7 @@ export function ConfirmDialog({
 
   const danger = (options.tone ?? "danger") === "danger";
   const needsWord = Boolean(options.typeToConfirm);
-  const wordOk = (!needsWord || typedMatches(typed, options.typeToConfirm ?? "")) && (!options.acknowledge || acknowledged);
+  const wordOk = (!needsWord || matches(options.typeToConfirm ?? "")) && (!options.acknowledge || acknowledged);
 
   return createPortal(
     <div className="fixed inset-0 z-[130] flex items-end justify-center p-4 sm:items-center" onKeyDown={onKeyDown}>
