@@ -290,6 +290,8 @@ export const CREATIVE_ERRORS = [
   "insufficient_credits",
   "run_limit_reached",
   "forbidden",
+  // 0226: a generation spends the workspace's credits, which takes a seat in it (a platform admin who holds none reads, never spends).
+  "not_a_member",
   "not_found",
   "not_cancellable",
   // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
@@ -373,6 +375,7 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   prompt_too_long: { status: 400, code: "prompt_too_long" },
   negative_prompt_not_supported: { status: 400, code: "negative_prompt_not_supported" },
   seed_not_supported: { status: 400, code: "seed_not_supported" },
+  not_a_member: { status: 403, code: "not_a_member" },
 };
 const NS409: Partial<Record<string, CreativeError>> = {
   price_changed: "price_changed",

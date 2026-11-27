@@ -673,6 +673,10 @@ export function creditRunError(data: Record<string, unknown>, t: Dictionary, loc
     case "age_unavailable":
       text = t.credits.ageUnavailable;
       break;
+    // 0226: spending a workspace's credits takes a seat in it (a platform admin who holds none reads, never spends).
+    case "not_a_member":
+      text = t.credits.notAMember;
+      break;
   }
   if (num(data.credits_held) !== null) return `${text ?? t.agents.runFailed} ${t.credits.heldNote}`;
   return text;

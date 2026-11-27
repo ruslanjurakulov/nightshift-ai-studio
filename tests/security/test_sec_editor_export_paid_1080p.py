@@ -492,14 +492,19 @@ def test_two_paid_1080p_requests_at_once_see_each_other_under_the_organizations_
 # ── the file ────────────────────────────────────────────────────────────────
 
 def test_the_live_bodies_are_the_ones_the_file_pins(conn):
+    # 0226 (only a member spends) replaces the four-argument body with one marked hunk: the live one is then 0226's, pinned there.
+    import sec_org_spender_0226
+    after_0226 = {sig: now_ for sig, *_rest, now_ in sec_org_spender_0226.PATHS}
     with as_superuser(conn, commit=False) as s:
         for k, sig in SIGS.items():
-            assert _hash(s, sig) == _pins()[k], k
+            want = after_0226[sig] if sig in after_0226 and sec_db.has_0226(s) else _pins()[k]
+            assert _hash(s, sig) == want, k
 
 
 def test_the_file_applies_twice_and_keeps_the_owners_price(conn, sc):
     with as_superuser(conn, commit=False) as s:
         price_1080p(s, 1)
+        sec_db.take_off_0226(s)  # 0226 sits on the four-argument body, which this file's guard refuses
         before = {k: _hash(s, sig) for k, sig in SIGS.items()}
         s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
         s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -532,6 +537,7 @@ def test_the_rollback_puts_0132_back_and_the_file_applies_again(conn, sc):
         become(s, sc.bob.actor)
         waiting = s.value(REQ4, [PROJECT["b"], 1, "project", 1])          # a paid 1080p export still queued
         back_to_owner(s)
+        sec_db.take_off_0226(s)  # 0226 sits on the four-argument body, which this file's rollback refuses
         s.conn.execute(_rollback_text())
         assert {k: _hash(s, sig) for k, sig in SIGS.items() if k != "price"} == _pins_0132()
         assert _hash(s, SIGS["price"]) is None

@@ -190,6 +190,8 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
       return "This connection is no longer valid (it was disconnected or has expired). The person needs to connect the app to Nightshift again.";
     case "workspace_access_lost":
       return "The person who connected this app no longer has access to its workspace. They need to connect the app again.";
+    case "not_a_member":
+      return "The person who connected this app does not hold a seat with enough access in its workspace, so the app cannot spend that workspace's credits. Someone who manages that workspace needs to give them that access, or connect the app instead. Nothing was started or charged.";
     case "insufficient_scope": {
       const need = String(d.required_scope ?? "that permission");
       return (
@@ -253,6 +255,14 @@ function studioRefusalText(result: Extract<ApiResult, { ok: false }>, origin: st
       return (
         `The price changed since the quote${d.price_credits != null ? ` (it was ${credits(d.quoted_credits)} credits and is now ${credits(d.price_credits)})` : ""}. ` +
         "Nothing was started and nothing was charged. Call quote_creative again, tell the person the new price, and create only if they agree."
+      );
+    case "quote_exposure_changed":
+      // 0219: the quote was made by one route (offered to connected apps, or the operator's own workspace) and the model is now
+      // reachable only by the other. The person was shown a price for that route, so the remedy is a new quote, never a retry.
+      return (
+        `How ${model === "That model" ? "that model" : `the model ${model}`} is offered to this connection changed since the quote. ` +
+        "Nothing was started and nothing was charged. Call list_creative_models, then quote_creative again, tell the person the price, " +
+        "and create only if they agree."
       );
     case "quote_expired":
       return "That quote has expired. Nothing was started or charged. Call quote_creative again, tell the person the price, and create only if they agree.";
