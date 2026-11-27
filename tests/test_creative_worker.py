@@ -813,6 +813,9 @@ class AdapterProvenance(unittest.TestCase):
         self.assertNotIn("anything", prov)
         self.assertNotIn("nested", prov)
         self.assertEqual(cw.ADAPTER_PROVENANCE_KEYS, {"synthid", "vendor_model", "vocals_requested"})
+        # JSON has no NaN or Infinity: a non-finite number would make the row unwritable (or a lie), so it is dropped.
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            self.assertNotIn("synthid", self.stored({"synthid": bad}))
 
     def test_an_adapter_that_states_provenance_as_a_non_mapping_is_an_error_not_silence(self):
         from modules import creative_adapters as ca  # noqa: PLC0415

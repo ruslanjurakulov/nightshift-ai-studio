@@ -2754,16 +2754,21 @@ on sale.
     added.
   - `creative_params_problem` is 0218's body plus one hunk: music may come without `duration_s`. A duration that is given is still
     held to 1..60.
-  - `creative_price` is 0224's body plus one hunk, right after the quantity is read:
-    - a model whose `spec.pricing.unit` is `request` is quoted for a quantity of 1. Every per-request model sold before 0228 is a
-      describe model, whose quantity was already 1;
-    - a music quote with no duration on any other model is refused `invalid_params`, naming `duration_s`.
+  - `creative_price` is 0224's body plus one hunk, right after the quantity is read, for **music only**:
+    - a music model whose `spec.pricing.unit` is `request` is quoted for a quantity of 1;
+    - **hunk 3**: a music quote with no duration on any other music model is refused with the word `invalid_params` and the detail
+      "<model> is sold by the second: duration_s (a whole number of seconds from 1 to 60) is required". The Studio shows the
+      `invalid_params` copy in en/ru/uz (`lib/i18n/{en,ru,uz}.ts`, the quote refusal reasons); the API and MCP pass the detail.
+  - Every other capability is quoted exactly as 0224 quotes it. BR-0228-01/02: a first build applied the quantity of 1 to every
+    per-request model, before the longest-input checks. A per-request video op would then have skipped `max_source_seconds`, and
+    a 3-region edit would have been quoted as one request (the worker calls the vendor 3 times, and `finish_creative_job` then
+    charges 0). The registry validator also allows `pricing.unit = "request"` only for music and describe.
 - **Why.** Google Lyria 3.5 is "$0.08 per song" and has no duration field (docs/research/lyria-3-5.md). Before 0228, music could only
   be asked a duration and billed by the second.
 - **Order (enforced).** Apply after S10's 0224 (#945). The drift guard accepts only:
   - `creative_price` `ea2b58e88fe34ae18b261e5a0fbef435` (0218 plus 0224's line) and `creative_params_problem`
     `cb7ad6cd459f31259445bedd1a4a0c88` (0218);
-  - or its own bodies on a replay: `c586c11789c90db275ddbe03c6fb1000` and `0570bb5a1f749b7e3d556c87443bf17b`.
+  - or its own bodies on a replay: `33bb0ea77aedd1ffc3df339034adc6d3` and `0570bb5a1f749b7e3d556c87443bf17b`.
 
   On 0218's `creative_price` alone it refuses and names 0224.
 - **Nothing on sale.**

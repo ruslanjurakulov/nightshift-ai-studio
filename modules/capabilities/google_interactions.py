@@ -209,7 +209,11 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
             return E_QUOTA
         if _structured_block(err):
             return E_POLICY
-        if name in ("INVALID_ARGUMENT", "FAILED_PRECONDITION", "") and _POLICY_PHRASES.search(low):
+        # An answer with no Google status (an HTML page, a proxy's text) is read for a content refusal only when it is a 4xx that is
+        # not a key, quota, lookup or rate answer: a 503 page about a "privacy policy", a 500 "retry policy" or a 403 "Request
+        # blocked." is an outage or an access problem, and calling it the person's prompt names the wrong fix (rule 6).
+        plain = name == "" and 400 <= status < 500 and status not in (401, 402, 403, 404, 429)
+        if (name in ("INVALID_ARGUMENT", "FAILED_PRECONDITION") or plain) and _POLICY_PHRASES.search(low):
             return E_POLICY
         return None
 
@@ -568,10 +572,13 @@ def _strip_labels(line: str) -> str:
 
 
 def returned_singing(text: str) -> bool:
-    """BR-S6-01/02, the OUTPUT check: True when the lyrics or structure text Google returned beside the audio carries a sung line.
-    Fails closed on purpose: a JSON structure passes only when no lyrics field holds words; plain text passes only when every line,
-    once its section and timing labels are removed, is empty or says "instrumental". What an instrumental answer's text really looks
-    like is UNVERIFIED until a paid probe; a prose description is refused rather than guessed at."""
+    """BR-S6-01/02, the OUTPUT check, and only a FIRST SIGNAL until the paid probe and the vocal-activity measurement on the MP3 exist:
+    True when the lyrics or structure text Google returned beside the audio carries a sung line. What it reads:
+      * JSON: only the strings under a key whose name contains lyric, vocal, sung, words or lines. Strings under any other key (a
+        section's name, a description) are NOT read, so it is not fail-closed for a key it does not know;
+      * plain text: each line with its bracketed labels ([Intro], [0:00 - 0:10]) and a leading "Word N:" removed must be empty,
+        carry no letter, or say "instrumental". An unbracketed timing or a prose description counts as sung (refused).
+    What an instrumental answer's text really looks like is UNVERIFIED; the guarantee Lyria needs before sale is the measurement."""
     folded = _fold(text).strip()
     if not folded:
         return False

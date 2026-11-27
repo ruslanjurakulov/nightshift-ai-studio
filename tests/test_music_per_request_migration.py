@@ -31,7 +31,7 @@ LAB = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
 CODE = "\n".join(line.split("--", 1)[0] for line in TEXT.splitlines())
 
 BEFORE = {"creative_params_problem": "cb7ad6cd459f31259445bedd1a4a0c88", "creative_price": "ea2b58e88fe34ae18b261e5a0fbef435"}
-AFTER = {"creative_params_problem": "0570bb5a1f749b7e3d556c87443bf17b", "creative_price": "c586c11789c90db275ddbe03c6fb1000"}
+AFTER = {"creative_params_problem": "0570bb5a1f749b7e3d556c87443bf17b", "creative_price": "33bb0ea77aedd1ffc3df339034adc6d3"}
 BS = chr(92)
 TOKEN = "@@0228_BACKSLASH@@"
 #: 0224's one line in 0218's creative_price (tests/test_creative_prompt_limits_migration.py pins the same line).
@@ -84,13 +84,21 @@ class TheBodies(unittest.TestCase):
         self.assertEqual(md5_of(old), BEFORE["creative_price"])
         new = executed_body(TEXT, "cp0228")
         self.assertEqual(md5_of(new), AFTER["creative_price"])
-        hunk = hunk_of(new, "  -- 0228: a model the registry prices per request", "is required', mdl));\n  end if;\n")
+        hunk = hunk_of(new, "  -- 0228: a MUSIC model the registry prices per request", "is required', mdl));\n  end if;\n")
         self.assertEqual(new.replace(hunk, ""), old, "anything but the one hunk changed")
-        self.assertIn("if m_spec -> 'pricing' ->> 'unit' = 'request' then\n    qty := 1;", hunk)
+        # BR-0228-01/02: music only. Every other capability keeps 0224's quantity and every check after it.
+        self.assertIn("if cap = 'music' and m_spec -> 'pricing' ->> 'unit' = 'request' then\n    qty := 1;", hunk)
+        self.assertNotIn("\n  if m_spec -> 'pricing' ->> 'unit' = 'request' then", hunk)
         self.assertIn("elsif cap = 'music' and not p_params ? 'duration_s' then", hunk)
         self.assertIn("perform public.creative_refuse('invalid_params'", hunk)
         # Right after the quantity is read, before the unknown-length refusal: a per-request model is never "length unknown".
         self.assertEqual(new.index(hunk), new.index(HUNK_PRICE_ANCHOR) + len(HUNK_PRICE_ANCHOR))
+
+    def test_the_rollback_asserts_its_end_state(self):
+        end = ROLLBACK[ROLLBACK.index("-- End state"):]
+        self.assertIn(f"<> '{BEFORE['creative_params_problem']}' then", end)
+        self.assertIn(f"<> '{BEFORE['creative_price']}' then", end)
+        self.assertIn("a capability check still lists music", end)
 
     def test_the_rollback_puts_the_old_bodies_back_byte_for_byte(self):
         m = re.search(r"\$pp0218\$(create or replace function public\.creative_params_problem\(.*?\$\$;)\$pp0218\$", ROLLBACK, re.S)
@@ -130,7 +138,9 @@ class TheChecks(unittest.TestCase):
     def test_music_is_the_only_value_added_to_each_check(self):
         for name in ("model_registry_capabilities_check", "model_probe_runs_capability_check"):
             self.assertEqual(self.values(TEXT, name), self.values(M0100, name) + ["music"], name)
-        self.assertIn("cardinality(capabilities) between 1 and 19", TEXT)
+        # The bound is the number of values allowed: 20 with music (0100: 19); the rollback goes back to 19.
+        self.assertIn("cardinality(capabilities) between 1 and 20", TEXT)
+        self.assertIn("cardinality(capabilities) between 1 and 19", ROLLBACK)
 
     def test_the_rollback_takes_it_out_again_but_never_deletes_a_row(self):
         for name in ("model_registry_capabilities_check", "model_probe_runs_capability_check"):

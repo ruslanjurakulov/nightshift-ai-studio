@@ -183,6 +183,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import mimetypes
 import re
 import shutil
@@ -1340,7 +1341,8 @@ class CreativeWorker:
         # far under 0038's 16 KB CHECK. The worker's own keys are applied after it, so they always win.
         provenance = {k: (v[:ADAPTER_PROVENANCE_MAX_CHARS] if isinstance(v, str) else v)
                       for k, v in (said or {}).items()
-                      if k in ADAPTER_PROVENANCE_KEYS and isinstance(v, (bool, str, int, float))}
+                      if k in ADAPTER_PROVENANCE_KEYS and isinstance(v, (bool, str, int, float))
+                      and not (isinstance(v, float) and not math.isfinite(v))}
         provenance.update({"job_id": request.job_id, "capability": request.capability, "model": request.model,
                            "rights": "generated_for_org"})
         if usage is not None and usage.provider:

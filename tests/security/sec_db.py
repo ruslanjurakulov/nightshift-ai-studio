@@ -711,7 +711,7 @@ def put_back_0218(conn_or_session) -> None:
 #: only 0224's creative_price (CREATIVE_PRICE_0218_0224) and 0218's creative_params_problem, or its own bodies.
 MIGRATION_0228 = MIGRATIONS / "0228_music_per_request_price.sql"
 ROLLBACK_0228 = REPO / "docs" / "sql" / "rollback_0228_music_per_request_price.sql"
-CREATIVE_PRICE_0228 = "c586c11789c90db275ddbe03c6fb1000"
+CREATIVE_PRICE_0228 = "33bb0ea77aedd1ffc3df339034adc6d3"
 CREATIVE_PARAMS_PROBLEM_0228 = "0570bb5a1f749b7e3d556c87443bf17b"
 
 

@@ -361,6 +361,20 @@ class SafetyBlockTests(VendorCase):
         self.assertEqual(e.code, E_BAD_REQUEST)
         self.assertNotIn(LYRIA_POLICY_REMEDY, e.message)
 
+    def test_lens_m2_an_outage_or_access_page_is_never_a_content_refusal(self):
+        cases = [
+            (Resp(503, raw=b"<html><body>Service unavailable. See our privacy policy.</body></html>",
+                  headers={"Content-Type": "text/html"}), "unavailable"),
+            (Resp(500, raw=b"internal error: retry policy exhausted", headers={"Content-Type": "text/plain"}), "unavailable"),
+            (Resp(403, raw=b"Request blocked.", headers={"Content-Type": "text/plain"}), "auth"),
+        ]
+        for resp, code in cases:
+            with self.subTest(status=resp.status):
+                e = self.blocked(resp)
+                self.assertNotEqual(e.code, E_POLICY)
+                self.assertEqual(e.code, code)
+                self.assertNotIn(LYRIA_POLICY_REMEDY, e.message)
+
     def test_a_400_that_is_not_about_content_stays_a_bad_request(self):
         e = self.blocked(Resp(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Unknown field: foo"}}))
         self.assertEqual(e.code, E_BAD_REQUEST)

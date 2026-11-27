@@ -16,10 +16,11 @@
 --   1. `music` is added to model_registry_capabilities_check and model_probe_runs_capability_check (0100's lists, nothing else).
 --   2. creative_params_problem: 0218's body plus ONE hunk, so music may come without duration_s. A duration that is given is held to
 --      0218's rule (1..60).
---   3. creative_price: 0224's body plus ONE hunk, after the quantity is read:
---        - a model whose spec.pricing.unit is `request` is quoted for a quantity of 1. Every per-request model sold before 0228 is a
---          describe model, whose quantity was 1 already, so no existing quote changes.
---        - a music quote with no duration on any other model is refused invalid_params, naming duration_s (the other half of 2).
+--   3. creative_price: 0224's body plus ONE hunk, after the quantity is read, for MUSIC only (BR-0228-01/02: unscoped, it let a
+--      per-request video op skip its longest-input check and quoted a region edit as one request):
+--        - a music model whose spec.pricing.unit is `request` is quoted for a quantity of 1;
+--        - "hunk 3": a music quote with no duration on any other music model is refused invalid_params, naming duration_s.
+--      Every other capability is quoted exactly as 0224 quotes it.
 --      A duration given to a model that lists none (Lyria: durations_s []) is refused as before (0159).
 --   Not changed: every other refusal, the gates (0142, 0192/0196, 0208), the margin, the job minimum, the dated price (0224), the
 --   preview path. No credit_prices row is written: a music quote is `unpriced` until the owner sets a price after a passing probe and
@@ -27,7 +28,7 @@
 --
 -- REPLACES (md5 drift guard, white space folded; this file accepts ONLY these bodies, or its own on a replay):
 --   creative_params_problem (0218) before cb7ad6cd459f31259445bedd1a4a0c88, after 0570bb5a1f749b7e3d556c87443bf17b
---   creative_price (0218 + 0224)   before ea2b58e88fe34ae18b261e5a0fbef435, after c586c11789c90db275ddbe03c6fb1000
+--   creative_price (0218 + 0224)   before ea2b58e88fe34ae18b261e5a0fbef435, after 33bb0ea77aedd1ffc3df339034adc6d3
 --   So 0228 applies only after S10's 0224 (#945): on 0218's body alone (59c5c289009a874af043c534b29934ee) it refuses.
 -- NUMBER. 0228 (assigned by Atlas for stream S6). Needs 0100, 0218 and 0224.
 -- Backslash-free: the body of creative_price carries 0218's prompt regexes, written as @@0228_BACKSLASH@@ and put back with chr(92)
@@ -50,7 +51,7 @@ begin
     raise exception '0228 found a creative_params_problem() that is neither 0218''s body nor 0228''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)');
-  if h is null or h <> all (array['ea2b58e88fe34ae18b261e5a0fbef435', 'c586c11789c90db275ddbe03c6fb1000']) then
+  if h is null or h <> all (array['ea2b58e88fe34ae18b261e5a0fbef435', '33bb0ea77aedd1ffc3df339034adc6d3']) then
     raise exception '0228 found a creative_price() that is neither 0218''s with 0224''s line nor 0228''s (md5 %): apply 0224 first, or read the live body', h;
   end if;
 end $$;
@@ -61,7 +62,7 @@ end $$;
 
 alter table public.model_registry drop constraint if exists model_registry_capabilities_check;
 alter table public.model_registry add constraint model_registry_capabilities_check
-  check (cardinality(capabilities) between 1 and 19
+  check (cardinality(capabilities) between 1 and 20
          and capabilities <@ array['t2i','edit','t2v','i2v','tts','sfx','upscale','remove_bg',
                                    'voice_change','dub','video_upscale','describe','captions',
                                    'expand','relight','erase',
@@ -789,10 +790,11 @@ begin
   else
     qty := public.creative_quantity(cap, p_params);
   end if;
-  -- 0228: a model the registry prices per request (spec.pricing.unit = request) is quoted for one request, whatever its
-  -- capability's own quantity: Lyria 3.5 is billed "per song" and has no duration. Every per-request model sold before 0228 is a
-  -- describe, whose quantity was 1 already. A music model priced any other way still needs its duration, named as the fix.
-  if m_spec -> 'pricing' ->> 'unit' = 'request' then
+  -- 0228: a MUSIC model the registry prices per request (spec.pricing.unit = request) is quoted for one request: Lyria 3.5 is
+  -- billed "per song" and has no duration. Music only (BR-0228-01/02): any other capability keeps its own quantity and every check
+  -- after this one, so a region edit is still one request per region and a video op still meets its longest input. A music model
+  -- priced any other way still needs its duration, named as the fix (hunk 3).
+  if cap = 'music' and m_spec -> 'pricing' ->> 'unit' = 'request' then
     qty := 1;
   elsif cap = 'music' and not p_params ? 'duration_s' then
     perform public.creative_refuse('invalid_params',
@@ -873,7 +875,7 @@ begin
   if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) <> '0570bb5a1f749b7e3d556c87443bf17b' then
     raise exception '0228 end state: creative_params_problem is not 0228''s body';
   end if;
-  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) <> 'c586c11789c90db275ddbe03c6fb1000' then
+  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) <> '33bb0ea77aedd1ffc3df339034adc6d3' then
     raise exception '0228 end state: creative_price is not 0228''s body';
   end if;
   if position('''music''' in pg_get_constraintdef((select oid from pg_constraint where conname = 'model_registry_capabilities_check'))) = 0
@@ -897,7 +899,7 @@ end $$;
 --     (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
 --       where oid = 'public.creative_params_problem(text,jsonb)'::regprocedure) = '0570bb5a1f749b7e3d556c87443bf17b' as params_is_0228s,
 --     (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---       where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = 'c586c11789c90db275ddbe03c6fb1000' as price_is_0228s,
+--       where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = '33bb0ea77aedd1ffc3df339034adc6d3' as price_is_0228s,
 --     position('''music''' in pg_get_constraintdef((select oid from pg_constraint where conname = 'model_registry_capabilities_check'))) > 0 as registry_knows_music,
 --     position('''music''' in pg_get_constraintdef((select oid from pg_constraint where conname = 'model_probe_runs_capability_check'))) > 0 as probes_know_music,
 --     not exists (select 1 from public.credit_prices where unit = 'model_google_lyria_3_5_request') as lyria_unpriced,

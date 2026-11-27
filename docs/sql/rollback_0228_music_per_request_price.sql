@@ -355,7 +355,7 @@ revoke all on function public.creative_params_problem(text, jsonb) from public, 
 
 do $rb$
 begin
-  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) = 'c586c11789c90db275ddbe03c6fb1000' then
+  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) = '33bb0ea77aedd1ffc3df339034adc6d3' then
     execute replace($cp0224$create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -811,6 +811,23 @@ alter table public.model_probe_runs add constraint model_probe_runs_capability_c
                         'expand', 'relight', 'erase',
                         'video_edit', 'video_reframe', 'video_remove_bg'));
 $c$;
+  end if;
+end
+$rb$;
+
+-- End state: both bodies are the ones 0228 was written on (0218's creative_params_problem, 0224's creative_price), and no check
+-- lists music.
+do $rb$
+begin
+  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) <> 'cb7ad6cd459f31259445bedd1a4a0c88' then
+    raise exception 'rollback 0228 end state: creative_params_problem is not 0218''s body';
+  end if;
+  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) <> 'ea2b58e88fe34ae18b261e5a0fbef435' then
+    raise exception 'rollback 0228 end state: creative_price is not 0224''s body';
+  end if;
+  if position('''music''' in coalesce(pg_get_constraintdef((select oid from pg_constraint where conname = 'model_registry_capabilities_check')), '')) > 0
+     or position('''music''' in coalesce(pg_get_constraintdef((select oid from pg_constraint where conname = 'model_probe_runs_capability_check')), '')) > 0 then
+    raise exception 'rollback 0228 end state: a capability check still lists music';
   end if;
 end
 $rb$;
