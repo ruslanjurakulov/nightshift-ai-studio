@@ -28,7 +28,8 @@ update public.model_registry m
   from public.model_terms_acceptance a
  where a.model_id = m.id
    and a.provider = m.provider and a.adapter = m.adapter
-   and a.vendor_model is not distinct from m.spec ->> 'vendor_model';
+   and a.vendor_model is not distinct from m.spec ->> 'vendor_model'
+   and a.used_up_at is null;
 
 drop function public.owner_accept_model_terms(text, text, text);
 drop function public.owner_revoke_model_terms(text);

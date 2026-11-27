@@ -17,6 +17,9 @@ create table if not exists public.model_terms_acceptance (
   vendor_model text,
   accepted_by uuid not null,
   accepted_at timestamptz not null default now(),
+  -- Set when the registry stopped asking for this gate: the acceptance is used up and never clears a gate again, but the
+  -- row stays so a later re-imposed gate on a model the owner put on sale hides it instead of failing the whole sync.
+  used_up_at timestamptz,
   note text
 );
 
@@ -33,7 +36,8 @@ begin
 
   return query
     select a.model_id, a.gate, a.accepted_at, a.accepted_by = auth.uid()
-      from public.model_terms_acceptance a;
+      from public.model_terms_acceptance a
+     where a.used_up_at is null;
 end
 $$;
 
@@ -70,6 +74,9 @@ begin
 
   insert into public.model_terms_acceptance (model_id, gate, provider, adapter, vendor_model, accepted_by)
   values (m.id, p_gate, m.provider, m.adapter, m.spec ->> 'vendor_model', auth.uid())
+  on conflict (model_id) do update
+    set gate = excluded.gate, provider = excluded.provider, adapter = excluded.adapter,
+        vendor_model = excluded.vendor_model, accepted_by = excluded.accepted_by, accepted_at = now(), used_up_at = null
   returning accepted_at into acceptance_time;
 
   return jsonb_build_object('model_id', m.id, 'gate', p_gate, 'accepted_at', acceptance_time,
@@ -98,7 +105,7 @@ begin
   end if;
 
   -- Delete first so the registry trigger keeps the restored gate.
-  delete from public.model_terms_acceptance where model_id = m.id returning gate into recorded_gate;
+  delete from public.model_terms_acceptance where model_id = m.id and used_up_at is null returning gate into recorded_gate;
   if not found then
     raise exception 'no_acceptance' using errcode = 'P2273';
   end if;
@@ -122,12 +129,13 @@ declare
   incoming_gate text := nullif(new.spec ->> 'terms_gate', '');
 begin
   if incoming_gate is null then
-    delete from public.model_terms_acceptance where model_id = old.id;
+    update public.model_terms_acceptance set used_up_at = coalesce(used_up_at, now()) where model_id = old.id;
   elsif new.provider <> 'bytedance' and exists (
     select 1 from public.model_terms_acceptance a
      where a.model_id = new.id and a.gate = incoming_gate
        and a.provider = new.provider and a.adapter = new.adapter
        and a.vendor_model is not distinct from new.spec ->> 'vendor_model'
+       and a.used_up_at is null
   ) then
     new.spec := new.spec - 'terms_gate';
   elsif new.availability in ('beta', 'ga')

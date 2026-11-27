@@ -70,6 +70,7 @@ class OwnerModelTermsAcceptanceMigration(unittest.TestCase):
             r"where a\.model_id = new\.id and a\.gate = incoming_gate\s+"
             r"and a\.provider = new\.provider and a\.adapter = new\.adapter\s+"
             r"and a\.vendor_model is not distinct from new\.spec ->> 'vendor_model'\s+"
+            r"and a\.used_up_at is null\s+"
             r"\) then\s+new\.spec := new\.spec - 'terms_gate';\s+"
             r"elsif new\.availability in \('beta', 'ga'\)\s+"
             r"and exists \(select 1 from public\.model_terms_acceptance a where a\.model_id = new\.id\) then\s+"
@@ -86,11 +87,16 @@ class OwnerModelTermsAcceptanceMigration(unittest.TestCase):
         trigger = definition("model_terms_acceptance_guard")
         self.assertIn("incoming_gate text := nullif(new.spec ->> 'terms_gate', '');", trigger)
         self.assertRegex(trigger, r"if incoming_gate is null then\s+"
-                                  r"delete from public\.model_terms_acceptance where model_id = old\.id;")
+                                  r"update public\.model_terms_acceptance set used_up_at = coalesce\(used_up_at, now\(\)\) "
+                                  r"where model_id = old\.id;")
+        # Used up, not deleted: a re-imposed gate on a model the owner put on sale must find the row and hide the model
+        # (Breach M2 on #939) instead of failing 0035's CHECK for the whole sync.
+        self.assertNotIn("delete from public.model_terms_acceptance where model_id = old.id", trigger)
 
     def test_revocation_restores_the_gate_and_hides_a_model_on_sale(self):
         revoke = definition("owner_revoke_model_terms")
-        delete = "delete from public.model_terms_acceptance where model_id = m.id returning gate into recorded_gate"
+        delete = ("delete from public.model_terms_acceptance where model_id = m.id and used_up_at is null "
+                  "returning gate into recorded_gate")
         self.assertIn(delete, revoke)
         self.assertIn("restored_gate := coalesce(nullif(m.spec ->> 'terms_gate', ''), recorded_gate)", revoke)
         self.assertIn("spec = jsonb_set(spec, '{terms_gate}', to_jsonb(restored_gate))", revoke)
