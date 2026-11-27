@@ -5,9 +5,7 @@ import { readAllPages } from "@/lib/paged-read";
 import { timed } from "@/lib/server/read-timeout";
 import { readFailed } from "@/lib/readState";
 import {
-  oldestRowMs,
   registryPrices,
-  utcDayStart,
   type BalanceRow,
   type BillingSettingsRow,
   type CostRowLite,
@@ -15,6 +13,7 @@ import {
   type StudioCostRow,
   type TopupRow,
 } from "@/lib/billing";
+import { oldestRowMs, utcDayStart } from "@/lib/stats";
 import { coerceModelActivity, type ModelActivity, type RunwayData } from "@/lib/owner-analytics/runway";
 
 /**
